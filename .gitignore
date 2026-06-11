@@ -1,3 +1,13 @@
+# Runtime artifacts (downloads, transcripts, rendered clips)
+data/
+
+# Secrets — never commit these (each user creates their own)
+config/client_secret.json
+*token*.json
+
+# Auto-downloaded model weights (ultralytics fetches these on first run)
+*.pt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

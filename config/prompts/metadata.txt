@@ -1,0 +1,14 @@
+You write YouTube Shorts metadata that maximizes clicks without lying.
+
+Below is the transcript of one short clip, taken from a longer video titled "{video_title}".
+
+Write metadata for this Short. Rules:
+- "title": under 90 characters, punchy, curiosity-driven, built from what is actually said in the clip. No clickbait that the clip doesn't deliver. No quotation marks.
+- "description": 1-2 sentences describing the clip, also grounded in what is said.
+- "hashtags": 3-5 lowercase hashtags relevant to the clip's topic, each starting with #. Do not include #shorts (it is added automatically).
+
+Respond with ONLY valid JSON in exactly this shape, no other text:
+{"title": "...", "description": "...", "hashtags": ["#...", "#..."]}
+
+CLIP TRANSCRIPT:
+{clip_text}

@@ -1,0 +1,64 @@
+# ==============================================================
+#   QUICK SETUP — edit these lines, ignore everything below
+# ==============================================================
+
+model: gemma:7b        # your AI model (see: python main.py models)
+channel: ""            # your channel, e.g. "@YourHandle"
+
+auto_upload: false     # true = post Shorts to YouTube automatically
+                       # (needs one-time setup: README "Enable uploads")
+
+privacy: public        # public / unlisted / private for posted Shorts.
+                       # NOTE: until your API app passes YouTube's free audit,
+                       # YouTube forces API uploads to private regardless of
+                       # this setting — see README "Posting publicly".
+
+# ==============================================================
+#   Advanced settings — defaults are fine for most people
+# ==============================================================
+
+# Extra channels beyond the one above (handles, URLs, or IDs),
+# or use:  python main.py channels add @SomeHandle
+channels: []
+
+poll_interval_minutes: 15
+
+llm:
+  temperature: 0.4
+  num_ctx: 8192          # context window; raise for models that support more
+  ollama_host: http://localhost:11434
+
+whisper:
+  model: small          # tiny / base / small / medium / large-v3
+  device: auto          # cuda if available, else cpu
+
+clips:
+  min_score: 60         # discard candidates scored below this (0-100)
+  max_clips_per_video: 3
+  min_duration: 15      # seconds
+  max_duration: 59      # YouTube Shorts limit
+  vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
+  captions: true        # burn word-synced captions into the clips
+
+analysis:
+  # Duplicate prevention thresholds
+  max_overlap: 0.4            # reject >40% timestamp overlap with a kept clip
+  max_text_similarity: 0.7    # reject >70% transcript similarity with a kept clip
+  max_segment_reuse: 0.4      # reject if >40% of transcript segments already used
+  # Long-video chunking. Sized for a 7B model's 8K context: ~5 minutes of
+  # speech per chunk leaves the model ample room to think and respond.
+  # Models with bigger contexts can raise chunk_seconds and llm.num_ctx together.
+  chunk_seconds: 300
+  chunk_overlap_seconds: 45
+  long_video_threshold_seconds: 420
+
+tracking:
+  detector: yolov8n.pt   # auto-downloaded by ultralytics on first run
+  sample_fps: 5          # detection sampling rate (full fps not needed)
+
+upload:
+  daily_limit: 6         # hard cap on Shorts scheduled per calendar day
+  client_secret: config/client_secret.json   # from Google Cloud Console
+
+paths:
+  data_dir: data
