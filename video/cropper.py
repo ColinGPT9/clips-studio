@@ -1,14 +1,16 @@
-"""Vertical 9:16 rendering that follows a tracker crop path.
+"""Vertical 9:16 rendering from a tracking result.
 
-No-stretch guarantee by construction: the crop window is exactly 9:16
-(width = height * 9/16, rounded to even for H.264), and only its horizontal
-position ever changes. The final uniform scale to 1080x1920 therefore never
-alters the aspect ratio.
+Two modes (see video/tracker.py for how they're chosen):
 
-Render strategy: OpenCV reads the already-cut clip frame by frame, crops each
-frame at the interpolated window position, and writes a temp video; FFmpeg
-then scales to 1080x1920 and muxes the original audio back in. One temp file,
-one final encode.
+  track  - OpenCV follows the smoothed crop path frame by frame, then FFmpeg
+           scales to 1080x1920, burns captions, and muxes the audio back in.
+  split  - gameplay + facecam layout: webcam region stacked on top (35%),
+           centered gameplay crop below (65%). Both regions are static, so
+           this renders in ONE pure-FFmpeg pass with no per-frame Python.
+
+No-stretch guarantee in both modes: every crop window keeps a fixed aspect
+ratio and only ever gets uniformly scaled — distortion is impossible by
+construction.
 """
 
 import subprocess
@@ -17,14 +19,29 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.models import ClipCandidate, RenderedClip
+CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
+GAME_H = 1248  # gameplay band height (65%)
 
 
 def render_vertical(
     clip_path: Path,
-    crop_path: list[tuple[float, float]],
+    tracking: dict,
     output_path: Path,
     ass_path: Path | None = None,
+) -> Path:
+    if tracking["mode"] == "split":
+        return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path)
+    return _render_tracked(clip_path, tracking["path"], output_path, ass_path)
+
+
+# ---- follow-the-subject mode -------------------------------------------------
+
+
+def _render_tracked(
+    clip_path: Path,
+    crop_path: list[tuple[float, float]],
+    output_path: Path,
+    ass_path: Path | None,
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -63,13 +80,9 @@ def render_vertical(
     writer.release()
 
     # Uniform scale to 1080x1920 + captions + re-encode + mux source audio.
-    # The subtitles filter gets a bare filename with cwd set to its folder —
-    # absolute Windows paths inside filter args need fragile escaping.
     vf = "scale=1080:1920:flags=lanczos,setsar=1"
     if ass_path is not None:
         vf += f",subtitles={ass_path.name}"
-    # Absolute paths everywhere: cwd is changed for the subtitles filter,
-    # which would silently break relative input/output paths.
     cmd = [
         "ffmpeg", "-y",
         "-i", str(temp_path.resolve()),
@@ -82,12 +95,8 @@ def render_vertical(
         "-shortest",
         str(output_path.resolve()),
     ]
-    workdir = ass_path.parent if ass_path is not None else None
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
+    _run_ffmpeg(cmd, ass_path)
     temp_path.unlink(missing_ok=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg vertical render failed:\n{result.stderr[-2000:]}")
-
     return output_path
 
 
@@ -103,3 +112,65 @@ def _interpolate(path: list[tuple[float, float]], t: float) -> float:
                 return x0
             return x0 + (x1 - x0) * (t - t0) / (t1 - t0)
     return path[-1][1]
+
+
+# ---- gameplay + facecam split mode --------------------------------------------
+
+
+def _render_split(
+    clip_path: Path,
+    webcam_box: tuple[float, float, float, float],
+    output_path: Path,
+    ass_path: Path | None,
+) -> Path:
+    cap = cv2.VideoCapture(str(clip_path))
+    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+
+    bx, by, bw, bh = webcam_box
+    cam_x, cam_y = int(bx * src_w), int(by * src_h)
+    cam_w, cam_h = int(bw * src_w), int(bh * src_h)
+    cam_w -= cam_w % 2
+    cam_h -= cam_h % 2
+
+    # Gameplay band: center crop at exactly the band's aspect (1080:1248).
+    game_w = int(src_h * 1080 / GAME_H)
+    game_w -= game_w % 2
+    game_w = min(game_w, src_w)
+    game_x = (src_w - game_w) // 2
+
+    # Webcam band: crop the overlay region, fill the 1080x672 band
+    # (uniform scale up, then trim overflow — never stretch).
+    filters = (
+        f"[0:v]crop={cam_w}:{cam_h}:{cam_x}:{cam_y},"
+        f"scale=1080:{CAM_H}:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop=1080:{CAM_H},setsar=1[cam];"
+        f"[0:v]crop={game_w}:{src_h}:{game_x}:0,"
+        f"scale=1080:{GAME_H}:flags=lanczos,setsar=1[game];"
+        f"[cam][game]vstack=inputs=2[v]"
+    )
+    if ass_path is not None:
+        filters += f";[v]subtitles={ass_path.name}[v]"
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(clip_path.resolve()),
+        "-filter_complex", filters,
+        "-map", "[v]", "-map", "0:a:0?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output_path.resolve()),
+    ]
+    _run_ffmpeg(cmd, ass_path)
+    return output_path
+
+
+def _run_ffmpeg(cmd: list[str], ass_path: Path | None) -> None:
+    # cwd is the ass file's folder: the subtitles filter gets a bare filename,
+    # avoiding fragile Windows path escaping inside filter args.
+    workdir = ass_path.parent if ass_path is not None else None
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg render failed:\n{result.stderr[-2000:]}")

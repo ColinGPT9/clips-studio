@@ -11,8 +11,9 @@ from pathlib import Path
 
 import json
 
-from analysis.highlights import find_highlights
+from analysis.fusion import find_clips
 from analysis.metadata import generate_metadata
+from core import progress
 from core.models import ClipCandidate, RenderedClip, Segment
 from core.state import StateDB
 from llm.base import LLMBackend
@@ -25,10 +26,9 @@ from video.cutter import cut_clip
 
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     data_dir = Path(config["paths"]["data_dir"])
-    clips_cfg = config["clips"]
-    analysis_cfg = config["analysis"]
 
     print(f"[1/4] Downloading: {url}")
+    progress.emit(stage="download", message=url)
     video = youtube.download(url, data_dir / "downloads")
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
 
@@ -39,6 +39,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     db.set_video_status(video.video_id, "downloaded")
 
     print("[2/4] Transcribing...")
+    progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
     segments = transcribe(
         video.path,
         video.video_id,
@@ -49,22 +50,10 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      {len(segments)} segments")
     db.set_video_status(video.video_id, "transcribed")
 
-    print("[3/4] Finding highlights...")
+    print("[3/4] Multimodal analysis (transcript + audio + visual)...")
+    progress.emit(stage="analyze", video_id=video.video_id)
     llm = create_backend(config["llm"])
-    candidates, rejections = find_highlights(
-        segments,
-        llm,
-        min_score=clips_cfg["min_score"],
-        max_clips=clips_cfg["max_clips_per_video"],
-        min_duration=clips_cfg["min_duration"],
-        max_duration=clips_cfg["max_duration"],
-        max_overlap=analysis_cfg["max_overlap"],
-        max_text_similarity=analysis_cfg["max_text_similarity"],
-        max_segment_reuse=analysis_cfg["max_segment_reuse"],
-        chunk_seconds=analysis_cfg["chunk_seconds"],
-        chunk_overlap_seconds=analysis_cfg["chunk_overlap_seconds"],
-        long_video_threshold_seconds=analysis_cfg["long_video_threshold_seconds"],
-    )
+    candidates, rejections = find_clips(video.path, segments, llm, config)
     for r in rejections:
         db.log_rejection(
             video.video_id,
@@ -82,12 +71,20 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         db.set_video_status(video.video_id, "done")
         return []
     for c in candidates:
+        s = c.subscores or {}
+        breakdown = (
+            f"text {s.get('text', '?')} | audio {s.get('audio', '?')} | "
+            f"visual {s.get('visual', '?')} | reaction {s.get('reaction', '?')} | "
+            f"engage {s.get('engagement', '?')} | {c.source}"
+        )
         print(f"      [{c.score:3d}] {c.start:7.1f}s - {c.end:7.1f}s  {c.hook}")
+        print(f"            ({breakdown})")
 
     print("[4/4] Rendering clips...")
     rendered = []
     clip_dir = data_dir / "clips" / video.video_id
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates, 1):
+        progress.emit(stage="render", video_id=video.video_id, clip=i, total=len(candidates))
         clip = _render_one(
             video.path, video.video_id, video.title, candidate, segments, clip_dir, config, db, llm
         )
@@ -95,6 +92,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             rendered.append(clip)
 
     db.set_video_status(video.video_id, "done")
+    progress.emit(stage="done", video_id=video.video_id, clips=len(rendered))
     return rendered
 
 
@@ -124,15 +122,17 @@ def _render_one(
         cut_clip(source, candidate, intermediate)
 
         from video.cropper import render_vertical
-        from video.tracker import compute_crop_path  # lazy: imports torch
+        from video.tracker import compute_tracking  # lazy: imports torch
 
         tracking_cfg = config["tracking"]
-        crop_path = compute_crop_path(
+        tracking = compute_tracking(
             intermediate,
             model_name=tracking_cfg["detector"],
             sample_fps=tracking_cfg["sample_fps"],
         )
-        render_vertical(intermediate, crop_path, final_path, ass_path=ass_path)
+        if tracking["mode"] == "split":
+            print("         Facecam layout detected -> stacked webcam + gameplay render")
+        render_vertical(intermediate, tracking, final_path, ass_path=ass_path)
         intermediate.unlink(missing_ok=True)
     else:
         cut_clip(source, candidate, final_path, ass_path=ass_path)
@@ -153,6 +153,7 @@ def _render_one(
         title=meta.title,
         description=meta.description,
         hashtags=json.dumps(meta.hashtags),
+        scores=json.dumps(candidate.subscores or {}),
     )
     if clip_id is None:
         print(f"      Skipped (already in DB): {final_path.name}")

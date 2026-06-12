@@ -1,8 +1,15 @@
 # Architecture — YouTube Clips Automation
 
-Fully local, open-source pipeline that watches a YouTube channel, finds viral moments
-with a local LLM, renders face-tracked vertical Shorts, and publishes them via the
-YouTube Data API. No paid inference. The only external API is YouTube's.
+Fully local, open-source pipeline that finds viral moments with a local LLM and
+multimodal signal analysis, and renders face-tracked, captioned vertical Shorts.
+No paid inference. The only external API is YouTube's (uploads only).
+
+> **Status (2026-06-12):** the core pipeline below is built and working, and the
+> clip engine has been upgraded to multimodal scoring (transcript + audio + visual
+> + reaction signals — see DESIGN-V2.md). Current focus is clip quality and the
+> desktop app. The automation layer (RSS monitoring, scheduling, auto-upload) is
+> built and tested but **deliberately dormant**: it returns to the roadmap after
+> Twitch and Kick VOD support lands (see §7).
 
 ---
 
@@ -279,28 +286,41 @@ twice, and any crash resumes from the last completed stage.
 
 ## 7. Extension Plan
 
-### Phase 1 (v1 — build this first)
-Single YouTube channel → Gemma 7B via Ollama → 9:16 face-tracked captioned clips →
-YouTube Shorts upload. Daemon + one-shot CLI modes.
+### Phase 1 — core pipeline (DONE)
+Single video → Gemma via Ollama → 9:16 face-tracked captioned clips with titles,
+descriptions, and hashtags. One-shot CLI mode. (The daemon/upload code also exists
+but is dormant — see Phase 4.)
 
-### Phase 2 — more sources (the interfaces already exist)
+### Phase 2 — clip quality + desktop studio (CURRENT)
+- Multimodal scoring engine: transcript + audio + visual + reaction fusion (DONE —
+  see DESIGN-V2.md for the full design)
+- Face tracking v2: multi-person, gameplay+webcam layouts, anti-jitter
+- Desktop app: Electron + React studio over a local FastAPI service
+- Windows installer for non-technical users
+
+### Phase 3 — more sources (before any upload automation)
 | Platform | How |
 |----------|-----|
 | Twitch VODs | `sources/twitch.py` implements `VideoSource`. Polls the channel's VOD list; yt-dlp already downloads Twitch VODs. Everything downstream is untouched. |
 | Kick VODs | `sources/kick.py`, same pattern (yt-dlp supports Kick). |
 | Multiple channels | Config accepts a list; scheduler round-robins. |
 
-### Phase 3 — more destinations
+### Phase 4 — automation returns (after Twitch/Kick)
+The already-built RSS monitoring, daily scheduling, and YouTube Shorts upload
+reactivate here, now covering all supported sources. Requires the user's YouTube
+API credentials + Google's API audit for public posting.
+
+### Phase 5 — more destinations
 | Platform | Notes |
 |----------|-------|
 | TikTok / Instagram Reels | New `Publisher` implementations. Their official APIs are restrictive (TikTok requires app review; Instagram requires a Business account + Graph API). Interim option: a `LocalExportPublisher` that drops finished clips + metadata JSON into a folder for manual/semi-automated posting. |
 
-### Phase 4 — quality upgrades (each is one module swap)
-- Stronger local models (Gemma 2/3 larger sizes, Llama 3.x) — config change only.
+### Ongoing — quality upgrades (each is one module swap)
+- Stronger local models (bigger Gemma 3 sizes, Llama 3.x) — config change only.
 - Optional cloud backends for users who want them — new file in `llm/`.
 - Speaker diarization → track whoever is speaking in multi-person podcasts.
-- Audio-energy features (laughter, volume spikes) fused with LLM scores.
-- Web dashboard reading the SQLite DB for review-before-upload workflow.
+- Dedicated facial-expression and laughter-classifier models slotting into the
+  reaction signal (interface already in place).
 
 ### Scaling path (when one PC isn't enough)
 The state DB + file-artifact handoff between stages means stages can later become

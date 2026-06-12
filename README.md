@@ -16,12 +16,18 @@ upload, and RSS channel monitoring stages.
 - [x] Duplicate prevention: timestamp overlap (>40%), transcript similarity (>70%),
       segment reuse (>40%), SQLite uniqueness — rejections logged with reasons
 - [x] YOLOv8 + OpenCV subject tracking with true 9:16 (1080x1920) crop-only rendering
-- [x] Word-synced burned-in captions (Opus Clip style)
+- [x] Word-synced burned-in captions (bold, centered, social-ready styling)
 - [x] LLM-generated titles, descriptions, and hashtags per clip
 - [x] YouTube Shorts upload (Data API, OAuth, resumable)
 - [x] SQLite state DB: crash-safe resume, no reprocessing, no duplicate clips/uploads
+- [x] Multimodal clip scoring: transcript + audio excitement + visual activity +
+      on-screen reaction signals fused into one score (see DESIGN-V2.md)
 - [x] RSS channel monitoring daemon (zero API quota)
 - [x] Daily schedule cap (6 Shorts/day), overflow queues to the next day, survives restarts
+
+**Roadmap order:** clip quality + desktop studio app (current) → Windows installer →
+Twitch & Kick VOD support → automated posting (the RSS/scheduling/upload features
+above stay dormant until then) → TikTok/Reels export.
 
 ## Requirements
 
@@ -73,16 +79,15 @@ manual posting. With it, the daemon posts to YouTube automatically:
 3. Set `auto_upload: true` at the top of settings.yaml.
 
 Every upload goes out with its AI-generated title, description, and hashtags
-(plus #Shorts), exactly like Repurpose.io. Uploads cost 1,600 of your 10,000
-daily API quota units — the 6/day cap matches this. Trigger a one-off batch
-anytime with `python main.py upload`.
+(plus #Shorts). Uploads cost 1,600 of your 10,000 daily API quota units — the
+6/day cap matches this. Trigger a one-off batch anytime with
+`python main.py upload`.
 
 ## Posting publicly
 
 `privacy: public` is already set at the top of settings.yaml, but YouTube has
-one platform rule every tool (including Repurpose.io and Opus Clip) has to deal
-with: **API uploads from un-audited apps are forced to private**, regardless of
-what the app requests.
+one platform rule every uploading tool has to deal with: **API uploads from
+un-audited apps are forced to private**, regardless of what the app requests.
 
 To unlock public posting for your own app — free, one-time:
 

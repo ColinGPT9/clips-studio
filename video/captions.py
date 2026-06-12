@@ -1,4 +1,4 @@
-"""Word-synced caption generation (Opus Clip style).
+"""Word-synced caption generation.
 
 Builds an ASS subtitle file for one clip — short uppercase word groups,
 bold white with a heavy black outline, positioned in the lower third of

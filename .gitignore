@@ -8,6 +8,11 @@ config/client_secret.json
 # Auto-downloaded model weights (ultralytics fetches these on first run)
 *.pt
 
+# Desktop app build artifacts
+ui/node_modules/
+ui/out/
+ui/dist/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

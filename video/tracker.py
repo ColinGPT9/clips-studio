@@ -1,28 +1,40 @@
-"""YOLOv8 + OpenCV subject tracking.
+"""YOLOv8 + OpenCV subject tracking (v2).
 
 Input:  a clip video file.
-Output: a crop path — [(time_seconds, center_x_normalized)] keyframes telling
-        the cropper where the 9:16 window should sit horizontally.
+Output: a tracking result dict the cropper renders from:
+
+  {"mode": "track", "path": [(t, center_x), ...]}
+      Follow-the-subject mode: a smoothed horizontal crop path
+      (center_x normalized 0..1).
+
+  {"mode": "split", "webcam_box": (x, y, w, h)}
+      Gameplay + facecam layout detected (all values normalized 0..1):
+      render the webcam region stacked on top of a centered gameplay crop.
+      Both regions are static, so this mode cannot jitter at all.
+
+v2 upgrades over v1:
+  - Identity tracking: detections are chained into tracks by IoU, so the
+    system follows *people*, not per-frame boxes.
+  - Target hysteresis: the camera switches subjects only when a challenger
+    clearly dominates for >= 1.5s — no ping-ponging mid-conversation.
+  - Two-person framing: when exactly two subjects persist close together,
+    the crop frames their midpoint.
+  - Pan-speed clamp: the window can never move faster than max_pan_speed
+    (fraction of frame width per second) — kills whip-pans on detector noise.
+  - Facecam layout detection for gameplay streams.
 
 Fully decoupled from clip selection: this module knows nothing about
-transcripts, scores, or uploads. Detection details:
-
-- Frames are sampled at ~5 fps; subjects don't move meaningfully in 200 ms,
-  and this keeps tracking fast even on CPU.
-- YOLOv8n detects persons (COCO class 0).
-- The "primary subject" per frame is chosen by confidence x box area x
-  persistence (IoU with the previous frame's choice), which keeps the lock
-  on the streamer when other people or characters enter the frame.
-- The center-x is smoothed with an EMA plus a dead-zone so the crop window
-  glides instead of twitching.
-- Zero detections in the whole clip (gameplay, slides) -> static center crop.
+transcripts, scores, or uploads.
 """
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 _model = None  # loaded once per process; YOLO init is expensive
+_face_cascade = None
 
 
 def _get_model(model_name: str):
@@ -34,75 +46,186 @@ def _get_model(model_name: str):
     return _model
 
 
-def compute_crop_path(
+def _get_face_cascade():
+    global _face_cascade
+    if _face_cascade is None:
+        _face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+    return _face_cascade
+
+
+def _face_x(frame, box) -> float | None:
+    """Refine the horizontal target inside a person box: in close-ups the
+    person box centers on the torso, which can sit far from the face. A Haar
+    face pass (built into OpenCV, ~ms on a small crop) over the head region
+    returns the face's center-x in pixels, or None if no face is found."""
+    x1, y1, x2, y2 = (int(v) for v in box[:4])
+    head_h = max((y2 - y1) // 2, 40)
+    roi = frame[max(0, y1) : y1 + head_h, max(0, x1) : x2]
+    if roi.size == 0:
+        return None
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    faces = _get_face_cascade().detectMultiScale(gray, 1.15, 4, minSize=(36, 36))
+    if len(faces) == 0:
+        return None
+    fx, _, fw, _ = max(faces, key=lambda f: f[2] * f[3])  # largest face
+    return float(max(0, x1) + fx + fw / 2)
+
+
+@dataclass
+class _Track:
+    box: tuple                     # last (x1, y1, x2, y2) in pixels
+    last_t: float
+    dominance: float = 0.0         # EMA of confidence x area
+    n_seen: int = 0
+    centers: list = field(default_factory=list)   # normalized cx history
+    areas: list = field(default_factory=list)     # area fraction history
+    norm_boxes: list = field(default_factory=list)  # normalized (x1, y1, x2, y2)
+
+
+def compute_tracking(
     clip_path: Path,
     model_name: str = "yolov8n.pt",
-    sample_fps: float = 5.0,
-    smoothing: float = 0.3,     # EMA alpha: lower = smoother, slower to follow
-    dead_zone: float = 0.05,    # ignore subject moves smaller than 5% of width
+    sample_fps: float = 8.0,
+    smoothing: float = 0.45,
+    dead_zone: float = 0.03,
+    max_pan_speed: float = 0.30,   # max window movement, frame-widths/second
     min_confidence: float = 0.4,
-) -> list[tuple[float, float]]:
-    """Returns [(t, center_x)] with t in seconds from clip start and
-    center_x normalized 0..1. Always returns at least one point."""
+    switch_margin: float = 1.5,    # challenger must dominate by this factor...
+    switch_seconds: float = 1.5,   # ...for this long before the camera switches
+) -> dict:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
         raise RuntimeError(f"OpenCV could not open {clip_path}")
 
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_step = max(1, round(video_fps / sample_fps))
+    dt = frame_step / video_fps
     model = _get_model(model_name)
 
+    tracks: dict[int, _Track] = {}
+    active_id: int | None = None
+    challenger_id: int | None = None
+    challenger_since = 0.0
+
     path: list[tuple[float, float]] = []
-    prev_box = None      # (x1, y1, x2, y2) of last chosen subject
-    smoothed_x = None    # EMA state
+    smoothed_x: float | None = None
+    n_samples = 0
     frame_idx = 0
 
     while True:
-        ok, frame = cap.read()
+        ok = cap.grab()
         if not ok:
             break
         if frame_idx % frame_step != 0:
             frame_idx += 1
             continue
+        ok, frame = cap.retrieve()
+        if not ok:
+            break
 
         t = frame_idx / video_fps
-        width = frame.shape[1]
+        h, w = frame.shape[:2]
+        n_samples += 1
 
-        box = _primary_subject(model, frame, prev_box, min_confidence)
-        if box is not None:
-            prev_box = box
-            raw_x = ((box[0] + box[2]) / 2) / width
+        visible = _assign(tracks, _detect(model, frame, min_confidence), t)
+        for tid in visible:
+            tr = tracks[tid]
+            x1, y1, x2, y2, conf = tr.box
+            area_frac = (x2 - x1) * (y2 - y1) / (w * h)
+            tr.dominance = 0.7 * tr.dominance + 0.3 * (conf * area_frac)
+            tr.n_seen += 1
+            # Face-refined center: a torso-centered person box misframes
+            # close-ups; the actual face position wins when detectable.
+            face_cx = _face_x(frame, tr.box)
+            tr.centers.append((face_cx if face_cx is not None else (x1 + x2) / 2) / w)
+            tr.areas.append(area_frac)
+            tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
+
+        if visible:
+            # ---- choose the target, with hysteresis ----------------------
+            top = max(visible, key=lambda tid: tracks[tid].dominance)
+            active_gone = (
+                active_id is None
+                or active_id not in tracks
+                or (active_id not in visible and t - tracks[active_id].last_t > 1.0)
+            )
+            if active_gone:
+                active_id, challenger_id = top, None
+            elif top != active_id and tracks[top].dominance > switch_margin * tracks[active_id].dominance:
+                if challenger_id != top:
+                    challenger_id, challenger_since = top, t
+                elif t - challenger_since >= switch_seconds:
+                    active_id, challenger_id = top, None  # sustained takeover
+            else:
+                challenger_id = None
+
+            crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
+            raw_x = _target_x(tracks, visible, active_id, crop_frac)
+
+            # ---- smoothing chain: dead-zone -> EMA -> pan-speed clamp ----
             if smoothed_x is None:
                 smoothed_x = raw_x
             elif abs(raw_x - smoothed_x) > dead_zone:
-                smoothed_x = smoothed_x + smoothing * (raw_x - smoothed_x)
-            path.append((t, smoothed_x))
+                step = smoothing * (raw_x - smoothed_x)
+                max_step = max_pan_speed * dt
+                smoothed_x += float(np.clip(step, -max_step, max_step))
+            path.append((t, float(smoothed_x)))
 
         frame_idx += 1
 
     cap.release()
 
+    layout = _detect_facecam_layout(tracks, active_id, n_samples)
+    if layout is not None:
+        return layout
     if not path:
-        return [(0.0, 0.5)]  # nothing detected anywhere -> static center crop
-    return path
+        return {"mode": "track", "path": [(0.0, 0.5)]}  # nothing detected: center
+    return {"mode": "track", "path": path}
 
 
-def _primary_subject(model, frame, prev_box, min_confidence):
-    """Pick one person box: confidence x area x persistence with last pick."""
+# ---- detection + identity assignment ----------------------------------------
+
+
+def _detect(model, frame, min_confidence) -> list[tuple]:
     results = model.predict(frame, classes=[0], conf=min_confidence, verbose=False)
-    best, best_score = None, 0.0
-    frame_area = frame.shape[0] * frame.shape[1]
-
+    out = []
     for r in results:
         for b in r.boxes:
             x1, y1, x2, y2 = b.xyxy[0].tolist()
-            conf = float(b.conf[0])
-            area = (x2 - x1) * (y2 - y1) / frame_area
-            persistence = 0.5 + 0.5 * _iou((x1, y1, x2, y2), prev_box) if prev_box else 1.0
-            score = conf * area * persistence
-            if score > best_score:
-                best, best_score = (x1, y1, x2, y2), score
-    return best
+            out.append((x1, y1, x2, y2, float(b.conf[0])))
+    return out
+
+
+def _assign(tracks: dict, detections: list, t: float) -> list[int]:
+    """Greedy IoU matching of detections to live tracks; unmatched detections
+    start new tracks. Returns the track ids visible in this frame."""
+    pairs = []
+    for tid, tr in tracks.items():
+        if t - tr.last_t > 2.0:
+            continue  # stale track — don't revive identities after long gaps
+        for i, d in enumerate(detections):
+            iou = _iou(tr.box[:4], d[:4])
+            if iou >= 0.25:
+                pairs.append((iou, tid, i))
+
+    visible, used_t, used_d = [], set(), set()
+    for _, tid, i in sorted(pairs, key=lambda p: p[0], reverse=True):
+        if tid in used_t or i in used_d:
+            continue
+        tracks[tid].box = detections[i]
+        tracks[tid].last_t = t
+        visible.append(tid)
+        used_t.add(tid)
+        used_d.add(i)
+
+    for i, d in enumerate(detections):
+        if i not in used_d:
+            tid = max(tracks, default=-1) + 1
+            tracks[tid] = _Track(box=d, last_t=t)
+            visible.append(tid)
+    return visible
 
 
 def _iou(a, b) -> float:
@@ -114,3 +237,46 @@ def _iou(a, b) -> float:
     area_a = (a[2] - a[0]) * (a[3] - a[1])
     area_b = (b[2] - b[0]) * (b[3] - b[1])
     return inter / (area_a + area_b - inter)
+
+
+# ---- framing decisions --------------------------------------------------------
+
+
+def _target_x(tracks: dict, visible: list[int], active_id: int, crop_frac: float) -> float:
+    """Center on the active subject — or on the midpoint when exactly two
+    persistent subjects fit inside the crop window together."""
+    strong = [
+        tid for tid in visible
+        if tracks[tid].n_seen >= 8
+        and tracks[tid].dominance > 0.2 * max(tracks[active_id].dominance, 1e-9)
+    ]
+    if len(strong) == 2:
+        xa, xb = tracks[strong[0]].centers[-1], tracks[strong[1]].centers[-1]
+        if abs(xa - xb) < crop_frac * 0.7:  # both fit in the 9:16 window
+            return (xa + xb) / 2
+    return tracks[active_id].centers[-1]
+
+
+def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) -> dict | None:
+    """Gameplay + facecam streams: the streamer's face sits inside a small,
+    static webcam overlay. If the dominant subject barely moves, is small,
+    and is present in >=70% of samples -> stacked split layout."""
+    if active_id is None or active_id not in tracks or n_samples == 0:
+        return None
+    tr = tracks[active_id]
+    if tr.n_seen < 10 or tr.n_seen < 0.7 * n_samples:
+        return None
+
+    centers = np.array(tr.centers)
+    if centers.std() > 0.025 or float(np.mean(tr.areas)) > 0.12:
+        return None
+
+    # Median normalized face box, padded 35% to capture the webcam frame.
+    boxes = np.array(tr.norm_boxes)
+    x1, y1, x2, y2 = np.median(boxes, axis=0)
+    pw, ph = (x2 - x1) * 0.35, (y2 - y1) * 0.35
+    x = max(0.0, float(x1 - pw))
+    y = max(0.0, float(y1 - ph))
+    bw = min(1.0 - x, float(x2 - x1 + 2 * pw))
+    bh = min(1.0 - y, float(y2 - y1 + 2 * ph))
+    return {"mode": "split", "webcam_box": (x, y, bw, bh)}

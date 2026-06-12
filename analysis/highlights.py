@@ -24,6 +24,7 @@ from core.models import ClipCandidate, Rejection, Segment
 from llm.base import LLMBackend
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "score_clips.txt"
+WINDOWS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "score_windows.txt"
 
 
 def find_highlights(
@@ -40,8 +41,11 @@ def find_highlights(
     chunk_seconds: float = 1200.0,
     chunk_overlap_seconds: float = 60.0,
     long_video_threshold_seconds: float = 1800.0,
+    events: list[tuple[float, str]] | None = None,
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
-    """Returns (selected clips, rejected candidates with reasons)."""
+    """Returns (selected clips, rejected candidates with reasons).
+    `events` is an optional multimodal timeline [(second, description)] shown
+    to the model alongside each chunk's transcript."""
     if not segments:
         return [], []
 
@@ -55,6 +59,7 @@ def find_highlights(
     for i, chunk in enumerate(chunks, 1):
         transcript_text = "\n".join(f"[{s.start:.1f} - {s.end:.1f}] {s.text}" for s in chunk)
         prompt = prompt_template.replace("{transcript}", transcript_text)
+        prompt = prompt.replace("{events}", _events_block(events, chunk[0].start, chunk[-1].end))
         raw = _generate_with_retry(llm, prompt)
         parsed = _parse_clips_json(raw)
         if parsed is None:
@@ -78,6 +83,60 @@ def find_highlights(
         max_text_similarity=max_text_similarity,
         max_segment_reuse=max_segment_reuse,
     )
+
+
+def score_windows(
+    segments: list[Segment],
+    llm: LLMBackend,
+    windows: list[tuple[float, float]],
+    events: list[tuple[float, str]] | None = None,
+) -> list[ClipCandidate]:
+    """Score specific time windows (signal peaks fusion found) in one LLM
+    call, so signal candidates get real text/engagement scores and grounded
+    hooks instead of placeholders."""
+    if not windows:
+        return []
+    template = WINDOWS_PROMPT_PATH.read_text(encoding="utf-8")
+
+    blocks = []
+    for i, (start, end) in enumerate(windows):
+        text = " ".join(s.text for s in segments if s.end > start and s.start < end) or "(no speech)"
+        ev = _events_block(events, start, end)
+        blocks.append(f"WINDOW {i} [{start:.1f}s - {end:.1f}s]:\n{text}\n{ev}".strip())
+    prompt = template.replace("{windows}", "\n\n".join(blocks))
+
+    raw = _generate_with_retry(llm, prompt)
+    parsed = _parse_clips_json(raw)
+    if parsed is None:
+        # Model failed — keep the windows anyway with neutral text scores;
+        # their audio/visual signals still let strong moments compete.
+        return [
+            ClipCandidate(start=s, end=e, score=50, hook="High-energy moment", source="signal")
+            for s, e in windows
+        ]
+
+    results = []
+    by_index = {i: c for i, c in enumerate(parsed)}
+    for i, (start, end) in enumerate(windows):
+        c = by_index.get(i)
+        if c is not None:
+            # Trust the model's score/hook but keep OUR window timestamps —
+            # these came from the signals, not from the model.
+            results.append(ClipCandidate(start=start, end=end, score=c.score, hook=c.hook,
+                                         reason=c.reason, source="signal", engagement=c.engagement))
+        else:
+            results.append(ClipCandidate(start=start, end=end, score=50,
+                                         hook="High-energy moment", source="signal"))
+    return results
+
+
+def _events_block(events: list[tuple[float, str]] | None, start: float, end: float) -> str:
+    if not events:
+        return ""
+    lines = [f"[{sec:.0f}s] {desc}" for sec, desc in events if start <= sec <= end]
+    if not lines:
+        return ""
+    return "AUDIO/VISUAL EVENTS (from signal analysis):\n" + "\n".join(lines)
 
 
 # ---- duplicate prevention ------------------------------------------------
@@ -221,6 +280,7 @@ def _parse_clips_json(raw: str) -> list[ClipCandidate] | None:
     clips = []
     for item in clips_raw:
         try:
+            engagement = item.get("engagement")
             clips.append(
                 ClipCandidate(
                     start=float(item["start"]),
@@ -228,6 +288,7 @@ def _parse_clips_json(raw: str) -> list[ClipCandidate] | None:
                     score=max(0, min(100, int(item["score"]))),
                     hook=str(item.get("hook", "")),
                     reason=str(item.get("reason", "")),
+                    engagement=max(0, min(100, int(engagement))) if engagement is not None else None,
                 )
             )
         except (KeyError, TypeError, ValueError):

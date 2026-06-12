@@ -72,6 +72,9 @@ def main() -> int:
     sub.add_parser("auth", help="One-time YouTube authorization (opens browser)")
     sub.add_parser("upload", help="Upload today's scheduled clips now")
 
+    p_serve = sub.add_parser("serve", help="Run the local API for the desktop app")
+    p_serve.add_argument("--port", type=int, default=8765)
+
     p_channels = sub.add_parser("channels", help="Manage monitored channels")
     ch_sub = p_channels.add_subparsers(dest="channels_command", required=True)
     p_ch_add = ch_sub.add_parser("add", help="Add a channel by @handle, URL, or ID")
@@ -124,6 +127,15 @@ def main() -> int:
             db.promote_queued_clips(config["upload"]["daily_limit"])
             n = upload_scheduled(config, db)
             print(f"{n} clip(s) uploaded." if n else "Nothing uploaded.")
+            return 0
+
+        if args.command == "serve":
+            import uvicorn
+
+            from server.api import create_app
+
+            db.close()  # the server manages its own connections
+            uvicorn.run(create_app(config, args.config), host="127.0.0.1", port=args.port)
             return 0
 
         if args.command == "channels":

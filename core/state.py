@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS channels (
     name       TEXT,
     added_at   TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    type       TEXT NOT NULL DEFAULT 'process',   -- process | render
+    payload    TEXT NOT NULL,                     -- JSON: {url} or {clip_id, start, end}
+    status     TEXT NOT NULL DEFAULT 'queued',    -- queued | running | done | failed
+    error      TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -81,7 +91,7 @@ class StateDB:
     def _migrate(self) -> None:
         """Add columns introduced after a DB was first created."""
         existing = {r["name"] for r in self.conn.execute("PRAGMA table_info(clips)")}
-        for column in ("title", "description", "hashtags"):
+        for column in ("title", "description", "hashtags", "scores"):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE clips ADD COLUMN {column} TEXT DEFAULT ''")
 
@@ -134,16 +144,17 @@ class StateDB:
         title: str = "",
         description: str = "",
         hashtags: str = "",
+        scores: str = "",
     ) -> int | None:
         """Insert a clip; returns its id, or None if this exact clip already
         exists (the UNIQUE constraint is the last line of duplicate defense)."""
         try:
             cur = self.conn.execute(
                 """INSERT INTO clips (video_id, start_s, end_s, score, hook, path, status,
-                                      title, description, hashtags, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                      title, description, hashtags, scores, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (video_id, round(start, 2), round(end, 2), score, hook, path, status,
-                 title, description, hashtags, _now()),
+                 title, description, hashtags, scores, _now()),
             )
             self.conn.commit()
             return cur.lastrowid
@@ -244,6 +255,59 @@ class StateDB:
 
     def list_channels(self) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM channels ORDER BY added_at").fetchall()
+
+    # ---- job queue (used by the API server's worker) --------------------
+
+    def add_job(self, type_: str, payload: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO jobs (type, payload, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (type_, payload, _now(), _now()),
+        )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def claim_next_job(self) -> sqlite3.Row | None:
+        """Atomically claim the oldest queued job (single-worker model)."""
+        row = self.conn.execute(
+            "SELECT * FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        self.conn.execute(
+            "UPDATE jobs SET status = 'running', updated_at = ? WHERE id = ?",
+            (_now(), row["id"]),
+        )
+        self.conn.commit()
+        return row
+
+    def set_job(self, job_id: int, **fields) -> None:
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        self.conn.execute(
+            f"UPDATE jobs SET {cols}, updated_at = ? WHERE id = ?",
+            (*fields.values(), _now(), job_id),
+        )
+        self.conn.commit()
+
+    def get_job(self, job_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+
+    def list_jobs(self, limit: int = 50) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM jobs ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+
+    def recover_interrupted_jobs(self) -> int:
+        """Server-start crash recovery: anything left 'running' goes back to
+        'queued' (the pipeline itself resumes from its last completed stage)."""
+        cur = self.conn.execute(
+            "UPDATE jobs SET status = 'queued', updated_at = ? WHERE status = 'running'",
+            (_now(),),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
+    def get_clip(self, clip_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
 
     # ---- reporting ----------------------------------------------------
 

@@ -35,13 +35,24 @@ class Segment:
 
 @dataclass
 class ClipCandidate:
-    """A scored clip moment proposed by the LLM analyzer."""
+    """A scored clip moment. `score` is the current working score: the LLM
+    text score at proposal time, replaced by the fused multimodal score
+    once fusion runs.
+
+    source: "transcript" (LLM-proposed) or "signal" (audio/visual peak).
+    engagement: LLM hook/payoff judgment 0-100 (defaults to text score).
+    subscores: per-channel breakdown {"text", "visual", "reaction", "audio",
+    "engagement"} filled in by fusion, for the DB/UI.
+    """
 
     start: float
     end: float
     score: int
     hook: str = ""
     reason: str = ""
+    source: str = "transcript"
+    engagement: int | None = None
+    subscores: dict | None = None
 
     @property
     def duration(self) -> float:

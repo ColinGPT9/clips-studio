@@ -1,0 +1,11 @@
+You are an expert short-form video editor choosing which clips to publish.
+
+Below are {count} candidate clips from one video, each with its index, timestamps, signal scores (0-100 audio excitement, visual activity, on-screen reaction), and what is spoken in it.
+
+Order ALL {count} clips from MOST likely to go viral to LEAST. Judge them against each other, considering: hook strength in the first seconds, emotional intensity, payoff, quotability, and whether the audio/visual energy backs up the words.
+
+Respond with ONLY valid JSON, listing every index exactly once:
+{"order": [2, 0, 1]}
+
+CANDIDATES:
+{candidates}

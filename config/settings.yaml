@@ -40,6 +40,19 @@ clips:
   vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
   captions: true        # burn word-synced captions into the clips
 
+scoring:
+  # Multimodal fusion weights (must sum to 1.0). Raise audio/visual for
+  # gameplay/stream content; raise text for talking-head/educational content.
+  weights:
+    text: 0.30
+    visual: 0.20
+    reaction: 0.20
+    audio: 0.20
+    engagement: 0.10
+  signal_peak_percentile: 90   # how unusual a moment must be to become a candidate
+  rerank_pool: 8               # finalists compared head-to-head by the LLM
+  reaction_top_k: 8            # candidates that get the (slower) YOLO reaction pass
+
 analysis:
   # Duplicate prevention thresholds
   max_overlap: 0.4            # reject >40% timestamp overlap with a kept clip
@@ -54,7 +67,7 @@ analysis:
 
 tracking:
   detector: yolov8n.pt   # auto-downloaded by ultralytics on first run
-  sample_fps: 5          # detection sampling rate (full fps not needed)
+  sample_fps: 8          # detection sampling rate (higher = tighter tracking)
 
 upload:
   daily_limit: 6         # hard cap on Shorts scheduled per calendar day
