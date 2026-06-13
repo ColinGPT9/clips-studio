@@ -10,14 +10,14 @@ type Page = 'dashboard' | 'studio' | 'models' | 'settings'
 const GITHUB_URL = 'https://github.com/ColinGPT9/YouTube-Clips-Automation'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
-  { id: 'studio', label: 'Clip Studio', icon: '✂' },
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
+  { id: 'studio', label: 'Clip Studio', icon: '✂' },
   { id: 'models', label: 'Models', icon: '⬢' },
   { id: 'settings', label: 'Settings', icon: '⚙' }
 ]
 
 export default function App(): JSX.Element {
-  const [page, setPage] = useState<Page>('studio')
+  const [page, setPage] = useState<Page>('dashboard')
 
   return (
     <div className="flex h-screen">

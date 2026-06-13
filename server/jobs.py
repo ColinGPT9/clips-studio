@@ -62,9 +62,19 @@ class Worker(threading.Thread):
             broadcaster.publish({"type": "job", "job_id": job["id"], "status": "running"})
             try:
                 if job["type"] == "process":
+                    import copy
+
                     from core.pipeline import process_video
 
-                    process_video(payload["url"], self.config, db, force=payload.get("force", False))
+                    cfg = self.config
+                    if payload.get("max_clips"):
+                        cfg = copy.deepcopy(self.config)
+                        n = int(payload["max_clips"])
+                        cfg["clips"]["max_clips_per_video"] = n
+                        # The rerank pool must be at least as big as the ask.
+                        pool = cfg.setdefault("scoring", {}).get("rerank_pool", 8)
+                        cfg["scoring"]["rerank_pool"] = max(pool, n)
+                    process_video(payload["url"], cfg, db, force=payload.get("force", False))
                 elif job["type"] == "render":
                     self._rerender_clip(db, payload)
                 else:
@@ -81,9 +91,11 @@ class Worker(threading.Thread):
                 current_job_id[0] = None
 
     def _rerender_clip(self, db: StateDB, payload: dict) -> None:
-        """Re-render one clip, optionally with edited timestamps."""
+        """Re-render one clip from the original source video, with optionally
+        edited timestamps and/or render options (crop mode, caption style).
+        The clip's user-visible metadata survives the re-render."""
         from core.models import ClipCandidate, Segment
-        from core.pipeline import _render_one  # same render path as the pipeline
+        from core.pipeline import _render_one, _safe_name  # same render path as the pipeline
         import json as _json
 
         clip = db.get_clip(payload["clip_id"])
@@ -106,20 +118,51 @@ class Worker(threading.Thread):
             subscores=_json.loads(clip["scores"]) if clip["scores"] else None,
         )
 
+        # Persisted render options, overlaid with this edit's changes.
+        render_opts = _json.loads(clip["render_opts"]) if clip["render_opts"] else {}
+        incoming = payload.get("render_opts") or {}
+        if "caption_style" in incoming:
+            merged_style = {**render_opts.get("caption_style", {}), **(incoming["caption_style"] or {})}
+            render_opts["caption_style"] = merged_style
+        render_opts.update({k: v for k, v in incoming.items() if k != "caption_style"})
+
         from llm.registry import create_backend
 
         llm = create_backend(self.config["llm"])
-        row = db.conn.execute("SELECT title FROM videos WHERE video_id = ?", (video_id,)).fetchone()
-        video_title = row["title"] if row else video_id
+        vrow = db.conn.execute(
+            "SELECT title, channel_name FROM videos WHERE video_id = ?", (video_id,)
+        ).fetchone()
+        video_title = vrow["title"] if vrow else video_id
+        channel = vrow["channel_name"] if vrow else ""
 
-        # Render to the (possibly new) timestamp-based filename, then update
-        # the row in place so the clip keeps its id and metadata.
+        clip_dir = (
+            data_dir / "clips"
+            / _safe_name(channel, "unknown-channel")
+            / f"{_safe_name(video_title, video_id)} [{video_id}]"
+        )
+
+        # Keep the user-facing metadata across the re-render.
+        keep = {
+            "title": clip["title"],
+            "description": clip["description"],
+            "hashtags": clip["hashtags"],
+            "status": clip["status"],
+        }
         old_path = Path(clip["path"]) if clip["path"] else None
         db.conn.execute("DELETE FROM clips WHERE id = ?", (clip["id"],))  # avoid UNIQUE clash
         db.conn.commit()
+
         rendered = _render_one(
             source, video_id, video_title, candidate,
-            segments, data_dir / "clips" / video_id, self.config, db, llm,
+            segments, clip_dir, self.config, db, llm, render_opts=render_opts,
         )
+        new_row = db.conn.execute(
+            "SELECT id FROM clips WHERE video_id = ? AND start_s = ? AND end_s = ?",
+            (video_id, round(start, 2), round(end, 2)),
+        ).fetchone()
+        if new_row:
+            restore = {k: v for k, v in keep.items() if v}
+            restore["render_opts"] = _json.dumps(render_opts)
+            db.set_clip(new_row["id"], **restore)
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
             old_path.unlink(missing_ok=True)

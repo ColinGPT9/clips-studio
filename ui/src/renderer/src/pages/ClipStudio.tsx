@@ -7,6 +7,7 @@ import type { Clip, StudioEvent, Video } from '../lib/types'
 
 export default function ClipStudio(): JSX.Element {
   const [url, setUrl] = useState('')
+  const [maxClips, setMaxClips] = useState(3)
   const [videos, setVideos] = useState<Video[]>([])
   const [activeVideo, setActiveVideo] = useState<string | null>(null)
   const [clips, setClips] = useState<Clip[]>([])
@@ -64,7 +65,7 @@ export default function ClipStudio(): JSX.Element {
     if (!url.trim()) return
     setError(null)
     try {
-      await api.createJob(url.trim())
+      await api.createJob(url.trim(), false, maxClips)
       setStage('Queued…')
       setUrl('')
     } catch (e) {
@@ -78,13 +79,26 @@ export default function ClipStudio(): JSX.Element {
     <div className="p-6 space-y-5">
       <h2 className="text-2xl font-bold">Clip Studio</h2>
 
-      <div className="card flex gap-3 items-center">
+      <div className="card flex gap-3 items-center flex-wrap">
         <input
-          className="input flex-1"
+          className="input flex-1 min-w-64"
           placeholder="Paste a YouTube URL…"
+          aria-label="YouTube video URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && generate()}
+        />
+        <label htmlFor="max-clips" className="label shrink-0">
+          Clips
+        </label>
+        <input
+          id="max-clips"
+          type="number"
+          min={1}
+          max={10}
+          className="input !w-16 shrink-0"
+          value={maxClips}
+          onChange={(e) => setMaxClips(Math.max(1, Math.min(10, Number(e.target.value) || 3)))}
         />
         <button className="btn-accent shrink-0" onClick={generate} disabled={stage !== null}>
           Generate clips
@@ -109,6 +123,7 @@ export default function ClipStudio(): JSX.Element {
                 activeVideo === v.video_id ? 'bg-accent/15 text-accent' : 'bg-raised text-muted hover:text-ink'
               }`}
             >
+              {v.channel_name ? `${v.channel_name} — ` : ''}
               {v.title || v.video_id}
             </button>
           ))}

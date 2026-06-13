@@ -12,9 +12,12 @@ export default function ClipCard({
   onClick: () => void
 }): JSX.Element {
   const duration = Math.round(clip.end_s - clip.start_s)
+  const name = clip.title || clip.hook || 'Untitled clip'
   return (
     <button
       onClick={onClick}
+      aria-label={`${name}, ${duration} seconds, score ${clip.score}${selected ? ', selected' : ''}`}
+      aria-pressed={selected}
       className={`text-left rounded-xl overflow-hidden bg-surface border transition-colors ${
         selected ? 'border-accent' : 'border-raised/60 hover:border-raised'
       }`}

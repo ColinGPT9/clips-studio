@@ -19,6 +19,24 @@ body {
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
+/* Accessibility (WCAG 2.1 / AODA):
+   - visible keyboard focus on every interactive element (2.4.7)
+   - honor the user's reduced-motion preference (2.3.3) */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Shared primitives (Tailwind v4: custom classes can't @apply each other,
    so the button base styles are repeated in both variants) */
 .card {

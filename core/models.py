@@ -16,6 +16,7 @@ class DownloadedVideo:
     title: str
     path: Path
     duration: float  # seconds
+    channel: str = ""  # channel/uploader display name
 
 
 @dataclass

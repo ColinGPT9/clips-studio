@@ -91,9 +91,12 @@ class StateDB:
     def _migrate(self) -> None:
         """Add columns introduced after a DB was first created."""
         existing = {r["name"] for r in self.conn.execute("PRAGMA table_info(clips)")}
-        for column in ("title", "description", "hashtags", "scores"):
+        for column in ("title", "description", "hashtags", "scores", "render_opts"):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE clips ADD COLUMN {column} TEXT DEFAULT ''")
+        video_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(videos)")}
+        if "channel_name" not in video_cols:
+            self.conn.execute("ALTER TABLE videos ADD COLUMN channel_name TEXT DEFAULT ''")
 
     # ---- videos -------------------------------------------------------
 
@@ -103,13 +106,16 @@ class StateDB:
         ).fetchone()
         return row["status"] if row else None
 
-    def upsert_video(self, video_id: str, channel_id: str = "", title: str = "") -> None:
+    def upsert_video(
+        self, video_id: str, channel_id: str = "", title: str = "", channel_name: str = ""
+    ) -> None:
         self.conn.execute(
-            """INSERT INTO videos (video_id, channel_id, title, status, created_at, updated_at)
-               VALUES (?, ?, ?, 'queued', ?, ?)
+            """INSERT INTO videos (video_id, channel_id, title, channel_name, status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'queued', ?, ?)
                ON CONFLICT(video_id) DO UPDATE SET
-                 title = CASE WHEN excluded.title != '' THEN excluded.title ELSE videos.title END""",
-            (video_id, channel_id, title, _now(), _now()),
+                 title = CASE WHEN excluded.title != '' THEN excluded.title ELSE videos.title END,
+                 channel_name = CASE WHEN excluded.channel_name != '' THEN excluded.channel_name ELSE videos.channel_name END""",
+            (video_id, channel_id, title, channel_name, _now(), _now()),
         )
         self.conn.commit()
 
@@ -145,16 +151,17 @@ class StateDB:
         description: str = "",
         hashtags: str = "",
         scores: str = "",
+        render_opts: str = "",
     ) -> int | None:
         """Insert a clip; returns its id, or None if this exact clip already
         exists (the UNIQUE constraint is the last line of duplicate defense)."""
         try:
             cur = self.conn.execute(
                 """INSERT INTO clips (video_id, start_s, end_s, score, hook, path, status,
-                                      title, description, hashtags, scores, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                      title, description, hashtags, scores, render_opts, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (video_id, round(start, 2), round(end, 2), score, hook, path, status,
-                 title, description, hashtags, scores, _now()),
+                 title, description, hashtags, scores, render_opts, _now()),
             )
             self.conn.commit()
             return cur.lastrowid

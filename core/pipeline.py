@@ -10,6 +10,7 @@ reprocessed, and the clips table's UNIQUE constraint blocks duplicates.
 from pathlib import Path
 
 import json
+import re
 
 from analysis.fusion import find_clips
 from analysis.metadata import generate_metadata
@@ -32,7 +33,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     video = youtube.download(url, data_dir / "downloads")
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
 
-    db.upsert_video(video.video_id, title=video.title)
+    db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
     if db.video_status(video.video_id) == "done" and not force:
         print("      Already processed (status: done). Use --force to redo.")
         return []
@@ -82,7 +83,12 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
     print("[4/4] Rendering clips...")
     rendered = []
-    clip_dir = data_dir / "clips" / video.video_id
+    # Human-browsable layout: clips/<channel>/<video title> [id]/clip_*.mp4
+    clip_dir = (
+        data_dir / "clips"
+        / _safe_name(video.channel, "unknown-channel")
+        / f"{_safe_name(video.title, video.video_id)} [{video.video_id}]"
+    )
     for i, candidate in enumerate(candidates, 1):
         progress.emit(stage="render", video_id=video.video_id, clip=i, total=len(candidates))
         clip = _render_one(
@@ -96,6 +102,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     return rendered
 
 
+def _safe_name(name: str, fallback: str) -> str:
+    """Make a name safe as a Windows folder: strip reserved characters,
+    trailing dots/spaces, and overlong text."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name).strip().rstrip(". ")
+    return cleaned[:60].strip() or fallback
+
+
 def _render_one(
     source: Path,
     video_id: str,
@@ -106,15 +119,25 @@ def _render_one(
     config: dict,
     db: StateDB,
     llm: LLMBackend,
+    render_opts: dict | None = None,
 ) -> RenderedClip | None:
+    """render_opts (all optional, persisted per clip, set by the user or the
+    AI edit assistant):
+      captions: bool            - burn captions at all
+      caption_style: dict       - see video/captions.DEFAULT_STYLE
+      crop: "track" | "center" | "bias_left" | "bias_right"
+    """
+    opts = render_opts or {}
     # Deterministic timestamp-based name: re-runs overwrite instead of piling up.
     stem = f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}"
     final_path = clip_dir / f"{stem}.mp4"
     clip_dir.mkdir(parents=True, exist_ok=True)
 
     ass_path = None
-    if config["clips"].get("captions", True):
-        ass_path = build_captions(segments, candidate, clip_dir / f"{stem}.ass")
+    if config["clips"].get("captions", True) and opts.get("captions", True):
+        ass_path = build_captions(
+            segments, candidate, clip_dir / f"{stem}.ass", style=opts.get("caption_style")
+        )
 
     if config["clips"].get("vertical", True):
         # Cut a horizontal intermediate, track the subject, render true 9:16.
@@ -124,12 +147,19 @@ def _render_one(
         from video.cropper import render_vertical
         from video.tracker import compute_tracking  # lazy: imports torch
 
-        tracking_cfg = config["tracking"]
-        tracking = compute_tracking(
-            intermediate,
-            model_name=tracking_cfg["detector"],
-            sample_fps=tracking_cfg["sample_fps"],
-        )
+        crop_mode = opts.get("crop", "track")
+        if crop_mode == "center":
+            tracking = {"mode": "track", "path": [(0.0, 0.5)]}
+        else:
+            tracking_cfg = config["tracking"]
+            tracking = compute_tracking(
+                intermediate,
+                model_name=tracking_cfg["detector"],
+                sample_fps=tracking_cfg["sample_fps"],
+            )
+            if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
+                shift = -0.12 if crop_mode == "bias_left" else 0.12
+                tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
         if tracking["mode"] == "split":
             print("         Facecam layout detected -> stacked webcam + gameplay render")
         render_vertical(intermediate, tracking, final_path, ass_path=ass_path)
@@ -154,9 +184,18 @@ def _render_one(
         description=meta.description,
         hashtags=json.dumps(meta.hashtags),
         scores=json.dumps(candidate.subscores or {}),
+        render_opts=json.dumps(opts) if opts else "",
     )
     if clip_id is None:
-        print(f"      Skipped (already in DB): {final_path.name}")
+        # Same window already in the DB (re-run): the file was just re-rendered,
+        # so point the existing row at the fresh render and updated scores.
+        row = db.conn.execute(
+            "SELECT id FROM clips WHERE video_id = ? AND start_s = ? AND end_s = ?",
+            (video_id, round(candidate.start, 2), round(candidate.end, 2)),
+        ).fetchone()
+        if row:
+            db.set_clip(row["id"], path=str(final_path), scores=json.dumps(candidate.subscores or {}))
+        print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None
 
     print(f"      -> {final_path}")

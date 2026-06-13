@@ -31,6 +31,7 @@ from server.jobs import Worker
 class JobIn(BaseModel):
     url: str
     force: bool = False
+    max_clips: int | None = None  # per-job override of clips.max_clips_per_video
 
 
 class ClipPatch(BaseModel):
@@ -118,9 +119,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/jobs")
     def create_job(body: JobIn, status_code=201):
+        payload: dict = {"url": body.url, "force": body.force}
+        if body.max_clips is not None:
+            payload["max_clips"] = max(1, min(10, body.max_clips))
         d = db()
         try:
-            job_id = d.add_job("process", json.dumps({"url": body.url, "force": body.force}))
+            job_id = d.add_job("process", json.dumps(payload))
         finally:
             d.close()
         worker.notify()

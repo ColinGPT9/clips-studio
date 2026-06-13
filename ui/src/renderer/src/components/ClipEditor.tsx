@@ -71,7 +71,13 @@ export default function ClipEditor({
 
   return (
     <div className="card space-y-4 sticky top-6">
-      <video key={clip.id} src={api.mediaUrl(clip.id)} controls className="w-full rounded-lg bg-base max-h-96" />
+      <video
+        key={clip.id}
+        src={api.mediaUrl(clip.id)}
+        controls
+        aria-label={`Preview of clip: ${clip.title || clip.hook || 'untitled'}. Captions are burned into the video.`}
+        className="w-full rounded-lg bg-base max-h-96"
+      />
 
       <div className="flex gap-2 flex-wrap text-xs">
         {CHANNELS.map((ch) => (

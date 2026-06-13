@@ -34,7 +34,8 @@ import cv2
 import numpy as np
 
 _model = None  # loaded once per process; YOLO init is expensive
-_face_cascade = None
+_frontal_cascade = None
+_profile_cascade = None
 
 
 def _get_model(model_name: str):
@@ -46,27 +47,45 @@ def _get_model(model_name: str):
     return _model
 
 
-def _get_face_cascade():
-    global _face_cascade
-    if _face_cascade is None:
-        _face_cascade = cv2.CascadeClassifier(
+def _get_cascades():
+    global _frontal_cascade, _profile_cascade
+    if _frontal_cascade is None:
+        _frontal_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
-    return _face_cascade
+        _profile_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_profileface.xml"
+        )
+    return _frontal_cascade, _profile_cascade
 
 
 def _face_x(frame, box) -> float | None:
     """Refine the horizontal target inside a person box: in close-ups the
-    person box centers on the torso, which can sit far from the face. A Haar
-    face pass (built into OpenCV, ~ms on a small crop) over the head region
-    returns the face's center-x in pixels, or None if no face is found."""
+    person box centers on the torso, which can sit far from the face.
+
+    Detection order: frontal face -> left profile -> right profile (the
+    profile cascade only knows one side, so the mirrored image covers the
+    other). Returns the face's center-x in pixels, or None when no face is
+    visible at all (e.g. subject facing away) — the caller then falls back
+    to the person-box center, which is the best anyone can do without a face.
+    """
     x1, y1, x2, y2 = (int(v) for v in box[:4])
     head_h = max((y2 - y1) // 2, 40)
     roi = frame[max(0, y1) : y1 + head_h, max(0, x1) : x2]
     if roi.size == 0:
         return None
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    faces = _get_face_cascade().detectMultiScale(gray, 1.15, 4, minSize=(36, 36))
+    frontal, profile = _get_cascades()
+
+    faces = frontal.detectMultiScale(gray, 1.15, 4, minSize=(36, 36))
+    if len(faces) == 0:
+        faces = profile.detectMultiScale(gray, 1.15, 4, minSize=(36, 36))
+    if len(faces) == 0:
+        flipped = profile.detectMultiScale(cv2.flip(gray, 1), 1.15, 4, minSize=(36, 36))
+        if len(flipped) > 0:
+            fx, fy, fw, fh = max(flipped, key=lambda f: f[2] * f[3])
+            fx = gray.shape[1] - (fx + fw)  # mirror x back to the original
+            faces = [(fx, fy, fw, fh)]
     if len(faces) == 0:
         return None
     fx, _, fw, _ = max(faces, key=lambda f: f[2] * f[3])  # largest face
