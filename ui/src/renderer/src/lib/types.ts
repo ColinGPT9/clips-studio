@@ -113,6 +113,9 @@ export interface StudioEvent {
   clip?: number
   total?: number
   clips?: number
+  current?: number
+  fraction?: number
+  duration?: number
   error?: string
   tag?: string
   completed?: number

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import ClipCard from '../components/ClipCard'
 import ClipEditor from '../components/ClipEditor'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../components/CaptionStyleControls'
+import ProcessingBar from '../components/ProcessingBar'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
 import type { CaptionStyle, Clip, StudioEvent, Video } from '../lib/types'
@@ -24,6 +25,8 @@ export default function ClipStudio(): JSX.Element {
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
   const [stage, setStage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [videoSearch, setVideoSearch] = useState('')
+  const [reprocessUrl, setReprocessUrl] = useState<string | null>(null)
   const [styleOpen, setStyleOpen] = useState(false)
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(loadSavedStyle)
   const [burnCaptions, setBurnCaptions] = useState<boolean>(
@@ -80,8 +83,16 @@ export default function ClipStudio(): JSX.Element {
 
   useEvents((e: StudioEvent) => {
     if (e.type === 'progress') {
-      if (e.stage === 'render') setStage(`Rendering clip ${e.clip}/${e.total}…`)
-      else if (e.stage === 'done') {
+      if (e.stage === 'render') {
+        setStage(`Rendering clip ${e.clip}/${e.total}…`)
+        // Clips appear in the grid AS they finish — a render event for clip
+        // N means clip N-1 is done and watchable right now.
+        if (e.video_id) {
+          if (activeVideo !== e.video_id) setActiveVideo(e.video_id)
+          refreshVideos()
+          refreshClips(e.video_id)
+        }
+      } else if (e.stage === 'done') {
         setStage(null)
         refreshVideos()
         if (e.video_id) {
@@ -97,11 +108,22 @@ export default function ClipStudio(): JSX.Element {
     if (e.type === 'job' && e.status === 'done' && activeVideo) refreshClips(activeVideo)
   })
 
-  const generate = async (): Promise<void> => {
-    if (!url.trim()) return
+  const generate = async (targetUrl?: string, force = false): Promise<void> => {
+    const u = (targetUrl ?? url).trim()
+    if (!u) return
     setError(null)
+    setReprocessUrl(null)
     try {
-      await api.createJob(url.trim(), { captionStyle, captions: burnCaptions, longClips })
+      const res = await api.createJob(u, {
+        force,
+        captionStyle,
+        captions: burnCaptions,
+        longClips
+      })
+      if (res.already_processed) {
+        setReprocessUrl(u) // show the "process again?" offer
+        return
+      }
       setStage('Queued…')
       setUrl('')
     } catch (e) {
@@ -111,6 +133,16 @@ export default function ClipStudio(): JSX.Element {
 
   const current = useMemo(() => clips.find((c) => c.id === selectedClip) ?? null, [clips, selectedClip])
 
+  const shownVideos = useMemo(() => {
+    const q = videoSearch.trim().toLowerCase()
+    if (!q) return videos
+    return videos.filter(
+      (v) =>
+        (v.title || '').toLowerCase().includes(q) ||
+        (v.channel_name || '').toLowerCase().includes(q)
+    )
+  }, [videos, videoSearch])
+
   return (
     <div className="p-6 space-y-5">
       <h2 className="text-2xl font-bold">Clip Studio</h2>
@@ -118,8 +150,8 @@ export default function ClipStudio(): JSX.Element {
       <div className="card flex gap-3 items-center flex-wrap">
         <input
           className="input flex-1 min-w-64"
-          placeholder="Paste a YouTube URL…"
-          aria-label="YouTube video URL"
+          placeholder="Paste a YouTube video or Twitch VOD URL…"
+          aria-label="YouTube video or Twitch VOD URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && generate()}
@@ -133,6 +165,14 @@ export default function ClipStudio(): JSX.Element {
           />
           Captions
         </label>
+        <button
+          className="btn-ghost shrink-0"
+          onClick={() => setStyleOpen(!styleOpen)}
+          aria-expanded={styleOpen}
+          disabled={!burnCaptions}
+        >
+          Caption style {styleOpen ? '▾' : '▸'}
+        </button>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
           title="TikTok monetization requires videos over 1 minute. On: clips run 61-180s. Off: the engine picks whatever length makes the best clip."
@@ -145,15 +185,7 @@ export default function ClipStudio(): JSX.Element {
           />
           60s+ <span className="text-muted">(TikTok monetization)</span>
         </label>
-        <button
-          className="btn-ghost shrink-0"
-          onClick={() => setStyleOpen(!styleOpen)}
-          aria-expanded={styleOpen}
-          disabled={!burnCaptions}
-        >
-          Caption style {styleOpen ? '▾' : '▸'}
-        </button>
-        <button className="btn-accent shrink-0" onClick={generate} disabled={stage !== null}>
+        <button className="btn-accent shrink-0" onClick={() => generate()} disabled={stage !== null}>
           Generate clips
         </button>
         <p className="w-full text-[11px] text-muted -mt-1">
@@ -167,17 +199,37 @@ export default function ClipStudio(): JSX.Element {
         )}
       </div>
 
-      {stage && (
-        <div className="card flex items-center gap-3">
-          <span className="size-2 rounded-full bg-accent animate-pulse" />
-          <p className="text-sm">{stage}</p>
+      <ProcessingBar />
+      {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
+      {reprocessUrl && (
+        <div className="card flex items-center gap-3 flex-wrap">
+          <p className="text-sm flex-1 min-w-64">
+            This video was already processed. Generate again with your <b>current settings</b>
+            {longClips ? ' (60s+ clips)' : ' (regular clips)'}? Existing clips are kept — new ones
+            are added alongside them.
+          </p>
+          <button className="btn-accent shrink-0" onClick={() => generate(reprocessUrl, true)}>
+            Process again
+          </button>
+          <button className="btn-ghost shrink-0" onClick={() => setReprocessUrl(null)}>
+            Cancel
+          </button>
         </div>
       )}
-      {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
 
       {videos.length > 0 && (
+        <input
+          type="search"
+          className="input !w-72"
+          placeholder="Search your videos or channels…"
+          aria-label="Search processed videos by title or channel"
+          value={videoSearch}
+          onChange={(e) => setVideoSearch(e.target.value)}
+        />
+      )}
+      {shownVideos.length > 0 && (
         <div className="flex gap-2 flex-wrap">
-          {videos.map((v) => (
+          {shownVideos.map((v) => (
             <button
               key={v.video_id}
               onClick={() => setActiveVideo(v.video_id)}

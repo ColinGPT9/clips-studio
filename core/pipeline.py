@@ -32,6 +32,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     progress.emit(stage="download", message=url)
     video = _cached_or_download(url, data_dir, db)
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
+    progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
     db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
     if db.video_status(video.video_id) == "done" and not force:
@@ -103,15 +104,17 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
 
 def _cached_or_download(url: str, data_dir: Path, db: StateDB):
-    """Reprocessing must never depend on YouTube being reachable: when the
-    source file is already on disk, use it (with title/channel from the DB)
-    instead of re-contacting YouTube — which can bot-block repeat requests."""
+    """Reprocessing must never depend on the platform being reachable: when
+    the source file is already on disk, use it (with title/channel from the
+    DB) instead of re-contacting YouTube/Twitch — which can rate-limit or
+    bot-block repeat requests."""
     from core.models import DownloadedVideo
+    from sources import dispatch
 
-    video_id = youtube.extract_video_id(url)
+    _, video_id = dispatch.identify(url)
     cached = data_dir / "downloads" / f"{video_id}.mp4" if video_id else None
     if not (cached and cached.exists()):
-        return youtube.download(url, data_dir / "downloads")
+        return dispatch.download(url, data_dir / "downloads")
 
     row = db.conn.execute(
         "SELECT title, channel_name FROM videos WHERE video_id = ?", (video_id,)

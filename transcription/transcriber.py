@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 
+from core import progress
 from core.models import Segment
 
 
@@ -33,13 +34,19 @@ def _load_model(model_size: str, device: str):
     if device in ("auto", "cuda"):
         try:
             _add_gpu_dlls()
+            if model_size == "auto":
+                # GPU makes medium nearly free (~+90s on a 20-min job) and
+                # caption accuracy is what users judge — take the quality.
+                model_size = "medium"
             model = WhisperModel(model_size, device="cuda", compute_type="float16")
-            print("  Whisper: GPU (CUDA) active")
+            print(f"  Whisper: GPU (CUDA) active, model '{model_size}'")
             return model
         except Exception as e:
             if device == "cuda":
                 raise  # user explicitly demanded GPU — don't silently downgrade
             print(f"  Whisper: GPU unavailable ({str(e)[:90]}) — using CPU")
+    if model_size == "auto":
+        model_size = "small"  # on CPU, medium is 3-5x slower — speed wins there
     return WhisperModel(model_size, device="cpu", compute_type="auto")
 
 
@@ -69,6 +76,7 @@ def transcribe(
     )
 
     segments = []
+    last_emit = 0.0
     for seg in raw_segments:  # generator — transcription happens here
         words = [
             {"start": round(w.start, 2), "end": round(w.end, 2), "word": w.word.strip()}
@@ -83,6 +91,10 @@ def transcribe(
             )
         )
         print(f"\r  Transcribed up to {seg.end:7.1f}s", end="", flush=True)
+        # Throttled percent updates for the UI's progress bar.
+        if info.duration and seg.end - last_emit >= max(5.0, info.duration * 0.02):
+            progress.emit(stage="transcribe", fraction=min(1.0, seg.end / info.duration))
+            last_emit = seg.end
     print()
 
     cache_path.write_text(

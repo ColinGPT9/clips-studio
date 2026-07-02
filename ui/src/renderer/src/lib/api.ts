@@ -32,7 +32,7 @@ export const api = {
     url: string,
     opts?: { force?: boolean; captionStyle?: CaptionStyle; captions?: boolean; longClips?: boolean }
   ) =>
-    request<{ job_id: number }>('/jobs', {
+    request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
       method: 'POST',
       body: JSON.stringify({
         url,

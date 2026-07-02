@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
@@ -23,6 +24,7 @@ export default function Dashboard(): JSX.Element {
   const [log, setLog] = useState<string[]>([])
   const [sort, setSort] = useState<SortMode>('newest')
   const [channelFilter, setChannelFilter] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [clipsByVideo, setClipsByVideo] = useState<Record<string, Clip[]>>({})
 
@@ -64,6 +66,14 @@ export default function Dashboard(): JSX.Element {
   const shown = useMemo(() => {
     let list = [...videos]
     if (channelFilter) list = list.filter((v) => (v.channel_name || 'Unknown channel') === channelFilter)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(
+        (v) =>
+          (v.title || '').toLowerCase().includes(q) ||
+          (v.channel_name || '').toLowerCase().includes(q)
+      )
+    }
     if (sort === 'channel') {
       list.sort(
         (a, b) =>
@@ -89,11 +99,21 @@ export default function Dashboard(): JSX.Element {
 
       <SystemStats />
 
+      <ProcessingBar />
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section className="card" aria-label="Processed videos">
-          <div className="flex items-center justify-between mb-3 gap-3">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
             <h3 className="font-semibold">Processed videos</h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="search"
+                className="input !w-44 !py-1 text-sm"
+                placeholder="Search title or channel…"
+                aria-label="Search processed videos by title or channel"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
               {channelFilter && (
                 <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => setChannelFilter(null)}>
                   {channelFilter} ✕

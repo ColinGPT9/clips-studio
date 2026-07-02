@@ -131,6 +131,22 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/jobs")
     def create_job(body: JobIn, status_code=201):
+        # Re-pasting an already-done URL without force would silently no-op —
+        # tell the UI instead, so it can offer "process again with current
+        # settings" (e.g. the same video in both 60s+ and regular modes).
+        if not body.force:
+            from sources.dispatch import identify
+
+            _, vid = identify(body.url)
+            if vid:
+                d0 = db()
+                try:
+                    status = d0.video_status(vid)
+                finally:
+                    d0.close()
+                if status == "done":
+                    return {"job_id": None, "already_processed": True, "video_id": vid}
+
         payload: dict = {"url": body.url, "force": body.force}
         if body.max_clips is not None:
             payload["max_clips"] = max(1, min(10, body.max_clips))

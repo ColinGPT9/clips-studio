@@ -4,10 +4,10 @@ Turn long YouTube videos into ready-to-post vertical Shorts — **entirely on yo
 PC**. A desktop app powered by open-weight AI models: no cloud AI, no subscriptions,
 no per-clip fees, and your videos never leave your machine.
 
-Paste a video link and Clips Studio finds the best moments, crops them to 9:16 with
-the speaker kept centered, burns in word-synced captions, and writes titles,
-descriptions, and hashtags — then lets you review, edit, and export everything from
-a clean desktop interface.
+Paste a video link — a YouTube video or a Twitch VOD — and Clips Studio finds the
+best moments, crops them to 9:16 with the speaker kept centered, burns in word-synced
+captions, and writes titles, descriptions, and hashtags — then lets you review, edit,
+and export everything from a clean desktop interface.
 
 ## Features
 
@@ -121,7 +121,8 @@ in [config/prompts/](config/prompts/) — tune them without touching code.
 ## Roadmap
 
 1. **Windows installer** — one-click setup for non-technical creators
-2. **Twitch & Kick VODs** — clip from streams, not just YouTube
+2. ~~**Twitch VODs**~~ — done! Paste a `twitch.tv/videos/…` link. (VODs only —
+   live streams are deliberately not supported.) **Kick VODs** next.
 3. **Automated posting** *(future plan)* — channel monitoring, scheduling, and
    YouTube Shorts upload are already built into the codebase but deliberately
    dormant until the multi-platform work lands. When enabled, posting publicly

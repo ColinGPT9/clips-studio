@@ -24,6 +24,7 @@ import numpy as np
 
 from analysis import highlights
 from analysis.audio_features import extract_audio_features
+from core import progress
 from analysis.visual_features import extract_visual_features, reaction_for_window
 from core.models import ClipCandidate, Rejection, Segment
 from llm.base import LLMBackend
@@ -46,6 +47,7 @@ def find_clips(
     )
 
     # ---- 1. extract + normalize signals --------------------------------
+    progress.emit(stage="signals")
     print("  Extracting audio signals...")
     audio_raw = extract_audio_features(video_path)
     print("  Extracting visual signals...")
@@ -108,8 +110,10 @@ def find_clips(
     # for the strongest candidates; the rest keep a neutral 0.5.
     top_k = scoring_cfg.get("reaction_top_k", 8)
     provisional = sorted(candidates, key=lambda c: _fuse(c, weights, reaction=0.5), reverse=True)
-    print(f"  Scoring reactions for top {min(top_k, len(provisional))} candidate(s)...")
-    for c in provisional[:top_k]:
+    n_reactions = min(top_k, len(provisional))
+    print(f"  Scoring reactions for top {n_reactions} candidate(s)...")
+    for ri, c in enumerate(provisional[:top_k], 1):
+        progress.emit(stage="reactions", current=ri, total=n_reactions)
         r = reaction_for_window(
             video_path, c.start, c.end,
             audio_excitement=_window_mean(audio_excitement, c.start, c.end),

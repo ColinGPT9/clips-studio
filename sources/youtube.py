@@ -101,6 +101,16 @@ def poll_channel(channel_id: str, timeout: int = 30) -> list[dict]:
 def download(url: str, output_dir: Path) -> DownloadedVideo:
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Refuse live streams BEFORE downloading: a live URL would start an
+    # open-ended real-time capture instead of fetching a finished file.
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as probe:
+        probe_info = probe.extract_info(url, download=False)
+    if probe_info.get("is_live"):
+        raise ValueError(
+            "This is a live stream — live processing isn't supported. "
+            "Wait until the stream ends and the video/VOD is available."
+        )
+
     opts = {
         # Best mp4 video up to 1080p + m4a audio; single-file mp4 fallback.
         "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",

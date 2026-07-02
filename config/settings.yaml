@@ -29,7 +29,8 @@ llm:
   ollama_host: http://localhost:11434
 
 whisper:
-  model: small          # tiny / base / small / medium / large-v3
+  model: auto           # auto = medium on GPU, small on CPU. Or force:
+                        # tiny / base / small / medium / large-v3
   device: auto          # cuda if available, else cpu
 
 clips:
