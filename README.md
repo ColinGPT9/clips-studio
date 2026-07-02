@@ -44,7 +44,7 @@ a clean desktop interface.
 | Transcription | faster-whisper (word-level timestamps) |
 | Clip selection, titles, chat editing | Gemma via [Ollama](https://ollama.com) — swappable for any local model |
 | Person/face detection | YOLOv8 + OpenCV |
-| Rendering | FFmpeg (NVENC on NVIDIA GPUs) |
+| Rendering | FFmpeg with hardware encoding (NVIDIA NVENC, AMD AMF, or Intel QSV — auto-detected) |
 
 ## Requirements
 
@@ -86,16 +86,22 @@ Anything Ollama serves works — Llama, Qwen, future models — switching is one
 
 ## GPU acceleration
 
-Out of the box, `pip install torch` gives you the **CPU-only** build. For an NVIDIA
-GPU (big speedup for tracking and transcription):
+**Video encoding** is hardware-accelerated automatically on all three GPU vendors —
+NVIDIA (NVENC), AMD (AMF), and Intel (QSV). The engine test-encodes a frame with
+each encoder at startup and uses the first one that actually works, falling back
+to CPU if none do. Force a choice with `video.encoder` in `config/settings.yaml`.
+
+**Detection & transcription** run fastest with CUDA on NVIDIA GPUs. Out of the box,
+`pip install torch` gives you the **CPU-only** build — for NVIDIA:
 
 ```bash
 pip uninstall torch torchvision -y
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
 
-NVENC video encoding is detected and used automatically (`video.encoder` in
-`config/settings.yaml` to override). Ollama uses the GPU on its own.
+(AMD GPU owners: tracking/transcription run on CPU on Windows — still fully
+functional, just slower. Your GPU is still used for video encoding via AMF and
+for the LLM via Ollama, which supports AMD on its own.)
 
 ## Headless / CLI use
 

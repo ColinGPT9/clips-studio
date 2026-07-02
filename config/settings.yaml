@@ -66,7 +66,9 @@ analysis:
   long_video_threshold_seconds: 420
 
 video:
-  encoder: auto          # auto = NVENC on NVIDIA GPUs, else CPU; or "nvenc"/"cpu"
+  encoder: auto          # auto = first working GPU encoder (NVIDIA nvenc /
+                         # AMD amf / Intel qsv), else CPU. Or force one:
+                         # "nvenc" / "amf" / "qsv" / "cpu"
 
 tracking:
   detector: yolov8n.pt   # auto-downloaded by ultralytics on first run
