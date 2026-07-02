@@ -16,7 +16,7 @@ Find the best self-contained clip moments. Judge each candidate against this vir
 - Practical or actionable value
 
 Rules:
-- Each clip must be 15 to 59 seconds long.
+- Each clip must be {min_duration} to {max_duration} seconds long. Respect this strictly — pick moments whose natural arc fills that length.
 - Each clip must make sense on its own with no extra context.
 - start and end must be numbers in seconds taken from the transcript timestamps.
 - score is 0-100 predicted viral potential. Be critical: most moments score below 50. Only truly strong moments score above 80.

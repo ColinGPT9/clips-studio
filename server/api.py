@@ -34,6 +34,7 @@ class JobIn(BaseModel):
     max_clips: int | None = None  # per-job override of clips.max_clips_per_video
     caption_style: dict | None = None  # style applied to every clip of this job
     captions: bool | None = None  # burn captions into this job's clips (default true)
+    long_clips: bool | None = None  # 61-180s clips (TikTok monetization needs >60s)
 
 
 class ClipPatch(BaseModel):
@@ -137,6 +138,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["caption_style"] = body.caption_style
         if body.captions is not None:
             payload["captions"] = body.captions
+        if body.long_clips:
+            payload["long_clips"] = True
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))

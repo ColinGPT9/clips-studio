@@ -19,7 +19,7 @@ _CROP_MODES = {"track", "center", "bias_left", "bias_right"}
 _POSITIONS = {"bottom", "middle", "top"}
 
 MIN_DURATION = 5.0
-MAX_DURATION = 120.0
+MAX_DURATION = 180.0  # matches the 60s+ monetization mode's upper bound
 
 
 def interpret_edit(

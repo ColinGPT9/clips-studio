@@ -60,6 +60,8 @@ def find_highlights(
         transcript_text = "\n".join(f"[{s.start:.1f} - {s.end:.1f}] {s.text}" for s in chunk)
         prompt = prompt_template.replace("{transcript}", transcript_text)
         prompt = prompt.replace("{events}", _events_block(events, chunk[0].start, chunk[-1].end))
+        prompt = prompt.replace("{min_duration}", str(int(min_duration)))
+        prompt = prompt.replace("{max_duration}", str(int(max_duration)))
         raw = _generate_with_retry(llm, prompt)
         parsed = _parse_clips_json(raw)
         if parsed is None:

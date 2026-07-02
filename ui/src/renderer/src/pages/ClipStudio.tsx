@@ -29,10 +29,18 @@ export default function ClipStudio(): JSX.Element {
   const [burnCaptions, setBurnCaptions] = useState<boolean>(
     localStorage.getItem('generate-captions') !== 'false'
   )
+  const [longClips, setLongClips] = useState<boolean>(
+    localStorage.getItem('generate-long-clips') === 'true'
+  )
 
   const toggleBurnCaptions = (on: boolean): void => {
     setBurnCaptions(on)
     localStorage.setItem('generate-captions', String(on))
+  }
+
+  const toggleLongClips = (on: boolean): void => {
+    setLongClips(on)
+    localStorage.setItem('generate-long-clips', String(on))
   }
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
@@ -93,7 +101,7 @@ export default function ClipStudio(): JSX.Element {
     if (!url.trim()) return
     setError(null)
     try {
-      await api.createJob(url.trim(), { captionStyle, captions: burnCaptions })
+      await api.createJob(url.trim(), { captionStyle, captions: burnCaptions, longClips })
       setStage('Queued…')
       setUrl('')
     } catch (e) {
@@ -124,6 +132,18 @@ export default function ClipStudio(): JSX.Element {
             onChange={(e) => toggleBurnCaptions(e.target.checked)}
           />
           Captions
+        </label>
+        <label
+          className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
+          title="TikTok monetization requires videos over 1 minute. On: clips run 61-180s. Off: the engine picks whatever length makes the best clip."
+        >
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={longClips}
+            onChange={(e) => toggleLongClips(e.target.checked)}
+          />
+          60s+ <span className="text-muted">(TikTok monetization)</span>
         </label>
         <button
           className="btn-ghost shrink-0"

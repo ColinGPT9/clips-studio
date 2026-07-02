@@ -67,10 +67,19 @@ class Worker(threading.Thread):
                     from core.pipeline import process_video
 
                     cfg = self.config
-                    if payload.get("max_clips") or payload.get("caption_style") or "captions" in payload:
+                    if (
+                        payload.get("max_clips")
+                        or payload.get("caption_style")
+                        or "captions" in payload
+                        or payload.get("long_clips")
+                    ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
+                    if payload.get("long_clips"):
+                        # TikTok monetization requires >60s: target 61-180s clips.
+                        cfg["clips"]["min_duration"] = 61
+                        cfg["clips"]["max_duration"] = 180
                     if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n
