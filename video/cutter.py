@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from core.models import ClipCandidate
+from video.encoding import video_encoder_args
 
 
 def cut_clip(
@@ -25,7 +26,7 @@ def cut_clip(
         "-ss", f"{candidate.start:.2f}",   # before -i: fast seek
         "-i", str(source.resolve()),
         "-t", f"{candidate.duration:.2f}",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        *video_encoder_args(),  # NVENC when available, libx264 otherwise
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
     ]

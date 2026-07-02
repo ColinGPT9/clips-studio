@@ -1,15 +1,16 @@
-# Architecture — YouTube Clips Automation
+# Architecture — Clips Studio engine
 
-Fully local, open-source pipeline that finds viral moments with a local LLM and
-multimodal signal analysis, and renders face-tracked, captioned vertical Shorts.
-No paid inference. The only external API is YouTube's (uploads only).
+Fully local, open-source clipping engine: finds the best moments with a local LLM +
+multimodal signal analysis, renders speaker-tracked captioned vertical clips, and
+serves the Clips Studio desktop app through a local API. No paid inference.
 
-> **Status (2026-06-12):** the core pipeline below is built and working, and the
-> clip engine has been upgraded to multimodal scoring (transcript + audio + visual
-> + reaction signals — see DESIGN-V2.md). Current focus is clip quality and the
-> desktop app. The automation layer (RSS monitoring, scheduling, auto-upload) is
-> built and tested but **deliberately dormant**: it returns to the roadmap after
-> Twitch and Kick VOD support lands (see §7).
+> **Status (2026-07-02):** the engine below is built and working — multimodal
+> scoring, speaker-aware tracking, editable captions, AI edit chat — and the
+> Electron desktop app (`ui/`) is the primary interface, talking to the FastAPI
+> service (`server/`). Next up: the Windows installer, then Twitch/Kick sources.
+> The automation layer (RSS monitoring, scheduling, auto-upload) is built and
+> tested but **deliberately dormant — a future plan**, returning to the roadmap
+> after multi-platform support lands (see §7).
 
 ---
 
@@ -67,9 +68,9 @@ No paid inference. The only external API is YouTube's (uploads only).
 └──────────────────┘  → prevents duplicates / enables resume
 ```
 
-External dependencies at runtime: **YouTube RSS feed** (watch), **yt-dlp** (download),
-**YouTube Data API** (upload). Everything else — Whisper, Gemma, YOLOv8, FFmpeg — runs
-on the local machine.
+External dependencies at runtime today: **yt-dlp** (download) only. Everything else —
+Whisper, Gemma, YOLOv8, FFmpeg — runs on the local machine. (The RSS watcher and
+YouTube Data API uploader shown above are built but dormant — future plan, see §7.)
 
 ---
 
@@ -77,43 +78,53 @@ on the local machine.
 
 ```
 youtube-clips-automation/
-├── main.py                     # CLI: `run` (daemon), `process <url>` (one-shot), `auth`
+├── main.py                     # CLI: `process <url>`, `serve` (API), `models`, `status`,
+│                               #   plus dormant automation: `run`, `auth`, `upload`
 ├── config/
-│   ├── settings.example.yaml   # copied to settings.yaml by the user
+│   ├── settings.yaml           # quick setup at the top; advanced below
 │   └── prompts/                # LLM prompt templates as plain text files
-│       ├── classify.txt        #   video-type classification
 │       ├── score_clips.txt     #   virality scoring (the rating system)
-│       └── metadata.txt        #   title/description/hashtags
+│       ├── score_windows.txt   #   scoring for signal-peak candidates
+│       ├── rerank.txt          #   head-to-head finalist ranking
+│       ├── metadata.txt        #   title/description/hashtags
+│       └── edit_clip.txt       #   AI edit chat interpreter
 ├── core/
 │   ├── pipeline.py             # stage orchestration for one video
-│   ├── scheduler.py            # poll loop, queue, retries
-│   ├── state.py                # SQLite wrapper (videos, clips, uploads)
-│   └── models.py               # dataclasses: Video, Segment, ClipCandidate,
-│                               #   RenderedClip, ClipMetadata
-├── sources/                    # ── platform-agnostic ingestion ──
-│   ├── base.py                 # VideoSource interface: poll(), download()
-│   └── youtube.py              # RSS poller + yt-dlp downloader
+│   ├── progress.py             # stage events → UI via WebSocket
+│   ├── scheduler.py            # (dormant) poll loop, daily schedule, uploads
+│   ├── state.py                # SQLite: videos, clips, jobs, channels, uploads
+│   └── models.py               # dataclasses shared between stages
+├── sources/
+│   └── youtube.py              # yt-dlp download + RSS polling + channel resolve
 ├── transcription/
-│   └── transcriber.py          # faster-whisper wrapper → Segment list
+│   └── transcriber.py          # faster-whisper (GPU w/ CPU fallback), word timestamps
 ├── llm/                        # ── swappable model layer ──
 │   ├── base.py                 # LLMBackend interface
 │   ├── ollama_backend.py       # Gemma/Llama/anything Ollama serves
-│   └── registry.py             # config string → backend instance
-├── analysis/
-│   ├── highlights.py           # chunking, scoring calls, dedup, top-N
-│   └── metadata.py             # title/desc/hashtag generation + validation
+│   ├── registry.py             # config string → backend instance
+│   └── manager.py              # installed models, switching, recommendations
+├── analysis/                   # ── the multimodal clip engine (DESIGN-V2.md) ──
+│   ├── audio_features.py       # loudness spikes, laughter/cheer proxies
+│   ├── visual_features.py      # scene cuts, motion, per-window reaction
+│   ├── fusion.py               # signal fusion, candidates, weighted scoring, rerank
+│   ├── highlights.py           # LLM transcript scoring + dedup
+│   ├── metadata.py             # titles/descriptions/hashtags
+│   └── clip_edit.py            # AI edit chat → validated edit controls
 ├── video/                      # ── rendering, independent of analysis ──
-│   ├── tracker.py              # YOLOv8 + OpenCV → smoothed crop path
-│   ├── cropper.py              # FFmpeg vertical 9:16 render from crop path
-│   └── captions.py             # ASS subtitle generation + burn-in
-├── publish/
-│   ├── base.py                 # Publisher interface: upload(clip, metadata)
+│   ├── tracker.py              # YOLOv8 + speaker-aware subject tracking
+│   ├── cropper.py              # 9:16 render: tracked crop or facecam split
+│   ├── captions.py             # styled, editable ASS captions + burn-in
+│   ├── cutter.py               # accurate clip extraction
+│   └── encoding.py             # NVENC detection / encoder selection
+├── server/                     # ── local API for the desktop app ──
+│   ├── api.py                  # FastAPI: jobs, clips, captions, ai-edit, models
+│   ├── jobs.py                 # SQLite-backed worker (process/render jobs)
+│   └── events.py               # WebSocket progress broadcasting
+├── ui/                         # ── Clips Studio desktop app ──
+│   └── src/                    # Electron + React + TypeScript (navy/sky theme)
+├── publish/                    # (dormant — future plan)
 │   └── youtube_shorts.py       # Data API v3 OAuth + resumable upload
 ├── data/                       # runtime artifacts — gitignored
-│   ├── downloads/  transcripts/  clips/  logs/
-│   └── state.db
-├── requirements.txt
-├── README.md
 └── ARCHITECTURE.md             # this file
 ```
 

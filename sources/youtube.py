@@ -25,6 +25,13 @@ def watch_url(video_id: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+def extract_video_id(url: str) -> str | None:
+    """Pull the video id out of any common YouTube URL shape, without
+    touching the network."""
+    m = re.search(r"(?:v=|youtu\.be/|/shorts/|/live/)([0-9A-Za-z_-]{11})", url)
+    return m.group(1) if m else None
+
+
 def resolve_channel(query: str) -> dict:
     """Turn anything a YouTuber would paste — @handle, channel URL, video URL,
     or a raw UC... id — into {"channel_id", "name"}.

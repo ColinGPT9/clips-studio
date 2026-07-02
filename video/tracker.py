@@ -41,9 +41,12 @@ _profile_cascade = None
 def _get_model(model_name: str):
     global _model
     if _model is None:
+        import torch
         from ultralytics import YOLO  # lazy: heavy import, pulls in torch
 
         _model = YOLO(model_name)
+        if torch.cuda.is_available():
+            _model.to("cuda")  # explicit: detection runs on the GPU
     return _model
 
 
@@ -59,19 +62,21 @@ def _get_cascades():
     return _frontal_cascade, _profile_cascade
 
 
-def _face_x(frame, box) -> float | None:
-    """Refine the horizontal target inside a person box: in close-ups the
-    person box centers on the torso, which can sit far from the face.
+def _face_box(frame, box) -> tuple[int, int, int, int] | None:
+    """Find the face inside a person box. In close-ups the person box centers
+    on the torso, which can sit far from the face — the face box drives both
+    framing and the talking detector.
 
     Detection order: frontal face -> left profile -> right profile (the
     profile cascade only knows one side, so the mirrored image covers the
-    other). Returns the face's center-x in pixels, or None when no face is
+    other). Returns the face box in absolute pixels, or None when no face is
     visible at all (e.g. subject facing away) — the caller then falls back
     to the person-box center, which is the best anyone can do without a face.
     """
     x1, y1, x2, y2 = (int(v) for v in box[:4])
+    rx, ry = max(0, x1), max(0, y1)
     head_h = max((y2 - y1) // 2, 40)
-    roi = frame[max(0, y1) : y1 + head_h, max(0, x1) : x2]
+    roi = frame[ry : y1 + head_h, rx:x2]
     if roi.size == 0:
         return None
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -88,8 +93,26 @@ def _face_x(frame, box) -> float | None:
             faces = [(fx, fy, fw, fh)]
     if len(faces) == 0:
         return None
-    fx, _, fw, _ = max(faces, key=lambda f: f[2] * f[3])  # largest face
-    return float(max(0, x1) + fx + fw / 2)
+    fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])  # largest face
+    return (rx + fx, ry + fy, rx + fx + fw, ry + fy + fh)
+
+
+def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> None:
+    """Talking proxy: motion energy in the mouth region (lower part of the
+    face box) between consecutive samples. A talking mouth changes shape
+    constantly; a listening one doesn't. Comparing tracks RELATIVELY makes
+    this robust to global camera motion, which inflates everyone equally."""
+    fx1, fy1, fx2, fy2 = face
+    my1 = fy1 + int((fy2 - fy1) * 0.55)
+    mouth = frame[my1:fy2, fx1:fx2]
+    if mouth.size == 0:
+        return
+    mouth = cv2.cvtColor(mouth, cv2.COLOR_BGR2GRAY)
+    mouth = cv2.resize(mouth, (48, 24)).astype(np.float32) / 255.0
+    if tr.prev_mouth is not None:
+        motion = float(np.abs(mouth - tr.prev_mouth).mean())
+        tr.speak = 0.65 * tr.speak + 0.35 * motion
+    tr.prev_mouth = mouth
 
 
 @dataclass
@@ -97,6 +120,8 @@ class _Track:
     box: tuple                     # last (x1, y1, x2, y2) in pixels
     last_t: float
     dominance: float = 0.0         # EMA of confidence x area
+    speak: float = 0.0             # EMA of mouth-region motion (talking proxy)
+    prev_mouth: object = None      # last mouth crop (np array) for motion diff
     n_seen: int = 0
     centers: list = field(default_factory=list)   # normalized cx history
     areas: list = field(default_factory=list)     # area fraction history
@@ -157,14 +182,31 @@ def compute_tracking(
             tr.n_seen += 1
             # Face-refined center: a torso-centered person box misframes
             # close-ups; the actual face position wins when detectable.
-            face_cx = _face_x(frame, tr.box)
-            tr.centers.append((face_cx if face_cx is not None else (x1 + x2) / 2) / w)
+            face = _face_box(frame, tr.box)
+            if face is not None:
+                fx1, fy1, fx2, fy2 = face
+                tr.centers.append(((fx1 + fx2) / 2) / w)
+                _update_speaking(tr, frame, face)
+            else:
+                tr.centers.append((x1 + x2) / 2 / w)
+                tr.speak *= 0.9  # no visible face: talking evidence fades
             tr.areas.append(area_frac)
             tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
 
         if visible:
             # ---- choose the target, with hysteresis ----------------------
-            top = max(visible, key=lambda tid: tracks[tid].dominance)
+            # Who to follow = size/confidence dominance x WHO IS TALKING.
+            # Mouth-region motion is the talking proxy, so in group shots the
+            # camera prefers the speaker, not just the biggest person.
+            max_speak = max((tracks[tid].speak for tid in visible), default=0.0)
+
+            def _score(tid: int) -> float:
+                tr = tracks[tid]
+                if max_speak < 0.004:  # nobody visibly talking: size decides
+                    return tr.dominance
+                return tr.dominance * (0.35 + 0.65 * (tr.speak / max_speak))
+
+            top = max(visible, key=_score)
             active_gone = (
                 active_id is None
                 or active_id not in tracks
@@ -172,7 +214,7 @@ def compute_tracking(
             )
             if active_gone:
                 active_id, challenger_id = top, None
-            elif top != active_id and tracks[top].dominance > switch_margin * tracks[active_id].dominance:
+            elif top != active_id and _score(top) > switch_margin * _score(active_id):
                 if challenger_id != top:
                     challenger_id, challenger_since = top, t
                 elif t - challenger_since >= switch_seconds:

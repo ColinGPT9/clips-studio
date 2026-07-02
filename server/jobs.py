@@ -67,13 +67,20 @@ class Worker(threading.Thread):
                     from core.pipeline import process_video
 
                     cfg = self.config
-                    if payload.get("max_clips"):
+                    if payload.get("max_clips") or payload.get("caption_style") or "captions" in payload:
                         cfg = copy.deepcopy(self.config)
+                    if "captions" in payload:
+                        cfg["clips"]["captions"] = bool(payload["captions"])
+                    if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n
                         # The rerank pool must be at least as big as the ask.
                         pool = cfg.setdefault("scoring", {}).get("rerank_pool", 8)
                         cfg["scoring"]["rerank_pool"] = max(pool, n)
+                    if payload.get("caption_style"):
+                        # Style chosen in the Generate bar: applied to every
+                        # clip of this job (and persisted per clip).
+                        cfg["clips"]["caption_style"] = payload["caption_style"]
                     process_video(payload["url"], cfg, db, force=payload.get("force", False))
                 elif job["type"] == "render":
                     self._rerender_clip(db, payload)

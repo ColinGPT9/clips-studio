@@ -5,9 +5,42 @@ the LLM prompt) skip the expensive transcription step.
 """
 
 import json
+import os
 from pathlib import Path
 
 from core.models import Segment
+
+
+def _add_gpu_dlls() -> None:
+    """ctranslate2 (faster-whisper's engine) needs cuBLAS/cuDNN DLLs on
+    Windows. The CUDA PyTorch wheels ship them — point the DLL search there
+    so Whisper can run on the GPU without a separate CUDA toolkit install."""
+    try:
+        import torch
+
+        lib = Path(torch.__file__).parent / "lib"
+        if lib.exists():
+            os.add_dll_directory(str(lib))
+    except Exception:
+        pass
+
+
+def _load_model(model_size: str, device: str):
+    # Imported lazily: loading faster-whisper/ctranslate2 takes seconds and
+    # isn't needed when the transcript is cached.
+    from faster_whisper import WhisperModel
+
+    if device in ("auto", "cuda"):
+        try:
+            _add_gpu_dlls()
+            model = WhisperModel(model_size, device="cuda", compute_type="float16")
+            print("  Whisper: GPU (CUDA) active")
+            return model
+        except Exception as e:
+            if device == "cuda":
+                raise  # user explicitly demanded GPU — don't silently downgrade
+            print(f"  Whisper: GPU unavailable ({str(e)[:90]}) — using CPU")
+    return WhisperModel(model_size, device="cpu", compute_type="auto")
 
 
 def transcribe(
@@ -25,12 +58,8 @@ def transcribe(
         data = json.loads(cache_path.read_text(encoding="utf-8"))
         return [Segment(**seg) for seg in data["segments"]]
 
-    # Imported lazily: loading faster-whisper/ctranslate2 takes seconds and
-    # isn't needed when the transcript is cached.
-    from faster_whisper import WhisperModel
-
     print(f"  Loading whisper model '{model_size}' (device={device})...")
-    model = WhisperModel(model_size, device=device, compute_type="auto")
+    model = _load_model(model_size, device)
 
     raw_segments, info = model.transcribe(
         str(video_path),

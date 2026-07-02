@@ -34,7 +34,7 @@ whisper:
 
 clips:
   min_score: 60         # discard candidates scored below this (0-100)
-  max_clips_per_video: 3
+  max_clips_per_video: 0  # 0 = automatic: keep every clip that passes min_score
   min_duration: 15      # seconds
   max_duration: 59      # YouTube Shorts limit
   vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
@@ -64,6 +64,9 @@ analysis:
   chunk_seconds: 300
   chunk_overlap_seconds: 45
   long_video_threshold_seconds: 420
+
+video:
+  encoder: auto          # auto = NVENC on NVIDIA GPUs, else CPU; or "nvenc"/"cpu"
 
 tracking:
   detector: yolov8n.pt   # auto-downloaded by ultralytics on first run

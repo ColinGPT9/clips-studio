@@ -32,6 +32,8 @@ class JobIn(BaseModel):
     url: str
     force: bool = False
     max_clips: int | None = None  # per-job override of clips.max_clips_per_video
+    caption_style: dict | None = None  # style applied to every clip of this job
+    captions: bool | None = None  # burn captions into this job's clips (default true)
 
 
 class ClipPatch(BaseModel):
@@ -43,6 +45,15 @@ class ClipPatch(BaseModel):
 class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
+    render_opts: dict | None = None  # crop / captions / caption_style / caption_lines
+
+
+class CaptionsIn(BaseModel):
+    lines: list[dict]  # [{"start", "end", "text"}] clip-relative
+
+
+class AiEditIn(BaseModel):
+    message: str
 
 
 class ExportIn(BaseModel):
@@ -122,6 +133,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         payload: dict = {"url": body.url, "force": body.force}
         if body.max_clips is not None:
             payload["max_clips"] = max(1, min(10, body.max_clips))
+        if body.caption_style:
+            payload["caption_style"] = body.caption_style
+        if body.captions is not None:
+            payload["captions"] = body.captions
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))
@@ -204,6 +219,113 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
 
+    def _clip_captions(row) -> list[dict]:
+        """Current caption lines for a clip: the user-corrected override when
+        one exists, otherwise regenerated from the transcript."""
+        opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
+        if opts.get("caption_lines"):
+            return opts["caption_lines"]
+
+        from core.models import ClipCandidate, Segment
+        from video.captions import DEFAULT_STYLE, build_caption_lines
+
+        transcript_path = data_dir / "transcripts" / f"{row['video_id']}.json"
+        if not transcript_path.exists():
+            return []
+        transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+        segments = [Segment(**s) for s in transcript["segments"]]
+        candidate = ClipCandidate(start=row["start_s"], end=row["end_s"], score=row["score"])
+        words = opts.get("caption_style", {}).get(
+            "words_per_caption", DEFAULT_STYLE["words_per_caption"]
+        )
+        return build_caption_lines(segments, candidate, words)
+
+    @app.get("/clips/{clip_id}/captions")
+    def get_captions(clip_id: int):
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such clip")
+        return {"lines": _clip_captions(row)}
+
+    @app.put("/clips/{clip_id}/captions")
+    def put_captions(clip_id: int, body: CaptionsIn):
+        """Save corrected caption text and queue a re-render burning it in."""
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+            lines = [
+                {"start": float(l["start"]), "end": float(l["end"]), "text": str(l.get("text", ""))}
+                for l in body.lines
+                if "start" in l and "end" in l
+            ]
+            payload = {"clip_id": clip_id, "render_opts": {"caption_lines": lines}}
+            job_id = d.add_job("render", json.dumps(payload))
+        finally:
+            d.close()
+        worker.notify()
+        return {"job_id": job_id}
+
+    @app.post("/clips/{clip_id}/ai-edit")
+    def ai_edit(clip_id: int, body: AiEditIn):
+        """Chat-driven editing: plain language in, validated edit + re-render out."""
+        from analysis.clip_edit import interpret_edit
+        from llm.registry import create_backend
+
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+
+            opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
+            caption_lines = _clip_captions(row)
+            transcript_path = data_dir / "transcripts" / f"{row['video_id']}.json"
+            source_duration = 0.0
+            if transcript_path.exists():
+                transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+                if transcript["segments"]:
+                    source_duration = float(transcript["segments"][-1]["end"])
+
+            clip_state = {
+                "start": row["start_s"],
+                "end": row["end_s"],
+                "duration": round(row["end_s"] - row["start_s"], 1),
+                "crop": opts.get("crop", "track"),
+                "captions_enabled": opts.get("captions", True),
+                "caption_style": opts.get("caption_style", {}),
+            }
+
+            result = interpret_edit(
+                body.message,
+                clip_state=clip_state,
+                caption_lines=caption_lines,
+                source_duration=source_duration,
+                llm=create_backend(config["llm"]),
+            )
+
+            job_id = None
+            if result["needs_render"]:
+                payload: dict = {"clip_id": clip_id}
+                if result["start"] is not None:
+                    payload["start"] = result["start"]
+                if result["end"] is not None:
+                    payload["end"] = result["end"]
+                if result["render_opts"]:
+                    payload["render_opts"] = result["render_opts"]
+                job_id = d.add_job("render", json.dumps(payload))
+        finally:
+            d.close()
+
+        if job_id is not None:
+            worker.notify()
+        return {"reply": result["reply"], "job_id": job_id}
+
     @app.post("/clips/{clip_id}/render")
     def rerender_clip(clip_id: int, body: RenderIn):
         d = db()
@@ -215,6 +337,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["start"] = body.start
             if body.end is not None:
                 payload["end"] = body.end
+            if body.render_opts:
+                payload["render_opts"] = body.render_opts
             job_id = d.add_job("render", json.dumps(payload))
         finally:
             d.close()
@@ -367,6 +491,7 @@ def _clip_json(row) -> dict:
     d = dict(row)
     d["hashtags"] = json.loads(d["hashtags"]) if d.get("hashtags") else []
     d["scores"] = json.loads(d["scores"]) if d.get("scores") else {}
+    d["render_opts"] = json.loads(d["render_opts"]) if d.get("render_opts") else {}
     return d
 
 

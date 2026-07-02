@@ -28,37 +28,59 @@ DEFAULT_STYLE = {
 _POSITIONS = {"bottom": (2, 440), "middle": (5, 0), "top": (8, 140)}
 
 
+def build_caption_lines(
+    segments: list[Segment],
+    candidate: ClipCandidate,
+    words_per_caption: int = 3,
+) -> list[dict]:
+    """The caption lines for one clip as editable data:
+    [{"start", "end", "text"}] with times relative to the clip start.
+    This is what the caption editor in the UI shows and what users correct."""
+    words = _words_in_window(segments, candidate.start, candidate.end)
+    lines = []
+    for group in _grouped(words, max(1, int(words_per_caption))):
+        start = max(0.0, group[0]["start"] - candidate.start)
+        end = min(candidate.duration, group[-1]["end"] - candidate.start)
+        if end <= start:
+            continue
+        lines.append(
+            {"start": round(start, 2), "end": round(end, 2), "text": " ".join(w["word"] for w in group)}
+        )
+    return lines
+
+
 def build_captions(
     segments: list[Segment],
     candidate: ClipCandidate,
     output_path: Path,
     style: dict | None = None,
+    lines: list[dict] | None = None,
 ) -> Path | None:
     """Write an ASS file with times relative to the clip start.
-    Returns the path, or None if the clip window contains no speech."""
+    `lines` (user-corrected caption text) overrides the generated ones.
+    Returns the path, or None if there is nothing to caption."""
     opts = {**DEFAULT_STYLE, **(style or {})}
-    words = _words_in_window(segments, candidate.start, candidate.end)
-    if not words:
-        return None
+    if lines is None:
+        lines = build_caption_lines(segments, candidate, opts["words_per_caption"])
 
-    lines = []
-    per_group = max(1, int(opts["words_per_caption"]))
-    for group in _grouped(words, per_group):
-        start = max(0.0, group[0]["start"] - candidate.start)
-        end = min(candidate.duration, group[-1]["end"] - candidate.start)
-        if end <= start:
-            continue
-        text = " ".join(w["word"] for w in group)
+    dialogue = []
+    for line in lines:
+        text = str(line.get("text", "")).strip()
+        if not text:
+            continue  # a blanked-out line deletes that caption
         if opts["uppercase"]:
             text = text.upper()
         text = text.replace("\\", "").replace("{", "").replace("}", "")  # ASS control chars
-        lines.append(
+        start, end = float(line["start"]), float(line["end"])
+        if end <= start:
+            continue
+        dialogue.append(
             f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text}"
         )
 
-    if not lines:
+    if not dialogue:
         return None
-    output_path.write_text(_header(opts) + "\n".join(lines) + "\n", encoding="utf-8")
+    output_path.write_text(_header(opts) + "\n".join(dialogue) + "\n", encoding="utf-8")
     return output_path
 
 

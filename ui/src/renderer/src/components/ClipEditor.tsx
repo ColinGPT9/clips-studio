@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
+import CaptionEditor from './CaptionEditor'
+import EditChat from './EditChat'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
 
@@ -146,6 +148,9 @@ export default function ClipEditor({
         </button>
       </div>
       {notice && <p className="text-sm text-accent">{notice}</p>}
+
+      <CaptionEditor clip={clip} onQueued={flash} />
+      <EditChat clip={clip} onQueued={flash} />
     </div>
   )
 }

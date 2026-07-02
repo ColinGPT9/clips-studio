@@ -19,6 +19,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from video.encoding import video_encoder_args
+
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
 
@@ -89,7 +91,7 @@ def _render_tracked(
         "-i", str(clip_path.resolve()),
         "-map", "0:v:0", "-map", "1:a:0?",
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        *video_encoder_args(),  # NVENC when available
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
         "-shortest",
@@ -158,7 +160,7 @@ def _render_split(
         "-i", str(clip_path.resolve()),
         "-filter_complex", filters,
         "-map", "[v]", "-map", "0:a:0?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        *video_encoder_args(),  # NVENC when available
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
         str(output_path.resolve()),

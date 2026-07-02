@@ -121,10 +121,16 @@ def find_clips(
         c.score = round(100 * _fuse(c, weights, reaction=c.subscores["reaction"] / 100.0))
 
     # ---- 4. dedup + threshold (reusing the proven logic) ------------------
+    # max_clips_per_video == 0 means automatic: keep EVERY unique clip that
+    # passes the quality bar — the bar (min_score) decides, not a count.
+    max_clips = clips_cfg.get("max_clips_per_video", 0)
+    pool = scoring_cfg.get("rerank_pool", 8)
+    if max_clips <= 0:
+        pool = max(pool, 16)  # in auto mode the pool is the only ceiling
     finalists, rejections = highlights._select_unique(
         candidates, segments,
         min_score=clips_cfg["min_score"],
-        max_clips=scoring_cfg.get("rerank_pool", 8),
+        max_clips=max(pool, max_clips),
         max_overlap=analysis_cfg["max_overlap"],
         max_text_similarity=analysis_cfg["max_text_similarity"],
         max_segment_reuse=analysis_cfg["max_segment_reuse"],
@@ -134,7 +140,7 @@ def find_clips(
     if len(finalists) > 1:
         finalists = _rerank(finalists, segments, llm)
 
-    kept = finalists[: clips_cfg["max_clips_per_video"]]
+    kept = finalists[:max_clips] if max_clips > 0 else finalists
     rejections += [Rejection(c, "over_limit") for c in finalists[len(kept):]]
     return kept, rejections
 

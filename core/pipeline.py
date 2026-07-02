@@ -30,7 +30,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
     print(f"[1/4] Downloading: {url}")
     progress.emit(stage="download", message=url)
-    video = youtube.download(url, data_dir / "downloads")
+    video = _cached_or_download(url, data_dir, db)
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
 
     db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
@@ -102,6 +102,37 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     return rendered
 
 
+def _cached_or_download(url: str, data_dir: Path, db: StateDB):
+    """Reprocessing must never depend on YouTube being reachable: when the
+    source file is already on disk, use it (with title/channel from the DB)
+    instead of re-contacting YouTube — which can bot-block repeat requests."""
+    from core.models import DownloadedVideo
+
+    video_id = youtube.extract_video_id(url)
+    cached = data_dir / "downloads" / f"{video_id}.mp4" if video_id else None
+    if not (cached and cached.exists()):
+        return youtube.download(url, data_dir / "downloads")
+
+    row = db.conn.execute(
+        "SELECT title, channel_name FROM videos WHERE video_id = ?", (video_id,)
+    ).fetchone()
+    import subprocess
+
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(cached)],
+        capture_output=True, text=True,
+    )
+    duration = float(probe.stdout.strip() or 0)
+    print("      Source already downloaded — skipping YouTube")
+    return DownloadedVideo(
+        video_id=video_id,
+        title=(row["title"] if row and row["title"] else video_id),
+        path=cached,
+        duration=duration,
+        channel=(row["channel_name"] if row else "") or "",
+    )
+
+
 def _safe_name(name: str, fallback: str) -> str:
     """Make a name safe as a Windows folder: strip reserved characters,
     trailing dots/spaces, and overlong text."""
@@ -134,9 +165,13 @@ def _render_one(
     clip_dir.mkdir(parents=True, exist_ok=True)
 
     ass_path = None
+    # Per-clip style wins; otherwise the job/config default chosen at generate time.
+    caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
     if config["clips"].get("captions", True) and opts.get("captions", True):
         ass_path = build_captions(
-            segments, candidate, clip_dir / f"{stem}.ass", style=opts.get("caption_style")
+            segments, candidate, clip_dir / f"{stem}.ass",
+            style=caption_style,
+            lines=opts.get("caption_lines"),  # user-corrected caption text, if any
         )
 
     if config["clips"].get("vertical", True):
@@ -184,7 +219,11 @@ def _render_one(
         description=meta.description,
         hashtags=json.dumps(meta.hashtags),
         scores=json.dumps(candidate.subscores or {}),
-        render_opts=json.dumps(opts) if opts else "",
+        # Persist the effective options (including a generate-time caption
+        # style) so re-renders and AI edits keep them.
+        render_opts=json.dumps(
+            {**opts, **({"caption_style": caption_style} if caption_style else {})}
+        ) if (opts or caption_style) else "",
     )
     if clip_id is None:
         # Same window already in the DB (re-run): the file was just re-rendered,

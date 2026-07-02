@@ -1,19 +1,47 @@
 import { useEffect, useMemo, useState } from 'react'
 import ClipCard from '../components/ClipCard'
 import ClipEditor from '../components/ClipEditor'
+import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../components/CaptionStyleControls'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
-import type { Clip, StudioEvent, Video } from '../lib/types'
+import type { CaptionStyle, Clip, StudioEvent, Video } from '../lib/types'
+
+const STYLE_KEY = 'generate-caption-style'
+
+function loadSavedStyle(): Required<CaptionStyle> {
+  try {
+    return { ...DEFAULT_CAPTION_STYLE, ...JSON.parse(localStorage.getItem(STYLE_KEY) ?? '{}') }
+  } catch {
+    return { ...DEFAULT_CAPTION_STYLE }
+  }
+}
 
 export default function ClipStudio(): JSX.Element {
   const [url, setUrl] = useState('')
-  const [maxClips, setMaxClips] = useState(3)
   const [videos, setVideos] = useState<Video[]>([])
   const [activeVideo, setActiveVideo] = useState<string | null>(null)
   const [clips, setClips] = useState<Clip[]>([])
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
   const [stage, setStage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [styleOpen, setStyleOpen] = useState(false)
+  const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(loadSavedStyle)
+  const [burnCaptions, setBurnCaptions] = useState<boolean>(
+    localStorage.getItem('generate-captions') !== 'false'
+  )
+
+  const toggleBurnCaptions = (on: boolean): void => {
+    setBurnCaptions(on)
+    localStorage.setItem('generate-captions', String(on))
+  }
+
+  const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
+    setCaptionStyle((s) => {
+      const next = { ...s, [key]: value }
+      localStorage.setItem(STYLE_KEY, JSON.stringify(next))
+      return next
+    })
+  }
 
   const refreshVideos = async (): Promise<void> => {
     try {
@@ -65,7 +93,7 @@ export default function ClipStudio(): JSX.Element {
     if (!url.trim()) return
     setError(null)
     try {
-      await api.createJob(url.trim(), false, maxClips)
+      await api.createJob(url.trim(), { captionStyle, captions: burnCaptions })
       setStage('Queued…')
       setUrl('')
     } catch (e) {
@@ -88,21 +116,35 @@ export default function ClipStudio(): JSX.Element {
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && generate()}
         />
-        <label htmlFor="max-clips" className="label shrink-0">
-          Clips
+        <label className="flex items-center gap-2 cursor-pointer text-sm shrink-0">
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={burnCaptions}
+            onChange={(e) => toggleBurnCaptions(e.target.checked)}
+          />
+          Captions
         </label>
-        <input
-          id="max-clips"
-          type="number"
-          min={1}
-          max={10}
-          className="input !w-16 shrink-0"
-          value={maxClips}
-          onChange={(e) => setMaxClips(Math.max(1, Math.min(10, Number(e.target.value) || 3)))}
-        />
+        <button
+          className="btn-ghost shrink-0"
+          onClick={() => setStyleOpen(!styleOpen)}
+          aria-expanded={styleOpen}
+          disabled={!burnCaptions}
+        >
+          Caption style {styleOpen ? '▾' : '▸'}
+        </button>
         <button className="btn-accent shrink-0" onClick={generate} disabled={stage !== null}>
           Generate clips
         </button>
+        <p className="w-full text-[11px] text-muted -mt-1">
+          Every clip that scores above the quality bar is kept — no arbitrary limit.
+        </p>
+        {styleOpen && (
+          <div className="w-full space-y-3 border-t border-raised/60 pt-3">
+            <p className="label">Caption style for all new clips (remembered)</p>
+            <CaptionStyleControls idPrefix="gen" style={captionStyle} onChange={setStyleField} />
+          </div>
+        )}
       </div>
 
       {stage && (
