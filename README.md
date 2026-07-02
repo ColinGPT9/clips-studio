@@ -57,8 +57,8 @@ a clean desktop interface.
 ## Install & run
 
 ```bash
-git clone https://github.com/ColinGPT9/YouTube-Clips-Automation
-cd YouTube-Clips-Automation
+git clone https://github.com/ColinGPT9/clips-studio
+cd clips-studio
 pip install -r requirements.txt
 
 cd ui

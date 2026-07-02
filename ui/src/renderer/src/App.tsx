@@ -7,7 +7,7 @@ import ModelSwitcher from './components/ModelSwitcher'
 
 type Page = 'dashboard' | 'studio' | 'models' | 'settings'
 
-const GITHUB_URL = 'https://github.com/ColinGPT9/YouTube-Clips-Automation'
+const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
