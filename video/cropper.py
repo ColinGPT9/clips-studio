@@ -30,10 +30,13 @@ def render_vertical(
     tracking: dict,
     output_path: Path,
     ass_path: Path | None = None,
+    vf_extra: str = "",
 ) -> Path:
+    """vf_extra: an optional FFmpeg filter fragment (color preset) applied
+    after scaling and before captions, so captions stay unfiltered."""
     if tracking["mode"] == "split":
-        return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path)
-    return _render_tracked(clip_path, tracking["path"], output_path, ass_path)
+        return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra)
+    return _render_tracked(clip_path, tracking["path"], output_path, ass_path, vf_extra)
 
 
 # ---- follow-the-subject mode -------------------------------------------------
@@ -44,6 +47,7 @@ def _render_tracked(
     crop_path: list[tuple[float, float]],
     output_path: Path,
     ass_path: Path | None,
+    vf_extra: str = "",
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -81,8 +85,10 @@ def _render_tracked(
     cap.release()
     writer.release()
 
-    # Uniform scale to 1080x1920 + captions + re-encode + mux source audio.
+    # Uniform scale to 1080x1920 + color filter + captions + mux audio.
     vf = "scale=1080:1920:flags=lanczos,setsar=1"
+    if vf_extra:
+        vf += f",{vf_extra}"
     if ass_path is not None:
         vf += f",subtitles={ass_path.name}"
     cmd = [
@@ -124,6 +130,7 @@ def _render_split(
     webcam_box: tuple[float, float, float, float],
     output_path: Path,
     ass_path: Path | None,
+    vf_extra: str = "",
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -152,6 +159,8 @@ def _render_split(
         f"scale=1080:{GAME_H}:flags=lanczos,setsar=1[game];"
         f"[cam][game]vstack=inputs=2[v]"
     )
+    if vf_extra:
+        filters += f";[v]{vf_extra}[v]"
     if ass_path is not None:
         filters += f";[v]subtitles={ass_path.name}[v]"
 

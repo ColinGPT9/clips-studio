@@ -17,12 +17,29 @@ from pathlib import Path
 from core.models import ClipCandidate, Segment
 
 DEFAULT_STYLE = {
+    "font": "Arial",          # must be in FONTS (installed on stock Windows)
     "font_size": 84,          # at 1080x1920 playback resolution
     "color": "#FFFFFF",       # text colour (hex RGB)
     "position": "bottom",     # bottom | middle | top
     "words_per_caption": 3,
     "uppercase": True,
 }
+
+# Fonts shipped with every stock Windows install, so a burned clip renders
+# identically on any user's machine. Whitelisted: the name goes into the ASS
+# header, and unknown names would silently fall back to a default anyway.
+FONTS = [
+    "Arial",
+    "Arial Black",
+    "Impact",
+    "Verdana",
+    "Tahoma",
+    "Trebuchet MS",
+    "Segoe UI",
+    "Georgia",
+    "Comic Sans MS",
+    "Courier New",
+]
 
 # position -> (ASS numpad alignment, vertical margin)
 _POSITIONS = {"bottom": (2, 440), "middle": (5, 0), "top": (8, 140)}
@@ -88,6 +105,7 @@ def _header(opts: dict) -> str:
     alignment, margin_v = _POSITIONS.get(opts["position"], _POSITIONS["bottom"])
     color = _ass_color(opts["color"])
     size = max(40, min(140, int(opts["font_size"])))
+    font = opts.get("font") if opts.get("font") in FONTS else "Arial"
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -96,7 +114,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{size},{color},{color},&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,7,2,{alignment},60,60,{margin_v},1
+Style: Default,{font},{size},{color},{color},&H00000000,&H7F000000,-1,0,0,0,100,100,0,0,1,7,2,{alignment},60,60,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

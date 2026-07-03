@@ -161,11 +161,18 @@ def _render_one(
       caption_style: dict       - see video/captions.DEFAULT_STYLE
       crop: "track" | "center" | "bias_left" | "bias_right"
     """
+    from video.filters import combined_chain
+
     opts = render_opts or {}
     # Deterministic timestamp-based name: re-runs overwrite instead of piling up.
     stem = f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}"
     final_path = clip_dir / f"{stem}.mp4"
     clip_dir.mkdir(parents=True, exist_ok=True)
+
+    # Color: preset filter (per-clip wins over job/config default) + manual
+    # brightness/saturation/contrast adjustments.
+    filter_name = opts.get("filter") or config["clips"].get("filter") or "none"
+    vf_extra = combined_chain(filter_name, opts.get("adjust"))
 
     ass_path = None
     # Per-clip style wins; otherwise the job/config default chosen at generate time.
@@ -200,10 +207,10 @@ def _render_one(
                 tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
         if tracking["mode"] == "split":
             print("         Facecam layout detected -> stacked webcam + gameplay render")
-        render_vertical(intermediate, tracking, final_path, ass_path=ass_path)
+        render_vertical(intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra)
         intermediate.unlink(missing_ok=True)
     else:
-        cut_clip(source, candidate, final_path, ass_path=ass_path)
+        cut_clip(source, candidate, final_path, ass_path=ass_path, vf_extra=vf_extra)
 
     if ass_path is not None:
         ass_path.unlink(missing_ok=True)
@@ -222,11 +229,15 @@ def _render_one(
         description=meta.description,
         hashtags=json.dumps(meta.hashtags),
         scores=json.dumps(candidate.subscores or {}),
-        # Persist the effective options (including a generate-time caption
-        # style) so re-renders and AI edits keep them.
+        # Persist the effective options (including generate-time caption
+        # style and filter) so re-renders and AI edits keep them.
         render_opts=json.dumps(
-            {**opts, **({"caption_style": caption_style} if caption_style else {})}
-        ) if (opts or caption_style) else "",
+            {
+                **opts,
+                **({"caption_style": caption_style} if caption_style else {}),
+                **({"filter": filter_name} if filter_name != "none" else {}),
+            }
+        ) if (opts or caption_style or filter_name != "none") else "",
     )
     if clip_id is None:
         # Same window already in the DB (re-run): the file was just re-rendered,

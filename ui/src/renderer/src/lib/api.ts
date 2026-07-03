@@ -2,6 +2,7 @@ import type {
   CaptionLine,
   CaptionStyle,
   Clip,
+  FilterName,
   Job,
   ModelsInfo,
   RenderOpts,
@@ -30,7 +31,13 @@ export const api = {
 
   createJob: (
     url: string,
-    opts?: { force?: boolean; captionStyle?: CaptionStyle; captions?: boolean; longClips?: boolean }
+    opts?: {
+      force?: boolean
+      captionStyle?: CaptionStyle
+      captions?: boolean
+      longClips?: boolean
+      filter?: FilterName
+    }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
       method: 'POST',
@@ -39,7 +46,8 @@ export const api = {
         force: opts?.force ?? false,
         caption_style: opts?.captionStyle ?? null,
         captions: opts?.captions ?? null,
-        long_clips: opts?.longClips ?? null
+        long_clips: opts?.longClips ?? null,
+        filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null
       })
     }),
   jobs: () => request<Job[]>('/jobs'),

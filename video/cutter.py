@@ -16,6 +16,7 @@ def cut_clip(
     candidate: ClipCandidate,
     output_path: Path,
     ass_path: Path | None = None,
+    vf_extra: str = "",
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -30,9 +31,12 @@ def cut_clip(
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
     ]
+    vf_parts = [p for p in (vf_extra,) if p]
     if ass_path is not None:
         # Bare filename + cwd avoids Windows path escaping in filter args.
-        cmd.extend(["-vf", f"subtitles={ass_path.name}"])
+        vf_parts.append(f"subtitles={ass_path.name}")
+    if vf_parts:
+        cmd.extend(["-vf", ",".join(vf_parts)])
     cmd.append(str(output_path.resolve()))
     workdir = ass_path.parent if ass_path is not None else None
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)

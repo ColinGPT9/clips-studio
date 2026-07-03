@@ -94,6 +94,26 @@ def _apply(
     if isinstance(data.get("crop"), str) and data["crop"] in _CROP_MODES:
         render_opts["crop"] = data["crop"]
 
+    # ---- color filter ----------------------------------------------------
+    filt = data.get("filter")
+    if isinstance(filt, str):
+        from video.filters import is_valid
+
+        if is_valid(filt):
+            render_opts["filter"] = filt
+
+    # ---- manual picture adjustments ---------------------------------------
+    adjust = data.get("adjust")
+    if isinstance(adjust, dict):
+        from video.filters import ADJUST_RANGES
+
+        clean_adjust = {}
+        for key, (lo, hi, _default) in ADJUST_RANGES.items():
+            if _is_number(adjust.get(key)):
+                clean_adjust[key] = max(lo, min(hi, float(adjust[key])))
+        if clean_adjust:
+            render_opts["adjust"] = clean_adjust
+
     # ---- captions on/off ------------------------------------------------
     if isinstance(data.get("captions"), bool):
         render_opts["captions"] = data["captions"]
@@ -150,6 +170,13 @@ def _clean_caption_style(style: dict) -> dict:
         out["color"] = "#" + color.strip().lstrip("#").upper()
     if isinstance(style.get("position"), str) and style["position"] in _POSITIONS:
         out["position"] = style["position"]
+    font = style.get("font")
+    if isinstance(font, str):
+        from video.captions import FONTS
+
+        match = next((f for f in FONTS if f.lower() == font.strip().lower()), None)
+        if match:
+            out["font"] = match
     if _is_number(style.get("words_per_caption")):
         out["words_per_caption"] = int(max(1, min(6, float(style["words_per_caption"]))))
     if isinstance(style.get("uppercase"), bool):

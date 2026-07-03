@@ -150,8 +150,8 @@ export default function ClipStudio(): JSX.Element {
       <div className="card flex gap-3 items-center flex-wrap">
         <input
           className="input flex-1 min-w-64"
-          placeholder="Paste a YouTube video or Twitch VOD URL…"
-          aria-label="YouTube video or Twitch VOD URL"
+          placeholder="Paste a YouTube video, Twitch VOD, or Kick VOD URL…"
+          aria-label="YouTube video, Twitch VOD, or Kick VOD URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && generate()}

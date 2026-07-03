@@ -80,6 +80,8 @@ class Worker(threading.Thread):
                         # TikTok monetization requires >60s: target 61-180s clips.
                         cfg["clips"]["min_duration"] = 61
                         cfg["clips"]["max_duration"] = 180
+                    if payload.get("filter"):
+                        cfg["clips"]["filter"] = payload["filter"]
                     if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n

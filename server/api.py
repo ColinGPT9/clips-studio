@@ -35,6 +35,7 @@ class JobIn(BaseModel):
     caption_style: dict | None = None  # style applied to every clip of this job
     captions: bool | None = None  # burn captions into this job's clips (default true)
     long_clips: bool | None = None  # 61-180s clips (TikTok monetization needs >60s)
+    filter: str | None = None  # color preset name (video/filters.py) for the whole job
 
 
 class ClipPatch(BaseModel):
@@ -156,6 +157,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["captions"] = body.captions
         if body.long_clips:
             payload["long_clips"] = True
+        if body.filter:
+            from video.filters import is_valid
+
+            if not is_valid(body.filter):
+                raise HTTPException(400, f"unknown filter '{body.filter}'")
+            payload["filter"] = body.filter
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))

@@ -1,11 +1,58 @@
 import type { CaptionStyle } from '../lib/types'
 
 export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
+  font: 'Arial',
   font_size: 84,
   color: '#FFFFFF',
   position: 'bottom',
   words_per_caption: 3,
   uppercase: true
+}
+
+/** Fonts on every stock Windows install — matches video/captions.py FONTS. */
+export const CAPTION_FONTS = [
+  'Arial',
+  'Arial Black',
+  'Impact',
+  'Verdana',
+  'Tahoma',
+  'Trebuchet MS',
+  'Segoe UI',
+  'Georgia',
+  'Comic Sans MS',
+  'Courier New'
+]
+
+/** Live example of how the burned-in captions will look (9:16 mock). */
+function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Element {
+  // Show one caption group of exactly words_per_caption words — the same
+  // grouping the burn-in uses, so changing the setting changes the example.
+  const sample = ['your', 'captions', 'look', 'like', 'this', 'onscreen']
+  const group = sample.slice(0, Math.max(1, Math.min(6, style.words_per_caption))).join(' ')
+  const text = style.uppercase ? group.toUpperCase() : group
+  const align =
+    style.position === 'top' ? 'items-start' : style.position === 'middle' ? 'items-center' : 'items-end'
+  return (
+    <div
+      className={`relative rounded-lg bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 aspect-[9/16] max-h-44 mx-auto w-auto flex ${align} justify-center overflow-hidden`}
+      aria-label="Caption style example"
+    >
+      <p
+        className="text-center px-2 py-4 leading-tight"
+        style={{
+          fontFamily: `'${style.font}', sans-serif`,
+          color: style.color,
+          // 84px at 1920 tall ≈ scale into this ~176px-tall mock
+          fontSize: `${(style.font_size / 1920) * 176 * 2.2}px`,
+          fontWeight: 700,
+          WebkitTextStroke: '0.8px black',
+          textShadow: '1px 1px 2px rgba(0,0,0,0.9)'
+        }}
+      >
+        {text}
+      </p>
+    </div>
+  )
 }
 
 /** The caption style controls (colour, size, position, words, casing),
@@ -23,6 +70,24 @@ export default function CaptionStyleControls({
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label htmlFor={`${idPrefix}-font`} className="label">
+            Font
+          </label>
+          <select
+            id={`${idPrefix}-font`}
+            className="input mt-1"
+            value={style.font}
+            style={{ fontFamily: `'${style.font}', sans-serif` }}
+            onChange={(e) => onChange('font', e.target.value)}
+          >
+            {CAPTION_FONTS.map((f) => (
+              <option key={f} value={f} style={{ fontFamily: `'${f}', sans-serif` }}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label htmlFor={`${idPrefix}-color`} className="label">
             Text colour
@@ -91,6 +156,11 @@ export default function CaptionStyleControls({
         />
         UPPERCASE captions
       </label>
+
+      <div>
+        <p className="label mb-1">Example</p>
+        <CaptionExample style={style} />
+      </div>
     </>
   )
 }

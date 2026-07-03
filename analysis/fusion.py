@@ -108,7 +108,9 @@ def find_clips(
 
     # Reaction (YOLO per window) is the expensive signal — compute it only
     # for the strongest candidates; the rest keep a neutral 0.5.
-    top_k = scoring_cfg.get("reaction_top_k", 8)
+    # Scale the (YOLO-expensive) reaction pass with candidate volume so long
+    # streams don't leave most finalists on a neutral reaction score.
+    top_k = max(scoring_cfg.get("reaction_top_k", 8), min(24, len(candidates) // 3))
     provisional = sorted(candidates, key=lambda c: _fuse(c, weights, reaction=0.5), reverse=True)
     n_reactions = min(top_k, len(provisional))
     print(f"  Scoring reactions for top {n_reactions} candidate(s)...")
@@ -127,22 +129,30 @@ def find_clips(
     # ---- 4. dedup + threshold (reusing the proven logic) ------------------
     # max_clips_per_video == 0 means automatic: keep EVERY unique clip that
     # passes the quality bar — the bar (min_score) decides, not a count.
+    # A 2-hour stream SHOULD yield far more clips than a 20-minute video.
     max_clips = clips_cfg.get("max_clips_per_video", 0)
-    pool = scoring_cfg.get("rerank_pool", 8)
-    if max_clips <= 0:
-        pool = max(pool, 16)  # in auto mode the pool is the only ceiling
+    selection_cap = max_clips if max_clips > 0 else len(candidates)
     finalists, rejections = highlights._select_unique(
         candidates, segments,
         min_score=clips_cfg["min_score"],
-        max_clips=max(pool, max_clips),
+        max_clips=selection_cap,
         max_overlap=analysis_cfg["max_overlap"],
         max_text_similarity=analysis_cfg["max_text_similarity"],
         max_segment_reuse=analysis_cfg["max_segment_reuse"],
     )
 
     # ---- 5. rerank: relative judgment beats absolute scoring --------------
+    # Batched: head-to-head comparison is only reliable for small groups, so
+    # long videos with many finalists are reranked in rerank_pool-sized
+    # batches of similar-scoring clips instead of being capped.
+    batch_size = max(2, scoring_cfg.get("rerank_pool", 8))
     if len(finalists) > 1:
-        finalists = _rerank(finalists, segments, llm)
+        finalists.sort(key=lambda c: c.score, reverse=True)
+        reranked: list[ClipCandidate] = []
+        for i in range(0, len(finalists), batch_size):
+            batch = finalists[i : i + batch_size]
+            reranked += _rerank(batch, segments, llm) if len(batch) > 1 else batch
+        finalists = sorted(reranked, key=lambda c: c.score, reverse=True)
 
     kept = finalists[:max_clips] if max_clips > 0 else finalists
     rejections += [Rejection(c, "over_limit") for c in finalists[len(kept):]]
@@ -253,7 +263,8 @@ def _signal_peak_windows(
         if any(c.overlap_ratio(e) > 0.3 for e in existing):
             continue  # the transcript pool already found this moment
         result.append((start, end))
-    return result[:10]
+    # Scale the window budget with video length: ~1 per 10 minutes, min 10.
+    return result[: max(10, combined.size // 600)]
 
 
 # ---- rerank ------------------------------------------------------------------

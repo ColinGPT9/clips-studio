@@ -26,6 +26,7 @@ export interface CaptionLine {
 }
 
 export interface CaptionStyle {
+  font?: string
   font_size?: number
   color?: string
   position?: 'bottom' | 'middle' | 'top'
@@ -33,11 +34,29 @@ export interface CaptionStyle {
   uppercase?: boolean
 }
 
+export type FilterName =
+  | 'none'
+  | 'vibrant'
+  | 'warm'
+  | 'cool'
+  | 'cinematic'
+  | 'vintage'
+  | 'bw'
+  | 'fade'
+
+export interface Adjust {
+  brightness?: number // -0.5..0.5, 0 = unchanged
+  saturation?: number // 0..3, 1 = unchanged
+  contrast?: number // 0.5..2, 1 = unchanged
+}
+
 export interface RenderOpts {
   crop?: 'track' | 'center' | 'bias_left' | 'bias_right'
   captions?: boolean
   caption_style?: CaptionStyle
   caption_lines?: CaptionLine[]
+  filter?: FilterName
+  adjust?: Adjust
 }
 
 export interface Clip {

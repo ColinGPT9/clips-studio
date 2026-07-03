@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { CaptionLine, CaptionStyle, Clip } from '../lib/types'
-
-const DEFAULT_STYLE: Required<CaptionStyle> = {
-  font_size: 84,
-  color: '#FFFFFF',
-  position: 'bottom',
-  words_per_caption: 3,
-  uppercase: true
-}
+import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 
 /** View + edit the burned-in captions of one clip: fix transcription
- *  mistakes line by line, and restyle (colour, size, position, casing).
+ *  mistakes line by line, and restyle (font, colour, size, position, casing).
  *  Every save queues a re-render that burns the changes in. */
 export default function CaptionEditor({
   clip,
@@ -22,7 +15,7 @@ export default function CaptionEditor({
 }): JSX.Element {
   const [lines, setLines] = useState<CaptionLine[] | null>(null)
   const [style, setStyle] = useState<Required<CaptionStyle>>({
-    ...DEFAULT_STYLE,
+    ...DEFAULT_CAPTION_STYLE,
     ...clip.render_opts?.caption_style
   })
   const [burn, setBurn] = useState<boolean>(clip.render_opts?.captions ?? true)
@@ -34,7 +27,7 @@ export default function CaptionEditor({
     setLines(null)
     setDirty(false)
     setOpen(false)
-    setStyle({ ...DEFAULT_STYLE, ...clip.render_opts?.caption_style })
+    setStyle({ ...DEFAULT_CAPTION_STYLE, ...clip.render_opts?.caption_style })
     setBurn(clip.render_opts?.captions ?? true)
   }, [clip.id])
 
@@ -89,7 +82,7 @@ export default function CaptionEditor({
         onClick={toggleOpen}
         aria-expanded={open}
       >
-        Captions & style
+        Captions &amp; style
         <span aria-hidden>{open ? '▾' : '▸'}</span>
       </button>
 
@@ -108,75 +101,7 @@ export default function CaptionEditor({
             Burn captions into this clip
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor={`cap-color-${clip.id}`} className="label">
-                Text colour
-              </label>
-              <input
-                id={`cap-color-${clip.id}`}
-                type="color"
-                className="mt-1 h-9 w-full rounded-lg bg-raised cursor-pointer"
-                value={style.color}
-                onChange={(e) => setStyleField('color', e.target.value.toUpperCase())}
-              />
-            </div>
-            <div>
-              <label htmlFor={`cap-size-${clip.id}`} className="label">
-                Size ({style.font_size})
-              </label>
-              <input
-                id={`cap-size-${clip.id}`}
-                type="range"
-                min={40}
-                max={140}
-                className="mt-3 w-full accent-[#38BDF8]"
-                value={style.font_size}
-                onChange={(e) => setStyleField('font_size', Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label htmlFor={`cap-pos-${clip.id}`} className="label">
-                Position
-              </label>
-              <select
-                id={`cap-pos-${clip.id}`}
-                className="input mt-1"
-                value={style.position}
-                onChange={(e) => setStyleField('position', e.target.value as CaptionStyle['position'])}
-              >
-                <option value="bottom">Bottom</option>
-                <option value="middle">Middle</option>
-                <option value="top">Top</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor={`cap-words-${clip.id}`} className="label">
-                Words per caption
-              </label>
-              <select
-                id={`cap-words-${clip.id}`}
-                className="input mt-1"
-                value={style.words_per_caption}
-                onChange={(e) => setStyleField('words_per_caption', Number(e.target.value))}
-              >
-                {[1, 2, 3, 4, 5, 6].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer text-sm">
-            <input
-              type="checkbox"
-              className="size-4 accent-[#38BDF8]"
-              checked={style.uppercase}
-              onChange={(e) => setStyleField('uppercase', e.target.checked)}
-            />
-            UPPERCASE captions
-          </label>
+          <CaptionStyleControls idPrefix={`clip-${clip.id}`} style={style} onChange={setStyleField} />
 
           <div>
             <p className="label mb-1">Caption text (fix any transcription mistakes)</p>
