@@ -15,6 +15,7 @@ from pathlib import Path
 import yt_dlp
 
 from core.models import DownloadedVideo
+from sources.ytdlp_common import progress_opts
 
 _VOD_RE = re.compile(
     r"kick\.com/(?:video/|[\w.-]+/videos/)([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})",
@@ -33,6 +34,18 @@ def extract_vod_id(url: str) -> str | None:
     return f"kick_{m.group(1).lower()}" if m else None
 
 
+def _impersonation() -> dict:
+    """Kick sits behind Cloudflare, which 403s non-browser clients. With
+    curl_cffi installed, yt-dlp can impersonate Chrome's TLS fingerprint —
+    verified to fix the 403 on real Kick VODs."""
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+
+        return {"impersonate": ImpersonateTarget.from_str("chrome")}
+    except Exception:
+        return {}  # curl_cffi missing: try without (may 403; error will say so)
+
+
 def download(url: str, output_dir: Path) -> DownloadedVideo:
     video_id = extract_vod_id(url)
     if video_id is None:
@@ -44,7 +57,7 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as probe:
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, **_impersonation()}) as probe:
         info = probe.extract_info(url, download=False)
     if info.get("is_live"):
         raise ValueError("This VOD is still being streamed — wait until the broadcast ends.")
@@ -57,6 +70,8 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         "quiet": True,
         "no_warnings": True,
         "progress": True,
+        **_impersonation(),
+        **progress_opts(video_id),
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)

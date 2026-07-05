@@ -51,6 +51,13 @@ export const api = {
       })
     }),
   jobs: () => request<Job[]>('/jobs'),
+  cancelProcessing: (videoId: string) =>
+    request<{ cancelling: string }>('/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ video_id: videoId })
+    }),
+  deleteVideo: (videoId: string) =>
+    request<{ deleted: string }>(`/videos/${videoId}`, { method: 'DELETE' }),
 
   videos: () => request<Video[]>('/videos'),
   clips: (videoId: string) => request<Clip[]>(`/videos/${videoId}/clips`),

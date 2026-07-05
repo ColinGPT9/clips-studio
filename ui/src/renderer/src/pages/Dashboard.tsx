@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import GenerateBar from '../components/GenerateBar'
 import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
 import type { Clip, Settings, StudioEvent, Video } from '../lib/types'
+
+const DONATE_URL = 'https://github.com/sponsors/ColinGPT9'
 
 type SortMode = 'newest' | 'channel'
 
@@ -18,7 +21,11 @@ function describeEvent(e: StudioEvent): string {
   return JSON.stringify(e)
 }
 
-export default function Dashboard(): JSX.Element {
+export default function Dashboard({
+  onOpenInStudio
+}: {
+  onOpenInStudio: (videoId: string, clipId?: number) => void
+}): JSX.Element {
   const [videos, setVideos] = useState<Video[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [log, setLog] = useState<string[]>([])
@@ -46,6 +53,23 @@ export default function Dashboard(): JSX.Element {
     setLog((prev) => [line, ...prev].slice(0, 200))
     if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) refresh()
   })
+
+  const remove = async (videoId: string, label: string): Promise<void> => {
+    if (!window.confirm(`Delete "${label}" and all its clips? This removes the files from disk too.`))
+      return
+    try {
+      await api.deleteVideo(videoId)
+      refresh()
+    } catch (e) {
+      window.alert(`Could not delete: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  const fmtTime = (s: number): string => {
+    if (!s) return '—'
+    const m = Math.floor(s / 60)
+    return m > 0 ? `${m}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`
+  }
 
   const toggleExpand = async (videoId: string): Promise<void> => {
     if (expanded === videoId) {
@@ -97,9 +121,10 @@ export default function Dashboard(): JSX.Element {
         )}
       </div>
 
-      <SystemStats />
-
+      <GenerateBar />
       <ProcessingBar />
+
+      <SystemStats />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section className="card" aria-label="Processed videos">
@@ -135,7 +160,7 @@ export default function Dashboard(): JSX.Element {
           </div>
 
           {shown.length === 0 ? (
-            <p className="text-muted text-sm">Nothing yet — paste a URL in Clip Studio.</p>
+            <p className="text-muted text-sm">Nothing yet — paste a link above to make your first clips.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -144,6 +169,8 @@ export default function Dashboard(): JSX.Element {
                   <th className="pb-2 font-normal">Title</th>
                   <th className="pb-2 font-normal">Status</th>
                   <th className="pb-2 font-normal text-right">Clips</th>
+                  <th className="pb-2 font-normal text-right">Time</th>
+                  <th className="pb-2 font-normal"></th>
                 </tr>
               </thead>
               <tbody>
@@ -184,20 +211,41 @@ export default function Dashboard(): JSX.Element {
                         </span>
                       </td>
                       <td className="py-2 text-right tabular-nums">{v.clip_count}</td>
+                      <td className="py-2 text-right tabular-nums text-muted">
+                        {fmtTime(v.process_seconds)}
+                      </td>
+                      <td className="py-2 text-right">
+                        <button
+                          className="text-muted hover:text-error px-1"
+                          onClick={() => remove(v.video_id, v.title || v.video_id)}
+                          aria-label={`Delete ${v.title || v.video_id}`}
+                          title="Delete this video and its clips"
+                        >
+                          🗑
+                        </button>
+                      </td>
                     </tr>
                     {expanded === v.video_id && (
                       <tr key={`${v.video_id}-clips`}>
-                        <td colSpan={4} className="pb-3 pl-6">
+                        <td colSpan={6} className="pb-3 pl-6">
                           {clipsByVideo[v.video_id] === undefined ? (
                             <p className="text-muted text-xs">Loading clips…</p>
                           ) : clipsByVideo[v.video_id].length === 0 ? (
                             <p className="text-muted text-xs">No clips generated.</p>
                           ) : (
-                            <ul className="space-y-1 text-xs text-muted list-disc pl-4">
+                            <ul className="space-y-1 text-xs text-muted pl-1">
                               {clipsByVideo[v.video_id].map((c) => (
                                 <li key={c.id}>
-                                  <span className="text-ink">{c.title || c.hook || 'Untitled'}</span>{' '}
-                                  ({Math.round(c.end_s - c.start_s)}s · score {c.score})
+                                  <button
+                                    className="text-left text-accent hover:underline"
+                                    onClick={() => onOpenInStudio(v.video_id, c.id)}
+                                    title="Open this clip in Clip Studio"
+                                  >
+                                    {c.title || c.hook || 'Untitled'}
+                                  </button>{' '}
+                                  <span className="text-muted">
+                                    ({Math.round(c.end_s - c.start_s)}s · score {c.score})
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -222,6 +270,24 @@ export default function Dashboard(): JSX.Element {
             )}
           </div>
         </section>
+      </div>
+
+      <div className="card flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-surface to-accent/10">
+        <div>
+          <p className="font-semibold">Clips Studio is free &amp; open source ❤️</p>
+          <p className="text-sm text-muted">
+            It runs entirely on your PC with no fees. Donations help pay for development and keep it
+            free for everyone.
+          </p>
+        </div>
+        <a
+          href={DONATE_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="btn-accent shrink-0 no-underline"
+        >
+          Donate to the project
+        </a>
       </div>
     </div>
   )

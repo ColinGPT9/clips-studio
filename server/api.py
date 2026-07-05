@@ -36,6 +36,7 @@ class JobIn(BaseModel):
     captions: bool | None = None  # burn captions into this job's clips (default true)
     long_clips: bool | None = None  # 61-180s clips (TikTok monetization needs >60s)
     filter: str | None = None  # color preset name (video/filters.py) for the whole job
+    min_score: int | None = None  # per-job quality bar override (0-100)
 
 
 class ClipPatch(BaseModel):
@@ -52,6 +53,11 @@ class RenderIn(BaseModel):
 
 class CaptionsIn(BaseModel):
     lines: list[dict]  # [{"start", "end", "text"}] clip-relative
+
+
+class CancelIn(BaseModel):
+    video_id: str | None = None
+    url: str | None = None
 
 
 class AiEditIn(BaseModel):
@@ -163,6 +169,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if not is_valid(body.filter):
                 raise HTTPException(400, f"unknown filter '{body.filter}'")
             payload["filter"] = body.filter
+        if body.min_score is not None:
+            payload["min_score"] = max(0, min(100, body.min_score))
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))
@@ -189,6 +197,50 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if row is None:
             raise HTTPException(404, "no such job")
         return dict(row)
+
+    @app.post("/cancel")
+    def cancel_processing(body: CancelIn):
+        """Cancel the in-flight processing of a video. Cooperative — the
+        pipeline stops at its next stage boundary (or aborts the download)."""
+        from core import cancel
+        from sources.dispatch import identify
+
+        vid = body.video_id
+        if not vid and body.url:
+            _, vid = identify(body.url)
+        if not vid:
+            raise HTTPException(400, "provide video_id or a resolvable url")
+        cancel.request_cancel(vid)
+        return {"cancelling": vid}
+
+    @app.delete("/videos/{video_id}")
+    def delete_video(video_id: str):
+        """Delete a processed video: its download, transcript, clip files, and
+        all its database rows."""
+        cancel_first = False
+        d = db()
+        try:
+            if d.video_status(video_id) not in ("done", "failed", "cancelled", None):
+                cancel_first = True
+        finally:
+            d.close()
+        if cancel_first:
+            raise HTTPException(409, "video is still processing — cancel it first")
+
+        # Remove files: download, transcript, and the clip folder.
+        for f in (data_dir / "downloads").glob(f"{video_id}.*"):
+            f.unlink(missing_ok=True)
+        (data_dir / "transcripts" / f"{video_id}.json").unlink(missing_ok=True)
+        for clip_dir in data_dir.glob(f"clips/*/*[[]{video_id}[]]"):
+            if clip_dir.is_dir():
+                shutil.rmtree(clip_dir, ignore_errors=True)
+
+        d = db()
+        try:
+            d.delete_video(video_id)
+        finally:
+            d.close()
+        return {"deleted": video_id}
 
     @app.websocket("/ws")
     async def ws(socket: WebSocket):

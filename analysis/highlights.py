@@ -34,8 +34,8 @@ def find_highlights(
     *,
     min_score: int = 60,
     max_clips: int = 3,
-    min_duration: float = 15.0,
-    max_duration: float = 59.0,
+    min_duration: float = 10.0,
+    max_duration: float = 60.0,
     max_overlap: float = 0.4,
     max_text_similarity: float = 0.7,
     max_segment_reuse: float = 0.4,
@@ -74,9 +74,8 @@ def find_highlights(
         candidates.extend(parsed)
 
     candidates = [c for c in candidates if _valid_range(c, video_end)]
-    candidates = [_snap_to_segments(c, segments) for c in candidates]
-    candidates = [_enforce_duration(c, min_duration, max_duration, video_end) for c in candidates]
-    candidates = [c for c in candidates if c.duration >= min_duration]
+    candidates = [_fit_to_segments(c, segments, min_duration, max_duration) for c in candidates]
+    candidates = [c for c in candidates if c.duration >= min_duration - 1]
 
     return _select_unique(
         candidates,
@@ -307,22 +306,42 @@ def _valid_range(c: ClipCandidate, video_end: float) -> bool:
     return 0 <= c.start < c.end <= video_end + 5  # small slack for rounding
 
 
-def _snap_to_segments(c: ClipCandidate, segments: list[Segment]) -> ClipCandidate:
-    """Snap start/end to the nearest segment boundary so clips begin and end
-    on sentence edges instead of mid-word."""
-    c.start = min((s.start for s in segments), key=lambda t: abs(t - c.start))
-    c.end = min((s.end for s in segments), key=lambda t: abs(t - c.end))
-    return c
-
-
-def _enforce_duration(
-    c: ClipCandidate, min_duration: float, max_duration: float, video_end: float
+def _fit_to_segments(
+    c: ClipCandidate, segments: list[Segment], min_duration: float, max_duration: float
 ) -> ClipCandidate:
-    if c.duration > max_duration:
-        c.end = c.start + max_duration
-    elif c.duration < min_duration:
-        # Extend symmetrically, clamped to the video bounds.
-        deficit = min_duration - c.duration
-        c.start = max(0.0, c.start - deficit / 2)
-        c.end = min(video_end, c.start + min_duration)
+    """Fit a candidate to whole-sentence boundaries with a NATURAL length.
+
+    Snaps outward to full sentences, then grows (preferring forward, to finish
+    the thought) until at least min_duration, and trims to stay under
+    max_duration. Because it lands on sentence edges, clips come out at varied
+    natural lengths across the 10-60s range instead of all being clamped to
+    exactly the minimum.
+    """
+    if not segments:
+        return c
+    idxs = [i for i, s in enumerate(segments) if s.end > c.start and s.start < c.end]
+    if not idxs:  # candidate fell between segments — anchor to the nearest one
+        idxs = [min(range(len(segments)), key=lambda i: abs(segments[i].start - c.start))]
+    lo, hi = idxs[0], idxs[-1]
+
+    def dur() -> float:
+        return segments[hi].end - segments[lo].start
+
+    # Grow to reach a natural minimum, forward first then backward.
+    while dur() < min_duration:
+        grew = False
+        if hi + 1 < len(segments) and (segments[hi + 1].end - segments[lo].start) <= max_duration:
+            hi += 1
+            grew = True
+        elif lo > 0 and (segments[hi].end - segments[lo - 1].start) <= max_duration:
+            lo -= 1
+            grew = True
+        if not grew:
+            break
+    # Trim whole trailing sentences if over the cap.
+    while dur() > max_duration and hi > lo:
+        hi -= 1
+
+    c.start = round(segments[lo].start, 2)
+    c.end = round(segments[hi].end, 2)
     return c

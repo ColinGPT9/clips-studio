@@ -97,6 +97,25 @@ class StateDB:
         video_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(videos)")}
         if "channel_name" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN channel_name TEXT DEFAULT ''")
+        if "process_seconds" not in video_cols:
+            self.conn.execute("ALTER TABLE videos ADD COLUMN process_seconds REAL DEFAULT 0")
+
+    def set_process_seconds(self, video_id: str, seconds: float) -> None:
+        self.conn.execute(
+            "UPDATE videos SET process_seconds = ? WHERE video_id = ?", (round(seconds, 1), video_id)
+        )
+        self.conn.commit()
+
+    def delete_video(self, video_id: str) -> None:
+        """Remove a video and its clips/rejections/uploads from the DB."""
+        self.conn.execute(
+            "DELETE FROM uploads WHERE clip_id IN (SELECT id FROM clips WHERE video_id = ?)",
+            (video_id,),
+        )
+        self.conn.execute("DELETE FROM clips WHERE video_id = ?", (video_id,))
+        self.conn.execute("DELETE FROM rejections WHERE video_id = ?", (video_id,))
+        self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
+        self.conn.commit()
 
     # ---- videos -------------------------------------------------------
 

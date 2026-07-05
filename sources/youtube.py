@@ -13,6 +13,7 @@ import requests
 import yt_dlp
 
 from core.models import DownloadedVideo
+from sources.ytdlp_common import progress_opts
 
 RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 _ATOM_NS = {
@@ -120,6 +121,7 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         "quiet": True,
         "no_warnings": True,
         "progress": True,
+        **progress_opts(extract_video_id(url)),
     }
 
     with yt_dlp.YoutubeDL(opts) as ydl:

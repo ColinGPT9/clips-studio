@@ -34,10 +34,12 @@ whisper:
   device: auto          # cuda if available, else cpu
 
 clips:
-  min_score: 60         # discard candidates scored below this (0-100)
+  min_score: 65         # discard candidates scored below this (0-100).
+                        # Higher = fewer, better clips.
   max_clips_per_video: 0  # 0 = automatic: keep every clip that passes min_score
-  min_duration: 15      # seconds
-  max_duration: 59      # YouTube Shorts limit
+  min_duration: 10      # seconds — clips land on sentence boundaries, so real
+  max_duration: 60      # lengths vary naturally across this 10-60s range
+                        # (turn on the 60s+ toggle for TikTok-length clips)
   vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
   captions: true        # burn word-synced captions into the clips
 
@@ -70,6 +72,8 @@ video:
   encoder: auto          # auto = first working GPU encoder (NVIDIA nvenc /
                          # AMD amf / Intel qsv), else CPU. Or force one:
                          # "nvenc" / "amf" / "qsv" / "cpu"
+  parallel_renders: 2    # clips rendered at once (one's GPU tracking overlaps
+                         # another's NVENC encode). 3-4 if you have spare VRAM.
 
 tracking:
   detector: yolov8n.pt   # auto-downloaded by ultralytics on first run

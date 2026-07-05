@@ -16,8 +16,19 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'settings', label: 'Settings', icon: '⚙' }
 ]
 
+export interface StudioTarget {
+  videoId: string
+  clipId?: number
+}
+
 export default function App(): JSX.Element {
   const [page, setPage] = useState<Page>('dashboard')
+  const [studioTarget, setStudioTarget] = useState<StudioTarget | null>(null)
+
+  const openInStudio = (videoId: string, clipId?: number): void => {
+    setStudioTarget({ videoId, clipId })
+    setPage('studio')
+  }
 
   return (
     <div className="flex h-screen">
@@ -58,8 +69,10 @@ export default function App(): JSX.Element {
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">
-        {page === 'dashboard' && <Dashboard />}
-        {page === 'studio' && <ClipStudio />}
+        {page === 'dashboard' && <Dashboard onOpenInStudio={openInStudio} />}
+        {page === 'studio' && (
+          <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />
+        )}
         {page === 'models' && <Models />}
         {page === 'settings' && <Settings />}
       </main>

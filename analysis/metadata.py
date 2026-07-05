@@ -56,6 +56,57 @@ def generate_metadata(
     return ClipMetadata(title=title, description=description, hashtags=hashtags)
 
 
+BATCH_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "metadata_batch.txt"
+
+
+def generate_metadata_batch(
+    candidates: list[ClipCandidate],
+    segments: list[Segment],
+    video_title: str,
+    llm: LLMBackend,
+    batch_size: int = 8,
+) -> list[ClipMetadata]:
+    """Metadata for ALL clips in a few LLM calls instead of one per clip —
+    on a long stream this cuts dozens of model calls from the analysis time.
+    Any clip the model skips or mangles falls back to hook-based metadata."""
+    results: list[ClipMetadata] = [_fallback(c, video_title) for c in candidates]
+    template = BATCH_PROMPT_PATH.read_text(encoding="utf-8")
+
+    for base in range(0, len(candidates), batch_size):
+        batch = candidates[base : base + batch_size]
+        blocks = []
+        for i, c in enumerate(batch):
+            text = " ".join(
+                s.text for s in segments if s.end > c.start and s.start < c.end
+            )[:900]
+            blocks.append(f"CLIP {i}:\n{text or '(no speech)'}")
+        prompt = (
+            template.replace("{video_title}", video_title)
+            .replace("{count}", str(len(batch)))
+            .replace("{clips}", "\n\n".join(blocks))
+        )
+        try:
+            data = _parse(llm.generate(prompt, json_mode=True))
+        except Exception:
+            data = None
+        if not data or not isinstance(data.get("items"), list):
+            continue  # whole batch falls back
+        for item in data["items"]:
+            try:
+                idx = int(item.get("index", -1))
+            except (TypeError, ValueError):
+                continue
+            if not 0 <= idx < len(batch):
+                continue
+            fallback = results[base + idx]
+            results[base + idx] = ClipMetadata(
+                title=_clean_title(item.get("title", "")) or fallback.title,
+                description=str(item.get("description", "")).strip() or fallback.description,
+                hashtags=_clean_hashtags(item.get("hashtags", [])) or fallback.hashtags,
+            )
+    return results
+
+
 def _fallback(candidate: ClipCandidate, video_title: str) -> ClipMetadata:
     title = _clean_title(candidate.hook) or _clean_title(video_title) or "Clip"
     return ClipMetadata(

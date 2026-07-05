@@ -122,6 +122,8 @@ class _Track:
     dominance: float = 0.0         # EMA of confidence x area
     speak: float = 0.0             # EMA of mouth-region motion (talking proxy)
     prev_mouth: object = None      # last mouth crop (np array) for motion diff
+    face_rate: float = 0.0         # EMA of "was a face detected this sample?"
+    face_offset: float = 0.0       # EMA of (face cx - body cx), normalized
     n_seen: int = 0
     centers: list = field(default_factory=list)   # normalized cx history
     areas: list = field(default_factory=list)     # area fraction history
@@ -180,16 +182,26 @@ def compute_tracking(
             area_frac = (x2 - x1) * (y2 - y1) / (w * h)
             tr.dominance = 0.7 * tr.dominance + 0.3 * (conf * area_frac)
             tr.n_seen += 1
-            # Face-refined center: a torso-centered person box misframes
-            # close-ups; the actual face position wins when detectable.
+            # Anti-jitter center: the body box is always stable; the face
+            # refines it only as a SMOOTHED OFFSET from the body center, and
+            # only while faces are detected reliably. When the face is
+            # side-on/hidden and detection flickers, the offset just fades
+            # toward pure body tracking instead of snapping back and forth.
+            body_cx = ((x1 + x2) / 2) / w
             face = _face_box(frame, tr.box)
             if face is not None:
                 fx1, fy1, fx2, fy2 = face
-                tr.centers.append(((fx1 + fx2) / 2) / w)
+                face_cx = ((fx1 + fx2) / 2) / w
+                tr.face_rate = 0.8 * tr.face_rate + 0.2
+                tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
                 _update_speaking(tr, frame, face)
             else:
-                tr.centers.append((x1 + x2) / 2 / w)
+                tr.face_rate = 0.8 * tr.face_rate  # detection getting unreliable
                 tr.speak *= 0.9  # no visible face: talking evidence fades
+            # Reliable face (seen in most recent samples) -> body + offset;
+            # unreliable -> plain body center, rock steady.
+            refine = tr.face_offset if tr.face_rate > 0.45 else 0.0
+            tr.centers.append(body_cx + refine)
             tr.areas.append(area_frac)
             tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
 

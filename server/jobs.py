@@ -17,6 +17,7 @@ import traceback
 from pathlib import Path
 
 from core import progress
+from core.cancel import CancelledError
 from core.state import StateDB
 from server.events import broadcaster
 
@@ -72,10 +73,13 @@ class Worker(threading.Thread):
                         or payload.get("caption_style")
                         or "captions" in payload
                         or payload.get("long_clips")
+                        or payload.get("min_score") is not None
                     ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
+                    if payload.get("min_score") is not None:
+                        cfg["clips"]["min_score"] = int(payload["min_score"])
                     if payload.get("long_clips"):
                         # TikTok monetization requires >60s: target 61-180s clips.
                         cfg["clips"]["min_duration"] = 61
@@ -99,6 +103,10 @@ class Worker(threading.Thread):
                     raise ValueError(f"Unknown job type {job['type']!r}")
                 db.set_job(job["id"], status="done")
                 broadcaster.publish({"type": "job", "job_id": job["id"], "status": "done"})
+            except CancelledError:
+                db.set_job(job["id"], status="cancelled", error="Cancelled by user")
+                broadcaster.publish({"type": "job", "job_id": job["id"], "status": "cancelled"})
+                print(f"Job {job['id']} cancelled by user")
             except Exception as e:
                 traceback.print_exc()
                 db.set_job(job["id"], status="failed", error=str(e)[:2000])
@@ -113,7 +121,8 @@ class Worker(threading.Thread):
         edited timestamps and/or render options (crop mode, caption style).
         The clip's user-visible metadata survives the re-render."""
         from core.models import ClipCandidate, Segment
-        from core.pipeline import _render_one, _safe_name  # same render path as the pipeline
+        from core.pipeline import _register_clip, _render_files, _safe_name
+        from analysis.metadata import ClipMetadata
         import json as _json
 
         clip = db.get_clip(payload["clip_id"])
@@ -144,9 +153,6 @@ class Worker(threading.Thread):
             render_opts["caption_style"] = merged_style
         render_opts.update({k: v for k, v in incoming.items() if k != "caption_style"})
 
-        from llm.registry import create_backend
-
-        llm = create_backend(self.config["llm"])
         vrow = db.conn.execute(
             "SELECT title, channel_name FROM videos WHERE video_id = ?", (video_id,)
         ).fetchone()
@@ -159,7 +165,8 @@ class Worker(threading.Thread):
             / f"{_safe_name(video_title, video_id)} [{video_id}]"
         )
 
-        # Keep the user-facing metadata across the re-render.
+        # Keep the user-facing metadata across the re-render — a re-render
+        # never needs a fresh LLM metadata call.
         keep = {
             "title": clip["title"],
             "description": clip["description"],
@@ -170,10 +177,14 @@ class Worker(threading.Thread):
         db.conn.execute("DELETE FROM clips WHERE id = ?", (clip["id"],))  # avoid UNIQUE clash
         db.conn.commit()
 
-        rendered = _render_one(
-            source, video_id, video_title, candidate,
-            segments, clip_dir, self.config, db, llm, render_opts=render_opts,
+        final_path, _ = _render_files(source, candidate, segments, clip_dir, self.config, render_opts)
+        meta = ClipMetadata(
+            title=clip["title"] or "",
+            description=clip["description"] or "",
+            hashtags=_json.loads(clip["hashtags"]) if clip["hashtags"] else [],
         )
+        rendered = _register_clip(db, video_id, candidate, final_path, meta, _json.dumps(render_opts))
+
         new_row = db.conn.execute(
             "SELECT id FROM clips WHERE video_id = ? AND start_s = ? AND end_s = ?",
             (video_id, round(start, 2), round(end, 2)),

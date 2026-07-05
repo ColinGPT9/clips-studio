@@ -59,8 +59,11 @@ def extract_visual_features(video_path: Path) -> dict[str, np.ndarray]:
 
 
 def _decode_sampled_gray(video_path: Path) -> np.ndarray:
+    from video.encoding import hwaccel_input_args
+
     cmd = [
         "ffmpeg", "-v", "error",
+        *hwaccel_input_args(),  # NVDEC decode: this pass is decode-bound
         "-i", str(video_path),
         "-vf", f"fps={SAMPLE_FPS},scale={FRAME_W}:{FRAME_H}",
         "-f", "rawvideo", "-pix_fmt", "gray", "-",

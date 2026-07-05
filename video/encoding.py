@@ -68,6 +68,13 @@ def _select(mode: str) -> tuple[str, list[str]]:
     return "cpu", CPU_ARGS
 
 
+def hwaccel_input_args() -> list[str]:
+    """Hardware DECODE flags, placed before -i. 'auto' picks NVDEC/D3D11VA/
+    QSV when the input codec supports it and silently falls back to software
+    when it doesn't — so this is safe on every input we feed FFmpeg."""
+    return ["-hwaccel", "auto"]
+
+
 def video_encoder_args(config: dict | None = None) -> list[str]:
     """The `-c:v ...` argument block for FFmpeg output encoding."""
     global _selected

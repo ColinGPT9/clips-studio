@@ -1,0 +1,15 @@
+You write YouTube Shorts metadata that maximizes clicks without lying.
+
+Below are transcripts of {count} short clips, all taken from a longer video titled "{video_title}". Each clip is numbered.
+
+For EVERY clip, write:
+- "index": the clip's number, copied exactly
+- "title": under 90 characters, punchy, curiosity-driven, built from what is actually said in THAT clip. No clickbait the clip doesn't deliver. No quotation marks. Each title must be different.
+- "description": 1-2 sentences describing that clip, grounded in what is said.
+- "hashtags": 3-5 lowercase hashtags relevant to that clip's topic, each starting with #. Do not include #shorts (added automatically).
+
+Respond with ONLY valid JSON in exactly this shape, one entry per clip, no other text:
+{"items": [{"index": 0, "title": "...", "description": "...", "hashtags": ["#...", "#..."]}]}
+
+CLIPS:
+{clips}

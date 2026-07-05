@@ -13,7 +13,7 @@ import json
 import re
 
 from analysis.fusion import find_clips
-from analysis.metadata import generate_metadata
+from analysis.metadata import ClipMetadata, generate_metadata_batch
 from core import progress
 from core.models import ClipCandidate, RenderedClip, Segment
 from core.state import StateDB
@@ -26,7 +26,12 @@ from video.cutter import cut_clip
 
 
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
+    import time
+
+    from core import cancel
+
     data_dir = Path(config["paths"]["data_dir"])
+    started = time.monotonic()
 
     print(f"[1/4] Downloading: {url}")
     progress.emit(stage="download", message=url)
@@ -34,11 +39,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
+    cancel.clear(video.video_id)  # fresh start; any stale flag from a prior run gone
     db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
     if db.video_status(video.video_id) == "done" and not force:
         print("      Already processed (status: done). Use --force to redo.")
         return []
     db.set_video_status(video.video_id, "downloaded")
+    cancel.check(video.video_id)
 
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
@@ -52,6 +59,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      {len(segments)} segments")
     db.set_video_status(video.video_id, "transcribed")
 
+    cancel.check(video.video_id)
     print("[3/4] Multimodal analysis (transcript + audio + visual)...")
     progress.emit(stage="analyze", video_id=video.video_id)
     llm = create_backend(config["llm"])
@@ -90,16 +98,48 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         / _safe_name(video.channel, "unknown-channel")
         / f"{_safe_name(video.title, video.video_id)} [{video.video_id}]"
     )
-    for i, candidate in enumerate(candidates, 1):
-        progress.emit(stage="render", video_id=video.video_id, clip=i, total=len(candidates))
-        clip = _render_one(
-            video.path, video.video_id, video.title, candidate, segments, clip_dir, config, db, llm
-        )
-        if clip:
-            rendered.append(clip)
+    # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
+    # (one call per clip made long streams crawl through analysis).
+    print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
+    metas = generate_metadata_batch(candidates, segments, video.title, llm)
 
+    # Renders run in parallel: one clip's (GPU) tracking overlaps another's
+    # (NVENC) encode. File work happens in worker threads; SQLite writes stay
+    # on this thread — sqlite connections are not shareable across threads.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    workers = max(1, int(config.get("video", {}).get("parallel_renders", 2)))
+    done_count = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_render_files, video.path, candidate, segments, clip_dir, config, None): (
+                candidate,
+                meta,
+            )
+            for candidate, meta in zip(candidates, metas)
+        }
+        for future in as_completed(futures):
+            candidate, meta = futures[future]
+            done_count += 1
+            progress.emit(
+                stage="render", video_id=video.video_id, clip=done_count, total=len(candidates)
+            )
+            try:
+                final_path, render_opts_json = future.result()
+            except Exception as e:
+                print(f"      Render failed for {candidate.start:.0f}s-{candidate.end:.0f}s: {e}")
+                continue
+            clip = _register_clip(db, video.video_id, candidate, final_path, meta, render_opts_json)
+            if clip:
+                rendered.append(clip)
+
+    elapsed = time.monotonic() - started
+    db.set_process_seconds(video.video_id, elapsed)
     db.set_video_status(video.video_id, "done")
-    progress.emit(stage="done", video_id=video.video_id, clips=len(rendered))
+    progress.emit(
+        stage="done", video_id=video.video_id, clips=len(rendered), seconds=round(elapsed, 1)
+    )
+    print(f"      Done in {elapsed / 60:.1f} min ({len(rendered)} clips)")
     return rendered
 
 
@@ -143,23 +183,21 @@ def _safe_name(name: str, fallback: str) -> str:
     return cleaned[:60].strip() or fallback
 
 
-def _render_one(
+def _render_files(
     source: Path,
-    video_id: str,
-    video_title: str,
     candidate: ClipCandidate,
     segments: list[Segment],
     clip_dir: Path,
     config: dict,
-    db: StateDB,
-    llm: LLMBackend,
     render_opts: dict | None = None,
-) -> RenderedClip | None:
-    """render_opts (all optional, persisted per clip, set by the user or the
-    AI edit assistant):
-      captions: bool            - burn captions at all
-      caption_style: dict       - see video/captions.DEFAULT_STYLE
-      crop: "track" | "center" | "bias_left" | "bias_right"
+) -> tuple[Path, str]:
+    """Pure file work — cut, track, crop, captions, color. NO database access
+    and NO LLM call, so it is safe to run in a worker thread. Returns the
+    finished clip path and the persisted render-options JSON.
+
+    render_opts (all optional, persisted per clip, set by the user or the AI
+    edit assistant): captions, caption_style, caption_lines, crop, filter,
+    adjust.
     """
     from video.filters import combined_chain
 
@@ -205,8 +243,6 @@ def _render_one(
             if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
                 shift = -0.12 if crop_mode == "bias_left" else 0.12
                 tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-        if tracking["mode"] == "split":
-            print("         Facecam layout detected -> stacked webcam + gameplay render")
         render_vertical(intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra)
         intermediate.unlink(missing_ok=True)
     else:
@@ -215,8 +251,26 @@ def _render_one(
     if ass_path is not None:
         ass_path.unlink(missing_ok=True)
 
-    meta = generate_metadata(candidate, segments, video_title, llm)
+    render_opts_json = json.dumps(
+        {
+            **opts,
+            **({"caption_style": caption_style} if caption_style else {}),
+            **({"filter": filter_name} if filter_name != "none" else {}),
+        }
+    ) if (opts or caption_style or filter_name != "none") else ""
+    return final_path, render_opts_json
 
+
+def _register_clip(
+    db: StateDB,
+    video_id: str,
+    candidate: ClipCandidate,
+    final_path: Path,
+    meta: ClipMetadata,
+    render_opts_json: str,
+) -> RenderedClip | None:
+    """DB write for one rendered clip. Main thread only (sqlite connections
+    are not shareable across threads)."""
     clip_id = db.add_clip(
         video_id,
         candidate.start,
@@ -229,19 +283,11 @@ def _render_one(
         description=meta.description,
         hashtags=json.dumps(meta.hashtags),
         scores=json.dumps(candidate.subscores or {}),
-        # Persist the effective options (including generate-time caption
-        # style and filter) so re-renders and AI edits keep them.
-        render_opts=json.dumps(
-            {
-                **opts,
-                **({"caption_style": caption_style} if caption_style else {}),
-                **({"filter": filter_name} if filter_name != "none" else {}),
-            }
-        ) if (opts or caption_style or filter_name != "none") else "",
+        render_opts=render_opts_json,
     )
     if clip_id is None:
-        # Same window already in the DB (re-run): the file was just re-rendered,
-        # so point the existing row at the fresh render and updated scores.
+        # Same window already in the DB (re-run): point the existing row at
+        # the fresh render and updated scores.
         row = db.conn.execute(
             "SELECT id FROM clips WHERE video_id = ? AND start_s = ? AND end_s = ?",
             (video_id, round(candidate.start, 2), round(candidate.end, 2)),
@@ -251,6 +297,5 @@ def _render_one(
         print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None
 
-    print(f"      -> {final_path}")
-    print(f"         Title: {meta.title}")
+    print(f"      -> {final_path}  ({meta.title})")
     return RenderedClip(source_video_id=video_id, candidate=candidate, path=final_path)

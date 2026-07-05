@@ -9,16 +9,17 @@ export interface JobProgress {
   label: string
   fraction: number
   startedAt: number
+  videoId: string
 }
 
 const STAGES: Record<string, { base: number; weight: number; label: string }> = {
-  download: { base: 0.0, weight: 0.05, label: 'Downloading video' },
-  downloaded: { base: 0.05, weight: 0.0, label: 'Downloaded' },
-  transcribe: { base: 0.05, weight: 0.25, label: 'Transcribing speech' },
-  signals: { base: 0.3, weight: 0.05, label: 'Analyzing audio & visuals' },
-  analyze: { base: 0.35, weight: 0.3, label: 'Finding the best moments' },
-  reactions: { base: 0.65, weight: 0.1, label: 'Scoring on-screen reactions' },
-  render: { base: 0.75, weight: 0.25, label: 'Rendering clips' }
+  download: { base: 0.0, weight: 0.15, label: 'Downloading video' },
+  downloaded: { base: 0.15, weight: 0.0, label: 'Downloaded' },
+  transcribe: { base: 0.15, weight: 0.25, label: 'Transcribing speech' },
+  signals: { base: 0.4, weight: 0.05, label: 'Analyzing audio & visuals' },
+  analyze: { base: 0.45, weight: 0.25, label: 'Finding the best moments' },
+  reactions: { base: 0.7, weight: 0.08, label: 'Scoring on-screen reactions' },
+  render: { base: 0.78, weight: 0.22, label: 'Rendering clips' }
 }
 
 export const emptyProgress: JobProgress = {
@@ -26,7 +27,8 @@ export const emptyProgress: JobProgress = {
   title: '',
   label: '',
   fraction: 0,
-  startedAt: 0
+  startedAt: 0,
+  videoId: ''
 }
 
 /** Survives page switches: whichever page is mounted keeps it updated. */
@@ -35,16 +37,18 @@ export const progressStore: { current: JobProgress } = { current: { ...emptyProg
 export function applyEvent(p: JobProgress, e: StudioEvent): JobProgress {
   if (e.type === 'job') {
     if (e.status === 'running')
-      return { active: true, title: '', label: 'Starting…', fraction: 0, startedAt: Date.now() }
-    if (e.status === 'done' || e.status === 'failed') return { ...emptyProgress }
+      return { ...emptyProgress, active: true, label: 'Starting…', startedAt: Date.now() }
+    if (e.status === 'done' || e.status === 'failed' || e.status === 'cancelled')
+      return { ...emptyProgress }
   }
   if (e.type !== 'progress') return p
   if (e.stage === 'done') return { ...emptyProgress }
 
   const startedAt = p.active && p.startedAt ? p.startedAt : Date.now()
   const title = e.title || p.title
+  const videoId = e.video_id || p.videoId
   const stage = STAGES[e.stage ?? '']
-  if (!stage) return { ...p, active: true, startedAt, title }
+  if (!stage) return { ...p, active: true, startedAt, title, videoId }
 
   let within = 0.5
   if (typeof e.fraction === 'number') within = e.fraction
@@ -60,7 +64,8 @@ export function applyEvent(p: JobProgress, e: StudioEvent): JobProgress {
     title,
     label,
     fraction: Math.max(fraction, p.fraction), // progress never moves backwards
-    startedAt
+    startedAt,
+    videoId
   }
 }
 

@@ -17,6 +17,7 @@ from pathlib import Path
 import yt_dlp
 
 from core.models import DownloadedVideo
+from sources.ytdlp_common import progress_opts
 
 _VOD_RE = re.compile(r"twitch\.tv/videos?/(\d+)", re.IGNORECASE)
 
@@ -57,6 +58,7 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         "quiet": True,
         "no_warnings": True,
         "progress": True,
+        **progress_opts(video_id),
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)

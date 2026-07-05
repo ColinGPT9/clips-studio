@@ -7,6 +7,7 @@ export interface Video {
   created_at: string
   updated_at: string
   clip_count: number
+  process_seconds: number
 }
 
 export interface SubScores {
@@ -135,6 +136,8 @@ export interface StudioEvent {
   current?: number
   fraction?: number
   duration?: number
+  seconds?: number
+  downloaded?: number
   error?: string
   tag?: string
   completed?: number

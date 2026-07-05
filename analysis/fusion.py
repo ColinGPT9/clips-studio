@@ -86,7 +86,13 @@ def find_clips(
     )
     if peak_windows:
         print(f"  {len(peak_windows)} signal-peak window(s) found beyond transcript picks")
-        candidates += highlights.score_windows(segments, llm, peak_windows, events=events)
+        signal_cands = highlights.score_windows(segments, llm, peak_windows, events=events)
+        # Fit signal windows to sentence boundaries too, for natural lengths.
+        signal_cands = [
+            highlights._fit_to_segments(c, segments, clips_cfg["min_duration"], clips_cfg["max_duration"])
+            for c in signal_cands
+        ]
+        candidates += signal_cands
 
     if not candidates:
         return [], []

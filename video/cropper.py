@@ -19,7 +19,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from video.encoding import video_encoder_args
+from video.encoding import hwaccel_input_args, video_encoder_args
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
@@ -94,6 +94,7 @@ def _render_tracked(
     cmd = [
         "ffmpeg", "-y",
         "-i", str(temp_path.resolve()),
+        *hwaccel_input_args(),
         "-i", str(clip_path.resolve()),
         "-map", "0:v:0", "-map", "1:a:0?",
         "-vf", vf,
@@ -166,6 +167,7 @@ def _render_split(
 
     cmd = [
         "ffmpeg", "-y",
+        *hwaccel_input_args(),
         "-i", str(clip_path.resolve()),
         "-filter_complex", filters,
         "-map", "[v]", "-map", "0:a:0?",
