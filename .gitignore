@@ -231,3 +231,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Throwaway test scripts
+_test_*.py
