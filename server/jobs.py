@@ -16,7 +16,7 @@ import threading
 import traceback
 from pathlib import Path
 
-from core import progress
+from core import cancel, progress
 from core.cancel import CancelledError
 from core.state import StateDB
 from server.events import broadcaster
@@ -43,6 +43,11 @@ class Worker(threading.Thread):
         requeued = db.recover_interrupted_jobs()
         if requeued:
             print(f"Re-queued {requeued} interrupted job(s)")
+        # Videos orphaned mid-pipeline by a crash/force-close get marked failed
+        # so they're never permanently "stuck" and can be deleted or retried.
+        recovered = db.recover_stuck_videos()
+        if recovered:
+            print(f"Recovered {recovered} interrupted video(s) (marked failed)")
 
         # Pipeline progress events get tagged with the active job and fanned
         # out to UI clients.
@@ -61,6 +66,11 @@ class Worker(threading.Thread):
             current_job_id[0] = job["id"]
             payload = json.loads(job["payload"])
             broadcaster.publish({"type": "job", "job_id": job["id"], "status": "running"})
+            if job["type"] == "process":
+                from sources.dispatch import identify
+
+                _, vid = identify(payload["url"])
+                cancel.set_active(vid)  # mark which video is genuinely running
             try:
                 if job["type"] == "process":
                     import copy
@@ -115,6 +125,7 @@ class Worker(threading.Thread):
                 )
             finally:
                 current_job_id[0] = None
+                cancel.set_active(None)
 
     def _rerender_clip(self, db: StateDB, payload: dict) -> None:
         """Re-render one clip from the original source video, with optionally

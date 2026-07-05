@@ -215,17 +215,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.delete("/videos/{video_id}")
     def delete_video(video_id: str):
-        """Delete a processed video: its download, transcript, clip files, and
-        all its database rows."""
-        cancel_first = False
-        d = db()
-        try:
-            if d.video_status(video_id) not in ("done", "failed", "cancelled", None):
-                cancel_first = True
-        finally:
-            d.close()
-        if cancel_first:
-            raise HTTPException(409, "video is still processing — cancel it first")
+        """Delete a video: its download, transcript, clip files, and all its
+        database rows. Only blocked if the video is ACTIVELY processing right
+        now (not merely stuck in an in-progress status from a past crash)."""
+        from core import cancel
+
+        if cancel.active_video() == video_id:
+            raise HTTPException(409, "video is processing right now — cancel it first")
 
         # Remove files: download, transcript, and the clip folder.
         for f in (data_dir / "downloads").glob(f"{video_id}.*"):

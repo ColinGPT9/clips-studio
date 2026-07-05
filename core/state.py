@@ -100,6 +100,18 @@ class StateDB:
         if "process_seconds" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN process_seconds REAL DEFAULT 0")
 
+    def recover_stuck_videos(self) -> int:
+        """Videos left mid-pipeline by a crash/force-close (downloaded,
+        transcribed, analyzed) are marked failed so they're deletable and
+        clearly not running. Returns how many were recovered."""
+        cur = self.conn.execute(
+            "UPDATE videos SET status = 'failed', updated_at = ? "
+            "WHERE status IN ('downloaded', 'transcribed', 'analyzed')",
+            (_now(),),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     def set_process_seconds(self, video_id: str, seconds: float) -> None:
         self.conn.execute(
             "UPDATE videos SET process_seconds = ? WHERE video_id = ?", (round(seconds, 1), video_id)

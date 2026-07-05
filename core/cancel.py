@@ -10,6 +10,21 @@ import threading
 
 _lock = threading.Lock()
 _cancelled: set[str] = set()
+_active: str | None = None  # the video the worker is processing right now
+
+
+def set_active(video_id: str | None) -> None:
+    global _active
+    with _lock:
+        _active = video_id
+
+
+def active_video() -> str | None:
+    """The video currently being processed, or None. A video stuck in an
+    in-progress DB status but NOT equal to this was orphaned by a crash/kill
+    and is safe to delete."""
+    with _lock:
+        return _active
 
 
 class CancelledError(Exception):
