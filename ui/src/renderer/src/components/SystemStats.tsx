@@ -16,7 +16,15 @@ function Widget({ label, value, sub }: { label: string; value: string; sub?: str
   )
 }
 
-export default function SystemStats(): JSX.Element {
+function Inline({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <span className="whitespace-nowrap">
+      <span className="text-muted">{label}</span> <span className="font-semibold">{value}</span>
+    </span>
+  )
+}
+
+export default function SystemStats({ compact = false }: { compact?: boolean }): JSX.Element {
   const [stats, setStats] = useState<Stats | null>(null)
 
   useEffect(() => {
@@ -37,7 +45,31 @@ export default function SystemStats(): JSX.Element {
     }
   }, [])
 
-  if (!stats) return <div className="card text-muted">Connecting to backend…</div>
+  if (!stats) {
+    return compact ? (
+      <span className="text-muted text-sm">Connecting…</span>
+    ) : (
+      <div className="card text-muted">Connecting to backend…</div>
+    )
+  }
+
+  if (compact) {
+    return (
+      <div className="flex gap-4 items-center text-sm flex-wrap">
+        <Inline label="CPU" value={`${Math.round(stats.cpu_percent)}%`} />
+        <Inline label="RAM" value={`${Math.round(stats.ram_percent)}%`} />
+        <Inline
+          label="GPU"
+          value={
+            stats.gpu
+              ? `${stats.gpu.gpu_percent}% · ${gb(stats.gpu.vram_used)}/${gb(stats.gpu.vram_total)}`
+              : 'CPU-only'
+          }
+        />
+        <Inline label="Storage" value={`${gb(stats.data_dir_bytes)} (${gb(stats.disk_free_bytes)} free)`} />
+      </div>
+    )
+  }
 
   return (
     <div className="flex gap-3 flex-wrap">

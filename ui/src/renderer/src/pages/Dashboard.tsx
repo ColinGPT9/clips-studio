@@ -49,8 +49,14 @@ export default function Dashboard({
   }, [])
 
   useEvents((e) => {
-    const line = `${new Date().toLocaleTimeString()}  ${describeEvent(e)}`
-    setLog((prev) => [line, ...prev].slice(0, 200))
+    const msg = describeEvent(e)
+    const line = `${new Date().toLocaleTimeString()}  ${msg}`
+    setLog((prev) => {
+      // Skip consecutive duplicates: only log when the message actually
+      // changes, so a stage that emits every second doesn't spam the feed.
+      if (prev.length && prev[0].slice(prev[0].indexOf('  ') + 2) === msg) return prev
+      return [line, ...prev].slice(0, 200)
+    })
     if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) refresh()
   })
 
@@ -111,24 +117,25 @@ export default function Dashboard({
   }, [videos, sort, channelFilter])
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Dashboard</h2>
-        {settings && (
-          <span className="bg-raised px-3 py-1.5 rounded-lg text-sm">
-            model: <span className="text-accent font-medium">{settings.model}</span>
-          </span>
-        )}
+    <div className="h-full flex flex-col p-6 gap-4">
+      {/* Pinned top: title + post bar always visible */}
+      <div className="shrink-0 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Dashboard</h2>
+          {settings && (
+            <span className="bg-raised px-3 py-1.5 rounded-lg text-sm">
+              model: <span className="text-accent font-medium">{settings.model}</span>
+            </span>
+          )}
+        </div>
+        <GenerateBar />
+        <ProcessingBar />
       </div>
 
-      <GenerateBar />
-      <ProcessingBar />
-
-      <SystemStats />
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <section className="card" aria-label="Processed videos">
-          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+      {/* Middle: videos + activity, each scrolls on its own */}
+      <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <section className="card flex flex-col overflow-hidden" aria-label="Processed videos">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap shrink-0">
             <h3 className="font-semibold">Processed videos</h3>
             <div className="flex items-center gap-2 flex-wrap">
               <input
@@ -159,6 +166,7 @@ export default function Dashboard({
             </div>
           </div>
 
+          <div className="overflow-y-auto flex-1 min-h-0">
           {shown.length === 0 ? (
             <p className="text-muted text-sm">Nothing yet — paste a link above to make your first clips.</p>
           ) : (
@@ -258,33 +266,39 @@ export default function Dashboard({
               </tbody>
             </table>
           )}
+          </div>
         </section>
 
-        <section className="card" aria-label="Activity log">
-          <h3 className="font-semibold mb-3">Activity</h3>
-          <div className="h-72 overflow-y-auto font-mono text-xs space-y-1 text-muted" role="log">
+        <section className="card flex flex-col overflow-hidden" aria-label="Activity log">
+          <h3 className="font-semibold mb-3 shrink-0">Activity</h3>
+          <div className="overflow-y-auto flex-1 min-h-0 font-mono text-xs space-y-1 text-muted" role="log">
             {log.length === 0 ? (
               <p>Waiting for events…</p>
             ) : (
               log.map((line, i) => <p key={i}>{line}</p>)
             )}
           </div>
+          {/* System stats tucked at the bottom of Activity, out of the way */}
+          <div className="shrink-0 mt-3 pt-3 border-t border-raised/60">
+            <SystemStats compact />
+          </div>
         </section>
       </div>
 
-      <div className="card flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-surface to-accent/10">
+      {/* Pinned bottom: prominent, persistent donate section */}
+      <div className="shrink-0 card flex items-center justify-between gap-6 flex-wrap bg-gradient-to-r from-accent/15 to-accent/25 border border-accent/40 !py-5">
         <div>
-          <p className="font-semibold">Clips Studio is free &amp; open source ❤️</p>
-          <p className="text-sm text-muted">
-            It runs entirely on your PC with no fees. Donations help pay for development and keep it
-            free for everyone.
+          <p className="font-bold text-xl text-ink">Clips Studio is free &amp; open source ❤️</p>
+          <p className="text-base text-ink/80 mt-1">
+            It runs entirely on your PC with no fees. Please consider donating to help cover
+            development costs and keep it free for everyone.
           </p>
         </div>
         <a
           href={DONATE_URL}
           target="_blank"
           rel="noreferrer"
-          className="btn-accent shrink-0 no-underline"
+          className="btn-accent shrink-0 no-underline text-lg px-8 py-3 font-semibold"
         >
           Donate to the project
         </a>

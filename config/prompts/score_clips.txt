@@ -14,6 +14,7 @@ Find the best self-contained clip moments. Judge each candidate against this vir
 - Quotable lines
 - Story-structure peaks (setup that pays off)
 - Practical or actionable value
+- TRENDING & DRAMA (weight this heavily): the speaker names or reacts to another creator, streamer, celebrity, influencer, or public figure; discusses beef, callouts, controversy, or drama; reacts to viral/trending content, current events, or something everyone is talking about. These moments ride existing attention and perform extremely well — score them high and set "trending": true.
 
 Rules:
 - Each clip must be {min_duration} to {max_duration} seconds long. Let the moment decide its own length within that range — a punchy one-liner might be 12 seconds, a story that builds to a payoff might be 45. Do NOT default to the shortest length; capture the whole self-contained moment including its setup and payoff.
@@ -21,10 +22,11 @@ Rules:
 - start and end must be numbers in seconds taken from the transcript timestamps.
 - score is 0-100 predicted viral potential. Be critical: most moments score below 50. Only truly strong moments score above 80.
 - engagement is 0-100 for hook strength + payoff + quotability specifically: would someone stop scrolling in the first 2 seconds, and is there a satisfying payoff?
+- trending is true if this moment names/reacts to another creator, celebrity, or public figure, or discusses drama/beef/controversy/trending topics; otherwise false. When true, boost the score.
 - Return at most 5 clips. If nothing is good, return an empty list.
 
 Respond with ONLY valid JSON in exactly this shape, no other text:
-{"clips": [{"start": 124.5, "end": 162.0, "score": 87, "engagement": 80, "hook": "...", "reason": "..."}]}
+{"clips": [{"start": 124.5, "end": 162.0, "score": 87, "engagement": 80, "trending": true, "hook": "...", "reason": "..."}]}
 
 Field meanings:
 - "hook": an attention-grabbing one-liner about THIS moment. It MUST be built from words actually spoken in the clip — quote or closely paraphrase the transcript lines between your start and end timestamps. Do not invent events that are not in the transcript. Do not write a generic description.

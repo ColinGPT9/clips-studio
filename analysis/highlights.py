@@ -292,6 +292,7 @@ def _parse_clips_json(raw: str) -> list[ClipCandidate] | None:
                     hook=str(item.get("hook", "")),
                     reason=str(item.get("reason", "")),
                     engagement=max(0, min(100, int(engagement))) if engagement is not None else None,
+                    trending=bool(item.get("trending", False)),
                 )
             )
         except (KeyError, TypeError, ValueError):
@@ -307,15 +308,20 @@ def _valid_range(c: ClipCandidate, video_end: float) -> bool:
 
 
 def _fit_to_segments(
-    c: ClipCandidate, segments: list[Segment], min_duration: float, max_duration: float
+    c: ClipCandidate,
+    segments: list[Segment],
+    min_duration: float,
+    max_duration: float,
+    target_duration: float | None = None,
 ) -> ClipCandidate:
     """Fit a candidate to whole-sentence boundaries with a NATURAL length.
 
     Snaps outward to full sentences, then grows (preferring forward, to finish
-    the thought) until at least min_duration, and trims to stay under
-    max_duration. Because it lands on sentence edges, clips come out at varied
-    natural lengths across the 10-60s range instead of all being clamped to
-    exactly the minimum.
+    the thought) toward target_duration, capped at max_duration. The target
+    defaults to the candidate's own length (so an LLM pick that was already a
+    good 30s stays ~30s) but never less than a sensible clip length — this is
+    what stops everything collapsing to the bare minimum. Landing on sentence
+    edges gives varied natural lengths across the 10-60s range.
     """
     if not segments:
         return c
@@ -327,8 +333,12 @@ def _fit_to_segments(
     def dur() -> float:
         return segments[hi].end - segments[lo].start
 
-    # Grow to reach a natural minimum, forward first then backward.
-    while dur() < min_duration:
+    # Aim for the candidate's own span, but at least a real clip length (18s),
+    # so short LLM picks and tiny signal peaks grow into watchable clips.
+    target = target_duration if target_duration is not None else max(c.end - c.start, 18.0)
+    target = max(min_duration, min(target, max_duration))
+
+    while dur() < target:
         grew = False
         if hi + 1 < len(segments) and (segments[hi + 1].end - segments[lo].start) <= max_duration:
             hi += 1
@@ -338,7 +348,7 @@ def _fit_to_segments(
             grew = True
         if not grew:
             break
-    # Trim whole trailing sentences if over the cap.
+    # Trim whole trailing sentences if somehow over the cap.
     while dur() > max_duration and hi > lo:
         hi -= 1
 

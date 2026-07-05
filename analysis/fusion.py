@@ -87,9 +87,12 @@ def find_clips(
     if peak_windows:
         print(f"  {len(peak_windows)} signal-peak window(s) found beyond transcript picks")
         signal_cands = highlights.score_windows(segments, llm, peak_windows, events=events)
-        # Fit signal windows to sentence boundaries too, for natural lengths.
+        # Signal peaks are seeded tight around the hot moment — grow them to a
+        # full ~25s clip on sentence boundaries so action moments aren't tiny.
         signal_cands = [
-            highlights._fit_to_segments(c, segments, clips_cfg["min_duration"], clips_cfg["max_duration"])
+            highlights._fit_to_segments(
+                c, segments, clips_cfg["min_duration"], clips_cfg["max_duration"], target_duration=25.0
+            )
             for c in signal_cands
         ]
         candidates += signal_cands
@@ -116,8 +119,11 @@ def find_clips(
     # for the strongest candidates; the rest keep a neutral 0.5.
     # Scale the (YOLO-expensive) reaction pass with candidate volume so long
     # streams don't leave most finalists on a neutral reaction score.
+    speech = {id(c): _speech_ratio(c, segments) for c in candidates}
     top_k = max(scoring_cfg.get("reaction_top_k", 8), min(24, len(candidates) // 3))
-    provisional = sorted(candidates, key=lambda c: _fuse(c, weights, reaction=0.5), reverse=True)
+    provisional = sorted(
+        candidates, key=lambda c: _fuse(c, weights, 0.5, speech[id(c)]), reverse=True
+    )
     n_reactions = min(top_k, len(provisional))
     print(f"  Scoring reactions for top {n_reactions} candidate(s)...")
     for ri, c in enumerate(provisional[:top_k], 1):
@@ -130,7 +136,13 @@ def find_clips(
         c.subscores["reaction"] = round(r * 100)
 
     for c in candidates:
-        c.score = round(100 * _fuse(c, weights, reaction=c.subscores["reaction"] / 100.0))
+        fused = round(100 * _fuse(c, weights, c.subscores["reaction"] / 100.0, speech[id(c)]))
+        # Trending/drama moments (a creator/celebrity named, beef, controversy)
+        # ride existing attention — give them a meaningful boost.
+        if c.trending:
+            fused = min(100, fused + 10)
+            c.subscores["trending"] = True
+        c.score = fused
 
     # ---- 4. dedup + threshold (reusing the proven logic) ------------------
     # max_clips_per_video == 0 means automatic: keep EVERY unique clip that
@@ -165,16 +177,42 @@ def find_clips(
     return kept, rejections
 
 
-def _fuse(c: ClipCandidate, weights: dict, reaction: float) -> float:
-    """Weighted multimodal score 0..1 from a candidate's subscores."""
+def _fuse(c: ClipCandidate, weights: dict, reaction: float, speech_ratio: float = 1.0) -> float:
+    """Weighted multimodal score 0..1 from a candidate's subscores.
+
+    Content-adaptive: for low-speech clips (workouts, action, b-roll) the
+    text/engagement weight — which the LLM scores near zero when nobody is
+    talking — is shifted onto the visual/audio/reaction channels. So a
+    silent-but-visually-strong moment (a big lift, a fast rep) scores on what
+    it actually shows instead of being capped by empty dialogue.
+    """
     s = c.subscores or {}
+    talky = max(0.0, min(1.0, speech_ratio))
+
+    w_text = weights["text"] * talky
+    w_eng = weights["engagement"] * talky
+    freed = (weights["text"] - w_text) + (weights["engagement"] - w_eng)
+    vis_total = weights["visual"] + weights["audio"] + weights["reaction"]
+    boost = 1.0 + (freed / vis_total if vis_total > 0 else 0.0)
+
     return (
-        weights["text"] * s.get("text", 50) / 100.0
-        + weights["visual"] * s.get("visual", 50) / 100.0
-        + weights["reaction"] * reaction
-        + weights["audio"] * s.get("audio", 50) / 100.0
-        + weights["engagement"] * s.get("engagement", 50) / 100.0
+        w_text * s.get("text", 50) / 100.0
+        + weights["visual"] * boost * s.get("visual", 50) / 100.0
+        + weights["reaction"] * boost * reaction
+        + weights["audio"] * boost * s.get("audio", 50) / 100.0
+        + w_eng * s.get("engagement", 50) / 100.0
     )
+
+
+def _speech_ratio(c: ClipCandidate, segments: list[Segment]) -> float:
+    """0 = silent, 1 = steady talking (~2 words/sec). Drives adaptive weights."""
+    words = sum(
+        len(sg.text.split())
+        for sg in segments
+        if sg.end > c.start and sg.start < c.end
+    )
+    dur = max(c.end - c.start, 1.0)
+    return min(1.0, (words / dur) / 2.0)
 
 
 # ---- signals ---------------------------------------------------------------
@@ -269,8 +307,9 @@ def _signal_peak_windows(
         if any(c.overlap_ratio(e) > 0.3 for e in existing):
             continue  # the transcript pool already found this moment
         result.append((start, end))
-    # Scale the window budget with video length: ~1 per 10 minutes, min 10.
-    return result[: max(10, combined.size // 600)]
+    # Scale the window budget with video length: ~1 per 5 minutes, min 12.
+    # Long streams (esp. low-speech workouts) need more action candidates.
+    return result[: max(12, combined.size // 300)]
 
 
 # ---- rerank ------------------------------------------------------------------
@@ -298,10 +337,13 @@ def _rerank(finalists: list[ClipCandidate], segments: list[Segment], llm: LLMBac
         print("  Rerank: unparseable LLM output, keeping fused order")
         return sorted(finalists, key=lambda c: c.score, reverse=True)
 
+    # Rerank only REORDERS and gives a small upward nudge to favorites — it
+    # must never lower a clip's score (that would retroactively push clips
+    # below the quality bar they already passed). Scores only go up, by 0-6.
     n = len(finalists)
     for rank, idx in enumerate(order):
-        bonus = (n - 1 - rank) / max(n - 1, 1)  # best=1.0 ... worst=0.0
-        finalists[idx].score = round(finalists[idx].score * 0.85 + bonus * 15)
+        bonus = round((n - 1 - rank) / max(n - 1, 1) * 6)  # top +6 ... worst +0
+        finalists[idx].score = min(100, finalists[idx].score + bonus)
         finalists[idx].subscores["rerank_position"] = rank + 1
     return sorted(finalists, key=lambda c: c.score, reverse=True)
 

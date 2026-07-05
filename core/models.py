@@ -53,6 +53,7 @@ class ClipCandidate:
     reason: str = ""
     source: str = "transcript"
     engagement: int | None = None
+    trending: bool = False  # names a creator/celebrity or discusses drama/trending
     subscores: dict | None = None
 
     @property

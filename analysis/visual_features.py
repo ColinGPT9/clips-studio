@@ -117,7 +117,10 @@ def reaction_for_window(
         ok, frame = cap.read()
         if not ok:
             continue
-        results = model.predict(frame, classes=[0], conf=0.4, verbose=False)
+        from video.tracker import _infer_lock
+
+        with _infer_lock:
+            results = model.predict(frame, classes=[0], conf=0.4, verbose=False)
         best_area = 0.0
         for r in results:
             for b in r.boxes:

@@ -33,33 +33,46 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import threading
+
 _model = None  # loaded once per process; YOLO init is expensive
-_frontal_cascade = None
-_profile_cascade = None
+# The single YOLO instance is shared across parallel render threads, and
+# ultralytics inference is NOT thread-safe on one model. This serializes the
+# GPU inference (the GPU runs one at a time anyway) while FFmpeg encodes —
+# which release the GIL in subprocesses — still overlap.
+_infer_lock = threading.Lock()
+# OpenCV CascadeClassifier.detectMultiScale mutates internal scale state and
+# crashes when one instance is used from two threads at once. Give each
+# render thread its own cascades (cheap to construct) — full parallelism, safe.
+_thread_local = threading.local()
 
 
 def _get_model(model_name: str):
     global _model
-    if _model is None:
-        import torch
-        from ultralytics import YOLO  # lazy: heavy import, pulls in torch
+    with _infer_lock:
+        if _model is None:
+            import torch
+            from ultralytics import YOLO  # lazy: heavy import, pulls in torch
 
-        _model = YOLO(model_name)
-        if torch.cuda.is_available():
-            _model.to("cuda")  # explicit: detection runs on the GPU
+            _model = YOLO(model_name)
+            if torch.cuda.is_available():
+                _model.to("cuda")  # explicit: detection runs on the GPU
     return _model
 
 
 def _get_cascades():
-    global _frontal_cascade, _profile_cascade
-    if _frontal_cascade is None:
-        _frontal_cascade = cv2.CascadeClassifier(
+    # Per-thread instances: detectMultiScale is not thread-safe on a shared one.
+    cascades = getattr(_thread_local, "cascades", None)
+    if cascades is None:
+        frontal = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
-        _profile_cascade = cv2.CascadeClassifier(
+        profile = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_profileface.xml"
         )
-    return _frontal_cascade, _profile_cascade
+        cascades = (frontal, profile)
+        _thread_local.cascades = cascades
+    return cascades
 
 
 def _face_box(frame, box) -> tuple[int, int, int, int] | None:
@@ -262,7 +275,8 @@ def compute_tracking(
 
 
 def _detect(model, frame, min_confidence) -> list[tuple]:
-    results = model.predict(frame, classes=[0], conf=min_confidence, verbose=False)
+    with _infer_lock:
+        results = model.predict(frame, classes=[0], conf=min_confidence, verbose=False)
     out = []
     for r in results:
         for b in r.boxes:
