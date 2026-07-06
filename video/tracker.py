@@ -137,6 +137,7 @@ class _Track:
     prev_mouth: object = None      # last mouth crop (np array) for motion diff
     face_rate: float = 0.0         # EMA of "was a face detected this sample?"
     face_offset: float = 0.0       # EMA of (face cx - body cx), normalized
+    face_w: float = 0.0            # EMA of face box width, normalized
     n_seen: int = 0
     centers: list = field(default_factory=list)   # normalized cx history
     areas: list = field(default_factory=list)     # area fraction history
@@ -153,6 +154,8 @@ def compute_tracking(
     min_confidence: float = 0.4,
     switch_margin: float = 1.5,    # challenger must dominate by this factor...
     switch_seconds: float = 1.5,   # ...for this long before the camera switches
+    fit_blur_fraction: float = 0.35,  # if this share of the clip has 2+ people too
+                                      # wide to crop, use the blurred-letterbox layout
 ) -> dict:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -171,6 +174,7 @@ def compute_tracking(
     path: list[tuple[float, float]] = []
     smoothed_x: float | None = None
     n_samples = 0
+    wide_frames = 0   # frames where the subject(s) can't fit a 9:16 crop
     frame_idx = 0
 
     while True:
@@ -207,6 +211,7 @@ def compute_tracking(
                 face_cx = ((fx1 + fx2) / 2) / w
                 tr.face_rate = 0.8 * tr.face_rate + 0.2
                 tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
+                tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
                 _update_speaking(tr, frame, face)
             else:
                 tr.face_rate = 0.8 * tr.face_rate  # detection getting unreliable
@@ -250,6 +255,23 @@ def compute_tracking(
             crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
             raw_x = _target_x(tracks, visible, active_id, crop_frac)
 
+            # ---- "too wide to crop" detection ----------------------------
+            # Sizable people this frame; if their combined horizontal span (or
+            # a single close-up subject's own width) exceeds the 9:16 window,
+            # cropping would cut someone off -> vote for the blurred letterbox.
+            sizable = [
+                tracks[tid].box
+                for tid in visible
+                if (tracks[tid].box[2] - tracks[tid].box[0])
+                * (tracks[tid].box[3] - tracks[tid].box[1])
+                / (w * h)
+                > 0.03
+            ]
+            if sizable:
+                span = (max(b[2] for b in sizable) - min(b[0] for b in sizable)) / w
+                if span > crop_frac * 1.05:
+                    wide_frames += 1
+
             # ---- smoothing chain: dead-zone -> EMA -> pan-speed clamp ----
             if smoothed_x is None:
                 smoothed_x = raw_x
@@ -257,11 +279,32 @@ def compute_tracking(
                 step = smoothing * (raw_x - smoothed_x)
                 max_step = max_pan_speed * dt
                 smoothed_x += float(np.clip(step, -max_step, max_step))
+
+            # ---- face-containment clamp ----------------------------------
+            # Guarantee the active subject's face stays inside the crop window
+            # even when it moves faster than the pan clamp — prevents the
+            # side-of-face cut-off. Overrides smoothing only when necessary.
+            if active_id in tracks and tracks[active_id].face_rate > 0.45:
+                atr = tracks[active_id]
+                x1, _, x2, _, _ = atr.box
+                face_cx = (x1 + x2) / 2 / w + atr.face_offset
+                half = min(atr.face_w / 2 + 0.02, crop_frac / 2)  # keep face + margin in window
+                lo, hi = face_cx - half, face_cx + half
+                if lo < smoothed_x - crop_frac / 2:
+                    smoothed_x = lo + crop_frac / 2
+                elif hi > smoothed_x + crop_frac / 2:
+                    smoothed_x = hi - crop_frac / 2
+
             path.append((t, float(smoothed_x)))
 
         frame_idx += 1
 
     cap.release()
+
+    # Blurred-letterbox layout when the subjects genuinely don't fit a 9:16
+    # crop for a meaningful part of the clip — better than cutting someone off.
+    if n_samples > 0 and wide_frames / n_samples > fit_blur_fraction:
+        return {"mode": "fit_blur"}
 
     layout = _detect_facecam_layout(tracks, active_id, n_samples)
     if layout is not None:

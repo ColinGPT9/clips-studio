@@ -1,16 +1,18 @@
 """Vertical 9:16 rendering from a tracking result.
 
-Two modes (see video/tracker.py for how they're chosen):
+Three modes (see video/tracker.py for how they're chosen):
 
-  track  - OpenCV follows the smoothed crop path frame by frame, then FFmpeg
-           scales to 1080x1920, burns captions, and muxes the audio back in.
-  split  - gameplay + facecam layout: webcam region stacked on top (35%),
-           centered gameplay crop below (65%). Both regions are static, so
-           this renders in ONE pure-FFmpeg pass with no per-frame Python.
+  track    - OpenCV follows the smoothed crop path frame by frame, then FFmpeg
+             scales to 1080x1920, burns captions, and muxes the audio back in.
+  split    - gameplay + facecam layout: webcam region stacked on top (35%),
+             centered gameplay crop below (65%). Both regions static, so this
+             renders in ONE pure-FFmpeg pass with no per-frame Python.
+  fit_blur - subjects too spread out to crop without cutting someone off: show
+             the full width fit into 1080 wide, centered, with the empty top
+             and bottom filled by a blurred, zoomed copy of the video.
 
-No-stretch guarantee in both modes: every crop window keeps a fixed aspect
-ratio and only ever gets uniformly scaled — distortion is impossible by
-construction.
+No-stretch guarantee in every mode: content keeps its aspect ratio and only
+ever gets uniformly scaled — distortion is impossible by construction.
 """
 
 import subprocess
@@ -36,7 +38,42 @@ def render_vertical(
     after scaling and before captions, so captions stay unfiltered."""
     if tracking["mode"] == "split":
         return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra)
+    if tracking["mode"] == "fit_blur":
+        return _render_fit_blur(clip_path, output_path, ass_path, vf_extra)
     return _render_tracked(clip_path, tracking["path"], output_path, ass_path, vf_extra)
+
+
+def _render_fit_blur(
+    clip_path: Path, output_path: Path, ass_path: Path | None, vf_extra: str = ""
+) -> Path:
+    """Full-width video centered on a blurred, zoomed background — nobody gets
+    cropped out. Pure FFmpeg: a blurred 1080x1920 cover fill, with the whole
+    frame scaled to 1080 wide overlaid centered.
+    """
+    # Background: scale to COVER 1080x1920, crop, heavy blur.
+    bg = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=24"
+    # Foreground: full frame fit to 1080 wide (even height), optional color grade.
+    fg = "scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
+    filters = f"[0:v]split=2[a][b];[a]{bg}[bg];[b]{fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
+    if ass_path is not None:
+        filters += f";[v]subtitles={ass_path.name}[v2]"
+        vout = "[v2]"
+    else:
+        vout = "[v]"
+
+    cmd = [
+        "ffmpeg", "-y",
+        *hwaccel_input_args(),
+        "-i", str(clip_path.resolve()),
+        "-filter_complex", filters,
+        "-map", vout, "-map", "0:a:0?",
+        *video_encoder_args(),
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output_path.resolve()),
+    ]
+    _run_ffmpeg(cmd, ass_path)
+    return output_path
 
 
 # ---- follow-the-subject mode -------------------------------------------------
