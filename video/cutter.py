@@ -28,6 +28,11 @@ def cut_clip(
         "-ss", f"{candidate.start:.2f}",   # before -i: fast seek
         "-i", str(source.resolve()),
         "-t", f"{candidate.duration:.2f}",
+        # Force CONSTANT frame rate. Twitch/Kick VODs are often variable frame
+        # rate; the tracked crop rewrites video at a constant fps in OpenCV, so
+        # without this the video duration drifts from the audio -> A/V desync.
+        "-vsync", "cfr",
+        "-af", "aresample=async=1",        # keep audio aligned to the new timeline
         *video_encoder_args(),  # NVENC when available, libx264 otherwise
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",

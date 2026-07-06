@@ -273,6 +273,8 @@ def compute_tracking(
                     / (w * h)
                     > 0.06
                     and tracks[tid].dominance >= 0.5 * active_dom  # a real co-subject
+                    and tracks[tid].box[4] >= 0.55  # confidently a person, not a
+                    # low-confidence false positive off a motorcycle/object
                 ]
                 if subjects:
                     x_left = min(b[0] for b in subjects) / w
