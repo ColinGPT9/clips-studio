@@ -256,25 +256,29 @@ def compute_tracking(
             raw_x = _target_x(tracks, visible, active_id, crop_frac)
 
             # ---- "subject too wide to crop" detection --------------------
-            # Record the horizontal span needed to contain the prominent
-            # subject(s) this frame — one person or several. If that span
-            # exceeds a 9:16 window the body would be cut (a person lying down
-            # is wide-and-short; two people are spread out). We keep the span
-            # so the letterbox crops TIGHTLY to the subjects, not the whole
-            # frame. A normal standing person's span fits, so it stays a crop.
-            prominent = [
-                tracks[tid].box
-                for tid in visible
-                if (tracks[tid].box[2] - tracks[tid].box[0])
-                * (tracks[tid].box[3] - tracks[tid].box[1])
-                / (w * h)
-                > 0.06  # meaningful on-screen size, not a background bystander
-            ]
-            if prominent:
-                x_left = min(b[0] for b in prominent) / w
-                x_right = max(b[2] for b in prominent) / w
-                if (x_right - x_left) > crop_frac * 1.25:  # won't fit 9:16 with margin
-                    wide_spans.append((x_left, x_right))
+            # Record the horizontal span needed to contain the MAIN subject(s)
+            # this frame: the tracked person plus any genuine co-star (similar
+            # dominance), NOT minor/background detections. This keeps the crop
+            # tight to who matters — a lone person in a kitchen crops to them,
+            # never stretching sideways to include the fridge or a bystander.
+            # Letterbox only kicks in when that tight span still won't fit a
+            # 9:16 window (someone lying down, or two people spread apart).
+            if active_id in tracks:
+                active_dom = tracks[active_id].dominance
+                subjects = [
+                    tracks[tid].box
+                    for tid in visible
+                    if (tracks[tid].box[2] - tracks[tid].box[0])
+                    * (tracks[tid].box[3] - tracks[tid].box[1])
+                    / (w * h)
+                    > 0.06
+                    and tracks[tid].dominance >= 0.5 * active_dom  # a real co-subject
+                ]
+                if subjects:
+                    x_left = min(b[0] for b in subjects) / w
+                    x_right = max(b[2] for b in subjects) / w
+                    if (x_right - x_left) > crop_frac * 1.3:  # won't fit 9:16
+                        wide_spans.append((x_left, x_right))
 
             # ---- smoothing chain: dead-zone -> EMA -> pan-speed clamp ----
             if smoothed_x is None:
