@@ -39,21 +39,32 @@ def render_vertical(
     if tracking["mode"] == "split":
         return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra)
     if tracking["mode"] == "fit_blur":
-        return _render_fit_blur(clip_path, output_path, ass_path, vf_extra)
+        return _render_fit_blur(clip_path, tracking.get("span"), output_path, ass_path, vf_extra)
     return _render_tracked(clip_path, tracking["path"], output_path, ass_path, vf_extra)
 
 
 def _render_fit_blur(
-    clip_path: Path, output_path: Path, ass_path: Path | None, vf_extra: str = ""
+    clip_path: Path,
+    span: tuple[float, float] | None,
+    output_path: Path,
+    ass_path: Path | None,
+    vf_extra: str = "",
 ) -> Path:
-    """Full-width video centered on a blurred, zoomed background — nobody gets
-    cropped out. Pure FFmpeg: a blurred 1080x1920 cover fill, with the whole
-    frame scaled to 1080 wide overlaid centered.
+    """The subject region (span, normalized x_left..x_right) shown centered and
+    as large as possible on a blurred, zoomed background — nobody cropped out.
+    The tighter the span, the bigger the center video and the smaller the bars.
+    Pure FFmpeg.
     """
-    # Background: scale to COVER 1080x1920, crop, heavy blur.
-    bg = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=24"
-    # Foreground: full frame fit to 1080 wide (even height), optional color grade.
-    fg = "scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
+    # Crop the source to the subject span (full height), keeping it even-width.
+    x0, x1 = (span or (0.0, 1.0))
+    x0 = max(0.0, min(0.9, x0))
+    x1 = max(x0 + 0.1, min(1.0, x1))
+    crop_region = f"crop=iw*{x1 - x0:.4f}:ih:iw*{x0:.4f}:0"
+
+    # Background: the same crop, blown up to COVER 1080x1920, heavily blurred.
+    bg = f"{crop_region},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=24"
+    # Foreground: the crop fit to 1080 wide (even height), optional color grade.
+    fg = f"{crop_region},scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
     filters = f"[0:v]split=2[a][b];[a]{bg}[bg];[b]{fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
     if ass_path is not None:
         filters += f";[v]subtitles={ass_path.name}[v2]"

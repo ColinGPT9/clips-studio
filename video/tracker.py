@@ -174,7 +174,7 @@ def compute_tracking(
     path: list[tuple[float, float]] = []
     smoothed_x: float | None = None
     n_samples = 0
-    wide_frames = 0   # frames where the subject(s) can't fit a 9:16 crop
+    wide_spans: list[tuple[float, float]] = []  # (x_left, x_right) of 2+ people too wide to crop
     frame_idx = 0
 
     while True:
@@ -255,22 +255,26 @@ def compute_tracking(
             crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
             raw_x = _target_x(tracks, visible, active_id, crop_frac)
 
-            # ---- "too wide to crop" detection ----------------------------
-            # Sizable people this frame; if their combined horizontal span (or
-            # a single close-up subject's own width) exceeds the 9:16 window,
-            # cropping would cut someone off -> vote for the blurred letterbox.
-            sizable = [
+            # ---- "subject too wide to crop" detection --------------------
+            # Record the horizontal span needed to contain the prominent
+            # subject(s) this frame — one person or several. If that span
+            # exceeds a 9:16 window the body would be cut (a person lying down
+            # is wide-and-short; two people are spread out). We keep the span
+            # so the letterbox crops TIGHTLY to the subjects, not the whole
+            # frame. A normal standing person's span fits, so it stays a crop.
+            prominent = [
                 tracks[tid].box
                 for tid in visible
                 if (tracks[tid].box[2] - tracks[tid].box[0])
                 * (tracks[tid].box[3] - tracks[tid].box[1])
                 / (w * h)
-                > 0.03
+                > 0.06  # meaningful on-screen size, not a background bystander
             ]
-            if sizable:
-                span = (max(b[2] for b in sizable) - min(b[0] for b in sizable)) / w
-                if span > crop_frac * 1.05:
-                    wide_frames += 1
+            if prominent:
+                x_left = min(b[0] for b in prominent) / w
+                x_right = max(b[2] for b in prominent) / w
+                if (x_right - x_left) > crop_frac * 1.25:  # won't fit 9:16 with margin
+                    wide_spans.append((x_left, x_right))
 
             # ---- smoothing chain: dead-zone -> EMA -> pan-speed clamp ----
             if smoothed_x is None:
@@ -301,10 +305,16 @@ def compute_tracking(
 
     cap.release()
 
-    # Blurred-letterbox layout when the subjects genuinely don't fit a 9:16
-    # crop for a meaningful part of the clip — better than cutting someone off.
-    if n_samples > 0 and wide_frames / n_samples > fit_blur_fraction:
-        return {"mode": "fit_blur"}
+    # Blurred-letterbox only when the subject genuinely won't fit a 9:16 crop
+    # for a meaningful part of the clip. Crop TIGHTLY to the region containing
+    # the subject(s) — a robust padded span — so the centered video stays as
+    # large as possible instead of the whole frame shrunk down.
+    if n_samples > 0 and len(wide_spans) / n_samples > fit_blur_fraction:
+        lefts = sorted(s[0] for s in wide_spans)
+        rights = sorted(s[1] for s in wide_spans)
+        x_left = max(0.0, lefts[len(lefts) // 10] - 0.03)         # ~10th pct, padded
+        x_right = min(1.0, rights[len(rights) - 1 - len(rights) // 10] + 0.03)  # ~90th pct
+        return {"mode": "fit_blur", "span": (round(x_left, 4), round(x_right, 4))}
 
     layout = _detect_facecam_layout(tracks, active_id, n_samples)
     if layout is not None:
