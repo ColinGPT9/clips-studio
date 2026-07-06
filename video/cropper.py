@@ -39,32 +39,37 @@ def render_vertical(
     if tracking["mode"] == "split":
         return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra)
     if tracking["mode"] == "fit_blur":
-        return _render_fit_blur(clip_path, tracking.get("span"), output_path, ass_path, vf_extra)
+        return _render_fit_blur(clip_path, tracking.get("region"), output_path, ass_path, vf_extra)
     return _render_tracked(clip_path, tracking["path"], output_path, ass_path, vf_extra)
 
 
 def _render_fit_blur(
     clip_path: Path,
-    span: tuple[float, float] | None,
+    region: tuple[float, float, float, float] | None,
     output_path: Path,
     ass_path: Path | None,
     vf_extra: str = "",
 ) -> Path:
-    """The subject region (span, normalized x_left..x_right) shown centered and
+    """The subject's bounding region (normalized x0,y0,x1,y1) shown centered and
     as large as possible on a blurred, zoomed background — nobody cropped out.
-    The tighter the span, the bigger the center video and the smaller the bars.
-    Pure FFmpeg.
+    Cropping to the subject's box (not the full height) keeps the person large
+    and minimizes dead space. Pure FFmpeg.
     """
-    # Crop the source to the subject span (full height), keeping it even-width.
-    x0, x1 = (span or (0.0, 1.0))
-    x0 = max(0.0, min(0.9, x0))
-    x1 = max(x0 + 0.1, min(1.0, x1))
-    crop_region = f"crop=iw*{x1 - x0:.4f}:ih:iw*{x0:.4f}:0"
+    x0, y0, x1, y1 = (region or (0.0, 0.0, 1.0, 1.0))
+    x0 = max(0.0, min(0.85, x0))
+    x1 = max(x0 + 0.15, min(1.0, x1))
+    y0 = max(0.0, min(0.85, y0))
+    y1 = max(y0 + 0.15, min(1.0, y1))
+    rw, rh, rx, ry = x1 - x0, y1 - y0, x0, y0
+    crop_region = f"crop=iw*{rw:.4f}:ih*{rh:.4f}:iw*{rx:.4f}:ih*{ry:.4f}"
 
     # Background: the same crop, blown up to COVER 1080x1920, heavily blurred.
     bg = f"{crop_region},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=24"
-    # Foreground: the crop fit to 1080 wide (even height), optional color grade.
-    fg = f"{crop_region},scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
+    # Foreground: the crop fit inside 1080x1920 (as large as possible, no cut).
+    fg = (
+        f"{crop_region},scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos"
+        + (f",{vf_extra}" if vf_extra else "")
+    )
     filters = f"[0:v]split=2[a][b];[a]{bg}[bg];[b]{fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
     if ass_path is not None:
         filters += f";[v]subtitles={ass_path.name}[v2]"

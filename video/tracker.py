@@ -174,7 +174,8 @@ def compute_tracking(
     path: list[tuple[float, float]] = []
     smoothed_x: float | None = None
     n_samples = 0
-    wide_spans: list[tuple[float, float]] = []  # (x_left, x_right) of 2+ people too wide to crop
+    wide_boxes: list[tuple[float, float, float, float]] = []  # subject bbox when a
+    #                                             9:16 crop can't hold it (normalized)
     frame_idx = 0
 
     while True:
@@ -255,14 +256,16 @@ def compute_tracking(
             crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
             raw_x = _target_x(tracks, visible, active_id, crop_frac)
 
-            # ---- "subject too wide to crop" detection --------------------
-            # Record the horizontal span needed to contain the MAIN subject(s)
-            # this frame: the tracked person plus any genuine co-star (similar
-            # dominance), NOT minor/background detections. This keeps the crop
-            # tight to who matters — a lone person in a kitchen crops to them,
-            # never stretching sideways to include the fridge or a bystander.
-            # Letterbox only kicks in when that tight span still won't fit a
-            # 9:16 window (someone lying down, or two people spread apart).
+            # ---- when is a plain 9:16 crop NOT enough? -------------------
+            # A single upright person is ALWAYS fine as a normal crop — we just
+            # center on their face/torso, even if their shoulders are wider
+            # than the narrow 9:16 window (that's normal for a talking-head
+            # Short). The letterbox is only for cases a vertical crop genuinely
+            # can't hold:
+            #   * TWO+ real people spread wider than the crop, or
+            #   * a SINGLE person lying down (box wider than tall).
+            # Minor/background/low-confidence detections are ignored so a
+            # motorcycle or a bystander never forces it.
             if active_id in tracks:
                 active_dom = tracks[active_id].dominance
                 subjects = [
@@ -273,14 +276,29 @@ def compute_tracking(
                     / (w * h)
                     > 0.06
                     and tracks[tid].dominance >= 0.5 * active_dom  # a real co-subject
-                    and tracks[tid].box[4] >= 0.55  # confidently a person, not a
-                    # low-confidence false positive off a motorcycle/object
+                    and tracks[tid].box[4] >= 0.55  # confidently a person
                 ]
-                if subjects:
+                is_wide = False
+                if len(subjects) >= 2:
                     x_left = min(b[0] for b in subjects) / w
                     x_right = max(b[2] for b in subjects) / w
-                    if (x_right - x_left) > crop_frac * 1.3:  # won't fit 9:16
-                        wide_spans.append((x_left, x_right))
+                    is_wide = (x_right - x_left) > crop_frac * 1.3  # can't fit both
+                elif len(subjects) == 1:
+                    b = subjects[0]
+                    bw, bh = b[2] - b[0], b[3] - b[1]
+                    # Letterbox a SINGLE person only when they are clearly lying
+                    # FLAT (box 2x+ wider than tall) — a genuinely horizontal
+                    # head-to-toe pose a vertical crop would cut. Seated,
+                    # reclined, arms-out, or close-up people (box near square or
+                    # taller) are always a normal crop centered on the face.
+                    is_wide = bw > bh * 2.0 and bw / w > crop_frac * 1.4
+                if is_wide:
+                    wide_boxes.append((
+                        min(b[0] for b in subjects) / w,
+                        min(b[1] for b in subjects) / h,
+                        max(b[2] for b in subjects) / w,
+                        max(b[3] for b in subjects) / h,
+                    ))
 
             # ---- smoothing chain: dead-zone -> EMA -> pan-speed clamp ----
             if smoothed_x is None:
@@ -312,15 +330,23 @@ def compute_tracking(
     cap.release()
 
     # Blurred-letterbox only when the subject genuinely won't fit a 9:16 crop
-    # for a meaningful part of the clip. Crop TIGHTLY to the region containing
-    # the subject(s) — a robust padded span — so the centered video stays as
-    # large as possible instead of the whole frame shrunk down.
-    if n_samples > 0 and len(wide_spans) / n_samples > fit_blur_fraction:
-        lefts = sorted(s[0] for s in wide_spans)
-        rights = sorted(s[1] for s in wide_spans)
-        x_left = max(0.0, lefts[len(lefts) // 10] - 0.03)         # ~10th pct, padded
-        x_right = min(1.0, rights[len(rights) - 1 - len(rights) // 10] + 0.03)  # ~90th pct
-        return {"mode": "fit_blur", "span": (round(x_left, 4), round(x_right, 4))}
+    # for a meaningful part of the clip. Crop TIGHTLY to the subject's bounding
+    # box (both axes, padded) so they fill the frame and there's minimal dead
+    # space — not the full frame height with the person small in the middle.
+    if n_samples > 0 and len(wide_boxes) / n_samples > fit_blur_fraction:
+        def _pct(vals: list[float], p: float) -> float:
+            vals = sorted(vals)
+            return vals[min(len(vals) - 1, max(0, int(p * len(vals))))]
+
+        pad_x, pad_y = 0.04, 0.06
+        x0 = max(0.0, _pct([b[0] for b in wide_boxes], 0.10) - pad_x)
+        y0 = max(0.0, _pct([b[1] for b in wide_boxes], 0.10) - pad_y)
+        x1 = min(1.0, _pct([b[2] for b in wide_boxes], 0.90) + pad_x)
+        y1 = min(1.0, _pct([b[3] for b in wide_boxes], 0.90) + pad_y)
+        return {
+            "mode": "fit_blur",
+            "region": (round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)),
+        }
 
     layout = _detect_facecam_layout(tracks, active_id, n_samples)
     if layout is not None:
