@@ -72,11 +72,14 @@ video:
   encoder: auto          # auto = first working GPU encoder (NVIDIA nvenc /
                          # AMD amf / Intel qsv), else CPU. Or force one:
                          # "nvenc" / "amf" / "qsv" / "cpu"
-  parallel_renders: 2    # clips rendered at once (one's GPU tracking overlaps
-                         # another's NVENC encode). 3-4 if you have spare VRAM.
+  parallel_renders: 3    # clips rendered at once (one's GPU tracking overlaps
+                         # another's NVENC encode). Sized for ~6 CPU cores /
+                         # 16GB RAM; raise only with more RAM + spare VRAM.
 
 tracking:
-  detector: yolov8n.pt   # auto-downloaded by ultralytics on first run
+  detector: yolov8n-pose.pt  # pose model: head keypoints (nose/eyes/ears) give
+                             # head-priority framing even when no face is
+                             # visible. Auto-downloaded by ultralytics.
   sample_fps: 8          # detection sampling rate (higher = tighter tracking)
 
 upload:

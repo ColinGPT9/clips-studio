@@ -130,7 +130,7 @@ def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> No
 
 @dataclass
 class _Track:
-    box: tuple                     # last (x1, y1, x2, y2) in pixels
+    box: tuple                     # last (x1, y1, x2, y2, conf, head) in pixels
     last_t: float
     dominance: float = 0.0         # EMA of confidence x area
     speak: float = 0.0             # EMA of mouth-region motion (talking proxy)
@@ -138,6 +138,8 @@ class _Track:
     face_rate: float = 0.0         # EMA of "was a face detected this sample?"
     face_offset: float = 0.0       # EMA of (face cx - body cx), normalized
     face_w: float = 0.0            # EMA of face box width, normalized
+    head_rate: float = 0.0         # EMA of "pose head keypoints seen this sample?"
+    head_offset: float = 0.0       # EMA of (head cx - body cx), normalized
     n_seen: int = 0
     centers: list = field(default_factory=list)   # normalized cx history
     areas: list = field(default_factory=list)     # area fraction history
@@ -146,7 +148,7 @@ class _Track:
 
 def compute_tracking(
     clip_path: Path,
-    model_name: str = "yolov8n.pt",
+    model_name: str = "yolov8n-pose.pt",
     sample_fps: float = 8.0,
     smoothing: float = 0.45,
     dead_zone: float = 0.03,
@@ -196,30 +198,45 @@ def compute_tracking(
         visible = _assign(tracks, _detect(model, frame, min_confidence), t)
         for tid in visible:
             tr = tracks[tid]
-            x1, y1, x2, y2, conf = tr.box
+            x1, y1, x2, y2, conf = tr.box[:5]
             area_frac = (x2 - x1) * (y2 - y1) / (w * h)
             tr.dominance = 0.7 * tr.dominance + 0.3 * (conf * area_frac)
             tr.n_seen += 1
-            # Anti-jitter center: the body box is always stable; the face
-            # refines it only as a SMOOTHED OFFSET from the body center, and
-            # only while faces are detected reliably. When the face is
-            # side-on/hidden and detection flickers, the offset just fades
-            # toward pure body tracking instead of snapping back and forth.
+            # Anti-jitter center: the body box is always stable; the HEAD
+            # refines it as a SMOOTHED OFFSET from the body center. The head
+            # position comes from pose keypoints (nose/eyes/ears) — these
+            # work even when the face is wet, tilted, turned, or too small
+            # for the face detector (pool/beach/action shots), so the crop
+            # keeps priority on the head over the body. The Haar face box is
+            # the fallback signal and still drives the talking detector.
             body_cx = ((x1 + x2) / 2) / w
+            head = tr.box[5] if len(tr.box) > 5 else None
+            if head is not None:
+                head_cx, head_w = head
+                tr.head_rate = 0.8 * tr.head_rate + 0.2
+                tr.head_offset = 0.7 * tr.head_offset + 0.3 * (head_cx / w - body_cx)
+                tr.face_w = 0.7 * tr.face_w + 0.3 * (head_w / w)
+            else:
+                tr.head_rate = 0.8 * tr.head_rate
             face = _face_box(frame, tr.box)
             if face is not None:
                 fx1, fy1, fx2, fy2 = face
                 face_cx = ((fx1 + fx2) / 2) / w
                 tr.face_rate = 0.8 * tr.face_rate + 0.2
                 tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
-                tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
+                if head is None:
+                    tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
                 _update_speaking(tr, frame, face)
             else:
                 tr.face_rate = 0.8 * tr.face_rate  # detection getting unreliable
                 tr.speak *= 0.9  # no visible face: talking evidence fades
-            # Reliable face (seen in most recent samples) -> body + offset;
-            # unreliable -> plain body center, rock steady.
-            refine = tr.face_offset if tr.face_rate > 0.45 else 0.0
+            # Framing priority: pose head keypoints > face box > body center.
+            if tr.head_rate > 0.3:
+                refine = tr.head_offset
+            elif tr.face_rate > 0.45:
+                refine = tr.face_offset
+            else:
+                refine = 0.0
             tr.centers.append(body_cx + refine)
             tr.areas.append(area_frac)
             tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
@@ -308,14 +325,17 @@ def compute_tracking(
                 max_step = max_pan_speed * dt
                 smoothed_x += float(np.clip(step, -max_step, max_step))
 
-            # ---- face-containment clamp ----------------------------------
-            # Guarantee the active subject's face stays inside the crop window
+            # ---- head-containment clamp ----------------------------------
+            # Guarantee the active subject's head stays inside the crop window
             # even when it moves faster than the pan clamp — prevents the
             # side-of-face cut-off. Overrides smoothing only when necessary.
-            if active_id in tracks and tracks[active_id].face_rate > 0.45:
+            if active_id in tracks and (
+                tracks[active_id].head_rate > 0.3 or tracks[active_id].face_rate > 0.45
+            ):
                 atr = tracks[active_id]
-                x1, _, x2, _, _ = atr.box
-                face_cx = (x1 + x2) / 2 / w + atr.face_offset
+                x1, _, x2, _ = atr.box[:4]
+                off = atr.head_offset if atr.head_rate > 0.3 else atr.face_offset
+                face_cx = (x1 + x2) / 2 / w + off
                 half = min(atr.face_w / 2 + 0.02, crop_frac / 2)  # keep face + margin in window
                 lo, hi = face_cx - half, face_cx + half
                 if lo < smoothed_x - crop_frac / 2:
@@ -360,13 +380,29 @@ def compute_tracking(
 
 
 def _detect(model, frame, min_confidence) -> list[tuple]:
+    """Person detections as (x1, y1, x2, y2, conf, head). With a pose model,
+    head is (head_cx_px, head_w_px) from the nose/eye/ear keypoints — the most
+    reliable "where is the head" signal there is (needs no visible face). With
+    a plain detection model, head is None and the Haar face box fills in."""
     with _infer_lock:
         results = model.predict(frame, classes=[0], conf=min_confidence, verbose=False)
     out = []
     for r in results:
-        for b in r.boxes:
+        kp = getattr(r, "keypoints", None)
+        kxy = kp.xy.tolist() if kp is not None and kp.xy is not None else None
+        kconf = kp.conf.tolist() if kp is not None and kp.conf is not None else None
+        for i, b in enumerate(r.boxes):
             x1, y1, x2, y2 = b.xyxy[0].tolist()
-            out.append((x1, y1, x2, y2, float(b.conf[0])))
+            head = None
+            if kxy is not None and kconf is not None and i < len(kxy):
+                # COCO keypoints 0-4: nose, eyes, ears.
+                pts = [kxy[i][j][0] for j in range(5) if kconf[i][j] > 0.5]
+                if pts:
+                    head_cx = sum(pts) / len(pts)
+                    spread = max(pts) - min(pts)
+                    head_w = max(spread * 1.6, (y2 - y1) * 0.12)
+                    head = (head_cx, head_w)
+            out.append((x1, y1, x2, y2, float(b.conf[0]), head))
     return out
 
 
