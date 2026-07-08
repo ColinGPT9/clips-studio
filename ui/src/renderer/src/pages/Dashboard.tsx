@@ -14,6 +14,7 @@ function describeEvent(e: StudioEvent): string {
   if (e.type === 'progress') {
     if (e.stage === 'render') return `Rendering clip ${e.clip}/${e.total}`
     if (e.stage === 'done') return `Finished — ${e.clips} clip(s) created`
+    if (e.stage === 'prefetch') return 'Downloading the next queued video in the background'
     return `Stage: ${e.stage}${e.title ? ` — ${e.title}` : ''}`
   }
   if (e.type === 'job') return `Job ${e.job_id}: ${e.status}${e.error ? ` (${e.error})` : ''}`

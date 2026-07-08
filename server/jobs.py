@@ -18,6 +18,7 @@ from pathlib import Path
 
 from core import cancel, progress
 from core.cancel import CancelledError
+from core.prefetch import Prefetcher
 from core.state import StateDB
 from server.events import broadcaster
 
@@ -27,6 +28,9 @@ class Worker(threading.Thread):
         super().__init__(daemon=True, name="pipeline-worker")
         self.config = config
         self.db_path = Path(config["paths"]["data_dir"]) / "state.db"
+        self.prefetch = Prefetcher(
+            self.db_path, Path(config["paths"]["data_dir"]) / "downloads"
+        )
         self._wake = threading.Event()
         self._stop = threading.Event()
 
@@ -53,7 +57,15 @@ class Worker(threading.Thread):
         # out to UI clients.
         current_job_id: list[int | None] = [None]
         progress.set_handler(
-            lambda event: broadcaster.publish({"type": "progress", "job_id": current_job_id[0], **event})
+            lambda event: broadcaster.publish(
+                {
+                    "type": "progress",
+                    # Prefetch downloads belong to a FUTURE job, not the one
+                    # running now — never attribute them to it.
+                    "job_id": None if event.get("prefetch") else current_job_id[0],
+                    **event,
+                }
+            )
         )
 
         while not self._stop.is_set():
@@ -71,6 +83,11 @@ class Worker(threading.Thread):
 
                 _, vid = identify(payload["url"])
                 cancel.set_active(vid)  # mark which video is genuinely running
+                # Never race a half-written prefetch of THIS video; once it's
+                # settled, kick off the download of the NEXT queued video so
+                # it overlaps this job's GPU work.
+                self.prefetch.wait_for(vid)
+            self.prefetch.maybe_start(db)
             try:
                 if job["type"] == "process":
                     import copy
