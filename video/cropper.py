@@ -53,10 +53,10 @@ def _render_fit_blur(
     ass_path: Path | None,
     vf_extra: str = "",
 ) -> Path:
-    """The subject's bounding region (normalized x0,y0,x1,y1) shown centered and
-    as large as possible on a blurred, zoomed background — nobody cropped out.
-    Cropping to the subject's box (not the full height) keeps the person large
-    and minimizes dead space. Pure FFmpeg.
+    """The subject's bounding region (normalized x0,y0,x1,y1) shown at FULL
+    output width on a heavily blurred backdrop — blurred bands land on the top
+    and bottom only, never at the sides, and nobody is cropped out. Nothing is
+    stretched: the region keeps its own aspect ratio. Pure FFmpeg.
     """
     x0, y0, x1, y1 = (region or (0.0, 0.0, 1.0, 1.0))
     x0 = max(0.0, min(0.85, x0))
@@ -67,13 +67,14 @@ def _render_fit_blur(
     crop_region = f"crop=iw*{rw:.4f}:ih*{rh:.4f}:iw*{rx:.4f}:ih*{ry:.4f}"
 
     # Background: the same crop, blown up to COVER 1080x1920, heavily blurred.
-    bg = f"{crop_region},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=24"
-    # Foreground: the crop fit inside 1080x1920 (as large as possible, no cut).
+    bg = f"{crop_region},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=40"
+    # Foreground: full width; height follows the region's own aspect ratio
+    # (capped at the screen so an unusually tall region can never overflow).
     fg = (
-        f"{crop_region},scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos"
+        f"{crop_region},scale=1080:-2:flags=lanczos,crop=w=1080:h=min(ih\\,1920)"
         + (f",{vf_extra}" if vf_extra else "")
     )
-    filters = f"[0:v]split=2[a][b];[a]{bg}[bg];[b]{fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
+    filters = f"[0:v]split=2[a][b];[a]{bg}[bg];[b]{fg}[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1[v]"
     if ass_path is not None:
         filters += f";[v]subtitles={ass_path.name}[v2]"
         vout = "[v2]"
@@ -118,7 +119,13 @@ def _render_tracked(
     src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    crop_w = int(src_h * 9 / 16)
+    # Face in the top quarter of a full-height crop would sit under the
+    # TikTok/Instagram tab bar. For those clips, crop a WIDER 4:5 window
+    # instead: shown at full output width it's shorter than the screen, so it
+    # can start below the tab area — blurred bands land on top/bottom ONLY
+    # (never at the sides), and the wider view shows more of the scene.
+    top_safe = face_y is not None and face_y < 0.25
+    crop_w = int(src_h * (4 / 5 if top_safe else 9 / 16))
     crop_w -= crop_w % 2  # even width required by H.264
     crop_w = min(crop_w, src_w)
 
@@ -146,24 +153,19 @@ def _render_tracked(
     cap.release()
     writer.release()
 
-    # Platform-safe framing: TikTok/Instagram draw their tab bar over the top
-    # ~9% of the screen. When the subject's face sits in the top quarter of
-    # the crop, a full-height fit would bury it under that UI — so instead the
-    # video is scaled down (aspect kept, never stretched) onto a blurred
-    # backdrop, starting just below the tab area. That pushes the face toward
-    # the center of the screen — as close as the footage allows without
-    # cutting anyone off. Faces already low enough render full-height as usual.
-    if face_y is not None and face_y < 0.25:
+    # Platform-safe letterbox: the wider 4:5 crop at FULL output width (1080)
+    # is shorter than the screen, so it starts just below the tab area with
+    # heavily blurred bands above and below it — never at the sides — and the
+    # face lands toward the center of the screen. Nothing is stretched.
+    if top_safe:
         top = int(0.115 * 1920)            # content starts under the FYP tabs
-        fg_h = 1920 - top - int(0.035 * 1920)  # small breathing room at bottom
-        fg_h -= fg_h % 2
-        fg = f"scale=-2:{fg_h}:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
+        fg = "scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
         filters = (
             f"[0:v]split=2[a][b];"
             f"[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"gblur=sigma=24[bg];"
+            f"gblur=sigma=40[bg];"
             f"[b]{fg}[fg];"
-            f"[bg][fg]overlay=(W-w)/2:{top},setsar=1[v]"
+            f"[bg][fg]overlay=0:{top},setsar=1[v]"
         )
         if ass_path is not None:
             filters += f";[v]subtitles={ass_path.name}[v]"

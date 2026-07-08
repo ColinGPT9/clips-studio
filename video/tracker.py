@@ -157,8 +157,8 @@ def compute_tracking(
     min_confidence: float = 0.4,
     switch_margin: float = 1.5,    # challenger must dominate by this factor...
     switch_seconds: float = 1.5,   # ...for this long before the camera switches
-    fit_blur_fraction: float = 0.35,  # if this share of the clip has 2+ people too
-                                      # wide to crop, use the blurred-letterbox layout
+    fit_blur_fraction: float = 0.5,   # letterbox only when MOST of the clip
+                                      # genuinely can't fit a 9:16 crop
 ) -> dict:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -291,12 +291,22 @@ def compute_tracking(
                 subjects = [
                     tracks[tid].box
                     for tid in visible
+                    # A co-subject must be a NEAR-EQUAL of the main subject —
+                    # prominent, persistent through the clip, and confidently
+                    # a person. Swimmers/bystanders drifting through a pool
+                    # shot must never drag a centered creator into letterbox.
                     if (tracks[tid].box[2] - tracks[tid].box[0])
                     * (tracks[tid].box[3] - tracks[tid].box[1])
                     / (w * h)
                     > 0.06
-                    and tracks[tid].dominance >= 0.5 * active_dom  # a real co-subject
-                    and tracks[tid].box[4] >= 0.55  # confidently a person
+                    and (
+                        tid == active_id
+                        or (
+                            tracks[tid].dominance >= 0.75 * active_dom
+                            and tracks[tid].n_seen >= max(8, 0.3 * n_samples)
+                        )
+                    )
+                    and tracks[tid].box[4] >= 0.6  # confidently a person
                 ]
                 is_wide = False
                 if len(subjects) >= 2:
