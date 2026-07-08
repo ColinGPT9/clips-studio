@@ -55,6 +55,10 @@ scoring:
     audio: 0.20
     engagement: 0.10
   signal_peak_percentile: 85   # how unusual a moment must be to become a candidate
+  creator_context_max: 6       # max score bonus for creator-knowledge callbacks
+                               # (ongoing storylines, catchphrases, collaborators).
+                               # Additive-only and capped so learned knowledge can
+                               # never DEGRADE scores. 0 disables entirely.
   rerank_pool: 8               # finalists compared head-to-head by the LLM
   reaction_top_k: 8            # candidates that get the (slower) YOLO reaction pass
 

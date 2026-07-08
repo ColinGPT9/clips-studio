@@ -38,6 +38,7 @@ def find_clips(
     llm: LLMBackend,
     config: dict,
     signals: tuple[dict, dict] | None = None,
+    creator_context=None,  # creator.retrieval.CreatorContext | None
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     clips_cfg = config["clips"]
     analysis_cfg = config["analysis"]
@@ -142,6 +143,8 @@ def find_clips(
         )
         c.subscores["reaction"] = round(r * 100)
 
+    ctx_cap = int(scoring_cfg.get("creator_context_max", 6))
+    n_context = 0
     for c in candidates:
         fused = round(100 * _fuse(c, weights, c.subscores["reaction"] / 100.0, speech[id(c)]))
         # Trending/drama moments (a creator/celebrity named, beef, controversy)
@@ -149,7 +152,25 @@ def find_clips(
         if c.trending:
             fused = min(100, fused + 10)
             c.subscores["trending"] = True
+        # Creator-context callback (open storyline, catchphrase, collaborator):
+        # a small ADDITIVE-ONLY nudge, hard-capped, from deterministic matching
+        # against learned knowledge. Zero when nothing is known — cannot
+        # degrade scoring for creators without (or with bad) knowledge.
+        if creator_context is not None:
+            from creator.retrieval import context_bonus
+
+            clip_text = " ".join(
+                s.text for s in segments if s.end > c.start and s.start < c.end
+            )
+            b, reasons = context_bonus(clip_text, creator_context, cap=ctx_cap)
+            if b:
+                fused = min(100, fused + b)
+                c.subscores["context"] = b
+                c.subscores["context_why"] = "; ".join(reasons)
+                n_context += 1
         c.score = fused
+    if n_context:
+        print(f"  Creator context boosted {n_context} candidate(s) (max +{ctx_cap})")
 
     # ---- 4. dedup + threshold (reusing the proven logic) ------------------
     # max_clips_per_video == 0 means automatic: keep EVERY unique clip that

@@ -65,12 +65,21 @@ def generate_metadata_batch(
     video_title: str,
     llm: LLMBackend,
     batch_size: int = 8,
+    creator_context: str = "",
 ) -> list[ClipMetadata]:
     """Metadata for ALL clips in a few LLM calls instead of one per clip —
     on a long stream this cuts dozens of model calls from the analysis time.
-    Any clip the model skips or mangles falls back to hook-based metadata."""
+    Any clip the model skips or mangles falls back to hook-based metadata.
+    creator_context (optional): learned facts about the creator — series
+    names, running jokes, collaborators — for more accurate titles/hashtags."""
     results: list[ClipMetadata] = [_fallback(c, video_title) for c in candidates]
     template = BATCH_PROMPT_PATH.read_text(encoding="utf-8")
+    if creator_context:
+        template = template.replace(
+            "{clips}",
+            "CREATOR CONTEXT (background knowledge — use for accuracy when relevant,"
+            " never invent beyond it):\n" + creator_context + "\n\n{clips}",
+        )
 
     for base in range(0, len(candidates), batch_size):
         batch = candidates[base : base + batch_size]

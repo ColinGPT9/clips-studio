@@ -44,10 +44,17 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Creator intelligence: attach the video to its creator profile (created
     # on first sight of this channel). Failure-safe — never blocks processing.
     creator_id = None
+    creator_ctx = None
     try:
-        from creator import identity
+        from creator import identity, retrieval
 
         creator_id = identity.tag_video(db, video.video_id, video.channel)
+        if creator_id is not None:
+            # What we already know about this creator from PAST videos —
+            # informs scoring (small capped callback bonus) and metadata.
+            creator_ctx = retrieval.context_for(db, creator_id)
+            if creator_ctx is not None:
+                print(f"      Creator context loaded for {creator_ctx.creator_name}")
     except Exception as e:
         print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
@@ -98,7 +105,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     signals_thread.join()  # usually already done — transcription takes longer
     llm = create_backend(config["llm"])
     candidates, rejections = find_clips(
-        video.path, segments, llm, config, signals=signals_out.get("signals")
+        video.path, segments, llm, config,
+        signals=signals_out.get("signals"),
+        creator_context=creator_ctx,
     )
     for r in rejections:
         db.log_rejection(
@@ -137,7 +146,10 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
     # (one call per clip made long streams crawl through analysis).
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
-    metas = generate_metadata_batch(candidates, segments, video.title, llm)
+    metas = generate_metadata_batch(
+        candidates, segments, video.title, llm,
+        creator_context=(creator_ctx.summary if creator_ctx else ""),
+    )
 
     # Creator learning runs in the background WHILE clips render — renders
     # don't use Ollama, so this pass is wall-clock free. It extracts durable
