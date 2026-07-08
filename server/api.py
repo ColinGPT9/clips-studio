@@ -473,6 +473,35 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         worker.notify()
         return {"job_id": job_id}
 
+    @app.get("/clips/{clip_id}/words")
+    def clip_words(clip_id: int):
+        """Word-level Whisper timestamps within this clip (clip-relative
+        seconds) — powers the editor's clickable transcript."""
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such clip")
+        tpath = data_dir / "transcripts" / f"{row['video_id']}.json"
+        if not tpath.exists():
+            return {"words": []}
+        data = json.loads(tpath.read_text(encoding="utf-8"))
+        start, end = row["start_s"], row["end_s"]
+        words = []
+        for seg in data.get("segments", []):
+            for w in seg.get("words") or []:
+                if w["end"] > start and w["start"] < end:
+                    words.append(
+                        {
+                            "start": round(max(0.0, w["start"] - start), 2),
+                            "end": round(min(end - start, w["end"] - start), 2),
+                            "word": w["word"],
+                        }
+                    )
+        return {"words": words}
+
     @app.get("/media/{clip_id}")
     def media(clip_id: int):
         d = db()

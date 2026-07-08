@@ -11,7 +11,8 @@ import type {
   RenderOpts,
   Settings,
   SystemStats,
-  Video
+  Video,
+  Word
 } from './types'
 
 export const API_BASE = 'http://127.0.0.1:8765'
@@ -93,6 +94,7 @@ export const api = {
       body: JSON.stringify({ clip_ids: clipIds, folder })
     }),
   mediaUrl: (clipId: number) => `${API_BASE}/media/${clipId}`,
+  clipWords: (clipId: number) => request<{ words: Word[] }>(`/clips/${clipId}/words`),
 
   models: () => request<ModelsInfo>('/models'),
   activateModel: (tag: string) =>

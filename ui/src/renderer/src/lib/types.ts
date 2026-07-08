@@ -51,6 +51,30 @@ export interface Adjust {
   contrast?: number // 0.5..2, 1 = unchanged
 }
 
+export interface MutedWord {
+  start: number
+  end: number
+  word: string
+}
+
+/** Non-destructive manual edits (Shorts editor). All times are seconds
+ *  relative to the clip start, on the clip's ORIGINAL timeline. */
+export interface EditData {
+  keep?: [number, number][]
+  mutes: [number, number][]
+  muted_words: MutedWord[]
+  volume: number
+  mute_all: boolean
+  fade_in: number
+  fade_out: number
+}
+
+export interface Word {
+  start: number
+  end: number
+  word: string
+}
+
 export interface RenderOpts {
   crop?: 'track' | 'center' | 'bias_left' | 'bias_right'
   captions?: boolean
@@ -58,6 +82,7 @@ export interface RenderOpts {
   caption_lines?: CaptionLine[]
   filter?: FilterName
   adjust?: Adjust
+  edit?: EditData | null
 }
 
 export interface Clip {

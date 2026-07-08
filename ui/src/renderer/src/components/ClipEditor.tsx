@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { Adjust, Clip, FilterName } from '../lib/types'
 import CaptionEditor from './CaptionEditor'
 import EditChat from './EditChat'
 import FilterPicker, { FILTER_CSS } from './FilterPicker'
+import TimelineEditor from './TimelineEditor'
 
 const NEUTRAL_ADJUST: Required<Adjust> = { brightness: 0, saturation: 1, contrast: 1 }
 
@@ -40,6 +41,7 @@ export default function ClipEditor({
   const [folder, setFolder] = useState('exports')
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [clipFilter, setClipFilter] = useState<FilterName>(clip.render_opts?.filter ?? 'none')
   const renderedFilter = clip.render_opts?.filter ?? 'none'
   const renderedAdjust: Required<Adjust> = { ...NEUTRAL_ADJUST, ...clip.render_opts?.adjust }
@@ -101,6 +103,7 @@ export default function ClipEditor({
     <div className="card space-y-4 sticky top-6">
       <video
         key={clip.id}
+        ref={videoRef}
         src={api.mediaUrl(clip.id)}
         controls
         aria-label={`Preview of clip: ${clip.title || clip.hook || 'untitled'}. Captions are burned into the video.`}
@@ -127,6 +130,8 @@ export default function ClipEditor({
           </span>
         ))}
       </div>
+
+      <TimelineEditor clip={clip} videoRef={videoRef} onChanged={onChanged} />
 
       <div className="border border-raised/60 rounded-lg p-3 space-y-3">
         <p className="font-medium text-sm">Color &amp; look</p>

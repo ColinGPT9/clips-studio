@@ -294,14 +294,33 @@ def _render_files(
     filter_name = opts.get("filter") or config["clips"].get("filter") or "none"
     vf_extra = combined_chain(filter_name, opts.get("adjust"))
 
+    # Manual edits from the Shorts editor (trim/cuts/mutes/volume/fades) —
+    # non-destructive: stored in render_opts, applied fresh on every render.
+    edit = None
+    if opts.get("edit"):
+        from video_editor.timeline import EditList
+
+        edit = EditList.from_dict(opts["edit"], duration=candidate.duration)
+
     ass_path = None
     # Per-clip style wins; otherwise the job/config default chosen at generate time.
     caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
     if config["clips"].get("captions", True) and opts.get("captions", True):
+        lines = opts.get("caption_lines")  # user-corrected caption text, if any
+        if edit is not None and edit.keep is not None:
+            # Sections were cut out: every surviving caption shifts to its
+            # new time on the edited timeline.
+            from video.captions import DEFAULT_STYLE, build_caption_lines
+            from video_editor.captions import remap_lines
+
+            if lines is None:
+                wpc = {**DEFAULT_STYLE, **(caption_style or {})}["words_per_caption"]
+                lines = build_caption_lines(segments, candidate, wpc)
+            lines = remap_lines(lines, edit)
         ass_path = build_captions(
             segments, candidate, clip_dir / f"{stem}.ass",
             style=caption_style,
-            lines=opts.get("caption_lines"),  # user-corrected caption text, if any
+            lines=lines,
         )
 
     # Whisper's word timestamps often end a hair BEFORE the word is finished
@@ -317,6 +336,16 @@ def _render_files(
         # Cut a horizontal intermediate, track the subject, render true 9:16.
         intermediate = clip_dir / f"{stem}.source.mp4"
         cut_clip(source, padded, intermediate)
+
+        if edit is not None:
+            # Apply manual edits BEFORE tracking, so the tracker and captions
+            # see the final (edited) timeline.
+            from video_editor.export import apply_edits
+
+            edited = clip_dir / f"{stem}.edited.mp4"
+            apply_edits(intermediate, edit, edited)
+            intermediate.unlink(missing_ok=True)
+            intermediate = edited
 
         from video.cropper import render_vertical
         from video.tracker import compute_tracking  # lazy: imports torch
@@ -337,7 +366,17 @@ def _render_files(
         render_vertical(intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra)
         intermediate.unlink(missing_ok=True)
     else:
-        cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra)
+        if edit is not None:
+            # Horizontal output: cut plain first, then apply edits and burn
+            # captions in the same pass (they must land AFTER the cuts).
+            from video_editor.export import apply_edits
+
+            plain = clip_dir / f"{stem}.plain.mp4"
+            cut_clip(source, padded, plain, vf_extra=vf_extra)
+            apply_edits(plain, edit, final_path, ass_path=ass_path)
+            plain.unlink(missing_ok=True)
+        else:
+            cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra)
 
     if ass_path is not None:
         ass_path.unlink(missing_ok=True)
