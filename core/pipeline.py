@@ -249,10 +249,19 @@ def _render_files(
             lines=opts.get("caption_lines"),  # user-corrected caption text, if any
         )
 
+    # Whisper's word timestamps often end a hair BEFORE the word is finished
+    # being spoken, so a cut exactly at the last word's end clips its audio —
+    # the caption shows the word but the voice cuts out. Pad the cut a beat
+    # past the transcript end. Captions were already built above from the
+    # unpadded window, so no extra words appear on screen.
+    from dataclasses import replace
+
+    padded = replace(candidate, end=candidate.end + 0.4)
+
     if config["clips"].get("vertical", True):
         # Cut a horizontal intermediate, track the subject, render true 9:16.
         intermediate = clip_dir / f"{stem}.source.mp4"
-        cut_clip(source, candidate, intermediate)
+        cut_clip(source, padded, intermediate)
 
         from video.cropper import render_vertical
         from video.tracker import compute_tracking  # lazy: imports torch
@@ -273,7 +282,7 @@ def _render_files(
         render_vertical(intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra)
         intermediate.unlink(missing_ok=True)
     else:
-        cut_clip(source, candidate, final_path, ass_path=ass_path, vf_extra=vf_extra)
+        cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra)
 
     if ass_path is not None:
         ass_path.unlink(missing_ok=True)

@@ -29,13 +29,15 @@ llm:
   ollama_host: http://localhost:11434
 
 whisper:
-  model: auto           # auto = medium on GPU, small on CPU. Or force:
-                        # tiny / base / small / medium / large-v3
+  model: auto           # auto = large-v3-turbo on GPU, small on CPU. Or force:
+                        # tiny / base / small / medium / large-v3 / large-v3-turbo
   device: auto          # cuda if available, else cpu
 
 clips:
-  min_score: 65         # discard candidates scored below this (0-100).
-                        # Higher = fewer, better clips.
+  min_score: 55         # discard candidates scored below this (0-100).
+                        # Higher = fewer, better clips. Kept generous on
+                        # purpose: creators pick what to post — a ~2h stream
+                        # should yield ~50 clips to choose from.
   max_clips_per_video: 0  # 0 = automatic: keep every clip that passes min_score
   min_duration: 10      # seconds — clips land on sentence boundaries, so real
   max_duration: 60      # lengths vary naturally across this 10-60s range
@@ -52,7 +54,7 @@ scoring:
     reaction: 0.20
     audio: 0.20
     engagement: 0.10
-  signal_peak_percentile: 90   # how unusual a moment must be to become a candidate
+  signal_peak_percentile: 85   # how unusual a moment must be to become a candidate
   rerank_pool: 8               # finalists compared head-to-head by the LLM
   reaction_top_k: 8            # candidates that get the (slower) YOLO reaction pass
 

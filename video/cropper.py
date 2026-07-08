@@ -66,8 +66,12 @@ def _render_fit_blur(
     rw, rh, rx, ry = x1 - x0, y1 - y0, x0, y0
     crop_region = f"crop=iw*{rw:.4f}:ih*{rh:.4f}:iw*{rx:.4f}:ih*{ry:.4f}"
 
-    # Background: the same crop, blown up to COVER 1080x1920, heavily blurred.
-    bg = f"{crop_region},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=40"
+    # Background: the same crop, blown up to COVER 1080x1920, then destroyed:
+    # downscaled hard + blurred + upscaled = an unrecognizable color wash.
+    bg = (
+        f"{crop_region},scale=1080:1920:force_original_aspect_ratio=increase,"
+        f"crop=1080:1920,scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear"
+    )
     # Foreground: full width; height follows the region's own aspect ratio
     # (capped at the screen so an unusually tall region can never overflow).
     fg = (
@@ -162,8 +166,9 @@ def _render_tracked(
         fg = "scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
         filters = (
             f"[0:v]split=2[a][b];"
+            # Downscale hard + blur + upscale: an unrecognizable color wash.
             f"[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"gblur=sigma=40[bg];"
+            f"scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];"
             f"[b]{fg}[fg];"
             f"[bg][fg]overlay=0:{top},setsar=1[v]"
         )
