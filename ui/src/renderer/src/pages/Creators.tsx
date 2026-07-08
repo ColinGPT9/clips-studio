@@ -187,9 +187,20 @@ export default function Creators(): JSX.Element {
                     type="checkbox"
                     checked={!!detail.learning_enabled}
                     disabled={busy}
-                    onChange={(e) =>
-                      act(() => api.setCreatorLearning(detail.creator_id, e.target.checked))
-                    }
+                    onChange={(e) => {
+                      const enabled = e.target.checked
+                      void act(async () => {
+                        await api.setCreatorLearning(detail.creator_id, enabled)
+                        if (
+                          !enabled &&
+                          window.confirm(
+                            `Learning is now off for ${detail.display_name}. Also wipe everything already learned about them (knowledge, storylines, feedback history) to save space? This can't be undone.`
+                          )
+                        ) {
+                          await api.wipeCreatorMemory(detail.creator_id)
+                        }
+                      })
+                    }}
                   />
                   Learning enabled
                 </label>
@@ -311,6 +322,24 @@ export default function Creators(): JSX.Element {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div className="pt-1 border-t border-raised/60">
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Wipe everything learned about ${detail.display_name} from this computer — knowledge, storylines and feedback history? The profile, videos and clips stay. This can't be undone.`
+                      )
+                    ) {
+                      void act(() => api.wipeCreatorMemory(detail.creator_id))
+                    }
+                  }}
+                  className="text-xs text-muted hover:text-red-400 transition-colors"
+                >
+                  🗑 Wipe learned memory for this creator
+                </button>
               </div>
 
               <div>

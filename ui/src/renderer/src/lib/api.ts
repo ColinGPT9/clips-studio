@@ -125,6 +125,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ enabled })
     }),
+  wipeCreatorMemory: (creatorId: number) =>
+    request<{ wiped: number }>(`/creators/${creatorId}/memory`, { method: 'DELETE' }),
 
   settings: () => request<Settings>('/settings'),
   patchSettings: (patch: Partial<Settings>) =>

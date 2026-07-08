@@ -655,6 +655,22 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         return {"deleted": knowledge_id}
 
+    @app.delete("/creators/{creator_id}/memory")
+    def wipe_creator_memory(creator_id: int):
+        """Erase everything LEARNED about a creator — knowledge, storyline
+        events, and feedback history — from this computer. The profile, its
+        channels, videos and clips stay; only the intelligence data goes."""
+        d = db()
+        try:
+            wiped = 0
+            for table in ("creator_knowledge", "creator_events", "clip_feedback"):
+                cur = d.conn.execute(f"DELETE FROM {table} WHERE creator_id = ?", (creator_id,))
+                wiped += cur.rowcount
+            d.conn.commit()
+        finally:
+            d.close()
+        return {"creator_id": creator_id, "wiped": wiped}
+
     @app.post("/creators/{creator_id}/learning")
     def set_learning(creator_id: int, body: LearningIn):
         """Enable/disable knowledge learning for one creator."""
