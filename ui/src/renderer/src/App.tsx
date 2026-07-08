@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import ClipStudio from './pages/ClipStudio'
+import Creators from './pages/Creators'
 import Models from './pages/Models'
 import Settings from './pages/Settings'
 import ModelSwitcher from './components/ModelSwitcher'
 
-type Page = 'dashboard' | 'studio' | 'models' | 'settings'
+type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
 
 const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
   { id: 'studio', label: 'Clip Studio', icon: '✂' },
+  { id: 'creators', label: 'Creators', icon: '◉' },
   { id: 'models', label: 'Models', icon: '⬢' },
   { id: 'settings', label: 'Settings', icon: '⚙' }
 ]
@@ -73,6 +75,7 @@ export default function App(): JSX.Element {
         {page === 'studio' && (
           <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />
         )}
+        {page === 'creators' && <Creators />}
         {page === 'models' && <Models />}
         {page === 'settings' && <Settings />}
       </main>

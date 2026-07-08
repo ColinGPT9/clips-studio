@@ -45,8 +45,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # on first sight of this channel). Failure-safe — never blocks processing.
     creator_id = None
     creator_ctx = None
+    creator_prefs = None
     try:
-        from creator import identity, retrieval
+        from creator import identity, learning, retrieval
 
         creator_id = identity.tag_video(db, video.video_id, video.channel)
         if creator_id is not None:
@@ -55,6 +56,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             creator_ctx = retrieval.context_for(db, creator_id)
             if creator_ctx is not None:
                 print(f"      Creator context loaded for {creator_ctx.creator_name}")
+            # What the user KEEPS for this creator (exports/edits) — bounded
+            # scoring-weight bias; None until there's enough feedback data.
+            creator_prefs = learning.preferences(db, creator_id)
     except Exception as e:
         print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
@@ -108,6 +112,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         video.path, segments, llm, config,
         signals=signals_out.get("signals"),
         creator_context=creator_ctx,
+        weight_bias=(creator_prefs or {}).get("weight_bias"),
     )
     for r in rejections:
         db.log_rejection(

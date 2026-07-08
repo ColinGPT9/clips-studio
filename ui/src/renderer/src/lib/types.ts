@@ -142,3 +142,56 @@ export interface StudioEvent {
   tag?: string
   completed?: number
 }
+
+/** Creator intelligence */
+export interface CreatorAccount {
+  account_id: number
+  platform: string
+  username: string
+}
+
+export interface CreatorSummary {
+  creator_id: number
+  display_name: string
+  aliases: string[]
+  learning_enabled: number
+  videos: number
+  clips: number
+  avg_score: number | null
+  accounts: CreatorAccount[]
+}
+
+export interface CreatorSuggestion {
+  creator_a: { id: number; name: string; platform: string }
+  creator_b: { id: number; name: string; platform: string }
+  reason: string
+}
+
+export interface CreatorKnowledgeItem {
+  knowledge_id: number
+  knowledge_type: string
+  information: string
+  confidence: string
+  source_video: string | null
+  created_at: string
+}
+
+export interface CreatorEvent {
+  event_id: number
+  event_name: string
+  description: string
+  status: string
+  detected_date: string
+}
+
+export interface CreatorDetail {
+  creator_id: number
+  display_name: string
+  aliases: string[]
+  learning_enabled: number
+  accounts: CreatorAccount[]
+  knowledge: CreatorKnowledgeItem[]
+  events: CreatorEvent[]
+  feedback: Record<string, number>
+  preferences: { weight_bias: Record<string, number>; preferred_duration: number | null; signals: number } | null
+}

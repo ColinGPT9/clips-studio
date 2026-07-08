@@ -143,6 +143,70 @@ def merge(db: StateDB, from_id: int, into_id: int) -> None:
     db.conn.commit()
 
 
+def add_account(db: StateDB, creator_id: int, platform: str, channel: str) -> int:
+    """Manually attach a channel to a creator profile — for channels the
+    automatic matcher can't connect (completely different names, alt
+    accounts). If the channel is already known under ANOTHER profile, it
+    moves here along with its videos; if it's brand new, future videos from
+    it will resolve straight to this creator. Returns the account_id."""
+    channel = (channel or "").strip()
+    platform = (platform or "").strip().lower()
+    if platform not in ("youtube", "twitch", "kick"):
+        raise ValueError(f"unknown platform {platform!r}")
+    if not channel:
+        raise ValueError("channel name is required")
+    if db.conn.execute(
+        "SELECT 1 FROM creators WHERE creator_id = ?", (creator_id,)
+    ).fetchone() is None:
+        raise ValueError("unknown creator id")
+
+    existing = db.conn.execute(
+        "SELECT account_id, creator_id FROM platform_accounts"
+        " WHERE platform = ? AND platform_account_id = ?",
+        (platform, channel),
+    ).fetchone()
+    if existing:
+        old_creator = existing["creator_id"]
+        if old_creator != creator_id:
+            db.conn.execute(
+                "UPDATE platform_accounts SET creator_id = ? WHERE account_id = ?",
+                (creator_id, existing["account_id"]),
+            )
+            # The channel's videos follow it to the new profile.
+            db.conn.execute(
+                "UPDATE videos SET creator_id = ? WHERE creator_id = ? AND channel_name = ?",
+                (creator_id, old_creator, channel),
+            )
+            # A profile left with no accounts and no videos is an empty shell.
+            leftover = db.conn.execute(
+                "SELECT (SELECT COUNT(*) FROM platform_accounts WHERE creator_id = ?)"
+                " + (SELECT COUNT(*) FROM videos WHERE creator_id = ?) AS n",
+                (old_creator, old_creator),
+            ).fetchone()
+            if leftover and leftover["n"] == 0:
+                db.conn.execute("DELETE FROM creators WHERE creator_id = ?", (old_creator,))
+            db.conn.commit()
+        return existing["account_id"]
+
+    cur = db.conn.execute(
+        "INSERT INTO platform_accounts (creator_id, platform, platform_account_id, username, display_name)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (creator_id, platform, channel, channel, channel),
+    )
+    # Add the channel name to the profile's aliases for future matching.
+    row = db.conn.execute(
+        "SELECT aliases FROM creators WHERE creator_id = ?", (creator_id,)
+    ).fetchone()
+    aliases = set(json.loads(row["aliases"] or "[]"))
+    aliases.add(channel)
+    db.conn.execute(
+        "UPDATE creators SET aliases = ? WHERE creator_id = ?",
+        (json.dumps(sorted(aliases)), creator_id),
+    )
+    db.conn.commit()
+    return cur.lastrowid
+
+
 def split_account(db: StateDB, account_id: int) -> int:
     """Detach one platform account into its own new creator profile (undo a
     merge, or separate a second channel with different content). The

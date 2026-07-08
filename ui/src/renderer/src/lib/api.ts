@@ -2,6 +2,9 @@ import type {
   CaptionLine,
   CaptionStyle,
   Clip,
+  CreatorDetail,
+  CreatorSuggestion,
+  CreatorSummary,
   FilterName,
   Job,
   ModelsInfo,
@@ -97,6 +100,31 @@ export const api = {
   pullModel: (tag: string) =>
     request<{ started: string }>('/models/pull', { method: 'POST', body: JSON.stringify({ tag }) }),
   deleteModel: (tag: string) => request<{ deleted: string }>(`/models/${tag}`, { method: 'DELETE' }),
+
+  creators: () =>
+    request<{ creators: CreatorSummary[]; suggestions: CreatorSuggestion[] }>('/creators'),
+  creatorDetail: (id: number) => request<CreatorDetail>(`/creators/${id}`),
+  mergeCreators: (fromId: number, intoId: number) =>
+    request<{ merged: number; into: number }>('/creators/merge', {
+      method: 'POST',
+      body: JSON.stringify({ from_id: fromId, into_id: intoId })
+    }),
+  splitCreatorAccount: (accountId: number) =>
+    request<{ new_creator_id: number }>(`/creators/split/${accountId}`, { method: 'POST' }),
+  addCreatorAccount: (creatorId: number, platform: string, channel: string) =>
+    request<{ account_id: number }>(`/creators/${creatorId}/accounts`, {
+      method: 'POST',
+      body: JSON.stringify({ platform, channel })
+    }),
+  deleteCreatorKnowledge: (creatorId: number, knowledgeId: number) =>
+    request<{ deleted: number }>(`/creators/${creatorId}/knowledge/${knowledgeId}`, {
+      method: 'DELETE'
+    }),
+  setCreatorLearning: (creatorId: number, enabled: boolean) =>
+    request<{ learning_enabled: boolean }>(`/creators/${creatorId}/learning`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled })
+    }),
 
   settings: () => request<Settings>('/settings'),
   patchSettings: (patch: Partial<Settings>) =>

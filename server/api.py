@@ -54,6 +54,11 @@ class LearningIn(BaseModel):
     enabled: bool
 
 
+class AccountIn(BaseModel):
+    platform: str   # youtube | twitch | kick
+    channel: str    # channel/username on that platform
+
+
 class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
@@ -574,15 +579,39 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 " GROUP BY action",
                 (creator_id,),
             ).fetchall()
+            accounts = d.conn.execute(
+                "SELECT account_id, platform, username FROM platform_accounts WHERE creator_id = ?",
+                (creator_id,),
+            ).fetchall()
+            from creator.learning import preferences
+
+            prefs = preferences(d, creator_id)
         finally:
             d.close()
         return {
             **dict(c),
             "aliases": json.loads(c["aliases"] or "[]"),
+            "accounts": [dict(a) for a in accounts],
             "knowledge": [dict(k) for k in knowledge],
             "events": [dict(e) for e in events],
             "feedback": {f["action"]: f["n"] for f in feedback},
+            "preferences": prefs,
         }
+
+    @app.post("/creators/{creator_id}/accounts")
+    def add_creator_account(creator_id: int, body: AccountIn):
+        """Manually attach a channel the automatic matcher didn't connect.
+        Future videos from that channel resolve straight to this profile."""
+        from creator.identity import add_account
+
+        d = db()
+        try:
+            account_id = add_account(d, creator_id, body.platform, body.channel)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        finally:
+            d.close()
+        return {"account_id": account_id, "creator_id": creator_id}
 
     @app.post("/creators/merge")
     def merge_creators(body: MergeIn):

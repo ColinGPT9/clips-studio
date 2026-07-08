@@ -39,6 +39,7 @@ def find_clips(
     config: dict,
     signals: tuple[dict, dict] | None = None,
     creator_context=None,  # creator.retrieval.CreatorContext | None
+    weight_bias: dict | None = None,  # per-channel multipliers from creator.learning
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     clips_cfg = config["clips"]
     analysis_cfg = config["analysis"]
@@ -47,6 +48,13 @@ def find_clips(
         "weights",
         {"text": 0.30, "visual": 0.20, "reaction": 0.20, "audio": 0.20, "engagement": 0.10},
     )
+    if weight_bias:
+        # Learned from the user's own keep/edit/export behavior for THIS
+        # creator — bounded (max 20% shift per channel) and renormalized.
+        from creator.learning import apply_bias
+
+        weights = apply_bias(weights, weight_bias)
+        print("  Using learned scoring preferences for this creator")
 
     # ---- 1. extract + normalize signals --------------------------------
     progress.emit(stage="signals")
