@@ -41,6 +41,15 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
     cancel.clear(video.video_id)  # fresh start; any stale flag from a prior run gone
     db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
+    # Creator intelligence: attach the video to its creator profile (created
+    # on first sight of this channel). Failure-safe — never blocks processing.
+    creator_id = None
+    try:
+        from creator import identity
+
+        creator_id = identity.tag_video(db, video.video_id, video.channel)
+    except Exception as e:
+        print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
         print("      Already processed (status: done). Use --force to redo.")
         return []
@@ -130,6 +139,32 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
     metas = generate_metadata_batch(candidates, segments, video.title, llm)
 
+    # Creator learning runs in the background WHILE clips render — renders
+    # don't use Ollama, so this pass is wall-clock free. It extracts durable
+    # facts/events for FUTURE videos and never touches this run's clips.
+    knowledge_thread = None
+    if creator_id is not None:
+
+        def _learn() -> None:
+            try:
+                from core.state import StateDB as _DB
+                from creator import extractor
+
+                kdb = _DB(data_dir / "state.db")  # sqlite: own connection per thread
+                try:
+                    n = extractor.extract_and_store(
+                        kdb, creator_id, video.video_id, segments, llm
+                    )
+                finally:
+                    kdb.conn.close()
+                if n:
+                    print(f"      Learned {n} new fact(s)/event(s) about {video.channel}")
+            except Exception as e:
+                print(f"      (creator learning failed: {e})")
+
+        knowledge_thread = threading.Thread(target=_learn, daemon=True, name="creator-learning")
+        knowledge_thread.start()
+
     # Renders run in parallel: one clip's (GPU) tracking overlaps another's
     # (NVENC) encode. File work happens in worker threads; SQLite writes stay
     # on this thread — sqlite connections are not shareable across threads.
@@ -159,6 +194,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             clip = _register_clip(db, video.video_id, candidate, final_path, meta, render_opts_json)
             if clip:
                 rendered.append(clip)
+
+    if knowledge_thread is not None:
+        knowledge_thread.join(timeout=600)  # normally finished during renders
 
     elapsed = time.monotonic() - started
     db.set_process_seconds(video.video_id, elapsed)

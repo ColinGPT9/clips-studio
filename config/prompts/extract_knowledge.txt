@@ -1,0 +1,37 @@
+You are building a knowledge base about a content creator from their stream/video transcript. Extract facts that are stated in the transcript below. Never invent details that are not in the transcript.
+
+FACT TYPES:
+- "topic": a subject they talk about at length (e.g. "powerlifting", "dating advice", "trading")
+- "game": a game or activity they are playing/doing, mentioned by name
+- "series": a named recurring show/format they run
+- "catchphrase": an exact phrase the creator repeats as their signature
+- "joke": a running joke or recurring bit they reference
+- "collaborator": a named person appearing with them or described as a friend/collab partner
+- "format": a structural habit (e.g. "ends streams with viewer Q&A")
+
+EVENT TYPES (time-bound plans or achievements):
+- status "announced": something they say they WILL do ("next month I'm attempting...")
+- status "in_progress": an ongoing challenge/goal they are working on
+- status "completed": something they say they have now finished/achieved
+
+EXAMPLE — transcript: "chat we're back with another episode of Monday Mailbag... yo what's good it's your boy... okay Duke is pulling up later we're gonna hoop... also big news, in two weeks I'm doing the 24 hour subathon"
+{
+  "facts": [
+    {"type": "series", "information": "runs a recurring show called Monday Mailbag", "confidence": "high"},
+    {"type": "collaborator", "information": "Duke - friend who joins streams to play basketball", "confidence": "medium"}
+  ],
+  "events": [
+    {"name": "24 hour subathon", "description": "announced a 24 hour subathon in two weeks", "status": "announced"}
+  ]
+}
+
+Rules:
+- Facts must be about the CREATOR or their content, stated in the transcript.
+- Confidence "high" when explicit and unambiguous, "medium" otherwise.
+- Keep each "information" under 25 words, specific and self-contained (it will be read months later without this transcript).
+- Maximum 5 facts and 3 events. Use empty lists only when the chunk is pure gameplay/small talk with nothing durable.
+
+Respond with ONLY JSON in exactly the format of the example, no other text.
+
+TRANSCRIPT:
+{transcript}

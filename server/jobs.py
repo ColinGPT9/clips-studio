@@ -52,6 +52,16 @@ class Worker(threading.Thread):
         recovered = db.recover_stuck_videos()
         if recovered:
             print(f"Recovered {recovered} interrupted video(s) (marked failed)")
+        # One-time catch-up: organize the existing library into creator
+        # profiles (no-op once every video is tagged).
+        try:
+            from creator import identity
+
+            tagged = identity.backfill(db)
+            if tagged:
+                print(f"Creator profiles: organized {tagged} existing video(s)")
+        except Exception as e:
+            print(f"Creator backfill failed (non-fatal): {e}")
 
         # Pipeline progress events get tagged with the active job and fanned
         # out to UI clients.

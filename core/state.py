@@ -67,6 +67,64 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+-- ---- Creator intelligence (creator/ module) --------------------------------
+-- A creator PROFILE is the person/group; platform ACCOUNTS are their channels
+-- on YouTube/Twitch/Kick. Knowledge/events are structured facts extracted
+-- from processed videos; feedback logs user actions on clips for later
+-- preference learning. None of this affects processing when absent.
+
+CREATE TABLE IF NOT EXISTS creators (
+    creator_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    display_name     TEXT NOT NULL,
+    aliases          TEXT NOT NULL DEFAULT '[]',   -- JSON list of alternate names
+    learning_enabled INTEGER NOT NULL DEFAULT 1,
+    created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS platform_accounts (
+    account_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_id          INTEGER NOT NULL REFERENCES creators(creator_id),
+    platform            TEXT NOT NULL,             -- youtube | twitch | kick
+    platform_account_id TEXT NOT NULL,             -- channel name/id on that platform
+    username            TEXT NOT NULL DEFAULT '',
+    display_name        TEXT NOT NULL DEFAULT '',
+    UNIQUE (platform, platform_account_id)
+);
+
+CREATE TABLE IF NOT EXISTS creator_knowledge (
+    knowledge_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_id     INTEGER NOT NULL REFERENCES creators(creator_id),
+    knowledge_type TEXT NOT NULL,   -- topic | game | series | catchphrase | joke
+                                    -- | collaborator | format
+    information    TEXT NOT NULL,
+    confidence     TEXT NOT NULL DEFAULT 'medium',  -- high | medium
+    source_video   TEXT,
+    created_at     TEXT NOT NULL,
+    last_used      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS creator_events (
+    event_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_id     INTEGER NOT NULL REFERENCES creators(creator_id),
+    event_name     TEXT NOT NULL,
+    description    TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'announced',  -- announced | in_progress
+                                                       -- | completed | stale
+    detected_date  TEXT NOT NULL,
+    completed_date TEXT,
+    source_video   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS clip_feedback (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_id INTEGER,
+    clip_id    INTEGER,
+    action     TEXT NOT NULL,   -- deleted | rerendered | timestamps_adjusted
+                                -- | captions_edited | exported
+    clip_meta  TEXT NOT NULL DEFAULT '{}',  -- JSON snapshot: score/subscores/duration
+    created_at TEXT NOT NULL
+);
 """
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -99,6 +157,8 @@ class StateDB:
             self.conn.execute("ALTER TABLE videos ADD COLUMN channel_name TEXT DEFAULT ''")
         if "process_seconds" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN process_seconds REAL DEFAULT 0")
+        if "creator_id" not in video_cols:
+            self.conn.execute("ALTER TABLE videos ADD COLUMN creator_id INTEGER")
 
     def recover_stuck_videos(self) -> int:
         """Videos left mid-pipeline by a crash/force-close (downloaded,

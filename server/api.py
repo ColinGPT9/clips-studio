@@ -45,6 +45,15 @@ class ClipPatch(BaseModel):
     hashtags: list[str] | None = None
 
 
+class MergeIn(BaseModel):
+    from_id: int
+    into_id: int
+
+
+class LearningIn(BaseModel):
+    enabled: bool
+
+
 class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
@@ -213,6 +222,32 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         cancel.request_cancel(vid)
         return {"cancelling": vid}
 
+    def _log_feedback(d: StateDB, row, action: str, extra: dict | None = None) -> None:
+        """Append a learning signal for creator preference learning (which
+        clip styles this creator's user keeps, edits, exports). Snapshot the
+        clip's stats — the clip row itself may be deleted later. Best-effort:
+        a logging failure must never fail the user's actual request."""
+        try:
+            from core.state import _now
+
+            v = d.conn.execute(
+                "SELECT creator_id FROM videos WHERE video_id = ?", (row["video_id"],)
+            ).fetchone()
+            meta = {
+                "score": row["score"],
+                "scores": json.loads(row["scores"]) if row["scores"] else None,
+                "duration": round(row["end_s"] - row["start_s"], 1),
+                **(extra or {}),
+            }
+            d.conn.execute(
+                "INSERT INTO clip_feedback (creator_id, clip_id, action, clip_meta, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (v["creator_id"] if v else None, row["id"], action, json.dumps(meta), _now()),
+            )
+            d.conn.commit()
+        except Exception:
+            pass
+
     @app.delete("/videos/{video_id}")
     def delete_video(video_id: str):
         """Delete a video: its download, transcript, clip files, and all its
@@ -340,6 +375,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             ]
             payload = {"clip_id": clip_id, "render_opts": {"caption_lines": lines}}
             job_id = d.add_job("render", json.dumps(payload))
+            _log_feedback(d, row, "captions_edited")
         finally:
             d.close()
         worker.notify()
@@ -393,6 +429,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 if result["render_opts"]:
                     payload["render_opts"] = result["render_opts"]
                 job_id = d.add_job("render", json.dumps(payload))
+                _log_feedback(
+                    d, row,
+                    "timestamps_adjusted"
+                    if (result["start"] is not None or result["end"] is not None)
+                    else "rerendered",
+                )
         finally:
             d.close()
 
@@ -404,7 +446,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def rerender_clip(clip_id: int, body: RenderIn):
         d = db()
         try:
-            if d.get_clip(clip_id) is None:
+            row = d.get_clip(clip_id)
+            if row is None:
                 raise HTTPException(404, "no such clip")
             payload = {"clip_id": clip_id}
             if body.start is not None:
@@ -414,6 +457,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if body.render_opts:
                 payload["render_opts"] = body.render_opts
             job_id = d.add_job("render", json.dumps(payload))
+            _log_feedback(
+                d, row,
+                "timestamps_adjusted"
+                if (body.start is not None or body.end is not None)
+                else "rerendered",
+            )
         finally:
             d.close()
         worker.notify()
@@ -454,9 +503,142 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 target = _unique_path(folder, name)
                 shutil.copy2(row["path"], target)
                 exported.append(str(target))
+                _log_feedback(d, row, "exported")  # exports = strongest "keep" signal
         finally:
             d.close()
         return exported
+
+    # ---- creator profiles (creator intelligence) -----------------------------
+
+    @app.get("/creators")
+    def creators():
+        """All creator profiles with library stats, plus possible same-person
+        matches across platforms (suggestions only — merging is a user action)."""
+        from creator.identity import suggestions
+
+        d = db()
+        try:
+            rows = d.conn.execute(
+                """SELECT c.creator_id, c.display_name, c.aliases, c.learning_enabled,
+                          COUNT(DISTINCT v.video_id) AS videos,
+                          COUNT(cl.id) AS clips,
+                          ROUND(AVG(cl.score), 1) AS avg_score
+                   FROM creators c
+                   LEFT JOIN videos v ON v.creator_id = c.creator_id
+                   LEFT JOIN clips cl ON cl.video_id = v.video_id
+                   GROUP BY c.creator_id
+                   ORDER BY videos DESC, c.display_name"""
+            ).fetchall()
+            accounts = d.conn.execute("SELECT * FROM platform_accounts").fetchall()
+            sugg = suggestions(d)
+        finally:
+            d.close()
+        by_creator: dict[int, list] = {}
+        for a in accounts:
+            by_creator.setdefault(a["creator_id"], []).append(
+                {"account_id": a["account_id"], "platform": a["platform"], "username": a["username"]}
+            )
+        return {
+            "creators": [
+                {
+                    **dict(r),
+                    "aliases": json.loads(r["aliases"] or "[]"),
+                    "accounts": by_creator.get(r["creator_id"], []),
+                }
+                for r in rows
+            ],
+            "suggestions": sugg,
+        }
+
+    @app.get("/creators/{creator_id}")
+    def creator_detail(creator_id: int):
+        """Everything learned about one creator: knowledge, events, feedback."""
+        d = db()
+        try:
+            c = d.conn.execute(
+                "SELECT * FROM creators WHERE creator_id = ?", (creator_id,)
+            ).fetchone()
+            if c is None:
+                raise HTTPException(404, "no such creator")
+            knowledge = d.conn.execute(
+                "SELECT * FROM creator_knowledge WHERE creator_id = ?"
+                " ORDER BY knowledge_type, created_at DESC",
+                (creator_id,),
+            ).fetchall()
+            events = d.conn.execute(
+                "SELECT * FROM creator_events WHERE creator_id = ? ORDER BY detected_date DESC",
+                (creator_id,),
+            ).fetchall()
+            feedback = d.conn.execute(
+                "SELECT action, COUNT(*) AS n FROM clip_feedback WHERE creator_id = ?"
+                " GROUP BY action",
+                (creator_id,),
+            ).fetchall()
+        finally:
+            d.close()
+        return {
+            **dict(c),
+            "aliases": json.loads(c["aliases"] or "[]"),
+            "knowledge": [dict(k) for k in knowledge],
+            "events": [dict(e) for e in events],
+            "feedback": {f["action"]: f["n"] for f in feedback},
+        }
+
+    @app.post("/creators/merge")
+    def merge_creators(body: MergeIn):
+        """Fold one profile into another (same person on two platforms)."""
+        from creator.identity import merge
+
+        d = db()
+        try:
+            merge(d, body.from_id, body.into_id)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        finally:
+            d.close()
+        return {"merged": body.from_id, "into": body.into_id}
+
+    @app.post("/creators/split/{account_id}")
+    def split_creator_account(account_id: int):
+        """Detach one platform account into its own profile (undo a merge)."""
+        from creator.identity import split_account
+
+        d = db()
+        try:
+            new_id = split_account(d, account_id)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        finally:
+            d.close()
+        return {"new_creator_id": new_id}
+
+    @app.delete("/creators/{creator_id}/knowledge/{knowledge_id}")
+    def delete_knowledge(creator_id: int, knowledge_id: int):
+        """Remove one learned fact the user says is wrong."""
+        d = db()
+        try:
+            d.conn.execute(
+                "DELETE FROM creator_knowledge WHERE creator_id = ? AND knowledge_id = ?",
+                (creator_id, knowledge_id),
+            )
+            d.conn.commit()
+        finally:
+            d.close()
+        return {"deleted": knowledge_id}
+
+    @app.post("/creators/{creator_id}/learning")
+    def set_learning(creator_id: int, body: LearningIn):
+        """Enable/disable knowledge learning for one creator."""
+        d = db()
+        try:
+            d.conn.execute(
+                "UPDATE creators SET learning_enabled = ? WHERE creator_id = ?",
+                (1 if body.enabled else 0, creator_id),
+            )
+            d.conn.commit()
+        finally:
+            d.close()
+        return {"creator_id": creator_id, "learning_enabled": body.enabled}
 
     # ---- models ------------------------------------------------------------
 
