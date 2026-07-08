@@ -37,6 +37,7 @@ def find_clips(
     segments: list[Segment],
     llm: LLMBackend,
     config: dict,
+    signals: tuple[dict, dict] | None = None,
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     clips_cfg = config["clips"]
     analysis_cfg = config["analysis"]
@@ -48,10 +49,16 @@ def find_clips(
 
     # ---- 1. extract + normalize signals --------------------------------
     progress.emit(stage="signals")
-    print("  Extracting audio signals...")
-    audio_raw = extract_audio_features(video_path)
-    print("  Extracting visual signals...")
-    visual_raw = extract_visual_features(video_path)
+    if signals is not None:
+        # Precomputed by the pipeline in the background while Whisper was
+        # transcribing — this stage costs nothing on that path.
+        audio_raw, visual_raw = signals
+        print("  Using audio/visual signals precomputed during transcription")
+    else:
+        print("  Extracting audio signals...")
+        audio_raw = extract_audio_features(video_path)
+        print("  Extracting visual signals...")
+        visual_raw = extract_visual_features(video_path)
 
     audio_excitement = _combine([_pct(audio_raw[k]) for k in ("spike", "burst", "noisiness") if k in audio_raw])
     visual_activity = _combine([_pct(visual_raw[k]) for k in ("motion", "scene_cut", "flash") if k in visual_raw])

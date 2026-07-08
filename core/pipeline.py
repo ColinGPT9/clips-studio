@@ -47,6 +47,30 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     db.set_video_status(video.video_id, "downloaded")
     cancel.check(video.video_id)
 
+    # Audio/visual signal extraction needs no transcript, and it's FFmpeg +
+    # numpy work while Whisper occupies the GPU compute — so it runs in the
+    # background DURING transcription and the analysis stage gets it for free.
+    # Best-effort: on any error, analysis recomputes and reports it properly.
+    import threading
+
+    signals_out: dict = {}
+
+    def _extract_signals() -> None:
+        try:
+            from analysis.audio_features import extract_audio_features
+            from analysis.visual_features import extract_visual_features
+
+            audio_raw = extract_audio_features(video.path)
+            visual_raw = extract_visual_features(video.path)
+            signals_out["signals"] = (audio_raw, visual_raw)
+        except Exception as e:
+            print(f"      (background signal extraction failed, will retry in analysis: {e})")
+
+    signals_thread = threading.Thread(
+        target=_extract_signals, daemon=True, name="signals-prepass"
+    )
+    signals_thread.start()
+
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
     segments = transcribe(
@@ -62,8 +86,11 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     cancel.check(video.video_id)
     print("[3/4] Multimodal analysis (transcript + audio + visual)...")
     progress.emit(stage="analyze", video_id=video.video_id)
+    signals_thread.join()  # usually already done — transcription takes longer
     llm = create_backend(config["llm"])
-    candidates, rejections = find_clips(video.path, segments, llm, config)
+    candidates, rejections = find_clips(
+        video.path, segments, llm, config, signals=signals_out.get("signals")
+    )
     for r in rejections:
         db.log_rejection(
             video.video_id,
