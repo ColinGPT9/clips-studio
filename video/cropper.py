@@ -40,7 +40,10 @@ def render_vertical(
         return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra)
     if tracking["mode"] == "fit_blur":
         return _render_fit_blur(clip_path, tracking.get("region"), output_path, ass_path, vf_extra)
-    return _render_tracked(clip_path, tracking["path"], output_path, ass_path, vf_extra)
+    return _render_tracked(
+        clip_path, tracking["path"], output_path, ass_path, vf_extra,
+        face_y=tracking.get("face_y"),
+    )
 
 
 def _render_fit_blur(
@@ -105,6 +108,7 @@ def _render_tracked(
     output_path: Path,
     ass_path: Path | None,
     vf_extra: str = "",
+    face_y: float | None = None,
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -141,6 +145,45 @@ def _render_tracked(
 
     cap.release()
     writer.release()
+
+    # Platform-safe framing: TikTok/Instagram draw their tab bar over the top
+    # ~9% of the screen. When the subject's face sits in the top quarter of
+    # the crop, a full-height fit would bury it under that UI — so instead the
+    # video is scaled down (aspect kept, never stretched) onto a blurred
+    # backdrop, starting just below the tab area. That pushes the face toward
+    # the center of the screen — as close as the footage allows without
+    # cutting anyone off. Faces already low enough render full-height as usual.
+    if face_y is not None and face_y < 0.25:
+        top = int(0.115 * 1920)            # content starts under the FYP tabs
+        fg_h = 1920 - top - int(0.035 * 1920)  # small breathing room at bottom
+        fg_h -= fg_h % 2
+        fg = f"scale=-2:{fg_h}:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
+        filters = (
+            f"[0:v]split=2[a][b];"
+            f"[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+            f"gblur=sigma=24[bg];"
+            f"[b]{fg}[fg];"
+            f"[bg][fg]overlay=(W-w)/2:{top},setsar=1[v]"
+        )
+        if ass_path is not None:
+            filters += f";[v]subtitles={ass_path.name}[v]"
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(temp_path.resolve()),   # OpenCV-cropped video (constant fps)
+            "-i", str(clip_path.resolve()),   # source of the audio
+            "-filter_complex", filters,
+            "-map", "[v]", "-map", "1:a:0?",
+            *video_encoder_args(),
+            "-c:a", "aac", "-b:a", "128k",
+            "-af", "aresample=async=1",
+            "-fps_mode", "cfr",
+            "-movflags", "+faststart",
+            "-shortest",
+            str(output_path.resolve()),
+        ]
+        _run_ffmpeg(cmd, ass_path)
+        temp_path.unlink(missing_ok=True)
+        return output_path
 
     # Uniform scale to 1080x1920 + color filter + captions + mux audio.
     vf = "scale=1080:1920:flags=lanczos,setsar=1"

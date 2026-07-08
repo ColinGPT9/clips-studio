@@ -140,6 +140,7 @@ class _Track:
     face_w: float = 0.0            # EMA of face box width, normalized
     head_rate: float = 0.0         # EMA of "pose head keypoints seen this sample?"
     head_offset: float = 0.0       # EMA of (head cx - body cx), normalized
+    head_cys: list = field(default_factory=list)  # normalized head center-y history
     n_seen: int = 0
     centers: list = field(default_factory=list)   # normalized cx history
     areas: list = field(default_factory=list)     # area fraction history
@@ -212,10 +213,11 @@ def compute_tracking(
             body_cx = ((x1 + x2) / 2) / w
             head = tr.box[5] if len(tr.box) > 5 else None
             if head is not None:
-                head_cx, head_w = head
+                head_cx, head_cy, head_w = head
                 tr.head_rate = 0.8 * tr.head_rate + 0.2
                 tr.head_offset = 0.7 * tr.head_offset + 0.3 * (head_cx / w - body_cx)
                 tr.face_w = 0.7 * tr.face_w + 0.3 * (head_w / w)
+                tr.head_cys.append(head_cy / h)
             else:
                 tr.head_rate = 0.8 * tr.head_rate
             face = _face_box(frame, tr.box)
@@ -226,6 +228,7 @@ def compute_tracking(
                 tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
                 if head is None:
                     tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
+                    tr.head_cys.append(((fy1 + fy2) / 2) / h)
                 _update_speaking(tr, frame, face)
             else:
                 tr.face_rate = 0.8 * tr.face_rate  # detection getting unreliable
@@ -373,7 +376,13 @@ def compute_tracking(
         return layout
     if not path:
         return {"mode": "track", "path": [(0.0, 0.5)]}  # nothing detected: center
-    return {"mode": "track", "path": path}
+    # Where the subject's face sits vertically (median, normalized 0..1).
+    # The renderer uses this to keep faces out of the zone TikTok/Instagram
+    # cover with their own UI at the top of the screen.
+    face_y = None
+    if active_id in tracks and tracks[active_id].head_cys:
+        face_y = round(float(np.median(tracks[active_id].head_cys)), 4)
+    return {"mode": "track", "path": path, "face_y": face_y}
 
 
 # ---- detection + identity assignment ----------------------------------------
@@ -381,7 +390,7 @@ def compute_tracking(
 
 def _detect(model, frame, min_confidence) -> list[tuple]:
     """Person detections as (x1, y1, x2, y2, conf, head). With a pose model,
-    head is (head_cx_px, head_w_px) from the nose/eye/ear keypoints — the most
+    head is (head_cx_px, head_cy_px, head_w_px) from the nose/eye/ear keypoints — the most
     reliable "where is the head" signal there is (needs no visible face). With
     a plain detection model, head is None and the Haar face box fills in."""
     with _infer_lock:
@@ -396,12 +405,14 @@ def _detect(model, frame, min_confidence) -> list[tuple]:
             head = None
             if kxy is not None and kconf is not None and i < len(kxy):
                 # COCO keypoints 0-4: nose, eyes, ears.
-                pts = [kxy[i][j][0] for j in range(5) if kconf[i][j] > 0.5]
+                pts = [kxy[i][j] for j in range(5) if kconf[i][j] > 0.5]
                 if pts:
-                    head_cx = sum(pts) / len(pts)
-                    spread = max(pts) - min(pts)
+                    head_cx = sum(p[0] for p in pts) / len(pts)
+                    head_cy = sum(p[1] for p in pts) / len(pts)
+                    xs = [p[0] for p in pts]
+                    spread = max(xs) - min(xs)
                     head_w = max(spread * 1.6, (y2 - y1) * 0.12)
-                    head = (head_cx, head_w)
+                    head = (head_cx, head_cy, head_w)
             out.append((x1, y1, x2, y2, float(b.conf[0]), head))
     return out
 
