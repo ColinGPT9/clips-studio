@@ -93,6 +93,10 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         return
     cancel.check(video.video_id)
 
+    if mode == "highlights":
+        _highlights(video, config, db, data_dir, profile, candidates, options, started)
+        return
+
     print(f"[4/4] Rendering {len(candidates)} landscape clip(s) (1920x1080)...")
     metas = generate_metadata_batch(candidates, segments, video.title, llm)
     candidates = [replace(c, start=c.start + _NUDGE, end=c.end + _NUDGE) for c in candidates]
@@ -127,6 +131,75 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     db.set_video_status(video.video_id, "done")
     progress.emit(stage="done", video_id=video.video_id, clips=done_count, seconds=round(elapsed, 1))
     print(f"      Longform done in {elapsed / 60:.1f} min ({done_count} clips)")
+
+
+def _highlights(
+    video, config: dict, db: StateDB, data_dir: Path,
+    profile: dict, candidates, options: dict, started: float,
+) -> None:
+    """Highlights: the stream's best moments assembled into one well-paced
+    8-20 minute video — chronological, spread across the whole stream."""
+    from analysis.metadata import ClipMetadata
+    from core.models import ClipCandidate
+    from core.pipeline import _register_clip, _safe_name
+    from longform.assemble import assemble
+    from longform.highlight_select import select_highlights
+
+    try:
+        minutes = max(8, min(20, int(options.get("minutes", 12))))
+    except (TypeError, ValueError):
+        minutes = 12
+    target = minutes * 60.0
+
+    keep = select_highlights(candidates, target, video.duration)
+    if not keep:
+        print("      Not enough scored moments for a highlight video.")
+        db.set_video_status(video.video_id, "done")
+        return
+    total = sum(b - a for a, b in keep)
+    if total < target * 0.6:
+        print(
+            f"      Only {total / 60:.1f} min of highlight material found"
+            f" (target {minutes} min) — using what's there."
+        )
+    print(
+        f"[4/4] Assembling {total / 60:.1f} min highlight video"
+        f" ({len(keep)} moments, chronological)..."
+    )
+
+    clip_dir = (
+        data_dir / "clips"
+        / _safe_name(video.channel, "unknown-channel")
+        / f"{_safe_name(video.title, video.video_id)} [{video.video_id}]"
+        / profile["subdir"]
+    )
+    out = clip_dir / f"highlights_{minutes:02d}min.mp4"
+    assemble(
+        video.path, keep, out, video.video_id,
+        on_progress=lambda i, n: progress.emit(
+            stage="render", video_id=video.video_id, clip=i, total=n
+        ),
+    )
+
+    top = max(candidates, key=lambda c: c.score)
+    candidate = ClipCandidate(
+        start=0.0, end=round(total, 2), score=top.score, hook="Highlights"
+    )
+    meta = ClipMetadata(
+        title=f"{video.title} — highlights",
+        description=(
+            f"The best {total / 60:.0f} minutes of the stream —"
+            f" {len(keep)} moments, in order."
+        ),
+        hashtags=[],
+    )
+    _register_clip(db, video.video_id, candidate, out, meta, json.dumps({"profile": "highlights"}))
+
+    elapsed = time.monotonic() - started
+    db.set_process_seconds(video.video_id, elapsed)
+    db.set_video_status(video.video_id, "done")
+    progress.emit(stage="done", video_id=video.video_id, clips=1, seconds=round(elapsed, 1))
+    print(f"      Highlights done in {elapsed / 60:.1f} min -> {out.name}")
 
 
 def _edited_stream(video, config: dict, db: StateDB, data_dir: Path, profile: dict, started: float) -> None:

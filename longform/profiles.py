@@ -23,7 +23,11 @@ PROFILES: dict[str, dict] = {
     "highlights": {
         "label": "Highlights",
         "subdir": "Longform/Highlights",
-        "ready": False,  # phase 3
+        # Candidate moments (the highlight's building blocks) — the final
+        # video is assembled to the user's 8-20 minute target.
+        "min_duration": 8,
+        "max_duration": 90,
+        "ready": True,
     },
     "edited_stream": {
         "label": "Edited Stream",
