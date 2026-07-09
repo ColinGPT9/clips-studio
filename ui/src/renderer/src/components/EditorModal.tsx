@@ -24,6 +24,8 @@ export default function EditorView({
   const [notice, setNotice] = useState('')
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [platform, setPlatform] = useState<Platform>('none')
+  // Longform clips are 16:9 — the preview box follows the actual video.
+  const isLandscape = !!clip.render_opts?.profile
 
   useEffect(() => {
     setPreviewSrc(null)
@@ -59,7 +61,11 @@ export default function EditorView({
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
         <div className="lg:col-span-2 sticky top-6 space-y-2">
-          <div className="relative mx-auto h-[74vh] aspect-[9/16] max-w-full">
+          <div
+            className={`relative mx-auto max-w-full ${
+              isLandscape ? 'w-full aspect-video' : 'h-[74vh] aspect-[9/16]'
+            }`}
+          >
             <video
               key={previewSrc ?? `clip-${clip.id}`}
               ref={videoRef}
@@ -69,27 +75,32 @@ export default function EditorView({
               className="absolute inset-0 w-full h-full object-cover rounded-xl bg-base"
               aria-label="Editing preview"
             />
-            <PlatformOverlay platform={platform} />
+            {!isLandscape && <PlatformOverlay platform={platform} />}
             {previewSrc && (
               <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
                 DRAFT — all edits applied (low-res)
               </span>
             )}
           </div>
-          <div className="flex justify-center gap-1.5">
-            {PLATFORMS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setPlatform(p.id)}
-                className={`px-2.5 py-1 rounded-md text-xs ${
-                  platform === p.id ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
-                }`}
-                title="Preview how this platform's UI covers your video"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          {!isLandscape && (
+            <div className="flex justify-center gap-1.5">
+              {PLATFORMS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPlatform(p.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs ${
+                    platform === p.id ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
+                  }`}
+                  title="Preview how this platform's UI covers your video"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {isLandscape && (
+            <p className="text-center text-xs text-muted">Longform clip — 1920×1080 horizontal</p>
+          )}
         </div>
         <div className="lg:col-span-3 min-w-0 space-y-4">
           <TimelineEditor

@@ -29,20 +29,29 @@ def render_draft(
     captions_enabled: bool,
     segments: list[Segment],
     out_path: Path,
+    landscape: bool = False,
 ) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     duration = end - start
     candidate = ClipCandidate(start=start, end=end, score=0)
     edit = EditList.from_dict(edit_dict, duration=duration) or EditList(duration=duration)
+    canvas = (1920, 1080) if landscape else (1080, 1920)
 
-    # Pass 1: fast low-res 9:16 center-crop cut of the clip window.
+    # Pass 1: fast low-res cut of the clip window — 16:9 fit for longform,
+    # 9:16 center-crop for Shorts.
+    vf = (
+        "scale=960:540:force_original_aspect_ratio=decrease,"
+        "pad=960:540:(ow-iw)/2:(oh-ih)/2,setsar=1"
+        if landscape
+        else "crop=ih*9/16:ih,scale=540:960,setsar=1"
+    )
     rough = out_path.parent / (out_path.stem + ".rough.mp4")
     r = subprocess.run(
         [
             "ffmpeg", "-y",
             "-ss", f"{start:.2f}", "-i", str(source.resolve()),
             "-t", f"{duration + 0.4:.2f}",
-            "-vf", "crop=ih*9/16:ih,scale=540:960,setsar=1",
+            "-vf", vf,
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27",
             "-c:a", "aac", "-b:a", "96k",
             "-fps_mode", "cfr", "-af", "aresample=async=1",
@@ -64,10 +73,12 @@ def render_draft(
             lines = remap_lines(lines, edit)
         ass_path = build_captions(
             segments, candidate, out_path.parent / (out_path.stem + ".ass"),
-            style=caption_style, lines=lines,
+            style=caption_style, lines=lines, canvas=canvas,
         )
     if edit.hook:
-        ass_path = ensure_hook(ass_path, out_path.parent / (out_path.stem + ".ass"), edit.hook)
+        ass_path = ensure_hook(
+            ass_path, out_path.parent / (out_path.stem + ".ass"), edit.hook, canvas=canvas
+        )
 
     apply_edits(rough, edit, out_path, ass_path=ass_path)
     rough.unlink(missing_ok=True)

@@ -72,10 +72,13 @@ def build_captions(
     output_path: Path,
     style: dict | None = None,
     lines: list[dict] | None = None,
+    canvas: tuple[int, int] = (1080, 1920),
 ) -> Path | None:
     """Write an ASS file with times relative to the clip start.
     `lines` (user-corrected caption text) overrides the generated ones.
-    Returns the path, or None if there is nothing to caption."""
+    `canvas` is the output frame (default portrait Shorts; longform passes
+    1920x1080 and the style scales to it). Returns the path, or None if
+    there is nothing to caption."""
     opts = {**DEFAULT_STYLE, **(style or {})}
     if lines is None:
         lines = build_caption_lines(segments, candidate, opts["words_per_caption"])
@@ -97,19 +100,24 @@ def build_captions(
 
     if not dialogue:
         return None
-    output_path.write_text(_header(opts) + "\n".join(dialogue) + "\n", encoding="utf-8")
+    output_path.write_text(_header(opts, canvas) + "\n".join(dialogue) + "\n", encoding="utf-8")
     return output_path
 
 
-def _header(opts: dict) -> str:
+def _header(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> str:
     alignment, margin_v = _POSITIONS.get(opts["position"], _POSITIONS["bottom"])
     color = _ass_color(opts["color"])
     size = max(40, min(140, int(opts["font_size"])))
     font = opts.get("font") if opts.get("font") in FONTS else "Arial"
+    # Style values are calibrated for the 1920-tall Shorts canvas; scale
+    # them to whatever frame this clip renders at (e.g. landscape 1080).
+    scale = canvas[1] / 1920
+    size = max(24, round(size * scale))
+    margin_v = round(margin_v * scale)
     return f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {canvas[0]}
+PlayResY: {canvas[1]}
 WrapStyle: 0
 
 [V4+ Styles]

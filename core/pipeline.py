@@ -289,10 +289,22 @@ def _render_files(
     final_path = clip_dir / f"{stem}.mp4"
     clip_dir.mkdir(parents=True, exist_ok=True)
 
+    # Longform rendering profile (render_opts["profile"], set only by the
+    # longform module): 16:9 1920x1080 output, no vertical crop/tracking.
+    # Absent for every existing Shorts clip — their path is unchanged.
+    landscape = bool(opts.get("profile"))
+    canvas = (1920, 1080) if landscape else (1080, 1920)
+
     # Color: preset filter (per-clip wins over job/config default) + manual
     # brightness/saturation/contrast adjustments.
     filter_name = opts.get("filter") or config["clips"].get("filter") or "none"
     vf_extra = combined_chain(filter_name, opts.get("adjust"))
+    if landscape:
+        fit = (
+            "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,"
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
+        )
+        vf_extra = f"{fit},{vf_extra}" if vf_extra else fit
 
     # Manual edits from the Shorts editor (trim/cuts/mutes/volume/fades) —
     # non-destructive: stored in render_opts, applied fresh on every render.
@@ -321,6 +333,7 @@ def _render_files(
             segments, candidate, clip_dir / f"{stem}.ass",
             style=caption_style,
             lines=lines,
+            canvas=canvas,
         )
 
     # Hook title (big text, top third, first few seconds) burns through the
@@ -328,7 +341,7 @@ def _render_files(
     if edit is not None and edit.hook:
         from video_editor.overlay import ensure_hook
 
-        ass_path = ensure_hook(ass_path, clip_dir / f"{stem}.ass", edit.hook)
+        ass_path = ensure_hook(ass_path, clip_dir / f"{stem}.ass", edit.hook, canvas=canvas)
 
     # Whisper's word timestamps often end a hair BEFORE the word is finished
     # being spoken, so a cut exactly at the last word's end clips its audio —
@@ -339,7 +352,7 @@ def _render_files(
 
     padded = replace(candidate, end=candidate.end + 0.4)
 
-    if config["clips"].get("vertical", True):
+    if config["clips"].get("vertical", True) and not landscape:
         # Cut a horizontal intermediate, track the subject, render true 9:16.
         intermediate = clip_dir / f"{stem}.source.mp4"
         cut_clip(source, padded, intermediate)

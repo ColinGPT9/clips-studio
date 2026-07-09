@@ -41,6 +41,7 @@ export const api = {
       captions?: boolean
       longClips?: boolean
       filter?: FilterName
+      longform?: { mode: string } | null
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -51,7 +52,8 @@ export const api = {
         caption_style: opts?.captionStyle ?? null,
         captions: opts?.captions ?? null,
         long_clips: opts?.longClips ?? null,
-        filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null
+        filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null,
+        longform: opts?.longform ?? null
       })
     }),
   addLocalVideo: (opts: {

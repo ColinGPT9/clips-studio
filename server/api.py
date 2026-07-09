@@ -37,6 +37,7 @@ class JobIn(BaseModel):
     long_clips: bool | None = None  # 61-180s clips (TikTok monetization needs >60s)
     filter: str | None = None  # color preset name (video/filters.py) for the whole job
     min_score: int | None = None  # per-job quality bar override (0-100)
+    longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
 
 
 class ClipPatch(BaseModel):
@@ -170,7 +171,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         # Re-pasting an already-done URL without force would silently no-op —
         # tell the UI instead, so it can offer "process again with current
         # settings" (e.g. the same video in both 60s+ and regular modes).
-        if not body.force:
+        # Longform jobs skip the guard: making longform outputs of an
+        # already-processed video is the normal case, not a re-run.
+        if not body.force and not body.longform:
             from sources.dispatch import identify
 
             _, vid = identify(body.url)
@@ -192,6 +195,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["captions"] = body.captions
         if body.long_clips:
             payload["long_clips"] = True
+        if body.longform:
+            payload["longform"] = body.longform
         if body.filter:
             from video.filters import is_valid
 
@@ -603,6 +608,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             render_draft(
                 source, row["start_s"], row["end_s"],
                 body.edit, lines, style, enabled, segments, out,
+                landscape=bool(opts.get("profile")),  # longform clips are 16:9
             )
         except Exception as e:
             raise HTTPException(500, f"draft render failed: {str(e)[:400]}")

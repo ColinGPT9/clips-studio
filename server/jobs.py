@@ -133,7 +133,14 @@ class Worker(threading.Thread):
                         # Style chosen in the Generate bar: applied to every
                         # clip of this job (and persisted per clip).
                         cfg["clips"]["caption_style"] = payload["caption_style"]
-                    process_video(payload["url"], cfg, db, force=payload.get("force", False))
+                    if payload.get("longform"):
+                        # Separate longform system (1920x1080 horizontal),
+                        # built on the same stages — Shorts path untouched.
+                        from longform.process import process_longform
+
+                        process_longform(payload["url"], cfg, db, payload["longform"])
+                    else:
+                        process_video(payload["url"], cfg, db, force=payload.get("force", False))
                 elif job["type"] == "render":
                     self._rerender_clip(db, payload)
                 else:

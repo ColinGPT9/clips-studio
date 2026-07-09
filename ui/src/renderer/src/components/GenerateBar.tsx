@@ -40,6 +40,13 @@ export default function GenerateBar(): JSX.Element {
   const [longClips, setLongClips] = useState<boolean>(
     localStorage.getItem('generate-long-clips') === 'true'
   )
+  // Longform: separate horizontal 1920x1080 outputs (same AI, 16:9 render).
+  const [longform, setLongform] = useState<boolean>(
+    localStorage.getItem('generate-longform') === 'true'
+  )
+  const [longformMode, setLongformMode] = useState<string>(
+    localStorage.getItem('generate-longform-mode') ?? 'short_clips'
+  )
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
@@ -55,7 +62,13 @@ export default function GenerateBar(): JSX.Element {
     setError(null)
     setReprocessUrl(null)
     try {
-      const res = await api.createJob(u, { force, captionStyle, captions: burnCaptions, longClips })
+      const res = await api.createJob(u, {
+        force,
+        captionStyle,
+        captions: burnCaptions,
+        longClips,
+        longform: longform ? { mode: longformMode } : null
+      })
       if (res.already_processed) {
         setReprocessUrl(u)
         return
@@ -114,6 +127,21 @@ export default function GenerateBar(): JSX.Element {
           />
           60s+ <span className="text-muted">(TikTok monetization)</span>
         </label>
+        <label
+          className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
+          title="Horizontal 1920x1080 outputs (YouTube, X/Twitter) using the same AI — the vertical Shorts workflow is unchanged"
+        >
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={longform}
+            onChange={(e) => {
+              setLongform(e.target.checked)
+              localStorage.setItem('generate-longform', String(e.target.checked))
+            }}
+          />
+          Longform <span className="text-muted">(16:9)</span>
+        </label>
         <button
           className="btn-ghost shrink-0"
           onClick={async () => {
@@ -136,6 +164,33 @@ export default function GenerateBar(): JSX.Element {
           <div className="w-full space-y-3 border-t border-raised/60 pt-3">
             <p className="label">Caption style for all new clips (remembered)</p>
             <CaptionStyleControls idPrefix="gen" style={captionStyle} onChange={setStyleField} />
+          </div>
+        )}
+        {longform && (
+          <div className="w-full flex items-center gap-3 flex-wrap border-t border-raised/60 pt-3">
+            <p className="label shrink-0">Longform output</p>
+            <select
+              className="input !w-64"
+              value={longformMode}
+              onChange={(e) => {
+                setLongformMode(e.target.value)
+                localStorage.setItem('generate-longform-mode', e.target.value)
+              }}
+              aria-label="Longform output type"
+            >
+              <option value="short_clips">Short Clips (up to 60s, horizontal)</option>
+              <option value="clips_140">Clips (up to 140s — X/Twitter)</option>
+              <option value="highlights" disabled>
+                Highlights (8-20 min) — coming soon
+              </option>
+              <option value="edited_stream" disabled>
+                Edited Stream — coming soon
+              </option>
+            </select>
+            <p className="text-xs text-muted">
+              1920×1080 horizontal clips, same AI selection — they appear in Clip Studio with the
+              full editor. Your vertical Shorts settings above still apply to normal runs.
+            </p>
           </div>
         )}
       </div>

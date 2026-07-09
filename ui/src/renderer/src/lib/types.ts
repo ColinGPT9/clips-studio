@@ -86,6 +86,7 @@ export interface RenderOpts {
   filter?: FilterName
   adjust?: Adjust
   edit?: EditData | null
+  profile?: string // longform rendering profile (16:9); absent = vertical Short
 }
 
 export interface Clip {
