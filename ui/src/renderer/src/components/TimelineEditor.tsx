@@ -18,6 +18,21 @@ const MIN_SEG = 0.25
 const PAUSE_GAP = 0.6 // "tighten pauses" removes silences longer than this
 const PAUSE_PAD = 0.12
 
+// Words that commonly get Shorts age-restricted, demonetized or suppressed.
+// "Censor" mutes their audio AND strips them from the burned captions —
+// platform moderation reads both. Exact-token match after normalization.
+const PROFANITY = new Set([
+  'fuck', 'fucking', 'fucked', 'fucker', 'fuckin', 'motherfucker', 'motherfucking',
+  'shit', 'shitty', 'bullshit', 'shits',
+  'bitch', 'bitches', 'asshole', 'assholes',
+  'dick', 'dickhead', 'pussy', 'cunt', 'cock',
+  'bastard', 'whore', 'slut', 'hoe', 'hoes', 'tits', 'titties',
+  'nigga', 'niggas', 'nigger', 'faggot', 'fag', 'retard', 'retarded',
+  'goddamn', 'goddamnit'
+])
+
+const normToken = (w: string): string => w.toLowerCase().replace(/[^a-z]/g, '')
+
 function defaultEdit(duration: number): EditData {
   return {
     keep: [[0, duration]],
@@ -122,12 +137,21 @@ export default function TimelineEditor({
   }, [clip.id])
 
   // ---- preview simulation: skip newly-removed sections, mute new mutes ----
+  // Runs on requestAnimationFrame, not timeupdate: timeupdate only fires a
+  // few times per second, which sails right past a 0.3s muted word — the
+  // mute would never audibly engage in the preview.
   useEffect(() => {
     const el = videoRef.current
     if (!el) return
-    const onTime = (): void => {
+    let raf = 0
+    let lastShown = -1
+    const tick = (): void => {
+      raf = requestAnimationFrame(tick)
       const tOrig = bakedToOrig(el.currentTime, baked?.keep)
-      setPlayhead(tOrig)
+      if (Math.abs(tOrig - lastShown) > 0.03) {
+        lastShown = tOrig
+        setPlayhead(tOrig)
+      }
       if (!el.paused) {
         // Removed in the working edit but not yet baked -> jump over it.
         for (const [a, b] of removed) {
@@ -139,14 +163,14 @@ export default function TimelineEditor({
         }
       }
       const inNewMute =
-        edit.mutes.some(([a, b]) => tOrig >= a && tOrig <= b) &&
+        edit.mutes.some(([a, b]) => tOrig >= a - 0.02 && tOrig <= b + 0.02) &&
         !(baked?.mutes ?? []).some(([a, b]) => tOrig >= a && tOrig <= b)
       el.muted = edit.mute_all || inNewMute
       if (!el.muted) el.volume = Math.max(0, Math.min(1, edit.volume))
     }
-    el.addEventListener('timeupdate', onTime)
+    raf = requestAnimationFrame(tick)
     return () => {
-      el.removeEventListener('timeupdate', onTime)
+      cancelAnimationFrame(raf)
       el.muted = false
       el.volume = 1
     }
@@ -209,6 +233,31 @@ export default function TimelineEditor({
     }
     if (ranges.length !== keep.length) push({ ...edit, keep: ranges })
     setNotice(`Removed ${ranges.length - keep.length} pause(s)`)
+  }
+
+  const censorProfanity = (): void => {
+    const flagged = words.filter((w) => PROFANITY.has(normToken(w.word)) && !wordMuted(w))
+    if (flagged.length === 0) {
+      setNotice('No flagged words found in this clip')
+      return
+    }
+    push({
+      ...edit,
+      muted_words: [
+        ...edit.muted_words,
+        ...flagged.map((w) => ({ start: w.start, end: w.end, word: w.word }))
+      ],
+      mutes: [
+        ...edit.mutes,
+        ...flagged.map(
+          (w): Range => [
+            Number(Math.max(0, w.start - 0.04).toFixed(2)),
+            Number(Math.min(duration, w.end + 0.04).toFixed(2))
+          ]
+        )
+      ]
+    })
+    setNotice(`Muted ${flagged.length} flagged word(s) — audio + captions clean after Apply`)
   }
 
   const wordMuted = (w: Word): boolean =>
@@ -395,6 +444,14 @@ export default function TimelineEditor({
         >
           ⚡ Tighten pauses
         </button>
+        <button
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40"
+          disabled={words.length === 0}
+          onClick={censorProfanity}
+          title="Mute every swear word — silences the audio and removes it from the burned captions, so platforms can't flag either"
+        >
+          🚫 Censor swearing
+        </button>
         <span className="text-muted self-center ml-auto tabular-nums">
           {keep.reduce((s, [a, b]) => s + (b - a), 0).toFixed(1)}s / {duration.toFixed(1)}s
         </span>
@@ -474,8 +531,9 @@ export default function TimelineEditor({
       )}
       {notice && <p className="text-xs text-muted">{notice}</p>}
       <p className="text-[11px] text-muted/70">
-        Preview simulates your edits instantly — nothing is final until you press Apply. Removed
-        sections are skipped during playback; muted words are struck through.
+        The preview simulates your edits instantly: removed sections are skipped and muted words
+        go silent as you play. The caption text you see is burned into the current file — muted
+        words disappear from it after you press Apply. Nothing is final until Apply.
       </p>
     </div>
   )

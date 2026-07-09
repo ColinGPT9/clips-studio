@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
+import ColorControls from './ColorControls'
 import TimelineEditor from './TimelineEditor'
 
 /** Full-screen editing workspace: big preview on the left, the timeline
@@ -61,8 +62,9 @@ export default function EditorModal({
               aria-label="Editing preview — your edits are simulated live"
             />
           </div>
-          <div className="md:col-span-3 min-w-0">
+          <div className="md:col-span-3 min-w-0 space-y-4">
             <TimelineEditor clip={clip} videoRef={videoRef} onChanged={onChanged} />
+            <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
           </div>
         </div>
       </div>
