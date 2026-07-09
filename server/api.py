@@ -573,10 +573,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/clips/{clip_id}/preview")
     def preview_clip(clip_id: int, body: PreviewIn):
-        """Fast DRAFT render of this clip with every pending edit applied —
-        cuts, mutes, caption changes, hook, music, speed — so the editor can
-        show the true result before Apply. Low-res + center crop for speed;
-        the full-quality Apply render is authoritative."""
+        """Render this clip with every pending edit applied — into a preview
+        file, through the REAL render path (face tracking, letterbox,
+        captions, hook, music, speed), so the preview's framing and zoom are
+        exactly what Apply will produce. Slower than a rough draft, but
+        what you see is what you export."""
         d = db()
         try:
             row = d.get_clip(clip_id)
@@ -586,7 +587,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             raise HTTPException(404, "no such clip")
         source = data_dir / "downloads" / f"{row['video_id']}.mp4"
         if not source.exists():
-            raise HTTPException(404, "source video missing — cannot draft-render")
+            raise HTTPException(404, "source video missing — cannot preview-render")
 
         segments = []
         tpath = data_dir / "transcripts" / f"{row['video_id']}.json"
@@ -596,22 +597,27 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             tdata = json.loads(tpath.read_text(encoding="utf-8"))
             segments = [Segment(**s) for s in tdata["segments"]]
 
+        from core.models import ClipCandidate
+        from core.pipeline import _render_files
+
         opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
-        style = opts.get("caption_style") or config["clips"].get("caption_style")
-        enabled = config["clips"].get("captions", True) and opts.get("captions", True)
-        lines = body.caption_lines if body.caption_lines is not None else opts.get("caption_lines")
+        opts["edit"] = body.edit  # pending edit (None = cleared)
+        if body.caption_lines is not None:
+            opts["caption_lines"] = body.caption_lines
 
-        from video_editor.preview import render_draft
-
-        out = data_dir / "previews" / f"clip_{clip_id}.mp4"
+        candidate = ClipCandidate(
+            start=row["start_s"], end=row["end_s"],
+            score=row["score"] or 0, hook=row["hook"] or "",
+        )
+        prev_dir = data_dir / "previews"
+        prev_dir.mkdir(parents=True, exist_ok=True)
+        out = prev_dir / f"clip_{clip_id}.mp4"
         try:
-            render_draft(
-                source, row["start_s"], row["end_s"],
-                body.edit, lines, style, enabled, segments, out,
-                landscape=bool(opts.get("profile")),  # longform clips are 16:9
-            )
+            rendered, _ = _render_files(source, candidate, segments, prev_dir, config, opts)
+            out.unlink(missing_ok=True)
+            rendered.rename(out)
         except Exception as e:
-            raise HTTPException(500, f"draft render failed: {str(e)[:400]}")
+            raise HTTPException(500, f"preview render failed: {str(e)[:400]}")
         import time as _time
 
         return {"url": f"/media/preview/{clip_id}?v={int(_time.time())}"}

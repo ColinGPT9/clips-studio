@@ -363,7 +363,7 @@ export default function TimelineEditor({
 
   const updatePreview = async (): Promise<void> => {
     setBusy(true)
-    setNotice('Rendering draft preview…')
+    setNotice('Rendering preview (real render — same framing as the export, up to a minute)…')
     try {
       const res = await api.previewClip(
         clip.id,
@@ -372,7 +372,7 @@ export default function TimelineEditor({
       )
       setDraftEditJson(JSON.stringify(edit))
       onPreview(res.url)
-      setNotice('Draft preview loaded — this is how the export will look')
+      setNotice('Preview loaded — this is exactly how the export will look')
     } catch (e) {
       setNotice(String(e))
     } finally {
@@ -703,7 +703,7 @@ export default function TimelineEditor({
           className="bg-raised px-3 py-1.5 rounded-md text-xs font-medium hover:bg-raised/70 disabled:opacity-40"
           disabled={busy}
           onClick={updatePreview}
-          title="Fast draft render with ALL pending changes — updated captions, muted words, hook, music, speed"
+          title="Renders the clip for real with ALL pending changes — same framing/zoom, tracking, captions, hook, music and speed as the final export. Can take up to a minute."
         >
           {busy ? 'Rendering…' : '🔄 Update preview'}
         </button>
@@ -727,8 +727,8 @@ export default function TimelineEditor({
       {notice && <p className="text-xs text-muted">{notice}</p>}
       <p className="text-[11px] text-muted/70">
         Cuts, mutes and speed are simulated instantly as you play. For the TRUE result — updated
-        caption text, hook title, music — press “Update preview” (a few seconds). Nothing is
-        final until Apply.
+        caption text, hook title, music, exact framing — press “Update preview” (a real render,
+        up to a minute). Nothing is final until Apply.
       </p>
     </div>
   )

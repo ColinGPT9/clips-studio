@@ -78,7 +78,7 @@ export default function EditorView({
             {!isLandscape && <PlatformOverlay platform={platform} />}
             {previewSrc && (
               <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
-                DRAFT — all edits applied (low-res)
+                PREVIEW — all edits applied (not saved until Apply)
               </span>
             )}
           </div>
