@@ -47,9 +47,6 @@ export default function GenerateBar(): JSX.Element {
   const [longformMode, setLongformMode] = useState<string>(
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
-  const [highlightMinutes, setHighlightMinutes] = useState<number>(
-    Number(localStorage.getItem('generate-highlight-minutes') ?? 12)
-  )
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
@@ -70,9 +67,7 @@ export default function GenerateBar(): JSX.Element {
         captionStyle,
         captions: burnCaptions,
         longClips,
-        longform: longform
-          ? { mode: longformMode, ...(longformMode === 'highlights' ? { minutes: highlightMinutes } : {}) }
-          : null
+        longform: longform ? { mode: longformMode } : null
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -185,28 +180,11 @@ export default function GenerateBar(): JSX.Element {
             >
               <option value="short_clips">Short Clips (up to 60s, horizontal)</option>
               <option value="clips_140">Clips (up to 140s — X/Twitter)</option>
-              <option value="highlights">Highlights (best-of video)</option>
+              <option value="highlights">Highlights (best-of, 8-20 min by quality)</option>
               <option value="edited_stream">
                 Edited Stream (downtime & muted music removed)
               </option>
             </select>
-            {longformMode === 'highlights' && (
-              <select
-                className="input !w-28"
-                value={highlightMinutes}
-                onChange={(e) => {
-                  setHighlightMinutes(Number(e.target.value))
-                  localStorage.setItem('generate-highlight-minutes', e.target.value)
-                }}
-                aria-label="Highlight video target length"
-              >
-                {[8, 12, 15, 20].map((m) => (
-                  <option key={m} value={m}>
-                    ~{m} min
-                  </option>
-                ))}
-              </select>
-            )}
             <p className="text-xs text-muted">
               1920×1080 horizontal clips, same AI selection — they appear in Clip Studio with the
               full editor. Your vertical Shorts settings above still apply to normal runs.

@@ -138,29 +138,25 @@ def _highlights(
     profile: dict, candidates, options: dict, started: float,
 ) -> None:
     """Highlights: the stream's best moments assembled into one well-paced
-    8-20 minute video — chronological, spread across the whole stream."""
+    video. QUALITY decides the length — at least 8 minutes (YouTube
+    mid-roll ad eligibility), up to 20 when the material earns it, never
+    padded with filler to hit a number."""
     from analysis.metadata import ClipMetadata
     from core.models import ClipCandidate
     from core.pipeline import _register_clip, _safe_name
     from longform.assemble import assemble
-    from longform.highlight_select import select_highlights
+    from longform.highlight_select import FLOOR, select_highlights
 
-    try:
-        minutes = max(8, min(20, int(options.get("minutes", 12))))
-    except (TypeError, ValueError):
-        minutes = 12
-    target = minutes * 60.0
-
-    keep = select_highlights(candidates, target, video.duration)
+    keep = select_highlights(candidates, video.duration)
     if not keep:
         print("      Not enough scored moments for a highlight video.")
         db.set_video_status(video.video_id, "done")
         return
     total = sum(b - a for a, b in keep)
-    if total < target * 0.6:
+    if total < FLOOR:
         print(
-            f"      Only {total / 60:.1f} min of highlight material found"
-            f" (target {minutes} min) — using what's there."
+            f"      Only {total / 60:.1f} min of highlight material in this"
+            f" video (under the 8 min ad floor) — using everything there is."
         )
     print(
         f"[4/4] Assembling {total / 60:.1f} min highlight video"
@@ -173,7 +169,7 @@ def _highlights(
         / f"{_safe_name(video.title, video.video_id)} [{video.video_id}]"
         / profile["subdir"]
     )
-    out = clip_dir / f"highlights_{minutes:02d}min.mp4"
+    out = clip_dir / "highlights.mp4"
     assemble(
         video.path, keep, out, video.video_id,
         on_progress=lambda i, n: progress.emit(
