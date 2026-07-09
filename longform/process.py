@@ -59,6 +59,10 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     db.set_video_status(video.video_id, "downloaded")
     cancel.check(video.video_id)
 
+    if mode == "edited_stream":
+        _edited_stream(video, config, db, data_dir, profile, started)
+        return
+
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
     segments = transcribe(
@@ -123,3 +127,61 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     db.set_video_status(video.video_id, "done")
     progress.emit(stage="done", video_id=video.video_id, clips=done_count, seconds=round(elapsed, 1))
     print(f"      Longform done in {elapsed / 60:.1f} min ({done_count} clips)")
+
+
+def _edited_stream(video, config: dict, db: StateDB, data_dir: Path, profile: dict, started: float) -> None:
+    """Edited Stream: the full VOD, chronological, with dead silence
+    (including Twitch/Kick DMCA-muted music sections, which arrive already
+    silent), AFK sections and waiting/loading screens cut out."""
+    from analysis.audio_features import extract_audio_features
+    from analysis.visual_features import extract_visual_features
+    from analysis.metadata import ClipMetadata
+    from core.models import ClipCandidate
+    from core.pipeline import _register_clip, _safe_name
+    from longform.assemble import assemble
+    from longform.downtime import detect_keep_ranges
+
+    print("[2/3] Detecting downtime (silence, DMCA-muted music, AFK, waiting screens)...")
+    progress.emit(stage="signals", video_id=video.video_id)
+    audio_raw = extract_audio_features(video.path)
+    visual_raw = extract_visual_features(video.path)
+    keep = detect_keep_ranges(
+        audio_raw.get("loudness"), visual_raw.get("motion"), video.duration
+    )
+    kept_s = sum(b - a for a, b in keep)
+    removed_s = max(0.0, video.duration - kept_s)
+    print(
+        f"      Keeping {kept_s / 60:.1f} min of {video.duration / 60:.1f}"
+        f" ({removed_s / 60:.1f} min of downtime removed, {len(keep)} sections)"
+    )
+    db.set_video_status(video.video_id, "analyzed")
+    cancel.check(video.video_id)
+
+    print(f"[3/3] Assembling edited stream ({len(keep)} segments)...")
+    clip_dir = (
+        data_dir / "clips"
+        / _safe_name(video.channel, "unknown-channel")
+        / f"{_safe_name(video.title, video.video_id)} [{video.video_id}]"
+        / profile["subdir"]
+    )
+    out = clip_dir / f"edited_{int(video.duration):06d}.mp4"
+    assemble(
+        video.path, keep, out, video.video_id,
+        on_progress=lambda i, n: progress.emit(
+            stage="render", video_id=video.video_id, clip=i, total=n
+        ),
+    )
+
+    candidate = ClipCandidate(start=0.0, end=round(video.duration, 2), score=0, hook="Edited stream")
+    meta = ClipMetadata(
+        title=f"{video.title} — edited stream",
+        description=f"Full stream with {removed_s / 60:.0f} minutes of downtime removed.",
+        hashtags=[],
+    )
+    _register_clip(db, video.video_id, candidate, out, meta, json.dumps({"profile": "edited_stream"}))
+
+    elapsed = time.monotonic() - started
+    db.set_process_seconds(video.video_id, elapsed)
+    db.set_video_status(video.video_id, "done")
+    progress.emit(stage="done", video_id=video.video_id, clips=1, seconds=round(elapsed, 1))
+    print(f"      Edited stream done in {elapsed / 60:.1f} min -> {out.name}")

@@ -28,6 +28,6 @@ PROFILES: dict[str, dict] = {
     "edited_stream": {
         "label": "Edited Stream",
         "subdir": "Longform/Edited Streams",
-        "ready": False,  # phase 2
+        "ready": True,
     },
 }

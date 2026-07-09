@@ -183,8 +183,8 @@ export default function GenerateBar(): JSX.Element {
               <option value="highlights" disabled>
                 Highlights (8-20 min) — coming soon
               </option>
-              <option value="edited_stream" disabled>
-                Edited Stream — coming soon
+              <option value="edited_stream">
+                Edited Stream (downtime & muted music removed)
               </option>
             </select>
             <p className="text-xs text-muted">
