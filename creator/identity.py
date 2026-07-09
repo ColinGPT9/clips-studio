@@ -28,13 +28,17 @@ def normalize(name: str) -> str:
     return re.sub(r"[^a-z]", "", (name or "").lower())
 
 
-def resolve(db: StateDB, video_id: str, channel_name: str) -> int | None:
+def resolve(
+    db: StateDB, video_id: str, channel_name: str, platform: str | None = None
+) -> int | None:
     """Creator id for this video's channel, creating account + profile on
-    first sight. Returns None only when the channel is unknown/empty."""
+    first sight. Returns None only when the channel is unknown/empty.
+    `platform` overrides the video-id inference (uploaded local files carry
+    the platform the user chose in the upload form)."""
     channel = (channel_name or "").strip()
     if not channel:
         return None
-    platform = platform_of(video_id)
+    platform = platform or platform_of(video_id)
 
     row = db.conn.execute(
         "SELECT creator_id FROM platform_accounts WHERE platform = ? AND platform_account_id = ?",
@@ -57,9 +61,18 @@ def resolve(db: StateDB, video_id: str, channel_name: str) -> int | None:
     return creator_id
 
 
-def tag_video(db: StateDB, video_id: str, channel_name: str) -> int | None:
-    """Resolve and stamp creator_id onto the video row."""
-    creator_id = resolve(db, video_id, channel_name)
+def tag_video(
+    db: StateDB, video_id: str, channel_name: str, platform: str | None = None
+) -> int | None:
+    """Resolve and stamp creator_id onto the video row. A video that was
+    already assigned a creator (e.g. by the upload form, where the user
+    picked the platform themselves) keeps that assignment."""
+    row = db.conn.execute(
+        "SELECT creator_id FROM videos WHERE video_id = ?", (video_id,)
+    ).fetchone()
+    if row and row["creator_id"] is not None:
+        return row["creator_id"]
+    creator_id = resolve(db, video_id, channel_name, platform=platform)
     if creator_id is not None:
         db.conn.execute(
             "UPDATE videos SET creator_id = ? WHERE video_id = ?", (creator_id, video_id)

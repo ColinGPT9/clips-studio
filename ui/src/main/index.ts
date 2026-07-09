@@ -80,6 +80,18 @@ ipcMain.handle('pick-audio-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+ipcMain.handle('pick-video-file', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose a video to make clips from',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'ts', 'flv'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
 app.whenReady().then(() => {
   startBackend()
   createWindow()

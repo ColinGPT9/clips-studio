@@ -64,6 +64,16 @@ class PreviewIn(BaseModel):
     caption_lines: list[dict] | None = None  # pending caption text, if changed
 
 
+class LocalVideoIn(BaseModel):
+    path: str                  # video file on this computer (mp4/mov/mkv/…)
+    title: str = ""            # defaults to the file name
+    channel: str = ""          # creator/channel name for the Creators tab
+    platform: str = "youtube"  # which platform profile this creator belongs to
+    captions: bool | None = None
+    caption_style: dict | None = None
+    long_clips: bool | None = None
+
+
 class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
@@ -197,6 +207,84 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         worker.notify()
         return {"job_id": job_id}
+
+    @app.post("/videos/local")
+    def add_local_video(body: LocalVideoIn):
+        """Import a video FILE from this computer and run the normal clip
+        pipeline on it — for editing/clipping a video before it's published
+        anywhere. The user's title/creator/platform fill the same fields a
+        downloaded video would get, so it lands in the library and the
+        Creators tab exactly like a processed URL."""
+        import hashlib
+        import subprocess as sp
+
+        src = Path(body.path)
+        if not src.exists() or not src.is_file():
+            raise HTTPException(400, f"file not found: {body.path}")
+
+        # Must contain a video stream (catches audio files / random files).
+        probe = sp.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(src)],
+            capture_output=True, text=True,
+        )
+        if probe.returncode != 0 or not probe.stdout.strip():
+            raise HTTPException(400, "that file doesn't look like a video")
+
+        stat = src.stat()
+        vid = "local_" + hashlib.md5(
+            f"{src.resolve()}|{stat.st_size}|{int(stat.st_mtime)}".encode()
+        ).hexdigest()[:12]
+        dest = data_dir / "downloads" / f"{vid}.mp4"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        if not dest.exists():
+            # Remux (no re-encode — fast, lossless) into the pipeline's mp4
+            # layout; fall back to an NVENC/CPU re-encode for codecs mp4
+            # can't carry (e.g. VP9 in webm).
+            remux = sp.run(
+                ["ffmpeg", "-y", "-i", str(src), "-c", "copy",
+                 "-movflags", "+faststart", str(dest)],
+                capture_output=True, text=True,
+            )
+            if remux.returncode != 0:
+                dest.unlink(missing_ok=True)
+                from video.encoding import video_encoder_args
+
+                reenc = sp.run(
+                    ["ffmpeg", "-y", "-i", str(src), *video_encoder_args(),
+                     "-c:a", "aac", "-b:a", "160k",
+                     "-movflags", "+faststart", str(dest)],
+                    capture_output=True, text=True,
+                )
+                if reenc.returncode != 0:
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(
+                        400,
+                        "couldn't convert this file — export it as MP4 (H.264) and try again",
+                    )
+
+        title = body.title.strip() or src.stem
+        platform = body.platform if body.platform in ("youtube", "twitch", "kick") else "youtube"
+        d = db()
+        try:
+            d.upsert_video(vid, title=title, channel_name=body.channel.strip())
+            if body.channel.strip():
+                from creator.identity import tag_video
+
+                tag_video(d, vid, body.channel.strip(), platform=platform)
+            payload: dict = {"url": f"local:{vid}"}
+            if body.captions is not None:
+                payload["captions"] = body.captions
+            if body.caption_style:
+                payload["caption_style"] = body.caption_style
+            if body.long_clips:
+                payload["long_clips"] = True
+            job_id = d.add_job("process", json.dumps(payload))
+        finally:
+            d.close()
+        worker.notify()
+        return {"job_id": job_id, "video_id": vid}
 
     @app.get("/jobs")
     def jobs():

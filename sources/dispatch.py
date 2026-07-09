@@ -14,6 +14,10 @@ from sources import kick, twitch, youtube
 def identify(url: str) -> tuple[str, str | None]:
     """(source_name, video_id) — video_id is None when the URL doesn't
     contain a recognizable video (e.g. a live-channel page)."""
+    if url.startswith("local:"):
+        # Uploaded file: "local:<video_id>". The file was already placed in
+        # downloads/ by the upload endpoint — there is nothing to fetch.
+        return "local", url.split(":", 1)[1]
     if twitch.is_twitch_url(url):
         return "twitch", twitch.extract_vod_id(url)
     if kick.is_kick_url(url):
@@ -23,6 +27,11 @@ def identify(url: str) -> tuple[str, str | None]:
 
 def download(url: str, output_dir: Path) -> DownloadedVideo:
     source, _ = identify(url)
+    if source == "local":
+        # Only reachable if the imported copy in downloads/ was deleted.
+        raise ValueError(
+            "The uploaded video's imported copy is gone — upload the file again."
+        )
     if source == "twitch":
         return twitch.download(url, output_dir)
     if source == "kick":

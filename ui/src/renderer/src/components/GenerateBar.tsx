@@ -22,6 +22,17 @@ export default function GenerateBar(): JSX.Element {
   const [reprocessUrl, setReprocessUrl] = useState<string | null>(null)
   const [queued, setQueued] = useState(false)
   const [styleOpen, setStyleOpen] = useState(false)
+  // "Upload a video file" flow: pick a local file, fill in the same info a
+  // downloaded video would have (title / creator / platform), then process.
+  const [uploadPath, setUploadPath] = useState<string | null>(null)
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploadChannel, setUploadChannel] = useState(
+    localStorage.getItem('upload-channel') ?? ''
+  )
+  const [uploadPlatform, setUploadPlatform] = useState(
+    localStorage.getItem('upload-platform') ?? 'youtube'
+  )
+  const [uploadBusy, setUploadBusy] = useState(false)
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(loadSavedStyle)
   const [burnCaptions, setBurnCaptions] = useState<boolean>(
     localStorage.getItem('generate-captions') !== 'false'
@@ -106,6 +117,21 @@ export default function GenerateBar(): JSX.Element {
         <button className="btn-accent shrink-0" onClick={() => generate()}>
           Generate clips
         </button>
+        <button
+          className="btn-ghost shrink-0"
+          onClick={async () => {
+            const path = await window.studio.pickVideoFile()
+            if (path) {
+              setUploadPath(path)
+              const base = path.split(/[\\/]/).pop() ?? ''
+              setUploadTitle(base.replace(/\.[^.]+$/, ''))
+              setError(null)
+            }
+          }}
+          title="Make clips from a video file on this computer — e.g. your YouTube video before you publish it"
+        >
+          📁 Upload video file
+        </button>
         {styleOpen && (
           <div className="w-full space-y-3 border-t border-raised/60 pt-3">
             <p className="label">Caption style for all new clips (remembered)</p>
@@ -113,6 +139,87 @@ export default function GenerateBar(): JSX.Element {
           </div>
         )}
       </div>
+
+      {uploadPath && (
+        <div className="card space-y-3">
+          <p className="text-sm">
+            <span className="font-semibold">Uploading:</span>{' '}
+            <span className="text-muted">{uploadPath}</span>
+          </p>
+          <p className="text-xs text-muted">
+            Fill this in like the video was downloaded — it files the video and its clips under
+            this creator in your library and the Creators tab.
+          </p>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div className="flex-1 min-w-48">
+              <label className="label">Video title</label>
+              <input
+                className="input mt-1"
+                value={uploadTitle}
+                onChange={(e) => setUploadTitle(e.target.value)}
+              />
+            </div>
+            <div className="flex-1 min-w-40">
+              <label className="label">Creator / channel name</label>
+              <input
+                className="input mt-1"
+                placeholder="e.g. YourChannel"
+                value={uploadChannel}
+                onChange={(e) => {
+                  setUploadChannel(e.target.value)
+                  localStorage.setItem('upload-channel', e.target.value)
+                }}
+              />
+            </div>
+            <div>
+              <label className="label">Platform</label>
+              <select
+                className="input mt-1 !w-32"
+                value={uploadPlatform}
+                onChange={(e) => {
+                  setUploadPlatform(e.target.value)
+                  localStorage.setItem('upload-platform', e.target.value)
+                }}
+              >
+                <option value="youtube">YouTube</option>
+                <option value="twitch">Twitch</option>
+                <option value="kick">Kick</option>
+              </select>
+            </div>
+            <button
+              className="btn-accent shrink-0"
+              disabled={uploadBusy}
+              onClick={async () => {
+                setUploadBusy(true)
+                setError(null)
+                try {
+                  await api.addLocalVideo({
+                    path: uploadPath,
+                    title: uploadTitle,
+                    channel: uploadChannel,
+                    platform: uploadPlatform,
+                    captions: burnCaptions,
+                    captionStyle,
+                    longClips
+                  })
+                  setUploadPath(null)
+                  setQueued(true)
+                  setTimeout(() => setQueued(false), 4000)
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e))
+                } finally {
+                  setUploadBusy(false)
+                }
+              }}
+            >
+              {uploadBusy ? 'Importing…' : 'Make clips'}
+            </button>
+            <button className="btn-ghost shrink-0" onClick={() => setUploadPath(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {queued && <p className="text-sm text-accent px-1">Queued — processing will start shortly.</p>}
       {error && <div className="card border-error/40 text-error text-sm">{error}</div>}

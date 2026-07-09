@@ -54,6 +54,27 @@ export const api = {
         filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null
       })
     }),
+  addLocalVideo: (opts: {
+    path: string
+    title?: string
+    channel?: string
+    platform?: string
+    captions?: boolean
+    captionStyle?: CaptionStyle
+    longClips?: boolean
+  }) =>
+    request<{ job_id: number; video_id: string }>('/videos/local', {
+      method: 'POST',
+      body: JSON.stringify({
+        path: opts.path,
+        title: opts.title ?? '',
+        channel: opts.channel ?? '',
+        platform: opts.platform ?? 'youtube',
+        captions: opts.captions ?? null,
+        caption_style: opts.captionStyle ?? null,
+        long_clips: opts.longClips ?? null
+      })
+    }),
   jobs: () => request<Job[]>('/jobs'),
   cancelProcessing: (videoId: string) =>
     request<{ cancelling: string }>('/cancel', {
