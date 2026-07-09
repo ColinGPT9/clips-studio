@@ -307,9 +307,9 @@ def _render_files(
     caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
     if config["clips"].get("captions", True) and opts.get("captions", True):
         lines = opts.get("caption_lines")  # user-corrected caption text, if any
-        if edit is not None and edit.keep is not None:
-            # Sections were cut out: every surviving caption shifts to its
-            # new time on the edited timeline.
+        if edit is not None and (edit.keep is not None or abs(edit.speed - 1) >= 0.01):
+            # Sections were cut out and/or the clip was sped up: every
+            # surviving caption shifts to its new time on the edited timeline.
             from video.captions import DEFAULT_STYLE, build_caption_lines
             from video_editor.captions import remap_lines
 
@@ -322,6 +322,13 @@ def _render_files(
             style=caption_style,
             lines=lines,
         )
+
+    # Hook title (big text, top third, first few seconds) burns through the
+    # same ASS/subtitles path as captions — correct at final resolution.
+    if edit is not None and edit.hook:
+        from video_editor.overlay import ensure_hook
+
+        ass_path = ensure_hook(ass_path, clip_dir / f"{stem}.ass", edit.hook)
 
     # Whisper's word timestamps often end a hair BEFORE the word is finished
     # being spoken, so a cut exactly at the last word's end clips its audio —

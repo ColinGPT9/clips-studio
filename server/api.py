@@ -59,6 +59,11 @@ class AccountIn(BaseModel):
     channel: str    # channel/username on that platform
 
 
+class PreviewIn(BaseModel):
+    edit: dict | None = None            # pending edit list from the editor
+    caption_lines: list[dict] | None = None  # pending caption text, if changed
+
+
 class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
@@ -472,6 +477,57 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         worker.notify()
         return {"job_id": job_id}
+
+    @app.post("/clips/{clip_id}/preview")
+    def preview_clip(clip_id: int, body: PreviewIn):
+        """Fast DRAFT render of this clip with every pending edit applied —
+        cuts, mutes, caption changes, hook, music, speed — so the editor can
+        show the true result before Apply. Low-res + center crop for speed;
+        the full-quality Apply render is authoritative."""
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such clip")
+        source = data_dir / "downloads" / f"{row['video_id']}.mp4"
+        if not source.exists():
+            raise HTTPException(404, "source video missing — cannot draft-render")
+
+        segments = []
+        tpath = data_dir / "transcripts" / f"{row['video_id']}.json"
+        if tpath.exists():
+            from core.models import Segment
+
+            tdata = json.loads(tpath.read_text(encoding="utf-8"))
+            segments = [Segment(**s) for s in tdata["segments"]]
+
+        opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
+        style = opts.get("caption_style") or config["clips"].get("caption_style")
+        enabled = config["clips"].get("captions", True) and opts.get("captions", True)
+        lines = body.caption_lines if body.caption_lines is not None else opts.get("caption_lines")
+
+        from video_editor.preview import render_draft
+
+        out = data_dir / "previews" / f"clip_{clip_id}.mp4"
+        try:
+            render_draft(
+                source, row["start_s"], row["end_s"],
+                body.edit, lines, style, enabled, segments, out,
+            )
+        except Exception as e:
+            raise HTTPException(500, f"draft render failed: {str(e)[:400]}")
+        import time as _time
+
+        return {"url": f"/media/preview/{clip_id}?v={int(_time.time())}"}
+
+    @app.get("/media/preview/{clip_id}")
+    def media_preview(clip_id: int):
+        path = (data_dir / "previews" / f"clip_{clip_id}.mp4").resolve()
+        if not path.exists():
+            raise HTTPException(404, "no draft preview")
+        return FileResponse(path, media_type="video/mp4")
 
     @app.get("/clips/{clip_id}/words")
     def clip_words(clip_id: int):

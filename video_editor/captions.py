@@ -15,7 +15,7 @@ from video_editor.timeline import EditList
 
 def remap_lines(lines: list[dict], edit: EditList) -> list[dict]:
     if edit.keep is None:
-        return lines
+        return _scale_speed(lines, edit.speed)
     out = []
     for line in lines:
         try:
@@ -39,4 +39,14 @@ def remap_lines(lines: list[dict], edit: EditList) -> list[dict]:
         new_end = max(p[1] for p in pieces)
         if new_end - new_start > 0.05:
             out.append({**line, "start": round(new_start, 2), "end": round(new_end, 2)})
-    return sorted(out, key=lambda l: l["start"])
+    return _scale_speed(sorted(out, key=lambda l: l["start"]), edit.speed)
+
+
+def _scale_speed(lines: list[dict], speed: float) -> list[dict]:
+    """Playback speed compresses the timeline — captions compress with it."""
+    if abs(speed - 1.0) < 0.01:
+        return lines
+    return [
+        {**l, "start": round(float(l["start"]) / speed, 2), "end": round(float(l["end"]) / speed, 2)}
+        for l in lines
+    ]

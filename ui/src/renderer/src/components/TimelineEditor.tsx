@@ -41,7 +41,10 @@ function defaultEdit(duration: number): EditData {
     volume: 1,
     mute_all: false,
     fade_in: 0,
-    fade_out: 0
+    fade_out: 0,
+    speed: 1,
+    hook: null,
+    music: null
   }
 }
 
@@ -55,7 +58,10 @@ function isDefault(e: EditData, duration: number): boolean {
     !e.mute_all &&
     Math.abs(e.volume - 1) < 0.01 &&
     e.fade_in === 0 &&
-    e.fade_out === 0
+    e.fade_out === 0 &&
+    Math.abs((e.speed ?? 1) - 1) < 0.01 &&
+    !e.hook?.text &&
+    !e.music?.path
   )
 }
 
@@ -95,11 +101,13 @@ function removedRanges(keep: Range[], duration: number): Range[] {
 export default function TimelineEditor({
   clip,
   videoRef,
-  onChanged
+  onChanged,
+  onPreview
 }: {
   clip: Clip
   videoRef: React.RefObject<HTMLVideoElement>
   onChanged: () => void
+  onPreview: (url: string | null) => void
 }): JSX.Element {
   const duration = clip.end_s - clip.start_s
   const baked = useMemo<EditData | null>(() => clip.render_opts?.edit ?? null, [clip.id])
@@ -114,6 +122,9 @@ export default function TimelineEditor({
   const [playhead, setPlayhead] = useState(0) // original-timeline seconds
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  // Draft preview: when set, the video element shows a low-res render with
+  // ALL edits baked in — live simulation must be off (it would double-apply).
+  const [draftEditJson, setDraftEditJson] = useState<string | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const dragging = useRef<'start' | 'end' | null>(null)
 
@@ -126,6 +137,8 @@ export default function TimelineEditor({
     setHistory([])
     setSelectedSeg(null)
     setNotice('')
+    setDraftEditJson(null)
+    onPreview(null)
     api
       .clipWords(clip.id)
       .then((r) => setWords(r.words))
@@ -140,9 +153,18 @@ export default function TimelineEditor({
   // Runs on requestAnimationFrame, not timeupdate: timeupdate only fires a
   // few times per second, which sails right past a 0.3s muted word — the
   // mute would never audibly engage in the preview.
+  const draftActive = draftEditJson !== null
+
   useEffect(() => {
     const el = videoRef.current
     if (!el) return
+    if (draftActive) {
+      // The draft file already has every edit baked in — play it plainly.
+      el.muted = false
+      el.volume = 1
+      el.playbackRate = 1
+      return
+    }
     let raf = 0
     let lastShown = -1
     const tick = (): void => {
@@ -167,14 +189,17 @@ export default function TimelineEditor({
         !(baked?.mutes ?? []).some(([a, b]) => tOrig >= a && tOrig <= b)
       el.muted = edit.mute_all || inNewMute
       if (!el.muted) el.volume = Math.max(0, Math.min(1, edit.volume))
+      // Live speed preview (relative to any speed already baked in).
+      el.playbackRate = Math.max(0.25, (edit.speed ?? 1) / (baked?.speed ?? 1))
     }
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
       el.muted = false
       el.volume = 1
+      el.playbackRate = 1
     }
-  }, [edit, baked, removed, bakedRemoved, duration, videoRef])
+  }, [edit, baked, removed, bakedRemoved, duration, videoRef, draftActive])
 
   const push = (next: EditData): void => {
     setHistory((h) => [...h.slice(-30), edit])
@@ -316,6 +341,49 @@ export default function TimelineEditor({
   }, [duration, edit])
 
   const dirty = JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
+  const draftStale = draftActive && draftEditJson !== JSON.stringify(edit)
+
+  // Word mutes also remove the word from the captions: strip each muted word
+  // from the caption line covering it (recomputed from the base lines every
+  // time, so un-muting restores the text). Null = captions unchanged.
+  const pendingCaptionLines = (): CaptionLine[] | null => {
+    if (!captionBase || (edit.muted_words.length === 0 && (baked?.muted_words?.length ?? 0) === 0))
+      return null
+    return captionBase.map((line) => {
+      let text = line.text
+      for (const m of edit.muted_words) {
+        if (m.end > line.start && m.start < line.end) {
+          const re = new RegExp(`\\s*\\b${m.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+          text = text.replace(re, '').trim()
+        }
+      }
+      return { ...line, text }
+    })
+  }
+
+  const updatePreview = async (): Promise<void> => {
+    setBusy(true)
+    setNotice('Rendering draft preview…')
+    try {
+      const res = await api.previewClip(
+        clip.id,
+        isDefault(edit, duration) ? null : edit,
+        pendingCaptionLines()
+      )
+      setDraftEditJson(JSON.stringify(edit))
+      onPreview(res.url)
+      setNotice('Draft preview loaded — this is how the export will look')
+    } catch (e) {
+      setNotice(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const backToOriginal = (): void => {
+    setDraftEditJson(null)
+    onPreview(null)
+  }
 
   const apply = async (): Promise<void> => {
     setBusy(true)
@@ -323,21 +391,8 @@ export default function TimelineEditor({
     try {
       const cleared = isDefault(edit, duration)
       const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
-      // Word mutes also remove the word from the captions: strip each muted
-      // word from the caption line covering it (recomputed from the base
-      // lines every time, so un-muting restores the text).
-      if (captionBase && (edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0)) {
-        renderOpts.caption_lines = captionBase.map((line) => {
-          let text = line.text
-          for (const m of edit.muted_words) {
-            if (m.end > line.start && m.start < line.end) {
-              const re = new RegExp(`\\s*\\b${m.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-              text = text.replace(re, '').trim()
-            }
-          }
-          return { ...line, text }
-        })
-      }
+      const lines = pendingCaptionLines()
+      if (lines) renderOpts.caption_lines = lines
       await api.rerenderClip(clip.id, undefined, renderOpts)
       setNotice(cleared ? 'Restoring original — re-rendering…' : 'Applying edits — re-rendering…')
       onChanged()
@@ -524,6 +579,127 @@ export default function TimelineEditor({
         ))}
       </div>
 
+      {/* speed / hook title / music */}
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-1.5">
+            Speed
+            <select
+              value={edit.speed ?? 1}
+              onChange={(e) => push({ ...edit, speed: Number(e.target.value) })}
+              className="bg-base border border-raised rounded px-1 py-0.5"
+            >
+              {[0.75, 1, 1.25, 1.5, 2].map((s) => (
+                <option key={s} value={s}>
+                  {s}x
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 flex-1 min-w-48">
+            Hook title
+            <input
+              value={edit.hook?.text ?? ''}
+              placeholder="big top text for the first seconds, e.g. WAIT FOR IT…"
+              className="flex-1 bg-base border border-raised rounded px-2 py-1"
+              onChange={(e) =>
+                setEdit({
+                  ...edit,
+                  hook: e.target.value.trim()
+                    ? { text: e.target.value, seconds: edit.hook?.seconds ?? 3 }
+                    : null
+                })
+              }
+              onBlur={() => setHistory((h) => [...h.slice(-30), edit])}
+            />
+          </label>
+          {edit.hook && (
+            <select
+              value={edit.hook.seconds}
+              onChange={(e) => push({ ...edit, hook: { ...edit.hook!, seconds: Number(e.target.value) } })}
+              className="bg-base border border-raised rounded px-1 py-0.5"
+              aria-label="How long the hook title stays on screen"
+            >
+              {[2, 3, 5, 8].map((s) => (
+                <option key={s} value={s}>
+                  {s}s
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-1.5 flex-1 min-w-56">
+            Music
+            <input
+              value={edit.music?.path ?? ''}
+              placeholder="path to a music file on your PC (mp3/wav) — loops under the clip"
+              className="flex-1 bg-base border border-raised rounded px-2 py-1"
+              onChange={(e) =>
+                setEdit({
+                  ...edit,
+                  music: e.target.value.trim()
+                    ? {
+                        path: e.target.value,
+                        volume: edit.music?.volume ?? 0.25,
+                        duck: edit.music?.duck ?? true
+                      }
+                    : null
+                })
+              }
+              onBlur={() => setHistory((h) => [...h.slice(-30), edit])}
+            />
+          </label>
+          {edit.music && (
+            <>
+              <label className="flex items-center gap-1.5">
+                Vol
+                <input
+                  type="range"
+                  min={5}
+                  max={100}
+                  value={Math.round(edit.music.volume * 100)}
+                  className="w-20 accent-[#38BDF8]"
+                  onChange={(e) =>
+                    setEdit({ ...edit, music: { ...edit.music!, volume: Number(e.target.value) / 100 } })
+                  }
+                />
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer" title="Music automatically dips whenever the creator talks">
+                <input
+                  type="checkbox"
+                  checked={edit.music.duck}
+                  onChange={(e) => push({ ...edit, music: { ...edit.music!, duck: e.target.checked } })}
+                />
+                Duck under voice
+              </label>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* draft preview: the real result — captions, hook, music, everything */}
+      <div className="flex gap-2 items-center flex-wrap">
+        <button
+          className="bg-raised px-3 py-1.5 rounded-md text-xs font-medium hover:bg-raised/70 disabled:opacity-40"
+          disabled={busy}
+          onClick={updatePreview}
+          title="Fast draft render with ALL pending changes — updated captions, muted words, hook, music, speed"
+        >
+          {busy ? 'Rendering…' : '🔄 Update preview'}
+        </button>
+        {draftActive && (
+          <button className="text-xs text-muted hover:text-ink" onClick={backToOriginal}>
+            ⟲ Show rendered clip
+          </button>
+        )}
+        {draftStale && (
+          <span className="text-xs text-yellow-400">
+            Edits changed since this draft — update the preview
+          </span>
+        )}
+      </div>
+
       {dirty && (
         <button className="btn-accent w-full" disabled={busy} onClick={apply}>
           {busy ? 'Queuing…' : 'Apply edits (re-render)'}
@@ -531,9 +707,9 @@ export default function TimelineEditor({
       )}
       {notice && <p className="text-xs text-muted">{notice}</p>}
       <p className="text-[11px] text-muted/70">
-        The preview simulates your edits instantly: removed sections are skipped and muted words
-        go silent as you play. The caption text you see is burned into the current file — muted
-        words disappear from it after you press Apply. Nothing is final until Apply.
+        Cuts, mutes and speed are simulated instantly as you play. For the TRUE result — updated
+        caption text, hook title, music — press “Update preview” (a few seconds). Nothing is
+        final until Apply.
       </p>
     </div>
   )

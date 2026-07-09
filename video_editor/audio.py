@@ -16,8 +16,16 @@ def mute_filter(mutes: list[tuple[float, float]]) -> str:
 
 
 def master_filter(edit: EditList) -> str:
-    """Whole-clip audio treatment on the FINAL timeline: volume/mute + fades."""
+    """Whole-clip audio treatment on the FINAL timeline: speed, volume/mute,
+    fades."""
     parts = []
+    # atempo only accepts 0.5-2.0 per instance — chain for bigger factors.
+    f = edit.speed
+    while f > 2.0:
+        parts.append("atempo=2.0")
+        f /= 2.0
+    if abs(f - 1.0) >= 0.01:
+        parts.append(f"atempo={f:.4f}")
     if edit.mute_all:
         parts.append("volume=0")
     elif abs(edit.volume - 1.0) >= 0.01:

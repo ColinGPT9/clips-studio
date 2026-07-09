@@ -49,6 +49,9 @@ class EditList:
     mute_all: bool = False
     fade_in: float = 0.0
     fade_out: float = 0.0
+    speed: float = 1.0                   # whole-clip playback speed (0.5-3x)
+    hook: dict | None = None             # {"text": str, "seconds": float} top title
+    music: dict | None = None            # {"path": str, "volume": 0-1, "duck": bool}
 
     @classmethod
     def from_dict(cls, d: dict | None, duration: float) -> "EditList | None":
@@ -67,8 +70,27 @@ class EditList:
             volume = max(0.0, min(2.0, float(d.get("volume", 1.0))))
             fade_in = max(0.0, min(3.0, float(d.get("fade_in", 0.0))))
             fade_out = max(0.0, min(3.0, float(d.get("fade_out", 0.0))))
+            speed = max(0.5, min(3.0, float(d.get("speed", 1.0))))
         except (TypeError, ValueError):
-            volume, fade_in, fade_out = 1.0, 0.0, 0.0
+            volume, fade_in, fade_out, speed = 1.0, 0.0, 0.0, 1.0
+
+        hook = None
+        h = d.get("hook")
+        if isinstance(h, dict) and str(h.get("text", "")).strip():
+            hook = {
+                "text": str(h["text"]).strip()[:120],
+                "seconds": max(1.0, min(10.0, float(h.get("seconds", 3.0) or 3.0))),
+            }
+
+        music = None
+        m = d.get("music")
+        if isinstance(m, dict) and str(m.get("path", "")).strip():
+            music = {
+                "path": str(m["path"]).strip(),
+                "volume": max(0.0, min(1.0, float(m.get("volume", 0.25) or 0.25))),
+                "duck": bool(m.get("duck", True)),
+            }
+
         edit = cls(
             duration=duration,
             keep=keep,
@@ -77,6 +99,9 @@ class EditList:
             mute_all=bool(d.get("mute_all", False)),
             fade_in=fade_in,
             fade_out=fade_out,
+            speed=speed,
+            hook=hook,
+            music=music,
         )
         return None if edit.is_noop() else edit
 
@@ -88,12 +113,14 @@ class EditList:
             and abs(self.volume - 1.0) < 0.01
             and self.fade_in <= 0
             and self.fade_out <= 0
+            and abs(self.speed - 1.0) < 0.01
+            and self.hook is None
+            and self.music is None
         )
 
     def final_duration(self) -> float:
-        if self.keep is None:
-            return self.duration
-        return sum(b - a for a, b in self.keep)
+        base = self.duration if self.keep is None else sum(b - a for a, b in self.keep)
+        return base / self.speed
 
     def remap(self, t: float) -> float | None:
         """Original-timeline time -> final-timeline time; None if removed."""

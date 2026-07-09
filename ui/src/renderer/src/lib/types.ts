@@ -67,6 +67,9 @@ export interface EditData {
   mute_all: boolean
   fade_in: number
   fade_out: number
+  speed: number
+  hook: { text: string; seconds: number } | null
+  music: { path: string; volume: number; duck: boolean } | null
 }
 
 export interface Word {

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../lib/api'
+import { API_BASE, api } from '../lib/api'
 import type { Clip } from '../lib/types'
 import CaptionEditor from './CaptionEditor'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
+import PlatformOverlay, { PLATFORMS, type Platform } from './PlatformOverlay'
 import TimelineEditor from './TimelineEditor'
 
 /** Full-page editing workspace: replaces the clip grid while editing, so the
  *  normal app window can be moved/resized/maximized and the editor reflows
- *  with it. Big preview left; timeline, color, captions and AI chat right.
- *  Esc or "Back" returns to the clips. */
+ *  with it. Big preview left (with TikTok/YT/IG UI overlays and draft
+ *  previews); timeline, color, captions and AI chat right. */
 export default function EditorView({
   clip,
   onClose,
@@ -21,6 +22,12 @@ export default function EditorView({
 }): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [notice, setNotice] = useState('')
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+  const [platform, setPlatform] = useState<Platform>('none')
+
+  useEffect(() => {
+    setPreviewSrc(null)
+  }, [clip.id])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -51,19 +58,46 @@ export default function EditorView({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
-        <div className="lg:col-span-2 sticky top-6">
-          <video
-            key={clip.id}
-            ref={videoRef}
-            src={api.mediaUrl(clip.id)}
-            controls
-            autoPlay
-            className="rounded-lg bg-base w-full max-h-[80vh] object-contain"
-            aria-label="Editing preview — your edits are simulated live"
-          />
+        <div className="lg:col-span-2 sticky top-6 space-y-2">
+          <div className="relative mx-auto h-[74vh] aspect-[9/16] max-w-full">
+            <video
+              key={previewSrc ?? `clip-${clip.id}`}
+              ref={videoRef}
+              src={previewSrc ? `${API_BASE}${previewSrc}` : api.mediaUrl(clip.id)}
+              controls
+              autoPlay
+              className="absolute inset-0 w-full h-full object-cover rounded-xl bg-base"
+              aria-label="Editing preview"
+            />
+            <PlatformOverlay platform={platform} />
+            {previewSrc && (
+              <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
+                DRAFT — all edits applied (low-res)
+              </span>
+            )}
+          </div>
+          <div className="flex justify-center gap-1.5">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPlatform(p.id)}
+                className={`px-2.5 py-1 rounded-md text-xs ${
+                  platform === p.id ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
+                }`}
+                title="Preview how this platform's UI covers your video"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="lg:col-span-3 min-w-0 space-y-4">
-          <TimelineEditor clip={clip} videoRef={videoRef} onChanged={onChanged} />
+          <TimelineEditor
+            clip={clip}
+            videoRef={videoRef}
+            onChanged={onChanged}
+            onPreview={setPreviewSrc}
+          />
           <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
           <CaptionEditor clip={clip} onQueued={flash} />
           <EditChat clip={clip} onQueued={flash} />
