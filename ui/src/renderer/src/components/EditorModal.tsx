@@ -1,12 +1,16 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
+import CaptionEditor from './CaptionEditor'
 import ColorControls from './ColorControls'
+import EditChat from './EditChat'
 import TimelineEditor from './TimelineEditor'
 
-/** Full-screen editing workspace: big preview on the left, the timeline
- *  editor with room to breathe on the right. Esc or ✕ closes it. */
-export default function EditorModal({
+/** Full-page editing workspace: replaces the clip grid while editing, so the
+ *  normal app window can be moved/resized/maximized and the editor reflows
+ *  with it. Big preview left; timeline, color, captions and AI chat right.
+ *  Esc or "Back" returns to the clips. */
+export default function EditorView({
   clip,
   onClose,
   onChanged
@@ -16,6 +20,7 @@ export default function EditorModal({
   onChanged: () => void
 }): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -25,47 +30,43 @@ export default function EditorModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-6"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Edit clip: ${clip.title || clip.hook || 'untitled'}`}
-    >
-      <div
-        className="bg-surface border border-raised/60 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-raised/60 shrink-0">
-          <p className="font-semibold truncate pr-4">
-            ✂ Editing — {clip.title || clip.hook || 'Untitled clip'}
-          </p>
-          <button
-            onClick={onClose}
-            className="text-muted hover:text-ink text-xl leading-none px-2"
-            aria-label="Close editor"
-          >
-            ✕
-          </button>
-        </div>
+  const flash = (msg: string): void => {
+    setNotice(msg)
+    setTimeout(() => setNotice(''), 5000)
+  }
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-5 gap-5 p-5 overflow-y-auto">
-          <div className="md:col-span-2 flex items-start justify-center">
-            <video
-              key={clip.id}
-              ref={videoRef}
-              src={api.mediaUrl(clip.id)}
-              controls
-              autoPlay
-              className="rounded-lg bg-base w-full max-h-[78vh] object-contain"
-              aria-label="Editing preview — your edits are simulated live"
-            />
-          </div>
-          <div className="md:col-span-3 min-w-0 space-y-4">
-            <TimelineEditor clip={clip} videoRef={videoRef} onChanged={onChanged} />
-            <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
-          </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 rounded-lg bg-raised text-sm hover:bg-raised/70"
+        >
+          ← Back to clips
+        </button>
+        <p className="font-semibold truncate">
+          ✂ Editing — {clip.title || clip.hook || 'Untitled clip'}
+        </p>
+        {notice && <p className="text-xs text-accent ml-auto">{notice}</p>}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+        <div className="lg:col-span-2 sticky top-6">
+          <video
+            key={clip.id}
+            ref={videoRef}
+            src={api.mediaUrl(clip.id)}
+            controls
+            autoPlay
+            className="rounded-lg bg-base w-full max-h-[80vh] object-contain"
+            aria-label="Editing preview — your edits are simulated live"
+          />
+        </div>
+        <div className="lg:col-span-3 min-w-0 space-y-4">
+          <TimelineEditor clip={clip} videoRef={videoRef} onChanged={onChanged} />
+          <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
+          <CaptionEditor clip={clip} onQueued={flash} />
+          <EditChat clip={clip} onQueued={flash} />
         </div>
       </div>
     </div>

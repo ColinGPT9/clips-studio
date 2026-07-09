@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
-import CaptionEditor from './CaptionEditor'
-import EditChat from './EditChat'
-import EditorModal from './EditorModal'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
 
 export default function ClipEditor({
   clip,
-  onChanged
+  onChanged,
+  onOpenEditor
 }: {
   clip: Clip
   onChanged: () => void
+  onOpenEditor: () => void
 }): JSX.Element {
   const [title, setTitle] = useState(clip.title)
   const [description, setDescription] = useState(clip.description)
@@ -22,7 +21,6 @@ export default function ClipEditor({
   const [folder, setFolder] = useState('exports')
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [editorOpen, setEditorOpen] = useState(false)
 
   useEffect(() => {
     setTitle(clip.title)
@@ -83,24 +81,21 @@ export default function ClipEditor({
         className="w-full rounded-lg bg-base max-h-96"
       />
 
+      <button
+        onClick={onOpenEditor}
+        className="btn-accent w-full !py-3 text-base font-semibold"
+        title="Open the editor: trim, cut, mute words, censor, color, captions, AI edit"
+      >
+        ✂ Edit this clip
+      </button>
+
       <div className="flex gap-2 flex-wrap text-xs items-center">
         {CHANNELS.map((ch) => (
           <span key={ch} className="bg-raised px-2 py-1 rounded-md text-muted">
             {ch} <span className="text-ink font-semibold">{clip.scores[ch] ?? '–'}</span>
           </span>
         ))}
-        <button
-          onClick={() => setEditorOpen(true)}
-          className="ml-auto px-3 py-1.5 rounded-md bg-accent/15 text-accent font-medium hover:bg-accent/25"
-          title="Open the full-screen editor: trim, cut, mute words, audio"
-        >
-          ✂ Edit
-        </button>
       </div>
-
-      {editorOpen && (
-        <EditorModal clip={clip} onClose={() => setEditorOpen(false)} onChanged={onChanged} />
-      )}
 
       <div className="space-y-3">
         <div>
@@ -161,9 +156,6 @@ export default function ClipEditor({
         </button>
       </div>
       {notice && <p className="text-sm text-accent">{notice}</p>}
-
-      <CaptionEditor clip={clip} onQueued={flash} />
-      <EditChat clip={clip} onQueued={flash} />
     </div>
   )
 }

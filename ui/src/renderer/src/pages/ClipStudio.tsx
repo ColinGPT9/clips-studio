@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ClipCard from '../components/ClipCard'
 import ClipEditor from '../components/ClipEditor'
+import EditorView from '../components/EditorModal'
 import ProcessingBar from '../components/ProcessingBar'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
@@ -20,6 +21,7 @@ export default function ClipStudio({
   const [activeVideo, setActiveVideo] = useState<string | null>(null)
   const [clips, setClips] = useState<Clip[]>([])
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
+  const [editingClipId, setEditingClipId] = useState<number | null>(null)
   const [videoSearch, setVideoSearch] = useState('')
   const pendingClip = useRef<number | null>(null)
 
@@ -75,6 +77,10 @@ export default function ClipStudio({
   })
 
   const current = useMemo(() => clips.find((c) => c.id === selectedClip) ?? null, [clips, selectedClip])
+  const editingClip = useMemo(
+    () => clips.find((c) => c.id === editingClipId) ?? null,
+    [clips, editingClipId]
+  )
 
   const shownVideos = useMemo(() => {
     const q = videoSearch.trim().toLowerCase()
@@ -84,6 +90,18 @@ export default function ClipStudio({
         (v.title || '').toLowerCase().includes(q) || (v.channel_name || '').toLowerCase().includes(q)
     )
   }, [videos, videoSearch])
+
+  if (editingClip) {
+    return (
+      <div className="p-6">
+        <EditorView
+          clip={editingClip}
+          onClose={() => setEditingClipId(null)}
+          onChanged={() => activeVideo && refreshClips(activeVideo)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-5">
@@ -145,7 +163,11 @@ export default function ClipStudio({
           </div>
           <div className="xl:col-span-2">
             {current ? (
-              <ClipEditor clip={current} onChanged={() => activeVideo && refreshClips(activeVideo)} />
+              <ClipEditor
+                clip={current}
+                onChanged={() => activeVideo && refreshClips(activeVideo)}
+                onOpenEditor={() => setEditingClipId(current.id)}
+              />
             ) : (
               <div className="card text-muted text-sm">Select a clip to preview and edit it.</div>
             )}
