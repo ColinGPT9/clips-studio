@@ -72,8 +72,8 @@ export default function GenerateBar(): JSX.Element {
     <div className="space-y-3">
       <div className="card flex gap-3 items-center flex-wrap">
         <input
-          className="input flex-1 min-w-64"
-          placeholder="Paste a YouTube video, Twitch VOD, or Kick VOD URL…"
+          className="input w-80 max-w-full"
+          placeholder="Paste a YouTube, Twitch, or Kick URL…"
           aria-label="Video URL to make clips from"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
@@ -114,9 +114,6 @@ export default function GenerateBar(): JSX.Element {
           />
           60s+ <span className="text-muted">(TikTok monetization)</span>
         </label>
-        <button className="btn-accent shrink-0" onClick={() => generate()}>
-          Generate clips
-        </button>
         <button
           className="btn-ghost shrink-0"
           onClick={async () => {
@@ -131,6 +128,9 @@ export default function GenerateBar(): JSX.Element {
           title="Make clips from a video file on this computer — e.g. your YouTube video before you publish it"
         >
           📁 Upload video file
+        </button>
+        <button className="btn-accent shrink-0 ml-auto" onClick={() => generate()}>
+          Generate clips
         </button>
         {styleOpen && (
           <div className="w-full space-y-3 border-t border-raised/60 pt-3">
