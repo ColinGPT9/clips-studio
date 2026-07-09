@@ -1,5 +1,8 @@
 declare module '*.css'
 
 interface Window {
-  studio: { platform: string }
+  studio: {
+    platform: string
+    pickAudioFile: () => Promise<string | null>
+  }
 }

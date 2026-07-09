@@ -1,8 +1,9 @@
-// The renderer talks to the local API over HTTP only; nothing from Node
-// needs to be exposed yet. The bridge stays for future needs (e.g. native
-// folder pickers) so the renderer never gains Node access directly.
-import { contextBridge } from 'electron'
+// The renderer talks to the local API over HTTP; only narrow native
+// affordances are exposed here, so the renderer never gains Node access.
+import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('studio', {
-  platform: process.platform
+  platform: process.platform,
+  // Native audio-file picker (editor's background-music field).
+  pickAudioFile: (): Promise<string | null> => ipcRenderer.invoke('pick-audio-file')
 })

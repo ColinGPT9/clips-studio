@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, shell } from 'electron'
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 
@@ -65,6 +65,20 @@ function createWindow(): void {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+// Native file picker for the editor's music field: returns the real path of
+// a local audio file (renderer stays sandboxed, no Node access needed).
+ipcMain.handle('pick-audio-file', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose background music',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
 
 app.whenReady().then(() => {
   startBackend()

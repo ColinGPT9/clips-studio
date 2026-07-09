@@ -633,7 +633,7 @@ export default function TimelineEditor({
             Music
             <input
               value={edit.music?.path ?? ''}
-              placeholder="path to a music file on your PC (mp3/wav) — loops under the clip"
+              placeholder="background music — loops under the clip"
               className="flex-1 bg-base border border-raised rounded px-2 py-1"
               onChange={(e) =>
                 setEdit({
@@ -650,6 +650,25 @@ export default function TimelineEditor({
               onBlur={() => setHistory((h) => [...h.slice(-30), edit])}
             />
           </label>
+          <button
+            className="bg-raised px-2.5 py-1 rounded-md hover:bg-raised/70"
+            onClick={async () => {
+              const path = await window.studio.pickAudioFile()
+              if (path) {
+                push({
+                  ...edit,
+                  music: {
+                    path,
+                    volume: edit.music?.volume ?? 0.25,
+                    duck: edit.music?.duck ?? true
+                  }
+                })
+              }
+            }}
+            title="Choose a music file from your computer"
+          >
+            📂 Browse…
+          </button>
           {edit.music && (
             <>
               <label className="flex items-center gap-1.5">
