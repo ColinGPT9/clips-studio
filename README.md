@@ -124,10 +124,13 @@ in [config/prompts/](config/prompts/) — tune them without touching code.
 2. ~~**Twitch & Kick VODs**~~ — done! Paste a `twitch.tv/videos/…` or
    `kick.com/video/…` link. (VODs only — live streams are deliberately not
    supported.)
-3. **Automated posting** *(future plan)* — channel monitoring, scheduling, and
-   YouTube Shorts upload are already built into the codebase but deliberately
-   dormant until the multi-platform work lands. When enabled, posting publicly
-   requires your own YouTube API credentials and Google's free API audit.
+3. **Automated posting** *(possible future plan)* — channel monitoring,
+   scheduling, and YouTube Shorts auto-upload are coded in the repo but
+   **dormant and not exposed in the UI**. The upload path has not been
+   tested end-to-end against a real server, because it needs your own
+   YouTube API credentials and Google's API audit to post publicly — access
+   we don't have during development. If people want this, it will be
+   finished and tested in a future release.
 4. TikTok / Instagram Reels export
 
 ## Architecture
