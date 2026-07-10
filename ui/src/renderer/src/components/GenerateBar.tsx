@@ -181,14 +181,8 @@ export default function GenerateBar(): JSX.Element {
               <option value="short_clips">Short Clips (up to 60s, horizontal)</option>
               <option value="clips_140">Clips (up to 140s — X/Twitter)</option>
               <option value="highlights">Highlights (best-of, 8-20 min by quality)</option>
-              <option value="edited_stream">
-                Edited Stream (downtime & muted music removed)
-              </option>
+              <option value="edited_stream">Edited Stream (downtime removed)</option>
             </select>
-            <p className="text-xs text-muted">
-              1920×1080 horizontal clips, same AI selection — they appear in Clip Studio with the
-              full editor. Your vertical Shorts settings above still apply to normal runs.
-            </p>
           </div>
         )}
       </div>
