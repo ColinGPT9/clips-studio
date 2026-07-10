@@ -159,6 +159,8 @@ def compute_tracking(
     switch_seconds: float = 1.5,   # ...for this long before the camera switches
     fit_blur_fraction: float = 0.5,   # letterbox only when MOST of the clip
                                       # genuinely can't fit a 9:16 crop
+    force_fit_blur: bool = False,     # user override: always letterbox, cropped
+                                      # tight to the subject like the automatic one
 ) -> dict:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -361,6 +363,25 @@ def compute_tracking(
         frame_idx += 1
 
     cap.release()
+
+    # User-forced letterbox: same tight subject-region crop the automatic
+    # letterbox uses (person large, minimal dead space) — just without the
+    # "won't fit a 9:16 crop" trigger. Falls back to the full frame only
+    # when no person was ever detected.
+    if force_fit_blur:
+        if active_id in tracks and tracks[active_id].norm_boxes:
+            boxes = np.array(tracks[active_id].norm_boxes)
+            pad_x, pad_y = 0.04, 0.06
+            return {
+                "mode": "fit_blur",
+                "region": (
+                    round(max(0.0, float(np.percentile(boxes[:, 0], 10)) - pad_x), 4),
+                    round(max(0.0, float(np.percentile(boxes[:, 1], 10)) - pad_y), 4),
+                    round(min(1.0, float(np.percentile(boxes[:, 2], 90)) + pad_x), 4),
+                    round(min(1.0, float(np.percentile(boxes[:, 3], 90)) + pad_y), 4),
+                ),
+            }
+        return {"mode": "fit_blur", "region": None}
 
     # Blurred-letterbox only when the subject genuinely won't fit a 9:16 crop
     # for a meaningful part of the clip. Crop TIGHTLY to the subject's bounding
