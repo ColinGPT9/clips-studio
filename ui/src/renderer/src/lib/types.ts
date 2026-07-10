@@ -81,7 +81,7 @@ export interface Word {
 }
 
 export interface RenderOpts {
-  crop?: 'track' | 'center' | 'bias_left' | 'bias_right'
+  crop?: 'track' | 'center' | 'bias_left' | 'bias_right' | 'letterbox'
   captions?: boolean
   caption_style?: CaptionStyle
   caption_lines?: CaptionLine[]

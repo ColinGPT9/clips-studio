@@ -373,6 +373,11 @@ def _render_files(
         crop_mode = opts.get("crop", "track")
         if crop_mode == "center":
             tracking = {"mode": "track", "path": [(0.0, 0.5)]}
+        elif crop_mode == "letterbox":
+            # User-forced letterbox: the WHOLE frame at full width on a
+            # blurred backdrop — for clips where the automatic detection
+            # didn't trigger but the subject gets cut by a vertical crop.
+            tracking = {"mode": "fit_blur", "region": None}
         else:
             tracking_cfg = config["tracking"]
             tracking = compute_tracking(
