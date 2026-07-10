@@ -773,11 +773,14 @@ export default function TimelineEditor({
         )}
       </div>
 
-      {dirty && (
-        <button className="btn-accent w-full" disabled={busy} onClick={apply}>
-          {busy ? 'Queuing…' : 'Apply edits (re-render)'}
-        </button>
-      )}
+      <button
+        className="btn-accent w-full disabled:opacity-40"
+        disabled={busy || !dirty}
+        onClick={apply}
+        title={dirty ? 'Re-render the clip with your changes' : 'No changes yet — edit something first'}
+      >
+        {busy ? 'Queuing…' : dirty ? 'Apply edits (re-render)' : 'Apply edits — no changes yet'}
+      </button>
       {notice && <p className="text-xs text-muted">{notice}</p>}
       <p className="text-[11px] text-muted/70">
         Cuts, mutes and speed are simulated instantly as you play. For the TRUE result — updated

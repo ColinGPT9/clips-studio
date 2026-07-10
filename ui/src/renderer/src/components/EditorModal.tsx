@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
 import type { Clip } from '../lib/types'
-import CaptionEditor from './CaptionEditor'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 import TimelineEditor from './TimelineEditor'
@@ -91,7 +90,6 @@ export default function EditorView({
             onPreview={setPreviewSrc}
           />
           <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
-          <CaptionEditor clip={clip} onQueued={flash} />
           <EditChat clip={clip} onQueued={flash} />
         </div>
       </div>
