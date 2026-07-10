@@ -63,6 +63,7 @@ class AccountIn(BaseModel):
 class PreviewIn(BaseModel):
     edit: dict | None = None            # pending edit list from the editor
     caption_lines: list[dict] | None = None  # pending caption text, if changed
+    crop: str | None = None             # pending layout (track/letterbox/center)
 
 
 class LocalVideoIn(BaseModel):
@@ -606,6 +607,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         opts["edit"] = body.edit  # pending edit (None = cleared)
         if body.caption_lines is not None:
             opts["caption_lines"] = body.caption_lines
+        if body.crop:
+            opts["crop"] = body.crop
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],

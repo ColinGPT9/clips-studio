@@ -122,6 +122,11 @@ export default function TimelineEditor({
   const [playhead, setPlayhead] = useState(0) // original-timeline seconds
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  // Layout override: Auto = the AI decides (tracking/letterbox), Letterbox =
+  // force the full frame on a blurred backdrop, Center = static center crop.
+  const storedCrop = clip.render_opts?.crop ?? 'track'
+  const [layout, setLayout] = useState<string>(storedCrop)
+  const isLandscape = !!clip.render_opts?.profile
   // Draft preview: when set, the video element shows a low-res render with
   // ALL edits baked in — live simulation must be off (it would double-apply).
   const [draftEditJson, setDraftEditJson] = useState<string | null>(null)
@@ -138,6 +143,7 @@ export default function TimelineEditor({
     setSelectedSeg(null)
     setNotice('')
     setDraftEditJson(null)
+    setLayout(clip.render_opts?.crop ?? 'track')
     onPreview(null)
     api
       .clipWords(clip.id)
@@ -339,8 +345,11 @@ export default function TimelineEditor({
     }
   }, [duration, edit])
 
-  const dirty = JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
-  const draftStale = draftActive && draftEditJson !== JSON.stringify(edit)
+  const layoutDirty = layout !== storedCrop
+  const dirty =
+    layoutDirty ||
+    JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
+  const draftStale = draftActive && draftEditJson !== JSON.stringify({ e: edit, l: layout })
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
   // platform moderation can't read it from the screen either. Recomputed
@@ -374,9 +383,10 @@ export default function TimelineEditor({
       const res = await api.previewClip(
         clip.id,
         isDefault(edit, duration) ? null : edit,
-        pendingCaptionLines()
+        pendingCaptionLines(),
+        layout
       )
-      setDraftEditJson(JSON.stringify(edit))
+      setDraftEditJson(JSON.stringify({ e: edit, l: layout }))
       onPreview(res.url)
       setNotice('Preview loaded — this is exactly how the export will look')
     } catch (e) {
@@ -397,6 +407,7 @@ export default function TimelineEditor({
     try {
       const cleared = isDefault(edit, duration)
       const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
+      if (layoutDirty) renderOpts.crop = layout
       const lines = pendingCaptionLines()
       if (lines) renderOpts.caption_lines = lines
       await api.rerenderClip(clip.id, undefined, renderOpts)
@@ -591,6 +602,36 @@ export default function TimelineEditor({
           </label>
         ))}
       </div>
+
+      {/* layout override (vertical Shorts only) */}
+      {!isLandscape && (
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          <span className="text-muted">Layout</span>
+          {(
+            [
+              ['track', 'Auto (AI)', 'The AI picks: subject tracking or letterbox as needed'],
+              ['letterbox', 'Letterbox', 'Force the FULL frame on a blurred backdrop — use when the crop cuts someone off'],
+              ['center', 'Center', 'Static center crop, no tracking']
+            ] as const
+          ).map(([value, label, tip]) => (
+            <button
+              key={value}
+              onClick={() => setLayout(value)}
+              className={`px-2.5 py-1 rounded-md ${
+                layout === value
+                  ? 'bg-accent/20 text-accent font-medium'
+                  : 'bg-raised text-muted hover:text-ink'
+              }`}
+              title={tip}
+            >
+              {label}
+            </button>
+          ))}
+          {layoutDirty && (
+            <span className="text-muted">— shows in “Update preview”, saved on Apply</span>
+          )}
+        </div>
+      )}
 
       {/* speed / hook title / music */}
       <div className="space-y-2 text-xs">
