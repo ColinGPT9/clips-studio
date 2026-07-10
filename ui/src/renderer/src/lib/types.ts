@@ -8,6 +8,8 @@ export interface Video {
   updated_at: string
   clip_count: number
   process_seconds: number
+  creator_id: number | null
+  creator_name: string | null
 }
 
 export interface SubScores {

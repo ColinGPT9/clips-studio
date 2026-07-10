@@ -396,8 +396,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         d = db()
         try:
             rows = d.conn.execute(
-                """SELECT v.*, COUNT(c.id) AS clip_count
-                   FROM videos v LEFT JOIN clips c ON c.video_id = v.video_id
+                """SELECT v.*, COUNT(c.id) AS clip_count, cr.display_name AS creator_name
+                   FROM videos v
+                   LEFT JOIN clips c ON c.video_id = v.video_id
+                   LEFT JOIN creators cr ON cr.creator_id = v.creator_id
                    GROUP BY v.video_id ORDER BY v.created_at DESC"""
             ).fetchall()
             return [dict(r) for r in rows]
