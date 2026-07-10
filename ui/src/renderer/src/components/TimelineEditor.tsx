@@ -159,9 +159,8 @@ export default function TimelineEditor({
     const el = videoRef.current
     if (!el) return
     if (draftActive) {
-      // The draft file already has every edit baked in — play it plainly.
-      el.muted = false
-      el.volume = 1
+      // The preview file already has every edit baked in — play it as-is
+      // (don't force-unmute: that made toggles feel dead while previewing).
       el.playbackRate = 1
       return
     }
@@ -343,9 +342,14 @@ export default function TimelineEditor({
   const dirty = JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const draftStale = draftActive && draftEditJson !== JSON.stringify(edit)
 
-  // Word mutes also remove the word from the captions: strip each muted word
-  // from the caption line covering it (recomputed from the base lines every
-  // time, so un-muting restores the text). Null = captions unchanged.
+  // Word mutes also CENSOR the word in the burned captions (f**k), so
+  // platform moderation can't read it from the screen either. Recomputed
+  // from the base lines every time, so un-muting restores the real text.
+  // Whisper words often carry punctuation ("word," / "word.") — matching
+  // uses the stripped core so the caption is always found and replaced.
+  const censorMatch = (matched: string): string =>
+    matched.length <= 2 ? '**' : matched[0] + '*'.repeat(matched.length - 2) + matched[matched.length - 1]
+
   const pendingCaptionLines = (): CaptionLine[] | null => {
     if (!captionBase || (edit.muted_words.length === 0 && (baked?.muted_words?.length ?? 0) === 0))
       return null
@@ -353,8 +357,10 @@ export default function TimelineEditor({
       let text = line.text
       for (const m of edit.muted_words) {
         if (m.end > line.start && m.start < line.end) {
-          const re = new RegExp(`\\s*\\b${m.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-          text = text.replace(re, '').trim()
+          const core = m.word.replace(/[^a-zA-Z0-9']/g, '')
+          if (!core) continue
+          const re = new RegExp(`\\b${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+          text = text.replace(re, censorMatch)
         }
       }
       return { ...line, text }
@@ -503,7 +509,7 @@ export default function TimelineEditor({
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40"
           disabled={words.length === 0}
           onClick={censorProfanity}
-          title="Mute every swear word — silences the audio and removes it from the burned captions, so platforms can't flag either"
+          title="Mute every swear word — audio silenced and captions censored (f**k), so platforms can't flag either"
         >
           🚫 Censor swearing
         </button>
@@ -529,7 +535,11 @@ export default function TimelineEditor({
                       ? 'text-muted/40 line-through'
                       : 'text-muted hover:text-ink hover:bg-raised'
                 }`}
-                title={muted ? 'Un-mute this word' : 'Mute this word (audio + caption)'}
+                title={
+                  muted
+                    ? 'Un-mute this word (audio and caption come back)'
+                    : 'Mute this word — audio goes silent and the caption shows it censored (f**k)'
+                }
               >
                 {w.word}
               </button>
@@ -540,7 +550,10 @@ export default function TimelineEditor({
 
       {/* audio controls */}
       <div className="flex items-center gap-3 flex-wrap text-xs">
-        <label className="flex items-center gap-1.5 cursor-pointer">
+        <label
+          className="flex items-center gap-1.5 cursor-pointer"
+          title="Remove ALL of the clip's audio — e.g. to post it with background music only"
+        >
           <input
             type="checkbox"
             checked={edit.mute_all}
