@@ -371,14 +371,20 @@ def compute_tracking(
     if force_fit_blur:
         if active_id in tracks and tracks[active_id].norm_boxes:
             boxes = np.array(tracks[active_id].norm_boxes)
-            pad_x, pad_y = 0.04, 0.06
+            # Horizontal: the subject's TYPICAL width centered where they
+            # usually are — NOT the union of every position. A person leaning
+            # around would otherwise stretch the region wide, and a wide
+            # region means a short (small) letterbox video.
+            widths = boxes[:, 2] - boxes[:, 0]
+            half = float(np.percentile(widths, 70)) / 2 + 0.05
+            cx = float(np.median((boxes[:, 0] + boxes[:, 2]) / 2))
             return {
                 "mode": "fit_blur",
                 "region": (
-                    round(max(0.0, float(np.percentile(boxes[:, 0], 10)) - pad_x), 4),
-                    round(max(0.0, float(np.percentile(boxes[:, 1], 10)) - pad_y), 4),
-                    round(min(1.0, float(np.percentile(boxes[:, 2], 90)) + pad_x), 4),
-                    round(min(1.0, float(np.percentile(boxes[:, 3], 90)) + pad_y), 4),
+                    round(max(0.0, cx - half), 4),
+                    round(max(0.0, float(np.percentile(boxes[:, 1], 10)) - 0.06), 4),
+                    round(min(1.0, cx + half), 4),
+                    round(min(1.0, float(np.percentile(boxes[:, 3], 90)) + 0.06), 4),
                 ),
             }
         return {"mode": "fit_blur", "region": None}
