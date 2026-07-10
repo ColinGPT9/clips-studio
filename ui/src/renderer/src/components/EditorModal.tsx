@@ -4,7 +4,6 @@ import type { Clip } from '../lib/types'
 import CaptionEditor from './CaptionEditor'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
-import PlatformOverlay, { PLATFORMS, type Platform } from './PlatformOverlay'
 import TimelineEditor from './TimelineEditor'
 
 /** Full-page editing workspace: replaces the clip grid while editing, so the
@@ -23,7 +22,6 @@ export default function EditorView({
   const videoRef = useRef<HTMLVideoElement>(null)
   const [notice, setNotice] = useState('')
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
-  const [platform, setPlatform] = useState<Platform>('none')
   // Longform clips are 16:9 — the preview box follows the actual video.
   const isLandscape = !!clip.render_opts?.profile
 
@@ -75,29 +73,12 @@ export default function EditorView({
               className="absolute inset-0 w-full h-full object-cover rounded-xl bg-base"
               aria-label="Editing preview"
             />
-            {!isLandscape && <PlatformOverlay platform={platform} />}
             {previewSrc && (
               <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
                 PREVIEW — all edits applied (not saved until Apply)
               </span>
             )}
           </div>
-          {!isLandscape && (
-            <div className="flex justify-center gap-1.5">
-              {PLATFORMS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setPlatform(p.id)}
-                  className={`px-2.5 py-1 rounded-md text-xs ${
-                    platform === p.id ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
-                  }`}
-                  title="Preview how this platform's UI covers your video"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          )}
           {isLandscape && (
             <p className="text-center text-xs text-muted">Longform clip — 1920×1080 horizontal</p>
           )}
