@@ -2,6 +2,13 @@ import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
 import ScoreBadge from './ScoreBadge'
 
+const PROFILE_BADGE: Record<string, string> = {
+  short_clips: '▭ 16:9',
+  clips_140: '▭ 16:9',
+  highlights: '▭ Highlights',
+  edited_stream: '▭ Edited stream'
+}
+
 export default function ClipCard({
   clip,
   selected,
@@ -13,10 +20,14 @@ export default function ClipCard({
 }): JSX.Element {
   const duration = Math.round(clip.end_s - clip.start_s)
   const name = clip.title || clip.hook || 'Untitled clip'
+  const profile = clip.render_opts?.profile
+  const badge = profile ? (PROFILE_BADGE[profile] ?? '▭ 16:9') : null
   return (
     <button
       onClick={onClick}
-      aria-label={`${name}, ${duration} seconds, score ${clip.score}${selected ? ', selected' : ''}`}
+      aria-label={`${name}, ${duration} seconds, score ${clip.score}${
+        badge ? ', horizontal longform' : ', vertical Short'
+      }${selected ? ', selected' : ''}`}
       aria-pressed={selected}
       className={`text-left rounded-xl overflow-hidden bg-surface border transition-colors ${
         selected ? 'border-accent' : 'border-raised/60 hover:border-raised'
@@ -27,11 +38,16 @@ export default function ClipCard({
           src={api.mediaUrl(clip.id)}
           preload="metadata"
           muted
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${badge ? 'object-contain' : 'object-cover'}`}
         />
         <span className="absolute top-2 left-2">
           <ScoreBadge score={clip.score} />
         </span>
+        {badge && (
+          <span className="absolute top-2 right-2 bg-amber-500/90 text-black px-1.5 py-0.5 rounded text-[10px] font-bold">
+            {badge}
+          </span>
+        )}
         <span className="absolute bottom-2 right-2 bg-base/80 px-1.5 py-0.5 rounded text-xs tabular-nums">
           {duration}s
         </span>

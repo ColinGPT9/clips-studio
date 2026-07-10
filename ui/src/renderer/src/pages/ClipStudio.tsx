@@ -23,6 +23,7 @@ export default function ClipStudio({
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
   const [editingClipId, setEditingClipId] = useState<number | null>(null)
   const [videoSearch, setVideoSearch] = useState('')
+  const [clipType, setClipType] = useState<'all' | 'shorts' | 'longform'>('all')
   const pendingClip = useRef<number | null>(null)
 
   const refreshVideos = async (): Promise<void> => {
@@ -146,20 +147,51 @@ export default function ClipStudio({
 
       {videos.length > 0 && (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 items-start">
-          <div className="xl:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
-            {clips.map((clip) => (
-              <ClipCard
-                key={clip.id}
-                clip={clip}
-                selected={clip.id === selectedClip}
-                onClick={() => setSelectedClip(clip.id)}
-              />
-            ))}
-            {clips.length === 0 && (
-              <p className="text-muted text-sm col-span-full">
-                No clips for this video yet — or pick another video above.
-              </p>
-            )}
+          <div className="xl:col-span-3 space-y-3">
+            <div className="flex gap-1.5" role="group" aria-label="Filter clips by format">
+              {(
+                [
+                  ['all', 'All'],
+                  ['shorts', '📱 Shorts'],
+                  ['longform', '▭ Longform']
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setClipType(value)}
+                  className={`px-2.5 py-1 rounded-md text-xs ${
+                    clipType === value
+                      ? 'bg-accent/20 text-accent font-medium'
+                      : 'bg-raised text-muted hover:text-ink'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {clips
+                .filter((c) =>
+                  clipType === 'all'
+                    ? true
+                    : clipType === 'longform'
+                      ? !!c.render_opts?.profile
+                      : !c.render_opts?.profile
+                )
+                .map((clip) => (
+                  <ClipCard
+                    key={clip.id}
+                    clip={clip}
+                    selected={clip.id === selectedClip}
+                    onClick={() => setSelectedClip(clip.id)}
+                  />
+                ))}
+              {clips.length === 0 && (
+                <p className="text-muted text-sm col-span-full">
+                  No clips for this video yet — or pick another video above.
+                </p>
+              )}
+            </div>
           </div>
           <div className="xl:col-span-2">
             {current ? (
