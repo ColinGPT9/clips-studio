@@ -118,10 +118,21 @@ export const api = {
     }),
   mediaUrl: (clipId: number) => `${API_BASE}/media/${clipId}`,
   clipWords: (clipId: number) => request<{ words: Word[] }>(`/clips/${clipId}/words`),
-  previewClip: (clipId: number, edit: unknown, captionLines?: unknown, crop?: string | null) =>
+  previewClip: (
+    clipId: number,
+    edit: unknown,
+    captionLines?: unknown,
+    crop?: string | null,
+    captionStyle?: CaptionStyle | null
+  ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
-      body: JSON.stringify({ edit, caption_lines: captionLines ?? null, crop: crop ?? null })
+      body: JSON.stringify({
+        edit,
+        caption_lines: captionLines ?? null,
+        crop: crop ?? null,
+        caption_style: captionStyle ?? null
+      })
     }),
 
   models: () => request<ModelsInfo>('/models'),

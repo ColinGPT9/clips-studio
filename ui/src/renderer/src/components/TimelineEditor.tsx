@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import type { CaptionLine, Clip, EditData, Word } from '../lib/types'
+import type { CaptionLine, CaptionStyle, Clip, EditData, Word } from '../lib/types'
+import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+
+/** A user text correction for one transcript word (misheard by Whisper). */
+interface WordEdit {
+  start: number
+  from: string
+  to: string
+}
 
 /** Shorts finishing editor: trim / split / delete sections, mute sections or
  *  single words, volume + fades — all non-destructive. Edits are stored with
@@ -127,6 +135,18 @@ export default function TimelineEditor({
   const storedCrop = clip.render_opts?.crop ?? 'track'
   const [layout, setLayout] = useState<string>(storedCrop)
   const isLandscape = !!clip.render_opts?.profile
+  // Caption style (font/size/colour/position) for THIS clip.
+  const storedStyle: Required<CaptionStyle> = {
+    ...DEFAULT_CAPTION_STYLE,
+    ...(clip.render_opts?.caption_style ?? {})
+  }
+  const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
+  const [styleOpen, setStyleOpen] = useState(false)
+  // Caption text corrections: with "Edit caption text" ON, clicking a
+  // transcript word opens a text box instead of muting it.
+  const [textMode, setTextMode] = useState(false)
+  const [wordEdits, setWordEdits] = useState<WordEdit[]>([])
+  const [editingWord, setEditingWord] = useState<{ i: number; value: string } | null>(null)
   // Draft preview: when set, the video element shows a low-res render with
   // ALL edits baked in — live simulation must be off (it would double-apply).
   const [draftEditJson, setDraftEditJson] = useState<string | null>(null)
@@ -144,6 +164,9 @@ export default function TimelineEditor({
     setNotice('')
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
+    setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+    setWordEdits([])
+    setEditingWord(null)
     onPreview(null)
     api
       .clipWords(clip.id)
@@ -346,10 +369,15 @@ export default function TimelineEditor({
   }, [duration, edit])
 
   const layoutDirty = layout !== storedCrop
+  const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
   const dirty =
     layoutDirty ||
+    styleDirty ||
+    wordEdits.length > 0 ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
-  const draftStale = draftActive && draftEditJson !== JSON.stringify({ e: edit, l: layout })
+  const pendingJson = (): string =>
+    JSON.stringify({ e: edit, l: layout, s: captionStyle, w: wordEdits })
+  const draftStale = draftActive && draftEditJson !== pendingJson()
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
   // platform moderation can't read it from the screen either. Recomputed
@@ -360,16 +388,27 @@ export default function TimelineEditor({
     matched.length <= 2 ? '**' : matched[0] + '*'.repeat(matched.length - 2) + matched[matched.length - 1]
 
   const pendingCaptionLines = (): CaptionLine[] | null => {
-    if (!captionBase || (edit.muted_words.length === 0 && (baked?.muted_words?.length ?? 0) === 0))
-      return null
+    const hasMutes = edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0
+    if (!captionBase || (!hasMutes && wordEdits.length === 0)) return null
+    const coreRe = (word: string): RegExp | null => {
+      const core = word.replace(/[^a-zA-Z0-9']/g, '')
+      if (!core) return null
+      return new RegExp(`\\b${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+    }
     return captionBase.map((line) => {
       let text = line.text
+      // Text corrections first (double-clicked words) …
+      for (const e of wordEdits) {
+        if (e.start >= line.start - 0.05 && e.start < line.end + 0.05) {
+          const re = coreRe(e.from)
+          if (re) text = text.replace(re, e.to)
+        }
+      }
+      // … then censoring of muted words.
       for (const m of edit.muted_words) {
         if (m.end > line.start && m.start < line.end) {
-          const core = m.word.replace(/[^a-zA-Z0-9']/g, '')
-          if (!core) continue
-          const re = new RegExp(`\\b${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-          text = text.replace(re, censorMatch)
+          const re = coreRe(m.word)
+          if (re) text = text.replace(re, censorMatch)
         }
       }
       return { ...line, text }
@@ -384,9 +423,10 @@ export default function TimelineEditor({
         clip.id,
         isDefault(edit, duration) ? null : edit,
         pendingCaptionLines(),
-        layout
+        layout,
+        styleDirty ? captionStyle : null
       )
-      setDraftEditJson(JSON.stringify({ e: edit, l: layout }))
+      setDraftEditJson(pendingJson())
       onPreview(res.url)
       setNotice('Preview loaded — this is exactly how the export will look')
     } catch (e) {
@@ -408,6 +448,7 @@ export default function TimelineEditor({
       const cleared = isDefault(edit, duration)
       const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
       if (layoutDirty) renderOpts.crop = layout
+      if (styleDirty) renderOpts.caption_style = captionStyle
       const lines = pendingCaptionLines()
       if (lines) renderOpts.caption_lines = lines
       await api.rerenderClip(clip.id, undefined, renderOpts)
@@ -432,7 +473,13 @@ export default function TimelineEditor({
           </button>
           <button
             className="text-muted hover:text-red-400"
-            onClick={() => push(defaultEdit(duration))}
+            onClick={() => {
+              push(defaultEdit(duration))
+              setLayout('track')
+              setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+              setWordEdits([])
+              setEditingWord(null)
+            }}
           >
             Reset
           </button>
@@ -529,35 +576,115 @@ export default function TimelineEditor({
         </span>
       </div>
 
-      {/* transcript — click a word to mute it (audio + caption) */}
+      {/* transcript — click a word to mute it, or turn on text-editing mode */}
       {words.length > 0 && (
-        <div className="max-h-28 overflow-y-auto bg-base rounded-md p-2 leading-6">
-          {words.map((w, i) => {
-            const inRemoved = removed.some(([a, b]) => w.start >= a && w.end <= b)
-            const muted = wordMuted(w)
-            return (
-              <button
-                key={i}
-                onClick={() => toggleWord(w)}
-                className={`text-xs mr-1 rounded px-0.5 ${
-                  muted
-                    ? 'line-through text-red-400 bg-red-500/10'
-                    : inRemoved
-                      ? 'text-muted/40 line-through'
-                      : 'text-muted hover:text-ink hover:bg-raised'
-                }`}
-                title={
-                  muted
-                    ? 'Un-mute this word (audio and caption come back)'
-                    : 'Mute this word — audio goes silent and the caption shows it censored (f**k)'
-                }
-              >
-                {w.word}
-              </button>
-            )
-          })}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setTextMode(!textMode)
+                setEditingWord(null)
+              }}
+              className={`text-xs px-2.5 py-1 rounded-md ${
+                textMode ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
+              }`}
+              title="Fix words the transcription got wrong — the burned caption text updates on Apply"
+            >
+              ✏️ Edit caption text{textMode ? ' — ON' : ''}
+            </button>
+            <span className="text-[11px] text-muted">
+              {textMode
+                ? 'Click a word below to retype it. Click the button again when done.'
+                : 'Click a word to mute it (audio silent, caption censored).'}
+            </span>
+          </div>
+          <div className="max-h-28 overflow-y-auto bg-base rounded-md p-2 leading-6">
+            {words.map((w, i) => {
+              if (editingWord?.i === i) {
+                return (
+                  <input
+                    key={i}
+                    autoFocus
+                    value={editingWord.value}
+                    onChange={(e) => setEditingWord({ i, value: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const to = editingWord.value.trim()
+                        setWordEdits((prev) => [
+                          ...prev.filter((x) => x.start !== w.start),
+                          ...(to && to !== w.word ? [{ start: w.start, from: w.word, to }] : [])
+                        ])
+                        setEditingWord(null)
+                      }
+                      if (e.key === 'Escape') setEditingWord(null)
+                    }}
+                    onBlur={() => setEditingWord(null)}
+                    className="text-xs mr-1 w-24 bg-raised border border-accent rounded px-1"
+                    aria-label={`Correct the word ${w.word}`}
+                  />
+                )
+              }
+              const inRemoved = removed.some(([a, b]) => w.start >= a && w.end <= b)
+              const muted = wordMuted(w)
+              const corrected = wordEdits.find((x) => x.start === w.start)
+              return (
+                <button
+                  key={i}
+                  onClick={() =>
+                    textMode
+                      ? setEditingWord({ i, value: corrected?.to ?? w.word })
+                      : toggleWord(w)
+                  }
+                  className={`text-xs mr-1 rounded px-0.5 ${
+                    muted
+                      ? 'line-through text-red-400 bg-red-500/10'
+                      : corrected
+                        ? 'text-accent bg-accent/10'
+                        : inRemoved
+                          ? 'text-muted/40 line-through'
+                          : 'text-muted hover:text-ink hover:bg-raised'
+                  }`}
+                  title={
+                    textMode
+                      ? corrected
+                        ? `Caption says “${corrected.to}” — click to change`
+                        : 'Click to retype this word'
+                      : muted
+                        ? 'Un-mute this word (audio and caption come back)'
+                        : 'Mute this word — audio goes silent and the caption shows it censored (f**k)'
+                  }
+                >
+                  {corrected?.to ?? w.word}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
+
+      {/* caption style (font / size / colour / position) for this clip */}
+      <div>
+        <button
+          onClick={() => setStyleOpen(!styleOpen)}
+          className={`text-xs px-2.5 py-1 rounded-md ${
+            styleOpen || styleDirty ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
+          }`}
+          aria-expanded={styleOpen}
+          title="Font, size, colour and position of the burned-in captions for THIS clip"
+        >
+          Aa Caption style {styleOpen ? '▾' : '▸'}
+          {styleDirty && !styleOpen ? ' — changed' : ''}
+        </button>
+        {styleOpen && (
+          <div className="mt-2 border border-raised/60 rounded-lg p-3">
+            <CaptionStyleControls
+              idPrefix={`clip-${clip.id}`}
+              style={captionStyle}
+              onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
+            />
+          </div>
+        )}
+      </div>
 
       {/* audio controls */}
       <div className="flex items-center gap-3 flex-wrap text-xs">
