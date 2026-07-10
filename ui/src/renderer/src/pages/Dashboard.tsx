@@ -31,7 +31,10 @@ export default function Dashboard({
   const [settings, setSettings] = useState<Settings | null>(null)
   const [log, setLog] = useState<string[]>([])
   const [sort, setSort] = useState<SortMode>('newest')
-  const [channelFilter, setChannelFilter] = useState<string | null>(null)
+  const [channelFilter, setChannelFilter] = useState<{
+    creatorId: number | null
+    label: string
+  } | null>(null)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [clipsByVideo, setClipsByVideo] = useState<Record<string, Clip[]>>({})
@@ -96,7 +99,17 @@ export default function Dashboard({
 
   const shown = useMemo(() => {
     let list = [...videos]
-    if (channelFilter) list = list.filter((v) => (v.channel_name || 'Unknown channel') === channelFilter)
+    if (channelFilter) {
+      // Creator-aware: clicking a channel shows ALL of that creator's
+      // channels (e.g. their Twitch and YouTube accounts linked in the
+      // Creators tab), falling back to the exact channel string for
+      // videos with no creator profile.
+      list = list.filter((v) =>
+        channelFilter.creatorId != null
+          ? v.creator_id === channelFilter.creatorId
+          : (v.channel_name || 'Unknown channel') === channelFilter.label
+      )
+    }
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter(
@@ -149,7 +162,7 @@ export default function Dashboard({
               />
               {channelFilter && (
                 <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => setChannelFilter(null)}>
-                  {channelFilter} ✕
+                  {channelFilter.label} ✕
                 </button>
               )}
               <label htmlFor="sort-videos" className="label">
@@ -189,8 +202,18 @@ export default function Dashboard({
                       <td className="py-2 pr-2 max-w-36">
                         <button
                           className="text-accent hover:underline truncate block max-w-full text-left"
-                          onClick={() => setChannelFilter(v.channel_name || 'Unknown channel')}
-                          aria-label={`Show only videos from ${v.channel_name || 'unknown channel'}`}
+                          onClick={() =>
+                            setChannelFilter({
+                              creatorId: v.creator_id ?? null,
+                              label: v.creator_name || v.channel_name || 'Unknown channel'
+                            })
+                          }
+                          aria-label={`Show all videos from ${v.creator_name || v.channel_name || 'unknown channel'}`}
+                          title={
+                            v.creator_id != null
+                              ? 'Show this creator’s videos from all their linked channels'
+                              : undefined
+                          }
                         >
                           {v.channel_name || '—'}
                         </button>
