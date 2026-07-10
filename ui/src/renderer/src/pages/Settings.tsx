@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { useState } from 'react'
 import {
   DEFAULT_APPEARANCE,
   FONTS,
@@ -7,7 +6,6 @@ import {
   saveAppearance,
   type Appearance
 } from '../lib/appearance'
-import type { Settings as SettingsT } from '../lib/types'
 
 function AppearanceCard(): JSX.Element {
   const [appearance, setAppearance] = useState<Appearance>(loadAppearance)
@@ -79,59 +77,11 @@ function AppearanceCard(): JSX.Element {
 }
 
 export default function Settings(): JSX.Element {
-  const [settings, setSettings] = useState<SettingsT | null>(null)
-  const [channel, setChannel] = useState('')
-  const [notice, setNotice] = useState<string | null>(null)
-
-  useEffect(() => {
-    api
-      .settings()
-      .then((s) => {
-        setSettings(s)
-        setChannel(s.channel)
-      })
-      .catch(() => setSettings(null))
-  }, [])
-
-  const save = async (): Promise<void> => {
-    try {
-      await api.patchSettings({ channel })
-      setNotice('Saved. Pipeline-level changes apply on next backend start.')
-    } catch (e) {
-      setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
-  if (!settings)
-    return (
-      <div className="p-6 space-y-5 max-w-xl">
-        <h2 className="text-2xl font-bold">Settings</h2>
-        <AppearanceCard />
-        <div className="card text-muted">Connecting to backend…</div>
-      </div>
-    )
-
   return (
     <div className="p-6 space-y-5 max-w-xl">
       <h2 className="text-2xl font-bold">Settings</h2>
 
       <AppearanceCard />
-
-      <div className="card space-y-4">
-        <div>
-          <label className="label">Your channel (@handle or URL)</label>
-          <input
-            className="input mt-1"
-            value={channel}
-            placeholder="@YourHandle"
-            onChange={(e) => setChannel(e.target.value)}
-          />
-        </div>
-        <button className="btn-accent" onClick={save}>
-          Save settings
-        </button>
-        {notice && <p className="text-sm text-accent">{notice}</p>}
-      </div>
 
       <div className="card text-sm text-muted">
         The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced
