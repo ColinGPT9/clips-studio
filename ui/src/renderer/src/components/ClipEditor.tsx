@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import type { Clip } from '../lib/types'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
@@ -18,7 +19,12 @@ export default function ClipEditor({
   const [hashtags, setHashtags] = useState(clip.hashtags.join(' '))
   const [start, setStart] = useState(clip.start_s)
   const [end, setEnd] = useState(clip.end_s)
-  const [folder, setFolder] = useState('exports')
+  const [folder, setFolder] = useState('')
+
+  // Default the export destination to the remembered folder / OS Downloads.
+  useEffect(() => {
+    getExportFolder().then(setFolder)
+  }, [])
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -146,11 +152,25 @@ export default function ClipEditor({
           {busy === 'render' ? 'Queueing…' : 'Re-render'}
         </button>
         <input
-          className="input !w-36"
+          className="input !w-44"
           value={folder}
-          onChange={(e) => setFolder(e.target.value)}
+          onChange={(e) => {
+            setFolder(e.target.value)
+            setExportFolder(e.target.value)
+          }}
           placeholder="export folder"
+          title={folder}
         />
+        <button
+          className="btn-ghost"
+          onClick={async () => {
+            const chosen = await pickExportFolder()
+            if (chosen) setFolder(chosen)
+          }}
+          title="Choose where exported clips are saved"
+        >
+          📂
+        </button>
         <button className="btn-ghost" onClick={exportOne} disabled={busy !== null}>
           {busy === 'export' ? 'Exporting…' : 'Export'}
         </button>
