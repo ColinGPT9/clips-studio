@@ -92,6 +92,20 @@ ipcMain.handle('pick-video-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+// The OS Downloads folder — the default export destination, like other
+// video editors.
+ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))
+
+// Folder picker for choosing where exported clips are saved.
+ipcMain.handle('pick-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose where to save exported clips',
+    defaultPath: app.getPath('downloads'),
+    properties: ['openDirectory', 'createDirectory']
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
 app.whenReady().then(() => {
   startBackend()
   createWindow()

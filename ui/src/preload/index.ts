@@ -7,5 +7,8 @@ contextBridge.exposeInMainWorld('studio', {
   // Native audio-file picker (editor's background-music field).
   pickAudioFile: (): Promise<string | null> => ipcRenderer.invoke('pick-audio-file'),
   // Native video-file picker (Dashboard "upload a video file").
-  pickVideoFile: (): Promise<string | null> => ipcRenderer.invoke('pick-video-file')
+  pickVideoFile: (): Promise<string | null> => ipcRenderer.invoke('pick-video-file'),
+  // Export destination: the OS Downloads folder + a folder picker.
+  getDownloadsPath: (): Promise<string> => ipcRenderer.invoke('get-downloads-path'),
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-folder')
 })

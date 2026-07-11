@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   DEFAULT_APPEARANCE,
   FONTS,
@@ -6,6 +6,45 @@ import {
   saveAppearance,
   type Appearance
 } from '../lib/appearance'
+import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
+
+function ExportFolderCard(): JSX.Element {
+  const [folder, setFolder] = useState('')
+
+  useEffect(() => {
+    getExportFolder().then(setFolder)
+  }, [])
+
+  return (
+    <div className="card space-y-3" aria-label="Export location">
+      <h3 className="font-semibold">Export location</h3>
+      <p className="text-xs text-muted">
+        Where exported clips are saved. Defaults to your Downloads folder.
+      </p>
+      <div className="flex items-center gap-2">
+        <input
+          className="input flex-1"
+          value={folder}
+          onChange={(e) => {
+            setFolder(e.target.value)
+            setExportFolder(e.target.value)
+          }}
+          placeholder="e.g. C:\\Users\\you\\Downloads"
+          title={folder}
+        />
+        <button
+          className="btn-ghost shrink-0"
+          onClick={async () => {
+            const chosen = await pickExportFolder()
+            if (chosen) setFolder(chosen)
+          }}
+        >
+          📂 Browse…
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function AppearanceCard(): JSX.Element {
   const [appearance, setAppearance] = useState<Appearance>(loadAppearance)
@@ -82,6 +121,8 @@ export default function Settings(): JSX.Element {
       <h2 className="text-2xl font-bold">Settings</h2>
 
       <AppearanceCard />
+
+      <ExportFolderCard />
 
       <div className="card text-sm text-muted">
         The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced
