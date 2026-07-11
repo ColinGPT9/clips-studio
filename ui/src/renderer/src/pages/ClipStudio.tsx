@@ -193,7 +193,11 @@ export default function ClipStudio({
               )}
             </div>
           </div>
-          <div className="xl:col-span-2">
+          {/* sticky + self-start so the preview/player stays pinned while the
+              clip grid scrolls; its containing block is the tall grid, giving
+              it room to travel (an inner sticky can't — the cell is only as
+              tall as its content). */}
+          <div className="xl:col-span-2 self-start xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
             {current ? (
               <ClipEditor
                 clip={current}
