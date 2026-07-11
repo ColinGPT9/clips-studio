@@ -78,7 +78,7 @@ export default function ClipEditor({
     })
 
   return (
-    <div className="card space-y-4 sticky top-6">
+    <div className="card space-y-4">
       <video
         key={clip.id}
         src={api.mediaUrl(clip.id)}
