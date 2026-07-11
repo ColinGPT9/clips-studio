@@ -93,15 +93,29 @@ def find_clips(
         events=events,
     )
 
-    peak_windows = _signal_peak_windows(
-        combined, segments,
-        percentile=scoring_cfg.get("signal_peak_percentile", 90),
-        min_duration=clips_cfg["min_duration"],
-        max_duration=clips_cfg["max_duration"],
-        existing=candidates,
-    )
+    # Candidate windows from signal peaks — detected PER MODALITY, not just
+    # their mean. Averaging audio+visual hides content that is strong in only
+    # ONE of them: a SILENT workout is visual-only, and the mean dilutes it
+    # below the peak cutoff so it never becomes a candidate at all. Scanning
+    # visual-alone and audio-alone peaks is what surfaces silent action (and
+    # talk-free hype) for the scorer to judge. Dedup accumulates across all
+    # three passes so the same moment isn't proposed twice.
+    pk_pct = scoring_cfg.get("signal_peak_percentile", 90)
+    peak_windows: list[tuple[float, float]] = []
+    seen = list(candidates)
+    for sig in (visual_activity, audio_excitement, combined):
+        for win in _signal_peak_windows(
+            sig, segments,
+            percentile=pk_pct,
+            min_duration=clips_cfg["min_duration"],
+            max_duration=clips_cfg["max_duration"],
+            existing=seen,
+        ):
+            peak_windows.append(win)
+            seen.append(ClipCandidate(start=win[0], end=win[1], score=0))
     if peak_windows:
-        print(f"  {len(peak_windows)} signal-peak window(s) found beyond transcript picks")
+        print(f"  {len(peak_windows)} signal-peak window(s) found beyond transcript picks "
+              f"(per-modality: visual/audio/combined)")
         signal_cands = highlights.score_windows(segments, llm, peak_windows, events=events)
         # Signal peaks are seeded tight around the hot moment — grow them to a
         # full ~25s clip on sentence boundaries so action moments aren't tiny.
@@ -218,9 +232,13 @@ def _fuse(c: ClipCandidate, weights: dict, reaction: float, speech_ratio: float 
 
     Content-adaptive: for low-speech clips (workouts, action, b-roll) the
     text/engagement weight — which the LLM scores near zero when nobody is
-    talking — is shifted onto the visual/audio/reaction channels. So a
-    silent-but-visually-strong moment (a big lift, a fast rep) scores on what
-    it actually shows instead of being capped by empty dialogue.
+    talking — is shifted onto the channels that actually carry NON-VERBAL
+    content: VISUAL and REACTION (what and who is on screen). It is NOT put
+    on audio, because for a silent clip low audio-excitement is just silence
+    (an artifact of percentile-ranking against a talkier part of the video),
+    so weighting audio up would penalize the very content we want to surface.
+    A big lift or a fast rep then scores on what it shows, not on empty
+    dialogue. Total weight is conserved, so talky clips are unaffected.
     """
     s = c.subscores or {}
     talky = max(0.0, min(1.0, speech_ratio))
@@ -228,14 +246,14 @@ def _fuse(c: ClipCandidate, weights: dict, reaction: float, speech_ratio: float 
     w_text = weights["text"] * talky
     w_eng = weights["engagement"] * talky
     freed = (weights["text"] - w_text) + (weights["engagement"] - w_eng)
-    vis_total = weights["visual"] + weights["audio"] + weights["reaction"]
-    boost = 1.0 + (freed / vis_total if vis_total > 0 else 0.0)
+    carriers = weights["visual"] + weights["reaction"]
+    boost = 1.0 + (freed / carriers if carriers > 0 else 0.0)
 
     return (
         w_text * s.get("text", 50) / 100.0
         + weights["visual"] * boost * s.get("visual", 50) / 100.0
         + weights["reaction"] * boost * reaction
-        + weights["audio"] * boost * s.get("audio", 50) / 100.0
+        + weights["audio"] * s.get("audio", 50) / 100.0
         + w_eng * s.get("engagement", 50) / 100.0
     )
 
