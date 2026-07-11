@@ -153,15 +153,15 @@ def find_clips(
         candidates, key=lambda c: _fuse(c, weights, 0.5, speech[id(c)]), reverse=True
     )
     react_set = list(provisional[:top_k])
-    # ALSO measure every silent, visually-active candidate. Reaction — is a
-    # prominent person mid-action? — is the DECIDING signal for a silent
-    # workout/action clip (it has no dialogue to score on), but with a
-    # neutral 0.5 those clips rank low and get pre-filtered out before
-    # reaction is ever measured. That catch-22 is why workouts never
-    # surfaced: they were rejected on a reaction score that was never taken.
+    # ALSO measure every visually-active candidate (motion present). Reaction
+    # — is a prominent person mid-action? — is the DECIDING signal for a
+    # workout/action clip and the gate for the action bonus, but with a
+    # neutral 0.5 those clips rank low and get pre-filtered out before it is
+    # ever measured. That catch-22 is why workouts never surfaced: they were
+    # rejected on a reaction score that was never taken.
     in_set = {id(c) for c in react_set}
     for c in provisional[top_k:]:
-        if speech[id(c)] < 0.35 and c.subscores.get("visual", 0) >= 40 and id(c) not in in_set:
+        if c.subscores.get("visual", 0) >= 40 and id(c) not in in_set:
             react_set.append(c)
             in_set.add(id(c))
     n_reactions = len(react_set)
@@ -177,7 +177,9 @@ def find_clips(
         c.subscores["reaction"] = round(r * 100)
 
     ctx_cap = int(scoring_cfg.get("creator_context_max", 6))
+    action_bonus = int(scoring_cfg.get("action_bonus", 10))
     n_context = 0
+    n_action = 0
     for c in candidates:
         fused = round(100 * _fuse(c, weights, c.subscores["reaction"] / 100.0, speech[id(c)]))
         # Trending/drama moments (a creator/celebrity named, beef, controversy)
@@ -185,6 +187,22 @@ def find_clips(
         if c.trending:
             fused = min(100, fused + 10)
             c.subscores["trending"] = True
+        # Active-content archetype (workouts, sports, dance): a person
+        # prominently MOVING performs well on social whether or not they're
+        # talking — the value is the action, which the scorer under-credits
+        # (casual workout narration grades as mediocre chatter), so it lands
+        # right at the threshold. Surface more of it with a capped additive
+        # nudge. Gated on on-screen person + motion — NOT on silence, since
+        # creators often narrate while they work out — so a static talking
+        # head is not promoted. Tunable via scoring.action_bonus.
+        if (
+            action_bonus > 0
+            and c.subscores.get("reaction", 50) >= 55
+            and c.subscores.get("visual", 0) >= 40
+        ):
+            fused = min(100, fused + action_bonus)
+            c.subscores["action"] = action_bonus
+            n_action += 1
         # Creator-context callback (open storyline, catchphrase, collaborator):
         # a small ADDITIVE-ONLY nudge, hard-capped, from deterministic matching
         # against learned knowledge. Zero when nothing is known — cannot
@@ -204,6 +222,8 @@ def find_clips(
         c.score = fused
     if n_context:
         print(f"  Creator context boosted {n_context} candidate(s) (max +{ctx_cap})")
+    if n_action:
+        print(f"  Active-content boosted {n_action} candidate(s) (+{action_bonus})")
 
     # ---- 4. dedup + threshold (reusing the proven logic) ------------------
     # max_clips_per_video == 0 means automatic: keep EVERY unique clip that
