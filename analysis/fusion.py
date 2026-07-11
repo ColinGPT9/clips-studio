@@ -146,17 +146,28 @@ def find_clips(
         }
 
     # Reaction (YOLO per window) is the expensive signal — compute it only
-    # for the strongest candidates; the rest keep a neutral 0.5.
-    # Scale the (YOLO-expensive) reaction pass with candidate volume so long
-    # streams don't leave most finalists on a neutral reaction score.
+    # for candidates that need it; the rest keep a neutral 0.5.
     speech = {id(c): _speech_ratio(c, segments) for c in candidates}
     top_k = max(scoring_cfg.get("reaction_top_k", 8), min(24, len(candidates) // 3))
     provisional = sorted(
         candidates, key=lambda c: _fuse(c, weights, 0.5, speech[id(c)]), reverse=True
     )
-    n_reactions = min(top_k, len(provisional))
-    print(f"  Scoring reactions for top {n_reactions} candidate(s)...")
-    for ri, c in enumerate(provisional[:top_k], 1):
+    react_set = list(provisional[:top_k])
+    # ALSO measure every silent, visually-active candidate. Reaction — is a
+    # prominent person mid-action? — is the DECIDING signal for a silent
+    # workout/action clip (it has no dialogue to score on), but with a
+    # neutral 0.5 those clips rank low and get pre-filtered out before
+    # reaction is ever measured. That catch-22 is why workouts never
+    # surfaced: they were rejected on a reaction score that was never taken.
+    in_set = {id(c) for c in react_set}
+    for c in provisional[top_k:]:
+        if speech[id(c)] < 0.35 and c.subscores.get("visual", 0) >= 40 and id(c) not in in_set:
+            react_set.append(c)
+            in_set.add(id(c))
+    n_reactions = len(react_set)
+    print(f"  Scoring reactions for {n_reactions} candidate(s) "
+          f"(incl. silent-action clips)...")
+    for ri, c in enumerate(react_set, 1):
         progress.emit(stage="reactions", current=ri, total=n_reactions)
         r = reaction_for_window(
             video_path, c.start, c.end,
