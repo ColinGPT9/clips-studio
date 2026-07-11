@@ -59,6 +59,12 @@ scoring:
                                # (ongoing storylines, catchphrases, collaborators).
                                # Additive-only and capped so learned knowledge can
                                # never DEGRADE scores. 0 disables entirely.
+  action_bonus: 10             # score bonus for active-content clips (workouts,
+                               # sports, dance): a person on-screen and moving
+                               # (whether or not they're talking). Surfaces this
+                               # content, which performs on social but which the
+                               # scorer under-credits. Raise for MORE such clips,
+                               # 0 to disable.
   rerank_pool: 8               # finalists compared head-to-head by the LLM
   reaction_top_k: 8            # candidates that get the (slower) YOLO reaction pass
 
