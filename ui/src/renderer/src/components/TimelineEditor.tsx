@@ -131,7 +131,6 @@ export default function TimelineEditor({
   const [history, setHistory] = useState<EditData[]>([])
   const [words, setWords] = useState<Word[]>([])
   const [captionBase, setCaptionBase] = useState<CaptionLine[] | null>(null)
-  const [selectedSeg, setSelectedSeg] = useState<number | null>(null)
   const [playhead, setPlayhead] = useState(0) // original-timeline seconds
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
@@ -169,7 +168,6 @@ export default function TimelineEditor({
   useEffect(() => {
     setEdit({ ...defaultEdit(duration), ...(clip.render_opts?.edit ?? {}) })
     setHistory([])
-    setSelectedSeg(null)
     setNotice('')
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
@@ -193,12 +191,23 @@ export default function TimelineEditor({
   // mute would never audibly engage in the preview.
   const draftActive = draftEditJson !== null
 
+  // Live edit state read by the animation loop through refs, so the loop is
+  // set up ONCE per clip — not torn down and recreated on every trim-drag
+  // frame (that churn was what froze the video while trimming).
+  const editRef = useRef(edit)
+  const removedRef = useRef(removed)
+  const bakedRemovedRef = useRef(bakedRemoved)
+  const scrubbing = useRef(false) // suppress auto-skip while seeking/dragging
+  useEffect(() => {
+    editRef.current = edit
+    removedRef.current = removed
+    bakedRemovedRef.current = bakedRemoved
+  })
+
   useEffect(() => {
     const el = videoRef.current
     if (!el) return
     if (draftActive) {
-      // The preview file already has every edit baked in — play it as-is
-      // (don't force-unmute: that made toggles feel dead while previewing).
       el.playbackRate = 1
       return
     }
@@ -206,15 +215,17 @@ export default function TimelineEditor({
     let lastShown = -1
     const tick = (): void => {
       raf = requestAnimationFrame(tick)
+      const e = editRef.current
       const tOrig = bakedToOrig(el.currentTime, baked?.keep)
       if (Math.abs(tOrig - lastShown) > 0.03) {
         lastShown = tOrig
         setPlayhead(tOrig)
       }
-      if (!el.paused) {
-        // Removed in the working edit but not yet baked -> jump over it.
-        for (const [a, b] of removed) {
-          const alreadyBaked = bakedRemoved.some(([x, y]) => a >= x - 0.05 && b <= y + 0.05)
+      // Skip over removed sections ONLY while genuinely playing and not while
+      // the user is scrubbing/dragging — otherwise it fights manual seeks.
+      if (!el.paused && !scrubbing.current && !dragging.current) {
+        for (const [a, b] of removedRef.current) {
+          const alreadyBaked = bakedRemovedRef.current.some(([x, y]) => a >= x - 0.05 && b <= y + 0.05)
           if (!alreadyBaked && tOrig > a + 0.02 && tOrig < b - 0.02) {
             el.currentTime = origToBaked(Math.min(b + 0.02, duration), baked?.keep)
             return
@@ -222,12 +233,11 @@ export default function TimelineEditor({
         }
       }
       const inNewMute =
-        edit.mutes.some(([a, b]) => tOrig >= a - 0.02 && tOrig <= b + 0.02) &&
+        e.mutes.some(([a, b]) => tOrig >= a - 0.02 && tOrig <= b + 0.02) &&
         !(baked?.mutes ?? []).some(([a, b]) => tOrig >= a && tOrig <= b)
-      el.muted = edit.mute_all || inNewMute
-      if (!el.muted) el.volume = Math.max(0, Math.min(1, edit.volume))
-      // Live speed preview (relative to any speed already baked in).
-      el.playbackRate = Math.max(0.25, (edit.speed ?? 1) / (baked?.speed ?? 1))
+      el.muted = e.mute_all || inNewMute
+      if (!el.muted) el.volume = Math.max(0, Math.min(1, e.volume))
+      el.playbackRate = Math.max(0.25, (e.speed ?? 1) / (baked?.speed ?? 1))
     }
     raf = requestAnimationFrame(tick)
     return () => {
@@ -236,7 +246,7 @@ export default function TimelineEditor({
       el.volume = 1
       el.playbackRate = 1
     }
-  }, [edit, baked, removed, bakedRemoved, duration, videoRef, draftActive])
+  }, [baked, duration, videoRef, draftActive])
 
   const push = (next: EditData): void => {
     setHistory((h) => [...h.slice(-30), edit])
@@ -252,13 +262,29 @@ export default function TimelineEditor({
 
   const seekOrig = (t: number): void => {
     const el = videoRef.current
-    if (el) el.currentTime = origToBaked(Math.max(0, Math.min(duration, t)), baked?.keep)
+    if (!el) return
+    const clamped = Math.max(0, Math.min(duration, t))
+    scrubbing.current = true // keep the auto-skip from yanking the playhead back
+    el.currentTime = origToBaked(clamped, baked?.keep)
+    setPlayhead(clamped)
+    window.setTimeout(() => (scrubbing.current = false), 250)
   }
 
   const clickTimeline = (e: React.MouseEvent): void => {
     const rect = barRef.current?.getBoundingClientRect()
     if (!rect) return
     seekOrig(((e.clientX - rect.left) / rect.width) * duration)
+  }
+
+  // The kept segment the playhead is in — highlighted, and what "Delete
+  // section" removes (no more click-to-select fighting click-to-seek).
+  const playheadSeg = keep.findIndex(([a, b]) => playhead >= a - 0.01 && playhead <= b + 0.01)
+
+  const trimToPlayhead = (edge: 'start' | 'end'): void => {
+    const k = keep.map((r) => [...r] as Range)
+    if (edge === 'start') k[0][0] = Math.min(playhead, k[0][1] - MIN_SEG)
+    else k[k.length - 1][1] = Math.max(playhead, k[k.length - 1][0] + MIN_SEG)
+    push({ ...edit, keep: k })
   }
 
   const splitAtPlayhead = (): void => {
@@ -272,9 +298,8 @@ export default function TimelineEditor({
   }
 
   const deleteSelected = (): void => {
-    if (selectedSeg === null || keep.length <= 1) return
-    push({ ...edit, keep: keep.filter((_, i) => i !== selectedSeg) })
-    setSelectedSeg(null)
+    if (playheadSeg < 0 || keep.length <= 1) return
+    push({ ...edit, keep: keep.filter((_, i) => i !== playheadSeg) })
   }
 
   const tightenPauses = (): void => {
@@ -349,7 +374,10 @@ export default function TimelineEditor({
     }
   }
 
-  // Trim handles: drag the outer edges of the first/last kept segment.
+  // Trim handles: drag the outer edges of the first/last kept segment. Global
+  // listeners are attached ONCE (they read live state via refs), so dragging
+  // doesn't churn subscriptions.
+  const dragStartEdit = useRef<EditData | null>(null)
   useEffect(() => {
     const move = (e: PointerEvent): void => {
       if (!dragging.current) return
@@ -366,7 +394,11 @@ export default function TimelineEditor({
     const up = (): void => {
       if (dragging.current) {
         dragging.current = null
-        setHistory((h) => [...h.slice(-30), edit])
+        if (dragStartEdit.current) {
+          const before = dragStartEdit.current
+          setHistory((h) => [...h.slice(-30), before]) // undo restores pre-drag
+          dragStartEdit.current = null
+        }
       }
     }
     window.addEventListener('pointermove', move)
@@ -375,7 +407,7 @@ export default function TimelineEditor({
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
-  }, [duration, edit])
+  }, [duration])
 
   const layoutDirty = layout !== storedCrop
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
@@ -515,15 +547,12 @@ export default function TimelineEditor({
         {keep.map(([a, b], i) => (
           <div
             key={i}
-            onClick={(e) => {
-              e.stopPropagation()
-              setSelectedSeg(i === selectedSeg ? null : i)
-            }}
-            className={`absolute top-0 h-full rounded-sm ${
-              i === selectedSeg ? 'bg-accent/60 ring-1 ring-accent' : 'bg-accent/25 hover:bg-accent/35'
+            className={`absolute top-0 h-full rounded-sm pointer-events-none ${
+              i === playheadSeg && keep.length > 1
+                ? 'bg-accent/60 ring-1 ring-accent'
+                : 'bg-accent/25'
             }`}
             style={{ left: pct(a), width: pct(b - a) }}
-            title={`${a.toFixed(1)}s – ${b.toFixed(1)}s${keep.length > 1 ? ' (click to select)' : ''}`}
           />
         ))}
         {edit.mutes.map(([a, b], i) => (
@@ -540,6 +569,7 @@ export default function TimelineEditor({
           onPointerDown={(e) => {
             e.stopPropagation()
             dragging.current = 'start'
+            dragStartEdit.current = editRef.current
           }}
           title="Drag to trim the start"
         />
@@ -549,6 +579,7 @@ export default function TimelineEditor({
           onPointerDown={(e) => {
             e.stopPropagation()
             dragging.current = 'end'
+            dragStartEdit.current = editRef.current
           }}
           title="Drag to trim the end"
         />
@@ -559,12 +590,26 @@ export default function TimelineEditor({
       </div>
 
       <div className="flex gap-2 flex-wrap text-xs">
+        <button
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70"
+          onClick={() => trimToPlayhead('start')}
+          title="Set the clip's START to the playhead (play, find the spot, click)"
+        >
+          ⊣ Trim start here
+        </button>
+        <button
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70"
+          onClick={() => trimToPlayhead('end')}
+          title="Set the clip's END to the playhead"
+        >
+          Trim end here ⊢
+        </button>
         <button className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70" onClick={splitAtPlayhead}>
           Split at playhead
         </button>
         <button
           className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40"
-          disabled={selectedSeg === null || keep.length <= 1}
+          disabled={playheadSeg < 0 || keep.length <= 1}
           onClick={deleteSelected}
         >
           Delete section
