@@ -38,6 +38,7 @@ class JobIn(BaseModel):
     filter: str | None = None  # color preset name (video/filters.py) for the whole job
     min_score: int | None = None  # per-job quality bar override (0-100)
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
+    watermark_profile_id: int | None = None  # branding profile applied to all clips
 
 
 class ClipPatch(BaseModel):
@@ -65,6 +66,16 @@ class PreviewIn(BaseModel):
     caption_lines: list[dict] | None = None  # pending caption text, if changed
     crop: str | None = None             # pending layout (track/letterbox/center)
     caption_style: dict | None = None   # pending caption font/size/etc.
+    watermark: dict | None = None       # pending branding config (or {} to clear)
+
+
+class BrandingIn(BaseModel):
+    name: str
+    config: dict
+
+
+class BrandingAssetIn(BaseModel):
+    path: str   # image file on this computer to import as a branding asset
 
 
 class LocalVideoIn(BaseModel):
@@ -199,6 +210,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["long_clips"] = True
         if body.longform:
             payload["longform"] = body.longform
+        if body.watermark_profile_id:
+            payload["watermark_profile_id"] = body.watermark_profile_id
         if body.filter:
             from video.filters import is_valid
 
@@ -612,6 +625,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["crop"] = body.crop
         if body.caption_style:
             opts["caption_style"] = {**(opts.get("caption_style") or {}), **body.caption_style}
+        if body.watermark is not None:
+            # {} clears the watermark for this clip; a dict sets it.
+            opts["watermark"] = body.watermark or None
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],
@@ -705,6 +721,77 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
         return exported
+
+    # ---- watermark & branding ------------------------------------------------
+
+    @app.get("/branding")
+    def list_branding():
+        d = db()
+        try:
+            rows = d.list_branding()
+        finally:
+            d.close()
+        return [{"id": r["id"], "name": r["name"], "config": json.loads(r["config"])} for r in rows]
+
+    @app.post("/branding")
+    def create_branding(body: BrandingIn):
+        d = db()
+        try:
+            pid = d.add_branding(body.name.strip() or "Branding", json.dumps(body.config))
+        finally:
+            d.close()
+        return {"id": pid}
+
+    @app.put("/branding/{profile_id}")
+    def update_branding(profile_id: int, body: BrandingIn):
+        d = db()
+        try:
+            if d.get_branding(profile_id) is None:
+                raise HTTPException(404, "no such branding profile")
+            d.update_branding(profile_id, body.name.strip() or "Branding", json.dumps(body.config))
+        finally:
+            d.close()
+        return {"id": profile_id}
+
+    @app.delete("/branding/{profile_id}")
+    def delete_branding(profile_id: int):
+        d = db()
+        try:
+            d.delete_branding(profile_id)
+        finally:
+            d.close()
+        return {"deleted": profile_id}
+
+    @app.post("/branding/asset")
+    def upload_branding_asset(body: BrandingAssetIn):
+        """Import a logo file from this computer into the branding assets
+        folder, deduped by content hash. Returns the stored asset filename to
+        put in a profile's config.image_asset."""
+        import hashlib
+
+        src = Path(body.path)
+        if not src.exists() or not src.is_file():
+            raise HTTPException(400, f"file not found: {body.path}")
+        data = src.read_bytes()
+        if len(data) > 20 * 1024 * 1024:
+            raise HTTPException(400, "image too large (max 20 MB)")
+        ext = src.suffix.lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+            raise HTTPException(400, "use a PNG (transparent preferred), JPG or WebP")
+        name = hashlib.sha256(data).hexdigest()[:16] + ext
+        assets = data_dir / "branding" / "assets"
+        assets.mkdir(parents=True, exist_ok=True)
+        dest = assets / name
+        if not dest.exists():  # dedup: identical content is stored once
+            dest.write_bytes(data)
+        return {"asset": name}
+
+    @app.get("/branding/asset/{name}")
+    def get_branding_asset(name: str):
+        path = (data_dir / "branding" / "assets" / name).resolve()
+        if not path.exists() or (data_dir / "branding" / "assets") not in path.parents:
+            raise HTTPException(404, "no such asset")
+        return FileResponse(path)
 
     # ---- creator profiles (creator intelligence) -----------------------------
 
