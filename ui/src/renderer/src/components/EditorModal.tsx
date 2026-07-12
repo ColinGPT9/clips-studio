@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
 import type { Clip, WatermarkConfig } from '../lib/types'
-import ColorControls from './ColorControls'
-import EditChat from './EditChat'
 import TimelineEditor from './TimelineEditor'
 
 /** Live, draggable watermark preview over the editor video. Shows the
@@ -225,8 +223,6 @@ export default function EditorView({
             watermark={watermark}
             setWatermark={setWatermark}
           />
-          <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
-          <EditChat clip={clip} onQueued={flash} />
         </div>
       </div>
     </div>
