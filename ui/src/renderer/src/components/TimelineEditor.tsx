@@ -210,6 +210,7 @@ export default function TimelineEditor({
   const removedRef = useRef(removed)
   const bakedRemovedRef = useRef(bakedRemoved)
   const scrubbing = useRef(false) // suppress auto-skip while seeking/dragging
+  const scrubDrag = useRef(false) // true while dragging the playhead
   useEffect(() => {
     editRef.current = edit
     removedRef.current = removed
@@ -272,21 +273,42 @@ export default function TimelineEditor({
     })
   }
 
-  const seekOrig = (t: number): void => {
+  const seekOrig = (t: number, hold = false): void => {
     const el = videoRef.current
     if (!el) return
     const clamped = Math.max(0, Math.min(duration, t))
     scrubbing.current = true // keep the auto-skip from yanking the playhead back
     el.currentTime = origToBaked(clamped, baked?.keep)
     setPlayhead(clamped)
-    window.setTimeout(() => (scrubbing.current = false), 250)
+    if (!hold) window.setTimeout(() => (scrubbing.current = false), 250)
   }
 
-  const clickTimeline = (e: React.MouseEvent): void => {
+  // ---- scrubbing: press and DRAG anywhere on the timeline to move through
+  // the video (not just click). Pointer capture keeps it tracking even when
+  // the cursor leaves the bar.
+  const timeFromX = (clientX: number): number => {
     const rect = barRef.current?.getBoundingClientRect()
-    if (!rect) return
-    seekOrig(((e.clientX - rect.left) / rect.width) * duration)
+    if (!rect) return playhead
+    return Math.max(0, Math.min(duration, ((clientX - rect.left) / rect.width) * duration))
   }
+  const startScrub = (e: React.PointerEvent): void => {
+    if (dragging.current) return // a trim handle owns this gesture
+    scrubDrag.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    seekOrig(timeFromX(e.clientX), true)
+  }
+  const moveScrub = (e: React.PointerEvent): void => {
+    if (!scrubDrag.current) return
+    seekOrig(timeFromX(e.clientX), true)
+  }
+  const endScrub = (): void => {
+    if (!scrubDrag.current) return
+    scrubDrag.current = false
+    window.setTimeout(() => (scrubbing.current = false), 150)
+  }
+
+  const fmt = (t: number): string =>
+    `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor((t % 1) * 10)}`
 
   // The kept segment the playhead is in — highlighted, and what "Delete
   // section" removes (no more click-to-select fighting click-to-seek).
@@ -544,17 +566,32 @@ export default function TimelineEditor({
         </div>
       </div>
 
-      {/* timeline */}
+      {/* timeline — press and DRAG anywhere to scrub through the video */}
       <div
         ref={barRef}
-        className="relative h-10 bg-base rounded-md cursor-pointer select-none touch-none"
-        onClick={clickTimeline}
+        className="relative h-12 bg-base rounded-md cursor-ew-resize select-none touch-none"
+        onPointerDown={startScrub}
+        onPointerMove={moveScrub}
+        onPointerUp={endScrub}
+        onPointerCancel={endScrub}
         role="slider"
-        aria-label="Clip timeline — click to seek"
+        aria-label="Clip timeline — drag to scrub, arrow keys to step"
         aria-valuemin={0}
         aria-valuemax={duration}
         aria-valuenow={playhead}
+        aria-valuetext={fmt(playhead)}
         tabIndex={0}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 1 : 0.1
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault()
+            seekOrig(playhead - step)
+          }
+          if (e.key === 'ArrowRight') {
+            e.preventDefault()
+            seekOrig(playhead + step)
+          }
+        }}
       >
         {keep.map(([a, b], i) => (
           <div
@@ -595,10 +632,17 @@ export default function TimelineEditor({
           }}
           title="Drag to trim the end"
         />
+        {/* playhead: line + grab knob + live time readout */}
         <div
-          className="absolute top-0 h-full w-0.5 bg-ink pointer-events-none"
+          className="absolute top-0 h-full pointer-events-none z-10"
           style={{ left: pct(playhead) }}
-        />
+        >
+          <div className="absolute inset-y-0 -left-px w-0.5 bg-white shadow" />
+          <div className="absolute -top-1 -left-1.5 w-3 h-3 rounded-full bg-white shadow ring-1 ring-black/30" />
+          <span className="absolute -top-6 -translate-x-1/2 text-[10px] tabular-nums bg-black/70 text-white px-1 py-0.5 rounded whitespace-nowrap">
+            {fmt(playhead)}
+          </span>
+        </div>
       </div>
 
       <div className="flex gap-2 flex-wrap text-xs">
