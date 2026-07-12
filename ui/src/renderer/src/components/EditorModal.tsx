@@ -1,14 +1,140 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
-import type { Clip } from '../lib/types'
+import type { Clip, WatermarkConfig } from '../lib/types'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 import TimelineEditor from './TimelineEditor'
 
-/** Full-page editing workspace: replaces the clip grid while editing, so the
- *  normal app window can be moved/resized/maximized and the editor reflows
- *  with it. Big preview left (with TikTok/YT/IG UI overlays and draft
- *  previews); timeline, color, captions and AI chat right. */
+/** Live, draggable watermark preview over the editor video. Shows the
+ *  text/logo where it will burn in, updates as the controls change, and
+ *  drag repositions it (switching to a 'custom' point) so a static
+ *  watermark can be placed off anything important. */
+function WatermarkOverlay({
+  config,
+  onChange
+}: {
+  config: WatermarkConfig
+  onChange: (patch: Partial<WatermarkConfig>) => void
+}): JSX.Element {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  const dragging = useRef(false)
+
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setBox({ w: el.clientWidth, h: el.clientHeight }))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const pos = config.position ?? 'bottom_right'
+  const pad = (config.padding ?? 0.04) * 100
+  const opacity = config.opacity ?? 0.85
+  const moving = pos === 'moving'
+
+  const place = (p: string): React.CSSProperties => {
+    const s: React.CSSProperties = { position: 'absolute' }
+    if (p === 'custom') {
+      s.left = `${(config.x ?? 0.5) * 100}%`
+      s.top = `${(config.y ?? 0.5) * 100}%`
+      s.transform = 'translate(-50%, -50%)'
+      return s
+    }
+    if (p.includes('top')) s.top = `${pad}%`
+    if (p.includes('bottom')) s.bottom = `${pad}%`
+    if (p.includes('left')) s.left = `${pad}%`
+    if (p.includes('right')) s.right = `${pad}%`
+    if (p === 'center') {
+      s.top = '50%'
+      s.left = '50%'
+      s.transform = 'translate(-50%, -50%)'
+    }
+    return s
+  }
+
+  const Mark = ({ ghost }: { ghost?: boolean }): JSX.Element => {
+    const showImg = (config.type === 'image' || config.type === 'both') && config.image_asset
+    const showTxt = (config.type === 'text' || config.type === 'both') && config.text
+    return (
+      <div
+        className="flex flex-col items-center gap-0.5 leading-none pointer-events-none"
+        style={{ opacity: ghost ? opacity * 0.4 : opacity }}
+      >
+        {showImg && (
+          <img
+            src={api.brandingAssetUrl(config.image_asset!)}
+            alt=""
+            style={{ width: `${(config.scale ?? 0.18) * box.w}px` }}
+            className="max-w-none"
+            draggable={false}
+          />
+        )}
+        {showTxt && (
+          <span
+            style={{
+              color: config.color ?? '#FFFFFF',
+              fontFamily: config.font,
+              fontSize: `${Math.max(8, (config.font_size ?? 42) * (box.h / 1920))}px`,
+              textShadow: config.shadow ? '0 1px 3px rgba(0,0,0,0.9)' : 'none',
+              transform: config.rotation ? `rotate(${config.rotation}deg)` : undefined,
+              fontWeight: 700,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {config.text}
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  const startDrag = (e: React.PointerEvent): void => {
+    if (moving) return
+    dragging.current = true
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const onMove = (e: React.PointerEvent): void => {
+    if (!dragging.current) return
+    const r = boxRef.current?.getBoundingClientRect()
+    if (!r) return
+    const x = Math.max(0.02, Math.min(0.98, (e.clientX - r.left) / r.width))
+    const y = Math.max(0.02, Math.min(0.98, (e.clientY - r.top) / r.height))
+    onChange({ position: 'custom', x: Number(x.toFixed(3)), y: Number(y.toFixed(3)) })
+  }
+
+  return (
+    <div ref={boxRef} className="absolute inset-0 z-10 pointer-events-none">
+      {moving ? (
+        // Two faint ghosts at the side edge-centres show the L/R travel.
+        <>
+          <div style={{ position: 'absolute', top: '50%', left: `${pad}%`, transform: 'translateY(-50%)' }}>
+            <Mark ghost />
+          </div>
+          <div style={{ position: 'absolute', top: '50%', right: `${pad}%`, transform: 'translateY(-50%)' }}>
+            <Mark ghost />
+          </div>
+          <span className="absolute bottom-14 left-1/2 -translate-x-1/2 text-[10px] text-white/80 bg-black/40 px-1.5 py-0.5 rounded">
+            ⟳ moves left ↔ right
+          </span>
+        </>
+      ) : (
+        <div
+          style={place(pos)}
+          className="pointer-events-auto cursor-move touch-none ring-1 ring-white/0 hover:ring-white/40 rounded"
+          onPointerDown={startDrag}
+          onPointerMove={onMove}
+          onPointerUp={() => (dragging.current = false)}
+          title="Drag to reposition"
+        >
+          <Mark />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Full-page editing workspace. */
 export default function EditorView({
   clip,
   onClose,
@@ -21,11 +147,12 @@ export default function EditorView({
   const videoRef = useRef<HTMLVideoElement>(null)
   const [notice, setNotice] = useState('')
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
-  // Longform clips are 16:9 — the preview box follows the actual video.
+  const [watermark, setWatermark] = useState<WatermarkConfig | null>(clip.render_opts?.watermark ?? null)
   const isLandscape = !!clip.render_opts?.profile
 
   useEffect(() => {
     setPreviewSrc(null)
+    setWatermark(clip.render_opts?.watermark ?? null)
   }, [clip.id])
 
   useEffect(() => {
@@ -72,6 +199,13 @@ export default function EditorView({
               className="absolute inset-0 w-full h-full object-contain rounded-xl bg-base"
               aria-label="Editing preview"
             />
+            {/* Live watermark overlay — hidden while a baked draft is shown. */}
+            {watermark && !previewSrc && (
+              <WatermarkOverlay
+                config={watermark}
+                onChange={(patch) => setWatermark({ ...watermark, ...patch })}
+              />
+            )}
             {previewSrc && (
               <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
                 PREVIEW — all edits applied (not saved until Apply)
@@ -88,6 +222,8 @@ export default function EditorView({
             videoRef={videoRef}
             onChanged={onChanged}
             onPreview={setPreviewSrc}
+            watermark={watermark}
+            setWatermark={setWatermark}
           />
           <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
           <EditChat clip={clip} onQueued={flash} />

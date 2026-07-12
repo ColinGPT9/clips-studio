@@ -111,12 +111,16 @@ export default function TimelineEditor({
   clip,
   videoRef,
   onChanged,
-  onPreview
+  onPreview,
+  watermark,
+  setWatermark
 }: {
   clip: Clip
   videoRef: React.RefObject<HTMLVideoElement>
   onChanged: () => void
   onPreview: (url: string | null) => void
+  watermark: WatermarkConfig | null
+  setWatermark: (w: WatermarkConfig | null) => void
 }): JSX.Element {
   const duration = clip.end_s - clip.start_s
   const baked = useMemo<EditData | null>(() => clip.render_opts?.edit ?? null, [clip.id])
@@ -143,9 +147,9 @@ export default function TimelineEditor({
   }
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
   const [styleOpen, setStyleOpen] = useState(false)
-  // Watermark / branding for THIS clip (null = none).
+  // Watermark / branding for THIS clip — state lifted to EditorModal so the
+  // live draggable overlay on the preview and these controls stay in sync.
   const storedWatermark = clip.render_opts?.watermark ?? null
-  const [watermark, setWatermark] = useState<WatermarkConfig | null>(storedWatermark)
   const [wmOpen, setWmOpen] = useState(false)
   // Caption text corrections: with "Edit caption text" ON, clicking a
   // transcript word opens a text box instead of muting it.
@@ -170,7 +174,6 @@ export default function TimelineEditor({
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
-    setWatermark(clip.render_opts?.watermark ?? null)
     setWordEdits([])
     setEditingWord(null)
     onPreview(null)
@@ -735,7 +738,7 @@ export default function TimelineEditor({
               <WatermarkControls
                 config={watermark}
                 landscape={isLandscape}
-                onChange={(patch) => setWatermark((w) => ({ ...(w ?? DEFAULT_WATERMARK), ...patch }))}
+                onChange={(patch) => setWatermark({ ...(watermark ?? DEFAULT_WATERMARK), ...patch })}
               />
             )}
           </div>

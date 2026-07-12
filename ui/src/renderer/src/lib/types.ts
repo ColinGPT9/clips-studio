@@ -60,7 +60,9 @@ export interface WatermarkConfig {
   font_size?: number
   color?: string
   opacity?: number
-  position?: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right' | 'center' | 'moving'
+  position?: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right' | 'center' | 'moving' | 'custom'
+  x?: number // custom position (0..1 fraction of frame width, watermark centre)
+  y?: number // custom position (0..1 fraction of frame height)
   padding?: number
   scale?: number
   rotation?: number
