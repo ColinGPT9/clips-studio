@@ -45,14 +45,12 @@ _OVERLAY_XY = {
     "center": ("(W-w)/2", "(H-h)/2"),
 }
 
-# "moving" (TikTok-style anti-crop): the watermark hops between the LEFT and
-# RIGHT edge-centres only — never top/bottom, which the platform UI covers.
-MOVE_PERIOD = 4.0  # seconds at each position
-_MOVE_ALIGN = [6, 4]  # right-centre, left-centre
-_MOVE_OVERLAY = [
-    ("W-w-{p}", "(H-h)/2"),
-    ("{p}", "(H-h)/2"),
-]
+# "moving" (TikTok-style anti-crop): the watermark rests at one side edge-
+# centre, then SLIDES across to the other — never top/bottom (platform UI
+# covers those). The slide catches the eye; the travel makes it hard to crop.
+MOVE_DWELL = 3.4   # seconds resting at a side
+MOVE_SLIDE = 0.6   # seconds to slide across
+MOVE_PERIOD = MOVE_DWELL + MOVE_SLIDE
 
 
 def has_text(cfg: dict) -> bool:
@@ -126,14 +124,18 @@ def _text_events(text: str, cfg: dict, duration: float, canvas: tuple[int, int])
     if pos != "moving":
         # Layer 2 so branding sits above captions; 9:59:59 = "whole clip".
         return f"Dialogue: 2,0:00:00.00,9:59:59.99,Watermark,,0,0,0,,{text}"
+    # Slide between the side edge-centres. Each event holds at its start side
+    # for MOVE_DWELL then \move()s across in MOVE_SLIDE; sides alternate.
     dur = max(MOVE_PERIOD, duration or 60.0)
+    cw, ch = canvas
+    rx, lx, my = round(cw * 0.82), round(cw * 0.18), round(ch * 0.5)
+    d_ms, s_ms = round(MOVE_DWELL * 1000), round(MOVE_PERIOD * 1000)
     events, t, i = [], 0.0, 0
     while t < dur:
         end = min(t + MOVE_PERIOD, dur)
-        an = _MOVE_ALIGN[i % len(_MOVE_ALIGN)]
-        events.append(
-            f"Dialogue: 2,{_ass_t(t)},{_ass_t(end)},Watermark,,0,0,0,,{{\\an{an}}}{text}"
-        )
+        a, b = (rx, lx) if i % 2 == 0 else (lx, rx)  # from -> to
+        tag = f"{{\\an5\\move({a},{my},{b},{my},{d_ms},{s_ms})}}"
+        events.append(f"Dialogue: 2,{_ass_t(t)},{_ass_t(end)},Watermark,,0,0,0,,{tag}{text}")
         t, i = end, i + 1
     return "\n".join(events)
 
@@ -176,20 +178,21 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
         fy = max(0.0, min(1.0, float(cfg.get("y", 0.5))))
         xexpr, yexpr = f"W*{fx:.4f}-w/2", f"H*{fy:.4f}-h/2"
     elif cfg.get("position") == "moving":
-        # Hop between the side edge-centres over time (anti-crop). idx cycles
-        # every MOVE_PERIOD seconds; nested if() picks that hop's x/y.
-        n = len(_MOVE_OVERLAY)
-        idx = f"floor(mod(t,{MOVE_PERIOD * n:g})/{MOVE_PERIOD:g})"
-        xs = [x.format(p=pad) for x, _ in _MOVE_OVERLAY]
-        ys = [y.format(p=pad) for _, y in _MOVE_OVERLAY]
-
-        def _pick(vals: list[str]) -> str:
-            expr = vals[-1]
-            for k in range(n - 2, -1, -1):
-                expr = f"if(eq({idx},{k}),{vals[k]},{expr})"
-            return expr
-
-        xexpr, yexpr = _pick(xs), _pick(ys)
+        # Rest at a side, then slide across to the other (anti-crop). x is a
+        # piecewise function of t over one full L<->R cycle.
+        rx, lx = f"(W-w-{pad})", f"{pad}"
+        d, s, p = MOVE_DWELL, MOVE_SLIDE, MOVE_PERIOD
+        c = 2 * p
+        ph = f"mod(t,{c:g})"
+        rl = f"(({ph}-{d:g})/{s:g})"           # right->left progress 0..1
+        lr = f"(({ph}-{p + d:g})/{s:g})"       # left->right progress 0..1
+        xexpr = (
+            f"if(lt({ph},{d:g}),{rx},"
+            f"if(lt({ph},{p:g}),{rx}+({lx}-{rx})*{rl},"
+            f"if(lt({ph},{p + d:g}),{lx},"
+            f"{lx}+({rx}-{lx})*{lr})))"
+        )
+        yexpr = "(H-h)/2"
     else:
         xexpr, yexpr = _OVERLAY_XY.get(cfg.get("position", "bottom_right"), _OVERLAY_XY["bottom_right"])
         xexpr, yexpr = xexpr.format(p=pad), yexpr.format(p=pad)
