@@ -172,6 +172,9 @@ class StateDB:
             self.conn.execute("ALTER TABLE videos ADD COLUMN process_seconds REAL DEFAULT 0")
         if "creator_id" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN creator_id INTEGER")
+        creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
+        if "default_branding_id" not in creator_cols:
+            self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
 
     def recover_stuck_videos(self) -> int:
         """Videos left mid-pipeline by a crash/force-close (downloaded,

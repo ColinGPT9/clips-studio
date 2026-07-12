@@ -53,6 +53,27 @@ export interface Adjust {
   contrast?: number // 0.5..2, 1 = unchanged
 }
 
+export interface WatermarkConfig {
+  type: 'text' | 'image' | 'both'
+  text?: string
+  font?: string
+  font_size?: number
+  color?: string
+  opacity?: number
+  position?: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right' | 'center'
+  padding?: number
+  scale?: number
+  rotation?: number
+  shadow?: boolean
+  image_asset?: string
+}
+
+export interface BrandingProfile {
+  id: number
+  name: string
+  config: WatermarkConfig
+}
+
 export interface MutedWord {
   start: number
   end: number
@@ -220,6 +241,7 @@ export interface CreatorDetail {
   display_name: string
   aliases: string[]
   learning_enabled: number
+  default_branding_id: number | null
   accounts: CreatorAccount[]
   knowledge: CreatorKnowledgeItem[]
   events: CreatorEvent[]

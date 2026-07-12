@@ -78,6 +78,10 @@ class BrandingAssetIn(BaseModel):
     path: str   # image file on this computer to import as a branding asset
 
 
+class CreatorBrandingIn(BaseModel):
+    branding_id: int | None = None   # default branding profile, or null to clear
+
+
 class LocalVideoIn(BaseModel):
     path: str                  # video file on this computer (mp4/mov/mkv/…)
     title: str = ""            # defaults to the file name
@@ -964,6 +968,22 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
         return {"creator_id": creator_id, "learning_enabled": body.enabled}
+
+    @app.post("/creators/{creator_id}/branding")
+    def set_creator_branding(creator_id: int, body: CreatorBrandingIn):
+        """Set this creator's DEFAULT branding profile — auto-applied to their
+        videos when a job doesn't pick one. For clippers who make videos for
+        several creators, each gets their own logo without re-picking."""
+        d = db()
+        try:
+            d.conn.execute(
+                "UPDATE creators SET default_branding_id = ? WHERE creator_id = ?",
+                (body.branding_id, creator_id),
+            )
+            d.conn.commit()
+        finally:
+            d.close()
+        return {"creator_id": creator_id, "default_branding_id": body.branding_id}
 
     # ---- models ------------------------------------------------------------
 

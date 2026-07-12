@@ -1,4 +1,5 @@
 import type {
+  BrandingProfile,
   CaptionLine,
   CaptionStyle,
   Clip,
@@ -12,6 +13,7 @@ import type {
   Settings,
   SystemStats,
   Video,
+  WatermarkConfig,
   Word
 } from './types'
 
@@ -42,6 +44,7 @@ export const api = {
       longClips?: boolean
       filter?: FilterName
       longform?: { mode: string } | null
+      watermarkProfileId?: number | null
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -53,7 +56,8 @@ export const api = {
         captions: opts?.captions ?? null,
         long_clips: opts?.longClips ?? null,
         filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null,
-        longform: opts?.longform ?? null
+        longform: opts?.longform ?? null,
+        watermark_profile_id: opts?.watermarkProfileId ?? null
       })
     }),
   addLocalVideo: (opts: {
@@ -166,8 +170,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ enabled })
     }),
+  setCreatorBranding: (creatorId: number, brandingId: number | null) =>
+    request<{ default_branding_id: number | null }>(`/creators/${creatorId}/branding`, {
+      method: 'POST',
+      body: JSON.stringify({ branding_id: brandingId })
+    }),
   wipeCreatorMemory: (creatorId: number) =>
     request<{ wiped: number }>(`/creators/${creatorId}/memory`, { method: 'DELETE' }),
+
+  branding: () => request<BrandingProfile[]>('/branding'),
+  createBranding: (name: string, config: WatermarkConfig) =>
+    request<{ id: number }>('/branding', {
+      method: 'POST',
+      body: JSON.stringify({ name, config })
+    }),
+  updateBranding: (id: number, name: string, config: WatermarkConfig) =>
+    request<{ id: number }>(`/branding/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, config })
+    }),
+  deleteBranding: (id: number) =>
+    request<{ deleted: number }>(`/branding/${id}`, { method: 'DELETE' }),
+  uploadBrandingAsset: (path: string) =>
+    request<{ asset: string }>('/branding/asset', {
+      method: 'POST',
+      body: JSON.stringify({ path })
+    }),
+  brandingAssetUrl: (name: string) => `${API_BASE}/branding/asset/${name}`,
 
   settings: () => request<Settings>('/settings'),
   patchSettings: (patch: Partial<Settings>) =>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import type { CreatorDetail, CreatorSuggestion, CreatorSummary } from '../lib/types'
+import type { BrandingProfile, CreatorDetail, CreatorSuggestion, CreatorSummary } from '../lib/types'
 
 const PLATFORM_BADGE: Record<string, string> = {
   youtube: 'bg-red-500/15 text-red-400',
@@ -44,6 +44,11 @@ export default function Creators(): JSX.Element {
   const [error, setError] = useState('')
   const [addPlatform, setAddPlatform] = useState('youtube')
   const [addChannel, setAddChannel] = useState('')
+  const [brandingProfiles, setBrandingProfiles] = useState<BrandingProfile[]>([])
+
+  useEffect(() => {
+    api.branding().then(setBrandingProfiles).catch(() => setBrandingProfiles([]))
+  }, [])
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -204,6 +209,31 @@ export default function Creators(): JSX.Element {
                   />
                   Learning enabled
                 </label>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Default branding</h4>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="input !w-56 !py-1.5 text-sm"
+                    value={detail.default_branding_id ?? ''}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const v = e.target.value ? Number(e.target.value) : null
+                      void act(() => api.setCreatorBranding(detail.creator_id, v))
+                    }}
+                  >
+                    <option value="">None</option>
+                    {brandingProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[11px] text-muted">
+                    auto-applied to this creator’s videos
+                  </span>
+                </div>
               </div>
 
               <div>
