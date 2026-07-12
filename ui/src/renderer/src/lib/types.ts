@@ -110,6 +110,7 @@ export interface RenderOpts {
   adjust?: Adjust
   edit?: EditData | null
   profile?: string // longform rendering profile (16:9); absent = vertical Short
+  watermark?: WatermarkConfig | null
 }
 
 export interface Clip {

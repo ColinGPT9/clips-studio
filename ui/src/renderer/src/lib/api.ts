@@ -127,7 +127,8 @@ export const api = {
     edit: unknown,
     captionLines?: unknown,
     crop?: string | null,
-    captionStyle?: CaptionStyle | null
+    captionStyle?: CaptionStyle | null,
+    watermark?: WatermarkConfig | Record<string, never>
   ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
@@ -135,7 +136,8 @@ export const api = {
         edit,
         caption_lines: captionLines ?? null,
         crop: crop ?? null,
-        caption_style: captionStyle ?? null
+        caption_style: captionStyle ?? null,
+        watermark: watermark === undefined ? null : watermark
       })
     }),
 
