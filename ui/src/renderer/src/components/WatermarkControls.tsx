@@ -32,11 +32,16 @@ function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: b
   const moving = pos === 'moving'
   const place: React.CSSProperties = { position: 'absolute', opacity: config.opacity ?? 0.85 }
   if (moving) {
-    // The CSS keyframes below hop it around the edges; start at top-centre.
-    place.top = `${padPct}%`
-    place.left = '50%'
-    place.transform = 'translateX(-50%)'
+    // Hops between the LEFT and RIGHT edge-centres (not top/bottom — the
+    // platform UI covers those). Start at the right edge-centre.
+    place.top = '50%'
+    place.right = `${padPct}%`
+    place.transform = 'translateY(-50%)'
     place.animation = 'wm-move 8s steps(1) infinite'
+  } else if (pos === 'custom') {
+    place.left = `${(config.x ?? 0.5) * 100}%`
+    place.top = `${(config.y ?? 0.5) * 100}%`
+    place.transform = 'translate(-50%, -50%)'
   } else {
     if (pos.includes('top')) place.top = `${padPct}%`
     if (pos.includes('bottom')) place.bottom = `${padPct}%`
@@ -60,10 +65,8 @@ function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: b
     >
       {moving && (
         <style>{`@keyframes wm-move {
-          0%   { top:${padPct}%; bottom:auto; left:50%; right:auto; transform:translateX(-50%); }
-          25%  { top:50%; bottom:auto; left:auto; right:${padPct}%; transform:translateY(-50%); }
-          50%  { top:auto; bottom:${padPct}%; left:50%; right:auto; transform:translateX(-50%); }
-          75%  { top:50%; bottom:auto; left:${padPct}%; right:auto; transform:translateY(-50%); }
+          0%   { top:50%; bottom:auto; left:auto; right:${padPct}%; transform:translateY(-50%); }
+          50%  { top:50%; bottom:auto; left:${padPct}%; right:auto; transform:translateY(-50%); }
         }`}</style>
       )}
       <div style={place} className="flex flex-col items-center gap-0.5 leading-none">
