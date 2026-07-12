@@ -2,12 +2,13 @@ import { api } from '../lib/api'
 import { CAPTION_FONTS } from './CaptionStyleControls'
 import type { WatermarkConfig } from '../lib/types'
 
-const POSITIONS: { id: NonNullable<WatermarkConfig['position']>; label: string }[] = [
-  { id: 'top_left', label: '↖' },
-  { id: 'top_right', label: '↗' },
-  { id: 'center', label: '⊙' },
-  { id: 'bottom_left', label: '↙' },
-  { id: 'bottom_right', label: '↘' }
+const POSITIONS: { id: NonNullable<WatermarkConfig['position']>; label: string; title: string }[] = [
+  { id: 'top_left', label: '↖', title: 'top left' },
+  { id: 'top_right', label: '↗', title: 'top right' },
+  { id: 'center', label: '⊙', title: 'center' },
+  { id: 'bottom_left', label: '↙', title: 'bottom left' },
+  { id: 'bottom_right', label: '↘', title: 'bottom right' },
+  { id: 'moving', label: '⟳', title: 'Moving — hops around the edges (TikTok-style, hard to crop out)' }
 ]
 
 export const DEFAULT_WATERMARK: WatermarkConfig = {
@@ -28,15 +29,24 @@ export const DEFAULT_WATERMARK: WatermarkConfig = {
 function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: boolean }): JSX.Element {
   const pos = config.position ?? 'bottom_right'
   const padPct = (config.padding ?? 0.04) * 100
+  const moving = pos === 'moving'
   const place: React.CSSProperties = { position: 'absolute', opacity: config.opacity ?? 0.85 }
-  if (pos.includes('top')) place.top = `${padPct}%`
-  if (pos.includes('bottom')) place.bottom = `${padPct}%`
-  if (pos.includes('left')) place.left = `${padPct}%`
-  if (pos.includes('right')) place.right = `${padPct}%`
-  if (pos === 'center') {
-    place.top = '50%'
+  if (moving) {
+    // The CSS keyframes below hop it around the edges; start at top-centre.
+    place.top = `${padPct}%`
     place.left = '50%'
-    place.transform = 'translate(-50%, -50%)'
+    place.transform = 'translateX(-50%)'
+    place.animation = 'wm-move 8s steps(1) infinite'
+  } else {
+    if (pos.includes('top')) place.top = `${padPct}%`
+    if (pos.includes('bottom')) place.bottom = `${padPct}%`
+    if (pos.includes('left')) place.left = `${padPct}%`
+    if (pos.includes('right')) place.right = `${padPct}%`
+    if (pos === 'center') {
+      place.top = '50%'
+      place.left = '50%'
+      place.transform = 'translate(-50%, -50%)'
+    }
   }
   const showImg = (config.type === 'image' || config.type === 'both') && config.image_asset
   const showTxt = (config.type === 'text' || config.type === 'both') && config.text
@@ -48,6 +58,14 @@ function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: b
       }`}
       aria-label="Watermark preview"
     >
+      {moving && (
+        <style>{`@keyframes wm-move {
+          0%   { top:${padPct}%; bottom:auto; left:50%; right:auto; transform:translateX(-50%); }
+          25%  { top:50%; bottom:auto; left:auto; right:${padPct}%; transform:translateY(-50%); }
+          50%  { top:auto; bottom:${padPct}%; left:50%; right:auto; transform:translateX(-50%); }
+          75%  { top:50%; bottom:auto; left:${padPct}%; right:auto; transform:translateY(-50%); }
+        }`}</style>
+      )}
       <div style={place} className="flex flex-col items-center gap-0.5 leading-none">
         {showImg && (
           <img
@@ -188,11 +206,14 @@ export default function WatermarkControls({
               className={`w-7 h-7 rounded-md text-sm ${
                 config.position === p.id ? 'bg-accent/20 text-accent' : 'bg-raised text-muted hover:text-ink'
               }`}
-              title={p.id.replace('_', ' ')}
+              title={p.title}
             >
               {p.label}
             </button>
           ))}
+          {config.position === 'moving' && (
+            <span className="text-[11px] text-muted">moves around the edges (anti-crop)</span>
+          )}
         </div>
         <label className="flex items-center gap-2 text-xs">
           Opacity

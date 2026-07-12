@@ -368,7 +368,9 @@ def _render_files(
     wm_cfg = opts["watermark"] if "watermark" in opts else config["clips"].get("watermark")
     wm_assets = Path(config["paths"]["data_dir"]) / "branding" / "assets"
     if wm_cfg and _wm.has_text(wm_cfg):
-        ass_path = _wm.ensure_text(ass_path, clip_dir / f"{stem}.ass", wm_cfg, canvas)
+        ass_path = _wm.ensure_text(
+            ass_path, clip_dir / f"{stem}.ass", wm_cfg, canvas, duration=candidate.duration
+        )
 
     # Whisper's word timestamps often end a hair BEFORE the word is finished
     # being spoken, so a cut exactly at the last word's end clips its audio —

@@ -45,6 +45,19 @@ _OVERLAY_XY = {
     "center": ("(W-w)/2", "(H-h)/2"),
 }
 
+# "moving" (TikTok-style anti-crop): the watermark hops around the four
+# edge-centres, staying visible and hard to crop out. One anchor per slice.
+MOVE_PERIOD = 4.0  # seconds at each position
+# ASS alignment (\anN) and overlay x/y for each hop, in cycle order:
+# top-centre -> right-centre -> bottom-centre -> left-centre.
+_MOVE_ALIGN = [8, 6, 2, 4]
+_MOVE_OVERLAY = [
+    ("(W-w)/2", "{p}"),
+    ("W-w-{p}", "(H-h)/2"),
+    ("(W-w)/2", "H-h-{p}"),
+    ("{p}", "(H-h)/2"),
+]
+
 
 def has_text(cfg: dict) -> bool:
     return cfg.get("type") in ("text", "both") and bool(str(cfg.get("text", "")).strip())
@@ -99,14 +112,44 @@ def _minimal_ass(style: str, event: str, canvas: tuple[int, int]) -> str:
     )
 
 
-def ensure_text(ass_path: Path | None, target: Path, cfg: dict, canvas: tuple[int, int]) -> Path:
-    """Merge a whole-clip watermark text line into the clip's ASS file (or
-    write a standalone one). Returns the ASS file to burn. Mirrors the hook
-    overlay so it shares the caption burn."""
+def _ass_t(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int(seconds % 3600 // 60)
+    s = seconds % 60
+    return f"{h}:{m:02d}:{s:05.2f}"
+
+
+def _text_events(text: str, cfg: dict, duration: float) -> str:
+    """One whole-clip event, or — for the 'moving' position — a chain of
+    events that hop the text around the four edge-centres every MOVE_PERIOD."""
+    if cfg.get("position") != "moving":
+        # Layer 2 so branding sits above captions; 9:59:59 = "whole clip".
+        return f"Dialogue: 2,0:00:00.00,9:59:59.99,Watermark,,0,0,0,,{text}"
+    dur = max(MOVE_PERIOD, duration or 60.0)
+    events, t, i = [], 0.0, 0
+    while t < dur:
+        end = min(t + MOVE_PERIOD, dur)
+        an = _MOVE_ALIGN[i % len(_MOVE_ALIGN)]
+        events.append(
+            f"Dialogue: 2,{_ass_t(t)},{_ass_t(end)},Watermark,,0,0,0,,{{\\an{an}}}{text}"
+        )
+        t, i = end, i + 1
+    return "\n".join(events)
+
+
+def ensure_text(
+    ass_path: Path | None,
+    target: Path,
+    cfg: dict,
+    canvas: tuple[int, int],
+    duration: float = 0.0,
+) -> Path:
+    """Merge the watermark text into the clip's ASS file (or write a
+    standalone one). Static by default; 'moving' position hops it around the
+    edges (TikTok-style, anti-crop). Returns the ASS file to burn."""
     text = str(cfg["text"]).replace("\\", "").replace("{", "").replace("}", "").strip()
     style = _text_style(cfg, canvas)
-    # Layer 2 so branding sits above captions; 9:59:59 = "whole clip".
-    event = f"Dialogue: 2,0:00:00.00,9:59:59.99,Watermark,,0,0,0,,{text}"
+    event = _text_events(text, cfg, duration)
     if ass_path is not None and ass_path.exists():
         content = ass_path.read_text(encoding="utf-8")
         content = content.replace("\n[Events]", f"\n{style}\n\n[Events]", 1)
@@ -126,14 +169,33 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
     pad = round(float(cfg.get("padding", 0.04)) * min(w, h))
     logo_w = max(16, round(float(cfg.get("scale", 0.18)) * w))
     opacity = max(0.0, min(1.0, float(cfg.get("opacity", 0.85))))
-    xexpr, yexpr = _OVERLAY_XY.get(cfg.get("position", "bottom_right"), _OVERLAY_XY["bottom_right"])
-    xexpr, yexpr = xexpr.format(p=pad), yexpr.format(p=pad)
+    if cfg.get("position") == "moving":
+        # Hop between the four edge-centres over time (anti-crop). idx cycles
+        # 0..3 every MOVE_PERIOD seconds; nested if() picks that hop's x/y.
+        n = len(_MOVE_OVERLAY)
+        idx = f"floor(mod(t,{MOVE_PERIOD * n:g})/{MOVE_PERIOD:g})"
+        xs = [x.format(p=pad) for x, _ in _MOVE_OVERLAY]
+        ys = [y.format(p=pad) for _, y in _MOVE_OVERLAY]
+
+        def _pick(vals: list[str]) -> str:
+            expr = vals[-1]
+            for k in range(n - 2, -1, -1):
+                expr = f"if(eq({idx},{k}),{vals[k]},{expr})"
+            return expr
+
+        xexpr, yexpr = _pick(xs), _pick(ys)
+    else:
+        xexpr, yexpr = _OVERLAY_XY.get(cfg.get("position", "bottom_right"), _OVERLAY_XY["bottom_right"])
+        xexpr, yexpr = xexpr.format(p=pad), yexpr.format(p=pad)
 
     logo_chain = f"[1:v]scale={logo_w}:-1:flags=lanczos,format=rgba,colorchannelmixer=aa={opacity:.3f}"
     rot = float(cfg.get("rotation", 0) or 0)
     if abs(rot) > 0.1:
         logo_chain += f",rotate={rot}*PI/180:ow=rotw({rot}*PI/180):oh=roth({rot}*PI/180):c=none"
-    graph = f"{logo_chain}[wm];[0:v][wm]overlay={xexpr}:{yexpr}"
+    # Commas inside the overlay x/y EXPRESSION (mod/if/…) must be escaped so
+    # the filtergraph parser doesn't read them as filter separators.
+    xe, ye = xexpr.replace(",", "\\,"), yexpr.replace(",", "\\,")
+    graph = f"{logo_chain}[wm];[0:v][wm]overlay={xe}:{ye}"
 
     tmp = video_path.with_suffix(".wm.mp4")
     cmd = [
