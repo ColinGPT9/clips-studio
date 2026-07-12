@@ -211,6 +211,7 @@ export default function TimelineEditor({
   const bakedRemovedRef = useRef(bakedRemoved)
   const scrubbing = useRef(false) // suppress auto-skip while seeking/dragging
   const scrubDrag = useRef(false) // true while dragging the playhead
+  const [showKeys, setShowKeys] = useState(false)
   useEffect(() => {
     editRef.current = edit
     removedRef.current = removed
@@ -542,11 +543,169 @@ export default function TimelineEditor({
 
   const pct = (t: number): string => `${((t / duration) * 100).toFixed(2)}%`
 
+  // ---- keyboard shortcuts -------------------------------------------------
+  // Bound on the window so they work wherever you are in the editor, but
+  // NEVER while typing (inputs, textareas, contenteditable) — otherwise
+  // pressing "s" in the hook-title field would split the clip.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null
+      const typing =
+        !!t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable)
+      if (e.key === '?' && !typing) {
+        e.preventDefault()
+        setShowKeys((s) => !s)
+        return
+      }
+      if (showKeys && e.key === 'Escape') {
+        // Capture phase + stopPropagation: dismiss the cheat sheet WITHOUT
+        // also tripping EditorModal's Escape-closes-the-editor handler.
+        e.preventDefault()
+        e.stopPropagation()
+        setShowKeys(false)
+        return
+      }
+      if (typing || busy) return
+
+      const el = videoRef.current
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if (mod) return // leave other Ctrl/Cmd combos to the OS
+
+      switch (e.key) {
+        case ' ':
+        case 'k':
+        case 'K':
+          e.preventDefault()
+          if (el) el.paused ? void el.play() : el.pause()
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          seekOrig(playhead - (e.shiftKey ? 1 : 0.1))
+          break
+        case 'ArrowRight':
+          e.preventDefault()
+          seekOrig(playhead + (e.shiftKey ? 1 : 0.1))
+          break
+        case 'j':
+        case 'J':
+          e.preventDefault()
+          seekOrig(playhead - 1)
+          break
+        case 'l':
+        case 'L':
+          e.preventDefault()
+          seekOrig(playhead + 1)
+          break
+        case 's':
+        case 'S':
+          e.preventDefault()
+          splitAtPlayhead()
+          break
+        case 'i':
+        case 'I':
+          e.preventDefault()
+          trimToPlayhead('start')
+          break
+        case 'o':
+        case 'O':
+          e.preventDefault()
+          trimToPlayhead('end')
+          break
+        case 'm':
+        case 'M': {
+          e.preventDefault()
+          const w = words.find((x) => playhead >= x.start - 0.05 && playhead <= x.end + 0.05)
+          if (w) toggleWord(w)
+          else setNotice('No transcript word at the playhead to mute')
+          break
+        }
+        case 'Delete':
+        case 'Backspace':
+          e.preventDefault()
+          deleteSelected()
+          break
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  })
+
   return (
     <div className="border border-raised/60 rounded-lg p-3 space-y-3">
+      {showKeys && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
+          onClick={() => setShowKeys(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+        >
+          <div
+            className="bg-surface border border-raised/60 rounded-2xl p-5 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-semibold">⌨ Keyboard shortcuts</p>
+              <button
+                className="text-muted hover:text-ink text-lg leading-none px-1"
+                onClick={() => setShowKeys(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <dl className="text-sm space-y-1.5">
+              {(
+                [
+                  ['Space / K', 'Play or pause'],
+                  ['J / L', 'Back / forward 1 second'],
+                  ['← / →', 'Step 0.1s (hold Shift for 1s)'],
+                  ['S', 'Split at the playhead'],
+                  ['I', 'Trim the start to the playhead'],
+                  ['O', 'Trim the end to the playhead'],
+                  ['M', 'Mute / un-mute the word at the playhead'],
+                  ['Delete', 'Delete the section at the playhead'],
+                  ['Ctrl + Z', 'Undo'],
+                  ['?', 'Show or hide this list']
+                ] as const
+              ).map(([k, what]) => (
+                <div key={k} className="flex items-center gap-3">
+                  <dt className="shrink-0">
+                    <kbd className="bg-raised border border-raised/80 rounded px-1.5 py-0.5 text-xs font-mono">
+                      {k}
+                    </kbd>
+                  </dt>
+                  <dd className="text-muted">{what}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-[11px] text-muted/70 mt-3">
+              Shortcuts are ignored while you&apos;re typing in a text field.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="font-medium text-sm">✂ Edit video</p>
-        <div className="flex gap-2 text-xs">
+        <div className="flex gap-2 text-xs items-center">
+          <button
+            className="text-muted hover:text-ink"
+            onClick={() => setShowKeys(true)}
+            title="Keyboard shortcuts (?)"
+            aria-label="Show keyboard shortcuts"
+          >
+            ⌨ Shortcuts
+          </button>
           <button className="text-muted hover:text-ink disabled:opacity-40" disabled={history.length === 0} onClick={undo}>
             ↩ Undo
           </button>
@@ -581,17 +740,6 @@ export default function TimelineEditor({
         aria-valuenow={playhead}
         aria-valuetext={fmt(playhead)}
         tabIndex={0}
-        onKeyDown={(e) => {
-          const step = e.shiftKey ? 1 : 0.1
-          if (e.key === 'ArrowLeft') {
-            e.preventDefault()
-            seekOrig(playhead - step)
-          }
-          if (e.key === 'ArrowRight') {
-            e.preventDefault()
-            seekOrig(playhead + step)
-          }
-        }}
       >
         {keep.map(([a, b], i) => (
           <div
