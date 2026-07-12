@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import GenerateBar from '../components/GenerateBar'
-import WatermarkCard from '../components/WatermarkCard'
 import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
@@ -144,7 +143,6 @@ export default function Dashboard({
           )}
         </div>
         <GenerateBar />
-        <WatermarkCard />
         <ProcessingBar />
       </div>
 
