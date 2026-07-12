@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../lib/api'
 import type { CaptionStyle } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import { watermarkSelection } from './WatermarkCard'
 
 const STYLE_KEY = 'generate-caption-style'
 
@@ -62,12 +63,14 @@ export default function GenerateBar(): JSX.Element {
     setError(null)
     setReprocessUrl(null)
     try {
+      const wm = watermarkSelection()
       const res = await api.createJob(u, {
         force,
         captionStyle,
         captions: burnCaptions,
         longClips,
-        longform: longform ? { mode: longformMode } : null
+        longform: longform ? { mode: longformMode } : null,
+        watermarkProfileId: wm.enabled ? wm.profileId : null
       })
       if (res.already_processed) {
         setReprocessUrl(u)

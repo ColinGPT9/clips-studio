@@ -92,6 +92,18 @@ ipcMain.handle('pick-video-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+ipcMain.handle('pick-image-file', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose a logo image',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
 // The OS Downloads folder — the default export destination, like other
 // video editors.
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))

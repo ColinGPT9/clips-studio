@@ -59,6 +59,23 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             # What the user KEEPS for this creator (exports/edits) — bounded
             # scoring-weight bias; None until there's enough feedback data.
             creator_prefs = learning.preferences(db, creator_id)
+            # Branding: if the job didn't pick a watermark but THIS creator
+            # has a default branding profile, apply it. Lets a clipper set
+            # each creator's logo once and have every video auto-brand.
+            if "watermark" not in config["clips"]:
+                crow = db.conn.execute(
+                    "SELECT default_branding_id FROM creators WHERE creator_id = ?", (creator_id,)
+                ).fetchone()
+                bid = crow["default_branding_id"] if crow else None
+                if bid:
+                    import json as _json
+
+                    brow = db.get_branding(bid)
+                    if brow:
+                        # Rebind (don't mutate the possibly-shared config).
+                        config = {**config, "clips": {**config["clips"],
+                                  "watermark": _json.loads(brow["config"])}}
+                        print(f"      Applying {creator_ctx.creator_name if creator_ctx else 'creator'}'s default branding")
     except Exception as e:
         print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
