@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import type { CaptionLine, CaptionStyle, Clip, EditData, Word } from '../lib/types'
+import type { CaptionLine, CaptionStyle, Clip, EditData, WatermarkConfig, Word } from '../lib/types'
+import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 
 /** A user text correction for one transcript word (misheard by Whisper). */
@@ -142,6 +143,10 @@ export default function TimelineEditor({
   }
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
   const [styleOpen, setStyleOpen] = useState(false)
+  // Watermark / branding for THIS clip (null = none).
+  const storedWatermark = clip.render_opts?.watermark ?? null
+  const [watermark, setWatermark] = useState<WatermarkConfig | null>(storedWatermark)
+  const [wmOpen, setWmOpen] = useState(false)
   // Caption text corrections: with "Edit caption text" ON, clicking a
   // transcript word opens a text box instead of muting it.
   const [textMode, setTextMode] = useState(false)
@@ -165,6 +170,7 @@ export default function TimelineEditor({
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+    setWatermark(clip.render_opts?.watermark ?? null)
     setWordEdits([])
     setEditingWord(null)
     onPreview(null)
@@ -370,13 +376,15 @@ export default function TimelineEditor({
 
   const layoutDirty = layout !== storedCrop
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
+  const wmDirty = JSON.stringify(watermark) !== JSON.stringify(storedWatermark)
   const dirty =
     layoutDirty ||
     styleDirty ||
+    wmDirty ||
     wordEdits.length > 0 ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const pendingJson = (): string =>
-    JSON.stringify({ e: edit, l: layout, s: captionStyle, w: wordEdits })
+    JSON.stringify({ e: edit, l: layout, s: captionStyle, w: wordEdits, m: watermark })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
@@ -424,7 +432,8 @@ export default function TimelineEditor({
         isDefault(edit, duration) ? null : edit,
         pendingCaptionLines(),
         layout,
-        styleDirty ? captionStyle : null
+        styleDirty ? captionStyle : null,
+        wmDirty ? (watermark ?? {}) : undefined
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -449,6 +458,7 @@ export default function TimelineEditor({
       const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
       if (layoutDirty) renderOpts.crop = layout
       if (styleDirty) renderOpts.caption_style = captionStyle
+      if (wmDirty) renderOpts.watermark = watermark
       const lines = pendingCaptionLines()
       if (lines) renderOpts.caption_lines = lines
       await api.rerenderClip(clip.id, undefined, renderOpts)
@@ -477,6 +487,7 @@ export default function TimelineEditor({
               push(defaultEdit(duration))
               setLayout('track')
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+              setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
               setEditingWord(null)
             }}
@@ -682,6 +693,51 @@ export default function TimelineEditor({
               style={captionStyle}
               onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
             />
+          </div>
+        )}
+      </div>
+
+      {/* watermark / branding for this clip */}
+      <div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setWmOpen(!wmOpen)}
+            className={`text-xs px-2.5 py-1 rounded-md ${
+              wmOpen || wmDirty ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
+            }`}
+            aria-expanded={wmOpen}
+            title="Add a logo or channel handle burned into THIS clip"
+          >
+            🅱 Watermark {wmOpen ? '▾' : '▸'}
+            {watermark ? ' — on' : ''}
+            {wmDirty && !wmOpen ? ' (changed)' : ''}
+          </button>
+          {watermark && (
+            <button
+              className="text-xs text-muted hover:text-red-400"
+              onClick={() => setWatermark(null)}
+              title="Remove the watermark from this clip"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        {wmOpen && (
+          <div className="mt-2 border border-raised/60 rounded-lg p-3 space-y-2">
+            {!watermark ? (
+              <button
+                className="bg-raised px-2.5 py-1.5 rounded-md text-xs hover:bg-raised/70"
+                onClick={() => setWatermark({ ...DEFAULT_WATERMARK })}
+              >
+                + Add a watermark to this clip
+              </button>
+            ) : (
+              <WatermarkControls
+                config={watermark}
+                landscape={isLandscape}
+                onChange={(patch) => setWatermark((w) => ({ ...(w ?? DEFAULT_WATERMARK), ...patch }))}
+              />
+            )}
           </div>
         )}
       </div>
