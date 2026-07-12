@@ -69,7 +69,7 @@ export default function EditorView({
               src={previewSrc ? `${API_BASE}${previewSrc}` : api.mediaUrl(clip.id)}
               controls
               autoPlay
-              className="absolute inset-0 w-full h-full object-cover rounded-xl bg-base"
+              className="absolute inset-0 w-full h-full object-contain rounded-xl bg-base"
               aria-label="Editing preview"
             />
             {previewSrc && (
