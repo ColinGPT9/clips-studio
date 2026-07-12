@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../lib/api'
 import type { CaptionStyle } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
-import { watermarkSelection } from './WatermarkCard'
+import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from './WatermarkCard'
 
 const STYLE_KEY = 'generate-caption-style'
 
@@ -48,6 +48,7 @@ export default function GenerateBar(): JSX.Element {
   const [longformMode, setLongformMode] = useState<string>(
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
+  const [watermark, setWatermark] = useState<boolean>(watermarkSelection().enabled)
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
@@ -145,6 +146,21 @@ export default function GenerateBar(): JSX.Element {
           />
           Longform <span className="text-muted">(16:9)</span>
         </label>
+        <label
+          className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
+          title="Burn your logo / channel handle into every clip. Configure the branding profile below."
+        >
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={watermark}
+            onChange={(e) => {
+              setWatermark(e.target.checked)
+              setWatermarkEnabled(e.target.checked)
+            }}
+          />
+          Watermark <span className="text-muted">(branding)</span>
+        </label>
         <button
           className="btn-ghost shrink-0"
           onClick={async () => {
@@ -188,6 +204,7 @@ export default function GenerateBar(): JSX.Element {
             </select>
           </div>
         )}
+        {watermark && <BrandingEditor />}
       </div>
 
       {uploadPath && (

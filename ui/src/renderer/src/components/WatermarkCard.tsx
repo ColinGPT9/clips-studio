@@ -16,15 +16,19 @@ export function watermarkSelection(): { enabled: boolean; profileId: number | nu
   }
 }
 
-/** Dashboard "Watermark & Branding" section. Create/edit/switch saved
- *  branding profiles; the active one is applied to newly generated clips. */
-export default function WatermarkCard(): JSX.Element {
-  const [enabled, setEnabled] = useState(localStorage.getItem(ENABLED_KEY) === 'true')
+export function setWatermarkEnabled(on: boolean): void {
+  localStorage.setItem(ENABLED_KEY, String(on))
+}
+
+/** Branding-profile management: create/switch/edit/save/delete the saved
+ *  profiles. Shown in the Generate bar (below the Watermark toggle), so it
+ *  matches the Caption-style and Longform expandable rows. The enable toggle
+ *  itself lives in the Generate bar. */
+export default function BrandingEditor(): JSX.Element {
   const [profiles, setProfiles] = useState<BrandingProfile[]>([])
   const [activeId, setActiveId] = useState<number | null>(watermarkSelection().profileId)
   const [name, setName] = useState('')
   const [config, setConfig] = useState<WatermarkConfig>(DEFAULT_WATERMARK)
-  const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState('')
 
   const load = async (selectId?: number): Promise<void> => {
@@ -88,87 +92,48 @@ export default function WatermarkCard(): JSX.Element {
   }
 
   return (
-    <div className="card space-y-3">
-      <div className="flex items-center justify-between">
-        <button
-          className="font-semibold flex items-center gap-2"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
+    <div className="w-full space-y-3 border-t border-raised/60 pt-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="label shrink-0">Branding profile</p>
+        <select
+          className="input !w-48 !py-1 text-sm"
+          value={activeId ?? ''}
+          onChange={(e) => selectProfile(Number(e.target.value))}
         >
-          <span>🅱 Watermark &amp; Branding</span>
-          <span className="text-muted text-xs">{open ? '▾' : '▸'}</span>
+          {profiles.length === 0 && <option value="">(none yet)</option>}
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button className="btn-ghost !py-1 text-xs" onClick={newProfile}>
+          + New
         </button>
-        <label className="flex items-center gap-2 cursor-pointer text-sm">
-          <input
-            type="checkbox"
-            className="size-4 accent-[#38BDF8]"
-            checked={enabled}
-            onChange={(e) => {
-              setEnabled(e.target.checked)
-              localStorage.setItem(ENABLED_KEY, String(e.target.checked))
-            }}
-          />
-          Apply to new clips
-        </label>
+        {activeId && (
+          <button className="text-xs text-muted hover:text-red-400" onClick={remove}>
+            Delete
+          </button>
+        )}
+        <input
+          className="input !py-1 text-sm !w-52"
+          value={name}
+          placeholder="Profile name (e.g. YouTube Channel)"
+          onChange={(e) => setName(e.target.value)}
+        />
       </div>
 
-      {!open && enabled && (
-        <p className="text-xs text-muted">
-          Branding on — “{profiles.find((p) => p.id === activeId)?.name ?? 'none'}” is applied to
-          newly generated clips.
-        </p>
-      )}
+      <WatermarkControls config={config} onChange={(patch) => setConfig((c) => ({ ...c, ...patch }))} />
 
-      {open && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="label">Profile</span>
-            <select
-              className="input !w-48 !py-1 text-sm"
-              value={activeId ?? ''}
-              onChange={(e) => selectProfile(Number(e.target.value))}
-            >
-              {profiles.length === 0 && <option value="">(none yet)</option>}
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <button className="btn-ghost !py-1 text-xs" onClick={newProfile}>
-              + New
-            </button>
-            {activeId && (
-              <button className="text-xs text-muted hover:text-red-400" onClick={remove}>
-                Delete
-              </button>
-            )}
-          </div>
-
-          <input
-            className="input !py-1.5 text-sm w-full max-w-xs"
-            value={name}
-            placeholder="Profile name (e.g. YouTube Channel)"
-            onChange={(e) => setName(e.target.value)}
-          />
-
-          <WatermarkControls
-            config={config}
-            onChange={(patch) => setConfig((c) => ({ ...c, ...patch }))}
-          />
-
-          <div className="flex items-center gap-3">
-            <button className="btn-accent" onClick={save}>
-              {activeId ? 'Save profile' : 'Create profile'}
-            </button>
-            {notice && <span className="text-xs text-accent">{notice}</span>}
-          </div>
-          <p className="text-[11px] text-muted/70">
-            The active profile is burned into every clip you generate while “Apply to new clips” is
-            on. You can also set a default branding per creator in the Creators tab.
-          </p>
-        </div>
-      )}
+      <div className="flex items-center gap-3">
+        <button className="btn-accent !py-1.5" onClick={save}>
+          {activeId ? 'Save profile' : 'Create profile'}
+        </button>
+        {notice && <span className="text-xs text-accent">{notice}</span>}
+        <span className="text-[11px] text-muted/70 ml-auto">
+          Also settable per creator in the Creators tab.
+        </span>
+      </div>
     </div>
   )
 }

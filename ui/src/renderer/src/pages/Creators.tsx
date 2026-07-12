@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import type { BrandingProfile, CreatorDetail, CreatorSuggestion, CreatorSummary } from '../lib/types'
+import type {
+  BrandingProfile,
+  CreatorDetail,
+  CreatorSuggestion,
+  CreatorSummary,
+  WatermarkConfig
+} from '../lib/types'
+import WatermarkControls, { DEFAULT_WATERMARK } from '../components/WatermarkControls'
 
 const PLATFORM_BADGE: Record<string, string> = {
   youtube: 'bg-red-500/15 text-red-400',
@@ -45,10 +52,14 @@ export default function Creators(): JSX.Element {
   const [addPlatform, setAddPlatform] = useState('youtube')
   const [addChannel, setAddChannel] = useState('')
   const [brandingProfiles, setBrandingProfiles] = useState<BrandingProfile[]>([])
+  const [wmCreating, setWmCreating] = useState(false)
+  const [wmName, setWmName] = useState('')
+  const [wmConfig, setWmConfig] = useState<WatermarkConfig>(DEFAULT_WATERMARK)
 
-  useEffect(() => {
+  const loadBranding = (): void => {
     api.branding().then(setBrandingProfiles).catch(() => setBrandingProfiles([]))
-  }, [])
+  }
+  useEffect(loadBranding, [])
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -213,7 +224,7 @@ export default function Creators(): JSX.Element {
 
               <div>
                 <h4 className="text-sm font-semibold mb-2">Default branding</h4>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <select
                     className="input !w-56 !py-1.5 text-sm"
                     value={detail.default_branding_id ?? ''}
@@ -230,10 +241,56 @@ export default function Creators(): JSX.Element {
                       </option>
                     ))}
                   </select>
+                  {!wmCreating && (
+                    <button
+                      className="btn-ghost !py-1 text-xs"
+                      onClick={() => {
+                        setWmCreating(true)
+                        setWmName(`${detail.display_name} branding`)
+                        setWmConfig({ ...DEFAULT_WATERMARK, text: `@${detail.display_name}` })
+                      }}
+                    >
+                      + New branding
+                    </button>
+                  )}
                   <span className="text-[11px] text-muted">
                     auto-applied to this creator’s videos
                   </span>
                 </div>
+
+                {wmCreating && (
+                  <div className="mt-3 border border-raised/60 rounded-lg p-3 space-y-2">
+                    <input
+                      className="input !py-1.5 text-sm !w-64"
+                      value={wmName}
+                      placeholder="Profile name"
+                      onChange={(e) => setWmName(e.target.value)}
+                    />
+                    <WatermarkControls
+                      config={wmConfig}
+                      onChange={(patch) => setWmConfig((c) => ({ ...c, ...patch }))}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="btn-accent !py-1.5"
+                        disabled={busy}
+                        onClick={() =>
+                          act(async () => {
+                            const { id } = await api.createBranding(wmName || 'Branding', wmConfig)
+                            await api.setCreatorBranding(detail.creator_id, id)
+                            loadBranding()
+                            setWmCreating(false)
+                          })
+                        }
+                      >
+                        Create &amp; assign
+                      </button>
+                      <button className="text-xs text-muted hover:text-ink" onClick={() => setWmCreating(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
