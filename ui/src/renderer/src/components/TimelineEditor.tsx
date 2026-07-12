@@ -3,6 +3,18 @@ import { api } from '../lib/api'
 import type { CaptionLine, CaptionStyle, Clip, EditData, WatermarkConfig, Word } from '../lib/types'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import ColorControls from './ColorControls'
+import EditChat from './EditChat'
+
+type Tab = 'captions' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'captions', label: 'Captions', icon: 'Aa' },
+  { id: 'audio', label: 'Audio', icon: '♪' },
+  { id: 'motion', label: 'Effects', icon: '⏩' },
+  { id: 'watermark', label: 'Watermark', icon: '◇' },
+  { id: 'color', label: 'Color', icon: '◐' },
+  { id: 'ai', label: 'AI edit', icon: '✨' }
+]
 
 /** A user text correction for one transcript word (misheard by Whisper). */
 interface WordEdit {
@@ -145,11 +157,11 @@ export default function TimelineEditor({
     ...(clip.render_opts?.caption_style ?? {})
   }
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
-  const [styleOpen, setStyleOpen] = useState(false)
+  // Which editing panel is open (CapCut-style tabs replace the old stack).
+  const [activeTab, setActiveTab] = useState<Tab>('captions')
   // Watermark / branding for THIS clip — state lifted to EditorModal so the
   // live draggable overlay on the preview and these controls stay in sync.
   const storedWatermark = clip.render_opts?.watermark ?? null
-  const [wmOpen, setWmOpen] = useState(false)
   // Caption text corrections: with "Edit caption text" ON, clicking a
   // transcript word opens a text box instead of muting it.
   const [textMode, setTextMode] = useState(false)
@@ -635,8 +647,35 @@ export default function TimelineEditor({
         </span>
       </div>
 
+      {/* ── editing tabs (grouped, CapCut-style) ── */}
+      <div className="flex gap-0.5 border-b border-raised/60 text-xs overflow-x-auto" role="tablist">
+        {TABS.map((t) => {
+          const changed =
+            (t.id === 'captions' && (styleDirty || wordEdits.length > 0)) ||
+            (t.id === 'watermark' && wmDirty) ||
+            (t.id === 'motion' &&
+              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty))
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={activeTab === t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`px-3 py-1.5 -mb-px border-b-2 whitespace-nowrap ${
+                activeTab === t.id
+                  ? 'border-accent text-accent font-medium'
+                  : 'border-transparent text-muted hover:text-ink'
+              }`}
+            >
+              <span aria-hidden>{t.icon}</span> {t.label}
+              {changed && <span className="text-accent"> •</span>}
+            </button>
+          )
+        })}
+      </div>
+
       {/* transcript — click a word to mute it, or turn on text-editing mode */}
-      {words.length > 0 && (
+      {activeTab === 'captions' && words.length > 0 && (
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <button
@@ -721,77 +760,53 @@ export default function TimelineEditor({
         </div>
       )}
 
-      {/* caption style (font / size / colour / position) for this clip */}
-      <div>
-        <button
-          onClick={() => setStyleOpen(!styleOpen)}
-          className={`text-xs px-2.5 py-1 rounded-md ${
-            styleOpen || styleDirty ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
-          }`}
-          aria-expanded={styleOpen}
-          title="Font, size, colour and position of the burned-in captions for THIS clip"
-        >
-          Aa Caption style {styleOpen ? '▾' : '▸'}
-          {styleDirty && !styleOpen ? ' — changed' : ''}
-        </button>
-        {styleOpen && (
-          <div className="mt-2 border border-raised/60 rounded-lg p-3">
-            <CaptionStyleControls
-              idPrefix={`clip-${clip.id}`}
-              style={captionStyle}
-              onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
-            />
-          </div>
-        )}
-      </div>
+      {/* caption font & style for this clip */}
+      {activeTab === 'captions' && (
+        <div className="border border-raised/60 rounded-lg p-3">
+          <p className="label mb-2">Caption font &amp; style</p>
+          <CaptionStyleControls
+            idPrefix={`clip-${clip.id}`}
+            style={captionStyle}
+            onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
+          />
+        </div>
+      )}
 
       {/* watermark / branding for this clip */}
-      <div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setWmOpen(!wmOpen)}
-            className={`text-xs px-2.5 py-1 rounded-md ${
-              wmOpen || wmDirty ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
-            }`}
-            aria-expanded={wmOpen}
-            title="Add a logo or channel handle burned into THIS clip"
-          >
-            🅱 Watermark {wmOpen ? '▾' : '▸'}
-            {watermark ? ' — on' : ''}
-            {wmDirty && !wmOpen ? ' (changed)' : ''}
-          </button>
-          {watermark && (
+      {activeTab === 'watermark' && (
+        <div className="border border-raised/60 rounded-lg p-3 space-y-2">
+          {!watermark ? (
             <button
-              className="text-xs text-muted hover:text-red-400"
-              onClick={() => setWatermark(null)}
-              title="Remove the watermark from this clip"
+              className="bg-raised px-2.5 py-1.5 rounded-md text-xs hover:bg-raised/70"
+              onClick={() => setWatermark({ ...DEFAULT_WATERMARK })}
             >
-              Remove
+              + Add a watermark to this clip
             </button>
-          )}
-        </div>
-        {wmOpen && (
-          <div className="mt-2 border border-raised/60 rounded-lg p-3 space-y-2">
-            {!watermark ? (
-              <button
-                className="bg-raised px-2.5 py-1.5 rounded-md text-xs hover:bg-raised/70"
-                onClick={() => setWatermark({ ...DEFAULT_WATERMARK })}
-              >
-                + Add a watermark to this clip
-              </button>
-            ) : (
+          ) : (
+            <>
+              <div className="flex justify-end">
+                <button
+                  className="text-xs text-muted hover:text-red-400"
+                  onClick={() => setWatermark(null)}
+                  title="Remove the watermark from this clip"
+                >
+                  Remove watermark
+                </button>
+              </div>
               <WatermarkControls
                 config={watermark}
                 landscape={isLandscape}
                 onChange={(patch) => setWatermark({ ...(watermark ?? DEFAULT_WATERMARK), ...patch })}
               />
-            )}
-          </div>
-        )}
-      </div>
+              <p className="text-[11px] text-muted/70">Tip: drag it on the preview to place it exactly.</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* audio controls */}
-      <div className="flex items-center gap-3 flex-wrap text-xs">
+      {activeTab === 'audio' && (
+        <div className="flex items-center gap-3 flex-wrap text-xs">
         <label
           className="flex items-center gap-1.5 cursor-pointer"
           title="Remove ALL of the clip's audio — e.g. to post it with background music only"
@@ -832,10 +847,11 @@ export default function TimelineEditor({
             </select>
           </label>
         ))}
-      </div>
+        </div>
+      )}
 
-      {/* layout override (vertical Shorts only) */}
-      {!isLandscape && (
+      {/* layout override (vertical Shorts only) — in the Effects tab */}
+      {activeTab === 'motion' && !isLandscape && (
         <div className="flex items-center gap-2 text-xs flex-wrap">
           <span className="text-muted">Layout</span>
           {(
@@ -864,8 +880,9 @@ export default function TimelineEditor({
         </div>
       )}
 
-      {/* speed / hook title / music */}
-      <div className="space-y-2 text-xs">
+      {/* speed / hook title / music — the Effects tab */}
+      {activeTab === 'motion' && (
+        <div className="space-y-2 text-xs">
         <div className="flex items-center gap-3 flex-wrap">
           <label className="flex items-center gap-1.5">
             Speed
@@ -980,7 +997,14 @@ export default function TimelineEditor({
             </>
           )}
         </div>
-      </div>
+        </div>
+      )}
+
+      {/* Color and AI-edit tabs (moved in from the editor's side column). */}
+      {activeTab === 'color' && (
+        <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
+      )}
+      {activeTab === 'ai' && <EditChat clip={clip} onQueued={setNotice} />}
 
       {/* draft preview: the real result — captions, hook, music, everything */}
       <div className="flex gap-2 items-center flex-wrap">
