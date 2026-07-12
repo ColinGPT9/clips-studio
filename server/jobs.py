@@ -111,6 +111,8 @@ class Worker(threading.Thread):
                         or "captions" in payload
                         or payload.get("long_clips")
                         or payload.get("min_score") is not None
+                        or payload.get("watermark_profile_id")
+                        or payload.get("filter")
                     ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
@@ -133,6 +135,12 @@ class Worker(threading.Thread):
                         # Style chosen in the Generate bar: applied to every
                         # clip of this job (and persisted per clip).
                         cfg["clips"]["caption_style"] = payload["caption_style"]
+                    if payload.get("watermark_profile_id"):
+                        # Branding chosen in the Generate bar: resolve the
+                        # profile to its config and apply it to every clip.
+                        row = db.get_branding(int(payload["watermark_profile_id"]))
+                        if row:
+                            cfg["clips"]["watermark"] = json.loads(row["config"])
                     if payload.get("longform"):
                         # Separate longform system (1920x1080 horizontal),
                         # built on the same stages — Shorts path untouched.

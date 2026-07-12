@@ -125,6 +125,19 @@ CREATE TABLE IF NOT EXISTS clip_feedback (
     clip_meta  TEXT NOT NULL DEFAULT '{}',  -- JSON snapshot: score/subscores/duration
     created_at TEXT NOT NULL
 );
+
+-- ---- Watermark & branding (video_editor/watermark.py) ----------------------
+-- A saved branding profile (Personal / YouTube / Twitch / …). `config` is a
+-- JSON blob (type, text, font, size, colour, opacity, position, scale,
+-- rotation, shadow, image_asset) so new fields need no migration. Image
+-- assets are content-hashed files under data_dir/branding/assets/.
+
+CREATE TABLE IF NOT EXISTS branding_profiles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    config     TEXT NOT NULL DEFAULT '{}',   -- JSON watermark config
+    created_at TEXT NOT NULL
+);
 """
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -187,6 +200,37 @@ class StateDB:
         self.conn.execute("DELETE FROM clips WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM rejections WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
+        self.conn.commit()
+
+    # ---- branding profiles --------------------------------------------
+
+    def list_branding(self) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM branding_profiles ORDER BY id"
+        ).fetchall()
+
+    def get_branding(self, profile_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM branding_profiles WHERE id = ?", (profile_id,)
+        ).fetchone()
+
+    def add_branding(self, name: str, config: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO branding_profiles (name, config, created_at) VALUES (?, ?, ?)",
+            (name, config, _now()),
+        )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def update_branding(self, profile_id: int, name: str, config: str) -> None:
+        self.conn.execute(
+            "UPDATE branding_profiles SET name = ?, config = ? WHERE id = ?",
+            (name, config, profile_id),
+        )
+        self.conn.commit()
+
+    def delete_branding(self, profile_id: int) -> None:
+        self.conn.execute("DELETE FROM branding_profiles WHERE id = ?", (profile_id,))
         self.conn.commit()
 
     # ---- videos -------------------------------------------------------

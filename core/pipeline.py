@@ -343,6 +343,16 @@ def _render_files(
 
         ass_path = ensure_hook(ass_path, clip_dir / f"{stem}.ass", edit.hook, canvas=canvas)
 
+    # Watermark & branding (opts["watermark"], else the job/config default).
+    # Text folds into the ASS burn now; the image overlay runs after the
+    # final render. Absent -> no branding, path unchanged.
+    from video_editor import watermark as _wm
+
+    wm_cfg = opts["watermark"] if "watermark" in opts else config["clips"].get("watermark")
+    wm_assets = Path(config["paths"]["data_dir"]) / "branding" / "assets"
+    if wm_cfg and _wm.has_text(wm_cfg):
+        ass_path = _wm.ensure_text(ass_path, clip_dir / f"{stem}.ass", wm_cfg, canvas)
+
     # Whisper's word timestamps often end a hair BEFORE the word is finished
     # being spoken, so a cut exactly at the last word's end clips its audio —
     # the caption shows the word but the voice cuts out. Pad the cut a beat
@@ -405,13 +415,20 @@ def _render_files(
     if ass_path is not None:
         ass_path.unlink(missing_ok=True)
 
+    # Image watermark: one overlay pass on the finished clip (only when set).
+    if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
+        _wm.apply_image(final_path, wm_cfg, canvas, wm_assets)
+
     render_opts_json = json.dumps(
         {
             **opts,
             **({"caption_style": caption_style} if caption_style else {}),
             **({"filter": filter_name} if filter_name != "none" else {}),
+            # Persist the resolved branding so a later re-render reapplies it,
+            # even when it came from the job/config default (not per-clip opts).
+            **({"watermark": wm_cfg} if wm_cfg else {}),
         }
-    ) if (opts or caption_style or filter_name != "none") else ""
+    ) if (opts or caption_style or filter_name != "none" or wm_cfg) else ""
     return final_path, render_opts_json
 
 
