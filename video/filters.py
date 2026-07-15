@@ -18,6 +18,51 @@ PRESETS: dict[str, str] = {
     "vintage": "curves=preset=vintage,eq=saturation=0.85",
     "bw": "hue=s=0,eq=contrast=1.15",
     "fade": "colorlevels=rimin=0.04:gimin=0.04:bimin=0.04,eq=saturation=0.82:contrast=0.94",
+    # --- Trending looks (CapCut / TikTok-style LUTs) ---
+    # Golden Hour: warm sunset glow — lifted orange highlights, faded blacks.
+    "golden": (
+        "colorbalance=rm=0.12:bm=-0.12:rh=0.08:bh=-0.10,"
+        "colorlevels=romin=0.035:gomin=0.025:bomin=0.015,"
+        "eq=saturation=1.10:brightness=0.015"
+    ),
+    # Teal & Orange: the Hollywood grade — cool teal shadows, warm skin.
+    "tealorange": (
+        "colorbalance=rs=-0.12:gs=-0.02:bs=0.12:rh=0.10:bh=-0.12,"
+        "eq=contrast=1.10:saturation=1.06"
+    ),
+    # Clean Girl: bright, airy, low-contrast minimal look ("no filter" filter).
+    "cleangirl": (
+        "eq=brightness=0.05:contrast=0.95:saturation=0.92,"
+        "colorbalance=rm=-0.02:bm=0.03,"
+        "colorlevels=romin=0.02:gomin=0.02:bomin=0.02"
+    ),
+    # Pink Glow: soft Barbie-pink tint, dewy and bright.
+    "pinkglow": (
+        "colorbalance=rm=0.10:gm=-0.04:bm=0.06,"
+        "eq=brightness=0.04:saturation=1.05:contrast=0.96"
+    ),
+    # Peachy: warm pink-red "strawberry girl" flush.
+    "peachy": (
+        "colorbalance=rm=0.12:gm=0.02:bm=-0.04:rh=0.06,"
+        "eq=brightness=0.03:saturation=1.12"
+    ),
+    # Dreamy: pastel light-leak feel — lifted shadows, soft contrast.
+    "dreamy": (
+        "colorlevels=rimin=0.03:gimin=0.03:bimin=0.03"
+        ":romin=0.05:gomin=0.04:bomin=0.05,"
+        "eq=saturation=0.88:contrast=0.90:brightness=0.03,"
+        "colorbalance=rm=0.04:bm=0.02"
+    ),
+    # Gold Coast: blue ocean tone — punchy cool blues.
+    "coast": (
+        "colorbalance=rm=-0.10:bm=0.14:rh=-0.04:bh=0.08,"
+        "eq=saturation=1.10:contrast=1.05:brightness=0.01"
+    ),
+    # Soft Glow: dewy white-boost (Cybershot-style) — brightens without wash.
+    "glow": (
+        "colorlevels=rimax=0.94:gimax=0.94:bimax=0.94,"
+        "eq=brightness=0.04:contrast=1.02:saturation=1.06"
+    ),
 }
 
 
