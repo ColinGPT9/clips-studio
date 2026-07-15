@@ -46,6 +46,14 @@ export type FilterName =
   | 'vintage'
   | 'bw'
   | 'fade'
+  | 'golden'
+  | 'tealorange'
+  | 'cleangirl'
+  | 'pinkglow'
+  | 'peachy'
+  | 'dreamy'
+  | 'coast'
+  | 'glow'
 
 export interface Adjust {
   brightness?: number // -0.5..0.5, 0 = unchanged

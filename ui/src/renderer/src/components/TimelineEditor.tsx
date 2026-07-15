@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { CaptionLine, CaptionStyle, Clip, EditData, WatermarkConfig, Word } from '../lib/types'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
@@ -56,6 +56,7 @@ type Range = [number, number]
 const MIN_SEG = 0.25
 const PAUSE_GAP = 0.6 // "tighten pauses" removes silences longer than this
 const PAUSE_PAD = 0.12
+const MAX_ZOOM = 8 // timeline zoom: 1x = whole clip fits, 8x = frame-accurate
 
 // Words that commonly get Shorts age-restricted, demonetized or suppressed.
 // "Censor" mutes their audio AND strips them from the burned captions —
@@ -190,6 +191,12 @@ export default function TimelineEditor({
   const [draftEditJson, setDraftEditJson] = useState<string | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const dragging = useRef<'start' | 'end' | null>(null)
+  // Timeline zoom: the bar grows to zoom × the container width inside a
+  // horizontal scroller, so 1 pixel covers less time — precise trims/splits.
+  const [zoom, setZoom] = useState(1)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const pendingScroll = useRef<number | null>(null)
+  const [scrollW, setScrollW] = useState(600) // container width, for tick spacing
 
   const keep: Range[] = edit.keep ?? [[0, duration]]
   const removed = removedRanges(keep, duration)
@@ -204,6 +211,7 @@ export default function TimelineEditor({
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
     setWordEdits([])
     setEditingWord(null)
+    setZoom(1)
     onPreview(null)
     api
       .clipWords(clip.id)
@@ -328,6 +336,86 @@ export default function TimelineEditor({
 
   const fmt = (t: number): string =>
     `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${Math.floor((t % 1) * 10)}`
+
+  // ---- timeline zoom -------------------------------------------------------
+  /** Zoom so the given original-timeline moment stays under the same pixel
+   *  (like CapCut: Ctrl+scroll zooms around the cursor, buttons around the
+   *  playhead). The scroll correction applies after React lays out the new
+   *  bar width. */
+  const zoomTo = (next: number, focusT?: number): void => {
+    const clamped = Math.max(1, Math.min(MAX_ZOOM, next))
+    const sc = scrollRef.current
+    if (sc && clamped !== zoom) {
+      const f = focusT ?? playhead
+      const viewX = (f / duration) * sc.clientWidth * zoom - sc.scrollLeft
+      pendingScroll.current = (f / duration) * sc.clientWidth * clamped - viewX
+    }
+    setZoom(clamped)
+  }
+  useLayoutEffect(() => {
+    if (pendingScroll.current !== null && scrollRef.current) {
+      scrollRef.current.scrollLeft = Math.max(0, pendingScroll.current)
+      pendingScroll.current = null
+    }
+  }, [zoom])
+
+  // Ctrl+scroll (and trackpad pinch) zooms around the cursor. Native
+  // listener because React's root-level wheel handlers are passive —
+  // preventDefault there can't stop the browser's page zoom.
+  const wheelZoom = useRef<(e: WheelEvent) => void>(() => {})
+  useEffect(() => {
+    wheelZoom.current = (e: WheelEvent): void => {
+      zoomTo(zoom * (e.deltaY < 0 ? 1.25 : 0.8), timeFromX(e.clientX))
+    }
+  })
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      wheelZoom.current(e)
+    }
+    sc.addEventListener('wheel', onWheel, { passive: false })
+    return () => sc.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // Track the visible width so ruler tick spacing adapts to the window size.
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    const ro = new ResizeObserver(() => setScrollW(sc.clientWidth || 600))
+    ro.observe(sc)
+    return () => ro.disconnect()
+  }, [])
+
+  // While playing zoomed in, page the view so the playhead stays visible
+  // (only when it leaves the viewport — free scrolling is never fought).
+  useEffect(() => {
+    if (zoom <= 1 || scrubDrag.current || dragging.current) return
+    const sc = scrollRef.current
+    const bar = barRef.current
+    if (!sc || !bar) return
+    const x = (playhead / duration) * bar.clientWidth
+    if (x < sc.scrollLeft + 4 || x > sc.scrollLeft + sc.clientWidth - 4) {
+      sc.scrollLeft = Math.max(0, x - sc.clientWidth * 0.2)
+    }
+  }, [playhead, zoom, duration])
+
+  // Ruler ticks: pick the step so labels sit ~70px+ apart at the current zoom.
+  const ruler = useMemo(() => {
+    const pxPerSec = (scrollW * zoom) / Math.max(duration, 0.1)
+    const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120]
+    const step = steps.find((s) => s * pxPerSec >= 70) ?? 300
+    const ticks: number[] = []
+    for (let t = 0; t <= duration - step * 0.3; t += step) ticks.push(Number(t.toFixed(2)))
+    return { step, ticks }
+  }, [scrollW, zoom, duration])
+
+  const fmtTick = (t: number): string =>
+    ruler.step >= 1
+      ? `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`
+      : fmt(t)
 
   // The kept segment the playhead is in — highlighted, and what "Delete
   // section" removes (no more click-to-select fighting click-to-seek).
@@ -651,6 +739,16 @@ export default function TimelineEditor({
           e.preventDefault()
           deleteSelected()
           break
+        case '+':
+        case '=':
+          e.preventDefault()
+          zoomTo(zoom * 1.5)
+          break
+        case '-':
+        case '_':
+          e.preventDefault()
+          zoomTo(zoom / 1.5)
+          break
       }
     }
     window.addEventListener('keydown', onKey, true)
@@ -694,6 +792,7 @@ export default function TimelineEditor({
                   ['O', 'Trim the end to the playhead'],
                   ['M', 'Mute / un-mute the word at the playhead'],
                   ['Delete', 'Delete the section at the playhead'],
+                  ['+ / −', 'Zoom the timeline (or Ctrl+scroll on it)'],
                   ['Ctrl + Z', 'Undo'],
                   ['?', 'Show or hide this list']
                 ] as const
@@ -752,71 +851,129 @@ export default function TimelineEditor({
         </div>
       </div>
 
-      {/* timeline — press and DRAG anywhere to scrub through the video */}
-      <div
-        ref={barRef}
-        className="relative h-12 bg-base rounded-md cursor-ew-resize select-none touch-none"
-        onPointerDown={startScrub}
-        onPointerMove={moveScrub}
-        onPointerUp={endScrub}
-        onPointerCancel={endScrub}
-        role="slider"
-        aria-label="Clip timeline — drag to scrub, arrow keys to step"
-        aria-valuemin={0}
-        aria-valuemax={duration}
-        aria-valuenow={playhead}
-        aria-valuetext={fmt(playhead)}
-        tabIndex={0}
-      >
-        {keep.map(([a, b], i) => (
+      {/* timeline — press and DRAG anywhere to scrub; zoom in for precise cuts */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted mr-auto">Timeline · Ctrl+scroll to zoom</span>
+          <button
+            className="bg-raised w-6 h-6 rounded hover:bg-raised/70 disabled:opacity-40 leading-none"
+            onClick={() => zoomTo(zoom / 1.5)}
+            disabled={zoom <= 1}
+            title="Zoom out (−)"
+            aria-label="Zoom timeline out"
+          >
+            −
+          </button>
+          <span className="text-muted tabular-nums w-9 text-center">{zoom.toFixed(1)}×</span>
+          <button
+            className="bg-raised w-6 h-6 rounded hover:bg-raised/70 disabled:opacity-40 leading-none"
+            onClick={() => zoomTo(zoom * 1.5)}
+            disabled={zoom >= MAX_ZOOM}
+            title="Zoom in (+)"
+            aria-label="Zoom timeline in"
+          >
+            +
+          </button>
+          <button
+            className="bg-raised px-2 h-6 rounded hover:bg-raised/70 disabled:opacity-40"
+            onClick={() => zoomTo(1)}
+            disabled={zoom <= 1}
+            title="Fit the whole clip in view"
+          >
+            Fit
+          </button>
+        </div>
+        <div ref={scrollRef} className="overflow-x-auto bg-base rounded-md">
           <div
-            key={i}
-            className={`absolute top-0 h-full rounded-sm pointer-events-none ${
-              i === playheadSeg && keep.length > 1
-                ? 'bg-accent/60 ring-1 ring-accent'
-                : 'bg-accent/25'
-            }`}
-            style={{ left: pct(a), width: pct(b - a) }}
-          />
-        ))}
-        {edit.mutes.map(([a, b], i) => (
-          <div
-            key={`m${i}`}
-            className="absolute bottom-0 h-1.5 bg-red-500/80 rounded-sm pointer-events-none"
-            style={{ left: pct(a), width: pct(Math.max(b - a, 0.1)) }}
-          />
-        ))}
-        {/* trim handles */}
-        <div
-          className="absolute top-0 h-full w-2 bg-accent rounded-l-md cursor-ew-resize"
-          style={{ left: `calc(${pct(keep[0][0])} - 4px)` }}
-          onPointerDown={(e) => {
-            e.stopPropagation()
-            dragging.current = 'start'
-            dragStartEdit.current = editRef.current
-          }}
-          title="Drag to trim the start"
-        />
-        <div
-          className="absolute top-0 h-full w-2 bg-accent rounded-r-md cursor-ew-resize"
-          style={{ left: `calc(${pct(keep[keep.length - 1][1])} - 4px)` }}
-          onPointerDown={(e) => {
-            e.stopPropagation()
-            dragging.current = 'end'
-            dragStartEdit.current = editRef.current
-          }}
-          title="Drag to trim the end"
-        />
-        {/* playhead: line + grab knob + live time readout */}
-        <div
-          className="absolute top-0 h-full pointer-events-none z-10"
-          style={{ left: pct(playhead) }}
-        >
-          <div className="absolute inset-y-0 -left-px w-0.5 bg-white shadow" />
-          <div className="absolute -top-1 -left-1.5 w-3 h-3 rounded-full bg-white shadow ring-1 ring-black/30" />
-          <span className="absolute -top-6 -translate-x-1/2 text-[10px] tabular-nums bg-black/70 text-white px-1 py-0.5 rounded whitespace-nowrap">
-            {fmt(playhead)}
-          </span>
+            ref={barRef}
+            className="relative h-16 cursor-ew-resize select-none touch-none"
+            style={{ width: `${zoom * 100}%` }}
+            onPointerDown={startScrub}
+            onPointerMove={moveScrub}
+            onPointerUp={endScrub}
+            onPointerCancel={endScrub}
+            role="slider"
+            aria-label="Clip timeline — drag to scrub, arrow keys to step"
+            aria-valuemin={0}
+            aria-valuemax={duration}
+            aria-valuenow={playhead}
+            aria-valuetext={fmt(playhead)}
+            tabIndex={0}
+          >
+            {/* time ruler */}
+            <div className="absolute top-0 inset-x-0 h-4 border-b border-raised/40 pointer-events-none">
+              {ruler.ticks.map((t) => (
+                <div key={t} className="absolute top-0 h-full" style={{ left: pct(t) }}>
+                  <div className="absolute bottom-0 left-0 w-px h-1.5 bg-muted/60" />
+                  <span className="absolute top-0 left-1 text-[9px] leading-4 text-muted/80 tabular-nums whitespace-nowrap">
+                    {fmtTick(t)}
+                  </span>
+                </div>
+              ))}
+              {/* minor tick between each label */}
+              {ruler.ticks.map((t) => (
+                <div
+                  key={`h${t}`}
+                  className="absolute bottom-0 w-px h-1 bg-muted/30"
+                  style={{ left: pct(t + ruler.step / 2) }}
+                />
+              ))}
+            </div>
+            {keep.map(([a, b], i) => (
+              <div
+                key={i}
+                className={`absolute top-4 bottom-0 rounded-sm pointer-events-none ${
+                  i === playheadSeg && keep.length > 1
+                    ? 'bg-accent/60 ring-1 ring-accent'
+                    : 'bg-accent/25'
+                }`}
+                style={{ left: pct(a), width: pct(b - a) }}
+              />
+            ))}
+            {edit.mutes.map(([a, b], i) => (
+              <div
+                key={`m${i}`}
+                className="absolute bottom-0 h-1.5 bg-red-500/80 rounded-sm pointer-events-none"
+                style={{ left: pct(a), width: pct(Math.max(b - a, 0.1)) }}
+              />
+            ))}
+            {/* trim handles */}
+            <div
+              className="absolute top-4 bottom-0 w-2 bg-accent rounded-l-md cursor-ew-resize"
+              style={{ left: `calc(${pct(keep[0][0])} - 4px)` }}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                dragging.current = 'start'
+                dragStartEdit.current = editRef.current
+              }}
+              title="Drag to trim the start"
+            />
+            <div
+              className="absolute top-4 bottom-0 w-2 bg-accent rounded-r-md cursor-ew-resize"
+              style={{ left: `calc(${pct(keep[keep.length - 1][1])} - 4px)` }}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                dragging.current = 'end'
+                dragStartEdit.current = editRef.current
+              }}
+              title="Drag to trim the end"
+            />
+            {/* playhead: line + grab knob + live time readout */}
+            <div
+              className="absolute top-0 h-full pointer-events-none z-10"
+              style={{ left: pct(playhead) }}
+            >
+              <div className="absolute inset-y-0 -left-px w-0.5 bg-white shadow" />
+              <div className="absolute top-0 -left-1.5 w-3 h-3 rounded-full bg-white shadow ring-1 ring-black/30" />
+              <span
+                className={`absolute top-0 text-[10px] tabular-nums bg-black/70 text-white px-1 py-0.5 rounded whitespace-nowrap ${
+                  playhead / Math.max(duration, 0.1) > 0.85 ? 'right-2.5' : 'left-2.5'
+                }`}
+              >
+                {fmt(playhead)}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

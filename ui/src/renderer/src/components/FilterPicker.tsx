@@ -12,7 +12,15 @@ export const FILTER_CSS: Record<FilterName, string> = {
   cinematic: 'contrast(1.12) saturate(0.92) hue-rotate(-4deg)',
   vintage: 'sepia(0.38) contrast(0.95) saturate(0.85)',
   bw: 'grayscale(1) contrast(1.15)',
-  fade: 'contrast(0.92) saturate(0.8) brightness(1.06)'
+  fade: 'contrast(0.92) saturate(0.8) brightness(1.06)',
+  golden: 'sepia(0.28) saturate(1.25) brightness(1.04) contrast(0.98) hue-rotate(-8deg)',
+  tealorange: 'contrast(1.12) saturate(1.12) sepia(0.12) hue-rotate(-6deg)',
+  cleangirl: 'brightness(1.08) contrast(0.92) saturate(0.9)',
+  pinkglow: 'sepia(0.18) hue-rotate(-32deg) saturate(1.2) brightness(1.06) contrast(0.96)',
+  peachy: 'sepia(0.22) hue-rotate(-16deg) saturate(1.25) brightness(1.04)',
+  dreamy: 'brightness(1.06) contrast(0.84) saturate(0.85) sepia(0.08)',
+  coast: 'hue-rotate(12deg) saturate(1.15) brightness(1.02) contrast(1.06)',
+  glow: 'brightness(1.09) contrast(1.02) saturate(1.08)'
 }
 
 export const FILTER_NAMES = Object.keys(FILTER_CSS) as FilterName[]
@@ -25,7 +33,15 @@ const LABELS: Record<FilterName, string> = {
   cinematic: 'Cinematic',
   vintage: 'Vintage',
   bw: 'B&W',
-  fade: 'Fade'
+  fade: 'Fade',
+  golden: 'Golden Hour',
+  tealorange: 'Teal & Orange',
+  cleangirl: 'Clean Girl',
+  pinkglow: 'Pink Glow',
+  peachy: 'Peachy',
+  dreamy: 'Dreamy',
+  coast: 'Gold Coast',
+  glow: 'Soft Glow'
 }
 
 /** A colorful sample every preset visibly transforms. */
