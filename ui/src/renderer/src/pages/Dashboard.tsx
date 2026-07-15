@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import GenerateBar from '../components/GenerateBar'
+import { Trash } from '../components/icons'
 import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
@@ -253,7 +254,7 @@ export default function Dashboard({
                           aria-label={`Delete ${v.title || v.video_id}`}
                           title="Delete this video and its clips"
                         >
-                          🗑
+                          <Trash />
                         </button>
                       </td>
                     </tr>

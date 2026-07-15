@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import type { CaptionStyle } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from './WatermarkCard'
+import { Folder } from './icons'
 
 const STYLE_KEY = 'generate-caption-style'
 
@@ -174,7 +175,8 @@ export default function GenerateBar(): JSX.Element {
           }}
           title="Make clips from a video file on this computer — e.g. your YouTube video before you publish it"
         >
-          📁 Upload video file
+          <Folder className="mr-1.5" />
+          Upload video file
         </button>
         <button className="btn-accent shrink-0 ml-auto" onClick={() => generate()}>
           Generate clips

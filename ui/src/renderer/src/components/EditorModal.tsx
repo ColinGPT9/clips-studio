@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
 import type { Clip, WatermarkConfig } from '../lib/types'
+import { Scissors } from './icons'
 import TimelineEditor from './TimelineEditor'
 
 /** Live, draggable watermark preview over the editor video. Shows the
@@ -113,7 +114,7 @@ function WatermarkOverlay({
             <Mark ghost />
           </div>
           <span className="absolute bottom-14 left-1/2 -translate-x-1/2 text-[10px] text-white/80 bg-black/40 px-1.5 py-0.5 rounded">
-            ⟳ moves left ↔ right
+            moves left ↔ right
           </span>
         </>
       ) : (
@@ -143,7 +144,6 @@ export default function EditorView({
   onChanged: () => void
 }): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [notice, setNotice] = useState('')
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [watermark, setWatermark] = useState<WatermarkConfig | null>(clip.render_opts?.watermark ?? null)
   const isLandscape = !!clip.render_opts?.profile
@@ -161,11 +161,6 @@ export default function EditorView({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const flash = (msg: string): void => {
-    setNotice(msg)
-    setTimeout(() => setNotice(''), 5000)
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -175,10 +170,9 @@ export default function EditorView({
         >
           ← Back to clips
         </button>
-        <p className="font-semibold truncate">
-          ✂ Editing — {clip.title || clip.hook || 'Untitled clip'}
+        <p className="font-semibold truncate inline-flex items-center gap-2">
+          <Scissors size={15} /> Editing — {clip.title || clip.hook || 'Untitled clip'}
         </p>
-        {notice && <p className="text-xs text-accent ml-auto">{notice}</p>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
