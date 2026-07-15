@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
+import { Folder, Scissors } from './icons'
 import type { Clip } from '../lib/types'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
@@ -92,7 +93,9 @@ export default function ClipEditor({
         className="btn-accent w-full !py-3 text-base font-semibold"
         title="Open the editor: trim, cut, mute words, censor, color, captions, AI edit"
       >
-        ✂ Edit this clip
+        <span className="inline-flex items-center gap-2 justify-center">
+          <Scissors size={16} /> Edit this clip
+        </span>
       </button>
 
       <div className="flex gap-2 flex-wrap text-xs items-center">
@@ -168,8 +171,9 @@ export default function ClipEditor({
             if (chosen) setFolder(chosen)
           }}
           title="Choose where exported clips are saved"
+          aria-label="Choose export folder"
         >
-          📂
+          <Folder />
         </button>
         <button className="btn-ghost" onClick={exportOne} disabled={busy !== null}>
           {busy === 'export' ? 'Exporting…' : 'Export'}

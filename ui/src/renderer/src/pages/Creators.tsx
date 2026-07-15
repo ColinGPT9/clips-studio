@@ -8,6 +8,7 @@ import type {
   WatermarkConfig
 } from '../lib/types'
 import WatermarkControls, { DEFAULT_WATERMARK } from '../components/WatermarkControls'
+import { Trash } from '../components/icons'
 
 const PLATFORM_BADGE: Record<string, string> = {
   youtube: 'bg-red-500/15 text-red-400',
@@ -400,7 +401,7 @@ export default function Creators(): JSX.Element {
                                 title="Delete — this fact is wrong"
                                 aria-label={`Delete learned fact: ${k.information}`}
                               >
-                                🗑
+                                <Trash />
                               </button>
                             </div>
                           ))}
@@ -425,7 +426,8 @@ export default function Creators(): JSX.Element {
                   }}
                   className="text-xs text-muted hover:text-red-400 transition-colors"
                 >
-                  🗑 Wipe learned memory for this creator
+                  <Trash className="mr-1.5" />
+                  Wipe learned memory for this creator
                 </button>
               </div>
 

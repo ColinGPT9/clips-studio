@@ -2,18 +2,36 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { CaptionLine, CaptionStyle, Clip, EditData, WatermarkConfig, Word } from '../lib/types'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
+import {
+  Badge,
+  Ban,
+  Film,
+  Folder,
+  Keyboard,
+  Note,
+  Palette,
+  Pencil,
+  Refresh,
+  Scissors,
+  Sparkle,
+  Trash,
+  TrimEnd,
+  TrimStart,
+  Undo as UndoIcon,
+  Zap
+} from './icons'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 
 type Tab = 'captions' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'captions', label: 'Captions', icon: 'Aa' },
-  { id: 'audio', label: 'Audio', icon: '♪' },
-  { id: 'motion', label: 'Effects', icon: '⏩' },
-  { id: 'watermark', label: 'Watermark', icon: '◇' },
-  { id: 'color', label: 'Color', icon: '◐' },
-  { id: 'ai', label: 'AI edit', icon: '✨' }
+const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
+  { id: 'captions', label: 'Captions', icon: <span className="font-bold text-[11px] leading-none">Aa</span> },
+  { id: 'audio', label: 'Audio', icon: <Note /> },
+  { id: 'motion', label: 'Effects', icon: <Zap /> },
+  { id: 'watermark', label: 'Watermark', icon: <Badge /> },
+  { id: 'color', label: 'Color', icon: <Palette /> },
+  { id: 'ai', label: 'AI edit', icon: <Sparkle /> }
 ]
 
 /** A user text correction for one transcript word (misheard by Whisper). */
@@ -654,7 +672,9 @@ export default function TimelineEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className="font-semibold">⌨ Keyboard shortcuts</p>
+              <p className="font-semibold inline-flex items-center gap-2">
+                <Keyboard size={16} /> Keyboard shortcuts
+              </p>
               <button
                 className="text-muted hover:text-ink text-lg leading-none px-1"
                 onClick={() => setShowKeys(false)}
@@ -696,18 +716,25 @@ export default function TimelineEditor({
       )}
 
       <div className="flex items-center justify-between">
-        <p className="font-medium text-sm">✂ Edit video</p>
-        <div className="flex gap-2 text-xs items-center">
+        <p className="font-medium text-sm inline-flex items-center gap-1.5">
+          <Film size={15} /> Edit video
+        </p>
+        <div className="flex gap-3 text-xs items-center">
           <button
-            className="text-muted hover:text-ink"
+            className="text-muted hover:text-ink inline-flex items-center gap-1.5"
             onClick={() => setShowKeys(true)}
             title="Keyboard shortcuts (?)"
             aria-label="Show keyboard shortcuts"
           >
-            ⌨ Shortcuts
+            <Keyboard /> Shortcuts
           </button>
-          <button className="text-muted hover:text-ink disabled:opacity-40" disabled={history.length === 0} onClick={undo}>
-            ↩ Undo
+          <button
+            className="text-muted hover:text-ink disabled:opacity-40 inline-flex items-center gap-1.5"
+            disabled={history.length === 0}
+            onClick={undo}
+            title="Undo (Ctrl+Z)"
+          >
+            <UndoIcon /> Undo
           </button>
           <button
             className="text-muted hover:text-red-400"
@@ -795,44 +822,49 @@ export default function TimelineEditor({
 
       <div className="flex gap-2 flex-wrap text-xs">
         <button
-          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70"
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 inline-flex items-center gap-1.5"
           onClick={() => trimToPlayhead('start')}
-          title="Set the clip's START to the playhead (play, find the spot, click)"
+          title="Set the clip's START to the playhead (I)"
         >
-          ⊣ Trim start here
+          <TrimStart /> Trim start here
         </button>
         <button
-          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70"
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 inline-flex items-center gap-1.5"
           onClick={() => trimToPlayhead('end')}
-          title="Set the clip's END to the playhead"
+          title="Set the clip's END to the playhead (O)"
         >
-          Trim end here ⊢
-        </button>
-        <button className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70" onClick={splitAtPlayhead}>
-          Split at playhead
+          <TrimEnd /> Trim end here
         </button>
         <button
-          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40"
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 inline-flex items-center gap-1.5"
+          onClick={splitAtPlayhead}
+          title="Split the section at the playhead (S)"
+        >
+          <Scissors /> Split at playhead
+        </button>
+        <button
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40 inline-flex items-center gap-1.5"
           disabled={playheadSeg < 0 || keep.length <= 1}
           onClick={deleteSelected}
+          title="Delete the section the playhead is in (Delete)"
         >
-          Delete section
+          <Trash /> Delete section
         </button>
         <button
-          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40"
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40 inline-flex items-center gap-1.5"
           disabled={words.length < 2}
           onClick={tightenPauses}
           title="Automatically remove silences longer than 0.6s"
         >
-          ⚡ Tighten pauses
+          <Zap /> Tighten pauses
         </button>
         <button
-          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40"
+          className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70 disabled:opacity-40 inline-flex items-center gap-1.5"
           disabled={words.length === 0}
           onClick={censorProfanity}
           title="Mute every swear word — audio silenced and captions censored (f**k), so platforms can't flag either"
         >
-          🚫 Censor swearing
+          <Ban /> Censor swearing
         </button>
         <span className="text-muted self-center ml-auto tabular-nums">
           {keep.reduce((s, [a, b]) => s + (b - a), 0).toFixed(1)}s / {duration.toFixed(1)}s
@@ -880,7 +912,8 @@ export default function TimelineEditor({
               }`}
               title="Fix words the transcription got wrong — the burned caption text updates on Apply"
             >
-              ✏️ Edit caption text{textMode ? ' — ON' : ''}
+              <Pencil className="mr-1.5" />
+              Edit caption text{textMode ? ' — ON' : ''}
             </button>
             <span className="text-[11px] text-muted">
               {textMode
@@ -1161,7 +1194,8 @@ export default function TimelineEditor({
             }}
             title="Choose a music file from your computer"
           >
-            📂 Browse…
+            <Folder className="mr-1.5" />
+            Browse…
           </button>
           {edit.music && (
             <>
@@ -1206,11 +1240,20 @@ export default function TimelineEditor({
           onClick={updatePreview}
           title="Renders the clip for real with ALL pending changes — same framing/zoom, tracking, captions, hook, music and speed as the final export. Can take up to a minute."
         >
-          {busy ? 'Rendering…' : '🔄 Update preview'}
+          {busy ? (
+            'Rendering…'
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <Refresh /> Update preview
+            </span>
+          )}
         </button>
         {draftActive && (
-          <button className="text-xs text-muted hover:text-ink" onClick={backToOriginal}>
-            ⟲ Show rendered clip
+          <button
+            className="text-xs text-muted hover:text-ink inline-flex items-center gap-1.5"
+            onClick={backToOriginal}
+          >
+            <Film /> Show rendered clip
           </button>
         )}
         {draftStale && (

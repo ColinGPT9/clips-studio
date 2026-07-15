@@ -1,14 +1,23 @@
 import { api } from '../lib/api'
 import { CAPTION_FONTS } from './CaptionStyleControls'
+import { Folder, Rotate } from './icons'
 import type { WatermarkConfig } from '../lib/types'
 
-const POSITIONS: { id: NonNullable<WatermarkConfig['position']>; label: string; title: string }[] = [
+const POSITIONS: {
+  id: NonNullable<WatermarkConfig['position']>
+  label: JSX.Element | string
+  title: string
+}[] = [
   { id: 'top_left', label: '↖', title: 'top left' },
   { id: 'top_right', label: '↗', title: 'top right' },
   { id: 'center', label: '⊙', title: 'center' },
   { id: 'bottom_left', label: '↙', title: 'bottom left' },
   { id: 'bottom_right', label: '↘', title: 'bottom right' },
-  { id: 'moving', label: '⟳', title: 'Moving — hops around the edges (TikTok-style, hard to crop out)' }
+  {
+    id: 'moving',
+    label: <Rotate />,
+    title: 'Moving — hops between the side edges (TikTok-style, hard to crop out)'
+  }
 ]
 
 export const DEFAULT_WATERMARK: WatermarkConfig = {
@@ -141,7 +150,8 @@ export default function WatermarkControls({
         {withImage && (
           <div className="flex items-center gap-2 text-xs">
             <button className="bg-raised px-2.5 py-1.5 rounded-md hover:bg-raised/70" onClick={upload}>
-              📂 {config.image_asset ? 'Replace logo' : 'Upload logo (PNG)'}
+              <Folder className="mr-1.5" />
+              {config.image_asset ? 'Replace logo' : 'Upload logo (PNG)'}
             </button>
             {config.image_asset && <span className="text-muted truncate">✓ logo added</span>}
           </div>

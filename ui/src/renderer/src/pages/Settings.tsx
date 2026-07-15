@@ -7,6 +7,7 @@ import {
   type Appearance
 } from '../lib/appearance'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
+import { Folder } from '../components/icons'
 
 function ExportFolderCard(): JSX.Element {
   const [folder, setFolder] = useState('')
@@ -39,7 +40,8 @@ function ExportFolderCard(): JSX.Element {
             if (chosen) setFolder(chosen)
           }}
         >
-          📂 Browse…
+          <Folder className="mr-1.5" />
+          Browse…
         </button>
       </div>
     </div>

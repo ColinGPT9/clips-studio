@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { Adjust, Clip } from '../lib/types'
 import FilterPicker, { FILTER_CSS } from './FilterPicker'
+import { Palette } from './icons'
 
 const NEUTRAL_ADJUST: Required<Adjust> = { brightness: 0, saturation: 1, contrast: 1 }
 
@@ -74,7 +75,9 @@ export default function ColorControls({
 
   return (
     <div className="border border-raised/60 rounded-lg p-3 space-y-3">
-      <p className="font-medium text-sm">🎨 Color &amp; look</p>
+      <p className="font-medium text-sm inline-flex items-center gap-1.5">
+        <Palette size={15} /> Color &amp; look
+      </p>
       <FilterPicker value={clipFilter} onChange={setClipFilter} />
       <div className="space-y-2">
         {sliders.map(({ key, label, min, max }) => (
