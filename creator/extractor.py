@@ -24,9 +24,14 @@ from creator.models import (
 from llm.base import LLMBackend
 
 _PROMPT_PATH = Path(__file__).parent.parent / "config" / "prompts" / "extract_knowledge.txt"
+_NOTES_PROMPT_PATH = (
+    Path(__file__).parent.parent / "config" / "prompts" / "extract_knowledge_notes.txt"
+)
 
-# Bound the LLM work per video: sample chunks evenly across the stream.
-CHUNK_SECONDS = 300
+# Bound the LLM work per video: content-sized chunks, sampled evenly.
+# Chunks are sized by TEXT, not time — gym/IRL streams speak so sparsely
+# that 5-minute windows carried ~1KB of words and gemma found nothing.
+CHUNK_CHARS = 3500
 MAX_CHUNKS = 10
 
 
@@ -47,9 +52,26 @@ def extract_and_store(
         return 0
 
     prompt_template = _PROMPT_PATH.read_text(encoding="utf-8")
+    notes_template = _NOTES_PROMPT_PATH.read_text(encoding="utf-8")
     stored = 0
     for chunk_text in _sample_chunks(segments):
-        raw = llm.generate(prompt_template.replace("{transcript}", chunk_text), json_mode=True)
+        # Two-stage extraction: gemma-class local models are good at open
+        # summarization but have terrible recall for typed-JSON extraction
+        # on messy stream banter (whole gym streams extracted ZERO facts
+        # single-stage). Stage 1 takes free-form notes; stage 2 structures
+        # the notes, where validation drops anything malformed.
+        source = chunk_text
+        try:
+            notes = llm.generate(
+                notes_template.replace("{transcript}", chunk_text), json_mode=False
+            ).strip()
+            if _norm(notes) in ("nothing", "nothing."):
+                continue
+            if len(notes) >= 40:
+                source = notes
+        except Exception:
+            pass  # fall back to direct extraction on the raw chunk
+        raw = llm.generate(prompt_template.replace("{transcript}", source), json_mode=True)
         data = _parse(raw)
         if data is None:
             continue
@@ -62,19 +84,21 @@ def extract_and_store(
 
 
 def _sample_chunks(segments: list[Segment]) -> list[str]:
-    """~5-minute transcript chunks, sampled evenly across the whole video so
-    a 3-hour stream contributes its middle and end, not just its intro."""
+    """Transcript chunks of ~CHUNK_CHARS of actual words, sampled evenly
+    across the whole video so a 3-hour stream contributes its middle and
+    end, not just its intro."""
     if not segments:
         return []
     chunks: list[str] = []
     current: list[str] = []
-    chunk_start = segments[0].start
+    size = 0
     for seg in segments:
-        if seg.end - chunk_start > CHUNK_SECONDS and current:
-            chunks.append(" ".join(current))
-            current, chunk_start = [], seg.start
         current.append(seg.text)
-    if current:
+        size += len(seg.text) + 1
+        if size >= CHUNK_CHARS:
+            chunks.append(" ".join(current))
+            current, size = [], 0
+    if current and (size > 400 or not chunks):
         chunks.append(" ".join(current))
     if len(chunks) <= MAX_CHUNKS:
         return chunks

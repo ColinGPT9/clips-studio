@@ -39,6 +39,14 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
+    # AV1/VP9 sources (local uploads, format fallbacks) get ONE up-front
+    # H.264 conversion so every later decode pass runs at hardware speed.
+    from video.encoding import ensure_h264_source, source_codec
+
+    if source_codec(video.path) in ("av1", "vp9"):
+        progress.emit(stage="converting source to H.264", video_id=video.video_id)
+        ensure_h264_source(video.path, config)
+
     cancel.clear(video.video_id)  # fresh start; any stale flag from a prior run gone
     db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
     # Creator intelligence: attach the video to its creator profile (created
@@ -108,6 +116,24 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     )
     signals_thread.start()
 
+    # Audience hype (chat replay speed / YouTube most-replayed) fetched in
+    # the background too — pure network wait, free during transcription.
+    # Optional signal: any failure just means no bonus.
+    hype_out: dict = {}
+
+    def _fetch_hype() -> None:
+        try:
+            from analysis.hype import audience_curve
+
+            curve = audience_curve(url, video.video_id, video.duration)
+            if curve is not None:
+                hype_out["curve"] = curve
+        except Exception as e:
+            print(f"      (audience hype fetch failed: {e})")
+
+    hype_thread = threading.Thread(target=_fetch_hype, daemon=True, name="hype-prepass")
+    hype_thread.start()
+
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
     segments = transcribe(
@@ -124,12 +150,14 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print("[3/4] Multimodal analysis (transcript + audio + visual)...")
     progress.emit(stage="analyze", video_id=video.video_id)
     signals_thread.join()  # usually already done — transcription takes longer
+    hype_thread.join(timeout=60)  # network fetch; hard cap so it never stalls
     llm = create_backend(config["llm"])
     candidates, rejections = find_clips(
         video.path, segments, llm, config,
         signals=signals_out.get("signals"),
         creator_context=creator_ctx,
         weight_bias=(creator_prefs or {}).get("weight_bias"),
+        audience=hype_out.get("curve"),
     )
     for r in rejections:
         db.log_rejection(

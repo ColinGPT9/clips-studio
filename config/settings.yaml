@@ -65,6 +65,13 @@ scoring:
                                # content, which performs on social but which the
                                # scorer under-credits. Raise for MORE such clips,
                                # 0 to disable.
+  audience_bonus: 8            # max score bonus from real audience data: Twitch
+                               # chat replay speed (unique chatters, so gifted-sub
+                               # spam doesn't count) and YouTube's most-replayed
+                               # heatmap. Only the very top of the curve earns it;
+                               # kept below action_bonus so the video's own content
+                               # stays the main signal. 0 disables. (Kick keeps no
+                               # chat after a stream ends, so Kick has no chat data.)
   rerank_pool: 8               # finalists compared head-to-head by the LLM
   reaction_top_k: 8            # candidates that get the (slower) YOLO reaction pass
 

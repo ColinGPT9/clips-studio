@@ -8,13 +8,14 @@ FACT TYPES:
 - "joke": a running joke or recurring bit they reference
 - "collaborator": a named person appearing with them or described as a friend/collab partner
 - "format": a structural habit (e.g. "ends streams with viewer Q&A")
+- "life": a personal detail useful as a future callback (pet, family, habit, strong preference)
 
 EVENT TYPES (time-bound plans or achievements):
 - status "announced": something they say they WILL do ("next month I'm attempting...")
 - status "in_progress": an ongoing challenge/goal they are working on
 - status "completed": something they say they have now finished/achieved
 
-EXAMPLE — transcript: "chat we're back with another episode of Monday Mailbag... yo what's good it's your boy... okay Duke is pulling up later we're gonna hoop... also big news, in two weeks I'm doing the 24 hour subathon"
+EXAMPLE 1 — transcript: "chat we're back with another episode of Monday Mailbag... yo what's good it's your boy... okay Duke is pulling up later we're gonna hoop... also big news, in two weeks I'm doing the 24 hour subathon"
 {
   "facts": [
     {"type": "series", "information": "runs a recurring show called Monday Mailbag", "confidence": "high"},
@@ -25,11 +26,22 @@ EXAMPLE — transcript: "chat we're back with another episode of Monday Mailbag.
   ]
 }
 
+EXAMPLE 2 — casual stream banter still contains durable bits. Transcript: "my dog is staring at me again he does this every stream... nah I only drink the watermelon gfuel, the other flavors are trash... bro my squat is stuck at 315 I've been chasing 365 for a month"
+{
+  "facts": [
+    {"type": "life", "information": "has a dog that appears on stream", "confidence": "high"},
+    {"type": "life", "information": "only drinks watermelon GFuel, calls other flavors trash", "confidence": "medium"}
+  ],
+  "events": [
+    {"name": "365 squat goal", "description": "working toward a 365 lb squat, currently stuck at 315", "status": "in_progress"}
+  ]
+}
+
 Rules:
 - Facts must be about the CREATOR or their content, stated in the transcript.
 - Confidence "high" when explicit and unambiguous, "medium" otherwise.
 - Keep each "information" under 25 words, specific and self-contained (it will be read months later without this transcript).
-- Maximum 5 facts and 3 events. Use empty lists only when the chunk is pure gameplay/small talk with nothing durable.
+- Maximum 5 facts and 3 events. Casual banter counts: recurring jokes, personal details, strong opinions and goals are all durable. Use empty lists only when there is truly nothing about the creator.
 
 Respond with ONLY JSON in exactly the format of the example, no other text.
 

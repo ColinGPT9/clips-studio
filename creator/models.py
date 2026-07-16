@@ -12,6 +12,7 @@ KNOWLEDGE_TYPES = (
     "joke",          # running joke / recurring bit
     "collaborator",  # person who appears with them
     "format",        # structural pattern ("reacts to fan clips at the end")
+    "life",          # personal detail usable as a callback (pet, family, habit)
 )
 
 EVENT_STATUSES = ("announced", "in_progress", "completed", "stale")
