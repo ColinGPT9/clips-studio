@@ -36,6 +36,11 @@ export interface LiveOverlay {
   captions: { lines: CaptionLine[]; style: Required<CaptionStyle> } | null
   bakedKeep?: [number, number][] // edits already burned into the preview file
   keep: [number, number][] // current pending edit — for hook timing
+  // What's ALREADY burned into the preview file, so the overlay can mask it
+  // with a blur strip while pending text is shown on top (otherwise the old
+  // caption ghosts through behind the new one).
+  burned?: { lines: CaptionLine[]; style: Required<CaptionStyle> } | null
+  burnedHook?: { seconds: number } | null
 }
 
 export interface CaptionStyle {

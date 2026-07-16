@@ -659,7 +659,21 @@ export default function TimelineEditor({
         captions = { lines: applyTextEdits(base), style: captionStyle }
       }
       if (hookPending || captions) {
-        payload = { hook: hookPending, captions, bakedKeep: baked?.keep, keep }
+        // Old text already burned into the preview file — the overlay blurs
+        // it out underneath the pending text so it doesn't ghost through.
+        const captionsBurned =
+          clip.render_opts?.captions !== false && (captionBase?.length ?? 0) > 0
+        payload = {
+          hook: hookPending,
+          captions,
+          bakedKeep: baked?.keep,
+          keep,
+          burned:
+            captions && captionsBurned && captionBase
+              ? { lines: captionBase, style: storedStyle }
+              : null,
+          burnedHook: hookPending && baked?.hook?.text ? { seconds: baked.hook.seconds } : null
+        }
       }
     }
     const json = JSON.stringify(payload)
