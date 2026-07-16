@@ -64,6 +64,31 @@ export default function LiveTextOverlay({
         ? { top: '50%', transform: 'translateY(-50%)' }
         : { bottom: 440 * s }
 
+  // Frosted strip over text that's ALREADY burned into the preview file, so
+  // the old caption/hook doesn't ghost through behind the pending one.
+  const burnedLine = overlay.burned?.lines.find((l) => t >= l.start && t <= l.end)
+  const maskBand = (position: string, fontSizeAss: number, marginAss: number): JSX.Element => {
+    const size = Math.max(40, Math.min(140, fontSizeAss)) * s
+    const band: React.CSSProperties =
+      position === 'top'
+        ? { top: Math.max(0, marginAss * s - size * 0.35), height: size * 3 }
+        : position === 'middle'
+          ? { top: '50%', transform: 'translateY(-50%)', height: size * 3 }
+          : { bottom: Math.max(0, marginAss * s - size * 0.35), height: size * 3 }
+    return (
+      <div
+        className="absolute inset-x-0"
+        style={{
+          ...band,
+          margin: `0 ${30 * s}px`,
+          borderRadius: 10 * s,
+          backdropFilter: 'blur(16px)',
+          background: 'rgba(0,0,0,0.35)'
+        }}
+      />
+    )
+  }
+
   const outline = (px: number): React.CSSProperties => ({
     WebkitTextStroke: `${Math.max(1, px)}px black`,
     textShadow: `0 ${Math.max(1, 2 * s)}px ${Math.max(2, 5 * s)}px rgba(0,0,0,0.85)`
@@ -71,6 +96,17 @@ export default function LiveTextOverlay({
 
   return (
     <div ref={boxRef} className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+      {/* masks go first so pending text draws on top of them */}
+      {burnedLine &&
+        overlay.burned &&
+        maskBand(
+          overlay.burned.style.position,
+          overlay.burned.style.font_size,
+          overlay.burned.style.position === 'top' ? 140 : 440
+        )}
+      {overlay.burnedHook &&
+        elapsed <= overlay.burnedHook.seconds &&
+        maskBand('top', 96, 190)}
       {showHook && overlay.hook && (
         <p
           className="absolute inset-x-0 text-center font-black leading-tight"
