@@ -82,3 +82,52 @@ def video_encoder_args(config: dict | None = None) -> list[str]:
     if _selected is None or (mode != "auto" and _selected[0] != mode):
         _selected = _select(mode)
     return _selected[1]
+
+
+def source_codec(path) -> str:
+    """codec_name of the first video stream ('' when unprobeable)."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def ensure_h264_source(path, config: dict | None = None) -> bool:
+    """Transcode an AV1/VP9 source to H.264 IN PLACE (same filename) before
+    the pipeline touches it. One decode + hardware-encode pass (a few
+    minutes) beats software-decoding the same file dozens of times — the
+    tracking pass plus EVERY clip render decode the source, which is how an
+    AV1 25-min video once processed slower than a 2-hour H.264 VOD.
+    Downloads prefer H.264 now, but local uploads and format fallbacks can
+    still arrive in any codec, so every source is guarded here.
+    Returns True if a transcode happened. Failure-safe: the original file
+    is kept untouched unless the new one fully succeeds."""
+    from pathlib import Path
+
+    p = Path(path)
+    codec = source_codec(p)
+    if codec not in ("av1", "vp9"):
+        return False
+    print(f"      Source is {codec} (slow to decode) — converting to H.264 once up front...")
+    tmp = p.with_name(p.stem + ".h264.tmp.mp4")
+    base = ["ffmpeg", "-y", "-v", "error", *hwaccel_input_args(), "-i", str(p),
+            *video_encoder_args(config)]
+    # Copy audio when the container allows it; re-encode as the fallback.
+    for audio in (["-c:a", "copy"], ["-c:a", "aac", "-b:a", "192k"]):
+        try:
+            r = subprocess.run([*base, *audio, "-movflags", "+faststart", str(tmp)],
+                               capture_output=True, text=True)
+            if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
+                tmp.replace(p)
+                print("      Converted to H.264 — all later stages decode at full speed")
+                return True
+        except Exception:
+            pass
+    tmp.unlink(missing_ok=True)
+    print("      (conversion failed — continuing with the original file)")
+    return False

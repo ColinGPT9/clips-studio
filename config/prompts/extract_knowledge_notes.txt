@@ -1,0 +1,10 @@
+Below is a rough live-stream/video transcript. List everything we learn about the CREATOR/STREAMER as short bullet points: life details, pets, family, purchases, plans, goals, running jokes, catchphrases, strong opinions, friends/collaborators, games played, recurring shows or segments.
+
+Rules:
+- Only include things actually said in the transcript. Never invent details.
+- Casual banter counts — jokes, personal stories and opinions are all useful.
+- Ignore greetings, filler, and moment-to-moment gameplay commentary.
+- If there is truly nothing about the creator, reply with exactly: nothing
+
+TRANSCRIPT:
+{transcript}

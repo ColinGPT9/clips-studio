@@ -40,6 +40,7 @@ def find_clips(
     signals: tuple[dict, dict] | None = None,
     creator_context=None,  # creator.retrieval.CreatorContext | None
     weight_bias: dict | None = None,  # per-channel multipliers from creator.learning
+    audience: "np.ndarray | None" = None,  # analysis.hype curve (chat/heatmap), 0..1
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     clips_cfg = config["clips"]
     analysis_cfg = config["analysis"]
@@ -103,7 +104,13 @@ def find_clips(
     pk_pct = scoring_cfg.get("signal_peak_percentile", 90)
     peak_windows: list[tuple[float, float]] = []
     seen = list(candidates)
-    for sig in (visual_activity, audio_excitement, combined):
+    # Audience hype (chat density / most-replayed) is a first-class peak
+    # source: a moment chat exploded over is a candidate even if the
+    # transcript and A/V signals missed it.
+    peak_signals = [visual_activity, audio_excitement, combined]
+    if audience is not None and audience.size:
+        peak_signals.append(audience)
+    for sig in peak_signals:
         for win in _signal_peak_windows(
             sig, segments,
             percentile=pk_pct,
@@ -178,8 +185,10 @@ def find_clips(
 
     ctx_cap = int(scoring_cfg.get("creator_context_max", 6))
     action_bonus = int(scoring_cfg.get("action_bonus", 10))
+    audience_bonus = int(scoring_cfg.get("audience_bonus", 8))
     n_context = 0
     n_action = 0
+    n_hype = 0
     for c in candidates:
         fused = round(100 * _fuse(c, weights, c.subscores["reaction"] / 100.0, speech[id(c)]))
         # Trending/drama moments (a creator/celebrity named, beef, controversy)
@@ -203,6 +212,19 @@ def find_clips(
             fused = min(100, fused + action_bonus)
             c.subscores["action"] = action_bonus
             n_action += 1
+        # Audience hype (chat replay density / YouTube most-replayed): a
+        # small additive bonus only for windows near the TOP of the curve.
+        # Deliberately capped below the content channels — the transcript/
+        # visual context stays dominant, and gifted-sub message storms are
+        # already neutralized upstream by unique-chatter counting.
+        if audience is not None and audience_bonus > 0:
+            h = _window_mean(audience, c.start, c.end)
+            if h >= 0.85:
+                b = round(audience_bonus * (h - 0.85) / 0.15)
+                if b:
+                    fused = min(100, fused + b)
+                    c.subscores["hype"] = b
+                    n_hype += 1
         # Creator-context callback (open storyline, catchphrase, collaborator):
         # a small ADDITIVE-ONLY nudge, hard-capped, from deterministic matching
         # against learned knowledge. Zero when nothing is known — cannot
@@ -224,6 +246,8 @@ def find_clips(
         print(f"  Creator context boosted {n_context} candidate(s) (max +{ctx_cap})")
     if n_action:
         print(f"  Active-content boosted {n_action} candidate(s) (+{action_bonus})")
+    if n_hype:
+        print(f"  Audience hype boosted {n_hype} candidate(s) (max +{audience_bonus})")
 
     # ---- 4. dedup + threshold (reusing the proven logic) ------------------
     # max_clips_per_video == 0 means automatic: keep EVERY unique clip that
