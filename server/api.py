@@ -262,21 +262,31 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         dest = data_dir / "downloads" / f"{vid}.mp4"
         dest.parent.mkdir(parents=True, exist_ok=True)
 
+        codec = probe.stdout.strip()
         if not dest.exists():
-            # Remux (no re-encode — fast, lossless) into the pipeline's mp4
-            # layout; fall back to an NVENC/CPU re-encode for codecs mp4
-            # can't carry (e.g. VP9 in webm).
-            remux = sp.run(
-                ["ffmpeg", "-y", "-i", str(src), "-c", "copy",
-                 "-movflags", "+faststart", str(dest)],
-                capture_output=True, text=True,
-            )
-            if remux.returncode != 0:
-                dest.unlink(missing_ok=True)
-                from video.encoding import video_encoder_args
+            # H.264 sources are remuxed (no re-encode — fast, lossless) into
+            # the pipeline's mp4 layout. Anything else — phone/GoPro HEVC,
+            # AV1, VP9, ProRes, old AVI codecs — is converted to H.264 ONCE
+            # here: every later stage (tracking + one decode per clip render)
+            # reads this file, and non-H.264 codecs decode in software.
+            converted = False
+            if codec == "h264":
+                remux = sp.run(
+                    ["ffmpeg", "-y", "-i", str(src), "-c", "copy",
+                     "-movflags", "+faststart", str(dest)],
+                    capture_output=True, text=True,
+                )
+                converted = remux.returncode == 0
+                if not converted:
+                    dest.unlink(missing_ok=True)  # e.g. PCM audio mp4 can't carry
+            if not converted:
+                from video.encoding import hwaccel_input_args, video_encoder_args
 
+                # -pix_fmt yuv420p: 10-bit sources (phone HDR, HEVC main10)
+                # aren't accepted by h264_nvenc — normalize to 8-bit.
                 reenc = sp.run(
-                    ["ffmpeg", "-y", "-i", str(src), *video_encoder_args(),
+                    ["ffmpeg", "-y", *hwaccel_input_args(), "-i", str(src),
+                     *video_encoder_args(), "-pix_fmt", "yuv420p",
                      "-c:a", "aac", "-b:a", "160k",
                      "-movflags", "+faststart", str(dest)],
                     capture_output=True, text=True,

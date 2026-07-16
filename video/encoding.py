@@ -84,6 +84,12 @@ def video_encoder_args(config: dict | None = None) -> list[str]:
     return _selected[1]
 
 
+# Codecs that software-decode slowly enough to drag the whole pipeline
+# (tracking + every clip render re-reads the source). H.264 stays the one
+# codec everything downstream is fast and predictable with.
+SLOW_SOURCE_CODECS = ("av1", "vp9", "hevc")
+
+
 def source_codec(path) -> str:
     """codec_name of the first video stream ('' when unprobeable)."""
     try:
@@ -111,12 +117,14 @@ def ensure_h264_source(path, config: dict | None = None) -> bool:
 
     p = Path(path)
     codec = source_codec(p)
-    if codec not in ("av1", "vp9"):
+    if codec not in SLOW_SOURCE_CODECS:
         return False
     print(f"      Source is {codec} (slow to decode) — converting to H.264 once up front...")
     tmp = p.with_name(p.stem + ".h264.tmp.mp4")
+    # -pix_fmt yuv420p: 10-bit sources (HEVC main10, HDR phone video) are
+    # not accepted by h264_nvenc — normalize to 8-bit while we're here.
     base = ["ffmpeg", "-y", "-v", "error", *hwaccel_input_args(), "-i", str(p),
-            *video_encoder_args(config)]
+            *video_encoder_args(config), "-pix_fmt", "yuv420p"]
     # Copy audio when the container allows it; re-encode as the fallback.
     for audio in (["-c:a", "copy"], ["-c:a", "aac", "-b:a", "192k"]):
         try:
