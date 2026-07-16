@@ -1,6 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import type { CaptionLine, CaptionStyle, Clip, EditData, WatermarkConfig, Word } from '../lib/types'
+import type {
+  CaptionLine,
+  CaptionStyle,
+  Clip,
+  EditData,
+  LiveOverlay,
+  WatermarkConfig,
+  Word
+} from '../lib/types'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import {
   Badge,
@@ -116,7 +124,7 @@ function origToBaked(t: number, bakedKeep: Range[] | undefined): number {
   return offset
 }
 
-function bakedToOrig(t: number, bakedKeep: Range[] | undefined): number {
+export function bakedToOrig(t: number, bakedKeep: Range[] | undefined): number {
   if (!bakedKeep) return t
   let offset = 0
   for (const [a, b] of bakedKeep) {
@@ -143,6 +151,7 @@ export default function TimelineEditor({
   videoRef,
   onChanged,
   onPreview,
+  onLiveOverlay,
   watermark,
   setWatermark
 }: {
@@ -150,6 +159,7 @@ export default function TimelineEditor({
   videoRef: React.RefObject<HTMLVideoElement>
   onChanged: () => void
   onPreview: (url: string | null) => void
+  onLiveOverlay: (o: LiveOverlay | null) => void
   watermark: WatermarkConfig | null
   setWatermark: (w: WatermarkConfig | null) => void
 }): JSX.Element {
@@ -372,9 +382,17 @@ export default function TimelineEditor({
     const sc = scrollRef.current
     if (!sc) return
     const onWheel = (e: WheelEvent): void => {
-      if (!e.ctrlKey) return
-      e.preventDefault()
-      wheelZoom.current(e)
+      if (e.ctrlKey) {
+        e.preventDefault()
+        wheelZoom.current(e)
+        return
+      }
+      // Plain wheel pans the zoomed timeline (there is no visible
+      // scrollbar to grab — panning is wheel / playhead-follow only).
+      if (sc.scrollWidth > sc.clientWidth) {
+        e.preventDefault()
+        sc.scrollLeft += e.deltaY + e.deltaX
+      }
     }
     sc.addEventListener('wheel', onWheel, { passive: false })
     return () => sc.removeEventListener('wheel', onWheel)
@@ -571,15 +589,13 @@ export default function TimelineEditor({
   const censorMatch = (matched: string): string =>
     matched.length <= 2 ? '**' : matched[0] + '*'.repeat(matched.length - 2) + matched[matched.length - 1]
 
-  const pendingCaptionLines = (): CaptionLine[] | null => {
-    const hasMutes = edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0
-    if (!captionBase || (!hasMutes && wordEdits.length === 0)) return null
+  const applyTextEdits = (base: CaptionLine[]): CaptionLine[] => {
     const coreRe = (word: string): RegExp | null => {
       const core = word.replace(/[^a-zA-Z0-9']/g, '')
       if (!core) return null
       return new RegExp(`\\b${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
     }
-    return captionBase.map((line) => {
+    return base.map((line) => {
       let text = line.text
       // Text corrections first (double-clicked words) …
       for (const e of wordEdits) {
@@ -598,6 +614,62 @@ export default function TimelineEditor({
       return { ...line, text }
     })
   }
+
+  const pendingCaptionLines = (): CaptionLine[] | null => {
+    const hasMutes = edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0
+    if (!captionBase || (!hasMutes && wordEdits.length === 0)) return null
+    return applyTextEdits(captionBase)
+  }
+
+  // ---- live text overlay ---------------------------------------------------
+  // Pending hook titles and caption changes (style, corrections, censoring)
+  // are drawn as DOM text over the preview video, so they show INSTANTLY —
+  // no Update-preview render needed just to see a font or a fixed word.
+  // Runs every render but is JSON-guarded, so the parent only re-renders
+  // when the payload actually changes (no setState feedback loop).
+  const lastOverlayJson = useRef('')
+  useEffect(() => {
+    let payload: LiveOverlay | null = null
+    if (!draftActive) {
+      const hookPending =
+        edit.hook?.text && JSON.stringify(edit.hook) !== JSON.stringify(baked?.hook ?? null)
+          ? edit.hook
+          : null
+      const capsDirty =
+        styleDirty ||
+        wordEdits.length > 0 ||
+        edit.muted_words.length > (baked?.muted_words?.length ?? 0)
+      let captions: LiveOverlay['captions'] = null
+      if (capsDirty && captionBase && captionBase.length > 0) {
+        let base = captionBase
+        const n = Math.max(1, captionStyle.words_per_caption)
+        // Regroup from the transcript when words-per-caption changed, the
+        // same way the render does (captionBase kept the old grouping).
+        if (words.length > 0 && n !== storedStyle.words_per_caption) {
+          base = []
+          for (let i = 0; i < words.length; i += n) {
+            const g = words.slice(i, i + n)
+            base.push({
+              start: g[0].start,
+              end: g[g.length - 1].end,
+              text: g.map((w) => w.word).join(' ')
+            })
+          }
+        }
+        captions = { lines: applyTextEdits(base), style: captionStyle }
+      }
+      if (hookPending || captions) {
+        payload = { hook: hookPending, captions, bakedKeep: baked?.keep, keep }
+      }
+    }
+    const json = JSON.stringify(payload)
+    if (json !== lastOverlayJson.current) {
+      lastOverlayJson.current = json
+      onLiveOverlay(payload)
+    }
+  })
+  // Clear the overlay when the editor unmounts (e.g. back to clips).
+  useEffect(() => () => onLiveOverlay(null), [])
 
   const updatePreview = async (): Promise<void> => {
     setBusy(true)
@@ -854,7 +926,9 @@ export default function TimelineEditor({
       {/* timeline — press and DRAG anywhere to scrub; zoom in for precise cuts */}
       <div className="space-y-1">
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted mr-auto">Timeline · Ctrl+scroll to zoom</span>
+          <span className="text-muted mr-auto">
+            Timeline · Ctrl+scroll to zoom{zoom > 1 ? ' · scroll to move around' : ''}
+          </span>
           <button
             className="bg-raised w-6 h-6 rounded hover:bg-raised/70 disabled:opacity-40 leading-none"
             onClick={() => zoomTo(zoom / 1.5)}
@@ -883,7 +957,7 @@ export default function TimelineEditor({
             Fit
           </button>
         </div>
-        <div ref={scrollRef} className="overflow-x-auto bg-base rounded-md">
+        <div ref={scrollRef} className="overflow-x-auto no-scrollbar bg-base rounded-md">
           <div
             ref={barRef}
             className="relative h-16 cursor-ew-resize select-none touch-none"

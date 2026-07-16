@@ -28,6 +28,16 @@ export interface CaptionLine {
   text: string
 }
 
+/** Pending text overlays (hook title / restyled captions) drawn live over
+ *  the editor preview so users see them without waiting for a render.
+ *  Times are original-clip seconds; keep ranges map to the preview file. */
+export interface LiveOverlay {
+  hook: { text: string; seconds: number } | null
+  captions: { lines: CaptionLine[]; style: Required<CaptionStyle> } | null
+  bakedKeep?: [number, number][] // edits already burned into the preview file
+  keep: [number, number][] // current pending edit — for hook timing
+}
+
 export interface CaptionStyle {
   font?: string
   font_size?: number
@@ -59,6 +69,10 @@ export interface Adjust {
   brightness?: number // -0.5..0.5, 0 = unchanged
   saturation?: number // 0..3, 1 = unchanged
   contrast?: number // 0.5..2, 1 = unchanged
+  temperature?: number // -1..1, 0 = neutral (- cool, + warm)
+  tint?: number // -1..1, 0 = neutral (- green, + magenta)
+  sharpen?: number // 0..1, 0 = off
+  vignette?: number // 0..1, 0 = off
 }
 
 export interface WatermarkConfig {
