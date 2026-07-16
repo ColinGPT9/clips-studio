@@ -39,11 +39,12 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
-    # AV1/VP9 sources (local uploads, format fallbacks) get ONE up-front
-    # H.264 conversion so every later decode pass runs at hardware speed.
-    from video.encoding import ensure_h264_source, source_codec
+    # Slow-decode sources (AV1/VP9/HEVC — old local uploads, format
+    # fallbacks) get ONE up-front H.264 conversion so every later decode
+    # pass runs at hardware speed. New uploads convert at import instead.
+    from video.encoding import SLOW_SOURCE_CODECS, ensure_h264_source, source_codec
 
-    if source_codec(video.path) in ("av1", "vp9"):
+    if source_codec(video.path) in SLOW_SOURCE_CODECS:
         progress.emit(stage="converting source to H.264", video_id=video.video_id)
         ensure_h264_source(video.path, config)
 
