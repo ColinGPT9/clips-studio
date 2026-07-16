@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
-import type { Clip, WatermarkConfig } from '../lib/types'
+import type { Clip, LiveOverlay, WatermarkConfig } from '../lib/types'
 import { Scissors } from './icons'
+import LiveTextOverlay from './LiveTextOverlay'
 import TimelineEditor from './TimelineEditor'
 
 /** Live, draggable watermark preview over the editor video. Shows the
@@ -146,11 +147,13 @@ export default function EditorView({
   const videoRef = useRef<HTMLVideoElement>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [watermark, setWatermark] = useState<WatermarkConfig | null>(clip.render_opts?.watermark ?? null)
+  const [liveOverlay, setLiveOverlay] = useState<LiveOverlay | null>(null)
   const isLandscape = !!clip.render_opts?.profile
 
   useEffect(() => {
     setPreviewSrc(null)
     setWatermark(clip.render_opts?.watermark ?? null)
+    setLiveOverlay(null)
   }, [clip.id])
 
   useEffect(() => {
@@ -198,6 +201,8 @@ export default function EditorView({
                 onChange={(patch) => setWatermark({ ...watermark, ...patch })}
               />
             )}
+            {/* Pending hook / caption text drawn live over the video. */}
+            {!previewSrc && <LiveTextOverlay videoRef={videoRef} overlay={liveOverlay} />}
             {previewSrc && (
               <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
                 PREVIEW — all edits applied (not saved until Apply)
@@ -214,6 +219,7 @@ export default function EditorView({
             videoRef={videoRef}
             onChanged={onChanged}
             onPreview={setPreviewSrc}
+            onLiveOverlay={setLiveOverlay}
             watermark={watermark}
             setWatermark={setWatermark}
           />

@@ -54,3 +54,12 @@ body {
 .label {
   @apply text-xs uppercase tracking-wider text-muted;
 }
+
+/* Scroll containers that navigate by gesture (timeline pan/zoom) — no
+   grabbable scrollbar that could be mistaken for an editing control. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

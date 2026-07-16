@@ -4,21 +4,33 @@ import type { Adjust, Clip } from '../lib/types'
 import FilterPicker, { FILTER_CSS } from './FilterPicker'
 import { Palette } from './icons'
 
-const NEUTRAL_ADJUST: Required<Adjust> = { brightness: 0, saturation: 1, contrast: 1 }
+const NEUTRAL_ADJUST: Required<Adjust> = {
+  brightness: 0,
+  saturation: 1,
+  contrast: 1,
+  temperature: 0,
+  tint: 0,
+  sharpen: 0,
+  vignette: 0
+}
 
 function adjustCss(a: Required<Adjust>): string {
   const parts: string[] = []
   if (Math.abs(a.brightness) > 0.005) parts.push(`brightness(${(1 + a.brightness).toFixed(3)})`)
   if (Math.abs(a.saturation - 1) > 0.005) parts.push(`saturate(${a.saturation.toFixed(3)})`)
   if (Math.abs(a.contrast - 1) > 0.005) parts.push(`contrast(${a.contrast.toFixed(3)})`)
+  // Rough CSS stand-ins — the re-render does the real color math.
+  if (a.temperature > 0.005)
+    parts.push(`sepia(${(a.temperature * 0.25).toFixed(3)}) hue-rotate(${(-8 * a.temperature).toFixed(1)}deg) saturate(${(1 + 0.08 * a.temperature).toFixed(3)})`)
+  if (a.temperature < -0.005) parts.push(`hue-rotate(${(-12 * a.temperature).toFixed(1)}deg)`)
+  if (Math.abs(a.tint) > 0.005) parts.push(`hue-rotate(${(-20 * a.tint).toFixed(1)}deg)`)
+  if (a.sharpen > 0.005) parts.push(`contrast(${(1 + 0.06 * a.sharpen).toFixed(3)})`)
   return parts.join(' ')
 }
 
 function sameAdjust(a: Required<Adjust>, b: Required<Adjust>): boolean {
-  return (
-    Math.abs(a.brightness - b.brightness) < 0.005 &&
-    Math.abs(a.saturation - b.saturation) < 0.005 &&
-    Math.abs(a.contrast - b.contrast) < 0.005
+  return (Object.keys(NEUTRAL_ADJUST) as (keyof Required<Adjust>)[]).every(
+    (k) => Math.abs(a[k] - b[k]) < 0.005
   )
 }
 
@@ -62,15 +74,48 @@ export default function ColorControls({
       .filter(Boolean)
       .join(' ')
     el.style.filter = css
+
+    // Vignette can't be a CSS filter — preview it as an inset-shadow overlay
+    // on the video's container (removed on cleanup / when set back to 0).
+    const box = el.parentElement
+    const pendingVignette =
+      Math.abs(adjust.vignette - renderedAdjust.vignette) >= 0.005 ? adjust.vignette : 0
+    let shade = box?.querySelector<HTMLDivElement>(':scope > .live-vignette') ?? null
+    if (box && pendingVignette > 0.005) {
+      if (!shade) {
+        shade = document.createElement('div')
+        shade.className = 'live-vignette'
+        shade.style.cssText =
+          'position:absolute;inset:0;pointer-events:none;z-index:5;border-radius:0.75rem'
+        box.appendChild(shade)
+      }
+      shade.style.boxShadow = `inset 0 0 ${Math.round(140 * pendingVignette)}px ${Math.round(
+        50 * pendingVignette
+      )}px rgba(0,0,0,0.85)`
+    } else {
+      shade?.remove()
+    }
     return () => {
       el.style.filter = ''
+      box?.querySelector(':scope > .live-vignette')?.remove()
     }
   }, [clipFilter, adjust, renderedFilter, videoRef])
 
-  const sliders: { key: keyof Required<Adjust>; label: string; min: number; max: number }[] = [
-    { key: 'brightness', label: 'Brightness', min: -50, max: 50 },
+  // signed: shows +N / −N around a neutral centre; % shows a percentage
+  const sliders: {
+    key: keyof Required<Adjust>
+    label: string
+    min: number
+    max: number
+    signed?: boolean
+  }[] = [
+    { key: 'brightness', label: 'Brightness', min: -50, max: 50, signed: true },
     { key: 'saturation', label: 'Saturation', min: 0, max: 300 },
-    { key: 'contrast', label: 'Contrast', min: 50, max: 200 }
+    { key: 'contrast', label: 'Contrast', min: 50, max: 200 },
+    { key: 'temperature', label: 'Temperature (cool ↔ warm)', min: -100, max: 100, signed: true },
+    { key: 'tint', label: 'Tint (green ↔ magenta)', min: -100, max: 100, signed: true },
+    { key: 'sharpen', label: 'Sharpen', min: 0, max: 100 },
+    { key: 'vignette', label: 'Vignette', min: 0, max: 100 }
   ]
 
   return (
@@ -80,13 +125,13 @@ export default function ColorControls({
       </p>
       <FilterPicker value={clipFilter} onChange={setClipFilter} />
       <div className="space-y-2">
-        {sliders.map(({ key, label, min, max }) => (
+        {sliders.map(({ key, label, min, max, signed }) => (
           <div key={key}>
             <label htmlFor={`adj-${key}-${clip.id}`} className="label flex justify-between">
               <span>{label}</span>
               <span className="tabular-nums">
-                {key === 'brightness'
-                  ? `${adjust.brightness > 0 ? '+' : ''}${Math.round(adjust.brightness * 100)}`
+                {signed
+                  ? `${adjust[key] > 0 ? '+' : ''}${Math.round(adjust[key] * 100)}`
                   : `${Math.round(adjust[key] * 100)}%`}
               </span>
             </label>
