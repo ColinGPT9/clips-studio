@@ -113,8 +113,17 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         )
 
     opts = {
-        # Best mp4 video up to 1080p + m4a audio; single-file mp4 fallback.
-        "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+        # H.264 (avc1) up to 1080p + m4a audio, explicitly. "ext=mp4" alone
+        # also matches YouTube's AV1 streams, and every later stage decodes
+        # the source repeatedly (tracking + one decode per clip render) —
+        # software AV1 decoding made a 25-min video take longer than a 2-hour
+        # H.264 Twitch VOD. Twitch/Kick only serve H.264, so only YouTube
+        # needs this. Fallbacks still avoid AV1 before giving up.
+        "format": (
+            "bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]"
+            "/bv*[height<=1080][ext=mp4][vcodec!^=av01]+ba[ext=m4a]"
+            "/b[ext=mp4]/b"
+        ),
         "merge_output_format": "mp4",
         "outtmpl": str(output_dir / "%(id)s.%(ext)s"),
         "noplaylist": True,

@@ -255,10 +255,27 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     if not (cached and cached.exists()):
         return dispatch.download(url, data_dir / "downloads")
 
+    import subprocess
+
+    # Cached files from before the H.264-only YouTube selector can be AV1 —
+    # every analysis/render pass software-decodes those, which once made a
+    # 25-min video slower than a 2-hour H.264 VOD. Swap for H.264 while the
+    # platform is reachable; otherwise the slow cached copy still works.
+    codec = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(cached)],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if codec in ("av1", "vp9"):
+        print(f"      Cached source is {codec} (slow to decode) — re-downloading as H.264")
+        try:
+            return dispatch.download(url, data_dir / "downloads")
+        except Exception:
+            print("      Re-download failed — using the cached copy")
+
     row = db.conn.execute(
         "SELECT title, channel_name FROM videos WHERE video_id = ?", (video_id,)
     ).fetchone()
-    import subprocess
 
     probe = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(cached)],
