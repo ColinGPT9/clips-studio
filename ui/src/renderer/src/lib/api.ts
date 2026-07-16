@@ -35,6 +35,24 @@ export const api = {
   health: () => request<{ ok: boolean }>('/health'),
   systemStats: () => request<SystemStats>('/system/stats'),
 
+  feedbackDiagnostics: (videoId?: string) =>
+    request<Record<string, unknown>>(
+      `/feedback/diagnostics${videoId ? `?video_id=${encodeURIComponent(videoId)}` : ''}`
+    ),
+  feedbackSubmit: (payload: {
+    kind: 'bug' | 'feature' | 'improvement'
+    title: string
+    answers: Record<string, string>
+    areas: string[]
+    severity: string
+    include_diagnostics: boolean
+    images: { path: string }[]
+  }) =>
+    request<{ ok: boolean; url?: string; markdown: string; error?: string }>('/feedback/submit', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
   createJob: (
     url: string,
     opts?: {

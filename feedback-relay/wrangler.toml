@@ -1,0 +1,13 @@
+name = "clips-studio-feedback"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+REPO = "ColinGPT9/clips-studio"
+
+# Create the KV namespace once with:
+#   npx wrangler kv namespace create FEEDBACK_KV
+# then paste the id it prints here:
+[[kv_namespaces]]
+binding = "FEEDBACK_KV"
+id = "PASTE_KV_NAMESPACE_ID_HERE"

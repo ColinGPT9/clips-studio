@@ -1,0 +1,25 @@
+name: 🚀 Improvement suggestion
+description: Make an existing part of Clips Studio better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like improved?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it improve Clips Studio?
+    validations:
+      required: true
+  - type: input
+    id: inspiration
+    attributes:
+      label: Which app inspired this? (optional)
+      placeholder: e.g. CapCut's keyframe editor
+  - type: textarea
+    id: links
+    attributes:
+      label: Links / screenshots of that feature (optional)
