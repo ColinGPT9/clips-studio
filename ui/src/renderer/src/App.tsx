@@ -4,6 +4,7 @@ import ClipStudio from './pages/ClipStudio'
 import Creators from './pages/Creators'
 import Models from './pages/Models'
 import Settings from './pages/Settings'
+import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
 
 type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
@@ -57,6 +58,11 @@ export default function App(): JSX.Element {
             </button>
           ))}
         </nav>
+        {/* Pinned below the nav: reachable from every page — bugs don't
+            only happen on the Dashboard. */}
+        <div className="px-3 pb-1">
+          <FeedbackHub />
+        </div>
         <ModelSwitcher />
         <div className="px-5 py-4 border-t border-raised/60">
           <a

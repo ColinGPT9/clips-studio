@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
+import { Bug, Bulb, Chat, Image as ImageIcon, TrendUp } from './icons'
 
 /** Feedback Hub: report a bug / request a feature / suggest an improvement
  *  in plain language. Diagnostics (versions, hardware, AI model, log tail)
  *  are auto-attached — previewable before sending — and the report goes to
  *  the developers with ONE click: no accounts, no sign-ups. (Under the
  *  hood it becomes a GitHub issue via the feedback relay, but users never
- *  need to know or care what GitHub is.) */
+ *  need to know or care what GitHub is.)
+ *
+ *  Lives at the bottom of the sidebar so it's reachable from EVERY page —
+ *  bugs don't only happen on the Dashboard. */
 
 type Kind = 'bug' | 'feature' | 'improvement'
 
@@ -21,10 +25,10 @@ const AREAS = [
   ['accessibility', 'Accessibility']
 ] as const
 
-const KINDS: { id: Kind; icon: string; title: string; blurb: string }[] = [
-  { id: 'bug', icon: '🐞', title: 'Report a bug', blurb: 'Something broke or looks wrong' },
-  { id: 'feature', icon: '💡', title: 'Request a feature', blurb: 'Something new you wish the app did' },
-  { id: 'improvement', icon: '🚀', title: 'Suggest an improvement', blurb: 'Make an existing part better' }
+const KINDS: { id: Kind; icon: JSX.Element; title: string; blurb: string }[] = [
+  { id: 'bug', icon: <Bug size={20} />, title: 'Report a bug', blurb: 'Something broke or looks wrong' },
+  { id: 'feature', icon: <Bulb size={20} />, title: 'Request a feature', blurb: 'Something new you wish the app did' },
+  { id: 'improvement', icon: <TrendUp size={20} />, title: 'Suggest an improvement', blurb: 'Make an existing part better' }
 ]
 
 export default function FeedbackHub(): JSX.Element {
@@ -122,14 +126,17 @@ export default function FeedbackHub(): JSX.Element {
   return (
     <>
       <button
-        className="btn-ghost shrink-0"
+        className="w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors text-muted hover:bg-raised hover:text-ink"
         onClick={() => {
           reset()
           setOpen(true)
         }}
-        title="Report a bug, request a feature, or suggest an improvement"
+        title="Report a bug, request a feature, or suggest an improvement — no account needed"
       >
-        💬 Feedback
+        <span aria-hidden>
+          <Chat />
+        </span>
+        Feedback
       </button>
 
       {open && (
@@ -176,7 +183,7 @@ export default function FeedbackHub(): JSX.Element {
                     className="w-full text-left bg-raised hover:bg-raised/70 rounded-xl px-4 py-3 flex items-center gap-3"
                     onClick={() => setKind(k.id)}
                   >
-                    <span className="text-2xl" aria-hidden>
+                    <span className="text-accent" aria-hidden>
                       {k.icon}
                     </span>
                     <span>
@@ -294,7 +301,7 @@ export default function FeedbackHub(): JSX.Element {
                     }}
                     disabled={images.length >= 3}
                   >
-                    📷 Attach screenshot ({images.length}/3)
+                    <ImageIcon className="mr-1.5" /> Attach screenshot ({images.length}/3)
                   </button>
                   {images.map((p, i) => (
                     <span key={i} className="text-xs text-muted bg-raised rounded px-2 py-1">
