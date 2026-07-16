@@ -185,3 +185,43 @@ export const Film = (p: IconProps = {}): JSX.Element =>
       <path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4" />
     </>
   )
+
+export const Chat = (p: IconProps = {}): JSX.Element =>
+  base(p, <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />)
+
+export const Bug = (p: IconProps = {}): JSX.Element =>
+  base(
+    p,
+    <>
+      <rect x="8" y="6" width="8" height="12" rx="4" />
+      <path d="M9 6a3 3 0 0 1 6 0M3 13h5M16 13h5M4 7l4 2M20 7l-4 2M4 19l4-2M20 19l-4-2" />
+    </>
+  )
+
+export const Bulb = (p: IconProps = {}): JSX.Element =>
+  base(
+    p,
+    <>
+      <path d="M9 18h6M10 21h4" />
+      <path d="M12 3a6 6 0 0 1 4 10.5c-.7.6-1 1.5-1 2.5h-6c0-1-.3-1.9-1-2.5A6 6 0 0 1 12 3z" />
+    </>
+  )
+
+export const TrendUp = (p: IconProps = {}): JSX.Element =>
+  base(
+    p,
+    <>
+      <path d="M3 17l6-6 4 4 8-8" />
+      <path d="M15 7h6v6" />
+    </>
+  )
+
+export const Image = (p: IconProps = {}): JSX.Element =>
+  base(
+    p,
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5-11 11" />
+    </>
+  )

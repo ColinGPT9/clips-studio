@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import FeedbackHub from '../components/FeedbackHub'
 import GenerateBar from '../components/GenerateBar'
 import { Trash } from '../components/icons'
 import ProcessingBar from '../components/ProcessingBar'
@@ -136,16 +135,13 @@ export default function Dashboard({
     <div className="h-full flex flex-col p-6 gap-4">
       {/* Pinned top: title + post bar always visible */}
       <div className="shrink-0 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Dashboard</h2>
-          <div className="flex items-center gap-2">
-            <FeedbackHub />
-            {settings && (
-              <span className="bg-raised px-3 py-1.5 rounded-lg text-sm">
-                model: <span className="text-accent font-medium">{settings.model}</span>
-              </span>
-            )}
-          </div>
+          {settings && (
+            <span className="bg-raised px-3 py-1.5 rounded-lg text-sm">
+              model: <span className="text-accent font-medium">{settings.model}</span>
+            </span>
+          )}
         </div>
         <GenerateBar />
         <ProcessingBar />
