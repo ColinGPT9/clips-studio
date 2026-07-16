@@ -131,10 +131,24 @@ class SettingsPatch(BaseModel):
     privacy: str | None = None
 
 
+class FeedbackIn(BaseModel):
+    kind: str  # bug | feature | improvement
+    title: str
+    answers: dict = {}
+    areas: list[str] = []
+    severity: str = ""
+    include_diagnostics: bool = True
+    video_id: str | None = None
+    images: list[dict] = []  # [{"b64": ..., "ext": "png"|"jpg"}]
+
+
 # ---- app factory ---------------------------------------------------------------
 
 
 def create_app(config: dict, settings_path: Path) -> FastAPI:
+    from server import feedback as feedback_mod
+
+    feedback_mod.install_log_capture()  # pipeline prints -> bug-report log tail
     app = FastAPI(title="Clips Studio API", version="0.1")
     app.add_middleware(
         CORSMiddleware,
@@ -180,6 +194,47 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "gpu": _gpu_stats(),
         }
         return stats
+
+    # ---- feedback hub -----------------------------------------------------
+
+    @app.get("/feedback/diagnostics")
+    def feedback_diagnostics(video_id: str | None = None):
+        """The auto-collected diagnostics block, exactly as it would be sent
+        — the UI shows this under 'see what will be shared'."""
+        d = db()
+        try:
+            return feedback_mod.collect_diagnostics(config, d, video_id)
+        finally:
+            d.conn.close()
+
+    @app.post("/feedback/submit")
+    def feedback_submit(body: FeedbackIn):
+        """Build the report and send it through the feedback relay (which
+        files it as a GitHub issue — no account needed by the user). The
+        Markdown comes back either way, so the UI can save it to a file
+        when the relay is unreachable or not configured."""
+        diagnostics = None
+        if body.include_diagnostics:
+            d = db()
+            try:
+                diagnostics = feedback_mod.collect_diagnostics(config, d, body.video_id)
+            finally:
+                d.conn.close()
+        markdown = feedback_mod.build_markdown(body.kind, body.answers, diagnostics)
+        title = feedback_mod.redact(body.title.strip())[:140]
+
+        relay = (config.get("feedback") or {}).get("relay_url", "").strip()
+        if not relay:
+            return {"ok": False, "markdown": markdown,
+                    "error": "feedback relay not configured in this build"}
+        try:
+            res = feedback_mod.submit_to_relay(
+                relay, body.kind, title, markdown,
+                body.areas, body.severity, feedback_mod.encode_images(body.images),
+            )
+            return {"ok": True, "url": res.get("url", ""), "markdown": markdown}
+        except Exception as e:
+            return {"ok": False, "markdown": markdown, "error": str(e)}
 
     # ---- jobs -------------------------------------------------------------
 

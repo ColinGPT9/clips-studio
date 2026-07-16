@@ -1,0 +1,25 @@
+name: 💡 Feature request
+description: Something new you wish Clips Studio did
+labels: [feature-request]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What feature would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it be useful?
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: How would it fit your workflow?
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How important is this to you?
+      options: [Nice to have, Would use it weekly, Would use it every video, Can’t use the app well without it]
