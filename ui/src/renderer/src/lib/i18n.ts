@@ -10,9 +10,10 @@
 import es from '../locales/es.json'
 import hi from '../locales/hi.json'
 import id from '../locales/id.json'
+import ja from '../locales/ja.json'
 import pt from '../locales/pt.json'
 
-const LOCALES: Record<string, Record<string, string>> = { es, pt, hi, id }
+const LOCALES: Record<string, Record<string, string>> = { es, pt, hi, id, ja }
 
 export const APP_LANGUAGES = [
   ['system', 'System (Windows) language'],
@@ -20,7 +21,8 @@ export const APP_LANGUAGES = [
   ['es', 'Español'],
   ['pt', 'Português'],
   ['hi', 'हिन्दी'],
-  ['id', 'Bahasa Indonesia']
+  ['id', 'Bahasa Indonesia'],
+  ['ja', '日本語']
 ] as const
 
 const STORE_KEY = 'app-language'
@@ -37,12 +39,16 @@ export function activeLocale(): string {
   return sys in LOCALES ? sys : 'en'
 }
 
+/** Switch language IN PLACE — no reload: the dictionary is swapped and an
+ *  event tells App to re-render the tree, so the user stays exactly where
+ *  they are (e.g. mid-way through the Settings page). */
 export function setAppLanguage(code: string): void {
   localStorage.setItem(STORE_KEY, code)
-  window.location.reload() // simplest correct way to re-render everything
+  dict = LOCALES[activeLocale()]
+  window.dispatchEvent(new CustomEvent('app-language-changed'))
 }
 
-const dict = LOCALES[activeLocale()]
+let dict = LOCALES[activeLocale()]
 
 /** Translate a UI string; falls back to the English source text. */
 export function t(s: string): string {
