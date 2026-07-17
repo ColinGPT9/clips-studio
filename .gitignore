@@ -1,6 +1,13 @@
 # Runtime artifacts (downloads, transcripts, rendered clips)
 data/
 
+# Exported videos (user content — never belongs in the repo)
+exports/
+*.mp4
+*.mov
+*.mkv
+*.webm
+
 # Secrets — never commit these (each user creates their own)
 config/client_secret.json
 *token*.json
