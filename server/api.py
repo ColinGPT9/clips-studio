@@ -213,6 +213,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         files it as a GitHub issue — no account needed by the user). The
         Markdown comes back either way, so the UI can save it to a file
         when the relay is unreachable or not configured."""
+        missing = feedback_mod.missing_fields(body.kind, body.answers)
+        if missing:
+            raise HTTPException(400, f"please answer: {', '.join(missing)}")
         diagnostics = None
         if body.include_diagnostics:
             d = db()
