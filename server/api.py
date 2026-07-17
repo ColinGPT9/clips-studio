@@ -65,6 +65,7 @@ class PreviewIn(BaseModel):
     edit: dict | None = None            # pending edit list from the editor
     caption_lines: list[dict] | None = None  # pending caption text, if changed
     crop: str | None = None             # pending layout (track/letterbox/center)
+    split_position: str | None = None   # facecam band in gaming splits (top/bottom)
     caption_style: dict | None = None   # pending caption font/size/etc.
     watermark: dict | None = None       # pending branding config (or {} to clear)
 
@@ -695,6 +696,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["caption_lines"] = body.caption_lines
         if body.crop:
             opts["crop"] = body.crop
+        if body.split_position in ("top", "bottom"):
+            opts["split_position"] = body.split_position
         if body.caption_style:
             opts["caption_style"] = {**(opts.get("caption_style") or {}), **body.caption_style}
         if body.watermark is not None:

@@ -462,7 +462,11 @@ def _render_files(
             if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
                 shift = -0.12 if crop_mode == "bias_left" else 0.12
                 tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-        render_vertical(intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra)
+        render_vertical(
+            intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
+            # Gaming/facecam split layout: which band the webcam goes in.
+            cam_position=opts.get("split_position", "top"),
+        )
         intermediate.unlink(missing_ok=True)
     else:
         if edit is not None:
