@@ -104,6 +104,42 @@ ipcMain.handle('pick-image-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+// Donation popup: PayPal opens in a small in-app window instead of the
+// external browser. It is a locked-down Chromium window showing the REAL
+// paypal.me page — no Node access, no preload, and any attempt by the page
+// to open further windows goes to the system browser instead.
+ipcMain.handle('open-donate-window', (event) => {
+  const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
+  const win = new BrowserWindow({
+    width: 480,
+    height: 720,
+    parent,
+    modal: false,
+    autoHideMenuBar: true,
+    title: 'Donate — paypal.me/clipsstudio',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
+    }
+  })
+  // Keep the popup pinned to PayPal: external links (terms, help, …) go to
+  // the system browser rather than navigating the popup somewhere else.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!/^https:\/\/([\w-]+\.)*paypal\.(com|me)\//.test(url)) {
+      e.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+  // The page title always shows where the user really is.
+  win.on('page-title-updated', (e) => e.preventDefault())
+  void win.loadURL('https://paypal.me/clipsstudio')
+})
+
 // The OS Downloads folder — the default export destination, like other
 // video editors.
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))

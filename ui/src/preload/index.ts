@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('studio', {
   pickImageFile: (): Promise<string | null> => ipcRenderer.invoke('pick-image-file'),
   // Export destination: the OS Downloads folder + a folder picker.
   getDownloadsPath: (): Promise<string> => ipcRenderer.invoke('get-downloads-path'),
-  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-folder')
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-folder'),
+  // Donation popup: PayPal in a small in-app window (no external browser).
+  openDonateWindow: (): Promise<void> => ipcRenderer.invoke('open-donate-window')
 })

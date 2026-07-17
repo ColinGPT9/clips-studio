@@ -8,5 +8,6 @@ interface Window {
     pickImageFile: () => Promise<string | null>
     getDownloadsPath: () => Promise<string>
     pickFolder: () => Promise<string | null>
+    openDonateWindow: () => Promise<void>
   }
 }
