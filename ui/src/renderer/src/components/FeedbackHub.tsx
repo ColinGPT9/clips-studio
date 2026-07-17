@@ -58,11 +58,13 @@ export default function FeedbackHub(): JSX.Element {
     key: string,
     label: string,
     placeholder: string,
-    rows = 2
+    rows = 2,
+    optional = false
   ): JSX.Element => (
     <div key={key}>
       <label htmlFor={`fb-${key}`} className="label">
         {label}
+        {!optional && <span className="text-accent"> *</span>}
       </label>
       <textarea
         id={`fb-${key}`}
@@ -81,11 +83,34 @@ export default function FeedbackHub(): JSX.Element {
     return src.split('\n')[0].slice(0, 120)
   }
 
-  const canSend =
-    titleFor().trim().length >= 8 &&
-    (kind === 'bug'
-      ? (answers.trying ?? '').trim().length > 0
-      : (answers.why ?? '').trim().length > 0)
+  // Every substantive question is required — half-filled reports aren't
+  // actionable. Mirrors REQUIRED_FIELDS on the backend, which enforces it
+  // again server-side.
+  const REQUIRED: Record<Kind, [string, string][]> = {
+    bug: [
+      ['trying', 'what you were trying to do'],
+      ['happened', 'what happened'],
+      ['expected', 'what you expected'],
+      ['repro', 'whether it happens again'],
+      ['severity', 'how serious it is']
+    ],
+    feature: [
+      ['what', 'the feature you want'],
+      ['why', 'why it would be useful'],
+      ['workflow', 'how it fits your workflow'],
+      ['importance', 'how important it is']
+    ],
+    improvement: [
+      ['what', 'what to improve'],
+      ['why', 'why it helps']
+    ]
+  }
+
+  const missing = kind
+    ? REQUIRED[kind].filter(([key]) => !(answers[key] ?? '').trim()).map(([, label]) => label)
+    : []
+  const tooShort = titleFor().trim().length < 8
+  const canSend = missing.length === 0 && !tooShort
 
   const submit = async (): Promise<void> => {
     if (!kind) return
@@ -203,7 +228,7 @@ export default function FeedbackHub(): JSX.Element {
                     <div className="flex gap-3 flex-wrap">
                       <div>
                         <label className="label" htmlFor="fb-repro">
-                          Can you make it happen again?
+                          Can you make it happen again?<span className="text-accent"> *</span>
                         </label>
                         <select
                           id="fb-repro"
@@ -211,15 +236,18 @@ export default function FeedbackHub(): JSX.Element {
                           value={answers.repro ?? ''}
                           onChange={(e) => set('repro', e.target.value)}
                         >
-                          <option value="">Not sure</option>
+                          <option value="" disabled>
+                            Choose…
+                          </option>
                           <option>Always</option>
                           <option>Sometimes</option>
                           <option>Only once</option>
+                          <option>Not sure</option>
                         </select>
                       </div>
                       <div>
                         <label className="label" htmlFor="fb-sev">
-                          How serious is it?
+                          How serious is it?<span className="text-accent"> *</span>
                         </label>
                         <select
                           id="fb-sev"
@@ -227,7 +255,9 @@ export default function FeedbackHub(): JSX.Element {
                           value={answers.severity ?? ''}
                           onChange={(e) => set('severity', e.target.value)}
                         >
-                          <option value="">Annoying</option>
+                          <option value="" disabled>
+                            Choose…
+                          </option>
                           <option value="low">Low — cosmetic</option>
                           <option value="medium">Medium</option>
                           <option value="high">High — blocks my work</option>
@@ -235,17 +265,17 @@ export default function FeedbackHub(): JSX.Element {
                         </select>
                       </div>
                     </div>
-                    {field('notes', 'Anything else? (optional)', 'Anything that seems related', 2)}
+                    {field('notes', 'Anything else? (optional)', 'Anything that seems related', 2, true)}
                   </>
                 )}
                 {kind === 'feature' && (
                   <>
                     {field('what', 'What feature would you like?', 'e.g. Auto-post finished clips to TikTok')}
                     {field('why', 'Why would it be useful?', 'What problem would it solve for you?')}
-                    {field('workflow', 'How would it fit your workflow? (optional)', 'e.g. After a stream I always…')}
+                    {field('workflow', 'How would it fit your workflow?', 'e.g. After a stream I always…')}
                     <div>
                       <label className="label" htmlFor="fb-imp">
-                        How important is this to you?
+                        How important is this to you?<span className="text-accent"> *</span>
                       </label>
                       <select
                         id="fb-imp"
@@ -253,7 +283,10 @@ export default function FeedbackHub(): JSX.Element {
                         value={answers.importance ?? ''}
                         onChange={(e) => set('importance', e.target.value)}
                       >
-                        <option value="">Nice to have</option>
+                        <option value="" disabled>
+                          Choose…
+                        </option>
+                        <option>Nice to have</option>
                         <option>Would use it weekly</option>
                         <option>Would use it every video</option>
                         <option>Can’t use the app well without it</option>
@@ -265,8 +298,8 @@ export default function FeedbackHub(): JSX.Element {
                   <>
                     {field('what', 'What would you like improved?', 'e.g. The timeline is hard to use with a trackpad')}
                     {field('why', 'Why would it improve Clips Studio?', 'What gets easier or faster?')}
-                    {field('inspiration', 'Which app inspired this? (optional)', 'e.g. CapCut’s keyframe editor')}
-                    {field('links', 'Links / screenshots of that feature (optional)', 'A YouTube video, docs page…')}
+                    {field('inspiration', 'Which app inspired this? (optional)', 'e.g. CapCut’s keyframe editor', 2, true)}
+                    {field('links', 'Links / screenshots of that feature (optional)', 'A YouTube video, docs page…', 2, true)}
                   </>
                 )}
 
@@ -352,15 +385,22 @@ export default function FeedbackHub(): JSX.Element {
 
                 {error && <p className="text-sm text-error">{error}</p>}
 
-                <div className="flex gap-2 justify-end">
-                  <button className="btn-ghost" onClick={reset} disabled={busy}>
+                <div className="flex gap-3 justify-end items-center">
+                  {!canSend && (
+                    <p className="text-xs text-muted flex-1">
+                      {missing.length > 0
+                        ? `Still needed: ${missing.join(', ')}`
+                        : 'Describe what happened in a bit more detail (a few words is enough)'}
+                    </p>
+                  )}
+                  <button className="btn-ghost shrink-0" onClick={reset} disabled={busy}>
                     Back
                   </button>
                   <button
-                    className="btn-accent"
+                    className="btn-accent shrink-0"
                     onClick={submit}
                     disabled={!canSend || busy}
-                    title={!canSend ? 'Fill in the first two questions so the report is understandable' : undefined}
+                    title={!canSend ? 'Answer every required (*) question first' : undefined}
                   >
                     {busy ? 'Sending…' : 'Send feedback'}
                   </button>

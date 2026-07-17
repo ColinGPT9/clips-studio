@@ -231,6 +231,38 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
 
 # ---- report building -----------------------------------------------------------
 
+# Every substantive question must be answered — half-filled reports aren't
+# actionable. Fields the UI marks "(optional)" are excluded on purpose:
+# forcing filler into "Anything else?" produces noise, not information.
+REQUIRED_FIELDS: dict[str, list[tuple[str, str]]] = {
+    "bug": [
+        ("trying", "What were you trying to do?"),
+        ("happened", "What happened?"),
+        ("expected", "What did you expect to happen?"),
+        ("repro", "Can you make it happen again?"),
+        ("severity", "How serious is it?"),
+    ],
+    "feature": [
+        ("what", "What feature would you like?"),
+        ("why", "Why would it be useful?"),
+        ("workflow", "How would it fit your workflow?"),
+        ("importance", "How important is this to you?"),
+    ],
+    "improvement": [
+        ("what", "What would you like improved?"),
+        ("why", "Why would it improve Clips Studio?"),
+    ],
+}
+
+
+def missing_fields(kind: str, answers: dict) -> list[str]:
+    """Labels of required questions left unanswered (empty = complete)."""
+    return [
+        label
+        for key, label in REQUIRED_FIELDS.get(kind, [])
+        if not str(answers.get(key, "")).strip()
+    ]
+
 
 def build_markdown(kind: str, answers: dict, diagnostics: dict | None) -> str:
     """The GitHub issue body. answers are the wizard's plain-question fields."""
@@ -324,7 +356,11 @@ def submit_to_relay(relay_url: str, kind: str, title: str, markdown: str,
                     areas: list[str], severity: str, images: list[dict]) -> dict:
     """Returns {"ok": True, "url": ...} or raises with a friendly message."""
     base = relay_url.rstrip("/")
-    challenge = requests.get(f"{base}/challenge", timeout=15).json()
+    # The relay requires this header: cross-origin browser requests carrying
+    # a custom header trigger a CORS preflight the relay never answers, so
+    # web pages can't be used to spam it — only real clients can.
+    headers = {"X-Clips-Studio": "1"}
+    challenge = requests.get(f"{base}/challenge", timeout=15, headers=headers).json()
     pow_solution = _solve_pow(challenge)
     resp = requests.post(
         f"{base}/submit",
@@ -338,6 +374,7 @@ def submit_to_relay(relay_url: str, kind: str, title: str, markdown: str,
             "pow": pow_solution,
         },
         timeout=60,
+        headers=headers,
     )
     data = resp.json()
     if not resp.ok or not data.get("ok"):

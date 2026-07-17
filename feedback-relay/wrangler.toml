@@ -2,6 +2,11 @@ name = "clips-studio-feedback"
 main = "worker.js"
 compatibility_date = "2026-01-01"
 
+# Free Workers Logs — see live traffic/abuse with `npx wrangler tail`
+# or the Cloudflare dashboard.
+[observability]
+enabled = true
+
 [vars]
 REPO = "ColinGPT9/clips-studio"
 
