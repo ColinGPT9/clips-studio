@@ -319,14 +319,13 @@ export default function Dashboard({
             development costs and keep it free for everyone.
           </p>
         </div>
-        <a
-          href={DONATE_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="btn-accent shrink-0 no-underline text-lg px-8 py-3 font-semibold"
+        <button
+          onClick={() => window.studio.openDonateWindow()}
+          className="btn-accent shrink-0 text-lg px-8 py-3 font-semibold"
+          title={DONATE_URL}
         >
           Donate to the project
-        </a>
+        </button>
       </div>
     </div>
   )
