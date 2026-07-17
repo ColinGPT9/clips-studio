@@ -226,6 +226,8 @@ async function handleSubmit(request, env, ip) {
   });
   if (!res.ok) {
     const detail = await res.text();
+    // Full detail to Workers Logs for debugging; truncated to the client.
+    console.error("issue creation failed:", res.status, JSON.stringify(detail.slice(0, 500)));
     return json({ error: `GitHub rejected the report (${res.status}): ${detail.slice(0, 200)}` }, 502);
   }
   const issue = await res.json();

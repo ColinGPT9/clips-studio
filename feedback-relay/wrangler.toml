@@ -10,9 +10,7 @@ enabled = true
 [vars]
 REPO = "ColinGPT9/clips-studio"
 
-# Create the KV namespace once with:
-#   npx wrangler kv namespace create FEEDBACK_KV
-# then paste the id it prints here:
+# Created with: npx wrangler kv namespace create FEEDBACK_KV
 [[kv_namespaces]]
 binding = "FEEDBACK_KV"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "2badab8e24c94791b0474d208952b27e"
