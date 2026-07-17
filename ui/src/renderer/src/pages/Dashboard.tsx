@@ -5,6 +5,7 @@ import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
+import { t } from '../lib/i18n'
 import type { Clip, Settings, StudioEvent, Video } from '../lib/types'
 
 const DONATE_URL = 'https://paypal.me/clipsstudio'
@@ -136,7 +137,7 @@ export default function Dashboard({
       {/* Pinned top: title + post bar always visible */}
       <div className="shrink-0 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Dashboard</h2>
+          <h2 className="text-2xl font-bold">{t('Dashboard')}</h2>
           {settings && (
             <span className="bg-raised px-3 py-1.5 rounded-lg text-sm">
               model: <span className="text-accent font-medium">{settings.model}</span>
@@ -151,12 +152,12 @@ export default function Dashboard({
       <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section className="card flex flex-col overflow-hidden" aria-label="Processed videos">
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap shrink-0">
-            <h3 className="font-semibold">Processed videos</h3>
+            <h3 className="font-semibold">{t('Processed videos')}</h3>
             <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="search"
                 className="input !w-44 !py-1 text-sm"
-                placeholder="Search title or channel…"
+                placeholder={t('Search title or channel…')}
                 aria-label="Search processed videos by title or channel"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -167,7 +168,7 @@ export default function Dashboard({
                 </button>
               )}
               <label htmlFor="sort-videos" className="label">
-                Sort
+                {t('Sort')}
               </label>
               <select
                 id="sort-videos"
@@ -175,24 +176,24 @@ export default function Dashboard({
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortMode)}
               >
-                <option value="newest">Newest</option>
-                <option value="channel">Channel A–Z</option>
+                <option value="newest">{t('Newest')}</option>
+                <option value="channel">{t('Channel A–Z')}</option>
               </select>
             </div>
           </div>
 
           <div className="overflow-y-auto flex-1 min-h-0">
           {shown.length === 0 ? (
-            <p className="text-muted text-sm">Nothing yet — paste a link above to make your first clips.</p>
+            <p className="text-muted text-sm">{t('Nothing yet — paste a link above to make your first clips.')}</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="label text-left">
-                  <th className="pb-2 font-normal">Channel</th>
-                  <th className="pb-2 font-normal">Title</th>
-                  <th className="pb-2 font-normal">Status</th>
-                  <th className="pb-2 font-normal text-right">Clips</th>
-                  <th className="pb-2 font-normal text-right">Time</th>
+                  <th className="pb-2 font-normal">{t('Channel')}</th>
+                  <th className="pb-2 font-normal">{t('Title')}</th>
+                  <th className="pb-2 font-normal">{t('Status')}</th>
+                  <th className="pb-2 font-normal text-right">{t('Clips')}</th>
+                  <th className="pb-2 font-normal text-right">{t('Time')}</th>
                   <th className="pb-2 font-normal"></th>
                 </tr>
               </thead>
@@ -262,9 +263,9 @@ export default function Dashboard({
                       <tr key={`${v.video_id}-clips`}>
                         <td colSpan={6} className="pb-3 pl-6">
                           {clipsByVideo[v.video_id] === undefined ? (
-                            <p className="text-muted text-xs">Loading clips…</p>
+                            <p className="text-muted text-xs">{t('Loading clips…')}</p>
                           ) : clipsByVideo[v.video_id].length === 0 ? (
-                            <p className="text-muted text-xs">No clips generated.</p>
+                            <p className="text-muted text-xs">{t('No clips generated.')}</p>
                           ) : (
                             <ul className="space-y-1 text-xs text-muted pl-1">
                               {clipsByVideo[v.video_id].map((c) => (
@@ -295,10 +296,10 @@ export default function Dashboard({
         </section>
 
         <section className="card flex flex-col overflow-hidden" aria-label="Activity log">
-          <h3 className="font-semibold mb-3 shrink-0">Activity</h3>
+          <h3 className="font-semibold mb-3 shrink-0">{t('Activity')}</h3>
           <div className="overflow-y-auto flex-1 min-h-0 font-mono text-xs space-y-1 text-muted" role="log">
             {log.length === 0 ? (
-              <p>Waiting for events…</p>
+              <p>{t('Waiting for events…')}</p>
             ) : (
               log.map((line, i) => <p key={i}>{line}</p>)
             )}
@@ -313,10 +314,9 @@ export default function Dashboard({
       {/* Pinned bottom: prominent, persistent donate section */}
       <div className="shrink-0 card flex items-center justify-between gap-6 flex-wrap bg-gradient-to-r from-accent/15 to-accent/25 border border-accent/40 !py-5">
         <div>
-          <p className="font-bold text-xl text-ink">Clips Studio is free &amp; open source ❤️</p>
+          <p className="font-bold text-xl text-ink">{t('Clips Studio is free & open source ❤️')}</p>
           <p className="text-base text-ink/80 mt-1">
-            It runs entirely on your PC with no fees. Please consider donating to help cover
-            development costs and keep it free for everyone.
+            {t('It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.')}
           </p>
         </div>
         <button
@@ -324,7 +324,7 @@ export default function Dashboard({
           className="btn-accent shrink-0 text-lg px-8 py-3 font-semibold"
           title={DONATE_URL}
         >
-          Donate to the project
+          {t('Donate to the project')}
         </button>
       </div>
     </div>

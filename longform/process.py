@@ -65,9 +65,11 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
 
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
+    forced_lang = (config.get("content_language") or "auto").lower()
     segments = transcribe(
         video.path, video.video_id, data_dir / "transcripts",
         model_size=config["whisper"]["model"], device=config["whisper"]["device"],
+        language=None if forced_lang == "auto" else forced_lang,
     )
     db.set_video_status(video.video_id, "transcribed")
     cancel.check(video.video_id)
@@ -108,11 +110,19 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         / profile["subdir"]
     )
     render_opts = {"profile": mode}
+    from transcription.transcriber import detected_language
+
+    content_lang = forced_lang if forced_lang != "auto" else detected_language(
+        video.video_id, data_dir / "transcripts"
+    )
     workers = max(1, int(config.get("video", {}).get("parallel_renders", 2)))
     done_count = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_render_files, video.path, c, segments, clip_dir, config, dict(render_opts)): (c, m)
+            pool.submit(
+                _render_files, video.path, c, segments, clip_dir, config,
+                dict(render_opts), content_lang,
+            ): (c, m)
             for c, m in zip(candidates, metas)
         }
         for future in as_completed(futures):

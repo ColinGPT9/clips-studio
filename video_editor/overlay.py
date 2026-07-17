@@ -9,11 +9,11 @@ system fonts via libass, no drawtext/fontconfig headaches on Windows.
 
 from pathlib import Path
 
-def _hook_style(canvas: tuple[int, int]) -> str:
+def _hook_style(canvas: tuple[int, int], font: str = "Arial Black") -> str:
     # Calibrated for the 1920-tall Shorts canvas; scales to other frames.
     s = canvas[1] / 1920
     return (
-        f"Style: Hook,Arial Black,{round(96 * s)},&H00FFFFFF,&H00FFFFFF,&H00000000,"
+        f"Style: Hook,{font},{round(96 * s)},&H00FFFFFF,&H00FFFFFF,&H00000000,"
         f"&H7F000000,-1,0,0,0,100,100,0,0,1,{max(3, round(9 * s))},3,8,60,60,{round(190 * s)},1"
     )
 
@@ -50,12 +50,14 @@ def ensure_hook(
     target: Path,
     hook: dict,
     canvas: tuple[int, int] = (1080, 1920),
+    font: str = "Arial Black",
 ) -> Path:
     """Merge the hook title into the clip's ASS file. If a captions file
     exists, the Hook style + event are added to it; otherwise a minimal ASS
-    with only the hook is written to `target`. Returns the file to burn."""
+    with only the hook is written to `target`. Returns the file to burn.
+    font: override for non-Latin content (see video.captions.SCRIPT_FONTS)."""
     text, seconds = hook["text"], float(hook["seconds"])
-    style = _hook_style(canvas)
+    style = _hook_style(canvas, font)
     if ass_path is not None and ass_path.exists():
         content = ass_path.read_text(encoding="utf-8")
         # Style goes right before the [Events] section; event goes at the end.

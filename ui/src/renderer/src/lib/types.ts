@@ -202,6 +202,7 @@ export interface Settings {
   channel: string
   auto_upload: boolean
   privacy: string
+  content_language: string // 'auto' or ISO code (es / pt / hi / id ...)
 }
 
 /** Events arriving over the WebSocket. */
