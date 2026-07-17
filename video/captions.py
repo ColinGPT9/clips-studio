@@ -39,7 +39,41 @@ FONTS = [
     "Georgia",
     "Comic Sans MS",
     "Courier New",
+    # Script-capable Windows-stock fonts (auto-selected by language below).
+    "Nirmala UI",
+    "Yu Gothic UI",
+    "Malgun Gothic",
+    "Microsoft YaHei",
+    "Leelawadee UI",
 ]
+
+# The classic caption fonts only cover Latin/Cyrillic/Greek. Burning e.g.
+# Hindi through Arial produces tofu boxes — permanently, in the video. For
+# languages written in other scripts, the caption font is swapped to the
+# Windows-stock font that actually has the glyphs.
+SCRIPT_FONTS = {
+    # Devanagari + the other Indic scripts Nirmala UI covers
+    "hi": "Nirmala UI", "mr": "Nirmala UI", "ne": "Nirmala UI",
+    "bn": "Nirmala UI", "ta": "Nirmala UI", "te": "Nirmala UI",
+    "gu": "Nirmala UI", "kn": "Nirmala UI", "ml": "Nirmala UI",
+    "pa": "Nirmala UI", "si": "Nirmala UI",
+    "ja": "Yu Gothic UI",
+    "ko": "Malgun Gothic",
+    "zh": "Microsoft YaHei",
+    "th": "Leelawadee UI",
+    "ar": "Segoe UI", "fa": "Segoe UI", "ur": "Segoe UI",
+}
+
+_LATIN_ONLY = set(FONTS[:10])
+
+
+def caption_font_for(language: str, chosen: str | None) -> str | None:
+    """The font captions should actually burn with: the user's choice,
+    unless the content language needs a script that choice can't render."""
+    lang = (language or "en").lower()
+    if lang in SCRIPT_FONTS and (chosen is None or chosen in _LATIN_ONLY):
+        return SCRIPT_FONTS[lang]
+    return chosen
 
 # position -> (ASS numpad alignment, vertical margin)
 _POSITIONS = {"bottom": (2, 440), "middle": (5, 0), "top": (8, 140)}
@@ -73,6 +107,7 @@ def build_captions(
     style: dict | None = None,
     lines: list[dict] | None = None,
     canvas: tuple[int, int] = (1080, 1920),
+    language: str = "en",
 ) -> Path | None:
     """Write an ASS file with times relative to the clip start.
     `lines` (user-corrected caption text) overrides the generated ones.
@@ -80,6 +115,8 @@ def build_captions(
     1920x1080 and the style scales to it). Returns the path, or None if
     there is nothing to caption."""
     opts = {**DEFAULT_STYLE, **(style or {})}
+    # Non-Latin content: swap in a font that has the glyphs (see SCRIPT_FONTS).
+    opts["font"] = caption_font_for(language, opts.get("font")) or opts.get("font")
     if lines is None:
         lines = build_caption_lines(segments, candidate, opts["words_per_caption"])
 

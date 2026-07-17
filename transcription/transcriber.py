@@ -64,7 +64,11 @@ def transcribe(
     transcript_dir: Path,
     model_size: str = "small",
     device: str = "auto",
+    language: str | None = None,
 ) -> list[Segment]:
+    """language: force a transcription language (ISO code like 'es');
+    None = Whisper auto-detects. The detected/forced language is cached in
+    the transcript JSON — read it back with detected_language()."""
     transcript_dir.mkdir(parents=True, exist_ok=True)
     cache_path = transcript_dir / f"{video_id}.json"
 
@@ -78,6 +82,9 @@ def transcribe(
 
     raw_segments, info = model.transcribe(
         str(video_path),
+        # None = auto-detect; a forced code fixes bilingual streams where
+        # the opening audio (e.g. English game sound) misleads detection.
+        language=language,
         vad_filter=True,
         # Greedy decoding: ~2.4x faster than beam 5 with near-identical output
         # (verified on real footage) — the turbo model's accuracy headroom
@@ -126,3 +133,12 @@ def transcribe(
         encoding="utf-8",
     )
     return segments
+
+
+def detected_language(video_id: str, transcript_dir: Path) -> str:
+    """ISO language code from the cached transcript ('en' when unknown)."""
+    try:
+        data = json.loads((transcript_dir / f"{video_id}.json").read_text(encoding="utf-8"))
+        return (data.get("language") or "en").lower()
+    except Exception:
+        return "en"

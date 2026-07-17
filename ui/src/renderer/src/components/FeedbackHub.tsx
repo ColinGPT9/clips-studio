@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
+import { t } from '../lib/i18n'
 import { Bug, Bulb, Chat, Image as ImageIcon, TrendUp } from './icons'
 
 /** Feedback Hub: report a bug / request a feature / suggest an improvement
@@ -63,14 +64,14 @@ export default function FeedbackHub(): JSX.Element {
   ): JSX.Element => (
     <div key={key}>
       <label htmlFor={`fb-${key}`} className="label">
-        {label}
+        {t(label)}
         {!optional && <span className="text-accent"> *</span>}
       </label>
       <textarea
         id={`fb-${key}`}
         className="input mt-1 resize-none"
         rows={rows}
-        placeholder={placeholder}
+        placeholder={t(placeholder)}
         value={answers[key] ?? ''}
         onChange={(e) => set(key, e.target.value)}
       />
@@ -127,7 +128,7 @@ export default function FeedbackHub(): JSX.Element {
         images: images.map((p) => ({ path: p }))
       })
       if (res.ok) {
-        setDone('Sent — thank you! Your report went straight to the developers.')
+        setDone(t('Sent — thank you! Your report went straight to the developers.'))
       } else {
         // Relay unreachable/not configured: save the report locally instead.
         const blob = new Blob([res.markdown], { type: 'text/markdown' })
@@ -161,7 +162,7 @@ export default function FeedbackHub(): JSX.Element {
         <span aria-hidden>
           <Chat />
         </span>
-        Feedback
+        {t('Feedback')}
       </button>
 
       {open && (
@@ -178,7 +179,7 @@ export default function FeedbackHub(): JSX.Element {
           >
             <div className="flex items-center justify-between">
               <p className="font-semibold text-lg">
-                {kind === null ? 'Feedback Hub' : KINDS.find((k) => k.id === kind)?.title}
+                {kind === null ? t('Feedback Hub') : t(KINDS.find((k) => k.id === kind)?.title ?? '')}
               </p>
               <button
                 className="text-muted hover:text-ink text-lg leading-none px-1"
@@ -193,14 +194,13 @@ export default function FeedbackHub(): JSX.Element {
               <div className="space-y-4">
                 <p className="text-sm">{done}</p>
                 <button className="btn-accent" onClick={() => setOpen(false)}>
-                  Close
+                  {t('Close')}
                 </button>
               </div>
             ) : kind === null ? (
               <div className="space-y-2">
                 <p className="text-sm text-muted">
-                  Found a problem or have an idea? Tell us in plain words — technical details are
-                  collected automatically, and you don’t need an account for anything.
+                  {t('Found a problem or have an idea? Tell us in plain words — technical details are collected automatically, and you don’t need an account for anything.')}
                 </p>
                 {KINDS.map((k) => (
                   <button
@@ -212,8 +212,8 @@ export default function FeedbackHub(): JSX.Element {
                       {k.icon}
                     </span>
                     <span>
-                      <span className="font-medium block">{k.title}</span>
-                      <span className="text-xs text-muted">{k.blurb}</span>
+                      <span className="font-medium block">{t(k.title)}</span>
+                      <span className="text-xs text-muted">{t(k.blurb)}</span>
                     </span>
                   </button>
                 ))}
@@ -228,7 +228,7 @@ export default function FeedbackHub(): JSX.Element {
                     <div className="flex gap-3 flex-wrap">
                       <div>
                         <label className="label" htmlFor="fb-repro">
-                          Can you make it happen again?<span className="text-accent"> *</span>
+                          {t('Can you make it happen again?')}<span className="text-accent"> *</span>
                         </label>
                         <select
                           id="fb-repro"
@@ -237,17 +237,17 @@ export default function FeedbackHub(): JSX.Element {
                           onChange={(e) => set('repro', e.target.value)}
                         >
                           <option value="" disabled>
-                            Choose…
+                            {t('Choose…')}
                           </option>
-                          <option>Always</option>
-                          <option>Sometimes</option>
-                          <option>Only once</option>
-                          <option>Not sure</option>
+                          <option>{t('Always')}</option>
+                          <option>{t('Sometimes')}</option>
+                          <option>{t('Only once')}</option>
+                          <option>{t('Not sure')}</option>
                         </select>
                       </div>
                       <div>
                         <label className="label" htmlFor="fb-sev">
-                          How serious is it?<span className="text-accent"> *</span>
+                          {t('How serious is it?')}<span className="text-accent"> *</span>
                         </label>
                         <select
                           id="fb-sev"
@@ -256,12 +256,12 @@ export default function FeedbackHub(): JSX.Element {
                           onChange={(e) => set('severity', e.target.value)}
                         >
                           <option value="" disabled>
-                            Choose…
+                            {t('Choose…')}
                           </option>
-                          <option value="low">Low — cosmetic</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High — blocks my work</option>
-                          <option value="critical">Critical — app unusable</option>
+                          <option value="low">{t('Low — cosmetic')}</option>
+                          <option value="medium">{t('Medium')}</option>
+                          <option value="high">{t('High — blocks my work')}</option>
+                          <option value="critical">{t('Critical — app unusable')}</option>
                         </select>
                       </div>
                     </div>
@@ -275,7 +275,7 @@ export default function FeedbackHub(): JSX.Element {
                     {field('workflow', 'How would it fit your workflow?', 'e.g. After a stream I always…')}
                     <div>
                       <label className="label" htmlFor="fb-imp">
-                        How important is this to you?<span className="text-accent"> *</span>
+                        {t('How important is this to you?')}<span className="text-accent"> *</span>
                       </label>
                       <select
                         id="fb-imp"
@@ -284,12 +284,12 @@ export default function FeedbackHub(): JSX.Element {
                         onChange={(e) => set('importance', e.target.value)}
                       >
                         <option value="" disabled>
-                          Choose…
+                          {t('Choose…')}
                         </option>
-                        <option>Nice to have</option>
-                        <option>Would use it weekly</option>
-                        <option>Would use it every video</option>
-                        <option>Can’t use the app well without it</option>
+                        <option>{t('Nice to have')}</option>
+                        <option>{t('Would use it weekly')}</option>
+                        <option>{t('Would use it every video')}</option>
+                        <option>{t('Can’t use the app well without it')}</option>
                       </select>
                     </div>
                   </>
@@ -304,7 +304,7 @@ export default function FeedbackHub(): JSX.Element {
                 )}
 
                 <div>
-                  <p className="label mb-1">Which part of the app is this about? (optional)</p>
+                  <p className="label mb-1">{t('Which part of the app is this about? (optional)')}</p>
                   <div className="flex gap-1.5 flex-wrap">
                     {AREAS.map(([id, label]) => (
                       <button
@@ -319,7 +319,7 @@ export default function FeedbackHub(): JSX.Element {
                         }
                         title={label}
                       >
-                        {label}
+                        {t(label)}
                       </button>
                     ))}
                   </div>
@@ -334,7 +334,7 @@ export default function FeedbackHub(): JSX.Element {
                     }}
                     disabled={images.length >= 3}
                   >
-                    <ImageIcon className="mr-1.5" /> Attach screenshot ({images.length}/3)
+                    <ImageIcon className="mr-1.5" /> {t('Attach screenshot')} ({images.length}/3)
                   </button>
                   {images.map((p, i) => (
                     <span key={i} className="text-xs text-muted bg-raised rounded px-2 py-1">
@@ -358,8 +358,7 @@ export default function FeedbackHub(): JSX.Element {
                       checked={includeDiag}
                       onChange={(e) => setIncludeDiag(e.target.checked)}
                     />
-                    Include technical details (PC specs, app version, AI model, recent log) — this is
-                    what lets someone actually fix it
+                    {t('Include technical details (PC specs, app version, AI model, recent log) — this is what lets someone actually fix it')}
                   </label>
                   {includeDiag && (
                     <button
@@ -373,7 +372,7 @@ export default function FeedbackHub(): JSX.Element {
                         setDiagPreview(JSON.stringify(d, null, 2))
                       }}
                     >
-                      {diagPreview ? 'Hide what will be shared' : 'See exactly what will be shared'}
+                      {diagPreview ? t('Hide what will be shared') : t('See exactly what will be shared')}
                     </button>
                   )}
                   {diagPreview && (
@@ -389,12 +388,12 @@ export default function FeedbackHub(): JSX.Element {
                   {!canSend && (
                     <p className="text-xs text-muted flex-1">
                       {missing.length > 0
-                        ? `Still needed: ${missing.join(', ')}`
+                        ? `${t('Still needed:')} ${missing.map((m) => t(m)).join(', ')}`
                         : 'Describe what happened in a bit more detail (a few words is enough)'}
                     </p>
                   )}
                   <button className="btn-ghost shrink-0" onClick={reset} disabled={busy}>
-                    Back
+                    {t('Back')}
                   </button>
                   <button
                     className="btn-accent shrink-0"
@@ -402,7 +401,7 @@ export default function FeedbackHub(): JSX.Element {
                     disabled={!canSend || busy}
                     title={!canSend ? 'Answer every required (*) question first' : undefined}
                   >
-                    {busy ? 'Sending…' : 'Send feedback'}
+                    {busy ? t('Sending…') : t('Send feedback')}
                   </button>
                 </div>
               </div>

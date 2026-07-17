@@ -235,7 +235,12 @@ class Worker(threading.Thread):
         db.conn.execute("DELETE FROM clips WHERE id = ?", (clip["id"],))  # avoid UNIQUE clash
         db.conn.commit()
 
-        final_path, _ = _render_files(source, candidate, segments, clip_dir, self.config, render_opts)
+        from transcription.transcriber import detected_language
+
+        content_lang = detected_language(video_id, data_dir / "transcripts")
+        final_path, _ = _render_files(
+            source, candidate, segments, clip_dir, self.config, render_opts, content_lang
+        )
         meta = ClipMetadata(
             title=clip["title"] or "",
             description=clip["description"] or "",

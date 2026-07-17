@@ -6,6 +6,7 @@ import Models from './pages/Models'
 import Settings from './pages/Settings'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
+import { t } from './lib/i18n'
 
 type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
 
@@ -40,7 +41,7 @@ export default function App(): JSX.Element {
           <h1 className="text-lg font-bold">
             Clips <span className="text-accent">Studio</span>
           </h1>
-          <p className="text-xs text-muted mt-0.5">local-first AI clipping</p>
+          <p className="text-xs text-muted mt-0.5">{t('local-first AI clipping')}</p>
         </div>
         <nav className="flex-1 px-3 space-y-1">
           {NAV.map((item) => (
@@ -54,7 +55,7 @@ export default function App(): JSX.Element {
               }`}
             >
               <span aria-hidden>{item.icon}</span>
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </nav>
@@ -71,9 +72,9 @@ export default function App(): JSX.Element {
             rel="noreferrer"
             className="text-xs text-muted hover:text-accent transition-colors"
           >
-            <span className="font-semibold">Open source</span> — view &amp; modify on GitHub ↗
+            <span className="font-semibold">{t('Open source')}</span> — {t('view & modify on GitHub')} ↗
           </a>
-          <p className="text-[10px] text-muted/60 mt-1.5">100% local · no cloud AI</p>
+          <p className="text-[10px] text-muted/60 mt-1.5">{t('100% local · no cloud AI')}</p>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">

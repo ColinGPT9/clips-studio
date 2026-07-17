@@ -131,6 +131,7 @@ class SettingsPatch(BaseModel):
     channel: str | None = None
     auto_upload: bool | None = None
     privacy: str | None = None
+    content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
 
 
 class FeedbackIn(BaseModel):
@@ -715,7 +716,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         prev_dir.mkdir(parents=True, exist_ok=True)
         out = prev_dir / f"clip_{clip_id}.mp4"
         try:
-            rendered, _ = _render_files(source, candidate, segments, prev_dir, config, opts)
+            from transcription.transcriber import detected_language
+
+            content_lang = detected_language(row["video_id"], data_dir / "transcripts")
+            rendered, _ = _render_files(
+                source, candidate, segments, prev_dir, config, opts, content_lang
+            )
             out.unlink(missing_ok=True)
             rendered.rename(out)
         except Exception as e:
@@ -1136,16 +1142,22 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "channel": config.get("channel", ""),
             "auto_upload": config.get("upload", {}).get("enabled", False),
             "privacy": config.get("upload", {}).get("privacy", "public"),
+            "content_language": config.get("content_language", "auto"),
         }
 
     @app.patch("/settings")
     def patch_settings(body: SettingsPatch):
         text = settings_path.read_text(encoding="utf-8")
+        if body.content_language is not None and not re.fullmatch(
+            r"auto|[a-z]{2,3}", body.content_language
+        ):
+            raise HTTPException(400, "content_language must be 'auto' or an ISO code")
         edits = {
             "model": body.model,
             "channel": f'"{body.channel}"' if body.channel is not None else None,
             "auto_upload": str(body.auto_upload).lower() if body.auto_upload is not None else None,
             "privacy": body.privacy,
+            "content_language": body.content_language,
         }
         for key, value in edits.items():
             if value is None:
@@ -1154,6 +1166,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if n == 0:
                 raise HTTPException(400, f"no '{key}:' line in settings.yaml")
         settings_path.write_text(text, encoding="utf-8")
+        if body.content_language is not None:
+            # Applies to the NEXT processed video — no restart needed.
+            config["content_language"] = body.content_language
         return {"ok": True, "note": "restart serve to apply pipeline-level changes"}
 
     return app

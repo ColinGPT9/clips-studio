@@ -137,13 +137,25 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
+    # Content language: "auto" lets Whisper detect; a forced code fixes
+    # bilingual streams (e.g. Hindi speech over English game audio) where
+    # detection picks the wrong language and every caption burns wrong.
+    forced_lang = (config.get("content_language") or "auto").lower()
     segments = transcribe(
         video.path,
         video.video_id,
         data_dir / "transcripts",
         model_size=config["whisper"]["model"],
         device=config["whisper"]["device"],
+        language=None if forced_lang == "auto" else forced_lang,
     )
+    from transcription.transcriber import detected_language
+
+    content_lang = forced_lang if forced_lang != "auto" else detected_language(
+        video.video_id, data_dir / "transcripts"
+    )
+    if content_lang != "en":
+        print(f"      Content language: {content_lang}")
     print(f"      {len(segments)} segments")
     db.set_video_status(video.video_id, "transcribed")
 
@@ -237,10 +249,10 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     done_count = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_render_files, video.path, candidate, segments, clip_dir, config, None): (
-                candidate,
-                meta,
-            )
+            pool.submit(
+                _render_files, video.path, candidate, segments, clip_dir, config, None,
+                content_lang,
+            ): (candidate, meta)
             for candidate, meta in zip(candidates, metas)
         }
         for future in as_completed(futures):
@@ -335,6 +347,7 @@ def _render_files(
     clip_dir: Path,
     config: dict,
     render_opts: dict | None = None,
+    content_language: str = "en",
 ) -> tuple[Path, str]:
     """Pure file work — cut, track, crop, captions, color. NO database access
     and NO LLM call, so it is safe to run in a worker thread. Returns the
@@ -397,14 +410,19 @@ def _render_files(
             style=caption_style,
             lines=lines,
             canvas=canvas,
+            language=content_language,
         )
 
     # Hook title (big text, top third, first few seconds) burns through the
     # same ASS/subtitles path as captions — correct at final resolution.
     if edit is not None and edit.hook:
+        from video.captions import caption_font_for
         from video_editor.overlay import ensure_hook
 
-        ass_path = ensure_hook(ass_path, clip_dir / f"{stem}.ass", edit.hook, canvas=canvas)
+        ass_path = ensure_hook(
+            ass_path, clip_dir / f"{stem}.ass", edit.hook, canvas=canvas,
+            font=caption_font_for(content_language, None) or "Arial Black",
+        )
 
     # Watermark & branding (opts["watermark"], else the job/config default).
     # Text folds into the ASS burn now; the image overlay runs after the

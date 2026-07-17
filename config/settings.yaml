@@ -5,6 +5,11 @@
 model: gemma:7b        # your AI model (see: python main.py models)
 channel: ""            # your channel, e.g. "@YourHandle"
 
+content_language: auto # language of the streams you clip: auto = detect per
+                       # video (fine for most). Force a code (es / pt / hi /
+                       # id / en ...) if bilingual streams get transcribed in
+                       # the wrong language — captions burn in this language.
+
 auto_upload: false     # true = post Shorts to YouTube automatically
                        # (needs one-time setup: README "Enable uploads")
 

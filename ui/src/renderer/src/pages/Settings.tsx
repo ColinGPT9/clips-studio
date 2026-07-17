@@ -6,8 +6,82 @@ import {
   saveAppearance,
   type Appearance
 } from '../lib/appearance'
+import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
+import { APP_LANGUAGES, appLanguageSetting, setAppLanguage, t } from '../lib/i18n'
 import { Folder } from '../components/icons'
+
+// Content languages offered in the dropdown — the transcription/caption
+// side accepts any ISO code via settings.yaml; these are the focus markets.
+const CONTENT_LANGUAGES = [
+  ['auto', 'Auto-detect (per video)'],
+  ['en', 'English'],
+  ['es', 'Español'],
+  ['pt', 'Português'],
+  ['hi', 'हिन्दी'],
+  ['id', 'Bahasa Indonesia']
+] as const
+
+function LanguageCard(): JSX.Element {
+  const [contentLang, setContentLang] = useState('auto')
+
+  useEffect(() => {
+    api.settings().then((s) => setContentLang(s.content_language || 'auto')).catch(() => {})
+  }, [])
+
+  return (
+    <div className="card space-y-4" aria-label="Language">
+      <h3 className="font-semibold">{t('Language')}</h3>
+      <div>
+        <label htmlFor="app-lang" className="label">
+          {t('App language')}
+        </label>
+        <select
+          id="app-lang"
+          className="input mt-1"
+          value={appLanguageSetting()}
+          onChange={(e) => setAppLanguage(e.target.value)}
+        >
+          {APP_LANGUAGES.map(([code, label]) => (
+            <option key={code} value={code}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted mt-1">
+          {t('The app follows your Windows language unless you choose one here.')}
+        </p>
+      </div>
+      <div>
+        <label htmlFor="content-lang" className="label">
+          {t('Content language')}
+        </label>
+        <select
+          id="content-lang"
+          className="input mt-1"
+          value={contentLang}
+          onChange={async (e) => {
+            setContentLang(e.target.value)
+            try {
+              await api.patchSettings({ content_language: e.target.value })
+            } catch {
+              /* backend not up yet */
+            }
+          }}
+        >
+          {CONTENT_LANGUAGES.map(([code, label]) => (
+            <option key={code} value={code}>
+              {code === 'auto' ? t('Auto-detect (per video)') : label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted mt-1">
+          {t('Transcription and burned-in captions use this language. Auto works for most streams; force it if a bilingual stream gets the wrong captions.')}
+        </p>
+      </div>
+    </div>
+  )
+}
 
 function ExportFolderCard(): JSX.Element {
   const [folder, setFolder] = useState('')
@@ -18,9 +92,9 @@ function ExportFolderCard(): JSX.Element {
 
   return (
     <div className="card space-y-3" aria-label="Export location">
-      <h3 className="font-semibold">Export location</h3>
+      <h3 className="font-semibold">{t('Export location')}</h3>
       <p className="text-xs text-muted">
-        Where exported clips are saved. Defaults to your Downloads folder.
+        {t('Where exported clips are saved. Defaults to your Downloads folder.')}
       </p>
       <div className="flex items-center gap-2">
         <input
@@ -41,7 +115,7 @@ function ExportFolderCard(): JSX.Element {
           }}
         >
           <Folder className="mr-1.5" />
-          Browse…
+          {t('Browse…')}
         </button>
       </div>
     </div>
@@ -59,10 +133,10 @@ function AppearanceCard(): JSX.Element {
 
   return (
     <div className="card space-y-4" aria-label="Appearance and accessibility">
-      <h3 className="font-semibold">Appearance &amp; accessibility</h3>
+      <h3 className="font-semibold">{t('Appearance & accessibility')}</h3>
       <div>
         <label htmlFor="app-font" className="label">
-          Font
+          {t('Font')}
         </label>
         <select
           id="app-font"
@@ -95,7 +169,7 @@ function AppearanceCard(): JSX.Element {
       <div className="flex items-end gap-3">
         <div>
           <label htmlFor="app-color" className="label">
-            Text colour
+            {t('Text colour')}
           </label>
           <input
             id="app-color"
@@ -106,7 +180,7 @@ function AppearanceCard(): JSX.Element {
           />
         </div>
         <button className="btn-ghost" onClick={() => update(DEFAULT_APPEARANCE)}>
-          Reset to defaults
+          {t('Reset to defaults')}
         </button>
       </div>
       <p className="text-xs text-muted">
@@ -120,7 +194,9 @@ function AppearanceCard(): JSX.Element {
 export default function Settings(): JSX.Element {
   return (
     <div className="p-6 space-y-5 max-w-xl">
-      <h2 className="text-2xl font-bold">Settings</h2>
+      <h2 className="text-2xl font-bold">{t('Settings')}</h2>
+
+      <LanguageCard />
 
       <AppearanceCard />
 

@@ -4,6 +4,7 @@ import type { CaptionStyle } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from './WatermarkCard'
 import { Folder } from './icons'
+import { t } from '../lib/i18n'
 
 const STYLE_KEY = 'generate-caption-style'
 
@@ -96,7 +97,7 @@ export default function GenerateBar(): JSX.Element {
       <div className="card flex gap-3 items-center flex-wrap">
         <input
           className="input w-80 max-w-full"
-          placeholder="Paste a YouTube, Twitch, or Kick URL…"
+          placeholder={t('Paste a YouTube, Twitch, or Kick URL…')}
           aria-label="Video URL to make clips from"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
@@ -112,7 +113,7 @@ export default function GenerateBar(): JSX.Element {
               localStorage.setItem('generate-captions', String(e.target.checked))
             }}
           />
-          Captions
+          {t('Captions')}
         </label>
         <button
           className="btn-ghost shrink-0"
@@ -120,7 +121,7 @@ export default function GenerateBar(): JSX.Element {
           aria-expanded={styleOpen}
           disabled={!burnCaptions}
         >
-          Caption style {styleOpen ? '▾' : '▸'}
+          {t('Caption style')} {styleOpen ? '▾' : '▸'}
         </button>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
@@ -135,7 +136,7 @@ export default function GenerateBar(): JSX.Element {
               localStorage.setItem('generate-long-clips', String(e.target.checked))
             }}
           />
-          60s+ <span className="text-muted">(TikTok monetization)</span>
+          60s+ <span className="text-muted">{t('(TikTok monetization)')}</span>
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
@@ -150,13 +151,13 @@ export default function GenerateBar(): JSX.Element {
               localStorage.setItem('generate-longform', String(e.target.checked))
             }}
           />
-          Longform <span className="text-muted">(16:9)</span>
+          {t('Longform')} <span className="text-muted">(16:9)</span>
         </label>
         <label
           className="flex items-center gap-2 text-sm shrink-0"
           title="Gaming clips with a webcam overlay: which band the camera goes in on the vertical clip. Reaction/IRL clips aren't affected. Changeable per clip in the editor."
         >
-          <span className="text-muted">Camera</span>
+          <span className="text-muted">{t('Camera')}</span>
           <select
             className="input !w-24 !py-1 text-sm"
             value={splitPosition}
@@ -167,8 +168,8 @@ export default function GenerateBar(): JSX.Element {
             }}
             aria-label="Facecam position for gaming clips"
           >
-            <option value="top">Top</option>
-            <option value="bottom">Bottom</option>
+            <option value="top">{t('Top')}</option>
+            <option value="bottom">{t('Bottom')}</option>
           </select>
         </label>
         <label
@@ -184,7 +185,7 @@ export default function GenerateBar(): JSX.Element {
               setWatermarkEnabled(e.target.checked)
             }}
           />
-          Watermark <span className="text-muted">(branding)</span>
+          {t('Watermark')} <span className="text-muted">{t('(branding)')}</span>
         </label>
         <button
           className="btn-ghost shrink-0"
@@ -200,10 +201,10 @@ export default function GenerateBar(): JSX.Element {
           title="Make clips from a video file on this computer — e.g. your YouTube video before you publish it"
         >
           <Folder className="mr-1.5" />
-          Upload video file
+          {t('Upload video file')}
         </button>
         <button className="btn-accent shrink-0 ml-auto" onClick={() => generate()}>
-          Generate clips
+          {t('Generate clips')}
         </button>
         {styleOpen && (
           <div className="w-full space-y-3 border-t border-raised/60 pt-3">
@@ -213,7 +214,7 @@ export default function GenerateBar(): JSX.Element {
         )}
         {longform && (
           <div className="w-full flex items-center gap-3 flex-wrap border-t border-raised/60 pt-3">
-            <p className="label shrink-0">Longform output</p>
+            <p className="label shrink-0">{t('Longform output')}</p>
             <select
               className="input !w-64"
               value={longformMode}
@@ -245,7 +246,7 @@ export default function GenerateBar(): JSX.Element {
           </p>
           <div className="flex gap-3 flex-wrap items-end">
             <div className="flex-1 min-w-48">
-              <label className="label">Video title</label>
+              <label className="label">{t('Video title')}</label>
               <input
                 className="input mt-1"
                 value={uploadTitle}
@@ -253,7 +254,7 @@ export default function GenerateBar(): JSX.Element {
               />
             </div>
             <div className="flex-1 min-w-40">
-              <label className="label">Creator / channel name</label>
+              <label className="label">{t('Creator / channel name')}</label>
               <input
                 className="input mt-1"
                 placeholder="e.g. YourChannel"
@@ -265,7 +266,7 @@ export default function GenerateBar(): JSX.Element {
               />
             </div>
             <div>
-              <label className="label">Platform</label>
+              <label className="label">{t('Platform')}</label>
               <select
                 className="input mt-1 !w-32"
                 value={uploadPlatform}
@@ -305,7 +306,7 @@ export default function GenerateBar(): JSX.Element {
                 }
               }}
             >
-              {uploadBusy ? 'Importing…' : 'Make clips'}
+              {uploadBusy ? t('Importing…') : t('Make clips')}
             </button>
             <button className="btn-ghost shrink-0" onClick={() => setUploadPath(null)}>
               Cancel
@@ -314,7 +315,7 @@ export default function GenerateBar(): JSX.Element {
         </div>
       )}
 
-      {queued && <p className="text-sm text-accent px-1">Queued — processing will start shortly.</p>}
+      {queued && <p className="text-sm text-accent px-1">{t('Queued — processing will start shortly.')}</p>}
       {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
       {reprocessUrl && (
         <div className="card flex items-center gap-3 flex-wrap">
@@ -324,10 +325,10 @@ export default function GenerateBar(): JSX.Element {
             are added alongside them.
           </p>
           <button className="btn-accent shrink-0" onClick={() => generate(reprocessUrl, true)}>
-            Process again
+            {t('Process again')}
           </button>
           <button className="btn-ghost shrink-0" onClick={() => setReprocessUrl(null)}>
-            Cancel
+            {t('Cancel')}
           </button>
         </div>
       )}
