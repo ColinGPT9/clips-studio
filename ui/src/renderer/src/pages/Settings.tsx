@@ -20,7 +20,11 @@ const CONTENT_LANGUAGES = [
   ['pt', 'Português'],
   ['hi', 'हिन्दी'],
   ['id', 'Bahasa Indonesia'],
-  ['ja', '日本語']
+  ['ja', '日本語'],
+  ['ar', 'العربية'],
+  ['ru', 'Русский'],
+  ['de', 'Deutsch'],
+  ['fr', 'Français']
 ] as const
 
 function LanguageCard(): JSX.Element {

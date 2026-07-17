@@ -7,13 +7,17 @@
  *    navigator.language reflects the OS locale) and can be overridden in
  *    Settings. Switching reloads the window — no reactive plumbing needed.
  */
+import ar from '../locales/ar.json'
+import de from '../locales/de.json'
 import es from '../locales/es.json'
+import fr from '../locales/fr.json'
 import hi from '../locales/hi.json'
 import id from '../locales/id.json'
 import ja from '../locales/ja.json'
 import pt from '../locales/pt.json'
+import ru from '../locales/ru.json'
 
-const LOCALES: Record<string, Record<string, string>> = { es, pt, hi, id, ja }
+const LOCALES: Record<string, Record<string, string>> = { es, pt, hi, id, ja, ar, ru, de, fr }
 
 export const APP_LANGUAGES = [
   ['system', 'System (Windows) language'],
@@ -22,7 +26,11 @@ export const APP_LANGUAGES = [
   ['pt', 'Português'],
   ['hi', 'हिन्दी'],
   ['id', 'Bahasa Indonesia'],
-  ['ja', '日本語']
+  ['ja', '日本語'],
+  ['ar', 'العربية'],
+  ['ru', 'Русский'],
+  ['de', 'Deutsch'],
+  ['fr', 'Français']
 ] as const
 
 const STORE_KEY = 'app-language'
