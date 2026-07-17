@@ -33,11 +33,17 @@ def render_vertical(
     output_path: Path,
     ass_path: Path | None = None,
     vf_extra: str = "",
+    cam_position: str = "top",
 ) -> Path:
     """vf_extra: an optional FFmpeg filter fragment (color preset) applied
-    after scaling and before captions, so captions stay unfiltered."""
+    after scaling and before captions, so captions stay unfiltered.
+    cam_position: 'top' | 'bottom' — which band the facecam occupies in the
+    split (gameplay + webcam) layout. Ignored by the other modes."""
     if tracking["mode"] == "split":
-        return _render_split(clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra)
+        return _render_split(
+            clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra,
+            cam_position=cam_position,
+        )
     if tracking["mode"] == "fit_blur":
         return _render_fit_blur(clip_path, tracking.get("region"), output_path, ass_path, vf_extra)
     return _render_tracked(
@@ -240,6 +246,7 @@ def _render_split(
     output_path: Path,
     ass_path: Path | None,
     vf_extra: str = "",
+    cam_position: str = "top",
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -259,14 +266,16 @@ def _render_split(
     game_x = (src_w - game_w) // 2
 
     # Webcam band: crop the overlay region, fill the 1080x672 band
-    # (uniform scale up, then trim overflow — never stretch).
+    # (uniform scale up, then trim overflow — never stretch). The vstack
+    # order decides which band is on top — user-switchable per clip.
+    stack = "[game][cam]" if cam_position == "bottom" else "[cam][game]"
     filters = (
         f"[0:v]crop={cam_w}:{cam_h}:{cam_x}:{cam_y},"
         f"scale=1080:{CAM_H}:force_original_aspect_ratio=increase:flags=lanczos,"
         f"crop=1080:{CAM_H},setsar=1[cam];"
         f"[0:v]crop={game_w}:{src_h}:{game_x}:0,"
         f"scale=1080:{GAME_H}:flags=lanczos,setsar=1[game];"
-        f"[cam][game]vstack=inputs=2[v]"
+        f"{stack}vstack=inputs=2[v]"
     )
     if vf_extra:
         filters += f";[v]{vf_extra}[v]"

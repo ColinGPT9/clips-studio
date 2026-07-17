@@ -179,6 +179,10 @@ export default function TimelineEditor({
   // force the full frame on a blurred backdrop, Center = static center crop.
   const storedCrop = clip.render_opts?.crop ?? 'track'
   const [layout, setLayout] = useState<string>(storedCrop)
+  // Gaming split layout: which band the facecam occupies (only affects
+  // clips the tracker rendered as gameplay+facecam).
+  const storedSplitPos = clip.render_opts?.split_position ?? 'top'
+  const [splitPos, setSplitPos] = useState<'top' | 'bottom'>(storedSplitPos)
   const isLandscape = !!clip.render_opts?.profile
   // Caption style (font/size/colour/position) for THIS clip.
   const storedStyle: Required<CaptionStyle> = {
@@ -218,6 +222,7 @@ export default function TimelineEditor({
     setNotice('')
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
+    setSplitPos(clip.render_opts?.split_position ?? 'top')
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
     setWordEdits([])
     setEditingWord(null)
@@ -569,16 +574,18 @@ export default function TimelineEditor({
   }, [duration])
 
   const layoutDirty = layout !== storedCrop
+  const splitDirty = splitPos !== storedSplitPos
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
   const wmDirty = JSON.stringify(watermark) !== JSON.stringify(storedWatermark)
   const dirty =
     layoutDirty ||
+    splitDirty ||
     styleDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const pendingJson = (): string =>
-    JSON.stringify({ e: edit, l: layout, s: captionStyle, w: wordEdits, m: watermark })
+    JSON.stringify({ e: edit, l: layout, p: splitPos, s: captionStyle, w: wordEdits, m: watermark })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
@@ -695,7 +702,8 @@ export default function TimelineEditor({
         pendingCaptionLines(),
         layout,
         styleDirty ? captionStyle : null,
-        wmDirty ? (watermark ?? {}) : undefined
+        wmDirty ? (watermark ?? {}) : undefined,
+        splitDirty ? splitPos : null
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -719,6 +727,7 @@ export default function TimelineEditor({
       const cleared = isDefault(edit, duration)
       const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
       if (layoutDirty) renderOpts.crop = layout
+      if (splitDirty) renderOpts.split_position = splitPos
       if (styleDirty) renderOpts.caption_style = captionStyle
       if (wmDirty) renderOpts.watermark = watermark
       const lines = pendingCaptionLines()
@@ -926,6 +935,7 @@ export default function TimelineEditor({
             onClick={() => {
               push(defaultEdit(duration))
               setLayout('track')
+              setSplitPos('top')
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
               setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
@@ -1123,7 +1133,7 @@ export default function TimelineEditor({
             (t.id === 'captions' && (styleDirty || wordEdits.length > 0)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
-              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty))
+              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || splitDirty))
           return (
             <button
               key={t.id}
@@ -1347,6 +1357,28 @@ export default function TimelineEditor({
           {layoutDirty && (
             <span className="text-muted">— shows in “Update preview”, saved on Apply</span>
           )}
+          {/* Gaming split layout: which band the facecam goes in. Only kicks
+              in when the AI detected a gameplay+webcam layout for this clip. */}
+          <span className="text-muted ml-3">Facecam</span>
+          {(
+            [
+              ['top', 'Top', 'Webcam band above the gameplay (classic Shorts layout)'],
+              ['bottom', 'Bottom', 'Gameplay on top, webcam below — some creators prefer the game up high']
+            ] as const
+          ).map(([value, label, tip]) => (
+            <button
+              key={value}
+              onClick={() => setSplitPos(value)}
+              className={`px-2.5 py-1 rounded-md ${
+                splitPos === value
+                  ? 'bg-accent/20 text-accent font-medium'
+                  : 'bg-raised text-muted hover:text-ink'
+              }`}
+              title={`${tip} — only affects gaming clips with a detected facecam`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
 
