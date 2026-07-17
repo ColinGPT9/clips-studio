@@ -454,18 +454,27 @@ def _render_files(
                 intermediate,
                 model_name=tracking_cfg["detector"],
                 sample_fps=tracking_cfg["sample_fps"],
-                # User-forced letterbox: detection still runs so the frame is
-                # cropped TIGHT to the subject (person large), exactly like
-                # the automatic letterbox — just without its trigger.
                 force_fit_blur=(crop_mode == "letterbox"),
             )
+            if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
+                # USER-forced letterbox means "show me the WHOLE frame" —
+                # reaction/gaming mixes need both the person and the content.
+                # Cropping tight to the detected person (the automatic
+                # letterbox behavior) threw away the game/reaction side.
+                tracking["region"] = None
             if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
                 shift = -0.12 if crop_mode == "bias_left" else 0.12
                 tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
         render_vertical(
             intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
-            # Gaming/facecam split layout: which band the webcam goes in.
-            cam_position=opts.get("split_position", "top"),
+            # Gaming/facecam split layout: which band the webcam goes in —
+            # per-clip editor choice wins over the job default from the
+            # Generate bar (same precedence as filters/caption style).
+            cam_position=(
+                opts.get("split_position")
+                or config["clips"].get("split_position")
+                or "top"
+            ),
         )
         intermediate.unlink(missing_ok=True)
     else:

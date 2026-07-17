@@ -50,6 +50,10 @@ export default function GenerateBar(): JSX.Element {
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
   const [watermark, setWatermark] = useState<boolean>(watermarkSelection().enabled)
+  // Gaming clips with a facecam: which band the camera goes in (remembered).
+  const [splitPosition, setSplitPosition] = useState<'top' | 'bottom'>(
+    (localStorage.getItem('generate-split-position') as 'top' | 'bottom') ?? 'top'
+  )
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
@@ -72,7 +76,8 @@ export default function GenerateBar(): JSX.Element {
         captions: burnCaptions,
         longClips,
         longform: longform ? { mode: longformMode } : null,
-        watermarkProfileId: wm.enabled ? wm.profileId : null
+        watermarkProfileId: wm.enabled ? wm.profileId : null,
+        splitPosition
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -146,6 +151,25 @@ export default function GenerateBar(): JSX.Element {
             }}
           />
           Longform <span className="text-muted">(16:9)</span>
+        </label>
+        <label
+          className="flex items-center gap-2 text-sm shrink-0"
+          title="Gaming clips with a webcam overlay: which band the camera goes in on the vertical clip. Reaction/IRL clips aren't affected. Changeable per clip in the editor."
+        >
+          <span className="text-muted">Camera</span>
+          <select
+            className="input !w-24 !py-1 text-sm"
+            value={splitPosition}
+            onChange={(e) => {
+              const v = e.target.value as 'top' | 'bottom'
+              setSplitPosition(v)
+              localStorage.setItem('generate-split-position', v)
+            }}
+            aria-label="Facecam position for gaming clips"
+          >
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+          </select>
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
