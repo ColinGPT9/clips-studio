@@ -7,7 +7,7 @@ import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
 import type { Clip, Settings, StudioEvent, Video } from '../lib/types'
 
-const DONATE_URL = 'https://github.com/sponsors/ColinGPT9'
+const DONATE_URL = 'https://paypal.me/clipsstudio'
 
 type SortMode = 'newest' | 'channel'
 
