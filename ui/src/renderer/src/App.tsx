@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import ClipStudio from './pages/ClipStudio'
 import Creators from './pages/Creators'
@@ -6,7 +6,7 @@ import Models from './pages/Models'
 import Settings from './pages/Settings'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
-import { t } from './lib/i18n'
+import { activeLocale, t } from './lib/i18n'
 
 type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
 
@@ -28,6 +28,14 @@ export interface StudioTarget {
 export default function App(): JSX.Element {
   const [page, setPage] = useState<Page>('dashboard')
   const [studioTarget, setStudioTarget] = useState<StudioTarget | null>(null)
+  // Language switches re-render the tree IN PLACE (no reload): the page
+  // state lives here, so the user stays wherever they were (e.g. Settings).
+  const [locale, setLocale] = useState(activeLocale())
+  useEffect(() => {
+    const onLang = (): void => setLocale(activeLocale())
+    window.addEventListener('app-language-changed', onLang)
+    return () => window.removeEventListener('app-language-changed', onLang)
+  }, [])
 
   const openInStudio = (videoId: string, clipId?: number): void => {
     setStudioTarget({ videoId, clipId })
@@ -35,7 +43,7 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen" key={locale}>
       <aside className="w-52 shrink-0 bg-surface border-r border-raised/60 flex flex-col">
         <div className="px-5 py-5">
           <h1 className="text-lg font-bold">
