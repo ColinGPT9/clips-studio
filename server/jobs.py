@@ -113,6 +113,7 @@ class Worker(threading.Thread):
                         or payload.get("min_score") is not None
                         or payload.get("watermark_profile_id")
                         or payload.get("filter")
+                        or payload.get("split_position")
                     ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
@@ -125,6 +126,10 @@ class Worker(threading.Thread):
                         cfg["clips"]["max_duration"] = 180
                     if payload.get("filter"):
                         cfg["clips"]["filter"] = payload["filter"]
+                    if payload.get("split_position") in ("top", "bottom"):
+                        # Facecam band default for gaming split layouts,
+                        # chosen in the Generate bar (per-clip editor wins).
+                        cfg["clips"]["split_position"] = payload["split_position"]
                     if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n
