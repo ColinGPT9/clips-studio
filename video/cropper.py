@@ -272,7 +272,9 @@ def _render_split(
     filters = (
         f"[0:v]crop={cam_w}:{cam_h}:{cam_x}:{cam_y},"
         f"scale=1080:{CAM_H}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop=1080:{CAM_H},setsar=1[cam];"
+        # Overflow trims from the BOTTOM only (y=0): a taller-than-band cam
+        # box must never cut the streamer's head off at the top.
+        f"crop=1080:{CAM_H}:(iw-1080)/2:0,setsar=1[cam];"
         f"[0:v]crop={game_w}:{src_h}:{game_x}:0,"
         f"scale=1080:{GAME_H}:flags=lanczos,setsar=1[game];"
         f"{stack}vstack=inputs=2[v]"

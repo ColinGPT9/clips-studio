@@ -285,7 +285,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["filter"] = body.filter
         if body.min_score is not None:
             payload["min_score"] = max(0, min(100, body.min_score))
-        if body.split_position in ("top", "bottom"):
+        if body.split_position in ("top", "bottom", "force_top", "force_bottom"):
             payload["split_position"] = body.split_position
         d = db()
         try:

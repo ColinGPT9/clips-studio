@@ -63,7 +63,7 @@ export const api = {
       filter?: FilterName
       longform?: { mode: string } | null
       watermarkProfileId?: number | null
-      splitPosition?: 'top' | 'bottom' | null
+      splitPosition?: 'top' | 'bottom' | 'force_top' | 'force_bottom' | null
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
