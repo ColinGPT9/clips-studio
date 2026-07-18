@@ -52,8 +52,12 @@ export default function GenerateBar(): JSX.Element {
   )
   const [watermark, setWatermark] = useState<boolean>(watermarkSelection().enabled)
   // Gaming clips with a facecam: which band the camera goes in (remembered).
-  const [splitPosition, setSplitPosition] = useState<'top' | 'bottom'>(
-    (localStorage.getItem('generate-split-position') as 'top' | 'bottom') ?? 'top'
+  // The force_* values additionally DECLARE the stream as gaming+facecam,
+  // for streams where auto-detection misses the cam (e.g. games whose
+  // characters get detected as people).
+  type SplitPos = 'top' | 'bottom' | 'force_top' | 'force_bottom'
+  const [splitPosition, setSplitPosition] = useState<SplitPos>(
+    (localStorage.getItem('generate-split-position') as SplitPos) ?? 'top'
   )
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
@@ -159,17 +163,19 @@ export default function GenerateBar(): JSX.Element {
         >
           <span className="text-muted">{t('Camera')}</span>
           <select
-            className="input !w-24 !py-1 text-sm"
+            className="input !w-40 !py-1 text-sm"
             value={splitPosition}
             onChange={(e) => {
-              const v = e.target.value as 'top' | 'bottom'
+              const v = e.target.value as SplitPos
               setSplitPosition(v)
               localStorage.setItem('generate-split-position', v)
             }}
             aria-label="Facecam position for gaming clips"
           >
-            <option value="top">{t('Top')}</option>
-            <option value="bottom">{t('Bottom')}</option>
+            <option value="top">{t('Top (auto)')}</option>
+            <option value="bottom">{t('Bottom (auto)')}</option>
+            <option value="force_top">{t('Top — gaming stream')}</option>
+            <option value="force_bottom">{t('Bottom — gaming stream')}</option>
           </select>
         </label>
         <label

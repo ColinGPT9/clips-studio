@@ -126,10 +126,15 @@ class Worker(threading.Thread):
                         cfg["clips"]["max_duration"] = 180
                     if payload.get("filter"):
                         cfg["clips"]["filter"] = payload["filter"]
-                    if payload.get("split_position") in ("top", "bottom"):
+                    sp = payload.get("split_position") or ""
+                    if sp in ("top", "bottom", "force_top", "force_bottom"):
                         # Facecam band default for gaming split layouts,
                         # chosen in the Generate bar (per-clip editor wins).
-                        cfg["clips"]["split_position"] = payload["split_position"]
+                        # force_* also DECLARES the stream as gaming+facecam,
+                        # relaxing layout detection instead of guessing.
+                        cfg["clips"]["split_position"] = sp.removeprefix("force_")
+                        if sp.startswith("force_"):
+                            cfg["clips"]["force_split"] = True
                     if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n
