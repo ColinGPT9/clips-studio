@@ -70,6 +70,12 @@ scoring:
                                # content, which performs on social but which the
                                # scorer under-credits. Raise for MORE such clips,
                                # 0 to disable.
+  game_action_bonus: 10        # max score bonus for in-GAME action peaks (kill
+                               # streaks, clutches): flashes + rapid cuts +
+                               # audio bursts. Not tied to seeing a person on
+                               # screen — in gameplay the streamer is a tiny
+                               # facecam, so person-based signals miss these.
+                               # Raise for more gameplay clips, 0 to disable.
   audience_bonus: 8            # max score bonus from real audience data: Twitch
                                # chat replay speed (unique chatters, so gifted-sub
                                # spam doesn't count) and YouTube's most-replayed

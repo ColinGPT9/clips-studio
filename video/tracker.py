@@ -182,6 +182,9 @@ def compute_tracking(
     wide_boxes: list[tuple[float, float, float, float]] = []  # subject bbox when a
     #                                             9:16 crop can't hold it (normalized)
     frame_idx = 0
+    # A reference frame from early-mid clip, kept for webcam-overlay edge
+    # snapping (the overlay is static, so any representative frame works).
+    ref_frame = None
 
     while True:
         ok = cap.grab()
@@ -197,6 +200,8 @@ def compute_tracking(
         t = frame_idx / video_fps
         h, w = frame.shape[:2]
         n_samples += 1
+        if n_samples <= 60:  # ~7s in at 8fps — past intros, before outros
+            ref_frame = frame
 
         visible = _assign(tracks, _detect(model, frame, min_confidence), t)
         for tid in visible:
@@ -408,7 +413,7 @@ def compute_tracking(
             "region": (round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)),
         }
 
-    layout = _detect_facecam_layout(tracks, active_id, n_samples)
+    layout = _detect_facecam_layout(tracks, active_id, n_samples, ref_frame)
     if layout is not None:
         return layout
     if not path:
@@ -513,7 +518,9 @@ def _target_x(tracks: dict, visible: list[int], active_id: int, crop_frac: float
     return tracks[active_id].centers[-1]
 
 
-def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) -> dict | None:
+def _detect_facecam_layout(
+    tracks: dict, active_id: int | None, n_samples: int, ref_frame=None
+) -> dict | None:
     """Gameplay + facecam streams: the streamer's face sits inside a small,
     static webcam overlay. If the dominant subject barely moves, is small,
     and is present in >=70% of samples -> stacked split layout."""
@@ -527,7 +534,9 @@ def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) 
     if centers.std() > 0.025 or float(np.mean(tr.areas)) > 0.12:
         return None
 
-    # Median normalized face box, padded 35% to capture the webcam frame.
+    # Median normalized face box, padded 35% as a first guess at the webcam
+    # frame — then snapped to the overlay's REAL borders, so the band shows
+    # only the camera and never a strip of gameplay.
     boxes = np.array(tr.norm_boxes)
     x1, y1, x2, y2 = np.median(boxes, axis=0)
     pw, ph = (x2 - x1) * 0.35, (y2 - y1) * 0.35
@@ -535,4 +544,68 @@ def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) 
     y = max(0.0, float(y1 - ph))
     bw = min(1.0 - x, float(x2 - x1 + 2 * pw))
     bh = min(1.0 - y, float(y2 - y1 + 2 * ph))
+    if ref_frame is not None:
+        x, y, bw, bh = _snap_webcam_box(
+            ref_frame, (x, y, bw, bh), (float(x1), float(y1), float(x2), float(y2))
+        )
     return {"mode": "split", "webcam_box": (x, y, bw, bh)}
+
+
+def _snap_webcam_box(
+    frame,
+    padded: tuple[float, float, float, float],
+    face: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    """Refine the padded face box to the webcam overlay's actual rectangle.
+
+    A webcam overlay has hard straight borders against the gameplay — strong
+    gradient lines. For each side we search OUTWARD from the face for the
+    dominant edge line and snap to it; sides near the frame edge anchor to
+    the frame (corner-mounted cams); sides with no confident edge keep the
+    padded guess. This is what stops the top band from showing a slice of
+    the game next to the camera."""
+    h, w = frame.shape[:2]
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    gx = np.abs(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3))  # vertical edges
+    gy = np.abs(cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))  # horizontal edges
+
+    px, py, pbw, pbh = padded
+    fx1, fy1, fx2, fy2 = (int(face[0] * w), int(face[1] * h),
+                          int(face[2] * w), int(face[3] * h))
+    reach_x, reach_y = int(0.30 * w), int(0.30 * h)
+
+    def edge(profile: np.ndarray, lo: int, hi: int) -> int | None:
+        """Strongest gradient line in [lo, hi) — only if clearly dominant."""
+        lo, hi = max(0, lo), min(len(profile), hi)
+        if hi - lo < 4:
+            return None
+        seg = profile[lo:hi]
+        peak = int(np.argmax(seg))
+        baseline = float(np.median(profile)) + 1e-6
+        return lo + peak if seg[peak] > 3.0 * baseline else None
+
+    # Profiles along the face's extent on the perpendicular axis.
+    col = gx[max(0, fy1):fy2, :].sum(axis=0)  # for left/right borders
+    row = gy[:, max(0, fx1):fx2].sum(axis=1)  # for top/bottom borders
+
+    # Each side: frame-anchored if the padded box already touches the frame,
+    # else snapped to a confident edge, else the padded guess.
+    right = w if px + pbw > 0.98 else (edge(col, fx2 + 2, fx2 + reach_x) or int((px + pbw) * w))
+    if px < 0.02:
+        left = 0
+    else:
+        e = edge(col, fx1 - reach_x, fx1 - 2)
+        left = e if e is not None else int(px * w)
+    bottom = h if py + pbh > 0.98 else (edge(row, fy2 + 2, fy2 + reach_y) or int((py + pbh) * h))
+    if py < 0.02:
+        top = 0
+    else:
+        e = edge(row, fy1 - reach_y, fy1 - 2)
+        top = e if e is not None else int(py * h)
+
+    # Sanity: the snapped box must still contain the face and stay cam-sized.
+    left, top = min(left, fx1), min(top, fy1)
+    right, bottom = max(right, fx2), max(bottom, fy2)
+    if (right - left) * (bottom - top) > 0.45 * w * h:
+        return padded  # snapped onto something huge — distrust it
+    return (left / w, top / h, (right - left) / w, (bottom - top) / h)
