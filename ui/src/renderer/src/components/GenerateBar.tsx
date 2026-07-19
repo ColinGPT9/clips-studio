@@ -51,6 +51,13 @@ export default function GenerateBar(): JSX.Element {
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
   const [watermark, setWatermark] = useState<boolean>(watermarkSelection().enabled)
+  // Reaction videos (webcam over the content being reacted to) use a
+  // separate pipeline. Explicit on purpose — no auto-detection to misfire
+  // on ordinary streams. The value also picks which band the camera gets.
+  const [reactionCam, setReactionCam] = useState<'off' | 'top' | 'bottom'>(
+    (localStorage.getItem('generate-reaction-cam') as 'off' | 'top' | 'bottom') ?? 'off'
+  )
+
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
       const next = { ...s, [key]: value }
@@ -72,7 +79,9 @@ export default function GenerateBar(): JSX.Element {
         captions: burnCaptions,
         longClips,
         longform: longform ? { mode: longformMode } : null,
-        watermarkProfileId: wm.enabled ? wm.profileId : null
+        watermarkProfileId: wm.enabled ? wm.profileId : null,
+        reaction: reactionCam === 'off' ? 'off' : 'always',
+        splitPosition: reactionCam === 'bottom' ? 'bottom' : 'top'
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -146,6 +155,26 @@ export default function GenerateBar(): JSX.Element {
             }}
           />
           {t('Longform')} <span className="text-muted">(16:9)</span>
+        </label>
+        <label
+          className="flex items-center gap-2 text-sm shrink-0"
+          title="Reaction videos — a webcam over the content being reacted to. Renders through a separate pipeline that keeps BOTH visible, with the camera in the band you choose. Leave Off for normal streams (talking head, IRL, gym): they use the standard pipeline."
+        >
+          <span className="text-muted">{t('Reaction')}</span>
+          <select
+            className="input !w-36 !py-1 text-sm"
+            value={reactionCam}
+            onChange={(e) => {
+              const v = e.target.value as 'off' | 'top' | 'bottom'
+              setReactionCam(v)
+              localStorage.setItem('generate-reaction-cam', v)
+            }}
+            aria-label="Reaction video mode and camera position"
+          >
+            <option value="off">{t('Off')}</option>
+            <option value="top">{t('Camera top')}</option>
+            <option value="bottom">{t('Camera bottom')}</option>
+          </select>
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"

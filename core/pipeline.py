@@ -353,10 +353,10 @@ def _try_reaction_render(
     """Render this clip with the REACTION pipeline (creator + reacted
     content both visible), or return False to leave it to the standard one.
 
-    Routing:
-      crop == 'reaction'  -> always (per-clip choice in the editor)
-      reaction == always  -> always (job choice in the Generate bar)
-      reaction == auto    -> only when a confident two-region layout is found
+    Routing is EXPLICIT — there is no auto-detection, because misrouting
+    ordinary content is worse than asking:
+      crop == 'reaction'  -> this clip (editor's Layout row)
+      reaction == always  -> this job (Dashboard's Reaction control)
       otherwise           -> False, standard pipeline (the default)
 
     Fails closed on every path: no layout, low confidence, or any exception
@@ -364,11 +364,7 @@ def _try_reaction_render(
     mode = str(opts.get("reaction") or config["clips"].get("reaction") or "off").lower()
     forced = crop_mode == "reaction" or mode == "always"
     if not forced:
-        # Auto-routing applies only to the default 'Auto (AI)' layout. If the
-        # user explicitly picked Letterbox / Center / a bias for this clip,
-        # that IS their layout decision — never override it.
-        if mode != "auto" or crop_mode != "track":
-            return False
+        return False
     try:
         from reaction.compose import render_reaction
         from reaction.layout import analyze
