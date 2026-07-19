@@ -141,6 +141,7 @@ class TranslateIn(BaseModel):
     folder: str                   # where the files are written
     include_video: bool = True    # copy the clip beside its subtitle tracks
     burn: bool = False            # also make a video per language with captions burned in
+    dub: bool = False             # also speak the translation over the clip
 
 
 class FeedbackIn(BaseModel):
@@ -789,12 +790,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.get("/languages")
     def list_languages():
+        from multilingual import dub as dubber
         from multilingual.languages import LANGUAGES
 
         return {
             "languages": [
-                {"code": c, "name": n, "native": nat} for c, (n, nat, _p) in LANGUAGES.items()
-            ]
+                {"code": c, "name": n, "native": nat, "can_dub": dubber.supported(c)}
+                for c, (n, nat, _p) in LANGUAGES.items()
+            ],
+            # Dubbing needs an optional local TTS package; everything else
+            # works without it.
+            "dubbing_available": dubber.available(),
         }
 
     @app.post("/translate")
@@ -816,6 +822,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "folder": body.folder,
                 "include_video": body.include_video,
                 "burn": body.burn,
+                "dub": body.dub,
             }))
         finally:
             d.close()
