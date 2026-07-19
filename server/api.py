@@ -39,11 +39,6 @@ class JobIn(BaseModel):
     min_score: int | None = None  # per-job quality bar override (0-100)
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
-    reaction: str | None = None  # reaction pipeline: off | always
-    cam_corner: str | None = None  # where the webcam sits in the source
-    content_side: str | None = None  # where the reacted content sits vs the cam
-    reaction_regions: dict | None = None  # webcam/content boxes drawn in the Dashboard
-    split_position: str | None = None  # facecam band in gaming splits (top/bottom)
 
 
 class ClipPatch(BaseModel):
@@ -70,7 +65,6 @@ class PreviewIn(BaseModel):
     edit: dict | None = None            # pending edit list from the editor
     caption_lines: list[dict] | None = None  # pending caption text, if changed
     crop: str | None = None             # pending layout (track/letterbox/center)
-    split_position: str | None = None   # facecam band in gaming splits (top/bottom)
     caption_style: dict | None = None   # pending caption font/size/etc.
     watermark: dict | None = None       # pending branding config (or {} to clear)
 
@@ -136,20 +130,6 @@ class SettingsPatch(BaseModel):
     auto_upload: bool | None = None
     privacy: str | None = None
     content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
-
-
-class UrlFrameIn(BaseModel):
-    url: str
-    at: float = 300.0   # seconds into the video to sample
-
-
-class ReactionRegionsIn(BaseModel):
-    """Rectangles the user drew on a source frame (normalized 0..1)."""
-
-    cam: list[float]           # [x, y, w, h] webcam pane
-    content: list[float]       # [x, y, w, h] what they're reacting to
-    apply_to_creator: bool = True   # reuse for this creator's future videos
-    cam_position: str = "top"       # which band the webcam gets
 
 
 class FeedbackIn(BaseModel):
@@ -303,16 +283,6 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["filter"] = body.filter
         if body.min_score is not None:
             payload["min_score"] = max(0, min(100, body.min_score))
-        if body.split_position in ("top", "bottom"):
-            payload["split_position"] = body.split_position
-        if body.reaction in ("off", "auto", "always"):
-            payload["reaction"] = body.reaction
-        if body.cam_corner in ("auto", "top_left", "top_right", "bottom_left", "bottom_right"):
-            payload["cam_corner"] = body.cam_corner
-        if body.content_side in ("auto", "above", "below", "left", "right"):
-            payload["content_side"] = body.content_side
-        if body.reaction_regions and {"cam", "content"} <= set(body.reaction_regions):
-            payload["reaction_regions"] = body.reaction_regions
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))
@@ -665,130 +635,6 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             worker.notify()
         return {"reply": result["reply"], "job_id": job_id}
 
-    @app.post("/reaction/url-frame")
-    def reaction_url_frame(body: UrlFrameIn):
-        """One frame straight from a URL — lets the regions be marked in the
-        Dashboard BEFORE processing, so every clip of the job renders right
-        the first time instead of needing a re-render each."""
-        import subprocess as sp
-
-        import yt_dlp
-
-        out = data_dir / "previews" / "url_frame.jpg"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            opts = {"quiet": True, "no_warnings": True, "skip_download": True,
-                    "format": "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b"}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(body.url, download=False)
-            stream = info.get("url") or (info.get("requested_formats") or [{}])[0].get("url")
-            if not stream:
-                raise HTTPException(400, "could not read a video stream from that link")
-            at = min(float(body.at), max(0.0, float(info.get("duration") or 600) - 5))
-            r = sp.run(
-                ["ffmpeg", "-y", "-v", "error", "-ss", str(at), "-i", stream,
-                 "-frames:v", "1", "-q:v", "4", str(out)],
-                capture_output=True, text=True, timeout=120,
-            )
-            if r.returncode != 0 or not out.exists():
-                raise HTTPException(400, "could not grab a frame from that link")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(400, f"could not read that link: {e}")
-        return FileResponse(out, media_type="image/jpeg")
-
-    @app.get("/clips/{clip_id}/source-frame")
-    def clip_source_frame(clip_id: int):
-        """A frame from the SOURCE video (not the rendered clip) for the
-        reaction region picker — the user draws the webcam / content boxes
-        on the original layout."""
-        import subprocess as sp
-
-        d = db()
-        try:
-            row = d.get_clip(clip_id)
-        finally:
-            d.close()
-        if row is None:
-            raise HTTPException(404, "no such clip")
-        source = data_dir / "downloads" / f"{row['video_id']}.mp4"
-        if not source.exists():
-            raise HTTPException(404, "source video is no longer on disk")
-        out = data_dir / "previews" / f"frame_{clip_id}.jpg"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        at = float(row["start_s"]) + max(1.0, (float(row["end_s"]) - float(row["start_s"])) / 2)
-        r = sp.run(
-            ["ffmpeg", "-y", "-v", "error", "-ss", str(at), "-i", str(source),
-             "-frames:v", "1", "-q:v", "4", str(out)],
-            capture_output=True, text=True,
-        )
-        if r.returncode != 0 or not out.exists():
-            raise HTTPException(500, "could not read a frame from the source video")
-        return FileResponse(out, media_type="image/jpeg")
-
-    @app.get("/clips/{clip_id}/reaction-regions")
-    def get_reaction_regions(clip_id: int):
-        """Regions already saved for this clip, else this creator's."""
-        d = db()
-        try:
-            row = d.get_clip(clip_id)
-            if row is None:
-                raise HTTPException(404, "no such clip")
-            opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
-            if opts.get("reaction_regions"):
-                return {"regions": opts["reaction_regions"], "source": "clip"}
-            vrow = d.conn.execute(
-                "SELECT creator_id FROM videos WHERE video_id = ?", (row["video_id"],)
-            ).fetchone()
-            if vrow and vrow["creator_id"]:
-                crow = d.conn.execute(
-                    "SELECT reaction_layout FROM creators WHERE creator_id = ?",
-                    (vrow["creator_id"],),
-                ).fetchone()
-                if crow and crow["reaction_layout"]:
-                    return {"regions": json.loads(crow["reaction_layout"]), "source": "creator"}
-            return {"regions": None, "source": None}
-        finally:
-            d.close()
-
-    @app.put("/clips/{clip_id}/reaction-regions")
-    def put_reaction_regions(clip_id: int, body: ReactionRegionsIn):
-        """Save the drawn regions and re-render the clip with them. Also
-        stored on the creator so their future videos reuse the layout."""
-        for name, box in (("cam", body.cam), ("content", body.content)):
-            if len(box) != 4 or not all(0.0 <= v <= 1.0 for v in box) or box[2] <= 0.02 or box[3] <= 0.02:
-                raise HTTPException(400, f"{name} region is not a valid box")
-        regions = {"cam": [round(v, 4) for v in body.cam],
-                   "content": [round(v, 4) for v in body.content]}
-        d = db()
-        try:
-            row = d.get_clip(clip_id)
-            if row is None:
-                raise HTTPException(404, "no such clip")
-            if body.apply_to_creator:
-                vrow = d.conn.execute(
-                    "SELECT creator_id FROM videos WHERE video_id = ?", (row["video_id"],)
-                ).fetchone()
-                if vrow and vrow["creator_id"]:
-                    d.conn.execute(
-                        "UPDATE creators SET reaction_layout = ? WHERE creator_id = ?",
-                        (json.dumps(regions), vrow["creator_id"]),
-                    )
-                    d.conn.commit()
-            job_id = d.add_job("render", json.dumps({
-                "clip_id": clip_id,
-                "render_opts": {
-                    "crop": "reaction",
-                    "reaction_regions": regions,
-                    "split_position": "bottom" if body.cam_position == "bottom" else "top",
-                },
-            }))
-        finally:
-            d.close()
-        worker.notify()
-        return {"job_id": job_id, "regions": regions}
-
     @app.post("/clips/{clip_id}/render")
     def rerender_clip(clip_id: int, body: RenderIn):
         d = db()
@@ -850,8 +696,6 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["caption_lines"] = body.caption_lines
         if body.crop:
             opts["crop"] = body.crop
-        if body.split_position in ("top", "bottom"):
-            opts["split_position"] = body.split_position
         if body.caption_style:
             opts["caption_style"] = {**(opts.get("caption_style") or {}), **body.caption_style}
         if body.watermark is not None:
