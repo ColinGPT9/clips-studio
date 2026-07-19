@@ -51,17 +51,6 @@ export default function GenerateBar(): JSX.Element {
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
   const [watermark, setWatermark] = useState<boolean>(watermarkSelection().enabled)
-  // Gaming clips with a facecam: which band the camera goes in (remembered).
-  const [splitPosition, setSplitPosition] = useState<'top' | 'bottom'>(
-    (localStorage.getItem('generate-split-position') as 'top' | 'bottom') ?? 'top'
-  )
-
-  // Reaction pipeline (separate from the standard one): off = never,
-  // auto = only clips with a detected webcam+content layout, always = all.
-  const [reaction, setReaction] = useState<'off' | 'auto' | 'always'>(
-    (localStorage.getItem('generate-reaction') as 'off' | 'auto' | 'always') ?? 'off'
-  )
-
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
       const next = { ...s, [key]: value }
@@ -83,9 +72,7 @@ export default function GenerateBar(): JSX.Element {
         captions: burnCaptions,
         longClips,
         longform: longform ? { mode: longformMode } : null,
-        watermarkProfileId: wm.enabled ? wm.profileId : null,
-        splitPosition,
-        reaction
+        watermarkProfileId: wm.enabled ? wm.profileId : null
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -159,45 +146,6 @@ export default function GenerateBar(): JSX.Element {
             }}
           />
           {t('Longform')} <span className="text-muted">(16:9)</span>
-        </label>
-        <label
-          className="flex items-center gap-2 text-sm shrink-0"
-          title="Reaction videos (webcam over the content they react to) use a separate pipeline that keeps BOTH visible. Off = the standard pipeline for every clip."
-        >
-          <span className="text-muted">{t('Reaction')}</span>
-          <select
-            className="input !w-28 !py-1 text-sm"
-            value={reaction}
-            onChange={(e) => {
-              const v = e.target.value as 'off' | 'auto' | 'always'
-              setReaction(v)
-              localStorage.setItem('generate-reaction', v)
-            }}
-            aria-label="Reaction video pipeline"
-          >
-            <option value="off">{t('Off')}</option>
-            <option value="auto">{t('Auto-detect')}</option>
-            <option value="always">{t('Always')}</option>
-          </select>
-        </label>
-        <label
-          className="flex items-center gap-2 text-sm shrink-0"
-          title="Gaming/reaction clips with a webcam pane: which band the camera goes in."
-        >
-          <span className="text-muted">{t('Camera')}</span>
-          <select
-            className="input !w-24 !py-1 text-sm"
-            value={splitPosition}
-            onChange={(e) => {
-              const v = e.target.value as 'top' | 'bottom'
-              setSplitPosition(v)
-              localStorage.setItem('generate-split-position', v)
-            }}
-            aria-label="Facecam position for gaming clips"
-          >
-            <option value="top">{t('Top')}</option>
-            <option value="bottom">{t('Bottom')}</option>
-          </select>
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"

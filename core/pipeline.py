@@ -363,8 +363,12 @@ def _try_reaction_render(
     hands the clip back to the standard renderer, which has not changed."""
     mode = str(opts.get("reaction") or config["clips"].get("reaction") or "off").lower()
     forced = crop_mode == "reaction" or mode == "always"
-    if not forced and mode != "auto":
-        return False
+    if not forced:
+        # Auto-routing applies only to the default 'Auto (AI)' layout. If the
+        # user explicitly picked Letterbox / Center / a bias for this clip,
+        # that IS their layout decision — never override it.
+        if mode != "auto" or crop_mode != "track":
+            return False
     try:
         from reaction.compose import render_reaction
         from reaction.layout import analyze
