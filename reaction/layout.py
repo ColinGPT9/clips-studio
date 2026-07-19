@@ -88,6 +88,7 @@ def _analyze(clip_path: Path, model_name: str, min_confidence: float):
     step = max(1, total // SAMPLES) if total else 30
     boxes: list[tuple[float, float, float, float]] = []  # normalized x1,y1,x2,y2
     smalls: list[np.ndarray] = []                        # downscaled grayscale
+    colours: list[np.ndarray] = []                       # downscaled BGR
     idx = 0
     while len(smalls) < SAMPLES:
         ok = cap.grab()
@@ -97,9 +98,9 @@ def _analyze(clip_path: Path, model_name: str, min_confidence: float):
             ok, frame = cap.retrieve()
             if not ok:
                 break
-            smalls.append(
-                cv2.cvtColor(cv2.resize(frame, (192, 108)), cv2.COLOR_BGR2GRAY).astype(np.float32)
-            )
+            small = cv2.resize(frame, (192, 108))
+            colours.append(small)
+            smalls.append(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32))
             for x1, y1, x2, y2, _conf, _head in _detect(model, frame, min_confidence):
                 boxes.append((x1 / src_w, y1 / src_h, x2 / src_w, y2 / src_h))
         idx += 1
@@ -112,24 +113,126 @@ def _analyze(clip_path: Path, model_name: str, min_confidence: float):
     if cam is None:
         return None
 
-    content = _find_content_box(np.stack(smalls))
+    stack = np.stack(smalls)
+    activity, structure = _maps(stack)
+    content = _find_content_box(activity, structure)
     cam_area = cam[2] * cam[3]
     content_area = content[2] * content[3]
     if cam_area <= 0 or content_area / cam_area < MIN_CONTENT_RATIO:
         return None  # no clear "big content + small cam" relationship
 
-    # Side-by-side when the cam occupies its own vertical band with content
-    # beside it; otherwise the cam is an overlay sitting on the content.
-    cx, cy, cw, ch = cam
+    cx, _cy, cw, ch = cam
     side_by_side = (cx > 0.55 or cx + cw < 0.45) and ch > 0.5
     kind = "side_by_side" if side_by_side else "pip"
 
-    # Confidence: how cam-like the pane is (small, static, well inside the
-    # frame) — the composer's caller can demand more for AUTO routing than
-    # for a user who explicitly asked for reaction mode.
-    size_score = 1.0 - min(1.0, cam_area / CAM_MAX_AREA)
-    conf = round(0.5 + 0.5 * size_score, 3)
+    # ---- is this a reaction LAYOUT, or just a small person in frame? ----
+    # Three discriminators separate them, because a wide talking-head shot
+    # (someone sitting still at a desk) also yields a small static person:
+    #
+    #  1. Colour environment — the strongest tell. A webcam (skin, room
+    #     lighting) and the content being reacted to (screen colours, its
+    #     own white balance) are different colour worlds; a person and the
+    #     room behind them are the same one.
+    #  2. Anchoring — a webcam pane is mounted against a corner/edge. A
+    #     person in a room sits in the middle of it, body running off the
+    #     bottom edge only.
+    #  3. Second-region evidence — outside a reaction cam there is SCREEN
+    #     content: text, UI, video, all high in detail and/or motion. A
+    #     room background is comparatively flat and still.
+    conf = confidence(
+        cam,
+        _second_region_evidence(activity, structure, cam),
+        _colour_dissimilarity(colours, cam),
+    )
     return ReactionLayout(cam_box=cam, content_box=content, kind=kind, confidence=conf)
+
+
+def confidence(
+    cam: tuple[float, float, float, float], evidence: float, colour: float
+) -> float:
+    """0..1 that this really is a reaction layout. The caller auto-routes
+    only above 0.6; an explicit user choice ignores this entirely.
+
+    colour carries the most weight because it is the most reliable tell: a
+    webcam pane (skin tones, room lighting) and the content being reacted
+    to (screen colours, its own white balance) come from different
+    environments, while a person in a wide talking-head shot shares one
+    environment with everything around them."""
+    cx, cy, cw, ch = cam
+    edges = sum((cx < 0.08, cy < 0.08, cx + cw > 0.92, cy + ch > 0.92))
+    size_score = 1.0 - min(1.0, (cw * ch) / CAM_MAX_AREA)
+    corner = 1.0 if edges >= 2 else (0.5 if edges == 1 else 0.0)
+    # Floor, not a ramp: hue histograms are noisy on low-saturation frames,
+    # so modest dissimilarity (~0.3) is what ONE environment already looks
+    # like. Only a clear separation counts as two colour worlds.
+    colour_score = max(0.0, min(1.0, (colour - 0.35) / 0.35))
+    conf = (
+        0.35 * corner
+        + 0.35 * colour_score
+        + 0.20 * min(1.0, evidence / 0.9)
+        + 0.10 * size_score
+    )
+    if edges < 2:
+        # Not corner/edge-anchored -> a person in a room, not a mounted
+        # webcam pane. Capped below the auto threshold, never auto-routed.
+        conf = min(conf, 0.5)
+    return round(conf, 3)
+
+
+def _colour_dissimilarity(
+    frames_bgr: list[np.ndarray], cam: tuple[float, float, float, float]
+) -> float:
+    """How differently the cam pane and everything around it are COLOURED.
+
+    0 = same colour world (one room — a talking-head wide shot), 1 = totally
+    different (a webcam against screen content — a reaction layout).
+    Bhattacharyya distance between hue/saturation histograms, averaged over
+    the sampled frames.
+
+    Known blind spot: a creator reacting to their OWN footage shares the
+    environment, so this drops toward 0. The corner-anchoring and
+    screen-detail tests still carry those clips, and the editor's per-clip
+    Reaction option is the manual override."""
+    if not frames_bgr:
+        return 0.0
+    h, w = frames_bgr[0].shape[:2]
+    cx, cy, cw, ch = cam
+    x0, x1 = int(cx * w), min(w, int((cx + cw) * w))
+    y0, y1 = int(cy * h), min(h, int((cy + ch) * h))
+    inside = np.zeros((h, w), np.uint8)
+    inside[y0:y1, x0:x1] = 255
+    outside = cv2.bitwise_not(inside)
+    if int(inside.sum()) < 255 * 16 or int(outside.sum()) < 255 * 16:
+        return 0.0
+
+    dists = []
+    for bgr in frames_bgr[:12]:
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        hi = cv2.calcHist([hsv], [0, 1], inside, [24, 8], [0, 180, 0, 256])
+        ho = cv2.calcHist([hsv], [0, 1], outside, [24, 8], [0, 180, 0, 256])
+        cv2.normalize(hi, hi)
+        cv2.normalize(ho, ho)
+        dists.append(float(cv2.compareHist(hi, ho, cv2.HISTCMP_BHATTACHARYYA)))
+    return float(np.median(dists)) if dists else 0.0
+
+
+def _second_region_evidence(
+    activity: np.ndarray, structure: np.ndarray, cam: tuple[float, float, float, float]
+) -> float:
+    """How much the area OUTSIDE the cam looks like content rather than a
+    room: detail and motion outside, relative to inside the cam pane."""
+    h, w = activity.shape
+    cx, cy, cw, ch = cam
+    x0, x1 = int(cx * w), min(w, int((cx + cw) * w))
+    y0, y1 = int(cy * h), min(h, int((cy + ch) * h))
+    mask = np.ones((h, w), bool)
+    mask[y0:y1, x0:x1] = False
+    if mask.sum() < 16 or (~mask).sum() < 16:
+        return 0.0
+    eps = 1e-6
+    str_ratio = float(structure[mask].mean()) / (float(structure[~mask].mean()) + eps)
+    act_ratio = float(activity[mask].mean()) / (float(activity[~mask].mean()) + eps)
+    return max(str_ratio, act_ratio)
 
 
 def _find_cam_box(
@@ -174,19 +277,26 @@ def _find_cam_box(
     return (round(x, 4), round(y, 4), round(w, 4), round(h, 4))
 
 
-def _find_content_box(frames: np.ndarray) -> tuple[float, float, float, float]:
-    """The frame minus dead margins (flat, motionless borders).
-
-    Interest = temporal activity + structure. Only margins that are dead on
-    BOTH get trimmed, so a static-but-detailed region (a tweet, a paused
-    video, a chat column) is always kept — losing real content is the
-    failure this pipeline exists to prevent."""
+def _maps(frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(temporal activity, structural detail) maps for the sampled frames."""
     activity = frames.std(axis=0)
     structure = np.mean(
         [np.abs(cv2.Sobel(f, cv2.CV_32F, 1, 0, 3)) + np.abs(cv2.Sobel(f, cv2.CV_32F, 0, 1, 3))
          for f in frames],
         axis=0,
     )
+    return activity, structure
+
+
+def _find_content_box(
+    activity: np.ndarray, structure: np.ndarray
+) -> tuple[float, float, float, float]:
+    """The frame minus dead margins (flat, motionless borders).
+
+    Interest = temporal activity + structure. Only margins that are dead on
+    BOTH get trimmed, so a static-but-detailed region (a tweet, a paused
+    video, a chat column) is always kept — losing real content is the
+    failure this pipeline exists to prevent."""
 
     def norm(a: np.ndarray) -> np.ndarray:
         peak = float(a.max())
