@@ -49,11 +49,14 @@ clips:
                         # (turn on the 60s+ toggle for TikTok-length clips)
   vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
   captions: true        # burn word-synced captions into the clips
-  reaction: auto        # reaction videos (a webcam over the content being
-                        # reacted to) render through a separate pipeline that
-                        # keeps BOTH visible. auto = the layout classifier
-                        # decides per clip (default); off = never. Overridable
-                        # per clip in the editor's Layout row.
+  reaction: off         # reaction videos (a webcam over the content being
+                        # reacted to) render through a SEPARATE pipeline that
+                        # keeps both visible. off = never (default: every clip
+                        # uses the standard pipeline). Turned on per job by the
+                        # Dashboard's Reaction control, or per clip in the
+                        # editor's Layout row. There is deliberately no
+                        # auto-detection: misrouting normal content costs more
+                        # than picking the mode takes.
 
 scoring:
   # Multimodal fusion weights (must sum to 1.0). Raise audio/visual for
