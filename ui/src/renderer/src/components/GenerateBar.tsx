@@ -4,7 +4,6 @@ import type { CaptionStyle } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from './WatermarkCard'
 import { Folder } from './icons'
-import ReactionRegions from './ReactionRegions'
 import { t } from '../lib/i18n'
 
 const STYLE_KEY = 'generate-caption-style'
@@ -52,29 +51,6 @@ export default function GenerateBar(): JSX.Element {
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
   const [watermark, setWatermark] = useState<boolean>(watermarkSelection().enabled)
-  // Reaction videos (webcam over the content being reacted to) use a
-  // separate pipeline. Explicit on purpose — no auto-detection to misfire
-  // on ordinary streams. The value also picks which band the camera gets.
-  const [reactionCam, setReactionCam] = useState<'off' | 'top' | 'bottom'>(
-    (localStorage.getItem('generate-reaction-cam') as 'off' | 'top' | 'bottom') ?? 'off'
-  )
-
-  // Where the webcam and the reacted content sit IN THE SOURCE. Set once
-  // per streamer (their layout never changes) — detection alone picks the
-  // wrong person on reaction content, because the video being reacted to
-  // is usually full of people too.
-  const [camCorner, setCamCorner] = useState<string>(
-    localStorage.getItem('generate-cam-corner') ?? 'auto'
-  )
-  const [contentSide, setContentSide] = useState<string>(
-    localStorage.getItem('generate-content-side') ?? 'auto'
-  )
-
-  // Regions marked in the Dashboard apply to EVERY clip of the job, so
-  // reaction clips come out right without re-rendering each one.
-  const [regions, setRegions] = useState<{ cam: number[]; content: number[] } | null>(null)
-  const [pickerFrame, setPickerFrame] = useState<string | null>(null)
-  const [pickerBusy, setPickerBusy] = useState(false)
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
@@ -97,12 +73,7 @@ export default function GenerateBar(): JSX.Element {
         captions: burnCaptions,
         longClips,
         longform: longform ? { mode: longformMode } : null,
-        watermarkProfileId: wm.enabled ? wm.profileId : null,
-        reaction: reactionCam === 'off' ? 'off' : 'always',
-        splitPosition: reactionCam === 'bottom' ? 'bottom' : 'top',
-        camCorner,
-        contentSide,
-        reactionRegions: reactionCam === 'off' ? null : regions
+        watermarkProfileId: wm.enabled ? wm.profileId : null
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -118,21 +89,6 @@ export default function GenerateBar(): JSX.Element {
 
   return (
     <div className="space-y-3">
-      {pickerFrame && (
-        <ReactionRegions
-          frameUrl={pickerFrame}
-          initial={regions ? { ...regions, camTop: reactionCam !== 'bottom' } : null}
-          onClose={() => setPickerFrame(null)}
-          onSaved={(r, camTop) => {
-            if (r) setRegions(r)
-            if (camTop !== undefined) {
-              const v = camTop ? 'top' : 'bottom'
-              setReactionCam(v)
-              localStorage.setItem('generate-reaction-cam', v)
-            }
-          }}
-        />
-      )}
       <div className="card flex gap-3 items-center flex-wrap">
         <input
           className="input w-80 max-w-full"
@@ -192,76 +148,6 @@ export default function GenerateBar(): JSX.Element {
           />
           {t('Longform')} <span className="text-muted">(16:9)</span>
         </label>
-        <label
-          className="flex items-center gap-2 text-sm shrink-0"
-          title="Reaction videos — a webcam over the content being reacted to. Renders through a separate pipeline that keeps BOTH visible, with the camera in the band you choose. Leave Off for normal streams (talking head, IRL, gym): they use the standard pipeline."
-        >
-          <span className="text-muted">{t('Reaction')}</span>
-          <select
-            className="input !w-36 !py-1 text-sm"
-            value={reactionCam}
-            onChange={(e) => {
-              const v = e.target.value as 'off' | 'top' | 'bottom'
-              setReactionCam(v)
-              localStorage.setItem('generate-reaction-cam', v)
-            }}
-            aria-label="Reaction video mode and camera position"
-          >
-            <option value="off">{t('Off')}</option>
-            <option value="top">{t('Camera top')}</option>
-            <option value="bottom">{t('Camera bottom')}</option>
-          </select>
-        </label>
-        {reactionCam !== 'off' && (
-          <>
-            <button
-              className="btn-ghost shrink-0 !py-1 text-xs"
-              disabled={pickerBusy || !url.trim()}
-              title={
-                url.trim()
-                  ? 'Mark the webcam and the content on a frame from this video — applies to every clip of this job'
-                  : 'Paste the video link first'
-              }
-              onClick={async () => {
-                setPickerBusy(true)
-                setError(null)
-                try {
-                  setPickerFrame(await api.fetchUrlFrame(url.trim()))
-                } catch (e) {
-                  setError(`Could not load a frame: ${e instanceof Error ? e.message : String(e)}`)
-                } finally {
-                  setPickerBusy(false)
-                }
-              }}
-            >
-              {pickerBusy ? t('Loading frame…') : regions ? t('Regions ✓') : t('Mark regions…')}
-            </button>
-            <label className="flex items-center gap-2 text-sm shrink-0"
-              title="Where the creator's webcam sits in the SOURCE video. Set once per streamer — auto-detection often locks onto a person inside the video being reacted to.">
-              <span className="text-muted">{t('Webcam is')}</span>
-              <select className="input !w-32 !py-1 text-sm" value={camCorner}
-                onChange={(e) => { setCamCorner(e.target.value); localStorage.setItem('generate-cam-corner', e.target.value) }}>
-                <option value="auto">{t('Auto')}</option>
-                <option value="top_left">{t('Top left')}</option>
-                <option value="top_right">{t('Top right')}</option>
-                <option value="bottom_left">{t('Bottom left')}</option>
-                <option value="bottom_right">{t('Bottom right')}</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm shrink-0"
-              title="Where the content being reacted to sits, relative to the webcam. Auto guesses from motion and detail, which is unreliable when the reacted video is paused.">
-              <span className="text-muted">{t('Content is')}</span>
-              <select className="input !w-32 !py-1 text-sm" value={contentSide}
-                onChange={(e) => { setContentSide(e.target.value); localStorage.setItem('generate-content-side', e.target.value) }}>
-                <option value="auto">{t('Auto')}</option>
-                <option value="above">{t('Above webcam')}</option>
-                <option value="below">{t('Below webcam')}</option>
-                <option value="left">{t('Left of webcam')}</option>
-                <option value="right">{t('Right of webcam')}</option>
-              </select>
-            </label>
-          </>
-        )}
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
           title="Burn your logo / channel handle into every clip. Configure the branding profile below."

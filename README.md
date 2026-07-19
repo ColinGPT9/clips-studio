@@ -132,6 +132,28 @@ in [config/prompts/](config/prompts/) — tune them without touching code.
    we don't have during development. If people want this, it will be
    finished and tested in a future release.
 4. TikTok / Instagram Reels export
+5. **Gaming & reaction layouts** *(possible future plan)* — a dedicated
+   layout for gameplay-with-facecam streams and for reaction videos, where
+   the creator's webcam and what they're reacting to are composed into one
+   vertical frame instead of cropping to a single subject.
+
+   Prototyped and **removed on purpose**. Both fail on the same problem:
+   the app can't reliably tell which region is which. Reaction and gameplay
+   footage is full of *other* people — a speaker in the video being reacted
+   to, or a rendered game character — and they look exactly like a webcam
+   to a person detector. Motion doesn't separate them either: creators
+   pause the video to comment, so on real footage the thing being reacted
+   to was the *least* moving region on screen (measured: chat 19.6, webcam
+   12.9, the paused video 0.5), which sends "find the interesting region"
+   heuristics straight to chat and UI. Marking the regions by hand works,
+   but every layout differs — YouTube, Twitch, a tweet, a news article —
+   and creators switch between them mid-stream, so the setup cost lands on
+   the user for every video.
+
+   The core pipeline (talking-head, IRL, gym, podcast) is what this app is
+   for, and it is deliberately kept free of that complexity. If there is
+   real demand, this comes back as a self-contained mode that cannot affect
+   the standard path.
 
 ## Architecture
 

@@ -63,11 +63,6 @@ export const api = {
       filter?: FilterName
       longform?: { mode: string } | null
       watermarkProfileId?: number | null
-      splitPosition?: 'top' | 'bottom' | null
-      reaction?: 'off' | 'auto' | 'always' | null
-      camCorner?: string | null
-      contentSide?: string | null
-      reactionRegions?: { cam: number[]; content: number[] } | null
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -80,12 +75,7 @@ export const api = {
         long_clips: opts?.longClips ?? null,
         filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null,
         longform: opts?.longform ?? null,
-        watermark_profile_id: opts?.watermarkProfileId ?? null,
-        split_position: opts?.splitPosition ?? null,
-        reaction: opts?.reaction ?? null,
-        cam_corner: opts?.camCorner ?? null,
-        content_side: opts?.contentSide ?? null,
-        reaction_regions: opts?.reactionRegions ?? null
+        watermark_profile_id: opts?.watermarkProfileId ?? null
       })
     }),
   addLocalVideo: (opts: {
@@ -156,8 +146,7 @@ export const api = {
     captionLines?: unknown,
     crop?: string | null,
     captionStyle?: CaptionStyle | null,
-    watermark?: WatermarkConfig | Record<string, never>,
-    splitPosition?: 'top' | 'bottom' | null
+    watermark?: WatermarkConfig | Record<string, never>
   ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
@@ -166,31 +155,8 @@ export const api = {
         caption_lines: captionLines ?? null,
         crop: crop ?? null,
         caption_style: captionStyle ?? null,
-        watermark: watermark === undefined ? null : watermark,
-        split_position: splitPosition ?? null
+        watermark: watermark === undefined ? null : watermark
       })
-    }),
-
-  fetchUrlFrame: async (url: string): Promise<string> => {
-    const res = await fetch(`${API_BASE}/reaction/url-frame`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
-    })
-    if (!res.ok) throw new Error((await res.text()).slice(0, 200))
-    return URL.createObjectURL(await res.blob())
-  },
-  reactionRegions: (clipId: number) =>
-    request<{ regions: { cam: number[]; content: number[] } | null; source: string | null }>(
-      `/clips/${clipId}/reaction-regions`
-    ),
-  saveReactionRegions: (
-    clipId: number,
-    body: { cam: number[]; content: number[]; apply_to_creator: boolean; cam_position: string }
-  ) =>
-    request<{ job_id: number }>(`/clips/${clipId}/reaction-regions`, {
-      method: 'PUT',
-      body: JSON.stringify(body)
     }),
 
   models: () => request<ModelsInfo>('/models'),

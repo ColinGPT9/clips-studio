@@ -138,7 +138,6 @@ export interface RenderOpts {
   filter?: FilterName
   adjust?: Adjust
   edit?: EditData | null
-  split_position?: 'top' | 'bottom' // facecam band in gaming split layouts
   profile?: string // longform rendering profile (16:9); absent = vertical Short
   watermark?: WatermarkConfig | null
 }

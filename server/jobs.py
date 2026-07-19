@@ -113,11 +113,6 @@ class Worker(threading.Thread):
                         or payload.get("min_score") is not None
                         or payload.get("watermark_profile_id")
                         or payload.get("filter")
-                        or payload.get("split_position")
-                        or payload.get("reaction")
-                        or payload.get("cam_corner")
-                        or payload.get("content_side")
-                        or payload.get("reaction_regions")
                     ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
@@ -130,23 +125,6 @@ class Worker(threading.Thread):
                         cfg["clips"]["max_duration"] = 180
                     if payload.get("filter"):
                         cfg["clips"]["filter"] = payload["filter"]
-                    if payload.get("reaction") in ("auto", "always"):
-                        # Reaction pipeline for this job (isolated path;
-                        # 'auto' still defers to the standard pipeline
-                        # unless a two-region layout is detected).
-                        cfg["clips"]["reaction"] = payload["reaction"]
-                    if payload.get("cam_corner"):
-                        cfg["clips"]["cam_corner"] = payload["cam_corner"]
-                    if payload.get("content_side"):
-                        cfg["clips"]["content_side"] = payload["content_side"]
-                    if payload.get("reaction_regions"):
-                        # Drawn in the Dashboard before processing: every clip
-                        # of this job composes from them, no re-render needed.
-                        cfg["clips"]["reaction_regions"] = payload["reaction_regions"]
-                    if payload.get("split_position") in ("top", "bottom"):
-                        # Facecam band default for gaming split layouts,
-                        # chosen in the Generate bar (per-clip editor wins).
-                        cfg["clips"]["split_position"] = payload["split_position"]
                     if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n

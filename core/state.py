@@ -175,10 +175,6 @@ class StateDB:
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
-        if "reaction_layout" not in creator_cols:
-            # Webcam + reacted-content rectangles the user drew once for this
-            # creator (JSON). Used ONLY by the reaction pipeline.
-            self.conn.execute("ALTER TABLE creators ADD COLUMN reaction_layout TEXT")
 
     def recover_stuck_videos(self) -> int:
         """Videos left mid-pipeline by a crash/force-close (downloaded,

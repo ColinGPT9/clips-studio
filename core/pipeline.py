@@ -85,17 +85,6 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                         config = {**config, "clips": {**config["clips"],
                                   "watermark": _json.loads(brow["config"])}}
                         print(f"      Applying {creator_ctx.creator_name if creator_ctx else 'creator'}'s default branding")
-            # Reaction layout drawn once for this creator applies to every
-            # video of theirs (reaction pipeline only; ignored otherwise).
-            lrow = db.conn.execute(
-                "SELECT reaction_layout FROM creators WHERE creator_id = ?", (creator_id,)
-            ).fetchone()
-            if lrow and lrow["reaction_layout"]:
-                import json as _json
-
-                config = {**config, "clips": {**config["clips"],
-                          "reaction_regions": _json.loads(lrow["reaction_layout"])}}
-                print("      Using this creator's saved reaction layout")
     except Exception as e:
         print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
@@ -351,85 +340,6 @@ def _safe_name(name: str, fallback: str) -> str:
     return cleaned[:60].strip() or fallback
 
 
-def _try_reaction_render(
-    intermediate: Path,
-    final_path: Path,
-    ass_path: Path | None,
-    vf_extra: str,
-    cam_pos: str,
-    crop_mode: str,
-    opts: dict,
-    config: dict,
-) -> bool:
-    """Render this clip with the REACTION pipeline (creator + reacted
-    content both visible), or return False to leave it to the standard one.
-
-    Routing is EXPLICIT — there is no auto-detection, because misrouting
-    ordinary content is worse than asking:
-      crop == 'reaction'  -> this clip (editor's Layout row)
-      reaction == always  -> this job (Dashboard's Reaction control)
-      otherwise           -> False, standard pipeline (the default)
-
-    Fails closed on every path: no layout, low confidence, or any exception
-    hands the clip back to the standard renderer, which has not changed."""
-    regions = opts.get("reaction_regions") or config["clips"].get("reaction_regions")
-    mode = str(opts.get("reaction") or config["clips"].get("reaction") or "off").lower()
-    # Hand-drawn regions ARE the instruction to use this pipeline.
-    forced = crop_mode == "reaction" or mode == "always" or bool(regions)
-    if not forced:
-        return False
-    try:
-        from reaction.compose import render_reaction
-        from reaction.layout import ReactionLayout, adapt_cam_box, analyze
-
-        if regions:
-            # The user drew these on a real frame — no detection, no guessing.
-            # Only the cam box is re-checked, in case they moved their webcam.
-            layout = ReactionLayout(
-                cam_box=adapt_cam_box(
-                    intermediate, tuple(regions["cam"]), config["tracking"]["detector"]
-                ),
-                content_box=tuple(regions["content"]),
-                kind="manual",
-                confidence=1.0,
-            )
-        else:
-            layout = analyze(
-            intermediate,
-            model_name=config["tracking"]["detector"],
-            cam_corner=str(
-                opts.get("cam_corner") or config["clips"].get("cam_corner") or "auto"
-            ),
-            content_side=str(
-                opts.get("content_side") or config["clips"].get("content_side") or "auto"
-            ),
-            )
-        if layout is None:
-            if not forced:
-                return False  # AUTO: not a reaction clip — standard pipeline
-            # Explicitly asked for: full frame on a blurred backdrop still
-            # shows the creator AND the content, just uncomposed.
-            from video.cropper import render_vertical
-
-            print("      Reaction: no two-region layout found — full-frame letterbox")
-            render_vertical(
-                intermediate, {"mode": "fit_blur", "region": None},
-                final_path, ass_path=ass_path, vf_extra=vf_extra,
-            )
-            return True
-        if not forced and layout.confidence < 0.6:
-            return False  # AUTO stays conservative
-        print(f"      Reaction layout — {layout.describe()}")
-        render_reaction(
-            intermediate, layout, final_path, ass_path=ass_path,
-            vf_extra=vf_extra, cam_position=cam_pos,
-        )
-        return True
-    except Exception as e:  # noqa: BLE001 — isolation: never lose a clip
-        print(f"      (reaction pipeline failed, using the standard one: {e})")
-        return False
-
-
 def _render_files(
     source: Path,
     candidate: ClipCandidate,
@@ -554,42 +464,28 @@ def _render_files(
         from video.tracker import compute_tracking  # lazy: imports torch
 
         crop_mode = opts.get("crop", "track")
-        # Facecam band position — per-clip editor choice wins over the job
-        # default from the Generate bar (same precedence as filters/styles).
-        cam_pos = (
-            opts.get("split_position")
-            or config["clips"].get("split_position")
-            or "top"
-        )
-        # ---- reaction pipeline (isolated — see reaction/__init__.py) ------
-        # Returns False on any doubt or failure, and the untouched standard
-        # path below runs instead: talking-head and IRL clips are unaffected.
-        if not _try_reaction_render(
-            intermediate, final_path, ass_path, vf_extra, cam_pos, crop_mode, opts, config
-        ):
-            if crop_mode == "center":
-                tracking = {"mode": "track", "path": [(0.0, 0.5)]}
-            else:
-                tracking_cfg = config["tracking"]
-                tracking = compute_tracking(
-                    intermediate,
-                    model_name=tracking_cfg["detector"],
-                    sample_fps=tracking_cfg["sample_fps"],
-                    force_fit_blur=(crop_mode == "letterbox"),
-                )
-                if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
-                    # USER-forced letterbox means "show me the WHOLE frame" —
-                    # reaction/gaming mixes need both the person and the
-                    # content. Cropping tight to the detected person (the
-                    # automatic letterbox behavior) threw away the other side.
-                    tracking["region"] = None
-                if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
-                    shift = -0.12 if crop_mode == "bias_left" else 0.12
-                    tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-            render_vertical(
-                intermediate, tracking, final_path, ass_path=ass_path,
-                vf_extra=vf_extra, cam_position=cam_pos,
+        if crop_mode == "center":
+            tracking = {"mode": "track", "path": [(0.0, 0.5)]}
+        else:
+            tracking_cfg = config["tracking"]
+            tracking = compute_tracking(
+                intermediate,
+                model_name=tracking_cfg["detector"],
+                sample_fps=tracking_cfg["sample_fps"],
+                force_fit_blur=(crop_mode == "letterbox"),
             )
+            if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
+                # USER-forced letterbox means "show me the WHOLE frame" —
+                # reaction/gaming mixes need both the person and the content.
+                # Cropping tight to the detected person (the automatic
+                # letterbox behavior) threw away the game/reaction side.
+                tracking["region"] = None
+            if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
+                shift = -0.12 if crop_mode == "bias_left" else 0.12
+                tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
+        render_vertical(
+            intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
+        )
         intermediate.unlink(missing_ok=True)
     else:
         if edit is not None:

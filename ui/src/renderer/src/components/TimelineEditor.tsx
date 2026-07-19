@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { t } from '../lib/i18n'
 import type {
   CaptionLine,
   CaptionStyle,
@@ -31,7 +30,6 @@ import {
 } from './icons'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import ColorControls from './ColorControls'
-import ReactionRegions from './ReactionRegions'
 import EditChat from './EditChat'
 
 type Tab = 'captions' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
@@ -181,10 +179,6 @@ export default function TimelineEditor({
   // force the full frame on a blurred backdrop, Center = static center crop.
   const storedCrop = clip.render_opts?.crop ?? 'track'
   const [layout, setLayout] = useState<string>(storedCrop)
-  // Gaming split layout: which band the facecam occupies (only affects
-  // clips the tracker rendered as gameplay+facecam).
-  const storedSplitPos = clip.render_opts?.split_position ?? 'top'
-  const [splitPos, setSplitPos] = useState<'top' | 'bottom'>(storedSplitPos)
   const isLandscape = !!clip.render_opts?.profile
   // Caption style (font/size/colour/position) for THIS clip.
   const storedStyle: Required<CaptionStyle> = {
@@ -224,7 +218,6 @@ export default function TimelineEditor({
     setNotice('')
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
-    setSplitPos(clip.render_opts?.split_position ?? 'top')
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
     setWordEdits([])
     setEditingWord(null)
@@ -255,18 +248,6 @@ export default function TimelineEditor({
   const scrubbing = useRef(false) // suppress auto-skip while seeking/dragging
   const scrubDrag = useRef(false) // true while dragging the playhead
   const [showKeys, setShowKeys] = useState(false)
-  const [showRegions, setShowRegions] = useState(false)
-  // Reaction layout only makes sense with regions marked. Without them the
-  // render falls back to letterbox, which on an ordinary clip looks broken —
-  // so say so plainly instead of letting someone mangle a normal video.
-  const [hasRegions, setHasRegions] = useState<boolean | null>(null)
-  useEffect(() => {
-    if (layout !== 'reaction') return
-    api
-      .reactionRegions(clip.id)
-      .then((r) => setHasRegions(!!r.regions))
-      .catch(() => setHasRegions(false))
-  }, [layout, clip.id])
   useEffect(() => {
     editRef.current = edit
     removedRef.current = removed
@@ -588,18 +569,16 @@ export default function TimelineEditor({
   }, [duration])
 
   const layoutDirty = layout !== storedCrop
-  const splitDirty = splitPos !== storedSplitPos
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
   const wmDirty = JSON.stringify(watermark) !== JSON.stringify(storedWatermark)
   const dirty =
     layoutDirty ||
-    splitDirty ||
     styleDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const pendingJson = (): string =>
-    JSON.stringify({ e: edit, l: layout, p: splitPos, s: captionStyle, w: wordEdits, m: watermark })
+    JSON.stringify({ e: edit, l: layout, s: captionStyle, w: wordEdits, m: watermark })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
@@ -716,8 +695,7 @@ export default function TimelineEditor({
         pendingCaptionLines(),
         layout,
         styleDirty ? captionStyle : null,
-        wmDirty ? (watermark ?? {}) : undefined,
-        splitDirty ? splitPos : null
+        wmDirty ? (watermark ?? {}) : undefined
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -741,7 +719,6 @@ export default function TimelineEditor({
       const cleared = isDefault(edit, duration)
       const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
       if (layoutDirty) renderOpts.crop = layout
-      if (splitDirty) renderOpts.split_position = splitPos
       if (styleDirty) renderOpts.caption_style = captionStyle
       if (wmDirty) renderOpts.watermark = watermark
       const lines = pendingCaptionLines()
@@ -866,17 +843,6 @@ export default function TimelineEditor({
 
   return (
     <div className="border border-raised/60 rounded-lg p-3 space-y-3">
-      {showRegions && (
-        <ReactionRegions
-          clipId={clip.id}
-          onClose={() => setShowRegions(false)}
-          onSaved={() => {
-            setHasRegions(true)
-            setNotice('Regions saved — re-rendering this clip with them')
-            onChanged()
-          }}
-        />
-      )}
       {showKeys && (
         <div
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
@@ -960,7 +926,6 @@ export default function TimelineEditor({
             onClick={() => {
               push(defaultEdit(duration))
               setLayout('track')
-              setSplitPos('top')
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
               setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
@@ -1158,7 +1123,7 @@ export default function TimelineEditor({
             (t.id === 'captions' && (styleDirty || wordEdits.length > 0)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
-              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || splitDirty))
+              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty))
           return (
             <button
               key={t.id}
@@ -1363,12 +1328,7 @@ export default function TimelineEditor({
             [
               ['track', 'Auto (AI)', 'The AI picks: subject tracking or letterbox as needed'],
               ['letterbox', 'Letterbox', 'Force the FULL frame on a blurred backdrop — use when the crop cuts someone off'],
-              ['center', 'Center', 'Static center crop, no tracking'],
-              [
-                'reaction',
-                'Reaction',
-                'Reaction layout: keeps BOTH the creator and what they are reacting to visible — for webcam-over-content clips'
-              ]
+              ['center', 'Center', 'Static center crop, no tracking']
             ] as const
           ).map(([value, label, tip]) => (
             <button
@@ -1384,45 +1344,9 @@ export default function TimelineEditor({
               {label}
             </button>
           ))}
-          {layout === 'reaction' && hasRegions === false && (
-            <span className="text-warn">
-              {t('Mark the regions first — otherwise this clip falls back to letterbox')}
-            </span>
-          )}
-          {layout === 'reaction' && (
-            <button
-              className="px-2.5 py-1 rounded-md bg-accent/20 text-accent font-medium"
-              onClick={() => setShowRegions(true)}
-              title="Draw the webcam and content boxes on a frame of the source — exact, and remembered for this creator"
-            >
-              {t('Mark regions…')}
-            </button>
-          )}
           {layoutDirty && (
             <span className="text-muted">— shows in “Update preview”, saved on Apply</span>
           )}
-          {/* Gaming split layout: which band the facecam goes in. Only kicks
-              in when the AI detected a gameplay+webcam layout for this clip. */}
-          <span className="text-muted ml-3">Facecam</span>
-          {(
-            [
-              ['top', 'Top', 'Webcam band above the gameplay (classic Shorts layout)'],
-              ['bottom', 'Bottom', 'Gameplay on top, webcam below — some creators prefer the game up high']
-            ] as const
-          ).map(([value, label, tip]) => (
-            <button
-              key={value}
-              onClick={() => setSplitPos(value)}
-              className={`px-2.5 py-1 rounded-md ${
-                splitPos === value
-                  ? 'bg-accent/20 text-accent font-medium'
-                  : 'bg-raised text-muted hover:text-ink'
-              }`}
-              title={`${tip} — only affects gaming clips with a detected facecam`}
-            >
-              {label}
-            </button>
-          ))}
         </div>
       )}
 
