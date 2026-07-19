@@ -169,6 +169,19 @@ export const api = {
       })
     }),
 
+  reactionRegions: (clipId: number) =>
+    request<{ regions: { cam: number[]; content: number[] } | null; source: string | null }>(
+      `/clips/${clipId}/reaction-regions`
+    ),
+  saveReactionRegions: (
+    clipId: number,
+    body: { cam: number[]; content: number[]; apply_to_creator: boolean }
+  ) =>
+    request<{ job_id: number }>(`/clips/${clipId}/reaction-regions`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    }),
+
   models: () => request<ModelsInfo>('/models'),
   activateModel: (tag: string) =>
     request<{ active: string }>('/models/activate', { method: 'POST', body: JSON.stringify({ tag }) }),

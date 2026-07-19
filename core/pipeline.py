@@ -85,6 +85,17 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                         config = {**config, "clips": {**config["clips"],
                                   "watermark": _json.loads(brow["config"])}}
                         print(f"      Applying {creator_ctx.creator_name if creator_ctx else 'creator'}'s default branding")
+            # Reaction layout drawn once for this creator applies to every
+            # video of theirs (reaction pipeline only; ignored otherwise).
+            lrow = db.conn.execute(
+                "SELECT reaction_layout FROM creators WHERE creator_id = ?", (creator_id,)
+            ).fetchone()
+            if lrow and lrow["reaction_layout"]:
+                import json as _json
+
+                config = {**config, "clips": {**config["clips"],
+                          "reaction_regions": _json.loads(lrow["reaction_layout"])}}
+                print("      Using this creator's saved reaction layout")
     except Exception as e:
         print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
@@ -361,15 +372,26 @@ def _try_reaction_render(
 
     Fails closed on every path: no layout, low confidence, or any exception
     hands the clip back to the standard renderer, which has not changed."""
+    regions = opts.get("reaction_regions") or config["clips"].get("reaction_regions")
     mode = str(opts.get("reaction") or config["clips"].get("reaction") or "off").lower()
-    forced = crop_mode == "reaction" or mode == "always"
+    # Hand-drawn regions ARE the instruction to use this pipeline.
+    forced = crop_mode == "reaction" or mode == "always" or bool(regions)
     if not forced:
         return False
     try:
         from reaction.compose import render_reaction
-        from reaction.layout import analyze
+        from reaction.layout import ReactionLayout, analyze
 
-        layout = analyze(
+        if regions:
+            # The user drew these on a real frame — no detection, no guessing.
+            layout = ReactionLayout(
+                cam_box=tuple(regions["cam"]),
+                content_box=tuple(regions["content"]),
+                kind="manual",
+                confidence=1.0,
+            )
+        else:
+            layout = analyze(
             intermediate,
             model_name=config["tracking"]["detector"],
             cam_corner=str(
@@ -378,7 +400,7 @@ def _try_reaction_render(
             content_side=str(
                 opts.get("content_side") or config["clips"].get("content_side") or "auto"
             ),
-        )
+            )
         if layout is None:
             if not forced:
                 return False  # AUTO: not a reaction clip — standard pipeline
