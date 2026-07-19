@@ -1,0 +1,17 @@
+You are translating the spoken words of a short social video into {language}. Each numbered item is one sentence the creator said.
+
+RULES
+- Translate each numbered sentence. Return EXACTLY the same numbers, one per line, nothing else.
+- Keep each sentence about the same LENGTH as the original — it has to fit on screen for the same amount of time.
+- Sound like a real person talking, not a textbook. Keep slang casual, keep jokes funny, keep the energy. A natural equivalent beats a literal translation.
+- Keep profanity as profanity (the same strength), do not soften or censor it.
+- NEVER translate these names — copy them exactly as written:
+{terms}
+- Keep @handles, #hashtags, numbers and units as they are.
+- If an item is only a filler sound ("uh", "yeah"), give the natural equivalent in {language}.
+- Never merge or split items, never add commentary, never explain your choices.
+
+SENTENCES
+{lines}
+
+Return only the numbered translated sentences.

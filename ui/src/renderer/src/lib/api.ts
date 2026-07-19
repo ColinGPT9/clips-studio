@@ -159,6 +159,19 @@ export const api = {
       })
     }),
 
+  languages: () =>
+    request<{ languages: { code: string; name: string; native: string }[] }>('/languages'),
+  translateClips: (body: {
+    clip_ids: number[]
+    languages: string[]
+    folder: string
+    include_video: boolean
+  }) =>
+    request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+
   models: () => request<ModelsInfo>('/models'),
   activateModel: (tag: string) =>
     request<{ active: string }>('/models/activate', { method: 'POST', body: JSON.stringify({ tag }) }),
