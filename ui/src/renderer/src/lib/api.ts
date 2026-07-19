@@ -171,11 +171,23 @@ export const api = {
     include_video: boolean
     burn: boolean
     dub: boolean
+    subtitles: boolean
+    post_text: boolean
   }) =>
     request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
       method: 'POST',
       body: JSON.stringify(body)
     }),
+
+  previewVoice: async (language: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/voices/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language })
+    })
+    if (!res.ok) throw new Error((await res.text()).slice(0, 200))
+    return URL.createObjectURL(await res.blob())
+  },
 
   models: () => request<ModelsInfo>('/models'),
   activateModel: (tag: string) =>

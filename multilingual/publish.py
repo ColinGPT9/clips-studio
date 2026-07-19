@@ -35,6 +35,8 @@ def publish(
     dub: bool = False,          # also speak the translation over the clip
     voices_dir: Path | None = None,
     post: dict | None = None,   # {"title", "description", "hashtags"} to translate
+    want_subtitles: bool = False,  # .srt/.vtt files beside the video
+    want_post: bool = False,       # .txt with the post text
     clip_row=None,
     config: dict | None = None,
     data_dir: Path | None = None,
@@ -81,9 +83,10 @@ def publish(
     # The original language ships as a track too — a viewer whose player
     # is set to it should get captions, not nothing.
     if source_language and is_supported(source_language):
-        written.append(str(write_srt(lines, out_dir / f"{stem}.{source_language}.srt")))
-        written.append(str(write_vtt(lines, out_dir / f"{stem}.{source_language}.vtt")))
-        if post is not None:
+        if want_subtitles:
+            written.append(str(write_srt(lines, out_dir / f"{stem}.{source_language}.srt")))
+            written.append(str(write_vtt(lines, out_dir / f"{stem}.{source_language}.vtt")))
+        if want_post and post is not None:
             written.append(str(write_post_file(post, out_dir / f"{stem}.{source_language}.txt")))
 
     total = len([c for c in languages if c != source_language])
@@ -95,10 +98,11 @@ def publish(
             if on_progress:
                 on_progress(f"Translating to {english_name(code)}", done, total)
             translated = translate_lines(lines, code, llm, terms=terms)
-            written.append(str(write_srt(translated, out_dir / f"{stem}.{code}.srt")))
-            written.append(str(write_vtt(translated, out_dir / f"{stem}.{code}.vtt")))
-            print(f"      Subtitles written: {english_name(code)}")
-            if post is not None:
+            if want_subtitles:
+                written.append(str(write_srt(translated, out_dir / f"{stem}.{code}.srt")))
+                written.append(str(write_vtt(translated, out_dir / f"{stem}.{code}.vtt")))
+                print(f"      Subtitles written: {english_name(code)}")
+            if want_post and post is not None:
                 meta = translate_metadata(
                     post.get("title", ""), post.get("description", ""),
                     post.get("hashtags", []), code, llm, terms=terms,

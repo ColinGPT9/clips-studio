@@ -132,7 +132,21 @@ in [config/prompts/](config/prompts/) — tune them without touching code.
    we don't have during development. If people want this, it will be
    finished and tested in a future release.
 4. TikTok / Instagram Reels export
-5. **Gaming & reaction layouts** *(possible future plan)* — a dedicated
+5. **Voice cloning for dubbing** *(possible future plan)* — dubbing today
+   uses a preset local voice. Speaking translations in the creator's OWN
+   voice needs a cloning model, and every credible local one (Chatterbox,
+   XTTS, F5-TTS) pulls in its own PyTorch build: on a machine set up for
+   clipping it would downgrade torch 2.12+cu126 to a CPU-only 2.6 and
+   silently strip GPU acceleration from YOLO tracking and Whisper, turning
+   a 30-minute pipeline into hours. Not worth breaking clipping for.
+
+   The safe route, if this is built later, is a separate Python
+   environment under `data/` that the app shells out to, so the clipping
+   environment is never touched — plus checking the model's licence, since
+   several of the best-sounding ones are non-commercial and this app's
+   users monetize their videos.
+
+6. **Gaming & reaction layouts** *(possible future plan)* — a dedicated
    layout for gameplay-with-facecam streams and for reaction videos, where
    the creator's webcam and what they're reacting to are composed into one
    vertical frame instead of cropping to a single subject.

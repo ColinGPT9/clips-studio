@@ -51,7 +51,7 @@ export default function MultilingualExport({
     }
   })
   const [folder, setFolder] = useState('')
-  const [includeVideo, setIncludeVideo] = useState(true)
+  const includeVideo = true
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [burnIn, setBurnIn] = useState(false)
@@ -62,6 +62,11 @@ export default function MultilingualExport({
   const [clipCount, setClipCount] = useState(0)
   const [dubIn, setDubIn] = useState(false)
   const [canDub, setCanDub] = useState(false)
+  // Side files are off by default: most people want the video and nothing
+  // else cluttering the folder.
+  const [wantSubs, setWantSubs] = useState(false)
+  const [wantPost, setWantPost] = useState(false)
+  const [previewing, setPreviewing] = useState('')
 
   useEffect(() => {
     api
@@ -111,7 +116,9 @@ export default function MultilingualExport({
         folder,
         include_video: includeVideo,
         burn: burnIn,
-        dub: dubIn
+        dub: dubIn,
+        subtitles: wantSubs,
+        post_text: wantPost
       })
       setNotice(
         `Queued — ${res.clips} clip(s) × ${res.languages.length} language(s). Files land in your export folder; watch the Dashboard activity feed.`
@@ -176,10 +183,19 @@ export default function MultilingualExport({
           <input
             type="checkbox"
             className="size-3.5 accent-[#38BDF8]"
-            checked={includeVideo}
-            onChange={(e) => setIncludeVideo(e.target.checked)}
+            checked={wantSubs}
+            onChange={(e) => setWantSubs(e.target.checked)}
           />
-          {t('Copy the video too')}
+          {t('Subtitle files (.srt)')}
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer text-muted">
+          <input
+            type="checkbox"
+            className="size-3.5 accent-[#38BDF8]"
+            checked={wantPost}
+            onChange={(e) => setWantPost(e.target.checked)}
+          />
+          {t('Post text (.txt)')}
         </label>
         <label
           className="flex items-center gap-1.5 cursor-pointer text-muted"
@@ -281,6 +297,36 @@ export default function MultilingualExport({
             {t('use the clipping model instead')}
           </button>
         </p>
+      )}
+      {canDub && dubIn && picked.some((c) => langs.find((l) => l.code === c)?.can_dub) && (
+        <div className="flex gap-1.5 flex-wrap items-center text-xs border-t border-raised/60 pt-2">
+          <span className="text-muted">{t('Hear the voice')}</span>
+          {picked
+            .filter((c) => langs.find((l) => l.code === c)?.can_dub)
+            .map((c) => (
+              <button
+                key={c}
+                className="px-2 py-0.5 rounded-md bg-raised text-muted hover:text-ink disabled:opacity-50"
+                disabled={previewing === c}
+                onClick={async () => {
+                  setPreviewing(c)
+                  try {
+                    const url = await api.previewVoice(c)
+                    await new Audio(url).play()
+                  } catch (e) {
+                    setNotice(`Preview failed: ${e instanceof Error ? e.message : String(e)}`)
+                  } finally {
+                    setPreviewing('')
+                  }
+                }}
+              >
+                {previewing === c ? '…' : '▶'} {displayName(c, c)}
+              </button>
+            ))}
+          <span className="text-muted/70">
+            {t('(first play downloads that voice, about 60 MB)')}
+          </span>
+        </div>
       )}
       {dubIn && picked.some((c) => !langs.find((l) => l.code === c)?.can_dub) && (
         <p className="text-xs text-warn">
