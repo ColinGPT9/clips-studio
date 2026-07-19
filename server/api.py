@@ -42,6 +42,7 @@ class JobIn(BaseModel):
     reaction: str | None = None  # reaction pipeline: off | always
     cam_corner: str | None = None  # where the webcam sits in the source
     content_side: str | None = None  # where the reacted content sits vs the cam
+    reaction_regions: dict | None = None  # webcam/content boxes drawn in the Dashboard
     split_position: str | None = None  # facecam band in gaming splits (top/bottom)
 
 
@@ -135,6 +136,11 @@ class SettingsPatch(BaseModel):
     auto_upload: bool | None = None
     privacy: str | None = None
     content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
+
+
+class UrlFrameIn(BaseModel):
+    url: str
+    at: float = 300.0   # seconds into the video to sample
 
 
 class ReactionRegionsIn(BaseModel):
@@ -305,6 +311,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["cam_corner"] = body.cam_corner
         if body.content_side in ("auto", "above", "below", "left", "right"):
             payload["content_side"] = body.content_side
+        if body.reaction_regions and {"cam", "content"} <= set(body.reaction_regions):
+            payload["reaction_regions"] = body.reaction_regions
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))
@@ -656,6 +664,39 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if job_id is not None:
             worker.notify()
         return {"reply": result["reply"], "job_id": job_id}
+
+    @app.post("/reaction/url-frame")
+    def reaction_url_frame(body: UrlFrameIn):
+        """One frame straight from a URL — lets the regions be marked in the
+        Dashboard BEFORE processing, so every clip of the job renders right
+        the first time instead of needing a re-render each."""
+        import subprocess as sp
+
+        import yt_dlp
+
+        out = data_dir / "previews" / "url_frame.jpg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            opts = {"quiet": True, "no_warnings": True, "skip_download": True,
+                    "format": "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/b"}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(body.url, download=False)
+            stream = info.get("url") or (info.get("requested_formats") or [{}])[0].get("url")
+            if not stream:
+                raise HTTPException(400, "could not read a video stream from that link")
+            at = min(float(body.at), max(0.0, float(info.get("duration") or 600) - 5))
+            r = sp.run(
+                ["ffmpeg", "-y", "-v", "error", "-ss", str(at), "-i", stream,
+                 "-frames:v", "1", "-q:v", "4", str(out)],
+                capture_output=True, text=True, timeout=120,
+            )
+            if r.returncode != 0 or not out.exists():
+                raise HTTPException(400, "could not grab a frame from that link")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(400, f"could not read that link: {e}")
+        return FileResponse(out, media_type="image/jpeg")
 
     @app.get("/clips/{clip_id}/source-frame")
     def clip_source_frame(clip_id: int):

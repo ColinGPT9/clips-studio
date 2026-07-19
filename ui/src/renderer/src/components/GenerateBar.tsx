@@ -4,6 +4,7 @@ import type { CaptionStyle } from '../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from './WatermarkCard'
 import { Folder } from './icons'
+import ReactionRegions from './ReactionRegions'
 import { t } from '../lib/i18n'
 
 const STYLE_KEY = 'generate-caption-style'
@@ -69,6 +70,12 @@ export default function GenerateBar(): JSX.Element {
     localStorage.getItem('generate-content-side') ?? 'auto'
   )
 
+  // Regions marked in the Dashboard apply to EVERY clip of the job, so
+  // reaction clips come out right without re-rendering each one.
+  const [regions, setRegions] = useState<{ cam: number[]; content: number[] } | null>(null)
+  const [pickerFrame, setPickerFrame] = useState<string | null>(null)
+  const [pickerBusy, setPickerBusy] = useState(false)
+
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
       const next = { ...s, [key]: value }
@@ -94,7 +101,8 @@ export default function GenerateBar(): JSX.Element {
         reaction: reactionCam === 'off' ? 'off' : 'always',
         splitPosition: reactionCam === 'bottom' ? 'bottom' : 'top',
         camCorner,
-        contentSide
+        contentSide,
+        reactionRegions: reactionCam === 'off' ? null : regions
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -110,6 +118,21 @@ export default function GenerateBar(): JSX.Element {
 
   return (
     <div className="space-y-3">
+      {pickerFrame && (
+        <ReactionRegions
+          frameUrl={pickerFrame}
+          initial={regions ? { ...regions, camTop: reactionCam !== 'bottom' } : null}
+          onClose={() => setPickerFrame(null)}
+          onSaved={(r, camTop) => {
+            if (r) setRegions(r)
+            if (camTop !== undefined) {
+              const v = camTop ? 'top' : 'bottom'
+              setReactionCam(v)
+              localStorage.setItem('generate-reaction-cam', v)
+            }
+          }}
+        />
+      )}
       <div className="card flex gap-3 items-center flex-wrap">
         <input
           className="input w-80 max-w-full"
@@ -191,6 +214,28 @@ export default function GenerateBar(): JSX.Element {
         </label>
         {reactionCam !== 'off' && (
           <>
+            <button
+              className="btn-ghost shrink-0 !py-1 text-xs"
+              disabled={pickerBusy || !url.trim()}
+              title={
+                url.trim()
+                  ? 'Mark the webcam and the content on a frame from this video — applies to every clip of this job'
+                  : 'Paste the video link first'
+              }
+              onClick={async () => {
+                setPickerBusy(true)
+                setError(null)
+                try {
+                  setPickerFrame(await api.fetchUrlFrame(url.trim()))
+                } catch (e) {
+                  setError(`Could not load a frame: ${e instanceof Error ? e.message : String(e)}`)
+                } finally {
+                  setPickerBusy(false)
+                }
+              }}
+            >
+              {pickerBusy ? t('Loading frame…') : regions ? t('Regions ✓') : t('Mark regions…')}
+            </button>
             <label className="flex items-center gap-2 text-sm shrink-0"
               title="Where the creator's webcam sits in the SOURCE video. Set once per streamer — auto-detection often locks onto a person inside the video being reacted to.">
               <span className="text-muted">{t('Webcam is')}</span>
