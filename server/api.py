@@ -137,6 +137,14 @@ class SettingsPatch(BaseModel):
     content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
 
 
+class ReactionRegionsIn(BaseModel):
+    """Rectangles the user drew on a source frame (normalized 0..1)."""
+
+    cam: list[float]           # [x, y, w, h] webcam pane
+    content: list[float]       # [x, y, w, h] what they're reacting to
+    apply_to_creator: bool = True   # reuse for this creator's future videos
+
+
 class FeedbackIn(BaseModel):
     kind: str  # bug | feature | improvement
     title: str
@@ -647,6 +655,93 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if job_id is not None:
             worker.notify()
         return {"reply": result["reply"], "job_id": job_id}
+
+    @app.get("/clips/{clip_id}/source-frame")
+    def clip_source_frame(clip_id: int):
+        """A frame from the SOURCE video (not the rendered clip) for the
+        reaction region picker — the user draws the webcam / content boxes
+        on the original layout."""
+        import subprocess as sp
+
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such clip")
+        source = data_dir / "downloads" / f"{row['video_id']}.mp4"
+        if not source.exists():
+            raise HTTPException(404, "source video is no longer on disk")
+        out = data_dir / "previews" / f"frame_{clip_id}.jpg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        at = float(row["start_s"]) + max(1.0, (float(row["end_s"]) - float(row["start_s"])) / 2)
+        r = sp.run(
+            ["ffmpeg", "-y", "-v", "error", "-ss", str(at), "-i", str(source),
+             "-frames:v", "1", "-q:v", "4", str(out)],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0 or not out.exists():
+            raise HTTPException(500, "could not read a frame from the source video")
+        return FileResponse(out, media_type="image/jpeg")
+
+    @app.get("/clips/{clip_id}/reaction-regions")
+    def get_reaction_regions(clip_id: int):
+        """Regions already saved for this clip, else this creator's."""
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+            opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
+            if opts.get("reaction_regions"):
+                return {"regions": opts["reaction_regions"], "source": "clip"}
+            vrow = d.conn.execute(
+                "SELECT creator_id FROM videos WHERE video_id = ?", (row["video_id"],)
+            ).fetchone()
+            if vrow and vrow["creator_id"]:
+                crow = d.conn.execute(
+                    "SELECT reaction_layout FROM creators WHERE creator_id = ?",
+                    (vrow["creator_id"],),
+                ).fetchone()
+                if crow and crow["reaction_layout"]:
+                    return {"regions": json.loads(crow["reaction_layout"]), "source": "creator"}
+            return {"regions": None, "source": None}
+        finally:
+            d.close()
+
+    @app.put("/clips/{clip_id}/reaction-regions")
+    def put_reaction_regions(clip_id: int, body: ReactionRegionsIn):
+        """Save the drawn regions and re-render the clip with them. Also
+        stored on the creator so their future videos reuse the layout."""
+        for name, box in (("cam", body.cam), ("content", body.content)):
+            if len(box) != 4 or not all(0.0 <= v <= 1.0 for v in box) or box[2] <= 0.02 or box[3] <= 0.02:
+                raise HTTPException(400, f"{name} region is not a valid box")
+        regions = {"cam": [round(v, 4) for v in body.cam],
+                   "content": [round(v, 4) for v in body.content]}
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+            if body.apply_to_creator:
+                vrow = d.conn.execute(
+                    "SELECT creator_id FROM videos WHERE video_id = ?", (row["video_id"],)
+                ).fetchone()
+                if vrow and vrow["creator_id"]:
+                    d.conn.execute(
+                        "UPDATE creators SET reaction_layout = ? WHERE creator_id = ?",
+                        (json.dumps(regions), vrow["creator_id"]),
+                    )
+                    d.conn.commit()
+            job_id = d.add_job("render", json.dumps({
+                "clip_id": clip_id,
+                "render_opts": {"crop": "reaction", "reaction_regions": regions},
+            }))
+        finally:
+            d.close()
+        worker.notify()
+        return {"job_id": job_id, "regions": regions}
 
     @app.post("/clips/{clip_id}/render")
     def rerender_clip(clip_id: int, body: RenderIn):

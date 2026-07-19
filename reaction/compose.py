@@ -51,7 +51,12 @@ def plan(
     if out_ch > OUT_H - CAM_MIN_H:
         out_ch = _even(OUT_H - CAM_MIN_H)
         out_cw = min(OUT_W, _even(out_ch * c_px[2] / c_px[3]))
-    cam_h = _even(min(CAM_MAX_H, OUT_H - out_ch))
+    # The cam band takes ALL the space the content doesn't need, so the frame
+    # is filled instead of padded with blurred bars. Widescreen content (a
+    # video the creator is reacting to) is short at full width, and that
+    # leftover is better spent on the creator's face than on a blur wash —
+    # the pane cover-crops, which is normal for a webcam and never stretches.
+    cam_h = _even(max(CAM_MIN_H, OUT_H - out_ch))
 
     gap = OUT_H - out_ch - cam_h
     y0 = _even(max(0, gap) / 2)

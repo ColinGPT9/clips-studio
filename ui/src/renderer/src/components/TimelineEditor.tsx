@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { t } from '../lib/i18n'
 import type {
   CaptionLine,
   CaptionStyle,
@@ -30,6 +31,7 @@ import {
 } from './icons'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import ColorControls from './ColorControls'
+import ReactionRegions from './ReactionRegions'
 import EditChat from './EditChat'
 
 type Tab = 'captions' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
@@ -253,6 +255,7 @@ export default function TimelineEditor({
   const scrubbing = useRef(false) // suppress auto-skip while seeking/dragging
   const scrubDrag = useRef(false) // true while dragging the playhead
   const [showKeys, setShowKeys] = useState(false)
+  const [showRegions, setShowRegions] = useState(false)
   useEffect(() => {
     editRef.current = edit
     removedRef.current = removed
@@ -852,6 +855,16 @@ export default function TimelineEditor({
 
   return (
     <div className="border border-raised/60 rounded-lg p-3 space-y-3">
+      {showRegions && (
+        <ReactionRegions
+          clipId={clip.id}
+          onClose={() => setShowRegions(false)}
+          onSaved={() => {
+            setNotice('Regions saved — re-rendering this clip with them')
+            onChanged()
+          }}
+        />
+      )}
       {showKeys && (
         <div
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
@@ -1359,6 +1372,15 @@ export default function TimelineEditor({
               {label}
             </button>
           ))}
+          {layout === 'reaction' && (
+            <button
+              className="px-2.5 py-1 rounded-md bg-accent/20 text-accent font-medium"
+              onClick={() => setShowRegions(true)}
+              title="Draw the webcam and content boxes on a frame of the source — exact, and remembered for this creator"
+            >
+              {t('Mark regions…')}
+            </button>
+          )}
           {layoutDirty && (
             <span className="text-muted">— shows in “Update preview”, saved on Apply</span>
           )}
