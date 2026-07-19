@@ -185,7 +185,13 @@ class Worker(threading.Thread):
         data_dir = Path(self.config["paths"]["data_dir"])
         folder = Path(payload["folder"])
         languages = payload["languages"]
-        llm = create_backend(self.config["llm"])
+        # Translation may run on its own model (see llm.translation_model).
+        llm_cfg = dict(self.config["llm"])
+        tm = str(llm_cfg.get("translation_model") or "").strip()
+        if tm:
+            llm_cfg["backend"] = tm if "/" in tm else f"ollama/{tm}"
+            print(f"      Translating with {tm}")
+        llm = create_backend(llm_cfg)
         written: list[str] = []
 
         for n, clip_id in enumerate(payload["clip_ids"], 1):
@@ -211,11 +217,16 @@ class Worker(threading.Thread):
             )
             clip_path = Path(clip["path"]) if clip["path"] else None
             stem = _safe_name(clip["title"] or clip["hook"] or "", f"clip_{clip_id}")
+            src_lang = self._source_language(clip["video_id"], data_dir)
             written += publish.publish(
                 lines, languages, folder, stem, llm,
                 terms=terms,
                 clip_path=clip_path if payload.get("include_video", True) else None,
-                source_language=self._source_language(clip["video_id"], data_dir),
+                source_language=src_lang,
+                burn=bool(payload.get("burn")),
+                clip_row=clip,
+                config=self.config,
+                data_dir=data_dir,
             )
         print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
 

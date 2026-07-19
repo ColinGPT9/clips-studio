@@ -130,6 +130,7 @@ class SettingsPatch(BaseModel):
     auto_upload: bool | None = None
     privacy: str | None = None
     content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
+    translation_model: str | None = None  # local model used for translation
 
 
 class TranslateIn(BaseModel):
@@ -139,6 +140,7 @@ class TranslateIn(BaseModel):
     languages: list[str]          # ISO codes from multilingual.languages
     folder: str                   # where the files are written
     include_video: bool = True    # copy the clip beside its subtitle tracks
+    burn: bool = False            # also make a video per language with captions burned in
 
 
 class FeedbackIn(BaseModel):
@@ -813,6 +815,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "languages": langs,
                 "folder": body.folder,
                 "include_video": body.include_video,
+                "burn": body.burn,
             }))
         finally:
             d.close()
@@ -1182,11 +1185,21 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "auto_upload": config.get("upload", {}).get("enabled", False),
             "privacy": config.get("upload", {}).get("privacy", "public"),
             "content_language": config.get("content_language", "auto"),
+            "translation_model": config.get("llm", {}).get("translation_model", ""),
         }
 
     @app.patch("/settings")
     def patch_settings(body: SettingsPatch):
         text = settings_path.read_text(encoding="utf-8")
+        if body.translation_model is not None:
+            # Nested under llm:, so patch it in place rather than via the
+            # flat top-level key rewrite below.
+            text = settings_path.read_text(encoding="utf-8")
+            text, n = re.subn(r'(?m)^(\s*translation_model:\s*).*$',
+                              rf'\g<1>"{body.translation_model}"', text, count=1)
+            if n:
+                settings_path.write_text(text, encoding="utf-8")
+                config.setdefault("llm", {})["translation_model"] = body.translation_model
         if body.content_language is not None and not re.fullmatch(
             r"auto|[a-z]{2,3}", body.content_language
         ):

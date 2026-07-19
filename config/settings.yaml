@@ -29,6 +29,12 @@ channels: []
 poll_interval_minutes: 15
 
 llm:
+  # Translation (multilingual publishing) can use a DIFFERENT local model
+  # than clipping. Clipping models are picked for judgement; translation
+  # wants multilingual strength — qwen2.5:7b is markedly better here than
+  # gemma. Empty = use the main model above. Install it from the Models
+  # page; nothing is downloaded until you ask.
+  translation_model: ""
   temperature: 0.4
   num_ctx: 8192          # context window; raise for models that support more
   ollama_host: http://localhost:11434
