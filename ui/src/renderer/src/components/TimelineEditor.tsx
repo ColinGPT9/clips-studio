@@ -1338,7 +1338,12 @@ export default function TimelineEditor({
             [
               ['track', 'Auto (AI)', 'The AI picks: subject tracking or letterbox as needed'],
               ['letterbox', 'Letterbox', 'Force the FULL frame on a blurred backdrop — use when the crop cuts someone off'],
-              ['center', 'Center', 'Static center crop, no tracking']
+              ['center', 'Center', 'Static center crop, no tracking'],
+              [
+                'reaction',
+                'Reaction',
+                'Reaction layout: keeps BOTH the creator and what they are reacting to visible — for webcam-over-content clips'
+              ]
             ] as const
           ).map(([value, label, tip]) => (
             <button

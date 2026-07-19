@@ -39,6 +39,7 @@ class JobIn(BaseModel):
     min_score: int | None = None  # per-job quality bar override (0-100)
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
+    reaction: str | None = None  # reaction pipeline: off | auto | always
     split_position: str | None = None  # facecam band in gaming splits (top/bottom)
 
 
@@ -287,6 +288,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["min_score"] = max(0, min(100, body.min_score))
         if body.split_position in ("top", "bottom"):
             payload["split_position"] = body.split_position
+        if body.reaction in ("off", "auto", "always"):
+            payload["reaction"] = body.reaction
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))

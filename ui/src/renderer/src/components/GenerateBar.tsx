@@ -56,6 +56,12 @@ export default function GenerateBar(): JSX.Element {
     (localStorage.getItem('generate-split-position') as 'top' | 'bottom') ?? 'top'
   )
 
+  // Reaction pipeline (separate from the standard one): off = never,
+  // auto = only clips with a detected webcam+content layout, always = all.
+  const [reaction, setReaction] = useState<'off' | 'auto' | 'always'>(
+    (localStorage.getItem('generate-reaction') as 'off' | 'auto' | 'always') ?? 'off'
+  )
+
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setCaptionStyle((s) => {
       const next = { ...s, [key]: value }
@@ -78,7 +84,8 @@ export default function GenerateBar(): JSX.Element {
         longClips,
         longform: longform ? { mode: longformMode } : null,
         watermarkProfileId: wm.enabled ? wm.profileId : null,
-        splitPosition
+        splitPosition,
+        reaction
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -155,7 +162,27 @@ export default function GenerateBar(): JSX.Element {
         </label>
         <label
           className="flex items-center gap-2 text-sm shrink-0"
-          title="Gaming clips with a webcam overlay: which band the camera goes in on the vertical clip. Reaction/IRL clips aren't affected. Changeable per clip in the editor."
+          title="Reaction videos (webcam over the content they react to) use a separate pipeline that keeps BOTH visible. Off = the standard pipeline for every clip."
+        >
+          <span className="text-muted">{t('Reaction')}</span>
+          <select
+            className="input !w-28 !py-1 text-sm"
+            value={reaction}
+            onChange={(e) => {
+              const v = e.target.value as 'off' | 'auto' | 'always'
+              setReaction(v)
+              localStorage.setItem('generate-reaction', v)
+            }}
+            aria-label="Reaction video pipeline"
+          >
+            <option value="off">{t('Off')}</option>
+            <option value="auto">{t('Auto-detect')}</option>
+            <option value="always">{t('Always')}</option>
+          </select>
+        </label>
+        <label
+          className="flex items-center gap-2 text-sm shrink-0"
+          title="Gaming/reaction clips with a webcam pane: which band the camera goes in."
         >
           <span className="text-muted">{t('Camera')}</span>
           <select

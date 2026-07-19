@@ -49,6 +49,12 @@ clips:
                         # (turn on the 60s+ toggle for TikTok-length clips)
   vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
   captions: true        # burn word-synced captions into the clips
+  reaction: off         # reaction-video pipeline (creator + what they react
+                        # to, both visible). off = never (standard pipeline
+                        # for everything, the default), auto = only clips
+                        # where a webcam + content layout is clearly
+                        # detected, always = every clip of the job. Also
+                        # selectable per clip in the editor's Layout row.
 
 scoring:
   # Multimodal fusion weights (must sum to 1.0). Raise audio/visual for

@@ -114,6 +114,7 @@ class Worker(threading.Thread):
                         or payload.get("watermark_profile_id")
                         or payload.get("filter")
                         or payload.get("split_position")
+                        or payload.get("reaction")
                     ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
@@ -126,6 +127,11 @@ class Worker(threading.Thread):
                         cfg["clips"]["max_duration"] = 180
                     if payload.get("filter"):
                         cfg["clips"]["filter"] = payload["filter"]
+                    if payload.get("reaction") in ("auto", "always"):
+                        # Reaction pipeline for this job (isolated path;
+                        # 'auto' still defers to the standard pipeline
+                        # unless a two-region layout is detected).
+                        cfg["clips"]["reaction"] = payload["reaction"]
                     if payload.get("split_position") in ("top", "bottom"):
                         # Facecam band default for gaming split layouts,
                         # chosen in the Generate bar (per-clip editor wins).
