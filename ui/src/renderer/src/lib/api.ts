@@ -65,6 +65,8 @@ export const api = {
       watermarkProfileId?: number | null
       splitPosition?: 'top' | 'bottom' | null
       reaction?: 'off' | 'auto' | 'always' | null
+      camCorner?: string | null
+      contentSide?: string | null
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -79,7 +81,9 @@ export const api = {
         longform: opts?.longform ?? null,
         watermark_profile_id: opts?.watermarkProfileId ?? null,
         split_position: opts?.splitPosition ?? null,
-        reaction: opts?.reaction ?? null
+        reaction: opts?.reaction ?? null,
+        cam_corner: opts?.camCorner ?? null,
+        content_side: opts?.contentSide ?? null
       })
     }),
   addLocalVideo: (opts: {
