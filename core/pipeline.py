@@ -473,11 +473,6 @@ def _render_files(
                 model_name=tracking_cfg["detector"],
                 sample_fps=tracking_cfg["sample_fps"],
                 force_fit_blur=(crop_mode == "letterbox"),
-                # "This IS a gaming stream with a facecam" — set from the
-                # Generate bar's Camera dropdown (always-split options).
-                force_split=bool(
-                    opts.get("force_split") or config["clips"].get("force_split")
-                ),
             )
             if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
                 # USER-forced letterbox means "show me the WHOLE frame" —
@@ -520,10 +515,6 @@ def _render_files(
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
         _wm.apply_image(final_path, wm_cfg, canvas, wm_assets)
 
-    # Persist job-level facecam choices per clip, so later re-renders from
-    # the editor keep the same layout without the original job context.
-    split_pos = opts.get("split_position") or config["clips"].get("split_position")
-    force_split = bool(opts.get("force_split") or config["clips"].get("force_split"))
     render_opts_json = json.dumps(
         {
             **opts,
@@ -532,11 +523,8 @@ def _render_files(
             # Persist the resolved branding so a later re-render reapplies it,
             # even when it came from the job/config default (not per-clip opts).
             **({"watermark": wm_cfg} if wm_cfg else {}),
-            **({"split_position": split_pos} if split_pos and split_pos != "top" else {}),
-            **({"force_split": True} if force_split else {}),
         }
-    ) if (opts or caption_style or filter_name != "none" or wm_cfg
-          or (split_pos and split_pos != "top") or force_split) else ""
+    ) if (opts or caption_style or filter_name != "none" or wm_cfg) else ""
     return final_path, render_opts_json
 
 

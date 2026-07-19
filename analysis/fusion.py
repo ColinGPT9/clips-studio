@@ -74,17 +74,6 @@ def find_clips(
     visual_activity = _combine([_pct(visual_raw[k]) for k in ("motion", "scene_cut", "flash") if k in visual_raw])
     combined = _combine([a for a in (audio_excitement, visual_activity) if a.size])
 
-    # Game-action signal: brightness flashes (kills, explosions, effects,
-    # elimination banners) + rapid cuts + audio bursts. Deliberately
-    # independent of the person-detector: in gameplay the streamer is a tiny
-    # facecam, so anything gated on "a prominent person on screen" can never
-    # fire — this is what catches a kill streak in a shooter, where the
-    # transcript says nothing special and the reaction score is blind.
-    game_action = _combine(
-        [_pct(visual_raw[k]) for k in ("flash", "scene_cut") if k in visual_raw]
-        + ([audio_excitement] if audio_excitement.size else [])
-    )
-
     events = _build_events(audio_excitement, visual_activity, visual_raw)
     if events:
         print(f"  {len(events)} notable audio/visual events detected")
@@ -119,10 +108,6 @@ def find_clips(
     # source: a moment chat exploded over is a candidate even if the
     # transcript and A/V signals missed it.
     peak_signals = [visual_activity, audio_excitement, combined]
-    if game_action.size:
-        # Kill streaks become candidates even when the transcript pool and
-        # the person-centric signals both ignore them.
-        peak_signals.append(game_action)
     if audience is not None and audience.size:
         peak_signals.append(audience)
     for sig in peak_signals:
@@ -201,11 +186,9 @@ def find_clips(
     ctx_cap = int(scoring_cfg.get("creator_context_max", 6))
     action_bonus = int(scoring_cfg.get("action_bonus", 10))
     audience_bonus = int(scoring_cfg.get("audience_bonus", 8))
-    game_action_bonus = int(scoring_cfg.get("game_action_bonus", 10))
     n_context = 0
     n_action = 0
     n_hype = 0
-    n_game = 0
     for c in candidates:
         fused = round(100 * _fuse(c, weights, c.subscores["reaction"] / 100.0, speech[id(c)]))
         # Trending/drama moments (a creator/celebrity named, beef, controversy)
@@ -229,17 +212,6 @@ def find_clips(
             fused = min(100, fused + action_bonus)
             c.subscores["action"] = action_bonus
             n_action += 1
-        # Game-action moments (kill streaks, clutches, boss kills): additive
-        # bonus for windows at the TOP of the flash/cuts/audio curve — NOT
-        # gated on reaction, because gameplay streamers are tiny facecams.
-        if game_action.size and game_action_bonus > 0:
-            g = _window_mean(game_action, c.start, c.end)
-            if g >= 0.85:
-                b = round(game_action_bonus * (g - 0.85) / 0.15)
-                if b:
-                    fused = min(100, fused + b)
-                    c.subscores["game_action"] = b
-                    n_game += 1
         # Audience hype (chat replay density / YouTube most-replayed): a
         # small additive bonus only for windows near the TOP of the curve.
         # Deliberately capped below the content channels — the transcript/
@@ -274,8 +246,6 @@ def find_clips(
         print(f"  Creator context boosted {n_context} candidate(s) (max +{ctx_cap})")
     if n_action:
         print(f"  Active-content boosted {n_action} candidate(s) (+{action_bonus})")
-    if n_game:
-        print(f"  Game-action boosted {n_game} candidate(s) (max +{game_action_bonus})")
     if n_hype:
         print(f"  Audience hype boosted {n_hype} candidate(s) (max +{audience_bonus})")
 
