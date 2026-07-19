@@ -151,6 +151,8 @@ class Worker(threading.Thread):
                         process_video(payload["url"], cfg, db, force=payload.get("force", False))
                 elif job["type"] == "render":
                     self._rerender_clip(db, payload)
+                elif job["type"] == "translate":
+                    self._translate_clips(db, payload)
                 else:
                     raise ValueError(f"Unknown job type {job['type']!r}")
                 db.set_job(job["id"], status="done")
@@ -168,6 +170,86 @@ class Worker(threading.Thread):
             finally:
                 current_job_id[0] = None
                 cancel.set_active(None)
+
+    def _translate_clips(self, db: StateDB, payload: dict) -> None:
+        """Multilingual publishing: subtitle tracks for finished clips.
+
+        Entirely separate from clip generation — it reads finished clips and
+        writes new files. A failure here can never damage a clip."""
+        import json as _json
+
+        from core.pipeline import _safe_name
+        from llm.registry import create_backend
+        from multilingual import glossary, publish
+
+        data_dir = Path(self.config["paths"]["data_dir"])
+        folder = Path(payload["folder"])
+        languages = payload["languages"]
+        llm = create_backend(self.config["llm"])
+        written: list[str] = []
+
+        for n, clip_id in enumerate(payload["clip_ids"], 1):
+            clip = db.get_clip(int(clip_id))
+            if clip is None:
+                continue
+            progress.emit(stage="translate", clip=n, total=len(payload["clip_ids"]))
+            opts = _json.loads(clip["render_opts"]) if clip["render_opts"] else {}
+            lines = opts.get("caption_lines")
+            if not lines:
+                lines = self._caption_lines_for(db, clip, data_dir)
+            if not lines:
+                print(f"      (clip {clip_id} has no captions to translate)")
+                continue
+            vrow = db.conn.execute(
+                "SELECT creator_id, title FROM videos WHERE video_id = ?",
+                (clip["video_id"],),
+            ).fetchone()
+            terms = glossary.build(
+                db,
+                vrow["creator_id"] if vrow else None,
+                vrow["title"] if vrow else "",
+            )
+            clip_path = Path(clip["path"]) if clip["path"] else None
+            stem = _safe_name(clip["title"] or clip["hook"] or "", f"clip_{clip_id}")
+            written += publish.publish(
+                lines, languages, folder, stem, llm,
+                terms=terms,
+                clip_path=clip_path if payload.get("include_video", True) else None,
+                source_language=self._source_language(clip["video_id"], data_dir),
+            )
+        print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
+
+    def _source_language(self, video_id: str, data_dir: Path) -> str:
+        try:
+            from transcription.transcriber import detected_language
+
+            return detected_language(video_id, data_dir / "transcripts")
+        except Exception:
+            return "en"
+
+    def _caption_lines_for(self, db: StateDB, clip, data_dir: Path) -> list[dict]:
+        """Caption lines rebuilt from the cached transcript when the clip
+        didn't store edited ones."""
+        try:
+            import json as _json
+
+            from core.models import ClipCandidate, Segment
+            from video.captions import DEFAULT_STYLE, build_caption_lines
+
+            tpath = data_dir / "transcripts" / f"{clip['video_id']}.json"
+            if not tpath.exists():
+                return []
+            data = _json.loads(tpath.read_text(encoding="utf-8"))
+            segments = [Segment(**s) for s in data["segments"]]
+            opts = _json.loads(clip["render_opts"]) if clip["render_opts"] else {}
+            wpc = {**DEFAULT_STYLE, **(opts.get("caption_style") or {})}["words_per_caption"]
+            cand = ClipCandidate(
+                start=clip["start_s"], end=clip["end_s"], score=clip["score"] or 0
+            )
+            return build_caption_lines(segments, cand, wpc)
+        except Exception as e:
+            print(f"      (could not rebuild captions: {e})")
+            return []
 
     def _rerender_clip(self, db: StateDB, payload: dict) -> None:
         """Re-render one clip from the original source video, with optionally

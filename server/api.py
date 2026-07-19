@@ -132,6 +132,15 @@ class SettingsPatch(BaseModel):
     content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
 
 
+class TranslateIn(BaseModel):
+    """Multilingual publishing for one or more finished clips."""
+
+    clip_ids: list[int]
+    languages: list[str]          # ISO codes from multilingual.languages
+    folder: str                   # where the files are written
+    include_video: bool = True    # copy the clip beside its subtitle tracks
+
+
 class FeedbackIn(BaseModel):
     kind: str  # bug | feature | improvement
     title: str
@@ -773,6 +782,42 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if not path.exists() or data_dir not in path.parents:
             raise HTTPException(404, "clip file missing")
         return FileResponse(path, media_type="video/mp4")
+
+    # ---- multilingual publishing (separate pipeline; see multilingual/) ----
+
+    @app.get("/languages")
+    def list_languages():
+        from multilingual.languages import LANGUAGES
+
+        return {
+            "languages": [
+                {"code": c, "name": n, "native": nat} for c, (n, nat, _p) in LANGUAGES.items()
+            ]
+        }
+
+    @app.post("/translate")
+    def translate_clips(body: TranslateIn):
+        """Queue subtitle translation. Runs on finished clips only — the
+        clips themselves are never modified."""
+        from multilingual.languages import is_supported
+
+        langs = [c for c in body.languages if is_supported(c)]
+        if not langs:
+            raise HTTPException(400, "pick at least one supported language")
+        if not body.clip_ids:
+            raise HTTPException(400, "no clips selected")
+        d = db()
+        try:
+            job_id = d.add_job("translate", json.dumps({
+                "clip_ids": body.clip_ids[:50],
+                "languages": langs,
+                "folder": body.folder,
+                "include_video": body.include_video,
+            }))
+        finally:
+            d.close()
+        worker.notify()
+        return {"job_id": job_id, "languages": langs, "clips": len(body.clip_ids)}
 
     @app.post("/clips/{clip_id}/export")
     def export_clip(clip_id: int, body: ExportIn):
