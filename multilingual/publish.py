@@ -32,6 +32,8 @@ def publish(
     source_language: str = "en",
     on_progress=None,
     burn: bool = False,
+    dub: bool = False,          # also speak the translation over the clip
+    voices_dir: Path | None = None,
     post: dict | None = None,   # {"title", "description", "hashtags"} to translate
     clip_row=None,
     config: dict | None = None,
@@ -48,10 +50,11 @@ def publish(
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
 
-    # One caption-free re-render serves every language's burn.
+    # One caption-free re-render serves every language's burn, and is also
+    # the video the dub is laid over.
     base = None
     caption_style = None
-    if burn and clip_row is not None and config is not None and data_dir is not None:
+    if (burn or dub) and clip_row is not None and config is not None and data_dir is not None:
         import json as _json
 
         from multilingual import burn as burner
@@ -101,16 +104,33 @@ def publish(
                     post.get("hashtags", []), code, llm, terms=terms,
                 )
                 written.append(str(write_post_file(meta, out_dir / f"{stem}.{code}.txt")))
-            if base is not None:
+            burned = None
+            if burn and base is not None:
                 from multilingual import burn as burner
 
-                made = burner.burn(
+                burned = burner.burn(
                     base, translated, code, out_dir / f"{stem}.{code}.mp4",
                     caption_style, config or {},
                 )
-                if made is not None:
-                    written.append(str(made))
+                if burned is not None:
+                    written.append(str(burned))
                     print(f"      Video written: {english_name(code)}")
+            if dub and base is not None and voices_dir is not None:
+                from multilingual import dub as dubber
+
+                # Dub over the burned version when there is one, so the
+                # viewer gets translated captions AND translated speech.
+                source = burned or base
+                spoken = dubber.dub(
+                    translated, code, source,
+                    out_dir / f"{stem}.{code}.dubbed.mp4",
+                    voices_dir, out_dir / ".ml_work",
+                )
+                if spoken is not None:
+                    written.append(str(spoken))
+                    print(f"      Dubbed audio written: {english_name(code)}")
+                elif not dubber.supported(code):
+                    print(f"      ({english_name(code)} has no voice available — subtitles only)")
         except Exception as e:  # one language failing must not stop the rest
             print(f"      ({english_name(code)} failed: {e})")
         done += 1

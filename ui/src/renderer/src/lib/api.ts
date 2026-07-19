@@ -160,13 +160,17 @@ export const api = {
     }),
 
   languages: () =>
-    request<{ languages: { code: string; name: string; native: string }[] }>('/languages'),
+    request<{
+      languages: { code: string; name: string; native: string; can_dub: boolean }[]
+      dubbing_available: boolean
+    }>('/languages'),
   translateClips: (body: {
     clip_ids: number[]
     languages: string[]
     folder: string
     include_video: boolean
     burn: boolean
+    dub: boolean
   }) =>
     request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
       method: 'POST',

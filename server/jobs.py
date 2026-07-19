@@ -224,6 +224,8 @@ class Worker(threading.Thread):
                 clip_path=clip_path if payload.get("include_video", True) else None,
                 source_language=src_lang,
                 burn=bool(payload.get("burn")),
+                dub=bool(payload.get("dub")),
+                voices_dir=data_dir / "voices",
                 post={
                     "title": clip["title"] or "",
                     "description": clip["description"] or "",

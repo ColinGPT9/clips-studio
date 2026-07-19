@@ -40,7 +40,9 @@ export default function MultilingualExport({
   clipId: number
   videoId?: string
 }): JSX.Element {
-  const [langs, setLangs] = useState<{ code: string; name: string; native: string }[]>([])
+  const [langs, setLangs] = useState<
+    { code: string; name: string; native: string; can_dub: boolean }[]
+  >([])
   const [picked, setPicked] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(REMEMBER) ?? '[]')
@@ -58,9 +60,17 @@ export default function MultilingualExport({
   const [pulling, setPulling] = useState(false)
   const [allClips, setAllClips] = useState(false)
   const [clipCount, setClipCount] = useState(0)
+  const [dubIn, setDubIn] = useState(false)
+  const [canDub, setCanDub] = useState(false)
 
   useEffect(() => {
-    api.languages().then((r) => setLangs(r.languages)).catch(() => {})
+    api
+      .languages()
+      .then((r) => {
+        setLangs(r.languages)
+        setCanDub(r.dubbing_available)
+      })
+      .catch(() => {})
     getExportFolder().then(setFolder)
     api.models().then((m) => setInstalled(m.installed.map((i) => i.name))).catch(() => {})
     api.settings().then((st) => setTransModel(st.translation_model || '')).catch(() => {})
@@ -100,7 +110,8 @@ export default function MultilingualExport({
         languages: picked,
         folder,
         include_video: includeVideo,
-        burn: burnIn
+        burn: burnIn,
+        dub: dubIn
       })
       setNotice(
         `Queued — ${res.clips} clip(s) × ${res.languages.length} language(s). Files land in your export folder; watch the Dashboard activity feed.`
@@ -182,6 +193,20 @@ export default function MultilingualExport({
           />
           {t('Burn captions in (TikTok/Reels)')}
         </label>
+        {canDub && (
+          <label
+            className="flex items-center gap-1.5 cursor-pointer text-muted"
+            title="Speak the translation over the clip with a local voice. The original audio stays underneath at low volume, so music and room tone survive. Slower — each language is synthesized sentence by sentence."
+          >
+            <input
+              type="checkbox"
+              className="size-3.5 accent-[#38BDF8]"
+              checked={dubIn}
+              onChange={(e) => setDubIn(e.target.checked)}
+            />
+            {t('Dub the audio')}
+          </label>
+        )}
         {videoId && clipCount > 1 && (
           <label
             className="flex items-center gap-1.5 cursor-pointer text-muted"
@@ -255,6 +280,24 @@ export default function MultilingualExport({
           >
             {t('use the clipping model instead')}
           </button>
+        </p>
+      )}
+      {dubIn && picked.some((c) => !langs.find((l) => l.code === c)?.can_dub) && (
+        <p className="text-xs text-warn">
+          {t('No voice exists for')}{' '}
+          {picked
+            .filter((c) => !langs.find((l) => l.code === c)?.can_dub)
+            .map((c) => displayName(c, c))
+            .join(', ')}
+          {' — '}
+          {t('those languages get subtitles only.')}
+        </p>
+      )}
+      {!canDub && (
+        <p className="text-xs text-muted">
+          {t(
+            'Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts — then restart the app. Voices download per language, about 60 MB each, and stay on your PC.'
+          )}
         </p>
       )}
       {notice && <p className="text-xs text-muted">{notice}</p>}
