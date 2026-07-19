@@ -380,12 +380,15 @@ def _try_reaction_render(
         return False
     try:
         from reaction.compose import render_reaction
-        from reaction.layout import ReactionLayout, analyze
+        from reaction.layout import ReactionLayout, adapt_cam_box, analyze
 
         if regions:
             # The user drew these on a real frame — no detection, no guessing.
+            # Only the cam box is re-checked, in case they moved their webcam.
             layout = ReactionLayout(
-                cam_box=tuple(regions["cam"]),
+                cam_box=adapt_cam_box(
+                    intermediate, tuple(regions["cam"]), config["tracking"]["detector"]
+                ),
                 content_box=tuple(regions["content"]),
                 kind="manual",
                 confidence=1.0,
