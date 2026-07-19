@@ -115,6 +115,8 @@ class Worker(threading.Thread):
                         or payload.get("filter")
                         or payload.get("split_position")
                         or payload.get("reaction")
+                        or payload.get("cam_corner")
+                        or payload.get("content_side")
                     ):
                         cfg = copy.deepcopy(self.config)
                     if "captions" in payload:
@@ -132,6 +134,10 @@ class Worker(threading.Thread):
                         # 'auto' still defers to the standard pipeline
                         # unless a two-region layout is detected).
                         cfg["clips"]["reaction"] = payload["reaction"]
+                    if payload.get("cam_corner"):
+                        cfg["clips"]["cam_corner"] = payload["cam_corner"]
+                    if payload.get("content_side"):
+                        cfg["clips"]["content_side"] = payload["content_side"]
                     if payload.get("split_position") in ("top", "bottom"):
                         # Facecam band default for gaming split layouts,
                         # chosen in the Generate bar (per-clip editor wins).

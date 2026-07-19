@@ -369,7 +369,16 @@ def _try_reaction_render(
         from reaction.compose import render_reaction
         from reaction.layout import analyze
 
-        layout = analyze(intermediate, model_name=config["tracking"]["detector"])
+        layout = analyze(
+            intermediate,
+            model_name=config["tracking"]["detector"],
+            cam_corner=str(
+                opts.get("cam_corner") or config["clips"].get("cam_corner") or "auto"
+            ),
+            content_side=str(
+                opts.get("content_side") or config["clips"].get("content_side") or "auto"
+            ),
+        )
         if layout is None:
             if not forced:
                 return False  # AUTO: not a reaction clip — standard pipeline

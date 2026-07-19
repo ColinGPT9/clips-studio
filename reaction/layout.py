@@ -61,17 +61,27 @@ def analyze(
     clip_path: Path,
     model_name: str = "yolov8n-pose.pt",
     min_confidence: float = 0.4,
+    cam_corner: str = "auto",
+    content_side: str = "auto",
 ) -> ReactionLayout | None:
     """Detect a reaction layout, or None when this isn't one (or analysis
-    fails). Never raises — an unusable clip just isn't a reaction clip."""
+    fails). Never raises — an unusable clip just isn't a reaction clip.
+
+    cam_corner ('auto' | 'top_left' | 'top_right' | 'bottom_left' |
+    'bottom_right') says WHERE the creator's webcam sits in the source.
+    Worth setting: reaction content is full of OTHER people (the video
+    being reacted to), and a small, still person on a podium looks exactly
+    like a webcam to a detector. The corner is fixed per streamer, so one
+    choice fixes every clip of theirs."""
     try:
-        return _analyze(clip_path, model_name, min_confidence)
+        return _analyze(clip_path, model_name, min_confidence, cam_corner, content_side)
     except Exception as e:  # noqa: BLE001 - isolation is the whole point
         print(f"      (reaction layout analysis failed: {e})")
         return None
 
 
-def _analyze(clip_path: Path, model_name: str, min_confidence: float):
+def _analyze(clip_path: Path, model_name: str, min_confidence: float,
+             cam_corner: str = "auto", content_side: str = "auto"):
     from video.tracker import _detect, _get_model  # read-only reuse
 
     cap = cv2.VideoCapture(str(clip_path))
@@ -118,19 +128,20 @@ def _analyze(clip_path: Path, model_name: str, min_confidence: float):
         return None
 
     n_frames = len(smalls)
-    cam = _find_cam_box(boxes, n_frames)
-    if cam is None:
+    found = _find_cam_box(boxes, n_frames, cam_corner)
+    if found is None:
         return None
+    cam, raw_person = found
 
     if grad_n:
-        cam = _snap_cam_box((gx_acc / grad_n, gy_acc / grad_n), cam)
+        cam = _snap_cam_box((gx_acc / grad_n, gy_acc / grad_n), cam, raw_person)
 
     stack = np.stack(smalls)
     activity, structure = _maps(stack)
     content = _find_content_box(activity, structure)
     # The cam pane gets its own band, so the content pane must NOT contain it
     # too — otherwise the creator appears twice in the same clip.
-    content = _content_excluding_cam(content, cam, activity, structure)
+    content = _content_excluding_cam(content, cam, activity, structure, content_side)
     cam_area = cam[2] * cam[3]
     content_area = content[2] * content[3]
     if cam_area <= 0 or content_area / cam_area < MIN_CONTENT_RATIO:
@@ -195,7 +206,9 @@ def confidence(
 
 
 def _snap_cam_box(
-    grads: tuple[np.ndarray, np.ndarray], cam: tuple[float, float, float, float]
+    grads: tuple[np.ndarray, np.ndarray],
+    cam: tuple[float, float, float, float],
+    person: tuple[float, float, float, float] | None = None,
 ) -> tuple[float, float, float, float]:
     """Tighten the padded person box onto the webcam pane's real borders.
 
@@ -209,10 +222,17 @@ def _snap_cam_box(
     h, w = gx.shape[:2]
     cx, cy, cw, ch = cam
     px0, py0, px1, py1 = cx * w, cy * h, (cx + cw) * w, (cy + ch) * h
-    # The person must stay inside whatever we snap to: keep a safety margin
-    # (headroom especially — a line inside the pane must never cut the head).
-    keep_x0, keep_y0 = px0 + 0.15 * (px1 - px0), py0 + 0.20 * (py1 - py0)
-    keep_x1, keep_y1 = px1 - 0.15 * (px1 - px0), py1 - 0.10 * (py1 - py0)
+    # Search OUTWARD FROM THE PERSON, not from the padded box: padding
+    # routinely overshoots the pane (that's the bug that let a neighbouring
+    # video into the band), so the real border often lies INSIDE the guess.
+    # A small margin keeps the person — especially their head — inside.
+    if person is not None:
+        rx, ry, rw, rh = person
+        keep_x0, keep_x1 = rx * w - 0.04 * rw * w, (rx + rw) * w + 0.04 * rw * w
+        keep_y0, keep_y1 = ry * h - 0.12 * rh * h, (ry + rh) * h + 0.04 * rh * h
+    else:
+        keep_x0, keep_y0 = px0 + 0.15 * (px1 - px0), py0 + 0.20 * (py1 - py0)
+        keep_x1, keep_y1 = px1 - 0.15 * (px1 - px0), py1 - 0.10 * (py1 - py0)
     reach_x, reach_y = int(0.20 * w), int(0.20 * h)
 
     def edge(profile: np.ndarray, lo: float, hi: float) -> int | None:
@@ -245,6 +265,7 @@ def _content_excluding_cam(
     cam: tuple[float, float, float, float],
     activity: np.ndarray,
     structure: np.ndarray,
+    side: str = "auto",
 ) -> tuple[float, float, float, float]:
     """Cut the cam pane out of the content box so the creator isn't shown
     TWICE (once in their band, again inside the content).
@@ -276,14 +297,23 @@ def _content_excluding_cam(
         # Total (not mean): preserving MORE content should win.
         return float(a.sum() / (activity.sum() + 1e-6) + s.sum() / (structure.sum() + 1e-6))
 
-    candidates = [
-        (x0, y0, max(0.0, cx0 - x0), h),                     # left of the cam
-        (min(x1, cx1), y0, max(0.0, x1 - cx1), h),           # right of the cam
-        (x0, y0, w, max(0.0, cy0 - y0)),                     # above the cam
-        (x0, min(y1, cy1), w, max(0.0, y1 - cy1)),           # below the cam
-    ]
+    options = {
+        "left": (x0, y0, max(0.0, cx0 - x0), h),
+        "right": (min(x1, cx1), y0, max(0.0, x1 - cx1), h),
+        "above": (x0, y0, w, max(0.0, cy0 - y0)),
+        "below": (x0, min(y1, cy1), w, max(0.0, y1 - cy1)),
+    }
+    # An explicit side wins outright. Automatic choice is unreliable here by
+    # nature: on a real clip the reacted video was PAUSED (motion 0.5) while
+    # chat (19.6) and the webcam (12.9) moved — so "most interesting region"
+    # points at chat, not at what the creator is reacting to.
+    if side in options:
+        pick = options[side]
+        if pick[2] > 0.05 and pick[3] > 0.05:
+            return tuple(round(v, 4) for v in pick)  # type: ignore[return-value]
+        return content
     whole = interest_of(content)
-    best = max(candidates, key=interest_of)
+    best = max(options.values(), key=interest_of)
     if interest_of(best) < 0.45 * whole:
         return content  # every cut loses too much — keep it whole
     return (round(best[0], 4), round(best[1], 4), round(best[2], 4), round(best[3], 4))
@@ -345,12 +375,28 @@ def _second_region_evidence(
     return max(str_ratio, act_ratio)
 
 
+_CORNERS = {
+    "top_left": lambda cx, cy: cx < 0.5 and cy < 0.5,
+    "top_right": lambda cx, cy: cx >= 0.5 and cy < 0.5,
+    "bottom_left": lambda cx, cy: cx < 0.5 and cy >= 0.5,
+    "bottom_right": lambda cx, cy: cx >= 0.5 and cy >= 0.5,
+}
+
+
 def _find_cam_box(
-    boxes: list[tuple[float, float, float, float]], n_frames: int
-) -> tuple[float, float, float, float] | None:
+    boxes: list[tuple[float, float, float, float]],
+    n_frames: int,
+    cam_corner: str = "auto",
+) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]] | None:
     """The small, static person pane — a webcam. None when the person is big
-    or roams (talking-head / IRL content, which must not route here)."""
+    or roams (talking-head / IRL content, which must not route here).
+
+    With cam_corner set, only people in that quadrant are considered, so a
+    person INSIDE the reacted content can't be mistaken for the webcam."""
     cands = [b for b in boxes if CAM_MIN_AREA <= (b[2] - b[0]) * (b[3] - b[1]) <= CAM_MAX_AREA]
+    in_corner = _CORNERS.get(cam_corner)
+    if in_corner is not None:
+        cands = [b for b in cands if in_corner((b[0] + b[2]) / 2, (b[1] + b[3]) / 2)]
     if len(cands) < max(3, CAM_PRESENCE * n_frames):
         return None
 
@@ -384,7 +430,10 @@ def _find_cam_box(
     y = max(0.0, float(y1 - ph * 1.6))
     w = min(1.0 - x, float(x2 - x1) + 2 * pw)
     h = min(1.0 - y, float(y2 - y1) + ph * 2.6)
-    return (round(x, 4), round(y, 4), round(w, 4), round(h, 4))
+    padded = (round(x, 4), round(y, 4), round(w, 4), round(h, 4))
+    raw = (round(float(x1), 4), round(float(y1), 4),
+           round(float(x2 - x1), 4), round(float(y2 - y1), 4))
+    return padded, raw
 
 
 def _maps(frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
