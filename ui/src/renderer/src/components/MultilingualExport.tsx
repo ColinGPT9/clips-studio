@@ -67,6 +67,44 @@ export default function MultilingualExport({
   const [wantSubs, setWantSubs] = useState(false)
   const [wantPost, setWantPost] = useState(false)
   const [previewing, setPreviewing] = useState('')
+  // Chosen dubbing voice per language, remembered between sessions.
+  const [voiceFor, setVoiceFor] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('multilingual-voices') ?? '{}')
+    } catch {
+      return {}
+    }
+  })
+  const [voiceList, setVoiceList] = useState<
+    Record<string, { id: string; name: string; country: string; quality: string }[]>
+  >({})
+
+  // Load the voice menu for each picked language that can be dubbed.
+  useEffect(() => {
+    if (!canDub || !dubIn) return
+    picked
+      .filter((c) => langs.find((l) => l.code === c)?.can_dub && !voiceList[c])
+      .forEach((c) => {
+        api
+          .voicesFor(c)
+          .then((r) => setVoiceList((prev) => ({ ...prev, [c]: r.voices })))
+          .catch(() => {})
+      })
+  }, [picked, canDub, dubIn, langs])
+
+  const play = (language: string, voice?: string): void => {
+    setPreviewing(voice ?? language)
+    const audio = new Audio(api.voicePreviewUrl(language, voice))
+    audio.onended = () => setPreviewing('')
+    audio.onerror = () => {
+      setPreviewing('')
+      setNotice('Could not play that voice — it may still be downloading.')
+    }
+    audio.play().catch(() => {
+      setPreviewing('')
+      setNotice('Could not play that voice.')
+    })
+  }
 
   useEffect(() => {
     api
@@ -117,6 +155,7 @@ export default function MultilingualExport({
         include_video: includeVideo,
         burn: burnIn,
         dub: dubIn,
+        voices: voiceFor,
         subtitles: wantSubs,
         post_text: wantPost
       })
@@ -299,33 +338,42 @@ export default function MultilingualExport({
         </p>
       )}
       {canDub && dubIn && picked.some((c) => langs.find((l) => l.code === c)?.can_dub) && (
-        <div className="flex gap-1.5 flex-wrap items-center text-xs border-t border-raised/60 pt-2">
-          <span className="text-muted">{t('Hear the voice')}</span>
+        <div className="border-t border-raised/60 pt-2 space-y-1.5">
+          <p className="label">{t('Dubbing voice')}</p>
           {picked
             .filter((c) => langs.find((l) => l.code === c)?.can_dub)
             .map((c) => (
-              <button
-                key={c}
-                className="px-2 py-0.5 rounded-md bg-raised text-muted hover:text-ink disabled:opacity-50"
-                disabled={previewing === c}
-                onClick={async () => {
-                  setPreviewing(c)
-                  try {
-                    const url = await api.previewVoice(c)
-                    await new Audio(url).play()
-                  } catch (e) {
-                    setNotice(`Preview failed: ${e instanceof Error ? e.message : String(e)}`)
-                  } finally {
-                    setPreviewing('')
-                  }
-                }}
-              >
-                {previewing === c ? '…' : '▶'} {displayName(c, c)}
-              </button>
+              <div key={c} className="flex items-center gap-2 text-xs">
+                <span className="text-muted w-20 shrink-0">{displayName(c, c)}</span>
+                <select
+                  className="input !w-56 !py-1 text-xs"
+                  value={voiceFor[c] ?? ''}
+                  onChange={(e) => {
+                    const next = { ...voiceFor, [c]: e.target.value }
+                    setVoiceFor(next)
+                    localStorage.setItem('multilingual-voices', JSON.stringify(next))
+                  }}
+                >
+                  <option value="">{t('Default voice')}</option>
+                  {(voiceList[c] ?? []).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} · {v.country} · {v.quality}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="px-2 py-0.5 rounded-md bg-raised text-muted hover:text-ink disabled:opacity-50"
+                  disabled={previewing !== ''}
+                  onClick={() => play(c, voiceFor[c] || undefined)}
+                  title="Hear this voice"
+                >
+                  {previewing === (voiceFor[c] || c) ? '…' : '▶'} {t('Listen')}
+                </button>
+              </div>
             ))}
-          <span className="text-muted/70">
-            {t('(first play downloads that voice, about 60 MB)')}
-          </span>
+          <p className="text-muted/70">
+            {t('Voices are neither male nor female by label — listen and pick the one that fits the person on screen. First play downloads it (~60 MB).')}
+          </p>
         </div>
       )}
       {dubIn && picked.some((c) => !langs.find((l) => l.code === c)?.can_dub) && (

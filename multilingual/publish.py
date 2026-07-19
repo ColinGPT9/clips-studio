@@ -34,6 +34,7 @@ def publish(
     burn: bool = False,
     dub: bool = False,          # also speak the translation over the clip
     voices_dir: Path | None = None,
+    voice_choice: dict | None = None,  # {language: voice id}
     post: dict | None = None,   # {"title", "description", "hashtags"} to translate
     want_subtitles: bool = False,  # .srt/.vtt files beside the video
     want_post: bool = False,       # .txt with the post text
@@ -129,6 +130,7 @@ def publish(
                     translated, code, source,
                     out_dir / f"{stem}.{code}.dubbed.mp4",
                     voices_dir, out_dir / ".ml_work",
+                    voice_id=(voice_choice or {}).get(code),
                 )
                 if spoken is not None:
                     written.append(str(spoken))
