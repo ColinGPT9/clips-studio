@@ -72,12 +72,19 @@ const DEFAULTS: Record<Which, Box> = {
 
 export default function ReactionRegions({
   clipId,
+  frameUrl,
+  initial,
   onClose,
   onSaved
 }: {
-  clipId: number
+  /** Editor: mark regions for an existing clip (saves + re-renders). */
+  clipId?: number
+  /** Dashboard: mark them before processing, on a frame from the URL. */
+  frameUrl?: string
+  initial?: { cam: number[]; content: number[]; camTop?: boolean } | null
   onClose: () => void
-  onSaved: () => void
+  /** Dashboard passes a handler; the editor omits it and we save + re-render. */
+  onSaved: (regions?: { cam: number[]; content: number[] }, camTop?: boolean) => void
 }): JSX.Element {
   const [boxes, setBoxes] = useState<Record<Which, Box>>(DEFAULTS)
   const [active, setActive] = useState<Which>('cam')
@@ -89,8 +96,15 @@ export default function ReactionRegions({
   const [camTop, setCamTop] = useState(true)
   const drag = useRef<{ mode: 'move' | 'resize'; ox: number; oy: number; box: Box } | null>(null)
 
-  // Start from whatever is already saved (this clip's, else the creator's).
+  // Start from whatever is already known: the caller's values, else what is
+  // saved for this clip (or this creator).
   useEffect(() => {
+    if (initial) {
+      setBoxes({ cam: fromArray(initial.cam), content: fromArray(initial.content) })
+      if (initial.camTop !== undefined) setCamTop(initial.camTop)
+      return
+    }
+    if (clipId === undefined) return
     api
       .reactionRegions(clipId)
       .then((r) => {
@@ -141,6 +155,16 @@ export default function ReactionRegions({
     setBusy(true)
     setError(null)
     try {
+      const asArrays = {
+        cam: [boxes.cam.x, boxes.cam.y, boxes.cam.w, boxes.cam.h],
+        content: [boxes.content.x, boxes.content.y, boxes.content.w, boxes.content.h]
+      }
+      if (clipId === undefined) {
+        // Dashboard: hand the regions back for the job, nothing to render yet.
+        onSaved(asArrays, camTop)
+        onClose()
+        return
+      }
       await api.saveReactionRegions(clipId, {
         cam: [boxes.cam.x, boxes.cam.y, boxes.cam.w, boxes.cam.h],
         content: [boxes.content.x, boxes.content.y, boxes.content.w, boxes.content.h],
@@ -209,7 +233,7 @@ export default function ReactionRegions({
           onPointerCancel={() => (drag.current = null)}
         >
           <img
-            src={`${API_BASE}/clips/${clipId}/source-frame`}
+            src={frameUrl ?? `${API_BASE}/clips/${clipId}/source-frame`}
             alt="Source frame"
             className="w-full block"
             draggable={false}
@@ -277,7 +301,7 @@ export default function ReactionRegions({
                   }}
                 >
                   <img
-                    src={`${API_BASE}/clips/${clipId}/source-frame`}
+                    src={frameUrl ?? `${API_BASE}/clips/${clipId}/source-frame`}
                     alt=""
                     draggable={false}
                     style={cropStyle(boxes[pane.key], src.w, src.h, pane.w, pane.h)}
@@ -298,7 +322,11 @@ export default function ReactionRegions({
 
         {error && <p className="text-sm text-error">{error}</p>}
         <div className="flex items-center gap-3 justify-end">
-          <label className="flex items-center gap-2 text-xs text-muted mr-auto cursor-pointer">
+          <label
+            className={`flex items-center gap-2 text-xs text-muted mr-auto cursor-pointer ${
+              clipId === undefined ? 'invisible' : ''
+            }`}
+          >
             <input
               type="checkbox"
               className="size-4 accent-[#38BDF8]"
@@ -311,7 +339,7 @@ export default function ReactionRegions({
             {t('Cancel')}
           </button>
           <button className="btn-accent" onClick={save} disabled={busy}>
-            {busy ? t('Saving…') : t('Save & re-render')}
+            {busy ? t('Saving…') : clipId === undefined ? t('Use these regions') : t('Save & re-render')}
           </button>
         </div>
       </div>

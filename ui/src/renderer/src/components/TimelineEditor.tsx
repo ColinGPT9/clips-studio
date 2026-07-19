@@ -256,6 +256,17 @@ export default function TimelineEditor({
   const scrubDrag = useRef(false) // true while dragging the playhead
   const [showKeys, setShowKeys] = useState(false)
   const [showRegions, setShowRegions] = useState(false)
+  // Reaction layout only makes sense with regions marked. Without them the
+  // render falls back to letterbox, which on an ordinary clip looks broken —
+  // so say so plainly instead of letting someone mangle a normal video.
+  const [hasRegions, setHasRegions] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (layout !== 'reaction') return
+    api
+      .reactionRegions(clip.id)
+      .then((r) => setHasRegions(!!r.regions))
+      .catch(() => setHasRegions(false))
+  }, [layout, clip.id])
   useEffect(() => {
     editRef.current = edit
     removedRef.current = removed
@@ -860,6 +871,7 @@ export default function TimelineEditor({
           clipId={clip.id}
           onClose={() => setShowRegions(false)}
           onSaved={() => {
+            setHasRegions(true)
             setNotice('Regions saved — re-rendering this clip with them')
             onChanged()
           }}
@@ -1372,6 +1384,11 @@ export default function TimelineEditor({
               {label}
             </button>
           ))}
+          {layout === 'reaction' && hasRegions === false && (
+            <span className="text-warn">
+              {t('Mark the regions first — otherwise this clip falls back to letterbox')}
+            </span>
+          )}
           {layout === 'reaction' && (
             <button
               className="px-2.5 py-1 rounded-md bg-accent/20 text-accent font-medium"

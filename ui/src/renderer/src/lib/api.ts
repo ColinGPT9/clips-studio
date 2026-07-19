@@ -67,6 +67,7 @@ export const api = {
       reaction?: 'off' | 'auto' | 'always' | null
       camCorner?: string | null
       contentSide?: string | null
+      reactionRegions?: { cam: number[]; content: number[] } | null
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -83,7 +84,8 @@ export const api = {
         split_position: opts?.splitPosition ?? null,
         reaction: opts?.reaction ?? null,
         cam_corner: opts?.camCorner ?? null,
-        content_side: opts?.contentSide ?? null
+        content_side: opts?.contentSide ?? null,
+        reaction_regions: opts?.reactionRegions ?? null
       })
     }),
   addLocalVideo: (opts: {
@@ -169,6 +171,15 @@ export const api = {
       })
     }),
 
+  fetchUrlFrame: async (url: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/reaction/url-frame`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    })
+    if (!res.ok) throw new Error((await res.text()).slice(0, 200))
+    return URL.createObjectURL(await res.blob())
+  },
   reactionRegions: (clipId: number) =>
     request<{ regions: { cam: number[]; content: number[] } | null; source: string | null }>(
       `/clips/${clipId}/reaction-regions`
