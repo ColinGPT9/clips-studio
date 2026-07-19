@@ -182,7 +182,7 @@ export default function ClipEditor({
       </div>
       {notice && <p className="text-sm text-accent">{notice}</p>}
 
-      <MultilingualExport clipId={clip.id} />
+      <MultilingualExport clipId={clip.id} videoId={clip.video_id} />
     </div>
   )
 }

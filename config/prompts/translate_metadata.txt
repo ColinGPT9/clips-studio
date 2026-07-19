@@ -1,0 +1,20 @@
+Translate this short-video post into {language} so the creator can publish it to a {language}-speaking audience.
+
+RULES
+- Write it the way a native creator posts, not like a translated document. Hooks stay punchy, jokes stay funny.
+- The title must stay under 90 characters and keep its curiosity — rewrite rather than translate literally if that reads better.
+- NEVER translate these names — copy them exactly as written:
+{terms}
+- Hashtags: translate the ones that describe the topic, keep brand names, handles and #shorts as they are, keep them lowercase, 3-5 total.
+- No quotation marks around the title. No commentary, no explanations.
+- Keep the three labels in ENGLISH exactly as shown below (TITLE:, DESCRIPTION:, HASHTAGS:). Translate only what comes after them. No markdown, no ## or **.
+
+POST
+TITLE: {title}
+DESCRIPTION: {description}
+HASHTAGS: {hashtags}
+
+Reply in exactly this format, nothing else:
+TITLE: ...
+DESCRIPTION: ...
+HASHTAGS: #... #... #...

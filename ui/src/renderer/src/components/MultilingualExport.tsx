@@ -2,7 +2,21 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder } from './icons'
-import { t } from '../lib/i18n'
+import { activeLocale, t } from '../lib/i18n'
+
+/** Language names in the language the INTERFACE is set to: "Spanish" in an
+ *  English UI, "español" in a Spanish one. Intl ships these with the OS, so
+ *  there is no per-language dictionary to keep in sync. Falls back to the
+ *  English name if a platform lacks the data. */
+function displayName(code: string, englishName: string): string {
+  try {
+    const dn = new Intl.DisplayNames([activeLocale()], { type: 'language' })
+    const name = dn.of(code)
+    return name ? name.charAt(0).toUpperCase() + name.slice(1) : englishName
+  } catch {
+    return englishName
+  }
+}
 
 /** Optional multilingual publishing for a finished clip.
  *
@@ -19,7 +33,13 @@ const REMEMBER = 'multilingual-languages'
 // required — the app keeps working with whatever is installed.
 const RECOMMENDED = 'qwen2.5:7b'
 
-export default function MultilingualExport({ clipId }: { clipId: number }): JSX.Element {
+export default function MultilingualExport({
+  clipId,
+  videoId
+}: {
+  clipId: number
+  videoId?: string
+}): JSX.Element {
   const [langs, setLangs] = useState<{ code: string; name: string; native: string }[]>([])
   const [picked, setPicked] = useState<string[]>(() => {
     try {
@@ -36,6 +56,8 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
   const [installed, setInstalled] = useState<string[]>([])
   const [transModel, setTransModel] = useState('')
   const [pulling, setPulling] = useState(false)
+  const [allClips, setAllClips] = useState(false)
+  const [clipCount, setClipCount] = useState(0)
 
   useEffect(() => {
     api.languages().then((r) => setLangs(r.languages)).catch(() => {})
@@ -43,6 +65,11 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
     api.models().then((m) => setInstalled(m.installed.map((i) => i.name))).catch(() => {})
     api.settings().then((st) => setTransModel(st.translation_model || '')).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!videoId) return
+    api.clips(videoId).then((c) => setClipCount(c.length)).catch(() => {})
+  }, [videoId])
 
   const hasQwen = installed.some((n) => n.startsWith('qwen'))
   const useQwen = async (): Promise<void> => {
@@ -64,15 +91,19 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
     setBusy(true)
     setNotice('')
     try {
+      let ids = [clipId]
+      if (allClips && videoId) {
+        ids = (await api.clips(videoId)).map((c) => c.id)
+      }
       const res = await api.translateClips({
-        clip_ids: [clipId],
+        clip_ids: ids,
         languages: picked,
         folder,
         include_video: includeVideo,
         burn: burnIn
       })
       setNotice(
-        `Queued — ${res.languages.length} language(s). Subtitle files land in your export folder; watch the Dashboard activity feed.`
+        `Queued — ${res.clips} clip(s) × ${res.languages.length} language(s). Files land in your export folder; watch the Dashboard activity feed.`
       )
     } catch (e) {
       setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
@@ -87,7 +118,7 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
         <p className="font-medium text-sm">{t('Publish in other languages')}</p>
         <p className="text-xs text-muted mt-0.5">
           {t(
-            'Adds a subtitle track per language next to the clip — upload them with the video so each viewer sees their own language. Runs on this PC, free.'
+            'Per language: a subtitle track, and the post text (title, description, hashtags) ready to paste. Runs on this PC, free.'
           )}
         </p>
       </div>
@@ -102,9 +133,9 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
                 ? 'border-accent text-accent bg-accent/10'
                 : 'border-raised text-muted hover:text-ink'
             }`}
-            title={l.name}
+            title={l.native}
           >
-            {l.native}
+            {displayName(l.code, l.name)}
           </button>
         ))}
       </div>
@@ -151,6 +182,20 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
           />
           {t('Burn captions in (TikTok/Reels)')}
         </label>
+        {videoId && clipCount > 1 && (
+          <label
+            className="flex items-center gap-1.5 cursor-pointer text-muted"
+            title="Publish every clip from this video in the chosen languages, in one run"
+          >
+            <input
+              type="checkbox"
+              className="size-3.5 accent-[#38BDF8]"
+              checked={allClips}
+              onChange={(e) => setAllClips(e.target.checked)}
+            />
+            {t('All')} {clipCount} {t('clips of this video')}
+          </label>
+        )}
         <button
           className="btn-accent !py-1 ml-auto"
           disabled={busy || picked.length === 0 || !folder}
