@@ -14,6 +14,10 @@ import { t } from '../lib/i18n'
  *  Nothing here touches the clip: it only adds files next to it. */
 
 const REMEMBER = 'multilingual-languages'
+// Clipping models are chosen for judgement; translation wants multilingual
+// strength, and Qwen is markedly better at it than Gemma. Offered, never
+// required — the app keeps working with whatever is installed.
+const RECOMMENDED = 'qwen2.5:7b'
 
 export default function MultilingualExport({ clipId }: { clipId: number }): JSX.Element {
   const [langs, setLangs] = useState<{ code: string; name: string; native: string }[]>([])
@@ -28,11 +32,25 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
   const [includeVideo, setIncludeVideo] = useState(true)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  const [burnIn, setBurnIn] = useState(false)
+  const [installed, setInstalled] = useState<string[]>([])
+  const [transModel, setTransModel] = useState('')
+  const [pulling, setPulling] = useState(false)
 
   useEffect(() => {
     api.languages().then((r) => setLangs(r.languages)).catch(() => {})
     getExportFolder().then(setFolder)
+    api.models().then((m) => setInstalled(m.installed.map((i) => i.name))).catch(() => {})
+    api.settings().then((st) => setTransModel(st.translation_model || '')).catch(() => {})
   }, [])
+
+  const hasQwen = installed.some((n) => n.startsWith('qwen'))
+  const useQwen = async (): Promise<void> => {
+    const name = installed.find((n) => n.startsWith('qwen')) ?? RECOMMENDED
+    await api.patchSettings({ translation_model: name })
+    setTransModel(name)
+    setNotice(`Translation will use ${name}.`)
+  }
 
   const toggle = (code: string): void => {
     setPicked((prev) => {
@@ -50,7 +68,8 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
         clip_ids: [clipId],
         languages: picked,
         folder,
-        include_video: includeVideo
+        include_video: includeVideo,
+        burn: burnIn
       })
       setNotice(
         `Queued — ${res.languages.length} language(s). Subtitle files land in your export folder; watch the Dashboard activity feed.`
@@ -120,6 +139,18 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
           />
           {t('Copy the video too')}
         </label>
+        <label
+          className="flex items-center gap-1.5 cursor-pointer text-muted"
+          title="TikTok, Reels and Shorts don't read subtitle files — this makes one video per language with the captions painted in. Slower: the clip is re-rendered once without captions first."
+        >
+          <input
+            type="checkbox"
+            className="size-3.5 accent-[#38BDF8]"
+            checked={burnIn}
+            onChange={(e) => setBurnIn(e.target.checked)}
+          />
+          {t('Burn captions in (TikTok/Reels)')}
+        </label>
         <button
           className="btn-accent !py-1 ml-auto"
           disabled={busy || picked.length === 0 || !folder}
@@ -129,6 +160,58 @@ export default function MultilingualExport({ clipId }: { clipId: number }): JSX.
           {busy ? t('Queueing…') : t('Export languages')}
         </button>
       </div>
+      {/* Translation quality depends on the model — offer the better one. */}
+      {!transModel && (
+        <p className="text-xs text-muted border-t border-raised/60 pt-2">
+          {hasQwen ? (
+            <>
+              {t('Qwen is installed and translates noticeably better than the clipping model.')}{' '}
+              <button className="text-accent hover:underline" onClick={useQwen}>
+                {t('Use it for translation')}
+              </button>
+            </>
+          ) : (
+            <>
+              {t('Translations use your clipping model. For better quality, install')}{' '}
+              <code>{RECOMMENDED}</code> ({t('about 4.7 GB, one time, stays on your PC')}){' '}
+              <button
+                className="text-accent hover:underline disabled:opacity-50"
+                disabled={pulling}
+                onClick={async () => {
+                  setPulling(true)
+                  setNotice(`Downloading ${RECOMMENDED} — watch the Models page for progress.`)
+                  try {
+                    await api.pullModel(RECOMMENDED)
+                    await api.patchSettings({ translation_model: RECOMMENDED })
+                    setTransModel(RECOMMENDED)
+                    setNotice(`${RECOMMENDED} installed and set as the translation model.`)
+                  } catch (e) {
+                    setNotice(`Install failed: ${e instanceof Error ? e.message : String(e)}`)
+                  } finally {
+                    setPulling(false)
+                  }
+                }}
+              >
+                {pulling ? t('Installing…') : t('Install & use')}
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {transModel && (
+        <p className="text-xs text-muted border-t border-raised/60 pt-2">
+          {t('Translating with')} <code>{transModel}</code>{' '}
+          <button
+            className="text-accent hover:underline"
+            onClick={async () => {
+              await api.patchSettings({ translation_model: '' })
+              setTransModel('')
+            }}
+          >
+            {t('use the clipping model instead')}
+          </button>
+        </p>
+      )}
       {notice && <p className="text-xs text-muted">{notice}</p>}
     </div>
   )

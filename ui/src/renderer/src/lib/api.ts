@@ -166,6 +166,7 @@ export const api = {
     languages: string[]
     folder: string
     include_video: boolean
+    burn: boolean
   }) =>
     request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
       method: 'POST',

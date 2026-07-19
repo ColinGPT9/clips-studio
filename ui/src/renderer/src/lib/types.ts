@@ -202,6 +202,7 @@ export interface Settings {
   auto_upload: boolean
   privacy: string
   content_language: string // 'auto' or ISO code (es / pt / hi / id ...)
+  translation_model: string // local model used for translation ('' = the main one)
 }
 
 /** Events arriving over the WebSocket. */
