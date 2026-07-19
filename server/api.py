@@ -143,6 +143,7 @@ class ReactionRegionsIn(BaseModel):
     cam: list[float]           # [x, y, w, h] webcam pane
     content: list[float]       # [x, y, w, h] what they're reacting to
     apply_to_creator: bool = True   # reuse for this creator's future videos
+    cam_position: str = "top"       # which band the webcam gets
 
 
 class FeedbackIn(BaseModel):
@@ -736,7 +737,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     d.conn.commit()
             job_id = d.add_job("render", json.dumps({
                 "clip_id": clip_id,
-                "render_opts": {"crop": "reaction", "reaction_regions": regions},
+                "render_opts": {
+                    "crop": "reaction",
+                    "reaction_regions": regions,
+                    "split_position": "bottom" if body.cam_position == "bottom" else "top",
+                },
             }))
         finally:
             d.close()

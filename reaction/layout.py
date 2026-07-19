@@ -383,6 +383,69 @@ _CORNERS = {
 }
 
 
+def adapt_cam_box(
+    clip_path: Path,
+    cam_box: tuple[float, float, float, float],
+    model_name: str = "yolov8n-pose.pt",
+    min_confidence: float = 0.4,
+) -> tuple[float, float, float, float]:
+    """Keep saved regions honest when a streamer MOVES their webcam.
+
+    A layout drawn once is reused for every later clip, but creators do
+    reposition the cam mid-stream. This samples a few frames: if somebody is
+    inside the saved box it is still right and returned unchanged; if the box
+    is empty but a small, still person sits elsewhere, the box is shifted
+    onto them, keeping the size the user drew. Any doubt -> the saved box,
+    because a slightly stale crop beats a wrong one."""
+    try:
+        from video.tracker import _detect, _get_model
+
+        cap = cv2.VideoCapture(str(clip_path))
+        if not cap.isOpened():
+            return cam_box
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1
+        src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1
+        model = _get_model(model_name)
+        step = max(1, total // 8) if total else 30
+        inside = 0
+        elsewhere: list[tuple[float, float]] = []
+        seen = 0
+        idx = 0
+        cx, cy, cw, ch = cam_box
+        while seen < 8:
+            if not cap.grab():
+                break
+            if idx % step == 0:
+                ok, frame = cap.retrieve()
+                if not ok:
+                    break
+                seen += 1
+                for x1, y1, x2, y2, _c, _hd in _detect(model, frame, min_confidence):
+                    px, py = (x1 + x2) / 2 / src_w, (y1 + y2) / 2 / src_h
+                    area = (x2 - x1) * (y2 - y1) / (src_w * src_h)
+                    if cx <= px <= cx + cw and cy <= py <= cy + ch:
+                        inside += 1
+                    elif CAM_MIN_AREA <= area <= CAM_MAX_AREA:
+                        elsewhere.append((px, py))
+            idx += 1
+        cap.release()
+        if seen == 0 or inside > 0:
+            return cam_box  # still someone in the saved box: unchanged
+        if len(elsewhere) < max(3, 0.5 * seen):
+            return cam_box  # nothing convincing to move to
+        pts = np.array(elsewhere)
+        if pts[:, 0].std() > CAM_MOVE_TOL or pts[:, 1].std() > CAM_MOVE_TOL:
+            return cam_box  # roaming person, not a repositioned webcam
+        mx, my = float(np.median(pts[:, 0])), float(np.median(pts[:, 1]))
+        nx = min(max(0.0, mx - cw / 2), 1.0 - cw)
+        ny = min(max(0.0, my - ch / 2), 1.0 - ch)
+        print(f"      Webcam moved — region shifted to ({nx:.2f}, {ny:.2f})")
+        return (round(nx, 4), round(ny, 4), cw, ch)
+    except Exception:
+        return cam_box
+
+
 def _find_cam_box(
     boxes: list[tuple[float, float, float, float]],
     n_frames: int,

@@ -15,6 +15,56 @@ import { t } from '../lib/i18n'
 type Box = { x: number; y: number; w: number; h: number }
 type Which = 'cam' | 'content'
 
+// Mirrors reaction/compose.py plan(): the preview must show exactly what
+// the render will produce, so the numbers live in one shape in both places.
+const OUT_W = 1080
+const OUT_H = 1920
+const CAM_MIN_H = 380
+
+function planPanes(
+  cam: Box,
+  content: Box,
+  srcW: number,
+  srcH: number,
+  camTop: boolean
+): { camY: number; camH: number; contentY: number; contentH: number; contentW: number } {
+  const cPxW = Math.max(1, content.w * srcW)
+  const cPxH = Math.max(1, content.h * srcH)
+  let contentW = OUT_W
+  let contentH = Math.round(OUT_W * (cPxH / cPxW))
+  if (contentH > OUT_H - CAM_MIN_H) {
+    contentH = OUT_H - CAM_MIN_H
+    contentW = Math.min(OUT_W, Math.round(contentH * (cPxW / cPxH)))
+  }
+  const camH = Math.max(CAM_MIN_H, OUT_H - contentH)
+  const y0 = Math.max(0, Math.round((OUT_H - contentH - camH) / 2))
+  return camTop
+    ? { camY: y0, camH, contentY: y0 + camH, contentH, contentW }
+    : { contentY: y0, contentH, contentW, camY: y0 + contentH, camH }
+}
+
+/** Style that shows exactly crop `box` of the frame, filling a pane of the
+ *  given size the way FFmpeg does (cover for the cam, exact for content). */
+function cropStyle(
+  box: Box,
+  srcW: number,
+  srcH: number,
+  paneW: number,
+  paneH: number
+): React.CSSProperties {
+  const cropW = Math.max(1, box.w * srcW)
+  const cropH = Math.max(1, box.h * srcH)
+  const scale = Math.max(paneW / cropW, paneH / cropH)
+  return {
+    position: 'absolute',
+    width: srcW * scale,
+    height: srcH * scale,
+    left: -(box.x * srcW * scale) + (paneW - cropW * scale) / 2,
+    top: -(box.y * srcH * scale),
+    maxWidth: 'none'
+  }
+}
+
 const DEFAULTS: Record<Which, Box> = {
   cam: { x: 0.02, y: 0.55, w: 0.3, h: 0.42 },
   content: { x: 0.02, y: 0.02, w: 0.95, h: 0.5 }
@@ -35,6 +85,8 @@ export default function ReactionRegions({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const frameRef = useRef<HTMLDivElement>(null)
+  const [src, setSrc] = useState({ w: 1920, h: 1080 })
+  const [camTop, setCamTop] = useState(true)
   const drag = useRef<{ mode: 'move' | 'resize'; ox: number; oy: number; box: Box } | null>(null)
 
   // Start from whatever is already saved (this clip's, else the creator's).
@@ -92,7 +144,8 @@ export default function ReactionRegions({
       await api.saveReactionRegions(clipId, {
         cam: [boxes.cam.x, boxes.cam.y, boxes.cam.w, boxes.cam.h],
         content: [boxes.content.x, boxes.content.y, boxes.content.w, boxes.content.h],
-        apply_to_creator: applyCreator
+        apply_to_creator: applyCreator,
+        cam_position: camTop ? 'top' : 'bottom'
       })
       onSaved()
       onClose()
@@ -147,9 +200,10 @@ export default function ReactionRegions({
           ))}
         </div>
 
+        <div className="flex gap-4 items-start">
         <div
           ref={frameRef}
-          className="relative w-full select-none touch-none bg-base rounded-lg overflow-hidden"
+          className="relative flex-1 min-w-0 select-none touch-none bg-base rounded-lg overflow-hidden"
           onPointerMove={onMove}
           onPointerUp={() => (drag.current = null)}
           onPointerCancel={() => (drag.current = null)}
@@ -159,6 +213,12 @@ export default function ReactionRegions({
             alt="Source frame"
             className="w-full block"
             draggable={false}
+            onLoad={(e) =>
+              setSrc({
+                w: (e.target as HTMLImageElement).naturalWidth || 1920,
+                h: (e.target as HTMLImageElement).naturalHeight || 1080
+              })
+            }
           />
           {(['content', 'cam'] as Which[]).map((w) => (
             <div
@@ -187,6 +247,53 @@ export default function ReactionRegions({
               />
             </div>
           ))}
+        </div>
+
+        {/* Live preview: the actual composition, updating as you drag. */}
+        <div className="shrink-0 w-40">
+          <p className="label mb-1">{t('Preview')}</p>
+          <div
+            className="relative bg-black rounded-lg overflow-hidden"
+            style={{ width: 160, height: 284 }}
+          >
+            {(() => {
+              const pw = 160
+              const ph = 284
+              const s2 = pw / OUT_W
+              const pl = planPanes(boxes.cam, boxes.content, src.w, src.h, camTop)
+              const panes: { key: Which; top: number; h: number; w: number }[] = [
+                { key: 'cam', top: pl.camY * s2, h: pl.camH * s2, w: OUT_W * s2 },
+                { key: 'content', top: pl.contentY * s2, h: pl.contentH * s2, w: pl.contentW * s2 }
+              ]
+              return panes.map((pane) => (
+                <div
+                  key={pane.key}
+                  className="absolute overflow-hidden"
+                  style={{
+                    top: pane.top,
+                    left: (pw - pane.w) / 2,
+                    width: pane.w,
+                    height: pane.h
+                  }}
+                >
+                  <img
+                    src={`${API_BASE}/clips/${clipId}/source-frame`}
+                    alt=""
+                    draggable={false}
+                    style={cropStyle(boxes[pane.key], src.w, src.h, pane.w, pane.h)}
+                  />
+                </div>
+              ))
+            })()}
+          </div>
+          <button
+            className="btn-ghost w-full mt-2 !py-1 text-xs"
+            onClick={() => setCamTop(!camTop)}
+            title="Which band the webcam goes in"
+          >
+            {camTop ? t('Camera on top') : t('Camera on bottom')}
+          </button>
+        </div>
         </div>
 
         {error && <p className="text-sm text-error">{error}</p>}

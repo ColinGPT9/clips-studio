@@ -175,7 +175,7 @@ export const api = {
     ),
   saveReactionRegions: (
     clipId: number,
-    body: { cam: number[]; content: number[]; apply_to_creator: boolean }
+    body: { cam: number[]; content: number[]; apply_to_creator: boolean; cam_position: string }
   ) =>
     request<{ job_id: number }>(`/clips/${clipId}/reaction-regions`, {
       method: 'PUT',
