@@ -173,21 +173,22 @@ export const api = {
     dub: boolean
     subtitles: boolean
     post_text: boolean
+    voices: Record<string, string>
   }) =>
     request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
       method: 'POST',
       body: JSON.stringify(body)
     }),
 
-  previewVoice: async (language: string): Promise<string> => {
-    const res = await fetch(`${API_BASE}/voices/preview`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language })
-    })
-    if (!res.ok) throw new Error((await res.text()).slice(0, 200))
-    return URL.createObjectURL(await res.blob())
-  },
+  voicesFor: (language: string) =>
+    request<{
+      voices: { id: string; name: string; country: string; quality: string }[]
+      default: string | null
+    }>(`/voices?language=${encodeURIComponent(language)}`),
+  // A plain URL, not a blob: the app's CSP allows media from the API only.
+  voicePreviewUrl: (language: string, voice?: string) =>
+    `${API_BASE}/voices/preview?language=${encodeURIComponent(language)}` +
+    (voice ? `&voice=${encodeURIComponent(voice)}` : ''),
 
   models: () => request<ModelsInfo>('/models'),
   activateModel: (tag: string) =>

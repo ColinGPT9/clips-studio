@@ -228,6 +228,7 @@ class Worker(threading.Thread):
                 want_subtitles=bool(payload.get("subtitles")),
                 want_post=bool(payload.get("post_text")),
                 voices_dir=data_dir / "voices",
+                voice_choice=payload.get("voices") or {},
                 post={
                     "title": clip["title"] or "",
                     "description": clip["description"] or "",

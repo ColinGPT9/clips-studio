@@ -144,6 +144,7 @@ class TranslateIn(BaseModel):
     dub: bool = False             # also speak the translation over the clip
     subtitles: bool = False       # write .srt/.vtt files as well
     post_text: bool = False       # write the translated post text as well
+    voices: dict | None = None    # {language: voice id} chosen by the creator
 
 
 class FeedbackIn(BaseModel):
@@ -805,18 +806,34 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "dubbing_available": dubber.available(),
         }
 
-    @app.post("/voices/preview")
-    def preview_voice(body: dict):
-        """A short spoken sample so the voice can be heard before dubbing."""
+    @app.get("/voices")
+    def list_voices(language: str):
+        """Every dubbing voice available for a language, so the creator can
+        choose one that matches the person on screen."""
         from multilingual import dub as dubber
+        from multilingual.voices import DEFAULTS, list_for
 
-        language = str(body.get("language") or "es")
+        if not dubber.available():
+            return {"voices": [], "default": None}
+        return {
+            "voices": list_for(language, data_dir / "voices"),
+            "default": DEFAULTS.get(language),
+        }
+
+    @app.get("/voices/preview")
+    def preview_voice(language: str, voice: str | None = None):
+        """A spoken sample of one voice. GET so the player can point at it
+        directly — the app's CSP allows media from this API, not blobs."""
+        from multilingual import dub as dubber
+        from multilingual.voices import resolve
+
         if not dubber.available():
             raise HTTPException(400, "dubbing package not installed")
         voices_dir = data_dir / "voices"
-        voice = dubber.ensure_voice(language, voices_dir)
-        if voice is None:
+        name = dubber.ensure_voice(language, voices_dir, voice)
+        if name is None:
             raise HTTPException(400, f"no voice available for {language}")
+        _n, speaker = resolve(voice, language)
         samples = {
             "es": "Hola, así va a sonar tu vídeo en español.",
             "pt": "Olá, é assim que o seu vídeo vai soar em português.",
@@ -828,9 +845,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "ar": "مرحبا، هكذا سيبدو الفيديو الخاص بك بالعربية.",
             "en": "Hi, this is how your video will sound in English.",
         }
-        out = data_dir / "previews" / f"voice_{language}.wav"
+        safe = (voice or name).replace("#", "_").replace("/", "_")
+        out = data_dir / "previews" / f"voice_{safe}.wav"
         out.parent.mkdir(parents=True, exist_ok=True)
-        if not dubber._speak(samples.get(language, samples["en"]), voice, voices_dir, out):
+        if not out.exists() and not dubber._speak(
+            samples.get(language, samples["en"]), name, voices_dir, out, speaker=speaker
+        ):
             raise HTTPException(500, "could not synthesize a sample")
         return FileResponse(out, media_type="audio/wav")
 
@@ -856,6 +876,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "dub": body.dub,
                 "subtitles": body.subtitles,
                 "post_text": body.post_text,
+                "voices": body.voices or {},
             }))
         finally:
             d.close()

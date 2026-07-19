@@ -56,9 +56,11 @@ def supported(language: str) -> bool:
     return language in VOICES
 
 
-def ensure_voice(language: str, voices_dir: Path) -> str | None:
-    """Download the voice for this language if it isn't already here."""
-    name = VOICES.get(language)
+def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -> str | None:
+    """Download the chosen voice (or this language's default) if needed."""
+    from multilingual.voices import resolve
+
+    name, _speaker = resolve(voice_id, language)
     if not name:
         return None
     voices_dir.mkdir(parents=True, exist_ok=True)
@@ -87,11 +89,14 @@ def _duration(path: Path) -> float:
         return 0.0
 
 
-def _speak(text: str, voice: str, voices_dir: Path, out: Path, rate: float = 1.0) -> bool:
+def _speak(text: str, voice: str, voices_dir: Path, out: Path, rate: float = 1.0,
+           speaker: int | None = None) -> bool:
     cmd = [
         sys.executable, "-m", "piper", "-m", voice, "--data-dir", str(voices_dir),
         "-f", str(out), "--length-scale", f"{rate:.3f}",
     ]
+    if speaker is not None:
+        cmd += ["-s", str(speaker)]
     r = subprocess.run(cmd, input=text, text=True, capture_output=True, timeout=300)
     return r.returncode == 0 and out.exists()
 
@@ -115,13 +120,20 @@ def dub(
     out_path: Path,
     voices_dir: Path,
     work_dir: Path,
+    voice_id: str | None = None,
 ) -> Path | None:
-    """A copy of `base_video` speaking `lines` in `language`, or None."""
+    """A copy of `base_video` speaking `lines` in `language`, or None.
+
+    voice_id picks WHICH voice ("es_MX-claude-high", or "fr_FR-upmc-medium#1"
+    for a specific speaker inside a multi-speaker voice)."""
+    from multilingual.voices import resolve
+
     if not available() or not supported(language):
         return None
-    voice = ensure_voice(language, voices_dir)
+    voice = ensure_voice(language, voices_dir, voice_id)
     if voice is None:
         return None
+    _name, speaker = resolve(voice_id, language)
     utterances = _utterances(lines)
     if not utterances:
         return None
@@ -130,7 +142,7 @@ def dub(
     pieces: list[tuple[Path, float]] = []
     for i, (text, start, end) in enumerate(utterances):
         wav = work_dir / f"{language}_{i:03d}.wav"
-        if not _speak(text, voice, voices_dir, wav):
+        if not _speak(text, voice, voices_dir, wav, speaker=speaker):
             continue
         slot = max(0.4, end - start)
         spoken = _duration(wav)
@@ -138,7 +150,7 @@ def dub(
         # stretching phonemes beats post-hoc speed changes.
         if spoken > 0 and not (0.9 <= spoken / slot <= 1.1):
             rate = max(RATE_MIN, min(RATE_MAX, slot / spoken))
-            _speak(text, voice, voices_dir, wav, rate=rate)
+            _speak(text, voice, voices_dir, wav, rate=rate, speaker=speaker)
         pieces.append((wav, start))
     if not pieces:
         return None
