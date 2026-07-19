@@ -225,6 +225,8 @@ class Worker(threading.Thread):
                 source_language=src_lang,
                 burn=bool(payload.get("burn")),
                 dub=bool(payload.get("dub")),
+                want_subtitles=bool(payload.get("subtitles")),
+                want_post=bool(payload.get("post_text")),
                 voices_dir=data_dir / "voices",
                 post={
                     "title": clip["title"] or "",

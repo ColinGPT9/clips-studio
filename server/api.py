@@ -142,6 +142,8 @@ class TranslateIn(BaseModel):
     include_video: bool = True    # copy the clip beside its subtitle tracks
     burn: bool = False            # also make a video per language with captions burned in
     dub: bool = False             # also speak the translation over the clip
+    subtitles: bool = False       # write .srt/.vtt files as well
+    post_text: bool = False       # write the translated post text as well
 
 
 class FeedbackIn(BaseModel):
@@ -803,6 +805,35 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "dubbing_available": dubber.available(),
         }
 
+    @app.post("/voices/preview")
+    def preview_voice(body: dict):
+        """A short spoken sample so the voice can be heard before dubbing."""
+        from multilingual import dub as dubber
+
+        language = str(body.get("language") or "es")
+        if not dubber.available():
+            raise HTTPException(400, "dubbing package not installed")
+        voices_dir = data_dir / "voices"
+        voice = dubber.ensure_voice(language, voices_dir)
+        if voice is None:
+            raise HTTPException(400, f"no voice available for {language}")
+        samples = {
+            "es": "Hola, así va a sonar tu vídeo en español.",
+            "pt": "Olá, é assim que o seu vídeo vai soar em português.",
+            "fr": "Bonjour, voici à quoi ressemblera votre vidéo en français.",
+            "de": "Hallo, so wird dein Video auf Deutsch klingen.",
+            "hi": "नमस्ते, आपका वीडियो हिंदी में ऐसा सुनाई देगा।",
+            "id": "Halo, beginilah suara video Anda dalam bahasa Indonesia.",
+            "ru": "Привет, вот как будет звучать ваше видео на русском.",
+            "ar": "مرحبا، هكذا سيبدو الفيديو الخاص بك بالعربية.",
+            "en": "Hi, this is how your video will sound in English.",
+        }
+        out = data_dir / "previews" / f"voice_{language}.wav"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if not dubber._speak(samples.get(language, samples["en"]), voice, voices_dir, out):
+            raise HTTPException(500, "could not synthesize a sample")
+        return FileResponse(out, media_type="audio/wav")
+
     @app.post("/translate")
     def translate_clips(body: TranslateIn):
         """Queue subtitle translation. Runs on finished clips only — the
@@ -823,6 +854,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "include_video": body.include_video,
                 "burn": body.burn,
                 "dub": body.dub,
+                "subtitles": body.subtitles,
+                "post_text": body.post_text,
             }))
         finally:
             d.close()
