@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 
 from multilingual.languages import english_name, is_supported
+from multilingual.metadata import translate_metadata, write_post_file
 from multilingual.subtitles import write_srt, write_vtt
 from multilingual.translate import translate_lines
 
@@ -31,6 +32,7 @@ def publish(
     source_language: str = "en",
     on_progress=None,
     burn: bool = False,
+    post: dict | None = None,   # {"title", "description", "hashtags"} to translate
     clip_row=None,
     config: dict | None = None,
     data_dir: Path | None = None,
@@ -78,6 +80,8 @@ def publish(
     if source_language and is_supported(source_language):
         written.append(str(write_srt(lines, out_dir / f"{stem}.{source_language}.srt")))
         written.append(str(write_vtt(lines, out_dir / f"{stem}.{source_language}.vtt")))
+        if post is not None:
+            written.append(str(write_post_file(post, out_dir / f"{stem}.{source_language}.txt")))
 
     total = len([c for c in languages if c != source_language])
     done = 0
@@ -91,6 +95,12 @@ def publish(
             written.append(str(write_srt(translated, out_dir / f"{stem}.{code}.srt")))
             written.append(str(write_vtt(translated, out_dir / f"{stem}.{code}.vtt")))
             print(f"      Subtitles written: {english_name(code)}")
+            if post is not None:
+                meta = translate_metadata(
+                    post.get("title", ""), post.get("description", ""),
+                    post.get("hashtags", []), code, llm, terms=terms,
+                )
+                written.append(str(write_post_file(meta, out_dir / f"{stem}.{code}.txt")))
             if base is not None:
                 from multilingual import burn as burner
 

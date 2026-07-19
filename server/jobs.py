@@ -224,6 +224,11 @@ class Worker(threading.Thread):
                 clip_path=clip_path if payload.get("include_video", True) else None,
                 source_language=src_lang,
                 burn=bool(payload.get("burn")),
+                post={
+                    "title": clip["title"] or "",
+                    "description": clip["description"] or "",
+                    "hashtags": _json.loads(clip["hashtags"]) if clip["hashtags"] else [],
+                } if payload.get("translate_post", True) else None,
                 clip_row=clip,
                 config=self.config,
                 data_dir=data_dir,
