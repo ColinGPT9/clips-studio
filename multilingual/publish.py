@@ -12,7 +12,10 @@ creator picks the files up and the platform shows each viewer their own
 language. Nothing about the clip itself changes.
 """
 
+import os
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from multilingual.languages import english_name, is_supported
@@ -115,13 +118,16 @@ def publish(
         units += (1 if burn else 0) + (3 if dub else 0)
     units = max(units, 1)
     spent = 0
+    tally = threading.Lock()  # phase 2 reports from several language threads
 
     def step(label: str, weight: int = 0) -> None:
         """Report what is happening now; `weight` credits the step just done."""
         nonlocal spent
-        spent += weight
+        with tally:
+            spent += weight
+            done = min(spent, units)
         if on_progress:
-            on_progress(label, min(spent, units), units)
+            on_progress(label, done, units)
 
     # One caption-free re-render serves every language's burn, and is also
     # the video the dub is laid over.
@@ -173,18 +179,24 @@ def publish(
         if want_post and post is not None:
             written.append(str(write_post_file(post, out_dir / f"{stem}.{source_language}.txt")))
 
+    # ---- phase 1: text, one language at a time -------------------------
+    # The model is a single GPU-bound resource; asking it for several
+    # languages at once queues them anyway and just costs VRAM. On an export
+    # this phase is usually free, because the text was translated during the
+    # review step and comes in through pre_translated.
+    ready_text: dict[str, list[dict]] = {}
     for code in targets:
         try:
             ready = (pre_translated or {}).get(code) or {}
             if ready.get("lines"):
-                translated = ready["lines"]
+                ready_text[code] = ready["lines"]
             else:
                 step(f"Translating to {english_name(code)}")
-                translated = translate_lines(lines, code, llm, terms=terms)
+                ready_text[code] = translate_lines(lines, code, llm, terms=terms)
                 step(f"Translated {english_name(code)}", 2)
             if want_subtitles:
-                written.append(str(write_srt(translated, out_dir / f"{stem}.{code}.srt")))
-                written.append(str(write_vtt(translated, out_dir / f"{stem}.{code}.vtt")))
+                written.append(str(write_srt(ready_text[code], out_dir / f"{stem}.{code}.srt")))
+                written.append(str(write_vtt(ready_text[code], out_dir / f"{stem}.{code}.vtt")))
                 print(f"      Subtitles written: {english_name(code)}")
             if want_post and post is not None:
                 meta = ready.get("post") or translate_metadata(
@@ -192,6 +204,19 @@ def publish(
                     post.get("hashtags", []), code, llm, terms=terms,
                 )
                 written.append(str(write_post_file(meta, out_dir / f"{stem}.{code}.txt")))
+        except Exception as e:  # one language failing must not stop the rest
+            print(f"      ({english_name(code)} failed: {e})")
+
+    # ---- phase 2: video and audio, languages overlapped ----------------
+    # Burning is GPU work (NVENC) and dubbing is CPU work (Piper), so one
+    # language's burn runs happily while another is synthesizing speech.
+    # Two at a time: dubbing already spreads itself across cores internally,
+    # and more than this just makes them fight for the same ones.
+    def media(code: str) -> None:
+        translated = ready_text.get(code)
+        if translated is None:
+            return
+        try:
             burned = None
             if burn and base is not None:
                 from multilingual import burn as burner
@@ -221,6 +246,7 @@ def publish(
                     out_dir / f"{stem}.{code}.dubbed.mp4",
                     voices_dir, out_dir / ".ml_work",
                     voice_id=(voice_choice or {}).get(code),
+                    workers=dub_workers,
                 )
                 step(f"Dubbed {english_name(code)}", 3)
                 if spoken is not None:
@@ -230,6 +256,16 @@ def publish(
                     print(f"      ({english_name(code)} has no voice available — subtitles only)")
         except Exception as e:  # one language failing must not stop the rest
             print(f"      ({english_name(code)} failed: {e})")
+
+    media_langs = [c for c in targets if c in ready_text]
+    lanes = 2 if len(media_langs) > 1 and (burn or dub) else 1
+    dub_workers = max(1, ((os.cpu_count() or 4) // 2) // lanes)
+    if lanes == 1:
+        for code in media_langs:
+            media(code)
+    else:
+        with ThreadPoolExecutor(max_workers=lanes) as pool:
+            list(pool.map(media, media_langs))
     if on_progress:
         on_progress("Done", units, units)
 
