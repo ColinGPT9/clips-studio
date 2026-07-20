@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { CaptionStyle } from '../lib/types'
 
 export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
@@ -6,7 +7,9 @@ export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
   color: '#FFFFFF',
   position: 'bottom',
   words_per_caption: 3,
-  uppercase: true
+  uppercase: true,
+  highlight: false,
+  highlight_color: '#FFE600'
 }
 
 /** Fonts on every stock Windows install — matches video/captions.py FONTS. */
@@ -28,8 +31,16 @@ function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Eleme
   // Show one caption group of exactly words_per_caption words — the same
   // grouping the burn-in uses, so changing the setting changes the example.
   const sample = ['your', 'captions', 'look', 'like', 'this', 'onscreen']
-  const group = sample.slice(0, Math.max(1, Math.min(6, style.words_per_caption))).join(' ')
-  const text = style.uppercase ? group.toUpperCase() : group
+  const words = sample.slice(0, Math.max(1, Math.min(6, style.words_per_caption)))
+  const text = style.uppercase ? words.join(' ').toUpperCase() : words.join(' ')
+  // Cycle the highlight through the words so the example shows the effect
+  // moving, which is the whole point of it.
+  const [hot, setHot] = useState(0)
+  useEffect(() => {
+    if (!style.highlight) return
+    const id = setInterval(() => setHot((h) => (h + 1) % words.length), 550)
+    return () => clearInterval(id)
+  }, [style.highlight, words.length])
   const align =
     style.position === 'top' ? 'items-start' : style.position === 'middle' ? 'items-center' : 'items-end'
   return (
@@ -49,7 +60,13 @@ function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Eleme
           textShadow: '1px 1px 2px rgba(0,0,0,0.9)'
         }}
       >
-        {text}
+        {style.highlight
+          ? words.map((w, i) => (
+              <span key={i} style={{ color: i === hot ? style.highlight_color : style.color }}>
+                {(style.uppercase ? w.toUpperCase() : w) + (i < words.length - 1 ? ' ' : '')}
+              </span>
+            ))
+          : text}
       </p>
     </div>
   )
@@ -163,6 +180,27 @@ export default function CaptionStyleControls({
         />
         UPPERCASE captions
       </label>
+
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={style.highlight}
+            onChange={(e) => onChange('highlight', e.target.checked)}
+          />
+          Highlight each word as it&apos;s said
+        </label>
+        {style.highlight && (
+          <input
+            type="color"
+            aria-label="Highlight colour"
+            className="h-7 w-10 rounded-md bg-raised cursor-pointer shrink-0"
+            value={style.highlight_color}
+            onChange={(e) => onChange('highlight_color', e.target.value.toUpperCase())}
+          />
+        )}
+      </div>
 
       <div>
         <p className="label mb-1">Example</p>
