@@ -10,6 +10,7 @@ import type {
   WatermarkConfig,
   Word
 } from '../lib/types'
+import FeatureBoundary from './FeatureBoundary'
 import MultilingualExport from './MultilingualExport'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import {
@@ -194,6 +195,18 @@ export default function TimelineEditor({
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
   // Which editing panel is open (CapCut-style tabs replace the old stack).
   const [activeTab, setActiveTab] = useState<Tab>('captions')
+
+  // Leaving the Subtitles tab must take its preview off the video with it.
+  // The panel unmounts on a tab switch, so its own cleanup can no longer
+  // reach the editor — without this the translated captions stay painted
+  // over the video while you are editing the ENGLISH ones, and, because a
+  // translation preview outranks the pending-edit overlay, they also hide
+  // the caption changes you are making. Nothing is written either way; it
+  // was always only the preview that was wrong.
+  useEffect(() => {
+    if (activeTab !== 'subtitles') onTranslationPreview(null)
+  }, [activeTab])
+  useEffect(() => () => onTranslationPreview(null), [])
   // Watermark / branding for THIS clip — state lifted to EditorModal so the
   // live draggable overlay on the preview and these controls stay in sync.
   const storedWatermark = clip.render_opts?.watermark ?? null
@@ -1248,9 +1261,17 @@ export default function TimelineEditor({
         </div>
       )}
 
-      {/* translated subtitles — its own section, not part of Captions */}
+      {/* translated subtitles — its own section, not part of Captions, and
+          fenced off so a fault in this optional feature cannot blank the
+          editor or endanger an unsaved edit */}
       {activeTab === 'subtitles' && (
-        <MultilingualExport clipId={clip.id} videoId={clip.video_id} onPreview={onTranslationPreview} />
+        <FeatureBoundary name="Subtitles">
+          <MultilingualExport
+            clipId={clip.id}
+            videoId={clip.video_id}
+            onPreview={onTranslationPreview}
+          />
+        </FeatureBoundary>
       )}
 
       {/* watermark / branding for this clip */}
