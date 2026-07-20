@@ -195,6 +195,8 @@ export default function TimelineEditor({
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
   // Which editing panel is open (CapCut-style tabs replace the old stack).
   const [activeTab, setActiveTab] = useState<Tab>('captions')
+  const [tightening, setTightening] = useState(false)
+  const [tightenNote, setTightenNote] = useState('')
 
   // Leaving the Subtitles tab must take its preview off the video with it.
   // The panel unmounts on a tab switch, so its own cleanup can no longer
@@ -1309,6 +1311,35 @@ export default function TimelineEditor({
       {/* audio controls */}
       {activeTab === 'audio' && (
         <div className="flex items-center gap-3 flex-wrap text-xs">
+        {/* Proposes cuts into the normal edit list, so they are drawn on the
+            timeline and can be adjusted or undone before anything renders. */}
+        <button
+          className="btn-ghost !py-1 text-xs"
+          disabled={tightening}
+          title="Find pauses and filler words (um, uh) and cut them. The cuts appear on the timeline for you to check — nothing renders until you Apply."
+          onClick={async () => {
+            setTightening(true)
+            setTightenNote('')
+            try {
+              const r = await api.tightenClip(clip.id)
+              if (r.cuts === 0) {
+                setTightenNote('Nothing to trim — no dead air or filler found.')
+              } else {
+                push({ ...edit, keep: r.keep })
+                setTightenNote(
+                  `${r.cuts} cut(s), ${r.removed_seconds.toFixed(1)}s removed → ${r.new_duration.toFixed(1)}s. Undo if it took too much.`
+                )
+              }
+            } catch (err) {
+              setTightenNote(`Error: ${err instanceof Error ? err.message : String(err)}`)
+            } finally {
+              setTightening(false)
+            }
+          }}
+        >
+          {tightening ? 'Finding…' : 'Trim pauses & filler'}
+        </button>
+        {tightenNote && <span className="text-muted">{tightenNote}</span>}
         <label
           className="flex items-center gap-1.5 cursor-pointer"
           title="Remove ALL of the clip's audio — e.g. to post it with background music only"

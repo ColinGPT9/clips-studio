@@ -102,6 +102,13 @@ class CaptionsIn(BaseModel):
     lines: list[dict]  # [{"start", "end", "text"}] clip-relative
 
 
+class TightenIn(BaseModel):
+    """Which kinds of dead weight to propose cutting."""
+
+    silence: bool = True
+    fillers: bool = True
+
+
 class TermIn(BaseModel):
     """A creator's ruling on one word for translation."""
 
@@ -636,6 +643,46 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         worker.notify()
         return {"job_id": job_id}
+
+    @app.post("/clips/{clip_id}/tighten")
+    def tighten_clip(clip_id: int, body: TightenIn):
+        """Propose cuts removing dead air and filler words. Returns keep
+        ranges for the editor to draw — nothing is rendered or saved."""
+        from analysis import tighten
+
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+        finally:
+            d.close()
+
+        path = Path(row["path"]) if row["path"] else None
+        if path is None or not path.exists():
+            raise HTTPException(404, "clip file missing")
+
+        # Word timings for this clip's window, made clip-relative.
+        words: list[dict] = []
+        tpath = data_dir / "transcripts" / f"{row['video_id']}.json"
+        if tpath.exists():
+            transcript = json.loads(tpath.read_text(encoding="utf-8"))
+            for seg in transcript["segments"]:
+                for w in seg.get("words") or []:
+                    if w["end"] > row["start_s"] and w["start"] < row["end_s"]:
+                        words.append({
+                            "start": w["start"] - row["start_s"],
+                            "end": w["end"] - row["start_s"],
+                            "word": w.get("word", ""),
+                        })
+
+        return tighten.propose(
+            path,
+            words,
+            duration=float(row["end_s"]) - float(row["start_s"]),
+            drop_silence=body.silence,
+            drop_fillers=body.fillers,
+        )
 
     @app.post("/clips/{clip_id}/ai-edit")
     def ai_edit(clip_id: int, body: AiEditIn):
