@@ -445,60 +445,70 @@ def _render_files(
 
     padded = replace(candidate, end=candidate.end + 0.4)
 
-    if config["clips"].get("vertical", True) and not landscape:
-        # Cut a horizontal intermediate, track the subject, render true 9:16.
-        intermediate = clip_dir / f"{stem}.source.mp4"
-        cut_clip(source, padded, intermediate)
+    # Staging files for this render. Cleaned in a finally: a failed render, a
+    # crash mid-tracking or a cancel used to leave its multi-hundred-MB
+    # intermediate behind forever, and repeated testing quietly filled the
+    # disk with them.
+    scratch: list[Path] = []
+    try:
+        if config["clips"].get("vertical", True) and not landscape:
+            # Cut a horizontal intermediate, track the subject, render 9:16.
+            intermediate = clip_dir / f"{stem}.source.mp4"
+            scratch.append(intermediate)
+            cut_clip(source, padded, intermediate)
 
-        if edit is not None:
-            # Apply manual edits BEFORE tracking, so the tracker and captions
-            # see the final (edited) timeline.
-            from video_editor.export import apply_edits
+            if edit is not None:
+                # Apply manual edits BEFORE tracking, so the tracker and
+                # captions see the final (edited) timeline.
+                from video_editor.export import apply_edits
 
-            edited = clip_dir / f"{stem}.edited.mp4"
-            apply_edits(intermediate, edit, edited)
-            intermediate.unlink(missing_ok=True)
-            intermediate = edited
+                edited = clip_dir / f"{stem}.edited.mp4"
+                scratch.append(edited)
+                apply_edits(intermediate, edit, edited)
+                intermediate.unlink(missing_ok=True)
+                intermediate = edited
 
-        from video.cropper import render_vertical
-        from video.tracker import compute_tracking  # lazy: imports torch
+            from video.cropper import render_vertical
+            from video.tracker import compute_tracking  # lazy: imports torch
 
-        crop_mode = opts.get("crop", "track")
-        if crop_mode == "center":
-            tracking = {"mode": "track", "path": [(0.0, 0.5)]}
-        else:
-            tracking_cfg = config["tracking"]
-            tracking = compute_tracking(
-                intermediate,
-                model_name=tracking_cfg["detector"],
-                sample_fps=tracking_cfg["sample_fps"],
-                force_fit_blur=(crop_mode == "letterbox"),
+            crop_mode = opts.get("crop", "track")
+            if crop_mode == "center":
+                tracking = {"mode": "track", "path": [(0.0, 0.5)]}
+            else:
+                tracking_cfg = config["tracking"]
+                tracking = compute_tracking(
+                    intermediate,
+                    model_name=tracking_cfg["detector"],
+                    sample_fps=tracking_cfg["sample_fps"],
+                    force_fit_blur=(crop_mode == "letterbox"),
+                )
+                if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
+                    # USER-forced letterbox means "show me the WHOLE frame" —
+                    # reaction/gaming mixes need both the person and the
+                    # content. Cropping tight to the detected person (the
+                    # automatic letterbox behavior) threw away the game side.
+                    tracking["region"] = None
+                if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
+                    shift = -0.12 if crop_mode == "bias_left" else 0.12
+                    tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
+            render_vertical(
+                intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
             )
-            if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
-                # USER-forced letterbox means "show me the WHOLE frame" —
-                # reaction/gaming mixes need both the person and the content.
-                # Cropping tight to the detected person (the automatic
-                # letterbox behavior) threw away the game/reaction side.
-                tracking["region"] = None
-            if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
-                shift = -0.12 if crop_mode == "bias_left" else 0.12
-                tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-        render_vertical(
-            intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
-        )
-        intermediate.unlink(missing_ok=True)
-    else:
-        if edit is not None:
-            # Horizontal output: cut plain first, then apply edits and burn
-            # captions in the same pass (they must land AFTER the cuts).
-            from video_editor.export import apply_edits
-
-            plain = clip_dir / f"{stem}.plain.mp4"
-            cut_clip(source, padded, plain, vf_extra=vf_extra)
-            apply_edits(plain, edit, final_path, ass_path=ass_path)
-            plain.unlink(missing_ok=True)
         else:
-            cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra)
+            if edit is not None:
+                # Horizontal output: cut plain first, then apply edits and
+                # burn captions in the same pass (they land AFTER the cuts).
+                from video_editor.export import apply_edits
+
+                plain = clip_dir / f"{stem}.plain.mp4"
+                scratch.append(plain)
+                cut_clip(source, padded, plain, vf_extra=vf_extra)
+                apply_edits(plain, edit, final_path, ass_path=ass_path)
+            else:
+                cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra)
+    finally:
+        for p in scratch:
+            p.unlink(missing_ok=True)
 
     if ass_path is not None:
         ass_path.unlink(missing_ok=True)

@@ -473,6 +473,35 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         except Exception:
             pass
 
+    @app.get("/storage")
+    def storage():
+        """Where the disk went, and how much of it is safe to reclaim."""
+        from core import housekeeping
+
+        d = db()
+        try:
+            found = housekeeping.survey(d, data_dir)
+        finally:
+            d.close()
+        found.pop("_groups", None)  # Paths aren't JSON, and the UI doesn't need them
+        return found
+
+    @app.post("/storage/cleanup")
+    def storage_cleanup():
+        """Delete leftovers from failed renders, interrupted downloads and
+        old previews. Never removes a clip or a source the library still
+        references."""
+        from core import housekeeping
+
+        d = db()
+        try:
+            result = housekeeping.clean(d, data_dir)
+        finally:
+            d.close()
+        print(f"  Housekeeping: freed {result['bytes_freed']/1e9:.2f} GB "
+              f"across {result['files_removed']} file(s)")
+        return result
+
     @app.delete("/videos/{video_id}")
     def delete_video(video_id: str):
         """Delete a video: its download, transcript, clip files, and all its
