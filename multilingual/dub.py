@@ -20,8 +20,10 @@ removing it properly needs a source-separation model, which is a heavier
 dependency than this stage is worth.
 """
 
+import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Default voice per language; creators pick a different one in the UI.
@@ -153,11 +155,12 @@ def dub(
         return None
 
     work_dir.mkdir(parents=True, exist_ok=True)
-    pieces: list[tuple[Path, float]] = []
-    for i, (text, start, end) in enumerate(utterances):
+
+    def synth(job: tuple[int, tuple[str, float, float]]) -> tuple[Path, float] | None:
+        i, (text, start, end) = job
         wav = work_dir / f"{language}_{i:03d}.wav"
         if not _speak(text, voice, voices_dir, wav, speaker=speaker):
-            continue
+            return None
         slot = max(0.4, end - start)
         spoken = _duration(wav)
         # Only re-synthesize when it genuinely misses the slot; Piper
@@ -165,7 +168,17 @@ def dub(
         if spoken > 0 and not (0.9 <= spoken / slot <= 1.1):
             rate = max(RATE_MIN, min(RATE_MAX, slot / spoken))
             _speak(text, voice, voices_dir, wav, rate=rate, speaker=speaker)
-        pieces.append((wav, start))
+        return (wav, start)
+
+    # Each utterance is its own Piper PROCESS that reloads the voice model,
+    # so a clip's worth of them is mostly startup cost sitting idle. They
+    # share no state, so running a few at once is safe and roughly halves
+    # the wall time. Capped low: Piper is CPU-bound and each worker holds
+    # its own copy of the model.
+    workers = max(1, min(4, (os.cpu_count() or 4) // 2, len(utterances)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        done = list(pool.map(synth, enumerate(utterances)))  # map keeps order
+    pieces: list[tuple[Path, float]] = [p for p in done if p is not None]
     if not pieces:
         return None
 
