@@ -53,9 +53,12 @@ export default function TranslationReview({
   // Keep the on-video preview in step with what is being typed, so a fix can
   // be checked against the video immediately rather than after saving.
   useEffect(() => {
-    if (!onPreview || !previewing) return
-    const item = items.find((i) => i.language === previewing)
-    if (!item) return
+    if (!onPreview) return
+    const item = previewing ? items.find((i) => i.language === previewing) : undefined
+    if (!item) {
+      onPreview(null) // preview turned off, or that language is gone
+      return
+    }
     const texts = draft[item.language] ?? item.lines.map((l) => l.text)
     onPreview({
       language: item.language,
@@ -124,10 +127,11 @@ export default function TranslationReview({
   }
 
   return (
-    <div className="border-t border-raised/60 pt-2 space-y-1.5">
-      <p className="label">{t('Review the translation')}</p>
+    <div className="space-y-1.5">
       <p className="text-xs text-muted">
-        {t('Fix anything the model got wrong. Nothing is written until you export.')}
+        {t(
+          'The language you are previewing is drawn on the video as it plays. Open one below only if you need to correct the wording.'
+        )}
       </p>
 
       {shown.map((item) => {
@@ -141,6 +145,9 @@ export default function TranslationReview({
               aria-expanded={isOpen}
             >
               <span className="font-medium">{nameOf(item.language)}</span>
+              {previewing === item.language && (
+                <span className="text-accent">◉ {t('on video')}</span>
+              )}
               <span className="text-muted">
                 {item.lines.length} {t('lines')}
               </span>
@@ -151,37 +158,6 @@ export default function TranslationReview({
               </span>
             </button>
 
-            {/* Watch the translation over the actual video before committing
-                to a burn. Uses the live text you have typed, not the saved
-                copy, so a fix can be checked before it is even saved. */}
-            {onPreview && (
-              <div className="px-2 pb-1.5 -mt-0.5">
-                <button
-                  className={`text-xs px-2 py-0.5 rounded-md border ${
-                    previewing === item.language
-                      ? 'border-accent text-accent bg-accent/10'
-                      : 'border-raised text-muted hover:text-ink'
-                  }`}
-                  onClick={() =>
-                    previewing === item.language
-                      ? onPreview(null)
-                      : onPreview({
-                          language: item.language,
-                          lines: item.lines.map((l, i) => ({
-                            ...l,
-                            text: textsFor(item)[i] ?? l.text
-                          })),
-                          source
-                        })
-                  }
-                  title="Play the clip with these captions drawn over it, exactly where a burn would put them"
-                >
-                  {previewing === item.language
-                    ? `◉ ${t('Showing on video')}`
-                    : `▶ ${t('Show on video')}`}
-                </button>
-              </div>
-            )}
 
             {isOpen && (
               <div className="p-2 space-y-1.5">

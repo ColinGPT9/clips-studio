@@ -4,7 +4,8 @@ import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/expor
 import { Folder } from './icons'
 import { activeLocale, t } from '../lib/i18n'
 import TranslationReview from './TranslationReview'
-import type { TranslationPreview } from '../lib/types'
+import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import type { CaptionLine, CaptionStyle, TranslationPreview } from '../lib/types'
 
 /** Language names in the language the INTERFACE is set to: "Spanish" in an
  *  English UI, "español" in a Spanish one. Intl ships these with the OS, so
@@ -30,6 +31,7 @@ function displayName(code: string, englishName: string): string {
  *  Nothing here touches the clip: it only adds files next to it. */
 
 const REMEMBER = 'multilingual-languages'
+const STYLE_KEY = 'multilingual-style'
 // Clipping models are chosen for judgement; translation wants multilingual
 // strength, and Qwen is markedly better at it than Gemma. Offered, never
 // required — the app keeps working with whatever is installed.
@@ -38,14 +40,12 @@ const RECOMMENDED = 'qwen2.5:7b'
 export default function MultilingualExport({
   clipId,
   videoId,
-  onPreview,
-  previewing
+  onPreview
 }: {
   clipId: number
   videoId?: string
   /** Draw a language's captions over the editor video (editor only). */
   onPreview?: (p: TranslationPreview | null) => void
-  previewing?: string | null
 }): JSX.Element {
   const [langs, setLangs] = useState<
     { code: string; name: string; native: string; can_dub: boolean; caption_font: string | null }[]
@@ -89,6 +89,47 @@ export default function MultilingualExport({
   const [waiting, setWaiting] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [reviewed, setReviewed] = useState<string[]>([])
+  // Which language is drawn over the video, and how subtitles are styled.
+  // The style is remembered so a creator's look carries across clips, the
+  // same way the language and voice choices already do.
+  const [previewLang, setPreviewLang] = useState<string | null>(null)
+  const [style, setStyle] = useState<Required<CaptionStyle>>(() => {
+    try {
+      return { ...DEFAULT_CAPTION_STYLE, ...JSON.parse(localStorage.getItem(STYLE_KEY) ?? '{}') }
+    } catch {
+      return DEFAULT_CAPTION_STYLE
+    }
+  })
+  // The lines TranslationReview is currently showing, before font/style are
+  // attached. Kept here so a style change re-draws immediately, without
+  // waiting for the text to change.
+  const [rawPreview, setRawPreview] = useState<{
+    language: string
+    lines: CaptionLine[]
+    source: CaptionLine[]
+  } | null>(null)
+
+  const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
+    setStyle((s) => {
+      const next = { ...s, [key]: value }
+      localStorage.setItem(STYLE_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+
+  // Push the preview up to the editor whenever the text, the style or the
+  // chosen language changes — this is what makes subtitles behave like
+  // captions: you see them on the video, you don't read them in a list.
+  useEffect(() => {
+    if (!onPreview) return
+    onPreview(
+      rawPreview && {
+        ...rawPreview,
+        font: langs.find((l) => l.code === rawPreview.language)?.caption_font ?? null,
+        style
+      }
+    )
+  }, [rawPreview, style, langs])
 
   // Load the voice menu for each picked language that can be dubbed.
   useEffect(() => {
@@ -227,7 +268,8 @@ export default function MultilingualExport({
         dub: dubIn,
         voices: voiceFor,
         subtitles: wantSubs,
-        post_text: wantPost
+        post_text: wantPost,
+        style
       })
       setNotice(
         `Queued — ${res.clips} clip(s) × ${res.languages.length} language(s). Files land in your export folder; watch the Dashboard activity feed.`
@@ -374,25 +416,58 @@ export default function MultilingualExport({
         </div>
       </div>
 
+      {/* Subtitles get the same treatment captions do: pick one, watch it on
+          the video, restyle it. Reading them in a list is the fallback, not
+          the way you check them. */}
+      {readyCount > 0 && onPreview && (
+        <div className="border-t border-raised/60 pt-2 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="label !mb-0">{t('Show on video')}</span>
+            <select
+              className="input !w-44 !py-1 text-xs"
+              value={previewLang ?? ''}
+              onChange={(e) => setPreviewLang(e.target.value || null)}
+            >
+              <option value="">{t('Off — original captions')}</option>
+              {picked
+                .filter((c) => reviewed.includes(c))
+                .map((c) => (
+                  <option key={c} value={c}>
+                    {displayName(c, c)}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="border border-raised/60 rounded-lg p-3">
+            <p className="label mb-2">{t('Subtitle font & style')}</p>
+            <CaptionStyleControls
+              idPrefix={`subs-${clipId}`}
+              style={style}
+              onChange={setStyleField}
+              hideWordsPerCaption
+            />
+            <p className="text-[11px] text-muted/70 mt-2">
+              {t(
+                'Applies to every language you export. Non-Latin scripts switch to a font that has the glyphs automatically.'
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       <TranslationReview
         clipId={clipId}
         languages={picked}
         nameOf={(c) => displayName(c, c)}
         reloadKey={reloadKey}
-        onLoaded={setReviewed}
-        // The burn font comes from the language, not the panel — attach it
-        // here where the language list is already loaded.
-        onPreview={
-          onPreview &&
-          ((p) =>
-            onPreview(
-              p && {
-                ...p,
-                font: langs.find((l) => l.code === p.language)?.caption_font ?? null
-              }
-            ))
-        }
-        previewing={previewing}
+        onLoaded={(codes) => {
+          setReviewed(codes)
+          // Start previewing the first language as soon as one exists, so
+          // the subtitles appear on the video without hunting for a control.
+          setPreviewLang((cur) => (cur && codes.includes(cur) ? cur : (codes[0] ?? null)))
+        }}
+        onPreview={setRawPreview}
+        previewing={previewLang}
       />
       {allClips && readyCount > 0 && (
         <p className="text-xs text-muted">

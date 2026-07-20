@@ -3,7 +3,6 @@ import { API_BASE, api } from '../lib/api'
 import type { Clip, LiveOverlay, TranslationPreview, WatermarkConfig } from '../lib/types'
 import { Scissors } from './icons'
 import LiveTextOverlay from './LiveTextOverlay'
-import MultilingualExport from './MultilingualExport'
 import TimelineEditor from './TimelineEditor'
 import { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 
@@ -171,7 +170,9 @@ export default function EditorView({
         hook: null,
         captions: {
           lines: translated.lines,
-          style: { ...captionStyle, font: translated.font ?? captionStyle.font }
+          // The subtitle's own style, except that a non-Latin script forces
+          // a font that has the glyphs — exactly what the burn does.
+          style: { ...translated.style, font: translated.font ?? translated.style.font }
         },
         bakedKeep: liveOverlay?.bakedKeep,
         keep: liveOverlay?.keep ?? [],
@@ -253,14 +254,9 @@ export default function EditorView({
             onChanged={onChanged}
             onPreview={setPreviewSrc}
             onLiveOverlay={setLiveOverlay}
+            onTranslationPreview={setTranslated}
             watermark={watermark}
             setWatermark={setWatermark}
-          />
-          <MultilingualExport
-            clipId={clip.id}
-            videoId={clip.video_id}
-            onPreview={setTranslated}
-            previewing={translated?.language ?? null}
           />
         </div>
       </div>

@@ -49,6 +49,7 @@ export interface TranslationPreview {
   lines: CaptionLine[]
   source: CaptionLine[]
   font: string | null
+  style: Required<CaptionStyle>
 }
 
 /** Pending text overlays (hook title / restyled captions) drawn live over

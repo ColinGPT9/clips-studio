@@ -84,6 +84,7 @@ def publish(
     config: dict | None = None,
     data_dir: Path | None = None,
     pre_translated: dict[str, dict] | None = None,
+    style: dict | None = None,
 ) -> list[str]:
     """Write subtitle files for each language. Returns the paths written.
 
@@ -111,7 +112,9 @@ def publish(
         from multilingual import burn as burner
 
         opts = _json.loads(clip_row["render_opts"]) if clip_row["render_opts"] else {}
-        caption_style = opts.get("caption_style")
+        # Subtitles get their own look when one was chosen in the editor;
+        # otherwise they inherit the clip's caption style.
+        caption_style = style or opts.get("caption_style")
         try:
             print("      Rendering a caption-free base for burned languages…")
             base = burner.clean_base(clip_row, config, data_dir, out_dir / ".ml_work")

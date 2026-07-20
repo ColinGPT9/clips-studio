@@ -61,11 +61,16 @@ function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Eleme
 export default function CaptionStyleControls({
   idPrefix,
   style,
-  onChange
+  onChange,
+  hideWordsPerCaption = false
 }: {
   idPrefix: string
   style: Required<CaptionStyle>
   onChange: <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]) => void
+  /** Translated subtitles inherit their grouping from the lines they
+   *  replace, so regrouping does nothing there — hide it rather than offer
+   *  a control that silently has no effect. */
+  hideWordsPerCaption?: boolean
 }): JSX.Element {
   return (
     <>
@@ -129,23 +134,25 @@ export default function CaptionStyleControls({
             <option value="top">Top</option>
           </select>
         </div>
-        <div>
-          <label htmlFor={`${idPrefix}-words`} className="label">
-            Words per caption
-          </label>
-          <select
-            id={`${idPrefix}-words`}
-            className="input mt-1"
-            value={style.words_per_caption}
-            onChange={(e) => onChange('words_per_caption', Number(e.target.value))}
-          >
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!hideWordsPerCaption && (
+          <div>
+            <label htmlFor={`${idPrefix}-words`} className="label">
+              Words per caption
+            </label>
+            <select
+              id={`${idPrefix}-words`}
+              className="input mt-1"
+              value={style.words_per_caption}
+              onChange={(e) => onChange('words_per_caption', Number(e.target.value))}
+            >
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       <label className="flex items-center gap-2 cursor-pointer text-sm">
         <input

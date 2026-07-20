@@ -275,6 +275,7 @@ class Worker(threading.Thread):
                 config=self.config,
                 data_dir=data_dir,
                 pre_translated=pre,
+                style=payload.get("style") or None,
             )
         if stage != "translate":
             print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
