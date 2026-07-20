@@ -39,6 +39,18 @@ export interface Translation {
   updated_at: string
 }
 
+/** A translated language being previewed over the editor's video: the
+ *  translated lines, the English they replace (used to mask the captions
+ *  already burned into the clip file), and the font a burn would use —
+ *  non-Latin scripts need a font that has the glyphs or the preview shows
+ *  boxes where the real burn would show text. */
+export interface TranslationPreview {
+  language: string
+  lines: CaptionLine[]
+  source: CaptionLine[]
+  font: string | null
+}
+
 /** Pending text overlays (hook title / restyled captions) drawn live over
  *  the editor preview so users see them without waiting for a render.
  *  Times are original-clip seconds; keep ranges map to the preview file. */

@@ -803,10 +803,21 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def list_languages():
         from multilingual import dub as dubber
         from multilingual.languages import LANGUAGES
+        from video.captions import caption_font_for
 
         return {
             "languages": [
-                {"code": c, "name": n, "native": nat, "can_dub": dubber.supported(c)}
+                {
+                    "code": c,
+                    "name": n,
+                    "native": nat,
+                    "can_dub": dubber.supported(c),
+                    # The font a burn would actually use — non-Latin scripts
+                    # get swapped to one that has the glyphs. None means the
+                    # clip's own caption font is fine. The editor preview
+                    # needs this or it shows tofu boxes for Hindi/Thai/etc.
+                    "caption_font": caption_font_for(c, None),
+                }
                 for c, (n, nat, _p) in LANGUAGES.items()
             ],
             # Dubbing needs an optional local TTS package; everything else
@@ -833,6 +844,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         """A spoken sample of one voice. GET so the player can point at it
         directly — the app's CSP allows media from this API, not blobs."""
         from multilingual import dub as dubber
+        from multilingual.languages import sample_text
         from multilingual.voices import resolve
 
         if not dubber.available():
@@ -842,22 +854,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if name is None:
             raise HTTPException(400, f"no voice available for {language}")
         _n, speaker = resolve(voice, language)
-        samples = {
-            "es": "Hola, así va a sonar tu vídeo en español.",
-            "pt": "Olá, é assim que o seu vídeo vai soar em português.",
-            "fr": "Bonjour, voici à quoi ressemblera votre vidéo en français.",
-            "de": "Hallo, so wird dein Video auf Deutsch klingen.",
-            "hi": "नमस्ते, आपका वीडियो हिंदी में ऐसा सुनाई देगा।",
-            "id": "Halo, beginilah suara video Anda dalam bahasa Indonesia.",
-            "ru": "Привет, вот как будет звучать ваше видео на русском.",
-            "ar": "مرحبا، هكذا سيبدو الفيديو الخاص بك بالعربية.",
-            "en": "Hi, this is how your video will sound in English.",
-        }
+        # Must be spoken IN the language being auditioned. Reading English
+        # through a Turkish voice only demonstrates an accent, which tells
+        # you nothing about the dub — so refuse rather than mislead.
+        sample = sample_text(language)
+        if sample is None:
+            raise HTTPException(400, f"no sample sentence for {language}")
         safe = (voice or name).replace("#", "_").replace("/", "_")
         out = data_dir / "previews" / f"voice_{safe}.wav"
         out.parent.mkdir(parents=True, exist_ok=True)
         if not out.exists() and not dubber._speak(
-            samples.get(language, samples["en"]), name, voices_dir, out, speaker=speaker
+            sample, name, voices_dir, out, speaker=speaker
         ):
             raise HTTPException(500, "could not synthesize a sample")
         return FileResponse(out, media_type="audio/wav")

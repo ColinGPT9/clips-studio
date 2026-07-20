@@ -95,7 +95,10 @@ def burn(
         str(out_path.resolve()),
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, cwd=built.parent)
+        r = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=built.parent,
+        )
         if r.returncode != 0:
             print(f"      ({english_name(language)} burn failed: {r.stderr[-200:]})")
             return None

@@ -105,7 +105,13 @@ def _speak(text: str, voice: str, voices_dir: Path, out: Path, rate: float = 1.0
     ]
     if speaker is not None:
         cmd += ["-s", str(speaker)]
-    r = subprocess.run(cmd, input=text, text=True, capture_output=True, timeout=300)
+    # encoding is NOT optional: text=True alone encodes stdin with the
+    # Windows locale codec (cp1252), which cannot represent Hindi, Arabic,
+    # Chinese, Urdu, Bengali, Korean or Thai — every such utterance died with
+    # UnicodeEncodeError and the language was silently skipped.
+    r = subprocess.run(
+        cmd, input=text, text=True, encoding="utf-8", capture_output=True, timeout=300
+    )
     return r.returncode == 0 and out.exists()
 
 
@@ -184,7 +190,9 @@ def dub(
         "-shortest", "-movflags", "+faststart",
         str(out_path.resolve()),
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    # errors="replace": ffmpeg's stderr is bytes, and the locale codec has
+    # undefined slots that would raise while merely reporting a failure.
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     for wav, _ in pieces:
         wav.unlink(missing_ok=True)
     if r.returncode != 0:
