@@ -22,7 +22,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from video.encoding import video_encoder_args
+from video.encoding import audio_filter_args, video_encoder_args
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
@@ -101,7 +101,7 @@ def _render_fit_blur(
         "-map", vout, "-map", "0:a:0?",
         *video_encoder_args(),
         "-c:a", "aac", "-b:a", "128k",
-        "-af", "aresample=async=1",  # keep audio aligned to the video timeline
+        *audio_filter_args(),  # sync + loudness normalise (final encode)
         "-fps_mode", "cfr",          # constant output frame rate
         "-movflags", "+faststart",
         "-shortest",
@@ -195,7 +195,7 @@ def _render_tracked(
             "-map", "[v]", "-map", "1:a:0?",
             *video_encoder_args(),
             "-c:a", "aac", "-b:a", "128k",
-            "-af", "aresample=async=1",
+            *audio_filter_args(),
             "-fps_mode", "cfr",
             "-movflags", "+faststart",
             "-shortest",
@@ -218,7 +218,7 @@ def _render_tracked(
         "-vf", vf,
         *video_encoder_args(),  # NVENC when available
         "-c:a", "aac", "-b:a", "128k",
-        "-af", "aresample=async=1",       # align audio to the cropped video
+        *audio_filter_args(),             # sync + loudness normalise
         "-fps_mode", "cfr",
         "-movflags", "+faststart",
         "-shortest",
@@ -295,7 +295,7 @@ def _render_split(
         "-map", "[v]", "-map", "0:a:0?",
         *video_encoder_args(),  # NVENC when available
         "-c:a", "aac", "-b:a", "128k",
-        "-af", "aresample=async=1",
+        *audio_filter_args(),
         "-fps_mode", "cfr",
         "-movflags", "+faststart",
         "-shortest",

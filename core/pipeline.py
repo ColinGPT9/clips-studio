@@ -503,9 +503,10 @@ def _render_files(
                 plain = clip_dir / f"{stem}.plain.mp4"
                 scratch.append(plain)
                 cut_clip(source, padded, plain, vf_extra=vf_extra)
-                apply_edits(plain, edit, final_path, ass_path=ass_path)
+                apply_edits(plain, edit, final_path, ass_path=ass_path, normalize=True)
             else:
-                cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra)
+                cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra,
+                         normalize=True)
     finally:
         for p in scratch:
             p.unlink(missing_ok=True)

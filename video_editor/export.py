@@ -10,7 +10,7 @@ for the non-vertical path, where no later render stage exists to burn them).
 import subprocess
 from pathlib import Path
 
-from video.encoding import video_encoder_args
+from video.encoding import LOUDNORM, video_encoder_args
 from video_editor.audio import master_filter, mute_filter
 from video_editor.cuts import concat_graph
 from video_editor.timeline import EditList
@@ -21,7 +21,15 @@ def apply_edits(
     edit: EditList,
     output_path: Path,
     ass_path: Path | None = None,
+    normalize: bool = False,
 ) -> Path:
+    """normalize: loudness-normalise the voice. Only for a FINAL clip — the
+    vertical path runs this on a staging file that the cropper encodes
+    again afterwards, and normalising twice pumps.
+
+    It is applied to the source audio BEFORE volume and fades: loudnorm's
+    single pass rides the gain, so running it after a fade-out would fight
+    the fade and flatten it."""
     graph_parts = []
     audio_label = "0:a"
 
@@ -44,9 +52,11 @@ def apply_edits(
     inputs = ["-i", str(input_path.resolve())]
     with_music = edit.music is not None and Path(edit.music["path"]).exists()
 
-    # Voice chain: speed + volume/mute + fades (final timeline).
+    # Voice chain: loudness (first, so fades still shape the end) + speed +
+    # volume/mute + fades (final timeline).
     voice_label = "avoice" if with_music else "aout"
-    graph_parts.append(f"{audio_out}{master_filter(edit)}[{voice_label}]")
+    level = f"{LOUDNORM}," if (normalize and not edit.mute_all) else ""
+    graph_parts.append(f"{audio_out}{level}{master_filter(edit)}[{voice_label}]")
 
     if with_music:
         inputs += ["-stream_loop", "-1", "-i", str(Path(edit.music["path"]).resolve())]

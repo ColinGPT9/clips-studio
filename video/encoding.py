@@ -68,6 +68,35 @@ def _select(mode: str) -> tuple[str, list[str]]:
     return "cpu", CPU_ARGS
 
 
+# Every platform loudness-normalises uploads to roughly -14 LUFS. Clips cut
+# from different sources arrive all over the place — measured across this
+# app's own output, a 13.5 dB spread from a quiet reaction VOD (-25 LUFS) to
+# a loud vlog (-12) — so the quiet ones were being pushed up by the platform
+# along with their noise floor, and the loud ones pulled down. Normalising
+# here means a viewer scrolling between two clips doesn't reach for the
+# volume, and nothing is left clipping (one clip peaked at +0.8 dBFS).
+LOUDNESS_LUFS = -14.0
+LOUDNESS_PEAK = -1.5   # dBTP of headroom, so lossy encoders don't clip
+LOUDNORM = f"loudnorm=I={LOUDNESS_LUFS:g}:TP={LOUDNESS_PEAK:g}:LRA=11"
+_SYNC = "aresample=async=1"  # keep audio aligned to a rewritten timeline
+
+
+def audio_filter_args(normalize: bool = True) -> list[str]:
+    """The `-af` block for a clip's FINAL audio encode.
+
+    Single-pass loudnorm: a second analysis pass is more exact, but it
+    doubles the work for a 30-second clip and the difference lands well
+    inside what streaming normalisation would absorb anyway.
+
+    normalize=False for intermediate files — normalising a staging file and
+    then normalising the result again is wasted work, and stacking the
+    dynamic pass twice can audibly pump.
+    """
+    if not normalize:
+        return ["-af", _SYNC]
+    return ["-af", f"{_SYNC},{LOUDNORM}"]
+
+
 def hwaccel_input_args() -> list[str]:
     """Hardware DECODE flags, placed before -i. 'auto' picks NVDEC/D3D11VA/
     QSV when the input codec supports it and silently falls back to software
