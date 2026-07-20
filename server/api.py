@@ -67,6 +67,7 @@ class PreviewIn(BaseModel):
     crop: str | None = None             # pending layout (track/letterbox/center)
     caption_style: dict | None = None   # pending caption font/size/etc.
     watermark: dict | None = None       # pending branding config (or {} to clear)
+    normalize_audio: bool | None = None  # pending loudness-matching toggle
 
 
 class BrandingIn(BaseModel):
@@ -811,6 +812,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if body.watermark is not None:
             # {} clears the watermark for this clip; a dict sets it.
             opts["watermark"] = body.watermark or None
+        if body.normalize_audio is not None:
+            opts["normalize_audio"] = body.normalize_audio
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],
