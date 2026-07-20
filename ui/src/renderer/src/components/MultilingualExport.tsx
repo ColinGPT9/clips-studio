@@ -58,7 +58,11 @@ export default function MultilingualExport({
     }
   })
   const [folder, setFolder] = useState('')
-  const includeVideo = true
+  // Off by default. This copies the clip AS IT IS — which still has the
+  // original captions burned into the picture — next to the translated
+  // videos. Having it forced on made the burn toggle look broken: you got a
+  // video with English burned in no matter what you chose.
+  const [includeVideo, setIncludeVideo] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [burnIn, setBurnIn] = useState(false)
@@ -184,6 +188,9 @@ export default function MultilingualExport({
 
   // How many of the picked languages actually have text waiting to export.
   const readyCount = picked.filter((c) => reviewed.includes(c)).length
+  // With every output unticked the job runs and writes nothing, which reads
+  // as a silent failure. Catch it before it is queued.
+  const producesFiles = burnIn || dubIn || includeVideo || wantSubs || wantPost
 
   const toggle = (code: string): void => {
     setPicked((prev) => {
@@ -350,7 +357,7 @@ export default function MultilingualExport({
         </label>
         <label
           className="flex items-center gap-1.5 cursor-pointer text-muted"
-          title="TikTok, Reels and Shorts don't read subtitle files — this makes one video per language with the captions painted in. Slower: the clip is re-rendered once without captions first."
+          title="TikTok, Reels and Shorts don't read subtitle files — this makes one video per language with that language's subtitles painted into the picture. The clip is re-rendered once without its original captions first, so the two languages never stack."
         >
           <input
             type="checkbox"
@@ -358,7 +365,19 @@ export default function MultilingualExport({
             checked={burnIn}
             onChange={(e) => setBurnIn(e.target.checked)}
           />
-          {t('Burn captions in (TikTok/Reels)')}
+          {t('A video per language')}
+        </label>
+        <label
+          className="flex items-center gap-1.5 cursor-pointer text-muted"
+          title="Copies the clip exactly as it is — which still has the ORIGINAL captions burned into the picture. Leave it off unless you want the untranslated version alongside."
+        >
+          <input
+            type="checkbox"
+            className="size-3.5 accent-[#38BDF8]"
+            checked={includeVideo}
+            onChange={(e) => setIncludeVideo(e.target.checked)}
+          />
+          {t('Original clip too')}
         </label>
         {canDub && (
           <label
@@ -403,12 +422,14 @@ export default function MultilingualExport({
           </button>
           <button
             className="btn-accent !py-1"
-            disabled={busy || picked.length === 0 || !folder || readyCount === 0}
+            disabled={busy || picked.length === 0 || !folder || readyCount === 0 || !producesFiles}
             onClick={exportNow}
             title={
               readyCount === 0
                 ? 'Translate first, so you can check the text before it is written'
-                : undefined
+                : !producesFiles
+                  ? 'Nothing would be written — tick a video per language, subtitle files, or the post text'
+                  : undefined
             }
           >
             {busy && !waiting ? t('Queueing…') : `${t('Export')} ${readyCount || ''}`.trim()}
@@ -416,28 +437,45 @@ export default function MultilingualExport({
         </div>
       </div>
 
+      {/* Say why Export can't run. A greyed-out button with the reason hidden
+          in a tooltip just reads as "it didn't work". */}
+      {picked.length > 0 && !waiting && readyCount === 0 && (
+        <p className="text-xs text-warn">
+          {t('Translate these languages first — Export writes the text you have reviewed.')}
+        </p>
+      )}
+      {readyCount > 0 && !producesFiles && (
+        <p className="text-xs text-warn">
+          {t(
+            'Nothing would be written. Tick “A video per language”, subtitle files, or the post text.'
+          )}
+        </p>
+      )}
+
       {/* Subtitles get the same treatment captions do: pick one, watch it on
-          the video, restyle it. Reading them in a list is the fallback, not
-          the way you check them. */}
-      {readyCount > 0 && onPreview && (
+          the video, restyle it. The style is always editable — it is a
+          setting, not something that should require translating first. */}
+      {onPreview && (
         <div className="border-t border-raised/60 pt-2 space-y-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="label !mb-0">{t('Show on video')}</span>
-            <select
-              className="input !w-44 !py-1 text-xs"
-              value={previewLang ?? ''}
-              onChange={(e) => setPreviewLang(e.target.value || null)}
-            >
-              <option value="">{t('Off — original captions')}</option>
-              {picked
-                .filter((c) => reviewed.includes(c))
-                .map((c) => (
-                  <option key={c} value={c}>
-                    {displayName(c, c)}
-                  </option>
-                ))}
-            </select>
-          </div>
+          {readyCount > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="label !mb-0">{t('Show on video')}</span>
+              <select
+                className="input !w-44 !py-1 text-xs"
+                value={previewLang ?? ''}
+                onChange={(e) => setPreviewLang(e.target.value || null)}
+              >
+                <option value="">{t('Off — original captions')}</option>
+                {picked
+                  .filter((c) => reviewed.includes(c))
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {displayName(c, c)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
           <div className="border border-raised/60 rounded-lg p-3">
             <p className="label mb-2">{t('Subtitle font & style')}</p>
             <CaptionStyleControls
@@ -450,6 +488,7 @@ export default function MultilingualExport({
               {t(
                 'Applies to every language you export. Non-Latin scripts switch to a font that has the glyphs automatically.'
               )}
+              {readyCount === 0 && ` ${t('Translate a language to see it on the video.')}`}
             </p>
           </div>
         </div>
