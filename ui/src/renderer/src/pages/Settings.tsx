@@ -8,33 +8,25 @@ import {
 } from '../lib/appearance'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
-import { APP_LANGUAGES, appLanguageSetting, setAppLanguage, t } from '../lib/i18n'
+import {
+  APP_LANGUAGES,
+  LANGUAGE_NAMES,
+  appLanguageSetting,
+  languageLabel,
+  setAppLanguage,
+  t
+} from '../lib/i18n'
 import { Folder } from '../components/icons'
 
 // Content languages offered in the dropdown — the transcription/caption
 // side accepts any ISO code via settings.yaml; these are the focus markets.
-const CONTENT_LANGUAGES = [
+// Same set the publishing pipeline translates into (multilingual/languages.py).
+const CONTENT_LANGUAGES: [string, string][] = [
   ['auto', 'Auto-detect (per video)'],
-  ['en', 'English'],
-  ['es', 'Español'],
-  ['pt', 'Português'],
-  ['hi', 'हिन्दी'],
-  ['id', 'Bahasa Indonesia'],
-  ['ja', '日本語'],
-  ['ar', 'العربية'],
-  ['ru', 'Русский'],
-  ['de', 'Deutsch'],
-  ['fr', 'Français'],
-  ['zh', '简体中文'],
-  ['vi', 'Tiếng Việt'],
-  ['tl', 'Filipino'],
-  ['tr', 'Türkçe'],
-  ['ur', 'اردو'],
-  ['bn', 'বাংলা'],
-  ['th', 'ไทย'],
-  ['ko', '한국어'],
-  ['it', 'Italiano']
-] as const
+  ...Object.keys(LANGUAGE_NAMES)
+    .map((code): [string, string] => [code, languageLabel(code)])
+    .sort((a, b) => a[1].localeCompare(b[1]))
+]
 
 function LanguageCard(): JSX.Element {
   const [contentLang, setContentLang] = useState('auto')
