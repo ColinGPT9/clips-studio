@@ -19,13 +19,18 @@ export default function TranslationReview({
   languages,
   nameOf,
   reloadKey,
-  onLoaded
+  onLoaded,
+  onPreview,
+  previewing
 }: {
   clipId: number
   languages: string[]
   nameOf: (code: string) => string
   reloadKey: number
   onLoaded: (languages: string[]) => void
+  /** Show this language's captions over the editor's video, or clear it. */
+  onPreview?: (p: { language: string; lines: CaptionLine[]; source: CaptionLine[] } | null) => void
+  previewing?: string | null
 }): JSX.Element | null {
   const [source, setSource] = useState<CaptionLine[]>([])
   const [items, setItems] = useState<Translation[]>([])
@@ -44,6 +49,23 @@ export default function TranslationReview({
       })
       .catch(() => onLoaded([]))
   }, [clipId, reloadKey])
+
+  // Keep the on-video preview in step with what is being typed, so a fix can
+  // be checked against the video immediately rather than after saving.
+  useEffect(() => {
+    if (!onPreview || !previewing) return
+    const item = items.find((i) => i.language === previewing)
+    if (!item) return
+    const texts = draft[item.language] ?? item.lines.map((l) => l.text)
+    onPreview({
+      language: item.language,
+      lines: item.lines.map((l, i) => ({ ...l, text: texts[i] ?? l.text })),
+      source
+    })
+  }, [draft, items, previewing, source])
+
+  // Never leave captions floating over the video after this panel goes away.
+  useEffect(() => () => onPreview?.(null), [clipId])
 
   // Only the languages currently picked, in the order they were picked.
   const shown = languages
@@ -124,10 +146,42 @@ export default function TranslationReview({
               </span>
               {item.edited && <span className="text-accent">✓ {t('edited by you')}</span>}
               {dirty && <span className="text-warn">{t('unsaved')}</span>}
-              <span className="ml-auto text-muted" aria-hidden>
+              <span className="ml-auto" aria-hidden>
                 {isOpen ? '▾' : '▸'}
               </span>
             </button>
+
+            {/* Watch the translation over the actual video before committing
+                to a burn. Uses the live text you have typed, not the saved
+                copy, so a fix can be checked before it is even saved. */}
+            {onPreview && (
+              <div className="px-2 pb-1.5 -mt-0.5">
+                <button
+                  className={`text-xs px-2 py-0.5 rounded-md border ${
+                    previewing === item.language
+                      ? 'border-accent text-accent bg-accent/10'
+                      : 'border-raised text-muted hover:text-ink'
+                  }`}
+                  onClick={() =>
+                    previewing === item.language
+                      ? onPreview(null)
+                      : onPreview({
+                          language: item.language,
+                          lines: item.lines.map((l, i) => ({
+                            ...l,
+                            text: textsFor(item)[i] ?? l.text
+                          })),
+                          source
+                        })
+                  }
+                  title="Play the clip with these captions drawn over it, exactly where a burn would put them"
+                >
+                  {previewing === item.language
+                    ? `◉ ${t('Showing on video')}`
+                    : `▶ ${t('Show on video')}`}
+                </button>
+              </div>
+            )}
 
             {isOpen && (
               <div className="p-2 space-y-1.5">

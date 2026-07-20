@@ -162,7 +162,13 @@ export const api = {
 
   languages: () =>
     request<{
-      languages: { code: string; name: string; native: string; can_dub: boolean }[]
+      languages: {
+        code: string
+        name: string
+        native: string
+        can_dub: boolean
+        caption_font: string | null
+      }[]
       dubbing_available: boolean
     }>('/languages'),
   translateClips: (body: {

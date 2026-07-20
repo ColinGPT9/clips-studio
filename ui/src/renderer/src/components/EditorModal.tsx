@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
-import type { Clip, LiveOverlay, WatermarkConfig } from '../lib/types'
+import type { Clip, LiveOverlay, TranslationPreview, WatermarkConfig } from '../lib/types'
 import { Scissors } from './icons'
 import LiveTextOverlay from './LiveTextOverlay'
+import MultilingualExport from './MultilingualExport'
 import TimelineEditor from './TimelineEditor'
+import { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 
 /** Live, draggable watermark preview over the editor video. Shows the
  *  text/logo where it will burn in, updates as the controls change, and
@@ -150,11 +152,36 @@ export default function EditorView({
   const [liveOverlay, setLiveOverlay] = useState<LiveOverlay | null>(null)
   const isLandscape = !!clip.render_opts?.profile
 
+  const [translated, setTranslated] = useState<TranslationPreview | null>(null)
+
   useEffect(() => {
     setPreviewSrc(null)
     setWatermark(clip.render_opts?.watermark ?? null)
     setLiveOverlay(null)
+    setTranslated(null)
   }, [clip.id])
+
+  /** What LiveTextOverlay draws. A translated language being previewed wins
+   *  over the pending-edit overlay: it is what the creator asked to look at,
+   *  and it reuses the same masking so the English already burned into the
+   *  clip file is blurred out underneath instead of ghosting through. */
+  const captionStyle = { ...DEFAULT_CAPTION_STYLE, ...clip.render_opts?.caption_style }
+  const overlay: LiveOverlay | null = translated
+    ? {
+        hook: null,
+        captions: {
+          lines: translated.lines,
+          style: { ...captionStyle, font: translated.font ?? captionStyle.font }
+        },
+        bakedKeep: liveOverlay?.bakedKeep,
+        keep: liveOverlay?.keep ?? [],
+        burned:
+          clip.render_opts?.captions !== false && translated.source.length > 0
+            ? { lines: translated.source, style: captionStyle }
+            : null,
+        burnedHook: null
+      }
+    : liveOverlay
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -201,8 +228,14 @@ export default function EditorView({
                 onChange={(patch) => setWatermark({ ...watermark, ...patch })}
               />
             )}
-            {/* Pending hook / caption text drawn live over the video. */}
-            {!previewSrc && <LiveTextOverlay videoRef={videoRef} overlay={liveOverlay} />}
+            {/* Pending hook / caption text — or a translated language being
+                auditioned — drawn live over the video. */}
+            {!previewSrc && <LiveTextOverlay videoRef={videoRef} overlay={overlay} />}
+            {translated && !previewSrc && (
+              <span className="absolute bottom-2 left-2 z-20 bg-black/70 text-white/85 text-[10px] px-2 py-0.5 rounded">
+                {translated.language.toUpperCase()} preview — this is how the burn will look
+              </span>
+            )}
             {previewSrc && (
               <span className="absolute top-2 left-2 z-20 bg-accent/90 text-black text-[10px] font-bold px-2 py-0.5 rounded">
                 PREVIEW — all edits applied (not saved until Apply)
@@ -222,6 +255,12 @@ export default function EditorView({
             onLiveOverlay={setLiveOverlay}
             watermark={watermark}
             setWatermark={setWatermark}
+          />
+          <MultilingualExport
+            clipId={clip.id}
+            videoId={clip.video_id}
+            onPreview={setTranslated}
+            previewing={translated?.language ?? null}
           />
         </div>
       </div>

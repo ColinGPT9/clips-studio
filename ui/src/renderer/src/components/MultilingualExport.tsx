@@ -4,6 +4,7 @@ import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/expor
 import { Folder } from './icons'
 import { activeLocale, t } from '../lib/i18n'
 import TranslationReview from './TranslationReview'
+import type { TranslationPreview } from '../lib/types'
 
 /** Language names in the language the INTERFACE is set to: "Spanish" in an
  *  English UI, "español" in a Spanish one. Intl ships these with the OS, so
@@ -36,13 +37,18 @@ const RECOMMENDED = 'qwen2.5:7b'
 
 export default function MultilingualExport({
   clipId,
-  videoId
+  videoId,
+  onPreview,
+  previewing
 }: {
   clipId: number
   videoId?: string
+  /** Draw a language's captions over the editor video (editor only). */
+  onPreview?: (p: TranslationPreview | null) => void
+  previewing?: string | null
 }): JSX.Element {
   const [langs, setLangs] = useState<
-    { code: string; name: string; native: string; can_dub: boolean }[]
+    { code: string; name: string; native: string; can_dub: boolean; caption_font: string | null }[]
   >([])
   const [picked, setPicked] = useState<string[]>(() => {
     try {
@@ -374,6 +380,19 @@ export default function MultilingualExport({
         nameOf={(c) => displayName(c, c)}
         reloadKey={reloadKey}
         onLoaded={setReviewed}
+        // The burn font comes from the language, not the panel — attach it
+        // here where the language list is already loaded.
+        onPreview={
+          onPreview &&
+          ((p) =>
+            onPreview(
+              p && {
+                ...p,
+                font: langs.find((l) => l.code === p.language)?.caption_font ?? null
+              }
+            ))
+        }
+        previewing={previewing}
       />
       {allClips && readyCount > 0 && (
         <p className="text-xs text-muted">

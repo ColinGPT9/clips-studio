@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder, Scissors } from './icons'
-import MultilingualExport from './MultilingualExport'
 import type { Clip } from '../lib/types'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
@@ -181,8 +180,6 @@ export default function ClipEditor({
         </button>
       </div>
       {notice && <p className="text-sm text-accent">{notice}</p>}
-
-      <MultilingualExport clipId={clip.id} videoId={clip.video_id} />
     </div>
   )
 }
