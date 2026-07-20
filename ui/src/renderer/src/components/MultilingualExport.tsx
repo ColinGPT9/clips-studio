@@ -61,22 +61,11 @@ export default function MultilingualExport({
     }
   })
   const [folder, setFolder] = useState('')
-  // Off by default. This copies the clip AS IT IS — which still has the
-  // original captions burned into the picture — next to the translated
-  // videos. Having it forced on made the burn toggle look broken: you got a
-  // video with English burned in no matter what you chose.
-  const [includeVideo, setIncludeVideo] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  // On by default: the panel PREVIEWS subtitles painted onto the video, so
-  // that is what Export should produce. Having it default off meant the
-  // exported file didn't match what you had just been looking at.
-  const [burnIn, setBurnIn] = useState(true)
   const [installed, setInstalled] = useState<string[]>([])
   const [transModel, setTransModel] = useState('')
   const [pulling, setPulling] = useState(false)
-  const [allClips, setAllClips] = useState(false)
-  const [clipCount, setClipCount] = useState(0)
   const [dubIn, setDubIn] = useState(false)
   const [canDub, setCanDub] = useState(false)
   // .srt/.vtt sidecars and the .txt post text are deliberately NOT offered:
@@ -215,10 +204,7 @@ export default function MultilingualExport({
     api.settings().then((st) => setTransModel(st.translation_model || '')).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (!videoId) return
-    api.clips(videoId).then((c) => setClipCount(c.length)).catch(() => {})
-  }, [videoId])
+
 
   const hasQwen = installed.some((n) => n.startsWith('qwen'))
   const useQwen = async (): Promise<void> => {
@@ -230,25 +216,13 @@ export default function MultilingualExport({
 
   // How many of the picked languages actually have text waiting to export.
   const readyCount = picked.filter((c) => reviewed.includes(c)).length
-  // With every output unticked the job runs and writes nothing, which reads
-  // as a silent failure. Catch it before it is queued.
-  const producesFiles = burnIn || dubIn || includeVideo
-
-  /** Exactly what Export will write, per language, named. Two checkboxes
-   *  here both produce videos and it was never obvious which one carried
-   *  the subtitles — so show the files instead of describing them. */
+  /** Exactly what Export will write, per language, named — so the result is
+   *  concrete before the button is pressed. */
   const outputs = (): string[] => {
     const ex = picked[0] ?? 'xx'
-    const out: string[] = []
-    if (burnIn) out.push(`clip.${ex}.mp4 — subtitles burned in`)
-    if (dubIn)
-      out.push(
-        `clip.${ex}.dubbed.mp4 — spoken ${displayName(ex, ex)}${
-          burnIn ? ' + subtitles' : ', no on-screen text'
-        }`
-      )
-    if (includeVideo) out.push('clip.mp4 — the original, with its original captions')
-    return out
+    return dubIn
+      ? [`clip.${ex}.dubbed.mp4 — ${displayName(ex, ex)} subtitles and voice`]
+      : [`clip.${ex}.mp4 — ${displayName(ex, ex)} subtitles`]
   }
 
   const toggle = (code: string): void => {
@@ -259,8 +233,10 @@ export default function MultilingualExport({
     })
   }
 
-  const targetClips = async (): Promise<number[]> =>
-    allClips && videoId ? (await api.clips(videoId)).map((c) => c.id) : [clipId]
+  // This tab edits ONE clip, so it publishes one clip. Doing every clip of
+  // a video belongs wherever clips are managed as a set, not in a panel
+  // whose whole job is the clip in front of you.
+  const targetClips = async (): Promise<number[]> => [clipId]
 
   /** Step 1: produce the text only. No files, no rendering — so a bad
    *  translation is caught before it is burned into a video. */
@@ -335,8 +311,9 @@ export default function MultilingualExport({
         languages: picked,
         stage: 'export',
         folder,
-        include_video: includeVideo,
-        burn: burnIn,
+        // Always burn: this tab's whole output is a video with that
+        // language's subtitles in it, and that is what it previews.
+        burn: true,
         dub: dubIn,
         voices: voiceFor,
         style
@@ -400,63 +377,34 @@ export default function MultilingualExport({
         </button>
       </div>
 
-      {/* Outputs, grouped and stacked. These were mixed into the folder row
-          as a wrapping line of five checkboxes, which is where "which one
-          gives me the video?" came from. */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-        <label
-          className="flex items-center gap-1.5 cursor-pointer text-muted"
-          title="TikTok, Reels and Shorts don't read subtitle files — this makes one video per language with that language's subtitles painted into the picture. The clip is re-rendered once without its original captions first, so the two languages never stack."
-        >
-          <input
-            type="checkbox"
-            className="size-3.5 accent-[#38BDF8]"
-            checked={burnIn}
-            onChange={(e) => setBurnIn(e.target.checked)}
-          />
-          {t('Video with subtitles')}
-        </label>
-        {canDub && (
-          <label
-            className="flex items-center gap-1.5 cursor-pointer text-muted"
-            title="Speak the translation over the clip with a local voice. The original audio stays underneath at low volume, so music and room tone survive. Slower — each language is synthesized sentence by sentence."
-          >
-            <input
-              type="checkbox"
-              className="size-3.5 accent-[#38BDF8]"
-              checked={dubIn}
-              onChange={(e) => setDubIn(e.target.checked)}
-            />
-            {t('Dubbed audio')}
-          </label>
-        )}
-        <label
-          className="flex items-center gap-1.5 cursor-pointer text-muted"
-          title="Copies the clip exactly as it is — which still has the ORIGINAL captions burned into the picture. Leave it off unless you want the untranslated version alongside."
-        >
-          <input
-            type="checkbox"
-            className="size-3.5 accent-[#38BDF8]"
-            checked={includeVideo}
-            onChange={(e) => setIncludeVideo(e.target.checked)}
-          />
-          {t('Original clip too')}
-        </label>
-        {videoId && clipCount > 1 && (
-          <label
-            className="flex items-center gap-1.5 cursor-pointer text-muted"
-            title="Publish every clip from this video in the chosen languages, in one run"
-          >
-            <input
-              type="checkbox"
-              className="size-3.5 accent-[#38BDF8]"
-              checked={allClips}
-              onChange={(e) => setAllClips(e.target.checked)}
-            />
-            {t('All')} {clipCount} {t('clips')}
-          </label>
-        )}
-      </div>
+      {/* One decision, not four checkboxes. Every export from this tab is a
+          video with that language's subtitles in it — the only real question
+          is whether the voice is dubbed too. */}
+      {canDub && (
+        <div className="flex gap-1.5 text-xs">
+          {[
+            [false, t('Subtitles'), 'Subtitles in the picture, original audio kept.'],
+            [
+              true,
+              t('Subtitles + dubbed voice'),
+              'Also speaks the translation with a local voice, with the original audio low underneath. Slower.'
+            ]
+          ].map(([value, label, hint]) => (
+            <button
+              key={String(value)}
+              onClick={() => setDubIn(value as boolean)}
+              title={hint as string}
+              className={`px-2.5 py-1 rounded-md border ${
+                dubIn === value
+                  ? 'border-accent text-accent bg-accent/10'
+                  : 'border-raised text-muted hover:text-ink'
+              }`}
+            >
+              {label as string}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button
@@ -473,14 +421,12 @@ export default function MultilingualExport({
         </button>
         <button
           className="btn-accent !py-1 text-xs ml-auto"
-          disabled={busy || picked.length === 0 || !folder || readyCount === 0 || !producesFiles}
+          disabled={busy || picked.length === 0 || !folder || readyCount === 0}
           onClick={exportNow}
           title={
             readyCount === 0
               ? 'Translate first, so you can check the text before it is written'
-              : !producesFiles
-                ? 'Nothing would be written — tick a video, dubbed audio, or the original clip'
-                : undefined
+              : undefined
           }
         >
           {busy && !waiting ? t('Queueing…') : `${t('Export')} ${readyCount || ''}`.trim()}
@@ -507,20 +453,7 @@ export default function MultilingualExport({
         </div>
       )}
 
-      {/* The panel paints subtitles onto the video; if the export won't do
-          the same, say so HERE rather than let the file surprise them. */}
-      {!run && previewLang && !burnIn && (
-        <p className="text-xs text-warn">
-          {t(
-            'You are seeing subtitles on the video, but “A video per language” is off — the exported video will not have them.'
-          )}{' '}
-          <button className="underline hover:text-ink" onClick={() => setBurnIn(true)}>
-            {t('Turn it on')}
-          </button>
-        </p>
-      )}
-
-      {!run && picked.length > 0 && producesFiles && (
+      {!run && picked.length > 0 && (
         <div className="text-[11px] text-muted/80 space-y-0.5">
           <p className="label !mb-0 !text-[11px]">{t('Each language gives you')}</p>
           {outputs().map((line) => (
@@ -536,11 +469,6 @@ export default function MultilingualExport({
       {picked.length > 0 && !waiting && readyCount === 0 && (
         <p className="text-xs text-warn">
           {t('Translate these languages first — Export writes the text you have reviewed.')}
-        </p>
-      )}
-      {readyCount > 0 && !producesFiles && (
-        <p className="text-xs text-warn">
-          {t('Nothing would be written. Tick a video, dubbed audio, or the original clip.')}
         </p>
       )}
 
@@ -610,13 +538,6 @@ export default function MultilingualExport({
         onPreview={setRawPreview}
         previewing={previewLang}
       />
-      {allClips && readyCount > 0 && (
-        <p className="text-xs text-muted">
-          {t(
-            'You are reviewing this clip. The other clips use their machine translation unless you open and correct them too.'
-          )}
-        </p>
-      )}
       {/* Translation quality depends on the model — offer the better one. */}
       {!transModel && (
         <p className="text-xs text-muted border-t border-raised/60 pt-2">
