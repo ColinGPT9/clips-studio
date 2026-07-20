@@ -23,9 +23,26 @@ _STOPWORDS = {
 }
 
 
-def _unmistakable(tok: str) -> bool:
-    """ALLCAPS, CamelCase or digit-bearing — a name no matter the context."""
-    return bool(tok.isupper() or re.search(r"[a-z][A-Z]", tok) or re.search(r"\d", tok))
+def _unmistakable(tok: str, shouty: bool = False) -> bool:
+    """CamelCase or digit-bearing — a name no matter the context — plus
+    ALLCAPS, but only where capitals still mean something.
+
+    `shouty` says the surrounding text is mostly capitals, as YouTube
+    titles usually are ("I TEST DROVE A 1:1 Koenigsegg Agera S HH!"). There,
+    ALLCAPS marks emphasis rather than a name, and trusting it put ordinary
+    verbs like TEST and DROVE on the do-not-translate list — so those words
+    stayed English in every translated caption."""
+    if re.search(r"[a-z][A-Z]", tok) or re.search(r"\d", tok):
+        return True
+    return tok.isupper() and not shouty
+
+
+def _is_shouty(text: str) -> bool:
+    """Is this text mostly capitals? Measured over letters only."""
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < 8:
+        return False
+    return sum(c.isupper() for c in letters) / len(letters) > 0.6
 
 
 def _candidate_terms(text: str, strict: bool = False) -> list[str]:
@@ -41,14 +58,20 @@ def _candidate_terms(text: str, strict: bool = False) -> list[str]:
     "Sara Saffari" is a real name, "Black" on its own is not."""
     text = text or ""
     out: list[str] = []
+    # In a TITLE, capitals are emphasis, not naming: "I TEST DROVE A ..." is
+    # shouting, not four proper nouns. Titles therefore contribute only
+    # structurally name-like tokens (CamelCase, digit-bearing). Real game and
+    # collaborator names still arrive through creator_knowledge below, which
+    # is learned from what was actually said.
+    shouty = strict or _is_shouty(text)
     if not strict:
-        for seq in re.findall(r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", text):
+        for seq in re.findall(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b", text):
             if not all(w.lower() in _STOPWORDS for w in seq.split()):
                 out.append(seq)
     for tok in re.findall(r"[A-Za-z][A-Za-z0-9'_-]{2,}", text):
         if tok.lower() in _STOPWORDS:
             continue
-        if _unmistakable(tok):
+        if _unmistakable(tok, shouty):
             out.append(tok)
     return out
 
@@ -56,16 +79,34 @@ def _candidate_terms(text: str, strict: bool = False) -> list[str]:
 def build(db, creator_id: int | None, video_title: str = "", limit: int = 25) -> list[str]:
     """Do-not-translate terms for this creator, most useful first.
 
+    The creator's own rulings win over anything detected automatically: a
+    word they marked `ignore` is dropped even if the detector liked it, and
+    a word they marked `protect` is kept even if nothing would have found
+    it (a sponsor, a Discord handle, an in-joke).
+
     Never raises and never blocks translation: with no creator or no
     knowledge it simply returns what it can find in the video title."""
     terms: list[str] = []
     seen: set[str] = set()
+    ignored: set[str] = set()
 
     def add(t: str) -> None:
         key = t.lower()
-        if key not in seen and 2 < len(t) <= 40:
+        if key not in seen and key not in ignored and 2 < len(t) <= 40:
             seen.add(key)
             terms.append(t)
+
+    # Read the rulings first so `ignored` is populated before anything is
+    # added, and the creator's own words lead the list.
+    try:
+        for r in db.terms_for(creator_id):
+            if r["rule"] == "ignore":
+                ignored.add(str(r["term"]).lower())
+        for r in db.terms_for(creator_id):
+            if r["rule"] == "protect":
+                add(str(r["term"]))
+    except Exception:
+        pass  # a missing table must never block translation
 
     try:
         if creator_id is not None:
