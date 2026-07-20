@@ -369,6 +369,8 @@ def _render_files(
     # longform module): 16:9 1920x1080 output, no vertical crop/tracking.
     # Absent for every existing Shorts clip — their path is unchanged.
     landscape = bool(opts.get("profile"))
+    # Loudness: on unless this clip opted out (see settings/editor).
+    normalize = bool(opts.get("normalize_audio", True))
     canvas = (1920, 1080) if landscape else (1080, 1920)
 
     # Color: preset filter (per-clip wins over job/config default) + manual
@@ -493,6 +495,7 @@ def _render_files(
                     tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
             render_vertical(
                 intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
+                normalize=normalize,
             )
         else:
             if edit is not None:
@@ -503,10 +506,10 @@ def _render_files(
                 plain = clip_dir / f"{stem}.plain.mp4"
                 scratch.append(plain)
                 cut_clip(source, padded, plain, vf_extra=vf_extra)
-                apply_edits(plain, edit, final_path, ass_path=ass_path, normalize=True)
+                apply_edits(plain, edit, final_path, ass_path=ass_path, normalize=normalize)
             else:
                 cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra,
-                         normalize=True)
+                         normalize=normalize)
     finally:
         for p in scratch:
             p.unlink(missing_ok=True)

@@ -35,6 +35,7 @@ def render_vertical(
     ass_path: Path | None = None,
     vf_extra: str = "",
     cam_position: str = "top",
+    normalize: bool = True,
 ) -> Path:
     """vf_extra: an optional FFmpeg filter fragment (color preset) applied
     after scaling and before captions, so captions stay unfiltered.
@@ -43,13 +44,16 @@ def render_vertical(
     if tracking["mode"] == "split":
         return _render_split(
             clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra,
-            cam_position=cam_position,
+            cam_position=cam_position, normalize=normalize,
         )
     if tracking["mode"] == "fit_blur":
-        return _render_fit_blur(clip_path, tracking.get("region"), output_path, ass_path, vf_extra)
+        return _render_fit_blur(
+            clip_path, tracking.get("region"), output_path, ass_path, vf_extra,
+            normalize=normalize,
+        )
     return _render_tracked(
         clip_path, tracking["path"], output_path, ass_path, vf_extra,
-        face_y=tracking.get("face_y"),
+        face_y=tracking.get("face_y"), normalize=normalize,
     )
 
 
@@ -59,6 +63,7 @@ def _render_fit_blur(
     output_path: Path,
     ass_path: Path | None,
     vf_extra: str = "",
+    normalize: bool = True,
 ) -> Path:
     """The subject's bounding region (normalized x0,y0,x1,y1) shown at FULL
     output width on a heavily blurred backdrop — blurred bands land on the top
@@ -101,7 +106,7 @@ def _render_fit_blur(
         "-map", vout, "-map", "0:a:0?",
         *video_encoder_args(),
         "-c:a", "aac", "-b:a", "128k",
-        *audio_filter_args(),  # sync + loudness normalise (final encode)
+        *audio_filter_args(normalize),  # sync + loudness normalise (final encode)
         "-fps_mode", "cfr",          # constant output frame rate
         "-movflags", "+faststart",
         "-shortest",
@@ -121,6 +126,7 @@ def _render_tracked(
     ass_path: Path | None,
     vf_extra: str = "",
     face_y: float | None = None,
+    normalize: bool = True,
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     if not cap.isOpened():
@@ -195,7 +201,7 @@ def _render_tracked(
             "-map", "[v]", "-map", "1:a:0?",
             *video_encoder_args(),
             "-c:a", "aac", "-b:a", "128k",
-            *audio_filter_args(),
+            *audio_filter_args(normalize),
             "-fps_mode", "cfr",
             "-movflags", "+faststart",
             "-shortest",
@@ -218,7 +224,7 @@ def _render_tracked(
         "-vf", vf,
         *video_encoder_args(),  # NVENC when available
         "-c:a", "aac", "-b:a", "128k",
-        *audio_filter_args(),             # sync + loudness normalise
+        *audio_filter_args(normalize),             # sync + loudness normalise
         "-fps_mode", "cfr",
         "-movflags", "+faststart",
         "-shortest",
@@ -252,6 +258,7 @@ def _render_split(
     ass_path: Path | None,
     vf_extra: str = "",
     cam_position: str = "top",
+    normalize: bool = True,
 ) -> Path:
     cap = cv2.VideoCapture(str(clip_path))
     src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -295,7 +302,7 @@ def _render_split(
         "-map", "[v]", "-map", "0:a:0?",
         *video_encoder_args(),  # NVENC when available
         "-c:a", "aac", "-b:a", "128k",
-        *audio_filter_args(),
+        *audio_filter_args(normalize),
         "-fps_mode", "cfr",
         "-movflags", "+faststart",
         "-shortest",
