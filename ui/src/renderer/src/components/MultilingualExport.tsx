@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder } from './icons'
 import { activeLocale, t } from '../lib/i18n'
+import TranslationReview from './TranslationReview'
 
 /** Language names in the language the INTERFACE is set to: "Spanish" in an
  *  English UI, "español" in a Spanish one. Intl ships these with the OS, so
@@ -77,6 +78,11 @@ export default function MultilingualExport({
   const [voiceList, setVoiceList] = useState<
     Record<string, { id: string; name: string; country: string; quality: string }[]>
   >({})
+  // Translation is a separate first step now: the text is reviewed here
+  // before anything is written. `reloadKey` re-reads it once a job lands.
+  const [waiting, setWaiting] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [reviewed, setReviewed] = useState<string[]>([])
 
   // Load the voice menu for each picked language that can be dubbed.
   useEffect(() => {
@@ -129,6 +135,9 @@ export default function MultilingualExport({
     setNotice(`Translation will use ${name}.`)
   }
 
+  // How many of the picked languages actually have text waiting to export.
+  const readyCount = picked.filter((c) => reviewed.includes(c)).length
+
   const toggle = (code: string): void => {
     setPicked((prev) => {
       const next = prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
@@ -137,17 +146,75 @@ export default function MultilingualExport({
     })
   }
 
-  const run = async (): Promise<void> => {
+  const targetClips = async (): Promise<number[]> =>
+    allClips && videoId ? (await api.clips(videoId)).map((c) => c.id) : [clipId]
+
+  /** Step 1: produce the text only. No files, no rendering — so a bad
+   *  translation is caught before it is burned into a video. */
+  const translate = async (): Promise<void> => {
     setBusy(true)
     setNotice('')
     try {
-      let ids = [clipId]
-      if (allClips && videoId) {
-        ids = (await api.clips(videoId)).map((c) => c.id)
-      }
+      const ids = await targetClips()
       const res = await api.translateClips({
         clip_ids: ids,
         languages: picked,
+        stage: 'translate'
+      })
+      setNotice(
+        `Translating ${res.clips} clip(s) into ${res.languages.length} language(s) — the text appears below when it's ready.`
+      )
+      watchJob(res.job_id)
+    } catch (e) {
+      setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      setBusy(false)
+    }
+  }
+
+  /** Poll until the translation job finishes, then show the text. Polling
+   *  the job (rather than the translations) is what makes a failure visible
+   *  instead of leaving the panel spinning forever. */
+  const watchJob = (jobId: number): void => {
+    setWaiting(true)
+    const started = Date.now()
+    const tick = async (): Promise<void> => {
+      if (Date.now() - started > 30 * 60_000) {
+        setWaiting(false)
+        setBusy(false)
+        setNotice('Translation is taking unusually long — check the Dashboard activity feed.')
+        return
+      }
+      try {
+        const job = (await api.jobs()).find((j) => j.id === jobId)
+        if (job && job.status !== 'queued' && job.status !== 'running') {
+          setWaiting(false)
+          setBusy(false)
+          setReloadKey((k) => k + 1)
+          setNotice(
+            job.status === 'done'
+              ? 'Translated. Read it below, fix anything wrong, then export.'
+              : `Translation ${job.status}${job.error ? `: ${job.error}` : ''}`
+          )
+          return
+        }
+      } catch {
+        /* backend busy — try again on the next tick */
+      }
+      window.setTimeout(tick, 3000)
+    }
+    window.setTimeout(tick, 3000)
+  }
+
+  /** Step 2: write the files, reusing the reviewed text. */
+  const exportNow = async (): Promise<void> => {
+    setBusy(true)
+    setNotice('')
+    try {
+      const ids = await targetClips()
+      const res = await api.translateClips({
+        clip_ids: ids,
+        languages: picked,
+        stage: 'export',
         folder,
         include_video: includeVideo,
         burn: burnIn,
@@ -172,7 +239,7 @@ export default function MultilingualExport({
         <p className="font-medium text-sm">{t('Publish in other languages')}</p>
         <p className="text-xs text-muted mt-0.5">
           {t(
-            'Per language: a subtitle track, and the post text (title, description, hashtags) ready to paste. Runs on this PC, free.'
+            'Translate first, read what it wrote and fix anything wrong, then export. Runs on this PC, free.'
           )}
         </p>
       </div>
@@ -273,15 +340,48 @@ export default function MultilingualExport({
             {t('All')} {clipCount} {t('clips of this video')}
           </label>
         )}
-        <button
-          className="btn-accent !py-1 ml-auto"
-          disabled={busy || picked.length === 0 || !folder}
-          onClick={run}
-          title={picked.length === 0 ? 'Pick at least one language' : undefined}
-        >
-          {busy ? t('Queueing…') : t('Export languages')}
-        </button>
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            className="btn-ghost !py-1"
+            disabled={busy || picked.length === 0}
+            onClick={translate}
+            title={
+              picked.length === 0
+                ? 'Pick at least one language'
+                : 'Translate the captions so you can read and fix them before anything is written'
+            }
+          >
+            {waiting ? t('Translating…') : t('Translate & review')}
+          </button>
+          <button
+            className="btn-accent !py-1"
+            disabled={busy || picked.length === 0 || !folder || readyCount === 0}
+            onClick={exportNow}
+            title={
+              readyCount === 0
+                ? 'Translate first, so you can check the text before it is written'
+                : undefined
+            }
+          >
+            {busy && !waiting ? t('Queueing…') : `${t('Export')} ${readyCount || ''}`.trim()}
+          </button>
+        </div>
       </div>
+
+      <TranslationReview
+        clipId={clipId}
+        languages={picked}
+        nameOf={(c) => displayName(c, c)}
+        reloadKey={reloadKey}
+        onLoaded={setReviewed}
+      />
+      {allClips && readyCount > 0 && (
+        <p className="text-xs text-muted">
+          {t(
+            'You are reviewing this clip. The other clips use their machine translation unless you open and correct them too.'
+          )}
+        </p>
+      )}
       {/* Translation quality depends on the model — offer the better one. */}
       {!transModel && (
         <p className="text-xs text-muted border-t border-raised/60 pt-2">

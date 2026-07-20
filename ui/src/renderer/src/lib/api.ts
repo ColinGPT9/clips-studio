@@ -12,6 +12,7 @@ import type {
   RenderOpts,
   Settings,
   SystemStats,
+  Translation,
   Video,
   WatermarkConfig,
   Word
@@ -167,17 +168,31 @@ export const api = {
   translateClips: (body: {
     clip_ids: number[]
     languages: string[]
-    folder: string
-    include_video: boolean
-    burn: boolean
-    dub: boolean
-    subtitles: boolean
-    post_text: boolean
-    voices: Record<string, string>
+    stage?: 'translate' | 'export'
+    folder?: string
+    include_video?: boolean
+    burn?: boolean
+    dub?: boolean
+    subtitles?: boolean
+    post_text?: boolean
+    voices?: Record<string, string>
   }) =>
     request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
       method: 'POST',
       body: JSON.stringify(body)
+    }),
+  translations: (clipId: number) =>
+    request<{ source: CaptionLine[]; translations: Translation[] }>(
+      `/clips/${clipId}/translations`
+    ),
+  saveTranslation: (clipId: number, language: string, lines: CaptionLine[]) =>
+    request<{ saved: string; lines: number }>(`/clips/${clipId}/translations/${language}`, {
+      method: 'PUT',
+      body: JSON.stringify({ lines })
+    }),
+  discardTranslation: (clipId: number, language: string) =>
+    request<{ discarded: string }>(`/clips/${clipId}/translations/${language}`, {
+      method: 'DELETE'
     }),
 
   voicesFor: (language: string) =>
