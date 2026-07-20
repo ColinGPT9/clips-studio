@@ -182,6 +182,7 @@ export const api = {
     subtitles?: boolean
     post_text?: boolean
     voices?: Record<string, string>
+    style?: CaptionStyle
   }) =>
     request<{ job_id: number; languages: string[]; clips: number }>('/translate', {
       method: 'POST',

@@ -153,6 +153,8 @@ class TranslateIn(BaseModel):
     subtitles: bool = False       # write .srt/.vtt files as well
     post_text: bool = False       # write the translated post text as well
     voices: dict | None = None    # {language: voice id} chosen by the creator
+    style: dict | None = None     # subtitle font/size/colour/position; falls
+                                  # back to the clip's own caption style
 
 
 class FeedbackIn(BaseModel):
@@ -899,6 +901,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "subtitles": body.subtitles,
                 "post_text": body.post_text,
                 "voices": body.voices or {},
+                "style": body.style or {},
             }))
         finally:
             d.close()

@@ -6,9 +6,11 @@ import type {
   Clip,
   EditData,
   LiveOverlay,
+  TranslationPreview,
   WatermarkConfig,
   Word
 } from '../lib/types'
+import MultilingualExport from './MultilingualExport'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import {
   Badge,
@@ -32,9 +34,10 @@ import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleContr
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 
-type Tab = 'captions' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
+type Tab = 'captions' | 'subtitles' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
 const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
   { id: 'captions', label: 'Captions', icon: <span className="font-bold text-[11px] leading-none">Aa</span> },
+  { id: 'subtitles', label: 'Subtitles', icon: <span className="font-bold text-[11px] leading-none">文</span> },
   { id: 'audio', label: 'Audio', icon: <Note /> },
   { id: 'motion', label: 'Effects', icon: <Zap /> },
   { id: 'watermark', label: 'Watermark', icon: <Badge /> },
@@ -152,6 +155,7 @@ export default function TimelineEditor({
   onChanged,
   onPreview,
   onLiveOverlay,
+  onTranslationPreview,
   watermark,
   setWatermark
 }: {
@@ -160,6 +164,8 @@ export default function TimelineEditor({
   onChanged: () => void
   onPreview: (url: string | null) => void
   onLiveOverlay: (o: LiveOverlay | null) => void
+  /** Subtitles tab: draw a translated language over the editor video. */
+  onTranslationPreview: (p: TranslationPreview | null) => void
   watermark: WatermarkConfig | null
   setWatermark: (w: WatermarkConfig | null) => void
 }): JSX.Element {
@@ -1240,6 +1246,11 @@ export default function TimelineEditor({
             onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
           />
         </div>
+      )}
+
+      {/* translated subtitles — its own section, not part of Captions */}
+      {activeTab === 'subtitles' && (
+        <MultilingualExport clipId={clip.id} videoId={clip.video_id} onPreview={onTranslationPreview} />
       )}
 
       {/* watermark / branding for this clip */}
