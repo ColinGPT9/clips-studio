@@ -66,7 +66,6 @@ export default function MultilingualExport({
   // else cluttering the folder.
   const [wantSubs, setWantSubs] = useState(false)
   const [wantPost, setWantPost] = useState(false)
-  const [previewing, setPreviewing] = useState('')
   // Chosen dubbing voice per language, remembered between sessions.
   const [voiceFor, setVoiceFor] = useState<Record<string, string>>(() => {
     try {
@@ -92,17 +91,15 @@ export default function MultilingualExport({
       })
   }, [picked, canDub, dubIn, langs])
 
+  // A visible <audio> element rather than a detached Audio object: the
+  // first play has to fetch a ~60 MB voice, so people need to see it
+  // loading and have a play button if autoplay is refused.
+  const [player, setPlayer] = useState<{ url: string; label: string } | null>(null)
   const play = (language: string, voice?: string): void => {
-    setPreviewing(voice ?? language)
-    const audio = new Audio(api.voicePreviewUrl(language, voice))
-    audio.onended = () => setPreviewing('')
-    audio.onerror = () => {
-      setPreviewing('')
-      setNotice('Could not play that voice — it may still be downloading.')
-    }
-    audio.play().catch(() => {
-      setPreviewing('')
-      setNotice('Could not play that voice.')
+    setNotice('')
+    setPlayer({
+      url: api.voicePreviewUrl(language, voice),
+      label: `${displayName(language, language)} — ${voice ?? t('default voice')}`
     })
   }
 
@@ -337,7 +334,7 @@ export default function MultilingualExport({
           </button>
         </p>
       )}
-      {canDub && dubIn && picked.some((c) => langs.find((l) => l.code === c)?.can_dub) && (
+      {canDub && picked.some((c) => langs.find((l) => l.code === c)?.can_dub) && (
         <div className="border-t border-raised/60 pt-2 space-y-1.5">
           <p className="label">{t('Dubbing voice')}</p>
           {picked
@@ -363,16 +360,36 @@ export default function MultilingualExport({
                 </select>
                 <button
                   className="px-2 py-0.5 rounded-md bg-raised text-muted hover:text-ink disabled:opacity-50"
-                  disabled={previewing !== ''}
                   onClick={() => play(c, voiceFor[c] || undefined)}
                   title="Hear this voice"
                 >
-                  {previewing === (voiceFor[c] || c) ? '…' : '▶'} {t('Listen')}
+                  ▶ {t('Listen')}
                 </button>
               </div>
             ))}
+          {player && (
+            <div className="flex items-center gap-2 pt-1">
+              <audio
+                key={player.url}
+                src={player.url}
+                controls
+                autoPlay
+                className="h-8 flex-1 min-w-0"
+                onError={() =>
+                  setNotice('That voice could not be played — check the Dashboard activity feed.')
+                }
+              />
+              <button
+                className="text-muted hover:text-ink px-1"
+                onClick={() => setPlayer(null)}
+                aria-label="Close preview"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <p className="text-muted/70">
-            {t('Voices are neither male nor female by label — listen and pick the one that fits the person on screen. First play downloads it (~60 MB).')}
+            {t('The first play downloads that voice (~60 MB), so it can take a moment.')}
           </p>
         </div>
       )}

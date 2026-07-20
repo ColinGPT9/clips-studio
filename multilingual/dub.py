@@ -24,8 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-# One voice per language. Japanese is absent from Piper's catalogue, so it
-# gets subtitles only — stated rather than silently skipped.
+# Default voice per language; creators pick a different one in the UI.
+# Languages absent from Piper's catalogue simply aren't in here.
 VOICES: dict[str, str] = {
     "en": "en_US-lessac-medium",
     "es": "es_ES-davefx-medium",
@@ -36,7 +36,15 @@ VOICES: dict[str, str] = {
     "id": "id_ID-news_tts-medium",
     "ru": "ru_RU-denis-medium",
     "ar": "ar_JO-kareem-medium",
+    "zh": "zh_CN-huayan-medium",
+    "vi": "vi_VN-vais1000-medium",
+    "tr": "tr_TR-dfki-medium",
+    "ur": "ur_PK-aegis_female-medium",
+    "bn": "bn_BD-google-medium",
+    "it": "it_IT-paola-medium",
 }
+# Filipino, Thai and Korean have no Piper voice: subtitles only, which the
+# UI states rather than skipping them silently.
 
 RATE_MIN, RATE_MAX = 0.72, 1.45   # speaking-rate range that still sounds human
 DUCK = 0.12                        # original audio kept this loud underneath

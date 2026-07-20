@@ -60,7 +60,7 @@ SCRIPT_FONTS = {
     "ja": "Yu Gothic UI",
     "ko": "Malgun Gothic",
     "zh": "Microsoft YaHei",
-    "th": "Leelawadee UI",
+    "th": "Leelawadee UI", "vi": "Segoe UI",
     "ar": "Segoe UI", "fa": "Segoe UI", "ur": "Segoe UI",
 }
 
