@@ -145,6 +145,20 @@ CREATE TABLE IF NOT EXISTS branding_profiles (
 -- or painted permanently into a video. `edited` marks text a human approved,
 -- which export prefers and re-translation must never overwrite.
 
+-- Words the creator has ruled on for translation: `protect` keeps a term
+-- exactly as written (channel name, sponsor, in-joke), `ignore` overrides an
+-- auto-detected term that should be translated normally. creator_id NULL
+-- applies everywhere, which is what a sponsor or handle usually wants.
+
+CREATE TABLE IF NOT EXISTS creator_terms (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_id INTEGER,                      -- NULL = every creator
+    term       TEXT NOT NULL,
+    rule       TEXT NOT NULL DEFAULT 'protect',  -- protect | ignore
+    created_at TEXT NOT NULL,
+    UNIQUE (creator_id, term)
+);
+
 CREATE TABLE IF NOT EXISTS clip_translations (
     clip_id    INTEGER NOT NULL REFERENCES clips(id),
     language   TEXT NOT NULL,                -- ISO code (multilingual.languages)
@@ -225,6 +239,39 @@ class StateDB:
         self.conn.execute("DELETE FROM rejections WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
         self.conn.commit()
+
+    # ---- translation glossary -----------------------------------------
+
+    def set_term(self, creator_id: int | None, term: str, rule: str) -> None:
+        """Rule one word for translation: 'protect' or 'ignore'."""
+        self.conn.execute(
+            "INSERT INTO creator_terms (creator_id, term, rule, created_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(creator_id, term) DO UPDATE SET rule = excluded.rule",
+            (creator_id, term.strip(), rule, _now()),
+        )
+        self.conn.commit()
+
+    def clear_term(self, creator_id: int | None, term: str) -> None:
+        """Drop the ruling, letting the automatic list decide again."""
+        if creator_id is None:
+            self.conn.execute(
+                "DELETE FROM creator_terms WHERE creator_id IS NULL AND term = ?", (term.strip(),)
+            )
+        else:
+            self.conn.execute(
+                "DELETE FROM creator_terms WHERE creator_id = ? AND term = ?",
+                (creator_id, term.strip()),
+            )
+        self.conn.commit()
+
+    def terms_for(self, creator_id: int | None) -> list[sqlite3.Row]:
+        """This creator's rulings plus the ones that apply to everyone."""
+        return self.conn.execute(
+            "SELECT term, rule FROM creator_terms WHERE creator_id IS NULL OR creator_id = ?"
+            " ORDER BY term COLLATE NOCASE",
+            (creator_id,),
+        ).fetchall()
 
     # ---- translations -------------------------------------------------
 

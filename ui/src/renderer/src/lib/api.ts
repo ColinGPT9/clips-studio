@@ -197,6 +197,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ lines })
     }),
+  glossary: (clipId: number) =>
+    request<{ protected: string[]; ignored: string[]; mine: string[] }>(
+      `/clips/${clipId}/glossary`
+    ),
+  ruleTerm: (clipId: number, term: string, rule: 'protect' | 'ignore' | 'auto') =>
+    request<{ term: string; rule: string }>(`/clips/${clipId}/glossary`, {
+      method: 'POST',
+      body: JSON.stringify({ term, rule })
+    }),
   discardTranslation: (clipId: number, language: string) =>
     request<{ discarded: string }>(`/clips/${clipId}/translations/${language}`, {
       method: 'DELETE'

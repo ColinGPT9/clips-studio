@@ -5,6 +5,7 @@ import { Folder } from './icons'
 import { activeLocale, t } from '../lib/i18n'
 import TranslationReview from './TranslationReview'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import GlossaryEditor from './GlossaryEditor'
 import { formatEta } from '../lib/jobProgress'
 import { useEvents } from '../lib/useEvents'
 import type { CaptionLine, CaptionStyle, TranslationPreview } from '../lib/types'
@@ -591,6 +592,7 @@ export default function MultilingualExport({
               </p>
             </div>
           </details>
+          <GlossaryEditor clipId={clipId} />
         </div>
       )}
 

@@ -102,6 +102,13 @@ class CaptionsIn(BaseModel):
     lines: list[dict]  # [{"start", "end", "text"}] clip-relative
 
 
+class TermIn(BaseModel):
+    """A creator's ruling on one word for translation."""
+
+    term: str
+    rule: str = "protect"  # protect | ignore | auto (forget the ruling)
+
+
 class TranslationPatch(BaseModel):
     """A creator's corrections to one language's translated captions."""
 
@@ -960,6 +967,59 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
         return {"saved": language, "lines": len(body.lines)}
+
+    def _creator_of(d, clip) -> int | None:
+        row = d.conn.execute(
+            "SELECT creator_id FROM videos WHERE video_id = ?", (clip["video_id"],)
+        ).fetchone()
+        return row["creator_id"] if row else None
+
+    @app.get("/clips/{clip_id}/glossary")
+    def clip_glossary(clip_id: int):
+        """Words kept out of translation for this clip's creator: the list
+        actually in force, plus anything explicitly ruled out."""
+        from multilingual import glossary
+
+        d = db()
+        try:
+            clip = d.get_clip(clip_id)
+            if clip is None:
+                raise HTTPException(404, "clip not found")
+            creator_id = _creator_of(d, clip)
+            vrow = d.conn.execute(
+                "SELECT title FROM videos WHERE video_id = ?", (clip["video_id"],)
+            ).fetchone()
+            rules = {r["term"]: r["rule"] for r in d.terms_for(creator_id)}
+            return {
+                "protected": glossary.build(d, creator_id, vrow["title"] if vrow else ""),
+                "ignored": [t for t, r in rules.items() if r == "ignore"],
+                "mine": [t for t, r in rules.items() if r == "protect"],
+            }
+        finally:
+            d.close()
+
+    @app.post("/clips/{clip_id}/glossary")
+    def rule_clip_term(clip_id: int, body: TermIn):
+        """protect = keep this word as written; ignore = translate it
+        normally even if detected; auto = forget the ruling."""
+        term = body.term.strip()
+        if not term:
+            raise HTTPException(400, "empty term")
+        if body.rule not in ("protect", "ignore", "auto"):
+            raise HTTPException(400, "rule must be protect, ignore or auto")
+        d = db()
+        try:
+            clip = d.get_clip(clip_id)
+            if clip is None:
+                raise HTTPException(404, "clip not found")
+            creator_id = _creator_of(d, clip)
+            if body.rule == "auto":
+                d.clear_term(creator_id, term)
+            else:
+                d.set_term(creator_id, term, body.rule)
+        finally:
+            d.close()
+        return {"term": term, "rule": body.rule}
 
     @app.delete("/clips/{clip_id}/translations/{language}")
     def discard_clip_translation(clip_id: int, language: str):
