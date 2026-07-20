@@ -102,6 +102,27 @@ def publish(
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
 
+    # ---- progress accounting ------------------------------------------
+    # Steps are WEIGHTED by how long they actually take, so the bar moves at
+    # a roughly even rate instead of stalling on the slow ones. A dub
+    # synthesizes speech sentence by sentence and is far slower than painting
+    # subtitles on; the caption-free base is a full re-render.
+    targets = [c for c in languages if c != source_language and is_supported(c)]
+    units = 3 if (burn or dub) and clip_row is not None else 0
+    for _c in targets:
+        if not ((pre_translated or {}).get(_c) or {}).get("lines"):
+            units += 2
+        units += (1 if burn else 0) + (3 if dub else 0)
+    units = max(units, 1)
+    spent = 0
+
+    def step(label: str, weight: int = 0) -> None:
+        """Report what is happening now; `weight` credits the step just done."""
+        nonlocal spent
+        spent += weight
+        if on_progress:
+            on_progress(label, min(spent, units), units)
+
     # One caption-free re-render serves every language's burn, and is also
     # the video the dub is laid over.
     base = None
@@ -117,7 +138,9 @@ def publish(
         caption_style = style or opts.get("caption_style")
         try:
             print("      Rendering a caption-free base for burned languages…")
+            step("Preparing the video")
             base = burner.clean_base(clip_row, config, data_dir, out_dir / ".ml_work")
+            step("Prepared the video", 3)
         except Exception as e:
             print(f"      (could not build the caption-free base: {e})")
         if base is None and clip_path is not None and clip_path.exists():
@@ -141,16 +164,15 @@ def publish(
         if want_post and post is not None:
             written.append(str(write_post_file(post, out_dir / f"{stem}.{source_language}.txt")))
 
-    total = len([c for c in languages if c != source_language])
-    done = 0
-    for code in languages:
-        if code == source_language or not is_supported(code):
-            continue
+    for code in targets:
         try:
-            if on_progress:
-                on_progress(f"Translating to {english_name(code)}", done, total)
             ready = (pre_translated or {}).get(code) or {}
-            translated = ready.get("lines") or translate_lines(lines, code, llm, terms=terms)
+            if ready.get("lines"):
+                translated = ready["lines"]
+            else:
+                step(f"Translating to {english_name(code)}")
+                translated = translate_lines(lines, code, llm, terms=terms)
+                step(f"Translated {english_name(code)}", 2)
             if want_subtitles:
                 written.append(str(write_srt(translated, out_dir / f"{stem}.{code}.srt")))
                 written.append(str(write_vtt(translated, out_dir / f"{stem}.{code}.vtt")))
@@ -165,10 +187,12 @@ def publish(
             if burn and base is not None:
                 from multilingual import burn as burner
 
+                step(f"Adding {english_name(code)} subtitles to the video")
                 burned = burner.burn(
                     base, translated, code, out_dir / f"{stem}.{code}.mp4",
                     caption_style, config or {},
                 )
+                step(f"Subtitled {english_name(code)}", 1)
                 if burned is not None:
                     written.append(str(burned))
                     print(f"      Video written: {english_name(code)}")
@@ -178,12 +202,18 @@ def publish(
                 # Dub over the burned version when there is one, so the
                 # viewer gets translated captions AND translated speech.
                 source = burned or base
+                if burn and burned is None:
+                    # Subtitles were asked for but the burn failed — say so,
+                    # rather than shipping a dub that silently has no text.
+                    print(f"      ({english_name(code)}: subtitles failed, dubbing without them)")
+                step(f"Dubbing {english_name(code)}")
                 spoken = dubber.dub(
                     translated, code, source,
                     out_dir / f"{stem}.{code}.dubbed.mp4",
                     voices_dir, out_dir / ".ml_work",
                     voice_id=(voice_choice or {}).get(code),
                 )
+                step(f"Dubbed {english_name(code)}", 3)
                 if spoken is not None:
                     written.append(str(spoken))
                     print(f"      Dubbed audio written: {english_name(code)}")
@@ -191,9 +221,8 @@ def publish(
                     print(f"      ({english_name(code)} has no voice available — subtitles only)")
         except Exception as e:  # one language failing must not stop the rest
             print(f"      ({english_name(code)} failed: {e})")
-        done += 1
     if on_progress:
-        on_progress("Done", total, total)
+        on_progress("Done", units, units)
 
     # The caption-free base was scratch, not an output.
     work = out_dir / ".ml_work"
