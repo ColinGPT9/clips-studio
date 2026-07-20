@@ -147,7 +147,9 @@ class TranslateIn(BaseModel):
     languages: list[str]          # ISO codes from multilingual.languages
     stage: str = "export"         # translate (review first) | export (write files)
     folder: str = ""              # where the files are written (export only)
-    include_video: bool = True    # copy the clip beside its subtitle tracks
+    include_video: bool = False   # copy the clip AS IT IS (original captions
+                                  # burned in) beside the translated ones —
+                                  # opt-in, matching the editor's checkbox
     burn: bool = False            # also make a video per language with captions burned in
     dub: bool = False             # also speak the translation over the clip
     subtitles: bool = False       # write .srt/.vtt files as well

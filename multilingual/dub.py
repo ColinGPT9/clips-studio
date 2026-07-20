@@ -137,6 +137,7 @@ def dub(
     voices_dir: Path,
     work_dir: Path,
     voice_id: str | None = None,
+    workers: int | None = None,
 ) -> Path | None:
     """A copy of `base_video` speaking `lines` in `language`, or None.
 
@@ -175,8 +176,11 @@ def dub(
     # share no state, so running a few at once is safe and roughly halves
     # the wall time. Capped low: Piper is CPU-bound and each worker holds
     # its own copy of the model.
-    workers = max(1, min(4, (os.cpu_count() or 4) // 2, len(utterances)))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    # `workers` lets the caller shrink the pool when it is dubbing several
+    # languages at once, so the lanes share cores instead of fighting.
+    lanes = workers or ((os.cpu_count() or 4) // 2)
+    lanes = max(1, min(4, lanes, len(utterances)))
+    with ThreadPoolExecutor(max_workers=lanes) as pool:
         done = list(pool.map(synth, enumerate(utterances)))  # map keeps order
     pieces: list[tuple[Path, float]] = [p for p in done if p is not None]
     if not pieces:
