@@ -30,6 +30,12 @@ DEFAULTS: dict[str, str] = {
     "id": "id_ID-news_tts-medium",
     "ru": "ru_RU-denis-medium",
     "ar": "ar_JO-kareem-medium",
+    "zh": "zh_CN-huayan-medium",
+    "vi": "vi_VN-vais1000-medium",
+    "tr": "tr_TR-dfki-medium",
+    "ur": "ur_PK-aegis_female-medium",
+    "bn": "bn_BD-google-medium",
+    "it": "it_IT-paola-medium",
 }
 
 _QUALITY_RANK = {"x_low": 0, "low": 1, "medium": 2, "high": 3}

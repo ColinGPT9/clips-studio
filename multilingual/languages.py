@@ -18,6 +18,15 @@ LANGUAGES: dict[str, tuple[str, str, str]] = {
     "ja": ("Japanese", "日本語", "Japanese"),
     "ru": ("Russian", "Русский", "Russian"),
     "ar": ("Arabic", "العربية", "Modern Standard Arabic"),
+    "zh": ("Chinese (Simplified)", "简体中文", "Simplified Chinese (Mandarin)"),
+    "vi": ("Vietnamese", "Tiếng Việt", "Vietnamese"),
+    "tl": ("Filipino", "Filipino", "Filipino (Tagalog)"),
+    "tr": ("Turkish", "Türkçe", "Turkish"),
+    "ur": ("Urdu", "اردو", "Urdu"),
+    "bn": ("Bengali", "বাংলা", "Bengali (Bangla)"),
+    "th": ("Thai", "ไทย", "Thai"),
+    "ko": ("Korean", "한국어", "Korean"),
+    "it": ("Italian", "Italiano", "Italian"),
 }
 
 
