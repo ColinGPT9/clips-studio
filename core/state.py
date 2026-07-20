@@ -240,6 +240,28 @@ class StateDB:
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
         self.conn.commit()
 
+    def delete_creator(self, creator_id: int) -> dict:
+        """Remove a creator profile and everything learned about them.
+
+        Videos and clips are NEVER deleted — they are only unlinked, so a
+        profile can be tidied away without losing footage. Any video left
+        behind simply has no creator until one is detected again.
+        """
+        unlinked = self.conn.execute(
+            "UPDATE videos SET creator_id = NULL WHERE creator_id = ?", (creator_id,)
+        ).rowcount
+        counts = {"videos_unlinked": unlinked}
+        # Accounts/knowledge/events carry NOT NULL foreign keys, so they have
+        # to go before the row they point at.
+        for table in ("platform_accounts", "creator_knowledge", "creator_events",
+                      "clip_feedback", "creator_terms"):
+            counts[table] = self.conn.execute(
+                f"DELETE FROM {table} WHERE creator_id = ?", (creator_id,)
+            ).rowcount
+        self.conn.execute("DELETE FROM creators WHERE creator_id = ?", (creator_id,))
+        self.conn.commit()
+        return counts
+
     # ---- translation glossary -----------------------------------------
 
     def set_term(self, creator_id: int | None, term: str, rule: str) -> None:
