@@ -128,6 +128,91 @@ function ExportFolderCard(): JSX.Element {
   )
 }
 
+const GB = (bytes: number): string => `${(bytes / 1e9).toFixed(2)} GB`
+
+/** Where the disk went, and a way to get some of it back.
+ *
+ *  Repeated processing leaves things nothing references — staging files
+ *  from renders that failed or were cancelled, `.part` fragments from
+ *  interrupted downloads, and an editor preview per clip. None of it shows
+ *  anywhere, so the drive just quietly shrinks. */
+function StorageCard(): JSX.Element {
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof api.storage>> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState('')
+
+  const load = (): void => {
+    api.storage().then(setInfo).catch(() => setInfo(null))
+  }
+  useEffect(load, [])
+
+  const LABELS: Record<string, string> = {
+    partial_downloads: 'Interrupted downloads',
+    orphan_downloads: 'Downloads with no video',
+    orphan_transcripts: 'Transcripts with no video',
+    render_leftovers: 'Leftovers from failed renders',
+    orphan_clips: 'Clip files not in your library',
+    previews: 'Editor previews (rebuilt on demand)'
+  }
+
+  return (
+    <div className="card space-y-3" aria-label="Storage">
+      <h3 className="font-semibold">{t('Storage')}</h3>
+      {!info ? (
+        <p className="text-xs text-muted">{t('Checking…')}</p>
+      ) : (
+        <>
+          <div className="space-y-1 text-xs">
+            {Object.entries(info.reclaimable)
+              .filter(([, v]) => v.files > 0)
+              .map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3">
+                  <span className="text-muted truncate">{LABELS[k] ?? k}</span>
+                  <span className="tabular-nums shrink-0">
+                    {v.files} · {GB(v.bytes)}
+                  </span>
+                </div>
+              ))}
+            {info.reclaimable_bytes === 0 && (
+              <p className="text-muted">{t('Nothing to clean up — no leftovers on disk.')}</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              className="btn-ghost !py-1 text-xs"
+              disabled={busy || info.reclaimable_bytes === 0}
+              onClick={async () => {
+                setBusy(true)
+                setDone('')
+                try {
+                  const r = await api.storageCleanup()
+                  setDone(`Freed ${GB(r.bytes_freed)} across ${r.files_removed} file(s).`)
+                  load()
+                } catch (e) {
+                  setDone(`Error: ${e instanceof Error ? e.message : String(e)}`)
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              {busy ? t('Cleaning…') : `${t('Free up')} ${GB(info.reclaimable_bytes)}`}
+            </button>
+            {done && <span className="text-xs text-muted">{done}</span>}
+          </div>
+
+          <p className="text-[11px] text-muted/80 border-t border-raised/60 pt-2">
+            {t('Source videos')}: {info.sources.files} · {GB(info.sources.bytes)}.{' '}
+            {t(
+              'These are the biggest thing on disk and are NOT touched — editing, re-rendering and translated burns all read them. Delete a video from the Dashboard to remove its source along with its clips.'
+            )}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 function AppearanceCard(): JSX.Element {
   const [appearance, setAppearance] = useState<Appearance>(loadAppearance)
 
@@ -207,6 +292,8 @@ export default function Settings(): JSX.Element {
       <AppearanceCard />
 
       <ExportFolderCard />
+
+      <StorageCard />
 
       <div className="card text-sm text-muted">
         The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced

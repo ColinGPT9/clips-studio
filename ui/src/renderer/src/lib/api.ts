@@ -106,6 +106,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ video_id: videoId })
     }),
+  storage: () =>
+    request<{
+      reclaimable: Record<string, { files: number; bytes: number }>
+      reclaimable_bytes: number
+      sources: { files: number; bytes: number }
+    }>('/storage'),
+  storageCleanup: () =>
+    request<{ files_removed: number; bytes_freed: number }>('/storage/cleanup', {
+      method: 'POST'
+    }),
   deleteVideo: (videoId: string) =>
     request<{ deleted: string }>(`/videos/${videoId}`, { method: 'DELETE' }),
 
