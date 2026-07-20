@@ -25,6 +25,7 @@ Positions are computed against the OUTPUT frame (1080x1920 or 1920x1080), so
 one config scales correctly for both vertical Shorts and horizontal video.
 """
 
+import math
 import subprocess
 from pathlib import Path
 
@@ -45,12 +46,18 @@ _OVERLAY_XY = {
     "center": ("(W-w)/2", "(H-h)/2"),
 }
 
-# "moving" (TikTok-style anti-crop): the watermark rests at one side edge-
-# centre, then SLIDES across to the other — never top/bottom (platform UI
-# covers those). The slide catches the eye; the travel makes it hard to crop.
-MOVE_DWELL = 3.4   # seconds resting at a side
-MOVE_SLIDE = 0.6   # seconds to slide across
-MOVE_PERIOD = MOVE_DWELL + MOVE_SLIDE
+# "moving" (TikTok-style anti-crop): the watermark stays at one side edge-
+# centre, drifting in a small circle, then TELEPORTS to the other side —
+# never top/bottom (platform UI covers those).
+#
+# It used to slide across the frame, which dragged the logo straight through
+# the middle of the shot and over the subject's face. Teleporting keeps the
+# anti-crop property — the mark occupies both sides over time, so no single
+# crop removes it — without ever entering the picture's centre. The little
+# orbit is what catches the eye, replacing the movement the slide provided.
+MOVE_DWELL = 3.4        # seconds at a side = one full revolution
+CIRCLE_FRAC = 0.022     # orbit radius as a fraction of the short frame edge
+CIRCLE_STEPS = 16       # segments approximating the circle in ASS (text mode)
 
 
 def has_text(cfg: dict) -> bool:
@@ -124,19 +131,34 @@ def _text_events(text: str, cfg: dict, duration: float, canvas: tuple[int, int])
     if pos != "moving":
         # Layer 2 so branding sits above captions; 9:59:59 = "whole clip".
         return f"Dialogue: 2,0:00:00.00,9:59:59.99,Watermark,,0,0,0,,{text}"
-    # Slide between the side edge-centres. Each event holds at its start side
-    # for MOVE_DWELL then \move()s across in MOVE_SLIDE; sides alternate.
-    dur = max(MOVE_PERIOD, duration or 60.0)
+    # Orbit a small circle at one side edge-centre, then teleport to the
+    # other. ASS has no expression language, so the circle is walked as a
+    # ring of short \move segments; at CIRCLE_STEPS a revolution the corners
+    # are invisible. Teleporting is simply the next event starting at the
+    # other side with nothing tweening between the two.
+    dur = max(MOVE_DWELL, duration or 60.0)
     cw, ch = canvas
+    radius = max(2, round(min(cw, ch) * CIRCLE_FRAC))
     rx, lx, my = round(cw * 0.82), round(cw * 0.18), round(ch * 0.5)
-    d_ms, s_ms = round(MOVE_DWELL * 1000), round(MOVE_PERIOD * 1000)
-    events, t, i = [], 0.0, 0
+    step = MOVE_DWELL / CIRCLE_STEPS
+
+    def point(cx: int, k: int) -> tuple[int, int]:
+        a = 2 * math.pi * (k % CIRCLE_STEPS) / CIRCLE_STEPS
+        return round(cx + radius * math.cos(a)), round(my + radius * math.sin(a))
+
+    events, t, side = [], 0.0, 0
     while t < dur:
-        end = min(t + MOVE_PERIOD, dur)
-        a, b = (rx, lx) if i % 2 == 0 else (lx, rx)  # from -> to
-        tag = f"{{\\an5\\move({a},{my},{b},{my},{d_ms},{s_ms})}}"
-        events.append(f"Dialogue: 2,{_ass_t(t)},{_ass_t(end)},Watermark,,0,0,0,,{tag}{text}")
-        t, i = end, i + 1
+        cx = rx if side % 2 == 0 else lx
+        for k in range(CIRCLE_STEPS):
+            if t >= dur:
+                break
+            end = min(t + step, dur)
+            x1, y1 = point(cx, k)
+            x2, y2 = point(cx, k + 1)
+            tag = f"{{\\an5\\move({x1},{y1},{x2},{y2})}}"
+            events.append(f"Dialogue: 2,{_ass_t(t)},{_ass_t(end)},Watermark,,0,0,0,,{tag}{text}")
+            t = end
+        side += 1
     return "\n".join(events)
 
 
@@ -178,21 +200,17 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
         fy = max(0.0, min(1.0, float(cfg.get("y", 0.5))))
         xexpr, yexpr = f"W*{fx:.4f}-w/2", f"H*{fy:.4f}-h/2"
     elif cfg.get("position") == "moving":
-        # Rest at a side, then slide across to the other (anti-crop). x is a
-        # piecewise function of t over one full L<->R cycle.
-        rx, lx = f"(W-w-{pad})", f"{pad}"
-        d, s, p = MOVE_DWELL, MOVE_SLIDE, MOVE_PERIOD
-        c = 2 * p
-        ph = f"mod(t,{c:g})"
-        rl = f"(({ph}-{d:g})/{s:g})"           # right->left progress 0..1
-        lr = f"(({ph}-{p + d:g})/{s:g})"       # left->right progress 0..1
-        xexpr = (
-            f"if(lt({ph},{d:g}),{rx},"
-            f"if(lt({ph},{p:g}),{rx}+({lx}-{rx})*{rl},"
-            f"if(lt({ph},{p + d:g}),{lx},"
-            f"{lx}+({rx}-{lx})*{lr})))"
-        )
-        yexpr = "(H-h)/2"
+        # Orbit a small circle at one side, then TELEPORT to the other. The
+        # side is a step function of t — nothing interpolates between them,
+        # so the logo never crosses the middle of the shot.
+        radius = max(2, round(min(w, h) * CIRCLE_FRAC))
+        inset = pad + radius            # keep the whole orbit inside the pad
+        rx, lx = f"(W-w-{inset})", f"{inset}"
+        d = MOVE_DWELL
+        side = f"if(lt(mod(t,{2 * d:g}),{d:g}),{rx},{lx})"   # which edge, now
+        ang = f"(2*PI*t/{d:g})"                              # one turn per stay
+        xexpr = f"{side}+{radius}*cos({ang})"
+        yexpr = f"(H-h)/2+{radius}*sin({ang})"
     else:
         xexpr, yexpr = _OVERLAY_XY.get(cfg.get("position", "bottom_right"), _OVERLAY_XY["bottom_right"])
         xexpr, yexpr = xexpr.format(p=pad), yexpr.format(p=pad)

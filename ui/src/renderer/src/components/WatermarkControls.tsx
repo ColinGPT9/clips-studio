@@ -16,7 +16,9 @@ const POSITIONS: {
   {
     id: 'moving',
     label: <Rotate />,
-    title: 'Moving — hops between the side edges (TikTok-style, hard to crop out)'
+    title:
+      'Moving — drifts in a small circle at one side edge, then jumps to the other. ' +
+      'Hard to crop out, and it never crosses the middle of the shot.'
   }
 ]
 
@@ -41,12 +43,15 @@ function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: b
   const moving = pos === 'moving'
   const place: React.CSSProperties = { position: 'absolute', opacity: config.opacity ?? 0.85 }
   if (moving) {
-    // Hops between the LEFT and RIGHT edge-centres (not top/bottom — the
-    // platform UI covers those). Start at the right edge-centre.
+    // TELEPORTS between the LEFT and RIGHT edge-centres (not top/bottom —
+    // the platform UI covers those), orbiting a small circle at each. The
+    // side switch is steps(1) so it jumps rather than sweeping through the
+    // middle; the orbit runs on the inner element, since both animate
+    // transform and would otherwise fight.
     place.top = '50%'
     place.right = `${padPct}%`
     place.transform = 'translateY(-50%)'
-    place.animation = 'wm-move 8s steps(1) infinite'
+    place.animation = 'wm-side 6.8s steps(1) infinite'
   } else if (pos === 'custom') {
     place.left = `${(config.x ?? 0.5) * 100}%`
     place.top = `${(config.y ?? 0.5) * 100}%`
@@ -73,34 +78,46 @@ function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: b
       aria-label="Watermark preview"
     >
       {moving && (
-        <style>{`@keyframes wm-move {
+        <style>{`@keyframes wm-side {
           0%   { top:50%; bottom:auto; left:auto; right:${padPct}%; transform:translateY(-50%); }
           50%  { top:50%; bottom:auto; left:${padPct}%; right:auto; transform:translateY(-50%); }
+        }
+        @keyframes wm-orbit {
+          0%   { transform: translate(3px, 0); }
+          25%  { transform: translate(0, 3px); }
+          50%  { transform: translate(-3px, 0); }
+          75%  { transform: translate(0, -3px); }
+          100% { transform: translate(3px, 0); }
         }`}</style>
       )}
-      <div style={place} className="flex flex-col items-center gap-0.5 leading-none">
-        {showImg && (
-          <img
-            src={api.brandingAssetUrl(config.image_asset!)}
-            alt=""
-            style={{ width: `${(config.scale ?? 0.18) * (landscape ? 220 : 117)}px` }}
-            className="max-w-none"
-          />
-        )}
-        {showTxt && (
-          <span
-            style={{
-              color: config.color ?? '#FFFFFF',
-              fontFamily: config.font,
-              fontSize: `${Math.max(7, (config.font_size ?? 42) * 0.16)}px`,
-              textShadow: config.shadow ? '0 1px 2px rgba(0,0,0,0.9)' : 'none',
-              transform: config.rotation ? `rotate(${config.rotation}deg)` : undefined,
-              fontWeight: 700
-            }}
-          >
-            {config.text}
-          </span>
-        )}
+      <div style={place}>
+        <div
+          className="flex flex-col items-center gap-0.5 leading-none"
+          style={moving ? { animation: 'wm-orbit 3.4s linear infinite' } : undefined}
+        >
+          {showImg && (
+            <img
+              src={api.brandingAssetUrl(config.image_asset!)}
+              alt=""
+              style={{ width: `${(config.scale ?? 0.18) * (landscape ? 220 : 117)}px` }}
+              className="max-w-none"
+            />
+          )}
+          {showTxt && (
+            <span
+              style={{
+                color: config.color ?? '#FFFFFF',
+                fontFamily: config.font,
+                fontSize: `${Math.max(7, (config.font_size ?? 42) * 0.16)}px`,
+                textShadow: config.shadow ? '0 1px 2px rgba(0,0,0,0.9)' : 'none',
+                transform: config.rotation ? `rotate(${config.rotation}deg)` : undefined,
+                fontWeight: 700
+              }}
+            >
+              {config.text}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -225,7 +242,9 @@ export default function WatermarkControls({
             </button>
           ))}
           {config.position === 'moving' && (
-            <span className="text-[11px] text-muted">moves around the edges (anti-crop)</span>
+            <span className="text-[11px] text-muted">
+              circles at one edge, then jumps to the other — never the middle
+            </span>
           )}
         </div>
         <label className="flex items-center gap-2 text-xs">
