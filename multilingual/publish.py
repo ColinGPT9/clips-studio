@@ -137,10 +137,19 @@ def publish(
         # otherwise they inherit the clip's caption style.
         caption_style = style or opts.get("caption_style")
         try:
-            print("      Rendering a caption-free base for burned languages…")
-            step("Preparing the video")
-            base = burner.clean_base(clip_row, config, data_dir, out_dir / ".ml_work")
-            step("Prepared the video", 3)
+            if opts.get("captions") is False and clip_path is not None and clip_path.exists():
+                # The clip has no captions burned into it, so it IS the clean
+                # base — skipping the re-render saves the single most
+                # expensive step (about a minute on a 30s clip).
+                print("      Clip has no burned-in captions — using it directly.")
+                step("Preparing the video")
+                base = clip_path
+                step("Prepared the video", 3)
+            else:
+                print("      Rendering a caption-free base for burned languages…")
+                step("Preparing the video")
+                base = burner.clean_base(clip_row, config, data_dir, out_dir / ".ml_work")
+                step("Prepared the video", 3)
         except Exception as e:
             print(f"      (could not build the caption-free base: {e})")
         if base is None and clip_path is not None and clip_path.exists():
