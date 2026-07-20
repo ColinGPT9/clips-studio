@@ -5,6 +5,8 @@ import { Folder } from './icons'
 import { activeLocale, t } from '../lib/i18n'
 import TranslationReview from './TranslationReview'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import { formatEta } from '../lib/jobProgress'
+import { useEvents } from '../lib/useEvents'
 import type { CaptionLine, CaptionStyle, TranslationPreview } from '../lib/types'
 
 /** Language names in the language the INTERFACE is set to: "Spanish" in an
@@ -65,7 +67,10 @@ export default function MultilingualExport({
   const [includeVideo, setIncludeVideo] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [burnIn, setBurnIn] = useState(false)
+  // On by default: the panel PREVIEWS subtitles painted onto the video, so
+  // that is what Export should produce. Having it default off meant the
+  // exported file didn't match what you had just been looking at.
+  const [burnIn, setBurnIn] = useState(true)
   const [installed, setInstalled] = useState<string[]>([])
   const [transModel, setTransModel] = useState('')
   const [pulling, setPulling] = useState(false)
@@ -112,6 +117,43 @@ export default function MultilingualExport({
     lines: CaptionLine[]
     source: CaptionLine[]
   } | null>(null)
+
+  // ---- live progress -------------------------------------------------
+  // Translating and burning take minutes. Without this the panel just
+  // disables its buttons, which is indistinguishable from being stuck.
+  const [run, setRun] = useState<{
+    kind: 'translate' | 'export'
+    startedAt: number
+    fraction: number
+    label: string
+  } | null>(null)
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (!run) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [run !== null])
+
+  useEvents((e) => {
+    if (e.type === 'progress' && e.stage === 'multilingual') {
+      setRun((r) =>
+        r
+          ? {
+              ...r,
+              // never let the bar move backwards
+              fraction: Math.max(r.fraction, e.fraction ?? r.fraction),
+              label: e.message || r.label
+            }
+          : r
+      )
+    }
+  })
+
+  const elapsed = run ? (now - run.startedAt) / 1000 : 0
+  // Extrapolate from work done so far. Below ~6% the estimate is noise, so
+  // say nothing rather than show a wild number.
+  const eta = run && run.fraction >= 0.06 ? (elapsed * (1 - run.fraction)) / run.fraction : null
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setStyle((s) => {
@@ -192,6 +234,25 @@ export default function MultilingualExport({
   // as a silent failure. Catch it before it is queued.
   const producesFiles = burnIn || dubIn || includeVideo || wantSubs || wantPost
 
+  /** Exactly what Export will write, per language, named. Two checkboxes
+   *  here both produce videos and it was never obvious which one carried
+   *  the subtitles — so show the files instead of describing them. */
+  const outputs = (): string[] => {
+    const ex = picked[0] ?? 'xx'
+    const out: string[] = []
+    if (burnIn) out.push(`clip.${ex}.mp4 — subtitles burned in`)
+    if (dubIn)
+      out.push(
+        `clip.${ex}.dubbed.mp4 — spoken ${displayName(ex, ex)}${
+          burnIn ? ' + subtitles' : ', no on-screen text'
+        }`
+      )
+    if (wantSubs) out.push(`clip.${ex}.srt / .vtt — subtitle files to upload`)
+    if (wantPost) out.push(`clip.${ex}.txt — title, description, hashtags`)
+    if (includeVideo) out.push('clip.mp4 — the original, with its original captions')
+    return out
+  }
+
   const toggle = (code: string): void => {
     setPicked((prev) => {
       const next = prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
@@ -210,17 +271,16 @@ export default function MultilingualExport({
     setNotice('')
     try {
       const ids = await targetClips()
+      setRun({ kind: 'translate', startedAt: Date.now(), fraction: 0, label: 'Starting…' })
       const res = await api.translateClips({
         clip_ids: ids,
         languages: picked,
         stage: 'translate'
       })
-      setNotice(
-        `Translating ${res.clips} clip(s) into ${res.languages.length} language(s) — the text appears below when it's ready.`
-      )
       watchJob(res.job_id)
     } catch (e) {
       setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      setRun(null)
       setBusy(false)
     }
   }
@@ -228,14 +288,15 @@ export default function MultilingualExport({
   /** Poll until the translation job finishes, then show the text. Polling
    *  the job (rather than the translations) is what makes a failure visible
    *  instead of leaving the panel spinning forever. */
-  const watchJob = (jobId: number): void => {
+  const watchJob = (jobId: number, kind: 'translate' | 'export' = 'translate'): void => {
     setWaiting(true)
     const started = Date.now()
     const tick = async (): Promise<void> => {
-      if (Date.now() - started > 30 * 60_000) {
+      if (Date.now() - started > 60 * 60_000) {
         setWaiting(false)
         setBusy(false)
-        setNotice('Translation is taking unusually long — check the Dashboard activity feed.')
+        setRun(null)
+        setNotice(`${kind === 'export' ? 'Export' : 'Translation'} is taking unusually long — check the Dashboard activity feed.`)
         return
       }
       try {
@@ -243,11 +304,16 @@ export default function MultilingualExport({
         if (job && job.status !== 'queued' && job.status !== 'running') {
           setWaiting(false)
           setBusy(false)
+          setRun(null)
           setReloadKey((k) => k + 1)
+          const took = formatEta((Date.now() - started) / 1000)
+          const what = kind === 'export' ? 'Export' : 'Translation'
           setNotice(
             job.status === 'done'
-              ? 'Translated. Read it below, fix anything wrong, then export.'
-              : `Translation ${job.status}${job.error ? `: ${job.error}` : ''}`
+              ? kind === 'export'
+                ? `Exported in ${took} — the files are in your export folder.`
+                : `Translated in ${took}. It's on the video now — fix anything wrong, then export.`
+              : `${what} ${job.status}${job.error ? `: ${job.error}` : ''}`
           )
           return
         }
@@ -265,6 +331,7 @@ export default function MultilingualExport({
     setNotice('')
     try {
       const ids = await targetClips()
+      setRun({ kind: 'export', startedAt: Date.now(), fraction: 0, label: 'Starting…' })
       const res = await api.translateClips({
         clip_ids: ids,
         languages: picked,
@@ -278,12 +345,10 @@ export default function MultilingualExport({
         post_text: wantPost,
         style
       })
-      setNotice(
-        `Queued — ${res.clips} clip(s) × ${res.languages.length} language(s). Files land in your export folder; watch the Dashboard activity feed.`
-      )
+      watchJob(res.job_id, 'export')
     } catch (e) {
       setNotice(`Error: ${e instanceof Error ? e.message : String(e)}`)
-    } finally {
+      setRun(null)
       setBusy(false)
     }
   }
@@ -436,6 +501,50 @@ export default function MultilingualExport({
           </button>
         </div>
       </div>
+
+      {/* Live progress: what it's doing, how far in, how long it has taken
+          and roughly how much is left. */}
+      {run && (
+        <div className="space-y-1.5" aria-live="polite">
+          <div className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="truncate">{run.label}</span>
+            <span className="text-muted tabular-nums shrink-0">
+              {Math.round(run.fraction * 100)}% · {formatEta(elapsed)}
+              {eta !== null ? ` · ~${formatEta(eta)} left` : ''}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-raised overflow-hidden">
+            <div
+              className="h-full bg-accent transition-[width] duration-500"
+              style={{ width: `${Math.max(2, Math.round(run.fraction * 100))}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* The panel paints subtitles onto the video; if the export won't do
+          the same, say so HERE rather than let the file surprise them. */}
+      {!run && previewLang && !burnIn && (
+        <p className="text-xs text-warn">
+          {t(
+            'You are seeing subtitles on the video, but “A video per language” is off — the exported video will not have them.'
+          )}{' '}
+          <button className="underline hover:text-ink" onClick={() => setBurnIn(true)}>
+            {t('Turn it on')}
+          </button>
+        </p>
+      )}
+
+      {!run && picked.length > 0 && producesFiles && (
+        <div className="text-[11px] text-muted/80 space-y-0.5">
+          <p className="label !mb-0 !text-[11px]">{t('Each language gives you')}</p>
+          {outputs().map((line) => (
+            <p key={line} className="font-mono truncate" title={line}>
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Say why Export can't run. A greyed-out button with the reason hidden
           in a tooltip just reads as "it didn't work". */}

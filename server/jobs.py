@@ -200,11 +200,31 @@ class Worker(threading.Thread):
         llm = create_backend(llm_cfg)
         written: list[str] = []
 
+        n_clips = len(payload["clip_ids"])
+
+        def reporter(index: int):
+            """Per-clip progress folded into one 0..1 bar across the batch, so
+            the UI can show a real percentage and a time estimate instead of
+            just locking the buttons."""
+
+            def report(label: str, done: int, total: int) -> None:
+                within = (done / total) if total else 0.0
+                progress.emit(
+                    stage="multilingual",
+                    message=label if n_clips == 1 else f"{label} · clip {index}/{n_clips}",
+                    fraction=min(0.999, (index - 1 + within) / max(1, n_clips)),
+                    clip=index,
+                    total=n_clips,
+                )
+
+            return report
+
         for n, clip_id in enumerate(payload["clip_ids"], 1):
             clip = db.get_clip(int(clip_id))
             if clip is None:
                 continue
-            progress.emit(stage="translate", clip=n, total=len(payload["clip_ids"]))
+            on_progress = reporter(n)
+            on_progress("Reading the clip", 0, 1)
             opts = _json.loads(clip["render_opts"]) if clip["render_opts"] else {}
             lines = opts.get("caption_lines")
             if not lines:
@@ -239,6 +259,7 @@ class Worker(threading.Thread):
                 results = publish.translate_only(
                     lines, languages, llm,
                     terms=terms, source_language=src_lang, post=post, keep=keep,
+                    on_progress=on_progress,
                 )
                 for code, entry in results.items():
                     db.save_translation(
@@ -276,6 +297,7 @@ class Worker(threading.Thread):
                 data_dir=data_dir,
                 pre_translated=pre,
                 style=payload.get("style") or None,
+                on_progress=on_progress,
             )
         if stage != "translate":
             print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
