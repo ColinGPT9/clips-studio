@@ -16,6 +16,7 @@ ever gets uniformly scaled — distortion is impossible by construction.
 """
 
 import subprocess
+import threading
 from pathlib import Path
 
 import cv2
@@ -139,29 +140,35 @@ def _render_tracked(
     crop_w -= crop_w % 2  # even width required by H.264
     crop_w = min(crop_w, src_w)
 
-    temp_path = output_path.parent / (output_path.stem + ".cropped.mp4")
-    writer = cv2.VideoWriter(
-        str(temp_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (crop_w, src_h)
-    )
-    if not writer.isOpened():
-        cap.release()
-        raise RuntimeError(f"OpenCV VideoWriter failed to open {temp_path} ({crop_w}x{src_h} @ {fps}fps)")
+    def produce(write) -> None:
+        """Decode, follow the subject, and hand each cropped frame to ffmpeg.
 
-    frame_idx = 0
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
-        t = frame_idx / fps
-        center_x = _interpolate(crop_path, t) * src_w
-        x0 = int(round(center_x - crop_w / 2))
-        x0 = max(0, min(src_w - crop_w, x0))  # clamp window inside the frame
-        # Column slices are non-contiguous views; VideoWriter needs contiguous data.
-        writer.write(np.ascontiguousarray(frame[:, x0 : x0 + crop_w]))
-        frame_idx += 1
+        Frames go straight down the pipe — no intermediate file. Writing an
+        mp4v staging file here cost a whole CPU encode and threw away detail
+        the NVENC pass then could not get back."""
+        frame_idx = 0
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                t = frame_idx / fps
+                center_x = _interpolate(crop_path, t) * src_w
+                x0 = int(round(center_x - crop_w / 2))
+                x0 = max(0, min(src_w - crop_w, x0))  # clamp inside the frame
+                # Column slices are non-contiguous views; the pipe needs bytes.
+                write(np.ascontiguousarray(frame[:, x0 : x0 + crop_w]).tobytes())
+                frame_idx += 1
+        finally:
+            cap.release()
 
-    cap.release()
-    writer.release()
+    # Input 0 is the raw cropped video on stdin; input 1 stays the original
+    # clip, which is still where the audio comes from.
+    pipe_in = [
+        "-f", "rawvideo", "-pix_fmt", "bgr24",   # OpenCV hands us BGR
+        "-s", f"{crop_w}x{src_h}", "-r", f"{fps}",
+        "-i", "pipe:0",
+    ]
 
     # Platform-safe letterbox: the wider 4:5 crop at FULL output width (1080)
     # is shorter than the screen, so it starts just below the tab area with
@@ -182,7 +189,7 @@ def _render_tracked(
             filters += f";[v]subtitles={ass_path.name}[v]"
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(temp_path.resolve()),   # OpenCV-cropped video (constant fps)
+            *pipe_in,                         # cropped frames on stdin
             "-i", str(clip_path.resolve()),   # source of the audio
             "-filter_complex", filters,
             "-map", "[v]", "-map", "1:a:0?",
@@ -194,8 +201,7 @@ def _render_tracked(
             "-shortest",
             str(output_path.resolve()),
         ]
-        _run_ffmpeg(cmd, ass_path)
-        temp_path.unlink(missing_ok=True)
+        _run_ffmpeg_piped(cmd, ass_path, produce)
         return output_path
 
     # Uniform scale to 1080x1920 + color filter + captions + mux audio.
@@ -206,7 +212,7 @@ def _render_tracked(
         vf += f",subtitles={ass_path.name}"
     cmd = [
         "ffmpeg", "-y",
-        "-i", str(temp_path.resolve()),   # OpenCV-cropped video (constant fps)
+        *pipe_in,                         # cropped frames on stdin
         "-i", str(clip_path.resolve()),   # source of the audio
         "-map", "0:v:0", "-map", "1:a:0?",
         "-vf", vf,
@@ -218,8 +224,7 @@ def _render_tracked(
         "-shortest",
         str(output_path.resolve()),
     ]
-    _run_ffmpeg(cmd, ass_path)
-    temp_path.unlink(missing_ok=True)
+    _run_ffmpeg_piped(cmd, ass_path, produce)
     return output_path
 
 
@@ -307,3 +312,48 @@ def _run_ffmpeg(cmd: list[str], ass_path: Path | None) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg render failed:\n{result.stderr[-2000:]}")
+
+
+def _run_ffmpeg_piped(cmd: list[str], ass_path: Path | None, produce) -> None:
+    """Run ffmpeg with frames fed to its stdin by `produce(write)`.
+
+    The tracked crop used to stage its frames in an mp4v file written by
+    OpenCV, which ffmpeg then re-decoded and re-encoded — two encodes, the
+    first on the CPU and lossy, so the real encode started from degraded
+    frames. Feeding raw frames straight in removes that pass entirely.
+    """
+    workdir = ass_path.parent if ass_path is not None else None
+    proc = subprocess.Popen(
+        cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=workdir
+    )
+    assert proc.stdin is not None and proc.stderr is not None
+
+    # ffmpeg chatters on stderr while it encodes. If nobody empties that pipe
+    # it fills, ffmpeg blocks writing to it, and we block writing frames to
+    # stdin — a deadlock that turned a 45-second render into fifteen minutes.
+    # subprocess.run() drains both for you; feeding stdin ourselves means we
+    # have to. A reader thread does it.
+    tail: list[bytes] = []
+
+    def drain() -> None:
+        for line in proc.stderr:  # type: ignore[union-attr]
+            tail.append(line)
+            del tail[:-40]  # keep only the last lines, for the error message
+
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+
+    try:
+        produce(proc.stdin.write)
+    except (BrokenPipeError, OSError):
+        pass  # ffmpeg died early; its stderr below is the real error
+    finally:
+        try:
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+    proc.wait()
+    reader.join(timeout=10)
+    if proc.returncode != 0:
+        msg = b"".join(tail).decode("utf-8", "replace")[-2000:]
+        raise RuntimeError(f"ffmpeg render failed:\n{msg}")
