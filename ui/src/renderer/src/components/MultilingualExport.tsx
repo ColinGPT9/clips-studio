@@ -78,10 +78,9 @@ export default function MultilingualExport({
   const [clipCount, setClipCount] = useState(0)
   const [dubIn, setDubIn] = useState(false)
   const [canDub, setCanDub] = useState(false)
-  // Side files are off by default: most people want the video and nothing
-  // else cluttering the folder.
-  const [wantSubs, setWantSubs] = useState(false)
-  const [wantPost, setWantPost] = useState(false)
+  // .srt/.vtt sidecars and the .txt post text are deliberately NOT offered:
+  // this app's output is a video you upload, and those files only cluttered
+  // the folder. The backend still supports them if that ever changes.
   // Chosen dubbing voice per language, remembered between sessions.
   const [voiceFor, setVoiceFor] = useState<Record<string, string>>(() => {
     try {
@@ -232,7 +231,7 @@ export default function MultilingualExport({
   const readyCount = picked.filter((c) => reviewed.includes(c)).length
   // With every output unticked the job runs and writes nothing, which reads
   // as a silent failure. Catch it before it is queued.
-  const producesFiles = burnIn || dubIn || includeVideo || wantSubs || wantPost
+  const producesFiles = burnIn || dubIn || includeVideo
 
   /** Exactly what Export will write, per language, named. Two checkboxes
    *  here both produce videos and it was never obvious which one carried
@@ -247,8 +246,6 @@ export default function MultilingualExport({
           burnIn ? ' + subtitles' : ', no on-screen text'
         }`
       )
-    if (wantSubs) out.push(`clip.${ex}.srt / .vtt — subtitle files to upload`)
-    if (wantPost) out.push(`clip.${ex}.txt — title, description, hashtags`)
     if (includeVideo) out.push('clip.mp4 — the original, with its original captions')
     return out
   }
@@ -341,8 +338,6 @@ export default function MultilingualExport({
         burn: burnIn,
         dub: dubIn,
         voices: voiceFor,
-        subtitles: wantSubs,
-        post_text: wantPost,
         style
       })
       watchJob(res.job_id, 'export')
@@ -402,24 +397,12 @@ export default function MultilingualExport({
         >
           <Folder />
         </button>
-        <label className="flex items-center gap-1.5 cursor-pointer text-muted">
-          <input
-            type="checkbox"
-            className="size-3.5 accent-[#38BDF8]"
-            checked={wantSubs}
-            onChange={(e) => setWantSubs(e.target.checked)}
-          />
-          {t('Subtitle files (.srt)')}
-        </label>
-        <label className="flex items-center gap-1.5 cursor-pointer text-muted">
-          <input
-            type="checkbox"
-            className="size-3.5 accent-[#38BDF8]"
-            checked={wantPost}
-            onChange={(e) => setWantPost(e.target.checked)}
-          />
-          {t('Post text (.txt)')}
-        </label>
+      </div>
+
+      {/* Outputs, grouped and stacked. These were mixed into the folder row
+          as a wrapping line of five checkboxes, which is where "which one
+          gives me the video?" came from. */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
         <label
           className="flex items-center gap-1.5 cursor-pointer text-muted"
           title="TikTok, Reels and Shorts don't read subtitle files — this makes one video per language with that language's subtitles painted into the picture. The clip is re-rendered once without its original captions first, so the two languages never stack."
@@ -430,19 +413,7 @@ export default function MultilingualExport({
             checked={burnIn}
             onChange={(e) => setBurnIn(e.target.checked)}
           />
-          {t('A video per language')}
-        </label>
-        <label
-          className="flex items-center gap-1.5 cursor-pointer text-muted"
-          title="Copies the clip exactly as it is — which still has the ORIGINAL captions burned into the picture. Leave it off unless you want the untranslated version alongside."
-        >
-          <input
-            type="checkbox"
-            className="size-3.5 accent-[#38BDF8]"
-            checked={includeVideo}
-            onChange={(e) => setIncludeVideo(e.target.checked)}
-          />
-          {t('Original clip too')}
+          {t('Video with subtitles')}
         </label>
         {canDub && (
           <label
@@ -455,9 +426,21 @@ export default function MultilingualExport({
               checked={dubIn}
               onChange={(e) => setDubIn(e.target.checked)}
             />
-            {t('Dub the audio')}
+            {t('Dubbed audio')}
           </label>
         )}
+        <label
+          className="flex items-center gap-1.5 cursor-pointer text-muted"
+          title="Copies the clip exactly as it is — which still has the ORIGINAL captions burned into the picture. Leave it off unless you want the untranslated version alongside."
+        >
+          <input
+            type="checkbox"
+            className="size-3.5 accent-[#38BDF8]"
+            checked={includeVideo}
+            onChange={(e) => setIncludeVideo(e.target.checked)}
+          />
+          {t('Original clip too')}
+        </label>
         {videoId && clipCount > 1 && (
           <label
             className="flex items-center gap-1.5 cursor-pointer text-muted"
@@ -469,37 +452,38 @@ export default function MultilingualExport({
               checked={allClips}
               onChange={(e) => setAllClips(e.target.checked)}
             />
-            {t('All')} {clipCount} {t('clips of this video')}
+            {t('All')} {clipCount} {t('clips')}
           </label>
         )}
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            className="btn-ghost !py-1"
-            disabled={busy || picked.length === 0}
-            onClick={translate}
-            title={
-              picked.length === 0
-                ? 'Pick at least one language'
-                : 'Translate the captions so you can read and fix them before anything is written'
-            }
-          >
-            {waiting ? t('Translating…') : t('Translate & review')}
-          </button>
-          <button
-            className="btn-accent !py-1"
-            disabled={busy || picked.length === 0 || !folder || readyCount === 0 || !producesFiles}
-            onClick={exportNow}
-            title={
-              readyCount === 0
-                ? 'Translate first, so you can check the text before it is written'
-                : !producesFiles
-                  ? 'Nothing would be written — tick a video per language, subtitle files, or the post text'
-                  : undefined
-            }
-          >
-            {busy && !waiting ? t('Queueing…') : `${t('Export')} ${readyCount || ''}`.trim()}
-          </button>
-        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          className="btn-ghost !py-1 text-xs"
+          disabled={busy || picked.length === 0}
+          onClick={translate}
+          title={
+            picked.length === 0
+              ? 'Pick at least one language'
+              : 'Translate the captions so you can read and fix them before anything is written'
+          }
+        >
+          {waiting ? t('Translating…') : t('Translate & review')}
+        </button>
+        <button
+          className="btn-accent !py-1 text-xs ml-auto"
+          disabled={busy || picked.length === 0 || !folder || readyCount === 0 || !producesFiles}
+          onClick={exportNow}
+          title={
+            readyCount === 0
+              ? 'Translate first, so you can check the text before it is written'
+              : !producesFiles
+                ? 'Nothing would be written — tick a video, dubbed audio, or the original clip'
+                : undefined
+          }
+        >
+          {busy && !waiting ? t('Queueing…') : `${t('Export')} ${readyCount || ''}`.trim()}
+        </button>
       </div>
 
       {/* Live progress: what it's doing, how far in, how long it has taken
@@ -555,9 +539,7 @@ export default function MultilingualExport({
       )}
       {readyCount > 0 && !producesFiles && (
         <p className="text-xs text-warn">
-          {t(
-            'Nothing would be written. Tick “A video per language”, subtitle files, or the post text.'
-          )}
+          {t('Nothing would be written. Tick a video, dubbed audio, or the original clip.')}
         </p>
       )}
 
@@ -585,21 +567,30 @@ export default function MultilingualExport({
               </select>
             </div>
           )}
-          <div className="border border-raised/60 rounded-lg p-3">
-            <p className="label mb-2">{t('Subtitle font & style')}</p>
-            <CaptionStyleControls
-              idPrefix={`subs-${clipId}`}
-              style={style}
-              onChange={setStyleField}
-              hideWordsPerCaption
-            />
-            <p className="text-[11px] text-muted/70 mt-2">
-              {t(
-                'Applies to every language you export. Non-Latin scripts switch to a font that has the glyphs automatically.'
-              )}
-              {readyCount === 0 && ` ${t('Translate a language to see it on the video.')}`}
-            </p>
-          </div>
+          {/* Collapsed by default: the look is set once and then left alone,
+              so it shouldn't cost half the panel's height every time. */}
+          <details className="border border-raised/60 rounded-lg">
+            <summary className="px-3 py-2 text-xs cursor-pointer hover:bg-raised/40 rounded-lg">
+              {t('Subtitle font & style')}
+              <span className="text-muted ml-2">
+                {style.font} · {style.font_size} · {style.position}
+              </span>
+            </summary>
+            <div className="p-3 pt-0">
+              <CaptionStyleControls
+                idPrefix={`subs-${clipId}`}
+                style={style}
+                onChange={setStyleField}
+                hideWordsPerCaption
+              />
+              <p className="text-[11px] text-muted/70 mt-2">
+                {t(
+                  'Applies to every language you export. Non-Latin scripts switch to a font that has the glyphs automatically.'
+                )}
+                {readyCount === 0 && ` ${t('Translate a language to see it on the video.')}`}
+              </p>
+            </div>
+          </details>
         </div>
       )}
 
