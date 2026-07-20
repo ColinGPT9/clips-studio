@@ -307,6 +307,16 @@ def _valid_range(c: ClipCandidate, video_end: float) -> bool:
     return 0 <= c.start < c.end <= video_end + 5  # small slack for rounding
 
 
+# A finished thought, as far as the transcript shows it. Closing quotes and
+# brackets count — Whisper writes 〈he said "stop."〉 with the stop inside.
+_SENTENCE_END = (".", "!", "?", "…")
+
+
+def _ends_sentence(seg) -> bool:
+    text = (getattr(seg, "text", "") or "").strip().rstrip("\"')]»”’")
+    return text.endswith(_SENTENCE_END)
+
+
 def _fit_to_segments(
     c: ClipCandidate,
     segments: list[Segment],
@@ -351,6 +361,39 @@ def _fit_to_segments(
     # Trim whole trailing sentences if somehow over the cap.
     while dur() > max_duration and hi > lo:
         hi -= 1
+
+    # Land the END on a finished thought. Whisper splits segments on PAUSES,
+    # not grammar, so a segment boundary is often mid-sentence — that is how
+    # clips ended on "...manufactured in a fighter jet hangar in" and simply
+    # stopped. Reach forward to the next sentence end if the cap allows,
+    # otherwise fall back to the last one that still leaves a usable clip.
+    # Transcripts with no punctuation at all (fast casual speech) match
+    # neither and are left exactly as they were.
+    if not _ends_sentence(segments[hi]):
+        j = hi
+        while (
+            j + 1 < len(segments)
+            and not _ends_sentence(segments[j])
+            and (segments[j + 1].end - segments[lo].start) <= max_duration
+        ):
+            j += 1
+        if _ends_sentence(segments[j]):
+            hi = j
+        else:
+            k = hi
+            while k > lo and not _ends_sentence(segments[k]):
+                k -= 1
+            if k > lo and (segments[k].end - segments[lo].start) >= min_duration:
+                hi = k
+
+    # Start on a fresh thought too, but only by moving INWARD: growing
+    # backwards would pull in unrelated talk just to find a full stop.
+    if lo > 0 and not _ends_sentence(segments[lo - 1]):
+        k = lo
+        while k < hi and not _ends_sentence(segments[k - 1]):
+            k += 1
+        if k < hi and (segments[hi].end - segments[k].start) >= min_duration:
+            lo = k
 
     c.start = round(segments[lo].start, 2)
     c.end = round(segments[hi].end, 2)
