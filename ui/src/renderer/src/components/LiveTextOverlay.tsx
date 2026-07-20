@@ -135,7 +135,37 @@ export default function LiveTextOverlay({
             ...outline(3.5 * s)
           }}
         >
-          {st.uppercase ? line.text.toUpperCase() : line.text}
+          {st.highlight ? (
+            // Which word is being said right now. The burn uses Whisper's
+            // real word timings; the preview has only the line's span, so it
+            // splits it by word length — the same fallback the burn uses for
+            // hand-edited text.
+            (() => {
+              const words = line.text.split(/\s+/).filter(Boolean)
+              const weights = words.map((w) => Math.max(1, w.length))
+              const total = weights.reduce((a, b) => a + b, 0)
+              const span = Math.max(0.05, line.end - line.start)
+              let acc = line.start
+              const bounds = weights.map((wgt) => {
+                const a = acc
+                acc += (span * wgt) / total
+                return a
+              })
+              let hot = -1
+              bounds.forEach((b, i) => {
+                if (t >= b) hot = i
+              })
+              return words.map((w, i) => (
+                <span key={i} style={{ color: i === hot ? st.highlight_color : st.color }}>
+                  {(st.uppercase ? w.toUpperCase() : w) + (i < words.length - 1 ? ' ' : '')}
+                </span>
+              ))
+            })()
+          ) : st.uppercase ? (
+            line.text.toUpperCase()
+          ) : (
+            line.text
+          )}
         </p>
       )}
       {overlay.captions && (

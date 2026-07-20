@@ -74,6 +74,9 @@ export interface CaptionStyle {
   position?: 'bottom' | 'middle' | 'top'
   words_per_caption?: number
   uppercase?: boolean
+  /** Light up each word as it is spoken (the short-form caption look). */
+  highlight?: boolean
+  highlight_color?: string
 }
 
 export type FilterName =

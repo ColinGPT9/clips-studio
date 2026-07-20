@@ -23,6 +23,8 @@ DEFAULT_STYLE = {
     "position": "bottom",     # bottom | middle | top
     "words_per_caption": 3,
     "uppercase": True,
+    "highlight": False,           # light up each word as it is spoken
+    "highlight_color": "#FFE600",
 }
 
 # Fonts shipped with every stock Windows install, so a burned clip renders
@@ -120,6 +122,17 @@ def build_captions(
     if lines is None:
         lines = build_caption_lines(segments, candidate, opts["words_per_caption"])
 
+    # Word timings for the highlight, clip-relative like `lines` are.
+    spoken = (
+        [
+            {"start": w["start"] - candidate.start, "end": w["end"] - candidate.start,
+             "word": w["word"]}
+            for w in _words_in_window(segments, candidate.start, candidate.end)
+        ]
+        if opts.get("highlight")
+        else []
+    )
+
     dialogue = []
     for line in lines:
         text = str(line.get("text", "")).strip()
@@ -131,14 +144,77 @@ def build_captions(
         start, end = float(line["start"]), float(line["end"])
         if end <= start:
             continue
-        dialogue.append(
-            f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text}"
-        )
+        if opts.get("highlight"):
+            dialogue.extend(_highlighted(text, start, end, spoken, opts))
+        else:
+            dialogue.append(
+                f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text}"
+            )
 
     if not dialogue:
         return None
     output_path.write_text(_header(opts, canvas) + "\n".join(dialogue) + "\n", encoding="utf-8")
     return output_path
+
+
+def _word_times(text: str, start: float, end: float, spoken: list[dict]) -> list[tuple[float, float]]:
+    """When each word of `text` is said, as (start, end) pairs.
+
+    Uses Whisper's real per-word timings when they line up with the line —
+    speech is uneven, and real timings are what make the highlight land on
+    the beat. Falls back to splitting the line's own span in proportion to
+    word length, which is what keeps hand-edited caption text working.
+    """
+    tokens = text.split()
+    if not tokens:
+        return []
+    inside = [w for w in spoken if start - 0.01 <= (w["start"] + w["end"]) / 2 <= end + 0.01]
+    if len(inside) == len(tokens):
+        return [(float(w["start"]), float(w["end"])) for w in inside]
+
+    span = max(0.05, end - start)
+    weights = [max(1, len(t)) for t in tokens]
+    total = sum(weights)
+    out, t = [], start
+    for wgt in weights:
+        step = span * wgt / total
+        out.append((t, t + step))
+        t += step
+    return out
+
+
+def _highlighted(text: str, start: float, end: float, spoken: list[dict], opts: dict) -> list[str]:
+    """One Dialogue per word: the whole caption, with the word being spoken
+    in the highlight colour.
+
+    ASS karaoke (\\k) fills progressively and leaves every passed word
+    coloured, which is the sing-along look. Short-form captions highlight
+    exactly ONE word at a time, so each state is its own event.
+    """
+    tokens = text.split()
+    times = _word_times(text, start, end, spoken)
+    if len(tokens) < 2 or not times:
+        return [f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text}"]
+
+    base = _inline_color(opts["color"])
+    hot = _inline_color(opts.get("highlight_color", DEFAULT_STYLE["highlight_color"]))
+    events = []
+    for i, (w_start, w_end) in enumerate(times):
+        # Hold each state until the next word begins, so there is never a
+        # frame with nothing on screen between words.
+        seg_start = start if i == 0 else max(start, w_start)
+        seg_end = end if i == len(times) - 1 else max(seg_start, min(end, times[i + 1][0]))
+        if seg_end <= seg_start:
+            continue
+        body = " ".join(
+            (f"{{\\1c{hot}}}{tok}{{\\1c{base}}}" if j == i else tok)
+            for j, tok in enumerate(tokens)
+        )
+        events.append(
+            f"Dialogue: 0,{_ass_time(seg_start)},{_ass_time(seg_end)},Default,,0,0,0,,"
+            f"{{\\1c{base}}}{body}"
+        )
+    return events
 
 
 def _header(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> str:
@@ -173,6 +249,15 @@ def _ass_color(hex_rgb: str) -> str:
         return "&H00FFFFFF"
     r, g, b = h[0:2], h[2:4], h[4:6]
     return f"&H00{b}{g}{r}".upper()
+
+
+def _inline_color(hex_rgb: str) -> str:
+    """#RRGGBB -> &HBBGGRR& — the form an inline \\1c override takes."""
+    h = (hex_rgb or "").lstrip("#")
+    if len(h) != 6:
+        h = "FFFFFF"
+    r, g, b = h[0:2], h[2:4], h[4:6]
+    return f"&H{b}{g}{r}&".upper()
 
 
 def _words_in_window(segments: list[Segment], start: float, end: float) -> list[dict]:
