@@ -138,6 +138,22 @@ CREATE TABLE IF NOT EXISTS branding_profiles (
     config     TEXT NOT NULL DEFAULT '{}',   -- JSON watermark config
     created_at TEXT NOT NULL
 );
+
+-- ---- Multilingual publishing (multilingual/ module) ------------------------
+-- The machine translation of one clip's captions into one language, kept so
+-- the creator can READ it and fix a bad line before it is written to a .srt
+-- or painted permanently into a video. `edited` marks text a human approved,
+-- which export prefers and re-translation must never overwrite.
+
+CREATE TABLE IF NOT EXISTS clip_translations (
+    clip_id    INTEGER NOT NULL REFERENCES clips(id),
+    language   TEXT NOT NULL,                -- ISO code (multilingual.languages)
+    lines      TEXT NOT NULL DEFAULT '[]',   -- JSON [{start, end, text}]
+    post       TEXT NOT NULL DEFAULT '{}',   -- JSON {title, description, hashtags}
+    edited     INTEGER NOT NULL DEFAULT 0,   -- 1 once a human has corrected it
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (clip_id, language)
+);
 """
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -200,10 +216,51 @@ class StateDB:
             "DELETE FROM uploads WHERE clip_id IN (SELECT id FROM clips WHERE video_id = ?)",
             (video_id,),
         )
+        self.conn.execute(
+            "DELETE FROM clip_translations WHERE clip_id IN "
+            "(SELECT id FROM clips WHERE video_id = ?)",
+            (video_id,),
+        )
         self.conn.execute("DELETE FROM clips WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM rejections WHERE video_id = ?", (video_id,))
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
         self.conn.commit()
+
+    # ---- translations -------------------------------------------------
+
+    def save_translation(
+        self, clip_id: int, language: str, lines: str, post: str = "{}", edited: bool = False
+    ) -> None:
+        """Store (or replace) one clip's translation into one language."""
+        self.conn.execute(
+            "INSERT INTO clip_translations (clip_id, language, lines, post, edited, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(clip_id, language) DO UPDATE SET "
+            "lines = excluded.lines, post = excluded.post, "
+            "edited = excluded.edited, updated_at = excluded.updated_at",
+            (clip_id, language, lines, post, 1 if edited else 0, _now()),
+        )
+        self.conn.commit()
+
+    def get_translation(self, clip_id: int, language: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM clip_translations WHERE clip_id = ? AND language = ?",
+            (clip_id, language),
+        ).fetchone()
+
+    def delete_translation(self, clip_id: int, language: str) -> None:
+        """Discard a stored translation, so the next run translates it fresh.
+        The way back out of a correction the creator no longer wants."""
+        self.conn.execute(
+            "DELETE FROM clip_translations WHERE clip_id = ? AND language = ?",
+            (clip_id, language),
+        )
+        self.conn.commit()
+
+    def translations_for(self, clip_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM clip_translations WHERE clip_id = ? ORDER BY language", (clip_id,)
+        ).fetchall()
 
     # ---- branding profiles --------------------------------------------
 

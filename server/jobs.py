@@ -174,6 +174,11 @@ class Worker(threading.Thread):
     def _translate_clips(self, db: StateDB, payload: dict) -> None:
         """Multilingual publishing: subtitle tracks for finished clips.
 
+        Runs in two stages. `translate` produces the text and stores it for
+        the creator to read and correct; `export` writes the files using
+        that approved text. Splitting them means a mistranslation is caught
+        before it is burned permanently into a video.
+
         Entirely separate from clip generation — it reads finished clips and
         writes new files. A failure here can never damage a clip."""
         import json as _json
@@ -183,7 +188,8 @@ class Worker(threading.Thread):
         from multilingual import glossary, publish
 
         data_dir = Path(self.config["paths"]["data_dir"])
-        folder = Path(payload["folder"])
+        stage = payload.get("stage", "export")
+        folder = Path(payload.get("folder") or data_dir)
         languages = payload["languages"]
         # Translation may run on its own model (see llm.translation_model).
         llm_cfg = dict(self.config["llm"])
@@ -218,6 +224,41 @@ class Worker(threading.Thread):
             clip_path = Path(clip["path"]) if clip["path"] else None
             stem = _safe_name(clip["title"] or clip["hook"] or "", f"clip_{clip_id}")
             src_lang = self._source_language(clip["video_id"], data_dir)
+            post = {
+                "title": clip["title"] or "",
+                "description": clip["description"] or "",
+                "hashtags": _json.loads(clip["hashtags"]) if clip["hashtags"] else [],
+            } if payload.get("translate_post", True) else None
+
+            if stage == "translate":
+                # Review pass: produce the text, write no files. Languages the
+                # creator has already corrected are left exactly as they are.
+                keep = {r["language"] for r in db.translations_for(int(clip_id)) if r["edited"]}
+                if keep:
+                    print(f"      Keeping your corrected text for: {', '.join(sorted(keep))}")
+                results = publish.translate_only(
+                    lines, languages, llm,
+                    terms=terms, source_language=src_lang, post=post, keep=keep,
+                )
+                for code, entry in results.items():
+                    db.save_translation(
+                        int(clip_id), code,
+                        _json.dumps(entry["lines"], ensure_ascii=False),
+                        _json.dumps(entry.get("post") or {}, ensure_ascii=False),
+                    )
+                print(f"      Translated clip {clip_id} into {len(results)} language(s) — ready to review")
+                continue
+
+            # Export pass: reuse the reviewed text, so nothing is re-translated
+            # and no correction is lost. A language with no saved translation
+            # (batch runs, or one that failed) still translates on the fly.
+            pre = {
+                r["language"]: {
+                    "lines": _json.loads(r["lines"]),
+                    "post": _json.loads(r["post"] or "{}"),
+                }
+                for r in db.translations_for(int(clip_id))
+            }
             written += publish.publish(
                 lines, languages, folder, stem, llm,
                 terms=terms,
@@ -229,16 +270,14 @@ class Worker(threading.Thread):
                 want_post=bool(payload.get("post_text")),
                 voices_dir=data_dir / "voices",
                 voice_choice=payload.get("voices") or {},
-                post={
-                    "title": clip["title"] or "",
-                    "description": clip["description"] or "",
-                    "hashtags": _json.loads(clip["hashtags"]) if clip["hashtags"] else [],
-                } if payload.get("translate_post", True) else None,
+                post=post,
                 clip_row=clip,
                 config=self.config,
                 data_dir=data_dir,
+                pre_translated=pre,
             )
-        print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
+        if stage != "translate":
+            print(f"      Multilingual publish complete: {len(written)} file(s) in {folder}")
 
     def _source_language(self, video_id: str, data_dir: Path) -> str:
         try:

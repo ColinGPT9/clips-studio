@@ -28,6 +28,17 @@ export interface CaptionLine {
   text: string
 }
 
+/** One clip's captions translated into one language, held for review before
+ *  anything is written to disk. `edited` means a human corrected the text,
+ *  which protects it from being overwritten by a later re-translation. */
+export interface Translation {
+  language: string
+  lines: CaptionLine[]
+  post: { title?: string; description?: string; hashtags?: string[] }
+  edited: boolean
+  updated_at: string
+}
+
 /** Pending text overlays (hook title / restyled captions) drawn live over
  *  the editor preview so users see them without waiting for a render.
  *  Times are original-clip seconds; keep ranges map to the preview file. */
@@ -162,7 +173,7 @@ export interface Clip {
 
 export interface Job {
   id: number
-  type: 'process' | 'render'
+  type: 'process' | 'render' | 'translate'
   payload: string
   status: 'queued' | 'running' | 'done' | 'failed'
   error: string

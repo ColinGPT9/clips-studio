@@ -21,6 +21,48 @@ from multilingual.subtitles import write_srt, write_vtt
 from multilingual.translate import translate_lines
 
 
+def translate_only(
+    lines: list[dict],
+    languages: list[str],
+    llm,
+    terms: list[str] | None = None,
+    source_language: str = "en",
+    post: dict | None = None,
+    on_progress=None,
+    keep: set[str] | None = None,
+) -> dict[str, dict]:
+    """Translate captions (and post text) without writing a single file.
+
+    This is the half of publishing a creator can review: burning captions
+    into a video and dubbing it are slow and permanent, so the text gets
+    read and corrected first. Returns {code: {"lines": [...], "post": {...}}}.
+
+    `keep` lists languages a human has already corrected — those are left
+    alone, because re-running the model over approved text would silently
+    throw the corrections away."""
+    out: dict[str, dict] = {}
+    todo = [
+        c for c in languages
+        if c != source_language and is_supported(c) and c not in (keep or set())
+    ]
+    for done, code in enumerate(todo):
+        try:
+            if on_progress:
+                on_progress(f"Translating to {english_name(code)}", done, len(todo))
+            entry: dict = {"lines": translate_lines(lines, code, llm, terms=terms)}
+            if post is not None:
+                entry["post"] = translate_metadata(
+                    post.get("title", ""), post.get("description", ""),
+                    post.get("hashtags", []), code, llm, terms=terms,
+                )
+            out[code] = entry
+        except Exception as e:  # one language failing must not stop the rest
+            print(f"      ({english_name(code)} failed: {e})")
+    if on_progress:
+        on_progress("Done", len(todo), len(todo))
+    return out
+
+
 def publish(
     lines: list[dict],
     languages: list[str],
@@ -41,8 +83,14 @@ def publish(
     clip_row=None,
     config: dict | None = None,
     data_dir: Path | None = None,
+    pre_translated: dict[str, dict] | None = None,
 ) -> list[str]:
     """Write subtitle files for each language. Returns the paths written.
+
+    `pre_translated` is text the creator has already seen (and possibly
+    corrected) in the review step: {code: {"lines": [...], "post": {...}}}.
+    Anything supplied there is used verbatim and the model is not called
+    again — so an approved correction survives, and re-exporting is fast.
 
     With burn=True each language also gets its own video with the captions
     painted in, for platforms that don't read subtitle files (TikTok,
@@ -98,13 +146,14 @@ def publish(
         try:
             if on_progress:
                 on_progress(f"Translating to {english_name(code)}", done, total)
-            translated = translate_lines(lines, code, llm, terms=terms)
+            ready = (pre_translated or {}).get(code) or {}
+            translated = ready.get("lines") or translate_lines(lines, code, llm, terms=terms)
             if want_subtitles:
                 written.append(str(write_srt(translated, out_dir / f"{stem}.{code}.srt")))
                 written.append(str(write_vtt(translated, out_dir / f"{stem}.{code}.vtt")))
                 print(f"      Subtitles written: {english_name(code)}")
             if want_post and post is not None:
-                meta = translate_metadata(
+                meta = ready.get("post") or translate_metadata(
                     post.get("title", ""), post.get("description", ""),
                     post.get("hashtags", []), code, llm, terms=terms,
                 )

@@ -102,6 +102,13 @@ class CaptionsIn(BaseModel):
     lines: list[dict]  # [{"start", "end", "text"}] clip-relative
 
 
+class TranslationPatch(BaseModel):
+    """A creator's corrections to one language's translated captions."""
+
+    lines: list[dict]           # [{"start", "end", "text"}] clip-relative
+    post: dict | None = None    # {title, description, hashtags}, unchanged if omitted
+
+
 class CancelIn(BaseModel):
     video_id: str | None = None
     url: str | None = None
@@ -138,7 +145,8 @@ class TranslateIn(BaseModel):
 
     clip_ids: list[int]
     languages: list[str]          # ISO codes from multilingual.languages
-    folder: str                   # where the files are written
+    stage: str = "export"         # translate (review first) | export (write files)
+    folder: str = ""              # where the files are written (export only)
     include_video: bool = True    # copy the clip beside its subtitle tracks
     burn: bool = False            # also make a video per language with captions burned in
     dub: bool = False             # also speak the translation over the clip
@@ -856,8 +864,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/translate")
     def translate_clips(body: TranslateIn):
-        """Queue subtitle translation. Runs on finished clips only — the
-        clips themselves are never modified."""
+        """Queue translation or export. Runs on finished clips only — the
+        clips themselves are never modified.
+
+        stage='translate' only produces text for review; stage='export'
+        writes the files using whatever text has been reviewed."""
         from multilingual.languages import is_supported
 
         langs = [c for c in body.languages if is_supported(c)]
@@ -865,11 +876,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             raise HTTPException(400, "pick at least one supported language")
         if not body.clip_ids:
             raise HTTPException(400, "no clips selected")
+        stage = body.stage if body.stage in ("translate", "export") else "export"
+        if stage == "export" and not body.folder:
+            raise HTTPException(400, "choose an export folder")
         d = db()
         try:
             job_id = d.add_job("translate", json.dumps({
                 "clip_ids": body.clip_ids[:50],
                 "languages": langs,
+                "stage": stage,
                 "folder": body.folder,
                 "include_video": body.include_video,
                 "burn": body.burn,
@@ -882,6 +897,68 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         worker.notify()
         return {"job_id": job_id, "languages": langs, "clips": len(body.clip_ids)}
+
+    @app.get("/clips/{clip_id}/translations")
+    def clip_translations(clip_id: int):
+        """The translated caption text held for review, per language, with
+        the original lines beside it so the two can be compared."""
+        d = db()
+        try:
+            clip = d.get_clip(clip_id)
+            if clip is None:
+                raise HTTPException(404, "clip not found")
+            return {
+                "source": _clip_captions(clip),
+                "translations": [
+                    {
+                        "language": r["language"],
+                        "lines": json.loads(r["lines"]),
+                        "post": json.loads(r["post"] or "{}"),
+                        "edited": bool(r["edited"]),
+                        "updated_at": r["updated_at"],
+                    }
+                    for r in d.translations_for(clip_id)
+                ],
+            }
+        finally:
+            d.close()
+
+    @app.put("/clips/{clip_id}/translations/{language}")
+    def save_clip_translation(clip_id: int, language: str, body: TranslationPatch):
+        """Store a creator's corrections. Marked `edited`, which stops a
+        later re-translation from overwriting them."""
+        from multilingual.languages import is_supported
+
+        if not is_supported(language):
+            raise HTTPException(400, f"unsupported language {language!r}")
+        d = db()
+        try:
+            if d.get_clip(clip_id) is None:
+                raise HTTPException(404, "clip not found")
+            existing = d.get_translation(clip_id, language)
+            post = body.post if body.post is not None else (
+                json.loads(existing["post"] or "{}") if existing else {}
+            )
+            d.save_translation(
+                clip_id, language,
+                json.dumps([dict(line) for line in body.lines], ensure_ascii=False),
+                json.dumps(post, ensure_ascii=False),
+                edited=True,
+            )
+        finally:
+            d.close()
+        return {"saved": language, "lines": len(body.lines)}
+
+    @app.delete("/clips/{clip_id}/translations/{language}")
+    def discard_clip_translation(clip_id: int, language: str):
+        """Throw away a stored translation so the next Translate run redoes
+        it — the way out once corrections are no longer wanted."""
+        d = db()
+        try:
+            d.delete_translation(clip_id, language)
+        finally:
+            d.close()
+        return {"discarded": language}
 
     @app.post("/clips/{clip_id}/export")
     def export_clip(clip_id: int, body: ExportIn):
