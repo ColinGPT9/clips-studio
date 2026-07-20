@@ -159,27 +159,58 @@ export default function Creators(): JSX.Element {
             </p>
           )}
           {creators.map((c) => (
-            <button
-              key={c.creator_id}
-              onClick={() => setSelected(c.creator_id === selected ? null : c.creator_id)}
-              className={`w-full text-left bg-surface border rounded-xl p-4 transition-colors ${
-                selected === c.creator_id
-                  ? 'border-accent'
-                  : 'border-raised/60 hover:border-raised'
-              }`}
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold">{c.display_name}</span>
-                {c.accounts.map((a) => (
-                  <PlatformBadge key={a.account_id} platform={a.platform} />
-                ))}
-              </div>
-              <p className="text-xs text-muted mt-1.5">
-                {c.videos} video{c.videos === 1 ? '' : 's'} · {c.clips} clip
-                {c.clips === 1 ? '' : 's'}
-                {c.avg_score != null && ` · avg score ${c.avg_score}`}
-              </p>
-            </button>
+            // relative wrapper, not a nested button: the card is itself a
+            // button, and a delete control inside it would be invalid markup
+            // and swallow the card's own click.
+            <div key={c.creator_id} className="relative group">
+              <button
+                onClick={() => setSelected(c.creator_id === selected ? null : c.creator_id)}
+                className={`w-full text-left bg-surface border rounded-xl p-4 pr-10 transition-colors ${
+                  selected === c.creator_id
+                    ? 'border-accent'
+                    : 'border-raised/60 hover:border-raised'
+                }`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold">{c.display_name}</span>
+                  {c.accounts.map((a) => (
+                    <PlatformBadge key={a.account_id} platform={a.platform} />
+                  ))}
+                </div>
+                <p className="text-xs text-muted mt-1.5">
+                  {c.videos} video{c.videos === 1 ? '' : 's'} · {c.clips} clip
+                  {c.clips === 1 ? '' : 's'}
+                  {c.avg_score != null && ` · avg score ${c.avg_score}`}
+                </p>
+              </button>
+              <button
+                disabled={busy}
+                aria-label={`Delete ${c.display_name}`}
+                title={
+                  c.videos
+                    ? `Delete this profile. Its ${c.videos} video(s) stay — they just lose their creator.`
+                    : 'Delete this empty profile'
+                }
+                onClick={() => {
+                  const tail = c.videos
+                    ? `\n\n${c.videos} video(s) stay in your library — they just won't be attributed to anyone.`
+                    : ''
+                  if (
+                    window.confirm(
+                      `Delete the profile for ${c.display_name}?\n\nIts channels, learned knowledge, storylines and protected words are removed. No video or clip is deleted.${tail}`
+                    )
+                  ) {
+                    void act(async () => {
+                      await api.deleteCreator(c.creator_id)
+                      if (selected === c.creator_id) setSelected(null)
+                    })
+                  }
+                }}
+                className="absolute top-3 right-3 p-1 rounded-md text-muted/50 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-400 hover:bg-raised transition disabled:opacity-30"
+              >
+                <Trash />
+              </button>
+            </div>
           ))}
         </div>
 
@@ -428,6 +459,33 @@ export default function Creators(): JSX.Element {
                 >
                   <Trash className="mr-1.5" />
                   Wipe learned memory for this creator
+                </button>
+                {/* Removing the profile itself. Videos and clips are only
+                    unlinked, never deleted — say so in the prompt, and say
+                    how many, so tidying the list can't feel risky. */}
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    const stats = creators.find((c) => c.creator_id === detail.creator_id)
+                    const vids = stats?.videos ?? 0
+                    const tail = vids
+                      ? `\n\n${vids} video(s) stay in your library — they just won't be attributed to anyone.`
+                      : ''
+                    if (
+                      window.confirm(
+                        `Delete the profile for ${detail.display_name}?\n\nIts channels, learned knowledge, storylines and protected words are removed. No video or clip is deleted.${tail}`
+                      )
+                    ) {
+                      void act(async () => {
+                        await api.deleteCreator(detail.creator_id)
+                        setSelected(null)
+                      })
+                    }
+                  }}
+                  className="ml-4 text-xs text-muted hover:text-red-400 transition-colors"
+                >
+                  <Trash className="mr-1.5" />
+                  Delete this creator
                 </button>
               </div>
 

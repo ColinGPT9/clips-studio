@@ -1287,6 +1287,26 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         return {"creator_id": creator_id, "wiped": wiped}
 
+    @app.delete("/creators/{creator_id}")
+    def delete_creator(creator_id: int):
+        """Remove a creator profile entirely — channels, knowledge, events,
+        feedback and glossary rulings.
+
+        Videos and clips are kept and simply unlinked, so tidying the list
+        can never cost footage. A video left behind is unattributed until a
+        creator is detected for it again."""
+        d = db()
+        try:
+            row = d.conn.execute(
+                "SELECT display_name FROM creators WHERE creator_id = ?", (creator_id,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, "no such creator")
+            counts = d.delete_creator(creator_id)
+        finally:
+            d.close()
+        return {"deleted": creator_id, "name": row["display_name"], **counts}
+
     @app.post("/creators/{creator_id}/learning")
     def set_learning(creator_id: int, body: LearningIn):
         """Enable/disable knowledge learning for one creator."""

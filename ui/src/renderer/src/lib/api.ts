@@ -257,6 +257,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ branding_id: brandingId })
     }),
+  deleteCreator: (creatorId: number) =>
+    request<{ deleted: number; name: string; videos_unlinked: number }>(
+      `/creators/${creatorId}`,
+      { method: 'DELETE' }
+    ),
   wipeCreatorMemory: (creatorId: number) =>
     request<{ wiped: number }>(`/creators/${creatorId}/memory`, { method: 'DELETE' }),
 
