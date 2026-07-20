@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 
 from core.models import ClipCandidate
-from video.encoding import hwaccel_input_args, video_encoder_args
+from video.encoding import audio_filter_args, hwaccel_input_args, video_encoder_args
 
 
 def cut_clip(
@@ -17,7 +17,11 @@ def cut_clip(
     output_path: Path,
     ass_path: Path | None = None,
     vf_extra: str = "",
+    normalize: bool = False,
 ) -> Path:
+    """normalize: loudness-normalise the audio. Only for a FINAL clip — this
+    also cuts the staging file the tracked path crops from, and normalising
+    that would just be undone (and doubled) by the real encode."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Absolute paths: cwd may be changed for the subtitles filter, which
@@ -32,7 +36,7 @@ def cut_clip(
         # rate; the tracked crop rewrites video at a constant fps in OpenCV, so
         # without this the video duration drifts from the audio -> A/V desync.
         "-vsync", "cfr",
-        "-af", "aresample=async=1",        # keep audio aligned to the new timeline
+        *audio_filter_args(normalize),     # sync, and loudness for a final clip
         *video_encoder_args(),  # NVENC when available, libx264 otherwise
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
