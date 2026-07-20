@@ -129,6 +129,16 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ lines })
     }),
+  tightenClip: (id: number, opts?: { silence?: boolean; fillers?: boolean }) =>
+    request<{
+      keep: [number, number][]
+      removed_seconds: number
+      cuts: number
+      new_duration: number
+    }>(`/clips/${id}/tighten`, {
+      method: 'POST',
+      body: JSON.stringify({ silence: opts?.silence ?? true, fillers: opts?.fillers ?? true })
+    }),
   aiEdit: (id: number, message: string) =>
     request<{ reply: string; job_id: number | null }>(`/clips/${id}/ai-edit`, {
       method: 'POST',
