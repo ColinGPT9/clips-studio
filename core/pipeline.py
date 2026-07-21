@@ -171,7 +171,6 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         creator_context=creator_ctx,
         weight_bias=(creator_prefs or {}).get("weight_bias"),
         audience=hype_out.get("curve"),
-        requests=config["clips"].get("requests"),  # optional NL clip requests
     )
     for r in rejections:
         db.log_rejection(
