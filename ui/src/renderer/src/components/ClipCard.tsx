@@ -46,10 +46,6 @@ export default function ClipCard({
     io.observe(el)
     return () => io.disconnect()
   }, [show])
-  // Matched a natural-language request. request_low_confidence means it was
-  // guaranteed a slot despite being below the normal quality bar.
-  const requested = clip.scores?.request
-  const lowConf = clip.scores?.request_low_confidence
   return (
     <button
       onClick={onClick}
@@ -83,27 +79,12 @@ export default function ClipCard({
             {badge}
           </span>
         )}
-        {requested && (
-          <span
-            className={`absolute ${badge ? 'top-8' : 'top-2'} right-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-              lowConf ? 'bg-sky-400/80 text-black' : 'bg-sky-500 text-white'
-            }`}
-            title={`You asked for: ${requested}${lowConf ? ' (closest match — lower confidence)' : ''}`}
-          >
-            ★ {lowConf ? 'Requested?' : 'Requested'}
-          </span>
-        )}
         <span className="absolute bottom-2 right-2 bg-base/80 px-1.5 py-0.5 rounded text-xs tabular-nums">
           {duration}s
         </span>
       </div>
       <div className="p-2.5">
         <p className="text-sm font-medium line-clamp-2">{clip.title || clip.hook || 'Untitled clip'}</p>
-        {requested && (
-          <p className="text-[11px] text-sky-400/90 mt-0.5 line-clamp-1" title={requested}>
-            {requested}
-          </p>
-        )}
       </div>
     </button>
   )

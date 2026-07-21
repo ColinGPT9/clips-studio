@@ -39,7 +39,6 @@ class JobIn(BaseModel):
     min_score: int | None = None  # per-job quality bar override (0-100)
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
-    requests: list[str] | None = None  # optional natural-language clip requests
 
 
 class ClipPatch(BaseModel):
@@ -92,7 +91,6 @@ class LocalVideoIn(BaseModel):
     captions: bool | None = None
     caption_style: dict | None = None
     long_clips: bool | None = None
-    requests: list[str] | None = None  # optional natural-language clip requests
 
 
 class RenderIn(BaseModel):
@@ -327,9 +325,6 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["filter"] = body.filter
         if body.min_score is not None:
             payload["min_score"] = max(0, min(100, body.min_score))
-        if body.requests:
-            # A short, sane cap: this is a guide, not a batch API.
-            payload["requests"] = [str(r)[:300] for r in body.requests[:10] if str(r).strip()]
         d = db()
         try:
             job_id = d.add_job("process", json.dumps(payload))
@@ -420,8 +415,6 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["caption_style"] = body.caption_style
             if body.long_clips:
                 payload["long_clips"] = True
-            if body.requests:
-                payload["requests"] = [str(r)[:300] for r in body.requests[:10] if str(r).strip()]
             job_id = d.add_job("process", json.dumps(payload))
         finally:
             d.close()
