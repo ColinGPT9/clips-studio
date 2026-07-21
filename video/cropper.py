@@ -200,6 +200,10 @@ def _render_tracked(
             "-filter_complex", filters,
             "-map", "[v]", "-map", "1:a:0?",
             *video_encoder_args(),
+            # 4:2:0. Feeding NVENC a bgr24 pipe makes it default to gbrp
+            # (High 4:4:4), which browsers and many players CANNOT decode —
+            # the clip renders but won't play. Force standard yuv420p.
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k",
             *audio_filter_args(normalize),
             "-fps_mode", "cfr",
@@ -223,6 +227,8 @@ def _render_tracked(
         "-map", "0:v:0", "-map", "1:a:0?",
         "-vf", vf,
         *video_encoder_args(),  # NVENC when available
+        "-pix_fmt", "yuv420p",  # 4:2:0 — a bgr24 pipe defaults to gbrp 4:4:4,
+                                # which browsers/players can't decode
         "-c:a", "aac", "-b:a", "128k",
         *audio_filter_args(normalize),             # sync + loudness normalise
         "-fps_mode", "cfr",
