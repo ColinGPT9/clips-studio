@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
-import { Folder, Scissors } from './icons'
+import { Folder, Scissors, Trash } from './icons'
 import type { Clip } from '../lib/types'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
@@ -76,6 +76,16 @@ export default function ClipEditor({
     run('export', async () => {
       const res = await api.exportClip(clip.id, folder)
       flash(res.exported.length ? `Exported: ${res.exported[0]}` : 'Nothing exported')
+    })
+
+  const deleteThisClip = (): Promise<void> =>
+    run('delete', async () => {
+      if (!window.confirm(`Delete this clip and its file?\n\n"${clip.title || clip.hook || 'Untitled clip'}"\n\nOnly this clip is removed — the video and your other clips are untouched. This can't be undone.`)) {
+        return
+      }
+      const res = await api.deleteClip(clip.id)
+      onChanged() // refresh the grid; this clip drops out and deselects
+      flash(`Deleted — freed ${(res.bytes_freed / 1e6).toFixed(0)} MB`)
     })
 
   return (
@@ -177,6 +187,17 @@ export default function ClipEditor({
         </button>
         <button className="btn-ghost" onClick={exportOne} disabled={busy !== null}>
           {busy === 'export' ? 'Exporting…' : 'Export'}
+        </button>
+        {/* Manual cull: delete a clip you won't post so it stops taking up
+            space. Only this clip is removed — the video and the rest stay. */}
+        <button
+          className="btn-ghost ml-auto text-muted hover:text-red-400"
+          onClick={deleteThisClip}
+          disabled={busy !== null}
+          title="Delete this clip and its file from your computer. The video and other clips are untouched."
+        >
+          <Trash className="mr-1.5" />
+          {busy === 'delete' ? 'Deleting…' : 'Delete clip'}
         </button>
       </div>
       {notice && <p className="text-sm text-accent">{notice}</p>}

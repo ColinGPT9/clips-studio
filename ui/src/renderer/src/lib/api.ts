@@ -118,6 +118,8 @@ export const api = {
     }),
   deleteVideo: (videoId: string) =>
     request<{ deleted: string }>(`/videos/${videoId}`, { method: 'DELETE' }),
+  deleteClip: (clipId: number) =>
+    request<{ deleted: number; bytes_freed: number }>(`/clips/${clipId}`, { method: 'DELETE' }),
 
   videos: () => request<Video[]>('/videos'),
   clips: (videoId: string) => request<Clip[]>(`/videos/${videoId}/clips`),
