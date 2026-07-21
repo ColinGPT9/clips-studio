@@ -476,14 +476,27 @@ def _render_files(
                 intermediate = edited
 
             if podcast:
-                # Separate podcast path: full-frame letterbox, no tracking.
-                # The tracker is not even imported here, so it cannot be
-                # affected. Multi-cam cuts and the loudest laugher can't move
-                # a crop that doesn't follow anyone.
-                from video import podcast as podcast_render
+                # Separate podcast path (video/podcast.py): tracked crop for a
+                # single speaker, 50/50 split when two speakers can't share one
+                # crop, tight-region letterbox only as a last resort — and cuts
+                # SNAP instead of panning across the set. video/tracker.py is
+                # never modified; the stream branch below is untouched.
+                from video import podcast as podcast_mod
 
-                podcast_render.render_clip(
-                    intermediate, final_path, ass_path=ass_path,
+                tracking_cfg = config["tracking"]
+                decision = podcast_mod.analyze(
+                    intermediate,
+                    model_name=tracking_cfg["detector"],
+                    sample_fps=tracking_cfg["sample_fps"],
+                )
+                # The editor's Layout buttons still win on a podcast clip.
+                crop_mode = opts.get("crop", "track")
+                if crop_mode == "center":
+                    decision = {"mode": "track", "path": [(0.0, 0.5)]}
+                elif crop_mode == "letterbox":
+                    decision = {"mode": "fit_blur", "region": None}
+                podcast_mod.render_clip(
+                    intermediate, final_path, decision, ass_path=ass_path,
                     vf_extra=vf_extra, normalize=normalize,
                 )
             else:
