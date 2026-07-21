@@ -157,7 +157,7 @@ export default function GenerateBar(): JSX.Element {
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
-          title="For multi-camera podcasts (cuts between angles, several people). Tracks the speaker's face with cut-aware framing (camera cuts jump cleanly instead of panning); when two speakers can't share one crop it splits the screen 50/50; letterbox only as a last resort. Leave OFF for normal one-camera streams."
+          title="For multi-camera podcasts (cuts between angles, several people). Frames shot by shot: each camera shot gets one steady crop centered on whoever is talking, and cuts land directly on the speaker's face — no panning, no split screens. Leave OFF for normal one-camera streams."
         >
           <input
             type="checkbox"
