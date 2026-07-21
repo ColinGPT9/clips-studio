@@ -535,6 +535,27 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.close()
         return {"deleted": video_id}
 
+    @app.delete("/clips/{clip_id}")
+    def delete_clip(clip_id: int):
+        """Delete ONE clip — its file, its editor preview, and its rows —
+        so the creator can cull clips they won't post and reclaim the space.
+        The video and every other clip are untouched."""
+        d = db()
+        try:
+            path = d.delete_clip(clip_id)
+        finally:
+            d.close()
+        if path is None:
+            raise HTTPException(404, "no such clip")
+        freed = 0
+        clip_file = Path(path)
+        # Only delete inside our own data dir — never follow a stray path out.
+        if clip_file.exists() and data_dir in clip_file.resolve().parents:
+            freed = clip_file.stat().st_size
+            clip_file.unlink(missing_ok=True)
+        (data_dir / "previews" / f"clip_{clip_id}.mp4").unlink(missing_ok=True)
+        return {"deleted": clip_id, "bytes_freed": freed}
+
     @app.websocket("/ws")
     async def ws(socket: WebSocket):
         await socket.accept()

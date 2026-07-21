@@ -240,6 +240,22 @@ class StateDB:
         self.conn.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
         self.conn.commit()
 
+    def delete_clip(self, clip_id: int) -> str | None:
+        """Remove ONE clip and its dependent rows. Returns the clip's file
+        path (for the caller to delete on disk), or None if it didn't exist.
+
+        The video and every other clip are untouched — this is a manual cull
+        of a single clip the creator won't post."""
+        row = self.conn.execute("SELECT path FROM clips WHERE id = ?", (clip_id,)).fetchone()
+        if row is None:
+            return None
+        self.conn.execute("DELETE FROM uploads WHERE clip_id = ?", (clip_id,))
+        self.conn.execute("DELETE FROM clip_translations WHERE clip_id = ?", (clip_id,))
+        self.conn.execute("DELETE FROM clip_feedback WHERE clip_id = ?", (clip_id,))
+        self.conn.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+        self.conn.commit()
+        return row["path"]
+
     def delete_creator(self, creator_id: int) -> dict:
         """Remove a creator profile and everything learned about them.
 
