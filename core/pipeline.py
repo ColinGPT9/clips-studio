@@ -371,6 +371,11 @@ def _render_files(
     landscape = bool(opts.get("profile"))
     # Loudness: on unless this clip opted out (see settings/editor).
     normalize = bool(opts.get("normalize_audio", True))
+    # Podcast: opt-in, per video. Multi-cam/multi-person footage renders as a
+    # steady full-frame letterbox instead of tracking a subject (see
+    # video/podcast.py). Read from the job config or a persisted per-clip flag.
+    # When false the tracking path below is entered exactly as before.
+    podcast = bool(opts.get("podcast") or config["clips"].get("podcast"))
     canvas = (1920, 1080) if landscape else (1080, 1920)
 
     # Color: preset filter (per-clip wins over job/config default) + manual
@@ -470,33 +475,45 @@ def _render_files(
                 intermediate.unlink(missing_ok=True)
                 intermediate = edited
 
-            from video.cropper import render_vertical
-            from video.tracker import compute_tracking  # lazy: imports torch
+            if podcast:
+                # Separate podcast path: full-frame letterbox, no tracking.
+                # The tracker is not even imported here, so it cannot be
+                # affected. Multi-cam cuts and the loudest laugher can't move
+                # a crop that doesn't follow anyone.
+                from video import podcast as podcast_render
 
-            crop_mode = opts.get("crop", "track")
-            if crop_mode == "center":
-                tracking = {"mode": "track", "path": [(0.0, 0.5)]}
-            else:
-                tracking_cfg = config["tracking"]
-                tracking = compute_tracking(
-                    intermediate,
-                    model_name=tracking_cfg["detector"],
-                    sample_fps=tracking_cfg["sample_fps"],
-                    force_fit_blur=(crop_mode == "letterbox"),
+                podcast_render.render_clip(
+                    intermediate, final_path, ass_path=ass_path,
+                    vf_extra=vf_extra, normalize=normalize,
                 )
-                if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
-                    # USER-forced letterbox means "show me the WHOLE frame" —
-                    # reaction/gaming mixes need both the person and the
-                    # content. Cropping tight to the detected person (the
-                    # automatic letterbox behavior) threw away the game side.
-                    tracking["region"] = None
-                if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
-                    shift = -0.12 if crop_mode == "bias_left" else 0.12
-                    tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
-            render_vertical(
-                intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
-                normalize=normalize,
-            )
+            else:
+                from video.cropper import render_vertical
+                from video.tracker import compute_tracking  # lazy: imports torch
+
+                crop_mode = opts.get("crop", "track")
+                if crop_mode == "center":
+                    tracking = {"mode": "track", "path": [(0.0, 0.5)]}
+                else:
+                    tracking_cfg = config["tracking"]
+                    tracking = compute_tracking(
+                        intermediate,
+                        model_name=tracking_cfg["detector"],
+                        sample_fps=tracking_cfg["sample_fps"],
+                        force_fit_blur=(crop_mode == "letterbox"),
+                    )
+                    if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
+                        # USER-forced letterbox means "show me the WHOLE frame" —
+                        # reaction/gaming mixes need both the person and the
+                        # content. Cropping tight to the detected person (the
+                        # automatic letterbox behavior) threw away the game side.
+                        tracking["region"] = None
+                    if tracking["mode"] == "track" and crop_mode in ("bias_left", "bias_right"):
+                        shift = -0.12 if crop_mode == "bias_left" else 0.12
+                        tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
+                render_vertical(
+                    intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
+                    normalize=normalize,
+                )
         else:
             if edit is not None:
                 # Horizontal output: cut plain first, then apply edits and
@@ -526,6 +543,9 @@ def _render_files(
             **opts,
             **({"caption_style": caption_style} if caption_style else {}),
             **({"filter": filter_name} if filter_name != "none" else {}),
+            # Persist podcast (a video-level job flag) per clip, so an editor
+            # re-render keeps the letterbox instead of falling back to tracking.
+            **({"podcast": True} if podcast else {}),
             # Persist the resolved branding so a later re-render reapplies it,
             # even when it came from the job/config default (not per-clip opts).
             **({"watermark": wm_cfg} if wm_cfg else {}),

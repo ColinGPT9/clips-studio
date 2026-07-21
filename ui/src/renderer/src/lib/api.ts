@@ -64,6 +64,7 @@ export const api = {
       filter?: FilterName
       longform?: { mode: string } | null
       watermarkProfileId?: number | null
+      podcast?: boolean
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -76,7 +77,8 @@ export const api = {
         long_clips: opts?.longClips ?? null,
         filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null,
         longform: opts?.longform ?? null,
-        watermark_profile_id: opts?.watermarkProfileId ?? null
+        watermark_profile_id: opts?.watermarkProfileId ?? null,
+        podcast: opts?.podcast ?? null
       })
     }),
   addLocalVideo: (opts: {
@@ -87,6 +89,7 @@ export const api = {
     captions?: boolean
     captionStyle?: CaptionStyle
     longClips?: boolean
+    podcast?: boolean
   }) =>
     request<{ job_id: number; video_id: string }>('/videos/local', {
       method: 'POST',
@@ -97,7 +100,8 @@ export const api = {
         platform: opts.platform ?? 'youtube',
         captions: opts.captions ?? null,
         caption_style: opts.captionStyle ?? null,
-        long_clips: opts.longClips ?? null
+        long_clips: opts.longClips ?? null,
+        podcast: opts.podcast ?? null
       })
     }),
   jobs: () => request<Job[]>('/jobs'),

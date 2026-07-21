@@ -39,6 +39,7 @@ class JobIn(BaseModel):
     min_score: int | None = None  # per-job quality bar override (0-100)
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
+    podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
 
 
 class ClipPatch(BaseModel):
@@ -91,6 +92,7 @@ class LocalVideoIn(BaseModel):
     captions: bool | None = None
     caption_style: dict | None = None
     long_clips: bool | None = None
+    podcast: bool | None = None  # multi-cam podcast: letterbox, no subject tracking
 
 
 class RenderIn(BaseModel):
@@ -313,6 +315,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             payload["captions"] = body.captions
         if body.long_clips:
             payload["long_clips"] = True
+        if body.podcast:
+            payload["podcast"] = True
         if body.longform:
             payload["longform"] = body.longform
         if body.watermark_profile_id:
@@ -415,6 +419,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["caption_style"] = body.caption_style
             if body.long_clips:
                 payload["long_clips"] = True
+            if body.podcast:
+                payload["podcast"] = True
             job_id = d.add_job("process", json.dumps(payload))
         finally:
             d.close()

@@ -47,6 +47,12 @@ export default function GenerateBar(): JSX.Element {
   const [longform, setLongform] = useState<boolean>(
     localStorage.getItem('generate-longform') === 'true'
   )
+  // Podcast: multi-cam, multi-person footage. Renders every clip as a steady
+  // full-frame letterbox instead of tracking a speaker — no chasing the
+  // loudest laugher, cut-safe. Opt-in; leaves normal stream clips untouched.
+  const [podcast, setPodcast] = useState<boolean>(
+    localStorage.getItem('generate-podcast') === 'true'
+  )
   const [longformMode, setLongformMode] = useState<string>(
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
@@ -73,7 +79,8 @@ export default function GenerateBar(): JSX.Element {
         captions: burnCaptions,
         longClips,
         longform: longform ? { mode: longformMode } : null,
-        watermarkProfileId: wm.enabled ? wm.profileId : null
+        watermarkProfileId: wm.enabled ? wm.profileId : null,
+        podcast
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -147,6 +154,21 @@ export default function GenerateBar(): JSX.Element {
             }}
           />
           {t('Longform')} <span className="text-muted">(16:9)</span>
+        </label>
+        <label
+          className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
+          title="For multi-camera podcasts (cuts between angles, several people). Shows the whole framed shot steady on a blurred backdrop instead of tracking a speaker — so it never chases the loudest laugher and cuts don't jitter. Leave OFF for normal one-camera streams."
+        >
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={podcast}
+            onChange={(e) => {
+              setPodcast(e.target.checked)
+              localStorage.setItem('generate-podcast', String(e.target.checked))
+            }}
+          />
+          {t('Podcast')} <span className="text-muted">{t('(multi-cam)')}</span>
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
@@ -270,7 +292,8 @@ export default function GenerateBar(): JSX.Element {
                     platform: uploadPlatform,
                     captions: burnCaptions,
                     captionStyle,
-                    longClips
+                    longClips,
+                    podcast
                   })
                   setUploadPath(null)
                   setQueued(true)
