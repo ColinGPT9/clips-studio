@@ -20,6 +20,11 @@ export interface SubScores {
   engagement?: number
   source?: string
   rerank_position?: number
+  /** Set when this clip matched a natural-language request. */
+  request?: string
+  request_relevance?: number // 0-100, the model's confidence in the match
+  request_why?: string
+  request_low_confidence?: boolean // guaranteed match below the normal bar
 }
 
 export interface CaptionLine {

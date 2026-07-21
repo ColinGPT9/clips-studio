@@ -113,8 +113,13 @@ class Worker(threading.Thread):
                         or payload.get("min_score") is not None
                         or payload.get("watermark_profile_id")
                         or payload.get("filter")
+                        or payload.get("requests")
                     ):
                         cfg = copy.deepcopy(self.config)
+                    if payload.get("requests"):
+                        # Optional natural-language clip requests — an additive
+                        # guide for discovery (see analysis/requests.py).
+                        cfg["clips"]["requests"] = payload["requests"]
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
                     if payload.get("min_score") is not None:

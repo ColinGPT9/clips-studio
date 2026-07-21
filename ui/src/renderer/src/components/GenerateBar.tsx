@@ -7,12 +7,39 @@ import { Folder } from './icons'
 import { t } from '../lib/i18n'
 
 const STYLE_KEY = 'generate-caption-style'
+const RECENT_REQUESTS_KEY = 'generate-recent-requests'
+
+const REQUEST_EXAMPLES = [
+  'The part where they announce something new',
+  'The funniest reaction',
+  'The biggest mistake they talk about',
+  'Where they explain the main topic',
+  'The moment they react to something surprising'
+]
 
 function loadSavedStyle(): Required<CaptionStyle> {
   try {
     return { ...DEFAULT_CAPTION_STYLE, ...JSON.parse(localStorage.getItem(STYLE_KEY) ?? '{}') }
   } catch {
     return { ...DEFAULT_CAPTION_STYLE }
+  }
+}
+
+/** One request per non-empty line; leading list markers stripped. Matches the
+ *  server-side normalize() so what you type is what gets matched. */
+function parseRequests(text: string): string[] {
+  return text
+    .split('\n')
+    .map((l) => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim())
+    .filter((l) => l.length >= 3)
+    .slice(0, 10)
+}
+
+function loadRecentRequests(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_REQUESTS_KEY) ?? '[]')
+  } catch {
+    return []
   }
 }
 
@@ -47,6 +74,13 @@ export default function GenerateBar(): JSX.Element {
   const [longform, setLongform] = useState<boolean>(
     localStorage.getItem('generate-longform') === 'true'
   )
+  // Optional natural-language clip requests. Off by default; when on, its
+  // text becomes an additive guide for discovery — automatic clips still run.
+  const [findMoments, setFindMoments] = useState<boolean>(
+    localStorage.getItem('generate-find-moments') === 'true'
+  )
+  const [requestText, setRequestText] = useState('')
+  const [recentRequests, setRecentRequests] = useState<string[]>(loadRecentRequests)
   const [longformMode, setLongformMode] = useState<string>(
     localStorage.getItem('generate-longform-mode') ?? 'short_clips'
   )
@@ -58,6 +92,18 @@ export default function GenerateBar(): JSX.Element {
       localStorage.setItem(STYLE_KEY, JSON.stringify(next))
       return next
     })
+  }
+
+  /** The requests to send, and remember them for next time. Empty when the
+   *  toggle is off — so the pipeline is untouched. */
+  const takeRequests = (): string[] | undefined => {
+    if (!findMoments) return undefined
+    const reqs = parseRequests(requestText)
+    if (reqs.length === 0) return undefined
+    const next = [...reqs, ...recentRequests.filter((r) => !reqs.includes(r))].slice(0, 8)
+    setRecentRequests(next)
+    localStorage.setItem(RECENT_REQUESTS_KEY, JSON.stringify(next))
+    return reqs
   }
 
   const generate = async (targetUrl?: string, force = false): Promise<void> => {
@@ -73,7 +119,8 @@ export default function GenerateBar(): JSX.Element {
         captions: burnCaptions,
         longClips,
         longform: longform ? { mode: longformMode } : null,
-        watermarkProfileId: wm.enabled ? wm.profileId : null
+        watermarkProfileId: wm.enabled ? wm.profileId : null,
+        requests: takeRequests()
       })
       if (res.already_processed) {
         setReprocessUrl(u)
@@ -150,6 +197,21 @@ export default function GenerateBar(): JSX.Element {
         </label>
         <label
           className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
+          title="Describe specific moments you want clipped. The AI searches for them AND still finds other viral clips — this only adds to what it finds."
+        >
+          <input
+            type="checkbox"
+            className="size-4 accent-[#38BDF8]"
+            checked={findMoments}
+            onChange={(e) => {
+              setFindMoments(e.target.checked)
+              localStorage.setItem('generate-find-moments', String(e.target.checked))
+            }}
+          />
+          {t('Find specific moments')}
+        </label>
+        <label
+          className="flex items-center gap-2 cursor-pointer text-sm shrink-0"
           title="Burn your logo / channel handle into every clip. Configure the branding profile below."
         >
           <input
@@ -205,6 +267,56 @@ export default function GenerateBar(): JSX.Element {
               <option value="highlights">Highlights (best-of, 8-20 min by quality)</option>
               <option value="edited_stream">Edited Stream (downtime removed)</option>
             </select>
+          </div>
+        )}
+        {findMoments && (
+          <div className="w-full space-y-2 border-t border-raised/60 pt-3">
+            <div>
+              <p className="label">{t('Describe the moments you want clipped')}</p>
+              <p className="text-xs text-muted mt-0.5">
+                {t(
+                  'One per line. The AI searches for these and still finds other viral clips — it only adds to what it finds.'
+                )}
+              </p>
+            </div>
+            <textarea
+              className="input w-full min-h-[68px] text-sm"
+              value={requestText}
+              onChange={(e) => setRequestText(e.target.value)}
+              placeholder={
+                'e.g.\nThe part where they announce the new project\nThe funniest reaction\nThe argument near the end'
+              }
+            />
+            <div className="flex gap-1.5 flex-wrap">
+              {REQUEST_EXAMPLES.map((ex) => (
+                <button
+                  key={ex}
+                  className="px-2 py-0.5 rounded-full text-[11px] border border-raised text-muted hover:text-ink"
+                  title="Add this example"
+                  onClick={() =>
+                    setRequestText((cur) => (cur.trim() ? `${cur.trim()}\n${ex}` : ex))
+                  }
+                >
+                  + {ex}
+                </button>
+              ))}
+            </div>
+            {recentRequests.length > 0 && (
+              <div className="flex gap-1.5 flex-wrap items-center">
+                <span className="text-[11px] text-muted">{t('Recent:')}</span>
+                {recentRequests.map((r) => (
+                  <button
+                    key={r}
+                    className="px-2 py-0.5 rounded-full text-[11px] border border-accent/40 text-accent/90 hover:bg-accent/10"
+                    onClick={() =>
+                      setRequestText((cur) => (cur.trim() ? `${cur.trim()}\n${r}` : r))
+                    }
+                  >
+                    {r.length > 40 ? r.slice(0, 38) + '…' : r}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {watermark && <BrandingEditor />}
@@ -270,7 +382,8 @@ export default function GenerateBar(): JSX.Element {
                     platform: uploadPlatform,
                     captions: burnCaptions,
                     captionStyle,
-                    longClips
+                    longClips,
+                    requests: takeRequests()
                   })
                   setUploadPath(null)
                   setQueued(true)
