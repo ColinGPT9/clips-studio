@@ -41,6 +41,7 @@ def find_clips(
     creator_context=None,  # creator.retrieval.CreatorContext | None
     weight_bias: dict | None = None,  # per-channel multipliers from creator.learning
     audience: "np.ndarray | None" = None,  # analysis.hype curve (chat/heatmap), 0..1
+    requests: list[str] | None = None,  # optional natural-language clip requests
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     clips_cfg = config["clips"]
     analysis_cfg = config["analysis"]
@@ -133,6 +134,32 @@ def find_clips(
             for c in signal_cands
         ]
         candidates += signal_cands
+
+    # Natural-language requests: an OPTIONAL, additive candidate source. Each
+    # user-described moment is matched semantically (see analysis/requests.py),
+    # scored by the SAME window pass signal peaks use, and tagged so it can be
+    # labelled and guaranteed later. Absent → this whole block is skipped and
+    # nothing about the automatic pipeline changes.
+    request_of: dict[int, "requests_mod.RequestMatch"] = {}
+    unmatched_requests: set[int] = set()
+    if requests:
+        from analysis import requests as requests_mod
+
+        req_matches, unmatched_requests = requests_mod.match(
+            segments, llm, requests, events,
+            clips_cfg["min_duration"], clips_cfg["max_duration"],
+        )
+        if req_matches:
+            req_wins = [(m.start, m.end) for m in req_matches]
+            req_cands = highlights.score_windows(segments, llm, req_wins, events=events)
+            for c, m in zip(req_cands, req_matches):
+                c.source = "request"
+                fitted = highlights._fit_to_segments(
+                    c, segments, clips_cfg["min_duration"], clips_cfg["max_duration"],
+                    target_duration=max(m.end - m.start, 18.0),
+                )
+                request_of[id(fitted)] = m
+                candidates.append(fitted)
 
     if not candidates:
         return [], []
@@ -241,6 +268,18 @@ def find_clips(
                 c.subscores["context"] = b
                 c.subscores["context_why"] = "; ".join(reasons)
                 n_context += 1
+        # Natural-language request match: capped additive nudge scaled by the
+        # model's confidence, then tag the clip so the UI can label it. Same
+        # additive-only shape as every bonus above — never subtracts.
+        rm = request_of.get(id(c))
+        if rm is not None:
+            from analysis import requests as requests_mod
+
+            fused = min(100, fused + requests_mod.bonus(rm.confidence))
+            c.subscores["request"] = rm.request
+            c.subscores["request_relevance"] = round(rm.confidence * 100)
+            if rm.why:
+                c.subscores["request_why"] = rm.why
         c.score = fused
     if n_context:
         print(f"  Creator context boosted {n_context} candidate(s) (max +{ctx_cap})")
@@ -279,7 +318,41 @@ def find_clips(
 
     kept = finalists[:max_clips] if max_clips > 0 else finalists
     rejections += [Rejection(c, "over_limit") for c in finalists[len(kept):]]
+
+    # Guarantee the best match for each request. The user explicitly asked for
+    # these, so a genuine match must not be lost to the quality bar or the
+    # count cap. For any request whose matches all fell out, re-add its
+    # highest-scoring candidate (that isn't a near-duplicate of a kept clip)
+    # and mark it lower-confidence. Additive beyond the cap — asked-for clips
+    # are extra, they never displace an automatic one.
+    if request_of:
+        kept = _ensure_requested(kept, candidates, request_of)
     return kept, rejections
+
+
+def _ensure_requested(
+    kept: list[ClipCandidate],
+    candidates: list[ClipCandidate],
+    request_of: dict[int, object],
+) -> list[ClipCandidate]:
+    kept_ids = {id(c) for c in kept}
+    covered = {request_of[id(c)].request_index for c in kept if id(c) in request_of}
+    # Best candidate per still-uncovered request.
+    best: dict[int, ClipCandidate] = {}
+    for c in candidates:
+        m = request_of.get(id(c))
+        if m is None or m.request_index in covered or id(c) in kept_ids:
+            continue
+        cur = best.get(m.request_index)
+        if cur is None or c.score > cur.score:
+            best[m.request_index] = c
+    for c in best.values():
+        # Skip if it overlaps something already kept — that moment is shown.
+        if any(c.overlap_ratio(k) > 0.5 for k in kept):
+            continue
+        (c.subscores or {}).setdefault("request_low_confidence", True)
+        kept.append(c)
+    return kept
 
 
 def _fuse(c: ClipCandidate, weights: dict, reaction: float, speech_ratio: float = 1.0) -> float:

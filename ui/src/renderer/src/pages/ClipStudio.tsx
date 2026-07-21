@@ -23,7 +23,7 @@ export default function ClipStudio({
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
   const [editingClipId, setEditingClipId] = useState<number | null>(null)
   const [videoSearch, setVideoSearch] = useState('')
-  const [clipType, setClipType] = useState<'all' | 'shorts' | 'longform'>('all')
+  const [clipType, setClipType] = useState<'all' | 'shorts' | 'longform' | 'requested'>('all')
   const pendingClip = useRef<number | null>(null)
 
   const refreshVideos = async (): Promise<void> => {
@@ -153,7 +153,12 @@ export default function ClipStudio({
                 [
                   ['all', 'All'],
                   ['shorts', '📱 Shorts'],
-                  ['longform', '▭ Longform']
+                  ['longform', '▭ Longform'],
+                  // Only offered when this video actually has requested clips —
+                  // otherwise the filter would be dead weight.
+                  ...(clips.some((c) => c.scores?.request)
+                    ? ([['requested', '★ Requested']] as const)
+                    : [])
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -174,9 +179,11 @@ export default function ClipStudio({
                 .filter((c) =>
                   clipType === 'all'
                     ? true
-                    : clipType === 'longform'
-                      ? !!c.render_opts?.profile
-                      : !c.render_opts?.profile
+                    : clipType === 'requested'
+                      ? !!c.scores?.request
+                      : clipType === 'longform'
+                        ? !!c.render_opts?.profile
+                        : !c.render_opts?.profile
                 )
                 .map((clip) => (
                   <ClipCard
