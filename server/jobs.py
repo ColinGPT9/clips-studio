@@ -113,8 +113,12 @@ class Worker(threading.Thread):
                         or payload.get("min_score") is not None
                         or payload.get("watermark_profile_id")
                         or payload.get("filter")
+                        or payload.get("podcast")
                     ):
                         cfg = copy.deepcopy(self.config)
+                    if payload.get("podcast"):
+                        # Multi-cam podcast: letterbox every clip, no tracking.
+                        cfg["clips"]["podcast"] = True
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
                     if payload.get("min_score") is not None:
