@@ -36,6 +36,16 @@ export default function ClipStudio({
     }
   }
 
+  const deleteClip = async (clipId: number): Promise<void> => {
+    try {
+      await api.deleteClip(clipId)
+      if (selectedClip === clipId) setSelectedClip(null)
+      setClips((cur) => cur.filter((c) => c.id !== clipId)) // drop it immediately
+    } catch (e) {
+      window.alert(`Could not delete: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   const refreshClips = async (videoId: string): Promise<void> => {
     try {
       const c = await api.clips(videoId)
@@ -184,6 +194,7 @@ export default function ClipStudio({
                     clip={clip}
                     selected={clip.id === selectedClip}
                     onClick={() => setSelectedClip(clip.id)}
+                    onDelete={() => deleteClip(clip.id)}
                   />
                 ))}
               {clips.length === 0 && (
