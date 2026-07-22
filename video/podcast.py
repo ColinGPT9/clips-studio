@@ -1,23 +1,32 @@
 """Podcast clips — a separate, opt-in path for multi-cam, multi-person footage.
 
-v3, rebuilt after v2 failed on real podcast footage. v2 made one decision
-for the whole clip, but a podcast is a sequence of SHOTS: it hard-cuts
-between camera angles, and every angle shows people at different positions
-and sizes. Deciding globally meant the same person counted as two "speakers"
-(one track per angle — v2 split-screened a guy with himself), letterbox
-regions mixed positions from different shots (quarter-faces), and smoothing
-panned across cuts hunting for the face.
+v3, rebuilt after v2 failed on real podcast footage, then refined (v4) so
+each shot punches in on ONE person instead of averaging two toward the
+middle. v2 made one decision for the whole clip, but a podcast is a sequence
+of SHOTS: it hard-cuts between camera angles, and every angle shows people at
+different positions and sizes. Deciding globally meant the same person
+counted as two "speakers" (one track per angle — v2 split-screened a guy
+with himself), letterbox regions mixed positions from different shots
+(quarter-faces), and smoothing panned across cuts hunting for the face.
 
-So v3 works the way the podcast itself is edited — SHOT BY SHOT:
+So this works the way the podcast itself is edited — SHOT BY SHOT:
 
   1. Camera cuts are detected first (frame differencing).
   2. Within each shot, the framing is ONE static crop — podcast guests sit
      still, so a fixed face-centered crop is rock steady and is on the face
      from the shot's first frame. No drifting onto faces after a cut.
-  3. The crop centers on WHO IS TALKING in that shot (mouth motion), falling
-     back to the most prominent person when nobody clearly talks. A person
-     with no visible head (someone's legs at frame edge) never qualifies.
+  3. The crop punches in TIGHT on ONE person — whoever is talking in that
+     shot (mouth motion), falling back to the most prominent person when
+     nobody clearly talks. It centers on that person's FACE positions only
+     (never a body-center guess, never an average of two people), so the
+     face lands in frame instead of the crop hovering near the middle.
   4. At each cut the crop SNAPS to the new shot's framing. Nothing pans.
+
+Why one person, not two: earlier versions averaged two nearby people into a
+single wide crop, which pulled every shot back toward center and showed both
+faces small — the "everyone tiny" look. A podcast is cut so that when the
+other person speaks, the camera cuts to them; so the right move per shot is
+to frame the one who matters and let the edit's own cuts handle the rest.
 
 No split screens and no automatic letterbox — both produced bad results on
 real footage. The editor's manual Layout override (Center/Letterbox) still
@@ -65,53 +74,44 @@ def analyze(
     prev_small = None               # downscaled gray of the previous sample
     shot_t0: float | None = None
     shot_tracks: dict = {}          # per-shot identity tracking (reset at cuts)
-    shot_stats: dict[int, dict] = {}  # tid -> {"cxs","cys","areas","speak","head"}
+    shot_stats: dict[int, dict] = {}  # tid -> per-subject accumulators (below)
     last_t = 0.0
     w = h = None
     frame_idx = 0
 
     def close_shot(t_end: float) -> None:
-        """Pick this shot's focus and freeze its framing."""
+        """Pick this shot's one subject and freeze a tight, face-centered crop."""
         if shot_t0 is None or t_end - shot_t0 < _MIN_SHOT:
             return
+        # A subject counts only if it was seen as a face/head (not just legs
+        # at the frame edge) and is prominent enough in THIS shot.
         cands = [
             (tid, s) for tid, s in shot_stats.items()
-            # A subject needs a head/face sighting (legs never qualify) and
-            # real prominence in THIS shot.
-            if s["head"] > 0 and s["cxs"] and float(np.median(s["areas"])) >= _MIN_AREA
+            if s["face_xs"] and float(np.median(s["areas"])) >= _MIN_AREA
         ]
         if not cands:
             shots.append({"t0": shot_t0, "t1": t_end, "x": None, "cy": None})
             return
-        # Who talks in this shot? Mouth motion, requiring a clear winner.
-        speaks = {tid: s["speak"] / max(len(s["cxs"]), 1) for tid, s in cands}
-        ordered = sorted(speaks.items(), key=lambda kv: -kv[1])
-        talker = None
-        if ordered[0][1] > _TALK_FLOOR and (
-            len(ordered) == 1 or ordered[0][1] > _TALK_MARGIN * ordered[1][1]
+        # Talk rate = mouth motion per face sighting. Pick the talker when one
+        # clearly leads; otherwise the most prominent (largest) face. Always
+        # exactly ONE subject — no averaging two people into a wide crop.
+        def talk_rate(s: dict) -> float:
+            return s["speak"] / max(len(s["face_xs"]), 1)
+
+        by_talk = sorted(cands, key=lambda kv: -talk_rate(kv[1]))
+        if talk_rate(by_talk[0][1]) > _TALK_FLOOR and (
+            len(by_talk) == 1 or talk_rate(by_talk[0][1]) > _TALK_MARGIN * talk_rate(by_talk[1][1])
         ):
-            talker = ordered[0][0]
-        if talker is not None:
-            focus = [talker]
+            pick = by_talk[0]
         else:
-            # Nobody clearly talking: the podcast's own camera usually frames
-            # the person who matters largest — take the most prominent, or
-            # both when two similar people sit close enough to share a crop.
-            by_area = sorted(cands, key=lambda kv: -float(np.median(kv[1]["areas"])))
-            focus = [by_area[0][0]]
-            if len(by_area) >= 2 and w is not None:
-                crop_frac = (h * 9 / 16) / w
-                xa = float(np.median(by_area[0][1]["cxs"]))
-                xb = float(np.median(by_area[1][1]["cxs"]))
-                a0, a1 = (float(np.median(s["areas"])) for _, s in by_area[:2])
-                if a1 >= 0.6 * a0 and abs(xa - xb) < crop_frac * 0.7:
-                    focus.append(by_area[1][0])
-        xs = [float(np.median(shot_stats[tid]["cxs"])) for tid in focus]
-        cys = [float(np.median(shot_stats[tid]["cys"])) for tid in focus if shot_stats[tid]["cys"]]
+            pick = max(cands, key=lambda kv: float(np.median(kv[1]["areas"])))
+        s = pick[1]
+        # Center on the FACE positions only — a robust median, so a stray
+        # body-center sample or a moment of mis-detection can't drag the crop.
         shots.append({
             "t0": shot_t0, "t1": t_end,
-            "x": sum(xs) / len(xs),
-            "cy": (sum(cys) / len(cys)) if cys else None,
+            "x": float(np.median(s["face_xs"])),
+            "cy": float(np.median(s["face_ys"])) if s["face_ys"] else None,
         })
 
     while True:
@@ -142,23 +142,20 @@ def analyze(
         for tid in _assign(shot_tracks, _detect(model, frame, 0.4), t):
             tr = shot_tracks[tid]
             x1, y1, x2, y2, conf = tr.box[:5]
+            # face_xs/face_ys hold ONLY real face/head sightings — the crop
+            # centers on these. areas track prominence regardless.
             st = shot_stats.setdefault(
-                tid, {"cxs": [], "cys": [], "areas": [], "speak": 0.0, "head": 0}
+                tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0}
             )
-            body_cx = ((x1 + x2) / 2) / w
             head = tr.box[5] if len(tr.box) > 5 else None
             face = _face_box(frame, tr.box)
             if head is not None:
-                st["cxs"].append(head[0] / w)
-                st["cys"].append(head[1] / h)
-                st["head"] += 1
+                st["face_xs"].append(head[0] / w)
+                st["face_ys"].append(head[1] / h)
             elif face is not None:
                 fx1, fy1, fx2, fy2 = face
-                st["cxs"].append(((fx1 + fx2) / 2) / w)
-                st["cys"].append(((fy1 + fy2) / 2) / h)
-                st["head"] += 1
-            else:
-                st["cxs"].append(body_cx)
+                st["face_xs"].append(((fx1 + fx2) / 2) / w)
+                st["face_ys"].append(((fy1 + fy2) / 2) / h)
             st["areas"].append((x2 - x1) * (y2 - y1) / (w * h))
             if face is not None:
                 _update_speaking(tr, frame, face)
