@@ -115,22 +115,25 @@ def analyze(
         })
 
     while True:
-        ok = cap.grab()
-        if not ok:
-            break
-        if frame_idx % frame_step:
-            frame_idx += 1
-            continue
-        ok, frame = cap.retrieve()
+        ok, frame = cap.read()
         if not ok:
             break
         t = frame_idx / video_fps
         h, w = frame.shape[:2]
 
-        # ---- cut detection: a big frame-to-frame change is a camera cut ----
+        # ---- cut detection runs on EVERY frame ---------------------------
+        # A camera cut is a big frame-to-frame change. Detecting it at the
+        # 8fps sample grid landed the crop snap up to a sample late, so the
+        # new scene showed the old crop for a frame and then corrected — the
+        # "cut, then a flicker to fix it" the eye catches. Differencing every
+        # frame is cheap (a 48x27 gray) and pins the cut to its exact frame.
         small = cv2.cvtColor(cv2.resize(frame, (48, 27)), cv2.COLOR_BGR2GRAY).astype(np.float32)
         if prev_small is not None and float(np.abs(small - prev_small).mean()) > _CUT_DIFF:
-            close_shot(t)
+            # This frame is the first of the NEW shot; the old shot ends on the
+            # frame before it. Ending the old shot one frame early puts the
+            # snap in the gap between the two frames, so the very first frame
+            # of the new scene already renders with the new crop — no flicker.
+            close_shot((frame_idx - 1) / video_fps)
             shot_t0 = None
             shot_tracks = {}
             shot_stats = {}
@@ -139,40 +142,45 @@ def analyze(
             shot_t0 = t
 
         # ---- per-shot people tracking (identities never cross a cut) ------
-        for tid in _assign(shot_tracks, _detect(model, frame, 0.4), t):
-            tr = shot_tracks[tid]
-            x1, y1, x2, y2, conf = tr.box[:5]
-            # face_xs/face_ys hold ONLY real face/head sightings — the crop
-            # centers on these. areas track prominence regardless.
-            st = shot_stats.setdefault(
-                tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0}
-            )
-            head = tr.box[5] if len(tr.box) > 5 else None
-            face = _face_box(frame, tr.box)
-            if head is not None:
-                st["face_xs"].append(head[0] / w)
-                st["face_ys"].append(head[1] / h)
-            elif face is not None:
-                fx1, fy1, fx2, fy2 = face
-                st["face_xs"].append(((fx1 + fx2) / 2) / w)
-                st["face_ys"].append(((fy1 + fy2) / 2) / h)
-            st["areas"].append((x2 - x1) * (y2 - y1) / (w * h))
-            if face is not None:
-                _update_speaking(tr, frame, face)
-                st["speak"] += tr.speak
-            else:
-                tr.speak *= 0.9
+        # YOLO/face work is the costly part, so it stays on the 8fps grid;
+        # cut detection above already ran on this frame.
+        if frame_idx % frame_step == 0:
+            for tid in _assign(shot_tracks, _detect(model, frame, 0.4), t):
+                tr = shot_tracks[tid]
+                x1, y1, x2, y2, conf = tr.box[:5]
+                # face_xs/face_ys hold ONLY real face/head sightings — the crop
+                # centers on these. areas track prominence regardless.
+                st = shot_stats.setdefault(
+                    tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0}
+                )
+                head = tr.box[5] if len(tr.box) > 5 else None
+                face = _face_box(frame, tr.box)
+                if head is not None:
+                    st["face_xs"].append(head[0] / w)
+                    st["face_ys"].append(head[1] / h)
+                elif face is not None:
+                    fx1, fy1, fx2, fy2 = face
+                    st["face_xs"].append(((fx1 + fx2) / 2) / w)
+                    st["face_ys"].append(((fy1 + fy2) / 2) / h)
+                st["areas"].append((x2 - x1) * (y2 - y1) / (w * h))
+                if face is not None:
+                    _update_speaking(tr, frame, face)
+                    st["speak"] += tr.speak
+                else:
+                    tr.speak *= 0.9
         last_t = t
         frame_idx += 1
     cap.release()
-    close_shot(last_t + 1.0 / sample_fps)
+    close_shot(last_t + 1.0 / video_fps)
 
     if not shots or w is None:
         return {"mode": "track", "path": [(0.0, 0.5)]}
 
     # ---- the path: constant inside each shot, snapping at each cut --------
     # Two points per shot make the renderer's interpolation flat within the
-    # shot; the jump between shots spans one sample (~0.1s) — a clean snap.
+    # shot. Because each shot ends one frame before its cut, the jump to the
+    # next shot spans a single frame interval — the renderer lands the new
+    # crop on the new scene's first frame, so the snap is instant, not a ramp.
     # A shot with nobody detected holds the previous framing.
     path: list[tuple[float, float]] = []
     x_prev = 0.5
