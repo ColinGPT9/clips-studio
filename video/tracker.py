@@ -23,6 +23,20 @@ v2 upgrades over v1:
     (fraction of frame width per second) — kills whip-pans on detector noise.
   - Facecam layout detection for gameplay streams.
 
+v3 brings over what the Podcast rebuild proved out (see video/framing.py):
+  - Hold-then-move: the crop parks and only moves on genuine sustained
+    drift, instead of correcting every sample. The old chain oscillated
+    inside a narrow band — many small reversals that read as the camera
+    wandering and never committing to a face.
+  - A trailing-median target, so one bad detection box cannot yank framing.
+  - Commit to the speaker: two subjects share a midpoint crop only while
+    NOBODY is talking; once someone speaks the crop frames them, because a
+    midpoint between two faces frames neither.
+  - Cut awareness: cuts are detected every frame; the crop snaps across
+    them rather than panning, and mouth-motion state is dropped so the
+    talking detector doesn't score everyone a speaker after a cut. Single
+    continuous-camera footage never trips this and is unaffected.
+
 Fully decoupled from clip selection: this module knows nothing about
 transcripts, scores, or uploads.
 """
@@ -34,6 +48,10 @@ import cv2
 import numpy as np
 
 import threading
+
+# Shared framing components, factored out of the Podcast rebuild. Cut
+# detection, "commit to one subject", and hold-then-move all apply here too.
+from video.framing import HoldMove, is_cut, small_gray, stable_target
 
 _model = None  # loaded once per process; YOLO init is expensive
 # The single YOLO instance is shared across parallel render threads, and
@@ -168,7 +186,6 @@ def compute_tracking(
 
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_step = max(1, round(video_fps / sample_fps))
-    dt = frame_step / video_fps
     model = _get_model(model_name)
 
     tracks: dict[int, _Track] = {}
@@ -176,23 +193,53 @@ def compute_tracking(
     challenger_id: int | None = None
     challenger_since = 0.0
 
+    # dead_zone becomes the distance the subject may drift before the camera
+    # bothers to move; settling well inside it is what makes a move look
+    # finished rather than endlessly corrected.
+    pan = HoldMove(
+        move_trigger=max(dead_zone, 0.05),
+        settle=dead_zone * 0.4,
+        smoothing=smoothing,
+        max_pan_speed=max_pan_speed,
+    )
     path: list[tuple[float, float]] = []
     smoothed_x: float | None = None
+    prev_small = None            # previous frame's thumbnail, for cut detection
+    last_sample_t = 0.0          # real time of the last processed sample
     n_samples = 0
     wide_boxes: list[tuple[float, float, float, float]] = []  # subject bbox when a
     #                                             9:16 crop can't hold it (normalized)
     frame_idx = 0
 
     while True:
-        ok = cap.grab()
+        ok, frame = cap.read()
         if not ok:
             break
-        if frame_idx % frame_step != 0:
+
+        # ---- camera cuts, checked on EVERY frame -------------------------
+        # Most stream footage is one continuous camera and never trips this,
+        # in which case nothing below changes. Edited sources (YouTube talking
+        # heads, highlight reels, anything assembled from segments) do cut,
+        # and panning across a cut is always wrong. Checking only on the
+        # sample grid would pin a cut to the nearest sample and leave the new
+        # scene wearing the old shot's framing for a frame or two.
+        cur_small = small_gray(frame)
+        at_cut = is_cut(prev_small, cur_small)
+        prev_small = cur_small
+        if at_cut:
+            # Per-subject state belongs to the shot that just ended. Mouth
+            # motion especially: across a cut every mouth region changes at
+            # once, so the talking detector would score everyone a speaker.
+            for tr in tracks.values():
+                tr.prev_mouth = None
+                tr.speak = 0.0
+            challenger_id = None
+
+        # Detection runs on the sample grid, plus on any cut frame, so a new
+        # shot is framed from its first frame rather than a sample later.
+        if frame_idx % frame_step != 0 and not at_cut:
             frame_idx += 1
             continue
-        ok, frame = cap.retrieve()
-        if not ok:
-            break
 
         t = frame_idx / video_fps
         h, w = frame.shape[:2]
@@ -276,7 +323,10 @@ def compute_tracking(
                 challenger_id = None
 
             crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
-            raw_x = _target_x(tracks, visible, active_id, crop_frac)
+            raw_x = _target_x(
+                tracks, visible, active_id, crop_frac,
+                someone_talking=max_speak >= 0.004,
+            )
 
             # ---- when is a plain 9:16 crop NOT enough? -------------------
             # A single upright person is ALWAYS fine as a normal crop — we just
@@ -332,31 +382,51 @@ def compute_tracking(
                         max(b[3] for b in subjects) / h,
                     ))
 
-            # ---- smoothing chain: dead-zone -> EMA -> pan-speed clamp ----
-            if smoothed_x is None:
-                smoothed_x = raw_x
-            elif abs(raw_x - smoothed_x) > dead_zone:
-                step = smoothing * (raw_x - smoothed_x)
-                max_step = max_pan_speed * dt
-                smoothed_x += float(np.clip(step, -max_step, max_step))
+            # ---- hold still, or move deliberately ------------------------
+            # Previously this corrected toward the target on every sample, so
+            # the crop spent its life making small adjustments it immediately
+            # part-undid — an oscillation inside a narrow band that reads as
+            # drift. HoldMove keeps the frame parked until the subject has
+            # genuinely moved, then makes one purposeful move and settles.
+            if at_cut:
+                # Freeze the outgoing framing on the last frame of the old
+                # shot, then jump. Easing across a cut is never right.
+                if pan.x is not None and frame_idx > 0:
+                    path.append(((frame_idx - 1) / video_fps, float(pan.x)))
+                smoothed_x = pan.snap(raw_x)
+            else:
+                # Containment is a TRIGGER, not a position override. If the
+                # head is nearing the edge of the window, stop holding and
+                # move to re-center it. (Overriding the position after the
+                # fact instead meant the clamp and the controller fought each
+                # other every sample — the clamp nudged the crop back to the
+                # boundary, the controller tried to hold, and the crop
+                # chattered. Moving to the centered target resolves it once.)
+                if pan.x is not None and _head_escaping(
+                    tracks, active_id, pan.x, crop_frac, w
+                ):
+                    pan.moving = True
+                smoothed_x = pan.update(raw_x, max(t - last_sample_t, 1e-6))
+            last_sample_t = t
 
-            # ---- head-containment clamp ----------------------------------
-            # Guarantee the active subject's head stays inside the crop window
-            # even when it moves faster than the pan clamp — prevents the
-            # side-of-face cut-off. Overrides smoothing only when necessary.
+            # ---- last-resort containment ---------------------------------
+            # The trigger above normally re-centers the subject long before
+            # this matters. This only catches the case where they outran the
+            # pan-speed clamp, and guarantees the face is never cut off.
             if active_id in tracks and (
                 tracks[active_id].head_rate > 0.3 or tracks[active_id].face_rate > 0.45
             ):
                 atr = tracks[active_id]
-                x1, _, x2, _ = atr.box[:4]
-                off = atr.head_offset if atr.head_rate > 0.3 else atr.face_offset
-                face_cx = (x1 + x2) / 2 / w + off
-                half = min(atr.face_w / 2 + 0.02, crop_frac / 2)  # keep face + margin in window
-                lo, hi = face_cx - half, face_cx + half
-                if lo < smoothed_x - crop_frac / 2:
-                    smoothed_x = lo + crop_frac / 2
-                elif hi > smoothed_x + crop_frac / 2:
-                    smoothed_x = hi - crop_frac / 2
+                face_cx = _head_cx(atr, w)
+                tol = _contain_tolerance(atr, crop_frac)
+                if face_cx < smoothed_x - tol:
+                    smoothed_x = face_cx + tol
+                elif face_cx > smoothed_x + tol:
+                    smoothed_x = face_cx - tol
+                # The clamp is the real output, so the controller has to adopt
+                # it — otherwise it keeps holding against a position the crop
+                # no longer has and the next move starts from a stale place.
+                pan.x = float(smoothed_x)
 
             path.append((t, float(smoothed_x)))
 
@@ -498,19 +568,82 @@ def _iou(a, b) -> float:
 # ---- framing decisions --------------------------------------------------------
 
 
-def _target_x(tracks: dict, visible: list[int], active_id: int, crop_frac: float) -> float:
-    """Center on the active subject — or on the midpoint when exactly two
-    persistent subjects fit inside the crop window together."""
-    strong = [
-        tid for tid in visible
-        if tracks[tid].n_seen >= 8
-        and tracks[tid].dominance > 0.2 * max(tracks[active_id].dominance, 1e-9)
-    ]
-    if len(strong) == 2:
-        xa, xb = tracks[strong[0]].centers[-1], tracks[strong[1]].centers[-1]
-        if abs(xa - xb) < crop_frac * 0.7:  # both fit in the 9:16 window
-            return (xa + xb) / 2
-    return tracks[active_id].centers[-1]
+def _contain_half(atr: "_Track", crop_frac: float) -> float:
+    """Half-width of the head region the crop tries to keep inside the window.
+
+    Capped well inside the crop's own half-width. In close-ups the head is
+    nearly as wide as the 9:16 window, and demanding the WHOLE head box stay
+    inside then collapses into "center exactly on the head, every sample":
+    the containment rule alone decides the framing, pinning the crop to the
+    raw per-sample head position and cancelling every bit of smoothing above
+    it. That is what made the camera micro-correct constantly instead of
+    holding. Keeping the head CENTER comfortably inside is the real goal.
+    """
+    return min(atr.face_w / 2 + 0.02, crop_frac * 0.35)
+
+
+def _contain_tolerance(atr: "_Track", crop_frac: float) -> float:
+    """How far the head center may sit from the crop center before we move."""
+    return max(0.03, crop_frac / 2 - _contain_half(atr, crop_frac))
+
+
+def _head_cx(atr: "_Track", w: int) -> float:
+    """Best estimate of the head center, normalized."""
+    x1, _, x2, _ = atr.box[:4]
+    off = atr.head_offset if atr.head_rate > 0.3 else atr.face_offset
+    return (x1 + x2) / 2 / w + off
+
+
+def _head_escaping(
+    tracks: dict,
+    active_id: int | None,
+    center_x: float,
+    crop_frac: float,
+    w: int,
+) -> bool:
+    """Has the active subject's head drifted far enough to be worth a move?
+
+    Judged on the head CENTER against a tolerance, so the camera starts
+    moving before the face is anywhere near clipped — the move reads as
+    anticipatory rather than as a save.
+    """
+    if active_id is None or active_id not in tracks:
+        return False
+    atr = tracks[active_id]
+    if not (atr.head_rate > 0.3 or atr.face_rate > 0.45):
+        return False
+    return abs(_head_cx(atr, w) - center_x) > _contain_tolerance(atr, crop_frac)
+
+
+def _target_x(
+    tracks: dict,
+    visible: list[int],
+    active_id: int,
+    crop_frac: float,
+    someone_talking: bool = False,
+) -> float:
+    """Where the crop wants to be centered.
+
+    Normally the active subject. Two persistent subjects that fit the window
+    together may share the frame on their midpoint — but ONLY while nobody is
+    talking: once someone speaks, sitting on the midpoint frames neither face,
+    so the crop commits to the speaker instead.
+
+    The center is a short trailing median rather than the newest sample, so a
+    single bad detection box cannot yank the framing.
+    """
+    if not someone_talking:
+        strong = [
+            tid for tid in visible
+            if tracks[tid].n_seen >= 8
+            and tracks[tid].dominance > 0.2 * max(tracks[active_id].dominance, 1e-9)
+        ]
+        if len(strong) == 2:
+            xa = stable_target(tracks[strong[0]].centers)
+            xb = stable_target(tracks[strong[1]].centers)
+            if abs(xa - xb) < crop_frac * 0.7:  # both fit in the 9:16 window
+                return (xa + xb) / 2
+    return stable_target(tracks[active_id].centers)
 
 
 def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) -> dict | None:

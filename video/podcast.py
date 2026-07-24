@@ -42,11 +42,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# Shared framing components — cut detection and "commit to one subject" live
+# in video/framing.py now, because the stream tracker needs them too.
+from video.framing import is_cut, pick_focus, small_gray
+
 # Read-only reuse of the tracker's detection machinery. Importing these
 # changes nothing about how the stream path behaves.
 from video.tracker import _assign, _detect, _face_box, _get_model, _update_speaking
 
-_CUT_DIFF = 25.0      # mean abs gray diff (0..255) between samples = a camera cut
 _MIN_SHOT = 0.5       # ignore "shots" shorter than this (flash/transition frames)
 _MIN_AREA = 0.03      # a subject must be at least this fraction of the frame
 _TALK_FLOOR = 0.004   # mouth-motion below this means nobody is visibly talking
@@ -92,20 +95,16 @@ def analyze(
         if not cands:
             shots.append({"t0": shot_t0, "t1": t_end, "x": None, "cy": None})
             return
-        # Talk rate = mouth motion per face sighting. Pick the talker when one
-        # clearly leads; otherwise the most prominent (largest) face. Always
-        # exactly ONE subject — no averaging two people into a wide crop.
-        def talk_rate(s: dict) -> float:
-            return s["speak"] / max(len(s["face_xs"]), 1)
-
-        by_talk = sorted(cands, key=lambda kv: -talk_rate(kv[1]))
-        if talk_rate(by_talk[0][1]) > _TALK_FLOOR and (
-            len(by_talk) == 1 or talk_rate(by_talk[0][1]) > _TALK_MARGIN * talk_rate(by_talk[1][1])
-        ):
-            pick = by_talk[0]
-        else:
-            pick = max(cands, key=lambda kv: float(np.median(kv[1]["areas"])))
-        s = pick[1]
+        # Talk rate = mouth motion per face sighting. The shared chooser picks
+        # the clear talker, else the most prominent face — always exactly ONE
+        # subject, never an average of two.
+        s = pick_focus(
+            cands,
+            talk_rate=lambda kv: kv[1]["speak"] / max(len(kv[1]["face_xs"]), 1),
+            prominence=lambda kv: float(np.median(kv[1]["areas"])),
+            talk_floor=_TALK_FLOOR,
+            talk_margin=_TALK_MARGIN,
+        )[1]
         # Center on the FACE positions only — a robust median, so a stray
         # body-center sample or a moment of mis-detection can't drag the crop.
         shots.append({
@@ -127,8 +126,8 @@ def analyze(
         # new scene showed the old crop for a frame and then corrected — the
         # "cut, then a flicker to fix it" the eye catches. Differencing every
         # frame is cheap (a 48x27 gray) and pins the cut to its exact frame.
-        small = cv2.cvtColor(cv2.resize(frame, (48, 27)), cv2.COLOR_BGR2GRAY).astype(np.float32)
-        if prev_small is not None and float(np.abs(small - prev_small).mean()) > _CUT_DIFF:
+        small = small_gray(frame)
+        if is_cut(prev_small, small):
             # This frame is the first of the NEW shot; the old shot ends on the
             # frame before it. Ending the old shot one frame early puts the
             # snap in the gap between the two frames, so the very first frame
