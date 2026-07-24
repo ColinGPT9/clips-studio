@@ -39,6 +39,13 @@ def progress_opts(video_id: str | None) -> dict:
         "retries": 10,
         "fragment_retries": 10,
         "socket_timeout": 30,
+        # Pull large (non-fragmented) streams in 10 MB HTTP range chunks. A
+        # 900 MB YouTube DASH stream is otherwise one long GET, and a single
+        # stall late in it ("Read timed out" against googlevideo) throws away
+        # the whole transfer. Chunked, a timeout loses only the current 10 MB
+        # and retries just that — which is what makes the retries above
+        # actually recover a big download instead of restarting it.
+        "http_chunk_size": 10 * 1024 * 1024,
         # A retry immediately after a 403/timeout usually hits the same wall;
         # a short backoff lets throttling clear. Capped so we don't stall.
         "retry_sleep_functions": {
