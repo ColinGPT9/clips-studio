@@ -31,4 +31,18 @@ def progress_opts(video_id: str | None) -> dict:
         # time leaves most of the connection idle — parallel fragments cut
         # download time by 2-4x on long streams.
         "concurrent_fragment_downloads": 6,
+        # Long downloads WILL hit a slow or dropped fragment. Without retries a
+        # single "Read timed out" or transient 403 kills the whole job after
+        # minutes of progress. Retry the fragment instead, and cap how long we
+        # wait on a stalled socket so a dead connection fails fast enough to
+        # retry rather than hanging.
+        "retries": 10,
+        "fragment_retries": 10,
+        "socket_timeout": 30,
+        # A retry immediately after a 403/timeout usually hits the same wall;
+        # a short backoff lets throttling clear. Capped so we don't stall.
+        "retry_sleep_functions": {
+            "http": lambda n: min(5, 2 ** n),
+            "fragment": lambda n: min(5, 2 ** n),
+        },
     }

@@ -25,13 +25,37 @@ def identify(url: str) -> tuple[str, str | None]:
     return "youtube", youtube.extract_video_id(url)
 
 
+def _clear_stale_partials(output_dir: Path, video_id: str | None) -> None:
+    """Remove leftover .part fragments from an earlier failed download of this
+    video before starting a new one.
+
+    A download that dies partway (a 403, a dropped connection) leaves yt-dlp
+    .part / .part-Frag files — the 900 MB video stream can be most of the way
+    done. yt-dlp cannot resume them: the platform's fragment URLs expire in
+    hours, so the next attempt restarts from zero regardless and just orphans
+    the old partial, which then sits on disk until a manual cleanup. Clearing
+    them here means a re-download reclaims that space instead of doubling it.
+    """
+    if not video_id or not output_dir.is_dir():
+        return
+    for f in output_dir.iterdir():
+        if not f.is_file() or not f.name.startswith(video_id):
+            continue
+        if f.suffix in (".part", ".ytdl") or ".part-Frag" in f.name:
+            try:
+                f.unlink()
+            except OSError:
+                pass  # locked or already gone — never block the download
+
+
 def download(url: str, output_dir: Path) -> DownloadedVideo:
-    source, _ = identify(url)
+    source, video_id = identify(url)
     if source == "local":
         # Only reachable if the imported copy in downloads/ was deleted.
         raise ValueError(
             "The uploaded video's imported copy is gone — upload the file again."
         )
+    _clear_stale_partials(output_dir, video_id)
     if source == "twitch":
         return twitch.download(url, output_dir)
     if source == "kick":
