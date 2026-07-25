@@ -1,371 +1,605 @@
-# Architecture — Clips Studio engine
+# Architecture — Clips Studio
 
-Fully local, open-source clipping engine: finds the best moments with a local LLM +
-multimodal signal analysis, renders speaker-tracked captioned vertical clips, and
-serves the Clips Studio desktop app through a local API. No paid inference.
+Clips Studio is a local-first AI clipping engine with a desktop front end. It ingests a
+long video, finds the moments worth posting using a local LLM plus multimodal signal
+analysis, renders speaker-tracked captioned vertical clips, and hands them to a review
+and editing studio. Nothing is sent to a cloud AI service, and there is no paid
+inference anywhere in the pipeline.
 
-> **Status (2026-07-02):** the engine below is built and working — multimodal
-> scoring, speaker-aware tracking, editable captions, AI edit chat — and the
-> Electron desktop app (`ui/`) is the primary interface, talking to the FastAPI
-> service (`server/`). Next up: the Windows installer, then Twitch/Kick sources.
-> The automation layer (RSS monitoring, scheduling, auto-upload) is built and
-> tested but **deliberately dormant — a future plan**, returning to the roadmap
-> after multi-platform support lands (see §7).
+This document describes the system as it is built today. It is the only architecture
+document — design notes that used to live separately have been folded in here.
 
----
+**Contents**
 
-## 1. System Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          ORCHESTRATOR (daemon)                      │
-│   schedule loop · per-video job state machine · retry · logging     │
-└───────┬─────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌──────────────────┐     RSS feed poll (free, no quota)
-│  SOURCE LAYER    │◄──── https://youtube.com/feeds/videos.xml?channel_id=...
-│  sources/youtube │
-└───────┬──────────┘
-        │ new video ID not in state DB
-        ▼
-┌──────────────────┐
-│   DOWNLOADER     │  yt-dlp → data/downloads/{video_id}.mp4
-└───────┬──────────┘
-        ▼
-┌──────────────────┐
-│  TRANSCRIBER     │  faster-whisper (local, GPU/CPU)
-│                  │  → word + segment timestamps (JSON)
-└───────┬──────────┘
-        ▼
-┌──────────────────────────────────────────────┐
-│  HIGHLIGHT ANALYZER                          │
-│  chunk transcript → LLM scores candidates    │
-│  (0–100 virality) → dedup → top-N clips      │
-└───────┬──────────────────────────────────────┘
-        │ uses                                 ┌─────────────────────┐
-        ├──────────────────────────────────────┤  LLM ABSTRACTION    │
-        │                                      │  llm/base.py        │
-        ▼                                      │  ├ OllamaBackend    │
-┌──────────────────────────────────────────────┐  (Gemma 7B default)│
-│  CLIP RENDERER (per clip)                    │  ├ (LlamaBackend =  │
-│  1. tracker.py  YOLOv8+OpenCV → crop path    │  │  Ollama w/ other │
-│  2. cropper.py  FFmpeg 9:16 render           │  │  model tag)      │
-│  3. captions.py burn-in word-level captions  │  └ future: cloud    │
-└───────┬──────────────────────────────────────┘─────────────────────┘
-        ▼
-┌──────────────────┐
-│  METADATA GEN    │  LLM → title, description, hashtags (JSON)
-└───────┬──────────┘
-        ▼
-┌──────────────────┐
-│  PUBLISHER       │  YouTube Data API v3 (OAuth2, resumable upload)
-│ publish/youtube  │  → logs upload ID
-└───────┬──────────┘
-        ▼
-┌──────────────────┐
-│   STATE DB       │  SQLite: videos seen, clips made, uploads, errors
-└──────────────────┘  → prevents duplicates / enables resume
-```
-
-External dependencies at runtime today: **yt-dlp** (download) only. Everything else —
-Whisper, Gemma, YOLOv8, FFmpeg — runs on the local machine. (The RSS watcher and
-YouTube Data API uploader shown above are built but dormant — future plan, see §7.)
+1. [System overview](#1-system-overview)
+2. [Repository structure](#2-repository-structure)
+3. [The processing pipeline](#3-the-processing-pipeline)
+4. [Clip scoring](#4-clip-scoring)
+5. [Face tracking and framing](#5-face-tracking-and-framing)
+6. [Creator intelligence](#6-creator-intelligence)
+7. [Multilingual publishing](#7-multilingual-publishing)
+8. [Long-form output](#8-long-form-output)
+9. [The video editor](#9-the-video-editor)
+10. [Local API service](#10-local-api-service)
+11. [Desktop application](#11-desktop-application)
+12. [State and storage](#12-state-and-storage)
+13. [Configuration surface](#13-configuration-surface)
+14. [Design rules](#14-design-rules)
 
 ---
 
-## 2. Repository / Module Structure
+## 1. System overview
 
 ```
-youtube-clips-automation/
-├── main.py                     # CLI: `process <url>`, `serve` (API), `models`, `status`,
-│                               #   plus dormant automation: `run`, `auth`, `upload`
+                        ┌───────────────────────────────┐
+                        │   Clips Studio desktop app    │
+                        │   Electron + React + Vite     │
+                        └───────────────┬───────────────┘
+                                        │  HTTP + WebSocket (127.0.0.1:8765)
+                        ┌───────────────▼───────────────┐
+                        │   FastAPI service (server/)   │
+                        │   job queue · progress events │
+                        └───────────────┬───────────────┘
+                                        │
+┌───────────────────────────────────────▼────────────────────────────────────┐
+│                          PIPELINE (core/pipeline.py)                       │
+│                                                                            │
+│  SOURCE ──► DOWNLOAD ──► TRANSCRIBE ──► ANALYZE ──► RENDER ──► METADATA    │
+│  youtube      yt-dlp     faster-      multimodal   track +      local LLM  │
+│  twitch                  whisper      fusion +     crop +                  │
+│  kick                                 local LLM    captions                │
+│  local file                                                                │
+│                                                                            │
+│         signals: audio · visual · reaction · text · engagement             │
+│         side channels: creator knowledge · chat replay · heatmaps          │
+└───────────────────────────────────────┬────────────────────────────────────┘
+                                        │
+              ┌─────────────────────────┼─────────────────────────┐
+              ▼                         ▼                         ▼
+      ┌───────────────┐        ┌────────────────┐        ┌────────────────┐
+      │  SQLite state │        │  Rendered mp4  │        │  Creator KB    │
+      │  core/state   │        │  data/clips/   │        │  knowledge +   │
+      │               │        │                │        │  events        │
+      └───────────────┘        └────────────────┘        └────────────────┘
+```
+
+Everything in that diagram runs on the local machine. The only network calls a normal
+run makes are **yt-dlp fetching the source video** and, for Twitch VODs, an optional
+chat-replay request. Whisper, the LLM, YOLOv8, and FFmpeg are all local.
+
+### The AI stack
+
+| Job | Tool | Where it runs |
+|---|---|---|
+| Download | yt-dlp | local |
+| Transcription | faster-whisper, word-level timestamps | local, CUDA or CPU |
+| Clip scoring, titles, translation, edit chat | any Ollama model (Gemma by default) | local, GPU via Ollama |
+| Person/pose detection | YOLOv8 (`yolov8n-pose.pt`) + OpenCV | local, CUDA or CPU |
+| Rendering | FFmpeg with hardware encoding (NVENC / AMF / QSV) | local |
+| Dubbing voices | local TTS | local |
+
+---
+
+## 2. Repository structure
+
+```
+clips-studio/
+├── main.py                     # CLI entry: process, serve, models, status, channels
 ├── config/
-│   ├── settings.yaml           # quick setup at the top; advanced below
-│   └── prompts/                # LLM prompt templates as plain text files
-│       ├── score_clips.txt     #   virality scoring (the rating system)
-│       ├── score_windows.txt   #   scoring for signal-peak candidates
-│       ├── rerank.txt          #   head-to-head finalist ranking
-│       ├── metadata.txt        #   title/description/hashtags
-│       └── edit_clip.txt       #   AI edit chat interpreter
+│   ├── settings.yaml           # quick setup at the top, advanced below
+│   └── prompts/                # every LLM prompt as an editable text file
 ├── core/
 │   ├── pipeline.py             # stage orchestration for one video
-│   ├── progress.py             # stage events → UI via WebSocket
-│   ├── scheduler.py            # (dormant) poll loop, daily schedule, uploads
-│   ├── state.py                # SQLite: videos, clips, jobs, channels, uploads
-│   └── models.py               # dataclasses shared between stages
-├── sources/
-│   └── youtube.py              # yt-dlp download + RSS polling + channel resolve
+│   ├── state.py                # SQLite schema + all queries
+│   ├── models.py               # dataclasses shared between stages
+│   ├── progress.py             # stage events → WebSocket
+│   ├── cancel.py               # cooperative cancellation flags
+│   ├── prefetch.py             # download-ahead for queued jobs
+│   ├── housekeeping.py         # disk reclamation
+│   └── scheduler.py            # (dormant) poll loop and upload scheduling
+├── sources/                    # ── one file per platform ──
+│   ├── dispatch.py             # URL → the right source module
+│   ├── youtube.py              # yt-dlp download, H.264 selection, heatmap
+│   ├── twitch.py               # VOD download + chat replay
+│   ├── kick.py                 # VOD download
+│   └── ytdlp_common.py         # chunked, resumable download shared by all
 ├── transcription/
-│   └── transcriber.py          # faster-whisper (GPU w/ CPU fallback), word timestamps
+│   └── transcriber.py          # faster-whisper, word timestamps, GPU/CPU fallback
 ├── llm/                        # ── swappable model layer ──
 │   ├── base.py                 # LLMBackend interface
-│   ├── ollama_backend.py       # Gemma/Llama/anything Ollama serves
+│   ├── ollama_backend.py       # anything Ollama serves
 │   ├── registry.py             # config string → backend instance
-│   └── manager.py              # installed models, switching, recommendations
-├── analysis/                   # ── the multimodal clip engine (DESIGN-V2.md) ──
-│   ├── audio_features.py       # loudness spikes, laughter/cheer proxies
-│   ├── visual_features.py      # scene cuts, motion, per-window reaction
-│   ├── fusion.py               # signal fusion, candidates, weighted scoring, rerank
-│   ├── highlights.py           # LLM transcript scoring + dedup
-│   ├── metadata.py             # titles/descriptions/hashtags
-│   └── clip_edit.py            # AI edit chat → validated edit controls
-├── video/                      # ── rendering, independent of analysis ──
-│   ├── tracker.py              # YOLOv8 + speaker-aware subject tracking
-│   ├── cropper.py              # 9:16 render: tracked crop or facecam split
-│   ├── captions.py             # styled, editable ASS captions + burn-in
+│   └── manager.py              # install/switch/recommend models
+├── analysis/                   # ── the clip engine ──
+│   ├── audio_features.py       # loudness, spikes, burst density, laughter proxy
+│   ├── visual_features.py      # scene cuts, motion, flashes, face metrics
+│   ├── hype.py                 # Twitch chat replay + YouTube most-replayed
+│   ├── fusion.py               # candidate generation, weighted scoring, rerank
+│   ├── highlights.py           # LLM transcript scoring + duplicate prevention
+│   ├── metadata.py             # titles, descriptions, hashtags
+│   ├── clip_edit.py            # AI edit chat → validated edit operations
+│   └── tighten.py              # silence and filler-word removal
+├── creator/                    # ── creator intelligence ──
+│   ├── identity.py             # channel → creator profile resolution, merging
+│   ├── extractor.py            # transcript → structured facts and events
+│   ├── retrieval.py            # stored knowledge → scoring context
+│   ├── learning.py             # preference learning from user actions
+│   └── models.py               # knowledge types, thresholds
+├── video/                      # ── rendering ──
+│   ├── tracker.py              # YOLOv8 pose tracking, speaker-aware
+│   ├── framing.py              # crop-path smoothing and shot logic
+│   ├── podcast.py              # multi-cam shot detection, per-shot framing
+│   ├── cropper.py              # 9:16 render
+│   ├── captions.py             # word-synced ASS captions
 │   ├── cutter.py               # accurate clip extraction
-│   └── encoding.py             # NVENC detection / encoder selection
-├── server/                     # ── local API for the desktop app ──
-│   ├── api.py                  # FastAPI: jobs, clips, captions, ai-edit, models
-│   ├── jobs.py                 # SQLite-backed worker (process/render jobs)
-│   └── events.py               # WebSocket progress broadcasting
-├── ui/                         # ── Clips Studio desktop app ──
-│   └── src/                    # Electron + React + TypeScript (navy/sky theme)
-├── publish/                    # (dormant — future plan)
-│   └── youtube_shorts.py       # Data API v3 OAuth + resumable upload
-├── data/                       # runtime artifacts — gitignored
-└── ARCHITECTURE.md             # this file
+│   ├── filters.py              # colour presets and adjustments
+│   └── encoding.py             # encoder detection and selection
+├── video_editor/               # ── manual editing applied to a clip ──
+│   ├── timeline.py             # non-destructive edit model
+│   ├── cuts.py                 # trims and internal cuts
+│   ├── audio.py                # volume, fades, mutes, music bed
+│   ├── captions.py             # caption edits
+│   ├── overlay.py              # hook text
+│   ├── watermark.py            # branding profiles
+│   └── export.py               # final render
+├── longform/                   # ── 16:9 outputs ──
+│   ├── profiles.py             # short_clips / clips_140 / highlights / edited_stream
+│   ├── highlight_select.py     # best-of selection across a whole video
+│   ├── downtime.py             # dead-air detection
+│   ├── assemble.py             # multi-segment assembly
+│   └── process.py              # orchestration
+├── multilingual/               # ── translated publishing ──
+│   ├── languages.py            # supported languages and voices
+│   ├── translate.py            # LLM translation with glossary protection
+│   ├── glossary.py             # protected terms per creator
+│   ├── subtitles.py            # .srt writing
+│   ├── burn.py                 # burned translated captions
+│   ├── dub.py                  # TTS dubbing
+│   ├── voices.py               # voice catalogue and auditioning
+│   ├── metadata.py             # translated titles/descriptions
+│   └── publish.py              # export bundles
+├── server/                     # ── local API ──
+│   ├── api.py                  # FastAPI routes
+│   ├── jobs.py                 # SQLite-backed worker
+│   ├── events.py               # WebSocket broadcasting
+│   └── feedback.py             # in-app bug reports + diagnostics
+├── publish/                    # (dormant) YouTube Data API upload
+├── ui/                         # ── desktop app ──
+│   ├── src/main/               # Electron main process
+│   └── src/renderer/           # React + TypeScript + Tailwind
+├── feedback-relay/             # Cloudflare Worker → GitHub Issues
+└── data/                       # runtime artifacts, gitignored
 ```
-
-Design rules that keep it modular:
-
-- **Stages communicate only through the dataclasses in `core/models.py`** (and files on
-  disk). The analyzer never touches video; the tracker never reads transcripts.
-- **`analysis/` depends on `llm/base.py` only** — never on a concrete backend.
-- **`sources/` and `publish/` are plugin folders.** Adding Twitch means adding one file
-  that implements `VideoSource`; nothing downstream changes.
-- **Prompts are data, not code.** Stored as text files so users can tune the rating
-  system without touching Python, and so a model swap can ship its own prompt variants.
 
 ---
 
-## 3. Data Flow Between Components
+## 3. The processing pipeline
 
-| Step | Producer → Consumer | Artifact |
-|------|--------------------|----------|
-| 1 | RSS poller → state DB | new `video_id` (status: `queued`) |
-| 2 | yt-dlp → disk | `downloads/{id}.mp4` (status: `downloaded`) |
-| 3 | faster-whisper → disk | `transcripts/{id}.json` — segments with `start`, `end`, `text`, word timestamps |
-| 4 | highlights.py ↔ LLM | `ClipCandidate[]`: `{start, end, score, hook, reason}` (status: `analyzed`) |
-| 5 | tracker.py → cropper.py | crop path: `[(t, center_x), ...]` per clip |
-| 6 | cropper.py + captions.py → disk | `clips/{id}/clip_{n}.mp4`, 1080×1920 ≤ 60 s (status: `rendered`) |
-| 7 | metadata.py ↔ LLM | `ClipMetadata`: `{title, description, hashtags}` |
-| 8 | youtube_shorts.py → YouTube | upload ID logged to state DB (status: `uploaded`) |
+One video moves through `core/pipeline.py` as a state machine. Every transition is
+committed to SQLite **before** the next stage begins, so a crash resumes at the failed
+stage instead of redoing — or re-uploading — completed work.
 
-Every status transition is written to SQLite **before** the next stage starts, so a crash
-mid-pipeline resumes at the failed stage instead of redoing (or worse, re-uploading) work.
+| Stage | Producer → consumer | Artifact | Status |
+|---|---|---|---|
+| 1 | `sources/*` → disk | `data/downloads/{id}.mp4` | `downloaded` |
+| 2 | `transcription/` → disk | segments + word timestamps | `transcribed` |
+| 3 | `analysis/` ↔ LLM | `ClipCandidate[]` with subscores | `analyzed` |
+| 4 | `video/tracker` → `video/cropper` | crop path per clip | — |
+| 5 | render + captions → disk | `data/clips/{id}/clip_{n}.mp4` | `rendered` |
+| 6 | `analysis/metadata` ↔ LLM | title, description, hashtags | `done` |
+
+Two stages deliberately run **concurrently** with others to keep the GPU busy:
+
+- **Signal extraction** (audio + visual features) needs no transcript, so it runs in a
+  background thread *during* transcription — FFmpeg and numpy work while Whisper holds
+  the GPU. If it fails, analysis recomputes it and reports the error properly.
+- **Creator knowledge extraction** runs during the render stage, when Ollama is
+  otherwise idle. It never affects the current video's clips; it only informs future
+  ones.
+
+Cancellation is cooperative: `core/cancel.py` sets a flag that every long stage checks
+at safe points, so a cancelled job stops promptly without corrupting state.
 
 ---
 
-## 4. Clip Scoring Design (adapted from SamurAIGPT/AI-Youtube-Shorts-Generator)
+## 4. Clip scoring
 
-The reference repo's rating system, kept intact, with adaptations for local models and
-unattended operation.
+The scoring engine treats the transcript as **one signal among several**. A moment that
+reads flat in text but where the room explodes is exactly the moment a transcript-only
+scorer misses.
 
-### 4.1 Two-pass LLM analysis
+### 4.1 Signals
 
-**Pass 1 — classify.** One short LLM call labels the video (podcast / commentary /
-gameplay / tutorial / vlog) and its content density. The label selects scoring-prompt
-emphasis (e.g., gameplay weights reaction peaks; podcasts weight opinion bombs).
+Every signal is computed over the whole video in one-second bins, then normalized to
+0–1 **by percentile rank within that video** — "how unusual is this second *for this
+video*", so a quiet podcast and a screaming stream both produce meaningful peaks.
 
-**Pass 2 — score.** The transcript is sent chunk-by-chunk with the virality framework.
-The model returns strict JSON, one entry per candidate:
+**Audio** (`analysis/audio_features.py`, FFmpeg → numpy):
+- RMS loudness envelope and spike score against a rolling median (shouts, cheers, hype)
+- Burst density — rapid onset clusters, which is what laughter and applause look like
+- High-band energy ratio and zero-crossing rate as a laughter/cheering proxy
+- Silence→explosion transitions, the classic payoff shape
 
-```json
-{
-  "clips": [
-    {
-      "start": 124.5,
-      "end": 162.0,
-      "score": 87,
-      "hook": "He just admitted the entire run was luck",
-      "reason": "Unexpected confession creates a curiosity gap"
-    }
-  ]
-}
+**Visual** (`analysis/visual_features.py`, OpenCV at low sample rates):
+- Scene cuts via HSV histogram distance
+- Motion intensity via mean absolute frame difference
+- Brightness and flash events
+- Face metrics from YOLOv8: count, max area, and area delta (a sudden lean-in or
+  zoom is an editor or streamer emphasizing something)
+
+**Reaction** — a fusion of face presence, face-area delta, motion near the face, and
+audio excitement at the same instant. This is an honest proxy, not true facial
+expression recognition; the extractor interface is built so an open-weights expression
+or laughter classifier can drop in later without touching fusion.
+
+**Text and engagement** come from the LLM: what is said, and its judgment of hook
+strength, payoff, and quotability.
+
+**Audience data** (`analysis/hype.py`) — where it exists. Twitch chat replay is
+measured by *unique chatters per window*, so gifted-sub spam and copypasta don't
+inflate a moment. YouTube's most-replayed heatmap is read when available. Kick keeps no
+chat after a stream ends, so Kick has no chat signal. This contributes a small capped
+bonus (`scoring.audience_bonus`), kept below the content signals on purpose.
+
+### 4.2 Candidate generation
+
+Two independent pools feed the same scorer:
+
+1. **Transcript candidates** — the LLM's picks from chunked transcript analysis.
+2. **Signal-peak candidates** — windows where the combined non-text signal exceeds
+   `scoring.signal_peak_percentile`, snapped to sentence boundaries and duration
+   enforced. This is what catches the laugh or the clutch moment that the transcript
+   describes blandly or not at all.
+
+### 4.3 Fusion
+
+```
+final = 0.30·text + 0.20·visual + 0.20·reaction + 0.20·audio + 0.10·engagement
 ```
 
-**Virality framework (same criteria as the reference repo):** hook moments and strong
-opening lines · emotional peaks · opinion-driven statements ("opinion bombs") ·
-revelations/disclosures · conflict or tension · quotable lines · story-structure peaks ·
-practical/actionable value. Score is **0–100 predicted viral potential**.
+Weights live in `settings.yaml` under `scoring.weights` and are tunable per content
+type. On top of the weighted score sit three **additive, capped, deterministic**
+bonuses — each can only raise a score, never lower one, so no amount of accumulated
+data can degrade clip quality:
 
-### 4.2 Chunking (same constants as the reference repo)
+| Bonus | Cap | What earns it |
+|---|---|---|
+| `action_bonus` | 10 | A person on screen and moving — workouts, sports, dance. Content that performs socially but that a text-first scorer under-credits. |
+| `audience_bonus` | 8 | Real audience reaction at that timestamp (chat speed, heatmap). |
+| `creator_context_max` | 6 | Verifiable callbacks to what the app knows about this creator (§6). |
 
-- Videos longer than **1800 s** are split into **1200 s** chunks with **60 s overlap**,
-  scored independently, results merged.
-- Overlap means boundary moments are never lost between chunks.
+Each is individually disableable by setting it to `0`.
 
-### 4.3 Post-processing (deterministic Python, not LLM)
+### 4.4 The LLM's role, and working around small models
 
-1. **Validate** timestamps against the transcript range; drop hallucinated ranges.
-2. **Snap** start/end to the nearest segment boundary so clips begin on a sentence.
-3. **Enforce duration** 15–60 s (Shorts limit); extend or trim symmetrically.
-4. **Deduplicate**: if two candidates overlap > 50 %, keep the higher score (reference
-   repo's "collapse by score").
-5. **Threshold + top-N**: discard below `min_score` (default 70), keep `max_clips_per_video`
-   (default 3).
+The transcript is chunked (`analysis.chunk_seconds`, sized so a 7B model's context has
+room to think) with overlap so boundary moments are never lost, and each chunk's prompt
+carries a compact **events timeline** derived from the signals:
 
-### 4.4 Local-model robustness (the adaptation that matters)
+```
+TRANSCRIPT:
+[244.1 - 247.9] dude no way he actually hit that
+...
+EVENTS:
+[244s] AUDIO spike (99th pct, burst cluster — laughter/cheering likely)
+[245s] SCENE CUT + high motion
+[251s] face zoom-in
+```
 
-Gemma 7B is less reliable at structured output than frontier models, so the analyzer —
-not the backend — owns resilience:
+A local model can't watch pixels, but it reasons perfectly well over a fused text
+description of what the audio and video are doing.
 
-- JSON extracted with a tolerant parser (strip code fences, find first `{…}` block).
-- On parse failure: one retry with a "return only valid JSON" reminder; on second
-  failure the chunk is skipped and logged, never crashing the pipeline.
-- Smaller chunk option in config for models with short context windows.
+Local models are also less reliable at structured output than frontier models, so
+`analysis/highlights.py` owns the resilience rather than the backend:
 
-This logic lives in `analysis/highlights.py`, so swapping to a stronger model later
-requires zero changes — the guards just stop triggering.
+- Tolerant JSON extraction: strip code fences, find the first balanced `{…}` block.
+- On parse failure, one retry with a "return only valid JSON" reminder; on a second
+  failure the chunk is skipped and logged, never crashing the run.
+- Small models score everything in a narrow band, so a **rerank pass** compares the top
+  `scoring.rerank_pool` finalists head-to-head in a single prompt. Relative judgment is
+  much easier for a small model than absolute scoring, and it costs one call per video.
 
-### 4.5 LLM abstraction
+### 4.5 Duplicate prevention
+
+Applied highest-score-first, three independent checks, each with a logged reason:
+
+1. **Timestamp overlap** — reject if more than `analysis.max_overlap` of the shorter
+   clip overlaps a kept clip.
+2. **Transcript similarity** — reject if spoken text is more than
+   `analysis.max_text_similarity` similar to a kept clip.
+3. **Segment reuse** — reject if more than `analysis.max_segment_reuse` of the
+   candidate's transcript segments are already claimed.
+
+Then timestamps are validated against the transcript range (dropping hallucinated
+ranges), snapped to sentence boundaries, and duration-enforced.
+
+### 4.6 The model abstraction
 
 ```
 LLMBackend (llm/base.py)
   generate(prompt: str, *, json_mode: bool = False) -> str
-  name -> str                      # for logging, e.g. "ollama/gemma:7b"
+  name -> str
 ```
 
-`registry.py` maps a config string to a backend: `ollama/gemma:7b` today,
-`ollama/llama3.1:8b` tomorrow, `gemini/...` or `anthropic/...` later — each cloud
-provider is one new ~50-line file implementing `generate()`. Nothing in `analysis/`
-or anywhere else imports a concrete backend. Model swap = edit one line of YAML:
+`registry.py` maps a config string to a backend. Nothing in `analysis/`, `creator/`, or
+`multilingual/` imports a concrete backend, so a model swap is one line of YAML and a
+future cloud backend is one new file. Translation may use a *different* local model
+than clipping, since multilingual strength and editorial judgment are different
+strengths.
 
-```yaml
-llm:
-  backend: ollama/gemma:7b      # any Ollama tag works; swap freely
-  temperature: 0.4
+---
+
+## 5. Face tracking and framing
+
+`video/tracker.py` takes a source video and a clip window and returns a crop path. It
+knows nothing about transcripts, scores, or publishing.
+
+1. **Sample** frames at `tracking.sample_fps` — subjects don't teleport between samples.
+2. **Detect** with a YOLOv8 **pose** model. Head keypoints (nose, eyes, ears) give
+   head-priority framing even when no face is cleanly visible, which plain person boxes
+   can't do.
+3. **Select the subject** per frame by confidence × box area × persistence with the
+   previous choice, so tracking stays locked on the streamer when guests or bystanders
+   appear.
+4. **Speaker awareness** — in multi-person footage, mouth movement decides who the
+   camera follows, not who is biggest.
+5. **Smooth** (`video/framing.py`) with an exponential moving average, a dead zone that
+   ignores movements under a few percent of frame width, and a maximum pan speed. This
+   is what removes jitter and the "drunk camera" effect.
+6. **Fall back** to a static centre crop when there are no detections.
+
+**Podcast mode** (`video/podcast.py`) is a separate path for multi-camera footage. It
+detects hard cuts on a sample grid, then frames each shot independently — one steady
+crop per shot, centred on whoever is talking in it — so cuts land directly on a face
+with no panning and no split screens. It is opt-in, because applying it to
+single-camera footage would be strictly worse.
+
+**The output contract is non-negotiable**: crop windows are exactly 9:16, only
+repositioned and never reshaped, then uniformly scaled to 1080×1920. Distortion is
+impossible by construction.
+
+Captions are generated as ASS subtitles from word-level Whisper timestamps and burned
+in during the same FFmpeg pass as the crop — one encode, not two.
+
+---
+
+## 6. Creator intelligence
+
+Sitting above the video layer: a **creator profile** is a person or group, **platform
+accounts** are their channels, and a knowledge base holds structured facts extracted
+from their processed videos. Everything here is optional and failure-safe — a video
+with no resolved creator processes exactly as before.
+
+- **Identity** (`identity.py`) resolves a channel to a profile, creating one on first
+  sight, and suggests merges when the same creator appears on two platforms.
+- **Extraction** (`extractor.py`) runs after analysis and writes typed facts (topic,
+  game, series, catchphrase, joke, collaborator, format, life detail) and events
+  (announced / in progress / completed). It is deliberately paranoid: anything failing
+  validation is dropped, because a small clean knowledge base beats a large noisy one.
+  Extraction is two-stage — free-form notes first, structuring second — because local
+  models have poor recall on typed extraction from messy stream banter.
+- **Repetition and dropout.** Claims about repetition are verified, not trusted: a
+  catchphrase is counted in the actual transcript and stays an unscored candidate until
+  it has genuinely repeated. Re-hearing a known fact reinforces it; knowledge that
+  stops being said goes dormant and stops influencing anything, and a one-off that
+  never returns is eventually forgotten. Dormancy requires both elapsed time *and* a
+  number of that creator's videos to have passed, so processing infrequently doesn't
+  decay a knowledge base off the calendar alone.
+- **Retrieval** (`retrieval.py`) feeds two consumers: a **deterministic, capped,
+  additive-only** score bonus for verifiable callbacks in a clip, and a short context
+  block the metadata LLM may use for accuracy. String matching only — no LLM judgment
+  can move a score here.
+- **Preference learning** (`learning.py`) derives a bounded bias toward what the user
+  actually keeps, from their own exports and edits. It is inert below a minimum number
+  of signals, each weight may shift at most 20%, and weights are renormalized so the
+  total influence budget never changes.
+
+---
+
+## 7. Multilingual publishing
+
+Translation of a finished clip into any of 19 languages, with the interface itself
+localized into 10.
+
+The order of operations matters: captions are **translated, shown for review, and only
+then** written to `.srt` or burned into video. A creator can read and fix a bad line
+before it becomes permanent, and human-edited text is marked so a later re-translation
+never overwrites it.
+
+- `translate.py` — LLM translation, chunked, with a glossary that protects terms the
+  creator has ruled on (channel names, sponsors, in-jokes) from being translated.
+- `subtitles.py` / `burn.py` — sidecar `.srt`, or burned captions using a font that
+  actually has the target script's glyphs.
+- `dub.py` / `voices.py` — local TTS dubbing with auditionable voices. Each voice
+  sample is spoken *in the language being auditioned*, since hearing English in a
+  Turkish voice tells you nothing about a Turkish dub.
+- `metadata.py` — translated titles, descriptions, and hashtags.
+
+---
+
+## 8. Long-form output
+
+An opt-in 16:9 path (`longform/`) using the same analysis, with four profiles:
+
+| Profile | Output |
+|---|---|
+| `short_clips` | Horizontal clips up to 60s |
+| `clips_140` | Up to 140s, sized for X/Twitter |
+| `highlights` | A best-of assembly, 8–20 minutes depending on how much clears the bar |
+| `edited_stream` | The full stream with dead air removed |
+
+The vertical Shorts workflow is untouched by any of this.
+
+---
+
+## 9. The video editor
+
+`video_editor/` applies **non-destructive** edits to a rendered clip. The edit model is
+a timeline of operations — keep ranges, mutes, muted words, volume, fades, speed, hook
+text, music bed, watermark — stored as data and applied at render time, so any edit can
+be revised or undone by editing the operation rather than re-cutting a file.
+
+`analysis/clip_edit.py` is the AI edit chat: plain-language requests ("make it five
+seconds longer", "the caption says gost, it should say ghost") are interpreted into
+*validated* edit operations. The LLM proposes; deterministic code validates and applies.
+
+`analysis/tighten.py` removes silences and filler words on request.
+
+---
+
+## 10. Local API service
+
+FastAPI + uvicorn on `127.0.0.1:8765`, bound to localhost only. The server wraps the
+pipeline; it does not fork its logic.
+
+```
+POST   /jobs                      queue a video (URL or local file)
+GET    /jobs                      queue state
+POST   /cancel                    cancel the running job
+WS     /ws                        live stage/progress events
+GET    /videos                    processed videos
+GET    /videos/{id}/clips         clips with metadata and subscores
+PATCH  /clips/{id}                edit title/description/hashtags
+GET    /clips/{id}/captions       caption lines
+PUT    /clips/{id}/captions       save edited captions (re-renders)
+POST   /clips/{id}/render         re-render with new range or options
+POST   /clips/{id}/tighten        silence/filler removal plan
+POST   /clips/{id}/ai-edit        plain-language edit request
+POST   /clips/{id}/export         export with the final filename
+POST   /export/batch              export many
+GET    /media/{clip_id}           serve a clip for preview
+GET    /creators                  profiles + merge suggestions
+GET    /creators/{id}             knowledge, events, preferences
+DELETE /creators/{id}/knowledge   forget unconfirmed and dormant facts
+GET    /languages                 supported languages and voices
+POST   /translate                 translate or export a language bundle
+GET    /models                    installed, active, VRAM estimates
+POST   /models/pull               streamed download progress
+POST   /models/activate           switch model
+GET    /system/stats              CPU, RAM, GPU, VRAM, disk
+GET    /settings  PATCH /settings settings.yaml as JSON
+POST   /feedback/submit           in-app bug report
 ```
 
----
+Integration mechanics:
 
-## 5. Face Tracking Design (YOLOv8 + OpenCV)
-
-A standalone module: input = source video + clip window, output = a crop path. It knows
-nothing about transcripts, scores, or uploads.
-
-**Pipeline inside `video/tracker.py`:**
-
-1. **Sample** frames at ~5 fps over the clip window (full fps is wasted — subjects don't
-   teleport between 200 ms samples).
-2. **Detect** with `yolov8n.pt` (person class) — small, fast, runs on CPU if needed.
-   Optionally a YOLOv8-face model for tighter framing when faces are large in frame.
-3. **Select primary subject** per frame: score = detection confidence × box area ×
-   persistence (IoU with previous frame's chosen box). This keeps tracking locked on
-   the streamer when guests or game characters appear.
-4. **Smooth** the chosen center-x over time (exponential moving average + dead-zone:
-   ignore movements under ~5 % of frame width). This kills jitter and the "drunk camera"
-   effect.
-5. **Emit crop path**: `[(t, center_x)]` keyframes, interpolated linearly.
-6. **Fallback**: zero detections (gameplay-only sections) → static center crop.
-
-**Rendering in `video/cropper.py`:** FFmpeg extracts the clip window, then a crop filter
-applies the path (piecewise `crop` expressions for v1 — simple and debuggable). Output:
-1080×1920 H.264 + AAC. Captions (`video/captions.py`) are generated as ASS subtitles
-from word-level Whisper timestamps (3–4 word groups, current word highlighted) and
-burned in during the same FFmpeg pass — one encode, not two.
-
-Tracking is intentionally decoupled so it can later be upgraded (ByteTrack IDs, speaker
-diarization to follow whoever is talking) without touching anything else.
+- **One worker thread** processes jobs sequentially — GPU and CPU contention make
+  parallel video jobs pointless on consumer hardware. The queue lives in SQLite so it
+  survives restarts, and jobs left running by a crash are recovered to a failed state
+  on startup rather than appearing stuck forever.
+- Pipeline stages emit progress callbacks that broadcast over the WebSocket, so the UI
+  can show real stage progress and a time estimate.
+- Electron spawns the backend as a child process, health-checks `GET /health`, and
+  kills it on exit. In development they run separately.
 
 ---
 
-## 6. Publishing & State
+## 11. Desktop application
 
-**YouTube upload** (`publish/youtube_shorts.py`): OAuth2 installed-app flow (one-time
-browser consent, refresh token stored locally), resumable upload via Data API v3,
-`#Shorts` appended to description, configurable `privacyStatus` (default **unlisted**
-until you trust the output).
+**Electron + Vite + React + TypeScript + Tailwind.** The renderer never touches Python
+or the filesystem directly — context isolation on, no node integration, everything
+through the local API.
 
-Two real-world constraints the design plans around:
+Pages: **Dashboard** (system widgets, processed videos, live log), **Clip Studio** (the
+core loop: paste a link, watch progress, review the results grid, open the editor),
+**Creators**, **Models**, and **Settings**.
 
-- **Quota**: an upload costs 1,600 units of the default 10,000/day quota → **max 6
-  uploads/day** out of the box. The scheduler enforces a configurable daily upload cap
-  and queues the rest. Watching uses RSS, costing zero quota.
-- **API audit**: videos uploaded by unverified API projects are locked private until
-  Google audits the project. Day one this means uploads land as private/unlisted —
-  expected behavior, documented in the README, not a bug.
+### Visual theme
 
-**State DB** (SQLite, `core/state.py`): tables `videos` (id, channel, status, timestamps),
-`clips` (video_id, start, end, score, render path), `uploads` (clip_id, youtube_id,
-uploaded_at). Guarantees: a video is never processed twice, a clip is never uploaded
-twice, and any crash resumes from the last completed stage.
+Dark-first, navy base with a single sky-blue accent, defined as Tailwind design tokens
+so components inherit it:
 
----
+| Token | Value | Used for |
+|---|---|---|
+| `bg-base` | `#0A1628` | app background |
+| `bg-surface` | `#13243D` | cards, panels, sidebar |
+| `bg-raised` | `#1C3354` | hover states, inputs, modals |
+| `accent` | `#38BDF8` | primary buttons, active nav, progress |
+| `accent-strong` | `#0EA5E9` | hover, selection |
+| `text-primary` | `#F1F5F9` | headings, body |
+| `text-muted` | `#94A3B8` | labels, secondary text |
+| `success` / `warn` / `error` | `#34D399` / `#FBBF24` / `#F87171` | status chips, score badges |
 
-## 7. Extension Plan
-
-### Phase 1 — core pipeline (DONE)
-Single video → Gemma via Ollama → 9:16 face-tracked captioned clips with titles,
-descriptions, and hashtags. One-shot CLI mode. (The daemon/upload code also exists
-but is dormant — see Phase 4.)
-
-### Phase 2 — clip quality + desktop studio (CURRENT)
-- Multimodal scoring engine: transcript + audio + visual + reaction fusion (DONE —
-  see DESIGN-V2.md for the full design)
-- Face tracking v2: multi-person, gameplay+webcam layouts, anti-jitter
-- Desktop app: Electron + React studio over a local FastAPI service
-- Windows installer for non-technical users
-
-### Phase 3 — more sources (before any upload automation)
-| Platform | How |
-|----------|-----|
-| Twitch VODs | `sources/twitch.py` implements `VideoSource`. Polls the channel's VOD list; yt-dlp already downloads Twitch VODs. Everything downstream is untouched. |
-| Kick VODs | `sources/kick.py`, same pattern (yt-dlp supports Kick). |
-| Multiple channels | Config accepts a list; scheduler round-robins. |
-
-### Phase 4 — automation returns (after Twitch/Kick)
-The already-built RSS monitoring, daily scheduling, and YouTube Shorts upload
-reactivate here, now covering all supported sources. Requires the user's YouTube
-API credentials + Google's API audit for public posting.
-
-### Phase 5 — more destinations
-| Platform | Notes |
-|----------|-------|
-| TikTok / Instagram Reels | New `Publisher` implementations. Their official APIs are restrictive (TikTok requires app review; Instagram requires a Business account + Graph API). Interim option: a `LocalExportPublisher` that drops finished clips + metadata JSON into a folder for manual/semi-automated posting. |
-
-### Ongoing — quality upgrades (each is one module swap)
-- Stronger local models (bigger Gemma 3 sizes, Llama 3.x) — config change only.
-- Optional cloud backends for users who want them — new file in `llm/`.
-- Speaker diarization → track whoever is speaking in multi-person podcasts.
-- Dedicated facial-expression and laughter-classifier models slotting into the
-  reaction signal (interface already in place).
-
-### Scaling path (when one PC isn't enough)
-The state DB + file-artifact handoff between stages means stages can later become
-queue workers (e.g., Redis + workers, transcription on the GPU box, rendering
-elsewhere) without redesign — the contracts between stages don't change.
+Accessibility is treated as a requirement, not a nicety: keyboard focus, reduced-motion
+support, adjustable font and text size, and colour choices checked for contrast.
 
 ---
 
-## 8. Suggested Config Surface (`config/settings.yaml`)
+## 12. State and storage
+
+SQLite (`core/state.py`) is the single source of truth. Principal tables: `videos`,
+`clips`, `rejections` (why a candidate was dropped — auditable), `jobs`, `uploads`,
+`creators`, `platform_accounts`, `creator_knowledge`, `creator_events`,
+`clip_feedback`, `branding_profiles`, `creator_terms`, `clip_translations`.
+
+Guarantees: a video is never processed twice, a clip is never uploaded twice, and any
+crash resumes from the last completed stage. Schema changes land as additive migrations
+in `_migrate()`, so an existing database upgrades in place without losing data.
+
+Deleting a creator profile **never** deletes videos or clips — they are only unlinked,
+so the list can be tidied without losing footage.
+
+---
+
+## 13. Configuration surface
+
+`config/settings.yaml` opens with a short quick-setup block and keeps everything else
+below it. The values that matter most:
 
 ```yaml
-channels:
-  - id: "UCxxxxxxxx"            # channel to monitor
-poll_interval_minutes: 15
-
-llm:
-  backend: ollama/gemma:7b       # swappable: any ollama tag, future cloud backends
-  temperature: 0.4
-
-whisper:
-  model: small                   # tiny/base/small/medium/large-v3
-  device: auto                   # cuda if available, else cpu
+model: gemma:7b          # any Ollama tag
+content_language: auto   # or force es / pt / hi / id / en …
 
 clips:
-  min_score: 70
-  max_clips_per_video: 3
-  min_duration: 15
-  max_duration: 59
+  min_score: 55          # generous on purpose — creators pick what to post
+  max_clips_per_video: 0 # 0 = keep everything that clears the bar
+  min_duration: 10
+  max_duration: 60
+
+scoring:
+  weights: {text: 0.30, visual: 0.20, reaction: 0.20, audio: 0.20, engagement: 0.10}
+  signal_peak_percentile: 85
+  creator_context_max: 6   # 0 disables creator callbacks
+  action_bonus: 10         # 0 disables the movement bonus
+  audience_bonus: 8        # 0 disables chat/heatmap
+  rerank_pool: 8
+
+video:
+  encoder: auto            # nvenc / amf / qsv / cpu
+  parallel_renders: 3
 
 tracking:
-  detector: yolov8n              # person model; yolov8n-face optional
-  sample_fps: 5
-
-upload:
-  privacy: unlisted              # private/unlisted/public
-  daily_limit: 6                 # YouTube quota: 1600 units per upload
+  detector: yolov8n-pose.pt
+  sample_fps: 8
 ```
+
+Prompts are data, not code: every LLM prompt lives in `config/prompts/` as plain text,
+so the rating system can be tuned without touching Python.
+
+---
+
+## 14. Design rules
+
+These are the constraints that keep the system modular and safe to change:
+
+- **Stages communicate only through dataclasses and files.** The analyzer never touches
+  video; the tracker never reads transcripts.
+- **`analysis/` depends on `llm/base.py` only** — never on a concrete backend.
+- **`sources/` and `publish/` are plugin folders.** Adding a platform means adding one
+  file; nothing downstream changes.
+- **Learned data can never degrade output.** Every score contribution derived from
+  accumulated knowledge is additive, capped, deterministic, and individually
+  disableable.
+- **The LLM proposes, deterministic code disposes.** Parsing, validation, duration
+  enforcement, deduplication, and edit application are all plain Python, so a model
+  swap changes quality but never correctness.
+- **Failure is contained.** Optional subsystems — creator learning, chat replay,
+  heatmaps, signal prefetch — are wrapped so that a failure degrades a feature instead
+  of breaking a run.
+- **Prompts are editable text.** Tuning behaviour should not require writing code.
+
+### Scaling path
+
+The state DB and file-artifact handoff between stages mean stages can later become
+queue workers — transcription on the GPU box, rendering elsewhere — without redesign.
+The contracts between stages don't change.

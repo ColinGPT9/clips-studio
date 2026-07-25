@@ -1,7 +1,9 @@
 """LLM-based highlight detection with strict duplicate prevention.
 
-Scoring methodology follows SamurAIGPT/AI-Youtube-Shorts-Generator:
-virality framework, 0-100 scores, long videos chunked with overlap.
+Scoring asks the model for 0-100 viral potential against an explicit
+framework (hooks, emotional peaks, opinion bombs, revelations, conflict,
+quotable lines, payoff structure), with long videos chunked and overlapped
+so a moment on a chunk boundary is never lost.
 
 Duplicate prevention is three independent checks, applied highest-score-first:
   1. timestamp overlap   — reject if >40% of the shorter clip overlaps a kept clip
