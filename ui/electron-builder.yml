@@ -16,6 +16,13 @@ directories:
   output: ../release
   buildResources: build
 
+# Embeds build/icon.ico into the packaged .exe. electron-builder would
+# normally do this itself, but the tool it uses ships in the same archive as
+# the macOS symlinks that an ordinary Windows account cannot extract — see
+# signAndEditExecutable below. Without this the app keeps Electron's default
+# atom icon on the shortcut, taskbar and Alt-Tab.
+afterPack: build/afterPack.cjs
+
 files:
   - out/**/*
   - package.json
