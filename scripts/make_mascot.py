@@ -120,29 +120,34 @@ def draw_body(d):
     # Back paws LAST, so they sit in front of the body. Drawn before it they
     # were painted over by the torso and the belly appeared to swallow them.
     # Same pad and toe beans as the hands, so all four match.
+    # Set a little narrower than the hands, so the stance reads as a sitting
+    # animal rather than a star shape.
     for sx in (-1, 1):
-        fx = 512 + sx * 118
-        ell(d, fx, 928, 78, 62, NAVY)                   # ankle behind the paw
-        ell(d, fx, 946, 64, 48, SKY)                    # paw
-        ell(d, fx, 958, 31, 20, SKY_DEEP)               # main pad
+        fx = 512 + sx * 112
+        ell(d, fx, 912, 70, 56, NAVY)                   # ankle behind the paw
+        ell(d, fx, 930, 58, 44, SKY)                    # paw
+        ell(d, fx, 941, 28, 18, SKY_DEEP)               # main pad
         for f in (-1, 0, 1):                            # toe beans
-            ell(d, fx + f * 30, 922, 14, 12, SKY_DEEP)
+            ell(d, fx + f * 27, 908, 13, 11, SKY_DEEP)
 
     # Arms: rounded stubs ending in proper paws — a big palm pad and three
-    # toe beans, same as the feet. Without the pads the hands were just
-    # blue mittens with no read on them at all.
+    # toe beans, same as the feet.
+    #
+    # The shoulder is anchored WELL INSIDE the torso. Started at the torso
+    # edge instead, the first circles sit half outside it and leave a
+    # concave notch where the arm meets the body.
     for sx in (-1, 1):
-        shoulder_x = 512 + sx * 150
-        hand_x = 512 + sx * 232
-        for i in range(19):
-            t = i / 18
+        shoulder_x = 512 + sx * 92
+        hand_x = 512 + sx * 190
+        for i in range(21):
+            t = i / 20
             cx = shoulder_x + (hand_x - shoulder_x) * t
-            cy = 748 + 74 * t
-            ell(d, cx, cy, 52 - 10 * t, 52 - 10 * t, NAVY)
-        ell(d, hand_x, 828, 60, 56, SKY)                       # paw
-        ell(d, hand_x, 846, 30, 22, SKY_DEEP)                  # palm pad
+            cy = 726 + 86 * t
+            ell(d, cx, cy, 50 - 11 * t, 50 - 11 * t, NAVY)
+        ell(d, hand_x, 818, 55, 51, SKY)                       # paw
+        ell(d, hand_x, 833, 27, 19, SKY_DEEP)                  # palm pad
         for f in (-1, 0, 1):                                   # toe beans
-            ell(d, hand_x + f * 30, 802, 15, 13, SKY_DEEP)
+            ell(d, hand_x + f * 27, 794, 13, 11, SKY_DEEP)
 
 
 # ---------------------------------------------------------------- head
