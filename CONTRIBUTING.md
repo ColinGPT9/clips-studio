@@ -44,7 +44,8 @@ results land in `release/`: a small **Web Setup .exe**, the **.7z payload**
 it downloads, and a **.zip** for offline installs.
 
 Publish the Web Setup and the .7z to the *same* GitHub release — the setup
-fetches the payload by name, so one without the other is useless.
+fetches the payload by name, so one without the other is useless. Full
+release checklist: [docs/RELEASING.md](docs/RELEASING.md).
 
 Expect it to take a while and to need disk: the frozen engine is ~4.8 GB
 unpacked, mostly CUDA PyTorch. `--skip-backend` and `--skip-ui` reuse the
