@@ -93,7 +93,10 @@ def draw_tail(d):
         rad = 90 + 210 * t
         cx = 660 + rad * math.cos(ang)
         cy = 740 - rad * math.sin(ang) * 0.80
-        pts.append((cx, cy, 42 - 20 * t))
+        # Thinner than an arm at the base, tapering to a fine tip. Left at
+        # its original weight while the arms and torso were slimmed, it
+        # ended up fatter than the limbs it hangs beside.
+        pts.append((cx, cy, 26 - 13 * t))
     for cx, cy, r in pts:
         ell(d, cx, cy, r, r, NAVY)
     for cx, cy, r in pts[-20:]:      # sky tip, matching the paws
@@ -139,18 +142,23 @@ def draw_body(d):
     # Thin. At the old thickness the arm was as fat as the torso is deep, so
     # the two merged into one dark mass with paws stuck on the outside and no
     # limb readable at all.
+    # The paw has to clear the torso outline entirely. The torso is widest
+    # at y=786 (half-width 150) and narrows below that, so the hand hangs
+    # LOW — level with the widest point it was buried 14px deep and read as
+    # part of the body rather than a paw resting beside it. The arm drops
+    # steeply rather than reaching out sideways.
     for sx in (-1, 1):
-        shoulder_x = 512 + sx * 88
-        hand_x = 512 + sx * 172
+        shoulder_x = 512 + sx * 96
+        hand_x = 512 + sx * 178
         for i in range(21):
             t = i / 20
             cx = shoulder_x + (hand_x - shoulder_x) * t
-            cy = 734 + 76 * t
-            ell(d, cx, cy, 34 - 7 * t, 34 - 7 * t, NAVY)
-        ell(d, hand_x, 814, 40, 37, SKY)                       # paw
-        ell(d, hand_x, 825, 19, 13, SKY_DEEP)                  # palm pad
+            cy = 726 + 142 * t
+            ell(d, cx, cy, 32 - 9 * t, 32 - 9 * t, NAVY)
+        ell(d, hand_x, 868, 40, 37, SKY)                       # paw
+        ell(d, hand_x, 879, 19, 13, SKY_DEEP)                  # palm pad
         for f in (-1, 0, 1):                                   # toe beans
-            ell(d, hand_x + f * 20, 797, 10, 8, SKY_DEEP)
+            ell(d, hand_x + f * 20, 851, 10, 8, SKY_DEEP)
 
 
 # ---------------------------------------------------------------- head
