@@ -23,10 +23,12 @@ ui/dist/
 # Installer build inputs and outputs. The bundled FFmpeg binaries are
 # fetched by scripts/fetch_ffmpeg.py on the machine that builds the
 # installer — they are build inputs, not source, and are ~200 MB.
-vendor/
-build/
-dist/
-release/
+# Anchored with a leading slash: an unanchored "build/" also matches
+# ui/build/, which holds the app icon and DOES belong in the repo.
+/vendor/
+/build/
+/dist/
+/release/
 *.spec.bak
 
 # Byte-compiled / optimized / DLL files
@@ -38,10 +40,12 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+# Anchored to the repo root on purpose: unanchored "build/" and "dist/" also
+# match ui/build/, which holds the app icon and belongs in the repo.
 .Python
-build/
+/build/
 develop-eggs/
-dist/
+/dist/
 downloads/
 eggs/
 .eggs/
