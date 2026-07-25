@@ -6,6 +6,7 @@ the LLM prompt) skip the expensive transcription step.
 
 import json
 import os
+import re
 from pathlib import Path
 
 from core import progress
@@ -75,7 +76,12 @@ def transcribe(
     if cache_path.exists():
         print(f"  Using cached transcript: {cache_path}")
         data = json.loads(cache_path.read_text(encoding="utf-8"))
-        return [Segment(**seg) for seg in data["segments"]]
+        segments = [Segment(**seg) for seg in data["segments"]]
+        # Also repair transcripts cached before the loop guard existed, so a
+        # reprocess fixes them without paying for transcription again. The
+        # file itself is left as the raw record of what Whisper returned.
+        _collapse_repetition_loops(segments)
+        return segments
 
     print(f"  Loading whisper model '{model_size}' (device={device})...")
     model = _load_model(model_size, device)
@@ -120,6 +126,10 @@ def transcribe(
             last_emit = seg.end
     print()
 
+    looped = _collapse_repetition_loops(segments)
+    if looped:
+        print(f"  Collapsed {looped} Whisper repetition loop(s) (music/noise)")
+
     cache_path.write_text(
         json.dumps(
             {
@@ -133,6 +143,64 @@ def transcribe(
         encoding="utf-8",
     )
     return segments
+
+
+# A repetition loop is a long segment, a lot of words, and almost no
+# vocabulary. All three must hold: sparse speech (a gym stream saying little
+# over a minute) has a normal unique-word ratio, and a genuine chant is short
+# because the pauses in it become segment boundaries.
+_LOOP_MIN_SECONDS = 25.0
+_LOOP_MIN_WORDS = 40
+_LOOP_MAX_UNIQUE_RATIO = 0.15
+
+
+def _collapse_repetition_loops(segments: list[Segment]) -> int:
+    """Collapse Whisper repetition loops in place; returns how many were hit.
+
+    On music, crowd noise, or long near-silence, Whisper can lock into
+    emitting one phrase over and over inside a SINGLE segment. A real case
+    from a music video: one 184-second "segment" of 165 words with 5 unique
+    ones ("We are ready." x40). Nothing downstream can tell that from speech
+    — it reached scoring, titles, and creator knowledge as if the creator had
+    said it, and produced clips whose hook was the looped phrase.
+
+    The fix keeps the first instance of each distinct sentence and trims the
+    duplicated word timings, so captions read correctly and the rest of the
+    span is treated as what it actually is: not speech.
+    """
+    collapsed = 0
+    for seg in segments:
+        words = seg.words or []
+        duration = seg.end - seg.start
+        if duration < _LOOP_MIN_SECONDS or len(words) < _LOOP_MIN_WORDS:
+            continue
+        tokens = [w["word"].strip(" .,!?").lower() for w in words if w.get("word")]
+        if not tokens or len(set(tokens)) / len(tokens) > _LOOP_MAX_UNIQUE_RATIO:
+            continue
+
+        # Keep each distinct sentence once, in the order first said.
+        seen: set[str] = set()
+        kept: list[str] = []
+        for sentence in re.split(r"(?<=[.!?])\s+", seg.text.strip()):
+            key = re.sub(r"[^a-z0-9 ]", "", sentence.lower()).strip()
+            if key and key not in seen:
+                seen.add(key)
+                kept.append(sentence.strip())
+        # A loop usually gets cut off mid-phrase, leaving a stub ("… We're
+        # ready. We") that isn't a sentence and reads like a typo.
+        if len(kept) > 1 and len(kept[-1].split()) < 2:
+            kept.pop()
+        if not kept:
+            continue
+
+        seg.text = " ".join(kept)
+        # Trim word timings to match, and end the segment at the last word we
+        # kept — the rest of the span was music or noise, not speech.
+        keep_n = min(len(words), max(1, len(seg.text.split())))
+        seg.words = words[:keep_n]
+        seg.end = round(max(seg.words[-1]["end"], seg.start + 0.5), 2)
+        collapsed += 1
+    return collapsed
 
 
 def detected_language(video_id: str, transcript_dir: Path) -> str:

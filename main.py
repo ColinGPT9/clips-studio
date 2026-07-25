@@ -16,6 +16,30 @@ import argparse
 import sys
 from pathlib import Path
 
+
+def _force_utf8_io() -> None:
+    """Print UTF-8 no matter who started us.
+
+    Windows picks the process's text encoding from the system locale, which
+    on most Western installs is cp1252 — and cp1252 cannot encode an emoji.
+    Stream and video titles are full of them, so a single print of a title
+    like "🏴 stream" raised UnicodeEncodeError and killed the backend
+    mid-run. The console the developer uses often has UTF-8 set already,
+    which is exactly why this hides until someone else installs the app:
+    Electron spawns the backend WITHOUT inheriting that.
+
+    Reconfiguring here covers every entry path — CLI, Electron dev, and the
+    packaged executable — because they all come through this file.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass  # already UTF-8, detached, or not reconfigurable — fine
+
+
+_force_utf8_io()
+
 import yaml
 
 from core.pipeline import process_video

@@ -224,17 +224,17 @@ their setup.
 
 ## Supported languages
 
-Clips can be translated, subtitled, and dubbed into **19 languages**:
+Clips can be translated, subtitled, and dubbed into **19 languages** — and the
+**interface itself is translated into all 19 too**, so the app is usable in the same
+languages it publishes in:
 
 English · Spanish · Portuguese (Brazilian) · French · German · Hindi · Indonesian ·
 Japanese · Russian · Arabic · Chinese (Simplified) · Vietnamese · Filipino · Turkish ·
 Urdu · Bengali · Thai · Korean · Italian
 
-The **interface itself** is translated into 10: English, Spanish, Portuguese, French,
-German, Hindi, Indonesian, Japanese, Russian, and Arabic.
-
-Adding a language is one row in `multilingual/languages.py` — the translator and
-subtitle writer are language-agnostic.
+Adding a language is one row in `multilingual/languages.py` plus a locale file in
+`ui/src/renderer/src/locales/` — the translator and subtitle writer are
+language-agnostic.
 
 ## GPU acceleration
 

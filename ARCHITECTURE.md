@@ -398,8 +398,8 @@ with no resolved creator processes exactly as before.
 
 ## 7. Multilingual publishing
 
-Translation of a finished clip into any of 19 languages, with the interface itself
-localized into 10.
+Translation of a finished clip into any of 19 languages. The interface is localized
+into the same 19, so the app is usable in every language it can publish in.
 
 The order of operations matters: captions are **translated, shown for review, and only
 then** written to `.srt` or burned into video. A creator can read and fix a bad line

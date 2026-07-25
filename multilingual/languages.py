@@ -1,9 +1,11 @@
 """Target languages for multilingual publishing.
 
-The same ten the interface is translated into — the biggest YouTube
-markets — plus the ones with a legal or commercial pull for translated
-captions (Canadian French, US Spanish). Adding a language is one row: the
-translator and subtitle writer are language-agnostic.
+The biggest YouTube markets, plus the ones with a legal or commercial pull
+for translated captions (Canadian French, US Spanish). The interface is
+translated into this same set, so the app is usable in every language it
+can publish in — a locale file in ui/src/renderer/src/locales/ per entry.
+Adding a language is one row here: the translator and subtitle writer are
+language-agnostic.
 """
 
 # code -> (English name, native name, name used in the translation prompt)

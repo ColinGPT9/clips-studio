@@ -6,16 +6,28 @@ const API_PORT = 8765
 let backend: ChildProcess | null = null
 
 function startBackend(): void {
+  // Windows gives a spawned process the system locale's encoding, which is
+  // cp1252 on most Western installs — and printing a title with an emoji in
+  // it then throws UnicodeEncodeError and kills the backend. A developer's
+  // own terminal usually has UTF-8 configured, so this only shows up once
+  // someone else installs the app. The backend forces UTF-8 itself too;
+  // this covers it before a single line of Python runs.
+  const backendEnv = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+
   // Dev: run the repo's Python directly (repo root is one level up from ui/).
   // Packaged: run the frozen backend exe shipped in resources/backend/.
   if (app.isPackaged) {
     const exe = join(process.resourcesPath, 'backend', 'api.exe')
-    backend = spawn(exe, ['serve', '--port', String(API_PORT)], { stdio: 'ignore' })
+    backend = spawn(exe, ['serve', '--port', String(API_PORT)], {
+      stdio: 'ignore',
+      env: backendEnv
+    })
   } else if (process.env.BACKEND_EXTERNAL !== '1') {
     const repoRoot = join(app.getAppPath(), '..')
     backend = spawn('python', ['main.py', 'serve', '--port', String(API_PORT)], {
       cwd: repoRoot,
-      stdio: 'inherit'
+      stdio: 'inherit',
+      env: backendEnv
     })
   }
   backend?.on('exit', (code) => {
