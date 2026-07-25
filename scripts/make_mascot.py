@@ -142,23 +142,26 @@ def draw_body(d):
     # Thin. At the old thickness the arm was as fat as the torso is deep, so
     # the two merged into one dark mass with paws stuck on the outside and no
     # limb readable at all.
-    # The paw has to clear the torso outline entirely. The torso is widest
-    # at y=786 (half-width 150) and narrows below that, so the hand hangs
-    # LOW — level with the widest point it was buried 14px deep and read as
-    # part of the body rather than a paw resting beside it. The arm drops
-    # steeply rather than reaching out sideways.
+    # The arm attaches at the SHOULDER — high, at the outer corner of the
+    # torso just under the head — and hangs down the OUTSIDE of the body.
+    #
+    # It used to start deep inside the torso around its middle. Because the
+    # arm is far thinner than the body is wide, the whole limb was swallowed
+    # by the torso silhouette: there was no shoulder, no arm, just a paw
+    # apparently stuck to the side. Moving the paw only made that worse,
+    # because the paw travelled while the joint it hangs from did not.
     for sx in (-1, 1):
-        shoulder_x = 512 + sx * 96
-        hand_x = 512 + sx * 178
+        shoulder_x = 512 + sx * 140
+        hand_x = 512 + sx * 174
         for i in range(21):
             t = i / 20
             cx = shoulder_x + (hand_x - shoulder_x) * t
-            cy = 726 + 142 * t
-            ell(d, cx, cy, 32 - 9 * t, 32 - 9 * t, NAVY)
-        ell(d, hand_x, 868, 40, 37, SKY)                       # paw
-        ell(d, hand_x, 879, 19, 13, SKY_DEEP)                  # palm pad
+            cy = 692 + 158 * t
+            ell(d, cx, cy, 31 - 5 * t, 31 - 5 * t, NAVY)
+        ell(d, hand_x, 856, 38, 35, SKY)                       # paw
+        ell(d, hand_x, 866, 18, 12, SKY_DEEP)                  # palm pad
         for f in (-1, 0, 1):                                   # toe beans
-            ell(d, hand_x + f * 20, 851, 10, 8, SKY_DEEP)
+            ell(d, hand_x + f * 19, 840, 10, 8, SKY_DEEP)
 
 
 # ---------------------------------------------------------------- head
