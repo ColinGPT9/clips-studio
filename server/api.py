@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
+from core.binaries import ffmpeg, ffprobe
 
 
 # ---- request bodies ----------------------------------------------------------
@@ -226,6 +227,19 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def health():
         return {"ok": True}
 
+    @app.get("/health/preflight")
+    def preflight_check():
+        """Can this install actually make a clip?
+
+        An installed copy can be half-ready in ways a dev checkout never is —
+        no FFmpeg, no Ollama, no model, no disk. Each used to surface as a
+        stack trace deep inside a stage, long after the user pressed Generate.
+        This names the missing piece and what to do about it, up front.
+        """
+        from core import preflight
+
+        return preflight.run(config).as_dict()
+
     @app.get("/system/stats")
     def system_stats():
         import psutil
@@ -353,7 +367,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
         # Must contain a video stream (catches audio files / random files).
         probe = sp.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+            [ffprobe(), "-v", "error", "-select_streams", "v:0",
              "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(src)],
             capture_output=True, text=True,
         )
@@ -377,7 +391,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             converted = False
             if codec == "h264":
                 remux = sp.run(
-                    ["ffmpeg", "-y", "-i", str(src), "-c", "copy",
+                    [ffmpeg(), "-y", "-i", str(src), "-c", "copy",
                      "-movflags", "+faststart", str(dest)],
                     capture_output=True, text=True,
                 )
@@ -390,7 +404,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 # -pix_fmt yuv420p: 10-bit sources (phone HDR, HEVC main10)
                 # aren't accepted by h264_nvenc — normalize to 8-bit.
                 reenc = sp.run(
-                    ["ffmpeg", "-y", *hwaccel_input_args(), "-i", str(src),
+                    [ffmpeg(), "-y", *hwaccel_input_args(), "-i", str(src),
                      *video_encoder_args(), "-pix_fmt", "yuv420p",
                      "-c:a", "aac", "-b:a", "160k",
                      "-movflags", "+faststart", str(dest)],

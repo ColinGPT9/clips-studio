@@ -9,6 +9,7 @@ from pathlib import Path
 
 from core.models import ClipCandidate
 from video.encoding import audio_filter_args, hwaccel_input_args, video_encoder_args
+from core.binaries import ffmpeg
 
 
 def cut_clip(
@@ -27,7 +28,7 @@ def cut_clip(
     # Absolute paths: cwd may be changed for the subtitles filter, which
     # would silently break relative input/output paths.
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg(), "-y",
         *hwaccel_input_args(),             # GPU decode when the codec allows
         "-ss", f"{candidate.start:.2f}",   # before -i: fast seek
         "-i", str(source.resolve()),

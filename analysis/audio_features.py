@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
+from core.binaries import ffmpeg
 
 SAMPLE_RATE = 16000
 FRAME = SAMPLE_RATE // 20  # 50 ms analysis frames
@@ -78,7 +79,7 @@ def extract_audio_features(video_path: Path) -> dict[str, np.ndarray]:
 
 def _decode_mono_pcm(video_path: Path) -> np.ndarray:
     cmd = [
-        "ffmpeg", "-v", "error",
+        ffmpeg(), "-v", "error",
         "-i", str(video_path),
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-f", "s16le", "-",

@@ -13,6 +13,7 @@ More:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,13 @@ def _force_utf8_io() -> None:
     Reconfiguring here covers every entry path — CLI, Electron dev, and the
     packaged executable — because they all come through this file.
     """
+    # A frozen build launched without a console has no stdout at all, and
+    # print() to None raises — which would turn every progress line in the
+    # pipeline into a crash. Give it somewhere harmless to write first.
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")

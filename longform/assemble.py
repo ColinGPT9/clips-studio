@@ -13,6 +13,7 @@ from typing import Callable
 
 from core import cancel
 from video.encoding import video_encoder_args
+from core.binaries import ffmpeg
 
 _FIT = (
     "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,"
@@ -36,7 +37,7 @@ def assemble(
             cancel.check(video_id)
             seg = segdir / f"seg_{i:05d}.mp4"
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg(), "-y",
                 "-ss", f"{a:.2f}", "-i", str(source.resolve()),
                 "-t", f"{b - a:.2f}",
                 "-vf", _FIT,
@@ -60,7 +61,7 @@ def assemble(
         )
         r = subprocess.run(
             [
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                ffmpeg(), "-y", "-f", "concat", "-safe", "0",
                 "-i", str(listfile.resolve()),
                 "-c", "copy", "-movflags", "+faststart",
                 str(output_path.resolve()),

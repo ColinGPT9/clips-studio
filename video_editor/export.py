@@ -14,6 +14,7 @@ from video.encoding import LOUDNORM, video_encoder_args
 from video_editor.audio import master_filter, mute_filter
 from video_editor.cuts import concat_graph
 from video_editor.timeline import EditList
+from core.binaries import ffmpeg
 
 
 def apply_edits(
@@ -90,7 +91,7 @@ def apply_edits(
         video_out = "0:v"
 
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg(), "-y",
         *inputs,
         "-filter_complex", ";".join(graph_parts),
         "-map", video_out, "-map", "[aout]",

@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 import requests
+from core.binaries import ffmpeg
 
 # ---- log ring buffer ---------------------------------------------------------
 
@@ -155,7 +156,7 @@ def _model_info(config: dict) -> dict:
 
 def _versions() -> dict:
     v: dict = {"python": platform.python_version()}
-    ff = _run(["ffmpeg", "-version"])
+    ff = _run([ffmpeg(), "-version"])
     v["ffmpeg"] = ff.splitlines()[0].replace("ffmpeg version ", "") if ff else "?"
     for mod, key in (("cv2", "opencv"), ("faster_whisper", "faster_whisper"),
                      ("yt_dlp.version", "yt_dlp"), ("ultralytics", "ultralytics")):

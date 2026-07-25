@@ -21,6 +21,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from core.binaries import ffmpeg
 
 SAMPLE_FPS = 2.0
 FRAME_W, FRAME_H = 160, 90  # analysis resolution; plenty for motion/cuts
@@ -62,7 +63,7 @@ def _decode_sampled_gray(video_path: Path) -> np.ndarray:
     from video.encoding import hwaccel_input_args
 
     cmd = [
-        "ffmpeg", "-v", "error",
+        ffmpeg(), "-v", "error",
         *hwaccel_input_args(),  # NVDEC decode: this pass is decode-bound
         "-i", str(video_path),
         "-vf", f"fps={SAMPLE_FPS},scale={FRAME_W}:{FRAME_H}",

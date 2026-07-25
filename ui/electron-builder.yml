@@ -1,0 +1,71 @@
+# Windows installer for Clips Studio.
+#
+# Produces an NSIS installer that carries everything the app needs: the
+# Electron front end, the frozen Python engine, FFmpeg, and the YOLO
+# weights. A creator installs it and pastes a link — no Python, no PATH,
+# no terminal.
+#
+# Built by scripts/build_installer.py, which freezes the backend first and
+# leaves it in build/dist/backend/ for the extraResources rule below.
+
+appId: com.clipsstudio.app
+productName: Clips Studio
+copyright: Copyright © 2026 ColinGPT9
+
+directories:
+  output: ../release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+# Everything that is not JavaScript rides along here. asar would corrupt the
+# native DLLs in the backend, so these stay as plain files on disk.
+extraResources:
+  # The frozen Python engine. Electron spawns resources/backend/api.exe —
+  # see startBackend() in src/main/index.ts.
+  - from: ../build/dist/backend
+    to: backend
+    filter:
+      - "**/*"
+  # FFmpeg lands inside the backend folder, where core.binaries looks for it
+  # relative to the executable.
+  - from: ../vendor/ffmpeg
+    to: backend/ffmpeg
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ClipsStudio-Setup-${version}.${ext}
+  # No code-signing certificate yet. Windows SmartScreen will warn on first
+  # run until the installer builds reputation or a certificate is bought —
+  # documented in the release notes so it doesn't look like a virus.
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Clips Studio
+  # The payload is several gigabytes, so give the user a real progress
+  # dialog rather than a frozen window.
+  deleteAppDataOnUninstall: false
+  # Leaving data/ behind on uninstall is deliberate: it holds the creator's
+  # downloaded videos, rendered clips and learned creator profiles. Removing
+  # a program should never delete someone's footage.
+
+compression: maximum
+
+# Auto-update wiring. The update wizard (roadmap item 4) reads this feed;
+# publishing is manual until releases start.
+publish:
+  - provider: github
+    owner: ColinGPT9
+    repo: clips-studio
+    releaseType: draft

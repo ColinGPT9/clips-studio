@@ -24,7 +24,8 @@ document — design notes that used to live separately have been folded in here.
 11. [Desktop application](#11-desktop-application)
 12. [State and storage](#12-state-and-storage)
 13. [Configuration surface](#13-configuration-surface)
-14. [Design rules](#14-design-rules)
+14. [Windows packaging](#14-windows-packaging)
+15. [Design rules](#15-design-rules)
 
 ---
 
@@ -578,7 +579,44 @@ so the rating system can be tuned without touching Python.
 
 ---
 
-## 14. Design rules
+## 14. Windows packaging
+
+The installer has to carry everything, because the audience is creators, not
+developers. "Install Python, install FFmpeg, add it to your PATH" is where a
+streamer closes the window and never comes back.
+
+**electron-builder (NSIS) + a PyInstaller one-dir backend + bundled FFmpeg.**
+Built by `python scripts/build_installer.py`, which runs the whole chain and
+stops at the first failure with an explanation.
+
+| Piece | How it ships | Why |
+|---|---|---|
+| Front end | electron-builder, NSIS installer | Standard desktop install, user-chosen location, real progress dialog |
+| Python engine | PyInstaller **one-dir** → `resources/backend/api.exe` | One-file unpacks gigabytes to temp on every launch — slow and fragile with PyTorch in the bundle |
+| FFmpeg | `scripts/fetch_ffmpeg.py` → `vendor/ffmpeg/` → `resources/backend/ffmpeg/` | Found by `core/binaries.py`; never depends on the user's PATH |
+| YOLO weights | Bundled as data | Otherwise the first video stalls on a silent download |
+| PyTorch | CUDA build, bundled | Not just for tracking — the CUDA wheels carry the cuBLAS/cuDNN DLLs that CTranslate2 needs for GPU transcription. A CPU build makes *both* Whisper and tracking fall back to CPU |
+| Ollama + LLM | **Not bundled** — the setup wizard detects and installs | Separate product with its own installer, GPU handling and update cycle; models are gigabytes and the right one depends on the user's VRAM |
+
+Two details that are easy to get wrong and expensive to discover late:
+
+- **The backend is a console app on purpose.** A windowed PyInstaller build
+  gives the process no stdout, and every `print()` in the pipeline then
+  raises. Electron passes `windowsHide` so no console is ever shown.
+- **Text encoding is forced to UTF-8 at the entry point.** Windows gives a
+  spawned process the system locale's encoding — cp1252 on most Western
+  installs — which cannot encode an emoji. Stream titles are full of them.
+  This is invisible in development because a developer's terminal usually
+  has UTF-8 configured, and Electron does not inherit that.
+
+`core/preflight.py` checks what an install actually has — FFmpeg, Ollama, the
+model, GPU, disk — and reports each in words a creator can act on, so a
+missing piece surfaces before processing rather than as a stack trace twenty
+minutes into a video. It is served at `GET /health/preflight`.
+
+---
+
+## 15. Design rules
 
 These are the constraints that keep the system modular and safe to change:
 

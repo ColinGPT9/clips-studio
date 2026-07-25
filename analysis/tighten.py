@@ -17,6 +17,7 @@ music, laughter or a held reaction would be worse than leaving the pause.
 import re
 import subprocess
 from pathlib import Path
+from core.binaries import ffmpeg
 
 # Sounds with no meaning to lose. Deliberately short: "like", "so" and
 # "you know" are frequently load-bearing in speech, and cutting them
@@ -32,7 +33,7 @@ MIN_KEEP = 0.30      # never leave an unwatchable sliver behind
 def _detect_silence(path: Path, noise_db: int = -32, min_gap: float = MIN_GAP) -> list[list[float]]:
     """Quiet stretches in the audio, as [start, end] seconds."""
     cmd = [
-        "ffmpeg", "-hide_banner", "-nostats", "-i", str(path.resolve()),
+        ffmpeg(), "-hide_banner", "-nostats", "-i", str(path.resolve()),
         "-af", f"silencedetect=noise={noise_db}dB:d={min_gap:g}", "-f", "null", "-",
     ]
     try:

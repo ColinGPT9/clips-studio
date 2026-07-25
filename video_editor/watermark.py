@@ -30,6 +30,7 @@ import subprocess
 from pathlib import Path
 
 from video.encoding import video_encoder_args
+from core.binaries import ffmpeg
 
 # ASS numpad alignment per named position (7 8 9 / 4 5 6 / 1 2 3).
 _ALIGN = {
@@ -226,7 +227,7 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
 
     tmp = video_path.with_suffix(".wm.mp4")
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg(), "-y",
         "-i", str(video_path.resolve()),
         "-i", str(logo.resolve()),
         "-filter_complex", graph,

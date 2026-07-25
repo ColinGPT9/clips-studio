@@ -17,6 +17,7 @@ Config: video.encoder in settings.yaml — "auto" (default) or force one of
 """
 
 import subprocess
+from core.binaries import ffmpeg, ffprobe
 
 CPU_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
 
@@ -37,7 +38,7 @@ def _probe(args: list[str]) -> bool:
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-v", "error",
+                ffmpeg(), "-v", "error",
                 "-f", "lavfi", "-i", "color=black:s=256x256:d=0.1",
                 *args,
                 "-f", "null", "-",
@@ -123,7 +124,7 @@ def source_codec(path) -> str:
     """codec_name of the first video stream ('' when unprobeable)."""
     try:
         r = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+            [ffprobe(), "-v", "error", "-select_streams", "v:0",
              "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(path)],
             capture_output=True, text=True, timeout=30,
         )
@@ -152,7 +153,7 @@ def ensure_h264_source(path, config: dict | None = None) -> bool:
     tmp = p.with_name(p.stem + ".h264.tmp.mp4")
     # -pix_fmt yuv420p: 10-bit sources (HEVC main10, HDR phone video) are
     # not accepted by h264_nvenc — normalize to 8-bit while we're here.
-    base = ["ffmpeg", "-y", "-v", "error", *hwaccel_input_args(), "-i", str(p),
+    base = [ffmpeg(), "-y", "-v", "error", *hwaccel_input_args(), "-i", str(p),
             *video_encoder_args(config), "-pix_fmt", "yuv420p"]
     # Copy audio when the container allows it; re-encode as the fallback.
     for audio in (["-c:a", "copy"], ["-c:a", "aac", "-b:a", "192k"]):

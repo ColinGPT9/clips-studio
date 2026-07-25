@@ -18,9 +18,13 @@ function startBackend(): void {
   // Packaged: run the frozen backend exe shipped in resources/backend/.
   if (app.isPackaged) {
     const exe = join(process.resourcesPath, 'backend', 'api.exe')
+    // The backend is built as a console app so its prints have somewhere to
+    // go (a windowed build gives it no stdout, and every print() then
+    // throws). windowsHide keeps that console from flashing up at the user.
     backend = spawn(exe, ['serve', '--port', String(API_PORT)], {
       stdio: 'ignore',
-      env: backendEnv
+      env: backendEnv,
+      windowsHide: true
     })
   } else if (process.env.BACKEND_EXTERNAL !== '1') {
     const repoRoot = join(app.getAppPath(), '..')

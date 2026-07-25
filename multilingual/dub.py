@@ -25,6 +25,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from core.binaries import ffmpeg, ffprobe
 
 # Default voice per language; creators pick a different one in the UI.
 # Languages absent from Piper's catalogue simply aren't in here.
@@ -89,7 +90,7 @@ def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -
 
 def _duration(path: Path) -> float:
     r = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        [ffprobe(), "-v", "error", "-show_entries", "format=duration",
          "-of", "csv=p=0", str(path)],
         capture_output=True, text=True,
     )
@@ -200,7 +201,7 @@ def dub(
         f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0:dropout_transition=0[aout]"
     )
     cmd = [
-        "ffmpeg", "-y", "-v", "error", *inputs,
+        ffmpeg(), "-y", "-v", "error", *inputs,
         "-filter_complex", ";".join(chains),
         "-map", "0:v", "-map", "[aout]",
         "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",

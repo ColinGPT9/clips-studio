@@ -23,6 +23,7 @@ from sources import youtube
 from transcription.transcriber import transcribe
 from video.captions import build_captions
 from video.cutter import cut_clip
+from core.binaries import ffprobe
 
 
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
@@ -303,7 +304,7 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     # 25-min video slower than a 2-hour H.264 VOD. Swap for H.264 while the
     # platform is reachable; otherwise the slow cached copy still works.
     codec = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+        [ffprobe(), "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(cached)],
         capture_output=True, text=True,
     ).stdout.strip()
@@ -319,7 +320,7 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     ).fetchone()
 
     probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(cached)],
+        [ffprobe(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(cached)],
         capture_output=True, text=True,
     )
     duration = float(probe.stdout.strip() or 0)

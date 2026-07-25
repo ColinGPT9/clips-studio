@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from video.encoding import audio_filter_args, video_encoder_args
+from core.binaries import ffmpeg
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
@@ -98,7 +99,7 @@ def _render_fit_blur(
         vout = "[v]"
 
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg(), "-y",
         # No -hwaccel here: GPU decode feeding this split/overlay/blur graph can
         # drift the video timing off the audio. CPU decode keeps A/V locked.
         "-i", str(clip_path.resolve()),
@@ -194,7 +195,7 @@ def _render_tracked(
         if ass_path is not None:
             filters += f";[v]subtitles={ass_path.name}[v]"
         cmd = [
-            "ffmpeg", "-y",
+            ffmpeg(), "-y",
             *pipe_in,                         # cropped frames on stdin
             "-i", str(clip_path.resolve()),   # source of the audio
             "-filter_complex", filters,
@@ -221,7 +222,7 @@ def _render_tracked(
     if ass_path is not None:
         vf += f",subtitles={ass_path.name}"
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg(), "-y",
         *pipe_in,                         # cropped frames on stdin
         "-i", str(clip_path.resolve()),   # source of the audio
         "-map", "0:v:0", "-map", "1:a:0?",
@@ -301,7 +302,7 @@ def _render_split(
         filters += f";[v]subtitles={ass_path.name}[v]"
 
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg(), "-y",
         # CPU decode for the filter graph — keeps A/V locked (see _render_fit_blur).
         "-i", str(clip_path.resolve()),
         "-filter_complex", filters,

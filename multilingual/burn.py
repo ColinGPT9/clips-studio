@@ -17,12 +17,13 @@ import subprocess
 from pathlib import Path
 
 from multilingual.languages import english_name
+from core.binaries import ffmpeg, ffprobe
 
 
 def _canvas_of(path: Path) -> tuple[int, int]:
     try:
         r = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+            [ffprobe(), "-v", "error", "-select_streams", "v:0",
              "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)],
             capture_output=True, text=True, timeout=30,
         )
@@ -86,7 +87,7 @@ def burn(
     if built is None:
         return None
     cmd = [
-        "ffmpeg", "-y", "-v", "error",
+        ffmpeg(), "-y", "-v", "error",
         "-i", str(base_video.resolve()),
         "-vf", f"subtitles={built.name}",
         "-c:a", "copy",
