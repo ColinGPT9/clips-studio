@@ -585,13 +585,22 @@ The installer has to carry everything, because the audience is creators, not
 developers. "Install Python, install FFmpeg, add it to your PATH" is where a
 streamer closes the window and never comes back.
 
-**electron-builder (NSIS) + a PyInstaller one-dir backend + bundled FFmpeg.**
-Built by `python scripts/build_installer.py`, which runs the whole chain and
-stops at the first failure with an explanation.
+**electron-builder (NSIS **web** installer) + a PyInstaller one-dir backend +
+bundled FFmpeg.** Built by `python scripts/build_installer.py`, which runs the
+whole chain and stops at the first failure with an explanation.
+
+**Why a web installer, not a single .exe:** `makensis.exe` is a 32-bit program
+and memory-maps the payload in order to embed it, so it fails at roughly 2 GB
+with `failed creating mmap`. This app is ~5 GB unpacked, nearly all of it CUDA
+PyTorch, so a self-contained NSIS installer is not possible — not a
+configuration problem, a hard ceiling. At this size a web installer is also
+simply better: the setup starts instantly and the large download is
+**resumable**, which matters over a home connection. A `.zip` ships alongside
+for offline installs.
 
 | Piece | How it ships | Why |
 |---|---|---|
-| Front end | electron-builder, NSIS installer | Standard desktop install, user-chosen location, real progress dialog |
+| Front end | electron-builder, NSIS **web** installer + zip | Small setup that downloads a resumable payload; zip covers offline |
 | Python engine | PyInstaller **one-dir** → `resources/backend/api.exe` | One-file unpacks gigabytes to temp on every launch — slow and fragile with PyTorch in the bundle |
 | FFmpeg | `scripts/fetch_ffmpeg.py` → `vendor/ffmpeg/` → `resources/backend/ffmpeg/` | Found by `core/binaries.py`; never depends on the user's PATH |
 | YOLO weights | Bundled as data | Otherwise the first video stalls on a silent download |

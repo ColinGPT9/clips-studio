@@ -36,11 +36,25 @@ extraResources:
       - "**/*"
 
 win:
+  # nsis-web, not plain nsis. makensis.exe is a 32-bit program: it memory-maps
+  # the payload to embed it in the installer, so it dies at roughly 2 GB with
+  # "failed creating mmap". This app is ~5 GB unpacked, almost all of it CUDA
+  # PyTorch, so a single-file installer is not possible at all.
+  #
+  # A web installer is the better answer anyway at this size: the setup .exe
+  # is small and starts instantly, and the big download is resumable — which
+  # matters a lot when it is several gigabytes over a home connection.
+  #
+  # The zip target is the offline fallback: no installer, no shortcuts, but
+  # it works with no network and can be copied onto a machine by hand.
   target:
-    - target: nsis
+    - target: nsis-web
       arch:
         - x64
-  artifactName: ClipsStudio-Setup-${version}.${ext}
+    - target: zip
+      arch:
+        - x64
+  artifactName: ClipsStudio-${version}-${arch}.${ext}
   # No code-signing certificate yet. Windows SmartScreen will warn on first
   # run until the installer builds reputation or a certificate is bought —
   # documented in the release notes so it doesn't look like a virus.
@@ -57,6 +71,7 @@ win:
   # then delete this line.
   signAndEditExecutable: false
 
+# These apply to the web installer too — nsisWeb inherits from nsis.
 nsis:
   oneClick: false
   perMachine: false
@@ -70,6 +85,9 @@ nsis:
   # Leaving data/ behind on uninstall is deliberate: it holds the creator's
   # downloaded videos, rendered clips and learned creator profiles. Removing
   # a program should never delete someone's footage.
+
+nsisWeb:
+  artifactName: ClipsStudio-Web-Setup-${version}.${ext}
 
 compression: maximum
 

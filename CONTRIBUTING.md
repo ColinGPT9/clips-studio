@@ -39,8 +39,12 @@ python scripts/build_installer.py
 
 That runs the whole chain and stops at the first failure with an
 explanation: fetch FFmpeg → freeze the Python engine with PyInstaller →
-smoke-test the frozen engine → build the renderer → wrap it all in an NSIS
-installer. The result lands in `release/`.
+smoke-test the frozen engine → build the renderer → wrap it all up. The
+results land in `release/`: a small **Web Setup .exe**, the **.7z payload**
+it downloads, and a **.zip** for offline installs.
+
+Publish the Web Setup and the .7z to the *same* GitHub release — the setup
+fetches the payload by name, so one without the other is useless.
 
 Expect it to take a while and to need disk: the frozen engine is ~4.8 GB
 unpacked, mostly CUDA PyTorch. `--skip-backend` and `--skip-ui` reuse the
@@ -62,6 +66,10 @@ Things worth knowing before you change any of it:
   otherwise downloads a bundle containing macOS symlinks, which an ordinary
   Windows account cannot extract. The trade-off and how to re-enable it are
   documented in `ui/electron-builder.yml`.
+- **Don't switch the target back to plain `nsis`.** `makensis.exe` is 32-bit
+  and memory-maps the payload to embed it, so it dies around 2 GB with
+  `failed creating mmap`. The app is ~5 GB unpacked. That is a ceiling, not
+  a setting.
 
 ## Pull requests
 

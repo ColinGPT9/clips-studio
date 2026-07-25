@@ -136,11 +136,28 @@ def package_installer() -> None:
     run(["npx", "electron-builder", "--win", "--config", "electron-builder.yml"],
         UI, "electron-builder")
     release = ROOT / "release"
-    installers = sorted(release.glob("*.exe")) if release.exists() else []
-    if not installers:
-        sys.exit("\nelectron-builder reported success but produced no .exe")
-    for path in installers:
-        print(f"\n    INSTALLER: {path}  ({path.stat().st_size / 1e9:.2f} GB)")
+    if not release.exists():
+        sys.exit("\nelectron-builder reported success but produced no release/ folder")
+
+    # The web setup is small on purpose: it fetches the .7z payload beside it
+    # at install time. Both have to be published together or the installer
+    # has nothing to download.
+    artifacts = [p for p in sorted(release.iterdir())
+                 if p.is_file() and p.suffix.lower() in (".exe", ".zip", ".7z")
+                 and not p.name.startswith("__")]
+    if not artifacts:
+        sys.exit("\nelectron-builder reported success but produced no installer")
+
+    print()
+    for path in artifacts:
+        size = path.stat().st_size
+        unit = f"{size / 1e9:.2f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
+        print(f"    ARTIFACT: {path.name}  ({unit})")
+    print(
+        "\n    Publishing: upload the Web Setup .exe AND the .7z payload to the\n"
+        "    same GitHub release — the setup downloads the payload by name.\n"
+        "    The .zip is the offline alternative: unzip and run Clips Studio.exe."
+    )
 
 
 def main() -> None:
