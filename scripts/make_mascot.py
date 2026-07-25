@@ -60,21 +60,6 @@ def ell(d, cx, cy, rx, ry, fill=None, outline=None, width=0):
               width=s(width) if width else 0)
 
 
-def tufts(d, cx, cy, rx, ry, a0, a1, n, size, fill):
-    """Soft fur along an ellipse arc: overlapping bumps, not spikes.
-
-    Angles are in degrees, screen convention: 0 is right, 90 is down.
-    Triangles were the obvious way to draw a tuft and they read as a saw
-    blade — a serrated edge on a hard shape. Rounded bumps sitting just
-    proud of the outline read as fluff at any size.
-    """
-    for i in range(n + 1):
-        t = math.radians(a0 + (a1 - a0) * i / n)
-        px = cx + (rx + size * 0.45) * math.cos(t)
-        py = cy + (ry + size * 0.45) * math.sin(t)
-        ell(d, px, py, size, size, fill)
-
-
 def blob(d, points, fill):
     """A closed shape through `points`, rounded by drawing a fat circle at
     every point and filling the polygon between them. Keeps every edge soft,
@@ -108,68 +93,54 @@ def draw_tail(d):
         rad = 90 + 210 * t
         cx = 660 + rad * math.cos(ang)
         cy = 740 - rad * math.sin(ang) * 0.80
-        # Thinner than an arm at the base, tapering to a fine tip. Left at
-        # its original weight while the arms and torso were slimmed, it
-        # ended up fatter than the limbs it hangs beside.
-        pts.append((cx, cy, 26 - 13 * t))
+        pts.append((cx, cy, 42 - 20 * t))
     for cx, cy, r in pts:
         ell(d, cx, cy, r, r, NAVY)
     for cx, cy, r in pts[-20:]:      # sky tip, matching the paws
         ell(d, cx, cy, r * 0.94, r * 0.94, SKY)
 
 
-def paw(d, cx, cy, rx, ry, beans=4, bean_dy=-0.40, spread=0.60):
-    """A paw seen face-on: big pad in the middle, toe beans arced above it."""
-    ell(d, cx, cy, rx, ry, SKY)
-    ell(d, cx, cy + ry * 0.26, rx * 0.46, ry * 0.34, SKY_DEEP)
-    step = (spread * 2 * rx) / max(1, beans - 1)
-    for i in range(beans):
-        bx = cx - spread * rx + i * step
-        # Outer toes ride a little lower, so the row curves with the paw.
-        lift = 1.0 - 0.22 * abs(i - (beans - 1) / 2) / max(1, (beans - 1) / 2)
-        ell(d, bx, cy + ry * bean_dy * lift, rx * 0.18, ry * 0.19, SKY_DEEP)
-
-
 # ---------------------------------------------------------------- body
 def draw_body(d):
-    """Sitting upright: front legs straight down in front of the chest, back
-    paws splayed either side at the floor. Arms hanging at the sides never
-    read as sitting — this is the pose a kitten actually holds."""
-    # Haunches. The bottom has to stop ABOVE the paws — reaching lower, the
-    # body hangs below them as a dark blob and the cat has no floor.
+    # Legs: short rounded stubs, feet turned out and sitting low enough to
+    # clear the belly — tucked any higher and they vanish behind it. Back
+    # paws get the same pad and toe beans as the hands, so all four match.
+    for sx in (-1, 1):
+        fx = 512 + sx * 150
+        ell(d, 512 + sx * 132, 926, 82, 66, NAVY)
+        ell(d, fx, 944, 66, 50, SKY)                    # paw
+        ell(d, fx, 956, 32, 21, SKY_DEEP)               # main pad
+        for f in (-1, 0, 1):                            # toe beans
+            ell(d, fx + f * 32, 920, 15, 12, SKY_DEEP)
+
+    # Torso: a soft pear, wider at the bottom. Perimeter order — top, right,
+    # bottom, left.
     blob(d, [
-        (512, 660, 110),
-        (560, 748, 116),
-        (512, 806, 120),
-        (464, 748, 116),
+        (512, 700, 150),
+        (594, 790, 128),
+        (512, 862, 158),
+        (430, 790, 128),
     ], NAVY)
 
-    # No chest patch. Anything sky-coloured on the chest shows through the
-    # gap between the front legs as a bright wedge that reads as a necktie,
-    # wherever it is placed. The sky already appears on the face, socks,
-    # paws, inner ears and tail tip — the chest does not need it too.
+    # Belly patch.
+    ell(d, 512, 812, 118, 122, SKY)
+    ell(d, 512, 742, 84, 70, SKY)
 
-    # Back paws at the floor, splayed well outside the front ones. At the old
-    # spacing the two pairs overlapped by 17px and merged into one blue bar.
+    # Arms: rounded stubs ending in proper paws — a big palm pad and three
+    # toe beans, same as the feet. Without the pads the hands were just
+    # blue mittens with no read on them at all.
     for sx in (-1, 1):
-        fx = 512 + sx * 172
-        ell(d, fx - sx * 30, 872, 58, 50, NAVY)     # hock, tucked under
-        paw(d, fx, 896, 60, 46, beans=4)
-
-    # Front legs: straight down the front, close together, planted on the
-    # floor between the back paws.
-    #
-    # The lower half of each is a sky sock. Navy legs on a navy body have no
-    # contrast at all — the legs simply vanished and the cat had a paw-shaped
-    # bar where its feet should be. Socks are a real cat marking and they
-    # give two readable columns against the dark haunches.
-    for sx in (-1, 1):
-        lx = 512 + sx * 52
-        for i in range(21):
-            t = i / 20
-            ell(d, lx + sx * 3 * t, 700 + 164 * t,
-                38 - 5 * t, 38 - 5 * t, NAVY if t < 0.52 else SKY)
-        paw(d, lx + sx * 4, 890, 42, 38, beans=4)
+        shoulder_x = 512 + sx * 150
+        hand_x = 512 + sx * 232
+        for i in range(19):
+            t = i / 18
+            cx = shoulder_x + (hand_x - shoulder_x) * t
+            cy = 748 + 74 * t
+            ell(d, cx, cy, 52 - 10 * t, 52 - 10 * t, NAVY)
+        ell(d, hand_x, 828, 60, 56, SKY)                       # paw
+        ell(d, hand_x, 846, 30, 22, SKY_DEEP)                  # palm pad
+        for f in (-1, 0, 1):                                   # toe beans
+            ell(d, hand_x + f * 30, 802, 15, 13, SKY_DEEP)
 
 
 # ---------------------------------------------------------------- head
@@ -216,10 +187,8 @@ def draw_head(d, cx=512.0, cy=430.0, k=1.0):
             off = (7 * math.cos(math.radians(a)), 7 * math.sin(math.radians(a)))
             tri([(px + off[0], py + off[1]) for px, py in ear], NAVY_MID)
         tri(ear, NAVY)
-        # Inner ear follows the same lean, inset just enough to leave a fur
-        # border. Any smaller and it reads as a thin sliver rather than the
-        # inside of an ear.
-        tri([(bx - 76, 358), (bx + 76, 348), (bx + sx * 74, 146)], SKY_DEEP)
+        # Inner ear follows the same lean, inset from each edge.
+        tri([(bx - 52, 348), (bx + 52, 340), (bx + sx * 64, 166)], SKY_DEEP)
 
     # --- skull: wide and low, the chibi shape. Deliberately flat colour —
     # a lighter shading ellipse was in here and it made the ears' rounded
@@ -247,30 +216,6 @@ def draw_head(d, cx=512.0, cy=430.0, k=1.0):
         (512 - 104, 516, 82),
         (512 - 132, 432, 96),    # left cheek, closing the loop
     ]), SKY)
-
-    # --- fur. Flat colour reads as vinyl; a few tufts read as an animal.
-    # Only at CHEEK level, where a cat's ruff actually sticks out. Ringing
-    # the whole skull with them — and stacking three passes — turned the head
-    # into a spiked ball.
-    # Confined to the cheek, where a cat's ruff actually sticks out. Run
-    # further round the skull and it stops being cheek fur and becomes a
-    # texture applied to the whole head.
-    for a0, a1 in ((18, 56), (124, 162)):
-        tufts(d, X(512), Y(444), R(258), R(202), a0, a1, 4, R(26), NAVY_MID)
-        tufts(d, X(512), Y(444), R(254), R(198), a0, a1, 4, R(24), NAVY)
-
-    # A couple of tufts standing out of each inner ear.
-    for sx in (-1, 1):
-        bx = 512 + sx * 116
-        for fx in (bx - 26, bx + 22):
-            d.polygon([(s(X(fx - 11)), s(Y(340))), (s(X(fx + sx * 4)), s(Y(286))),
-                       (s(X(fx + 11)), s(Y(340)))], fill=NAVY)
-
-    # Forehead strokes: short marks suggesting the fur runs downward, the
-    # same read as the reference's tabby ticking.
-    for dx, ln in ((-40, 34), (-14, 44), (14, 44), (40, 34)):
-        d.line([s(X(512 + dx)), s(Y(268)), s(X(512 + dx * 1.15)), s(Y(268 + ln))],
-               fill=NAVY_MID, width=s(R(8)))
 
     # --- eyes: big, low, wide apart. Cuteness lives here.
     for sx in (-1, 1):
