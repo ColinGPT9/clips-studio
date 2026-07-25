@@ -102,17 +102,6 @@ def draw_tail(d):
 
 # ---------------------------------------------------------------- body
 def draw_body(d):
-    # Legs: short rounded stubs, feet turned out and sitting low enough to
-    # clear the belly — tucked any higher and they vanish behind it. Back
-    # paws get the same pad and toe beans as the hands, so all four match.
-    for sx in (-1, 1):
-        fx = 512 + sx * 150
-        ell(d, 512 + sx * 132, 926, 82, 66, NAVY)
-        ell(d, fx, 944, 66, 50, SKY)                    # paw
-        ell(d, fx, 956, 32, 21, SKY_DEEP)               # main pad
-        for f in (-1, 0, 1):                            # toe beans
-            ell(d, fx + f * 32, 920, 15, 12, SKY_DEEP)
-
     # Torso: a soft pear, wider at the bottom. Perimeter order — top, right,
     # bottom, left.
     blob(d, [
@@ -122,9 +111,27 @@ def draw_body(d):
         (430, 790, 128),
     ], NAVY)
 
-    # Belly patch.
-    ell(d, 512, 812, 118, 122, SKY)
-    ell(d, 512, 742, 84, 70, SKY)
+    # Belly: narrow at the chest, widening toward the bottom. Two concentric
+    # ellipses made a near-perfect circle sitting in the middle of the torso
+    # like a badge pinned on, rather than a marking that belongs to the body.
+    blob(d, [
+        (512, 726, 58),
+        (554, 772, 70),
+        (566, 812, 80),
+        (512, 856, 88),
+        (458, 812, 80),
+        (470, 772, 70),
+    ], SKY)
+
+    # Feet AFTER the torso, so the paws sit in front of it. Drawn before it
+    # they were painted straight over and the belly appeared to swallow them.
+    for sx in (-1, 1):
+        fx = 512 + sx * 150
+        ell(d, 512 + sx * 132, 926, 82, 66, NAVY)
+        ell(d, fx, 944, 66, 50, SKY)                    # paw
+        ell(d, fx, 956, 32, 21, SKY_DEEP)               # main pad
+        for f in (-1, 0, 1):                            # toe beans
+            ell(d, fx + f * 32, 920, 15, 12, SKY_DEEP)
 
     # Arms: rounded stubs ending in proper paws — a big palm pad and three
     # toe beans, same as the feet. Without the pads the hands were just
