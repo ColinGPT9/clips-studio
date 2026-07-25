@@ -273,6 +273,9 @@ export const api = {
     request<{ deleted: number }>(`/creators/${creatorId}/knowledge/${knowledgeId}`, {
       method: 'DELETE'
     }),
+  /** Forget the unconfirmed catchphrases and dormant facts in one go. */
+  clearUnusedKnowledge: (creatorId: number) =>
+    request<{ deleted: number }>(`/creators/${creatorId}/knowledge`, { method: 'DELETE' }),
   setCreatorLearning: (creatorId: number, enabled: boolean) =>
     request<{ learning_enabled: boolean }>(`/creators/${creatorId}/learning`, {
       method: 'POST',

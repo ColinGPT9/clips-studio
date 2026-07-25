@@ -92,6 +92,11 @@ CREATE TABLE IF NOT EXISTS platform_accounts (
     UNIQUE (platform, platform_account_id)
 );
 
+-- times_seen/last_seen/last_video record how often the creator has actually
+-- SAID this again, which is what makes a catchphrase a catchphrase and what
+-- drives dropout: a fact nobody repeats goes dormant and stops scoring.
+-- (last_used is different — that's when WE last put it in a prompt.)
+
 CREATE TABLE IF NOT EXISTS creator_knowledge (
     knowledge_id   INTEGER PRIMARY KEY AUTOINCREMENT,
     creator_id     INTEGER NOT NULL REFERENCES creators(creator_id),
@@ -101,7 +106,10 @@ CREATE TABLE IF NOT EXISTS creator_knowledge (
     confidence     TEXT NOT NULL DEFAULT 'medium',  -- high | medium
     source_video   TEXT,
     created_at     TEXT NOT NULL,
-    last_used      TEXT
+    last_used      TEXT,
+    times_seen     INTEGER NOT NULL DEFAULT 1,  -- times heard, across videos
+    last_seen      TEXT,                        -- when it was last heard
+    last_video     TEXT                         -- video that last reinforced it
 );
 
 CREATE TABLE IF NOT EXISTS creator_events (
@@ -205,6 +213,19 @@ class StateDB:
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
+        knowledge_cols = {
+            r["name"] for r in self.conn.execute("PRAGMA table_info(creator_knowledge)")
+        }
+        if "times_seen" not in knowledge_cols:
+            # Facts learned before repetition tracking start at 1 — heard once,
+            # never confirmed — which is exactly how they should be treated.
+            self.conn.execute(
+                "ALTER TABLE creator_knowledge ADD COLUMN times_seen INTEGER NOT NULL DEFAULT 1"
+            )
+        if "last_seen" not in knowledge_cols:
+            self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_seen TEXT")
+        if "last_video" not in knowledge_cols:
+            self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_video TEXT")
 
     def recover_stuck_videos(self) -> int:
         """Videos left mid-pipeline by a crash/force-close (downloaded,

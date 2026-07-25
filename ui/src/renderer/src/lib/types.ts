@@ -285,6 +285,12 @@ export interface CreatorKnowledgeItem {
   confidence: string
   source_video: string | null
   created_at: string
+  /** How many times the creator has actually been heard saying it. */
+  times_seen: number
+  last_seen: string | null
+  /** 'active' = used for scoring/titles; 'candidate' = a phrase heard too few
+   *  times to count yet; 'dormant' = not said again in a long time. */
+  state: 'active' | 'candidate' | 'dormant'
 }
 
 export interface CreatorEvent {

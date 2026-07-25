@@ -4,8 +4,8 @@ FACT TYPES:
 - "topic": a subject they talk about at length (e.g. "powerlifting", "dating advice", "trading")
 - "game": a game or activity they are playing/doing, mentioned by name
 - "series": a named recurring show/format they run
-- "catchphrase": an exact phrase the creator repeats as their signature
-- "joke": a running joke or recurring bit they reference
+- "catchphrase": a short phrase the creator says OVER AND OVER in this transcript. Only use this type if you can see the phrase repeated several times — a memorable line said once is NOT a catchphrase. Write the phrase exactly as spoken.
+- "joke": a running joke or recurring bit they come back to more than once. Write the wording they use for it.
 - "collaborator": a named person appearing with them or described as a friend/collab partner
 - "format": a structural habit (e.g. "ends streams with viewer Q&A")
 - "life": a personal detail useful as a future callback (pet, family, habit, strong preference)
@@ -39,6 +39,7 @@ EXAMPLE 2 — casual stream banter still contains durable bits. Transcript: "my 
 
 Rules:
 - Facts must be about the CREATOR or their content, stated in the transcript.
+- A "catchphrase" or "joke" must use the creator's exact words, copied from the transcript — not your paraphrase of them. If they only said it once, leave it out.
 - Confidence "high" when explicit and unambiguous, "medium" otherwise.
 - Keep each "information" under 25 words, specific and self-contained (it will be read months later without this transcript).
 - Maximum 5 facts and 3 events. Casual banter counts: recurring jokes, personal details, strong opinions and goals are all durable. Use empty lists only when there is truly nothing about the creator.

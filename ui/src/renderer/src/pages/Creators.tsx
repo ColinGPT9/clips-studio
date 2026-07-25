@@ -26,6 +26,24 @@ const KNOWLEDGE_LABELS: Record<string, string> = {
   format: 'Formats'
 }
 
+// Why a learned fact is or isn't being used. Catchphrases used to fill up
+// with lines the creator said once, so the count is shown and anything not in
+// play is dimmed and labelled rather than quietly listed as fact.
+const STATE_CHIP: Record<string, { label: string; className: string; title: string }> = {
+  candidate: {
+    label: 'not confirmed',
+    className: 'bg-raised text-muted',
+    title:
+      'Only heard once or twice. It stays here in case they say it again, but it is not used for scoring or titles until it repeats.'
+  },
+  dormant: {
+    label: 'dormant',
+    className: 'bg-raised text-muted',
+    title:
+      'They have not said this again in months of videos, so it no longer affects scoring or titles. It comes back the next time they say it.'
+  }
+}
+
 const EVENT_CHIP: Record<string, string> = {
   announced: 'bg-blue-500/15 text-blue-400',
   in_progress: 'bg-yellow-500/15 text-yellow-400',
@@ -107,6 +125,9 @@ export default function Creators(): JSX.Element {
     ;(acc[k.knowledge_type] ??= []).push(k)
     return acc
   }, {})
+
+  // Facts sitting there doing nothing: unconfirmed phrases and dormant items.
+  const unusedCount = (detail?.knowledge ?? []).filter((k) => k.state !== 'active').length
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
@@ -412,30 +433,76 @@ export default function Creators(): JSX.Element {
                   </p>
                 ) : (
                   <div className="space-y-3">
+                    <p className="text-[11px] text-muted -mt-1">
+                      A catchphrase has to actually repeat before it counts, and anything they
+                      stop saying goes dormant. Greyed-out entries aren&apos;t used for scoring or
+                      titles.{' '}
+                      {unusedCount > 0 && (
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Forget ${unusedCount} unused entr${unusedCount === 1 ? 'y' : 'ies'} for ${detail.display_name}?\n\nThese are phrases heard only once and facts they've stopped mentioning — none of them affect your clips today. Anything they say again is relearned.`
+                              )
+                            ) {
+                              void act(() => api.clearUnusedKnowledge(detail.creator_id))
+                            }
+                          }}
+                          className="text-accent hover:underline disabled:opacity-50"
+                        >
+                          Forget the {unusedCount} unused.
+                        </button>
+                      )}
+                    </p>
                     {Object.entries(knowledgeByType).map(([type, items]) => (
                       <div key={type}>
                         <p className="text-xs text-muted font-medium mb-1">
                           {KNOWLEDGE_LABELS[type] ?? type}
                         </p>
                         <div className="space-y-1">
-                          {items!.map((k) => (
-                            <div key={k.knowledge_id} className="flex items-center gap-2 text-sm">
-                              <span className="flex-1">{k.information}</span>
-                              <button
-                                disabled={busy}
-                                onClick={() =>
-                                  act(() =>
-                                    api.deleteCreatorKnowledge(detail.creator_id, k.knowledge_id)
-                                  )
-                                }
-                                className="text-xs text-muted hover:text-red-400"
-                                title="Delete — this fact is wrong"
-                                aria-label={`Delete learned fact: ${k.information}`}
+                          {items!.map((k) => {
+                            const chip = STATE_CHIP[k.state]
+                            return (
+                              <div
+                                key={k.knowledge_id}
+                                className="flex items-center gap-2 text-sm"
                               >
-                                <Trash />
-                              </button>
-                            </div>
-                          ))}
+                                <span className={`flex-1 ${chip ? 'text-muted' : ''}`}>
+                                  {k.information}
+                                </span>
+                                {k.times_seen > 1 && (
+                                  <span
+                                    className="text-[10px] text-muted tabular-nums shrink-0"
+                                    title={`Heard ${k.times_seen} times across this creator's videos`}
+                                  >
+                                    {k.times_seen}×
+                                  </span>
+                                )}
+                                {chip && (
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${chip.className}`}
+                                    title={chip.title}
+                                  >
+                                    {chip.label}
+                                  </span>
+                                )}
+                                <button
+                                  disabled={busy}
+                                  onClick={() =>
+                                    act(() =>
+                                      api.deleteCreatorKnowledge(detail.creator_id, k.knowledge_id)
+                                    )
+                                  }
+                                  className="text-xs text-muted hover:text-red-400"
+                                  title="Delete — this fact is wrong"
+                                  aria-label={`Delete learned fact: ${k.information}`}
+                                >
+                                  <Trash />
+                                </button>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                     ))}

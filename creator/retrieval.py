@@ -9,6 +9,12 @@ Two consumers:
   * metadata (titles/descriptions/hashtags): `CreatorContext.summary` — a
     short text block the LLM may use for accuracy (series names, running
     jokes, collaborators). No scores involved.
+
+Both consumers see only ACTIVE knowledge. Two filters stand in the way:
+a catchphrase must have been repeated (creator/models.MIN_PHRASE_REPEATS),
+and anything the creator has stopped saying goes dormant (DORMANT_DAYS /
+DORMANT_VIDEOS). Dormant facts are not deleted — they simply stop having an
+opinion until they're heard again.
 """
 
 import re
@@ -16,6 +22,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from core.state import StateDB, _now
+from creator.models import (
+    DORMANT_DAYS,
+    DORMANT_VIDEOS,
+    MIN_PHRASE_REPEATS,
+    PHRASE_TYPES,
+)
 
 RECENT_COMPLETED_DAYS = 14   # a just-finished goal is still a callback
 MAX_SUMMARY_ITEMS = 4        # per category, keeps the prompt block tiny
@@ -38,6 +50,53 @@ class CreatorContext:
 
 def _words(s: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9']+", s.lower()) if w not in _STOP and len(w) > 2}
+
+
+def _flatten(s: str) -> str:
+    """Lowercased, punctuation stripped to single spaces — so a phrase matches
+    however Whisper happened to punctuate it that time."""
+    return re.sub(r"[^a-z0-9']+", " ", s.lower()).strip()
+
+
+def phrase_of(information: str) -> str:
+    """The literal spoken part of a catchphrase/joke fact. The extractor
+    stores them as "phrase - what it means"; only the phrase can be matched
+    against a transcript."""
+    return information.split(" - ")[0].strip().strip("'\"‘’“”")
+
+
+def count_phrase(phrase: str, text: str) -> int:
+    """How many times a phrase is actually spoken in a transcript. This is the
+    number that decides whether something is a catchphrase or a thing the
+    creator said once."""
+    p = _flatten(phrase)
+    if not p:
+        return 0
+    return len(re.findall(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", _flatten(text)))
+
+
+def is_phrase_like(phrase: str) -> bool:
+    """A matchable signature phrase: short, and carrying at least one word
+    that isn't filler (so "you know what I mean" can't become a catchphrase)."""
+    words = phrase.split()
+    return 1 <= len(words) <= 6 and bool(_words(phrase))
+
+
+def dormant_before(db: StateDB, creator_id: int, days: int, videos: int) -> str | None:
+    """The cutoff timestamp for "this stopped being said": knowledge last
+    heard before it has sat through both `days` of calendar time AND `videos`
+    of this creator's videos without coming up again. None when they haven't
+    posted enough videos yet to conclude anything — silence isn't evidence
+    when nobody was listening."""
+    row = db.conn.execute(
+        "SELECT updated_at FROM videos WHERE creator_id = ? AND status = 'done'"
+        " ORDER BY updated_at DESC LIMIT 1 OFFSET ?",
+        (creator_id, videos - 1),
+    ).fetchone()
+    if row is None:
+        return None
+    by_time = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+    return min(by_time, row["updated_at"])
 
 
 def context_for(db: StateDB, creator_id: int) -> CreatorContext | None:
@@ -69,19 +128,29 @@ def context_for(db: StateDB, creator_id: int) -> CreatorContext | None:
             }
         )
 
+    # Dropout: anything the creator hasn't said again in a long time is left
+    # out of scoring and out of the prompt. It stays in the database (and on
+    # the Creators page) and comes straight back the next time it's heard.
+    cutoff = dormant_before(db, creator_id, DORMANT_DAYS, DORMANT_VIDEOS)
     rows = db.conn.execute(
-        "SELECT knowledge_id, knowledge_type, information FROM creator_knowledge"
-        " WHERE creator_id = ? ORDER BY CASE confidence WHEN 'high' THEN 0 ELSE 1 END,"
-        " created_at DESC",
-        (creator_id,),
+        "SELECT knowledge_id, knowledge_type, information, times_seen"
+        " FROM creator_knowledge WHERE creator_id = ?"
+        "   AND (? IS NULL OR COALESCE(last_seen, created_at) >= ?)"
+        " ORDER BY CASE confidence WHEN 'high' THEN 0 ELSE 1 END,"
+        " times_seen DESC, created_at DESC",
+        (creator_id, cutoff, cutoff),
     ).fetchall()
     used_ids, themes = [], {"topic": [], "game": [], "series": [], "format": []}
     for r in rows:
         info = r["information"].strip()
-        if r["knowledge_type"] in ("catchphrase", "joke"):
-            # Only short literal phrases are matchable in a transcript.
-            phrase = info.split(" - ")[0].strip().strip("'\"")
-            if 1 <= len(phrase.split()) <= 6 and len(ctx.phrases) < 8:
+        if r["knowledge_type"] in PHRASE_TYPES:
+            # A catchphrase has to have been REPEATED. Below that it's just a
+            # line the creator said once, and it neither scores nor reaches
+            # the metadata prompt.
+            if r["times_seen"] < MIN_PHRASE_REPEATS:
+                continue
+            phrase = phrase_of(info)
+            if is_phrase_like(phrase) and len(ctx.phrases) < 8:
                 ctx.phrases.append(phrase)
                 used_ids.append(r["knowledge_id"])
         elif r["knowledge_type"] == "collaborator":

@@ -45,7 +45,10 @@ export default function ProcessingBar(): JSX.Element | null {
         </p>
         <div className="flex items-center gap-3 shrink-0">
           <p className="text-xs text-muted tabular-nums">
-            {pct}% · {eta !== null ? `~${formatEta(eta)} left` : 'estimating time…'}
+            {pct}% ·{' '}
+            {eta !== null
+              ? `Estimated time: ~${formatEta(eta)} left`
+              : 'Estimated time: calculating…'}
           </p>
           <button
             className="btn-ghost !px-2.5 !py-1 text-xs"

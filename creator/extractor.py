@@ -6,6 +6,11 @@ about the LLM's output: local models produce malformed JSON and confident
 nonsense, so anything that fails validation is silently dropped — a smaller,
 cleaner knowledge base beats a big noisy one. Extraction NEVER affects the
 current video's clips; it only informs future videos.
+
+Repetition is checked here, not taken on the model's word: a "catchphrase" is
+counted in the actual transcript, and re-hearing a known fact reinforces it
+instead of being discarded as a duplicate. That count is what promotes a
+phrase out of candidacy and what keeps a fact from going dormant.
 """
 
 import json
@@ -17,10 +22,14 @@ from core.models import Segment
 from core.state import StateDB, _now
 from creator.models import (
     EVENT_STATUSES,
+    FORGET_DAYS,
+    FORGET_VIDEOS,
     KNOWLEDGE_TYPES,
     MAX_KNOWLEDGE_PER_CREATOR,
+    PHRASE_TYPES,
     STALE_EVENT_DAYS,
 )
+from creator.retrieval import count_phrase, dormant_before, is_phrase_like, phrase_of
 from llm.base import LLMBackend
 
 _PROMPT_PATH = Path(__file__).parent.parent / "config" / "prompts" / "extract_knowledge.txt"
@@ -53,6 +62,9 @@ def extract_and_store(
 
     prompt_template = _PROMPT_PATH.read_text(encoding="utf-8")
     notes_template = _NOTES_PROMPT_PATH.read_text(encoding="utf-8")
+    # The WHOLE transcript, not just the sampled chunks: a phrase nominated
+    # from one chunk is counted against everything the creator said.
+    transcript = " ".join(s.text for s in segments)
     stored = 0
     for chunk_text in _sample_chunks(segments):
         # Two-stage extraction: gemma-class local models are good at open
@@ -75,7 +87,7 @@ def extract_and_store(
         data = _parse(raw)
         if data is None:
             continue
-        stored += _store_facts(db, creator_id, video_id, data.get("facts") or [])
+        stored += _store_facts(db, creator_id, video_id, data.get("facts") or [], transcript)
         stored += _store_events(db, creator_id, video_id, data.get("events") or [])
 
     _mark_stale_events(db, creator_id)
@@ -122,11 +134,21 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
 
 
-def _store_facts(db: StateDB, creator_id: int, video_id: str, facts: list) -> int:
+def _store_facts(
+    db: StateDB, creator_id: int, video_id: str, facts: list, transcript: str
+) -> int:
+    """Store new facts and reinforce ones we already knew.
+
+    A fact we've heard before isn't a duplicate to throw away — it's the
+    evidence that the fact is real. Hearing it again bumps times_seen and
+    resets its dormancy clock, which is what promotes a phrase to a genuine
+    catchphrase and what keeps live knowledge from decaying."""
     existing = {
-        _norm(r["information"])
+        _norm(r["information"]): dict(r)
         for r in db.conn.execute(
-            "SELECT information FROM creator_knowledge WHERE creator_id = ?", (creator_id,)
+            "SELECT knowledge_id, information, times_seen, last_video"
+            " FROM creator_knowledge WHERE creator_id = ?",
+            (creator_id,),
         )
     }
     stored = 0
@@ -141,19 +163,56 @@ def _store_facts(db: StateDB, creator_id: int, video_id: str, facts: list) -> in
             continue
         if not (3 <= len(info) <= 200):
             continue
+
+        # Catchphrases and running jokes are claims about REPETITION, and the
+        # model makes them off a single quotable line all the time. Count what
+        # the creator actually said: a phrase that isn't in the transcript at
+        # all was paraphrased or invented, and one heard once is stored as a
+        # candidate that scores nothing until it comes back.
+        heard = 1
+        if ktype in PHRASE_TYPES:
+            phrase = phrase_of(info)
+            if not is_phrase_like(phrase):
+                continue
+            heard = count_phrase(phrase, transcript)
+            if heard == 0:
+                continue
+
         key = _norm(info)
         # Dedupe: exact or containment against what we already know.
-        if key in existing or any(key in e or e in key for e in existing):
-            continue
-        db.conn.execute(
-            "INSERT INTO creator_knowledge (creator_id, knowledge_type, information,"
-            " confidence, source_video, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (creator_id, ktype, info, conf, video_id, _now()),
+        match = existing.get(key) or next(
+            (v for k, v in existing.items() if key in k or k in key), None
         )
-        existing.add(key)
+        if match is not None:
+            _reinforce(db, match, video_id, heard)
+            continue
+        cur = db.conn.execute(
+            "INSERT INTO creator_knowledge (creator_id, knowledge_type, information,"
+            " confidence, source_video, created_at, times_seen, last_seen, last_video)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (creator_id, ktype, info, conf, video_id, _now(), heard, _now(), video_id),
+        )
+        existing[key] = {"knowledge_id": cur.lastrowid, "times_seen": heard,
+                         "last_video": video_id}
         stored += 1
     db.conn.commit()
     return stored
+
+
+def _reinforce(db: StateDB, row: dict, video_id: str, heard: int) -> None:
+    """Heard again — count it and reset the dormancy clock.
+
+    Once per video: chunks are sampled from one transcript and the model
+    repeats itself across them, so without this guard a fact could confirm
+    itself as a catchphrase off a single video's chunking."""
+    if row.get("last_video") == video_id:
+        return
+    db.conn.execute(
+        "UPDATE creator_knowledge SET times_seen = times_seen + ?, last_seen = ?,"
+        " last_video = ? WHERE knowledge_id = ?",
+        (max(1, heard), _now(), video_id, row["knowledge_id"]),
+    )
+    row["last_video"] = video_id
 
 
 def _store_events(db: StateDB, creator_id: int, video_id: str, events: list) -> int:
@@ -217,13 +276,28 @@ def _mark_stale_events(db: StateDB, creator_id: int) -> None:
 
 
 def _prune(db: StateDB, creator_id: int) -> None:
-    """Keep the knowledge base bounded: drop lowest-confidence, least
-    recently used items beyond the cap."""
+    """Forget what didn't stick, and keep the knowledge base bounded.
+
+    Dropout: a fact heard exactly once, that hasn't come up again across
+    FORGET_DAYS and FORGET_VIDEOS of this creator's videos, was a one-off —
+    it's deleted rather than left dormant forever. Repeated facts are never
+    dropped this way, however quiet they've gone.
+
+    Then the cap, which now prefers the facts the creator keeps saying over
+    the ones we merely heard recently."""
+    forget = dormant_before(db, creator_id, FORGET_DAYS, FORGET_VIDEOS)
+    if forget is not None:
+        db.conn.execute(
+            "DELETE FROM creator_knowledge WHERE creator_id = ? AND times_seen <= 1"
+            " AND COALESCE(last_seen, created_at) < ?",
+            (creator_id, forget),
+        )
     db.conn.execute(
         "DELETE FROM creator_knowledge WHERE knowledge_id IN ("
         "  SELECT knowledge_id FROM creator_knowledge WHERE creator_id = ?"
         "  ORDER BY CASE confidence WHEN 'high' THEN 0 ELSE 1 END,"
-        "           COALESCE(last_used, created_at) DESC"
+        "           times_seen DESC,"
+        "           COALESCE(last_seen, last_used, created_at) DESC"
         "  LIMIT -1 OFFSET ?"
         ")",
         (creator_id, MAX_KNOWLEDGE_PER_CREATOR),

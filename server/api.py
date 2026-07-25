@@ -1289,9 +1289,30 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 raise HTTPException(404, "no such creator")
             knowledge = d.conn.execute(
                 "SELECT * FROM creator_knowledge WHERE creator_id = ?"
-                " ORDER BY knowledge_type, created_at DESC",
+                " ORDER BY knowledge_type, times_seen DESC, created_at DESC",
                 (creator_id,),
             ).fetchall()
+            # Say WHY each fact is or isn't being used, using the same rules
+            # scoring does, so the page never shows a catchphrase as if it
+            # were in play when it's still waiting to be heard again.
+            from creator.models import (
+                DORMANT_DAYS,
+                DORMANT_VIDEOS,
+                MIN_PHRASE_REPEATS,
+                PHRASE_TYPES,
+            )
+            from creator.retrieval import dormant_before
+
+            cutoff = dormant_before(d, creator_id, DORMANT_DAYS, DORMANT_VIDEOS)
+
+            def knowledge_state(k) -> str:
+                heard = k["last_seen"] or k["created_at"]
+                if cutoff is not None and heard < cutoff:
+                    return "dormant"
+                if k["knowledge_type"] in PHRASE_TYPES and (k["times_seen"] or 1) < MIN_PHRASE_REPEATS:
+                    return "candidate"
+                return "active"
+
             events = d.conn.execute(
                 "SELECT * FROM creator_events WHERE creator_id = ? ORDER BY detected_date DESC",
                 (creator_id,),
@@ -1314,7 +1335,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             **dict(c),
             "aliases": json.loads(c["aliases"] or "[]"),
             "accounts": [dict(a) for a in accounts],
-            "knowledge": [dict(k) for k in knowledge],
+            "knowledge": [{**dict(k), "state": knowledge_state(k)} for k in knowledge],
             "events": [dict(e) for e in events],
             "feedback": {f["action"]: f["n"] for f in feedback},
             "preferences": prefs,
@@ -1376,6 +1397,34 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
         return {"deleted": knowledge_id}
+
+    @app.delete("/creators/{creator_id}/knowledge")
+    def clear_unused_knowledge(creator_id: int):
+        """Drop everything that isn't in play — unconfirmed catchphrases and
+        dormant facts.
+
+        Profiles learned before repetition was tracked are full of phrases the
+        creator said exactly once. They already score nothing, but they're
+        still wrong to look at, and this clears them in one go without
+        touching the facts that earned their place."""
+        from creator.models import DORMANT_DAYS, DORMANT_VIDEOS, MIN_PHRASE_REPEATS, PHRASE_TYPES
+        from creator.retrieval import dormant_before
+
+        d = db()
+        try:
+            cutoff = dormant_before(d, creator_id, DORMANT_DAYS, DORMANT_VIDEOS)
+            slots = ",".join("?" * len(PHRASE_TYPES))
+            cur = d.conn.execute(
+                "DELETE FROM creator_knowledge WHERE creator_id = ? AND ("
+                f"  (knowledge_type IN ({slots}) AND times_seen < ?)"
+                "  OR (? IS NOT NULL AND COALESCE(last_seen, created_at) < ?))",
+                (creator_id, *PHRASE_TYPES, MIN_PHRASE_REPEATS, cutoff, cutoff),
+            )
+            d.conn.commit()
+            deleted = cur.rowcount
+        finally:
+            d.close()
+        return {"deleted": deleted}
 
     @app.delete("/creators/{creator_id}/memory")
     def wipe_creator_memory(creator_id: int):
