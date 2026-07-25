@@ -46,14 +46,55 @@ def small_gray(frame) -> np.ndarray:
 def is_cut(prev_small, cur_small, threshold: float = CUT_DIFF) -> bool:
     """True when these two consecutive thumbnails straddle a camera cut.
 
-    Run this on EVERY frame, not on the detection sample grid: sampling it
-    pins the cut only to the nearest sample, which leaves the new scene
-    showing the previous shot's framing for a frame or two before it
-    corrects — a flicker the eye reliably catches.
+    For frame-exact cut placement, pair this with refine_cuts rather than
+    running it on every frame: detect the cut coarsely on the sample grid,
+    then refine only the handful of frames around it. Differencing every
+    frame decodes the whole video just to place cuts, which is the bulk of
+    the cost when detection itself only samples.
     """
     if prev_small is None or cur_small is None:
         return False
     return float(np.abs(cur_small - prev_small).mean()) > threshold
+
+
+def refine_cuts(clip_path, regions, threshold: float = CUT_DIFF) -> dict:
+    """Pin each coarse cut to its exact frame.
+
+    A coarse cut is only known to fall between two sample frames (a, b]. This
+    decodes that short span and returns the frame with the largest change from
+    its predecessor — the first frame of the new shot. Returns {b: exact_idx}
+    keyed by the coarse sample index so callers can map it back.
+
+    Decoding a few frames per cut is far cheaper than decoding every frame of
+    the clip, which is what full-rate cut detection costs.
+    """
+    if not regions:
+        return {}
+    cap = cv2.VideoCapture(str(clip_path))
+    out: dict[int, int] = {}
+    try:
+        for a, b in regions:
+            # Seek a little before the span so the decoder is already producing
+            # exact frames by the time we reach it (POS_FRAMES lands on the
+            # preceding keyframe and reads forward).
+            start = max(0, a - 1)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+            prev = None
+            best_idx, best_diff = b, -1.0
+            for idx in range(start, b + 1):
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                cur = small_gray(frame)
+                if prev is not None and idx > a - 1:
+                    d = float(np.abs(cur - prev).mean())
+                    if d > best_diff:
+                        best_diff, best_idx = d, idx
+                prev = cur
+            out[b] = best_idx
+    finally:
+        cap.release()
+    return out
 
 
 # ---- committing to a subject -------------------------------------------------
