@@ -103,11 +103,15 @@ def draw_tail(d):
 # ---------------------------------------------------------------- body
 def draw_body(d):
     # Legs: short rounded stubs, feet turned out and sitting low enough to
-    # clear the belly — tucked any higher and they vanish behind it.
+    # clear the belly — tucked any higher and they vanish behind it. Back
+    # paws get the same pad and toe beans as the hands, so all four match.
     for sx in (-1, 1):
+        fx = 512 + sx * 150
         ell(d, 512 + sx * 132, 926, 82, 66, NAVY)
-        ell(d, 512 + sx * 150, 946, 60, 44, SKY)
-        ell(d, 512 + sx * 150, 952, 34, 22, SKY_DEEP)   # toe pad
+        ell(d, fx, 944, 66, 50, SKY)                    # paw
+        ell(d, fx, 956, 32, 21, SKY_DEEP)               # main pad
+        for f in (-1, 0, 1):                            # toe beans
+            ell(d, fx + f * 32, 920, 15, 12, SKY_DEEP)
 
     # Torso: a soft pear, wider at the bottom. Perimeter order — top, right,
     # bottom, left.
@@ -122,7 +126,9 @@ def draw_body(d):
     ell(d, 512, 812, 118, 122, SKY)
     ell(d, 512, 742, 84, 70, SKY)
 
-    # Arms: rounded stubs ending in mitten hands with little monkey fingers.
+    # Arms: rounded stubs ending in proper paws — a big palm pad and three
+    # toe beans, same as the feet. Without the pads the hands were just
+    # blue mittens with no read on them at all.
     for sx in (-1, 1):
         shoulder_x = 512 + sx * 150
         hand_x = 512 + sx * 232
@@ -131,9 +137,10 @@ def draw_body(d):
             cx = shoulder_x + (hand_x - shoulder_x) * t
             cy = 748 + 74 * t
             ell(d, cx, cy, 52 - 10 * t, 52 - 10 * t, NAVY)
-        ell(d, hand_x, 824, 56, 52, SKY)
-        for f in (-1, 0, 1):                      # three little fingers
-            ell(d, hand_x + sx * 22 + f * 20, 856, 15, 17, SKY)
+        ell(d, hand_x, 828, 60, 56, SKY)                       # paw
+        ell(d, hand_x, 846, 30, 22, SKY_DEEP)                  # palm pad
+        for f in (-1, 0, 1):                                   # toe beans
+            ell(d, hand_x + f * 30, 802, 15, 13, SKY_DEEP)
 
 
 # ---------------------------------------------------------------- head
@@ -156,32 +163,47 @@ def draw_head(d, cx=512.0, cy=430.0, k=1.0):
     # Rounded triangles built from three equal-radius corners: an earlier
     # version rounded the tip with a much fatter circle, which gave every ear
     # a knob on a stick.
+    # Straight polygons, no blob(): blob puts a circle at every corner, and
+    # at this size those read as beads stuck on the ear rather than as
+    # rounding.
+    def tri(pts, fill):
+        d.polygon([(s(X(px)), s(Y(py))) for px, py in pts], fill=fill)
+
+    # --- ears BEHIND the skull, which is then drawn over their bases. Drawn
+    # on top instead, the rim outline tracked across the head and the whole
+    # ear read as a sticker laid on the face.
+    #
+    # Cat ears lean OUTWARD — they don't stand straight up like a fox's. The
+    # apex sits well outboard of the base centre, so the inner edge slopes
+    # while the outer edge stays near vertical.
+    for sx in (-1, 1):
+        bx = 512 + sx * 116
+        ear = [(bx - 98, 380), (bx + 98, 368), (bx + sx * 78, 108)]
+        # Rim: stamp the same triangle around a small circle. Widening the
+        # base and raising the apex by different amounts (the obvious way)
+        # grows a leaning triangle unevenly, and the extra slice shows as a
+        # crease down one edge of the ear.
+        for a in range(0, 360, 24):
+            off = (7 * math.cos(math.radians(a)), 7 * math.sin(math.radians(a)))
+            tri([(px + off[0], py + off[1]) for px, py in ear], NAVY_MID)
+        tri(ear, NAVY)
+        # Inner ear follows the same lean, inset from each edge.
+        tri([(bx - 52, 348), (bx + 52, 340), (bx + sx * 64, 166)], SKY_DEEP)
+
     # --- skull: wide and low, the chibi shape. Deliberately flat colour —
     # a lighter shading ellipse was in here and it made the ears' rounded
     # corners show up as dark balls where navy sat on top of it. Flat also
     # reproduces better in embroidery and print, which is the point.
     #
+    # Wider than tall: a taller dome pushed the skull up between the ears and
+    # buried them, so they read as nubs on a big round head rather than ears
+    # sitting on top of it.
+    #
     # The rim is not decoration: navy fur against a dark taskbar is nearly
     # the same colour, and without it the whole silhouette dissolves and only
-    # the blue face floats. It reads as a soft edge light on pale
-    # backgrounds and as an outline on dark ones.
-    ell(d, X(512), Y(430), R(274), R(250), NAVY_MID)
-    ell(d, X(512), Y(430), R(268), R(244), NAVY)
-
-    # --- ears drawn ON TOP of the skull, not behind it. Ear and skull are
-    # the same navy, so the join is seamless and the whole triangle is
-    # controllable. Drawn behind, the skull swallowed all but the last 50px
-    # and left two antennae.
-    # Corner radii stay small: blob() puts a circle at every point, so a fat
-    # radius at the apex reads as a ball stuck on the tip of the ear.
-    for sx in (-1, 1):
-        bx = 512 + sx * 120
-        blob(d, T([(bx - 106, 296, 8), (bx + 106, 296, 8),
-                   (bx + sx * 18, 88, 5)]), NAVY_MID)   # matching rim
-        blob(d, T([(bx - 100, 292, 8), (bx + 100, 292, 8),
-                   (bx + sx * 18, 96, 4)]), NAVY)
-        blob(d, T([(bx - 54, 270, 6), (bx + 54, 270, 6),
-                   (bx + sx * 12, 152, 3)]), SKY_DEEP)
+    # the blue face floats.
+    ell(d, X(512), Y(444), R(268), R(212), NAVY_MID)
+    ell(d, X(512), Y(444), R(262), R(206), NAVY)
 
     # --- monkey face patch: a heart — narrow at the brow, wide at the
     # cheeks, tapering to a small chin. This single shape is what stops the
@@ -226,13 +248,35 @@ def draw_head(d, cx=512.0, cy=430.0, k=1.0):
                    fill=NAVY_DEEP, width=s(R(8)))
 
 
+def fit(img, margin=0.045):
+    """Crop to what was actually drawn, then centre it with a margin.
+
+    The feet used to run off the bottom of the canvas, because the drawing
+    coordinates were tuned by hand and the composition grew past them.
+    Measuring the real bounding box means no part of the character can be
+    clipped no matter how the geometry above is edited, and the mascot stays
+    optically centred instead of sitting wherever the numbers landed.
+    """
+    bbox = img.getbbox()
+    if bbox is None:
+        return img.resize((SIZE, SIZE), Image.LANCZOS)
+    art = img.crop(bbox)
+    target = int(SIZE * (1 - 2 * margin))
+    scale = min(target / art.width, target / art.height)
+    art = art.resize((max(1, int(art.width * scale)),
+                      max(1, int(art.height * scale))), Image.LANCZOS)
+    out = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    out.paste(art, ((SIZE - art.width) // 2, (SIZE - art.height) // 2), art)
+    return out
+
+
 def render_full():
     img = Image.new("RGBA", (C, C), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     draw_tail(d)
     draw_body(d)
     draw_head(d)
-    return img.resize((SIZE, SIZE), Image.LANCZOS)
+    return fit(img)
 
 
 def render_head():
@@ -241,7 +285,7 @@ def render_head():
     img = Image.new("RGBA", (C, C), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     draw_head(d, cx=512, cy=545, k=1.30)
-    return img.resize((SIZE, SIZE), Image.LANCZOS)
+    return fit(img, margin=0.03)
 
 
 def main() -> None:
