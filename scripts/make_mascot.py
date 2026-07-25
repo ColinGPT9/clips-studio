@@ -102,29 +102,31 @@ def draw_tail(d):
 
 # ---------------------------------------------------------------- body
 def draw_body(d):
-    # Legs: short rounded stubs, feet turned out and sitting low enough to
-    # clear the belly — tucked any higher and they vanish behind it. Back
-    # paws get the same pad and toe beans as the hands, so all four match.
-    for sx in (-1, 1):
-        fx = 512 + sx * 150
-        ell(d, 512 + sx * 132, 926, 82, 66, NAVY)
-        ell(d, fx, 944, 66, 50, SKY)                    # paw
-        ell(d, fx, 956, 32, 21, SKY_DEEP)               # main pad
-        for f in (-1, 0, 1):                            # toe beans
-            ell(d, fx + f * 32, 920, 15, 12, SKY_DEEP)
-
     # Torso: a soft pear, wider at the bottom. Perimeter order — top, right,
-    # bottom, left.
+    # bottom, left. Kept narrower than the head: a wide torso plus a wide
+    # belly patch made the whole lower half read as one fat mass.
     blob(d, [
-        (512, 700, 150),
-        (594, 790, 128),
-        (512, 862, 158),
-        (430, 790, 128),
+        (512, 706, 124),
+        (556, 786, 106),
+        (512, 836, 124),
+        (468, 786, 106),
     ], NAVY)
 
-    # Belly patch.
-    ell(d, 512, 812, 118, 122, SKY)
-    ell(d, 512, 742, 84, 70, SKY)
+    # Belly patch, held well clear of the bottom so it never runs into the
+    # feet.
+    ell(d, 512, 792, 92, 96, SKY)
+    ell(d, 512, 738, 66, 56, SKY)
+
+    # Back paws LAST, so they sit in front of the body. Drawn before it they
+    # were painted over by the torso and the belly appeared to swallow them.
+    # Same pad and toe beans as the hands, so all four match.
+    for sx in (-1, 1):
+        fx = 512 + sx * 118
+        ell(d, fx, 928, 78, 62, NAVY)                   # ankle behind the paw
+        ell(d, fx, 946, 64, 48, SKY)                    # paw
+        ell(d, fx, 958, 31, 20, SKY_DEEP)               # main pad
+        for f in (-1, 0, 1):                            # toe beans
+            ell(d, fx + f * 30, 922, 14, 12, SKY_DEEP)
 
     # Arms: rounded stubs ending in proper paws — a big palm pad and three
     # toe beans, same as the feet. Without the pads the hands were just
@@ -187,8 +189,10 @@ def draw_head(d, cx=512.0, cy=430.0, k=1.0):
             off = (7 * math.cos(math.radians(a)), 7 * math.sin(math.radians(a)))
             tri([(px + off[0], py + off[1]) for px, py in ear], NAVY_MID)
         tri(ear, NAVY)
-        # Inner ear follows the same lean, inset from each edge.
-        tri([(bx - 52, 348), (bx + 52, 340), (bx + sx * 64, 166)], SKY_DEEP)
+        # Inner ear follows the same lean, inset just enough to leave a fur
+        # border. Any smaller and it reads as a thin sliver rather than the
+        # inside of an ear.
+        tri([(bx - 76, 358), (bx + 76, 348), (bx + sx * 74, 146)], SKY_DEEP)
 
     # --- skull: wide and low, the chibi shape. Deliberately flat colour —
     # a lighter shading ellipse was in here and it made the ears' rounded
