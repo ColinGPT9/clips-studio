@@ -93,6 +93,13 @@ class Worker(threading.Thread):
 
                 _, vid = identify(payload["url"])
                 cancel.set_active(vid)  # mark which video is genuinely running
+                # Start every run from a clean slate. A cancel flag is sticky
+                # (deleting a video, or an actual cancel, calls request_cancel
+                # and nothing clears it), so a stale flag would make THIS fresh
+                # job abort at the download's first progress callback — the
+                # video "keeps getting cancelled" though nobody pressed cancel.
+                # Any real cancel of this run re-sets the flag after this point.
+                cancel.clear(vid)
                 # Never race a half-written prefetch of THIS video; once it's
                 # settled, kick off the download of the NEXT queued video so
                 # it overlaps this job's GPU work.
