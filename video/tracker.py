@@ -53,6 +53,13 @@ import threading
 # detection, "commit to one subject", and hold-then-move all apply here too.
 from video.framing import HoldMove, is_cut, small_gray, stable_target
 
+# Cut threshold for SAMPLE-grid detection. Adjacent frames barely move so the
+# podcast path uses the shared default (~25); across a sample gap ordinary
+# motion is much larger (a fast stream pan peaks near 40), so streams need a
+# higher bar to avoid false cuts — only a genuine hard scene change (75+)
+# should snap the crop and reset the talking detector.
+_CUT_DIFF_SAMPLED = 55.0
+
 _model = None  # loaded once per process; YOLO init is expensive
 # The single YOLO instance is shared across parallel render threads, and
 # ultralytics inference is NOT thread-safe on one model. This serializes the
@@ -212,19 +219,31 @@ def compute_tracking(
     frame_idx = 0
 
     while True:
-        ok, frame = cap.read()
+        ok = cap.grab()
+        if not ok:
+            break
+        if frame_idx % frame_step != 0:
+            frame_idx += 1
+            continue
+        ok, frame = cap.retrieve()
         if not ok:
             break
 
-        # ---- camera cuts, checked on EVERY frame -------------------------
-        # Most stream footage is one continuous camera and never trips this,
-        # in which case nothing below changes. Edited sources (YouTube talking
-        # heads, highlight reels, anything assembled from segments) do cut,
-        # and panning across a cut is always wrong. Checking only on the
-        # sample grid would pin a cut to the nearest sample and leave the new
-        # scene wearing the old shot's framing for a frame or two.
+        t = frame_idx / video_fps
+        h, w = frame.shape[:2]
+        n_samples += 1
+
+        # ---- camera cuts, checked on the SAMPLE grid ---------------------
+        # Only sample frames are decoded. Decoding every frame just to spot
+        # the occasional cut doubled processing time on long streams — and
+        # streams are one continuous camera that almost never cuts. Between
+        # samples there is far more motion than between adjacent frames, so
+        # the threshold is raised well above that motion (a fast pan peaks
+        # around 40; a real hard cut is 75+): it fires only on an unmistakable
+        # scene change, so a continuous stream never trips it, while edited
+        # sources (talking heads, highlight reels) still snap at their cuts.
         cur_small = small_gray(frame)
-        at_cut = is_cut(prev_small, cur_small)
+        at_cut = is_cut(prev_small, cur_small, _CUT_DIFF_SAMPLED)
         prev_small = cur_small
         if at_cut:
             # Per-subject state belongs to the shot that just ended. Mouth
@@ -234,16 +253,6 @@ def compute_tracking(
                 tr.prev_mouth = None
                 tr.speak = 0.0
             challenger_id = None
-
-        # Detection runs on the sample grid, plus on any cut frame, so a new
-        # shot is framed from its first frame rather than a sample later.
-        if frame_idx % frame_step != 0 and not at_cut:
-            frame_idx += 1
-            continue
-
-        t = frame_idx / video_fps
-        h, w = frame.shape[:2]
-        n_samples += 1
 
         visible = _assign(tracks, _detect(model, frame, min_confidence), t)
         for tid in visible:
