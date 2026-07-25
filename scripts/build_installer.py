@@ -40,9 +40,21 @@ def say(step: str, message: str) -> None:
 
 
 def run(cmd: list[str], cwd: Path, what: str) -> None:
-    print(f"    $ {' '.join(str(c) for c in cmd)}", flush=True)
+    # npm and npx are .CMD batch files on Windows, and CreateProcess cannot
+    # run those by bare name — it needs the resolved path. Resolving here
+    # (rather than using shell=True) keeps arguments from being re-parsed by
+    # cmd.exe, which matters for paths with spaces.
+    exe = shutil.which(str(cmd[0]))
+    if exe is None:
+        sys.exit(f"\n{what} failed: '{cmd[0]}' is not on PATH.")
+    resolved = [exe, *[str(c) for c in cmd[1:]]]
+
+    print(f"    $ {' '.join(resolved)}", flush=True)
     started = time.time()
-    result = subprocess.run(cmd, cwd=cwd, shell=False)
+    try:
+        result = subprocess.run(resolved, cwd=cwd, shell=False)
+    except OSError as e:
+        sys.exit(f"\n{what} failed to start: {e}")
     if result.returncode != 0:
         sys.exit(f"\n{what} failed (exit {result.returncode}). Nothing was packaged.")
     print(f"    done in {time.time() - started:.0f}s", flush=True)

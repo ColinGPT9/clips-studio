@@ -30,6 +30,39 @@ npm run dev          # starts Electron + the backend together
 npm run typecheck    # must pass before a PR
 ```
 
+## Building the Windows installer
+
+```
+pip install -r requirements-build.txt
+python scripts/build_installer.py
+```
+
+That runs the whole chain and stops at the first failure with an
+explanation: fetch FFmpeg → freeze the Python engine with PyInstaller →
+smoke-test the frozen engine → build the renderer → wrap it all in an NSIS
+installer. The result lands in `release/`.
+
+Expect it to take a while and to need disk: the frozen engine is ~4.8 GB
+unpacked, mostly CUDA PyTorch. `--skip-backend` and `--skip-ui` reuse the
+previous run's output while iterating, and `--backend-only` stops after the
+freeze.
+
+Things worth knowing before you change any of it:
+
+- **The backend is frozen as a console app on purpose.** A windowed
+  PyInstaller build gives the process no stdout, and every `print()` in the
+  pipeline then raises. Electron passes `windowsHide` so no console appears.
+- **PyTorch ships as the CUDA build.** It isn't only for tracking — those
+  wheels carry the cuBLAS/cuDNN DLLs that CTranslate2 needs for GPU
+  transcription, so a CPU build silently drops Whisper to CPU as well.
+- **FFmpeg comes from `vendor/`,** fetched by `scripts/fetch_ffmpeg.py` and
+  gitignored. Never call `ffmpeg` by bare name — use `core.binaries.ffmpeg()`,
+  or an installed copy will look for a binary the user doesn't have.
+- **Code signing is off** (`signAndEditExecutable: false`). electron-builder
+  otherwise downloads a bundle containing macOS symlinks, which an ordinary
+  Windows account cannot extract. The trade-off and how to re-enable it are
+  documented in `ui/electron-builder.yml`.
+
 ## Pull requests
 
 - Keep PRs focused on one issue; link it ("Fixes #123").

@@ -25,14 +25,13 @@ files:
 extraResources:
   # The frozen Python engine. Electron spawns resources/backend/api.exe —
   # see startBackend() in src/main/index.ts.
+  #
+  # FFmpeg rides along inside this folder: the PyInstaller spec already
+  # places it at _internal/ffmpeg/, which core.binaries searches relative to
+  # the executable. Copying vendor/ffmpeg again here would ship a second
+  # 204 MB copy of the same two binaries.
   - from: ../build/dist/backend
     to: backend
-    filter:
-      - "**/*"
-  # FFmpeg lands inside the backend folder, where core.binaries looks for it
-  # relative to the executable.
-  - from: ../vendor/ffmpeg
-    to: backend/ffmpeg
     filter:
       - "**/*"
 
@@ -45,6 +44,18 @@ win:
   # No code-signing certificate yet. Windows SmartScreen will warn on first
   # run until the installer builds reputation or a certificate is bought —
   # documented in the release notes so it doesn't look like a virus.
+  #
+  # Skipping the sign-and-edit step keeps the build working on an ordinary
+  # Windows account. electron-builder otherwise downloads a signing bundle
+  # that contains macOS symlinks, and extracting those needs Developer Mode
+  # or admin rights — it fails with "Cannot create symbolic link: A required
+  # privilege is not held by the client" on a normal machine.
+  #
+  # The cost is that the app .exe carries no embedded icon or version
+  # metadata. To get those back once there is an icon and a certificate:
+  # turn on Windows Developer Mode (Settings > System > For developers),
+  # then delete this line.
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
