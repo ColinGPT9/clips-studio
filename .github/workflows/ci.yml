@@ -51,7 +51,20 @@ jobs:
         # repair, path resolution, binary lookup, preflight. Nothing here
         # needs a GPU, Ollama or real footage — see tests/README.md for what
         # this deliberately cannot prove.
-        run: python -m pytest -q
+        #
+        # On failure the summary is echoed as workflow annotations too, so a
+        # maintainer can see WHY from the run's summary page without opening
+        # and scrolling the raw log.
+        run: |
+          set +e
+          output=$(python -m pytest -q --tb=short 2>&1)
+          status=$?
+          echo "$output"
+          if [ $status -ne 0 ]; then
+            echo "$output" | grep -E '^(FAILED|ERROR|E |tests/|assert)' | head -30 |
+              while IFS= read -r line; do echo "::error::$line"; done
+          fi
+          exit $status
 
       - name: Config and prompts still parse
         run: |
