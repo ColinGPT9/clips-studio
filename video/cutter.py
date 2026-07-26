@@ -7,9 +7,9 @@ driven by the tracker's crop path.
 import subprocess
 from pathlib import Path
 
+from core.binaries import ffmpeg
 from core.models import ClipCandidate
 from video.encoding import audio_filter_args, hwaccel_input_args, video_encoder_args
-from core.binaries import ffmpeg
 
 
 def cut_clip(

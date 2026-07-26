@@ -20,11 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.binaries import ffmpeg, ffprobe
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
-from core.binaries import ffmpeg, ffprobe
-
 
 # ---- request bodies ----------------------------------------------------------
 

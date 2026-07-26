@@ -23,7 +23,7 @@ clearer error than anything invented here.
 import os
 import shutil
 import sys
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 
@@ -48,7 +48,7 @@ def _search_roots() -> list[Path]:
     return roots
 
 
-@lru_cache(maxsize=None)
+@cache
 def _resolve(name: str) -> str:
     override = os.environ.get(f"CLIPS_STUDIO_{name.upper()}")
     if override and Path(override).exists():

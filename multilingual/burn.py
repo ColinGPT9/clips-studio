@@ -16,8 +16,8 @@ Read-only reuse of the render path; nothing here changes it.
 import subprocess
 from pathlib import Path
 
-from multilingual.languages import english_name
 from core.binaries import ffmpeg, ffprobe
+from multilingual.languages import english_name
 
 
 def _canvas_of(path: Path) -> tuple[int, int]:
@@ -72,10 +72,9 @@ def burn(
     config: dict,
 ) -> Path | None:
     """One language: translated captions burned into `base_video`."""
+    from core.models import ClipCandidate
     from video.captions import build_captions
     from video.encoding import video_encoder_args
-
-    from core.models import ClipCandidate
 
     canvas = _canvas_of(base_video)
     ass_path = out_path.with_suffix(f".{language}.ass")

@@ -213,8 +213,8 @@ def _edited_stream(video, config: dict, db: StateDB, data_dir: Path, profile: di
     (including Twitch/Kick DMCA-muted music sections, which arrive already
     silent), AFK sections and waiting/loading screens cut out."""
     from analysis.audio_features import extract_audio_features
-    from analysis.visual_features import extract_visual_features
     from analysis.metadata import ClipMetadata
+    from analysis.visual_features import extract_visual_features
     from core.models import ClipCandidate
     from core.pipeline import _register_clip, _safe_name
     from longform.assemble import assemble

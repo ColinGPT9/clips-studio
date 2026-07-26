@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 
-
 # knowledge_type values the extractor may store — anything else is discarded.
 KNOWLEDGE_TYPES = (
     "topic",         # recurring subject matter ("fitness", "speedrunning")

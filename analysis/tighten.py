@@ -17,6 +17,7 @@ music, laughter or a held reaction would be worse than leaving the pause.
 import re
 import subprocess
 from pathlib import Path
+
 from core.binaries import ffmpeg
 
 # Sounds with no meaning to lose. Deliberately short: "like", "so" and

@@ -9,7 +9,7 @@ never break the pipeline.
 """
 
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 _handler: Callable[[dict], None] | None = None
 _local = threading.local()

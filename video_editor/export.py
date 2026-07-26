@@ -10,11 +10,11 @@ for the non-vertical path, where no later render stage exists to burn them).
 import subprocess
 from pathlib import Path
 
+from core.binaries import ffmpeg
 from video.encoding import LOUDNORM, video_encoder_args
 from video_editor.audio import master_filter, mute_filter
 from video_editor.cuts import concat_graph
 from video_editor.timeline import EditList
-from core.binaries import ffmpeg
 
 
 def apply_edits(

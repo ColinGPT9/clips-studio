@@ -8,12 +8,12 @@ segments.
 """
 
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from core import cancel
-from video.encoding import video_encoder_args
 from core.binaries import ffmpeg
+from video.encoding import video_encoder_args
 
 _FIT = (
     "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,"

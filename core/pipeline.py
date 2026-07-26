@@ -7,23 +7,20 @@ runs: a crash resumes at the failed stage, a 'done' video is never
 reprocessed, and the clips table's UNIQUE constraint blocks duplicates.
 """
 
-from pathlib import Path
-
 import json
 import re
+from pathlib import Path
 
 from analysis.fusion import find_clips
 from analysis.metadata import ClipMetadata, generate_metadata_batch
 from core import progress
+from core.binaries import ffprobe
 from core.models import ClipCandidate, RenderedClip, Segment
 from core.state import StateDB
-from llm.base import LLMBackend
 from llm.registry import create_backend
-from sources import youtube
 from transcription.transcriber import transcribe
 from video.captions import build_captions
 from video.cutter import cut_clip
-from core.binaries import ffprobe
 
 
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:

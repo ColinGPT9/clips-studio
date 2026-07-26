@@ -143,7 +143,7 @@ def upload_scheduled(config: dict, db: StateDB) -> int:
             continue
         hashtags = json.loads(row["hashtags"]) if row["hashtags"] else []
         description = (row["description"] or "").strip()
-        description += "\n\n" + " ".join(hashtags + ["#Shorts"])
+        description += "\n\n" + " ".join([*hashtags, "#Shorts"])
         try:
             youtube_id = publisher.upload(
                 path,

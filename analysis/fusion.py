@@ -24,8 +24,8 @@ import numpy as np
 
 from analysis import highlights
 from analysis.audio_features import extract_audio_features
-from core import progress
 from analysis.visual_features import extract_visual_features, reaction_for_window
+from core import progress
 from core.models import ClipCandidate, Rejection, Segment
 from llm.base import LLMBackend
 

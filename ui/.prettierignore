@@ -1,0 +1,8 @@
+# Build output and dependencies
+out
+dist
+node_modules
+# The frozen backend and packaged app never belong to Prettier
+../build
+../release
+../vendor

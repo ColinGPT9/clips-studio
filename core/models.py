@@ -4,7 +4,7 @@ Stages communicate only through these types (and files on disk), never by
 importing each other's internals.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 

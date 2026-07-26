@@ -17,6 +17,7 @@ Config: video.encoder in settings.yaml — "auto" (default) or force one of
 """
 
 import subprocess
+
 from core.binaries import ffmpeg, ffprobe
 
 CPU_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]

@@ -349,10 +349,11 @@ class Worker(threading.Thread):
         """Re-render one clip from the original source video, with optionally
         edited timestamps and/or render options (crop mode, caption style).
         The clip's user-visible metadata survives the re-render."""
+        import json as _json
+
+        from analysis.metadata import ClipMetadata
         from core.models import ClipCandidate, Segment
         from core.pipeline import _register_clip, _render_files, _safe_name
-        from analysis.metadata import ClipMetadata
-        import json as _json
 
         clip = db.get_clip(payload["clip_id"])
         if clip is None:

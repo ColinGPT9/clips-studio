@@ -22,8 +22,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from video.encoding import audio_filter_args, video_encoder_args
 from core.binaries import ffmpeg
+from video.encoding import audio_filter_args, video_encoder_args
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)

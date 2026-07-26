@@ -25,10 +25,21 @@ usernames are redacted before reports ever leave the reporter's machine.
 
 ```
 pip install -r requirements.txt
+pip install ruff pytest          # the checks CI runs
 cd ui && npm install
-npm run dev          # starts Electron + the backend together
-npm run typecheck    # must pass before a PR
+npm run dev                      # starts Electron + the backend together
 ```
+
+Before a PR:
+
+```
+pytest                                   # deterministic logic
+ruff check .                             # lint
+cd ui && npm run typecheck && npm run build
+```
+
+Want to add a language, a model, a platform or an export format? Each is a
+small, well-defined change — see [docs/EXTENDING.md](docs/EXTENDING.md).
 
 ## Building the Windows installer
 

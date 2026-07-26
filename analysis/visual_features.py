@@ -21,6 +21,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
 from core.binaries import ffmpeg
 
 SAMPLE_FPS = 2.0

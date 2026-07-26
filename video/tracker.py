@@ -41,13 +41,12 @@ Fully decoupled from clip selection: this module knows nothing about
 transcripts, scores, or uploads.
 """
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
 import numpy as np
-
-import threading
 
 # Shared framing components, factored out of the Podcast rebuild. Cut
 # detection, "commit to one subject", and hold-then-move all apply here too.
@@ -309,7 +308,11 @@ def compute_tracking(
             # camera prefers the speaker, not just the biggest person.
             max_speak = max((tracks[tid].speak for tid in visible), default=0.0)
 
-            def _score(tid: int) -> float:
+            # max_speak is bound as a default so the closure cannot pick up a
+            # later iteration's value. It is consumed immediately below, so
+            # this is defensive rather than a fix — but the day someone stores
+            # this function instead of calling it, the bug would be subtle.
+            def _score(tid: int, max_speak: float = max_speak) -> float:
                 tr = tracks[tid]
                 if max_speak < 0.004:  # nobody visibly talking: size decides
                     return tr.dominance

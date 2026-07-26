@@ -29,8 +29,8 @@ import math
 import subprocess
 from pathlib import Path
 
-from video.encoding import video_encoder_args
 from core.binaries import ffmpeg
+from video.encoding import video_encoder_args
 
 # ASS numpad alignment per named position (7 8 9 / 4 5 6 / 1 2 3).
 _ALIGN = {

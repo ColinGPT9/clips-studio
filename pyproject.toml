@@ -1,0 +1,58 @@
+# Tooling config for the Python engine. There is no build system here on
+# purpose — Clips Studio ships as a frozen application, not a pip package.
+
+[tool.ruff]
+# The code was written around 100 columns and a handful of lines run to ~130.
+# 110 keeps the existing style honest without a reformat that would rewrite
+# most of the repo and bury real history under whitespace churn.
+line-length = 110
+target-version = "py310"
+exclude = ["ui", "vendor", "build", "dist", "release", "data", "site"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes — unused imports and names, the ones that bite
+    "I",    # import sorting
+    "B",    # bugbear — real bug patterns, not style opinions
+    "UP",   # pyupgrade
+    "C4",   # comprehension shortcuts
+    "RUF",  # ruff's own checks
+]
+ignore = [
+    "E501",    # line length is handled by the formatter, not the linter
+    "B008",    # function call in a default argument — FastAPI's whole style
+    "RUF001",  # "ambiguous" unicode: this codebase uses em dashes deliberately
+    "RUF002",
+    "RUF003",
+
+    # The rest are switched off deliberately, not because they are wrong.
+    # Each would mean editing working code on the eve of a release to satisfy
+    # taste rather than fix a defect. They are worth revisiting afterwards.
+    "B904",    # `raise ... from` inside except. Correct, but it is 5 edits in
+               # the API's error handling, which is not where to be careless.
+    "B905",    # zip(strict=). strict=True can newly RAISE on length mismatch;
+               # strict=False documents intent but changes nothing. Either way
+               # it is a behaviour decision per call site, not a bulk fix.
+    "B007",    # unused loop variable — usually an unpack kept for readability
+    "E741",    # `l` as a name. Ugly; renaming is churn with no benefit.
+    "RUF007",  # itertools.pairwise over zip
+    "RUF046",  # redundant int() cast
+    "RUF059",  # unused unpacked variable
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Prompts and pipelines print a lot; f-strings in logging calls are fine.
+"main.py" = ["E402"]  # sys.stdout is reconfigured before the heavy imports
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Quiet by default; -v when you want the list.
+addopts = "-q --strict-markers"
+markers = [
+    "slow: needs real media or a model, skipped in CI",
+]

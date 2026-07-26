@@ -9,6 +9,7 @@ system fonts via libass, no drawtext/fontconfig headaches on Windows.
 
 from pathlib import Path
 
+
 def _hook_style(canvas: tuple[int, int], font: str = "Arial Black") -> str:
     # Calibrated for the 1920-tall Shorts canvas; scales to other frames.
     s = canvas[1] / 1920

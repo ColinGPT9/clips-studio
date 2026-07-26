@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
+
 from core.binaries import ffmpeg
 
 SAMPLE_RATE = 16000

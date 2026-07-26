@@ -121,7 +121,7 @@ def score_windows(
         ]
 
     results = []
-    by_index = {i: c for i, c in enumerate(parsed)}
+    by_index = dict(enumerate(parsed))
     for i, (start, end) in enumerate(windows):
         c = by_index.get(i)
         if c is not None:
