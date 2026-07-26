@@ -1512,18 +1512,33 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.get("/models")
     def models():
-        from llm.manager import RECOMMENDATIONS, installed_models
+        from llm.manager import RECOMMENDATIONS, installed_models, recommend_for
 
         try:
             installed = installed_models(ollama_host)
         except Exception:
             raise HTTPException(503, "Ollama is not reachable — is it running?")
+
+        # Pick the model for THIS machine server-side, so the setup wizard and
+        # the Models page can never give contradictory advice.
+        vram_gb = None
+        try:
+            import pynvml
+
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            vram_gb = pynvml.nvmlDeviceGetMemoryInfo(handle).total / 1e9
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass  # no NVIDIA GPU, or the library isn't available — CPU advice
+
         return {
             "active": config["llm"]["backend"],
             "installed": installed,
             "recommendations": [
                 {"hardware": h, "model": m, "note": n} for h, m, n in RECOMMENDATIONS
             ],
+            "recommended": recommend_for(vram_gb),
         }
 
     @app.post("/models/activate")

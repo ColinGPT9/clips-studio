@@ -19,6 +19,43 @@ RECOMMENDATIONS = [
 ]
 
 
+def recommend_for(vram_gb: float | None) -> dict:
+    """The model to suggest for this machine, from the table above.
+
+    Lives here so there is ONE answer. The setup wizard used to decide this
+    for itself in TypeScript and disagreed with the table on the same page —
+    a 12 GB card was told gemma3:12b by the Models page and gemma:7b by the
+    wizard, in the same app.
+
+    A model that doesn't fit in VRAM spills into system RAM and crawls, which
+    reads as broken rather than slow, so the sizes here are deliberately
+    conservative.
+    """
+    if not vram_gb or vram_gb <= 0:
+        return {
+            "model": "gemma3:4b",
+            "reason": "No graphics card detected, so this is the small model — "
+                      "it runs on the processor. Clipping works, it just takes longer.",
+        }
+    if vram_gb >= 16:
+        return {
+            "model": "gemma3:27b",
+            "reason": f"{vram_gb:.0f} GB of VRAM fits the largest model, "
+                      "which picks and titles clips best.",
+        }
+    if vram_gb >= 10:
+        return {
+            "model": "gemma3:12b",
+            "reason": f"Sized for {vram_gb:.0f} GB of VRAM — a big quality jump "
+                      "over the smaller models for choosing clips.",
+        }
+    return {
+        "model": "gemma3:4b",
+        "reason": f"Sized for {vram_gb:.0f} GB of VRAM. A larger model would spill "
+                  "out of the graphics card and crawl.",
+    }
+
+
 def installed_models(host: str) -> list[dict]:
     """Models currently pulled in Ollama: [{"name", "size_gb"}]."""
     response = requests.get(f"{host.rstrip('/')}/api/tags", timeout=15)

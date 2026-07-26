@@ -9,5 +9,8 @@ interface Window {
     getDownloadsPath: () => Promise<string>
     pickFolder: () => Promise<string | null>
     openDonateWindow: () => Promise<void>
+    /** Opens an allow-listed URL in the user's browser. Resolves false if
+     *  the main process refused it. */
+    openExternal: (url: string) => Promise<boolean>
   }
 }

@@ -6,6 +6,7 @@ import Models from './pages/Models'
 import Settings from './pages/Settings'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
+import SetupWizard, { setupDone } from './components/SetupWizard'
 import { activeLocale, t } from './lib/i18n'
 
 type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
@@ -28,6 +29,15 @@ export interface StudioTarget {
 export default function App(): JSX.Element {
   const [page, setPage] = useState<Page>('dashboard')
   const [studioTarget, setStudioTarget] = useState<StudioTarget | null>(null)
+  // First run: walk the creator through what the installer can't bundle
+  // (Ollama, a model) before they hit a video that fails for want of it.
+  // Settings can re-open it, so this is not a one-shot.
+  const [wizard, setWizard] = useState(!setupDone())
+  useEffect(() => {
+    const open = (): void => setWizard(true)
+    window.addEventListener('open-setup-wizard', open)
+    return () => window.removeEventListener('open-setup-wizard', open)
+  }, [])
   // Language switches re-render the tree IN PLACE (no reload): the page
   // state lives here, so the user stays wherever they were (e.g. Settings).
   const [locale, setLocale] = useState(activeLocale())
@@ -94,6 +104,14 @@ export default function App(): JSX.Element {
         {page === 'models' && <Models />}
         {page === 'settings' && <Settings />}
       </main>
+      {wizard && (
+        <SetupWizard
+          onClose={() => {
+            setWizard(false)
+            setPage('studio')
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -14,5 +14,9 @@ contextBridge.exposeInMainWorld('studio', {
   getDownloadsPath: (): Promise<string> => ipcRenderer.invoke('get-downloads-path'),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-folder'),
   // Donation popup: PayPal in a small in-app window (no external browser).
-  openDonateWindow: (): Promise<void> => ipcRenderer.invoke('open-donate-window')
+  openDonateWindow: (): Promise<void> => ipcRenderer.invoke('open-donate-window'),
+  // Open a link in the real browser. The main process allow-lists which
+  // hosts are permitted, so this cannot be used to launch arbitrary URLs.
+  openExternal: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke('open-external', url)
 })

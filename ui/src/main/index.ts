@@ -158,6 +158,25 @@ ipcMain.handle('open-donate-window', (event) => {
 
 // The OS Downloads folder — the default export destination, like other
 // video editors.
+// Open a link in the user's own browser. Allow-listed rather than open:
+// the renderer must never be able to hand an arbitrary URL — or a file://
+// or other scheme — to the OS. The setup wizard uses this to send people to
+// Ollama, which is deliberately not bundled.
+const EXTERNAL_ALLOWED = [
+  /^https:\/\/ollama\.com\//,
+  /^https:\/\/github\.com\/ColinGPT9\/clips-studio(\/|$)/
+]
+
+ipcMain.handle('open-external', (_event, url: unknown) => {
+  if (typeof url !== 'string') return false
+  if (!EXTERNAL_ALLOWED.some((re) => re.test(url))) {
+    console.warn(`refused to open external url: ${url}`)
+    return false
+  }
+  void shell.openExternal(url)
+  return true
+})
+
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))
 
 // Folder picker for choosing where exported clips are saved.

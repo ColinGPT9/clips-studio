@@ -202,10 +202,30 @@ export interface InstalledModel {
   size_gb: number
 }
 
+/** One thing an install needs, and whether it has it. `fix` is written for
+ *  a creator to act on, not a developer to debug. */
+export interface PreflightCheck {
+  name: string
+  ok: boolean
+  detail: string
+  fix: string
+  /** false = degraded but still usable (no GPU, low disk). */
+  blocking: boolean
+}
+
+export interface Preflight {
+  /** True when nothing BLOCKING is wrong — the app can make a clip. */
+  ready: boolean
+  checks: PreflightCheck[]
+}
+
 export interface ModelsInfo {
   active: string
   installed: InstalledModel[]
   recommendations: { hardware: string; model: string; note: string }[]
+  /** The one model to suggest for THIS machine, chosen server-side from the
+   *  same table as `recommendations` so nothing can contradict it. */
+  recommended?: { model: string; reason: string }
 }
 
 export interface GpuStats {

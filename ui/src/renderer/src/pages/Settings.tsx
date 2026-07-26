@@ -7,6 +7,7 @@ import {
   type Appearance
 } from '../lib/appearance'
 import { api } from '../lib/api'
+import type { Preflight } from '../lib/types'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import {
   APP_LANGUAGES,
@@ -282,6 +283,50 @@ function AppearanceCard(): JSX.Element {
   )
 }
 
+/** Re-run first-run setup, and a live view of what the install is missing.
+ *  Ollama and the model are deliberately not bundled, so this is where
+ *  someone checks whether the app can actually make a clip. */
+function SetupCard(): JSX.Element {
+  const [pre, setPre] = useState<Preflight | null>(null)
+  useEffect(() => {
+    api.preflight().then(setPre).catch(() => setPre(null))
+  }, [])
+
+  const missing = (pre?.checks ?? []).filter((c) => !c.ok && c.blocking)
+
+  return (
+    <div className="card space-y-3" aria-label="Setup">
+      <h3 className="font-semibold">{t('Setup')}</h3>
+      {pre === null ? (
+        <p className="text-sm text-muted">Checking what this install has…</p>
+      ) : missing.length === 0 ? (
+        <p className="text-sm text-muted">
+          Everything Clips Studio needs is installed and working.
+        </p>
+      ) : (
+        <div className="text-sm">
+          <p className="text-red-400 font-medium">
+            {missing.length} thing{missing.length === 1 ? '' : 's'} still missing:
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {missing.map((c) => (
+              <li key={c.name} className="text-muted text-xs">
+                <span className="text-ink">{c.name}</span> — {c.fix || c.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <button
+        className="btn-ghost !py-1.5"
+        onClick={() => window.dispatchEvent(new Event('open-setup-wizard'))}
+      >
+        {t('Run setup again')}
+      </button>
+    </div>
+  )
+}
+
 export default function Settings(): JSX.Element {
   return (
     <div className="p-6 space-y-5 max-w-xl">
@@ -294,6 +339,8 @@ export default function Settings(): JSX.Element {
       <ExportFolderCard />
 
       <StorageCard />
+
+      <SetupCard />
 
       <div className="card text-sm text-muted">
         The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced

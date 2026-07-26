@@ -9,6 +9,7 @@ import type {
   FilterName,
   Job,
   ModelsInfo,
+  Preflight,
   RenderOpts,
   Settings,
   SystemStats,
@@ -34,6 +35,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ ok: boolean }>('/health'),
+  /** Can this install actually make a clip? FFmpeg, Ollama, model, GPU, disk. */
+  preflight: () => request<Preflight>('/health/preflight'),
   systemStats: () => request<SystemStats>('/system/stats'),
 
   feedbackDiagnostics: (videoId?: string) =>
