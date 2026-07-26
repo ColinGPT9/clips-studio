@@ -92,23 +92,37 @@ header.site .wrap {
   min-height: 62px;
   flex-wrap: wrap;
 }
+/* Matches the app's sidebar: name on top, "local-first AI clipping" under
+   it in muted small type. Someone arriving from the site should see the same
+   lockup when they open the app. */
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
-  font-size: 1.05rem;
   color: var(--ink);
 }
 .brand:hover {
   text-decoration: none;
 }
 .brand img {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
 }
-.brand span {
+.brand .name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.15;
+  display: block;
+}
+.brand .name span {
   color: var(--accent);
+}
+.brand .tagline {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 1px;
 }
 nav.site {
   display: flex;
