@@ -295,16 +295,20 @@ small and well-scoped if you want somewhere to start.
 
 **Later**
 
-4. TikTok / Instagram Reels export
-5. **Android companion app** — clip from a phone (Twitch, Kick, and local files only,
+4. **Project website**, published to both GitHub Pages and a Hugging Face
+   static Space — two homes rather than one, so the project turns up for
+   people searching either place. A Space also puts it in front of an
+   AI-focused audience, which suits a tool that runs open models locally.
+5. TikTok / Instagram Reels export
+6. **Android companion app** — clip from a phone (Twitch, Kick, and local files only,
    to comply with Play Store policy)
-6. **Remote rendering** — hand rendering to another machine
-7. **Automated posting** *(possible future plan)* — channel monitoring, scheduling,
+7. **Remote rendering** — hand rendering to another machine
+8. **Automated posting** *(possible future plan)* — channel monitoring, scheduling,
    and YouTube Shorts auto-upload are coded in the repo but **dormant and not exposed
    in the UI**. The upload path has not been tested end-to-end against a real server,
    because it needs your own YouTube API credentials and Google's API audit to post
    publicly. If people want this, it will be finished and tested in a future release.
-8. **Voice cloning for dubbing** *(possible future plan)* — dubbing today uses a preset
+9. **Voice cloning for dubbing** *(possible future plan)* — dubbing today uses a preset
    local voice. Speaking translations in the creator's own voice needs a cloning model,
    and every credible local one (Chatterbox, XTTS, F5-TTS) pulls in its own PyTorch
    build: on a machine set up for clipping that would downgrade torch to a CPU-only
@@ -316,7 +320,7 @@ small and well-scoped if you want somewhere to start.
    checking each model's licence, since several of the best-sounding ones are
    non-commercial and this app's users monetize their videos.
 
-9. **Gaming and reaction layouts** *(possible future plan)* — a dedicated layout for
+10. **Gaming and reaction layouts** *(possible future plan)* — a dedicated layout for
    gameplay-with-facecam and for reaction videos, composing the creator's webcam and
    what they're reacting to into one vertical frame.
 

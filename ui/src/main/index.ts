@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
+import { setupUpdater } from './updater'
 
 const API_PORT = 8765
 let backend: ChildProcess | null = null
@@ -53,6 +54,8 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+
+  setupUpdater(win)
 
   // External links open in the system browser, never inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {

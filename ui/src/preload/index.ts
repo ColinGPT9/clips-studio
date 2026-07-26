@@ -18,5 +18,23 @@ contextBridge.exposeInMainWorld('studio', {
   // Open a link in the real browser. The main process allow-lists which
   // hosts are permitted, so this cannot be used to launch arbitrary URLs.
   openExternal: (url: string): Promise<boolean> =>
-    ipcRenderer.invoke('open-external', url)
+    ipcRenderer.invoke('open-external', url),
+
+  // Updates. The renderer never touches electron-updater directly; it asks
+  // the main process and listens for state.
+  update: {
+    check: (): Promise<{ ok: boolean; reason?: string }> => ipcRenderer.invoke('update:check'),
+    download: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('update:download'),
+    install: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('update:install'),
+    skip: (version: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('update:skip', version),
+    prefs: (patch?: { channel?: string }): Promise<{ channel: string; skipped?: string }> =>
+      ipcRenderer.invoke('update:prefs', patch),
+    /** Subscribe to update state. Returns an unsubscribe function. */
+    onState: (fn: (s: Record<string, unknown>) => void): (() => void) => {
+      const handler = (_e: unknown, s: Record<string, unknown>): void => fn(s)
+      ipcRenderer.on('update:state', handler)
+      return () => ipcRenderer.removeListener('update:state', handler)
+    }
+  }
 })

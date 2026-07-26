@@ -38,11 +38,33 @@ version in `ui/package.json` (`v0.1.0` for `0.1.0`).
 > the setup alone and every download fails partway through with a confusing
 > error, because the installer is a downloader with nothing to download.
 
+### Updates only reach people from a PUBLISHED release
+
+A drafted release is invisible outside your account, so existing installs
+will never see it — they'll sit on the old version reporting "You're on the
+latest version", which looks like the updater is broken. Drafting first is
+fine and safer; just remember the release isn't live until you press
+**Publish release**.
+
+Channels map onto GitHub's pre-release flag:
+
+| Channel in the app | Sees |
+|---|---|
+| Stable (default) | Normal releases only |
+| Beta / Alpha | Normal releases **and** ones marked *pre-release* |
+
+So tick **Set as a pre-release** for anything you don't want stable users
+pulled onto.
+
 Check after publishing:
 
 - [ ] All four files attached to the release
 - [ ] Tag matches `ui/package.json`
+- [ ] Release **published**, not left as a draft (see above)
+- [ ] Pre-release ticked if this is a beta/alpha
 - [ ] Release notes mention the SmartScreen warning (see below)
+- [ ] Release notes written for creators — they appear inside the app, in the
+      update bar's "What's new"
 - [ ] Downloaded the Web Setup on a machine that has never run Clips Studio,
       and installed it end to end
 

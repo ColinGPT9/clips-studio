@@ -7,6 +7,7 @@ import Settings from './pages/Settings'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
 import SetupWizard, { setupDone } from './components/SetupWizard'
+import UpdateBanner from './components/UpdateBanner'
 import { activeLocale, t } from './lib/i18n'
 
 type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
@@ -95,7 +96,8 @@ export default function App(): JSX.Element {
           <p className="text-[10px] text-muted/60 mt-1.5">{t('100% local · no cloud AI')}</p>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto flex flex-col">
+        <UpdateBanner />
         {page === 'dashboard' && <Dashboard onOpenInStudio={openInStudio} />}
         {page === 'studio' && (
           <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />

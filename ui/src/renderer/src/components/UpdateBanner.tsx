@@ -1,0 +1,98 @@
+import { useEffect, useState } from 'react'
+
+function mb(n?: number): string {
+  return n ? `${(n / 1e6).toFixed(0)} MB` : ''
+}
+
+/** Tells the user a new version exists, and installs it when they say so.
+ *
+ *  Deliberately a strip at the top rather than a modal: an update is never
+ *  more urgent than the render someone is in the middle of. Nothing
+ *  downloads or installs without being asked — the payload is gigabytes, and
+ *  a surprise restart mid-render loses work. */
+export default function UpdateBanner(): JSX.Element | null {
+  const [s, setS] = useState<UpdateState | null>(null)
+  const [notesOpen, setNotesOpen] = useState(false)
+
+  useEffect(() => window.studio.update.onState(setS), [])
+
+  // Nothing to say when there's no update, we're mid-check, or we're in dev.
+  if (!s || s.state === 'none' || s.state === 'checking' || s.state === 'dev') return null
+  // A failed background check is not the user's problem; Settings shows it.
+  if (s.state === 'error') return null
+
+  const bar = 'w-full px-4 py-2.5 flex items-center gap-3 text-sm border-b'
+
+  if (s.state === 'downloading') {
+    const pct = s.percent ?? 0
+    return (
+      <div className={`${bar} bg-surface border-raised/60`}>
+        <span className="shrink-0 font-medium">Downloading update…</span>
+        <div className="flex-1 h-2 rounded-full bg-raised overflow-hidden max-w-md">
+          <div
+            className="h-full bg-accent rounded-full transition-[width] duration-500"
+            style={{ width: `${Math.max(2, pct)}%` }}
+          />
+        </div>
+        <span className="text-xs text-muted tabular-nums shrink-0">
+          {pct}%{s.total ? ` · ${mb(s.transferred)} of ${mb(s.total)}` : ''}
+        </span>
+      </div>
+    )
+  }
+
+  if (s.state === 'ready') {
+    return (
+      <div className={`${bar} bg-accent/10 border-accent/30`}>
+        <span className="font-medium">Version {s.version} is ready to install.</span>
+        <span className="text-xs text-muted">
+          Clips Studio will close and reopen. Finish anything that&apos;s rendering first.
+        </span>
+        <button
+          className="btn-accent !py-1 ml-auto shrink-0"
+          onClick={() => void window.studio.update.install()}
+        >
+          Restart &amp; install
+        </button>
+      </div>
+    )
+  }
+
+  // state === 'available'
+  return (
+    <div className="bg-accent/10 border-b border-accent/30">
+      <div className={`${bar} border-transparent`}>
+        <span className="font-medium">Version {s.version} is available.</span>
+        {s.notes && (
+          <button
+            className="text-xs text-accent hover:underline"
+            onClick={() => setNotesOpen((v) => !v)}
+          >
+            {notesOpen ? "Hide what's new" : "What's new"}
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <button
+            className="text-xs text-muted hover:text-ink"
+            onClick={() => void window.studio.update.skip(s.version ?? '')}
+          >
+            Skip this version
+          </button>
+          <button
+            className="btn-accent !py-1"
+            onClick={() => void window.studio.update.download()}
+          >
+            Download
+          </button>
+        </div>
+      </div>
+      {notesOpen && s.notes && (
+        <div className="px-4 pb-3 -mt-1">
+          <div className="max-h-48 overflow-y-auto text-xs text-muted whitespace-pre-wrap leading-relaxed bg-base/40 rounded-lg p-3">
+            {s.notes.replace(/<[^>]+>/g, '')}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
