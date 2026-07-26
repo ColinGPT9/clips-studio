@@ -232,6 +232,19 @@ nav.site a.donate:hover {
   color: var(--muted);
 }
 
+/* The star ask. Deliberately a line of text under the buttons rather than a
+   third button: starring is a favour, not a thing someone came here to do,
+   and a button competing with Download would cost more than it gained. */
+.star-note {
+  margin: 16px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  max-width: 56ch;
+}
+.star-note a {
+  font-weight: 600;
+}
+
 /* ---------------------------------------------------------------- sections */
 section {
   padding: 56px 0;
