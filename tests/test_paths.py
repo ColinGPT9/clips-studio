@@ -9,22 +9,23 @@ admin — the first download would simply fail.
 """
 
 import sys
+from pathlib import Path
 
-import main
+from core.paths import resolve_data_dir
 
 
 def test_relative_path_ignores_the_working_directory(monkeypatch, tmp_path):
     """The whole point: the answer must not change when the terminal does."""
-    resolved = main._resolve_data_dir({"paths": {"data_dir": "data"}})
+    resolved = resolve_data_dir({"paths": {"data_dir": "data"}})
 
     monkeypatch.chdir(tmp_path)
-    assert main._resolve_data_dir({"paths": {"data_dir": "data"}}) == resolved
+    assert resolve_data_dir({"paths": {"data_dir": "data"}}) == resolved
 
 
 def test_checkout_resolves_next_to_the_code():
-    got = main._resolve_data_dir({"paths": {"data_dir": "data"}})
+    got = resolve_data_dir({"paths": {"data_dir": "data"}})
     assert got.is_absolute()
-    assert got.parent == __import__("pathlib").Path(main.__file__).resolve().parent
+    assert got == Path(__file__).resolve().parent.parent / "data"
 
 
 def test_installed_build_uses_per_user_storage(monkeypatch):
@@ -33,7 +34,7 @@ def test_installed_build_uses_per_user_storage(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\someone\AppData\Local")
 
-    got = main._resolve_data_dir({"paths": {"data_dir": "data"}})
+    got = resolve_data_dir({"paths": {"data_dir": "data"}})
     assert "AppData" in str(got)
     assert "Clips Studio" in str(got)
     assert "Program Files" not in str(got)
@@ -44,10 +45,10 @@ def test_absolute_path_is_honoured(monkeypatch):
     checkout and in an installed copy alike."""
     for frozen in (False, True):
         monkeypatch.setattr(sys, "frozen", frozen, raising=False)
-        got = main._resolve_data_dir({"paths": {"data_dir": "D:/ClipsLibrary"}})
+        got = resolve_data_dir({"paths": {"data_dir": "D:/ClipsLibrary"}})
         assert str(got).replace("\\", "/").endswith("D:/ClipsLibrary")
 
 
 def test_missing_config_still_returns_somewhere_usable():
-    got = main._resolve_data_dir({})
+    got = resolve_data_dir({})
     assert got.is_absolute()

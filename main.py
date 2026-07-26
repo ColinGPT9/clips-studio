@@ -50,6 +50,7 @@ _force_utf8_io()
 
 import yaml
 
+from core.paths import resolve_data_dir
 from core.pipeline import process_video
 from core.scheduler import run_daemon
 from core.state import StateDB
@@ -82,35 +83,8 @@ def load_config(path: Path) -> dict:
     if privacy in ("public", "unlisted", "private"):
         config.setdefault("upload", {})["privacy"] = privacy
 
-    config.setdefault("paths", {})["data_dir"] = str(_resolve_data_dir(config))
+    config.setdefault("paths", {})["data_dir"] = str(resolve_data_dir(config))
     return config
-
-
-def _resolve_data_dir(config: dict) -> Path:
-    """Where this install keeps downloads, clips and the database.
-
-    `data_dir` ships as the relative path "data", which used to be resolved
-    against the CURRENT WORKING DIRECTORY. In a checkout that quietly means
-    "wherever you happened to run python from"; in an installed copy it is
-    worse, because Electron spawns the engine without setting a working
-    directory, so a creator's videos would land somewhere arbitrary — quite
-    possibly inside Program Files, which isn't writable without admin.
-
-    An absolute path in settings.yaml is always honoured: someone pointing
-    data_dir at a big second drive means it. A relative one resolves against
-    a stable base instead of the working directory — per-user app data for an
-    installed copy, the repo folder for a checkout.
-    """
-    raw = Path(str((config.get("paths") or {}).get("data_dir") or "data"))
-    if raw.is_absolute():
-        return raw
-
-    if getattr(sys, "frozen", False):
-        # Installed: per-user, writable, and survives reinstalling the app.
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
-        return base / "Clips Studio" / raw
-    # Checkout: next to the code, not next to the terminal.
-    return Path(__file__).resolve().parent / raw
 
 
 def main() -> int:
