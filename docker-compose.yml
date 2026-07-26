@@ -8,8 +8,12 @@
 
 services:
   engine:
+    # Named for GHCR so `docker compose pull` fetches the prebuilt image
+    # (~2 min) instead of building it (~10). `build:` stays as the fallback:
+    # with no image present locally, `up` builds rather than failing, so a
+    # fork with nothing published still works.
+    image: ghcr.io/colingpt9/clips-studio-engine:latest
     build: .
-    image: clips-studio-engine
     ports:
       # Host-only. Publishing to 0.0.0.0 would put an unauthenticated API
       # that reads and writes video files onto the local network.

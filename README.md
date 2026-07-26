@@ -24,6 +24,7 @@ No cloud AI. No subscription. No per-clip fees. No upload of your footage to any
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
 - [Features](#features)
+- [What it's built for](#what-its-built-for)
 - [Requirements](#requirements)
 - [Install and run](#install-and-run)
 - [Pick your AI model](#pick-your-ai-model)
@@ -148,6 +149,21 @@ through Ollama.
 - **In-app feedback** — bug reports with auto-collected diagnostics, no account needed.
 - **Accessible UI** — keyboard focus, reduced-motion support, adjustable font and size.
 
+## What it's built for
+
+Everything runs on any video you give it. These are the cases where it's doing more
+or less thinking than the feature list suggests, so nothing comes as a surprise:
+
+| Content | How it does |
+|---|---|
+| **IRL, just chatting, podcasts, vlogs, interviews** | What it's tuned for and what gets tested on real streams before release |
+| **Gaming with a facecam** | Works — the webcam and the gameplay are detected and stacked automatically. Newer than the rest, so good rather than polished |
+| **Gaming with no facecam** | Weaker framing. Subject tracking follows a person; with nobody on screen it centres the shot instead. Cutting, captions and the editor are unaffected |
+| **Reaction videos** | Not really its thing. Clips are chosen from what's *said*, and it can't see the video you're reacting to — so the moment that made the clip is invisible to it |
+
+Clip selection is transcript-and-signal driven. When the funny thing is *visual only*
+and nobody comments on it, expect to find it yourself in the editor.
+
 ## Requirements
 
 - **Windows** PC (the Python engine should run on Linux/macOS; the app is developed
@@ -188,6 +204,42 @@ press *Generate clips*, and watch the progress live.
 
 Building the installer yourself is one command — see
 [CONTRIBUTING.md](CONTRIBUTING.md#building-the-windows-installer).
+
+### With Docker — nothing else to install
+
+For contributors. You need [Docker Desktop](https://docs.docker.com/get-started/get-docker/)
+and nothing else — no Python, no Node, no FFmpeg, no PyTorch.
+
+```bash
+git clone https://github.com/ColinGPT9/clips-studio
+cd clips-studio
+docker compose up
+```
+
+Three services come up together:
+
+| | |
+|---|---|
+| **<http://localhost:5173>** | the interface, in your browser |
+| **<http://localhost:8765>** | the engine and its API |
+| Ollama | the local AI, on :11434 |
+
+Then pull a model — `docker compose exec ollama ollama pull gemma3:4b` — and
+you have a working checkout.
+
+Run the checks the same way:
+
+```bash
+docker compose run --rm engine pytest
+docker compose run --rm ui npm run typecheck
+```
+
+> **Skip the ten-minute first build:** `docker compose pull` fetches a prebuilt
+> engine image instead of compiling PyTorch and OpenCV locally.
+
+The desktop shell itself still runs on your host, since Electron needs a display —
+everything else is containerised. Details, and what this can't tell you, in
+[docs/DOCKER.md](docs/DOCKER.md).
 
 ## Pick your AI model
 

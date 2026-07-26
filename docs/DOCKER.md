@@ -1,8 +1,16 @@
 # Docker (for contributors)
 
+You need [Docker Desktop](https://docs.docker.com/get-started/get-docker/), and
+that is the whole list. Compose comes with it — `docker compose` (a space, not
+a hyphen) is part of Docker, not a separate program to install.
+
 ```
-docker compose up --build
+docker compose pull      # prebuilt engine image, ~2 min
+docker compose up
 ```
+
+`pull` is optional. Skip it and `up` builds the engine from the Dockerfile
+instead, which works everywhere but takes around ten minutes the first time.
 
 Three services, and you need nothing installed but Docker:
 

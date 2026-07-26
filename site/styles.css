@@ -406,6 +406,17 @@ ul.ticks li::before {
 ul.ticks strong {
   color: var(--ink);
 }
+/* Honest-fit markers. A limitation must never wear a green checkmark — on the
+   "what it's built for" list that would read as a feature and cause exactly
+   the surprise the section exists to prevent. */
+ul.ticks li.partial::before {
+  content: '~';
+  color: var(--warn);
+}
+ul.ticks li.weak::before {
+  content: '!';
+  color: var(--muted);
+}
 
 /* ---------------------------------------------------------------- support
    Deliberately the same card as the one pinned to the bottom of the app's

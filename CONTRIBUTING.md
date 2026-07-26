@@ -46,10 +46,14 @@ cd ui && npm run typecheck && npm run build
 Want to add a language, a model, a platform or an export format? Each is a
 small, well-defined change — see [docs/EXTENDING.md](docs/EXTENDING.md).
 
-### Or use Docker
+### Or use Docker — nothing else to install
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/) and
+that is the whole list. Compose ships inside it; there is no second install.
 
 ```
-docker compose up --build       # engine :8765, interface :5173, Ollama
+docker compose pull             # prebuilt engine image, skips a 10-min build
+docker compose up               # engine :8765, interface :5173, Ollama
 docker compose run --rm engine pytest
 ```
 
