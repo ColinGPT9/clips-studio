@@ -299,6 +299,11 @@ and pull request expectations, and **[SECURITY.md](SECURITY.md)** to report a
 vulnerability. Issues labelled [`good-first-issue`](../../labels/good-first-issue) are
 small and well-scoped if you want somewhere to start.
 
+The website lives in [site/](site/) and is published to GitHub Pages and a Hugging
+Face Space; the repo is mirrored to GitLab and Gitee. See
+[docs/MIRRORS.md](docs/MIRRORS.md) — **GitHub is where work happens**, and the
+mirrors are force-pushed one way, so a commit made on one will be overwritten.
+
 ## Roadmap
 
 1. **Android companion app** — clip from a phone. Twitch, Kick and local video files
