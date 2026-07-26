@@ -1,0 +1,42 @@
+# Create/update the issue labels from .github/labels.json.
+#
+# Run it manually after editing that file. Uses the gh CLI already present on
+# the runner and the built-in token, so this adds no third-party action and
+# nothing new to trust.
+#
+# It never DELETES labels — removing one strips it from every issue that used
+# it, which is not something a workflow should do by itself.
+
+name: Sync labels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create or update each label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          created=0; updated=0
+          # -c keeps each JSON object on one line for the read loop.
+          jq -c '.[]' .github/labels.json | while read -r row; do
+            name=$(jq -r '.name'        <<<"$row")
+            color=$(jq -r '.color'      <<<"$row")
+            desc=$(jq -r '.description' <<<"$row")
+            if gh label list --limit 200 --json name --jq '.[].name' | grep -qxF "$name"; then
+              gh label edit "$name" --color "$color" --description "$desc" >/dev/null
+              echo "  updated  $name"
+            else
+              gh label create "$name" --color "$color" --description "$desc" >/dev/null
+              echo "  created  $name"
+            fi
+          done
+          echo "Done. Labels are never deleted by this workflow — remove any by hand."

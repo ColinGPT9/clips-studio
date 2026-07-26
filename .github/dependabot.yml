@@ -1,0 +1,61 @@
+# Dependency updates.
+#
+# Grouped and throttled on purpose. Ungrouped Dependabot on a project with
+# this many dependencies opens a dozen PRs a week and everyone starts
+# ignoring them — which is worse than not running it, because the security
+# ones get ignored too.
+
+version: 2
+
+updates:
+  # ---- desktop app ---------------------------------------------------
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Electron and the build tooling move together and are best reviewed
+      # in one go, since they only matter when packaging.
+      build-tooling:
+        patterns:
+          - 'electron*'
+          - 'vite'
+          - '@vitejs/*'
+          - 'typescript'
+      # Everything else, patch and minor only — a major React bump should be
+      # a deliberate decision, not a Monday morning PR.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ---- python engine -------------------------------------------------
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # yt-dlp releases constantly because sites change; it is also the one
+      # dependency you WANT current, so it is left ungrouped and unthrottled
+      # rather than batched into a weekly roll-up.
+      - dependency-name: yt-dlp
+        update-types: ['version-update:semver-patch']
+
+  # ---- the workflows themselves --------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - '*'

@@ -1,0 +1,124 @@
+# Checks that run on every pull request.
+#
+# Deliberately fast and honest about what it can prove. A GitHub runner has
+# no GPU, no Ollama and no FFmpeg-heavy footage, so this cannot tell you a
+# clip came out well. What it CAN do is catch the things that broke this
+# project before: a syntax error, a bad import, a TypeScript error, or a
+# config file that no longer parses.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile every module
+        # Catches syntax errors across the whole engine in seconds, without
+        # installing PyTorch. Import checking would need ~4 GB of wheels.
+        run: python -m compileall -q analysis core creator llm longform multilingual publish server sources transcription video video_editor main.py
+
+      - name: Config and prompts still parse
+        run: |
+          python - <<'PY'
+          import sys, pathlib, yaml
+          bad = []
+          for f in ['config/settings.yaml'] + [str(p) for p in pathlib.Path('.github').rglob('*.yml')]:
+              try:
+                  yaml.safe_load(open(f, encoding='utf-8'))
+              except Exception as e:
+                  bad.append(f'{f}: {e}')
+          prompts = list(pathlib.Path('config/prompts').glob('*.txt'))
+          if not prompts:
+              bad.append('config/prompts is empty — scoring cannot run')
+          for p in prompts:
+              if not p.read_text(encoding='utf-8').strip():
+                  bad.append(f'{p} is empty')
+          print(f'checked {len(prompts)} prompt file(s)')
+          if bad:
+              print('\n'.join(bad)); sys.exit(1)
+          PY
+
+      - name: No accidental secrets in config
+        # config/client_secret.json and token files are gitignored; this fails
+        # loudly if one is ever committed anyway.
+        run: |
+          if git ls-files | grep -E 'client_secret|token.*\.json$'; then
+            echo "A credentials file is tracked in git."
+            exit 1
+          fi
+          echo "no credential files tracked"
+
+  ui:
+    name: Desktop app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        # A build failure is the difference between "types are fine" and
+        # "this actually packages", and it is what the installer depends on.
+        run: npm run build
+
+  website:
+    name: Website
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Links and paths
+        # The site is published to GitHub Pages AND a Hugging Face Space. A
+        # project Pages site lives in a subdirectory while a Space serves from
+        # its root, so an absolute path works on one and breaks on the other.
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          site = pathlib.Path('site')
+          problems = []
+          for page in site.glob('*.html'):
+              html = page.read_text(encoding='utf-8')
+              for path in re.findall(r'(?:href|src)="([^"#][^"]*)"', html):
+                  if path.startswith(('http://', 'https://', 'mailto:', 'data:')):
+                      continue
+                  if path.startswith('/'):
+                      problems.append(f'{page.name}: absolute path "{path}" breaks on GitHub Pages')
+                  elif not (site / path.split('#')[0]).exists():
+                      problems.append(f'{page.name}: missing "{path}"')
+          print(f'checked {len(list(site.glob("*.html")))} pages')
+          if problems:
+              print('\n'.join(problems)); sys.exit(1)
+          PY

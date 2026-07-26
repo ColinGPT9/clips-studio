@@ -1,0 +1,47 @@
+# GitHub's code scanner. Free on public repositories.
+#
+# Worth having on this project specifically because of what it handles:
+# untrusted video titles and transcripts reaching FFmpeg arguments and file
+# paths, and a local HTTP server that must stay bound to localhost. Those are
+# exactly the injection and path-traversal patterns CodeQL is good at.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so newly-published rules find old code. Monday morning.
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+          # security-and-quality is noisier than the default but catches the
+          # sloppy-code class too, which matters more on a project that will
+          # take outside contributions.
+          queries: security-and-quality
+
+      - uses: github/codeql-action/autobuild@v3
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

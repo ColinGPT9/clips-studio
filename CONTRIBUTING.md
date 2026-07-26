@@ -78,6 +78,13 @@ Things worth knowing before you change any of it:
 - `npm run typecheck` clean; try the affected flow in the running app.
 - Match the style around you — comments explain *why*, not *what*.
 
+CI runs on every PR: Python compiles, config and prompts parse, the desktop
+app typechecks and builds, and website links resolve. It is fast and it is
+narrow — a runner has no GPU, no Ollama and no footage, so **a green tick does
+not mean clips still come out well.** Anything touching scoring, tracking,
+captions or rendering needs testing against a real video, and the PR should
+say which one.
+
 ## Triage (maintainers)
 
 Priority = 👍 reactions + comment count on issues, `critical` /

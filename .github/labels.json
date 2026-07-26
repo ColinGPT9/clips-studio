@@ -1,0 +1,19 @@
+[
+  { "name": "bug", "color": "d73a4a", "description": "Something is broken" },
+  { "name": "enhancement", "color": "38bdf8", "description": "A new feature or an improvement" },
+  { "name": "documentation", "color": "0ea5e9", "description": "README, guides, comments" },
+  { "name": "good-first-issue", "color": "34d399", "description": "Small and well-scoped — a good place to start" },
+  { "name": "help-wanted", "color": "13243d", "description": "Maintainer would welcome someone picking this up" },
+  { "name": "security", "color": "b60205", "description": "Vulnerability or hardening" },
+  { "name": "performance", "color": "fbbf24", "description": "Speed, memory or disk use" },
+  { "name": "ai-model", "color": "8b5cf6", "description": "Scoring, prompts, model selection, Ollama" },
+  { "name": "video-processing", "color": "1c3354", "description": "Tracking, cropping, captions, rendering, FFmpeg" },
+  { "name": "ui-ux", "color": "94a3b8", "description": "Desktop app interface and usability" },
+  { "name": "installer", "color": "6b7280", "description": "Packaging, setup wizard, updates" },
+  { "name": "from-app", "color": "f87171", "description": "Reported through the in-app Feedback button" },
+  { "name": "critical", "color": "b60205", "description": "Data loss, crash on launch, or blocks a release" },
+  { "name": "high-priority", "color": "e99695", "description": "Fix before the next release" },
+  { "name": "needs-info", "color": "fef2c0", "description": "Waiting on details from the reporter" },
+  { "name": "wontfix", "color": "ffffff", "description": "Deliberate decision not to do this" },
+  { "name": "duplicate", "color": "cfd3d7", "description": "Already tracked elsewhere" }
+]
