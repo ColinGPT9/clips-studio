@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Local vs cloud AI clipping — an honest comparison | Clips Studio</title>
+    <title>Local AI clipping vs uploading to a service | Clips Studio</title>
     <meta
       name="description"
-      content="An honest comparison of running an AI clipper on your own PC versus a cloud service: cost, privacy, speed, quality and the trade-offs each way. Clips Studio is a free open-source local alternative."
+      content="What changes when an AI clipper runs on your own PC instead of a server: no uploads, no subscription, no clip limits, and the AI model is your choice. Clips Studio is free and open source."
     />
     <link rel="canonical" href="https://colingpt9.github.io/clips-studio/local-vs-cloud.html" />
     <link rel="icon" href="assets/mascot.png" />
     <link rel="stylesheet" href="styles.css" />
     <meta property="og:type" content="article" />
-    <meta property="og:title" content="Local vs cloud AI clipping — an honest comparison" />
+    <meta property="og:title" content="Local AI clipping vs uploading to a service" />
     <meta
       property="og:description"
-      content="What you gain and what you give up by running an AI clipper on your own machine."
+      content="No uploads, no subscription, no clip limits — what running the AI on your own machine changes."
     />
     <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
   </head>
@@ -42,10 +42,10 @@
       <div class="hero">
         <div class="wrap">
           <span class="eyebrow">Comparison</span>
-          <h1>Local vs cloud clipping, honestly</h1>
+          <h1>What running it locally actually means</h1>
           <p class="lead">
-            Cloud clippers are good, and this page is not going to pretend otherwise. Here is
-            what you actually gain and give up by running the models yourself.
+            Most clipping tools upload your video to a server and charge a monthly fee. Clips
+            Studio runs on your own computer instead. Here is what that changes.
           </p>
         </div>
       </div>
@@ -95,24 +95,24 @@
                   <td>Capped by your plan.</td>
                 </tr>
                 <tr>
-                  <td><strong>Speed</strong></td>
-                  <td>Bound by your GPU. A long stream is a background job.</td>
-                  <td>Usually faster — it is their hardware, at scale.</td>
+                  <td><strong>Waiting</strong></td>
+                  <td>No upload. Processing runs in the background while you work.</td>
+                  <td>Upload the whole video first, then wait in a queue.</td>
                 </tr>
                 <tr>
-                  <td><strong>Editorial quality</strong></td>
-                  <td>Good, and scales with the model your GPU can run.</td>
-                  <td>Often better in absolute terms — frontier models.</td>
+                  <td><strong>The AI model</strong></td>
+                  <td>Your choice, swapped in one click. Bigger GPU, bigger model.</td>
+                  <td>Whichever one the service picked.</td>
                 </tr>
                 <tr>
-                  <td><strong>Setup</strong></td>
-                  <td>An installer plus a one-time model download.</td>
-                  <td>Sign up and paste a link.</td>
+                  <td><strong>Offline</strong></td>
+                  <td>Works with no internet once set up.</td>
+                  <td>Needs a connection for everything.</td>
                 </tr>
                 <tr>
                   <td><strong>Control</strong></td>
-                  <td>MIT licensed. Prompts are editable text files.</td>
-                  <td>What the product offers.</td>
+                  <td>MIT licensed. Even the scoring prompts are editable text files.</td>
+                  <td>Whatever the product exposes.</td>
                 </tr>
               </tbody>
             </table>
@@ -122,20 +122,19 @@
 
       <section>
         <div class="wrap">
-          <h2>Where cloud genuinely wins</h2>
+          <h2>What it asks of you</h2>
           <ul class="ticks">
             <li>
-              <strong>Raw editorial taste.</strong> A frontier model has better judgement about
-              what makes a hook land than a model sized to fit a consumer graphics card. That
-              gap is real.
+              <strong>A one-time setup.</strong> An installer and a model download, rather than
+              signing up and pasting a link. The wizard walks through it.
             </li>
             <li>
-              <strong>Speed on demand.</strong> No queue behind your own GPU, and no laptop fans
-              at full tilt for an hour.
+              <strong>Your own hardware.</strong> A long stream keeps the GPU busy for a while.
+              It runs in the background, but the computer is doing real work.
             </li>
             <li>
-              <strong>Nothing to install.</strong> If you clip occasionally and would rather not
-              think about VRAM, a subscription is a perfectly reasonable answer.
+              <strong>A graphics card, ideally.</strong> It runs without one, just slowly. An
+              NVIDIA GPU makes the biggest difference.
             </li>
           </ul>
         </div>
@@ -143,10 +142,10 @@
 
       <section>
         <div class="wrap">
-          <h2>How a local tool competes anyway</h2>
+          <h2>How it finds the good moments</h2>
           <p class="section-lead">
-            Not by pretending a small model out-reasons a large one. By changing what the model
-            has to be right about.
+            A model that fits on a consumer graphics card is smaller than one running in a data
+            centre. The pipeline is built around that rather than ignoring it.
           </p>
           <ul class="ticks">
             <li>
@@ -160,9 +159,9 @@
               judgement is far easier than absolute scoring.
             </li>
             <li>
-              <strong>Keep the human.</strong> You review clips before posting either way. The
-              model only has to get good moments <em>into the shortlist</em> — you pick the
-              winners, and that is the cheapest quality multiplier there is.
+              <strong>Keep the human.</strong> You are going to review clips before posting
+              anyway. The model only has to get good moments <em>into the shortlist</em> — you
+              pick the winners, which is the cheapest quality multiplier there is.
             </li>
             <li>
               <strong>Scale with hardware.</strong> A bigger GPU means a bigger model, one
