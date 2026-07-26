@@ -1,3 +1,5 @@
+<img src="docs/brand/mascot.png" alt="" width="150" align="right">
+
 # Clips Studio — open-source AI video clipping that runs on your own PC
 
 **Turn long streams and videos into ready-to-post Shorts, Reels, and TikToks —
@@ -12,9 +14,8 @@ No cloud AI. No subscription. No per-clip fees. No upload of your footage to any
 > **Kick clip generator** · **YouTube Shorts automation** · **AI video editor** ·
 > **open-source OpusClip alternative**
 
-<!-- TODO: add a screenshot of Clip Studio here, and a short demo GIF above it.
-     Recommended: 1600px wide PNG in docs/images/, referenced as
-     ![Clips Studio](docs/images/clip-studio.png) -->
+<!-- TODO: a screenshot of Clip Studio mid-run, and a short demo GIF, both ~1600px
+     wide in docs/images/. Nothing sells a video tool like seeing it work. -->
 
 ---
 
@@ -127,9 +128,9 @@ through Ollama.
 - **Multimodal clip detection** — moments scored 0–100 by fusing what's said, audio
   excitement, visual activity, on-screen reactions, and hook/payoff strength. Every
   clip clearing the quality bar is kept, with no arbitrary cap.
-- **Speaker-aware face tracking** — YOLOv8 pose detection keeps the subject centred.
-  In group footage the camera follows **whoever is talking**, not whoever is biggest.
-  Crop-only framing: never stretched, never distorted.
+- **Speaker-aware face tracking** — YOLOv8 pose detection keeps the subject centred,
+  and in group footage the camera follows **whoever is talking**, detected from mouth
+  movement. Crop-only framing: never stretched, never distorted.
 - **Podcast mode** — for multi-camera footage, each shot gets its own steady crop
   centred on the person talking, so cuts land on a face with no panning.
 - **Editable burned-in captions** — word-synced, in your style: colour, size, position,
@@ -158,6 +159,20 @@ through Ollama.
 
 ## Install and run
 
+**Most people want the installer.** Grab the latest **Web Setup** from
+[Releases](../../releases) and run it. It carries the app, the Python engine, every
+library, FFmpeg and the detection weights — no Python, no PATH, no terminal. A setup
+wizard then checks your machine and downloads an AI model sized to your graphics card.
+
+The one thing it doesn't bundle is [Ollama](https://ollama.com), which runs the AI
+locally and manages your GPU itself. The wizard detects whether you have it and links
+you to it if not.
+
+> Windows will warn that the app is unsigned the first time you run it — click
+> *More info → Run anyway*. A signing certificate is on the list.
+
+### From source
+
 ```bash
 git clone https://github.com/ColinGPT9/clips-studio
 cd clips-studio
@@ -171,8 +186,8 @@ npm run dev        # opens the Clips Studio desktop app
 The app starts its own Python engine automatically. Paste a link in **Clip Studio**,
 press *Generate clips*, and watch the progress live.
 
-> A one-click Windows installer and a first-run setup wizard are the next items on the
-> roadmap — until then, the steps above are the supported path.
+Building the installer yourself is one command — see
+[CONTRIBUTING.md](CONTRIBUTING.md#building-the-windows-installer).
 
 ## Pick your AI model
 
@@ -286,58 +301,39 @@ small and well-scoped if you want somewhere to start.
 
 ## Roadmap
 
-**Before the first alpha release**
-
-1. **Windows installer** — one-click setup for non-technical creators
-2. **First-run setup wizard** — GPU detection, model recommendation and download,
-   dependency checks
-3. **Update wizard** — check GitHub Releases, show release notes, install updates
-
-**Later**
-
-4. **Project website**, published to both GitHub Pages and a Hugging Face
-   static Space — two homes rather than one, so the project turns up for
-   people searching either place. A Space also puts it in front of an
-   AI-focused audience, which suits a tool that runs open models locally.
-5. TikTok / Instagram Reels export
-6. **Android companion app** — clip from a phone (Twitch, Kick, and local files only,
-   to comply with Play Store policy)
-7. **Remote rendering** — hand rendering to another machine
-8. **Automated posting** *(possible future plan)* — channel monitoring, scheduling,
-   and YouTube Shorts auto-upload are coded in the repo but **dormant and not exposed
-   in the UI**. The upload path has not been tested end-to-end against a real server,
-   because it needs your own YouTube API credentials and Google's API audit to post
-   publicly. If people want this, it will be finished and tested in a future release.
-9. **Voice cloning for dubbing** *(possible future plan)* — dubbing today uses a preset
-   local voice. Speaking translations in the creator's own voice needs a cloning model,
-   and every credible local one (Chatterbox, XTTS, F5-TTS) pulls in its own PyTorch
-   build: on a machine set up for clipping that would downgrade torch to a CPU-only
-   build and silently strip GPU acceleration from tracking and transcription, turning a
-   30-minute pipeline into hours. Not worth breaking clipping for.
-
-   The safe route, if it's built later, is a separate Python environment under `data/`
-   that the app shells out to, so the clipping environment is never touched — plus
-   checking each model's licence, since several of the best-sounding ones are
-   non-commercial and this app's users monetize their videos.
-
-10. **Gaming and reaction layouts** *(possible future plan)* — a dedicated layout for
+1. **Android companion app** — clip from a phone. Twitch, Kick and local video files
+   only, to comply with Play Store policy.
+2. **Remote rendering** — hand the rendering work to another machine, so a long stream
+   doesn't tie up the computer you're using.
+3. **Automated posting** *(possible future plan)* — channel monitoring, scheduling and
+   auto-upload are coded in the repo but **dormant and not exposed in the UI**. The
+   upload path hasn't been tested end-to-end against a real server, because it needs
+   your own API credentials and Google's API audit to post publicly. Posting to TikTok
+   and Instagram belongs here too — export alone adds little, since the work is in the
+   posting, and that needs a server this app deliberately doesn't have yet.
+4. **Gaming and reaction layouts** *(possible future plan)* — a dedicated layout for
    gameplay-with-facecam and for reaction videos, composing the creator's webcam and
    what they're reacting to into one vertical frame.
 
-   Prototyped and **removed on purpose**. Both fail on the same problem: the app can't
-   reliably tell which region is which. Reaction and gameplay footage is full of
-   *other* people — a speaker in the video being reacted to, a rendered game character
-   — and they look exactly like a webcam to a person detector. Motion doesn't separate
-   them either: creators pause the video to comment, so on real footage the thing being
-   reacted to was the *least* moving region on screen (measured: chat 19.6, webcam
-   12.9, the paused video 0.5), which sends "find the interesting region" heuristics
-   straight to chat and UI. Marking regions by hand works, but every layout differs and
-   creators switch between them mid-stream, so the setup cost lands on the user for
-   every video.
+   Prototyped and **set aside on purpose**. Automatically telling which region is the
+   webcam, which is the game, and which is chat is not reliable enough on real footage
+   to ship: every creator's layout is different and many change it mid-stream. Marking
+   the regions by hand works, but that cost lands on the user for every single video.
 
    The core pipeline — talking-head, IRL, gym, podcast — is what this app is for, and
-   it's deliberately kept free of that complexity. If there's real demand, this returns
-   as a self-contained mode that cannot affect the standard path.
+   it's kept free of that complexity. If there's real demand, this returns as a
+   self-contained mode that cannot affect the standard path.
+5. **Voice cloning for dubbing** *(last on this list on purpose)* — dubbing today uses
+   a preset local voice. Speaking translations in the creator's **own** voice needs a
+   cloning model, and every credible local one pulls in its own PyTorch build: on a
+   machine set up for clipping that downgrades torch to a CPU-only build and silently
+   strips GPU acceleration from tracking and transcription. Breaking clipping to add
+   dubbing is a bad trade.
+
+   Realistically this waits for consumer hardware to catch up, or ships as a separate
+   optional install with its own Python environment so the clipping one is never
+   touched. Model licences need checking too — several of the best-sounding ones are
+   non-commercial, and this app's users monetize their videos.
 
 ## License
 

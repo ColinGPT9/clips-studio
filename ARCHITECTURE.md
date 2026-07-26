@@ -343,7 +343,7 @@ knows nothing about transcripts, scores, or publishing.
    previous choice, so tracking stays locked on the streamer when guests or bystanders
    appear.
 4. **Speaker awareness** — in multi-person footage, mouth movement decides who the
-   camera follows, not who is biggest.
+   camera follows.
 5. **Smooth** (`video/framing.py`) with an exponential moving average, a dead zone that
    ignores movements under a few percent of frame width, and a maximum pan speed. This
    is what removes jitter and the "drunk camera" effect.
