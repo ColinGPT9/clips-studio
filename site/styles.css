@@ -364,6 +364,46 @@ ul.ticks strong {
   color: var(--ink);
 }
 
+/* ---------------------------------------------------------------- support
+   Deliberately the same card as the one pinned to the bottom of the app's
+   Dashboard: accent gradient, accent border, headline and a large button on
+   the right. Someone who has used the app should recognise it. */
+.support {
+  background: linear-gradient(
+    to right,
+    rgb(56 189 248 / 0.15),
+    rgb(56 189 248 / 0.25)
+  );
+  border: 1px solid rgb(56 189 248 / 0.4);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.support .body {
+  flex: 1 1 340px;
+}
+.support .title {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--ink);
+  margin: 0;
+}
+.support p {
+  margin: 6px 0 0;
+  color: rgb(241 245 249 / 0.8);
+  font-size: 1rem;
+}
+.support .btn {
+  flex-shrink: 0;
+  font-size: 1.05rem;
+  padding: 13px 32px;
+  font-weight: 600;
+}
+
 /* ---------------------------------------------------------------- footer */
 footer.site {
   border-top: 1px solid rgb(28 51 84 / 0.6);
