@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local vs cloud AI clipping — an honest comparison | Clips Studio</title>
+    <meta
+      name="description"
+      content="An honest comparison of running an AI clipper on your own PC versus a cloud service: cost, privacy, speed, quality and the trade-offs each way. Clips Studio is a free open-source local alternative."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/local-vs-cloud.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Local vs cloud AI clipping — an honest comparison" />
+    <meta
+      property="og:description"
+      content="What you gain and what you give up by running an AI clipper on your own machine."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          Clips <span>Studio</span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html" aria-current="page">Local vs cloud</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <span class="eyebrow">Comparison</span>
+          <h1>Local vs cloud clipping, honestly</h1>
+          <p class="lead">
+            Cloud clippers are good, and this page is not going to pretend otherwise. Here is
+            what you actually gain and give up by running the models yourself.
+          </p>
+        </div>
+      </div>
+
+      <section>
+        <div class="wrap">
+          <h2>Side by side</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>&nbsp;</th>
+                  <th>Clips Studio (local)</th>
+                  <th>Typical cloud clipper</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Cost</strong></td>
+                  <td>Free. You pay for electricity.</td>
+                  <td>Monthly, usually metered by minutes or clips.</td>
+                </tr>
+                <tr>
+                  <td><strong>Your footage</strong></td>
+                  <td>Never leaves your computer.</td>
+                  <td>Uploaded and processed on their servers.</td>
+                </tr>
+                <tr>
+                  <td><strong>Volume</strong></td>
+                  <td>Unlimited. Re-run a stream as often as you like.</td>
+                  <td>Capped by your plan.</td>
+                </tr>
+                <tr>
+                  <td><strong>Speed</strong></td>
+                  <td>Bound by your GPU. A long stream is a background job.</td>
+                  <td>Usually faster — it is their hardware, at scale.</td>
+                </tr>
+                <tr>
+                  <td><strong>Editorial quality</strong></td>
+                  <td>Good, and scales with the model your GPU can run.</td>
+                  <td>Often better in absolute terms — frontier models.</td>
+                </tr>
+                <tr>
+                  <td><strong>Setup</strong></td>
+                  <td>An installer plus a one-time model download.</td>
+                  <td>Sign up and paste a link.</td>
+                </tr>
+                <tr>
+                  <td><strong>Control</strong></td>
+                  <td>MIT licensed. Prompts are editable text files.</td>
+                  <td>What the product offers.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Where cloud genuinely wins</h2>
+          <ul class="ticks">
+            <li>
+              <strong>Raw editorial taste.</strong> A frontier model has better judgement about
+              what makes a hook land than a model sized to fit a consumer graphics card. That
+              gap is real.
+            </li>
+            <li>
+              <strong>Speed on demand.</strong> No queue behind your own GPU, and no laptop fans
+              at full tilt for an hour.
+            </li>
+            <li>
+              <strong>Nothing to install.</strong> If you clip occasionally and would rather not
+              think about VRAM, a subscription is a perfectly reasonable answer.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>How a local tool competes anyway</h2>
+          <p class="section-lead">
+            Not by pretending a small model out-reasons a large one. By changing what the model
+            has to be right about.
+          </p>
+          <ul class="ticks">
+            <li>
+              <strong>Find more candidates.</strong> Audio and visual peaks become clips in
+              their own right, so laughter and chaos are not missed just because the transcript
+              reads flat.
+            </li>
+            <li>
+              <strong>Rank, don't grade.</strong> Small models score everything in a narrow
+              band, so the finalists are compared against each other in one pass. Relative
+              judgement is far easier than absolute scoring.
+            </li>
+            <li>
+              <strong>Keep the human.</strong> You review clips before posting either way. The
+              model only has to get good moments <em>into the shortlist</em> — you pick the
+              winners, and that is the cheapest quality multiplier there is.
+            </li>
+            <li>
+              <strong>Scale with hardware.</strong> A bigger GPU means a bigger model, one
+              click, no new subscription.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Who this is actually for</h2>
+          <div class="grid">
+            <div class="card">
+              <h3>High volume</h3>
+              <p>
+                Clipping several long streams a week, where metered plans get expensive fast.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Sensitive footage</h3>
+              <p>
+                Unreleased videos, sponsor reads, anything you would rather not hand to a third
+                party.
+              </p>
+            </div>
+            <div class="card">
+              <h3>People who like owning things</h3>
+              <p>
+                If the idea of tuning the scoring prompt yourself sounds good rather than
+                exhausting, you are in the right place.
+              </p>
+            </div>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+              >Try it — it's free</a
+            >
+            <a class="btn btn-ghost" href="index.html">Back to the overview</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Clips Studio — MIT licensed.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues">Report a bug</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

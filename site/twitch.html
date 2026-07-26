@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Twitch clip generator — turn VODs into vertical clips on your own PC | Clips Studio</title>
+    <meta
+      name="description"
+      content="Turn Twitch VODs into vertical clips locally. Clips Studio reads chat replay to find the moments your viewers actually reacted to, then crops, captions and titles them. Free and open source."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/twitch.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Twitch clip generator that runs on your own PC" />
+    <meta
+      property="og:description"
+      content="Clips Studio reads Twitch chat replay to find the moments viewers reacted to, then crops and captions them locally."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          Clips <span>Studio</span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html" aria-current="page">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <span class="eyebrow">Twitch VODs</span>
+          <h1>Clip Twitch VODs without uploading them anywhere</h1>
+          <p class="lead">
+            Paste a <code>twitch.tv/videos/…</code> link. Clippy downloads the VOD, works
+            through it on your own machine, and hands back vertical clips with captions.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+              >Download for Windows</a
+            >
+            <span class="cta-note">VODs, not live streams</span>
+          </div>
+        </div>
+      </div>
+
+      <section>
+        <div class="wrap">
+          <h2>Chat tells you where the moments are</h2>
+          <p class="section-lead">
+            Twitch is the one platform that keeps its chat after the stream ends, and that is
+            the most honest signal there is: hundreds of people reacting in real time to
+            something that just happened.
+          </p>
+          <p class="section-lead">
+            Clips Studio reads chat replay and measures <strong>unique chatters per
+            window</strong> rather than raw message count. That distinction matters — a
+            gifted-sub train or one person spamming copypasta produces a wall of messages that
+            says nothing about the content. Counting distinct people instead means a genuine
+            room-wide reaction registers and a single excited viewer does not.
+          </p>
+          <div class="note">
+            Chat is a <strong>bonus, capped deliberately low</strong>. It nudges a moment up
+            the list; it cannot carry a clip on its own. What was said and what the audio and
+            video were doing still decide the score, because chat also erupts at things that
+            do not survive out of context.
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Built for how streams actually look</h2>
+          <div class="grid">
+            <div class="card">
+              <h3>Long and unstructured</h3>
+              <p>
+                A six-hour stream is chunked and analysed end to end, so the good bit at hour
+                five gets the same attention as the intro.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Sparse talking</h3>
+              <p>
+                IRL and gym streams go quiet for minutes at a time. Analysis is sized by how
+                much was actually said, not by the clock.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Guests wander in</h3>
+              <p>
+                The crop stays locked on whoever is speaking rather than jumping to every
+                person who walks past the camera.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>What it does not do</h2>
+          <ul class="ticks">
+            <li>
+              <strong>Live streams are not supported</strong>, by design. Clips Studio works on
+              finished VODs, where the whole thing can be studied before deciding what matters.
+            </li>
+            <li>
+              <strong>It does not post for you.</strong> Clips land in a folder, organised by
+              creator and video, ready to upload wherever you like.
+            </li>
+            <li>
+              <strong>It does not need your Twitch account.</strong> There is no login and no
+              API key.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Try it on your own VOD</h2>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+              >Get the installer</a
+            >
+            <a class="btn btn-ghost" href="kick.html">Clipping Kick instead?</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Clips Studio — MIT licensed.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues">Report a bug</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

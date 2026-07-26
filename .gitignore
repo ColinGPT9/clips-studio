@@ -200,7 +200,10 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+# (The stock Python .gitignore ignores /site here, because mkdocs BUILDS into
+#  that folder. This project doesn't use mkdocs, and /site is the hand-written
+#  website that GitHub Pages publishes — so the rule is deliberately gone. It
+#  silently kept the entire site out of the repo once already.)
 
 # mypy
 .mypy_cache/

@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clips Studio — free open-source AI clip generator that runs on your own PC</title>
+    <meta
+      name="description"
+      content="Turn Twitch, Kick and YouTube videos into vertical clips on your own computer. Free, open source, no subscription, no uploads. A local AI alternative to cloud clipping tools."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Clips Studio — AI video clipping that runs on your own PC" />
+    <meta
+      property="og:description"
+      content="Paste a Twitch, Kick or YouTube link and get vertical clips with captions. Runs entirely on your machine — no subscription, no uploads."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+    <meta property="og:url" content="https://colingpt9.github.io/clips-studio/" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Clips Studio",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Windows",
+        "description": "Open-source AI video clipping that runs locally. Turns Twitch, Kick and YouTube videos into vertical clips with captions and titles.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          Clips <span>Studio</span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html" aria-current="page">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap hero-grid">
+          <div>
+            <span class="eyebrow">Free &amp; open source · MIT</span>
+            <h1>AI video clipping that runs on your own PC</h1>
+            <p class="lead">
+              Paste a link to a Twitch VOD, a Kick VOD or a YouTube video and hand it to
+              <strong>Clippy the Cat</strong>. He watches the whole thing, picks the moments
+              worth posting, crops them to fit a phone screen with the speaker kept in frame,
+              burns in word-synced captions and writes the titles.
+            </p>
+            <p class="lead">
+              He does it all on your computer. Your footage is never uploaded, there is no
+              subscription, and there is no cap on how many clips you make.
+            </p>
+            <div class="cta-row">
+              <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+                >Download for Windows</a
+              >
+              <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio"
+                >View the source</a
+              >
+              <span class="cta-note">Windows · NVIDIA GPU recommended</span>
+            </div>
+          </div>
+          <img
+            class="mascot"
+            src="assets/mascot.png"
+            alt="Clippy the Cat, the Clips Studio mascot"
+          />
+        </div>
+      </div>
+
+      <section id="how">
+        <div class="wrap">
+          <h2>How it works</h2>
+          <p class="section-lead">
+            Every step runs locally. The only thing that touches the network in a normal run
+            is downloading the video you asked for.
+          </p>
+          <ol class="pipeline">
+            <li>
+              <strong>Transcription</strong>
+              <span
+                >faster-whisper with word-level timing, so captions land on the right syllable
+                and clips start on a real sentence.</span
+              >
+            </li>
+            <li>
+              <strong>Signal analysis</strong>
+              <span
+                >Loudness spikes, laughter-shaped bursts, scene cuts, motion and on-screen
+                reactions, measured across the whole video.</span
+              >
+            </li>
+            <li>
+              <strong>Scoring</strong>
+              <span
+                >A local language model reads the transcript <em>alongside</em> those signals,
+                so a quiet line during an explosive moment is judged correctly.</span
+              >
+            </li>
+            <li>
+              <strong>Framing</strong>
+              <span
+                >Pose detection keeps the subject in frame, and in group footage the camera
+                follows whoever is speaking. Crops are never stretched.</span
+              >
+            </li>
+            <li>
+              <strong>Captions and titles</strong>
+              <span
+                >Word-synced captions in your style, plus a title, description and hashtags —
+                all editable before you export.</span
+              >
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="wrap">
+          <h2>What you get</h2>
+          <div class="grid">
+            <div class="card">
+              <h3>Finds what transcripts miss</h3>
+              <p>
+                Laughter, hype and clutch moments often read flat in text. Peaks in the audio
+                and video become clip candidates in their own right.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Speaker-aware framing</h3>
+              <p>
+                In multi-person footage the crop follows whoever is talking, detected from
+                mouth movement. Podcast mode frames each camera shot separately.
+              </p>
+            </div>
+            <div class="card">
+              <h3>A real editor</h3>
+              <p>
+                Trim, cut, mute words, add a hook, music and a watermark — all non-destructive.
+                Or describe the change in plain language and let the AI apply it.
+              </p>
+            </div>
+            <div class="card">
+              <h3>19 languages</h3>
+              <p>
+                Translate, subtitle or dub a clip, with every line shown for review before
+                anything is burned in. The app itself is translated into all 19 too.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Learns each creator</h3>
+              <p>
+                Recurring topics, running jokes and ongoing storylines build up per channel and
+                sharpen the titles. It stays on your machine, and you can read or wipe it.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Long-form too</h3>
+              <p>
+                The same analysis produces horizontal clips, a best-of highlight reel, or the
+                whole stream with the dead air removed.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="clippy">
+        <div class="wrap hero-grid">
+          <div>
+            <h2>Meet Clippy</h2>
+            <p class="section-lead">
+              Clipping a three-hour stream means watching a three-hour stream. Clippy the Cat
+              does that part. He sits through the whole thing, notices where the room got loud
+              and where the story turned, and comes back with the bits worth posting.
+            </p>
+            <ul class="ticks">
+              <li>
+                <strong>He watches, you choose.</strong> Clippy brings back everything that
+                cleared the bar, not a fixed three — you pick what actually goes out.
+              </li>
+              <li>
+                <strong>He remembers your creators.</strong> Running jokes and ongoing
+                storylines build up per channel, so the titles get sharper over time.
+              </li>
+              <li>
+                <strong>He works on your machine.</strong> Nothing is uploaded, nothing is
+                metered, and he does not phone anyone about what he saw.
+              </li>
+            </ul>
+          </div>
+          <img
+            class="mascot"
+            src="assets/mascot.png"
+            alt=""
+            width="210"
+          />
+        </div>
+      </section>
+
+      <section id="local">
+        <div class="wrap">
+          <h2>Why local matters</h2>
+          <div class="grid">
+            <div class="card">
+              <h3>Nothing is uploaded</h3>
+              <p>
+                Unreleased footage, sponsor reads and personal streams never leave your
+                computer. There is no account and no server holding your video.
+              </p>
+            </div>
+            <div class="card">
+              <h3>No per-clip cost</h3>
+              <p>
+                Cloud clippers meter minutes or clips. Running the models yourself costs
+                electricity, so processing a three-hour stream twice is free.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Yours to change</h3>
+              <p>
+                MIT licensed. The scoring prompts are plain text files you can edit, and the AI
+                model swaps with one click.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="get">
+        <div class="wrap">
+          <h2>Getting started</h2>
+          <p class="section-lead">
+            Download the installer and run it. A setup wizard checks your machine and downloads
+            an AI model sized to your graphics card.
+          </p>
+          <div class="note">
+            <strong>Clips Studio is in alpha.</strong> It works and it is used daily, but you
+            will find rough edges — please report them on GitHub. The installer is not yet
+            code-signed, so Windows will warn the first time you run it; choose
+            <em>More info → Run anyway</em>. One thing is not bundled:
+            <a href="https://ollama.com">Ollama</a>, which runs the AI models and manages your
+            GPU. The setup wizard detects whether you have it and links you to it.
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+              >Get the installer</a
+            >
+            <a
+              class="btn btn-ghost"
+              href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md"
+              >Build from source</a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Clips Studio — MIT licensed. Made for creators who would rather own their tools.</span>
+        <nav aria-label="Footer">
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues">Report a bug</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/blob/main/ARCHITECTURE.md">How it's built</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

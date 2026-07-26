@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://colingpt9.github.io/clips-studio/sitemap.xml

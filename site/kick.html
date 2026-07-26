@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kick clip generator — turn Kick VODs into vertical clips locally | Clips Studio</title>
+    <meta
+      name="description"
+      content="Turn Kick VODs into vertical clips on your own PC. Free and open source, with no upload and no subscription. Built to score Kick clips on content alone, because Kick keeps no chat after a stream."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/kick.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Kick clip generator that runs on your own PC" />
+    <meta
+      property="og:description"
+      content="Clip Kick VODs locally — free, open source, nothing uploaded."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          Clips <span>Studio</span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html" aria-current="page">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <span class="eyebrow">Kick VODs</span>
+          <h1>Clip Kick VODs on your own machine</h1>
+          <p class="lead">
+            Paste a <code>kick.com/video/…</code> link. Clippy downloads it, studies it locally
+            and returns vertical clips with captions and titles — no account, no upload, no
+            per-clip fee.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+              >Download for Windows</a
+            >
+            <span class="cta-note">VODs, not live streams</span>
+          </div>
+        </div>
+      </div>
+
+      <section>
+        <div class="wrap">
+          <h2>Kick throws its chat away — so the video has to speak</h2>
+          <p class="section-lead">
+            Kick keeps no chat replay once a stream ends. On Twitch, chat is a useful hint
+            about which moments landed. On Kick there is nothing to read, so a clipper that
+            leans on audience reaction has nothing to lean on.
+          </p>
+          <p class="section-lead">
+            That is fine here, because audience data was only ever a small capped bonus.
+            Everything that does the real work is measured from the video itself:
+          </p>
+          <div class="grid">
+            <div class="card">
+              <h3>What was said</h3>
+              <p>
+                A local language model reads the transcript for hooks, revelations, strong
+                opinions and quotable lines.
+              </p>
+            </div>
+            <div class="card">
+              <h3>What it sounded like</h3>
+              <p>
+                Loudness spikes against a rolling median, laughter-shaped bursts, and the
+                silence-then-explosion shape that marks a payoff.
+              </p>
+            </div>
+            <div class="card">
+              <h3>What it looked like</h3>
+              <p>
+                Scene cuts, motion, and sudden changes in how much of the frame a face fills —
+                a lean into the camera is someone reacting.
+              </p>
+            </div>
+          </div>
+          <p class="section-lead" style="margin-top: 26px">
+            Each signal is normalised <em>within your own video</em>, so a calm chat stream and
+            a shouting one both produce meaningful peaks. Nothing is scored against some
+            average of other people's content.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Good to know</h2>
+          <ul class="ticks">
+            <li><strong>Finished VODs only</strong> — live streams are deliberately not supported.</li>
+            <li>
+              <strong>Kick VODs download as H.264</strong>, which decodes fast in hardware. Long
+              Kick streams process at roughly the same speed as Twitch ones.
+            </li>
+            <li>
+              <strong>No Kick account needed.</strong> No login, no API key, no rate limit to
+              worry about.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Start clipping</h2>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
+              >Get the installer</a
+            >
+            <a class="btn btn-ghost" href="twitch.html">Clipping Twitch too?</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Clips Studio — MIT licensed.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/ColinGPT9/clips-studio">GitHub</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues">Report a bug</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
