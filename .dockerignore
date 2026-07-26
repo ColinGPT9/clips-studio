@@ -1,0 +1,30 @@
+# Keep the build context small and keep other people's videos out of it.
+# Without this, `docker build` uploads the entire data/ folder — tens of
+# gigabytes of downloads and rendered clips — before it runs a single step.
+
+data/
+exports/
+vendor/
+build/
+dist/
+release/
+
+ui/node_modules/
+ui/out/
+ui/dist/
+
+.git/
+.github/
+site/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Credentials must never end up in an image layer.
+config/client_secret.json
+*token*.json
+
+# Model weights are downloaded on first use.
+*.pt

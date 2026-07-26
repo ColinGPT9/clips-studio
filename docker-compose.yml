@@ -1,0 +1,54 @@
+# Contributor environment: the Clips Studio engine plus Ollama.
+#
+#   docker compose up --build        engine on http://localhost:8765
+#   docker compose run --rm engine pytest
+#
+# Not an installation route — creators use the Windows installer. See
+# docs/DOCKER.md for what this can and cannot do.
+
+services:
+  engine:
+    build: .
+    image: clips-studio-engine
+    ports:
+      # Host-only. Publishing to 0.0.0.0 would put an unauthenticated API
+      # that reads and writes video files onto the local network.
+      - '127.0.0.1:8765:8765'
+    volumes:
+      # Source is mounted so edits are live without rebuilding. The image
+      # already contains a copy, so it still runs standalone.
+      - .:/app
+      # Downloads, clips and the database persist in a named volume rather
+      # than the container, which is thrown away on every rebuild.
+      - clips-data:/data
+    environment:
+      # Inside the compose network Ollama is a service name, not localhost.
+      CLIPS_STUDIO_OLLAMA_HOST: http://ollama:11434
+      CLIPS_STUDIO_DATA_DIR: /data
+      # Windows-locale encoding is not a container problem, but the engine
+      # prints titles containing emoji and the default here is ASCII.
+      PYTHONIOENCODING: utf-8
+      PYTHONUNBUFFERED: '1'
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - '127.0.0.1:11434:11434'
+    volumes:
+      # Models are gigabytes. Losing them on a rebuild would be painful.
+      - ollama-models:/root/.ollama
+    # GPU: uncomment with the NVIDIA Container Toolkit installed. Without it
+    # Ollama runs on CPU, which works and is slow. See docs/DOCKER.md.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  clips-data:
+  ollama-models:

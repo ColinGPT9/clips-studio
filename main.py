@@ -83,6 +83,18 @@ def load_config(path: Path) -> dict:
     if privacy in ("public", "unlisted", "private"):
         config.setdefault("upload", {})["privacy"] = privacy
 
+    # Environment overrides. Containers cannot edit settings.yaml — Ollama
+    # lives at a service name rather than localhost, and the data directory
+    # is a mounted volume. These let a compose file say so without anyone
+    # hand-editing config that is checked into the repo.
+    ollama_host = os.environ.get("CLIPS_STUDIO_OLLAMA_HOST")
+    if ollama_host:
+        config.setdefault("llm", {})["ollama_host"] = ollama_host.rstrip("/")
+
+    data_dir = os.environ.get("CLIPS_STUDIO_DATA_DIR")
+    if data_dir:
+        config.setdefault("paths", {})["data_dir"] = data_dir
+
     config.setdefault("paths", {})["data_dir"] = str(resolve_data_dir(config))
     return config
 
@@ -108,6 +120,15 @@ def main() -> int:
 
     p_serve = sub.add_parser("serve", help="Run the local API for the desktop app")
     p_serve.add_argument("--port", type=int, default=8765)
+    # Localhost by DEFAULT and on purpose: this API has no authentication,
+    # and it can read and write video files. Only a container needs to bind
+    # 0.0.0.0, where "localhost" means the container itself and nothing on
+    # the host could otherwise reach it.
+    p_serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="interface to bind (default 127.0.0.1; use 0.0.0.0 only inside a container)",
+    )
 
     p_channels = sub.add_parser("channels", help="Manage monitored channels")
     ch_sub = p_channels.add_subparsers(dest="channels_command", required=True)
@@ -169,7 +190,9 @@ def main() -> int:
             from server.api import create_app
 
             db.close()  # the server manages its own connections
-            uvicorn.run(create_app(config, args.config), host="127.0.0.1", port=args.port)
+            if args.host != "127.0.0.1":
+                print(f"  WARNING: binding {args.host} — this API has no authentication.")
+            uvicorn.run(create_app(config, args.config), host=args.host, port=args.port)
             return 0
 
         if args.command == "channels":

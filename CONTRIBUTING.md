@@ -41,6 +41,17 @@ cd ui && npm run typecheck && npm run build
 Want to add a language, a model, a platform or an export format? Each is a
 small, well-defined change — see [docs/EXTENDING.md](docs/EXTENDING.md).
 
+### Or use Docker
+
+```
+docker compose up --build              # engine on :8765, Ollama beside it
+docker compose run --rm engine pytest
+```
+
+Saves installing Python, FFmpeg, PyTorch and OpenCV locally, and lets you
+contribute from Linux or macOS to an app that only ships for Windows. The
+desktop UI still runs on your host — see [docs/DOCKER.md](docs/DOCKER.md).
+
 ## Building the Windows installer
 
 ```
