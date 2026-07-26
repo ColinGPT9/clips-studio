@@ -14,7 +14,6 @@ workflow is harmless until you set one up, and starts working the moment you do.
 | GitHub Pages | The website (`site/`) | none — uses the built-in token |
 | Hugging Face Space | The website (`site/`) | `HF_TOKEN`, `HF_SPACE` |
 | GitLab | The full repo | `GITLAB_TOKEN`, `GITLAB_REPO` |
-| Gitee | The full repo | `GITEE_TOKEN`, `GITEE_USER`, `GITEE_REPO` |
 
 Secrets go in **Settings → Secrets and variables → Actions → New repository
 secret**.
@@ -54,25 +53,16 @@ GPU, FFmpeg and your files. The Space is the website, and says so.
 2. Create a personal access token with the `write_repository` scope.
 3. Add secrets: `GITLAB_TOKEN` and `GITLAB_REPO` (e.g. `colingpt9/clips-studio`).
 
-## Gitee
+## Adding another mirror later
 
-Gitee reaches developers in China, where GitHub is slow or unreachable for many
-people. It is the fiddliest of the three:
+Gitee was considered and left out: accounts need real-name verification with a
+phone number and ID, and new repositories face content review before pushes go
+through — too much friction for the reach it would add here.
 
-1. **Accounts need real-name verification** (phone number and ID). There is no
-   way around this and no way to automate it.
-2. The interface is primarily Chinese.
-3. New repositories are subject to content review, and pushes can be blocked
-   until it passes.
-4. There are file-size limits — not a problem here, since the FFmpeg binaries
-   and build output are gitignored.
-
-Once you have an account:
-
-1. Create an empty repository.
-2. Generate a private token at <https://gitee.com/personal_access_tokens>.
-3. Add secrets: `GITEE_TOKEN`, `GITEE_USER` (your Gitee username) and
-   `GITEE_REPO` (e.g. `colingpt9/clips-studio`).
+Any git host works the same way. Copy the GitLab job in
+[`mirror.yml`](../.github/workflows/mirror.yml), change the URL, and add the two
+secrets. Keep the "skip if the secret is missing" guard so the workflow stays
+harmless for anyone who forks this repo.
 
 ---
 

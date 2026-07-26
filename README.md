@@ -300,9 +300,9 @@ vulnerability. Issues labelled [`good-first-issue`](../../labels/good-first-issu
 small and well-scoped if you want somewhere to start.
 
 The website lives in [site/](site/) and is published to GitHub Pages and a Hugging
-Face Space; the repo is mirrored to GitLab and Gitee. See
-[docs/MIRRORS.md](docs/MIRRORS.md) — **GitHub is where work happens**, and the
-mirrors are force-pushed one way, so a commit made on one will be overwritten.
+Face Space; the repo is mirrored to GitLab. See [docs/MIRRORS.md](docs/MIRRORS.md) —
+**GitHub is where work happens**, and the mirrors are force-pushed one way, so a
+commit made on one will be overwritten.
 
 ## Roadmap
 
