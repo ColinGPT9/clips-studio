@@ -257,3 +257,7 @@ __marimo__/
 
 # Throwaway test scripts
 _test_*.py
+
+# Generated test footage. Rebuild with tests/assets/make_sample_video.py.
+# Anchored: an unanchored *.mp4 would also swallow assets we do want.
+/tests/assets/sample_video.mp4

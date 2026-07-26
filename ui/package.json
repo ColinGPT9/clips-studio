@@ -9,6 +9,7 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.cjs",
+    "dev:web": "vite",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "package": "electron-vite build && electron-builder --win"

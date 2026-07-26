@@ -32,6 +32,38 @@ services:
     depends_on:
       - ollama
 
+  # The front-end toolchain: Vite, React, TypeScript. Open
+  # http://localhost:5173 in a browser to work on the interface without
+  # installing Node.
+  #
+  # This serves the RENDERER, not Electron. Electron needs a display, so the
+  # desktop shell still runs on your host — see docs/DOCKER.md. In a browser
+  # the interface works and talks to the engine; only the native bits
+  # (file pickers, the donate window, external links) are unavailable,
+  # because those live in Electron's preload.
+  ui:
+    image: node:20-slim
+    working_dir: /app/ui
+    ports:
+      - '127.0.0.1:5173:5173'
+    volumes:
+      - .:/app
+      # Anonymous volume so the container keeps its OWN node_modules. Without
+      # this the host's are mounted over the top, and esbuild/rollup ship
+      # platform-specific binaries — Windows ones do not run on Linux, and
+      # the failure is a confusing "cannot find module" for a package that
+      # is plainly installed.
+      - ui-node-modules:/app/ui/node_modules
+    # dev:web serves the renderer alone, via ui/vite.config.mts. Plain
+    # `vite` would find no config: the app is built by electron-vite, whose
+    # config describes three bundles and cannot serve one of them on its own.
+    command: >
+      sh -c "npm install && npm run dev:web"
+    environment:
+      # Vite needs polling to see edits made on a Windows or macOS host
+      # through a bind mount; inotify does not cross that boundary.
+      CHOKIDAR_USEPOLLING: 'true'
+
   ollama:
     image: ollama/ollama:latest
     ports:
@@ -52,3 +84,4 @@ services:
 volumes:
   clips-data:
   ollama-models:
+  ui-node-modules:

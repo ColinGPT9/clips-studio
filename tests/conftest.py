@@ -42,6 +42,39 @@ def creator(db):
 
 
 @pytest.fixture
+def sample_transcript():
+    """The committed sample transcript, parsed into Segments.
+
+    Longer and messier than the `segments` fixture below — two minutes of
+    plausible stream, with both a genuinely repeated phrase and a vivid
+    one-off that must not be mistaken for one. See tests/assets/README.md.
+    """
+    import json
+
+    from core.models import Segment
+
+    raw = json.loads(
+        (ROOT / "tests" / "assets" / "sample_transcript.json").read_text(encoding="utf-8")
+    )
+    return [Segment(**seg) for seg in raw["segments"]]
+
+
+@pytest.fixture
+def sample_video():
+    """Path to the generated test video, skipping the test if it is absent.
+
+    Not committed — it is built on demand by
+    `python tests/assets/make_sample_video.py`. Skipping rather than failing
+    is deliberate: a contributor who has not generated it has not broken
+    anything, and CI has no FFmpeg to generate it with.
+    """
+    path = ROOT / "tests" / "assets" / "sample_video.mp4"
+    if not path.exists():
+        pytest.skip("No sample video. Run: python tests/assets/make_sample_video.py")
+    return path
+
+
+@pytest.fixture
 def segments():
     """A short transcript as the pipeline would hand it over."""
     from core.models import Segment

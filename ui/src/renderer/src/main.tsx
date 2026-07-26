@@ -4,6 +4,12 @@ import App from './App'
 import AppBoundary from './components/AppBoundary'
 import './theme.css'
 import { applyAppearance, loadAppearance } from './lib/appearance'
+import { installBrowserShim } from './lib/browserShim'
+
+// Before anything renders. Under Electron this returns immediately; it only
+// does something when the renderer is opened in a browser, which is how the
+// Docker `ui` service serves it.
+installBrowserShim()
 
 applyAppearance(loadAppearance())
 

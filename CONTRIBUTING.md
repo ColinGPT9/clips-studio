@@ -30,6 +30,11 @@ cd ui && npm install
 npm run dev                      # starts Electron + the backend together
 ```
 
+Working on the interface only? `npm run dev:web` serves it in a browser
+instead, with no Electron and no rebuild loop. The Electron-only calls
+(file pickers, the donate window) are stubbed there — see
+`ui/src/renderer/src/lib/browserShim.ts`.
+
 Before a PR:
 
 ```
@@ -44,13 +49,36 @@ small, well-defined change — see [docs/EXTENDING.md](docs/EXTENDING.md).
 ### Or use Docker
 
 ```
-docker compose up --build              # engine on :8765, Ollama beside it
+docker compose up --build       # engine :8765, interface :5173, Ollama
 docker compose run --rm engine pytest
 ```
 
-Saves installing Python, FFmpeg, PyTorch and OpenCV locally, and lets you
-contribute from Linux or macOS to an app that only ships for Windows. The
-desktop UI still runs on your host — see [docs/DOCKER.md](docs/DOCKER.md).
+Saves installing Python, FFmpeg, PyTorch, OpenCV and Node locally, and lets
+you contribute from Linux or macOS to an app that only ships for Windows.
+Electron itself still runs on your host, since it needs a display — see
+[docs/DOCKER.md](docs/DOCKER.md).
+
+## Something to run against
+
+You do not need a stream to start. There is a written-out transcript and a
+generator for synthetic footage in [tests/assets/](tests/assets/):
+
+```
+python tests/assets/make_sample_video.py     # 2 min, 1080p, known audio peaks
+```
+
+And [examples/](examples/) has small runnable programs for the two things
+you are most likely to be doing:
+
+```
+python examples/score_a_transcript.py --fake   # clip selection, seconds per run
+python examples/drive_the_api.py               # the pipeline over HTTP
+```
+
+`--fake` uses a canned model reply, so scoring logic can be worked on with
+no Ollama and no waiting, and behaves the same way every run. If you are
+changing how clips get picked, that loop is worth learning first — the
+alternative is a full transcribe-and-render per attempt.
 
 ## Building the Windows installer
 
