@@ -1,14 +1,38 @@
-yt-dlp>=2025.1.1
-faster-whisper>=1.0.0
-requests>=2.31.0
-PyYAML>=6.0
-ultralytics>=8.2.0
-opencv-python>=4.9.0
-google-api-python-client>=2.100.0
-google-auth-oauthlib>=1.1.0
-curl_cffi>=0.7.0
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-psutil>=5.9.0
-nvidia-ml-py>=12.0.0
+# Floors AND ceilings, on purpose.
+#
+# These were all bare `>=` once, which quietly means "whatever is newest on
+# the day someone installs". That is not a stable base for a release: at the
+# time of writing a fresh install pulled opencv-python 5.x and psutil 7.x,
+# two major versions nobody had ever run the app against.
+#
+# The upper bounds pin the MAJOR only. Patches and minors still flow in, so
+# real fixes are not blocked; a new major is a deliberate decision with a
+# real video tested afterwards, not something a new contributor discovers by
+# accident.
+#
+# Raising one of these ceilings is a normal thing to do. Do it on purpose,
+# and process an actual video before merging it.
 
+# Extractors break whenever a site changes, so this is the one dependency
+# you always want newest. No ceiling.
+yt-dlp>=2025.1.1
+
+# ---- transcription and vision --------------------------------------------
+faster-whisper>=1.0.0,<2
+ultralytics>=8.2.0,<9
+# <5 matters. opencv-python 5.0 is out and pip takes it without this.
+opencv-python>=4.9.0,<5
+
+# ---- API server ------------------------------------------------------------
+fastapi>=0.110.0,<1
+uvicorn[standard]>=0.29.0,<1
+
+# ---- everything else -------------------------------------------------------
+requests>=2.31.0,<3
+PyYAML>=6.0,<7
+google-api-python-client>=2.100.0,<3
+google-auth-oauthlib>=1.1.0,<2
+# 0.x: a minor bump here can break, so the ceiling is tighter than the rest.
+curl_cffi>=0.7.0,<0.16
+psutil>=5.9.0,<8
+nvidia-ml-py>=12.0.0,<14

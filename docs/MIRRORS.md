@@ -13,7 +13,6 @@ workflow is harmless until you set one up, and starts working the moment you do.
 |---|---|---|
 | GitHub Pages | The website (`site/`) | none — uses the built-in token |
 | Hugging Face Space | The website (`site/`) | `HF_TOKEN`, `HF_SPACE` |
-| GitLab | The full repo | `GITLAB_TOKEN`, `GITLAB_REPO` |
 
 Secrets go in **Settings → Secrets and variables → Actions → New repository
 secret**.
@@ -46,23 +45,22 @@ HTML is relative.
 **A Space cannot run Clips Studio.** It is a Windows desktop app needing a local
 GPU, FFmpeg and your files. The Space is the website, and says so.
 
-## GitLab
+## Why the website is mirrored but the code is not
 
-1. Create an **empty** project at <https://gitlab.com/projects/new> — no README,
-   no licence, or the first push will conflict.
-2. Create a personal access token with the `write_repository` scope.
-3. Add secrets: `GITLAB_TOKEN` and `GITLAB_REPO` (e.g. `colingpt9/clips-studio`).
+A GitLab repo mirror was set up here and then removed, and Gitee was considered
+and left out. The reasoning is the same for both: a code mirror is a second copy
+to keep in step, and it earns nothing unless people are actually looking for the
+project there. Nobody was. (Gitee additionally wants real-name verification with
+a phone number and ID, and reviews new repositories before pushes go through.)
 
-## Adding another mirror later
+The website is a different case — it costs one force-push and puts the project
+in front of people searching Hugging Face for local AI tools.
 
-Gitee was considered and left out: accounts need real-name verification with a
-phone number and ID, and new repositories face content review before pushes go
-through — too much friction for the reach it would add here.
-
-Any git host works the same way. Copy the GitLab job in
-[`mirror.yml`](../.github/workflows/mirror.yml), change the URL, and add the two
-secrets. Keep the "skip if the secret is missing" guard so the workflow stays
-harmless for anyone who forks this repo.
+If that changes, any git host works the same way: add a job to
+[`mirror.yml`](../.github/workflows/mirror.yml) modelled on the Hugging Face one,
+push `HEAD:main` with a token instead of pushing `site/`, and keep the "skip if
+the secret is missing" guard so the workflow stays harmless for anyone who forks
+this repo.
 
 ---
 

@@ -30,6 +30,13 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Same rule as the engine: no majors. Electron 31 -> 43 is twelve major
+      # versions and would need the packaging chain re-tested end to end
+      # (nsis-web, the unsigned-build workaround, the rcedit icon hook).
+      # Worth doing one day, on purpose, not as a drive-by merge.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   # ---- python engine -------------------------------------------------
   - package-ecosystem: pip
@@ -49,6 +56,15 @@ updates:
       # rather than batched into a weekly roll-up.
       - dependency-name: yt-dlp
         update-types: ['version-update:semver-patch']
+      # No major bumps, for anything. requirements.txt caps majors, so these
+      # PRs could not be merged without also raising a ceiling — which is a
+      # decision to make deliberately, after processing a real video, not one
+      # to be nudged into by a Monday morning pull request.
+      #
+      # This is why eleven branches piled up: opencv 4->5, psutil 5->7,
+      # electron 31->43. All of them wanted a major.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   # ---- the workflows themselves --------------------------------------
   - package-ecosystem: github-actions

@@ -1,12 +1,13 @@
-# Mirror the project so people can find it somewhere other than GitHub.
+# Mirror the website to a Hugging Face static Space, so it is findable
+# somewhere other than GitHub Pages. site/ becomes the Space root.
 #
-# Two different kinds of mirror:
-#   * the SITE  -> a Hugging Face static Space (site/ becomes the Space root)
-#   * the REPO  -> GitLab, full history
+# Skipped unless the secrets exist, so this is safe to have merged before any
+# account is set up — it just does nothing. Add the secrets and it starts
+# working on the next push. See docs/MIRRORS.md.
 #
-# Every job is skipped unless its secret exists, so this workflow is safe to
-# merge before any account is set up — it just does nothing. Add a secret and
-# that mirror starts working on the next push. See docs/MIRRORS.md.
+# A GitLab repo mirror used to live here too and was removed: maintaining a
+# second copy of the code costs attention, and nobody was looking for the
+# project there.
 
 name: Mirror
 
@@ -44,26 +45,3 @@ jobs:
             "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" \
             HEAD:main
           echo "Pushed site/ to https://huggingface.co/spaces/${HF_SPACE}"
-
-  # ---------------------------------------------------------------- code
-  gitlab:
-    name: Repo → GitLab
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # mirrors need the whole history, not a shallow clone
-
-      - name: Push to GitLab
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITLAB_REPO: ${{ secrets.GITLAB_REPO }} # e.g. colingpt9/clips-studio
-        run: |
-          if [ -z "$GITLAB_TOKEN" ] || [ -z "$GITLAB_REPO" ]; then
-            echo "GITLAB_TOKEN or GITLAB_REPO not set — skipping."
-            exit 0
-          fi
-          git push --force \
-            "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_REPO}.git" \
-            HEAD:main
-          echo "Pushed to https://gitlab.com/${GITLAB_REPO}"
