@@ -251,16 +251,62 @@
         <div class="wrap">
           <h2>Getting started</h2>
           <p class="section-lead">
-            Download the installer and run it. A setup wizard checks your machine and downloads
-            an AI model sized to your graphics card.
+            The releases page lists a few files. You want the <strong>Web Setup</strong> — it is
+            small on purpose and fetches the rest, so the big download resumes if your
+            connection drops.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Size</th>
+                  <th>What it's for</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>ClipsStudio-Web-Setup-…exe</code></td>
+                  <td>~1 MB</td>
+                  <td><strong>Start here.</strong> Downloads and installs everything else.</td>
+                </tr>
+                <tr>
+                  <td><code>ClipsStudio-…-x64.zip</code></td>
+                  <td>~2.8 GB</td>
+                  <td>
+                    Offline option — unzip anywhere and run <code>Clips Studio.exe</code>. No
+                    installer, no shortcuts.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>…nsis.7z</code> and <code>latest.yml</code></td>
+                  <td>—</td>
+                  <td>
+                    Not for downloading by hand. The Web Setup fetches these; they need to sit
+                    beside it.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="section-lead" style="margin-top: 26px">
+            Run it, and a setup wizard checks your machine and downloads an AI model sized to
+            your graphics card.
           </p>
           <div class="note">
-            <strong>Clips Studio is in alpha.</strong> It works and it is used daily, but you
-            will find rough edges — please report them on GitHub. The installer is not yet
-            code-signed, so Windows will warn the first time you run it; choose
-            <em>More info → Run anyway</em>. One thing is not bundled:
-            <a href="https://ollama.com">Ollama</a>, which runs the AI models and manages your
-            GPU. The setup wizard detects whether you have it and links you to it.
+            <strong>What the installer does and doesn't carry.</strong> It brings the app, the
+            whole AI engine, every library it needs, FFmpeg and the detection weights — no
+            Python, no PATH, no terminal. It does <em>not</em> bring
+            <a href="https://ollama.com">Ollama</a>, which runs the language model and manages
+            your GPU itself, or the model, which is gigabytes and depends on your graphics
+            card. The setup wizard checks for both and walks you through them, so you'll want
+            an internet connection the first time you run it.
+          </div>
+          <div class="note" style="margin-top: 14px">
+            <strong>Clips Studio is in alpha.</strong> It works and it's used daily, but you
+            will find rough edges — please report them on GitHub. The installer isn't
+            code-signed yet, so Windows will warn the first time you run it: choose
+            <em>More info → Run anyway</em>.
           </div>
           <div class="cta-row">
             <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases"
