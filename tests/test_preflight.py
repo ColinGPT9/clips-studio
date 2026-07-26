@@ -91,7 +91,26 @@ def test_full_run_reports_every_area(tmp_path):
     checking something."""
     pf = preflight.run({"paths": {"data_dir": str(tmp_path)}, "model": "gemma:7b"})
     names = {c.name for c in pf.checks}
-    assert {"ffmpeg", "ffprobe", "ollama", "model", "gpu", "disk"} <= names
+    assert {"ffmpeg", "ffprobe", "ollama", "gpu", "disk"} <= names
+
+
+def test_model_is_only_reported_when_ollama_can_be_asked(tmp_path):
+    """With Ollama down there is no honest answer about which models are
+    installed, so no model row is invented — the actionable thing is
+    "install Ollama", and a second row guessing about models would only
+    compete with it.
+
+    This differs by machine: a developer usually has Ollama running and a
+    fresh install does not, so both cases are pinned here.
+    """
+    pf = preflight.run({"paths": {"data_dir": str(tmp_path)}, "model": "gemma:7b"})
+    by_name = {c.name: c for c in pf.checks}
+
+    if by_name["ollama"].ok:
+        assert "model" in by_name, "Ollama is up, so the model must be reported on"
+    else:
+        assert "model" not in by_name, "cannot claim anything about models here"
+        assert by_name["ollama"].blocking, "no AI at all is a blocking problem"
 
 
 def test_recommendation_matches_the_models_table():
