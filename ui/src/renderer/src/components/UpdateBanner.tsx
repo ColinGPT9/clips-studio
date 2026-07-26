@@ -14,7 +14,16 @@ export default function UpdateBanner(): JSX.Element | null {
   const [s, setS] = useState<UpdateState | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
 
-  useEffect(() => window.studio.update.onState(setS), [])
+  // The preload is only rebuilt when the window is recreated, while the
+  // renderer hot-reloads on every save — so during development this can run
+  // against a preload that predates window.studio.update. Throwing here
+  // would unmount the entire app and leave a blank window, which is a
+  // catastrophic result for a feature that is only ever a notification.
+  useEffect(() => {
+    const updater = window.studio?.update
+    if (!updater) return
+    return updater.onState(setS)
+  }, [])
 
   // Nothing to say when there's no update, we're mid-check, or we're in dev.
   if (!s || s.state === 'none' || s.state === 'checking' || s.state === 'dev') return null

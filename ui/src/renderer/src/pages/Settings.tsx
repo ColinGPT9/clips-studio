@@ -293,8 +293,15 @@ function UpdateCard(): JSX.Element {
   const [asked, setAsked] = useState(false)
 
   useEffect(() => {
-    window.studio.update.prefs().then((p) => setChannel(p.channel))
-    return window.studio.update.onState(setState)
+    // Guarded for the same reason as the update bar: a preload without this
+    // API must degrade to "updates unavailable", never take the window down.
+    const updater = window.studio?.update
+    if (!updater) {
+      setState({ state: 'error', message: 'Updates are unavailable — restart Clips Studio.' })
+      return
+    }
+    updater.prefs().then((p) => setChannel(p.channel))
+    return updater.onState(setState)
   }, [])
 
   const line = ((): string => {
