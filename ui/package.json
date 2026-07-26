@@ -30,5 +30,8 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.5.3",
     "vite": "^5.3.3"
+  },
+  "overrides": {
+    "tar": "^7.5.22"
   }
 }

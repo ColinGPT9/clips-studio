@@ -56,6 +56,15 @@ mostly about untrusted input and local exposure:
 - Denial of service by feeding the app a deliberately enormous video.
 - Anything requiring a user to change a default setting to something clearly unsafe.
 
+## Known dependency advisories
+
+`npm audit` currently reports findings, most of which are in the tooling that
+*builds* the installer rather than in anything shipped to a user.
+[docs/DEPENDENCY-SECURITY.md](docs/DEPENDENCY-SECURITY.md) goes through them
+one at a time: what ships, what does not, what is reachable from app code, and
+what is already mitigated. Please read it before reporting one — and do report
+anything it does not cover.
+
 ## A note on what this app does
 
 Clips Studio downloads videos with yt-dlp and processes them locally. It never uploads
