@@ -21,7 +21,7 @@ jobs:
     name: Website → Hugging Face Space
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Push site/ to the Space
         env:
@@ -50,7 +50,7 @@ jobs:
     name: Repo → GitLab
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # mirrors need the whole history, not a shallow clone
 
