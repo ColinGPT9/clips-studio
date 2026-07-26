@@ -38,6 +38,12 @@ jobs:
         # installing PyTorch. Import checking would need ~4 GB of wheels.
         run: python -m compileall -q analysis core creator llm longform multilingual publish server sources transcription video video_editor main.py
 
+      - name: Install the one dependency these checks need
+        # A bare setup-python has no PyYAML. Installing the whole
+        # requirements.txt would pull ~4 GB of PyTorch wheels for a syntax
+        # check, so just this.
+        run: pip install --quiet pyyaml
+
       - name: Config and prompts still parse
         run: |
           python - <<'PY'
