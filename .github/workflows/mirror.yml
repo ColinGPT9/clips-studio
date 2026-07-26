@@ -22,7 +22,7 @@ jobs:
     name: Website → Hugging Face Space
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Push site/ to the Space
         env:
