@@ -28,25 +28,30 @@ def test_checkout_resolves_next_to_the_code():
     assert got == Path(__file__).resolve().parent.parent / "data"
 
 
-def test_installed_build_uses_per_user_storage(monkeypatch):
+def test_installed_build_uses_per_user_storage(monkeypatch, tmp_path):
     """A frozen build must write somewhere the user owns, never beside the
     executable in Program Files."""
+    local_appdata = tmp_path / "AppData" / "Local"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\someone\AppData\Local")
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
 
     got = resolve_data_dir({"paths": {"data_dir": "data"}})
-    assert "AppData" in str(got)
-    assert "Clips Studio" in str(got)
-    assert "Program Files" not in str(got)
+    assert got == local_appdata / "Clips Studio" / "data"
+    # Never beside the executable, wherever that happens to be installed.
+    assert Path(sys.executable).parent not in got.parents
 
 
-def test_absolute_path_is_honoured(monkeypatch):
+def test_absolute_path_is_honoured(monkeypatch, tmp_path):
     """Someone pointing data_dir at a big second drive means it — in a
-    checkout and in an installed copy alike."""
+    checkout and in an installed copy alike.
+
+    tmp_path rather than a literal "D:/ClipsLibrary": a Windows drive path is
+    NOT absolute on Linux, so that version passed here and failed on CI.
+    """
+    library = tmp_path / "ClipsLibrary"
     for frozen in (False, True):
         monkeypatch.setattr(sys, "frozen", frozen, raising=False)
-        got = resolve_data_dir({"paths": {"data_dir": "D:/ClipsLibrary"}})
-        assert str(got).replace("\\", "/").endswith("D:/ClipsLibrary")
+        assert resolve_data_dir({"paths": {"data_dir": str(library)}}) == library
 
 
 def test_missing_config_still_returns_somewhere_usable():
