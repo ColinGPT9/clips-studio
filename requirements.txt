@@ -28,7 +28,7 @@ fastapi>=0.110.0,<1
 uvicorn[standard]>=0.29.0,<1
 
 # ---- everything else -------------------------------------------------------
-requests>=2.31.0,<3
+requests>=2.34.2,<3
 PyYAML>=6.0,<7
 google-api-python-client>=2.198.0,<3
 google-auth-oauthlib>=1.4.0,<2
