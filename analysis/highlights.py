@@ -397,6 +397,39 @@ def _fit_to_segments(
         if k < hi and (segments[hi].end - segments[k].start) >= min_duration:
             lo = k
 
-    c.start = round(segments[lo].start, 2)
-    c.end = round(segments[hi].end, 2)
+    start = segments[lo].start
+    end = segments[hi].end
+
+    # Everything above moves in whole segments, which silently assumes the
+    # transcript offers a boundary near where one is needed. Twice it does
+    # not, and both failures shipped real clips from a gym stream:
+    #
+    #   TOO SHORT — "Yo." runs 9.35-9.87 and the next segment is at 74.26.
+    #   Growing forward would make a 66s clip (over the cap) and there is
+    #   nothing behind it, so the loop gives up holding 0.52 seconds.
+    #
+    #   TOO LONG — Whisper emits one 153s segment for a long unpunctuated
+    #   stretch. With lo == hi the trailing-trim loop cannot run (it needs
+    #   hi > lo), so the whole segment ships as one clip.
+    #
+    # Sentence boundaries are a preference. The duration range is a promise.
+    # When they conflict, the clock wins: a clip landing mid-sentence is a
+    # blemish, while half a second is not a clip and 153 seconds is not a
+    # short. Both fall back to clock time, anchored on the candidate — it
+    # marks where the actual moment was, which a 153s segment does not.
+    if end - start > max_duration:
+        focus = min(max(c.start, start), end)
+        start = max(start, focus - max_duration * 0.2)  # a little lead-in
+        end = min(end, start + max_duration)
+
+    if end - start < min_duration:
+        video_end = max(segments[-1].end, c.end)
+        # Prefer growing forward — an action beat plays out after its peak.
+        # Pull the start back only when there is not enough room ahead.
+        end = min(video_end, start + min_duration)
+        if end - start < min_duration:
+            start = max(0.0, end - min_duration)
+
+    c.start = round(start, 2)
+    c.end = round(end, 2)
     return c
