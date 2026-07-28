@@ -22,7 +22,7 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from core import progress
+from core import cancel, progress
 from core.models import ClipCandidate, Rejection, Segment
 from llm.base import LLMBackend
 
@@ -60,6 +60,10 @@ def find_highlights(
 
     candidates: list[ClipCandidate] = []
     for i, chunk in enumerate(chunks, 1):
+        # One LLM call per chunk, and a 12b model on a long stream makes each
+        # of those minutes long. Checking here bounds how long Cancel takes to
+        # land at roughly one chunk instead of the entire analysis stage.
+        cancel.check_active()
         progress.emit(stage="analyze", current=i, total=len(chunks))
         transcript_text = "\n".join(f"[{s.start:.1f} - {s.end:.1f}] {s.text}" for s in chunk)
         prompt = prompt_template.replace("{transcript}", transcript_text)

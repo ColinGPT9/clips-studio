@@ -25,7 +25,7 @@ import numpy as np
 from analysis import highlights
 from analysis.audio_features import extract_audio_features
 from analysis.visual_features import extract_visual_features, reaction_for_window
-from core import progress
+from core import cancel, progress
 from core.models import ClipCandidate, Rejection, Segment
 from llm.base import LLMBackend
 
@@ -175,6 +175,9 @@ def find_clips(
     print(f"  Scoring reactions for {n_reactions} candidate(s) "
           f"(incl. silent-action clips)...")
     for ri, c in enumerate(react_set, 1):
+        # Each pass decodes video around the candidate and runs the detector,
+        # so this loop is minutes of work with no natural stopping point.
+        cancel.check_active()
         progress.emit(stage="reactions", current=ri, total=n_reactions)
         r = reaction_for_window(
             video_path, c.start, c.end,
@@ -273,6 +276,7 @@ def find_clips(
         finalists.sort(key=lambda c: c.score, reverse=True)
         reranked: list[ClipCandidate] = []
         for i in range(0, len(finalists), batch_size):
+            cancel.check_active()  # one more LLM call per batch
             batch = finalists[i : i + batch_size]
             reranked += _rerank(batch, segments, llm) if len(batch) > 1 else batch
         finalists = sorted(reranked, key=lambda c: c.score, reverse=True)

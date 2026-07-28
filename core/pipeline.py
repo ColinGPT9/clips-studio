@@ -13,7 +13,7 @@ from pathlib import Path
 
 from analysis.fusion import find_clips
 from analysis.metadata import ClipMetadata, generate_metadata_batch
-from core import progress
+from core import cancel, progress
 from core.binaries import ffprobe
 from core.models import ClipCandidate, RenderedClip, Segment
 from core.state import StateDB
@@ -25,8 +25,6 @@ from video.cutter import cut_clip
 
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     import time
-
-    from core import cancel
 
     data_dir = Path(config["paths"]["data_dir"])
     started = time.monotonic()
@@ -254,6 +252,11 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             for candidate, meta in zip(candidates, metas)
         }
         for future in as_completed(futures):
+            # Every render is submitted up front, so cancelling has to reach
+            # the workers too — _render_files checks on entry, which lets the
+            # not-yet-started ones fall straight through. This stops us
+            # registering clips for a video the user has given up on.
+            cancel.check_active()
             candidate, meta = futures[future]
             done_count += 1
             progress.emit(
@@ -356,6 +359,13 @@ def _render_files(
     adjust.
     """
     from video.filters import combined_chain
+
+    # Rendering a clip is FFmpeg plus per-frame tracking — minutes each, and a
+    # video can queue a dozen. Checking on entry means a cancelled job burns
+    # through its remaining queue instead of rendering clips nobody will see.
+    # Safe for the API's re-render paths too: this only fires when the video
+    # the worker is actively processing has been cancelled.
+    cancel.check_active()
 
     opts = render_opts or {}
     # Deterministic timestamp-based name: re-runs overwrite instead of piling up.

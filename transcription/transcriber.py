@@ -9,7 +9,7 @@ import os
 import re
 from pathlib import Path
 
-from core import progress
+from core import cancel, progress
 from core.models import Segment
 
 
@@ -107,6 +107,12 @@ def transcribe(
     segments = []
     last_emit = 0.0
     for seg in raw_segments:  # generator — transcription happens here
+        # Transcribing a three-hour stream is a single call lasting many
+        # minutes. Without this, pressing Cancel set a flag that nothing read
+        # until the whole thing finished, so the app sat there saying
+        # "cancelling" while it kept working. Whisper hands back a segment at
+        # a time, which makes this the finest-grained place to stop.
+        cancel.check_active()
         words = [
             {"start": round(w.start, 2), "end": round(w.end, 2), "word": w.word.strip()}
             for w in (seg.words or [])
