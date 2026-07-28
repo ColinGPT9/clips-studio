@@ -139,7 +139,7 @@ export default function FeedbackHub(): JSX.Element {
         URL.revokeObjectURL(a.href)
         setDone(
           'Sending isn’t available right now, so the report was saved to your Downloads as a file — ' +
-            'you can share it on the project page or community instead.'
+            'you can share it on GitHub or in the community instead.'
         )
       }
     } catch (e) {

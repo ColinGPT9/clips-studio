@@ -324,7 +324,7 @@ export default function Dashboard({
           className="btn-accent shrink-0 text-lg px-8 py-3 font-semibold"
           title={DONATE_URL}
         >
-          {t('Donate to the project')}
+          {t('Donate to Clips Studio')}
         </button>
       </div>
     </div>
