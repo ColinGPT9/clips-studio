@@ -30,7 +30,7 @@ import subprocess
 from pathlib import Path
 
 from core.binaries import ffmpeg
-from core.paths import safe_name, within
+from core.paths import safe_name
 from video.encoding import video_encoder_args
 
 # ASS numpad alignment per named position (7 8 9 / 4 5 6 / 1 2 3).
@@ -70,7 +70,7 @@ def has_image(cfg: dict, asset_dir: Path) -> bool:
     if cfg.get("type") not in ("image", "both"):
         return False
     name = safe_name(str(cfg.get("image_asset") or ""))
-    return bool(name) and (asset_dir / name).exists()
+    return bool(name) and _asset_in(asset_dir, name) is not None
 
 
 def _ass_color(hex_rgb: str) -> str:
@@ -187,6 +187,18 @@ def ensure_text(
     return target
 
 
+def _asset_in(asset_dir: Path, name: str) -> Path | None:
+    """The asset file itself, found by listing the folder rather than by
+    joining a string onto it. None when nothing in there is called that."""
+    try:
+        for entry in asset_dir.iterdir():
+            if entry.name == name and entry.is_file():
+                return entry
+    except OSError:  # folder missing: no assets, same answer
+        return None
+    return None
+
+
 def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir: Path) -> None:
     """Overlay the logo onto the video IN PLACE (transparent PNG, aspect kept,
     positioned + scaled + faded per the config). One extra encode; runs only
@@ -199,9 +211,14 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
     name = safe_name(str(cfg.get("image_asset") or ""))
     if not name:
         raise ValueError(f"invalid branding asset name: {cfg.get('image_asset')!r}")
-    logo = asset_dir / name
-    if not within(asset_dir, logo):
-        raise ValueError(f"branding asset outside the assets folder: {name!r}")
+    # Take the path from the FOLDER rather than building it from the name.
+    # Same file, same resulting command, but the value now originates in a
+    # directory listing instead of in stored config — so it can only ever be
+    # something that genuinely sits in the assets folder. The name check
+    # above still runs first; this is the structural half of it.
+    logo = _asset_in(asset_dir, name)
+    if logo is None:
+        raise ValueError(f"branding asset not found in the assets folder: {name!r}")
     w, h = canvas
     pad = round(float(cfg.get("padding", 0.04)) * min(w, h))
     logo_w = max(16, round(float(cfg.get("scale", 0.18)) * w))

@@ -131,6 +131,49 @@ def test_redaction_is_not_quadratic_on_hostile_input():
     assert time.perf_counter() - started < 1.0
 
 
+def test_installed_voice_name_is_unchanged_for_a_real_voice(tmp_path):
+    """The hardening must not change what piper is asked for.
+
+    `_installed_name` re-derives the name from the directory listing instead
+    of trusting the caller's string. The point is that the RESULT is byte
+    identical, so the subprocess command line is exactly what it was — only
+    the provenance of the string changes.
+    """
+    from multilingual.dub import _installed_name
+
+    (tmp_path / "en_US-lessac-medium.onnx").write_bytes(b"model")
+
+    assert _installed_name(tmp_path, "en_US-lessac-medium") == "en_US-lessac-medium"
+    assert _installed_name(tmp_path, "fr_FR-upmc-medium") is None  # not installed
+    assert _installed_name(tmp_path, "../../etc/passwd") is None
+
+
+def test_asset_lookup_finds_real_files_and_nothing_else(tmp_path):
+    from video_editor.watermark import _asset_in
+
+    (tmp_path / "a1b2c3d4e5f6a7b8.png").write_bytes(b"png")
+    (tmp_path / "sub").mkdir()
+
+    assert _asset_in(tmp_path, "a1b2c3d4e5f6a7b8.png") == tmp_path / "a1b2c3d4e5f6a7b8.png"
+    assert _asset_in(tmp_path, "missing.png") is None
+    assert _asset_in(tmp_path, "../../secret.png") is None
+    assert _asset_in(tmp_path, "sub") is None  # a directory is not an asset
+    assert _asset_in(tmp_path / "nonexistent", "x.png") is None
+
+
+def test_real_video_id_shapes_are_still_accepted():
+    """delete_video now rejects ids that are not plain names. Every platform
+    id the app actually creates has to survive that, or deleting a video from
+    the library stops working."""
+    for vid in ("tw_2814378156", "grMkMHCx9Bo", "local_a7266e1b1a02",
+                "317EVqR5mOw", "FnWfRNYI_4g", "kick_2b0f1e4c-1111-2222-3333-444455556666"):
+        assert safe_name(vid) == vid
+
+    # And the shape that made it worth checking: "/" cannot appear in a path
+    # parameter, but "\" can, and it traverses on Windows.
+    assert safe_name("..\\..\\Windows\\x") is None
+
+
 def test_redaction_still_removes_what_it_should():
     from server.feedback import redact
 

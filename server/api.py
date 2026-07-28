@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from core.binaries import ffmpeg, ffprobe
+from core.paths import safe_name
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
@@ -295,17 +296,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             )
             return {"ok": True, "url": res.get("url", ""), "markdown": markdown}
         except Exception as e:
-            # The reason is worth showing — "relay unreachable" is what tells
-            # someone their report was saved locally instead. But an exception
-            # from an HTTP call can carry the relay URL, a token in a query
-            # string, or a path with the user's name in it, and this reply is
-            # rendered in the app. redact() is the same scrubber applied to
-            # the report body itself, so the same things stay out of both.
-            print(f"feedback relay failed: {e}")  # unredacted, local console only
+            # The exception text stays here. An error from an HTTP call can
+            # carry the relay URL, a token in a query string, or a path with
+            # the user's name in it, and nothing needs it: FeedbackHub only
+            # reads `ok`, and on false it saves the report to a file and
+            # explains that itself. Passing the detail out gained nobody
+            # anything and risked putting a secret on screen.
+            print(f"feedback relay failed: {e}")  # local console only
             return {
                 "ok": False,
                 "markdown": markdown,
-                "error": feedback_mod.redact(str(e))[:200],
+                "error": "could not reach the report service",
             }
 
     # ---- jobs -------------------------------------------------------------
@@ -546,6 +547,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         database rows. Only blocked if the video is ACTIVELY processing right
         now (not merely stuck in an in-progress status from a past crash)."""
         from core import cancel
+
+        # This id comes off the URL and is then used to unlink files. A path
+        # parameter cannot contain "/" — the route would not match — but it
+        # CAN contain "\", which traverses just as well on Windows, and the
+        # transcript line below is an unlink(). Real ids are the platform's
+        # own (tw_2814378156, grMkMHCx9Bo, local_a7266e1b1a02), so requiring
+        # a plain name costs nothing.
+        if safe_name(video_id) is None:
+            raise HTTPException(400, "invalid video id")
 
         if cancel.active_video() == video_id:
             raise HTTPException(409, "video is processing right now — cancel it first")
@@ -1258,10 +1268,21 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.get("/branding/asset/{name}")
     def get_branding_asset(name: str):
-        path = (data_dir / "branding" / "assets" / name).resolve()
-        if not path.exists() or (data_dir / "branding" / "assets") not in path.parents:
+        # Found by listing the folder rather than by joining the name onto
+        # it, so the served file can only ever be one that is genuinely in
+        # there. The previous version resolved the path and then checked its
+        # parents, which was correct but relied on getting that check right;
+        # this cannot construct a path outside the folder in the first place.
+        assets = data_dir / "branding" / "assets"
+        if safe_name(name) is None:
             raise HTTPException(404, "no such asset")
-        return FileResponse(path)
+        try:
+            match = next((p for p in assets.iterdir() if p.name == name and p.is_file()), None)
+        except OSError:
+            match = None
+        if match is None:
+            raise HTTPException(404, "no such asset")
+        return FileResponse(match)
 
     # ---- creator profiles (creator intelligence) -----------------------------
 

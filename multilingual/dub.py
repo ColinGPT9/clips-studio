@@ -77,7 +77,7 @@ def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -
         return None
     voices_dir.mkdir(parents=True, exist_ok=True)
     if (voices_dir / f"{name}.onnx").exists():
-        return name
+        return _installed_name(voices_dir, name)
     print(f"      Downloading the {language} voice ({name})…")
     r = subprocess.run(
         [sys.executable, "-m", "piper.download_voices", name, "--data-dir", str(voices_dir)],
@@ -86,7 +86,28 @@ def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -
     if r.returncode != 0 or not (voices_dir / f"{name}.onnx").exists():
         print(f"      (voice download failed: {(r.stderr or '')[-200:]})")
         return None
-    return name
+    return _installed_name(voices_dir, name)
+
+
+def _installed_name(voices_dir: Path, name: str) -> str | None:
+    """The voice's name as the FILESYSTEM spells it, not as the caller did.
+
+    The returned string is identical to `name`, so piper is invoked exactly
+    as before. What changes is where the string comes from: a directory
+    listing rather than an API parameter. That makes the guarantee structural
+    instead of a promise — the value can only be the name of a model file
+    that really sits in this folder, so it cannot be a path leading somewhere
+    else, and it cannot start with "-" and become a piper flag.
+
+    resolve() already validates the shape, and this is the second half of the
+    same job: shape checks say what a value looks like, this says the file
+    exists. It is also the part a scanner can follow, since taint stops at
+    the filesystem.
+    """
+    for model in voices_dir.glob("*.onnx"):
+        if model.stem == name:
+            return model.stem
+    return None
 
 
 def _duration(path: Path) -> float:
