@@ -10,11 +10,12 @@ captions, and writes titles, descriptions, and hashtags.
 
 No cloud AI. No subscription. No per-clip fees. No upload of your footage to anyone.
 
-**Why it exists:** most small creators never clip their own streams — an editor costs
-money they do not have yet, clipping tools charge per video or per month, and cutting
-them by hand costs a day they needed elsewhere. So the clips never get made and the
-channel never gets found. This runs on hardware you already own, so it costs nothing
-to use and there is no cap on how many clips you make.
+**Why it exists:** most creators growing a channel are doing all of it themselves —
+filming, streaming, editing, posting. Clipping is how people find you and it is usually
+the first thing that gets dropped: an editor is a cost most channels cannot justify yet,
+clipping tools charge per video or per month, and cutting them by hand takes a day you
+needed elsewhere. This runs on hardware you already own, so it costs nothing to use and
+there is no cap on how many clips you make.
 
 > **Local AI video processing** · **AI clip generator** · **Twitch clip generator** ·
 > **Kick clip generator** · **YouTube Shorts automation** · **AI video editor** ·
