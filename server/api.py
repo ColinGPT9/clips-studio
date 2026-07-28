@@ -295,7 +295,18 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             )
             return {"ok": True, "url": res.get("url", ""), "markdown": markdown}
         except Exception as e:
-            return {"ok": False, "markdown": markdown, "error": str(e)}
+            # The reason is worth showing — "relay unreachable" is what tells
+            # someone their report was saved locally instead. But an exception
+            # from an HTTP call can carry the relay URL, a token in a query
+            # string, or a path with the user's name in it, and this reply is
+            # rendered in the app. redact() is the same scrubber applied to
+            # the report body itself, so the same things stay out of both.
+            print(f"feedback relay failed: {e}")  # unredacted, local console only
+            return {
+                "ok": False,
+                "markdown": markdown,
+                "error": feedback_mod.redact(str(e))[:200],
+            }
 
     # ---- jobs -------------------------------------------------------------
 
@@ -990,7 +1001,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         sample = sample_text(language)
         if sample is None:
             raise HTTPException(400, f"no sample sentence for {language}")
-        safe = (voice or name).replace("#", "_").replace("/", "_")
+        # Built from the RESOLVED name, not the raw `voice` parameter. The old
+        # line stripped "#" and "/" from whatever the caller sent, which left
+        # "\" and ".." intact — enough to write the preview outside previews/
+        # on Windows. resolve() has already validated the shape of `name`.
+        safe = f"{name}_{speaker}" if speaker is not None else name
         out = data_dir / "previews" / f"voice_{safe}.wav"
         out.parent.mkdir(parents=True, exist_ok=True)
         if not out.exists() and not dubber._speak(

@@ -16,6 +16,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege. Without this the job inherits whatever the repository
+# default is, which is write access to everything — for a workflow whose only
+# job is to read site/ and push it somewhere else with its own token.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------- website
   huggingface-space:

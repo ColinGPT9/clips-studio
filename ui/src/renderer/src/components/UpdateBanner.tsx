@@ -4,6 +4,28 @@ function mb(n?: number): string {
   return n ? `${(n / 1e6).toFixed(0)} MB` : ''
 }
 
+/** Strips HTML tags from release notes, which arrive as markup from the
+ *  update feed and are shown here as plain text.
+ *
+ *  A single `.replace(/<[^>]+>/g, '')` is not enough: removing one layer of
+ *  tags can reveal another that the first pass stepped over, so
+ *  `<<script>script>` comes out as `<script>`. Repeating until the string
+ *  stops changing is the fix.
+ *
+ *  React escapes text children, so this was never an injection route on its
+ *  own — nothing here is passed to dangerouslySetInnerHTML. It is a display
+ *  cleanup, and it should still be a correct one. The iteration cap stops a
+ *  pathological string turning it into a long loop. */
+function stripTags(html: string): string {
+  let out = html
+  for (let i = 0; i < 20; i++) {
+    const next = out.replace(/<[^>]*>/g, '')
+    if (next === out) return out
+    out = next
+  }
+  return out.replace(/[<>]/g, '')
+}
+
 /** Tells the user a new version exists, and installs it when they say so.
  *
  *  Deliberately a strip at the top rather than a modal: an update is never
@@ -98,7 +120,7 @@ export default function UpdateBanner(): JSX.Element | null {
       {notesOpen && s.notes && (
         <div className="px-4 pb-3 -mt-1">
           <div className="max-h-48 overflow-y-auto text-xs text-muted whitespace-pre-wrap leading-relaxed bg-base/40 rounded-lg p-3">
-            {s.notes.replace(/<[^>]+>/g, '')}
+            {stripTags(s.notes)}
           </div>
         </div>
       )}

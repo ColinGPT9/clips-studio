@@ -12,6 +12,7 @@ unavailable the built-in defaults still work.
 """
 
 import json
+import re
 import time
 import urllib.request
 from pathlib import Path
@@ -101,13 +102,33 @@ def list_for(language: str, voices_dir: Path) -> list[dict]:
     return out
 
 
+# Piper voice ids look like "fr_FR-upmc-medium": language, region, speaker
+# name, quality. The catalogue is downloaded, so the set cannot be hardcoded —
+# but the SHAPE can, and that is enough to keep the value out of trouble.
+_VOICE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]*(-[A-Za-z0-9_]+)+$")
+
+
 def resolve(voice_id: str | None, language: str) -> tuple[str, int | None]:
-    """'fr_FR-upmc-medium#1' -> ('fr_FR-upmc-medium', 1)."""
+    """'fr_FR-upmc-medium#1' -> ('fr_FR-upmc-medium', 1).
+
+    The returned name is used two ways downstream: joined onto a directory to
+    find `<name>.onnx`, and passed to piper as `-m <name>`. Neither checked
+    it, and it arrives from the API, so "../../x" walked out of the voices
+    folder and a leading "-" turned the model argument into a flag.
+
+    An unrecognised shape falls back to this language's default rather than
+    raising: a bad voice id should dub in the standard voice, not kill the
+    export halfway through a batch.
+    """
     chosen = voice_id or DEFAULTS.get(language, "")
+    name, speaker = chosen, None
     if "#" in chosen:
         name, _, idx = chosen.partition("#")
         try:
-            return name, int(idx)
+            speaker = int(idx)
         except ValueError:
-            return name, None
-    return chosen, None
+            speaker = None
+
+    if name and not _VOICE_ID.match(name):
+        name, speaker = DEFAULTS.get(language, ""), None
+    return name, speaker

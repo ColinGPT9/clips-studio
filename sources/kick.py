@@ -15,6 +15,7 @@ from pathlib import Path
 import yt_dlp
 
 from core.models import DownloadedVideo
+from sources.urlmatch import host_matches
 from sources.ytdlp_common import progress_opts
 
 _VOD_RE = re.compile(
@@ -24,7 +25,7 @@ _VOD_RE = re.compile(
 
 
 def is_kick_url(url: str) -> bool:
-    return "kick.com" in url.lower()
+    return host_matches(url, "kick.com")
 
 
 def extract_vod_id(url: str) -> str | None:

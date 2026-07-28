@@ -77,7 +77,12 @@ _SECRET_PATTERNS = [
     re.compile(r"[A-Za-z0-9+/]{48,}={0,2}"),          # long base64 blobs
     re.compile(r"[0-9a-fA-F]{40,}"),                  # long hex blobs
 ]
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+# Bounded on purpose. The unbounded form backtracks polynomially: on a log
+# line containing a long run of "+" and no "@", the engine retries the scan
+# from every start position. These limits are the real ones from the email
+# spec (64-character local part, 255-character domain), so nothing valid is
+# lost and a hostile log tail cannot stall a bug report.
+_EMAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,255}\.[\w.]{1,63}")
 _USERPATH = re.compile(r"(?i)([A-Z]:\\Users\\)([^\\\s/]+)")
 
 

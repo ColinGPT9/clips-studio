@@ -17,13 +17,14 @@ from pathlib import Path
 import yt_dlp
 
 from core.models import DownloadedVideo
+from sources.urlmatch import host_matches
 from sources.ytdlp_common import progress_opts
 
 _VOD_RE = re.compile(r"twitch\.tv/videos?/(\d+)", re.IGNORECASE)
 
 
 def is_twitch_url(url: str) -> bool:
-    return "twitch.tv" in url.lower()
+    return host_matches(url, "twitch.tv")
 
 
 def extract_vod_id(url: str) -> str | None:
