@@ -104,16 +104,44 @@ def test_has_image_does_not_probe_outside_the_assets_folder(tmp_path):
 
 
 def test_url_routing_matches_the_host_not_a_substring():
-    """`youtube.com/watch?v=x&ref=kick.com` used to be routed to Kick."""
+    """`youtube.com/watch?v=x&ref=kick.com` used to be routed to Kick.
+
+    Tests `host_matches` rather than `sources.kick.is_kick_url`, because
+    importing that module pulls in yt_dlp. CI installs pyyaml/ruff/pytest/
+    requests and nothing else on purpose — requirements.txt would drag ~4 GB
+    of PyTorch onto a runner to check some string handling. The logic under
+    test lives here anyway; the source modules are one-line wrappers.
+    """
+    from sources.urlmatch import host_matches
+
+    assert host_matches("https://kick.com/video/abc", "kick.com")
+    assert host_matches("https://www.kick.com/someone/videos/abc", "kick.com")
+    assert host_matches("kick.com/video/abc", "kick.com")  # people paste bare links
+    assert not host_matches("https://www.youtube.com/watch?v=1&ref=kick.com", "kick.com")
+    assert not host_matches("https://kick.com.evil.net/video/abc", "kick.com")
+
+    assert host_matches("https://www.twitch.tv/videos/123", "twitch.tv")
+    assert not host_matches("https://evil.example/twitch.tv/videos/123", "twitch.tv")
+
+    assert not host_matches("", "kick.com")
+    assert not host_matches("http://[oops", "kick.com")  # malformed, must not raise
+
+
+def test_the_source_modules_actually_use_host_matches():
+    """The wrapper wiring, checked where the dependencies exist.
+
+    Skipped on CI, which has no yt_dlp — see the note above. Without this the
+    logic could be correct and simply not called.
+    """
+    import pytest
+
+    pytest.importorskip("yt_dlp", reason="source modules import yt_dlp; not installed on CI")
+
     from sources.kick import is_kick_url
     from sources.twitch import is_twitch_url
 
     assert is_kick_url("https://kick.com/video/abc")
-    assert is_kick_url("https://www.kick.com/someone/videos/abc")
-    assert is_kick_url("kick.com/video/abc")  # people paste bare links
     assert not is_kick_url("https://www.youtube.com/watch?v=1&ref=kick.com")
-    assert not is_kick_url("https://kick.com.evil.net/video/abc")
-
     assert is_twitch_url("https://www.twitch.tv/videos/123")
     assert not is_twitch_url("https://evil.example/twitch.tv/videos/123")
 
