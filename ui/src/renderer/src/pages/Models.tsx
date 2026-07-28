@@ -102,7 +102,7 @@ export default function Models(): JSX.Element {
                 </p>
                 <p className="text-xs text-muted">{m.size_gb.toFixed(1)} GB on disk</p>
                 {(() => {
-                  const note = speedNote(m.name, m.size_gb, vram)
+                  const note = speedNote(m, info.installed, vram)
                   if (!note) return null
                   return (
                     <p

@@ -52,7 +52,7 @@ export default function ModelSwitcher(): JSX.Element {
   if (installed.length === 0) return <></>
 
   const current = installed.find((m) => m.name === active)
-  const note = current ? speedNote(current.name, current.size_gb, vram) : null
+  const note = current ? speedNote(current, installed, vram) : null
 
   return (
     <div className="px-3 pb-2">
