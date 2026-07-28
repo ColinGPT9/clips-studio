@@ -230,8 +230,10 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
             ).fetchone()
             if job and job["error"]:
                 d["video"]["last_error"] = redact(str(job["error"])[:800])
-    except Exception:
-        pass
+    except Exception as e:
+        # The report still sends without this field; say so rather than
+        # leaving whoever reads it wondering why it looks thin.
+        print(f"(diagnostics: could not read the last job error: {e})")
     d["log_excerpt"] = redact(recent_log())
     return d
 

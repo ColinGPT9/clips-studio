@@ -561,12 +561,37 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             raise HTTPException(409, "video is processing right now — cancel it first")
 
         # Remove files: download, transcript, and the clip folder.
-        for f in (data_dir / "downloads").glob(f"{video_id}.*"):
-            f.unlink(missing_ok=True)
-        (data_dir / "transcripts" / f"{video_id}.json").unlink(missing_ok=True)
-        for clip_dir in data_dir.glob(f"clips/*/*[[]{video_id}[]]"):
-            if clip_dir.is_dir():
-                shutil.rmtree(clip_dir, ignore_errors=True)
+        #
+        # Everything below is chosen by LISTING a folder and comparing names,
+        # never by building a path out of the id. That matters because these
+        # are unlinks and an rmtree: a path assembled from a parameter is one
+        # missed check away from deleting something else, whereas a path taken
+        # from a directory listing is, by construction, a thing that is in
+        # that directory.
+        downloads = data_dir / "downloads"
+        if downloads.is_dir():
+            for f in downloads.iterdir():
+                # Mirrors the old glob("<id>.*") exactly. Not `f.stem == id`,
+                # which would miss yt-dlp's intermediates ("<id>.f137.mp4",
+                # "<id>.mp4.part") and quietly leave gigabytes behind.
+                if f.is_file() and f.name.startswith(f"{video_id}."):
+                    f.unlink(missing_ok=True)
+
+        transcripts = data_dir / "transcripts"
+        if transcripts.is_dir():
+            for f in transcripts.iterdir():
+                if f.is_file() and f.name == f"{video_id}.json":
+                    f.unlink(missing_ok=True)
+
+        clips_root = data_dir / "clips"
+        if clips_root.is_dir():
+            for creator_dir in clips_root.iterdir():
+                if not creator_dir.is_dir():
+                    continue
+                for clip_dir in creator_dir.iterdir():
+                    # Folders are named "<title> [<video_id>]".
+                    if clip_dir.is_dir() and clip_dir.name.endswith(f"[{video_id}]"):
+                        shutil.rmtree(clip_dir, ignore_errors=True)
 
         d = db()
         try:

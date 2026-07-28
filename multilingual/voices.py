@@ -52,8 +52,10 @@ def catalogue(voices_dir: Path) -> dict:
     try:
         if cache.exists() and (time.time() - cache.stat().st_mtime) < CACHE_HOURS * 3600:
             return json.loads(cache.read_text(encoding="utf-8"))
-    except Exception:
-        pass
+    except Exception as e:
+        # Recoverable — it refetches below — but a cache that never reads
+        # means every start pays for a download.
+        print(f"      (voice catalogue cache unreadable, refetching: {e})")
     try:
         data = json.load(urllib.request.urlopen(CATALOGUE_URL, timeout=60))
         voices_dir.mkdir(parents=True, exist_ok=True)

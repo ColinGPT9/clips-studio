@@ -165,8 +165,11 @@ def ensure_h264_source(path, config: dict | None = None) -> bool:
                 tmp.replace(p)
                 print("      Converted to H.264 — all later stages decode at full speed")
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            # Not fatal: the source is still usable, just slow to decode.
+            # But silence here is how "why does this video take twice as
+            # long?" becomes unanswerable.
+            print(f"      (H.264 conversion failed, using the original: {e})")
     tmp.unlink(missing_ok=True)
     print("      (conversion failed — continuing with the original file)")
     return False

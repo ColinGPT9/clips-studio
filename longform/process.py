@@ -54,8 +54,10 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         from creator import identity
 
         identity.tag_video(db, video.video_id, video.channel)
-    except Exception:
-        pass
+    except Exception as e:
+        # core/pipeline.py reports this same failure; this path did not,
+        # so the Creators page could quietly miss videos.
+        print(f"      (creator tagging failed: {e})")
     db.set_video_status(video.video_id, "downloaded")
     cancel.check(video.video_id)
 

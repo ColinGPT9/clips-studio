@@ -23,8 +23,10 @@ def _add_gpu_dlls() -> None:
         lib = Path(torch.__file__).parent / "lib"
         if lib.exists():
             os.add_dll_directory(str(lib))
-    except Exception:
-        pass
+    except Exception as e:
+        # Whisper falls back to CPU further down and just looks slow.
+        # This line is the difference between that and a mystery.
+        print(f"  Whisper: could not add the CUDA DLL directory ({e})")
 
 
 def _load_model(model_size: str, device: str):
