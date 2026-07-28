@@ -401,5 +401,15 @@ will be overwritten.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Built to be modified: swap models, tune prompts, add
-platforms.
+**GNU AGPL-3.0** — see [LICENSE](LICENSE), and [NOTICE](NOTICE) for what that means
+in practice and what the installer bundles.
+
+**If you use the app, this changes nothing for you.** Install it, clip your streams,
+post the clips, earn from them. The AGPL binds people who *distribute* the software or
+run a *modified* copy as a network service, not people who use it. Your footage and
+your clips are yours.
+
+**If you modify and share it,** your changes go out under the same licence. That is the
+point: improvements to a tool built for creators stay available to those creators.
+
+Still built to be modified: swap models, tune prompts, add platforms.

@@ -107,7 +107,10 @@ export default function App(): JSX.Element {
           >
             <span className="font-semibold">{t('Open source')}</span> — {t('view & modify on GitHub')} ↗
           </a>
-          <p className="text-[10px] text-muted/60 mt-1.5">{t('100% local · no cloud AI')}</p>
+          {/* The AGPL expects anyone running the program to be able to find
+              its source. The link above is that offer, so it names the
+              licence rather than leaving "open source" to mean anything. */}
+          <p className="text-[10px] text-muted/60 mt-1.5">{t('AGPL-3.0 · 100% local · no cloud AI')}</p>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto flex flex-col">

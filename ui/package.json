@@ -4,7 +4,7 @@
   "description": "Local-first AI clipping studio (desktop app)",
   "author": "ColinGPT9",
   "homepage": "https://github.com/ColinGPT9/clips-studio",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "main": "./out/main/index.js",
   "private": true,
   "scripts": {

@@ -1,0 +1,77 @@
+Clips Studio
+Copyright (C) 2026 ColinGPT9
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+The full text is in LICENSE.
+
+
+-------------------------------------------------------------------------------
+What this means if you are just using the app
+-------------------------------------------------------------------------------
+
+Nothing changes for you. Download it, install it, clip your streams, post the
+clips, make money from them. The AGPL places obligations on people who
+DISTRIBUTE the software or run a MODIFIED version as a network service — not
+on people who use it. Your videos and your clips are yours; the licence has
+nothing to say about them.
+
+If you modify Clips Studio and give that modified version to someone else, or
+run it as a service other people use over a network, you have to offer them
+the source of your modified version under this same licence.
+
+
+-------------------------------------------------------------------------------
+Why a copyleft licence
+-------------------------------------------------------------------------------
+
+It keeps improvements to the tool available to the creators it was written
+for, rather than allowing a closed fork of the same work to be sold back to
+them.
+
+
+-------------------------------------------------------------------------------
+Third-party components
+-------------------------------------------------------------------------------
+
+The Windows installer bundles the Python engine and its dependencies. The
+significant ones, with their licences:
+
+  ultralytics (YOLOv8)      AGPL-3.0     pose/face tracking + model weights
+  faster-whisper            MIT          transcription
+  PyTorch                   BSD-3-Clause tensor runtime, CUDA libraries
+  OpenCV (opencv-python)    Apache-2.0   frame decoding and analysis
+  yt-dlp                    Unlicense    downloading source videos
+  FFmpeg                    see below    all encoding, decoding and muxing
+  FastAPI / Uvicorn         MIT          the local API the desktop app talks to
+  Electron                  MIT          the desktop shell
+  React                     MIT          the interface
+
+FFmpeg is fetched at build time by scripts/fetch_ffmpeg.py rather than kept
+in this repository. The builds used are LGPL-2.1-or-later, or GPL-2.0-or-later
+where they include GPL-licensed components; the exact terms ship with the
+binary in the installer.
+
+Ollama and the language models it runs are NOT bundled. They are installed
+separately by the user and carry their own licences — Gemma, for example, is
+covered by the Gemma Terms of Use rather than by anything here.
+
+
+-------------------------------------------------------------------------------
+Commercial licensing
+-------------------------------------------------------------------------------
+
+If the AGPL does not suit your use, ask. The copyright is held by one person,
+which means a different arrangement is possible without collecting agreements
+from a hundred contributors.

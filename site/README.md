@@ -6,7 +6,7 @@ colorTo: indigo
 sdk: static
 app_file: index.html
 pinned: false
-license: mit
+license: agpl-3.0
 short_description: Free open-source AI video clipping that runs on your own PC
 ---
 

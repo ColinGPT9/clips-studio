@@ -144,3 +144,15 @@ say which one.
 Priority = 👍 reactions + comment count on issues, `critical` /
 `high-priority` labels first. Duplicates: close with a link to the
 canonical issue so reactions concentrate in one place.
+
+## Licence
+
+Clips Studio is **AGPL-3.0**, and contributions are accepted under the same
+terms — opening a PR means you are licensing your change that way.
+
+Practically: your work stays available to the creators this was built for,
+and nobody can take the project closed.
+
+Adding a dependency? Check its licence first. Anything the installer bundles
+has to be compatible with AGPL-3.0, and a new one belongs in the third-party
+list in [NOTICE](NOTICE).
