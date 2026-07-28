@@ -1,5 +1,14 @@
 declare module '*.css'
 
+/** Importing an image gives you its URL — Vite copies the file into the
+ *  build and hands back a hashed path. Bundled rather than referenced from
+ *  disk so it survives being packed into the installer, and so the renderer's
+ *  strict CSP treats it as same-origin. */
+declare module '*.png' {
+  const src: string
+  export default src
+}
+
 /** What the main process reports about updates. */
 interface UpdateState {
   state: 'checking' | 'available' | 'none' | 'downloading' | 'ready' | 'error' | 'dev'

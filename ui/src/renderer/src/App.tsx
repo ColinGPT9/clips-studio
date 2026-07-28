@@ -9,6 +9,7 @@ import ModelSwitcher from './components/ModelSwitcher'
 import SetupWizard, { setupDone } from './components/SetupWizard'
 import UpdateBanner from './components/UpdateBanner'
 import { activeLocale, t } from './lib/i18n'
+import mascot from './assets/mascot.png'
 
 type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
 
@@ -56,11 +57,24 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-screen" key={locale}>
       <aside className="w-52 shrink-0 bg-surface border-r border-raised/60 flex flex-col">
-        <div className="px-5 py-5">
-          <h1 className="text-lg font-bold">
-            Clips <span className="text-accent">Studio</span>
-          </h1>
-          <p className="text-xs text-muted mt-0.5">{t('local-first AI clipping')}</p>
+        {/* Same lockup as the website header: Clippy, then the name and
+            tagline stacked beside him. `min-w-0` on the text column so a
+            longer translated tagline wraps instead of pushing Clippy out of
+            the sidebar — several of the 19 locales are wordier than English. */}
+        <div className="px-5 py-5 flex items-center gap-2.5">
+          <img
+            src={mascot}
+            alt=""
+            width={34}
+            height={34}
+            className="shrink-0 w-[34px] h-[34px]"
+          />
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold leading-tight">
+              Clips <span className="text-accent">Studio</span>
+            </h1>
+            <p className="text-xs text-muted mt-px">{t('local-first AI clipping')}</p>
+          </div>
         </div>
         <nav className="flex-1 px-3 space-y-1">
           {NAV.map((item) => (
