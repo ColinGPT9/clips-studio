@@ -1,6 +1,6 @@
-<img src="docs/brand/mascot.png" alt="" width="150" align="right">
-
 # Clips Studio — open-source AI video clipping that runs on your own PC
+
+<img src="docs/brand/mascot.png" alt="" width="150" align="right">
 
 **Turn long streams and videos into ready-to-post Shorts, Reels, and TikToks —
 entirely on your own machine.** Clips Studio is a free, open-source AI clip generator

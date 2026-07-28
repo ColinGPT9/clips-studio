@@ -5,6 +5,23 @@
 # ignoring them — which is worse than not running it, because the security
 # ones get ignored too.
 
+# This file configures VERSION updates only — the scheduled "something newer
+# exists" pull requests.
+#
+# SECURITY updates and the alerts behind them are repository settings, not
+# config, and live in Settings -> Advanced Security. Turn them on: they are
+# the half that matters, because they fire on a published advisory rather
+# than on a release.
+#
+# One thing worth knowing about the `ignore` rules below: GitHub applies them
+# to security updates too, so if a vulnerability is only fixed in a new MAJOR
+# version, Dependabot will not raise the PR automatically. The ALERT still
+# appears in the Security tab either way — only the convenience PR is
+# suppressed. That is the intended trade here: the alternative was the eleven
+# stale major-bump PRs this file was written to stop, and a major upgrade of
+# Electron or OpenCV is a decision to make deliberately, not to merge from a
+# notification.
+
 version: 2
 
 updates:
