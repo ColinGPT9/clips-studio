@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { speedNote } from '../lib/modelSpeed'
 import { useEvents } from '../lib/useEvents'
 import type { ModelsInfo } from '../lib/types'
 
@@ -9,6 +10,9 @@ export default function Models(): JSX.Element {
   const [pullTag, setPullTag] = useState('')
   const [pullStatus, setPullStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // For the "won't fit your card" warning — the one speed difference big
+  // enough that people report it as the app being broken.
+  const [vram, setVram] = useState<number | null>(null)
 
   const refresh = async (): Promise<void> => {
     try {
@@ -21,6 +25,12 @@ export default function Models(): JSX.Element {
 
   useEffect(() => {
     refresh()
+    // Best-effort: with no reading, the notes still describe relative speed,
+    // they just cannot warn that a model will not fit the card.
+    api
+      .systemStats()
+      .then((s) => setVram(s.gpu?.vram_total ?? null))
+      .catch(() => setVram(null))
   }, [])
 
   useEvents((e) => {
@@ -91,6 +101,24 @@ export default function Models(): JSX.Element {
                   {isActive && <span className="ml-2 text-xs bg-accent/15 text-accent px-2 py-0.5 rounded">active</span>}
                 </p>
                 <p className="text-xs text-muted">{m.size_gb.toFixed(1)} GB on disk</p>
+                {(() => {
+                  const note = speedNote(m.name, m.size_gb, vram)
+                  if (!note) return null
+                  return (
+                    <p
+                      className={`text-xs mt-0.5 ${
+                        note.tone === 'warn'
+                          ? 'text-red-400'
+                          : note.tone === 'slow'
+                            ? 'text-amber-400'
+                            : 'text-muted'
+                      }`}
+                    >
+                      {note.tone !== 'ok' && <span aria-hidden="true">⚠ </span>}
+                      {note.text}
+                    </p>
+                  )
+                })()}
               </div>
               {!isActive && (
                 <>

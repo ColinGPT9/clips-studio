@@ -10,6 +10,12 @@ captions, and writes titles, descriptions, and hashtags.
 
 No cloud AI. No subscription. No per-clip fees. No upload of your footage to anyone.
 
+**Why it exists:** clipping is how people find you, and it is the part most creators
+cannot afford — an editor costs money you do not have yet, and doing it yourself costs
+a day you needed elsewhere. The tools built to solve that are subscriptions, so the
+creators who need the help most are the ones priced out. This runs on your own machine
+instead, so promoting your channel costs you nothing.
+
 > **Local AI video processing** · **AI clip generator** · **Twitch clip generator** ·
 > **Kick clip generator** · **YouTube Shorts automation** · **AI video editor** ·
 > **open-source OpusClip alternative**

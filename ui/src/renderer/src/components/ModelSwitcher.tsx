@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { speedNote } from '../lib/modelSpeed'
 import type { InstalledModel } from '../lib/types'
 
 /** Always-visible model selector in the sidebar: switch the active LLM
@@ -8,6 +9,7 @@ export default function ModelSwitcher(): JSX.Element {
   const [installed, setInstalled] = useState<InstalledModel[]>([])
   const [active, setActive] = useState('')
   const [switching, setSwitching] = useState(false)
+  const [vram, setVram] = useState<number | null>(null)
 
   const refresh = async (): Promise<void> => {
     try {
@@ -25,6 +27,16 @@ export default function ModelSwitcher(): JSX.Element {
     return () => clearInterval(id)
   }, [])
 
+  // Read the card once, so the note can warn when a model will not fit it —
+  // by far the biggest speed cliff there is. Best-effort: without a reading
+  // the note still describes relative speed.
+  useEffect(() => {
+    api
+      .systemStats()
+      .then((s) => setVram(s.gpu?.vram_total ?? null))
+      .catch(() => setVram(null))
+  }, [])
+
   const onChange = async (tag: string): Promise<void> => {
     setSwitching(true)
     try {
@@ -38,6 +50,9 @@ export default function ModelSwitcher(): JSX.Element {
   }
 
   if (installed.length === 0) return <></>
+
+  const current = installed.find((m) => m.name === active)
+  const note = current ? speedNote(current.name, current.size_gb, vram) : null
 
   return (
     <div className="px-3 pb-2">
@@ -54,6 +69,20 @@ export default function ModelSwitcher(): JSX.Element {
           </option>
         ))}
       </select>
+      {note && (
+        <p
+          className={`mt-1 px-2 text-[11px] leading-snug ${
+            note.tone === 'warn'
+              ? 'text-red-400'
+              : note.tone === 'slow'
+                ? 'text-amber-400'
+                : 'text-muted'
+          }`}
+        >
+          {note.tone !== 'ok' && <span aria-hidden="true">⚠ </span>}
+          {note.text}
+        </p>
+      )}
     </div>
   )
 }
