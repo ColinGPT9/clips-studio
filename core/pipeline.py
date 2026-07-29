@@ -16,6 +16,7 @@ from analysis.metadata import ClipMetadata, generate_metadata_batch
 from core import cancel, progress
 from core.binaries import ffprobe
 from core.models import ClipCandidate, RenderedClip, Segment
+from core.paths import cached_source
 from core.state import StateDB
 from llm.registry import create_backend
 from transcription.transcriber import transcribe
@@ -293,8 +294,8 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     from sources import dispatch
 
     _, video_id = dispatch.identify(url)
-    cached = data_dir / "downloads" / f"{video_id}.mp4" if video_id else None
-    if not (cached and cached.exists()):
+    cached = cached_source(data_dir / "downloads", video_id)
+    if cached is None:
         return dispatch.download(url, data_dir / "downloads")
 
     import subprocess
@@ -311,7 +312,15 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     if codec in ("av1", "vp9"):
         print(f"      Cached source is {codec} (slow to decode) — re-downloading as H.264")
         try:
-            return dispatch.download(url, data_dir / "downloads")
+            fresh = dispatch.download(url, data_dir / "downloads")
+            # The replacement usually lands as .mp4 while the slow copy was
+            # .webm, and yt-dlp writes the new name rather than overwriting
+            # the old one — so without this the video is on disk twice, at a
+            # couple of GB each. Only the file we just replaced is removed.
+            if fresh.path.resolve() != cached.resolve() and cached.exists():
+                cached.unlink(missing_ok=True)
+                print(f"      Removed the superseded {cached.suffix} copy")
+            return fresh
         except Exception:
             print("      Re-download failed — using the cached copy")
 

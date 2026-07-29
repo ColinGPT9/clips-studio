@@ -86,3 +86,35 @@ def within(base: Path, candidate: Path) -> bool:
         return True
     except (ValueError, OSError):
         return False
+
+
+# What a downloaded source can be called. yt-dlp names the file with the
+# extension it actually produced: "merge_output_format: mp4" only applies when
+# separate video and audio streams had to be merged, so a single-file download
+# keeps its own container.
+_SOURCE_EXTS = (".mp4", ".mkv", ".webm", ".mov", ".m4v", ".flv", ".ts")
+
+
+def cached_source(downloads: Path, video_id: str | None) -> Path | None:
+    """The already-downloaded file for this video, whatever it is called.
+
+    This used to look only for "<id>.mp4". A source that arrived as .webm was
+    therefore invisible to it, so reprocessing downloaded the whole video
+    again — and since the new file had a different name, the old one stayed
+    where it was. Two copies of the same stream, several GB each, from
+    pressing the button twice.
+
+    Ordered by _SOURCE_EXTS so an mp4 wins if more than one somehow exists,
+    which matches what the rest of the pipeline prefers to decode.
+    """
+    if not video_id or not downloads.is_dir():
+        return None
+    found = {
+        p.suffix.lower(): p
+        for p in downloads.iterdir()
+        if p.is_file() and p.stem == video_id and p.suffix.lower() in _SOURCE_EXTS
+    }
+    for ext in _SOURCE_EXTS:
+        if ext in found:
+            return found[ext]
+    return None

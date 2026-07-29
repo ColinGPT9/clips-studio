@@ -57,3 +57,55 @@ def test_absolute_path_is_honoured(monkeypatch, tmp_path):
 def test_missing_config_still_returns_somewhere_usable():
     got = resolve_data_dir({})
     assert got.is_absolute()
+
+
+# ---- finding an already-downloaded source -----------------------------------
+#
+# The lookup used to be `downloads / f"{video_id}.mp4"`. yt-dlp names the file
+# with the extension it actually produced — "merge_output_format: mp4" only
+# applies when separate streams had to be merged — so a single-file .webm was
+# invisible to it. Reprocessing then downloaded the whole video again under a
+# different name and left the first copy in place: two files, several GB each,
+# from pressing the button twice.
+
+
+def test_cached_source_finds_any_container(tmp_path):
+    from core.paths import cached_source
+
+    (tmp_path / "abc123.webm").write_bytes(b"x")
+    assert cached_source(tmp_path, "abc123").name == "abc123.webm"
+
+
+def test_cached_source_prefers_mp4_when_both_exist(tmp_path):
+    """After the codec swap both can briefly exist; decode the fast one."""
+    from core.paths import cached_source
+
+    (tmp_path / "abc123.webm").write_bytes(b"x")
+    (tmp_path / "abc123.mp4").write_bytes(b"x")
+    assert cached_source(tmp_path, "abc123").name == "abc123.mp4"
+
+
+def test_cached_source_ignores_partials_and_sidecars(tmp_path):
+    """A half-finished download is not a source. Treating "x.mp4.part" as one
+    would hand the pipeline a truncated file instead of re-fetching it."""
+    from core.paths import cached_source
+
+    (tmp_path / "xyz.mp4.part").write_bytes(b"x")
+    (tmp_path / "xyz.info.json").write_bytes(b"x")
+    assert cached_source(tmp_path, "xyz") is None
+
+
+def test_cached_source_does_not_match_an_id_prefix(tmp_path):
+    """Video ids are opaque platform strings and one can prefix another."""
+    from core.paths import cached_source
+
+    (tmp_path / "abc123.mp4").write_bytes(b"x")
+    assert cached_source(tmp_path, "abc") is None
+
+
+def test_cached_source_handles_nothing_to_find(tmp_path):
+    from core.paths import cached_source
+
+    assert cached_source(tmp_path, "missing") is None
+    assert cached_source(tmp_path / "no-such-folder", "abc") is None
+    assert cached_source(tmp_path, None) is None
