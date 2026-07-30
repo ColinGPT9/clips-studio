@@ -52,4 +52,40 @@ var MEASUREMENT_ID = ''
     // reading this file later.
     anonymize_ip: true
   })
+
+  // Named events for the three things worth knowing, because "visits" on its
+  // own says very little. What matters is how many of those visitors went on
+  // to do something: a sponsor asks "how many people actually download it?",
+  // and "8% of visitors clicked through to the release" is an answer.
+  //
+  // GA4's enhanced measurement already logs outbound clicks generically.
+  // These are named, so they can be read straight off the Events report
+  // instead of being dug out of a list of every external link on the site.
+  document.addEventListener(
+    'click',
+    function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null
+      if (!a) return
+      var href = a.getAttribute('href') || ''
+      var name =
+        href.indexOf('/releases') !== -1
+          ? 'download_click'
+          : href.indexOf('paypal.me') !== -1
+            ? 'donate_click'
+            : /github\.com/.test(href)
+              ? 'github_click'
+              : null
+      if (!name) return
+      gtag('event', name, {
+        // Which page sent them. The Twitch and Kick pages exist to be found
+        // by search, so knowing which one converts is the point of having
+        // written them.
+        page: location.pathname,
+        link_url: href
+      })
+    },
+    // Capture phase: the click still navigates away immediately, and a
+    // listener that waits for bubbling can lose the event to the unload.
+    true
+  )
 })()
