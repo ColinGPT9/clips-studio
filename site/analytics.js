@@ -67,12 +67,40 @@ var MEASUREMENT_ID = ''
       var a = e.target && e.target.closest ? e.target.closest('a[href]') : null
       if (!a) return
       var href = a.getAttribute('href') || ''
+
+      // Parse it rather than search it. The first version of this asked
+      // whether the string CONTAINED "github.com" and "/releases", which
+      // "https://example.com/?ref=github.com/releases" satisfies happily.
+      // Only the host decides where a link goes, so only the host is asked.
+      var url
+      try {
+        // Relative to this page, so "twitch.html" resolves to our own origin
+        // and drops out as internal on the next line.
+        url = new URL(href, location.href)
+      } catch (e) {
+        return // "javascript:", "#", or something malformed
+      }
+      if (url.origin === location.origin) return // internal navigation
+
+      var host = url.hostname.toLowerCase()
+      var onHost = function (domain) {
+        // Label boundary: accepts www.github.com, rejects github.com.evil.net
+        return host === domain || host.endsWith('.' + domain)
+      }
+      var isGitHub = onHost('github.com')
+      var isPayPal = onHost('paypal.me') || onHost('paypal.com')
+
+      // A whole path SEGMENT, so /ColinGPT9/clips-studio/releases matches and
+      // so does /releases/latest, while a repository called "releases-notes"
+      // does not. Safe to match loosely here: the host is already confirmed.
+      var isReleases = /\/releases(\/|$)/.test(url.pathname)
+
       var name =
-        href.indexOf('/releases') !== -1
+        isGitHub && isReleases
           ? 'download_click'
-          : href.indexOf('paypal.me') !== -1
+          : isPayPal
             ? 'donate_click'
-            : /github\.com/.test(href)
+            : isGitHub
               ? 'github_click'
               : null
       if (!name) return
