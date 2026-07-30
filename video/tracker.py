@@ -42,6 +42,7 @@ transcripts, scores, or uploads.
 """
 
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -149,7 +150,123 @@ def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> No
     if tr.prev_mouth is not None:
         motion = float(np.abs(mouth - tr.prev_mouth).mean())
         tr.speak = 0.65 * tr.speak + 0.35 * motion
+        # The RAW value as well as the smoothed one. tr.speak is deliberately
+        # damped so the crop does not twitch, and that damping destroys the
+        # fast variation that lip-sync lives in — measured on a real two-person
+        # clip, correlating the smoothed value against the audio separated the
+        # speaker from the listener by 0.03, which is nothing. The raw series
+        # separated them properly.
+        tr.mouth_raw.append(motion)
     tr.prev_mouth = mouth
+
+
+# ---- who is actually speaking -------------------------------------------------
+
+_SYNC_WINDOW = 16        # samples (2s at 8fps): long enough to correlate,
+                         # short enough to still be about *now*
+_SYNC_MIN = 0.25         # the leader must genuinely track the audio...
+_SYNC_LEAD = 0.20        # ...and beat the runner-up by this much
+
+# The last few confident verdicts, and how many must agree.
+#
+# A running total does not work: whoever holds the camera keeps earning credit
+# whenever they speak, so the incumbent builds a reservoir the challenger
+# cannot out-accumulate. Measured on a real clip the active subject reached
+# 8.8 while the other person peaked at 4.7, and "beat them by 1.5x" was
+# therefore unreachable — the same shape of bug as the size dominance this is
+# meant to fix.
+#
+# Counting VERDICTS instead asks "of the last few times the audio was sure,
+# who was it sure about?", which does not care how long anyone has been on
+# screen and tolerates the verdicts arriving only now and then.
+_SYNC_HISTORY = 5
+_SYNC_VOTES_MIN = 3      # decide nothing until this many verdicts exist
+_SYNC_VOTES_WIN = 3      # ...and this many must name the same person
+
+
+def speech_envelope(clip_path: Path, sample_fps: float) -> "np.ndarray | None":
+    """Loudness of the clip's audio, one value per video sample.
+
+    Mouth-region motion alone cannot tell talking from any other movement: in
+    a lively two-person shot both people score within a few percent of each
+    other, so whoever is bigger wins by default. The audio knows when speech
+    is actually happening, and only the person producing it moves their mouth
+    in time with it.
+
+    None when the clip has no audio, which is not an error — the caller falls
+    back to the visual-only behaviour.
+    """
+    import subprocess
+
+    from core.binaries import ffmpeg
+
+    sr = 16000
+    try:
+        out = subprocess.run(
+            [ffmpeg(), "-v", "error", "-i", str(clip_path),
+             "-vn", "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"],
+            capture_output=True, timeout=300,
+        )
+        if out.returncode != 0 or not out.stdout:
+            return None
+        pcm = np.frombuffer(out.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+    except Exception as e:
+        print(f"      (speaker audio unavailable, using motion only: {e})")
+        return None
+    if pcm.size < sr // 4:
+        return None
+    per = max(1, int(sr / sample_fps))
+    bins = pcm.size // per
+    if bins < _SYNC_WINDOW:
+        return None
+    return np.sqrt(np.array([
+        np.mean(pcm[i * per:(i + 1) * per] ** 2) for i in range(bins)
+    ]))
+
+
+def _sync_leader(tracks: dict, visible, env, idx: int) -> int | None:
+    """Which visible person is moving their mouth in time with the audio.
+
+    Returns None when nobody clearly is — during silence, when several people
+    look equally plausible, or when there is not enough history yet. That is
+    the common case and the caller must treat it as "no new information"
+    rather than as a reason to reframe.
+    """
+    if env is None or idx < _SYNC_WINDOW:
+        return None
+    lo = idx - _SYNC_WINDOW
+    if lo < 0 or idx > len(env):
+        return None
+    sound = env[lo:idx]
+    if sound.size < _SYNC_WINDOW or float(sound.std()) < 1e-6:
+        return None
+
+    scores = {}
+    for tid in visible:
+        series = tracks[tid].mouth_raw
+        if len(series) < _SYNC_WINDOW:
+            continue
+        m = np.asarray(series[-_SYNC_WINDOW:], dtype=float)
+        if m.size != sound.size:
+            continue
+        # Samples where the face was not visible are NaN. Drop those positions
+        # from BOTH series so the remaining pairs still line up in time.
+        ok = np.isfinite(m)
+        if ok.sum() < _SYNC_WINDOW * 0.7:
+            continue  # too little of this window actually measured
+        mm, ss = m[ok], sound[ok]
+        if float(mm.std()) < 1e-9 or float(ss.std()) < 1e-9:
+            continue
+        scores[tid] = float(np.corrcoef(mm, ss)[0, 1])
+    if len(scores) < 2:
+        # One candidate cannot "lead" anyone; a solo speaker is handled by the
+        # ordinary single-subject path.
+        return None
+    ranked = sorted(scores, key=lambda t: -scores[t])
+    best, second = scores[ranked[0]], scores[ranked[1]]
+    if best > _SYNC_MIN and (best - second) > _SYNC_LEAD:
+        return ranked[0]
+    return None
 
 
 @dataclass
@@ -159,6 +276,7 @@ class _Track:
     dominance: float = 0.0         # EMA of confidence x area
     speak: float = 0.0             # EMA of mouth-region motion (talking proxy)
     prev_mouth: object = None      # last mouth crop (np array) for motion diff
+    mouth_raw: list = field(default_factory=list)  # UNsmoothed motion, for audio sync
     face_rate: float = 0.0         # EMA of "was a face detected this sample?"
     face_offset: float = 0.0       # EMA of (face cx - body cx), normalized
     face_w: float = 0.0            # EMA of face box width, normalized
@@ -198,6 +316,8 @@ def compute_tracking(
     active_id: int | None = None
     challenger_id: int | None = None
     challenger_since = 0.0
+    # The last few confident lip-sync verdicts (see _SYNC_VOTES_*).
+    recent_speakers: deque = deque(maxlen=_SYNC_HISTORY)
 
     # dead_zone becomes the distance the subject may drift before the camera
     # bothers to move; settling well inside it is what makes a move look
@@ -208,6 +328,12 @@ def compute_tracking(
         smoothing=smoothing,
         max_pan_speed=max_pan_speed,
     )
+    # The audio, one value per sample. Mouth motion alone cannot separate a
+    # talker from a listener who is simply moving; matching each person's
+    # mouth against the sound can. None for a silent clip, which just means
+    # the visual-only behaviour below.
+    env = speech_envelope(clip_path, sample_fps)
+
     path: list[tuple[float, float]] = []
     smoothed_x: float | None = None
     prev_small = None            # previous frame's thumbnail, for cut detection
@@ -301,6 +427,19 @@ def compute_tracking(
             tr.areas.append(area_frac)
             tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
 
+        # Keep the mouth series on the SAMPLE GRID. _update_speaking only
+        # appends when a face was found, so a track that was turned away for
+        # three samples ends up three entries short — and then its "last 16
+        # samples" silently mean a different two seconds than the audio's last
+        # 16 bins. Comparing those index-by-index correlates mismatched
+        # moments, which is why the first attempt at this never once produced
+        # a confident speaker. NaN marks "no measurement", and _sync_leader
+        # drops those positions from both series together.
+        for tr in tracks.values():
+            missing = n_samples - len(tr.mouth_raw)
+            if missing > 0:
+                tr.mouth_raw.extend([float("nan")] * missing)
+
         if visible:
             # ---- choose the target, with hysteresis ----------------------
             # Who to follow = size/confidence dominance x WHO IS TALKING.
@@ -318,6 +457,39 @@ def compute_tracking(
                     return tr.dominance
                 return tr.dominance * (0.35 + 0.65 * (tr.speak / max_speak))
 
+            # Who is in time with the audio? None most of the time — during
+            # silence, or when two people look equally plausible. Measured on
+            # a real two-person clip, only 29% of speech windows produced a
+            # confident answer.
+            speaker = _sync_leader(tracks, visible, env, n_samples)
+
+            # Keep the last few VERDICTS, not a running total.
+            #
+            # Totals do not work here. Whoever holds the camera keeps earning
+            # credit whenever they speak, so the incumbent builds a reservoir
+            # the challenger cannot out-accumulate: measured on this clip the
+            # active subject reached 8.8 while the other person peaked at 4.7,
+            # and a "beat them by 1.5x" rule made the switch arithmetically
+            # impossible — the same shape of bug as the size dominance this
+            # was meant to fix.
+            #
+            # A short verdict history asks the right question instead: of the
+            # last few times the audio was sure, who was it sure about? That
+            # is unaffected by how long either person has been on screen, and
+            # it tolerates the verdicts being sparse, because it counts
+            # verdicts rather than seconds.
+            if speaker is not None:
+                recent_speakers.append(speaker)
+
+            best_voice = None
+            if len(recent_speakers) >= _SYNC_VOTES_MIN:
+                counts: dict[int, int] = {}
+                for tid in recent_speakers:
+                    counts[tid] = counts.get(tid, 0) + 1
+                leader = max(counts, key=lambda k: counts[k])
+                if counts[leader] >= _SYNC_VOTES_WIN and leader in visible:
+                    best_voice = leader
+
             top = max(visible, key=_score)
             active_gone = (
                 active_id is None
@@ -325,8 +497,22 @@ def compute_tracking(
                 or (active_id not in visible and t - tracks[active_id].last_t > 1.0)
             )
             if active_gone:
-                active_id, challenger_id = top, None
+                # Nobody to keep. Prefer whoever has been talking; otherwise
+                # the most prominent person, which is all there is to go on.
+                active_id, challenger_id = (best_voice or top), None
+            elif best_voice is not None and best_voice != active_id:
+                # The speaker OVERRIDES size. This is the fix: the old rule
+                # multiplied talking BY prominence, so a person 1.4x wider on
+                # screen could not be interrupted however much the other one
+                # talked. Measured on real footage the smaller person won most
+                # of the confidently-synced windows and could never have won.
+                active_id, challenger_id = best_voice, None
+            elif best_voice is not None:
+                challenger_id = None  # the person we are on is the one talking
             elif top != active_id and _score(top) > switch_margin * _score(active_id):
+                # No audio verdict from anyone. Fall back to the prominence
+                # contest, which is right when nobody is speaking (an action
+                # beat, a silent reaction) and unreachable when someone is.
                 if challenger_id != top:
                     challenger_id, challenger_since = top, t
                 elif t - challenger_since >= switch_seconds:
