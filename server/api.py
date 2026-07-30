@@ -191,6 +191,30 @@ class FeedbackIn(BaseModel):
 # ---- app factory ---------------------------------------------------------------
 
 
+def _unlink_best_effort(path: Path) -> bool:
+    """Delete a file, or report that it could not be deleted. Never raises.
+
+    On Windows a file that is currently open cannot be removed at all: the
+    app's own video players hold the clip they are showing, so deleting a
+    clip the user is looking at raised WinError 32. The row had already gone
+    by then, so the clip vanished from the library, the file stayed on disk
+    and the request returned 500 — the user saw a failure for something that
+    had mostly worked.
+
+    Removing the clip from the library is what "delete" means to the person
+    clicking it. The file is disk space, and core/housekeeping already finds
+    and reclaims clip files with no row pointing at them, so a locked file is
+    recovered on the next cleanup rather than lost.
+    """
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        print(f"could not remove {path.name} yet ({e.__class__.__name__}); "
+              f"housekeeping will reclaim it")
+        return False
+
+
 def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import feedback as feedback_mod
 
@@ -575,13 +599,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 # which would miss yt-dlp's intermediates ("<id>.f137.mp4",
                 # "<id>.mp4.part") and quietly leave gigabytes behind.
                 if f.is_file() and f.name.startswith(f"{video_id}."):
-                    f.unlink(missing_ok=True)
+                    _unlink_best_effort(f)
 
         transcripts = data_dir / "transcripts"
         if transcripts.is_dir():
             for f in transcripts.iterdir():
                 if f.is_file() and f.name == f"{video_id}.json":
-                    f.unlink(missing_ok=True)
+                    _unlink_best_effort(f)
 
         clips_root = data_dir / "clips"
         if clips_root.is_dir():
@@ -616,9 +640,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         clip_file = Path(path)
         # Only delete inside our own data dir — never follow a stray path out.
         if clip_file.exists() and data_dir in clip_file.resolve().parents:
-            freed = clip_file.stat().st_size
-            clip_file.unlink(missing_ok=True)
-        (data_dir / "previews" / f"clip_{clip_id}.mp4").unlink(missing_ok=True)
+            size = clip_file.stat().st_size
+            if _unlink_best_effort(clip_file):
+                freed = size
+        _unlink_best_effort(data_dir / "previews" / f"clip_{clip_id}.mp4")
         return {"deleted": clip_id, "bytes_freed": freed}
 
     @app.websocket("/ws")
