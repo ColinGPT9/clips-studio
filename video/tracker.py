@@ -854,6 +854,22 @@ def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) 
     if tr.n_seen < 10 or tr.n_seen < 0.7 * n_samples:
         return None
 
+    # A gameplay facecam overlay contains ONE streamer. If somebody else is on
+    # screen for a good share of the clip this is a conversation, and stacking
+    # it into a webcam/gameplay split frames neither person.
+    #
+    # This guard was not needed while the camera always followed the LARGEST
+    # subject, because that person was too big to look like an overlay. Once
+    # the crop began following the speaker, a smaller seated person could
+    # become active and satisfy every test below — small, still, present
+    # throughout — so two-person footage started rendering as a split.
+    companions = [
+        other for tid, other in tracks.items()
+        if tid != active_id and other.n_seen >= 0.5 * n_samples
+    ]
+    if companions:
+        return None
+
     centers = np.array(tr.centers)
     if centers.std() > 0.025 or float(np.mean(tr.areas)) > 0.12:
         return None

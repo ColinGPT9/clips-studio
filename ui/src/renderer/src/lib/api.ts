@@ -119,6 +119,21 @@ export const api = {
       reclaimable_bytes: number
       sources: { files: number; bytes: number }
     }>('/storage'),
+  storageVideos: () =>
+    request<{
+      videos: {
+        video_id: string
+        title: string
+        channel: string
+        clips: number
+        source_bytes: number
+        transcript_bytes: number
+        clip_bytes: number
+        total_bytes: number
+      }[]
+      total_bytes: number
+    }>('/storage/videos'),
+
   storageCleanup: () =>
     request<{ files_removed: number; bytes_freed: number }>('/storage/cleanup', {
       method: 'POST'

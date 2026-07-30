@@ -549,6 +549,75 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         found.pop("_groups", None)  # Paths aren't JSON, and the UI doesn't need them
         return found
 
+    @app.get("/storage/videos")
+    def storage_videos():
+        """What each processed video costs on disk, biggest first.
+
+        The cleanup above only removes leftovers — it deliberately never
+        touches a source or clip the library knows about, which on a real
+        library is a rounding error next to the sources themselves. Deleting
+        individual clips does not help either: it frees the clip file and
+        leaves the multi-gigabyte source behind.
+
+        So this lists the actual cost per video, and the UI pairs it with
+        DELETE /videos/{id}, which removes the clips, the source, the
+        transcript and the rows together.
+        """
+        def total(paths) -> int:
+            out = 0
+            for p in paths:
+                try:
+                    if p.is_file():
+                        out += p.stat().st_size
+                except OSError:
+                    pass  # vanished under us; it costs nothing either way
+            return out
+
+        d = db()
+        try:
+            rows = d.conn.execute(
+                "SELECT v.video_id, v.title, v.channel_name, v.created_at,"
+                "       COUNT(c.id) AS clips"
+                "  FROM videos v LEFT JOIN clips c ON c.video_id = v.video_id"
+                " GROUP BY v.video_id"
+            ).fetchall()
+        finally:
+            d.close()
+
+        downloads, transcripts, clips_root = (
+            data_dir / "downloads", data_dir / "transcripts", data_dir / "clips"
+        )
+        out = []
+        for r in rows:
+            vid = r["video_id"]
+            source = total(
+                p for p in downloads.iterdir()
+                if p.is_file() and p.name.startswith(f"{vid}.")
+            ) if downloads.is_dir() else 0
+            transcript = total([transcripts / f"{vid}.json"])
+            clip_bytes = 0
+            if clips_root.is_dir():
+                for creator in clips_root.iterdir():
+                    if not creator.is_dir():
+                        continue
+                    for folder in creator.iterdir():
+                        # Clip folders are named "<title> [<video_id>]".
+                        if folder.is_dir() and folder.name.endswith(f"[{vid}]"):
+                            clip_bytes += total(folder.rglob("*"))
+            out.append({
+                "video_id": vid,
+                "title": r["title"] or vid,
+                "channel": r["channel_name"] or "",
+                "created_at": r["created_at"],
+                "clips": r["clips"],
+                "source_bytes": source,
+                "transcript_bytes": transcript,
+                "clip_bytes": clip_bytes,
+                "total_bytes": source + transcript + clip_bytes,
+            })
+        out.sort(key=lambda v: -v["total_bytes"])
+        return {"videos": out, "total_bytes": sum(v["total_bytes"] for v in out)}
+
     @app.post("/storage/cleanup")
     def storage_cleanup():
         """Delete leftovers from failed renders, interrupted downloads and

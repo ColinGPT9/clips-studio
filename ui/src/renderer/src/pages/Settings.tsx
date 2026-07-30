@@ -214,6 +214,102 @@ function StorageCard(): JSX.Element {
   )
 }
 
+/** Per-video disk usage, with a way to remove everything a finished video
+ *  still costs.
+ *
+ *  The cleanup above only sweeps leftovers, and deleting clips one by one
+ *  frees the clip files while leaving the multi-gigabyte source behind — so
+ *  a library of finished videos kept growing with no way to reclaim it from
+ *  inside the app. This lists what each video actually costs and deletes the
+ *  clips, the source and the transcript together. */
+function VideoStorageCard(): JSX.Element {
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof api.storageVideos>> | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+
+  const load = (): void => {
+    api.storageVideos().then(setInfo).catch(() => setInfo(null))
+  }
+  useEffect(load, [])
+
+  const remove = async (videoId: string, freed: number): Promise<void> => {
+    setBusy(videoId)
+    setNote('')
+    try {
+      await api.deleteVideo(videoId)
+      setNote(`${t('Removed')} ${GB(freed)}.`)
+      load()
+    } catch (e) {
+      setNote(`${t('Could not delete')}: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setBusy(null)
+      setConfirming(null)
+    }
+  }
+
+  if (!info || info.videos.length === 0) return <></>
+
+  return (
+    <div className="card space-y-3" aria-label="Video storage">
+      <h3 className="font-semibold">{t('Delete a finished video')}</h3>
+      <p className="text-xs text-muted">
+        {t(
+          'Removes the clips, the source video and the transcript together. The clips you have already exported are files on your computer and are not affected.'
+        )}
+      </p>
+      <div className="max-h-72 overflow-y-auto space-y-1">
+        {info.videos.map((v) => (
+          <div
+            key={v.video_id}
+            className="flex items-center gap-3 text-xs border-t border-raised/50 pt-2"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="truncate">{v.title}</p>
+              <p className="text-muted">
+                {v.clips} {t('clips')} · {t('source')} {GB(v.source_bytes)} ·{' '}
+                {t('clips')} {GB(v.clip_bytes)}
+              </p>
+            </div>
+            <span className="tabular-nums shrink-0 font-medium">{GB(v.total_bytes)}</span>
+            {confirming === v.video_id ? (
+              <>
+                <button
+                  className="btn-accent !py-1 !px-2 shrink-0"
+                  disabled={busy !== null}
+                  onClick={() => remove(v.video_id, v.total_bytes)}
+                >
+                  {busy === v.video_id ? t('Deleting…') : t('Delete everything')}
+                </button>
+                <button
+                  className="btn-ghost !py-1 !px-2 shrink-0"
+                  onClick={() => setConfirming(null)}
+                >
+                  {t('Cancel')}
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn-ghost !py-1 !px-2 shrink-0"
+                disabled={busy !== null}
+                onClick={() => setConfirming(v.video_id)}
+              >
+                {t('Delete')}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 border-t border-raised/60 pt-2">
+        <span className="text-xs text-muted">
+          {t('Total on disk')}: {GB(info.total_bytes)}
+        </span>
+        {note && <span className="text-xs text-muted">{note}</span>}
+      </div>
+    </div>
+  )
+}
+
 function AppearanceCard(): JSX.Element {
   const [appearance, setAppearance] = useState<Appearance>(loadAppearance)
 
@@ -421,6 +517,7 @@ export default function Settings(): JSX.Element {
       <ExportFolderCard />
 
       <StorageCard />
+      <VideoStorageCard />
 
       <SetupCard />
 
