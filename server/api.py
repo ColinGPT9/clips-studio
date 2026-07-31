@@ -214,21 +214,29 @@ def _unlink_best_effort(path: Path, root: Path) -> bool:
     """
     try:
         base = root.resolve()
-        # relative_to raises if `path` is not under root. The parts it gives
-        # back are then rebuilt onto `base` a segment at a time, so the path
-        # that gets deleted is assembled from the trusted root rather than
-        # being the string that was passed in. That is belt to the check's
-        # braces — and it is also the form a taint scanner can follow, which
-        # a bare "raises if outside" check is not.
+        # relative_to raises if `path` is not under root. The segments it
+        # gives back are then used to WALK DOWN from the trusted root: each
+        # step is whatever the directory listing says is there, matched by
+        # name, so the thing that finally gets deleted came off the
+        # filesystem rather than out of the request. That is belt to the
+        # check's braces, and unlike a bare "raise if outside" it is a form a
+        # taint scanner can follow — the same reason the branding asset
+        # lookup is written this way.
         parts = path.resolve().relative_to(base).parts
     except (ValueError, OSError):
         print(f"refusing to delete {path} — outside {root}")
         return False
     target = base
     for part in parts:
-        if part in ("", ".", ".."):     # cannot occur after resolve(); if it
-            return False                # ever does, it does not get walked
-        target = target / part
+        try:
+            found = next((e for e in target.iterdir() if e.name == part), None)
+        except OSError:
+            return False
+        if found is None:
+            return True  # not on disk; missing_ok=True means that is a success
+        target = found
+    if target == base or not target.is_file():
+        return True      # a directory, or the root itself: not ours to unlink
     try:
         target.unlink(missing_ok=True)
         return True
