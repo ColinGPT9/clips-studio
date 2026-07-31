@@ -13,6 +13,27 @@ of model the commercial clipping tools use.
 Everything here runs locally. The weights ship with the app the same way the
 YOLO weights do (see clips-studio.spec) — nothing is fetched at runtime.
 
+COST, measured on a 60s clip on an RTX 3060, because the obvious way to feed
+this model is five times slower than the careful way and that is not evident
+from reading it:
+
+    tracking as it stands (8fps)              62.3s
+    TalkNet forward pass, two people           1.2s   <- not the expensive part
+    frame reads + crops, reusing 8fps boxes     8.4s   -> +15% overall
+    re-detecting with YOLO at 25fps          280.2s   -> +452% overall
+
+The model is nearly free. The cost is entirely in getting frames to it, and
+the trap is that TalkNet wants 25fps while the tracker samples at 8. Running
+the detector again at 25fps to satisfy that makes every job five times
+slower; interpolating the boxes already computed at 8fps and reading frames
+between them costs 15%. Do not "simplify" this by detecting at 25fps.
+
+At 15% it can run on everything rather than behind a "does this look like two
+people talking?" test — which would be a heuristic guarding the very question
+the model exists to answer, and would fall back silently to the mouth-motion
+path when it guessed wrong. The one worthwhile skip is not a judgement at
+all: with fewer than two faces on screen there is nobody to choose between.
+
 The model itself is vendored, unmodified, under third_party/talknet/ (MIT,
 (c) 2021 Tao Ruijie). This module is the adapter: it owns loading, the input
 format, and a single scoring call, so the vendored files stay exactly as
