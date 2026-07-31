@@ -7,7 +7,10 @@
 # most of the repo and bury real history under whitespace churn.
 line-length = 110
 target-version = "py310"
-exclude = ["ui", "vendor", "build", "dist", "release", "data", "site"]
+# third_party holds code vendored verbatim from other projects. Linting it
+# would only invite edits, and an edited copy is no longer the thing that
+# was audited and licensed.
+exclude = ["ui", "vendor", "third_party", "build", "dist", "release", "data", "site"]
 
 [tool.ruff.lint]
 select = [

@@ -49,6 +49,11 @@ The Windows installer bundles the Python engine and its dependencies. The
 significant ones, with their licences:
 
   ultralytics (YOLOv8)      AGPL-3.0     pose/face tracking + model weights
+  TalkNet-ASD               MIT          active speaker detection; the model
+                                         code is vendored unmodified under
+                                         third_party/talknet/ (c) 2021 Tao
+                                         Ruijie, and its pretrained weights
+                                         are fetched by scripts/fetch_asd_model.py
   faster-whisper            MIT          transcription
   PyTorch                   BSD-3-Clause tensor runtime, CUDA libraries
   OpenCV (opencv-python)    Apache-2.0   frame decoding and analysis
