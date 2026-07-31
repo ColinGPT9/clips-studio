@@ -1,0 +1,12 @@
+# Vendored third-party source. Marking it tells GitHub to leave it out of the
+# language statistics and to collapse it in diffs, so a change here stands out
+# as unusual rather than blending into a large pull request.
+third_party/** linguist-vendored
+vendor/** linguist-vendored
+
+# Model weights and media are binary; never try to merge or diff them as text.
+*.pt   binary
+*.onnx binary
+*.model binary
+*.mp4  binary
+*.png  binary

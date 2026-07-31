@@ -1,0 +1,27 @@
+# What CodeQL should and should not read.
+#
+# third_party/ holds code copied verbatim from other projects. Scanning it
+# produces findings nobody here can act on: the only correct response to a
+# lint complaint in vendored code is to leave it alone, because an edited copy
+# is no longer the thing that was audited, licensed and can be re-fetched from
+# upstream. Seven such findings appeared the moment TalkNet was vendored —
+# unused imports, an unclosed file, a `== None` — all in the published source,
+# none of them ours to fix.
+#
+# Genuine security problems in a vendored dependency are still worth knowing
+# about, but they arrive through Dependabot advisories and upstream releases,
+# not through style rules run against a snapshot.
+#
+# This is a scope decision, not a suppression: everything the project actually
+# writes is still scanned, including video/asd.py, which is the code that
+# calls into TalkNet.
+
+name: Clips Studio
+
+paths-ignore:
+  - third_party
+  - vendor
+  - ui/node_modules
+  - build
+  - dist
+  - release

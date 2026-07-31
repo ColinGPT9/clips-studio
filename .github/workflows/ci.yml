@@ -122,6 +122,36 @@ jobs:
         # "this actually packages", and it is what the installer depends on.
         run: npm run build
 
+  vendored:
+    name: Vendored code unchanged
+    runs-on: ubuntu-latest
+    # Pull requests only: this compares against the base branch, which a push
+    # to main has no meaningful equivalent of.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Refuse silent edits to third_party/
+        run: |
+          changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- third_party/ || true)
+          if [ -z "$changed" ]; then
+            echo "third_party/ untouched."
+            exit 0
+          fi
+          echo "::error::This pull request edits vendored third-party code:"
+          echo "$changed" | while read -r f; do echo "::error::  $f"; done
+          echo ""
+          echo "third_party/ is copied verbatim from upstream and must stay that way —"
+          echo "an edited copy is no longer the code that was audited and licensed, and"
+          echo "cannot be re-fetched without working out which differences were meant."
+          echo ""
+          echo "Change video/asd.py instead; it owns everything the app needs from the"
+          echo "model. To upgrade the dependency, replace the files wholesale and say so"
+          echo "in the pull request. See third_party/talknet/README.md."
+          exit 1
+
   website:
     name: Website
     runs-on: ubuntu-latest

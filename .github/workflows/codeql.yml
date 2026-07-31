@@ -39,6 +39,9 @@ jobs:
           # sloppy-code class too, which matters more on a project that will
           # take outside contributions.
           queries: security-and-quality
+          # Keeps vendored third-party source out of the results — see the
+          # config for why those findings are not actionable here.
+          config-file: ./.github/codeql/codeql-config.yml
 
       - uses: github/codeql-action/autobuild@v4
 

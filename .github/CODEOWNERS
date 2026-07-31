@@ -1,0 +1,10 @@
+# third_party/ is copied verbatim from upstream projects and must stay that
+# way: an edited copy is no longer the code that was audited, licensed and can
+# be re-fetched. Requiring a review here means a change cannot land quietly in
+# the middle of a larger pull request.
+#
+# To update a vendored dependency, re-fetch it from upstream rather than
+# editing in place — see third_party/talknet/README.md.
+/third_party/  @ColinGPT9
+/NOTICE        @ColinGPT9
+/LICENSE       @ColinGPT9

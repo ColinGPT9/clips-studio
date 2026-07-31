@@ -208,3 +208,38 @@ def test_redaction_still_removes_what_it_should():
     assert "@" not in redact("mail me at someone@example.com")
     assert "ghp_" not in redact("token=ghp_abcdefghijklmnopqrstuvwxyz012345")
     assert "<user>" in redact("C:\\Users\\colin\\Videos\\clip.mp4")
+
+
+def test_unlink_stays_inside_the_data_folder(tmp_path):
+    """The one line in the app that actually removes a file checks, itself,
+    that the file is inside the data folder. Every caller checks too; this is
+    the check that has to hold when a caller stops checking, because being
+    wrong here costs somebody footage they cannot get back."""
+    import pathlib
+
+    # Import the helper alone: server.api pulls in FastAPI, which CI does not
+    # install, and the point of this test is one function.
+    api = Path(__file__).resolve().parent.parent / "server" / "api.py"
+    src = api.read_text(encoding="utf-8")
+    ns = {"Path": pathlib.Path}
+    exec(compile(src[src.index("def _unlink_best_effort"):src.index("def create_app")],
+                 "api.py", "exec"), ns)
+    unlink = ns["_unlink_best_effort"]
+
+    data = tmp_path / "data"
+    (data / "downloads").mkdir(parents=True)
+    clip = data / "downloads" / "clip.mp4"
+    clip.write_text("x")
+
+    elsewhere = tmp_path / "Videos" / "wedding.mp4"
+    elsewhere.parent.mkdir()
+    elsewhere.write_text("irreplaceable")
+
+    assert unlink(clip, data) is True and not clip.exists()
+    assert unlink(data / "downloads" / "gone.mp4", data) is True  # already absent
+
+    for escape in (elsewhere,
+                   data / ".." / "Videos" / "wedding.mp4",
+                   data / "downloads" / ".." / ".." / "Videos" / "wedding.mp4"):
+        assert unlink(escape, data) is False
+        assert elsewhere.exists(), f"{escape} was deleted"

@@ -191,8 +191,14 @@ class FeedbackIn(BaseModel):
 # ---- app factory ---------------------------------------------------------------
 
 
-def _unlink_best_effort(path: Path) -> bool:
-    """Delete a file, or report that it could not be deleted. Never raises.
+def _unlink_best_effort(path: Path, root: Path) -> bool:
+    """Delete a file inside `root`, or report that it could not be deleted.
+
+    Never raises, and never touches anything outside `root`. The containment
+    check is here, at the unlink itself, rather than only at the call sites:
+    every caller already checks, but this is the one line that actually
+    removes a file, so it is the one line where being wrong costs a user
+    their data. A path that escapes is a bug, not a request to be honoured.
 
     On Windows a file that is currently open cannot be removed at all: the
     app's own video players hold the clip they are showing, so deleting a
@@ -207,7 +213,13 @@ def _unlink_best_effort(path: Path) -> bool:
     recovered on the next cleanup rather than lost.
     """
     try:
-        path.unlink(missing_ok=True)
+        target = path.resolve()
+        target.relative_to(root.resolve())  # raises ValueError if outside
+    except (ValueError, OSError):
+        print(f"refusing to delete {path} — outside {root}")
+        return False
+    try:
+        target.unlink(missing_ok=True)
         return True
     except OSError as e:
         print(f"could not remove {path.name} yet ({e.__class__.__name__}); "
@@ -668,13 +680,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 # which would miss yt-dlp's intermediates ("<id>.f137.mp4",
                 # "<id>.mp4.part") and quietly leave gigabytes behind.
                 if f.is_file() and f.name.startswith(f"{video_id}."):
-                    _unlink_best_effort(f)
+                    _unlink_best_effort(f, data_dir)
 
         transcripts = data_dir / "transcripts"
         if transcripts.is_dir():
             for f in transcripts.iterdir():
                 if f.is_file() and f.name == f"{video_id}.json":
-                    _unlink_best_effort(f)
+                    _unlink_best_effort(f, data_dir)
 
         clips_root = data_dir / "clips"
         if clips_root.is_dir():
@@ -710,9 +722,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         # Only delete inside our own data dir — never follow a stray path out.
         if clip_file.exists() and data_dir in clip_file.resolve().parents:
             size = clip_file.stat().st_size
-            if _unlink_best_effort(clip_file):
+            if _unlink_best_effort(clip_file, data_dir):
                 freed = size
-        _unlink_best_effort(data_dir / "previews" / f"clip_{clip_id}.mp4")
+        _unlink_best_effort(data_dir / "previews" / f"clip_{clip_id}.mp4", data_dir)
         return {"deleted": clip_id, "bytes_freed": freed}
 
     @app.websocket("/ws")

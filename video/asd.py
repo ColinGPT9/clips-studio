@@ -72,6 +72,9 @@ def _vendor_on_path():
         try:
             sys.path.remove(str(_VENDOR))
         except ValueError:
+            # Already gone: something else cleaned sys.path while the import
+            # ran. The goal is "this entry is not left behind", which is
+            # satisfied either way, so there is nothing to report.
             pass
 
 
