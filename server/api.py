@@ -213,11 +213,22 @@ def _unlink_best_effort(path: Path, root: Path) -> bool:
     recovered on the next cleanup rather than lost.
     """
     try:
-        target = path.resolve()
-        target.relative_to(root.resolve())  # raises ValueError if outside
+        base = root.resolve()
+        # relative_to raises if `path` is not under root. The parts it gives
+        # back are then rebuilt onto `base` a segment at a time, so the path
+        # that gets deleted is assembled from the trusted root rather than
+        # being the string that was passed in. That is belt to the check's
+        # braces — and it is also the form a taint scanner can follow, which
+        # a bare "raises if outside" check is not.
+        parts = path.resolve().relative_to(base).parts
     except (ValueError, OSError):
         print(f"refusing to delete {path} — outside {root}")
         return False
+    target = base
+    for part in parts:
+        if part in ("", ".", ".."):     # cannot occur after resolve(); if it
+            return False                # ever does, it does not get walked
+        target = target / part
     try:
         target.unlink(missing_ok=True)
         return True
