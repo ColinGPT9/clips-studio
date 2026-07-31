@@ -125,13 +125,42 @@ def _load():
 def mfcc(pcm: np.ndarray) -> np.ndarray:
     """13-band MFCCs at 100fps, the audio side of the model's input.
 
+    `pcm` is ordinary normalised audio, floats in -1..1.
+
     python_speech_features is what TalkNet was written against; its default
     settings are part of the trained model's expected input, so they are
     spelled out rather than left to a different library's defaults.
+
+    The x32768 matters and is not cosmetic. Upstream reads its audio with
+    scipy's wavfile.read, which hands back INT16 sample values, so every MFCC
+    the model was trained on carries the energy of a signal 32768 times
+    larger. MFCCs are log-energy, so getting this wrong does not scale the
+    features, it OFFSETS them by about 20 per band — a constant the model has
+    never seen. Passing normalised floats scored a minute of two-way
+    conversation as nobody speaking at all.
     """
     from python_speech_features import mfcc as _mfcc
 
-    return _mfcc(pcm, AUDIO_SR, numcep=13, winlen=0.025, winstep=0.010)
+    return _mfcc(pcm * 32768.0, AUDIO_SR, numcep=13, winlen=0.025, winstep=0.010)
+
+
+# How the model is asked, and it is not "all of it at once".
+#
+# TalkNet was trained on short segments and its own evaluation scores a track
+# in windows of a few seconds, then averages the windows. Handing it a whole
+# 60s clip in one forward pass is far outside what it ever saw: measured that
+# way on real two-person footage EVERY frame of EVERY face came back negative
+# — a confident "nobody here is speaking" for a minute of conversation. The
+# model was not wrong, it was being asked a question in a shape it does not
+# take. Windowing it fixed that.
+#
+# Several window lengths, averaged, because a 1s window is decisive but
+# twitchy and a 6s window is stable but smears the moment somebody starts.
+_WINDOWS = (1, 2, 4, 6)   # seconds
+# Visual frames per forward pass. The 3D frontend expands each frame a long
+# way, so this is the knob that decides peak VRAM; 1500 is 60 seconds of video
+# and fits comfortably beside YOLO on a 6GB card.
+_BATCH_FRAMES = 1500
 
 
 def score_track(faces: np.ndarray, pcm: np.ndarray) -> np.ndarray:
@@ -141,8 +170,9 @@ def score_track(faces: np.ndarray, pcm: np.ndarray) -> np.ndarray:
            sampled at 25fps.
     pcm:   mono float32 at 16kHz covering the same span.
 
-    Higher is more likely to be speaking. The scale is the model's own logit,
-    so compare faces against each other rather than against a fixed number.
+    Higher is more likely to be speaking; positive means speaking. The scale
+    is the model's own logit, so the useful comparison is between faces at the
+    same moment rather than against a fixed number.
     """
     import torch
 
@@ -153,21 +183,43 @@ def score_track(faces: np.ndarray, pcm: np.ndarray) -> np.ndarray:
     # The two streams must line up: 4 MFCC rows per visual frame. Trim to
     # whichever runs out first — a face track can start or end mid-clip.
     frames = min(len(faces), audio.shape[0] // _MFCC_PER_FRAME)
-    if frames < 2:
+    if frames < FPS:  # under a second: no window to put it in
         return np.zeros(len(faces), dtype=np.float32)
     audio = audio[: frames * _MFCC_PER_FRAME]
     vis = faces[:frames]
 
+    passes = []
     with torch.no_grad():
-        a = torch.tensor(audio, dtype=torch.float32, device=device).unsqueeze(0)
-        v = torch.tensor(vis, dtype=torch.float32, device=device).unsqueeze(0)
-        ae = model.forward_audio_frontend(a)
-        ve = model.forward_visual_frontend(v)
-        ae, ve = model.forward_cross_attention(ae, ve)
-        out = model.forward_audio_visual_backend(ae, ve)
-        scores = head.forward(out, labels=None)
+        for seconds in _WINDOWS:
+            v_step = seconds * FPS
+            got = np.zeros(frames, dtype=np.float32)
+            # The windows are all the same length bar the last, so they go
+            # through as ONE batch rather than one call each. Same arithmetic,
+            # a fraction of the launches: scoring a 60s clip one window at a
+            # time took 23s, batched it takes a few.
+            whole = frames // v_step
+            for start, count, step in ((0, whole, v_step),
+                                       (whole * v_step, 1, frames - whole * v_step)):
+                if count == 0 or step < 2:
+                    continue
+                for lo in range(0, count, max(1, _BATCH_FRAMES // step)):
+                    n = min(count - lo, max(1, _BATCH_FRAMES // step))
+                    off = start + lo * step
+                    v = vis[off:off + n * step].reshape(n, step, FACE_SIZE, FACE_SIZE)
+                    a = audio[off * _MFCC_PER_FRAME:
+                              (off + n * step) * _MFCC_PER_FRAME]
+                    a = a.reshape(n, step * _MFCC_PER_FRAME, -1)
+                    at = torch.tensor(a, dtype=torch.float32, device=device)
+                    vt = torch.tensor(v, dtype=torch.float32, device=device)
+                    ae = model.forward_audio_frontend(at)
+                    ve = model.forward_visual_frontend(vt)
+                    ae, ve = model.forward_cross_attention(ae, ve)
+                    out = model.forward_audio_visual_backend(ae, ve)
+                    s = np.asarray(head.forward(out, labels=None)).reshape(-1)
+                    got[off:off + n * step] = s[: n * step]
+            passes.append(got)
 
-    scores = np.asarray(scores, dtype=np.float32).reshape(-1)
+    scores = np.mean(np.stack(passes), axis=0)
     if len(scores) < len(faces):  # pad the trimmed tail with its last value
         scores = np.concatenate([scores, np.repeat(scores[-1:], len(faces) - len(scores))])
     return scores[: len(faces)]

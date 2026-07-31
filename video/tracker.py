@@ -196,22 +196,9 @@ def speech_envelope(clip_path: Path, sample_fps: float) -> "np.ndarray | None":
     None when the clip has no audio, which is not an error — the caller falls
     back to the visual-only behaviour.
     """
-    import subprocess
-
-    from core.binaries import ffmpeg
-
     sr = 16000
-    try:
-        out = subprocess.run(
-            [ffmpeg(), "-v", "error", "-i", str(clip_path),
-             "-vn", "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"],
-            capture_output=True, timeout=300,
-        )
-        if out.returncode != 0 or not out.stdout:
-            return None
-        pcm = np.frombuffer(out.stdout, dtype=np.int16).astype(np.float32) / 32768.0
-    except Exception as e:
-        print(f"      (speaker audio unavailable, using motion only: {e})")
+    pcm = _clip_pcm(clip_path, sr)
+    if pcm is None:
         return None
     if pcm.size < sr // 4:
         return None
@@ -267,6 +254,314 @@ def _sync_leader(tracks: dict, visible, env, idx: int) -> int | None:
     if best > _SYNC_MIN and (best - second) > _SYNC_LEAD:
         return ranked[0]
     return None
+
+
+# ---- who is actually speaking, asked properly ---------------------------------
+#
+# Everything above is a correlation between pixel movement and loudness. It
+# was built because the alternative looked expensive, and it does work — but
+# it is a proxy, and it is only sure about a quarter of the time. TalkNet was
+# trained on labelled footage to answer this exact question, so where it can
+# answer, it answers, and the correlation above stays as the fallback for
+# clips with no audio or an unavailable model.
+
+_ASD_MIN_FACE_SAMPLES = 8    # a track needs this many face sightings to be
+                             # worth cropping 25fps frames for
+_ASD_MAX_TRACKS = 4          # crops are held in memory; four faces is already
+                             # more than any framing decision needs
+_ASD_MAX_GAP = 0.6           # seconds: past this, a face box is too stale to
+                             # interpolate through and the track counts absent
+_ASD_LEAD = 0.5              # the winner's logit must beat the runner-up by
+                             # this much before it counts as a verdict
+_ASD_SPEECH = 0.35           # ...and the clip must be this loud, relative to
+                             # its own 90th percentile, for anyone to BE
+                             # speaking. See _asd_verdict.
+
+
+def _clip_pcm(clip_path: Path, sr: int) -> "np.ndarray | None":
+    """The clip's audio as mono float32. None when it has none."""
+    import subprocess
+
+    from core.binaries import ffmpeg
+
+    try:
+        out = subprocess.run(
+            [ffmpeg(), "-v", "error", "-i", str(clip_path),
+             "-vn", "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"],
+            capture_output=True, timeout=300,
+        )
+        if out.returncode != 0 or not out.stdout:
+            return None
+        return np.frombuffer(out.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+    except Exception as e:
+        print(f"      (clip audio unavailable: {e})")
+        return None
+
+
+def _interp_boxes(seen: list, times: "np.ndarray") -> "np.ndarray | None":
+    """A face box for every time in `times`, interpolated from the samples
+    where the face was actually detected.
+
+    `seen` is [(t, (x1, y1, x2, y2)), ...] in time order. Rows outside the
+    track's own span, or across a gap longer than _ASD_MAX_GAP, come back NaN:
+    the person is not there to be cropped, and a stale box would feed the
+    model somebody else's face.
+    """
+    ts = np.array([s[0] for s in seen], dtype=np.float64)
+    box = np.array([s[1] for s in seen], dtype=np.float64)
+    out = np.empty((len(times), 4), dtype=np.float64)
+    for k in range(4):
+        out[:, k] = np.interp(times, ts, box[:, k])
+    # np.interp clamps outside the range; NaN those, plus anything sitting in
+    # a long gap between two sightings.
+    nearest = np.abs(times[:, None] - ts[None, :]).min(axis=1)
+    out[(times < ts[0]) | (times > ts[-1]) | (nearest > _ASD_MAX_GAP)] = np.nan
+    return out
+
+
+def _mouth_patch(gray, box, size: int):
+    """The square TalkNet expects, cut from a greyscale frame around `box`.
+
+    Not the face box. TalkNet's own pipeline takes a region about 0.7x the
+    face box, shifted DOWN so it is centred on the mouth rather than the eyes,
+    which is what a lip-sync model is looking at. Feeding it a plain face crop
+    is feeding it a different picture than it was trained on.
+
+    Out-of-frame edges are padded with mid-grey (110) exactly as upstream does
+    — clipping instead would squash the face when someone reaches the edge of
+    the shot, and a squashed face is a face the model has never seen.
+    """
+    if np.isnan(box[0]):
+        return None
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    bs = max(box[2] - box[0], box[3] - box[1]) / 2
+    if bs < 6:
+        return None
+    half = 0.7 * bs
+    cy += 0.4 * bs           # down onto the mouth
+    x0, y0 = int(round(cx - half)), int(round(cy - half))
+    side = max(8, int(round(2 * half)))
+
+    h, w = gray.shape[:2]
+    patch = np.full((side, side), 110, dtype=np.uint8)
+    sx0, sy0 = max(0, x0), max(0, y0)
+    sx1, sy1 = min(w, x0 + side), min(h, y0 + side)
+    if sx1 - sx0 < 4 or sy1 - sy0 < 4:
+        return None
+    patch[sy0 - y0:sy1 - y0, sx0 - x0:sx1 - x0] = gray[sy0:sy1, sx0:sx1]
+    return cv2.resize(patch, (size, size))
+
+
+def _contested_spans(mask, fps: int, n: int) -> list:
+    """The stretches worth scoring, as (start, end) frame indices.
+
+    `mask` marks frames where two or more people are on screen. Runs shorter
+    than a second are grown to a second and near neighbours are merged,
+    because the model's shortest window is a second and a run of six frames
+    would otherwise be scored on padding.
+    """
+    idx = np.flatnonzero(mask)
+    if idx.size == 0:
+        return []
+    gap = fps  # a second apart or less: one span, not two
+    breaks = np.flatnonzero(np.diff(idx) > gap)
+    starts = np.r_[idx[0], idx[breaks + 1]]
+    ends = np.r_[idx[breaks], idx[-1]] + 1
+
+    spans = []
+    for a, b in zip(starts, ends):
+        a, b = int(a), int(b)
+        if b - a < fps:
+            a = max(0, a - (fps - (b - a)) // 2)
+            b = min(n, a + fps)
+            a = max(0, b - fps)
+        if spans and a <= spans[-1][1]:      # grew into its neighbour
+            spans[-1] = (spans[-1][0], b)
+        else:
+            spans.append((a, b))
+    return [(a, b) for a, b in spans if b - a >= fps]
+
+
+def _asd_speakers(clip_path: Path, samples: list, video_fps: float) -> list | None:
+    """Per sample, how strongly each visible person is speaking, from TalkNet.
+
+    Returns a list parallel to `samples` of {track_id: logit}, or None when
+    the question does not arise or cannot be answered — no model, no audio, or
+    fewer than two faces on screen, which is the one skip worth having because
+    it is not a judgement: with one face there is nobody to choose between.
+
+    The cost is in getting frames to the model, not in the model. Reusing the
+    boxes tracking already found and interpolating them onto a 25fps grid adds
+    about 15% to a clip; re-running the detector at 25fps to get the same crops
+    adds 452%. Do not "simplify" this into a second detection pass.
+    """
+    from video import asd
+
+    if not asd.available() or not samples:
+        return None
+
+    seen_by_track: dict[int, list] = {}
+    for s in samples:
+        for tid, fb in s.faces.items():
+            seen_by_track.setdefault(tid, []).append((s.t, fb))
+    candidates = [t for t, v in seen_by_track.items() if len(v) >= _ASD_MIN_FACE_SAMPLES]
+    if len(candidates) < 2:
+        return None
+    # Most-seen first, so a capped list keeps the people who are actually in
+    # the clip rather than whoever the tracker noticed first.
+    candidates.sort(key=lambda t: -len(seen_by_track[t]))
+    candidates = candidates[:_ASD_MAX_TRACKS]
+
+    pcm = _clip_pcm(clip_path, asd.AUDIO_SR)
+    if pcm is None or pcm.size < asd.AUDIO_SR // 4:
+        return None
+
+    duration = samples[-1].t
+    n_frames = int(duration * asd.FPS)
+    if n_frames < asd.FPS:  # under a second of video: nothing to decide
+        return None
+    times = np.arange(n_frames, dtype=np.float64) / asd.FPS
+    boxes = {tid: _interp_boxes(seen_by_track[tid], times) for tid in candidates}
+    present = {tid: ~np.isnan(boxes[tid][:, 0]) for tid in candidates}
+
+    # ---- only where the answer can change anything ------------------------
+    # Reading frames and scoring them IS the cost, so both run only over the
+    # stretches where two or more candidates are on screen at the same time.
+    # Everywhere else there is one person to frame and the verdict changes
+    # nothing, so scoring it would be paying for an answer nobody reads. On a
+    # real 60s two-person clip this is about a quarter of the frames.
+    #
+    # This is the same skip as the "fewer than two faces" one above, measured
+    # per moment instead of per clip — not a guess about who is speaking.
+    together = np.sum(list(present.values()), axis=0) >= 2
+    spans = _contested_spans(together, asd.FPS, n_frames)
+    if not spans:
+        return None
+
+    # ---- one pass over the video, cropping every candidate per frame ------
+    size = asd.FACE_SIZE
+    crops = {tid: np.zeros((n_frames, size, size), dtype=np.uint8) for tid in candidates}
+    cap = cv2.VideoCapture(str(clip_path))
+    if not cap.isOpened():
+        return None
+    try:
+        wanted = np.rint(times * video_fps).astype(np.int64)
+        needed = np.zeros(n_frames, dtype=bool)
+        for a, b in spans:
+            needed[a:b] = True
+        idx, j = 0, 0
+        while j < n_frames:
+            if not needed[j]:
+                # Skip forward without decoding: grab() alone does not
+                # reconstruct the picture, which is where the time goes.
+                while j < n_frames and not needed[j]:
+                    j += 1
+                if j >= n_frames:
+                    break
+            ok = cap.grab()
+            if not ok:
+                break
+            if idx == wanted[j]:
+                ok, frame = cap.retrieve()
+                if not ok:
+                    break
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                # Several 25fps slots can map to one source frame on low-fps
+                # video; fill all of them from this decode rather than
+                # re-reading it.
+                while j < n_frames and wanted[j] == idx:
+                    for tid in candidates:
+                        patch = _mouth_patch(gray, boxes[tid][j], size)
+                        if patch is not None:
+                            crops[tid][j] = patch
+                    j += 1
+            idx += 1
+    finally:
+        cap.release()
+
+    # ---- score each contested stretch, on its own slice of the audio ------
+    # -inf everywhere else: a frame nobody scored is not a quiet frame, it is
+    # a frame with no answer, and the two must not be confused.
+    scores = {tid: np.full(n_frames, -np.inf, dtype=np.float32) for tid in candidates}
+    per_frame = asd.AUDIO_SR / asd.FPS
+    for a, b in spans:
+        chunk = pcm[int(a * per_frame):int(b * per_frame)]
+        if chunk.size < asd.AUDIO_SR // 4:
+            continue
+        for tid in candidates:
+            try:
+                s = asd.score_track(crops[tid][a:b], chunk)
+            except Exception as e:  # a bad clip must not fail a render
+                print(f"      (speaker detection failed, using motion instead: {e})")
+                return None
+            s = np.asarray(s, dtype=np.float32)[: b - a]
+            s[~present[tid][a:a + len(s)]] = -np.inf
+            scores[tid][a:a + len(s)] = s
+
+    # ---- back onto the tracker's own sample grid --------------------------
+    out = []
+    for s in samples:
+        j = min(n_frames - 1, int(round(s.t * asd.FPS)))
+        out.append({tid: float(scores[tid][j]) for tid in candidates
+                    if np.isfinite(scores[tid][j])})
+    return out
+
+
+def _asd_verdict(frame_scores: dict, visible, loud: bool) -> int | None:
+    """Who TalkNet says is speaking here, or None when it is not sure.
+
+    Same contract as _sync_leader: None is the common answer and means "no new
+    information", never "reframe". Only visible people can win, and only by a
+    clear margin — the logits of two quiet faces sit close together, and
+    following the marginally-less-quiet one is exactly the wandering this is
+    supposed to stop.
+
+    The margin is the whole test; there is deliberately no "is this above
+    zero" floor. The logit's absolute level moves with how well the crop
+    matches what the model was trained on, and these crops are built from
+    pose keypoints rather than the detector upstream used, so on real footage
+    the winning face sat around -0.8 while still beating the other person
+    consistently. A floor there rejected every verdict in a minute of
+    conversation. What the score IS good for is ranking faces against each
+    other at the same instant, which is exactly the question being asked.
+
+    `loud` is what replaces the floor, and it comes from the audio rather than
+    from the model: during silence nobody is speaking, so no margin between
+    two quiet faces means anything.
+    """
+    if not loud:
+        return None
+    ranked = sorted(
+        ((sc, tid) for tid, sc in frame_scores.items() if tid in visible),
+        reverse=True,
+    )
+    if not ranked:
+        return None
+    if len(ranked) == 1:
+        return ranked[0][1]
+    return ranked[0][1] if ranked[0][0] - ranked[1][0] > _ASD_LEAD else None
+
+
+@dataclass
+class _Sample:
+    """One processed frame, kept so the framing decision can be made after
+    TalkNet has run rather than before.
+
+    Tracking is a streaming pass, but "who is talking" cannot be answered
+    streaming: the model needs a whole face track and the audio beside it. So
+    the frame pass records what it saw, TalkNet answers, and the framing pass
+    replays these in order. Track state (box, dominance, speak) is snapshotted
+    per sample because it is a moving average — replaying against the final
+    value would frame the start of the clip using what was learned by the end.
+    """
+    t: float
+    frame_idx: int
+    w: int
+    h: int
+    at_cut: bool
+    visible: list
+    state: dict     # tid -> (box, dominance, speak, n_seen) at this moment
+    faces: dict     # tid -> Haar face box, only where one was detected
 
 
 @dataclass
@@ -334,6 +629,10 @@ def compute_tracking(
     # the visual-only behaviour below.
     env = speech_envelope(clip_path, sample_fps)
 
+    # What each sample saw, so framing can be decided after TalkNet has had a
+    # look rather than guessed at during the frame pass. See _Sample.
+    samples: list[_Sample] = []
+
     path: list[tuple[float, float]] = []
     smoothed_x: float | None = None
     prev_small = None            # previous frame's thumbnail, for cut detection
@@ -380,6 +679,7 @@ def compute_tracking(
             challenger_id = None
 
         visible = _assign(tracks, _detect(model, frame, min_confidence), t)
+        faces_here: dict[int, tuple] = {}   # for TalkNet, after the pass
         for tid in visible:
             tr = tracks[tid]
             x1, y1, x2, y2, conf = tr.box[:5]
@@ -404,6 +704,19 @@ def compute_tracking(
             else:
                 tr.head_rate = 0.8 * tr.head_rate
             face = _face_box(frame, tr.box)
+            if face is not None:
+                faces_here[tid] = face
+            elif head is not None:
+                # The Haar cascade only finds a face on a minority of samples
+                # — it wants a frontal, well-lit, reasonably large face, and
+                # people in conversation are turned away half the time. Pose
+                # keypoints put the head somewhere on nearly every sample, and
+                # a head square is a good enough box for the mouth patch. The
+                # first version of this used Haar alone and TalkNet ended up
+                # scoring a fifth of the clip.
+                hcx, hcy, hw = head
+                faces_here[tid] = (hcx - hw / 2, hcy - hw / 2,
+                                   hcx + hw / 2, hcy + hw / 2)
             if face is not None:
                 fx1, fy1, fx2, fy2 = face
                 face_cx = ((fx1 + fx2) / 2) / w
@@ -440,6 +753,42 @@ def compute_tracking(
             if missing > 0:
                 tr.mouth_raw.extend([float("nan")] * missing)
 
+        samples.append(_Sample(
+            t=t, frame_idx=frame_idx, w=w, h=h, at_cut=at_cut,
+            visible=list(visible),
+            state={tid: (tracks[tid].box, tracks[tid].dominance,
+                         tracks[tid].speak, tracks[tid].n_seen)
+                   for tid in visible},
+            faces=faces_here,
+        ))
+        frame_idx += 1
+
+    cap.release()
+
+    # ---- who is speaking, before deciding where to point ------------------
+    # None when TalkNet cannot or need not answer (no model, no audio, fewer
+    # than two faces); the mouth-motion correlation below covers those.
+    asd_scores = _asd_speakers(clip_path, samples, video_fps)
+    # How loud this clip has to be for someone to be speaking, judged against
+    # its own level rather than an absolute one — a quiet phone recording and
+    # a studio mic are both fine, and room tone is well below either's speech.
+    speech_floor = (
+        _ASD_SPEECH * float(np.percentile(env, 90)) if env is not None else 0.0
+    )
+
+    # Track state is about to be rewound sample by sample. Everything after
+    # this loop — the letterbox decision, the facecam layout, face_y — reads
+    # the FINAL values, so they are put back at the end.
+    finals = {tid: (tr.box, tr.dominance, tr.speak, tr.n_seen)
+              for tid, tr in tracks.items()}
+
+    for s_idx, s in enumerate(samples):
+        t, w, h, at_cut, visible = s.t, s.w, s.h, s.at_cut, s.visible
+        frame_idx = s.frame_idx
+        for tid, snap in s.state.items():
+            tr = tracks[tid]
+            tr.box, tr.dominance, tr.speak, tr.n_seen = snap
+
         if visible:
             # ---- choose the target, with hysteresis ----------------------
             # Who to follow = size/confidence dominance x WHO IS TALKING.
@@ -457,11 +806,20 @@ def compute_tracking(
                     return tr.dominance
                 return tr.dominance * (0.35 + 0.65 * (tr.speak / max_speak))
 
-            # Who is in time with the audio? None most of the time — during
-            # silence, or when two people look equally plausible. Measured on
-            # a real two-person clip, only 29% of speech windows produced a
-            # confident answer.
-            speaker = _sync_leader(tracks, visible, env, n_samples)
+            # Who is speaking? None most of the time, in both paths — during
+            # silence, or when nobody is clearly ahead. TalkNet answers where
+            # it can; where it cannot the mouth/loudness correlation stands
+            # in, which is right far less often (only 29% of speech windows on
+            # a real two-person clip produced a confident answer) but is all
+            # there is for a clip with no audio.
+            if asd_scores is not None:
+                speaker = _asd_verdict(
+                    asd_scores[s_idx], visible,
+                    loud=(env is None or s_idx >= len(env)
+                          or env[s_idx] >= speech_floor),
+                )
+            else:
+                speaker = _sync_leader(tracks, visible, env, s_idx + 1)
 
             # Keep the last few VERDICTS, not a running total.
             #
@@ -553,7 +911,10 @@ def compute_tracking(
                         tid == active_id
                         or (
                             tracks[tid].dominance >= 0.75 * active_dom
-                            and tracks[tid].n_seen >= max(8, 0.3 * n_samples)
+                            # s_idx + 1 is how many samples have gone by at
+                            # this point, which is what this used to compare
+                            # against when it ran inside the frame loop.
+                            and tracks[tid].n_seen >= max(8, 0.3 * (s_idx + 1))
                         )
                     )
                     and tracks[tid].box[4] >= 0.6  # confidently a person
@@ -628,9 +989,9 @@ def compute_tracking(
 
             path.append((t, float(smoothed_x)))
 
-        frame_idx += 1
-
-    cap.release()
+    for tid, snap in finals.items():
+        tr = tracks[tid]
+        tr.box, tr.dominance, tr.speak, tr.n_seen = snap
 
     # User-forced letterbox: same tight subject-region crop the automatic
     # letterbox uses (person large, minimal dead space) — just without the
