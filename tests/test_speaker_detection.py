@@ -102,3 +102,22 @@ def test_boxes_are_not_invented_where_the_face_was_not_seen():
     assert not np.isnan(out[1][0]) and not np.isnan(out[5][0])
     # And where it does interpolate, it interpolates.
     assert out[2][0] == pytest.approx(15.0)
+
+
+def test_changing_subject_is_a_cut_not_a_pan():
+    """Watched back, the panning was the thing that looked wrong: the crop
+    swept across the room to reach whoever had started talking and arrived
+    after they had. A cut is on them from the first frame, which is how the
+    footage itself is edited.
+
+    Pinned as a constant rather than a behaviour test because reproducing it
+    needs a real two-person video; the measurement that justifies it is in the
+    commit — 0.61 frame-widths of panning before, 0.00 after, same two
+    subject changes."""
+    from video import tracker
+
+    assert tracker._SWITCH_CUT is True
+    assert tracker._SWITCH_HOLD >= 1.0, (
+        "a conversation trades the verdict about once a second; a shorter "
+        "hold lets the camera flick back and forth"
+    )

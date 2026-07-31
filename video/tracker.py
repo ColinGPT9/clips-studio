@@ -277,6 +277,28 @@ _ASD_SPEECH = 0.35           # ...and the clip must be this loud, relative to
                              # its own 90th percentile, for anyone to BE
                              # speaking. See _asd_verdict.
 
+# ---- how the camera behaves once it knows who is speaking ---------------------
+#
+# Knowing the speaker is only half of it; the other half is that a viewer
+# judges the RESULT, and the result was wrong in three ways that have nothing
+# to do with who was picked. Watched back on real two-person footage, the crop
+# slid between people instead of cutting, flicked back and forth during a
+# quick exchange, and sat between the two of them so that each face was
+# jammed against an edge with the floor filling the middle.
+#
+# The podcast path already solved all three, because it was rebuilt against
+# real footage: it cuts at shot boundaries, never pans, and frames ONE
+# person's face rather than the midpoint of two. These bring the same
+# behaviour to the ordinary tracker.
+_SWITCH_HOLD = 1.5      # seconds a subject keeps the camera before another
+                        # verdict can take it. A conversation trades the
+                        # verdict about once a second; honouring every trade
+                        # reads as flicking. An editor lets a shot sit.
+_SWITCH_CUT = True      # changing subject is a CUT, not a pan. Panning across
+                        # a room to find the next speaker takes the viewer with
+                        # it and arrives late; a cut is there on the first
+                        # frame. This is how the footage itself is edited.
+
 
 def _clip_pcm(clip_path: Path, sr: int) -> "np.ndarray | None":
     """The clip's audio as mono float32. None when it has none."""
@@ -782,9 +804,12 @@ def compute_tracking(
     finals = {tid: (tr.box, tr.dominance, tr.speak, tr.n_seen)
               for tid, tr in tracks.items()}
 
+    last_switch_t = float("-inf")   # when the camera last changed subject
+
     for s_idx, s in enumerate(samples):
         t, w, h, at_cut, visible = s.t, s.w, s.h, s.at_cut, s.visible
         frame_idx = s.frame_idx
+        was_active = active_id
         for tid, snap in s.state.items():
             tr = tracks[tid]
             tr.box, tr.dominance, tr.speak, tr.n_seen = snap
@@ -858,13 +883,21 @@ def compute_tracking(
                 # Nobody to keep. Prefer whoever has been talking; otherwise
                 # the most prominent person, which is all there is to go on.
                 active_id, challenger_id = (best_voice or top), None
-            elif best_voice is not None and best_voice != active_id:
+            elif (best_voice is not None and best_voice != active_id
+                  and t - last_switch_t >= _SWITCH_HOLD):
                 # The speaker OVERRIDES size. This is the fix: the old rule
                 # multiplied talking BY prominence, so a person 1.4x wider on
                 # screen could not be interrupted however much the other one
                 # talked. Measured on real footage the smaller person won most
                 # of the confidently-synced windows and could never have won.
+                #
+                # _SWITCH_HOLD is what stops it becoming the opposite problem.
+                # Two people in a back-and-forth trade the verdict every second
+                # or so, and honouring every trade reads as the camera flicking
+                # between them — which is what a viewer notices first. A real
+                # editor lets a shot sit. See the constant.
                 active_id, challenger_id = best_voice, None
+                last_switch_t = t
             elif best_voice is not None:
                 challenger_id = None  # the person we are on is the one talking
             elif top != active_id and _score(top) > switch_margin * _score(active_id):
@@ -875,13 +908,23 @@ def compute_tracking(
                     challenger_id, challenger_since = top, t
                 elif t - challenger_since >= switch_seconds:
                     active_id, challenger_id = top, None  # sustained takeover
+                    last_switch_t = t
             else:
                 challenger_id = None
 
             crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
+            # Frame ONE person whenever there is any speaker signal at all.
+            #
+            # The alternative — sitting on the midpoint of two people — is what
+            # produced the worst-looking output on real footage: with two
+            # people sat apart, the midpoint puts one face against each edge of
+            # a 9:16 window and fills the middle with the floor between them.
+            # It frames neither of them. It is only ever right when nobody is
+            # speaking, so once speaker detection has run at all, it is off:
+            # the whole point of knowing who is talking is to point at them.
             raw_x = _target_x(
                 tracks, visible, active_id, crop_frac,
-                someone_talking=max_speak >= 0.004,
+                someone_talking=(asd_scores is not None or max_speak >= 0.004),
             )
 
             # ---- when is a plain 9:16 crop NOT enough? -------------------
@@ -947,9 +990,15 @@ def compute_tracking(
             # part-undid — an oscillation inside a narrow band that reads as
             # drift. HoldMove keeps the frame parked until the subject has
             # genuinely moved, then makes one purposeful move and settles.
-            if at_cut:
+            changed_subject = _SWITCH_CUT and active_id != was_active and was_active is not None
+            if at_cut or changed_subject:
                 # Freeze the outgoing framing on the last frame of the old
-                # shot, then jump. Easing across a cut is never right.
+                # shot, then jump. Easing across a cut is never right — and
+                # changing who the camera is on IS a cut, even though the
+                # footage itself did not cut. Panning there instead sweeps the
+                # viewer across the room and arrives after the person has
+                # started talking; the whole reason to know who is speaking is
+                # to be on them from the first word.
                 if pan.x is not None and frame_idx > 0:
                     path.append(((frame_idx - 1) / video_fps, float(pan.x)))
                 smoothed_x = pan.snap(raw_x)
