@@ -16,6 +16,9 @@ path, the other a list of segments — so the fix is `cancel.check_active()`,
 which asks about the video the worker is processing right now.
 """
 
+import time
+from pathlib import Path
+
 import pytest
 
 from core import cancel
@@ -145,3 +148,60 @@ def test_cancel_interrupts_chunked_scoring():
 
     assert len(calls) < 10, f"kept calling the model after cancel: {len(calls)}"
     cancel.clear("vid1")
+
+
+def test_a_stuck_prefetch_does_not_wedge_the_job_queue():
+    """One hung download must not stop the app processing anything, ever.
+
+    wait_for used to be a bare join(). The single worker thread called it,
+    a stalled Twitch fetch never returned, and the worker blocked there
+    permanently — five jobs sat 'queued' with nothing in the UI to say why.
+    A prefetch is best-effort, so it gets abandoned rather than waited on.
+    """
+    import threading
+
+    from core.prefetch import Prefetcher
+
+    p = Prefetcher(Path("nonexistent.db"), Path("nonexistent"))
+    never_finishes = threading.Event()
+    t = threading.Thread(target=never_finishes.wait, daemon=True)
+    t.start()
+    try:
+        p._thread, p._video_id = t, "vid1"
+        import core.prefetch as pf
+
+        original = pf._PREFETCH_JOIN_TIMEOUT
+        pf._PREFETCH_JOIN_TIMEOUT = 0.2
+        try:
+            start = time.monotonic()
+            p.wait_for("vid1")                 # must return despite the hang
+            assert time.monotonic() - start < 5
+
+            # And it must not block on the same dead thread a second time.
+            start = time.monotonic()
+            p.wait_for("vid1")
+            assert time.monotonic() - start < 1
+        finally:
+            pf._PREFETCH_JOIN_TIMEOUT = original
+    finally:
+        never_finishes.set()
+        t.join(timeout=5)
+
+
+def test_waiting_for_a_different_video_returns_at_once():
+    import threading
+
+    from core.prefetch import Prefetcher
+
+    p = Prefetcher(Path("nonexistent.db"), Path("nonexistent"))
+    never_finishes = threading.Event()
+    t = threading.Thread(target=never_finishes.wait, daemon=True)
+    t.start()
+    try:
+        p._thread, p._video_id = t, "vid1"
+        start = time.monotonic()
+        p.wait_for("vid2")          # not our video: nothing to wait for
+        assert time.monotonic() - start < 1
+    finally:
+        never_finishes.set()
+        t.join(timeout=5)

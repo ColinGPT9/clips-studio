@@ -19,6 +19,11 @@ from pathlib import Path
 
 from core import progress
 
+# How long a job will wait for a prefetch of its own video before giving up on
+# it. Generous: a real download of a multi-hour VOD on a slow line still lands
+# inside this, so the timeout only fires on one that has genuinely stopped.
+_PREFETCH_JOIN_TIMEOUT = 20 * 60  # seconds
+
 
 class Prefetcher:
     def __init__(self, db_path: Path, downloads_dir: Path):
@@ -60,12 +65,36 @@ class Prefetcher:
             self._thread.start()
 
     def wait_for(self, video_id: str) -> None:
-        """Block until an in-flight prefetch of THIS video finishes, so the
-        job never starts a second yt-dlp run over a half-written file."""
+        """Wait — with a limit — for an in-flight prefetch of THIS video, so
+        the job never starts a second yt-dlp run over a half-written file.
+
+        The limit is the point. This used to be a bare join() with no timeout,
+        which is only safe if a download can be trusted to finish or fail, and
+        it cannot: a stalled fragment fetch just sits there. When that
+        happened the SINGLE worker thread blocked here forever, so every job
+        queued afterwards stayed 'queued' and the app silently stopped
+        processing anything. Five jobs had piled up behind one dead download,
+        with nothing in the UI to say why.
+
+        Prefetching is best-effort by design (see the module docstring), so a
+        prefetch that has gone quiet for this long is abandoned rather than
+        waited on. The job then does its own download, which is the path that
+        reports errors properly. A slow-but-alive prefetch still finishes well
+        inside the limit — this only fires on one that is genuinely stuck.
+        """
         with self._lock:
             thread = self._thread if self._video_id == video_id else None
-        if thread is not None:
-            thread.join()
+        if thread is None:
+            return
+        thread.join(timeout=_PREFETCH_JOIN_TIMEOUT)
+        if thread.is_alive():
+            print(f"      [prefetch] {video_id} is stuck; abandoning it and "
+                  f"downloading in the job instead")
+            with self._lock:
+                # Disown it so a later wait_for cannot block on it again. The
+                # thread is a daemon, so it cannot keep the app alive.
+                if self._video_id == video_id:
+                    self._thread, self._video_id = None, None
 
     def _run(self, url: str, video_id: str) -> None:
         from core.state import StateDB
