@@ -582,8 +582,31 @@ class _Sample:
     h: int
     at_cut: bool
     visible: list
-    state: dict     # tid -> (box, dominance, speak, n_seen) at this moment
+    state: dict     # tid -> _Moment: everything the framing pass reads
     faces: dict     # tid -> Haar face box, only where one was detected
+
+
+@dataclass
+class _Moment:
+    """One track's mutable state at one sample.
+
+    Every field here is either a moving average or the LENGTH of a growing
+    history, and every one of them is read by the framing pass. Leaving any
+    of them out does not fail — it silently replays the whole clip against
+    the values the track ended with. n_centers is the subtle one: the framing
+    target is a trailing median of the last few centers, so an untruncated
+    list makes every sample in the clip aim at where the subject finished.
+    """
+    box: tuple
+    dominance: float
+    speak: float
+    n_seen: int
+    head_rate: float
+    face_rate: float
+    head_offset: float
+    face_offset: float
+    face_w: float
+    n_centers: int
 
 
 @dataclass
@@ -698,7 +721,9 @@ def compute_tracking(
             for tr in tracks.values():
                 tr.prev_mouth = None
                 tr.speak = 0.0
-            challenger_id = None
+            # NB: dropping the challenger at a cut belongs to the framing
+            # pass, not here — see the loop below. Doing it in this pass sets
+            # a variable that pass never reads.
 
         visible = _assign(tracks, _detect(model, frame, min_confidence), t)
         faces_here: dict[int, tuple] = {}   # for TalkNet, after the pass
@@ -778,9 +803,18 @@ def compute_tracking(
         samples.append(_Sample(
             t=t, frame_idx=frame_idx, w=w, h=h, at_cut=at_cut,
             visible=list(visible),
-            state={tid: (tracks[tid].box, tracks[tid].dominance,
-                         tracks[tid].speak, tracks[tid].n_seen)
-                   for tid in visible},
+            state={tid: _Moment(
+                box=tracks[tid].box,
+                dominance=tracks[tid].dominance,
+                speak=tracks[tid].speak,
+                n_seen=tracks[tid].n_seen,
+                head_rate=tracks[tid].head_rate,
+                face_rate=tracks[tid].face_rate,
+                head_offset=tracks[tid].head_offset,
+                face_offset=tracks[tid].face_offset,
+                face_w=tracks[tid].face_w,
+                n_centers=len(tracks[tid].centers),
+            ) for tid in visible},
             faces=faces_here,
         ))
         frame_idx += 1
@@ -801,8 +835,24 @@ def compute_tracking(
     # Track state is about to be rewound sample by sample. Everything after
     # this loop — the letterbox decision, the facecam layout, face_y — reads
     # the FINAL values, so they are put back at the end.
-    finals = {tid: (tr.box, tr.dominance, tr.speak, tr.n_seen)
-              for tid, tr in tracks.items()}
+    finals = {tid: _Moment(
+        box=tr.box, dominance=tr.dominance, speak=tr.speak, n_seen=tr.n_seen,
+        head_rate=tr.head_rate, face_rate=tr.face_rate,
+        head_offset=tr.head_offset, face_offset=tr.face_offset,
+        face_w=tr.face_w, n_centers=len(tr.centers),
+    ) for tid, tr in tracks.items()}
+    all_centers = {tid: tr.centers for tid, tr in tracks.items()}
+
+    def rewind(tid: int, m: _Moment) -> None:
+        tr = tracks[tid]
+        (tr.box, tr.dominance, tr.speak, tr.n_seen, tr.head_rate, tr.face_rate,
+         tr.head_offset, tr.face_offset, tr.face_w) = (
+            m.box, m.dominance, m.speak, m.n_seen, m.head_rate, m.face_rate,
+            m.head_offset, m.face_offset, m.face_w)
+        # The list is truncated rather than the reads changed, because the
+        # framing helpers take a _Track and there is no honest way for them
+        # to know which sample is being replayed.
+        tr.centers = all_centers[tid][:m.n_centers]
 
     last_switch_t = float("-inf")   # when the camera last changed subject
 
@@ -811,8 +861,11 @@ def compute_tracking(
         frame_idx = s.frame_idx
         was_active = active_id
         for tid, snap in s.state.items():
-            tr = tracks[tid]
-            tr.box, tr.dominance, tr.speak, tr.n_seen = snap
+            rewind(tid, snap)
+        if at_cut:
+            # A challenger was building a case about the shot that just
+            # ended; across a cut it means nothing.
+            challenger_id = None
 
         if visible:
             # ---- choose the target, with hysteresis ----------------------
@@ -913,18 +966,9 @@ def compute_tracking(
                 challenger_id = None
 
             crop_frac = (h * 9 / 16) / w  # crop width as fraction of frame width
-            # Frame ONE person whenever there is any speaker signal at all.
-            #
-            # The alternative — sitting on the midpoint of two people — is what
-            # produced the worst-looking output on real footage: with two
-            # people sat apart, the midpoint puts one face against each edge of
-            # a 9:16 window and fills the middle with the floor between them.
-            # It frames neither of them. It is only ever right when nobody is
-            # speaking, so once speaker detection has run at all, it is off:
-            # the whole point of knowing who is talking is to point at them.
             raw_x = _target_x(
                 tracks, visible, active_id, crop_frac,
-                someone_talking=(asd_scores is not None or max_speak >= 0.004),
+                someone_talking=max_speak >= 0.004,
             )
 
             # ---- when is a plain 9:16 crop NOT enough? -------------------
@@ -938,7 +982,22 @@ def compute_tracking(
             # Minor/background/low-confidence detections are ignored so a
             # motorcycle or a bystander never forces it.
             if active_id in tracks:
-                active_dom = tracks[active_id].dominance
+                # Measure co-subjects against the most prominent person on
+                # screen, NOT against whoever the camera happens to be on.
+                #
+                # This used to be the active subject's dominance, which was
+                # the same number back when the camera always sat on the
+                # biggest person. It is not the same number now that it
+                # follows the speaker: point at the smaller person and the
+                # yardstick shrinks, so "at least 0.75 of it" lets in people
+                # who were never near-equals, they read as two subjects
+                # spread wide, and the clip silently becomes a letterbox.
+                # Real footage flipped from track to fit_blur for exactly
+                # this reason, with nothing about the scene having changed.
+                #
+                # Whether a 9:16 crop can hold the scene is a fact about the
+                # scene. It must not move when the choice of subject moves.
+                active_dom = max(tracks[tid].dominance for tid in visible)
                 subjects = [
                     tracks[tid].box
                     for tid in visible
@@ -1039,8 +1098,7 @@ def compute_tracking(
             path.append((t, float(smoothed_x)))
 
     for tid, snap in finals.items():
-        tr = tracks[tid]
-        tr.box, tr.dominance, tr.speak, tr.n_seen = snap
+        rewind(tid, snap)
 
     # User-forced letterbox: same tight subject-region crop the automatic
     # letterbox uses (person large, minimal dead space) — just without the
