@@ -37,6 +37,23 @@ v3 brings over what the Podcast rebuild proved out (see video/framing.py):
     talking detector doesn't score everyone a speaker after a cut. Single
     continuous-camera footage never trips this and is unaffected.
 
+v4 follows whoever is SPEAKING, and there is exactly one thing that decides
+that: TalkNet (see video/asd.py). Mouth-region pixel movement is still
+measured, but only as a prominence tiebreak — it is not a speaker detector
+and must never be used as one again. It measures MOVEMENT, and two people in
+a lively room move about equally, so it reliably picks whoever is BIGGER.
+
+An earlier version kept it as a fallback for when TalkNet could not run. That
+was a mistake: it meant the wrong behaviour could still happen silently, on
+whichever clips took the other branch, with nothing in the output to say
+which detector had decided. The weights ship with the app, so there was
+nothing to fall back FOR. When TalkNet has no answer nobody is named and the
+crop simply stays put, which is the honest thing to do when it is not known
+who is talking.
+
+Changing subject is a CUT, never a pan (_SWITCH_CUT), and a subject holds the
+camera for _SWITCH_HOLD before another verdict can take it.
+
 Fully decoupled from clip selection: this module knows nothing about
 transcripts, scores, or uploads.
 """
@@ -150,13 +167,6 @@ def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> No
     if tr.prev_mouth is not None:
         motion = float(np.abs(mouth - tr.prev_mouth).mean())
         tr.speak = 0.65 * tr.speak + 0.35 * motion
-        # The RAW value as well as the smoothed one. tr.speak is deliberately
-        # damped so the crop does not twitch, and that damping destroys the
-        # fast variation that lip-sync lives in — measured on a real two-person
-        # clip, correlating the smoothed value against the audio separated the
-        # speaker from the listener by 0.03, which is nothing. The raw series
-        # separated them properly.
-        tr.mouth_raw.append(motion)
     tr.prev_mouth = mouth
 
 
@@ -164,8 +174,6 @@ def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> No
 
 _SYNC_WINDOW = 16        # samples (2s at 8fps): long enough to correlate,
                          # short enough to still be about *now*
-_SYNC_MIN = 0.25         # the leader must genuinely track the audio...
-_SYNC_LEAD = 0.20        # ...and beat the runner-up by this much
 
 # The last few confident verdicts, and how many must agree.
 #
@@ -209,51 +217,6 @@ def speech_envelope(clip_path: Path, sample_fps: float) -> "np.ndarray | None":
     return np.sqrt(np.array([
         np.mean(pcm[i * per:(i + 1) * per] ** 2) for i in range(bins)
     ]))
-
-
-def _sync_leader(tracks: dict, visible, env, idx: int) -> int | None:
-    """Which visible person is moving their mouth in time with the audio.
-
-    Returns None when nobody clearly is — during silence, when several people
-    look equally plausible, or when there is not enough history yet. That is
-    the common case and the caller must treat it as "no new information"
-    rather than as a reason to reframe.
-    """
-    if env is None or idx < _SYNC_WINDOW:
-        return None
-    lo = idx - _SYNC_WINDOW
-    if lo < 0 or idx > len(env):
-        return None
-    sound = env[lo:idx]
-    if sound.size < _SYNC_WINDOW or float(sound.std()) < 1e-6:
-        return None
-
-    scores = {}
-    for tid in visible:
-        series = tracks[tid].mouth_raw
-        if len(series) < _SYNC_WINDOW:
-            continue
-        m = np.asarray(series[-_SYNC_WINDOW:], dtype=float)
-        if m.size != sound.size:
-            continue
-        # Samples where the face was not visible are NaN. Drop those positions
-        # from BOTH series so the remaining pairs still line up in time.
-        ok = np.isfinite(m)
-        if ok.sum() < _SYNC_WINDOW * 0.7:
-            continue  # too little of this window actually measured
-        mm, ss = m[ok], sound[ok]
-        if float(mm.std()) < 1e-9 or float(ss.std()) < 1e-9:
-            continue
-        scores[tid] = float(np.corrcoef(mm, ss)[0, 1])
-    if len(scores) < 2:
-        # One candidate cannot "lead" anyone; a solo speaker is handled by the
-        # ordinary single-subject path.
-        return None
-    ranked = sorted(scores, key=lambda t: -scores[t])
-    best, second = scores[ranked[0]], scores[ranked[1]]
-    if best > _SYNC_MIN and (best - second) > _SYNC_LEAD:
-        return ranked[0]
-    return None
 
 
 # ---- who is actually speaking, asked properly ---------------------------------
@@ -616,7 +579,6 @@ class _Track:
     dominance: float = 0.0         # EMA of confidence x area
     speak: float = 0.0             # EMA of mouth-region motion (talking proxy)
     prev_mouth: object = None      # last mouth crop (np array) for motion diff
-    mouth_raw: list = field(default_factory=list)  # UNsmoothed motion, for audio sync
     face_rate: float = 0.0         # EMA of "was a face detected this sample?"
     face_offset: float = 0.0       # EMA of (face cx - body cx), normalized
     face_w: float = 0.0            # EMA of face box width, normalized
@@ -787,19 +749,6 @@ def compute_tracking(
             tr.areas.append(area_frac)
             tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
 
-        # Keep the mouth series on the SAMPLE GRID. _update_speaking only
-        # appends when a face was found, so a track that was turned away for
-        # three samples ends up three entries short — and then its "last 16
-        # samples" silently mean a different two seconds than the audio's last
-        # 16 bins. Comparing those index-by-index correlates mismatched
-        # moments, which is why the first attempt at this never once produced
-        # a confident speaker. NaN marks "no measurement", and _sync_leader
-        # drops those positions from both series together.
-        for tr in tracks.values():
-            missing = n_samples - len(tr.mouth_raw)
-            if missing > 0:
-                tr.mouth_raw.extend([float("nan")] * missing)
-
         samples.append(_Sample(
             t=t, frame_idx=frame_idx, w=w, h=h, at_cut=at_cut,
             visible=list(visible),
@@ -884,20 +833,29 @@ def compute_tracking(
                     return tr.dominance
                 return tr.dominance * (0.35 + 0.65 * (tr.speak / max_speak))
 
-            # Who is speaking? None most of the time, in both paths — during
-            # silence, or when nobody is clearly ahead. TalkNet answers where
-            # it can; where it cannot the mouth/loudness correlation stands
-            # in, which is right far less often (only 29% of speech windows on
-            # a real two-person clip produced a confident answer) but is all
-            # there is for a clip with no audio.
+            # Who is speaking? ONE detector, and when it has no answer nobody
+            # gets named — the camera simply does not change subject.
+            #
+            # There used to be a second one here: a correlation between mouth
+            # pixel movement and loudness, used whenever TalkNet could not
+            # run. That is the detector that followed the bigger person, which
+            # is the whole reason TalkNet was brought in. Keeping it as a
+            # fallback meant the broken behaviour could still happen, silently,
+            # on any clip that took the other branch — two detectors, two sets
+            # of bugs, and no way to tell from the output which one had
+            # decided. The weights ship with the app, so the fallback was
+            # dead weight that could only do harm.
+            #
+            # No verdict is not a problem to route around. It means the crop
+            # stays where it is, which is the right thing to do when nobody
+            # knows who is talking.
+            speaker = None
             if asd_scores is not None:
                 speaker = _asd_verdict(
                     asd_scores[s_idx], visible,
                     loud=(env is None or s_idx >= len(env)
                           or env[s_idx] >= speech_floor),
                 )
-            else:
-                speaker = _sync_leader(tracks, visible, env, s_idx + 1)
 
             # Keep the last few VERDICTS, not a running total.
             #
