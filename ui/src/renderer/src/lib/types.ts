@@ -241,6 +241,11 @@ export interface SystemStats {
   data_dir_bytes: number
   disk_free_bytes: number
   gpu: GpuStats | null
+  /** Commit this backend PROCESS is running — not what is on disk. Python
+   *  imports once, so a backend left running keeps executing the code it
+   *  started with. Empty in a packaged build, which has no git. */
+  build_sha?: string
+  uptime_seconds?: number
 }
 
 export interface Settings {

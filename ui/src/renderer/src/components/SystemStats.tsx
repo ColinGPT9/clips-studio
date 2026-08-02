@@ -16,6 +16,13 @@ function Widget({ label, value, sub }: { label: string; value: string; sub?: str
   )
 }
 
+function uptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  if (h > 0) return `${h}h ${Math.floor((seconds % 3600) / 60)}m`
+  const m = Math.floor(seconds / 60)
+  return m > 0 ? `${m}m` : `${seconds}s`
+}
+
 function Inline({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <span className="whitespace-nowrap">
@@ -67,6 +74,21 @@ export default function SystemStats({ compact = false }: { compact?: boolean }):
           }
         />
         <Inline label="Storage" value={`${gb(stats.data_dir_bytes)} (${gb(stats.disk_free_bytes)} free)`} />
+        {/* Which build is actually RUNNING. Python imports once, so a backend
+            left open while the code moves on keeps executing what it started
+            with — and every other version number in the app reports the code
+            on disk, which can be hours ahead. A run once produced clips with
+            a bug that had been fixed two hours earlier and nothing said so. */}
+        {stats.build_sha ? (
+          <Inline
+            label="Build"
+            value={
+              stats.uptime_seconds !== undefined
+                ? `${stats.build_sha} · up ${uptime(stats.uptime_seconds)}`
+                : stats.build_sha
+            }
+          />
+        ) : null}
       </div>
     )
   }

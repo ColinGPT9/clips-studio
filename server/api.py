@@ -191,6 +191,46 @@ class FeedbackIn(BaseModel):
 # ---- app factory ---------------------------------------------------------------
 
 
+_BUILD: dict | None = None
+
+
+def _build_stamp() -> dict:
+    """Which commit this PROCESS is running, and how long it has been up.
+
+    Python imports a module once. A backend left running while the checkout
+    moves on keeps executing the code it started with, and nothing anywhere
+    says so — the app reports the version on disk, which can be hours ahead of
+    what is actually running.
+
+    That is not hypothetical. A 70-minute run once produced clips with a
+    tracker bug that had been fixed two hours earlier, and the only way to
+    tell was comparing the process start time against the commit timestamps.
+    From the outside it looked exactly like the fix not working.
+
+    Read once and cached: this is a subprocess call on a hot endpoint, and the
+    answer cannot change without restarting the process — which is the whole
+    point of reporting it.
+    """
+    import time  # module scope, not inside the cache guard: the return below
+    #              uses it on EVERY call, not just the first
+
+    global _BUILD
+    if _BUILD is None:
+        import subprocess
+
+        sha = ""
+        try:
+            sha = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(__file__).resolve().parent.parent,
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+        except Exception:
+            pass  # a packaged build has no git; the field just stays empty
+        _BUILD = {"build_sha": sha, "started_at": time.time()}
+    return {**_BUILD, "uptime_seconds": round(time.time() - _BUILD["started_at"])}
+
+
 def _unlink_best_effort(path: Path, root: Path) -> bool:
     """Delete a file inside `root`, or report that it could not be deleted.
 
@@ -306,6 +346,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "data_dir_bytes": sum(f.stat().st_size for f in data_dir.rglob("*") if f.is_file()),
             "disk_free_bytes": disk.free,
             "gpu": _gpu_stats(),
+            **_build_stamp(),
         }
         return stats
 
