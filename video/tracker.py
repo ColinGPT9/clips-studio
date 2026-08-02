@@ -152,6 +152,55 @@ def _face_box(frame, box) -> tuple[int, int, int, int] | None:
     return (rx + fx, ry + fy, rx + fx + fw, ry + fy + fh)
 
 
+def head_box(head) -> tuple[int, int, int, int]:
+    """A face-shaped box around the head the POSE model found.
+
+    The pose model returns the head as (cx, cy, width) from the nose/eye/ear
+    keypoints. Everything downstream — the mouth region, the ASD crop — wants
+    a box, so this is the one place that conversion lives.
+
+    It exists so the Haar cascade can be skipped. Haar costs 79-124 ms per
+    call and was being run on every visible person on every sample, even when
+    pose had ALREADY located the head: 63% of tracking time and 81% of podcast
+    analysis, for a position that was then thrown away in favour of the pose
+    keypoints. Pose finds a head on ~78% of detections, so most of that work
+    was answering a question that was already answered.
+
+    A SQUARE on purpose, and it must stay one: video/asd.py::_mouth_patch
+    derives TalkNet's crop from this box's larger dimension, so changing the
+    proportions moves what the model sees. Measured, making it taller changed
+    the speaker verdicts on three of four bench clips. This is the shape the
+    ASD fallback has always used and the shape its results were measured with.
+
+    For mouth MOTION use mouth_region() instead — that needs a different shape,
+    and the two are separate for exactly this reason.
+    """
+    cx, cy, hw = head
+    half = hw / 2
+    return (int(cx - half), int(cy - half), int(cx + half), int(cy + half))
+
+
+def mouth_region(head) -> tuple[int, int, int, int]:
+    """A face-shaped box around a pose head, for _update_speaking only.
+
+    _update_speaking reads the lower 45% of whatever box it is given and calls
+    that the mouth. Haar returns forehead-to-chin, so its lower 45% lands on
+    the mouth. The pose keypoints are nose, eyes and ears, so their centroid
+    sits around EYE level — the lower 45% of a square centred there is the
+    nose, not the mouth.
+
+    That is not a cosmetic difference: feeding the wrong region shifted every
+    track's mouth-motion value, which changed which subject the prominence
+    tiebreak picked, and moved framing on two of four bench clips by up to
+    0.38 of a frame width. So this box is proportioned like a face — 1.3x
+    taller than wide, biased downward from the keypoints — putting its lower
+    45% where Haar's was.
+    """
+    cx, cy, hw = head
+    half = hw / 2
+    return (int(cx - half), int(cy - 0.5 * hw), int(cx + half), int(cy + 0.8 * hw))
+
+
 def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> None:
     """Talking proxy: motion energy in the mouth region (lower part of the
     face box) between consecutive samples. A talking mouth changes shape
@@ -758,32 +807,33 @@ def compute_tracking(
                 tr.head_cys.append(head_cy / h)
             else:
                 tr.head_rate = 0.8 * tr.head_rate
-            face = _face_box(frame, tr.box)
-            if face is not None:
-                faces_here[tid] = face
-            elif head is not None:
-                # The Haar cascade only finds a face on a minority of samples
-                # — it wants a frontal, well-lit, reasonably large face, and
-                # people in conversation are turned away half the time. Pose
-                # keypoints put the head somewhere on nearly every sample, and
-                # a head square is a good enough box for the mouth patch. The
-                # first version of this used Haar alone and TalkNet ended up
-                # scoring a fifth of the clip.
-                hcx, hcy, hw = head
-                faces_here[tid] = (hcx - hw / 2, hcy - hw / 2,
-                                   hcx + hw / 2, hcy + hw / 2)
-            if face is not None:
-                fx1, fy1, fx2, fy2 = face
-                face_cx = ((fx1 + fx2) / 2) / w
-                tr.face_rate = 0.8 * tr.face_rate + 0.2
-                tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
-                if head is None:
+            if head is not None:
+                # Pose already told us where the head is. Running the Haar
+                # cascade on top of that was 63% of all tracking time for a
+                # position that is discarded three lines later in favour of
+                # these very keypoints. Haar stays for the case it is actually
+                # needed — below, when pose found nothing.
+                #
+                # face_rate/face_offset are deliberately NOT decayed here. They
+                # mean "how reliable is the Haar fallback", and not looking is
+                # not evidence of unreliability; decaying them would degrade
+                # the fallback for the samples where pose later drops out.
+                faces_here[tid] = head_box(head)          # square: ASD wants this
+                _update_speaking(tr, frame, mouth_region(head))  # face-shaped
+            else:
+                face = _face_box(frame, tr.box)
+                if face is not None:
+                    faces_here[tid] = face
+                    fx1, fy1, fx2, fy2 = face
+                    face_cx = ((fx1 + fx2) / 2) / w
+                    tr.face_rate = 0.8 * tr.face_rate + 0.2
+                    tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
                     tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
                     tr.head_cys.append(((fy1 + fy2) / 2) / h)
-                _update_speaking(tr, frame, face)
-            else:
-                tr.face_rate = 0.8 * tr.face_rate  # detection getting unreliable
-                tr.speak *= 0.9  # no visible face: talking evidence fades
+                    _update_speaking(tr, frame, face)
+                else:
+                    tr.face_rate = 0.8 * tr.face_rate  # detection unreliable
+                    tr.speak *= 0.9  # no visible face: talking evidence fades
             # Framing priority: pose head keypoints > face box > body center.
             if tr.head_rate > 0.3:
                 refine = tr.head_offset
