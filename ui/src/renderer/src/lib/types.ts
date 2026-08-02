@@ -243,7 +243,9 @@ export interface SystemStats {
   gpu: GpuStats | null
   /** Commit this backend PROCESS is running — not what is on disk. Python
    *  imports once, so a backend left running keeps executing the code it
-   *  started with. Empty in a packaged build, which has no git. */
+   *  started with. Deliberately NOT shown in the UI: it means nothing to
+   *  someone using the app. It is here for bug reports and for checking a
+   *  running build during development. Empty in a packaged build (no git). */
   build_sha?: string
   uptime_seconds?: number
 }
