@@ -51,15 +51,15 @@ nothing to fall back FOR. When TalkNet has no answer nobody is named and the
 crop simply stays put, which is the honest thing to do when it is not known
 who is talking.
 
-Changing subject is a CUT, never a pan (_SWITCH_CUT), and a subject holds the
-camera for _SWITCH_HOLD before another verdict can take it.
+Changing subject is a CUT, never a pan (_SWITCH_CUT). Which subject, and
+when, is planned for the whole clip up front rather than decided sample by
+sample — see _shot_plan for why an online decision was always late.
 
 Fully decoupled from clip selection: this module knows nothing about
 transcripts, scores, or uploads.
 """
 
 import threading
-from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -175,21 +175,6 @@ def _update_speaking(tr: "_Track", frame, face: tuple[int, int, int, int]) -> No
 _SYNC_WINDOW = 16        # samples (2s at 8fps): long enough to correlate,
                          # short enough to still be about *now*
 
-# The last few confident verdicts, and how many must agree.
-#
-# A running total does not work: whoever holds the camera keeps earning credit
-# whenever they speak, so the incumbent builds a reservoir the challenger
-# cannot out-accumulate. Measured on a real clip the active subject reached
-# 8.8 while the other person peaked at 4.7, and "beat them by 1.5x" was
-# therefore unreachable — the same shape of bug as the size dominance this is
-# meant to fix.
-#
-# Counting VERDICTS instead asks "of the last few times the audio was sure,
-# who was it sure about?", which does not care how long anyone has been on
-# screen and tolerates the verdicts arriving only now and then.
-_SYNC_HISTORY = 5
-_SYNC_VOTES_MIN = 3      # decide nothing until this many verdicts exist
-_SYNC_VOTES_WIN = 3      # ...and this many must name the same person
 
 
 def speech_envelope(clip_path: Path, sample_fps: float) -> "np.ndarray | None":
@@ -492,6 +477,69 @@ def _asd_speakers(clip_path: Path, samples: list, video_fps: float) -> list | No
     return out
 
 
+def _shot_plan(asd_scores: list, samples: list, env, floor: float,
+               min_shot: float) -> list:
+    """Who the camera should be on at each sample, decided for the WHOLE clip
+    at once. One entry per sample; None where nobody is known to be speaking.
+
+    This exists because the framing used to be decided online, sample by
+    sample, from a rolling vote — and an online decision is always late. The
+    clip opened on whoever was BIGGEST, because at sample zero no verdict had
+    arrived yet, and then corrected once enough votes accumulated. Watched
+    back, that is a shot that starts on the wrong person and switches
+    mid-sentence. The switch back was worse: the same lag plus a hold.
+
+    None of that latency is necessary. TalkNet has already scored every sample
+    before framing begins, so the whole timeline is known — the same thing an
+    editor has in front of them. They do not discover the speaker three beats
+    after the audience does.
+
+    Short runs are merged into their neighbour rather than being refused, so a
+    minimum shot length falls out of the plan instead of being enforced by
+    declining to switch. Refusing a switch keeps the camera on the wrong
+    person; merging moves the boundary.
+    """
+    n = len(samples)
+    if not asd_scores or n == 0:
+        return [None] * n
+
+    # 1. the raw per-sample opinion, where there is one
+    raw: list = []
+    for i, s in enumerate(samples):
+        loud = env is None or i >= len(env) or env[i] >= floor
+        raw.append(_asd_verdict(asd_scores[i], s.visible, loud))
+
+    # 2. hold the last speaker through gaps — silence between two sentences
+    #    from the same person is not a reason to go anywhere
+    held: list = []
+    current = None
+    for v in raw:
+        if v is not None:
+            current = v
+        held.append(current)
+    # and backfill the opening, so the clip starts on whoever speaks first
+    # rather than on whoever happens to be largest
+    first = next((v for v in held if v is not None), None)
+    held = [v if v is not None else first for v in held]
+    if first is None:
+        return [None] * n
+
+    # 3. merge runs shorter than a shot into whatever precedes them
+    dt = (samples[-1].t - samples[0].t) / max(1, n - 1)
+    min_len = max(1, int(round(min_shot / dt)) if dt > 0 else 1)
+    out = list(held)
+    i = 0
+    while i < n:
+        j = i
+        while j < n and out[j] == out[i]:
+            j += 1
+        if j - i < min_len and i > 0:
+            for k in range(i, j):
+                out[k] = out[i - 1]
+        i = j
+    return out
+
+
 def _asd_verdict(frame_scores: dict, visible, loud: bool) -> int | None:
     """Who TalkNet says is speaking here, or None when it is not sure.
 
@@ -618,8 +666,6 @@ def compute_tracking(
     active_id: int | None = None
     challenger_id: int | None = None
     challenger_since = 0.0
-    # The last few confident lip-sync verdicts (see _SYNC_VOTES_*).
-    recent_speakers: deque = deque(maxlen=_SYNC_HISTORY)
 
     # dead_zone becomes the distance the subject may drift before the camera
     # bothers to move; settling well inside it is what makes a move look
@@ -780,6 +826,8 @@ def compute_tracking(
     speech_floor = (
         _ASD_SPEECH * float(np.percentile(env, 90)) if env is not None else 0.0
     )
+    # Who to be on, for every sample, decided up front. See _shot_plan.
+    shots = _shot_plan(asd_scores, samples, env, speech_floor, _SWITCH_HOLD)
 
     # Track state is about to be rewound sample by sample. Everything after
     # this loop — the letterbox decision, the facecam layout, face_y — reads
@@ -803,7 +851,6 @@ def compute_tracking(
         # to know which sample is being replayed.
         tr.centers = all_centers[tid][:m.n_centers]
 
-    last_switch_t = float("-inf")   # when the camera last changed subject
 
     for s_idx, s in enumerate(samples):
         t, w, h, at_cut, visible = s.t, s.w, s.h, s.at_cut, s.visible
@@ -833,56 +880,11 @@ def compute_tracking(
                     return tr.dominance
                 return tr.dominance * (0.35 + 0.65 * (tr.speak / max_speak))
 
-            # Who is speaking? ONE detector, and when it has no answer nobody
-            # gets named — the camera simply does not change subject.
-            #
-            # There used to be a second one here: a correlation between mouth
-            # pixel movement and loudness, used whenever TalkNet could not
-            # run. That is the detector that followed the bigger person, which
-            # is the whole reason TalkNet was brought in. Keeping it as a
-            # fallback meant the broken behaviour could still happen, silently,
-            # on any clip that took the other branch — two detectors, two sets
-            # of bugs, and no way to tell from the output which one had
-            # decided. The weights ship with the app, so the fallback was
-            # dead weight that could only do harm.
-            #
-            # No verdict is not a problem to route around. It means the crop
-            # stays where it is, which is the right thing to do when nobody
-            # knows who is talking.
-            speaker = None
-            if asd_scores is not None:
-                speaker = _asd_verdict(
-                    asd_scores[s_idx], visible,
-                    loud=(env is None or s_idx >= len(env)
-                          or env[s_idx] >= speech_floor),
-                )
-
-            # Keep the last few VERDICTS, not a running total.
-            #
-            # Totals do not work here. Whoever holds the camera keeps earning
-            # credit whenever they speak, so the incumbent builds a reservoir
-            # the challenger cannot out-accumulate: measured on this clip the
-            # active subject reached 8.8 while the other person peaked at 4.7,
-            # and a "beat them by 1.5x" rule made the switch arithmetically
-            # impossible — the same shape of bug as the size dominance this
-            # was meant to fix.
-            #
-            # A short verdict history asks the right question instead: of the
-            # last few times the audio was sure, who was it sure about? That
-            # is unaffected by how long either person has been on screen, and
-            # it tolerates the verdicts being sparse, because it counts
-            # verdicts rather than seconds.
-            if speaker is not None:
-                recent_speakers.append(speaker)
-
-            best_voice = None
-            if len(recent_speakers) >= _SYNC_VOTES_MIN:
-                counts: dict[int, int] = {}
-                for tid in recent_speakers:
-                    counts[tid] = counts.get(tid, 0) + 1
-                leader = max(counts, key=lambda k: counts[k])
-                if counts[leader] >= _SYNC_VOTES_WIN and leader in visible:
-                    best_voice = leader
+            # Who the shot plan says to be on here, if it says anything. The
+            # plan was built from the whole clip before this loop started, so
+            # there is no lag to make up and no opening guess to correct —
+            # see _shot_plan.
+            best_voice = shots[s_idx] if shots[s_idx] in visible else None
 
             top = max(visible, key=_score)
             active_gone = (
@@ -891,24 +893,21 @@ def compute_tracking(
                 or (active_id not in visible and t - tracks[active_id].last_t > 1.0)
             )
             if active_gone:
-                # Nobody to keep. Prefer whoever has been talking; otherwise
-                # the most prominent person, which is all there is to go on.
+                # Nobody to keep. Prefer whoever the plan says is talking;
+                # otherwise the most prominent person, which is all there is
+                # to go on. On the first sample the plan already knows who
+                # speaks first, so this no longer opens on the biggest person.
                 active_id, challenger_id = (best_voice or top), None
-            elif (best_voice is not None and best_voice != active_id
-                  and t - last_switch_t >= _SWITCH_HOLD):
-                # The speaker OVERRIDES size. This is the fix: the old rule
-                # multiplied talking BY prominence, so a person 1.4x wider on
-                # screen could not be interrupted however much the other one
-                # talked. Measured on real footage the smaller person won most
-                # of the confidently-synced windows and could never have won.
+            elif best_voice is not None and best_voice != active_id:
+                # The speaker OVERRIDES size. The old rule multiplied talking
+                # BY prominence, so a person 1.4x wider on screen could not be
+                # interrupted however much the other one talked.
                 #
-                # _SWITCH_HOLD is what stops it becoming the opposite problem.
-                # Two people in a back-and-forth trade the verdict every second
-                # or so, and honouring every trade reads as the camera flicking
-                # between them — which is what a viewer notices first. A real
-                # editor lets a shot sit. See the constant.
+                # No hold is needed here any more: the plan has already merged
+                # runs shorter than _SWITCH_HOLD, so a switch that reaches this
+                # point is one that lasts. Holding on top of that only kept the
+                # camera on the wrong person.
                 active_id, challenger_id = best_voice, None
-                last_switch_t = t
             elif best_voice is not None:
                 challenger_id = None  # the person we are on is the one talking
             elif top != active_id and _score(top) > switch_margin * _score(active_id):
@@ -919,7 +918,6 @@ def compute_tracking(
                     challenger_id, challenger_since = top, t
                 elif t - challenger_since >= switch_seconds:
                     active_id, challenger_id = top, None  # sustained takeover
-                    last_switch_t = t
             else:
                 challenger_id = None
 
@@ -979,12 +977,22 @@ def compute_tracking(
                     )
                     and tracks[tid].box[4] >= 0.6  # confidently a person
                 ]
+                # Two people sitting apart is NOT a reason to letterbox.
+                #
+                # It used to be: if they were spread wider than a 9:16 window
+                # for most of the clip, the whole thing became a letterbox
+                # holding both. On real footage that meant a crop 72% of the
+                # source width, shown as a 1080x636 strip — 67% of the screen
+                # blurred, both people small, and the space between them
+                # occupying the middle of the shot. It framed neither of them.
+                #
+                # That rule was written when the camera could not tell who was
+                # talking, so showing everyone was the safe answer. It can tell
+                # now. Two people spread wide is the case for CUTTING between
+                # them, which is what the footage itself does and what the
+                # vertical format is for.
                 is_wide = False
-                if len(subjects) >= 2:
-                    x_left = min(b[0] for b in subjects) / w
-                    x_right = max(b[2] for b in subjects) / w
-                    is_wide = (x_right - x_left) > crop_frac * 1.3  # can't fit both
-                elif len(subjects) == 1:
+                if len(subjects) == 1:
                     b = subjects[0]
                     bw, bh = b[2] - b[0], b[3] - b[1]
                     # Letterbox a SINGLE person only when they are clearly lying
