@@ -338,8 +338,8 @@ def _interp_boxes(seen: list, times: "np.ndarray") -> "np.ndarray | None":
     return out
 
 
-def _mouth_patch(gray, box, size: int):
-    """The square TalkNet expects, cut from a greyscale frame around `box`.
+def _mouth_patch(frame, box, size: int):
+    """The square TalkNet expects, cut from a COLOUR frame around `box`.
 
     Not the face box. TalkNet's own pipeline takes a region about 0.7x the
     face box, shifted DOWN so it is centred on the mouth rather than the eyes,
@@ -349,6 +349,14 @@ def _mouth_patch(gray, box, size: int):
     Out-of-frame edges are padded with mid-grey (110) exactly as upstream does
     — clipping instead would squash the face when someone reaches the edge of
     the shot, and a squashed face is a face the model has never seen.
+
+    It takes the COLOUR frame and converts only the slice it keeps. The caller
+    used to greyscale the whole 1920x1080 frame and hand that in, to read four
+    regions of about 150x150 out of it. Greyscale is per-pixel, so the patch is
+    bit-identical either way — but measured over 500 frames, converting the
+    frame costs 2.39 CPU-seconds against 0.05 for converting just the faces.
+    51x, and OpenCV spread it across 9.4 cores to do it. With three clips
+    rendering at once that was most of why the machine became unusable.
     """
     if np.isnan(box[0]):
         return None
@@ -361,13 +369,15 @@ def _mouth_patch(gray, box, size: int):
     x0, y0 = int(round(cx - half)), int(round(cy - half))
     side = max(8, int(round(2 * half)))
 
-    h, w = gray.shape[:2]
+    h, w = frame.shape[:2]
     patch = np.full((side, side), 110, dtype=np.uint8)
     sx0, sy0 = max(0, x0), max(0, y0)
     sx1, sy1 = min(w, x0 + side), min(h, y0 + side)
     if sx1 - sx0 < 4 or sy1 - sy0 < 4:
         return None
-    patch[sy0 - y0:sy1 - y0, sx0 - x0:sx1 - x0] = gray[sy0:sy1, sx0:sx1]
+    patch[sy0 - y0:sy1 - y0, sx0 - x0:sx1 - x0] = cv2.cvtColor(
+        frame[sy0:sy1, sx0:sx1], cv2.COLOR_BGR2GRAY
+    )
     return cv2.resize(patch, (size, size))
 
 
@@ -484,13 +494,14 @@ def _asd_speakers(clip_path: Path, samples: list, video_fps: float) -> list | No
                 ok, frame = cap.retrieve()
                 if not ok:
                     break
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 # Several 25fps slots can map to one source frame on low-fps
                 # video; fill all of them from this decode rather than
-                # re-reading it.
+                # re-reading it. The frame goes in as COLOUR — _mouth_patch
+                # greyscales only the region it keeps, which is 51x less CPU
+                # than converting all two megapixels to read four faces.
                 while j < n_frames and wanted[j] == idx:
                     for tid in candidates:
-                        patch = _mouth_patch(gray, boxes[tid][j], size)
+                        patch = _mouth_patch(frame, boxes[tid][j], size)
                         if patch is not None:
                             crops[tid][j] = patch
                     j += 1

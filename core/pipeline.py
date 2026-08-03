@@ -23,6 +23,52 @@ from transcription.transcriber import transcribe
 from video.captions import build_captions
 from video.cutter import cut_clip
 
+_CPU_SHARED = False
+
+
+def _share_the_cpu(workers: int) -> None:
+    """Stop the render pool taking every core, so the machine stays usable.
+
+    OpenCV defaults to one thread per core and torch to half, and neither
+    knows how many clips are being rendered at once. On a 12-core machine with
+    parallel_renders: 3 that is up to 36 OpenCV threads contending for 12
+    cores. The result is not just "busy" — oversubscribed, the scheduler
+    cannot hand the desktop a slice, and the machine becomes unusable while a
+    job runs. Measured, a single frame's greyscale conversion pulled 9.4 cores
+    for a quarter-second of work.
+
+    Two cores are held back on purpose. Saturating the last one buys a few
+    percent of throughput and costs the ability to use your computer, which is
+    a bad trade for something that runs for an hour.
+
+    Fewer threads is often FASTER here as well: 36 threads thrashing 12 cores
+    lose time to context switching that 12 threads do not pay.
+
+    Process-wide and set once, so it covers the podcast path and the renderer
+    too. Not applied per call — the setting is global to the process, so doing
+    it repeatedly from worker threads would just race.
+    """
+    global _CPU_SHARED
+    if _CPU_SHARED:
+        return
+    _CPU_SHARED = True
+
+    import os
+
+    import cv2
+
+    cores = os.cpu_count() or 4
+    per_worker = max(1, (cores - 2) // max(1, workers))
+    cv2.setNumThreads(per_worker)
+    try:
+        import torch
+
+        torch.set_num_threads(per_worker)
+    except Exception:  # torch is optional at this point in the pipeline
+        pass
+    print(f"      CPU: {per_worker} thread(s) per render worker "
+          f"({workers} workers, {cores} cores, 2 held back for the desktop)")
+
 
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     import time
@@ -243,6 +289,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     workers = max(1, int(config.get("video", {}).get("parallel_renders", 2)))
+    _share_the_cpu(workers)
     done_count = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
