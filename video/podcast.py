@@ -64,6 +64,49 @@ _TALK_FLOOR = 0.004   # mouth-motion below this means nobody is visibly talking
 _TALK_MARGIN = 1.4    # the talker must beat the runner-up by this factor
 
 
+def _talknet_focus(clip_path: Path, cands: list, video_fps: float):
+    """The candidate TalkNet says is speaking most of this shot, or None.
+
+    None means "no opinion" — one candidate, no audio, no model — and the
+    caller falls back to mouth motion. It never guesses.
+
+    Scored per shot rather than once per clip because podcast resets identity
+    at every cut, so a track id means nothing outside the shot it came from.
+    Shots holding a single person skip this entirely, which is most of them in
+    a normally-edited podcast.
+    """
+    if len(cands) < 2:
+        return None
+    from video.tracker import score_faces
+
+    seen = {tid: st["boxes"] for tid, st in cands if st.get("boxes")}
+    if len(seen) < 2:
+        return None
+    span = max(t for boxes in seen.values() for t, _ in boxes)
+    try:
+        scored = score_faces(clip_path, seen, span, video_fps)
+    except Exception as e:
+        print(f"      (podcast speaker detection failed, using motion: {e})")
+        return None
+    if scored is None:
+        return None
+    candidates, scores, _ = scored
+    # Total speaking evidence across the shot; -inf marks "not on screen",
+    # which must not count as quiet.
+    best, best_score = None, None
+    for tid in candidates:
+        v = scores[tid]
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            continue
+        total = float(v.sum())
+        if best_score is None or total > best_score:
+            best, best_score = tid, total
+    if best is None:
+        return None
+    return next((kv for kv in cands if kv[0] == best), None)
+
+
 def analyze(
     clip_path: Path,
     model_name: str = "yolov8n-pose.pt",
@@ -107,13 +150,29 @@ def analyze(
         # Talk rate = mouth motion per face sighting. The shared chooser picks
         # the clear talker, else the most prominent face — always exactly ONE
         # subject, never an average of two.
-        s = pick_focus(
-            cands,
-            talk_rate=lambda kv: kv[1]["speak"] / max(len(kv[1]["face_xs"]), 1),
-            prominence=lambda kv: float(np.median(kv[1]["areas"])),
-            talk_floor=_TALK_FLOOR,
-            talk_margin=_TALK_MARGIN,
-        )[1]
+        # Who is actually SPEAKING, when there is a choice to make.
+        #
+        # pick_focus falls through to max(candidates, key=prominence) — the
+        # BIGGEST person — whenever mouth motion fails to beat the runner-up
+        # by _TALK_MARGIN. It nearly always fails: measured on real footage
+        # the speaker and the listener separate by 7% while their on-screen
+        # sizes differ by 45%. On a shot holding a 6'3" man and a 5'5" woman
+        # that is not a tiebreak, it is a rule that she never wins.
+        #
+        # TalkNet answers the actual question. It only runs where the shot
+        # holds two or more people, because with one there is nobody to
+        # choose between, and mouth motion remains the fallback for a shot it
+        # cannot answer — no audio, no model.
+        chosen = _talknet_focus(clip_path, cands, video_fps)
+        if chosen is None:
+            chosen = pick_focus(
+                cands,
+                talk_rate=lambda kv: kv[1]["speak"] / max(len(kv[1]["face_xs"]), 1),
+                prominence=lambda kv: float(np.median(kv[1]["areas"])),
+                talk_floor=_TALK_FLOOR,
+                talk_margin=_TALK_MARGIN,
+            )
+        s = chosen[1]
         # Center on the FACE positions only — a robust median, so a stray
         # body-center sample or a moment of mis-detection can't drag the crop.
         shots.append({
@@ -161,7 +220,8 @@ def analyze(
             # face_xs/face_ys hold ONLY real face/head sightings — the crop
             # centers on these. areas track prominence regardless.
             st = shot_stats.setdefault(
-                tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0}
+                tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0,
+                      "boxes": []}
             )
             head = tr.box[5] if len(tr.box) > 5 else None
             # Haar only when pose found nothing. This used to run every sample
@@ -176,6 +236,7 @@ def analyze(
                 fx1, fy1, fx2, fy2 = face
                 st["face_xs"].append(((fx1 + fx2) / 2) / w)
                 st["face_ys"].append(((fy1 + fy2) / 2) / h)
+                st["boxes"].append((t, face))   # for TalkNet, see close_shot
             st["areas"].append((x2 - x1) * (y2 - y1) / (w * h))
             if mouth is not None:
                 _update_speaking(tr, frame, mouth)
