@@ -433,6 +433,48 @@ def _asd_speakers(clip_path: Path, samples: list, video_fps: float) -> list | No
     for s in samples:
         for tid, fb in s.faces.items():
             seen_by_track.setdefault(tid, []).append((s.t, fb))
+    scored = score_faces(clip_path, seen_by_track, samples[-1].t, video_fps)
+    if scored is None:
+        return None
+    candidates, scores, n_frames = scored
+
+    # ---- back onto the caller's own sample grid ---------------------------
+    out = []
+    for s in samples:
+        j = min(n_frames - 1, int(round(s.t * asd.FPS)))
+        out.append({tid: float(scores[tid][j]) for tid in candidates
+                    if np.isfinite(scores[tid][j])})
+    return out
+
+
+def score_faces(clip_path: Path, seen_by_track: dict, duration: float,
+                video_fps: float):
+    """How strongly each tracked face is speaking, at 25fps, from TalkNet.
+
+    `seen_by_track` is {track_id: [(t, (x1, y1, x2, y2)), ...]} — where each
+    face was, whenever it was seen. Returns (candidates, scores, n_frames)
+    with `scores[tid]` an array over 25fps frames, -inf where that person was
+    not on screen, or None when the question does not arise: no model, no
+    audio, or fewer than two faces, which is the one skip worth having because
+    it is not a judgement — with one face there is nobody to choose between.
+
+    Shared by the stream tracker and the podcast path so there is ONE copy of
+    the parts that were hard to get right and are quiet when wrong: the square
+    ASD crop (proportioning it like a face changed verdicts on three of four
+    bench clips), the contested-span skip that keeps this at ~15%, and the
+    windowed scoring in asd.score_track — handed a whole clip at once the
+    model reports nobody speaking, for every frame.
+
+    The cost is getting frames to the model, not the model. Reusing boxes
+    already found and interpolating them onto a 25fps grid adds about 15% to a
+    clip; re-detecting at 25fps adds 452%. Do not "simplify" this into a
+    second detection pass.
+    """
+    from video import asd
+
+    if not asd.available() or not seen_by_track:
+        return None
+
     candidates = [t for t, v in seen_by_track.items() if len(v) >= _ASD_MIN_FACE_SAMPLES]
     if len(candidates) < 2:
         return None
@@ -445,7 +487,6 @@ def _asd_speakers(clip_path: Path, samples: list, video_fps: float) -> list | No
     if pcm is None or pcm.size < asd.AUDIO_SR // 4:
         return None
 
-    duration = samples[-1].t
     n_frames = int(duration * asd.FPS)
     if n_frames < asd.FPS:  # under a second of video: nothing to decide
         return None
@@ -528,13 +569,7 @@ def _asd_speakers(clip_path: Path, samples: list, video_fps: float) -> list | No
             s[~present[tid][a:a + len(s)]] = -np.inf
             scores[tid][a:a + len(s)] = s
 
-    # ---- back onto the tracker's own sample grid --------------------------
-    out = []
-    for s in samples:
-        j = min(n_frames - 1, int(round(s.t * asd.FPS)))
-        out.append({tid: float(scores[tid][j]) for tid in candidates
-                    if np.isfinite(scores[tid][j])})
-    return out
+    return candidates, scores, n_frames
 
 
 def _shot_plan(asd_scores: list, samples: list, env, floor: float,
