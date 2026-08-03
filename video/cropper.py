@@ -15,7 +15,6 @@ No-stretch guarantee in every mode: content keeps its aspect ratio and only
 ever gets uniformly scaled — distortion is impossible by construction.
 """
 
-import os
 import subprocess
 import threading
 from pathlib import Path
@@ -24,11 +23,7 @@ import cv2
 import numpy as np
 
 from core.binaries import ffmpeg
-from video.encoding import (
-    audio_filter_args,
-    hwaccel_input_args,
-    video_encoder_args,
-)
+from video.encoding import audio_filter_args, video_encoder_args
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
@@ -249,31 +244,7 @@ def _render_tracked(
         _run_ffmpeg_piped(cmd, ass_path, produce)
         return output_path
 
-    # ---- the whole crop, inside FFmpeg -----------------------------------
-    # Decode, crop, scale and encode in one process: no frame ever enters
-    # Python. What it replaces decoded every frame with cv2, sliced the window
-    # with numpy and pushed raw BGR back out over a pipe — for 1080p60 that is
-    # ~118 MB/s per clip, three clips at a time, to move a rectangle FFmpeg can
-    # move itself.
-    #
-    # The crop's x is driven by sendcmd with ONE COMMAND PER OUTPUT FRAME.
-    # That matters: sendcmd holds a value until the next timestamp, so
-    # emitting at the path's own 8fps would turn a continuous pan into eight
-    # visible steps a second. A command per frame reproduces exactly what the
-    # Python loop computed, frame for frame.
-    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    cap.release()
-    if n_frames > 0:
-        try:
-            return _render_tracked_in_ffmpeg(
-                clip_path, crop_path, output_path, ass_path, vf_extra,
-                normalize, fps, n_frames, src_w, src_h, crop_w,
-            )
-        except Exception as e:
-            print(f"      (in-FFmpeg crop unavailable, using the frame pipe: {e})")
-            cap = cv2.VideoCapture(str(clip_path))
-
-    # Fallback: crop in Python and pipe the frames. Correct, just costlier.
+    # Uniform scale to 1080x1920 + color filter + captions + mux audio.
     vf = "scale=1080:1920:flags=lanczos,setsar=1"
     if vf_extra:
         vf += f",{vf_extra}"
@@ -297,65 +268,6 @@ def _render_tracked(
     ]
     _run_ffmpeg_piped(cmd, ass_path, produce)
     return output_path
-
-
-def _render_tracked_in_ffmpeg(
-    clip_path: Path, crop_path: list, output_path: Path, ass_path: Path | None,
-    vf_extra: str, normalize: bool, fps: float, n_frames: int,
-    src_w: int, src_h: int, crop_w: int,
-) -> Path:
-    """Crop, scale and encode without a frame ever entering Python."""
-    import tempfile
-
-    # The command file lives beside the subtitles so ONE cwd serves both and
-    # neither needs a Windows path escaped inside a filter argument.
-    workdir = Path(ass_path).parent if ass_path is not None else output_path.parent
-    fd, name = tempfile.mkstemp(suffix=".cmd", prefix="crop_", dir=str(workdir))
-    cmd_file = Path(name)
-    try:
-        with os.fdopen(fd, "w", encoding="ascii") as fh:
-            for i in range(n_frames):
-                x0 = _crop_x(crop_path, i / fps, src_w, crop_w)
-                fh.write(f"{i / fps:.6f} crop x {x0};\n")
-
-        vf = (
-            f"sendcmd=f={cmd_file.name},"
-            f"crop=w={crop_w}:h={src_h}:x=0:y=0,"
-            "scale=1080:1920:flags=lanczos,setsar=1"
-        )
-        if vf_extra:
-            vf += f",{vf_extra}"
-        if ass_path is not None:
-            vf += f",subtitles={ass_path.name}"
-        cmd = [
-            ffmpeg(), "-y",
-            *hwaccel_input_args(),            # NVDEC: decode on the GPU
-            "-i", str(clip_path.resolve()),
-            "-map", "0:v:0", "-map", "0:a:0?",
-            "-vf", vf,
-            *video_encoder_args(),
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k",
-            *audio_filter_args(normalize),
-            "-fps_mode", "cfr",
-            "-movflags", "+faststart",
-            "-shortest",
-            str(output_path.resolve()),
-        ]
-        _run_ffmpeg(cmd, ass_path if ass_path is not None else cmd_file)
-        return output_path
-    finally:
-        cmd_file.unlink(missing_ok=True)
-
-
-def _crop_x(crop_path: list, t: float, src_w: int, crop_w: int) -> int:
-    """Left edge of the crop window at time t, clamped inside the frame.
-
-    The single definition of where the crop sits. Both render paths call it,
-    so the in-FFmpeg crop and the Python one cannot drift apart.
-    """
-    center_x = _interpolate(crop_path, t) * src_w
-    return max(0, min(src_w - crop_w, int(round(center_x - crop_w / 2))))
 
 
 def _interpolate(path: list[tuple[float, float]], t: float) -> float:
