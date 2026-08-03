@@ -106,6 +106,71 @@ def hwaccel_input_args() -> list[str]:
     return ["-hwaccel", "auto"]
 
 
+def sampled_frames(clip_path, every: int, width: int, height: int, hwaccel: bool = True):
+    """Yield every Nth frame as a BGR array, decoded on the GPU.
+
+    A generator over `(frame_index, frame)`, where frame_index counts SOURCE
+    frames — so `every=8` yields indices 0, 8, 16, ... exactly like the
+    `frame_idx % step == 0` loops it replaces.
+
+    This exists because decoding is what pins the CPU. cv2.VideoCapture has no
+    CUDA in any pip wheel, and its decoder runs a thread pool that ignores
+    cv2.setNumThreads, CAP_PROP_N_THREADS and OPENCV_FFMPEG_CAPTURE_OPTIONS —
+    all three were measured and none had any effect. Decoding a 23s 1080p60
+    clip that way cost 10.16 CPU-seconds spread over 6.2 CORES; with three
+    clips rendering at once that is most of a 12-core machine, which is why
+    the desktop became unusable during a job.
+
+    Handing the same work to FFmpeg with -hwaccel costs 0.94 CPU-seconds on
+    0.3 cores — 20x less — because NVDEC does the decode and only the frames
+    actually wanted ever cross into Python. It is slightly slower in
+    wall-clock, which is the intended trade: the GPU sits idle otherwise.
+
+    `select` does the subsampling inside FFmpeg, so the frames that are
+    skipped are never converted to BGR or copied.
+
+    hwaccel=False forces software decode — the fallback for machines without
+    NVDEC, and the switch to flip when checking whether a difference came from
+    the decoder.
+    """
+    import subprocess
+
+    import numpy as np
+
+    from core.binaries import ffmpeg
+
+    step = max(1, int(every))
+    cmd = [ffmpeg(), "-v", "error"]
+    if hwaccel:
+        cmd += hwaccel_input_args()
+    cmd += [
+        "-i", str(clip_path),
+        # Escape the comma: it separates filter arguments otherwise.
+        "-vf", f"select='not(mod(n\\,{step}))'",
+        "-vsync", "0",              # keep the selected frames, do not resample
+        "-pix_fmt", "bgr24",        # what OpenCV and the models expect
+        "-f", "rawvideo", "-",
+    ]
+    size = width * height * 3
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    try:
+        idx = 0
+        while True:
+            buf = proc.stdout.read(size)
+            if len(buf) < size:     # short read: end of stream
+                break
+            yield idx * step, np.frombuffer(buf, np.uint8).reshape(height, width, 3)
+            idx += 1
+    finally:
+        # A consumer that stops early (a cancel, an exception) must not leave
+        # FFmpeg writing into a pipe nobody reads.
+        if proc.poll() is None:
+            proc.kill()
+        if proc.stdout is not None:
+            proc.stdout.close()
+        proc.wait()
+
+
 def video_encoder_args(config: dict | None = None) -> list[str]:
     """The `-c:v ...` argument block for FFmpeg output encoding."""
     global _selected
