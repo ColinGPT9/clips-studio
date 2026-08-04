@@ -48,8 +48,10 @@ body {
 .btn-ghost {
   @apply px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-raised text-ink hover:bg-raised/70;
 }
+/* Disabled matches .btn-ghost / .btn-accent above: a field that cannot be
+   used has to look it, or "greyed out until it applies" reads as broken. */
 .input {
-  @apply bg-raised text-ink rounded-lg px-3 py-2 w-full outline-none border border-transparent focus:border-accent placeholder:text-muted/60;
+  @apply bg-raised text-ink rounded-lg px-3 py-2 w-full outline-none border border-transparent focus:border-accent placeholder:text-muted/60 disabled:opacity-40 disabled:cursor-not-allowed;
 }
 .label {
   @apply text-xs uppercase tracking-wider text-muted;

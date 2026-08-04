@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import GenerateBar from '../components/GenerateBar'
+import AddVideos from '../components/queue/AddVideos'
 import { Trash } from '../components/icons'
 import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
@@ -144,7 +144,9 @@ export default function Dashboard({
             </span>
           )}
         </div>
-        <GenerateBar />
+        {/* The same list builder as the Queue page, not a second copy: one
+            video or ten, each with its own options, started when you say so. */}
+        <AddVideos onAdded={refresh} />
         <ProcessingBar />
       </div>
 

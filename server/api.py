@@ -66,14 +66,15 @@ class JobPatch(BaseModel):
     clear: list[str] = []
 
 
-class BatchJobIn(BaseModel):
-    """Several videos at once, seeded with one set of options.
+class BatchItemIn(BaseModel):
+    """One video and the settings chosen for IT.
 
-    Per-video differences are made afterwards on the queue page. Asking for
-    ten option sets up front is a form to fill in, not a paste box, and the
-    point of the queue is to start a batch quickly and walk away."""
+    Options are per item, not per batch: the user stages a list and configures
+    each row before any of it runs, so "these three as podcasts, that one
+    longform" has to survive the trip. A batch-wide option set could not
+    express that."""
 
-    urls: list[str] = []
+    url: str
     force: bool = False
     max_clips: int | None = None
     caption_style: dict | None = None
@@ -84,6 +85,10 @@ class BatchJobIn(BaseModel):
     longform: dict | None = None
     watermark_profile_id: int | None = None
     podcast: bool | None = None
+
+
+class BatchJobIn(BaseModel):
+    items: list[BatchItemIn] = []
 
 
 class QueueMoveIn(BaseModel):
@@ -142,6 +147,17 @@ class LocalVideoIn(BaseModel):
     caption_style: dict | None = None
     long_clips: bool | None = None
     podcast: bool | None = None  # multi-cam podcast: letterbox, no subject tracking
+    # The rest of the per-video options, so an uploaded file can be set up
+    # exactly like a pasted link — the list builder offers the same switches
+    # for both, and a switch that silently did nothing on your own upload
+    # would be worse than not offering it. _process_options reads these by
+    # name, so listing them here is all that is needed.
+    longform: dict | None = None
+    watermark_profile_id: int | None = None
+    filter: str | None = None
+    min_score: int | None = None
+    max_clips: int | None = None
+    force: bool = False
 
 
 class RenderIn(BaseModel):
@@ -518,6 +534,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         payload = _process_options(body, {"url": body.url, "force": body.force})
         d = db()
         try:
+            if queue.capacity(d) <= 0:
+                raise HTTPException(
+                    409,
+                    f"the queue is full ({queue.MAX_ACTIVE} videos) — let one finish or remove one first",
+                )
             # Same video already waiting or running: with a queue the likely
             # mistake is pasting a link twice into a batch, and processing it
             # twice costs an hour and produces duplicate clips.
@@ -525,7 +546,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if existing is not None:
                 return {"job_id": None, "already_queued": True, "video_id": vid,
                         "queued_job_id": existing}
-            job_id = d.add_job("process", json.dumps(payload), video_id=vid)
+            # `identify` returns None for anything without an extractable
+            # video id (a channel page, a live URL, a typo). The column is NOT
+            # NULL, so passing None through turns a perfectly ordinary link
+            # into a 500 — the pipeline is what should report a bad URL.
+            job_id = d.add_job("process", json.dumps(payload), video_id=vid or "")
         finally:
             d.close()
         worker.notify()
@@ -616,6 +641,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         platform = body.platform if body.platform in ("youtube", "twitch", "kick") else "youtube"
         d = db()
         try:
+            if queue.capacity(d) <= 0:
+                raise HTTPException(
+                    409,
+                    f"the queue is full ({queue.MAX_ACTIVE} videos) — let one finish or remove one first",
+                )
             d.upsert_video(
                 vid, title=title, channel_name=body.channel.strip(), duration=seconds
             )
@@ -772,19 +802,19 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/jobs/batch")
     def create_jobs_batch(body: BatchJobIn):
-        """Queue several URLs at once, all seeded with the same options.
+        """Queue a staged list, each video carrying its own settings.
 
         Deliberately tolerant: one unreadable link in a list of twelve reports
         itself and the other eleven are still queued. Failing the whole batch
-        would mean re-pasting the good ones."""
+        would mean re-staging the good ones."""
         from sources.dispatch import identify
 
         created: list[dict] = []
         skipped: list[dict] = []
         d = db()
         try:
-            for raw in body.urls:
-                url = raw.strip()
+            for item in body.items:
+                url = item.url.strip()
                 if not url:
                     continue
                 # Pasting a block of text is how this box gets used, so a
@@ -802,20 +832,32 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 except Exception as e:
                     skipped.append({"url": url, "reason": "unrecognized", "detail": str(e)[:200]})
                     continue
-                if vid and not body.force:
+                if vid and not item.force:
                     if d.video_status(vid) == "done":
                         skipped.append({"url": url, "reason": "already_processed", "video_id": vid})
                         continue
                     if queue.duplicate_of(d, vid) is not None:
                         skipped.append({"url": url, "reason": "already_queued", "video_id": vid})
                         continue
-                payload = _process_options(body, {"url": url, "force": body.force})
+                # Enforced here as well as in the UI: the cap is a real limit,
+                # not a disabled button. Reported per item so the videos that
+                # do fit are still queued.
+                if queue.capacity(d) <= 0:
+                    skipped.append({"url": url, "reason": "queue_full"})
+                    continue
+                # Same builder as POST /jobs and PATCH, so this row's options
+                # get the identical clamps and filter validation.
+                try:
+                    payload = _process_options(item, {"url": url, "force": item.force})
+                except HTTPException as e:
+                    skipped.append({"url": url, "reason": "bad_option", "detail": str(e.detail)[:200]})
+                    continue
                 job_id = d.add_job("process", json.dumps(payload), video_id=vid or "")
                 created.append({"url": url, "job_id": job_id, "video_id": vid or ""})
         finally:
             d.close()
         if created:
-            worker.notify()
+            worker.notify()  # no-op while stopped; wakes it if already running
         broadcaster.publish({"type": "queue"})
         return {"created": created, "skipped": skipped}
 

@@ -272,7 +272,7 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
                     else "local file" if vid.startswith("local_") else "youtube")
             d["video"] = {"platform": plat, "channel": row["channel_name"], "status": row["status"]}
             job = db.conn.execute(
-                "SELECT status, error FROM jobs WHERE payload LIKE ? ORDER BY job_id DESC LIMIT 1",
+                "SELECT status, error FROM jobs WHERE payload LIKE ? ORDER BY id DESC LIMIT 1",
                 (f"%{vid}%",),
             ).fetchone()
             if job and job["error"]:

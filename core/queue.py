@@ -32,6 +32,15 @@ from statistics import median
 
 PAUSED_KEY = "queue_paused"
 
+# How many videos may be waiting or running at once.
+#
+# Not a safety limit: the worker processes one video at a time, so memory does
+# not grow with queue length, queued items are only SQLite rows, and prefetch
+# fetches at most one video ahead — a long queue is slow, not unstable. This is
+# a deliberate product choice to keep a batch to something a person can look at
+# and predict. Raise it freely.
+MAX_ACTIVE = 5
+
 # What a video costs to process, when there is no history to go on. Roughly an
 # hour per video is the observed order of magnitude; it is only ever used until
 # the first real completion replaces it.
@@ -48,13 +57,20 @@ LIVE = ("queued", "running")
 
 
 def is_paused(db) -> bool:
-    return db.get_flag(PAUSED_KEY, "0") == "1"
+    """Is the queue stopped?
+
+    Defaults to STOPPED when the flag has never been set. A video costs about
+    an hour, so adding one must not commit the user's evening before they have
+    looked at the list — they stage a batch, check it, and press Start. Nothing
+    in this app starts processing on its own."""
+    return db.get_flag(PAUSED_KEY, "1") == "1"
 
 
 def set_paused(db, paused: bool) -> None:
-    """Pause stops the queue CLAIMING new work; it never interrupts the video
-    already running. Killing a job halfway would throw away an hour of GPU time
-    for no reason — the user can cancel that one explicitly if they mean to."""
+    """Stopping prevents the queue from CLAIMING new work; it never interrupts
+    the video already running. Killing a job halfway would throw away an hour of
+    GPU time for no reason — the user can cancel that one explicitly if they
+    mean to. Stopping never deletes anything, and survives a restart."""
     db.set_flag(PAUSED_KEY, "1" if paused else "0")
 
 
@@ -73,6 +89,18 @@ def duplicate_of(db, video_id: str) -> int | None:
 
 def enqueue(db, type_: str, payload: dict, video_id: str = "", title: str = "") -> int:
     return db.add_job(type_, json.dumps(payload), video_id=video_id, title=title)
+
+
+def active_count(db) -> int:
+    """Videos waiting or running. Finished ones are history, not work."""
+    return db.conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running') AND type = 'process'"
+    ).fetchone()[0]
+
+
+def capacity(db) -> int:
+    """How many more videos may be added right now."""
+    return max(0, MAX_ACTIVE - active_count(db))
 
 
 # ---- ordering -------------------------------------------------------------
@@ -288,4 +316,6 @@ def snapshot(db, history_limit: int = 50) -> dict:
         "failed": _rows(db, "j.status IN ('failed','cancelled')", "j.id DESC", history_limit),
         "paused": is_paused(db),
         "estimate": estimate(db),
+        "capacity": capacity(db),
+        "max_active": MAX_ACTIVE,
     }

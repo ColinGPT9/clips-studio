@@ -1,108 +1,312 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions } from '../../lib/types'
-import { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
-import { watermarkSelection } from '../WatermarkCard'
-import { Folder } from '../icons'
+import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
+import BrandingEditor, { watermarkSelection } from '../WatermarkCard'
+import { Folder, Trash } from '../icons'
 import { t } from '../../lib/i18n'
 
+const DRAFT_KEY = 'queue-draft'
+
 const REASONS: Record<string, string> = {
-  already_processed: 'already processed — tick “Process again” to redo it',
+  already_processed: 'already processed',
   already_queued: 'already in the queue',
-  unrecognized: 'not a link Clips Studio recognises'
+  unrecognized: 'not a link Clips Studio recognises',
+  bad_option: 'a setting on this video was rejected',
+  queue_full: 'the queue is full — let one finish first'
 }
 
-/** Add several videos at once.
+/** One video being set up. Owns its own options object, so editing this
+ *  video's switches cannot reach any other. */
+interface Slot {
+  key: string
+  /** A pasted link. Empty when this slot is a local file. */
+  url: string
+  /** A file on this computer. Null when this slot is a link. */
+  path: string | null
+  /** Editable name for a local file (a link gets its title from the source). */
+  title: string
+  options: JobOptions
+  /** Why the server refused this one, kept so it can be fixed in place. */
+  error?: string
+}
+
+type ToggleKey = 'captions' | 'long_clips' | 'podcast' | 'longform' | 'watermark'
+
+/** The switches after Captions. Captions is rendered on its own so the
+ *  "Caption style" button can sit immediately beside it, where it belongs —
+ *  it configures that switch and nothing else. */
+const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] = [
+  {
+    key: 'long_clips',
+    label: '60s+',
+    hint: '(TikTok monetization)',
+    title:
+      'TikTok monetization requires videos over 1 minute. On: this video’s clips run 61-180s. Off: a natural 10-60s.'
+  },
+  {
+    key: 'longform',
+    label: 'Longform',
+    hint: '(16:9)',
+    title:
+      'Horizontal 1920x1080 outputs (YouTube, X/Twitter) using the same AI — the vertical Shorts workflow is unchanged.'
+  },
+  {
+    key: 'podcast',
+    label: 'Podcast',
+    hint: '(multi-cam)',
+    title:
+      'For multi-camera podcasts (cuts between angles, several people). Frames shot by shot: each camera shot gets one steady crop centered on whoever is talking, and cuts land directly on the speaker’s face — no panning, no split screens. Leave OFF for normal one-camera streams.'
+  },
+  {
+    key: 'watermark',
+    label: 'Watermark',
+    hint: '(branding)',
+    title:
+      'Burn your logo / channel handle into every clip of this video. Configure the branding profile below.'
+  }
+]
+
+function savedStyle(): Required<CaptionStyle> {
+  try {
+    return {
+      ...DEFAULT_CAPTION_STYLE,
+      ...JSON.parse(localStorage.getItem('generate-caption-style') ?? '{}')
+    }
+  } catch {
+    return { ...DEFAULT_CAPTION_STYLE } // a corrupt saved style must not block the list
+  }
+}
+
+/** Starting options for the first row: whatever was last used, so the usual
+ *  setup is already there. */
+function seedOptions(): JobOptions {
+  const wm = watermarkSelection()
+  const o: JobOptions = {
+    captions: localStorage.getItem('generate-captions') !== 'false',
+    caption_style: savedStyle()
+  }
+  if (localStorage.getItem('generate-long-clips') === 'true') o.long_clips = true
+  if (localStorage.getItem('generate-podcast') === 'true') o.podcast = true
+  if (localStorage.getItem('generate-longform') === 'true') {
+    o.longform = { mode: localStorage.getItem('generate-longform-mode') ?? 'short_clips' }
+  }
+  if (wm.enabled && wm.profileId) o.watermark_profile_id = wm.profileId
+  return o
+}
+
+let counter = 0
+const newKey = (): string => `s${Date.now()}-${counter++}`
+
+function emptySlot(from?: JobOptions): Slot {
+  // A new row copies the one above it: a batch usually shares most settings,
+  // and every switch is still overridable per video. Copied, not shared.
+  return { key: newKey(), url: '', path: null, title: '', options: { ...(from ?? seedOptions()) } }
+}
+
+function loadDraft(): Slot[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw.map((s: Slot) => ({ ...s, key: newKey(), error: undefined }))
+    }
+  } catch {
+    /* a corrupt draft is not worth failing over — start clean */
+  }
+  return [emptySlot()]
+}
+
+/** The generate bar: one video or ten, each with its own settings.
  *
- *  Options here seed EVERY video in the batch. Per-video differences are made
- *  afterwards on the queue row itself — asking for ten option sets up front
- *  would be a form to fill in, and the point of the queue is to start a batch
- *  quickly and walk away. */
-export default function AddVideos({ onAdded }: { onAdded: () => void }): JSX.Element {
-  const [text, setText] = useState('')
-  const [files, setFiles] = useState<string[]>([])
+ *  Nothing here touches the server until Generate. The list is local state
+ *  (plus a saved draft), so a half-built list is not a queue: earlier versions
+ *  created job rows as videos were added, which meant the queue began filling —
+ *  and under the old auto-start, running — before the user had finished
+ *  deciding. Building and committing are separate, and only Generate crosses
+ *  that line.
+ *
+ *  Every row owns its own options object, so toggling video 2 writes video 2
+ *  and nothing else. */
+export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.Element {
+  const [slots, setSlots] = useState<Slot[]>(loadDraft)
   const [channel, setChannel] = useState(localStorage.getItem('upload-channel') ?? '')
-  const [captions, setCaptions] = useState(localStorage.getItem('generate-captions') !== 'false')
-  const [longClips, setLongClips] = useState(localStorage.getItem('generate-long-clips') === 'true')
-  const [podcast, setPodcast] = useState(localStorage.getItem('generate-podcast') === 'true')
-  const [longform, setLongform] = useState(localStorage.getItem('generate-longform') === 'true')
-  const [longformMode] = useState(localStorage.getItem('generate-longform-mode') ?? 'short_clips')
-  const [watermark, setWatermark] = useState(watermarkSelection().enabled)
-  const [force, setForce] = useState(false)
+  const [openStyle, setOpenStyle] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{ added: number; skipped: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [added, setAdded] = useState<number | null>(null)
+  // Links refused only because they have been clipped before. Offered as a
+  // prompt rather than a permanent "process again" switch: it is the rare
+  // case, and a checkbox that matters once in twenty uses is clutter the
+  // other nineteen times.
+  const [alreadyDone, setAlreadyDone] = useState<Slot[]>([])
+  // Whether a batch is already under way, so this doesn't offer to start
+  // something already running. Read here rather than passed in, so it behaves
+  // the same on the Dashboard and on the Queue page.
+  const [queueRunning, setQueueRunning] = useState(false)
+  // Free slots on the server. The list can hold at most this many, so the cap
+  // is visible while building rather than a refusal after pressing Generate.
+  const [capacity, setCapacity] = useState<number | null>(null)
+  const [maxActive, setMaxActive] = useState(5)
 
-  const urls = text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-  const count = urls.length + files.length
+  useEffect(() => {
+    void api
+      .queue()
+      .then((q) => {
+        setQueueRunning(!q.paused && q.processing.length + q.queued.length > 0)
+        setCapacity(q.capacity)
+        setMaxActive(q.max_active)
+      })
+      .catch(() => undefined) // backend not up yet; Generate still works
+  }, [added])
 
-  const options = (): JobOptions => {
-    const o: JobOptions = { captions, force }
-    if (longClips) o.long_clips = true
-    if (podcast) o.podcast = true
-    if (longform) o.longform = { mode: longformMode }
-    if (watermark) {
+  // Keep the draft. Several pasted links must not die to an accidental close.
+  useEffect(() => {
+    const keep = slots.filter((s) => s.url.trim() || s.path)
+    if (keep.length > 0) localStorage.setItem(DRAFT_KEY, JSON.stringify(keep))
+    else localStorage.removeItem(DRAFT_KEY)
+  }, [slots])
+
+  const ready = slots.filter((s) => s.url.trim() || s.path)
+  const hasFiles = ready.some((s) => s.path)
+  const wantsWatermark = slots.some((s) => s.options.watermark_profile_id)
+  const room = capacity ?? maxActive
+  const full = slots.length >= room
+
+  const patch = (key: string, change: Partial<Slot>): void =>
+    setSlots((prev) => prev.map((s) => (s.key === key ? { ...s, ...change, error: undefined } : s)))
+
+  /** Merge a few fields into this video's options — only used where nothing
+   *  needs removing (longform mode, caption style). */
+  const patchOptions = (key: string, change: JobOptions): void =>
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.key === key ? { ...s, options: { ...s.options, ...change }, error: undefined } : s
+      )
+    )
+
+  /** REPLACE this video's options wholesale.
+   *
+   *  Switching an option off deletes its key (an absent key is what the
+   *  pipeline reads as "default"), and a spread merge cannot express a
+   *  deletion — `{...old, ...new}` keeps `podcast: true` when `new` simply
+   *  lacks `podcast`. Merging here is why unticking a box did nothing. */
+  const replaceOptions = (key: string, options: JobOptions): void =>
+    setSlots((prev) => prev.map((s) => (s.key === key ? { ...s, options, error: undefined } : s)))
+
+  const toggle = (o: JobOptions, key: ToggleKey, on: boolean): JobOptions => {
+    const next = { ...o }
+    if (key === 'captions') next.captions = on
+    else if (key === 'long_clips') {
+      if (on) next.long_clips = true
+      else delete next.long_clips
+    } else if (key === 'podcast') {
+      if (on) next.podcast = true
+      else delete next.podcast
+    } else if (key === 'longform') {
+      if (on) next.longform = { mode: next.longform?.mode ?? 'short_clips' }
+      else delete next.longform
+    } else if (key === 'watermark') {
       const { profileId } = watermarkSelection()
-      if (profileId) o.watermark_profile_id = profileId
+      if (on && profileId) next.watermark_profile_id = profileId
+      else delete next.watermark_profile_id
     }
-    let style: Required<CaptionStyle> = { ...DEFAULT_CAPTION_STYLE }
-    try {
-      style = { ...style, ...JSON.parse(localStorage.getItem('generate-caption-style') ?? '{}') }
-    } catch {
-      /* a corrupt saved style should not stop a batch — the default is fine */
-    }
-    o.caption_style = style
-    return o
+    return next
   }
 
-  const add = async (): Promise<void> => {
-    if (count === 0) return
+  const isOn = (o: JobOptions, key: ToggleKey): boolean => {
+    if (key === 'captions') return o.captions !== false
+    if (key === 'long_clips') return Boolean(o.long_clips)
+    if (key === 'podcast') return Boolean(o.podcast)
+    if (key === 'longform') return Boolean(o.longform)
+    return Boolean(o.watermark_profile_id)
+  }
+
+  const addSlot = (): void =>
+    setSlots((prev) => [...prev, emptySlot(prev[prev.length - 1]?.options)])
+
+  const addFiles = async (): Promise<void> => {
+    const picked = await window.studio.pickVideoFiles()
+    if (!picked || picked.length === 0) return
+    setSlots((prev) => {
+      const known = new Set(prev.map((s) => s.path))
+      const base = prev[prev.length - 1]?.options
+      const fresh = picked
+        .filter((p) => !known.has(p))
+        .map((p) => ({
+          key: newKey(),
+          url: '',
+          path: p,
+          title: (p.split(/[\\/]/).pop() ?? p).replace(/\.[^.]+$/, ''),
+          options: { ...(base ?? seedOptions()) }
+        }))
+      const kept = prev.filter((s) => s.url.trim() || s.path)
+      return [...kept, ...fresh]
+    })
+  }
+
+  /** Queue everything, then — and only then — start processing.
+   *  `force` re-runs videos that were refused for having been clipped before. */
+  const generate = async (force = false, only?: Slot[]): Promise<void> => {
+    const list = only ?? ready
+    if (list.length === 0) return
     setBusy(true)
     setError(null)
-    setResult(null)
+    setAdded(null)
+    if (!force) setAlreadyDone([])
     try {
-      const opts = options()
-      const skipped: string[] = []
-      let added = 0
+      const failures = new Map<string, string>()
+      const done: Slot[] = []
+      let ok = 0
 
-      if (urls.length > 0) {
-        const res = await api.createJobsBatch(urls, opts)
-        added += res.created.length
+      const links = list.filter((s) => !s.path)
+      if (links.length > 0) {
+        const res = await api.createJobsBatch(
+          links.map((s) => ({ url: s.url.trim(), ...s.options, ...(force ? { force: true } : {}) }))
+        )
+        ok += res.created.length
         for (const s of res.skipped) {
-          skipped.push(`${s.url} — ${REASONS[s.reason] ?? s.reason}`)
+          if (s.reason === 'already_processed') {
+            const slot = links.find((l) => l.url.trim() === s.url)
+            if (slot) done.push(slot)
+          }
+          const detail = REASONS[s.reason] ?? s.reason
+          failures.set(s.url, s.detail ? `${detail}: ${s.detail}` : detail)
         }
       }
 
       // Local files go one at a time: each is remuxed or transcoded into the
-      // pipeline's layout on the way in, which is real work per file rather
-      // than a row insert.
-      for (const path of files) {
-        const base = path.split(/[\\/]/).pop() ?? path
+      // pipeline's layout on the way in, which is real work per file.
+      for (const slot of list.filter((s) => s.path)) {
         try {
           await api.addLocalVideo({
-            path,
-            title: base.replace(/\.[^.]+$/, ''),
-            channel,
-            captions,
-            captionStyle: opts.caption_style,
-            longClips,
-            podcast
+            path: slot.path as string,
+            title: slot.title,
+            channel: channel.trim(),
+            ...slot.options,
+            ...(force ? { force: true } : {})
           })
-          added += 1
+          ok += 1
         } catch (e) {
-          skipped.push(`${base} — ${e instanceof Error ? e.message : String(e)}`)
+          failures.set(slot.path as string, e instanceof Error ? e.message : String(e))
         }
       }
 
-      setResult({ added, skipped })
-      if (added > 0) {
-        setText('')
-        setFiles([])
-        onAdded()
-      }
+      // Only now does anything begin.
+      if (ok > 0 && !queueRunning) await api.resumeQueue()
+
+      setAdded(ok)
+      setAlreadyDone(done)
+      // Rejected videos stay in the list, with their reason, so they can be
+      // fixed rather than re-typed. Everything that went through is cleared.
+      const left = slots
+        .filter((s) => {
+          const id = s.path ?? s.url.trim()
+          return id !== '' && failures.has(id)
+        })
+        .map((s) => ({ ...s, error: failures.get(s.path ?? s.url.trim()) }))
+      setSlots(left.length > 0 ? left : [emptySlot()])
+      if (left.length === 0) localStorage.removeItem(DRAFT_KEY)
+      if (ok > 0) onAdded?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -110,123 +314,237 @@ export default function AddVideos({ onAdded }: { onAdded: () => void }): JSX.Ele
     }
   }
 
-  const toggle = (
-    label: string,
-    hint: string,
-    checked: boolean,
-    onChange: (v: boolean) => void,
-    title: string
-  ): JSX.Element => (
-    <label className="flex items-center gap-2 cursor-pointer text-sm" title={title}>
-      <input
-        type="checkbox"
-        className="size-4 accent-[#38BDF8]"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      {t(label)} {hint && <span className="text-muted">{t(hint)}</span>}
-    </label>
-  )
-
   return (
-    <div className="card space-y-3">
-      <div>
-        <label htmlFor="queue-urls" className="label">
-          {t('Paste video links — one per line')}
-        </label>
-        <textarea
-          id="queue-urls"
-          className="input mt-1 h-28 font-mono text-xs leading-relaxed"
-          placeholder={'https://youtube.com/watch?v=…\nhttps://twitch.tv/videos/…\nhttps://kick.com/video/…'}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </div>
+    <div className="space-y-3">
+      <div className="card space-y-2">
+        {slots.map((slot, n) => (
+          <div key={slot.key}>
+            <div className="flex gap-3 items-center flex-wrap">
+              {slot.path ? (
+                <input
+                  className="input w-72 max-w-full"
+                  aria-label={`Title for video ${n + 1}`}
+                  title={slot.path}
+                  value={slot.title}
+                  placeholder={t('Video title')}
+                  onChange={(e) => patch(slot.key, { title: e.target.value })}
+                />
+              ) : (
+                <input
+                  className="input w-72 max-w-full"
+                  placeholder={t('Paste a YouTube, Twitch, or Kick URL…')}
+                  aria-label={`Video URL ${n + 1}`}
+                  value={slot.url}
+                  onChange={(e) => patch(slot.key, { url: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && generate()}
+                />
+              )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <button
-          className="btn-ghost"
-          onClick={async () => {
-            const picked = await window.studio.pickVideoFiles()
-            if (picked && picked.length > 0) setFiles((f) => [...new Set([...f, ...picked])])
-          }}
-        >
-          <Folder className="mr-1.5" />
-          {t('Add files from this computer')}
-        </button>
-        {files.length > 0 && (
-          <>
-            <span className="text-sm text-muted">
-              {files.length} {t('file(s) selected')}
-            </span>
-            <button className="btn-ghost !px-2 !py-1" onClick={() => setFiles([])}>
-              {t('Clear')}
-            </button>
-            <div className="w-full">
-              <label className="label">{t('Creator / channel name')}</label>
-              <input
-                className="input mt-1 max-w-sm"
-                placeholder="e.g. YourChannel"
-                value={channel}
-                onChange={(e) => {
-                  setChannel(e.target.value)
-                  localStorage.setItem('upload-channel', e.target.value)
-                }}
-              />
+              <label
+                className="flex items-center gap-2 cursor-pointer text-sm shrink-0 whitespace-nowrap"
+                title="Burn captions into this video’s clips"
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[#38BDF8]"
+                  checked={slot.options.captions !== false}
+                  onChange={(e) =>
+                    replaceOptions(slot.key, toggle(slot.options, 'captions', e.target.checked))
+                  }
+                />
+                {t('Captions')}
+              </label>
+
+              {/* Immediately beside Captions: it configures that switch. */}
+              <button
+                className="btn-ghost shrink-0"
+                onClick={() => setOpenStyle(openStyle === slot.key ? null : slot.key)}
+                aria-expanded={openStyle === slot.key}
+                disabled={slot.options.captions === false}
+              >
+                {t('Caption style')} {openStyle === slot.key ? '▾' : '▸'}
+              </button>
+
+              {TOGGLES.map((tg) => (
+                <label
+                  key={tg.key}
+                  className="flex items-center gap-2 cursor-pointer text-sm shrink-0 whitespace-nowrap"
+                  title={tg.title}
+                >
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[#38BDF8]"
+                    checked={isOn(slot.options, tg.key)}
+                    onChange={(e) =>
+                      replaceOptions(slot.key, toggle(slot.options, tg.key, e.target.checked))
+                    }
+                  />
+                  {t(tg.label)} <span className="text-muted">{t(tg.hint)}</span>
+                </label>
+              ))}
+
+              {/* Always removable once it holds something. Hiding this on the
+                  last row trapped a single uploaded file: its name is not an
+                  editable URL, so with no remove button there was no way back
+                  to an empty link row. Removing the last one leaves a fresh
+                  empty row rather than nothing. */}
+              {(slots.length > 1 || slot.url.trim() || slot.path) && (
+                <button
+                  className="btn-ghost shrink-0 !px-2"
+                  title={t('Remove this video')}
+                  aria-label={t('Remove this video')}
+                  onClick={() =>
+                    setSlots((prev) => {
+                      const left = prev.filter((s) => s.key !== slot.key)
+                      return left.length > 0 ? left : [emptySlot(slot.options)]
+                    })
+                  }
+                >
+                  <Trash />
+                </button>
+              )}
             </div>
-          </>
-        )}
-      </div>
 
-      <div className="border-t border-raised/60 pt-3 space-y-2">
-        <p className="label">
-          {t('Starting settings for these videos — change any of them per video afterwards')}
-        </p>
-        <div className="flex gap-x-5 gap-y-2 flex-wrap">
-          {toggle('Captions', '', captions, setCaptions, 'Burn captions into the clips')}
-          {toggle('60s+', '(TikTok monetization)', longClips, setLongClips,
-            'TikTok monetization requires videos over 1 minute. On: clips run 61-180s.')}
-          {toggle('Podcast', '(multi-cam)', podcast, setPodcast,
-            'For multi-camera podcasts: each shot gets one steady crop on whoever is talking.')}
-          {toggle('Longform', '(16:9)', longform, setLongform,
-            'Horizontal 1920x1080 outputs using the same AI.')}
-          {toggle('Watermark', '(branding)', watermark, setWatermark,
-            'Burn your logo / channel handle into every clip.')}
-          {toggle('Process again', '', force, setForce,
-            'Queue these even if they have been processed before — new clips are added alongside the old ones.')}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 flex-wrap">
-        <button className="btn-accent" onClick={add} disabled={busy || count === 0}>
-          {busy ? t('Adding…') : `${t('Add to queue')}${count > 0 ? ` (${count})` : ''}`}
-        </button>
-        {result && (
-          <span className="text-sm">
-            <span className="text-accent">
-              {result.added} {t('added')}
-            </span>
-            {result.skipped.length > 0 && (
-              <span className="text-muted">
-                {' '}· {result.skipped.length} {t('skipped')}
-              </span>
+            {slot.options.longform && (
+              <div className="flex items-center gap-3 flex-wrap mt-2">
+                <span className="label shrink-0">{t('Longform output')}</span>
+                <select
+                  className="input !w-64"
+                  value={slot.options.longform.mode}
+                  onChange={(e) => patchOptions(slot.key, { longform: { mode: e.target.value } })}
+                  aria-label={`Longform output type for video ${n + 1}`}
+                >
+                  <option value="short_clips">Short Clips (up to 60s, horizontal)</option>
+                  <option value="clips_140">Clips (up to 140s — X/Twitter)</option>
+                  <option value="highlights">Highlights (best-of, 8-20 min by quality)</option>
+                  <option value="edited_stream">Edited Stream (downtime removed)</option>
+                </select>
+              </div>
             )}
-          </span>
-        )}
+
+            {openStyle === slot.key && slot.options.captions !== false && (
+              <div className="w-full space-y-3 border-t border-raised/60 pt-3 mt-2">
+                <p className="label">
+                  {t('Caption style for')} {slot.path ? slot.title || t('this file') : t('this video')}
+                </p>
+                <CaptionStyleControls
+                  idPrefix={`slot-${slot.key}`}
+                  style={{ ...DEFAULT_CAPTION_STYLE, ...(slot.options.caption_style ?? {}) }}
+                  onChange={(k, v) =>
+                    patchOptions(slot.key, {
+                      caption_style: {
+                        ...DEFAULT_CAPTION_STYLE,
+                        ...(slot.options.caption_style ?? {}),
+                        [k]: v
+                      }
+                    })
+                  }
+                />
+              </div>
+            )}
+
+            {slot.error && <p className="text-sm text-error mt-1">{slot.error}</p>}
+          </div>
+        ))}
+
+        <div className="flex gap-3 items-center flex-wrap pt-1">
+          <button
+            className="btn-ghost shrink-0"
+            onClick={addSlot}
+            disabled={full}
+            title={
+              full
+                ? `${t('The queue holds')} ${maxActive} ${t('videos at a time')}`
+                : t('Add another video')
+            }
+          >
+            + {t('Add video')}
+          </button>
+          <button className="btn-ghost shrink-0" onClick={addFiles} disabled={full}>
+            <Folder className="mr-1.5" />
+            {t('Upload video file')}
+          </button>
+          {/* Greyed out until there is an upload, the same way Caption style
+              is greyed out until Captions is ticked. A downloaded video takes
+              its channel from the source metadata; only a file off your
+              computer has nobody to file it under.
+
+              Shown blank while disabled: a greyed-out box still displaying the
+              last creator reads as stuck rather than inapplicable. The value
+              is remembered and returns with the next upload. */}
+          <input
+            className="input !w-44 shrink-0"
+            placeholder={t('Creator profile')}
+            aria-label="Creator profile for uploaded files"
+            disabled={!hasFiles}
+            title={
+              hasFiles
+                ? 'Files these uploads under this creator in your library and the Creators tab. Leave blank to skip.'
+                : 'For uploaded files only — a downloaded video brings its own channel name'
+            }
+            value={hasFiles ? channel : ''}
+            onChange={(e) => {
+              setChannel(e.target.value)
+              localStorage.setItem('upload-channel', e.target.value)
+            }}
+          />
+          <button
+            className="btn-accent shrink-0 ml-auto"
+            onClick={() => generate()}
+            disabled={busy || ready.length === 0}
+          >
+            {busy
+              ? t('Starting…')
+              : queueRunning
+                ? `${t('Add to queue')}${ready.length > 1 ? ` (${ready.length})` : ''}`
+                : `${t('Generate clips')}${ready.length > 1 ? ` (${ready.length})` : ''}`}
+          </button>
+        </div>
+
+        {wantsWatermark && <BrandingEditor />}
       </div>
 
-      {/* One bad link never blocks the rest of the batch — the others are
-          queued and the failures are listed so they can be fixed and re-added. */}
-      {result && result.skipped.length > 0 && (
-        <ul className="text-xs text-muted space-y-0.5 border-t border-raised/60 pt-2">
-          {result.skipped.map((s) => (
-            <li key={s} className="break-words">
-              {s}
-            </li>
-          ))}
-        </ul>
+      {full && (
+        <p className="text-xs text-muted px-1">
+          {t('The queue holds')} {maxActive} {t('videos at a time — start these, then add more when one finishes.')}
+        </p>
       )}
-      {error && <p className="text-sm text-error">{error}</p>}
+
+      {added !== null && added > 0 && (
+        <p className="text-sm text-accent px-1">
+          {added === 1
+            ? t('Started — watch the progress below.')
+            : `${added} ${t('videos queued — working through them one at a time.')}`}{' '}
+          <button
+            className="underline hover:text-ink"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-queue'))}
+          >
+            {t('View queue')}
+          </button>
+        </p>
+      )}
+      {/* Only shown when it actually happened — the common case never sees it. */}
+      {alreadyDone.length > 0 && (
+        <div className="card flex items-center gap-3 flex-wrap">
+          <p className="text-sm flex-1 min-w-64">
+            {alreadyDone.length === 1
+              ? t('That video was already processed.')
+              : `${alreadyDone.length} ${t('of those were already processed.')}`}{' '}
+            {t('Make clips again with the settings you chose? Existing clips are kept — new ones are added alongside them.')}
+          </p>
+          <button
+            className="btn-accent shrink-0"
+            disabled={busy}
+            onClick={() => generate(true, alreadyDone)}
+          >
+            {t('Process again')}
+          </button>
+          <button className="btn-ghost shrink-0" onClick={() => setAlreadyDone([])}>
+            {t('Cancel')}
+          </button>
+        </div>
+      )}
+      {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
     </div>
   )
 }

@@ -28,6 +28,7 @@ export default function Queue({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [confirming, setConfirming] = useState<string | null>(null)
   // Live progress for the running video, shared with the global bar so both
   // read the same fraction rather than each folding events their own way.
   const [live, setLive] = useState(progressStore.current)
@@ -90,6 +91,46 @@ export default function Queue({
   const eta = queueEta(snapshot, live, now)
   const confident = snapshot?.estimate.confident ?? false
 
+  /** Clearing removes rows permanently, and a full history can be a hundred
+   *  of them, so it asks first. Two-step inline rather than window.confirm —
+   *  the same idiom the Settings page already uses for deleting a video. */
+  const clearButton = (
+    what: 'completed' | 'failed' | 'queued',
+    label: string,
+    count: number
+  ): JSX.Element =>
+    confirming === what ? (
+      <span className="flex items-center gap-1.5">
+        <span className="text-xs text-muted">
+          {t('Remove')} {count}?
+        </span>
+        <button
+          className="btn-ghost !px-2 !py-1 text-xs text-error"
+          disabled={busy}
+          onClick={() => {
+            setConfirming(null)
+            void act(() => api.clearQueue(what))
+          }}
+        >
+          {t('Remove')}
+        </button>
+        <button
+          className="btn-ghost !px-2 !py-1 text-xs"
+          onClick={() => setConfirming(null)}
+        >
+          {t('Cancel')}
+        </button>
+      </span>
+    ) : (
+      <button
+        className="btn-ghost !px-2 !py-1 text-xs"
+        disabled={busy}
+        onClick={() => setConfirming(what)}
+      >
+        {t(label)}
+      </button>
+    )
+
   const section = (
     title: string,
     jobs: QueueJob[],
@@ -126,8 +167,12 @@ export default function Queue({
     )
   }
 
+  // No max-width below: the generate bar's row of per-video options needs
+  // about 1300px, and capping this page at max-w-4xl (896px) is what pushed
+  // "Watermark (branding)" onto a second line here but not on the Dashboard,
+  // which has never been capped.
   return (
-    <div className="p-6 space-y-5 max-w-4xl w-full">
+    <div className="p-6 space-y-5 w-full">
       <div className="flex items-baseline gap-3 flex-wrap">
         <h1 className="text-xl font-bold">{t('Processing queue')}</h1>
         <p className="text-sm text-muted">
@@ -135,92 +180,76 @@ export default function Queue({
         </p>
       </div>
 
-      <div className="card flex items-center gap-4 flex-wrap">
-        <div className="min-w-0">
-          <p className="text-lg font-semibold tabular-nums">
-            {remaining === 0
-              ? t('Nothing left to process')
-              : `${remaining} ${remaining === 1 ? t('video remaining') : t('videos remaining')}`}
-          </p>
-          {remaining > 0 && eta !== null && (
-            <p className="text-sm text-muted">
-              {confident ? t('About') : t('Roughly')} {formatQueueEta(eta)} {t('to go')}
-              {!confident && ` · ${t('the estimate sharpens after a few videos')}`}
+      {/* Status bar only once there is work. With an empty queue it would say
+          nothing useful and push the thing the user came here to do down the
+          page. */}
+      {remaining > 0 && (
+        <div className="card flex items-center gap-4 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-lg font-semibold tabular-nums">
+              {remaining} {remaining === 1 ? t('video remaining') : t('videos remaining')}
             </p>
-          )}
-          {paused && (
-            <p className="text-sm text-warn mt-0.5">
-              {snapshot && snapshot.processing.length > 0
-                ? t('Paused — the current video finishes, then the queue stops.')
-                : t('Paused — nothing new will start until you press Start queue.')}
-            </p>
-          )}
-        </div>
+            {eta !== null && (
+              <p className="text-sm text-muted">
+                {confident ? t('About') : t('Roughly')} {formatQueueEta(eta)} {t('to go')}
+                {!confident && ` · ${t('the estimate sharpens after a few videos')}`}
+              </p>
+            )}
+            {paused && (
+              <p className="text-sm text-warn mt-0.5">
+                {snapshot && snapshot.processing.length > 0
+                  ? t('Stopping — the current video finishes, then the queue stops.')
+                  : t('Stopped — nothing runs until you press Start queue.')}
+              </p>
+            )}
+          </div>
 
-        <div className="ml-auto flex items-center gap-2 flex-wrap">
-          <button className="btn-ghost" onClick={() => setAdding(!adding)} aria-expanded={adding}>
-            {adding ? t('Close') : t('+ Add videos')}
-          </button>
-          {paused ? (
-            <button className="btn-accent" disabled={busy} onClick={() => act(api.resumeQueue)}>
-              ▶ {t('Start queue')}
+          <div className="ml-auto flex items-center gap-2 flex-wrap">
+            <button className="btn-ghost" onClick={() => setAdding(!adding)} aria-expanded={adding}>
+              {adding ? t('Close') : t('+ Add videos')}
             </button>
-          ) : (
-            <button
-              className="btn-ghost"
-              disabled={busy || remaining === 0}
-              onClick={() => act(api.pauseQueue)}
-              title={t('Finish the current video, then stop. The queue is kept.')}
-            >
-              ⏸ {t('Pause queue')}
-            </button>
-          )}
+            {paused ? (
+              <button
+                className="btn-accent"
+                disabled={busy}
+                onClick={() => act(api.resumeQueue)}
+                title={t('Start working through the queue, one video at a time.')}
+              >
+                ▶ {t('Start queue')}
+              </button>
+            ) : (
+              <button
+                className="btn-ghost"
+                disabled={busy}
+                onClick={() => act(api.pauseQueue)}
+                title={t('Finish the current video, then stop. The queue is kept.')}
+              >
+                ⏹ {t('Stop queue')}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {adding && <AddVideos onAdded={refresh} />}
+      {/* Nothing queued: building the list IS the page. */}
+      {(remaining === 0 || adding) && <AddVideos onAdded={refresh} />}
       {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
 
       {snapshot && (
         <>
-          {section('Processing', snapshot.processing, {
-            empty: paused ? 'Nothing is running.' : 'Nothing is running right now.'
-          })}
+          {section('Processing', snapshot.processing)}
           {section('Up next', snapshot.queued, {
             numbered: true,
-            empty: 'Nothing waiting. Add videos above to queue a batch.',
             action:
-              snapshot.queued.length > 0 ? (
-                <button
-                  className="btn-ghost !px-2 !py-1 text-xs"
-                  disabled={busy}
-                  onClick={() => act(() => api.clearQueue('queued'))}
-                >
-                  {t('Clear waiting')}
-                </button>
-              ) : undefined
+              snapshot.queued.length > 0
+                ? clearButton('queued', 'Clear waiting', snapshot.queued.length)
+                : undefined
           })}
           {section('Failed', snapshot.failed, {
-            action: (
-              <button
-                className="btn-ghost !px-2 !py-1 text-xs"
-                disabled={busy}
-                onClick={() => act(() => api.clearQueue('failed'))}
-              >
-                {t('Clear failed')}
-              </button>
-            )
+            action: clearButton('failed', 'Clear failed', snapshot.failed.length)
           })}
           {section('Completed', snapshot.completed, {
-            action: (
-              <button
-                className="btn-ghost !px-2 !py-1 text-xs"
-                disabled={busy}
-                onClick={() => act(() => api.clearQueue('completed'))}
-              >
-                {t('Clear completed')}
-              </button>
-            )
+            action: clearButton('completed', 'Clear completed', snapshot.completed.length)
           })}
         </>
       )}

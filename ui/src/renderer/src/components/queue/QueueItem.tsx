@@ -148,6 +148,15 @@ export default function QueueItem({
           )}
 
           {open && waiting && <QueueItemSettings job={job} onSaved={onChanged} />}
+          {/* The running video's settings are visible but not editable.
+              Showing nothing at all read as a missing feature; the truth is
+              that changing them mid-run would render some of this video's
+              clips one way and the rest another. */}
+          {running && (
+            <p className="text-xs text-muted mt-1.5">
+              {t('Settings are locked while this video processes.')}
+            </p>
+          )}
           {error && <p className="text-sm text-error mt-1">{error}</p>}
         </div>
 
@@ -183,12 +192,12 @@ export default function QueueItem({
               </button>
               {job.type === 'process' && (
                 <button
-                  className="btn-ghost !px-2 !py-1"
+                  className="btn-ghost !px-2 !py-1 text-xs"
                   aria-expanded={open}
-                  title={t('Settings for this video')}
+                  title={t('Change this video’s settings')}
                   onClick={() => setOpen(!open)}
                 >
-                  ⚙
+                  {t('Settings')} {open ? '▾' : '▸'}
                 </button>
               )}
             </>

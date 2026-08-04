@@ -86,16 +86,9 @@ export const api = {
         podcast: opts?.podcast ?? null
       })
     }),
-  addLocalVideo: (opts: {
-    path: string
-    title?: string
-    channel?: string
-    platform?: string
-    captions?: boolean
-    captionStyle?: CaptionStyle
-    longClips?: boolean
-    podcast?: boolean
-  }) =>
+  /** Import a file from this computer and queue it. Takes the same options as
+   *  a pasted link, so an upload can be set up exactly like a download. */
+  addLocalVideo: (opts: { path: string; title?: string; channel?: string; platform?: string } & JobOptions) =>
     request<{ job_id: number; video_id: string }>('/videos/local', {
       method: 'POST',
       body: JSON.stringify({
@@ -104,9 +97,15 @@ export const api = {
         channel: opts.channel ?? '',
         platform: opts.platform ?? 'youtube',
         captions: opts.captions ?? null,
-        caption_style: opts.captionStyle ?? null,
-        long_clips: opts.longClips ?? null,
-        podcast: opts.podcast ?? null
+        caption_style: opts.caption_style ?? null,
+        long_clips: opts.long_clips ?? null,
+        podcast: opts.podcast ?? null,
+        longform: opts.longform ?? null,
+        watermark_profile_id: opts.watermark_profile_id ?? null,
+        filter: opts.filter ?? null,
+        min_score: opts.min_score ?? null,
+        max_clips: opts.max_clips ?? null,
+        force: opts.force ?? false
       })
     }),
   jobs: () => request<Job[]>('/jobs'),
@@ -137,13 +136,15 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(patch)
     }),
-  createJobsBatch: (urls: string[], opts?: JobOptions) =>
+  /** Queue a staged list. Each item carries its OWN settings — that is the
+   *  point of staging, so there is no batch-wide option set here. */
+  createJobsBatch: (items: ({ url: string } & JobOptions)[]) =>
     request<{
       created: { url: string; job_id: number; video_id: string }[]
       skipped: { url: string; reason: string; detail?: string; video_id?: string }[]
     }>('/jobs/batch', {
       method: 'POST',
-      body: JSON.stringify({ urls, ...(opts ?? {}) })
+      body: JSON.stringify({ items })
     }),
   jobLog: (jobId: number, tail = 300) =>
     request<{ log: string; missing: boolean }>(`/jobs/${jobId}/log?tail=${tail}`),

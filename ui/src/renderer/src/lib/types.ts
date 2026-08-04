@@ -253,6 +253,10 @@ export interface QueueSnapshot {
   failed: QueueJob[]
   paused: boolean
   estimate: QueueEstimate
+  /** How many more videos may be queued right now. */
+  capacity: number
+  /** The cap on waiting + running videos (core/queue.py MAX_ACTIVE). */
+  max_active: number
 }
 
 export interface InstalledModel {
