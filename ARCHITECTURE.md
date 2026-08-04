@@ -95,6 +95,7 @@ clips-studio/
 │   ├── models.py               # dataclasses shared between stages
 │   ├── progress.py             # stage events → WebSocket
 │   ├── cancel.py               # cooperative cancellation flags
+│   ├── queue.py                # queue manager: order, pause, retry, estimate
 │   ├── prefetch.py             # download-ahead for queued jobs
 │   ├── housekeeping.py         # disk reclamation
 │   └── scheduler.py            # (dormant) poll loop and upload scheduling
@@ -128,6 +129,7 @@ clips-studio/
 │   └── models.py               # knowledge types, thresholds
 ├── video/                      # ── rendering ──
 │   ├── tracker.py              # YOLOv8 pose tracking, speaker-aware
+│   ├── asd.py                  # TalkNet active-speaker detection
 │   ├── framing.py              # crop-path smoothing and shot logic
 │   ├── podcast.py              # multi-cam shot detection, per-shot framing
 │   ├── cropper.py              # 9:16 render
@@ -165,6 +167,8 @@ clips-studio/
 │   ├── events.py               # WebSocket broadcasting
 │   └── feedback.py             # in-app bug reports + diagnostics
 ├── publish/                    # (dormant) YouTube Data API upload
+├── third_party/talknet/        # vendored TalkNet-ASD — do not edit
+├── models/                     # TalkNet weights (pretrain_TalkSet.model)
 ├── ui/                         # ── desktop app ──
 │   ├── src/main/               # Electron main process
 │   └── src/renderer/           # React + TypeScript + Tailwind
@@ -189,7 +193,7 @@ stage instead of redoing — or re-uploading — completed work.
 | 5 | render + captions → disk | `data/clips/{id}/clip_{n}.mp4` | `rendered` |
 | 6 | `analysis/metadata` ↔ LLM | title, description, hashtags | `done` |
 
-Two stages deliberately run **concurrently** with others to keep the GPU busy:
+Three things deliberately run **concurrently** with others to keep the GPU busy:
 
 - **Signal extraction** (audio + visual features) needs no transcript, so it runs in a
   background thread *during* transcription — FFmpeg and numpy work while Whisper holds
@@ -197,9 +201,34 @@ Two stages deliberately run **concurrently** with others to keep the GPU busy:
 - **Creator knowledge extraction** runs during the render stage, when Ollama is
   otherwise idle. It never affects the current video's clips; it only informs future
   ones.
+- **Download prefetch** (`core/prefetch.py`) fetches the *next* queued video while the
+  current one is being processed — pure network against CPU/GPU work, so they overlap
+  perfectly. One slot only, so disk and bandwidth stay bounded, and best-effort: any
+  failure is ignored and the job downloads normally. A job waits for a prefetch of its
+  own video before starting, but **with a timeout** — a bare join meant one stalled
+  download wedged the single worker thread and silently stopped the whole queue.
 
 Cancellation is cooperative: `core/cancel.py` sets a flag that every long stage checks
-at safe points, so a cancelled job stops promptly without corrupting state.
+at safe points, so a cancelled job stops promptly without corrupting state. FFmpeg
+renders already in flight are the exception — no process handle is retained, so a cancel
+lands at the next clip boundary rather than instantly.
+
+### 3.1 Where the time goes
+
+Processing is dominated by decoding frames and by moving them between FFmpeg, OpenCV and
+the models — not by the models themselves. Three decisions follow from that, all
+measured rather than assumed:
+
+- **Frames are read through FFmpeg with `-hwaccel`, not `cv2.VideoCapture`.** A sampling
+  pass that cost ~10 CPU-seconds across 6.2 cores costs ~0.9 across 0.3 this way. The
+  same reader is used for rendering.
+- **Slow-decoding sources are converted once, up front.** AV1, VP9 and HEVC decode in
+  software and every later stage decodes the file again; one H.264 conversion at the
+  start is cheaper than paying that per clip. YouTube downloads prefer H.264 for the same
+  reason — AV1 roughly doubled processing time.
+- **CPU is divided deliberately.** `_share_the_cpu()` splits cores across render workers
+  and holds two back, so detection, rendering and the interface don't fight. It latches
+  on the first video of a process run.
 
 ---
 
@@ -338,22 +367,56 @@ knows nothing about transcripts, scores, or publishing.
 1. **Sample** frames at `tracking.sample_fps` — subjects don't teleport between samples.
 2. **Detect** with a YOLOv8 **pose** model. Head keypoints (nose, eyes, ears) give
    head-priority framing even when no face is cleanly visible, which plain person boxes
-   can't do.
+   can't do. The Haar cascade is only run when pose found no head — pose succeeds about
+   78% of the time, and the cascade was 63% of the tracking pass's cost.
 3. **Select the subject** per frame by confidence × box area × persistence with the
    previous choice, so tracking stays locked on the streamer when guests or bystanders
    appear.
-4. **Speaker awareness** — in multi-person footage, mouth movement decides who the
-   camera follows.
+4. **Speaker awareness** — see §5.1.
 5. **Smooth** (`video/framing.py`) with an exponential moving average, a dead zone that
    ignores movements under a few percent of frame width, and a maximum pan speed. This
    is what removes jitter and the "drunk camera" effect.
 6. **Fall back** to a static centre crop when there are no detections.
 
-**Podcast mode** (`video/podcast.py`) is a separate path for multi-camera footage. It
-detects hard cuts on a sample grid, then frames each shot independently — one steady
-crop per shot, centred on whoever is talking in it — so cuts land directly on a face
-with no panning and no split screens. It is opt-in, because applying it to
-single-camera footage would be strictly worse.
+### 5.1 Who the camera follows
+
+**TalkNet active-speaker detection** (`video/asd.py`, model vendored in
+`third_party/talknet/`) decides this, and it is the *only* thing that decides it. It
+scores a face crop against the audio at 25fps, so it answers "is this person speaking"
+rather than "is this person moving".
+
+Mouth-region pixel movement is still measured, but **only as a prominence tiebreak, and
+it must never be used as a speaker detector again**: it measures movement, and two
+people in a lively room move about equally, so it reliably picks whoever is *bigger*.
+That was the bug it replaced.
+
+Cost is in getting frames to the model, not the model. Two things keep it affordable,
+both measured on an RTX 3060 and both easy to "simplify" into a 452% regression:
+
+- Boxes already found by the tracker are reused and interpolated onto TalkNet's 25fps
+  grid. Re-detecting at 25fps instead costs +452%; reusing costs about +15%.
+- Only **contested spans** are scored — stretches where two or more tracked faces are on
+  screen at once. When one person is alone there is nothing to decide.
+- Scoring is windowed (1/2/4/6s). Handed a whole clip at once the model reports nobody
+  speaking, for every frame.
+
+The ASD crop is **square on purpose**; proportioning it like a face changed the speaker
+verdict on three of four bench clips.
+
+When the speaker changes, the framing **cuts** — it does not pan across. Panning between
+two people reads as a camera hunting for someone; cutting is what a human editor does.
+Two people talking are cut between rather than held in one zoomed-out shot.
+
+If the weights are absent or scoring fails, the render falls back to motion-based
+prominence rather than failing — a bad clip must never fail a render.
+
+**Podcast mode** (`video/podcast.py`) is a separate, opt-in path for multi-camera
+footage. It detects hard cuts on a sample grid, then frames each shot independently —
+one steady static crop per shot, punched in tight on **one** person and snapping at each
+cut, so cuts land directly on a face with no panning and no split screens. Within a
+shot the subject is chosen by mouth-motion talk rate, falling back to the most prominent
+face; it does **not** use TalkNet (that was tried and reverted). Applying this path to
+single-camera footage would be strictly worse, hence opt-in.
 
 **The output contract is non-negotiable**: crop windows are exactly 9:16, only
 repositioned and never reshaped, then uniformly scaled to 1080×1920. Distortion is
@@ -456,6 +519,15 @@ pipeline; it does not fork its logic.
 ```
 POST   /jobs                      queue a video (URL or local file)
 GET    /jobs                      queue state
+POST   /jobs/batch                queue several links at once
+PATCH  /jobs/{id}                 change one WAITING video's settings
+DELETE /jobs/{id}                 drop a waiting job
+POST   /jobs/{id}/move            reorder ({delta} or {to: top|bottom})
+POST   /jobs/{id}/retry           re-queue a failed video, same settings
+GET    /jobs/{id}/log             that run's log file
+GET    /queue                     grouped queue + pause state + estimate
+POST   /queue/pause  /queue/resume  stop/start claiming new work
+POST   /queue/clear               clear completed | failed | queued | all
 POST   /cancel                    cancel the running job
 WS     /ws                        live stage/progress events
 GET    /videos                    processed videos
@@ -486,12 +558,70 @@ Integration mechanics:
 
 - **One worker thread** processes jobs sequentially — GPU and CPU contention make
   parallel video jobs pointless on consumer hardware. The queue lives in SQLite so it
-  survives restarts, and jobs left running by a crash are recovered to a failed state
-  on startup rather than appearing stuck forever.
+  survives restarts. Jobs left `running` by a crash are re-queued and flagged
+  `interrupted`; it is *videos* left mid-pipeline that are marked failed
+  (`recover_stuck_videos`), so nothing appears stuck forever.
 - Pipeline stages emit progress callbacks that broadcast over the WebSocket, so the UI
   can show real stage progress and a time estimate.
 - Electron spawns the backend as a child process, health-checks `GET /health`, and
   kills it on exit. In development they run separately.
+
+### 10.1 The processing queue
+
+A video takes about an hour, so the queue exists to let someone start a batch and walk
+away. It is an orchestration layer around the pipeline, not a second copy of it:
+
+```
+Queue Manager (core/queue.py)
+    -> Queue Item             a `jobs` row
+    -> Processing Config      jobs.payload, a JSON snapshot
+    -> Video Pipeline         core.pipeline.process_video
+    -> Result / Error         job status + error + data/logs/job_N.log
+```
+
+`core/queue.py` knows only about a `StateDB` — no FastAPI, no React. The API translates
+HTTP to those calls and the worker asks it whether it may claim work, so queue rules
+never leak into either end.
+
+Rules worth knowing before changing this:
+
+- **Order is `position`, not `id`.** The user can promote a video past ones queued
+  earlier, so insertion order stopped being run order. Reordering swaps two positions
+  rather than reindexing: two writes, nothing to corrupt if the worker claims a job at
+  the same moment. `id` breaks ties. Do **not** add a `UNIQUE` index on `position` — it
+  would make the swap fail halfway.
+- **Each job owns its settings.** `jobs.payload` is a snapshot taken at enqueue, so ten
+  queued videos can each have their own captions / 60s+ / longform / podcast / watermark
+  choices. It is editable only while a job is `queued`: a configuration that changed
+  mid-run would render some of a video's clips one way and the rest another. The worker
+  **always deep-copies the config** before applying a payload — it holds one config dict
+  for the process lifetime, so any mutation would otherwise outlive the job that made it
+  and land on a later video.
+- **Pause is durable and non-destructive.** It lives in `app_state`, so stopping the
+  queue survives a restart, and it only stops *claiming* — the running video finishes
+  rather than throwing away an hour of GPU work. Prefetch is gated on it too, so a
+  paused queue stops using bandwidth and disk as well.
+- **Retry reuses the row**, sending it to the back of the queue with its settings intact.
+  The queue is a work list, not a ledger: a retried video should appear once, waiting,
+  not as a failure sitting beside its own retry. `attempts` keeps the count, and the log
+  file is keyed by job id so a second attempt appends to the same file.
+- **A failure is contained.** One bad video is marked failed with its error and the loop
+  moves on; a batch left running overnight must not stop at the first dead link.
+- **Short jobs jump the queue.** Re-renders and translations are seconds-to-minutes of
+  work the user is sitting and waiting for, so they take the front of the waiting jobs.
+  They cannot starve video processing: each is finite and only exists because someone
+  clicked something.
+- **Estimates come from measured runs.** `videos.duration` and `videos.process_seconds`
+  give a processing-seconds-per-source-second ratio, so a 6-hour VOD is not predicted to
+  cost the same as a 20-minute upload. Below three samples the API reports
+  `confident: false` and the UI softens its wording rather than inventing a number.
+- **There is no model manager, deliberately.** YOLO and TalkNet load once per process and
+  are never unloaded (`video/tracker.py`, `video/asd.py`), Whisper is reloaded per video
+  by faster-whisper itself, and Ollama is out of process. Reuse across queue items is
+  already the behaviour; a manager would add a lifecycle nothing asked for.
+- **Per-run logs.** The in-memory ring holds 400 lines, which is minutes — no use for a
+  batch that failed at 3am. Each job tees output to `data/logs/job_N.log`; the worker
+  keeps the most recent 50 and prunes after every job.
 
 ---
 
@@ -501,8 +631,9 @@ Integration mechanics:
 or the filesystem directly — context isolation on, no node integration, everything
 through the local API.
 
-Pages: **Dashboard** (system widgets, processed videos, live log), **Clip Studio** (the
-core loop: paste a link, watch progress, review the results grid, open the editor),
+Pages: **Dashboard** (system widgets, processed videos, live log), **Queue** (batch
+add, per-video settings, reorder/pause/retry, queue-wide time estimate), **Clip Studio**
+(the core loop: paste a link, watch progress, review the results grid, open the editor),
 **Creators**, **Models**, and **Settings**.
 
 ### Visual theme
@@ -531,7 +662,13 @@ support, adjustable font and text size, and colour choices checked for contrast.
 SQLite (`core/state.py`) is the single source of truth. Principal tables: `videos`,
 `clips`, `rejections` (why a candidate was dropped — auditable), `jobs`, `uploads`,
 `creators`, `platform_accounts`, `creator_knowledge`, `creator_events`,
-`clip_feedback`, `branding_profiles`, `creator_terms`, `clip_translations`.
+`clip_feedback`, `branding_profiles`, `creator_terms`, `clip_translations`, and
+`app_state` (durable app-level flags — currently just whether the queue is paused).
+
+`jobs` carries the queue's own columns beyond the payload: `position` (run order),
+`video_id` / `title` (naming and the duplicate guard), `interrupted`, `attempts`,
+`started_at` / `finished_at`, and `log_path`. `videos.duration` records source length,
+which is what the queue's time estimate divides by.
 
 Guarantees: a video is never processed twice, a clip is never uploaded twice, and any
 crash resumes from the last completed stage. Schema changes land as additive migrations
@@ -604,6 +741,7 @@ for offline installs.
 | Python engine | PyInstaller **one-dir** → `resources/backend/api.exe` | One-file unpacks gigabytes to temp on every launch — slow and fragile with PyTorch in the bundle |
 | FFmpeg | `scripts/fetch_ffmpeg.py` → `vendor/ffmpeg/` → `resources/backend/ffmpeg/` | Found by `core/binaries.py`; never depends on the user's PATH |
 | YOLO weights | Bundled as data | Otherwise the first video stalls on a silent download |
+| TalkNet weights | `models/pretrain_TalkSet.model` bundled as data | ~60 MB, and speaker detection degrades to motion-based framing without it — `asd.available()` gates every call, so a missing file is a quieter clip, not a crash |
 | PyTorch | CUDA build, bundled | Not just for tracking — the CUDA wheels carry the cuBLAS/cuDNN DLLs that CTranslate2 needs for GPU transcription. A CPU build makes *both* Whisper and tracking fall back to CPU |
 | Ollama + LLM | **Not bundled** — the setup wizard detects and installs | Separate product with its own installer, GPU handling and update cycle; models are gigabytes and the right one depends on the user's VRAM |
 

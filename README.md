@@ -72,8 +72,9 @@ videos where the good moments are buried and a transcript alone won't find them.
         and scoring             those signals; signal peaks become candidates
              │                  too, so laughs and hype aren't missed
              ▼
-        Video editing           YOLOv8 pose tracking → 9:16 crop that follows
-             │                  whoever is speaking; trims, cuts, watermark
+        Video editing           YOLOv8 pose tracking + TalkNet active-speaker
+             │                  detection → 9:16 crop that cuts to whoever is
+             │                  speaking; trims, cuts, watermark
              ▼
         Captions/subtitles      word-synced, burned in, fully editable
              │
@@ -137,10 +138,14 @@ through Ollama.
   excitement, visual activity, on-screen reactions, and hook/payoff strength. Every
   clip clearing the quality bar is kept, with no arbitrary cap.
 - **Speaker-aware face tracking** — YOLOv8 pose detection keeps the subject centred,
-  and in group footage the camera follows **whoever is talking**, detected from mouth
-  movement. Crop-only framing: never stretched, never distorted.
-- **Podcast mode** — for multi-camera footage, each shot gets its own steady crop
-  centred on the person talking, so cuts land on a face with no panning.
+  and in group footage the camera follows **whoever is actually speaking**, decided by
+  TalkNet active-speaker detection from the face and the audio together rather than
+  from movement. When the speaker changes the framing **cuts** to them instead of
+  panning across, the way an editor would. Crop-only framing: never stretched, never
+  distorted.
+- **Podcast mode** — for multi-camera footage, each shot gets its own steady crop on one
+  person, so cuts land on a face with no panning. Within a shot the subject is chosen by
+  mouth motion, falling back to the most prominent face.
 - **Editable burned-in captions** — word-synced, in your style: colour, size, position,
   words per line, casing, or off. Fix a transcription mistake line by line before export.
 - **AI edit chat** — describe what's wrong in plain language and it re-edits.
@@ -328,6 +333,16 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 AMD GPU owners: tracking and transcription run on CPU on Windows — still fully
 functional, just slower. Your GPU is still used for video encoding via AMF and for the
 LLM through Ollama, which supports AMD itself.
+
+**Video decoding** goes through FFmpeg with hardware acceleration rather than OpenCV,
+for both the tracking pass and rendering. Reading sample frames this way costs about a
+tenth of the CPU that decoding them in Python did, which matters because the tracking
+pass runs over every clip.
+
+**CPU sharing.** Detection and rendering both want every core, and left alone they
+fight each other and the interface. The engine divides the cores between render workers
+at startup and deliberately holds two back, so the app stays responsive while a batch
+runs. Tune with `video.parallel_renders`.
 
 ## Command line use
 
