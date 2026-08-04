@@ -92,7 +92,14 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         ensure_h264_source(video.path, config)
 
     cancel.clear(video.video_id)  # fresh start; any stale flag from a prior run gone
-    db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
+    # Source length is stored too: the queue's time estimate scales its history
+    # by it, so a long VOD isn't predicted to cost the same as a short upload.
+    db.upsert_video(
+        video.video_id,
+        title=video.title,
+        channel_name=video.channel,
+        duration=video.duration,
+    )
     # Creator intelligence: attach the video to its creator profile (created
     # on first sight of this channel). Failure-safe — never blocks processing.
     creator_id = None

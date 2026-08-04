@@ -10,6 +10,12 @@ import { api } from '../lib/api'
 import type { Preflight } from '../lib/types'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import {
+  notifyOnFinish,
+  notifyOnQueueEmpty,
+  setNotifyOnFinish,
+  setNotifyOnQueueEmpty
+} from '../lib/queueNotifications'
+import {
   APP_LANGUAGES,
   LANGUAGE_NAMES,
   appLanguageSetting,
@@ -505,6 +511,46 @@ function SetupCard(): JSX.Element {
   )
 }
 
+/** Notifications for a queue left running unattended. Off by default would
+ *  defeat the purpose — the batch takes hours and nobody is watching — so
+ *  both start on and can be switched off here. */
+function NotificationsCard(): JSX.Element {
+  const [onFinish, setOnFinish] = useState(notifyOnFinish())
+  const [onEmpty, setOnEmpty] = useState(notifyOnQueueEmpty())
+  return (
+    <div className="card space-y-3">
+      <h3 className="font-semibold">{t('Notifications')}</h3>
+      <p className="text-sm text-muted">
+        {t('Desktop notifications while a queue processes. Only shown when Clips Studio is not the window you are looking at.')}
+      </p>
+      <label className="flex items-center gap-2 cursor-pointer text-sm">
+        <input
+          type="checkbox"
+          className="size-4 accent-[#38BDF8]"
+          checked={onFinish}
+          onChange={(e) => {
+            setOnFinish(e.target.checked)
+            setNotifyOnFinish(e.target.checked)
+          }}
+        />
+        {t('When each video finishes')}
+      </label>
+      <label className="flex items-center gap-2 cursor-pointer text-sm">
+        <input
+          type="checkbox"
+          className="size-4 accent-[#38BDF8]"
+          checked={onEmpty}
+          onChange={(e) => {
+            setOnEmpty(e.target.checked)
+            setNotifyOnQueueEmpty(e.target.checked)
+          }}
+        />
+        {t('When the whole queue is done')}
+      </label>
+    </div>
+  )
+}
+
 export default function Settings(): JSX.Element {
   return (
     <div className="p-6 space-y-5 max-w-xl">
@@ -513,6 +559,8 @@ export default function Settings(): JSX.Element {
       <LanguageCard />
 
       <AppearanceCard />
+
+      <NotificationsCard />
 
       <ExportFolderCard />
 

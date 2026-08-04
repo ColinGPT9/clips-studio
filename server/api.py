@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core import queue
 from core.binaries import ffmpeg, ffprobe
 from core.paths import safe_name
 from core.state import StateDB
@@ -41,6 +42,53 @@ class JobIn(BaseModel):
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
     podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
+
+
+class JobPatch(BaseModel):
+    """Per-video settings for a job that hasn't started yet.
+
+    The same options as JobIn minus url/force: the settings snapshot stays
+    editable right up until the worker claims the row, and is untouchable
+    afterwards — a job whose configuration changed halfway would render some
+    of its clips one way and the rest another."""
+
+    max_clips: int | None = None
+    caption_style: dict | None = None
+    captions: bool | None = None
+    long_clips: bool | None = None
+    filter: str | None = None
+    min_score: int | None = None
+    longform: dict | None = None
+    watermark_profile_id: int | None = None
+    podcast: bool | None = None
+    # Options to drop back to the app-wide default. Needed because null means
+    # "unchanged" above, so there would otherwise be no way to turn one off.
+    clear: list[str] = []
+
+
+class BatchJobIn(BaseModel):
+    """Several videos at once, seeded with one set of options.
+
+    Per-video differences are made afterwards on the queue page. Asking for
+    ten option sets up front is a form to fill in, not a paste box, and the
+    point of the queue is to start a batch quickly and walk away."""
+
+    urls: list[str] = []
+    force: bool = False
+    max_clips: int | None = None
+    caption_style: dict | None = None
+    captions: bool | None = None
+    long_clips: bool | None = None
+    filter: str | None = None
+    min_score: int | None = None
+    longform: dict | None = None
+    watermark_profile_id: int | None = None
+    podcast: bool | None = None
+
+
+class QueueMoveIn(BaseModel):
+    delta: int = 0            # -1 earlier, +1 later
+    to: str | None = None     # "top" | "bottom"
 
 
 class ClipPatch(BaseModel):
@@ -286,6 +334,43 @@ def _unlink_best_effort(path: Path, root: Path) -> bool:
         return False
 
 
+def _process_options(body, into: dict | None = None) -> dict:
+    """Turn job options into the payload the worker reads.
+
+    Shared by POST /jobs, POST /jobs/batch and PATCH /jobs/{id}: three doors
+    onto the same settings, and a limit enforced at only two of them is not a
+    limit. `into` lets a patch merge onto an existing snapshot instead of
+    replacing it, since an unset field there means "leave this alone"."""
+    payload: dict = dict(into or {})
+    if getattr(body, "max_clips", None) is not None:
+        payload["max_clips"] = max(1, min(10, body.max_clips))
+    if getattr(body, "caption_style", None):
+        payload["caption_style"] = body.caption_style
+    if getattr(body, "captions", None) is not None:
+        payload["captions"] = body.captions
+    if getattr(body, "long_clips", None):
+        payload["long_clips"] = True
+    if getattr(body, "podcast", None):
+        payload["podcast"] = True
+    if getattr(body, "longform", None):
+        payload["longform"] = body.longform
+    if getattr(body, "watermark_profile_id", None):
+        payload["watermark_profile_id"] = body.watermark_profile_id
+    if getattr(body, "filter", None):
+        from video.filters import is_valid
+
+        if not is_valid(body.filter):
+            raise HTTPException(400, f"unknown filter '{body.filter}'")
+        payload["filter"] = body.filter
+    if getattr(body, "min_score", None) is not None:
+        payload["min_score"] = max(0, min(100, body.min_score))
+    # Explicit "back to the default" — an absent field means unchanged, so a
+    # toggle being switched off needs to say so.
+    for key in getattr(body, "clear", []) or []:
+        payload.pop(key, None)
+    return payload
+
+
 def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import feedback as feedback_mod
 
@@ -414,9 +499,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         # settings" (e.g. the same video in both 60s+ and regular modes).
         # Longform jobs skip the guard: making longform outputs of an
         # already-processed video is the normal case, not a re-run.
-        if not body.force and not body.longform:
-            from sources.dispatch import identify
+        from sources.dispatch import identify
 
+        vid = ""
+        if not body.force and not body.longform:
             _, vid = identify(body.url)
             if vid:
                 d0 = db()
@@ -426,36 +512,24 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     d0.close()
                 if status == "done":
                     return {"job_id": None, "already_processed": True, "video_id": vid}
+        elif not body.longform:
+            _, vid = identify(body.url)
 
-        payload: dict = {"url": body.url, "force": body.force}
-        if body.max_clips is not None:
-            payload["max_clips"] = max(1, min(10, body.max_clips))
-        if body.caption_style:
-            payload["caption_style"] = body.caption_style
-        if body.captions is not None:
-            payload["captions"] = body.captions
-        if body.long_clips:
-            payload["long_clips"] = True
-        if body.podcast:
-            payload["podcast"] = True
-        if body.longform:
-            payload["longform"] = body.longform
-        if body.watermark_profile_id:
-            payload["watermark_profile_id"] = body.watermark_profile_id
-        if body.filter:
-            from video.filters import is_valid
-
-            if not is_valid(body.filter):
-                raise HTTPException(400, f"unknown filter '{body.filter}'")
-            payload["filter"] = body.filter
-        if body.min_score is not None:
-            payload["min_score"] = max(0, min(100, body.min_score))
+        payload = _process_options(body, {"url": body.url, "force": body.force})
         d = db()
         try:
-            job_id = d.add_job("process", json.dumps(payload))
+            # Same video already waiting or running: with a queue the likely
+            # mistake is pasting a link twice into a batch, and processing it
+            # twice costs an hour and produces duplicate clips.
+            existing = queue.duplicate_of(d, vid) if vid else None
+            if existing is not None:
+                return {"job_id": None, "already_queued": True, "video_id": vid,
+                        "queued_job_id": existing}
+            job_id = d.add_job("process", json.dumps(payload), video_id=vid)
         finally:
             d.close()
         worker.notify()
+        broadcaster.publish({"type": "queue"})
         return {"job_id": job_id}
 
     @app.post("/videos/local")
@@ -480,6 +554,20 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         )
         if probe.returncode != 0 or not probe.stdout.strip():
             raise HTTPException(400, "that file doesn't look like a video")
+
+        # Length, while we already have the file open. Local files are the one
+        # path where the queue can know a video's duration before it runs, and
+        # duration is what its time estimate scales by.
+        seconds = 0.0
+        try:
+            dur = sp.run(
+                [ffprobe(), "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(src)],
+                capture_output=True, text=True,
+            )
+            seconds = float(dur.stdout.strip() or 0)
+        except (ValueError, OSError):
+            pass  # only costs a less precise estimate
 
         stat = src.stat()
         vid = "local_" + hashlib.md5(
@@ -528,24 +616,19 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         platform = body.platform if body.platform in ("youtube", "twitch", "kick") else "youtube"
         d = db()
         try:
-            d.upsert_video(vid, title=title, channel_name=body.channel.strip())
+            d.upsert_video(
+                vid, title=title, channel_name=body.channel.strip(), duration=seconds
+            )
             if body.channel.strip():
                 from creator.identity import tag_video
 
                 tag_video(d, vid, body.channel.strip(), platform=platform)
-            payload: dict = {"url": f"local:{vid}"}
-            if body.captions is not None:
-                payload["captions"] = body.captions
-            if body.caption_style:
-                payload["caption_style"] = body.caption_style
-            if body.long_clips:
-                payload["long_clips"] = True
-            if body.podcast:
-                payload["podcast"] = True
-            job_id = d.add_job("process", json.dumps(payload))
+            payload = _process_options(body, {"url": f"local:{vid}"})
+            job_id = d.add_job("process", json.dumps(payload), video_id=vid, title=title)
         finally:
             d.close()
         worker.notify()
+        broadcaster.publish({"type": "queue"})
         return {"job_id": job_id, "video_id": vid}
 
     @app.get("/jobs")
@@ -566,6 +649,195 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         if row is None:
             raise HTTPException(404, "no such job")
         return dict(row)
+
+    # ---- queue ------------------------------------------------------------
+    # Management around the job queue that already existed: ordering, pausing,
+    # retrying, and an estimate. GET /jobs above is deliberately left alone —
+    # ProcessingBar uses it as its liveness oracle when the WebSocket drops.
+
+    @app.get("/queue")
+    def queue_snapshot():
+        d = db()
+        try:
+            return queue.snapshot(d)
+        finally:
+            d.close()
+
+    @app.post("/queue/pause")
+    def queue_pause():
+        d = db()
+        try:
+            queue.set_paused(d, True)
+        finally:
+            d.close()
+        broadcaster.publish({"type": "queue"})
+        return {"paused": True}
+
+    @app.post("/queue/resume")
+    def queue_resume():
+        d = db()
+        try:
+            queue.set_paused(d, False)
+        finally:
+            d.close()
+        worker.notify()  # start the next video now, not after the idle poll
+        broadcaster.publish({"type": "queue"})
+        return {"paused": False}
+
+    @app.post("/jobs/{job_id}/move")
+    def move_job(job_id: int, body: QueueMoveIn):
+        d = db()
+        try:
+            if body.to in ("top", "bottom"):
+                # "Run this one next" is the actual need, and stepping a job up
+                # six places one click at a time is not a way to express it.
+                steps = len(d.queued_jobs())
+                delta = -1 if body.to == "top" else 1
+                moved = False
+                for _ in range(steps):
+                    if not queue.move(d, job_id, delta):
+                        break
+                    moved = True
+            else:
+                moved = queue.move(d, job_id, body.delta)
+        finally:
+            d.close()
+        broadcaster.publish({"type": "queue"})
+        return {"moved": moved}
+
+    @app.post("/jobs/{job_id}/retry")
+    def retry_job(job_id: int):
+        d = db()
+        try:
+            new_id = queue.retry(d, job_id)
+        finally:
+            d.close()
+        if new_id is None:
+            raise HTTPException(409, "only a failed or cancelled job can be retried")
+        worker.notify()
+        broadcaster.publish({"type": "queue"})
+        return {"job_id": new_id}
+
+    @app.patch("/jobs/{job_id}")
+    def patch_job(job_id: int, body: JobPatch):
+        """Change one queued video's settings. Never touches any other job."""
+        d = db()
+        try:
+            row = d.get_job(job_id)
+            if row is None:
+                raise HTTPException(404, "no such job")
+            if row["status"] != "queued":
+                raise HTTPException(409, "that video has already started — cancel it first")
+            if row["type"] != "process":
+                raise HTTPException(409, "only video jobs have these settings")
+            current = json.loads(row["payload"]) if row["payload"] else {}
+            keep = {k: current[k] for k in ("url", "force") if k in current}
+            payload = _process_options(body, {**current, **keep})
+            queue.update_settings(d, job_id, payload)
+        finally:
+            d.close()
+        broadcaster.publish({"type": "queue"})
+        return {"ok": True}
+
+    @app.delete("/jobs/{job_id}")
+    def delete_job(job_id: int):
+        """Drop a waiting job. Any video already downloaded for it stays on
+        disk — Settings > Storage owns file cleanup, not the queue."""
+        d = db()
+        try:
+            row = d.get_job(job_id)
+            if row is None:
+                raise HTTPException(404, "no such job")
+            if row["status"] == "running":
+                raise HTTPException(409, "that video is processing — cancel it instead")
+            d.conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            d.conn.commit()
+        finally:
+            d.close()
+        broadcaster.publish({"type": "queue"})
+        return {"deleted": job_id}
+
+    @app.post("/queue/clear")
+    def clear_queue(body: dict):
+        what = str(body.get("what", "completed"))
+        d = db()
+        try:
+            removed = queue.clear(d, what)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        finally:
+            d.close()
+        broadcaster.publish({"type": "queue"})
+        return {"deleted": removed}
+
+    @app.post("/jobs/batch")
+    def create_jobs_batch(body: BatchJobIn):
+        """Queue several URLs at once, all seeded with the same options.
+
+        Deliberately tolerant: one unreadable link in a list of twelve reports
+        itself and the other eleven are still queued. Failing the whole batch
+        would mean re-pasting the good ones."""
+        from sources.dispatch import identify
+
+        created: list[dict] = []
+        skipped: list[dict] = []
+        d = db()
+        try:
+            for raw in body.urls:
+                url = raw.strip()
+                if not url:
+                    continue
+                # Pasting a block of text is how this box gets used, so a
+                # stray line that isn't a link at all is an ordinary mistake —
+                # catch it here rather than an hour later in the pipeline.
+                # Only obvious non-links are refused: channel and live pages
+                # have no video id either, and the single-URL path has always
+                # accepted them, so URL-shaped input still goes through.
+                if not (url.startswith("http://") or url.startswith("https://")
+                        or url.startswith("local:")):
+                    skipped.append({"url": url, "reason": "unrecognized"})
+                    continue
+                try:
+                    _, vid = identify(url)
+                except Exception as e:
+                    skipped.append({"url": url, "reason": "unrecognized", "detail": str(e)[:200]})
+                    continue
+                if vid and not body.force:
+                    if d.video_status(vid) == "done":
+                        skipped.append({"url": url, "reason": "already_processed", "video_id": vid})
+                        continue
+                    if queue.duplicate_of(d, vid) is not None:
+                        skipped.append({"url": url, "reason": "already_queued", "video_id": vid})
+                        continue
+                payload = _process_options(body, {"url": url, "force": body.force})
+                job_id = d.add_job("process", json.dumps(payload), video_id=vid or "")
+                created.append({"url": url, "job_id": job_id, "video_id": vid or ""})
+        finally:
+            d.close()
+        if created:
+            worker.notify()
+        broadcaster.publish({"type": "queue"})
+        return {"created": created, "skipped": skipped}
+
+    @app.get("/jobs/{job_id}/log")
+    def job_log(job_id: int, tail: int = 300):
+        """The run's own log. The in-memory ring only holds minutes, which is
+        no help for a batch that failed at 3am."""
+        d = db()
+        try:
+            row = d.get_job(job_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such job")
+        path = Path(row["log_path"]) if row["log_path"] else None
+        if path is None or not path.exists():
+            return {"log": "", "missing": True}
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception as e:
+            raise HTTPException(500, f"could not read the log: {e}")
+        return {"log": "\n".join(lines[-max(1, tail):]), "missing": False}
 
     @app.post("/cancel")
     def cancel_processing(body: CancelIn):

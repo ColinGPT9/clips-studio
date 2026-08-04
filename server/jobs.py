@@ -11,16 +11,22 @@ Job types:
                                                timestamps and/or captions)
 """
 
+import copy
 import json
 import threading
 import traceback
 from pathlib import Path
 
-from core import cancel, progress
+from core import cancel, progress, queue
 from core.cancel import CancelledError
 from core.prefetch import Prefetcher
 from core.state import StateDB
+from server import feedback
 from server.events import broadcaster
+
+# Per-job logs kept on disk. Enough to cover a long overnight batch and its
+# retries; older ones are pruned so the folder can't grow without limit.
+_KEEP_LOGS = 50
 
 
 class Worker(threading.Thread):
@@ -28,6 +34,7 @@ class Worker(threading.Thread):
         super().__init__(daemon=True, name="pipeline-worker")
         self.config = config
         self.db_path = Path(config["paths"]["data_dir"]) / "state.db"
+        self.logs_dir = Path(config["paths"]["data_dir"]) / "logs"
         self.prefetch = Prefetcher(
             self.db_path, Path(config["paths"]["data_dir"]) / "downloads"
         )
@@ -35,12 +42,24 @@ class Worker(threading.Thread):
         self._stop = threading.Event()
 
     def notify(self) -> None:
-        """Called by the API when a job is enqueued."""
+        """Called by the API when a job is enqueued, or when the queue is
+        resumed — so resuming starts the next video at once instead of waiting
+        out the idle poll."""
         self._wake.set()
 
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
+
+    def _prune_logs(self) -> None:
+        try:
+            logs = sorted(
+                self.logs_dir.glob("job_*.log"), key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            for old in logs[_KEEP_LOGS:]:
+                old.unlink(missing_ok=True)
+        except Exception:
+            pass  # housekeeping must never take down the worker
 
     def run(self) -> None:
         db = StateDB(self.db_path)  # sqlite: one connection per thread
@@ -79,6 +98,14 @@ class Worker(threading.Thread):
         )
 
         while not self._stop.is_set():
+            # Paused means "claim nothing new". The video already running is
+            # left alone — throwing away an hour of finished GPU work because
+            # someone wants the queue to stop after this one would be its own
+            # kind of broken.
+            if queue.is_paused(db):
+                self._wake.wait(timeout=2.0)
+                self._wake.clear()
+                continue
             job = db.claim_next_job()
             if job is None:
                 self._wake.wait(timeout=2.0)
@@ -87,11 +114,23 @@ class Worker(threading.Thread):
 
             current_job_id[0] = job["id"]
             payload = json.loads(job["payload"])
+            # One log file per job, so a batch that ran overnight is still
+            # diagnosable in the morning: the 400-line in-memory ring holds
+            # minutes, and a failure six videos ago scrolled away long before
+            # anyone came back to look at it.
+            log_path = self.logs_dir / f"job_{job['id']}.log"
+            if feedback.open_job_log(log_path):
+                db.set_job(job["id"], log_path=str(log_path))
             broadcaster.publish({"type": "job", "job_id": job["id"], "status": "running"})
+            broadcaster.publish({"type": "queue"})
             if job["type"] == "process":
                 from sources.dispatch import identify
 
                 _, vid = identify(payload["url"])
+                # Recorded on the job so the queue can name and de-duplicate it
+                # without every reader re-parsing payload JSON.
+                if vid and not job["video_id"]:
+                    db.set_job(job["id"], video_id=vid)
                 cancel.set_active(vid)  # mark which video is genuinely running
                 # Start every run from a clean slate. A cancel flag is sticky
                 # (deleting a video, or an actual cancel, calls request_cancel
@@ -107,22 +146,18 @@ class Worker(threading.Thread):
             self.prefetch.maybe_start(db)
             try:
                 if job["type"] == "process":
-                    import copy
-
                     from core.pipeline import process_video
 
-                    cfg = self.config
-                    if (
-                        payload.get("max_clips")
-                        or payload.get("caption_style")
-                        or "captions" in payload
-                        or payload.get("long_clips")
-                        or payload.get("min_score") is not None
-                        or payload.get("watermark_profile_id")
-                        or payload.get("filter")
-                        or payload.get("podcast")
-                    ):
-                        cfg = copy.deepcopy(self.config)
+                    # ALWAYS a private copy. The worker holds one config dict
+                    # for the life of the process, so any mutation below would
+                    # outlive the job that made it: with a queue of
+                    # differently-configured videos, job 2's caption style
+                    # silently lands on job 5. The guard that used to skip this
+                    # copy was only correct while every mutation below stayed
+                    # listed in it — a condition no one can keep true by hand
+                    # across future edits. Copying a settings dict costs
+                    # microseconds against an hour of video work.
+                    cfg = copy.deepcopy(self.config)
                     if payload.get("podcast"):
                         # Multi-cam podcast: letterbox every clip, no tracking.
                         cfg["clips"]["podcast"] = True
@@ -166,21 +201,45 @@ class Worker(threading.Thread):
                     self._translate_clips(db, payload)
                 else:
                     raise ValueError(f"Unknown job type {job['type']!r}")
-                db.set_job(job["id"], status="done")
-                broadcaster.publish({"type": "job", "job_id": job["id"], "status": "done"})
+                db.finish_job(job["id"], "done")
+                self._announce(db, job, "done")
             except CancelledError:
-                db.set_job(job["id"], status="cancelled", error="Cancelled by user")
-                broadcaster.publish({"type": "job", "job_id": job["id"], "status": "cancelled"})
+                db.finish_job(job["id"], "cancelled", "Cancelled by user")
+                self._announce(db, job, "cancelled")
                 print(f"Job {job['id']} cancelled by user")
             except Exception as e:
+                # Contained to this job on purpose: the video is marked failed
+                # with its error, and the loop moves on to the next one. A
+                # batch left running overnight must not stop at the first bad
+                # URL and waste the remaining hours.
                 traceback.print_exc()
-                db.set_job(job["id"], status="failed", error=str(e)[:2000])
-                broadcaster.publish(
-                    {"type": "job", "job_id": job["id"], "status": "failed", "error": str(e)[:500]}
-                )
+                db.finish_job(job["id"], "failed", str(e)[:2000])
+                self._announce(db, job, "failed", str(e)[:500])
             finally:
                 current_job_id[0] = None
                 cancel.set_active(None)
+                feedback.close_job_log()
+                self._prune_logs()
+
+    def _announce(self, db: StateDB, job, status: str, error: str = "") -> None:
+        """Tell the UI a job ended, and how much queue is left.
+
+        `remaining` rides along so the renderer can put "2 videos remaining" in
+        a desktop notification without a round trip — the user is not looking
+        at the app when it matters."""
+        remaining = len(db.queued_jobs())
+        event = {
+            "type": "job",
+            "job_id": job["id"],
+            "job_type": job["type"],
+            "status": status,
+            "title": job["title"] or "",
+            "remaining": remaining,
+        }
+        if error:
+            event["error"] = error
+        broadcaster.publish(event)
+        broadcaster.publish({"type": "queue"})
 
     def _translate_clips(self, db: StateDB, payload: dict) -> None:
         """Multilingual publishing: subtitle tracks for finished clips.

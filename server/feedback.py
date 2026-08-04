@@ -22,6 +22,7 @@ import platform
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -35,8 +36,16 @@ _LOG_LINES = 400
 _ring: collections.deque[str] = collections.deque(maxlen=_LOG_LINES)
 
 
+# Open log file for the job currently running, if any. The worker owns this:
+# one job at a time, so one sink. Hung off the existing tee rather than adding
+# a second stdout wrapper — stacked wrappers are how double-printing starts.
+_job_sink = None
+_sink_lock = threading.Lock()
+
+
 class _Tee:
-    """Wraps a stream so pipeline prints also land in the ring buffer."""
+    """Wraps a stream so pipeline prints also land in the ring buffer, and in
+    the running job's log file when one is open."""
 
     def __init__(self, stream):
         self._stream = stream
@@ -48,6 +57,14 @@ class _Tee:
                     _ring.append(line[:500])
         except Exception:
             pass
+        with _sink_lock:
+            sink = _job_sink
+        if sink is not None:
+            try:
+                sink.write(text)
+                sink.flush()  # a crash must not lose the lines explaining it
+            except Exception:
+                pass  # a broken log file must never break the pipeline's print
         return self._stream.write(text)
 
     def __getattr__(self, name):  # flush, encoding, isatty, ...
@@ -60,6 +77,36 @@ def install_log_capture() -> None:
         sys.stdout = _Tee(sys.stdout)
     if not isinstance(sys.stderr, _Tee):
         sys.stderr = _Tee(sys.stderr)
+
+
+def open_job_log(path) -> bool:
+    """Start copying output into `path` until close_job_log().
+
+    The in-memory ring is only 400 lines and dies with the process, which is no
+    use for a queue left running overnight: by morning the failure that matters
+    scrolled away hours ago. Per-job files make a batch diagnosable after it."""
+    global _job_sink
+    close_job_log()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(path, "a", encoding="utf-8", errors="replace")
+    except Exception as e:
+        print(f"      (could not open job log {path}: {e})")
+        return False
+    with _sink_lock:
+        _job_sink = handle
+    return True
+
+
+def close_job_log() -> None:
+    global _job_sink
+    with _sink_lock:
+        handle, _job_sink = _job_sink, None
+    if handle is not None:
+        try:
+            handle.close()
+        except Exception:
+            pass
 
 
 def recent_log(lines: int = 120) -> str:

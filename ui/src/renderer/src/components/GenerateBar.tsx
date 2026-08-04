@@ -314,7 +314,17 @@ export default function GenerateBar(): JSX.Element {
         </div>
       )}
 
-      {queued && <p className="text-sm text-accent px-1">{t('Queued — processing will start shortly.')}</p>}
+      {queued && (
+        <p className="text-sm text-accent px-1">
+          {t('Queued — processing will start shortly.')}{' '}
+          <button
+            className="underline hover:text-ink"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-queue'))}
+          >
+            {t('View queue')}
+          </button>
+        </p>
+      )}
       {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
       {reprocessUrl && (
         <div className="card flex items-center gap-3 flex-wrap">

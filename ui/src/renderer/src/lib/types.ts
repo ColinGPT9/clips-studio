@@ -191,10 +191,68 @@ export interface Job {
   id: number
   type: 'process' | 'render' | 'translate'
   payload: string
-  status: 'queued' | 'running' | 'done' | 'failed'
+  // 'cancelled' is written by the worker on a user cancel (server/jobs.py).
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
   error: string
   created_at: string
   updated_at: string
+}
+
+/** One video's processing settings, snapshotted when it entered the queue.
+ *  Editing one queued video's options can never reach another — each job
+ *  owns its own copy. */
+export interface JobOptions {
+  force?: boolean
+  captions?: boolean
+  caption_style?: CaptionStyle
+  long_clips?: boolean
+  podcast?: boolean
+  longform?: { mode: string } | null
+  watermark_profile_id?: number | null
+  filter?: FilterName
+  min_score?: number
+  max_clips?: number
+}
+
+/** A queue row: the job, plus the video it is about. `display_title` comes
+ *  from the videos table, so it is empty until the download names the video. */
+export interface QueueJob {
+  id: number
+  type: 'process' | 'render' | 'translate'
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+  error: string
+  position: number
+  video_id: string
+  display_title: string
+  channel: string
+  source_seconds: number
+  url: string
+  settings: JobOptions
+  interrupted: 0 | 1
+  attempts: number
+  started_at: string
+  finished_at: string
+  created_at: string
+  updated_at: string
+  log_path: string
+}
+
+export interface QueueEstimate {
+  /** Seconds for the WAITING videos only — the caller adds the running one. */
+  queued_seconds: number
+  per_video_seconds: number
+  samples: number
+  /** False until a few real runs exist; the UI softens its wording. */
+  confident: boolean
+}
+
+export interface QueueSnapshot {
+  processing: QueueJob[]
+  queued: QueueJob[]
+  completed: QueueJob[]
+  failed: QueueJob[]
+  paused: boolean
+  estimate: QueueEstimate
 }
 
 export interface InstalledModel {
@@ -261,8 +319,11 @@ export interface Settings {
 
 /** Events arriving over the WebSocket. */
 export interface StudioEvent {
-  type: 'progress' | 'job' | 'model_pull'
+  /** 'queue' is a bare ping meaning "the queue changed, re-read it". */
+  type: 'progress' | 'job' | 'model_pull' | 'queue'
   job_id?: number
+  /** Present on 'job' events: lets the queue ignore re-renders. */
+  job_type?: 'process' | 'render' | 'translate'
   status?: string
   stage?: string
   message?: string
@@ -279,6 +340,8 @@ export interface StudioEvent {
   error?: string
   tag?: string
   completed?: number
+  /** Videos still waiting when a job ended — used by the finish notification. */
+  remaining?: number
 }
 
 /** Creator intelligence */

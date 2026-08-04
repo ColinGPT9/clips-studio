@@ -38,12 +38,20 @@ class Prefetcher:
         in the background. No-op if a prefetch is already in flight, nothing
         is queued, or the file is already on disk. Runs on the worker thread
         (uses the worker's DB connection for the read)."""
+        from core import queue
+
+        # A paused queue should stop using the network and the disk too, not
+        # just the GPU — otherwise "stopped" still fills the drive overnight.
+        if queue.is_paused(db):
+            return
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
+            # Same order the worker claims in: the user can reorder the queue,
+            # and prefetching the video they just demoted helps nobody.
             row = db.conn.execute(
                 "SELECT payload FROM jobs WHERE status = 'queued' AND type = 'process' "
-                "ORDER BY id LIMIT 1"
+                "ORDER BY position, id LIMIT 1"
             ).fetchone()
             if row is None:
                 return
@@ -108,7 +116,15 @@ class Prefetcher:
             video = dispatch.download(url, self.downloads_dir)
             db = StateDB(self.db_path)  # sqlite: own connection on this thread
             try:
-                db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)
+                # Title and length recorded now: this runs a job AHEAD, so the
+                # queue can show a real name and a real time estimate for the
+                # next video before it starts.
+                db.upsert_video(
+                    video.video_id,
+                    title=video.title,
+                    channel_name=video.channel,
+                    duration=video.duration,
+                )
             finally:
                 db.conn.close()
             print(f"      [prefetch] ready: {video.title}")

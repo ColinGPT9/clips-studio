@@ -176,6 +176,14 @@ CREATE TABLE IF NOT EXISTS clip_translations (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (clip_id, language)
 );
+
+-- Small key/value store for app-level flags that must outlive a restart.
+-- Currently just the queue's paused state: stopping the queue is a decision
+-- the user made, so a crash or a reboot must not quietly resume processing.
+CREATE TABLE IF NOT EXISTS app_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -210,6 +218,38 @@ class StateDB:
             self.conn.execute("ALTER TABLE videos ADD COLUMN process_seconds REAL DEFAULT 0")
         if "creator_id" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN creator_id INTEGER")
+        if "duration" not in video_cols:
+            # Source length in seconds. Processing cost scales with it, so the
+            # queue's time estimate divides by this instead of assuming every
+            # video takes the same hour (a 6h VOD and a 20min upload do not).
+            self.conn.execute("ALTER TABLE videos ADD COLUMN duration REAL DEFAULT 0")
+        job_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(jobs)")}
+        for column, decl in (
+            # User-defined queue order. Claiming orders by this, so reordering
+            # is a position swap rather than rewriting ids.
+            ("position", "INTEGER NOT NULL DEFAULT 0"),
+            # Resolved once at enqueue so the queue UI can name a job, and the
+            # duplicate guard can spot a video that is already waiting, without
+            # re-parsing payload JSON on every read.
+            ("video_id", "TEXT NOT NULL DEFAULT ''"),
+            ("title", "TEXT NOT NULL DEFAULT ''"),
+            # Set when crash recovery re-queues a job, so the UI can say the run
+            # restarted rather than silently repeating it.
+            ("interrupted", "INTEGER NOT NULL DEFAULT 0"),
+            ("started_at", "TEXT NOT NULL DEFAULT ''"),
+            ("finished_at", "TEXT NOT NULL DEFAULT ''"),
+            ("attempts", "INTEGER NOT NULL DEFAULT 0"),
+            ("log_path", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if column not in job_cols:
+                self.conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {decl}")
+        if "position" not in job_cols:
+            # Existing jobs keep the order they already ran in.
+            self.conn.execute("UPDATE jobs SET position = id")
+        # Claiming runs on every worker tick; this is the index it wants.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, position, id)"
+        )
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
@@ -408,15 +448,21 @@ class StateDB:
         return row["status"] if row else None
 
     def upsert_video(
-        self, video_id: str, channel_id: str = "", title: str = "", channel_name: str = ""
+        self,
+        video_id: str,
+        channel_id: str = "",
+        title: str = "",
+        channel_name: str = "",
+        duration: float = 0.0,
     ) -> None:
         self.conn.execute(
-            """INSERT INTO videos (video_id, channel_id, title, channel_name, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'queued', ?, ?)
+            """INSERT INTO videos (video_id, channel_id, title, channel_name, duration, status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)
                ON CONFLICT(video_id) DO UPDATE SET
                  title = CASE WHEN excluded.title != '' THEN excluded.title ELSE videos.title END,
-                 channel_name = CASE WHEN excluded.channel_name != '' THEN excluded.channel_name ELSE videos.channel_name END""",
-            (video_id, channel_id, title, channel_name, _now(), _now()),
+                 channel_name = CASE WHEN excluded.channel_name != '' THEN excluded.channel_name ELSE videos.channel_name END,
+                 duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE videos.duration END""",
+            (video_id, channel_id, title, channel_name, round(duration, 1), _now(), _now()),
         )
         self.conn.commit()
 
@@ -566,27 +612,84 @@ class StateDB:
 
     # ---- job queue (used by the API server's worker) --------------------
 
-    def add_job(self, type_: str, payload: str) -> int:
+    def add_job(self, type_: str, payload: str, video_id: str = "", title: str = "") -> int:
+        if type_ == "process":
+            position = self.conn.execute(
+                "SELECT COALESCE(MAX(position), 0) + 1 FROM jobs"
+            ).fetchone()[0]
+        else:
+            # Re-renders and translations are seconds-to-minutes of work that
+            # the user is sitting and waiting for, having just pressed Apply in
+            # the editor. Behind a batch of hour-long videos they would look
+            # broken, so they go to the FRONT of the waiting jobs. They cannot
+            # starve video processing: each one is finite and only ever exists
+            # because a person clicked something.
+            row = self.conn.execute(
+                "SELECT MIN(position) FROM jobs WHERE status = 'queued' AND type = 'process'"
+            ).fetchone()
+            ahead = row[0] if row and row[0] is not None else None
+            if ahead is None:
+                position = self.conn.execute(
+                    "SELECT COALESCE(MAX(position), 0) + 1 FROM jobs"
+                ).fetchone()[0]
+            else:
+                # Fractional-free: shift the video jobs back by one and take
+                # the freed slot, so ordering stays plain integers.
+                self.conn.execute(
+                    "UPDATE jobs SET position = position + 1 "
+                    "WHERE status = 'queued' AND position >= ?",
+                    (ahead,),
+                )
+                position = ahead
         cur = self.conn.execute(
-            "INSERT INTO jobs (type, payload, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (type_, payload, _now(), _now()),
+            """INSERT INTO jobs (type, payload, video_id, title, position, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (type_, payload, video_id, title, position, _now(), _now()),
         )
         self.conn.commit()
         return cur.lastrowid
 
+    def finish_job(self, job_id: int, status: str, error: str = "") -> None:
+        """Terminal state for a job, in one place.
+
+        Clears `interrupted` on the way out — otherwise a job that was once
+        crash-recovered would carry the badge for the rest of its life, long
+        after the run that earned it succeeded."""
+        self.conn.execute(
+            "UPDATE jobs SET status = ?, error = ?, interrupted = 0, finished_at = ?, "
+            "updated_at = ? WHERE id = ?",
+            (status, error, _now(), _now(), job_id),
+        )
+        self.conn.commit()
+
     def claim_next_job(self) -> sqlite3.Row | None:
-        """Atomically claim the oldest queued job (single-worker model)."""
+        """Atomically claim the next queued job (single-worker model).
+
+        Ordered by position, not id: the user can reorder the queue, and a job
+        moved to the front must genuinely run next."""
         row = self.conn.execute(
-            "SELECT * FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1"
+            "SELECT * FROM jobs WHERE status = 'queued' ORDER BY position, id LIMIT 1"
         ).fetchone()
         if row is None:
             return None
         self.conn.execute(
-            "UPDATE jobs SET status = 'running', updated_at = ? WHERE id = ?",
-            (_now(), row["id"]),
+            "UPDATE jobs SET status = 'running', started_at = ?, updated_at = ? WHERE id = ?",
+            (_now(), _now(), row["id"]),
         )
         self.conn.commit()
         return row
+
+    def job_for_video(self, video_id: str, statuses: tuple[str, ...]) -> sqlite3.Row | None:
+        """An existing job for this video in one of `statuses` — the guard
+        against queueing the same video twice."""
+        if not video_id:
+            return None
+        marks = ",".join("?" * len(statuses))
+        return self.conn.execute(
+            f"SELECT * FROM jobs WHERE video_id = ? AND status IN ({marks}) "
+            "ORDER BY position, id LIMIT 1",
+            (video_id, *statuses),
+        ).fetchone()
 
     def set_job(self, job_id: int, **fields) -> None:
         cols = ", ".join(f"{k} = ?" for k in fields)
@@ -599,20 +702,54 @@ class StateDB:
     def get_job(self, job_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
 
-    def list_jobs(self, limit: int = 50) -> list[sqlite3.Row]:
+    def list_jobs(
+        self, limit: int = 50, statuses: tuple[str, ...] | None = None
+    ) -> list[sqlite3.Row]:
+        if statuses:
+            marks = ",".join("?" * len(statuses))
+            return self.conn.execute(
+                f"SELECT * FROM jobs WHERE status IN ({marks}) ORDER BY id DESC LIMIT ?",
+                (*statuses, limit),
+            ).fetchall()
         return self.conn.execute(
             "SELECT * FROM jobs ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
 
+    def queued_jobs(self) -> list[sqlite3.Row]:
+        """Waiting jobs in the order they will actually be claimed."""
+        return self.conn.execute(
+            "SELECT * FROM jobs WHERE status = 'queued' ORDER BY position, id"
+        ).fetchall()
+
     def recover_interrupted_jobs(self) -> int:
         """Server-start crash recovery: anything left 'running' goes back to
-        'queued' (the pipeline itself resumes from its last completed stage)."""
+        'queued' (the pipeline itself resumes from its last completed stage).
+
+        Flagged `interrupted` so the queue can say the run was restarted. The
+        cached download and transcript are reused, so this is usually a resume
+        rather than a full redo — but the user is told either way instead of
+        watching a video silently begin again."""
         cur = self.conn.execute(
-            "UPDATE jobs SET status = 'queued', updated_at = ? WHERE status = 'running'",
+            "UPDATE jobs SET status = 'queued', interrupted = 1, attempts = attempts + 1, "
+            "started_at = '', updated_at = ? WHERE status = 'running'",
             (_now(),),
         )
         self.conn.commit()
         return cur.rowcount
+
+    # ---- app-level flags -------------------------------------------------
+
+    def get_flag(self, key: str, default: str = "") -> str:
+        row = self.conn.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_flag(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO app_state (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        self.conn.commit()
 
     def get_clip(self, clip_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()

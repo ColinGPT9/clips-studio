@@ -8,8 +8,10 @@ import type {
   CreatorSummary,
   FilterName,
   Job,
+  JobOptions,
   ModelsInfo,
   Preflight,
+  QueueSnapshot,
   RenderOpts,
   Settings,
   SystemStats,
@@ -108,6 +110,44 @@ export const api = {
       })
     }),
   jobs: () => request<Job[]>('/jobs'),
+
+  // ---- processing queue ----
+  queue: () => request<QueueSnapshot>('/queue'),
+  pauseQueue: () => request<{ paused: boolean }>('/queue/pause', { method: 'POST' }),
+  resumeQueue: () => request<{ paused: boolean }>('/queue/resume', { method: 'POST' }),
+  /** delta -1/+1 steps one place; `to` jumps to either end. */
+  moveJob: (jobId: number, move: { delta?: number; to?: 'top' | 'bottom' }) =>
+    request<{ moved: boolean }>(`/jobs/${jobId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ delta: move.delta ?? 0, to: move.to ?? null })
+    }),
+  retryJob: (jobId: number) =>
+    request<{ job_id: number }>(`/jobs/${jobId}/retry`, { method: 'POST' }),
+  deleteJob: (jobId: number) =>
+    request<{ deleted: number }>(`/jobs/${jobId}`, { method: 'DELETE' }),
+  clearQueue: (what: 'completed' | 'failed' | 'queued' | 'all') =>
+    request<{ deleted: number }>('/queue/clear', {
+      method: 'POST',
+      body: JSON.stringify({ what })
+    }),
+  /** Change ONE queued video's settings. Only fields present are changed;
+   *  `clear` puts an option back to the app-wide default. */
+  patchJob: (jobId: number, patch: Partial<JobOptions> & { clear?: string[] }) =>
+    request<{ ok: boolean }>(`/jobs/${jobId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  createJobsBatch: (urls: string[], opts?: JobOptions) =>
+    request<{
+      created: { url: string; job_id: number; video_id: string }[]
+      skipped: { url: string; reason: string; detail?: string; video_id?: string }[]
+    }>('/jobs/batch', {
+      method: 'POST',
+      body: JSON.stringify({ urls, ...(opts ?? {}) })
+    }),
+  jobLog: (jobId: number, tail = 300) =>
+    request<{ log: string; missing: boolean }>(`/jobs/${jobId}/log?tail=${tail}`),
+
   cancelProcessing: (videoId: string) =>
     request<{ cancelling: string }>('/cancel', {
       method: 'POST',

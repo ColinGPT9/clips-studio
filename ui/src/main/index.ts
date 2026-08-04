@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { setupUpdater } from './updater'
@@ -111,6 +111,36 @@ ipcMain.handle('pick-video-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+ipcMain.handle('pick-video-files', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose videos to add to the queue',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'ts', 'flv'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  return result.canceled ? [] : result.filePaths
+})
+
+// Desktop notification for a finished video / finished queue. Text only: no
+// path, no URL, no action. The renderer already has this text on screen — this
+// puts it somewhere visible while the window is behind something else, which
+// is the entire point of being able to walk away from a long batch.
+ipcMain.handle('notify', (event, payload: unknown) => {
+  if (!Notification.isSupported()) return false
+  const { title, body } = (payload ?? {}) as { title?: unknown; body?: unknown }
+  if (typeof title !== 'string' || typeof body !== 'string') return false
+  const n = new Notification({ title: title.slice(0, 120), body: body.slice(0, 300) })
+  n.on('click', () => {
+    const w = BrowserWindow.fromWebContents(event.sender)
+    w?.show()
+    w?.focus()
+  })
+  n.show()
+  return true
+})
+
 ipcMain.handle('pick-image-file', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Choose a logo image',
@@ -193,6 +223,10 @@ ipcMain.handle('pick-folder', async () => {
 })
 
 app.whenReady().then(() => {
+  // Windows shows the AppUserModelID as the notification's app name; without
+  // it a toast is attributed to "electron.app.Electron". Must match
+  // electron-builder.yml's appId so dev and packaged builds agree.
+  app.setAppUserModelId('com.clipsstudio.app')
   startBackend()
   createWindow()
   app.on('activate', () => {

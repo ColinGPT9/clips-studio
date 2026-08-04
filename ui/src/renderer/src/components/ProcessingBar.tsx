@@ -89,6 +89,14 @@ export default function ProcessingBar(): JSX.Element | null {
               ? `Estimated time: ~${formatEta(eta)} left`
               : 'Estimated time: calculating…'}
           </p>
+          {/* Reachable from wherever the bar is shown: while a long batch
+              runs, the queue is the screen that answers "what's left?" */}
+          <button
+            className="btn-ghost !px-2.5 !py-1 text-xs"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-queue'))}
+          >
+            Queue
+          </button>
           <button
             className="btn-ghost !px-2.5 !py-1 text-xs"
             onClick={cancel}

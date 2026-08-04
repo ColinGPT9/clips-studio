@@ -3,20 +3,23 @@ import Dashboard from './pages/Dashboard'
 import ClipStudio from './pages/ClipStudio'
 import Creators from './pages/Creators'
 import Models from './pages/Models'
+import Queue from './pages/Queue'
 import Settings from './pages/Settings'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
 import SetupWizard, { setupDone } from './components/SetupWizard'
 import UpdateBanner from './components/UpdateBanner'
 import { activeLocale, t } from './lib/i18n'
+import { useQueueNotifications } from './lib/queueNotifications'
 import mascot from './assets/mascot.png'
 
-type Page = 'dashboard' | 'studio' | 'creators' | 'models' | 'settings'
+type Page = 'dashboard' | 'queue' | 'studio' | 'creators' | 'models' | 'settings'
 
 const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
+  { id: 'queue', label: 'Queue', icon: '≡' },
   { id: 'studio', label: 'Clip Studio', icon: '✂' },
   { id: 'creators', label: 'Creators', icon: '◉' },
   { id: 'models', label: 'Models', icon: '⬢' },
@@ -40,6 +43,17 @@ export default function App(): JSX.Element {
     window.addEventListener('open-setup-wizard', open)
     return () => window.removeEventListener('open-setup-wizard', open)
   }, [])
+  // Jump to the queue from anywhere (the Generate bar links here after
+  // queueing). Same window-event mechanism as the setup wizard above —
+  // this app navigates by state, not a router.
+  useEffect(() => {
+    const open = (): void => setPage('queue')
+    window.addEventListener('open-queue', open)
+    return () => window.removeEventListener('open-queue', open)
+  }, [])
+  // Mounted at the shell, not on the queue page: the point of a notification
+  // is to reach someone who is NOT looking at the queue.
+  useQueueNotifications()
   // Language switches re-render the tree IN PLACE (no reload): the page
   // state lives here, so the user stays wherever they were (e.g. Settings).
   const [locale, setLocale] = useState(activeLocale())
@@ -116,6 +130,7 @@ export default function App(): JSX.Element {
       <main className="flex-1 overflow-y-auto flex flex-col">
         <UpdateBanner />
         {page === 'dashboard' && <Dashboard onOpenInStudio={openInStudio} />}
+        {page === 'queue' && <Queue onOpenInStudio={(videoId) => openInStudio(videoId)} />}
         {page === 'studio' && (
           <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />
         )}

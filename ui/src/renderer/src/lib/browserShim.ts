@@ -37,6 +37,10 @@ export function installBrowserShim(): void {
       unavailable('Choosing a video file')
       return null
     },
+    pickVideoFiles: async () => {
+      unavailable('Choosing video files')
+      return []
+    },
     pickImageFile: async () => {
       unavailable('Choosing an image')
       return null
@@ -53,6 +57,13 @@ export function installBrowserShim(): void {
     openExternal: async (url: string) => {
       window.open(url, '_blank', 'noopener')
       return true
+    },
+    // The browser has its own Notification API, but it needs a permission
+    // prompt this shim has no business triggering. The queue treats a false
+    // return as "no notification happened", which is the truth here.
+    notify: async () => {
+      unavailable('Desktop notifications')
+      return false
     },
     update: {
       check: async () => ({ ok: false, reason: 'browser' }),
