@@ -178,23 +178,31 @@ and nobody comments on it, expect to find it yourself in the editor.
 
 ## Requirements
 
+If you use the installer, this is the whole list:
+
 - **Windows** PC (the Python engine should run on Linux/macOS; the app is developed
   and tested on Windows)
+- Recommended: an **NVIDIA GPU** (see [GPU acceleration](#gpu-acceleration))
+- Around **20 GB** free, plus room for the videos you clip
+
+Running from source needs the things the installer would otherwise bundle for you:
+
 - **Python 3.10+** and **Node.js 18+**
 - **[FFmpeg](https://ffmpeg.org/download.html)** on your PATH
 - **[Ollama](https://ollama.com)** with a model pulled: `ollama pull gemma:7b`
-- Recommended: an **NVIDIA GPU** (see [GPU acceleration](#gpu-acceleration))
 
 ## Install and run
 
 **Most people want the installer.** Grab the latest **Web Setup** from
 [Releases](../../releases) and run it. It carries the app, the Python engine, every
-library, FFmpeg and the detection weights — no Python, no PATH, no terminal. A setup
-wizard then checks your machine and downloads an AI model sized to your graphics card.
+library, FFmpeg, the AI runtime and all the detection and transcription weights — no
+Python, no PATH, no terminal, and no second program to install.
 
-The one thing it doesn't bundle is [Ollama](https://ollama.com), which runs the AI
-locally and manages your GPU itself. The wizard detects whether you have it and links
-you to it if not.
+The one thing it doesn't carry is the language model itself, because those ship under
+licences the person downloading has to accept rather than something that can be
+accepted on your behalf. The setup wizard starts that download by itself, picks the
+size that suits your graphics card, and shows a progress bar. So: one download, one
+double-click, one progress bar. After that it runs offline.
 
 > Windows will warn that the app is unsigned the first time you run it — click
 > *More info → Run anyway*. A signing certificate is on the list.

@@ -54,7 +54,13 @@ significant ones, with their licences:
                                          third_party/talknet/ (c) 2021 Tao
                                          Ruijie, and its pretrained weights
                                          are fetched by scripts/fetch_asd_model.py
-  faster-whisper            MIT          transcription
+  faster-whisper            MIT          transcription; its model weights are
+                                         fetched by scripts/fetch_whisper.py
+                                         and are MIT (Systran/faster-whisper,
+                                         converted from OpenAI Whisper)
+  Ollama                    MIT          the local AI runtime, bundled
+                                         unmodified and fetched at build time
+                                         by scripts/fetch_ollama.py
   PyTorch                   BSD-3-Clause tensor runtime, CUDA libraries
   OpenCV (opencv-python)    Apache-2.0   frame decoding and analysis
   yt-dlp                    Unlicense    downloading source videos
@@ -68,9 +74,15 @@ in this repository. The builds used are LGPL-2.1-or-later, or GPL-2.0-or-later
 where they include GPL-licensed components; the exact terms ship with the
 binary in the installer.
 
-Ollama and the language models it runs are NOT bundled. They are installed
-separately by the user and carry their own licences — Gemma, for example, is
-covered by the Gemma Terms of Use rather than by anything here.
+Ollama is fetched at build time by scripts/fetch_ollama.py rather than kept in
+this repository, and ships unmodified. Its MIT licence travels with it in the
+installer as README-OLLAMA.txt.
+
+The language models Ollama runs are NOT bundled. The app downloads the one it
+needs on first launch, and each carries its own licence — Gemma, for example,
+is covered by the Gemma Terms of Use rather than by anything here. That is
+also why they are downloaded rather than shipped: redistributing them would
+mean accepting those terms on every user's behalf.
 
 
 -------------------------------------------------------------------------------

@@ -14,6 +14,12 @@ workflow is harmless until you set one up, and starts working the moment you do.
 | GitHub Pages | The website (`site/`) | none — uses the built-in token |
 | Hugging Face Space | The website (`site/`) | `HF_TOKEN`, `HF_SPACE` |
 
+A third Hugging Face repository, `clips-studio-releases`, holds the installer
+payload. It is **not** a mirror and not automated — it exists because a GitHub
+release asset is capped at 2 GiB and the payload is roughly twice that, so it
+is the primary download rather than a copy of one. Uploading is a manual step
+in [RELEASING.md](RELEASING.md).
+
 Secrets go in **Settings → Secrets and variables → Actions → New repository
 secret**.
 

@@ -28,9 +28,12 @@ def test_a_failing_check_never_raises(monkeypatch):
 
 
 def test_the_fix_text_is_written_for_a_creator(monkeypatch):
+    """A checkout borrows the developer's own Ollama, so the advice is the
+    familiar one: go and install it."""
     import requests
 
     monkeypatch.setattr(requests, "get", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(preflight, "has_bundled_ollama", lambda: False)
     check = preflight.check_ollama("http://localhost:11434", "gemma:7b")[0]
 
     # Not a stack trace, not a module name — something to actually do.
@@ -38,6 +41,79 @@ def test_the_fix_text_is_written_for_a_creator(monkeypatch):
     # that the text names the thing to go and get, and matching a bare
     # hostname here reads to a scanner like a (broken) URL check.
     assert "ollama" in check.fix.lower()
+
+
+def test_an_installed_copy_is_never_told_to_go_and_install_anything(monkeypatch):
+    """The whole point of bundling the runtime. Sending a creator to
+    ollama.com when the app already ships Ollama is worse than saying nothing:
+    they install a second copy, it binds a different port, and the app still
+    doesn't work."""
+    import requests
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(preflight, "has_bundled_ollama", lambda: True)
+    check = preflight.check_ollama("http://localhost:11435", "gemma:7b")[0]
+
+    assert check.fix, "a failed check must still tell the user something"
+    assert "ollama.com" not in check.fix.lower()
+    assert "install" not in check.fix.lower()
+
+
+def test_a_model_that_is_missing_never_suggests_the_command_line(monkeypatch):
+    """`ollama pull` from a terminal talks to the default port and the default
+    model folder — neither of which is the bundled runtime's. The download
+    would appear to succeed and the app would still report the model missing."""
+    import requests
+
+    class Response:
+        @staticmethod
+        def raise_for_status() -> None: ...
+
+        @staticmethod
+        def json() -> dict:
+            return {"models": []}
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Response())
+    monkeypatch.setattr(preflight, "has_bundled_ollama", lambda: True)
+    model = preflight.check_ollama("http://localhost:11435", "gemma:7b")[1]
+
+    assert model.name == "model"
+    assert model.ok is False
+    assert "ollama pull" not in model.fix.lower()
+
+
+def test_absent_whisper_weights_warn_without_blocking(monkeypatch):
+    """The silent failure this check exists for. faster-whisper can still
+    fetch the weights and produce a correct transcript, so refusing to run
+    would be wrong — but it happens with no progress bar, minutes into a job,
+    and is indistinguishable from a hang. Say so instead."""
+    monkeypatch.setattr(preflight, "bundled_whisper_sizes", list)
+    check = preflight.check_whisper("auto")
+
+    assert check.ok is False
+    assert check.blocking is False
+    assert check.fix, "the user should be told the pause is coming"
+
+
+def test_auto_needs_both_sizes(monkeypatch):
+    """`auto` picks large-v3-turbo on a GPU and small on CPU, and which one
+    this machine turns out to be isn't known until load time. Half the pair
+    bundled means half of all installs still download one silently."""
+    monkeypatch.setattr(preflight, "bundled_whisper_sizes", lambda: ["small"])
+    check = preflight.check_whisper("auto")
+
+    assert check.ok is False
+    assert "large-v3-turbo" in check.fix
+
+
+def test_a_forced_size_only_needs_that_size(monkeypatch):
+    """Someone who pinned whisper.model shouldn't be warned about weights for
+    a size the app will never load."""
+    monkeypatch.setattr(preflight, "bundled_whisper_sizes", lambda: ["small"])
+    check = preflight.check_whisper("small")
+
+    assert check.ok is True
+    assert check.fix == ""
 
 
 def test_gpu_absence_is_not_blocking():

@@ -1,10 +1,82 @@
 import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell } from 'electron'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { setupUpdater } from './updater'
 
 const API_PORT = 8765
+
+// The bundled Ollama listens here instead of on 11434, its default. A creator
+// who already runs Ollama owns that port, and two servers fighting over it
+// fails confusingly for both. On a port of our own the two simply coexist.
+const OLLAMA_PORT = 11435
+const OLLAMA_HOST = `127.0.0.1:${OLLAMA_PORT}`
+
 let backend: ChildProcess | null = null
+let ollama: ChildProcess | null = null
+
+/** Start the Ollama runtime that ships inside the app.
+ *
+ *  Packaged builds carry their own copy (see scripts/fetch_ollama.py) so that
+ *  installing Clips Studio installs everything Clips Studio needs. In a
+ *  checkout there is nothing to start: a developer already has Ollama on its
+ *  default port, and the engine falls back to that because startBackend only
+ *  overrides the host when packaged.
+ */
+function startOllama(): void {
+  if (!app.isPackaged) return
+
+  // PyInstaller puts bundled data under _internal/, which is where the spec
+  // places the runtime — the same shape as _internal/ffmpeg.
+  const exe = join(process.resourcesPath, 'backend', '_internal', 'ollama', 'ollama.exe')
+
+  // Models are gigabytes, so they live with the creator's other big files
+  // rather than in their user profile. This must match how data_dir resolves
+  // in core/paths.py, or the engine and the runtime disagree about what is
+  // downloaded.
+  const localAppData = process.env.LOCALAPPDATA ?? join(app.getPath('home'), 'AppData', 'Local')
+  const models = join(localAppData, 'Clips Studio', 'data', 'models')
+
+  ollama = spawn(exe, ['serve'], {
+    stdio: 'ignore',
+    env: { ...process.env, OLLAMA_HOST, OLLAMA_MODELS: models },
+    windowsHide: true
+  })
+  ollama.on('error', (e) => console.error(`bundled Ollama could not start: ${e.message}`))
+  ollama.on('exit', (code) => {
+    if (code !== 0 && code !== null) console.error(`Ollama exited with code ${code}`)
+  })
+}
+
+/** Stop a child process and everything it spawned.
+ *
+ *  Both children have grandchildren that matter: the engine runs FFmpeg, and
+ *  Ollama runs model inference in separate runner processes. Killing only the
+ *  parent leaves those behind — a stranded FFmpeg writing to a clip nobody is
+ *  waiting for, or a runner still holding VRAM, which reads to the creator as
+ *  the app leaking their GPU. Windows has no process group to signal, so the
+ *  tree has to be taken down by hand.
+ */
+function killTree(child: ChildProcess | null): void {
+  if (!child?.pid) return
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+      return
+    } catch {
+      // Already exited, or taskkill is unavailable — fall through to a signal.
+    }
+  }
+  child.kill()
+}
+
+/** Shut both children down. Safe to call twice: quitting can arrive by more
+ *  than one route, and the updater's quitAndInstall is one of them. */
+function stopChildren(): void {
+  killTree(backend)
+  killTree(ollama)
+  backend = null
+  ollama = null
+}
 
 function startBackend(): void {
   // Windows gives a spawned process the system locale's encoding, which is
@@ -13,7 +85,16 @@ function startBackend(): void {
   // own terminal usually has UTF-8 configured, so this only shows up once
   // someone else installs the app. The backend forces UTF-8 itself too;
   // this covers it before a single line of Python runs.
-  const backendEnv = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+  const backendEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    PYTHONIOENCODING: 'utf-8',
+    PYTHONUTF8: '1'
+  }
+
+  // Packaged builds run their own Ollama on a private port, so the engine has
+  // to be told where it is — settings.yaml's default 11434 would send it to a
+  // system install the creator may not have.
+  if (app.isPackaged) backendEnv.CLIPS_STUDIO_OLLAMA_HOST = `http://${OLLAMA_HOST}`
 
   // Dev: run the repo's Python directly (repo root is one level up from ui/).
   // Packaged: run the frozen backend exe shipped in resources/backend/.
@@ -227,6 +308,9 @@ app.whenReady().then(() => {
   // it a toast is attributed to "electron.app.Electron". Must match
   // electron-builder.yml's appId so dev and packaged builds agree.
   app.setAppUserModelId('com.clipsstudio.app')
+  // Ollama first: it takes a moment to bind its port, and starting it before
+  // the engine means the first preflight is more likely to find it up.
+  startOllama()
   startBackend()
   createWindow()
   app.on('activate', () => {
@@ -235,6 +319,11 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  backend?.kill()
+  stopChildren()
   app.quit()
 })
+
+// Also covers the routes that skip window-all-closed — notably the updater's
+// quitAndInstall, which must not leave an Ollama holding the install folder
+// open while the installer tries to replace it.
+app.on('before-quit', stopChildren)

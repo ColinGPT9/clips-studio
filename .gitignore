@@ -66,6 +66,11 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+#   Ours is not generated. clips-studio.spec is hand-written and is the only
+#   place that says what goes inside the installer — which bundled binaries,
+#   which model weights, which packages to leave out. Without it a clean clone
+#   cannot build a release at all, so the blanket rule above must not eat it.
+!clips-studio.spec
 
 # Installer logs
 pip-log.txt

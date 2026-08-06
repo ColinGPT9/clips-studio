@@ -87,6 +87,11 @@ def load_config(path: Path) -> dict:
     # lives at a service name rather than localhost, and the data directory
     # is a mounted volume. These let a compose file say so without anyone
     # hand-editing config that is checked into the repo.
+    #
+    # The desktop app uses the same door: it starts its own bundled Ollama on
+    # a private port so it cannot collide with one the creator already runs,
+    # and passes the address in here rather than rewriting settings.yaml
+    # underneath them.
     ollama_host = os.environ.get("CLIPS_STUDIO_OLLAMA_HOST")
     if ollama_host:
         config.setdefault("llm", {})["ollama_host"] = ollama_host.rstrip("/")

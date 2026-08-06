@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 from core import cancel, progress
+from core.binaries import whisper_model
 from core.models import Segment
 
 
@@ -34,22 +35,31 @@ def _load_model(model_size: str, device: str):
     # isn't needed when the transcript is cached.
     from faster_whisper import WhisperModel
 
+    # Every name handed to WhisperModel goes through here first. A bare size
+    # name means "fetch it from Hugging Face", which in an installed copy is a
+    # silent multi-gigabyte download in the middle of someone's first video;
+    # whisper_model() swaps in the bundled weights when they are present.
+    def load(name: str, **kwargs):
+        return WhisperModel(whisper_model(name), **kwargs)
+
     if device in ("auto", "cuda"):
         try:
             _add_gpu_dlls()
             if model_size == "auto":
                 # large-v3-turbo: large-v3 accuracy with a 4-layer decoder —
-                # several times faster than medium AND more accurate. Fall
-                # back to medium if this faster-whisper can't load it.
-                for name in ("large-v3-turbo", "medium"):
+                # several times faster than medium AND more accurate. Falls
+                # back to small, which is the other bundled size: falling back
+                # to a size that isn't shipped would trade a load failure for
+                # a silent download, which is the worse of the two.
+                for name in ("large-v3-turbo", "small"):
                     try:
-                        model = WhisperModel(name, device="cuda", compute_type="float16")
+                        model = load(name, device="cuda", compute_type="float16")
                         print(f"  Whisper: GPU (CUDA) active, model '{name}'")
                         return model
                     except Exception as e:
                         turbo_err = e
                 raise turbo_err
-            model = WhisperModel(model_size, device="cuda", compute_type="float16")
+            model = load(model_size, device="cuda", compute_type="float16")
             print(f"  Whisper: GPU (CUDA) active, model '{model_size}'")
             return model
         except Exception as e:
@@ -58,7 +68,7 @@ def _load_model(model_size: str, device: str):
             print(f"  Whisper: GPU unavailable ({str(e)[:90]}) — using CPU")
     if model_size == "auto":
         model_size = "small"  # on CPU, medium is 3-5x slower — speed wins there
-    return WhisperModel(model_size, device="cpu", compute_type="auto")
+    return load(model_size, device="cpu", compute_type="auto")
 
 
 def transcribe(

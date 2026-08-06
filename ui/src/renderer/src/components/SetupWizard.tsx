@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
 import type { Preflight, PreflightCheck, SystemStats } from '../lib/types'
@@ -17,8 +17,12 @@ export function resetSetup(): void {
 const LABEL: Record<string, string> = {
   ffmpeg: 'Video engine',
   ffprobe: 'Video inspector',
-  ollama: 'AI runtime (Ollama)',
+  // Not "Ollama" any more. It ships inside the app and starts itself, so its
+  // brand name is an implementation detail — naming it here only invites
+  // someone to go and install a second copy.
+  ollama: 'AI runtime',
   model: 'AI model',
+  whisper: 'Transcription',
   gpu: 'Graphics card',
   disk: 'Free space'
 }
@@ -51,9 +55,15 @@ function CheckRow({ check }: { check: PreflightCheck }): JSX.Element {
 }
 
 /** First-run setup. Walks a new creator from "just installed" to "ready to
- *  make a clip", which is the gap the installer alone can't close: Ollama and
- *  the model are deliberately not bundled, so somebody has to explain that
- *  rather than letting the first video fail with a stack trace. */
+ *  make a clip".
+ *
+ *  This used to be a checkpoint: it stopped, told people Ollama was a separate
+ *  program, and sent them to a website to install it. The runtime now ships
+ *  inside the app, so the only thing left that cannot be bundled is the
+ *  language model — several gigabytes, under a licence that has to be accepted
+ *  by the person downloading it rather than on their behalf. So the wizard
+ *  asks for nothing and installs nothing. It starts that one download by
+ *  itself and shows how far along it is. */
 export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.Element {
   const [step, setStep] = useState(0)
   const [pre, setPre] = useState<Preflight | null>(null)
@@ -112,12 +122,37 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
   const ollamaOk = check('ollama')?.ok ?? false
   const modelOk = check('model')?.ok ?? false
 
+  // A pull is server-side and survives this component, so "have we already
+  // asked for one" is not something the render state can be trusted for —
+  // re-entering the step would queue a second download of the same model.
+  const pullStarted = useRef(false)
+
+  const startPull = useCallback(async (): Promise<void> => {
+    if (!rec || pullStarted.current) return
+    pullStarted.current = true
+    setPullStatus('starting…')
+    setPullPct(null)
+    try {
+      await api.pullModel(rec.model)
+    } catch (e) {
+      setPullStatus(`Could not start: ${e instanceof Error ? e.message : e}`)
+      pullStarted.current = false // so Try again actually tries again
+    }
+  }, [rec])
+
+  // Start the download the moment the setup step opens. Nobody installs a
+  // clipping app in order to choose a language model, and the one worth having
+  // is decided by their graphics card — which the server already knows.
+  useEffect(() => {
+    if (step === 1 && ollamaOk && rec && !modelOk) void startPull()
+  }, [step, ollamaOk, rec, modelOk, startPull])
+
   const finish = (): void => {
     localStorage.setItem(DONE_KEY, '1')
     onClose()
   }
 
-  const steps = ['Welcome', 'Checks', 'AI model', 'Ready']
+  const steps = ['Welcome', 'Setting up', 'Ready']
 
   return (
     <div className="fixed inset-0 z-50 bg-base/95 backdrop-blur-sm grid place-items-center p-6">
@@ -158,132 +193,78 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
             </>
           )}
 
-          {/* ---------------------------------------------- 1: checks */}
+          {/* ------------------------------- 1: checks + the one download */}
           {step === 1 && (
             <>
-              <h2 className="text-2xl font-bold">Checking your computer</h2>
+              <h2 className="text-2xl font-bold">Setting up</h2>
+              <p className="text-sm text-muted mt-3 leading-relaxed">
+                Everything Clips Studio needs came with it, apart from the AI model that picks
+                the moments worth clipping. We&apos;re fetching the one that suits your graphics
+                card now — it downloads once and then works offline.
+              </p>
               {error && (
                 <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-lg px-4 py-2.5">
                   {error}
                 </div>
               )}
-              {!pre && !error && (
-                <p className="text-sm text-muted mt-4">Checking…</p>
-              )}
+              {!pre && !error && <p className="text-sm text-muted mt-4">Checking…</p>}
+
               {pre && (
                 <>
+                  <div className="mt-4 bg-raised/40 border border-raised rounded-lg px-4 py-3">
+                    <p className="text-xs text-muted">
+                      {stats?.gpu ? `Detected: ${stats.gpu.name}` : 'No graphics card detected'}
+                    </p>
+                    <p className="text-sm font-semibold mt-1">
+                      {modelOk
+                        ? `✓ ${check('model')?.detail}`
+                        : `Downloading ${rec ? rec.model : '…'}`}
+                    </p>
+                    <p className="text-xs text-muted mt-1 leading-relaxed">{rec?.reason ?? ''}</p>
+
+                    {!modelOk && pullStatus && (
+                      <div className="mt-3">
+                        <p className="text-xs text-muted tabular-nums">
+                          {pullStatus}
+                          {pullPct !== null ? ` · ${pullPct}%` : ''}
+                        </p>
+                        {pullPct !== null && (
+                          <div className="h-2 mt-1.5 rounded-full bg-raised overflow-hidden">
+                            <div
+                              className="h-full bg-accent rounded-full transition-[width] duration-500"
+                              style={{ width: `${Math.max(2, pullPct)}%` }}
+                            />
+                          </div>
+                        )}
+                        <p className="text-[11px] text-muted mt-1.5">
+                          Several gigabytes — it can take a while on a slow connection. You can
+                          leave this window open, or carry on and let it finish in the
+                          background.
+                        </p>
+                        {!pullStarted.current && (
+                          <button className="btn-ghost !py-1.5 mt-2" onClick={startPull}>
+                            Try again
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="mt-4">
                     {pre.checks.map((c) => (
                       <CheckRow key={c.name} check={c} />
                     ))}
                   </div>
-                  {!ollamaOk && (
-                    <div className="mt-4 bg-accent/10 border border-accent/30 rounded-lg px-4 py-3">
-                      <p className="text-sm font-medium">Ollama needs installing</p>
-                      <p className="text-xs text-muted mt-1 leading-relaxed">
-                        Ollama runs the AI on your computer. It&apos;s free, and it&apos;s a
-                        separate program because it manages your graphics card and updates
-                        itself. Install it, leave it running, then press Check again.
-                      </p>
-                      <div className="flex items-center gap-2 mt-3">
-                        <button
-                          className="btn-accent !py-1.5"
-                          onClick={() => void window.studio.openExternal('https://ollama.com/download')}
-                        >
-                          Get Ollama
-                        </button>
-                        <button className="btn-ghost !py-1.5" disabled={checking} onClick={refresh}>
-                          {checking ? 'Checking…' : 'Check again'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {ollamaOk && (
-                    <button
-                      className="btn-ghost !py-1.5 mt-4"
-                      disabled={checking}
-                      onClick={refresh}
-                    >
-                      {checking ? 'Checking…' : 'Check again'}
-                    </button>
-                  )}
+                  <button className="btn-ghost !py-1.5 mt-4" disabled={checking} onClick={refresh}>
+                    {checking ? 'Checking…' : 'Check again'}
+                  </button>
                 </>
               )}
             </>
           )}
 
-          {/* ---------------------------------------------- 2: model */}
+          {/* ---------------------------------------------- 2: done */}
           {step === 2 && (
-            <>
-              <h2 className="text-2xl font-bold">Pick an AI model</h2>
-              <p className="text-sm text-muted mt-3 leading-relaxed">
-                This is the brain that decides which moments are worth clipping and writes the
-                titles. It downloads once and then works offline.
-              </p>
-
-              <div className="mt-4 bg-raised/40 border border-raised rounded-lg px-4 py-3">
-                <p className="text-xs text-muted">
-                  {stats?.gpu ? `Detected: ${stats.gpu.name}` : 'No graphics card detected'}
-                </p>
-                <p className="text-sm font-semibold mt-1">
-                  Recommended: {rec ? rec.model : '…'}
-                </p>
-                <p className="text-xs text-muted mt-1 leading-relaxed">{rec?.reason ?? ''}</p>
-              </div>
-
-              {modelOk ? (
-                <p className="text-sm text-green-400 mt-4">
-                  ✓ {check('model')?.detail} — nothing to download.
-                </p>
-              ) : !ollamaOk ? (
-                <p className="text-sm text-muted mt-4">
-                  Ollama has to be running before a model can be downloaded. Go back a step.
-                </p>
-              ) : (
-                <div className="mt-4">
-                  <button
-                    className="btn-accent"
-                    disabled={!rec || (pullStatus !== null && pullPct !== 100)}
-                    onClick={async () => {
-                      if (!rec) return
-                      setPullStatus('starting…')
-                      setPullPct(null)
-                      try {
-                        await api.pullModel(rec.model)
-                      } catch (e) {
-                        setPullStatus(`Could not start: ${e instanceof Error ? e.message : e}`)
-                      }
-                    }}
-                  >
-                    Download {rec ? rec.model : 'model'}
-                  </button>
-                  {pullStatus && (
-                    <div className="mt-3">
-                      <p className="text-xs text-muted tabular-nums">
-                        {pullStatus}
-                        {pullPct !== null ? ` · ${pullPct}%` : ''}
-                      </p>
-                      {pullPct !== null && (
-                        <div className="h-2 mt-1.5 rounded-full bg-raised overflow-hidden">
-                          <div
-                            className="h-full bg-accent rounded-full transition-[width] duration-500"
-                            style={{ width: `${Math.max(2, pullPct)}%` }}
-                          />
-                        </div>
-                      )}
-                      <p className="text-[11px] text-muted mt-1.5">
-                        These are several gigabytes — it can take a while on a slow connection.
-                        You can leave this window open.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* ---------------------------------------------- 3: done */}
-          {step === 3 && (
             <>
               <h2 className="text-2xl font-bold">
                 {pre?.ready ? "You're ready" : 'Nearly there'}
@@ -331,14 +312,11 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
             Skip setup
           </button>
           {step < steps.length - 1 ? (
-            <button
-              className="btn-accent"
-              // Only the Ollama step is a hard gate: without it there is no AI
-              // at all, and every later screen is meaningless.
-              disabled={step === 1 && !ollamaOk}
-              title={step === 1 && !ollamaOk ? 'Install Ollama first, then press Check again' : ''}
-              onClick={() => setStep((n) => n + 1)}
-            >
+            // No gate any more. There is nothing left for a creator to go and
+            // install, so nothing they could be blocked on fixing — and the
+            // model download continues server-side whether this window is on
+            // this step or not.
+            <button className="btn-accent" onClick={() => setStep((n) => n + 1)}>
               Continue
             </button>
           ) : (

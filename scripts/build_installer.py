@@ -6,15 +6,17 @@ Runs the whole chain in order and stops at the first failure with an
 explanation rather than a stack trace:
 
     1. check the build tools are present
-    2. fetch FFmpeg if it isn't vendored yet
+    2. fetch FFmpeg, Ollama and the Whisper weights if they aren't vendored yet
     3. freeze the Python engine to build/dist/backend/api.exe
     4. build the Electron front end
     5. wrap both in an NSIS installer -> release/
 
-The result is release/ClipsStudio-Setup-<version>.exe, which installs the
-app, the Python engine, FFmpeg and the YOLO weights together. The only
-thing a creator still needs is Ollama and a model, which the app's setup
-wizard handles.
+The result is release/ClipsStudio-Setup-<version>.exe, which installs the app,
+the Python engine, FFmpeg, the Ollama runtime, and the YOLO, TalkNet and
+Whisper weights together. A creator installs nothing else: the one remaining
+download is the language model, which the app pulls itself on first launch
+behind a progress bar, because it is 5 GB and the right one depends on their
+GPU.
 
 Flags:
     --skip-backend    reuse the frozen backend from a previous run
@@ -80,16 +82,31 @@ def check_tools(skip_ui: bool) -> None:
         sys.exit("\nMissing build tools:\n  - " + "\n  - ".join(missing))
 
 
-def ensure_ffmpeg() -> None:
-    say("2/5", "checking vendored FFmpeg")
-    vendor = ROOT / "vendor" / "ffmpeg"
-    have = all((vendor / n).exists() for n in ("ffmpeg.exe", "ffprobe.exe"))
-    if have:
-        size = sum(f.stat().st_size for f in vendor.iterdir() if f.is_file())
-        print(f"    present ({size / 1e6:.0f} MB)")
-        return
-    print("    not vendored yet — fetching")
-    run([sys.executable, str(ROOT / "scripts" / "fetch_ffmpeg.py")], ROOT, "FFmpeg download")
+def _vendored_size(folder: Path) -> float:
+    return sum(f.stat().st_size for f in folder.rglob("*") if f.is_file()) / 1e6
+
+
+def ensure_vendored() -> None:
+    """Fetch everything the installer carries but the repo doesn't store.
+
+    These are the difference between a one-click install and a scavenger hunt.
+    Each fetch script is idempotent and prints what it already has, so a
+    rebuild costs a few seconds rather than re-downloading gigabytes.
+    """
+    say("2/5", "checking bundled dependencies")
+
+    # (label, marker that proves it is already there, fetch script)
+    wanted = [
+        ("FFmpeg", ROOT / "vendor" / "ffmpeg" / "ffprobe.exe", "fetch_ffmpeg.py"),
+        ("Ollama", ROOT / "vendor" / "ollama" / "ollama.exe", "fetch_ollama.py"),
+        ("Whisper weights", ROOT / "vendor" / "whisper", "fetch_whisper.py"),
+    ]
+    for label, marker, script in wanted:
+        if marker.exists():
+            print(f"    {label}: present ({_vendored_size(marker if marker.is_dir() else marker.parent):.0f} MB)")
+            continue
+        print(f"    {label}: not vendored yet — fetching")
+        run([sys.executable, str(ROOT / "scripts" / script)], ROOT, f"{label} download")
 
 
 def freeze_backend() -> None:
@@ -172,7 +189,7 @@ def main() -> None:
 
     started = time.time()
     check_tools(args.skip_ui)
-    ensure_ffmpeg()
+    ensure_vendored()
 
     if args.skip_backend:
         print("\n=== 3/5: skipped (reusing existing backend)")

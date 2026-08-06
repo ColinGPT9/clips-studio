@@ -345,12 +345,13 @@
           </p>
           <div class="note">
             <strong>What the installer does and doesn't carry.</strong> It brings the app, the
-            whole AI engine, every library it needs, FFmpeg and the detection weights. No
-            Python, no PATH, no terminal. It does <em>not</em> bring
-            <a href="https://ollama.com">Ollama</a>, which runs the language model and manages
-            your GPU itself, or the model, which is gigabytes and depends on your graphics
-            card. The setup wizard checks for both and walks you through them, so you'll want
-            an internet connection the first time you run it.
+            whole AI engine, every library it needs, FFmpeg, the local AI runtime and all the
+            detection and transcription weights. No Python, no PATH, no terminal, and nothing
+            else for you to install. The one thing it fetches on first launch is the language
+            model — those are licensed to whoever downloads them, so it can't be handed to you
+            in a box. The setup wizard starts that itself and shows a progress bar, so you'll
+            want an internet connection the first time you run it. After that it works
+            offline.
           </div>
           <div class="note" style="margin-top: 14px">
             <strong>Clips Studio is in alpha.</strong> It works and it's used daily, but you

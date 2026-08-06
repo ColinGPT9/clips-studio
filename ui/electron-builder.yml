@@ -98,10 +98,25 @@ nsisWeb:
 
 compression: maximum
 
-# Auto-update wiring. The update wizard (roadmap item 4) reads this feed;
-# publishing is manual until releases start.
+# Where the Web Setup fetches its payload, and where the update wizard reads
+# its feed. Both come from the same place, so they cannot disagree about what
+# the latest version is.
+#
+# NOT GitHub Releases, even though the code lives there. A release asset is
+# capped at 2 GiB and the payload is already over it:
+#
+#   clips-studio-<v>-x64.nsis.7z   2.09 GiB
+#   ClipsStudio-<v>-x64.zip        2.83 GiB
+#
+# Uploading either one fails, which is why nothing has shipped yet. Hugging
+# Face has no such cap, costs nothing, serves from a CDN, and this project
+# already pushes to it (see docs/MIRRORS.md) — so the payload goes there and
+# the GitHub release carries only the ~1 MB setup .exe and the notes.
+#
+# `generic` rather than a Hugging Face provider because electron-builder has
+# no HF provider; a plain HTTPS base URL is all the updater needs, and
+# huggingface.co/<repo>/resolve/main/<file> is exactly that.
 publish:
-  - provider: github
-    owner: ColinGPT9
-    repo: clips-studio
-    releaseType: draft
+  - provider: generic
+    url: https://huggingface.co/ColinGPT9/clips-studio-releases/resolve/main
+    channel: latest

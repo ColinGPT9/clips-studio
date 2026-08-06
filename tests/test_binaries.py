@@ -1,9 +1,12 @@
-"""Finding FFmpeg.
+"""Finding the binaries an installed copy ships.
 
 The pipeline shells out to FFmpeg constantly, and it used to do so by bare
 name. That works in a checkout and cannot work in an installed copy: creators
 do not have FFmpeg, and "download it, unzip it, add it to your PATH" is where
 someone closes the installer for good.
+
+The same reasoning now covers Ollama, which used to be an errand the setup
+wizard sent people on.
 """
 
 import os
@@ -54,6 +57,54 @@ def test_falls_back_to_a_bare_name_rather_than_raising():
     the binary — a clearer error than anything invented here."""
     binaries._resolve.cache_clear()
     assert binaries.ffmpeg() in ("ffmpeg",) or os.path.exists(binaries.ffmpeg())
+    binaries._resolve.cache_clear()
+
+
+def test_ffprobe_is_found_in_the_ffmpeg_folder():
+    """The two arrive from upstream as one archive, so the folder is named for
+    ffmpeg and ffprobe has to be looked up there rather than in a folder of its
+    own. A search keyed on the binary's own name would miss it."""
+    assert binaries._search_roots("ffmpeg") == binaries._search_roots("ffmpeg")
+    assert any(
+        root.name == "ffmpeg" for root in binaries._search_roots("ffmpeg")
+    ), "ffprobe resolution depends on the ffmpeg/ folder being searched"
+
+
+def test_frozen_build_finds_its_bundled_ollama(monkeypatch, tmp_path):
+    """The installed layout: the AI runtime ships inside the frozen engine, so
+    a creator never installs a second program."""
+    exe_dir = tmp_path / "backend"
+    (exe_dir / "_internal" / "ollama").mkdir(parents=True)
+    name = "ollama.exe" if os.name == "nt" else "ollama"
+    bundled = exe_dir / "_internal" / "ollama" / name
+    bundled.write_text("")
+
+    monkeypatch.setattr(binaries.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(binaries.sys, "executable", str(exe_dir / "api.exe"))
+    monkeypatch.delenv("CLIPS_STUDIO_OLLAMA", raising=False)
+    binaries._resolve.cache_clear()
+
+    assert binaries.ollama() == str(bundled)
+    assert binaries.has_bundled_ollama()
+    binaries._resolve.cache_clear()
+
+
+def test_a_system_ollama_on_path_does_not_count_as_bundled(monkeypatch, tmp_path):
+    """preflight words its advice differently for the two cases — a bundled
+    runtime that won't start is a bug to report, a missing system one is
+    something the developer can start themselves.
+
+    PATH is the trap here. A developer machine almost always has Ollama on it,
+    so keying this off "did anything resolve" would tell them their own
+    install is our bug, and would flip depending on whose machine ran it.
+    """
+    monkeypatch.delenv("CLIPS_STUDIO_OLLAMA", raising=False)
+    monkeypatch.setattr(binaries, "_search_roots", lambda _folder: [tmp_path])
+    monkeypatch.setattr(binaries.shutil, "which", lambda _name: "C:/tools/ollama.exe")
+    binaries._resolve.cache_clear()
+
+    assert binaries.ollama() == "C:/tools/ollama.exe"
+    assert not binaries.has_bundled_ollama()
     binaries._resolve.cache_clear()
 
 

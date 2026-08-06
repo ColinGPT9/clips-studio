@@ -1,9 +1,10 @@
 """Is this install actually able to make a clip?
 
 An installed copy has more ways to be half-ready than a dev checkout: FFmpeg
-might not have shipped, Ollama might not be installed, the model might not be
-pulled, the disk might be full. Each of those used to surface as a stack
-trace somewhere deep in a pipeline stage, twenty minutes into a video.
+might not have shipped, the AI runtime might not have started, the model might
+not be pulled, the transcription weights might be absent, the disk might be
+full. Each of those used to surface as a stack trace somewhere deep in a
+pipeline stage, twenty minutes into a video.
 
 This checks them up front and says which one is wrong in words a creator can
 act on. The setup wizard runs it on first launch; the app can run it any time
@@ -17,7 +18,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from core.binaries import ffmpeg, ffprobe
+from core.binaries import bundled_whisper_sizes, ffmpeg, ffprobe, has_bundled_ollama
 
 # Below this a single long video can fill the disk part-way through rendering.
 MIN_FREE_GB = 20
@@ -82,8 +83,13 @@ def check_ffmpeg() -> list[Check]:
 
 
 def check_ollama(host: str, model: str) -> list[Check]:
-    """Ollama serves the LLM. It is deliberately NOT bundled — it is a
-    separate product with its own installer and its own GPU handling."""
+    """Ollama serves the LLM.
+
+    Installed copies ship their own and Electron starts it, so this failing is
+    a bug rather than an errand. A checkout borrows whatever Ollama the
+    developer runs, where it means the familiar thing — so the advice given
+    depends on which of the two this is.
+    """
     import requests
 
     try:
@@ -95,7 +101,11 @@ def check_ollama(host: str, model: str) -> list[Check]:
             name="ollama",
             ok=False,
             detail=f"not reachable at {host} ({type(e).__name__})",
-            fix="Install Ollama from https://ollama.com and let it run in the "
+            fix="The AI runtime that ships with Clips Studio did not start. "
+                "Restarting the app usually fixes it. If it keeps happening, "
+                "please report it — this one is not your fault."
+                if has_bundled_ollama() else
+                "Install Ollama from https://ollama.com and let it run in the "
                 "background. Clips Studio uses it for the AI that picks and "
                 "titles clips.",
         )]
@@ -111,10 +121,49 @@ def check_ollama(host: str, model: str) -> list[Check]:
         name="model",
         ok=have,
         detail=f"{wanted} installed" if have else f"{wanted} not installed",
+        # No `ollama pull` hint for an installed copy: the bundled runtime has
+        # its own port and its own model folder, so a command typed into a
+        # terminal would download into a store this app never reads.
         fix="" if have else
+            f"Download {wanted} from the Models page." if has_bundled_ollama() else
             f"Download it from the Models page, or run: ollama pull {wanted}",
     ))
     return checks
+
+
+def check_whisper(configured: str) -> Check:
+    """Transcription weights.
+
+    Not blocking, because faster-whisper can still fetch them from Hugging
+    Face and produce a correct transcript. But that fetch happens with no
+    progress and no explanation, several minutes into a job, and looks exactly
+    like a hang — so it is worth saying up front that it is going to happen.
+    """
+    have = bundled_whisper_sizes()
+    if not have:
+        return Check(
+            name="whisper",
+            ok=False,
+            blocking=False,
+            detail="no transcription weights bundled",
+            fix="The first video will pause to download them (1-2 GB). That "
+                "is a one-off, and it works — it just looks like nothing is "
+                "happening while it runs.",
+        )
+
+    # "auto" resolves at load time by device, so both sizes have to be there
+    # for it to be satisfied whichever machine this turns out to be.
+    wanted = ("large-v3-turbo", "small") if configured == "auto" else (configured,)
+    absent = [size for size in wanted if size not in have]
+    return Check(
+        name="whisper",
+        ok=not absent,
+        blocking=False,
+        detail=f"{', '.join(have)} bundled",
+        fix="" if not absent else
+            f"{' and '.join(absent)} will be downloaded on first use, which "
+            f"pauses that video for a few minutes.",
+    )
 
 
 def check_gpu() -> Check:
@@ -167,6 +216,9 @@ def run(config: dict) -> Preflight:
     host = llm.get("ollama_host") or "http://localhost:11434"
     model = config.get("model") or "gemma:7b"
     pf.checks += check_ollama(host, model)
+
+    whisper = (config.get("whisper") or {}).get("model") or "auto"
+    pf.checks.append(check_whisper(str(whisper)))
 
     pf.checks.append(check_gpu())
     pf.checks.append(check_disk(Path(config.get("paths", {}).get("data_dir", "data"))))
