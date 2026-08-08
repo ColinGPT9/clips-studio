@@ -43,6 +43,22 @@ jobs:
           # whole tree rather than as a subdirectory.
           cd site
           git init -q
+          git lfs install --local
+
+          # Hugging Face refuses binary blobs pushed as ordinary git objects:
+          # "Your push was rejected because it contains binary files." The
+          # mascot PNGs tripped it. Images have to go through LFS/Xet, and that
+          # needs .gitattributes in place BEFORE `git add`, or the files are
+          # staged as plain blobs and the filter never runs.
+          #
+          # Written here rather than committed as site/.gitattributes on
+          # purpose: a real one would make GitHub start LFS-tracking the same
+          # PNGs in this repository, which nothing here wants. This copy exists
+          # only in the throwaway repo created by `git init` two lines up.
+          for ext in png jpg jpeg gif webp svg ico mp4 webm woff woff2; do
+            echo "*.${ext} filter=lfs diff=lfs merge=lfs -text" >> .gitattributes
+          done
+
           git config user.name "clips-studio-bot"
           git config user.email "noreply@github.com"
           git add -A
