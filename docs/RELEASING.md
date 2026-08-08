@@ -132,6 +132,45 @@ Check after publishing:
 - [ ] Downloaded the Web Setup on a machine that has never run Clips Studio,
       and installed it end to end
 
+## Testing it the way a stranger meets it
+
+A development machine has Python, FFmpeg and Ollama lying around, so it will
+pass an install test it should fail. The claim being made — install one thing
+and nothing else — can only be checked somewhere none of that exists.
+
+**Windows Sandbox** is the cheap way to get that: a throwaway Windows that
+boots clean and is destroyed on close.
+
+1. **BIOS**: enable virtualization. On AMD it is called **SVM Mode**, usually
+   under Advanced → CPU Configuration; on Intel, VT-x. `systeminfo` reports
+   `Virtualization Enabled In Firmware: Yes` once it is on.
+2. **Feature**, in an admin PowerShell:
+   ```
+   Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All
+   ```
+3. Double-click [`scripts/test-install.wsb`](../scripts/test-install.wsb). The
+   Web Setup lands on the sandbox desktop with `release/nsis-web` mapped
+   read-only.
+
+What to confirm in there:
+
+- [ ] The setup downloads its payload — this is the only real proof the
+      Hugging Face URL baked into the exe is correct
+- [ ] The wizard never asks you to install anything
+- [ ] The model pull starts by itself and reports progress
+- [ ] A clip renders end to end
+
+Two things the sandbox cannot tell you. **CUDA does not work in it**, so the
+app will report no GPU and run on CPU — expected there, and no reflection on a
+real install. And everything is destroyed on close, including the ~6 GB it
+downloaded, so do not close the window mid-run.
+
+No virtualization available? A second Windows user account is a weaker
+substitute: it gives a clean `%LOCALAPPDATA%`, so the first-run wizard and the
+per-user install are genuinely exercised, but system-wide Python and any Ollama
+on the default port are still visible and the "nothing else needed" claim goes
+untested.
+
 ## What the installer does and does not carry
 
 **Included:** the Electron app, the frozen Python engine, every Python

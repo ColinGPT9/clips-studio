@@ -1,0 +1,45 @@
+<Configuration>
+  <!--
+    Test the installer the way a stranger meets it.
+
+    Windows Sandbox boots a throwaway copy of Windows with no Python, no
+    Ollama, no FFmpeg and none of your files, and destroys it when the window
+    closes. That is the only honest way to check the claim this installer
+    makes, that a creator installs one thing and nothing else, because a
+    development machine has every dependency lying around and will pass a test
+    it should fail.
+
+    Requires "Virtualization / SVM Mode" enabled in BIOS, and the Windows
+    Sandbox optional feature. See docs/RELEASING.md.
+
+    Double-click this file. The Web Setup appears on the sandbox desktop.
+
+    Two things the sandbox cannot tell you:
+
+      * CUDA does not work here. vGPU below gets the interface drawn smoothly,
+        but the app will report no GPU and run on CPU. That is expected in the
+        sandbox and says nothing about a real install.
+      * Everything vanishes on close, including the roughly 6 GB it downloads.
+        Do not close the window until the run is finished.
+  -->
+  <MappedFolders>
+    <MappedFolder>
+      <!-- Read-only: the sandbox must not be able to alter the artifacts
+           being tested, and this folder holds gigabytes we do not want copied
+           into the VM's disk. -->
+      <HostFolder>C:\Users\colin\YouTube-Clips-Automation\release\nsis-web</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\ClipsStudio</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+
+  <!-- The payload is fetched from Hugging Face at install time, so this test
+       is meaningless without a network. -->
+  <Networking>Enable</Networking>
+
+  <vGPU>Enable</vGPU>
+
+  <!-- Electron plus a 6 GB download plus unpacking wants room. The default
+       4 GB makes the installer look slow when it is only short of memory. -->
+  <MemoryInMB>8192</MemoryInMB>
+</Configuration>
