@@ -1785,7 +1785,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             raise HTTPException(400, "use a PNG (transparent preferred), JPG or WebP")
         src, suffix, _st = picked
 
-        data = src.read_bytes()  # codeql[py/path-injection] the file the user picked
+        # Reading the file the user picked is the feature; code scanning flags
+        # it as py/path-injection and it is dismissed there.
+        data = src.read_bytes()
         if len(data) > 20 * 1024 * 1024:
             raise HTTPException(400, "image too large (max 20 MB)")
         # `suffix` is the constant that matched out of _IMAGE_SUFFIXES, not the

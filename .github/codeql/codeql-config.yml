@@ -16,6 +16,29 @@
 # writes is still scanned, including video/asd.py, which is the code that
 # calls into TalkNet.
 
+# Four alerts are dismissed in code scanning rather than fixed, because the
+# thing they describe is the product:
+#
+#   py/path-injection x3   core/paths.py (resolve + stat) and the image read in
+#                          server/api.py. Importing a video or a logo from
+#                          anywhere on your own disk is the feature; the path
+#                          comes from a native file dialog, the API binds
+#                          127.0.0.1, and picked_file() already rejects UNC
+#                          paths, non-files and unexpected extensions.
+#   py/file-not-closed     server/feedback.py — the job log handle belongs to
+#                          _job_sink until close_job_log() runs, which is a
+#                          lifetime the rule cannot follow.
+#
+# They are dismissed through the API/UI and NOT with `# codeql[...]` comments:
+# GitHub code scanning ignores in-source suppression comments. Tried on
+# 354583b, all three still reported.
+#
+# The consequence to know about: a dismissal is pinned to a line number, so an
+# edit that shifts one of these lines retires the dismissal and opens a fresh
+# alert for the same code. That has happened twice. If it becomes tiresome,
+# a `query-filters: - exclude: id: py/path-injection` here would end it
+# permanently, at the cost of hiding the rule repo-wide.
+
 name: Clips Studio
 
 paths-ignore:

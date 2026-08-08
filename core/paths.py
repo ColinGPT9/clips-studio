@@ -115,9 +115,14 @@ def picked_file(
         return None
     if raw.startswith("\\\\") or raw.startswith("//"):
         return None
+    # These two lines are the irreducible part, and CodeQL flags both as
+    # py/path-injection: resolving and stat-ing a path that came from the
+    # request is precisely what "open the file the user picked" means. They
+    # are dismissed in code scanning rather than suppressed here, because
+    # GitHub does not honour suppression comments in source.
     try:
         path = Path(raw).resolve()
-        st = path.stat()  # codeql[py/path-injection] the file the user picked
+        st = path.stat()
     except (OSError, ValueError, RuntimeError):
         return None
     if not stat.S_ISREG(st.st_mode):
