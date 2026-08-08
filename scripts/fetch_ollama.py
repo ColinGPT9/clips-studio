@@ -40,7 +40,7 @@ DEST = ROOT / "vendor" / "ollama"
 # silently alter what ships. Bump deliberately -- a runtime upgrade can change
 # GPU behaviour and model compatibility, which is not something to discover
 # from a build that happened to run on a Tuesday.
-OLLAMA_VERSION = "v0.12.6"
+OLLAMA_VERSION = "v0.32.6"
 RELEASES_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
 ASSET = "ollama-windows-amd64.zip"
 BUILD_URL = f"https://github.com/ollama/ollama/releases/download/{OLLAMA_VERSION}/{ASSET}"
