@@ -10,8 +10,9 @@ python scripts/build_installer.py
 ```
 
 One command, and it stops at the first failure with an explanation. Expect
-90 minutes or so, nearly all of it compressing the payload, and around 30 GB
-of free disk while it works.
+**about two and a half hours** — 149 minutes at 0.1.0, nearly all of it
+compressing 10 GB of payload twice, once into the `.7z` and once into the
+`.zip` — and around 30 GB of free disk while it works.
 
 The first run also downloads what the installer bundles but the repo does not
 store — FFmpeg, the Ollama runtime and the Whisper weights, roughly 3 GB into
@@ -32,12 +33,18 @@ Python code changed, or you will ship a stale engine.
 
 Everything lands in `release/`:
 
+Measured at 0.1.0, the first build carrying the bundled runtime and weights:
+
 | File | Size | What it is |
 |---|---|---|
-| `nsis-web/ClipsStudio-Web-Setup-<v>.exe` | ~1 MB | What people download. Fetches the payload and installs it. |
-| `nsis-web/clips-studio-<v>-x64.nsis.7z` | ~4 GB | The payload the setup downloads. |
-| `nsis-web/latest.yml` | ~1 KB | Version + SHA512 of both. The update checker reads this. |
-| `ClipsStudio-<v>-x64.zip` | ~5 GB | Offline alternative: unzip, run `Clips Studio.exe`. |
+| `nsis-web/ClipsStudio-Web-Setup-<v>.exe` | 813 KB | What people download. Fetches the payload and installs it. |
+| `nsis-web/clips-studio-<v>-x64.nsis.7z` | 5.88 GiB | The payload the setup downloads. |
+| `nsis-web/latest.yml` | 586 B | Version + SHA512 of both. The update checker reads this. |
+| `ClipsStudio-<v>-x64.zip` | 6.90 GiB | Offline alternative: unzip, run `Clips Studio.exe`. |
+
+Installed, that unpacks to about **10 GB**. Roughly 4 GB of the growth is the
+bundled Ollama runtime and the two Whisper models; the rest is CUDA PyTorch,
+which was always the bulk of it.
 
 ## Publishing
 

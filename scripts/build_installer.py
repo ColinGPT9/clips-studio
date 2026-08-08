@@ -155,23 +155,33 @@ def package_installer() -> None:
     if not release.exists():
         sys.exit("\nelectron-builder reported success but produced no release/ folder")
 
-    # The web setup is small on purpose: it fetches the .7z payload beside it
-    # at install time. Both have to be published together or the installer
-    # has nothing to download.
+    # The web setup is small on purpose: it fetches the .7z payload from the
+    # url in electron-builder.yml's publish block at install time. Both have to
+    # be published together or the installer has nothing to download.
     artifacts = [p for p in sorted(release.iterdir())
                  if p.is_file() and p.suffix.lower() in (".exe", ".zip", ".7z")
                  and not p.name.startswith("__")]
     if not artifacts:
         sys.exit("\nelectron-builder reported success but produced no installer")
 
+    # A GitHub release asset is capped at 2 GiB, and both large artifacts are
+    # well past it. Saying which file goes where — and flagging anything that
+    # would simply be rejected — is more use than a list of sizes.
+    github_cap = 2 * 1024**3
+
     print()
     for path in artifacts:
         size = path.stat().st_size
         unit = f"{size / 1e9:.2f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
-        print(f"    ARTIFACT: {path.name}  ({unit})")
+        where = "GitHub release" if size <= github_cap else "Hugging Face (over GitHub's 2 GiB cap)"
+        print(f"    ARTIFACT: {path.name}  ({unit})  ->  {where}")
     print(
-        "\n    Publishing: upload the Web Setup .exe AND the .7z payload to the\n"
-        "    same GitHub release — the setup downloads the payload by name.\n"
+        "\n    Publishing (see docs/RELEASING.md):\n"
+        "      Hugging Face   the .7z payload, the .zip, the Web Setup .exe,\n"
+        "                     and latest.yml LAST — it is the trigger, and an\n"
+        "                     install that reads it starts downloading at once.\n"
+        "      GitHub release the Web Setup .exe and the notes. Nothing else\n"
+        "                     fits; the payload upload is rejected outright.\n"
         "    The .zip is the offline alternative: unzip and run Clips Studio.exe."
     )
 
