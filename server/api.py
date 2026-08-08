@@ -577,10 +577,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
         # Normalised and checked before anything reads it — see picked_file().
         # The path comes from a native file dialog, so a rejection here means
-        # the request did not come from the app.
-        src = picked_file(body.path, _VIDEO_SUFFIXES)
-        if src is None:
+        # the request did not come from the app. It hands back the resolved
+        # path and the stat it already took, so nothing below has to ask the
+        # filesystem about a user-supplied string a second time.
+        picked = picked_file(body.path, _VIDEO_SUFFIXES)
+        if picked is None:
             raise HTTPException(400, f"not a video file this app can open: {body.path}")
+        src, _suffix, src_stat = picked
 
         # Must contain a video stream (catches audio files / random files).
         probe = sp.run(
@@ -605,14 +608,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         except (ValueError, OSError):
             pass  # only costs a less precise estimate
 
-        stat = src.stat()
         # usedforsecurity=False because this is a naming scheme, not a defence:
         # it turns a path into a stable short id so re-importing the same file
         # reuses its downloads/ entry. Nothing trusts it, and collisions cost a
         # duplicate import rather than anything worse. Saying so explicitly
         # keeps the security scanners from reading it as a weak digest.
+        #
+        # src is already resolved and src_stat already taken, both by
+        # picked_file() — re-doing either here would be a second unchecked
+        # look at the same user-supplied string.
         vid = "local_" + hashlib.md5(
-            f"{src.resolve()}|{stat.st_size}|{int(stat.st_mtime)}".encode(),
+            f"{src}|{src_stat.st_size}|{int(src_stat.st_mtime)}".encode(),
             usedforsecurity=False,
         ).hexdigest()[:12]
         dest = data_dir / "downloads" / f"{vid}.mp4"
@@ -1771,16 +1777,21 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         put in a profile's config.image_asset."""
         import hashlib
 
-        # The suffix check moved into picked_file() so the path is validated
+        # The suffix check lives in picked_file() so the path is validated
         # before it is read, not after — this used to load up to 20 MB off any
         # path the request named and only then decide it was the wrong type.
-        src = picked_file(body.path, _IMAGE_SUFFIXES)
-        if src is None:
+        picked = picked_file(body.path, _IMAGE_SUFFIXES)
+        if picked is None:
             raise HTTPException(400, "use a PNG (transparent preferred), JPG or WebP")
-        data = src.read_bytes()
+        src, suffix, _st = picked
+
+        data = src.read_bytes()  # codeql[py/path-injection] the file the user picked
         if len(data) > 20 * 1024 * 1024:
             raise HTTPException(400, "image too large (max 20 MB)")
-        name = hashlib.sha256(data).hexdigest()[:16] + src.suffix.lower()
+        # `suffix` is the constant that matched out of _IMAGE_SUFFIXES, not the
+        # text on the end of the filename, so the name written into the assets
+        # folder can only ever end in one of the four extensions above.
+        name = hashlib.sha256(data).hexdigest()[:16] + suffix
         assets = data_dir / "branding" / "assets"
         assets.mkdir(parents=True, exist_ok=True)
         dest = assets / name

@@ -7,6 +7,7 @@ made the rule impossible to test without a GPU-sized environment.
 """
 
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -74,8 +75,10 @@ def safe_name(name: str) -> str | None:
     return name
 
 
-def picked_file(raw: str, allowed_suffixes: tuple[str, ...]) -> Path | None:
-    """A file the user chose in a dialog, normalised, or None if it isn't one.
+def picked_file(
+    raw: str, allowed_suffixes: tuple[str, ...]
+) -> tuple[Path, str, os.stat_result] | None:
+    """A file the user chose in a dialog, or None if the request isn't one.
 
     The complement to safe_name(). Importing any video from anywhere on your
     own disk is the whole point of the local-file feature, so there is no
@@ -91,24 +94,40 @@ def picked_file(raw: str, allowed_suffixes: tuple[str, ...]) -> Path | None:
     * one of `allowed_suffixes`, so the endpoint that wants an image cannot be
       talked into probing something else
 
-    That does not make an arbitrary path safe in the abstract; it makes this
-    endpoint do only the narrow thing it advertises. The rest of the guarantee
-    is that the API binds 127.0.0.1 and the path is chosen by a native file
-    dialog, not typed by a stranger.
+    Returns everything a caller needs so that none of them has to touch the
+    filesystem again with a user-derived value: the resolved path, the
+    **suffix constant that matched** — taken from `allowed_suffixes`, not from
+    the name on disk, so a filename built from it can only ever end in one of
+    the extensions this endpoint accepts — and the stat already taken here.
+    An earlier version returned only the path, and every caller went on to
+    call .stat(), .resolve() and .suffix for itself; that is how one validated
+    path turned into seven separate places handling untrusted input.
+
+    The single os.stat also closes the gap between "does it exist" and "is it
+    a regular file", which two calls left open.
+
+    None of this makes an arbitrary path safe in the abstract; it makes these
+    endpoints do only the narrow thing they advertise. The rest of the
+    guarantee is that the API binds 127.0.0.1 and the path is chosen by a
+    native file dialog, not typed by a stranger.
     """
     if not raw or "\x00" in raw:
         return None
     if raw.startswith("\\\\") or raw.startswith("//"):
         return None
     try:
-        path = Path(raw).resolve(strict=True)
+        path = Path(raw).resolve()
+        st = path.stat()  # codeql[py/path-injection] the file the user picked
     except (OSError, ValueError, RuntimeError):
         return None
-    if not path.is_file():
+    if not stat.S_ISREG(st.st_mode):
         return None
-    if path.suffix.lower() not in allowed_suffixes:
-        return None
-    return path
+
+    lowered = path.name.lower()
+    for suffix in allowed_suffixes:
+        if lowered.endswith(suffix):
+            return path, suffix, st
+    return None
 
 
 def within(base: Path, candidate: Path) -> bool:

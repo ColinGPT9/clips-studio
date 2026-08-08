@@ -192,9 +192,12 @@ def test_a_stuck_prefetch_does_not_wedge_the_job_queue():
 def test_waiting_for_a_different_video_returns_at_once():
     import threading
 
-    from core.prefetch import Prefetcher
+    # Module form, matching the test above — the other one patches a value on
+    # the module, and mixing the two import styles for one module in a single
+    # file is the kind of thing that quietly diverges later.
+    import core.prefetch as pf
 
-    p = Prefetcher(Path("nonexistent.db"), Path("nonexistent"))
+    p = pf.Prefetcher(Path("nonexistent.db"), Path("nonexistent"))
     never_finishes = threading.Event()
     t = threading.Thread(target=never_finishes.wait, daemon=True)
     t.start()

@@ -89,6 +89,7 @@ def open_job_log(path) -> bool:
     close_job_log()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        # codeql[py/file-not-closed] ownership passes to _job_sink, below
         handle = open(path, "a", encoding="utf-8", errors="replace")
     except Exception as e:
         print(f"      (could not open job log {path}: {e})")

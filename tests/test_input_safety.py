@@ -62,8 +62,25 @@ def test_picked_file_accepts_a_real_video_anywhere_on_disk(tmp_path):
     """The feature, not a hole: importing any video from any folder is the
     whole point, so this must not turn into a confinement check."""
     f = tmp_path / "stream vod.mp4"
+    f.write_bytes(b"xyz")
+
+    path, suffix, st = picked_file(str(f), VIDEO_SUFFIXES)
+    assert path == f.resolve()
+    assert suffix == ".mp4"
+    assert st.st_size == 3
+
+
+def test_picked_file_returns_the_allowlisted_constant_not_the_filename(tmp_path):
+    """The suffix a caller builds a stored filename from must come out of the
+    allowlist, never off the end of the name on disk. The branding endpoint
+    concatenates it onto a hash, and taking it from the filename is how a
+    checked path turned back into an unchecked one."""
+    f = tmp_path / "LOGO.PNG"
     f.write_bytes(b"x")
-    assert picked_file(str(f), VIDEO_SUFFIXES) == f.resolve()
+
+    _path, suffix, _st = picked_file(str(f), IMAGE_SUFFIXES)
+    assert suffix in IMAGE_SUFFIXES
+    assert suffix == ".png"          # the constant, lowercase, not "PNG"
 
 
 def test_picked_file_collapses_traversal_before_anything_reads_it(tmp_path):
@@ -74,9 +91,10 @@ def test_picked_file_collapses_traversal_before_anything_reads_it(tmp_path):
     f = tmp_path / "clip.mov"
     f.write_bytes(b"x")
 
-    got = picked_file(str(tmp_path / "sub" / ".." / "clip.mov"), VIDEO_SUFFIXES)
-    assert got == f.resolve()
-    assert ".." not in str(got)
+    path, _suffix, _st = picked_file(str(tmp_path / "sub" / ".." / "clip.mov"),
+                                     VIDEO_SUFFIXES)
+    assert path == f.resolve()
+    assert ".." not in str(path)
 
 
 def test_picked_file_rejects_a_network_path():
@@ -110,7 +128,10 @@ def test_picked_file_is_case_insensitive_about_extensions(tmp_path):
     writes .MP4 must not be refused."""
     f = tmp_path / "GX010042.MP4"
     f.write_bytes(b"x")
-    assert picked_file(str(f), VIDEO_SUFFIXES) == f.resolve()
+
+    path, suffix, _st = picked_file(str(f), VIDEO_SUFFIXES)
+    assert path == f.resolve()
+    assert suffix == ".mp4"
 
 
 def test_within_catches_what_the_name_check_missed():
