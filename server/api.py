@@ -595,8 +595,14 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             pass  # only costs a less precise estimate
 
         stat = src.stat()
+        # usedforsecurity=False because this is a naming scheme, not a defence:
+        # it turns a path into a stable short id so re-importing the same file
+        # reuses its downloads/ entry. Nothing trusts it, and collisions cost a
+        # duplicate import rather than anything worse. Saying so explicitly
+        # keeps the security scanners from reading it as a weak digest.
         vid = "local_" + hashlib.md5(
-            f"{src.resolve()}|{stat.st_size}|{int(stat.st_mtime)}".encode()
+            f"{src.resolve()}|{stat.st_size}|{int(stat.st_mtime)}".encode(),
+            usedforsecurity=False,
         ).hexdigest()[:12]
         dest = data_dir / "downloads" / f"{vid}.mp4"
         dest.parent.mkdir(parents=True, exist_ok=True)

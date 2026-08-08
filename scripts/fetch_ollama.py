@@ -102,6 +102,29 @@ def _latest_tag() -> str | None:
         return None
 
 
+def _extract_within(archive: zipfile.ZipFile, dest: Path) -> None:
+    """Unpack `archive` into `dest`, refusing anything that escapes it.
+
+    ZipFile.extractall() writes wherever the entry names point, so a member
+    called `..\\..\\Windows\\System32\\something.dll` lands there. This
+    particular archive comes from a GitHub release rather than a stranger —
+    but "the source is trusted" is the assumption that quietly stops holding
+    the day a mirror, a proxy or a compromised token gets between the two, and
+    checking costs nothing next to a 1.5 GB download.
+    """
+    root = dest.resolve()
+    for member in archive.infolist():
+        target = (root / member.filename).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(f"archive entry escapes the destination: {member.filename}")
+        if member.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(member) as src, open(target, "wb") as out:
+            shutil.copyfileobj(src, out)
+
+
 def _installed_version() -> str | None:
     stamp = DEST / STAMP
     try:
@@ -147,7 +170,7 @@ def fetch(force: bool = False) -> int:
     # own. The GPU runners and the CUDA libraries beside it under lib/ are what
     # make it faster than CPU inference, and they must keep their layout.
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
-        z.extractall(DEST)
+        _extract_within(z, DEST)
 
     if not exe.exists():
         print(f"\n{ASSET} did not contain ollama.exe — archive layout changed?")
