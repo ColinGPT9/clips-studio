@@ -245,16 +245,14 @@
               vlogs, interviews. This is what the clip-picking and the framing are tuned
               for, and it's what gets tested on real streams before anything ships.
             </li>
-            <li class="partial">
-              <strong>Gaming with a facecam works.</strong> Your webcam and the gameplay
-              are detected and stacked automatically, so both stay in frame. It's newer
-              than the rest, so treat it as good rather than polished.
-            </li>
             <li class="weak">
-              <strong>Gaming with no facecam is weaker.</strong> The framing follows a
-              person, and with nobody on screen there's nothing to follow, so it centres
-              the shot instead. Clips still get cut, captioned and edited. The framing
-              just isn't doing anything clever.
+              <strong>Gaming and split-screen aren't shipped yet.</strong> Two things
+              weren't good enough in testing: the framing didn't reliably find the part
+              of the screen where the action was, and subject tracking mistook characters
+              <em>inside the game</em> for the streamer — to a person detector, a person
+              on screen is a person on screen. That produces clips centred on the wrong
+              human, so it's held back rather than shipped half-working. It's being
+              worked on.
             </li>
             <li class="weak">
               <strong>Reaction content isn't really its thing.</strong> Clips are chosen

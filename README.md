@@ -169,9 +169,8 @@ or less thinking than the feature list suggests, so nothing comes as a surprise:
 | Content | How it does |
 |---|---|
 | **IRL, just chatting, podcasts, vlogs, interviews** | What it's tuned for and what gets tested on real streams before release |
-| **Gaming with a facecam** | Works — the webcam and the gameplay are detected and stacked automatically. Newer than the rest, so good rather than polished |
-| **Gaming with no facecam** | Weaker framing. Subject tracking follows a person; with nobody on screen it centres the shot instead. Cutting, captions and the editor are unaffected |
-| **Reaction videos** | Not really its thing. Clips are chosen from what's *said*, and it can't see the video you're reacting to — so the moment that made the clip is invisible to it |
+| **Gaming and split-screen** | Not shipped yet. Framing did not reliably find the part of the screen where the action was, and subject tracking mistook characters *inside the game* for the streamer — to a person detector, a person on screen is a person on screen. The result was clips centred on the wrong human, so it is held back rather than shipped half-working |
+| **Reaction videos** | Not yet either, and for a related reason. Clips are chosen from what's *said*, and it can't see the video you're reacting to — so the moment that made the clip is invisible to it |
 
 Clip selection is transcript-and-signal driven. When the funny thing is *visual only*
 and nobody comments on it, expect to find it yourself in the editor.
