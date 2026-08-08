@@ -56,7 +56,7 @@ class _Tee:
                 if line.strip():
                     _ring.append(line[:500])
         except Exception:
-            pass
+            pass  # capturing a line for diagnostics must never break printing it
         with _sink_lock:
             sink = _job_sink
         if sink is not None:
@@ -93,6 +93,11 @@ def open_job_log(path) -> bool:
     except Exception as e:
         print(f"      (could not open job log {path}: {e})")
         return False
+    # Deliberately not a `with`: this handle has to outlive the call, because
+    # the point of it is to keep receiving output until close_job_log() runs at
+    # the end of the job. Ownership passes to _job_sink here, and close_job_log
+    # is the only thing that closes it — including on the way in, above, so a
+    # second open() can never orphan the first.
     with _sink_lock:
         _job_sink = handle
     return True
@@ -106,7 +111,7 @@ def close_job_log() -> None:
         try:
             handle.close()
         except Exception:
-            pass
+            pass  # already closed, or the disk went away — either way it is done with
 
 
 def recent_log(lines: int = 120) -> str:

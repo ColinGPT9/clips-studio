@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from core import queue
 from core.binaries import ffmpeg, ffprobe
-from core.paths import safe_name
+from core.paths import picked_file, safe_name
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
@@ -128,6 +128,14 @@ class PreviewIn(BaseModel):
 class BrandingIn(BaseModel):
     name: str
     config: dict
+
+
+# What the two "import a file from this computer" endpoints will accept. Kept
+# next to the models that carry those paths so the two stay in step, and passed
+# to picked_file() so a path is rejected before anything opens it.
+_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
+_VIDEO_SUFFIXES = (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi", ".flv", ".ts", ".mpg",
+                   ".mpeg", ".wmv", ".m2ts", ".mts")
 
 
 class BrandingAssetIn(BaseModel):
@@ -567,9 +575,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         import hashlib
         import subprocess as sp
 
-        src = Path(body.path)
-        if not src.exists() or not src.is_file():
-            raise HTTPException(400, f"file not found: {body.path}")
+        # Normalised and checked before anything reads it — see picked_file().
+        # The path comes from a native file dialog, so a rejection here means
+        # the request did not come from the app.
+        src = picked_file(body.path, _VIDEO_SUFFIXES)
+        if src is None:
+            raise HTTPException(400, f"not a video file this app can open: {body.path}")
 
         # Must contain a video stream (catches audio files / random files).
         probe = sp.run(
@@ -1760,16 +1771,16 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         put in a profile's config.image_asset."""
         import hashlib
 
-        src = Path(body.path)
-        if not src.exists() or not src.is_file():
-            raise HTTPException(400, f"file not found: {body.path}")
+        # The suffix check moved into picked_file() so the path is validated
+        # before it is read, not after — this used to load up to 20 MB off any
+        # path the request named and only then decide it was the wrong type.
+        src = picked_file(body.path, _IMAGE_SUFFIXES)
+        if src is None:
+            raise HTTPException(400, "use a PNG (transparent preferred), JPG or WebP")
         data = src.read_bytes()
         if len(data) > 20 * 1024 * 1024:
             raise HTTPException(400, "image too large (max 20 MB)")
-        ext = src.suffix.lower()
-        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
-            raise HTTPException(400, "use a PNG (transparent preferred), JPG or WebP")
-        name = hashlib.sha256(data).hexdigest()[:16] + ext
+        name = hashlib.sha256(data).hexdigest()[:16] + src.suffix.lower()
         assets = data_dir / "branding" / "assets"
         assets.mkdir(parents=True, exist_ok=True)
         dest = assets / name

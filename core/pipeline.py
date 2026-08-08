@@ -9,6 +9,7 @@ reprocessed, and the clips table's UNIQUE constraint blocks duplicates.
 
 import json
 import re
+import threading
 from pathlib import Path
 
 from analysis.fusion import find_clips
@@ -23,7 +24,10 @@ from transcription.transcriber import transcribe
 from video.captions import build_captions
 from video.cutter import cut_clip
 
-_CPU_SHARED = False
+# A latch, not a flag: _share_the_cpu() is called from worker threads, and an
+# Event's set/is_set pair does the once-only check without a `global` rebind
+# that static analysis reads as a write nobody consumes.
+_CPU_SHARED = threading.Event()
 
 
 def _share_the_cpu(workers: int) -> None:
@@ -48,10 +52,9 @@ def _share_the_cpu(workers: int) -> None:
     too. Not applied per call — the setting is global to the process, so doing
     it repeatedly from worker threads would just race.
     """
-    global _CPU_SHARED
-    if _CPU_SHARED:
+    if _CPU_SHARED.is_set():
         return
-    _CPU_SHARED = True
+    _CPU_SHARED.set()
 
     import os
 

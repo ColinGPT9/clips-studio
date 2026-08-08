@@ -67,7 +67,8 @@ def test_a_model_that_is_missing_never_suggests_the_command_line(monkeypatch):
 
     class Response:
         @staticmethod
-        def raise_for_status() -> None: ...
+        def raise_for_status() -> None:
+            """A 200: there is nothing to raise."""
 
         @staticmethod
         def json() -> dict:

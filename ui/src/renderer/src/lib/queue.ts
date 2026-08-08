@@ -28,13 +28,28 @@ export function jobLabel(job: QueueJob): string {
   }
 }
 
-/** Which site a job's video came from, for a small chip on the row. */
+/** Which site a job's video came from, for a small chip on the row.
+ *
+ *  Matched against the parsed hostname rather than the whole URL. Testing
+ *  /twitch\.tv/ against the raw string also matches
+ *  `example.com/watch?ref=twitch.tv` and `twitch.tv.phishing.example`, which
+ *  puts a Twitch chip on a row that has nothing to do with Twitch. */
 export function sourceOf(url: string): string {
   if (!url) return ''
   if (url.startsWith('local:')) return 'Local file'
-  if (/youtu\.?be/.test(url)) return 'YouTube'
-  if (/twitch\.tv/.test(url)) return 'Twitch'
-  if (/kick\.com/.test(url)) return 'Kick'
+
+  let host: string
+  try {
+    host = new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+  } catch {
+    return 'Link'
+  }
+
+  // Exact host, or a subdomain of it — never a substring.
+  const from = (domain: string): boolean => host === domain || host.endsWith(`.${domain}`)
+  if (from('youtube.com') || from('youtu.be')) return 'YouTube'
+  if (from('twitch.tv')) return 'Twitch'
+  if (from('kick.com')) return 'Kick'
   return 'Link'
 }
 

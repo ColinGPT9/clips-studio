@@ -74,6 +74,43 @@ def safe_name(name: str) -> str | None:
     return name
 
 
+def picked_file(raw: str, allowed_suffixes: tuple[str, ...]) -> Path | None:
+    """A file the user chose in a dialog, normalised, or None if it isn't one.
+
+    The complement to safe_name(). Importing any video from anywhere on your
+    own disk is the whole point of the local-file feature, so there is no
+    directory to confine these to and no allowlist of names to check against.
+    What can be checked is that the request describes an ordinary local file
+    of a kind this app can actually open:
+
+    * resolved, so `..` segments are collapsed before anything acts on it
+    * a real regular file, not a directory, device or dangling symlink
+    * a local path, not a `\\\\server\\share` UNC one — the desktop app's file
+      dialog never produces those, and honouring them would let anything that
+      can reach the API pull files off the network shares this machine can see
+    * one of `allowed_suffixes`, so the endpoint that wants an image cannot be
+      talked into probing something else
+
+    That does not make an arbitrary path safe in the abstract; it makes this
+    endpoint do only the narrow thing it advertises. The rest of the guarantee
+    is that the API binds 127.0.0.1 and the path is chosen by a native file
+    dialog, not typed by a stranger.
+    """
+    if not raw or "\x00" in raw:
+        return None
+    if raw.startswith("\\\\") or raw.startswith("//"):
+        return None
+    try:
+        path = Path(raw).resolve(strict=True)
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if not path.is_file():
+        return None
+    if path.suffix.lower() not in allowed_suffixes:
+        return None
+    return path
+
+
 def within(base: Path, candidate: Path) -> bool:
     """True when `candidate` really sits inside `base`, symlinks resolved.
 

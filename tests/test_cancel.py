@@ -160,16 +160,17 @@ def test_a_stuck_prefetch_does_not_wedge_the_job_queue():
     """
     import threading
 
-    from core.prefetch import Prefetcher
+    # Imported as a module, not `from core.prefetch import ...`: the timeout
+    # below is patched on the module object, and a name imported here would go
+    # on holding the original value.
+    import core.prefetch as pf
 
-    p = Prefetcher(Path("nonexistent.db"), Path("nonexistent"))
+    p = pf.Prefetcher(Path("nonexistent.db"), Path("nonexistent"))
     never_finishes = threading.Event()
     t = threading.Thread(target=never_finishes.wait, daemon=True)
     t.start()
     try:
         p._thread, p._video_id = t, "vid1"
-        import core.prefetch as pf
-
         original = pf._PREFETCH_JOIN_TIMEOUT
         pf._PREFETCH_JOIN_TIMEOUT = 0.2
         try:

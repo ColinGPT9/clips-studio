@@ -17,7 +17,7 @@ dialog:
 
 from pathlib import Path
 
-from core.paths import safe_name, within
+from core.paths import picked_file, safe_name, within
 
 TRAVERSALS = [
     "../../../etc/passwd",
@@ -52,6 +52,65 @@ def test_safe_name_rejects_leading_dash():
     filename."""
     assert safe_name("-rf") is None
     assert safe_name("--data-dir=/tmp") is None
+
+
+VIDEO_SUFFIXES = (".mp4", ".mov", ".mkv")
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def test_picked_file_accepts_a_real_video_anywhere_on_disk(tmp_path):
+    """The feature, not a hole: importing any video from any folder is the
+    whole point, so this must not turn into a confinement check."""
+    f = tmp_path / "stream vod.mp4"
+    f.write_bytes(b"x")
+    assert picked_file(str(f), VIDEO_SUFFIXES) == f.resolve()
+
+
+def test_picked_file_collapses_traversal_before_anything_reads_it(tmp_path):
+    """`..` is legal in a path a person typed, but the value that reaches
+    ffprobe should be the resolved one, so what gets probed and what gets
+    logged are the same file."""
+    (tmp_path / "sub").mkdir()
+    f = tmp_path / "clip.mov"
+    f.write_bytes(b"x")
+
+    got = picked_file(str(tmp_path / "sub" / ".." / "clip.mov"), VIDEO_SUFFIXES)
+    assert got == f.resolve()
+    assert ".." not in str(got)
+
+
+def test_picked_file_rejects_a_network_path():
+    """A file dialog never produces one. Honouring it would let anything that
+    can reach the API pull files off every share this machine can see."""
+    assert picked_file(r"\\attacker\share\payload.mp4", VIDEO_SUFFIXES) is None
+    assert picked_file("//attacker/share/payload.mp4", VIDEO_SUFFIXES) is None
+
+
+def test_picked_file_rejects_the_wrong_kind_of_file(tmp_path):
+    """The image endpoint used to read up to 20 MB off any path it was given
+    and only then decide the extension was wrong."""
+    secret = tmp_path / "id_rsa"
+    secret.write_bytes(b"x")
+    assert picked_file(str(secret), IMAGE_SUFFIXES) is None
+
+    doc = tmp_path / "notes.txt"
+    doc.write_bytes(b"x")
+    assert picked_file(str(doc), VIDEO_SUFFIXES) is None
+
+
+def test_picked_file_rejects_directories_and_absent_files(tmp_path):
+    assert picked_file(str(tmp_path), VIDEO_SUFFIXES) is None
+    assert picked_file(str(tmp_path / "gone.mp4"), VIDEO_SUFFIXES) is None
+    assert picked_file("", VIDEO_SUFFIXES) is None
+    assert picked_file("movie\x00.mp4", VIDEO_SUFFIXES) is None
+
+
+def test_picked_file_is_case_insensitive_about_extensions(tmp_path):
+    """Windows hands back whatever case the file has on disk; a camera that
+    writes .MP4 must not be refused."""
+    f = tmp_path / "GX010042.MP4"
+    f.write_bytes(b"x")
+    assert picked_file(str(f), VIDEO_SUFFIXES) == f.resolve()
 
 
 def test_within_catches_what_the_name_check_missed():
