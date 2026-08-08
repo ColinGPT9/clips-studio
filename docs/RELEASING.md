@@ -106,6 +106,18 @@ error** — between pre-releases those users quietly get the stable feed.
 To ship something stable users must not be pulled onto, upload it as
 `alpha.yml` or `beta.yml` and leave `latest.yml` alone.
 
+### The website's download buttons name the version
+
+All nine "Download for Windows" buttons across `site/` link to
+`releases/download/v<version>/ClipsStudio-Web-Setup-<version>.exe`, so **they
+have to be bumped with the version**. The CI website job checks that internal
+paths resolve; it cannot tell that an external GitHub URL now points at a
+release that does not exist.
+
+The version-free `releases/latest/download/...` form would avoid this, but
+GitHub's "latest" **skips pre-releases** — while the project ships alphas, that
+URL 404s. Switch to it when a release goes out without the pre-release flag.
+
 Check after publishing:
 
 - [ ] Payload, zip and feed file uploaded to Hugging Face; Web Setup on the
