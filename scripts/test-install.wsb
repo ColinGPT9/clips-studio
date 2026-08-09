@@ -24,10 +24,15 @@
   -->
   <MappedFolders>
     <MappedFolder>
-      <!-- Read-only: the sandbox must not be able to alter the artifacts
-           being tested, and this folder holds gigabytes we do not want copied
-           into the VM's disk. -->
-      <HostFolder>C:\Users\colin\YouTube-Clips-Automation\release\nsis-web</HostFolder>
+      <!-- release/sandbox-test holds the Web Setup and NOTHING ELSE. Mapping
+           release/nsis-web instead would put clips-studio-0.1.0-x64.nsis.7z
+           right next to the installer, and an installer that finds its payload
+           sitting beside it has no reason to fetch one. The whole point of
+           this run is to prove the Hugging Face url baked into the exe is
+           correct, so the payload has to be absent and the download real.
+
+           Read-only so the run cannot alter the artifact under test. -->
+      <HostFolder>C:\Users\colin\YouTube-Clips-Automation\release\sandbox-test</HostFolder>
       <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\ClipsStudio</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
