@@ -120,8 +120,14 @@ if vendor_whisper.exists():
 # import time, both YOLO models load and predict, and polars never appears in
 # sys.modules. Re-check after an ultralytics upgrade — a detect/pose run that
 # starts wanting a dataframe would fail at runtime, not at build time.
+#
+# matplotlib is NOT here, and must not be added back. Ultralytics imports it
+# on the path video/tracker.py loads the model through, so excluding it made
+# every clip job die at the reactions stage with "No module named
+# 'matplotlib'" — in installed copies only, because a development machine has
+# it sitting in site-packages. It cost a release to find. tests/test_packaging
+# guards it.
 excludes = [
-    "matplotlib",
     "polars",
     "tkinter",
     "PyQt5",
