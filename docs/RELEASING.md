@@ -148,9 +148,21 @@ boots clean and is destroyed on close.
    ```
    Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All
    ```
-3. Double-click [`scripts/test-install.wsb`](../scripts/test-install.wsb). The
-   Web Setup lands on the sandbox desktop with `release/nsis-web` mapped
-   read-only.
+3. Launch [`scripts/test-install.wsb`](../scripts/test-install.wsb):
+
+   ```
+   & "$env:WINDIR\System32\WindowsSandbox.exe" scripts\test-install.wsb
+   ```
+
+   Double-clicking often does nothing: enabling the feature does not always
+   register a handler for `.wsb`, and Windows then has no idea what the file
+   is. Launching the exe explicitly sidesteps it.
+
+   The Web Setup lands on the sandbox desktop. Only `release/sandbox-test` is
+   mapped, which holds the installer and nothing else — mapping
+   `release/nsis-web` would put the payload beside it, and an installer that
+   finds its payload locally never downloads one, which is the entire thing
+   being tested.
 
 What to confirm in there:
 
