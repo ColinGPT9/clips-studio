@@ -55,7 +55,19 @@ DUCK = 0.12                        # original audio kept this loud underneath
 
 
 def available() -> bool:
-    """True when the optional Piper dependency is installed."""
+    """True when the optional Piper dependency is installed.
+
+    Piper is deliberately not in requirements.txt, so an installed copy does
+    not have it and dubbing is reported unavailable rather than failing —
+    server.api gates every dubbing route on this.
+
+    If it is ever bundled, the two `sys.executable -m piper` calls below must
+    change first. In a frozen build sys.executable is api.exe, not python.exe,
+    and a PyInstaller executable cannot run `-m module`: they would work in a
+    checkout and fail silently in the shipped app, which is the same trap that
+    hid the missing FFmpeg path from yt-dlp. Call Piper's Python API in-process
+    instead of shelling out.
+    """
     try:
         import piper  # noqa: F401
 
