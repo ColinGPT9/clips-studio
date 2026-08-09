@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions } from '../../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
-import BrandingEditor, { watermarkSelection } from '../WatermarkCard'
+import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../WatermarkCard'
 import { Folder, Trash } from '../icons'
 import { t } from '../../lib/i18n'
 
@@ -80,16 +80,44 @@ function savedStyle(): Required<CaptionStyle> {
 
 /** Starting options for the first row: whatever was last used, so the usual
  *  setup is already there. */
+/** Keys seedOptions() restores from. Writing them is remember(), below —
+ *  they were read but never written, so every choice was forgotten the moment
+ *  the window closed and captions came back ticked however often you unticked
+ *  it. */
+const PREF = {
+  captions: 'generate-captions',
+  long_clips: 'generate-long-clips',
+  podcast: 'generate-podcast',
+  longform: 'generate-longform',
+  longform_mode: 'generate-longform-mode'
+} as const
+
+function remember(key: ToggleKey, on: boolean, mode?: string): void {
+  try {
+    if (key === 'captions') localStorage.setItem(PREF.captions, String(on))
+    else if (key === 'long_clips') localStorage.setItem(PREF.long_clips, String(on))
+    else if (key === 'podcast') localStorage.setItem(PREF.podcast, String(on))
+    else if (key === 'longform') {
+      localStorage.setItem(PREF.longform, String(on))
+      if (mode) localStorage.setItem(PREF.longform_mode, mode)
+    }
+    // 'watermark' is deliberately absent: WatermarkCard owns its own two keys
+    // and writes them itself.
+  } catch {
+    // A full or blocked localStorage must not stop someone queueing a video.
+  }
+}
+
 function seedOptions(): JobOptions {
   const wm = watermarkSelection()
   const o: JobOptions = {
-    captions: localStorage.getItem('generate-captions') !== 'false',
+    captions: localStorage.getItem(PREF.captions) !== 'false',
     caption_style: savedStyle()
   }
-  if (localStorage.getItem('generate-long-clips') === 'true') o.long_clips = true
-  if (localStorage.getItem('generate-podcast') === 'true') o.podcast = true
-  if (localStorage.getItem('generate-longform') === 'true') {
-    o.longform = { mode: localStorage.getItem('generate-longform-mode') ?? 'short_clips' }
+  if (localStorage.getItem(PREF.long_clips) === 'true') o.long_clips = true
+  if (localStorage.getItem(PREF.podcast) === 'true') o.podcast = true
+  if (localStorage.getItem(PREF.longform) === 'true') {
+    o.longform = { mode: localStorage.getItem(PREF.longform_mode) ?? 'short_clips' }
   }
   if (wm.enabled && wm.profileId) o.watermark_profile_id = wm.profileId
   return o
@@ -209,7 +237,11 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       const { profileId } = watermarkSelection()
       if (on && profileId) next.watermark_profile_id = profileId
       else delete next.watermark_profile_id
+      // Ticking with no profile saved cannot do anything — the checkbox is
+      // disabled in that case rather than silently refusing to stay ticked.
+      setWatermarkEnabled(on && Boolean(profileId))
     }
+    remember(key, on, next.longform?.mode)
     return next
   }
 
@@ -365,23 +397,37 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 {t('Caption style')} {openStyle === slot.key ? '▾' : '▸'}
               </button>
 
-              {TOGGLES.map((tg) => (
-                <label
-                  key={tg.key}
-                  className="flex items-center gap-2 cursor-pointer text-sm shrink-0 whitespace-nowrap"
-                  title={tg.title}
-                >
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-[#38BDF8]"
-                    checked={isOn(slot.options, tg.key)}
-                    onChange={(e) =>
-                      replaceOptions(slot.key, toggle(slot.options, tg.key, e.target.checked))
+              {TOGGLES.map((tg) => {
+                // Watermark needs a saved branding profile to point at. Without
+                // one there is nothing to burn in, so the box could be ticked
+                // and would simply un-tick itself — which reads as a broken
+                // checkbox. Disable it and say what is missing instead.
+                const needsProfile = tg.key === 'watermark' && !watermarkSelection().profileId
+                return (
+                  <label
+                    key={tg.key}
+                    className={`flex items-center gap-2 text-sm shrink-0 whitespace-nowrap ${
+                      needsProfile ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    }`}
+                    title={
+                      needsProfile
+                        ? 'Create a branding profile below first — there is no logo to burn in yet.'
+                        : tg.title
                     }
-                  />
-                  {t(tg.label)} <span className="text-muted">{t(tg.hint)}</span>
-                </label>
-              ))}
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[#38BDF8]"
+                      checked={isOn(slot.options, tg.key)}
+                      disabled={needsProfile}
+                      onChange={(e) =>
+                        replaceOptions(slot.key, toggle(slot.options, tg.key, e.target.checked))
+                      }
+                    />
+                    {t(tg.label)} <span className="text-muted">{t(tg.hint)}</span>
+                  </label>
+                )
+              })}
 
               {/* Always removable once it holds something. Hiding this on the
                   last row trapped a single uploaded file: its name is not an
