@@ -116,6 +116,35 @@ def test_missing_reports_both_binaries():
     assert all(name in ("ffmpeg", "ffprobe") for name in absent)
 
 
+def test_ytdlp_is_told_where_the_bundled_ffmpeg_is(monkeypatch, tmp_path):
+    """yt-dlp does not use core.binaries; it hunts for ffmpeg on PATH itself.
+
+    Found by installing into a clean Windows: Twitch downloads worked and every
+    YouTube one failed with "ffmpeg is not installed". A Twitch VOD is a single
+    muxed HLS stream, while YouTube serves video and audio separately and has
+    to merge them. A developer machine has ffmpeg on PATH and never sees it.
+    """
+    from sources import ytdlp_common
+
+    bundled = tmp_path / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    bundled.write_text("")
+    monkeypatch.setattr(ytdlp_common, "ffmpeg", lambda: str(bundled))
+
+    opts = ytdlp_common.progress_opts("vid1")
+    assert opts["ffmpeg_location"] == str(tmp_path), (
+        "yt-dlp needs the FOLDER holding ffmpeg and ffprobe"
+    )
+
+
+def test_ytdlp_is_left_alone_when_there_is_no_bundled_ffmpeg(monkeypatch):
+    """A checkout relying on PATH must keep working: handing yt-dlp a location
+    that does not exist is worse than saying nothing and letting it search."""
+    from sources import ytdlp_common
+
+    monkeypatch.setattr(ytdlp_common, "ffmpeg", lambda: "ffmpeg")
+    assert "ffmpeg_location" not in ytdlp_common.progress_opts("vid1")
+
+
 def test_no_module_calls_ffmpeg_by_bare_name():
     """A regression guard for the whole point of this module. Adding a new
     subprocess call with a literal "ffmpeg" would break every installed

@@ -1,12 +1,34 @@
 """Shared yt-dlp behavior for all sources: live download progress + cancel,
-and parallel fragment fetching.
+parallel fragment fetching, and pointing yt-dlp at the bundled FFmpeg.
 
 Without a progress hook the UI's bar sits still during a long VOD download
 (the "stuck at 3%" feeling). This emits real percent as bytes arrive and
 aborts promptly if the video is cancelled.
 """
 
+from pathlib import Path
+
 from core import cancel, progress
+from core.binaries import ffmpeg
+
+
+def _ffmpeg_dir() -> str | None:
+    """The folder holding ffmpeg and ffprobe, for yt-dlp's own use.
+
+    yt-dlp does not call core.binaries — it looks for ffmpeg on PATH itself,
+    and merging separate video and audio streams is the one thing it cannot do
+    without one. A developer's machine has ffmpeg on PATH, so this is invisible
+    there. An installed copy does not, and every download that needs merging
+    dies with "ffmpeg is not installed" — which is most YouTube downloads,
+    because the good video and the good audio arrive as separate streams.
+
+    Returns None when nothing resolved, leaving yt-dlp to search PATH exactly
+    as before rather than handing it a path that isn't there.
+    """
+    resolved = ffmpeg()
+    if resolved == "ffmpeg" or not Path(resolved).exists():
+        return None
+    return str(Path(resolved).parent)
 
 
 def progress_opts(video_id: str | None) -> dict:
@@ -25,7 +47,7 @@ def progress_opts(video_id: str | None) -> dict:
                     total=total,
                 )
 
-    return {
+    opts = {
         "progress_hooks": [hook],
         # VODs are HLS: thousands of small fragments. Fetching them one at a
         # time leaves most of the connection idle — parallel fragments cut
@@ -53,3 +75,17 @@ def progress_opts(video_id: str | None) -> dict:
             "fragment": lambda n: min(5, 2 ** n),
         },
     }
+
+    # Only set when we actually have one, so a checkout with ffmpeg on PATH
+    # keeps working the way it always did.
+    #
+    # This is what separates Twitch from YouTube on a clean install: a Twitch
+    # VOD is one already-muxed HLS stream and needs no merge, while YouTube
+    # serves video and audio separately and cannot be assembled without
+    # ffmpeg. Miss this and half the sources look fine while the biggest one
+    # fails on every single video.
+    ffmpeg_dir = _ffmpeg_dir()
+    if ffmpeg_dir:
+        opts["ffmpeg_location"] = ffmpeg_dir
+
+    return opts

@@ -31,9 +31,11 @@ poll_interval_minutes: 15
 llm:
   # Translation (multilingual publishing) can use a DIFFERENT local model
   # than clipping. Clipping models are picked for judgement; translation
-  # wants multilingual strength — qwen2.5:7b is markedly better here than
-  # gemma. Empty = use the main model above. Install it from the Models
-  # page; nothing is downloaded until you ask.
+  # wants multilingual strength, where the Qwen line is markedly better than
+  # gemma — qwen3:8b, or qwen3:14b if it fits. Both are Apache-2.0, which
+  # matters if you earn from the clips. qwen2.5:7b remains a smaller option.
+  # Empty = use the main model above. Install it from the Models page;
+  # nothing is downloaded until you ask.
   translation_model: ""
   temperature: 0.4
   num_ctx: 8192          # context window; raise for models that support more
