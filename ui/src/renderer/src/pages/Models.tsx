@@ -150,6 +150,8 @@ export default function Models(): JSX.Element {
           </button>
         </div>
         {pullStatus && <p className="text-sm text-accent">{pullStatus}</p>}
+        {/* Two tables, because there are two different questions. This one
+            answers "what will my machine run"; every row is a VRAM tier. */}
         <table className="w-full text-sm mt-2">
           <thead>
             <tr className="label text-left">
@@ -168,6 +170,37 @@ export default function Models(): JSX.Element {
             ))}
           </tbody>
         </table>
+
+        {/* And this one answers "what should I use it for" — translation,
+            licence, newer releases. Mixing the two under one heading is what
+            made the old single table read as nonsense. */}
+        {info.other_models && info.other_models.length > 0 && (
+          <>
+            <h3 className="label mt-6">Other models</h3>
+            <p className="text-xs text-muted mt-1">
+              Picked for a purpose rather than for your graphics card. All run locally, and all
+              are free to use on clips you earn from.
+            </p>
+            <table className="w-full text-sm mt-2">
+              <thead>
+                <tr className="label text-left">
+                  <th className="pb-2 font-normal">For</th>
+                  <th className="pb-2 font-normal">Model</th>
+                  <th className="pb-2 font-normal">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {info.other_models.map((r) => (
+                  <tr key={r.purpose} className="border-t border-raised/50">
+                    <td className="py-2 text-muted">{r.purpose}</td>
+                    <td className="py-2 font-mono text-xs">{r.model}</td>
+                    <td className="py-2 text-muted">{r.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </section>
     </div>
   )

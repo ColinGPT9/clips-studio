@@ -2082,7 +2082,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.get("/models")
     def models():
-        from llm.manager import RECOMMENDATIONS, installed_models, recommend_for
+        from llm.manager import (
+            OTHER_MODELS,
+            RECOMMENDATIONS,
+            installed_models,
+            recommend_for,
+        )
 
         try:
             installed = installed_models(ollama_host)
@@ -2107,6 +2112,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "installed": installed,
             "recommendations": [
                 {"hardware": h, "model": m, "note": n} for h, m, n in RECOMMENDATIONS
+            ],
+            # Kept separate rather than appended: these are chosen for a
+            # purpose, not for how much VRAM you have, and mixing the two put
+            # "Multilingual" under a "Your hardware" heading.
+            "other_models": [
+                {"purpose": p, "model": m, "note": n} for p, m, n in OTHER_MODELS
             ],
             "recommended": recommend_for(vram_gb),
         }

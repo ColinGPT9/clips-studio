@@ -199,11 +199,23 @@ def test_recommendation_matches_the_models_table():
     from llm.manager import RECOMMENDATIONS, recommend_for
 
     table = {hardware: model for hardware, model, _ in RECOMMENDATIONS}
+    offered = set(table.values())
 
     assert recommend_for(12)["model"] == table["10-12 GB VRAM"]
     assert recommend_for(24)["model"] == table["16-24 GB VRAM"]
-    assert recommend_for(8)["model"] == table["6-8 GB VRAM"]
-    assert recommend_for(None)["model"] == table["CPU only / iGPU"]
+
+    # CPU and small-GPU share a row: 4B is the answer to both, and listing it
+    # twice looked like a bug on the Models page.
+    small = table["CPU / iGPU / up to 8 GB VRAM"]
+    assert recommend_for(8)["model"] == small
+    assert recommend_for(None)["model"] == small
+
+    # Whatever the wizard suggests must be a model this page actually lists,
+    # which is the real point: the two must never disagree.
+    for vram in (None, 0, 6, 8, 12, 24, 48):
+        assert recommend_for(vram)["model"] in offered, (
+            f"recommend_for({vram}) offers a model the table does not list"
+        )
 
 
 def test_every_recommendation_explains_itself():

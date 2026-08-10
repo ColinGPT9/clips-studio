@@ -30,6 +30,25 @@ from video.cutter import cut_clip
 _CPU_SHARED = threading.Event()
 
 
+def _render_failure_reason(err: Exception) -> str:
+    """One sentence for a failed render, instead of FFmpeg's whole output.
+
+    A memory failure arrives as pages of x264 and libav noise whose actual
+    content is "malloc failed" somewhere in the middle. Printed once per clip
+    across forty clips, the cause is completely buried.
+    """
+    text = str(err)
+    lowered = text.lower()
+    if "malloc of size" in lowered or "cannot allocate memory" in lowered:
+        return (
+            "ran out of memory while encoding. Close other applications, or "
+            "lower video.parallel_renders in settings.yaml"
+        )
+    # Not a known signature: keep it, but one line rather than a wall.
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "unknown error")
+    return first[:300]
+
+
 def _share_the_cpu(workers: int) -> None:
     """Stop the render pool taking every core, so the machine stays usable.
 
@@ -301,6 +320,11 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     workers = max(1, int(config.get("video", {}).get("parallel_renders", 2)))
     _share_the_cpu(workers)
     done_count = 0
+    # One cause usually breaks every clip in the same way. Printing FFmpeg's
+    # full output forty times buries the one fact that matters, so identical
+    # reasons are counted and reported once at the end.
+    last_failure: str | None = None
+    repeated_failures = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(
@@ -323,11 +347,21 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             try:
                 final_path, render_opts_json = future.result()
             except Exception as e:
-                print(f"      Render failed for {candidate.start:.0f}s-{candidate.end:.0f}s: {e}")
+                where = f"{candidate.start:.0f}s-{candidate.end:.0f}s"
+                reason = _render_failure_reason(e)
+                if reason == last_failure:
+                    repeated_failures += 1      # reported once, after the loop
+                else:
+                    last_failure = reason
+                    repeated_failures = 0
+                    print(f"      Render failed for {where}: {reason}")
                 continue
             clip = _register_clip(db, video.video_id, candidate, final_path, meta, render_opts_json)
             if clip:
                 rendered.append(clip)
+
+    if repeated_failures:
+        print(f"      ({repeated_failures} more clip(s) failed the same way)")
 
     if knowledge_thread is not None:
         knowledge_thread.join(timeout=600)  # normally finished during renders

@@ -250,7 +250,12 @@ def _handle_channels(args, db: StateDB) -> int:
 
 
 def _handle_models(args, config: dict) -> int:
-    from llm.manager import RECOMMENDATIONS, installed_models, switch_model
+    from llm.manager import (
+        OTHER_MODELS,
+        RECOMMENDATIONS,
+        installed_models,
+        switch_model,
+    )
 
     host = config["llm"].get("ollama_host", "http://localhost:11434")
     current = config["llm"]["backend"]
@@ -282,9 +287,12 @@ def _handle_models(args, config: dict) -> int:
     for m in models:
         marker = " <- active" if f"ollama/{m['name']}" == current else ""
         print(f"  {m['name']:24} {m['size_gb']:5.1f} GB{marker}")
-    print("\nUpgrade guide (better GPU = bigger Gemma = better clip selection):")
+    print("\nBy what your machine can hold (bigger = better clip selection):")
     for hw, model, note in RECOMMENDATIONS:
-        print(f"  {hw:18} {model:28} {note}")
+        print(f"  {hw:18} {model:26} {note}")
+    print("\nBy what you need it for:")
+    for purpose, model, note in OTHER_MODELS:
+        print(f"  {purpose:28} {model:24} {note}")
     print("\nSwitch with:  ollama pull <model>   then   python main.py models use <model>")
     return 0
 

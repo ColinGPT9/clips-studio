@@ -11,29 +11,44 @@ import requests
 
 # Rough VRAM guide for Ollama default (4-bit) quantizations.
 #
-# The first four rows are the defaults recommend_for() hands out, and they stay
-# on the Gemma 3 line because that is what has actually been run against real
-# streams here. The rows after them are alternatives a user can choose.
-# Something newer is not automatically something better, and the machine that
-# finds out should not be a stranger's on first launch.
+# ONE axis: what the machine can hold. Every row answers "how much VRAM do you
+# have", and recommend_for() hands out exactly these. An earlier version
+# appended rows like "Newer Gemma" and "Multilingual" here, which put
+# non-hardware values under a "Your hardware" heading and left the note column
+# carrying licences, warnings and hardware advice at once. Anything that is not
+# a hardware tier belongs in OTHER_MODELS below.
 #
-# Licence matters more than usual for this audience: people clipping their own
-# streams are usually monetising them. Everything listed is free to run
-# locally, but the terms differ — Qwen, Mistral and Granite are Apache-2.0,
-# Phi-4 is MIT, Llama and Gemma carry their own terms that permit commercial
-# use with conditions. Deliberately absent: Cohere's Aya Expanse and
-# Command-R7B, which are excellent multilingually and licensed CC-BY-NC, so
-# they cannot be used for anything anyone earns from.
+# Stays on the Gemma 3 line because that is what has been run against real
+# streams here. Newer is not automatically better, and a stranger's first
+# launch is the wrong place to discover otherwise.
+# One row per model, not one per tier. gemma3:4b was listed twice — once for
+# CPU and once for 6-8 GB — which reads as a mistake rather than as the same
+# right answer to two questions. It IS the same answer: 4B is what fits, and
+# nothing better fits 8 GB either.
 RECOMMENDATIONS = [
-    ("CPU only / iGPU",   "gemma3:4b",   "fast, surprisingly capable"),
-    ("6-8 GB VRAM",       "gemma3:4b",   "fully GPU-accelerated"),
-    ("10-12 GB VRAM",     "gemma3:12b",  "big quality jump for scoring"),
-    ("16-24 GB VRAM",     "gemma3:27b",  "best local Gemma"),
-    ("Low RAM / edge",    "gemma4:e2b",  "Gemma 4 edge build, smallest that still scores"),
-    ("Newer Gemma",       "gemma4:e4b / gemma4:12b", "untested here — compare before switching"),
-    ("Multilingual",      "qwen3:8b / qwen3:14b", "Apache-2.0; set as llm.translation_model"),
-    ("No extra terms",    "mistral-nemo:12b / phi4:14b", "Apache-2.0 and MIT respectively"),
-    ("Alternatives",      "llama3.1:8b / qwen2.5:14b", "swap freely, same one-line change"),
+    ("CPU / iGPU / up to 8 GB VRAM", "gemma3:4b",
+     "fits anywhere; GPU-accelerated when there is one, slower on the processor"),
+    ("10-12 GB VRAM",  "gemma3:12b", "big quality jump for scoring"),
+    ("16-24 GB VRAM",  "gemma3:27b", "best local Gemma"),
+]
+
+# The other axis: chosen for a reason other than how much VRAM you have.
+#
+# Licence is called out because this audience monetises its clips. Everything
+# here is free to run locally, but the terms differ — Qwen and Mistral are
+# Apache-2.0, Phi-4 is MIT, Llama and Gemma carry their own terms that permit
+# commercial use with conditions. Deliberately absent: Cohere's Aya Expanse and
+# Command-R7B, excellent multilingually and licensed CC-BY-NC, so they cannot
+# be used for anything anyone earns from.
+OTHER_MODELS = [
+    ("Translation / multilingual", "qwen3:8b / qwen3:14b",
+     "strongest multilingual here; set as llm.translation_model. Apache-2.0"),
+    ("Newest Gemma", "gemma4:e2b / e4b / 12b",
+     "e2b and e4b are edge builds. Not yet tested against real streams"),
+    ("Permissive licence", "mistral-nemo:12b / phi4:14b",
+     "Apache-2.0 and MIT, no additional terms"),
+    ("Older, still solid", "llama3.1:8b / qwen2.5:14b",
+     "swap freely, same one-line change"),
 ]
 
 

@@ -285,6 +285,10 @@ export interface ModelsInfo {
   active: string
   installed: InstalledModel[]
   recommendations: { hardware: string; model: string; note: string }[]
+  /** Models picked for a purpose rather than for how much VRAM you have.
+   *  A separate list because folding them into `recommendations` put values
+   *  like "Multilingual" under a "Your hardware" heading. */
+  other_models?: { purpose: string; model: string; note: string }[]
   /** The one model to suggest for THIS machine, chosen server-side from the
    *  same table as `recommendations` so nothing can contradict it. */
   recommended?: { model: string; reason: string }
