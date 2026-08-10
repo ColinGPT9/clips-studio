@@ -147,6 +147,35 @@ def build_ui() -> None:
     run(["npm", "run", "build"], UI, "Renderer build")
 
 
+def _refresh_sandbox_test(release: Path) -> None:
+    """Put the setup that was just built where scripts/test-install.wsb maps.
+
+    The folder is emptied first, never added to, and that is deliberate twice
+    over:
+
+    * A leftover setup from the previous version means the sandbox installs the
+      OLD build. That happened, cost a full install cycle, and looked like a
+      broken release rather than a stale file.
+    * The payload must stay out. An installer that finds
+      clips-studio-<v>-x64.nsis.7z sitting next to it has no reason to download
+      one, and the download is the thing the sandbox run exists to prove.
+
+    So: exactly one file in here, always the current one.
+    """
+    setups = list(release.glob("nsis-web/ClipsStudio-Web-Setup-*.exe"))
+    if not setups:
+        return  # nsis-web target disabled; nothing to stage
+
+    dest = release / "sandbox-test"
+    if dest.exists():
+        shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    newest = max(setups, key=lambda p: p.stat().st_mtime)
+    shutil.copy2(newest, dest / newest.name)
+    print(f"\n    Sandbox test ready: {newest.name} -> release/sandbox-test/")
+
+
 def package_installer() -> None:
     say("5/5", "packaging the installer")
     run(["npx", "electron-builder", "--win", "--config", "electron-builder.yml"],
@@ -175,6 +204,8 @@ def package_installer() -> None:
         unit = f"{size / 1e9:.2f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
         where = "GitHub release" if size <= github_cap else "Hugging Face (over GitHub's 2 GiB cap)"
         print(f"    ARTIFACT: {path.name}  ({unit})  ->  {where}")
+    _refresh_sandbox_test(release)
+
     print(
         "\n    Publishing (see docs/RELEASING.md):\n"
         "      Hugging Face   the .7z payload, the .zip, the Web Setup .exe,\n"
