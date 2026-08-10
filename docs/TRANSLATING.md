@@ -20,17 +20,27 @@ pull request. Saying "this word is wrong, here is the right one" is enough.
 
 ## The languages
 
-| Complete (9) | Half-finished (9) |
+Each language has its own issue. Find yours here, or in
+[the issue list](https://github.com/ColinGPT9/clips-studio/issues?q=is%3Aissue+is%3Aopen+label%3Atranslation).
+
+| Complete, needs **checking** | Half-finished, needs **finishing** |
 |---|---|
-| Arabic, German, Spanish, French, Hindi, Indonesian, Japanese, Portuguese, Russian | Bengali, Italian, Korean, Thai, Tagalog, Turkish, Urdu, Vietnamese, Chinese |
+| [العربية (Arabic)](https://github.com/ColinGPT9/clips-studio/issues/52) | [বাংলা (Bengali)](https://github.com/ColinGPT9/clips-studio/issues/43) |
+| [Deutsch (German)](https://github.com/ColinGPT9/clips-studio/issues/53) | [Italiano (Italian)](https://github.com/ColinGPT9/clips-studio/issues/44) |
+| [Español (Spanish)](https://github.com/ColinGPT9/clips-studio/issues/54) | [한국어 (Korean)](https://github.com/ColinGPT9/clips-studio/issues/45) |
+| [Français (French)](https://github.com/ColinGPT9/clips-studio/issues/55) | [ไทย (Thai)](https://github.com/ColinGPT9/clips-studio/issues/46) |
+| [हिन्दी (Hindi)](https://github.com/ColinGPT9/clips-studio/issues/56) | [Tagalog (Filipino)](https://github.com/ColinGPT9/clips-studio/issues/47) |
+| [Bahasa Indonesia (Indonesian)](https://github.com/ColinGPT9/clips-studio/issues/57) | [Türkçe (Turkish)](https://github.com/ColinGPT9/clips-studio/issues/48) |
+| [日本語 (Japanese)](https://github.com/ColinGPT9/clips-studio/issues/58) | [اردو (Urdu)](https://github.com/ColinGPT9/clips-studio/issues/49) |
+| [Português (Portuguese)](https://github.com/ColinGPT9/clips-studio/issues/59) | [Tiếng Việt (Vietnamese)](https://github.com/ColinGPT9/clips-studio/issues/50) |
+| [Русский (Russian)](https://github.com/ColinGPT9/clips-studio/issues/60) | [中文 (Chinese)](https://github.com/ColinGPT9/clips-studio/issues/51) |
 
 The complete ones have every string translated and need **checking**. The
 half-finished ones have 57 strings of 116 and need **finishing**. The missing
 ones were added to English and never backfilled, so you will see English text
 in the app. That is a known gap, not something to report.
 
-Each language has its own issue. Find yours in
-[the issue list](https://github.com/ColinGPT9/clips-studio/issues?q=is%3Aissue+is%3Aopen+label%3Atranslation).
+Your language not listed? [Ask for it](https://github.com/ColinGPT9/clips-studio/issues/61).
 
 ## Where the words live
 

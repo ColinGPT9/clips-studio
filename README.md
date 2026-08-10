@@ -180,7 +180,8 @@ and nobody comments on it, expect to find it yourself in the editor.
 If you use the installer, this is the whole list:
 
 - **Windows** PC (the Python engine should run on Linux/macOS; the app is developed
-  and tested on Windows)
+  and tested on Windows). No Mac build exists and the maintainer has no Mac to test
+  one on — see [#62](../../issues/62) if you have one and want to help
 - Recommended: an **NVIDIA GPU** (see [GPU acceleration](#gpu-acceleration))
 - Around **20 GB** free, plus room for the videos you clip
 
@@ -321,6 +322,37 @@ Urdu · Bengali · Thai · Korean · Italian
 Adding a language is one row in `multilingual/languages.py` plus a locale file in
 `ui/src/renderer/src/locales/` — the translator and subtitle writer are
 language-agnostic.
+
+### Help wanted: the maintainer only speaks English
+
+18 of those 19 interface translations have never been read by somebody who speaks
+the language. Half of them aren't finished. Every language has its own issue,
+written in English and in that language, and **reporting a bad word is a complete
+contribution** — no pull request needed. [How it works](docs/TRANSLATING.md).
+
+**Needs finishing** (about 68 strings still in English):
+[বাংলা](../../issues/43) ·
+[Italiano](../../issues/44) ·
+[한국어](../../issues/45) ·
+[ไทย](../../issues/46) ·
+[Tagalog](../../issues/47) ·
+[Türkçe](../../issues/48) ·
+[اردو](../../issues/49) ·
+[Tiếng Việt](../../issues/50) ·
+[中文](../../issues/51)
+
+**Needs checking** (complete, but nobody has verified it reads naturally):
+[العربية](../../issues/52) ·
+[Deutsch](../../issues/53) ·
+[Español](../../issues/54) ·
+[Français](../../issues/55) ·
+[हिन्दी](../../issues/56) ·
+[Bahasa Indonesia](../../issues/57) ·
+[日本語](../../issues/58) ·
+[Português](../../issues/59) ·
+[Русский](../../issues/60)
+
+Want a language that isn't here? [#61](../../issues/61).
 
 ## GPU acceleration
 
