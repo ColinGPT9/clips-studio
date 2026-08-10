@@ -37,7 +37,7 @@ PyYAML>=6.0.3,<7
 google-api-python-client>=2.198.0,<3
 google-auth-oauthlib>=1.4.0,<2
 # 0.x: a minor bump here can break, so the ceiling is tighter than the rest.
-curl_cffi>=0.15.0,<0.16
+curl_cffi>=0.16.0,<0.17
 # <6, not <8: 6 and 7 exist but have never run here. Same rule as the rest —
 # the ceiling sits at the major that is actually tested.
 psutil>=5.9.8,<6
