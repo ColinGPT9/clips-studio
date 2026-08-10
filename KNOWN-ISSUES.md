@@ -53,6 +53,37 @@ Reaction videos sit out for a related reason: clips are chosen from what is
 **What works well:** IRL, just chatting, podcasts, vlogs and interviews. That
 is what it is tuned for and tested on.
 
+## A download can break when a site changes, until the next release
+
+Downloading is handled by yt-dlp, which is bundled inside the app. Twitch, Kick
+and YouTube change things regularly; yt-dlp fixes them within days, but the
+copy inside Clips Studio is fixed at build time.
+
+So there is a window — from a site changing to the next Clips Studio release —
+where downloads from that one site fail even though the fix already exists.
+Other sites keep working, which is the tell: **if Twitch works and Kick does
+not, it is this, not your setup.**
+
+Being worked on in
+[#39](https://github.com/ColinGPT9/clips-studio/issues/39). If you hit it,
+report it with the site and the error — it helps establish how often this
+actually bites.
+
+## Podcast mode frames one person per shot, on purpose
+
+Podcast mode does not put two people on screen together, and does not
+split-screen. That is a decision, not a limitation it fell into.
+
+Earlier versions tried framing two people at once. Averaging two positions
+pulled every shot back toward the centre and made both faces small — the
+"everyone tiny" look — and the same person appearing in two camera angles got
+counted as two speakers, producing a split screen of somebody with himself.
+
+A podcast is already edited so the camera cuts to whoever is talking. So the
+app follows that edit: detect the camera cuts, and within each shot punch in on
+the person who matters. If a clip frames the *wrong* person, that is a real bug
+worth reporting. Framing one person is intended.
+
 ## The app looks frozen while it is scoring
 
 After transcription there is a long stretch — often the longest part of the
