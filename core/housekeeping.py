@@ -26,7 +26,7 @@ def _size(paths) -> int:
         try:
             total += p.stat().st_size
         except OSError:
-            pass
+            pass  # vanished mid-scan; it contributes nothing to the total
     return total
 
 
@@ -114,7 +114,7 @@ def clean(db, data_dir: Path) -> dict:
                 try:
                     d.rmdir()
                 except OSError:
-                    pass
+                    pass  # not empty after all, or in use; leaving it is harmless
     return {"files_removed": removed, "bytes_freed": freed}
 
 

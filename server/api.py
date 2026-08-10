@@ -943,7 +943,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             )
             d.conn.commit()
         except Exception:
-            pass
+            pass  # an audit row is not worth failing the request over
 
     @app.get("/storage")
     def storage():
@@ -1133,7 +1133,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 event = await queue.get()
                 await socket.send_json(event)
         except WebSocketDisconnect:
-            pass
+            pass  # the browser closed the tab; the finally below cleans up
         finally:
             broadcaster.unsubscribe(queue)
 

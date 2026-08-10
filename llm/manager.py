@@ -38,6 +38,13 @@ RECOMMENDATIONS = [
     ("16-24 GB VRAM", "gemma3:27b", "best local Gemma"),
 ]
 
+# NOTE ON TESTING, true of both tables: only gemma:7b, gemma3:4b and gemma3:12b
+# have been run against real streams. Everything else is listed because it is a
+# sensible size for the hardware and is free to use commercially, not because
+# clip quality has been measured with it. They will work — the app talks to all
+# of them identically through Ollama — but nobody has checked whether they pick
+# better or worse moments.
+#
 # The other axis: chosen for a reason other than how much VRAM you have.
 #
 # Licence is called out because this audience monetises its clips. Everything

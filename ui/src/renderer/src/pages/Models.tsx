@@ -181,6 +181,11 @@ export default function Models(): JSX.Element {
               Picked for a purpose rather than for your graphics card. All run locally, and all
               are free to use on clips you earn from.
             </p>
+            <p className="text-xs text-muted mt-1">
+              Only <code>gemma:7b</code>, <code>gemma3:4b</code> and <code>gemma3:12b</code> have
+              been tested against real streams. The rest should work &mdash; they are all driven
+              the same way &mdash; but nobody has measured whether they pick better clips.
+            </p>
             <table className="w-full text-sm mt-2">
               <thead>
                 <tr className="label text-left">

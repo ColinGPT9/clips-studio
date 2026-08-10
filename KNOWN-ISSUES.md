@@ -10,6 +10,24 @@ report without needing a GitHub account, or open an
 
 ---
 
+## Only three AI models have actually been tested
+
+Clips Studio can run any model Ollama serves, and the Models page lists several.
+**Only these three have been run against real streams:**
+
+- `gemma:7b`
+- `gemma3:4b`
+- `gemma3:12b`
+
+Everything else — Gemma 4, Qwen3, Mistral Nemo, Phi-4, Llama — is listed
+because it is a sensible size for the hardware and is free to use commercially,
+**not** because clip quality has been measured with it. They should work; the
+app talks to all of them the same way. Nobody has checked whether they pick
+better or worse moments.
+
+If you try one, saying how it went is genuinely useful — that is a gap that
+only gets closed by people running different models on different content.
+
 ## Windows warns that the app is unsigned
 
 On first run you get **"Windows protected your PC"**. Click *More info → Run

@@ -46,6 +46,9 @@ def last_changed(path: Path) -> str:
         if date:
             return date
     except (OSError, subprocess.TimeoutExpired):
+        # No git, or it hung: fall through to today's date. A sitemap with a
+        # slightly wrong lastmod is worth far more than a build that stops
+        # because the date lookup failed.
         pass
     from datetime import date as _date
     return _date.today().isoformat()

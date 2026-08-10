@@ -394,7 +394,7 @@ def _run_ffmpeg_piped(cmd: list[str], ass_path: Path | None, produce) -> None:
         try:
             proc.stdin.close()
         except (BrokenPipeError, OSError):
-            pass
+            pass  # ffmpeg already exited and closed its end
     proc.wait()
     reader.join(timeout=10)
     if proc.returncode != 0:
