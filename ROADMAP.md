@@ -7,7 +7,7 @@ is in a release you can install today, not a plan.
 
 ## Now: Alpha
 
-The alpha is public. Its purpose is not to be perfect — it is to find out what
+The alpha is public. Its purpose is not to be perfect. It is to find out what
 breaks on machines that are not the developer's.
 
 **Shipped**
@@ -19,7 +19,7 @@ breaks on machines that are not the developer's.
 - Bug reports and feature requests: issue templates, plus an in-app Feedback
   Hub that needs no GitHub account
 - GitHub Discussions
-- Security scanning — CodeQL, Dependabot, secret scanning, a
+- Security scanning: CodeQL, Dependabot, secret scanning, a
   [security policy](SECURITY.md)
 - A container image for anyone who wants to work on the engine without
   installing PyTorch
@@ -52,7 +52,7 @@ AI improvements and performance work. Start with
 
 None of this delays the alpha.
 
-- **Gaming and split-screen**, done properly — the framing has to reliably find
+- **Gaming and split-screen**, done properly. The framing has to reliably find
   the action, and tracking has to tell a streamer from a character inside the
   game
 - **Reaction videos**, which need the app to understand the video being reacted
@@ -74,7 +74,7 @@ the app gets better as your hardware does rather than as someone's subscription
 tier does.
 
 Consumer AI hardware is improving quickly. The architecture is kept modular so
-newer models and faster hardware can be adopted without a redesign — as
+newer models and faster hardware can be adopted without a redesign. As
 machines like the NVIDIA RTX Spark and future AI-accelerated GPUs arrive, the
 same application should be able to run larger local models, infer faster,
 analyse video better and automate more.
