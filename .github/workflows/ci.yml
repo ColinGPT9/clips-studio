@@ -180,3 +180,28 @@ jobs:
           if problems:
               print('\n'.join(problems)); sys.exit(1)
           PY
+
+      - name: External links open in a new tab
+        # The Space serves the site inside an iframe and GitHub replies
+        # X-Frame-Options: DENY, so a link without target="_blank" shows
+        # "refused to connect". Invisible on Pages, which has no frame.
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          bad = []
+          for page in pathlib.Path('site').glob('*.html'):
+              for tag in re.finditer(r'<a\b[^>]*href="https?://[^"]+"[^>]*>',
+                                     page.read_text(encoding='utf-8')):
+                  if 'target=' not in tag.group(0):
+                      bad.append(f'{page.name}: {tag.group(0)[:80]}')
+          if bad:
+              print('these break inside the Hugging Face Space:')
+              print('\n'.join(bad)); sys.exit(1)
+          print('all external links open in a new tab')
+          PY
+
+      - name: Sitemap is current
+        # A page missing from the sitemap never gets crawled, and a lastmod
+        # that never changes tells Google nothing has changed. Both fail
+        # silently, so the generator is the source of truth.
+        run: python scripts/build_sitemap.py --check
