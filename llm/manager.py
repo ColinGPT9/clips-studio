@@ -21,15 +21,21 @@ import requests
 # Stays on the Gemma 3 line because that is what has been run against real
 # streams here. Newer is not automatically better, and a stranger's first
 # launch is the wrong place to discover otherwise.
-# One row per model, not one per tier. gemma3:4b was listed twice — once for
-# CPU and once for 6-8 GB — which reads as a mistake rather than as the same
-# right answer to two questions. It IS the same answer: 4B is what fits, and
-# nothing better fits 8 GB either.
+# One row per tier, no model listed twice. gemma3:4b previously appeared under
+# both "CPU only / iGPU" and "6-8 GB VRAM", which reads as a mistake even
+# though it is the same correct answer to both.
+#
+# The Gemma 4 edge builds belong here, not off to one side. e2b and e4b are
+# built to run on ordinary local machines, which is precisely this audience —
+# treating them as exotic would be wrong.
 RECOMMENDATIONS = [
+    ("Low-power or older PC", "gemma4:e2b",
+     "smallest edge build; made to run on modest hardware"),
     ("CPU / iGPU / up to 8 GB VRAM", "gemma3:4b",
-     "fits anywhere; GPU-accelerated when there is one, slower on the processor"),
-    ("10-12 GB VRAM",  "gemma3:12b", "big quality jump for scoring"),
-    ("16-24 GB VRAM",  "gemma3:27b", "best local Gemma"),
+     "fits anywhere. gemma4:e4b is an equally good pick at this size"),
+    ("10-12 GB VRAM", "gemma3:12b",
+     "big quality jump for scoring. gemma4:12b is the newer equivalent"),
+    ("16-24 GB VRAM", "gemma3:27b", "best local Gemma"),
 ]
 
 # The other axis: chosen for a reason other than how much VRAM you have.
@@ -43,8 +49,6 @@ RECOMMENDATIONS = [
 OTHER_MODELS = [
     ("Translation / multilingual", "qwen3:8b / qwen3:14b",
      "strongest multilingual here; set as llm.translation_model. Apache-2.0"),
-    ("Newest Gemma", "gemma4:e2b / e4b / 12b",
-     "e2b and e4b are edge builds. Not yet tested against real streams"),
     ("Permissive licence", "mistral-nemo:12b / phi4:14b",
      "Apache-2.0 and MIT, no additional terms"),
     ("Older, still solid", "llama3.1:8b / qwen2.5:14b",

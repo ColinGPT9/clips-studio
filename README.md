@@ -385,7 +385,18 @@ Face Space. See [docs/MIRRORS.md](docs/MIRRORS.md) — **GitHub is where work
 happens**, and the website mirror is force-pushed one way, so a commit made on it
 will be overwritten.
 
-## Roadmap
+## Changelog, known issues, roadmap
+
+- **[CHANGELOG.md](CHANGELOG.md)** — what changed in each release, in plain terms.
+- **[KNOWN-ISSUES.md](KNOWN-ISSUES.md)** — what is broken or missing right now, and
+  the workarounds. Everything on it has actually been observed.
+- **[ROADMAP.md](ROADMAP.md)** — what is shipped, what is next, and the long-term
+  direction.
+
+## Roadmap detail
+
+The short version is in [ROADMAP.md](ROADMAP.md). The reasoning behind the harder
+calls is below, because "why not yet" is usually more useful than "not yet".
 
 1. **Android companion app** — clip from a phone. Twitch, Kick and local video files
    only, to comply with Play Store policy.
