@@ -20,4 +20,12 @@
     <loc>https://colingpt9.github.io/clips-studio/local-vs-cloud.html</loc>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://colingpt9.github.io/clips-studio/roadmap.html</loc>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://colingpt9.github.io/clips-studio/changelog.html</loc>
+    <priority>0.6</priority>
+  </url>
 </urlset>

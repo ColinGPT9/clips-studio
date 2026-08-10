@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Changelog: what changed in each Clips Studio release | Clips Studio</title>
+    <meta
+      name="description"
+      content="Every Clips Studio release and what changed in it, written for creators rather than developers. Free and open-source AI clipping that runs on your own PC."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/changelog.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Clips Studio changelog" />
+    <meta
+      property="og:description"
+      content="What changed in each release of Clips Studio, in plain terms."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          <span>
+            <span class="name">Clips <span>Studio</span></span>
+            <span class="tagline">local-first AI clipping</span>
+          </span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html" aria-current="page">Changelog</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="donate" href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <h1>Changelog</h1>
+          <p class="lead">
+            What changed in each release, written for people who use Clips Studio rather than
+            people who read the commits.
+          </p>
+          <p class="lead">
+            This is an <strong>alpha</strong>. Versions move quickly, and most things listed
+            as fixed were broken in a way that only appeared on somebody else's machine.
+          </p>
+        </div>
+      </div>
+
+      <section>
+        <div class="wrap">
+          <h2>0.1.2 &mdash; 10 August 2026</h2>
+          <ul class="ticks">
+            <li>
+              <strong>Your clip settings are remembered again.</strong> Turning captions off,
+              closing the app and reopening it brought captions back. Five settings behaved
+              this way; they were read on startup but never actually saved.
+            </li>
+            <li>
+              <strong>The Watermark tickbox works.</strong> It silently refused to stay ticked
+              when no branding profile existed. It now says a profile has to be created first,
+              rather than looking broken.
+            </li>
+            <li>
+              <strong>A failed render says what went wrong</strong> in one sentence, once,
+              instead of pages of encoder output for every affected clip.
+            </li>
+            <li>
+              <strong>The Models page makes sense.</strong> It had one heading, "Your
+              hardware", over rows that were not hardware. There are now two tables: what your
+              machine can run, and what to pick for a particular job.
+            </li>
+            <li>
+              <strong>More models,</strong> all free to run locally and all usable on clips you
+              earn from. The Gemma 4 edge builds are recommended for ordinary and older PCs,
+              Qwen3 for translation and multilingual work, and Mistral Nemo or Phi-4 for a
+              plainly permissive licence.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>0.1.1 &mdash; 9 August 2026</h2>
+          <p class="section-lead">
+            The release that made 0.1.0 usable. Both bugs were packaging mistakes, and both
+            were invisible on a development machine, which is exactly how they reached a
+            release.
+          </p>
+          <ul class="ticks">
+            <li>
+              <strong>No clip could be produced, from any source.</strong> Every job died
+              partway through. The bundle had excluded a library the tracking model needs in
+              order to load at all.
+            </li>
+            <li>
+              <strong>YouTube downloads failed.</strong> FFmpeg ships inside the app, but the
+              downloader looked for it on the system instead of being told where it lived, so
+              it could not join YouTube's separate video and audio streams. Twitch and Kick
+              were unaffected, because their recordings arrive as a single stream &mdash;
+              which is what made it look like a YouTube problem rather than a packaging one.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>0.1.0 &mdash; 8 August 2026</h2>
+          <p class="section-lead">First public alpha.</p>
+          <ul class="ticks">
+            <li>
+              Paste a Twitch VOD, Kick VOD or YouTube link and get vertical clips with
+              word-synced captions and written titles.
+            </li>
+            <li>
+              Everything runs on your own computer. No uploads, no subscription, no cap on how
+              many clips you make.
+            </li>
+            <li>
+              One installer, carrying the app, the engine, FFmpeg, the AI runtime and the
+              tracking and transcription models.
+            </li>
+            <li>
+              An editor for fixing anything the AI got wrong, multilingual captions, creator
+              profiles that learn from your corrections, and a queue that runs unattended.
+            </li>
+          </ul>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/releases" target="_blank" rel="noopener noreferrer">All releases on GitHub</a>
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/blob/main/KNOWN-ISSUES.md" target="_blank" rel="noopener noreferrer">Known issues</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Free and open source.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">★ Star it</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+          <a href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="analytics.js"></script>
+    <script src="donate.js"></script>
+  </body>
+</html>

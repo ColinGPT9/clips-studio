@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roadmap: what Clips Studio does now and what is coming | Clips Studio</title>
+    <meta
+      name="description"
+      content="What Clips Studio already does, what is being worked on, and where a local-first AI clipping tool goes as consumer AI hardware improves. Free and open source."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/roadmap.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Clips Studio roadmap" />
+    <meta
+      property="og:description"
+      content="What is shipped, what is next, and the long-term direction for local-first AI clipping."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          <span>
+            <span class="name">Clips <span>Studio</span></span>
+            <span class="tagline">local-first AI clipping</span>
+          </span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="roadmap.html" aria-current="page">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="donate" href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <h1>Roadmap</h1>
+          <p class="lead">
+            Where Clips Studio is going, and what already works. Anything listed as shipped is
+            in a release you can install today, not a plan.
+          </p>
+        </div>
+      </div>
+
+      <section>
+        <div class="wrap">
+          <h2>Now: the alpha</h2>
+          <p class="section-lead">
+            The alpha exists to find out what breaks on machines that are not the developer's.
+            It has already been worth it: the first release could not finish a clip on any
+            source, and nobody could have known without installing it somewhere clean.
+          </p>
+          <ul class="ticks">
+            <li>
+              <strong>Shipped.</strong> One Windows installer carrying the app, the engine,
+              FFmpeg, the AI runtime and the tracking and transcription models. Releases with
+              notes, a changelog and a known-issues list. Bug reports and feature requests,
+              including an in-app button that needs no GitHub account. Discussions. Security
+              scanning. A container image for working on the engine. This website.
+            </li>
+            <li class="partial">
+              <strong>Being worked on.</strong> Code signing, so Windows stops warning that
+              the installer is unsigned. Screenshots and a demo video. Progress reporting for
+              the scoring stage and for update downloads, so working cannot be mistaken for
+              hung. Automated Windows builds.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Next: community</h2>
+          <p class="section-lead">
+            Making it worth someone's time to contribute: good first issues with enough
+            context to pick up cold, contributor recognition, example workflows, community
+            showcases, performance benchmarks, and voting on feature requests.
+          </p>
+          <p class="section-lead">
+            Contributions are wanted in features, bug fixes, documentation, translations, AI
+            improvements and performance work.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">How to contribute</a>
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Later</h2>
+          <p class="section-lead">None of this delays the alpha.</p>
+          <ul class="ticks">
+            <li class="weak">
+              <strong>Gaming and split-screen, done properly.</strong> The framing has to
+              reliably find where the action is, and tracking has to tell a streamer apart
+              from a character inside the game. Shipping it half-working would produce clips
+              centred on the wrong person.
+            </li>
+            <li class="weak">
+              <strong>Reaction videos.</strong> These need the app to understand the video
+              being reacted to, not just the words spoken over it.
+            </li>
+            <li class="weak">
+              <strong>An Android companion app</strong> for Twitch, Kick and local files,
+              within Google Play's policies.
+            </li>
+            <li class="weak">
+              <strong>Remote rendering</strong>, a plugin architecture, community extensions,
+              creator analytics, and more models and platforms where they earn their place.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>The long-term idea</h2>
+          <p class="section-lead">
+            Clips Studio is <strong>local-first</strong>, and that word carries the whole
+            design: your footage, your workflows and your data stay on your machine. The app
+            gets better as your hardware does, rather than as someone's subscription tier
+            does.
+          </p>
+          <p class="section-lead">
+            Consumer AI hardware is improving quickly. The architecture is kept modular so
+            newer models and faster machines can be adopted without a redesign — as hardware
+            like the NVIDIA RTX Spark and future AI-accelerated GPUs arrives, the same
+            application should run larger local models, infer faster, analyse video better
+            and automate more.
+          </p>
+          <p class="note">
+            The goal is an open-source creator platform that becomes more capable over time
+            because local AI hardware does — not one that becomes more expensive.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/blob/main/ROADMAP.md" target="_blank" rel="noopener noreferrer">Full roadmap on GitHub</a>
+            <a class="btn btn-ghost" href="changelog.html">What changed recently</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Free and open source.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">★ Star it</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+          <a href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="analytics.js"></script>
+    <script src="donate.js"></script>
+  </body>
+</html>
