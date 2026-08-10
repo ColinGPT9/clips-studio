@@ -1,0 +1,62 @@
+# Clips Studio
+
+> Free, open-source AI video clipping that runs entirely on your own Windows PC.
+> Paste a Twitch VOD, Kick VOD or YouTube link and it finds the moments worth
+> posting, crops them to vertical with the speaker kept in frame, burns in
+> word-synced captions and writes the titles. No uploads, no subscription, no
+> per-clip fee. AGPL-3.0.
+
+Clips Studio is a desktop application, not a web service. Everything — the
+transcription, the clip selection, the subject tracking and the language model
+— runs on the user's own machine. It is a local-first alternative to cloud
+clipping tools such as OpusClip, aimed at creators who would rather not pay per
+video or upload their footage to someone else's server.
+
+## What it actually does
+
+- **Transcribes** with faster-whisper at word level, so captions land on the
+  right syllable and clips start on real sentence boundaries.
+- **Scores** candidate moments with a local language model reading the
+  transcript alongside audio and visual signals — loudness, laughter-shaped
+  bursts, scene cuts, motion, on-screen reactions.
+- **Reframes** to 9:16 with YOLO pose tracking and active-speaker detection, so
+  the person talking stays in shot and it cuts between speakers rather than
+  zooming out to hold both.
+- **Edits**: a built-in editor for fixing anything the AI got wrong, caption
+  styling, watermarks, multilingual captions and dubbing.
+
+## What it is good and bad at
+
+- **Good at:** IRL, just chatting, podcasts, vlogs, interviews. That is what it
+  is tuned for and tested on.
+- **Not yet:** gaming, split-screen and reaction videos. The framing did not
+  reliably find the action, and subject tracking mistook characters inside a
+  game for the streamer, so it is held back rather than shipped half-working.
+
+## Requirements
+
+Windows 10 or 11, 64-bit. 16 GB RAM recommended, ~20 GB free disk. An NVIDIA
+GPU is strongly recommended — it runs on CPU, just far slower. One installer
+carries the app, the engine, FFmpeg, the Ollama runtime and the tracking and
+transcription models; the language model downloads on first launch, sized to
+the graphics card.
+
+## Links
+
+- [Website](https://colingpt9.github.io/clips-studio/)
+- [Source on GitHub](https://github.com/ColinGPT9/clips-studio)
+- [Download](https://github.com/ColinGPT9/clips-studio/releases)
+- [Architecture](https://github.com/ColinGPT9/clips-studio/blob/main/ARCHITECTURE.md)
+- [Changelog](https://colingpt9.github.io/clips-studio/changelog.html)
+- [Roadmap](https://colingpt9.github.io/clips-studio/roadmap.html)
+- [Known issues](https://github.com/ColinGPT9/clips-studio/blob/main/KNOWN-ISSUES.md)
+- [Clipping Twitch](https://colingpt9.github.io/clips-studio/twitch.html)
+- [Clipping Kick](https://colingpt9.github.io/clips-studio/kick.html)
+- [Clipping YouTube](https://colingpt9.github.io/clips-studio/youtube.html)
+- [Local vs cloud clipping](https://colingpt9.github.io/clips-studio/local-vs-cloud.html)
+
+## Status
+
+Alpha. It works and is used daily, but it is early and has rough edges, which
+are listed honestly in the known-issues document rather than discovered by
+users.

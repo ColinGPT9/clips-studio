@@ -1,4 +1,39 @@
 User-agent: *
 Allow: /
 
+# AI crawlers are welcome, and the wildcard above already permits them. They
+# are named individually so the intent is on the record: if a future edit adds
+# a blanket disallow, someone has to consciously remove these lines first.
+#
+# This project wants to be findable by people asking an assistant "is there a
+# free local alternative to OpusClip". Being absent from those answers costs
+# more than any crawl traffic saves.
+
+# OpenAI: training, ChatGPT search, and user-triggered page fetches
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+
+# Google Gemini and Vertex AI. Note this is separate from Googlebot: blocking
+# Google-Extended removes you from Gemini while leaving normal search intact.
+User-agent: Google-Extended
+Allow: /
+
+# Anthropic
+User-agent: ClaudeBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+
+# Common Crawl, which a great many models are trained from second-hand
+User-agent: CCBot
+Allow: /
+
 Sitemap: https://colingpt9.github.io/clips-studio/sitemap.xml
