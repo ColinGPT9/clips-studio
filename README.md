@@ -331,26 +331,26 @@ written in English and in that language, and **reporting a bad word is a complet
 contribution** — no pull request needed. [How it works](docs/TRANSLATING.md).
 
 **Needs finishing** (about 68 strings still in English):
-[বাংলা](../../issues/43) ·
+[বাংলা (Bengali)](../../issues/43) ·
 [Italiano](../../issues/44) ·
-[한국어](../../issues/45) ·
-[ไทย](../../issues/46) ·
-[Tagalog](../../issues/47) ·
-[Türkçe](../../issues/48) ·
-[اردو](../../issues/49) ·
-[Tiếng Việt](../../issues/50) ·
-[中文](../../issues/51)
+[한국어 (Korean)](../../issues/45) ·
+[ไทย (Thai)](../../issues/46) ·
+[Tagalog (Filipino)](../../issues/47) ·
+[Türkçe (Turkish)](../../issues/48) ·
+[اردو (Urdu)](../../issues/49) ·
+[Tiếng Việt (Vietnamese)](../../issues/50) ·
+[中文 (Chinese)](../../issues/51)
 
 **Needs checking** (complete, but nobody has verified it reads naturally):
-[العربية](../../issues/52) ·
-[Deutsch](../../issues/53) ·
-[Español](../../issues/54) ·
-[Français](../../issues/55) ·
-[हिन्दी](../../issues/56) ·
-[Bahasa Indonesia](../../issues/57) ·
-[日本語](../../issues/58) ·
-[Português](../../issues/59) ·
-[Русский](../../issues/60)
+[العربية (Arabic)](../../issues/52) ·
+[Deutsch (German)](../../issues/53) ·
+[Español (Spanish)](../../issues/54) ·
+[Français (French)](../../issues/55) ·
+[हिन्दी (Hindi)](../../issues/56) ·
+[Bahasa Indonesia (Indonesian)](../../issues/57) ·
+[日本語 (Japanese)](../../issues/58) ·
+[Português (Portuguese)](../../issues/59) ·
+[Русский (Russian)](../../issues/60)
 
 Want a language that isn't here? [#61](../../issues/61).
 
