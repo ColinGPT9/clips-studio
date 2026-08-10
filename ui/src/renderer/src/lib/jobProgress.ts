@@ -17,7 +17,11 @@ const STAGES: Record<string, { base: number; weight: number; label: string }> = 
   downloaded: { base: 0.15, weight: 0.0, label: 'Downloaded' },
   transcribe: { base: 0.15, weight: 0.25, label: 'Transcribing speech' },
   signals: { base: 0.4, weight: 0.05, label: 'Analyzing audio & visuals' },
-  analyze: { base: 0.45, weight: 0.25, label: 'Finding the best moments' },
+  analyze: { base: 0.45, weight: 0.2, label: 'Finding the best moments' },
+  // Ranking used to be inside `analyze`, and reported nothing. The bar
+  // reached the end of analyze and sat at 70% through one LLM call per batch
+  // of finalists, which on a CPU-only machine looks exactly like a crash.
+  ranking: { base: 0.65, weight: 0.05, label: 'Ranking the best moments' },
   reactions: { base: 0.7, weight: 0.08, label: 'Scoring on-screen reactions' },
   render: { base: 0.78, weight: 0.22, label: 'Rendering clips' }
 }

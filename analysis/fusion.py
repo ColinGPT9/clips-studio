@@ -275,8 +275,15 @@ def find_clips(
     if len(finalists) > 1:
         finalists.sort(key=lambda c: c.score, reverse=True)
         reranked: list[ClipCandidate] = []
-        for i in range(0, len(finalists), batch_size):
+        # One LLM call per batch, and on a CPU-only machine each one is slow.
+        # Reported per batch because this loop used to run silently: the bar
+        # reached the end of "analyze" and then sat there, which is
+        # indistinguishable from a hang.
+        n_batches = (len(finalists) + batch_size - 1) // batch_size
+        print(f"  Ranking {len(finalists)} finalist(s) in {n_batches} batch(es)...")
+        for bi, i in enumerate(range(0, len(finalists), batch_size), 1):
             cancel.check_active()  # one more LLM call per batch
+            progress.emit(stage="ranking", current=bi, total=n_batches)
             batch = finalists[i : i + batch_size]
             reranked += _rerank(batch, segments, llm) if len(batch) > 1 else batch
         finalists = sorted(reranked, key=lambda c: c.score, reverse=True)

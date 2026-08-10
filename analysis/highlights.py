@@ -105,6 +105,10 @@ def score_windows(
     hooks instead of placeholders."""
     if not windows:
         return []
+    # One call for all the windows, but on CPU that single call can take
+    # minutes. Say it is happening rather than going quiet mid-analyze.
+    print(f"  Scoring {len(windows)} signal-peak window(s) with the model...")
+    progress.emit(stage="analyze", current=1, total=1)
     template = WINDOWS_PROMPT_PATH.read_text(encoding="utf-8")
 
     blocks = []
