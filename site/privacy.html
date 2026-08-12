@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy policy | Clips Studio</title>
+    <meta
+      name="description"
+      content="Clips Studio processes your video entirely on your own PC. There is no telemetry, no account, and nothing is uploaded unless you press a button that says so. Full privacy policy."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/privacy.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Clips Studio privacy policy" />
+    <meta
+      property="og:description"
+      content="No telemetry, no account, no uploads. What the app stores, what leaves your machine, and when."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          <span>
+            <span class="name">Clips <span>Studio</span></span>
+            <span class="tagline">local-first AI clipping</span>
+          </span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="donate" href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <span class="eyebrow">Privacy policy</span>
+          <h1>Clips Studio does not collect anything about you</h1>
+          <p class="lead">
+            No account, no sign-in, no telemetry, no analytics inside the app. Your video is
+            processed on your own computer and never uploaded anywhere. This page explains
+            exactly what is stored, what can leave your machine, and what triggers it.
+          </p>
+          <p><strong>Last updated:</strong> 12 August 2026</p>
+        </div>
+      </div>
+
+      <section>
+        <div class="wrap">
+          <h2>The short version</h2>
+          <ul>
+            <li><strong>No telemetry.</strong> The app reports nothing back. There is no usage tracking, no crash reporting, and no analytics of any kind inside Clips Studio.</li>
+            <li><strong>No account.</strong> There is nothing to sign up for and nothing to sign in to.</li>
+            <li><strong>Your video never leaves your PC.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware.</li>
+            <li><strong>The AI runs locally too.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else.</li>
+            <li><strong>Two things reach the internet, and both are obvious:</strong> downloading a video you asked for, and downloading an AI model you chose.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>What is stored, and where</h2>
+          <p>
+            Everything Clips Studio creates stays in one folder on your own computer:
+          </p>
+          <p><code>%LOCALAPPDATA%\Clips Studio</code></p>
+          <ul>
+            <li>Videos you downloaded or imported, and the clips rendered from them</li>
+            <li>A local SQLite database of what has been processed, the scores it gave, and your creator profiles</li>
+            <li>Your settings</li>
+            <li>The AI models you downloaded</li>
+          </ul>
+          <p>
+            None of this is synced, backed up or transmitted. Uninstalling the app deliberately
+            leaves the folder in place, because it holds your footage; delete it yourself if you
+            want it gone.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>When Clips Studio uses the network</h2>
+          <h3>Because you asked it to</h3>
+          <ul>
+            <li><strong>Downloading a video.</strong> Pasting a YouTube, Twitch or Kick link fetches that video from that platform. Your request goes to them, subject to their own privacy policies, exactly as if you had opened the page in a browser.</li>
+            <li><strong>Downloading an AI model.</strong> Choosing a model fetches it from the Ollama library. That is a file download; nothing about you is sent with it.</li>
+            <li><strong>Checking for updates.</strong> The desktop app asks a static file on Hugging Face whether a newer version exists. This is a plain file fetch with no identifier attached, and it can be turned off in Settings. Copies installed from the Microsoft Store do not do this at all, because the Store handles updates.</li>
+          </ul>
+
+          <h3>Only if you submit a report</h3>
+          <p>
+            The in-app Feedback Hub can file a bug report for you, so you do not need a GitHub
+            account. Nothing is sent until you press Submit, and the exact contents are shown to
+            you first.
+          </p>
+          <p>A report contains what someone needs to reproduce the problem:</p>
+          <ul>
+            <li>What you typed in the report</li>
+            <li>App version, operating system version, CPU, RAM, and graphics card model</li>
+            <li>Which AI model and settings were in use</li>
+            <li>Recent log output, with email addresses, secret-shaped strings and your Windows username automatically stripped out</li>
+            <li>The platform and channel name of the video involved, if any — public information, and usually the whole point of the report</li>
+            <li>Any screenshots you chose to attach</li>
+          </ul>
+          <p>
+            <strong>Reports become public GitHub issues.</strong> They travel through a relay that
+            files them on the project's issue tracker, so do not put anything in one you would not
+            post publicly. If you would rather send nothing, do not use the Feedback Hub; the app
+            works exactly the same without it.
+          </p>
+
+          <h3>Only if you set it up yourself</h3>
+          <p>
+            Clips Studio has an optional command-line feature that can upload finished clips to
+            your own YouTube channel. It is switched off, it is not part of the desktop app, and
+            it does nothing unless you create your own Google Cloud credentials and place them in
+            the config folder. If you do, the resulting authorisation token is stored on your
+            machine and used only to upload to your channel. It is never sent to us — there is no
+            "us" to send it to, since Clips Studio has no server.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>This website</h2>
+          <p>
+            The site is hosted on GitHub Pages, which records ordinary web server logs including
+            IP addresses, as described in
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener noreferrer">GitHub's privacy statement</a>.
+          </p>
+          <p>
+            The site includes a Google Analytics loader that is <strong>not configured and does
+            nothing</strong>: with no measurement ID set, no script is fetched and no cookie is
+            written. If that ever changes, this page will say so before it does.
+          </p>
+          <p>
+            Donation links go to PayPal. Any payment happens on PayPal's own site under their
+            privacy policy; Clips Studio never sees your payment details, and no donation is
+            required to use anything.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Children</h2>
+          <p>
+            Clips Studio is a video editing tool for content creators. It is not directed at
+            children, and it collects no personal information from anyone, including children.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>How to verify any of this</h2>
+          <p>
+            You do not have to take this page's word for it. Clips Studio is open source under the
+            MIT licence, and every network call in it can be read:
+            <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">github.com/ColinGPT9/clips-studio</a>.
+            If you find something this policy does not describe, that is a bug — please
+            <a href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">open an issue</a>.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Changes and contact</h2>
+          <p>
+            If this policy changes, the date at the top changes with it, and the edit is visible in
+            the repository's history like everything else.
+          </p>
+          <p>
+            Questions about privacy:
+            <a href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">open an issue</a>
+            on GitHub.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Free and open source.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">★ Star it</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+          <a href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="analytics.js"></script>
+    <script src="donate.js"></script>
+  </body>
+</html>
