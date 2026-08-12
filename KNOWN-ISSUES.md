@@ -119,8 +119,16 @@ the encoder.
 anything else here — with one, the AI model sits in video memory instead of
 competing with the encoder for system memory.
 
-If you hit it on a machine that should be capable, please report it with your
-specifications; it has not yet been seen on real hardware.
+Seen twice now, both times in a memory-capped virtual machine rather than on
+bare metal: at 8 GB the job analysed a video and produced zero clips, and the
+first contributor to get a full run through a container had to raise the limit
+to **12 GB**. At 12 GB, roughly an hour of source video is the practical
+ceiling. If you are running in Docker, Windows Sandbox, or a VM, that limit is
+the setting to check first, because the failure looks like a crash rather than
+a memory limit.
+
+Still not seen on a normal 16 GB desktop. If you hit it on a machine that
+should be capable, please report it with your specifications.
 
 ## Everything is slower without a graphics card
 

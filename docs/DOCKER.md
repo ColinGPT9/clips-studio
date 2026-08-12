@@ -9,8 +9,24 @@ docker compose pull      # prebuilt engine image, ~2 min
 docker compose up
 ```
 
-`pull` is optional. Skip it and `up` builds the engine from the Dockerfile
-instead, which works everywhere but takes around ten minutes the first time.
+`pull` is the easy route and the one to take. Skip it and `up` builds the
+engine from the Dockerfile instead, which takes around ten minutes the first
+time.
+
+**On an Apple Silicon Mac, pull rather than build.** The published image is
+amd64 and runs under emulation, which is fine for editing code and running
+tests. A local build produces an arm64 image, and one dependency has no arm64
+wheel and has to compile, which fails because the base image ships no C
+compiler. [#62](https://github.com/ColinGPT9/clips-studio/issues/62) tracks
+that. Do not reach for `--platform=linux/amd64` on a local build either — that
+emulates the whole ten-minute build, not just the run.
+
+**Give the Docker Desktop VM 12 GB of memory, and 4 CPUs.** Docker Desktop,
+Settings, Resources. This is the setting that decides whether renders work at
+all, and the default is not enough: 8 GB analyses a video and then produces
+zero clips, and the first contributor to get a full run through had to raise it
+to 12. The app is developed against a 16 GB machine. Memory is also what caps
+video length — an hour of source is around the limit at 12 GB.
 
 Three services, and you need nothing installed but Docker:
 

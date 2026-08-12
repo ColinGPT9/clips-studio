@@ -182,6 +182,8 @@ If you use the installer, this is the whole list:
 - **Windows** PC (the Python engine should run on Linux/macOS; the app is developed
   and tested on Windows). No Mac build exists and the maintainer has no Mac to test
   one on — see [#62](../../issues/62) if you have one and want to help
+- **16 GB of RAM.** Not a suggestion: 8 GB will analyse a whole video and then
+  render nothing, which looks like a crash rather than a memory limit
 - Recommended: an **NVIDIA GPU** (see [GPU acceleration](#gpu-acceleration))
 - Around **20 GB** free, plus room for the videos you clip
 
