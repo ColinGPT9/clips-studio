@@ -50,12 +50,19 @@ _force_utf8_io()
 
 import yaml
 
-from core.paths import resolve_data_dir
+from core.paths import resolve_data_dir, user_config_path
 from core.pipeline import process_video
 from core.scheduler import run_daemon
 from core.state import StateDB
 
-CONFIG_PATH = Path(__file__).resolve().parent / "config" / "settings.yaml"
+# What ships with the app. Read-only defaults in an installed build; the file
+# you edit in a checkout.
+BUNDLED_CONFIG = Path(__file__).resolve().parent / "config" / "settings.yaml"
+
+# What this install actually reads and writes. The same path in a checkout,
+# per-user app data once frozen — see user_config_path() for why writing to
+# the bundled copy cannot be relied on.
+CONFIG_PATH = user_config_path(BUNDLED_CONFIG)
 
 
 def load_config(path: Path) -> dict:

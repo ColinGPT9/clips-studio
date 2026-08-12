@@ -11,7 +11,8 @@ admin — the first download would simply fail.
 import sys
 from pathlib import Path
 
-from core.paths import resolve_data_dir
+from core import paths
+from core.paths import resolve_data_dir, user_config_path
 
 
 def test_relative_path_ignores_the_working_directory(monkeypatch, tmp_path):
@@ -57,6 +58,81 @@ def test_absolute_path_is_honoured(monkeypatch, tmp_path):
 def test_missing_config_still_returns_somewhere_usable():
     got = resolve_data_dir({})
     assert got.is_absolute()
+
+
+# ---- where settings.yaml is read and written --------------------------------
+#
+# The app rewrites this file: switching the model rewrites the `model:` line,
+# and saving settings rewrites the whole thing. It used to write the copy that
+# ships inside the installation directory, which only worked because the
+# installer happens to install per-user. Per-machine puts it under Program
+# Files and MSIX makes it read-only, and in both cases the write fails —
+# looking to a creator like the setting simply not sticking.
+
+
+def test_checkout_edits_the_file_in_the_repo(monkeypatch, tmp_path):
+    """Nothing clever in a checkout: the repo's own file is the one to edit."""
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    bundled = tmp_path / "settings.yaml"
+    bundled.write_text("model: gemma3:4b\n", encoding="utf-8")
+
+    assert user_config_path(bundled) == bundled
+
+
+def test_installed_build_writes_settings_where_the_user_can(monkeypatch, tmp_path):
+    local_appdata = tmp_path / "AppData" / "Local"
+    bundled = tmp_path / "app" / "config" / "settings.yaml"
+    bundled.parent.mkdir(parents=True)
+    bundled.write_text("model: gemma3:4b\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+
+    got = user_config_path(bundled)
+    assert got == local_appdata / "Clips Studio" / "settings.yaml"
+    # Beside the data directory, so everything a creator owns is in one place.
+    assert got.parent == resolve_data_dir({"paths": {"data_dir": "data"}}).parent
+
+
+def test_an_existing_installs_settings_are_carried_over(monkeypatch, tmp_path):
+    """The upgrade case, and the reason this seeds rather than starting fresh.
+
+    Someone already running Clips Studio has been editing the bundled copy,
+    because that is where the app has been writing. Ignoring it on upgrade
+    would silently reset their model choice and every other setting.
+    """
+    local_appdata = tmp_path / "AppData" / "Local"
+    bundled = tmp_path / "app" / "config" / "settings.yaml"
+    bundled.parent.mkdir(parents=True)
+    bundled.write_text("model: gemma3:27b\nclips:\n  min_score: 8\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+
+    got = user_config_path(bundled)
+    assert got.read_text(encoding="utf-8") == bundled.read_text(encoding="utf-8")
+
+    # And once seeded it is theirs: a later app update ships new defaults, and
+    # those must not overwrite what the creator has since chosen.
+    got.write_text("model: gemma3:12b\n", encoding="utf-8")
+    bundled.write_text("model: gemma4:e2b\n", encoding="utf-8")
+    assert user_config_path(bundled).read_text(encoding="utf-8") == "model: gemma3:12b\n"
+
+
+def test_unwritable_appdata_falls_back_to_the_bundled_copy(monkeypatch, tmp_path):
+    """No writable location is not a reason to crash on startup. Reads keep
+    working, and a write fails with the error it would have failed with
+    anyway rather than one invented here."""
+    bundled = tmp_path / "settings.yaml"
+    bundled.write_text("model: gemma3:4b\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "nope"))
+    monkeypatch.setattr(
+        paths.shutil, "copyfile", lambda *a, **k: (_ for _ in ()).throw(OSError("read-only"))
+    )
+
+    assert user_config_path(bundled) == bundled
 
 
 # ---- finding an already-downloaded source -----------------------------------

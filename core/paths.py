@@ -7,6 +7,7 @@ made the rule impossible to test without a GPU-sized environment.
 """
 
 import os
+import shutil
 import stat
 import sys
 from pathlib import Path
@@ -40,6 +41,51 @@ def resolve_data_dir(config: dict) -> Path:
 
     # Checkout: next to the code, not next to the terminal.
     return _REPO_ROOT / raw
+
+
+def user_config_path(bundled: Path) -> Path:
+    """The settings.yaml this install should READ AND WRITE.
+
+    `bundled` is the copy that ships with the app. In a checkout that is the
+    file in the repo and there is nothing to decide: editing it is the point,
+    and it is already under version control.
+
+    An installed build is different. The bundled copy sits inside the
+    installation directory, and the app writes to it — switching the model
+    rewrites the `model:` line, and saving settings rewrites the file. That
+    only works because the NSIS installer happens to install per-user, into a
+    directory that happens to be writable. A per-machine install puts it under
+    Program Files, and an MSIX package makes it read-only outright; in both
+    cases changing the model fails, which looks like the setting not sticking
+    rather than a permissions error.
+
+    So an installed build keeps its settings beside its data, in the same
+    per-user location resolve_data_dir() already chose for downloads and the
+    database. The bundled file becomes what it is packaged as: read-only
+    defaults.
+
+    Seeding is what makes this safe to ship into existing installs. On first
+    use the bundled copy — which for an already-installed creator is the one
+    they have been editing — is copied out rather than ignored, so an upgrade
+    carries their settings across instead of silently resetting them.
+    """
+    if not getattr(sys, "frozen", False):
+        return bundled
+
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    user_copy = base / "Clips Studio" / bundled.name
+
+    if not user_copy.exists():
+        try:
+            user_copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(bundled, user_copy)
+        except OSError:
+            # Nothing writable to fall back to, so keep using the bundled file.
+            # Reads still work; a write will fail with the error it would have
+            # failed with anyway, rather than this function inventing a new one.
+            return bundled
+
+    return user_copy
 
 
 def safe_name(name: str) -> str | None:
