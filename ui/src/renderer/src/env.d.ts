@@ -11,7 +11,8 @@ declare module '*.png' {
 
 /** What the main process reports about updates. */
 interface UpdateState {
-  state: 'checking' | 'available' | 'none' | 'downloading' | 'ready' | 'error' | 'dev'
+  // 'store': installed from the Microsoft Store, which updates the app itself.
+  state: 'checking' | 'available' | 'none' | 'downloading' | 'ready' | 'error' | 'dev' | 'store'
   version?: string
   notes?: string
   date?: string

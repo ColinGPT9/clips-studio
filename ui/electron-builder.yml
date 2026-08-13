@@ -78,6 +78,40 @@ win:
   # then delete this line.
   signAndEditExecutable: false
 
+# Microsoft Store packaging. NOT part of the default build: `win.target` above
+# is untouched, and this target is selected explicitly by
+# scripts/build_msix.py, so `npm run package` still produces exactly the
+# installer it always did.
+#
+# Only one capability is declared — runFullTrust — because that is all a
+# packaged desktop app needs. The app spawns its own engine and Ollama, reads
+# and writes its own per-user folder, and asks Windows for nothing else.
+#
+# THE FOUR PLACEHOLDERS BELOW COME FROM PARTNER CENTER and must match it
+# character for character, capitals included. Find them at:
+#   Partner Center -> your app -> Product management -> View app identity details
+# Until they are filled in, the package builds and installs locally for testing
+# but the Store will reject it. See docs/MSSTORE.md.
+appx:
+  # "Package/Identity/Name" — a reverse-DNS-ish string Microsoft assigns when
+  # you reserve the name. Looks like 12345ColinGPT9.ClipsStudio
+  identityName: PLACEHOLDER-FROM-PARTNER-CENTER
+  # "Package/Identity/Publisher" — the full subject, e.g.
+  # CN=A1B2C3D4-5678-90AB-CDEF-1234567890AB
+  publisher: PLACEHOLDER-FROM-PARTNER-CENTER
+  # "Publisher display name" — the human name shown on the listing.
+  publisherDisplayName: PLACEHOLDER-FROM-PARTNER-CENTER
+  # Ours to choose, not Microsoft's. Must not start with a digit and must not
+  # change between releases: it is part of the app's identity to Windows.
+  applicationId: ClipsStudio
+  displayName: Clips Studio
+  backgroundColor: '#0A1628'
+  languages:
+    - en-US
+  # Version is NOT read from package.json for the Store: Microsoft forbids a
+  # major of 0, so build_msix.py computes it. See that script and docs/MSSTORE.md.
+  setBuildNumber: false
+
 # These apply to the web installer too — nsisWeb inherits from nsis.
 nsis:
   oneClick: false

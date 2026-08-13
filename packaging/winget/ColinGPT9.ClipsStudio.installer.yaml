@@ -1,0 +1,17 @@
+PackageIdentifier: ColinGPT9.ClipsStudio
+PackageVersion: 0.1.2
+MinimumOSVersion: 10.0.17763.0
+InstallerType: nullsoft
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: 2026-08-10
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/ColinGPT9/clips-studio/releases/download/v0.1.2/ClipsStudio-Web-Setup-0.1.2.exe
+    InstallerSha256: 01AD7D626D04B50EDB84FDA5AF0BE7A53D377CB174FB360119985B10A80B336B
+ManifestType: installer
+ManifestVersion: 1.6.0

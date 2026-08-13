@@ -421,6 +421,8 @@ function UpdateCard(): JSX.Element {
         return "You're on the latest version."
       case 'dev':
         return 'Updates are disabled while running from source.'
+      case 'store':
+        return 'Installed from the Microsoft Store, which keeps Clips Studio up to date for you.'
       case 'error':
         return `Could not check: ${state.message ?? 'unknown error'}`
       default:

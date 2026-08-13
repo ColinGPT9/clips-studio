@@ -17,6 +17,7 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
+import { isMicrosoftStore } from './distribution'
 
 /** Which releases this install is offered. Alpha sees everything, stable
  *  only sees finished releases. Read from the same file the renderer writes,
@@ -98,6 +99,27 @@ async function check(): Promise<{ ok: boolean; reason?: string }> {
 
 export function setupUpdater(win: BrowserWindow): void {
   mainWindow = win
+
+  // A Store copy is updated by the Store. electron-updater is not merely
+  // unnecessary there, it is wrong: it would fetch the NSIS installer and try
+  // to run it over a package Windows itself manages. So it is never wired up
+  // at all — no listeners, no startup check — and the handlers below answer
+  // honestly instead of pretending to check.
+  if (isMicrosoftStore()) {
+    const storeState = (): void => send('update:state', { state: 'store' })
+    ipcMain.handle('update:check', async () => {
+      storeState()
+      return { ok: false, reason: 'store' }
+    })
+    ipcMain.handle('update:download', async () => ({ ok: false }))
+    ipcMain.handle('update:install', () => ({ ok: false }))
+    ipcMain.handle('update:skip', () => ({ ok: false }))
+    // Channel is still readable and writable so the screen renders, but it
+    // decides nothing here.
+    ipcMain.handle('update:prefs', () => loadPrefs())
+    storeState()
+    return
+  }
 
   // Never download behind the user's back. A 2 GB payload starting by itself
   // on someone's home connection, mid-render, is hostile.
