@@ -203,12 +203,18 @@ def test_recommendation_matches_the_models_table():
 
     assert recommend_for(12)["model"] == table["10-12 GB VRAM"]
     assert recommend_for(24)["model"] == table["16-24 GB VRAM"]
+    assert recommend_for(8)["model"] == table["8 GB VRAM"]
+    assert recommend_for(6)["model"] == table["6 GB VRAM"]
+    assert recommend_for(4)["model"] == table["Under 6 GB VRAM, or an older PC"]
 
-    # CPU and small-GPU share a row: 4B is the answer to both, and listing it
-    # twice looked like a bug on the Models page.
-    small = table["CPU / iGPU / up to 8 GB VRAM"]
-    assert recommend_for(8)["model"] == small
-    assert recommend_for(None)["model"] == small
+    # No card at all is its own row: a 7B on the processor is slow enough to
+    # read as broken, so CPU-only gets the 4B rather than the tested default.
+    assert recommend_for(None)["model"] == table["CPU / iGPU, no graphics card"]
+
+    # gemma:7b is the default in config/settings.yaml and the model everything
+    # was tested against. It must be offered somewhere, or the Models page
+    # recommends against the app's own shipped default.
+    assert "gemma:7b" in offered
 
     # Whatever the wizard suggests must be a model this page actually lists,
     # which is the real point: the two must never disagree.

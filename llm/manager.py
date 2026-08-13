@@ -29,11 +29,16 @@ import requests
 # built to run on ordinary local machines, which is precisely this audience —
 # treating them as exotic would be wrong.
 RECOMMENDATIONS = [
-    ("Low-power or older PC", "gemma4:e2b",
+    ("CPU / iGPU, no graphics card", "gemma3:4b",
+     "runs on the processor. Slower, but it works — and it is one of the three tested"),
+    ("Under 6 GB VRAM, or an older PC", "gemma4:e2b",
      "smallest edge build; made to run on modest hardware"),
-    ("CPU / iGPU / up to 8 GB VRAM", "gemma3:4b", "fits anywhere"),
+    ("6 GB VRAM", "gemma4:e4b",
+     "the larger edge build, a step up from e2b at the same job"),
+    ("8 GB VRAM", "gemma:7b",
+     "the model everything here was tested on, and the default in settings.yaml"),
     ("10-12 GB VRAM", "gemma3:12b",
-     "big quality jump for scoring. gemma4:12b is the newer equivalent"),
+     "big quality jump for scoring, and tested here"),
     ("16-24 GB VRAM", "gemma3:27b", "best local Gemma"),
 ]
 
@@ -53,10 +58,6 @@ RECOMMENDATIONS = [
 # Command-R7B, excellent multilingually and licensed CC-BY-NC, so they cannot
 # be used for anything anyone earns from.
 OTHER_MODELS = [
-    ("Actually tested here", "gemma:7b / gemma3:4b / gemma3:12b",
-     "the only three run against real streams; gemma:7b is the long-standing default"),
-    ("Edge build at the 4B size", "gemma4:e4b",
-     "runs anywhere gemma3:4b runs — pick whichever you already have pulled"),
     ("Translation / multilingual", "qwen3:8b / qwen3:14b",
      "strongest multilingual here; set as llm.translation_model. Apache-2.0"),
     ("Permissive licence", "mistral-nemo:12b / phi4:14b",
@@ -96,10 +97,22 @@ def recommend_for(vram_gb: float | None) -> dict:
             "reason": f"Sized for {vram_gb:.0f} GB of VRAM — a big quality jump "
                       "over the smaller models for choosing clips.",
         }
+    if vram_gb >= 7:
+        return {
+            "model": "gemma:7b",
+            "reason": f"{vram_gb:.0f} GB of VRAM fits the model this app was built "
+                      "and tested against, which is the safest thing to start on.",
+        }
+    if vram_gb >= 6:
+        return {
+            "model": "gemma4:e4b",
+            "reason": f"Sized for {vram_gb:.0f} GB of VRAM — the larger of the two "
+                      "edge builds, made for cards this size.",
+        }
     return {
-        "model": "gemma3:4b",
-        "reason": f"Sized for {vram_gb:.0f} GB of VRAM. A larger model would spill "
-                  "out of the graphics card and crawl.",
+        "model": "gemma4:e2b",
+        "reason": f"Only {vram_gb:.0f} GB of VRAM, so this is the smallest edge "
+                  "build. A larger model would spill out of the card and crawl.",
     }
 
 
