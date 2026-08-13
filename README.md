@@ -267,16 +267,35 @@ everything else is containerised. Details, and what this can't tell you, in
 
 Open the **Models** page to see what's installed and what your GPU can handle:
 
+One axis only: how much VRAM you have. These are the same rows the app shows, from
+`RECOMMENDATIONS` in [`llm/manager.py`](llm/manager.py) — the wizard and the Models
+page read that one table so they cannot disagree with each other, or with this.
+
 | Your hardware | Recommended model |
 |---|---|
-| CPU only / integrated GPU | `gemma3:4b` |
-| 6–8 GB VRAM | `gemma3:4b` |
-| 10–12 GB VRAM | `gemma:7b` or `gemma3:12b` |
+| Low-power or older PC | `gemma4:e2b` |
+| CPU / iGPU / up to 8 GB VRAM | `gemma3:4b` |
+| 10–12 GB VRAM | `gemma3:12b` |
 | 16–24 GB VRAM | `gemma3:27b` |
 
-Anything Ollama serves works — Llama, Qwen, Mistral, future models — and switching is
-one click. Translation can use a *different* model than clipping (`qwen2.5:7b` is
-noticeably stronger at multilingual work than Gemma).
+And the models worth picking for a reason other than VRAM:
+
+| Why | Model |
+|---|---|
+| **Actually tested here** | `gemma:7b` · `gemma3:4b` · `gemma3:12b` |
+| Edge build at the 4B size | `gemma4:e4b` |
+| Translation / multilingual | `qwen3:8b` or `qwen3:14b` |
+| Permissive licence | `mistral-nemo:12b` (Apache-2.0) · `phi4:14b` (MIT) |
+
+**Only those three have been run against real streams.** `gemma:7b` is the shipped
+default in `config/settings.yaml` and has the most hours on it. Everything else is
+listed because it is a sensible size and free to use commercially, not because clip
+quality has been measured with it — they all work, since the app talks to every model
+identically through Ollama, but nobody has checked whether they pick better moments.
+Closing that gap is [#38](../../issues/38).
+
+Anything Ollama serves works, and switching is one click. Translation can use a
+*different* model than clipping — set `llm.translation_model`.
 
 ## Tested hardware and performance
 

@@ -31,8 +31,7 @@ import requests
 RECOMMENDATIONS = [
     ("Low-power or older PC", "gemma4:e2b",
      "smallest edge build; made to run on modest hardware"),
-    ("CPU / iGPU / up to 8 GB VRAM", "gemma3:4b",
-     "fits anywhere. gemma4:e4b is an equally good pick at this size"),
+    ("CPU / iGPU / up to 8 GB VRAM", "gemma3:4b", "fits anywhere"),
     ("10-12 GB VRAM", "gemma3:12b",
      "big quality jump for scoring. gemma4:12b is the newer equivalent"),
     ("16-24 GB VRAM", "gemma3:27b", "best local Gemma"),
@@ -54,6 +53,10 @@ RECOMMENDATIONS = [
 # Command-R7B, excellent multilingually and licensed CC-BY-NC, so they cannot
 # be used for anything anyone earns from.
 OTHER_MODELS = [
+    ("Actually tested here", "gemma:7b / gemma3:4b / gemma3:12b",
+     "the only three run against real streams; gemma:7b is the long-standing default"),
+    ("Edge build at the 4B size", "gemma4:e4b",
+     "runs anywhere gemma3:4b runs — pick whichever you already have pulled"),
     ("Translation / multilingual", "qwen3:8b / qwen3:14b",
      "strongest multilingual here; set as llm.translation_model. Apache-2.0"),
     ("Permissive licence", "mistral-nemo:12b / phi4:14b",
