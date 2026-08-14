@@ -176,28 +176,38 @@ rejected.
 
 The package is unsigned on purpose — Microsoft re-signs it after certification,
 so no certificate is needed to submit. But Windows will not install an unsigned
-package, so to test it locally you must sign it with a certificate whose
-subject matches your `publisher` value **exactly**:
+package, so testing what you are about to ship means signing it first:
 
-```powershell
-# One-off: create and trust a test certificate
-New-SelfSignedCertificate -Type Custom -Subject "CN=A1B2C3D4-5678-90AB-CDEF-1234567890AB" `
-  -KeyUsage DigitalSignature -FriendlyName "Clips Studio test" `
-  -CertStoreLocation "Cert:\CurrentUser\My" `
-  -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
-
-# Sign, then install
-& "${env:ProgramFiles(x86)}\Windows Kits\10\bin\<sdk>\x64\signtool.exe" sign `
-  /fd SHA256 /a /f test.pfx /p <password> "release\Clips Studio-1.1.2.0-x64.appx"
-Add-AppxPackage "release\Clips Studio-1.1.2.0-x64.appx"
+```
+python scripts/sign_msix.py
 ```
 
-Signing needs `signtool.exe` from the Windows SDK, which the *build* does not
-require. If you would rather not install the SDK, skip local testing and rely
-on certification — but then the first time anyone runs the packaged build is a
-Microsoft tester, which is a worse place to find a problem.
+**No Windows SDK needed.** `signtool.exe` ships inside electron-builder's
+winCodeSign download, which is already on disk from building the package, and
+the certificate comes from PowerShell's `New-SelfSignedCertificate`, which is
+built into Windows.
 
-Run the [Windows App Certification Kit](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-app-certification-kit)
+(The same cache contains `makecert.exe`, and the script deliberately does not
+use it: `makecert -sv` opens a GUI password prompt and hangs anything running
+unattended.)
+
+The script signs a **copy** into `build/msix-signing/`, so the original in
+`release/` stays unsigned and is still the file to upload. It prints the two
+commands to install it, which need an **admin** PowerShell:
+
+```powershell
+Import-Certificate -FilePath "build\msix-signing\test.cer" `
+    -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+Add-AppxPackage "build\msix-signing\ClipsStudio-1.1.2-x64.appx"
+```
+
+To remove it again: `Get-AppxPackage *ClipsStudio* | Remove-AppxPackage`
+
+The certificate subject must equal `publisher` exactly, so the script reads it
+from `electron-builder.yml` rather than having it typed twice — a mismatch
+makes Windows refuse the install with an error that names neither value.
+
+Then run the [Windows App Certification Kit](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-app-certification-kit)
 against the installed package before uploading.
 
 ## Step 5 — Create the submission

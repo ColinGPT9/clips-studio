@@ -13,10 +13,14 @@ WHY THIS EXISTS
     the UNSIGNED package from release/, not the one this produces.
 
 WHAT IT NEEDS
-    Nothing that is not already here. signtool.exe, makecert.exe and pvk2pfx.exe
-    all ship inside electron-builder's winCodeSign download, so the Windows SDK
-    is not required. Developer Mode must be on, which it must be to have built
-    the package at all.
+    Nothing that is not already here. signtool.exe ships inside electron-builder's
+    winCodeSign download, so the Windows SDK is not required, and the certificate
+    is made by PowerShell's New-SelfSignedCertificate, which is built into
+    Windows. Developer Mode must be on, which it must be to have built the
+    package at all.
+
+    Deliberately NOT makecert.exe, which is in that same cache: `makecert -sv`
+    opens a GUI password dialog and hangs anything running unattended.
 
 THE ONE RULE
     The certificate subject must equal the `publisher` value in
@@ -36,6 +40,11 @@ ROOT = Path(__file__).resolve().parent.parent
 RELEASE = ROOT / "release"
 BUILDER_CONFIG = ROOT / "ui" / "electron-builder.yml"
 WORK = ROOT / "build" / "msix-signing"
+
+# Not a secret in any meaningful sense: it protects a throwaway certificate that
+# exists only to let this machine install a package it just built. It never
+# leaves build/, which is gitignored, and the Store never sees this signature.
+PFX_PASSWORD = "clips-studio-local-test"
 
 
 def find_tool(name: str) -> Path:
@@ -84,7 +93,7 @@ def main() -> int:
     package = newest_package()
     WORK.mkdir(parents=True, exist_ok=True)
 
-    pvk, cer, pfx = WORK / "test.pvk", WORK / "test.cer", WORK / "test.pfx"
+    cer, pfx = WORK / "test.cer", WORK / "test.pfx"
     signed = WORK / package.name
 
     print(f"package:   {package.relative_to(ROOT)}  ({package.stat().st_size / 1e9:.2f} GB)")
@@ -92,29 +101,42 @@ def main() -> int:
 
     if not pfx.exists():
         print("\n1/3  making a test certificate")
-        # -r self-signed, -h 0 no sub-CAs, -eku code-signing, -sv writes the key.
-        run(
-            [
-                str(find_tool("makecert.exe")),
-                "-r", "-h", "0",
-                "-n", publisher,
-                "-eku", "1.3.6.1.5.5.7.3.3",
-                "-pe", "-sv", str(pvk),
-                str(cer),
-            ],
-            "makecert",
+        # New-SelfSignedCertificate rather than the makecert.exe sitting in the
+        # same cache: makecert's -sv opens a GUI password prompt and hangs
+        # anything unattended. This is non-interactive and built into Windows.
+        #   2.5.29.37 = Enhanced Key Usage, 1.3.6.1.5.5.7.3.3 = code signing
+        script = f"""
+$ErrorActionPreference = 'Stop'
+$c = New-SelfSignedCertificate -Type Custom -Subject '{publisher}' `
+  -KeyUsage DigitalSignature -FriendlyName 'Clips Studio test signing' `
+  -CertStoreLocation 'Cert:\\CurrentUser\\My' `
+  -TextExtension @('2.5.29.37={{text}}1.3.6.1.5.5.7.3.3', '2.5.29.19={{text}}')
+$p = ConvertTo-SecureString -String '{PFX_PASSWORD}' -Force -AsPlainText
+Export-PfxCertificate -Cert $c -FilePath '{pfx}' -Password $p | Out-Null
+Export-Certificate  -Cert $c -FilePath '{cer}' | Out-Null
+Write-Output $c.Thumbprint
+"""
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True,
         )
-        run(
-            [str(find_tool("pvk2pfx.exe")), "-pvk", str(pvk), "-spc", str(cer), "-pfx", str(pfx)],
-            "pvk2pfx",
-        )
+        if result.returncode != 0 or not pfx.exists():
+            sys.exit(f"\ncertificate creation failed:\n{(result.stdout + result.stderr)[-1500:]}")
+        print(f"    thumbprint {result.stdout.strip().splitlines()[-1]}")
     else:
         print("\n1/3  reusing the existing test certificate")
 
     print("\n2/3  signing a copy (the original stays unsigned for Partner Center)")
+    print(f"    copying {package.stat().st_size / 1e9:.1f} GB, this takes a minute")
     shutil.copyfile(package, signed)
     run(
-        [str(find_tool("signtool.exe")), "sign", "/fd", "SHA256", "/a", "/f", str(pfx), str(signed)],
+        [
+            str(find_tool("signtool.exe")), "sign",
+            "/fd", "SHA256",
+            "/f", str(pfx),
+            "/p", PFX_PASSWORD,
+            str(signed),
+        ],
         "signtool",
     )
 
