@@ -47,6 +47,41 @@ you the old flow instead.
 If the Apps & Games tile does not appear immediately, wait five minutes and
 refresh. It can take up to 30 minutes for verification to propagate.
 
+### If it asks you to pay, you are in the wrong flow
+
+Microsoft's FAQ is explicit: *"You must begin your journey at
+https://storedeveloper.microsoft.com. This is the only supported entry point
+for the new flow. Other paths (e.g. direct via Partner Center, Xbox, or Visual
+Studio) will show the legacy flow."*
+
+The legacy flow charges the old registration fee. If you see one, close it and
+start again from that URL. Do not enter payment details.
+
+A **payout account** and **tax profile** are a different thing and are also not
+needed: those exist to pay money *to* you, and only matter for paid apps or
+in-app purchases. Clips Studio is free, so skip them.
+
+### The publisher display name is public and permanent
+
+The publisher display name is what customers see on the listing, and **neither
+it nor the account type can be changed after registration.** Individual
+accounts are described by Microsoft as publishing "under your own name".
+
+Use **ColinGPT9** — it is already what the repository, the website, the winget
+manifest and the copyright line say, so anything else creates a second identity
+to keep straight.
+
+What is *not* published: Store policy 10.14 requires customer support contact
+information to appear on the product page for **Company** accounts "in certain
+regions", and states no such requirement for Individual accounts. The
+trader/business-verification rules that come from the EU Digital Services Act
+are likewise tied to Company accounts — Individual is explicitly the
+hobbyist and non-commercial category.
+
+If you want to publish under a name that is not your legal one, ask
+[developer support](https://aka.ms/windowsdevelopersupport) **before** finishing
+signup. It cannot be undone afterwards.
+
 ## Step 2 — Reserve the name
 
 In Partner Center: **Apps and games → New product → MSIX or PWA app**.

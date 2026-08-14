@@ -35,7 +35,10 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
 ### Account and identity
 
 - [ ] Developer account created at **<https://storedeveloper.microsoft.com>**
-      (free; that URL specifically, or you get the old paid flow)
+      (free; that URL specifically, or you get the old paid flow — if you are
+      asked for a registration fee, you are in the legacy flow, so back out)
+- [ ] Publisher display name decided **before** finishing signup — it is public
+      and cannot be changed later. `ColinGPT9` matches everything else.
 - [ ] Identity verified (government ID + selfie)
 - [ ] Product name reserved: **Apps and games → New product → MSIX or PWA app**
 - [ ] Three values copied from **Product management → View app identity
