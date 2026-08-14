@@ -2,10 +2,14 @@
 #
 #     powershell -ExecutionPolicy Bypass -File scripts\capture_store_pages.ps1
 #
-# ONLY visits Dashboard, Queue, Models and Settings. Clip Studio and Creators
-# are skipped on purpose: both show clip thumbnails, thumbnails are faces, and
-# a Store listing must not carry someone's face without their consent. That is
-# four screens, which is Partner Center's recommended count, so nothing is lost.
+# ONLY visits Models and Settings. Every other page shows the library: clip
+# thumbnails on Clip Studio and Creators, and video titles and channel names on
+# Dashboard and Queue. None of that belongs in a public listing - the footage
+# is someone else's, and neither their face nor their channel name is ours to
+# advertise with.
+#
+# Pass -All to include Dashboard and Queue, for when there is finally footage
+# that can be shown.
 #
 # Uses PrintWindow rather than a screen grab. A screen grab copies whatever
 # pixels are at the window's coordinates, so if the app loses focus for even a
@@ -17,6 +21,8 @@
 #
 # Output: docs/store-screenshots/ (gitignored). Check every image before
 # uploading anyway.
+
+param([switch]$All)
 
 Add-Type -AssemblyName System.Drawing
 # -ReferencedAssemblies: the inline C# below uses System.Drawing.Bitmap, and
@@ -51,11 +57,15 @@ $DOWN = 0x0002; $UP = 0x0004
 # Sidebar offsets from the window's top-left, on a 1440x900 window. The
 # sidebar is a fixed width, so these hold as the window grows.
 $pages = @(
-  @{ n = "1-dashboard"; y = 133 },
-  @{ n = "2-queue";     y = 181 },
-  @{ n = "3-models";    y = 325 },
-  @{ n = "4-settings";  y = 373 }
+  @{ n = "3-models";   y = 325 },
+  @{ n = "4-settings"; y = 373 }
 )
+if ($All) {
+  $pages = @(
+    @{ n = "1-dashboard"; y = 133 },
+    @{ n = "2-queue";     y = 181 }
+  ) + $pages
+}
 $sidebarX = 110
 
 $proc = Get-Process -Name "Clips Studio" -ErrorAction SilentlyContinue |
@@ -97,4 +107,7 @@ foreach ($p in $pages) {
 
 Write-Output ""
 Write-Output "Captured to docs\store-screenshots\."
-Write-Output "Clip Studio and Creators were skipped deliberately - they show faces."
+if (-not $All) {
+  Write-Output "Only Models and Settings: the other pages show titles, channel"
+  Write-Output "names or thumbnails. Pass -All if that is wanted."
+}
