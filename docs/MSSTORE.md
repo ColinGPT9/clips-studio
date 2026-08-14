@@ -99,7 +99,7 @@ exists.
 
 This is the step everything else waits on.
 
-**Product management → View app identity details.**
+**General → View product identity.**
 
 Copy these four into the `appx:` block of `ui/electron-builder.yml`, replacing
 the `PLACEHOLDER-FROM-PARTNER-CENTER` values. They are **case-sensitive** and

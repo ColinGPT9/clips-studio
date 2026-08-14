@@ -129,7 +129,7 @@ def check_identity() -> None:
             "\nStore identity is still on placeholders: "
             + ", ".join(missing)
             + f"\n\nFill them in in {BUILDER_CONFIG.relative_to(ROOT)} with the values from\n"
-            "Partner Center -> Product management -> View app identity details.\n"
+            "Partner Center -> General -> View product identity.\n"
             "docs/MSSTORE.md walks through it.\n\n"
             "A package built on placeholders cannot be uploaded, so this stops here\n"
             "rather than after twenty minutes of packaging."

@@ -89,7 +89,7 @@ win:
 #
 # THE FOUR PLACEHOLDERS BELOW COME FROM PARTNER CENTER and must match it
 # character for character, capitals included. Find them at:
-#   Partner Center -> your app -> Product management -> View app identity details
+#   Partner Center -> your app -> General -> View product identity
 # Until they are filled in, the package builds and installs locally for testing
 # but the Store will reject it. See docs/MSSTORE.md.
 appx:
