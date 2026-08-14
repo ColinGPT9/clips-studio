@@ -108,16 +108,22 @@ def developer_mode_on() -> bool:
         return False
 
 
-def orphaned_wincodesign_dirs() -> list[Path]:
-    """Half-extracted winCodeSign attempts left behind by failed builds.
+def wincodesign_dirs() -> list[Path]:
+    """Extracted winCodeSign copies in electron-builder's cache.
 
-    Each failed attempt downloads the archive again and extracts it to a fresh
-    numerically-named directory, then abandons it. They are ~25 MB each and
-    nothing ever reads them, so the build offers to clear them.
+    A failed appx build leaves one of these behind every time, because
+    app-builder downloads the archive again and extracts to a fresh
+    numerically-named directory rather than reusing the last one.
 
-    They look usable -- makeappx.exe and signtool.exe are both in there, and
-    the file list matches a good extraction exactly. They are not: app-builder
-    picks its own directory name per attempt and never looks at these again.
+    DO NOT DELETE THEM. They look like litter and they are not:
+    ui/build/afterPack.cjs finds rcedit-x64.exe by scanning exactly this
+    directory, and it is the only copy on the machine. Removing them costs the
+    NSIS installer its embedded icon, and afterPack warns rather than failing,
+    so the loss is silent.
+
+    They also each contain makeappx.exe and signtool.exe, which is what makes
+    them look usable for the appx build. They are not usable for that either:
+    app-builder picks its own directory per attempt and never reads these.
     """
     cache = Path(os.environ.get("LOCALAPPDATA", "")) / "electron-builder" / "Cache" / "winCodeSign"
     if not cache.is_dir():
@@ -168,7 +174,7 @@ def main() -> int:
     check_tools(args.skip_ui)
     check_identity()
     if not developer_mode_on():
-        orphans = orphaned_wincodesign_dirs()
+        leftovers = wincodesign_dirs()
         sys.exit(
             "\nWindows Developer Mode is off, and the appx build cannot work without it.\n\n"
             "  Settings > System > For developers > Developer Mode\n\n"
@@ -177,17 +183,17 @@ def main() -> int:
             "extraction exits non-zero and the whole build is abandoned -- every time,\n"
             "because it re-downloads to a fresh directory on each attempt rather than\n"
             "reusing the previous one.\n\n"
-            "The half-extracted directories it leaves behind LOOK usable (makeappx.exe\n"
-            "and signtool.exe are both in them, and the file list matches a good\n"
-            "extraction exactly). They are not: app-builder never looks at them again.\n"
+            "Developer Mode is also what lets you install the finished package to\n"
+            "test it, so it is needed either way.\n"
             + (
-                f"\nThere are {len(orphans)} of them, about {25 * len(orphans)} MB, safe to delete:\n"
-                f"  {orphans[0].parent}\n"
-                if orphans
+                f"\nNote: the {len(leftovers)} numbered directories under\n"
+                f"  {leftovers[0].parent}\n"
+                "look like leftovers from those failed attempts. Do not delete them --\n"
+                "build/afterPack.cjs takes rcedit out of there to put the icon on the\n"
+                "installer .exe, and it is the only copy on this machine.\n"
+                if leftovers
                 else ""
             )
-            + "\nDeveloper Mode is also what lets you install the finished package to\n"
-            "test it, so it is needed either way."
         )
     print("    Developer Mode:  on")
     print(f"    app version:     {app_version}")
