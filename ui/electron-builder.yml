@@ -87,20 +87,19 @@ win:
 # packaged desktop app needs. The app spawns its own engine and Ollama, reads
 # and writes its own per-user folder, and asks Windows for nothing else.
 #
-# THE FOUR PLACEHOLDERS BELOW COME FROM PARTNER CENTER and must match it
-# character for character, capitals included. Find them at:
-#   Partner Center -> your app -> General -> View product identity
-# Until they are filled in, the package builds and installs locally for testing
-# but the Store will reject it. See docs/MSSTORE.md.
+# THE THREE IDENTITY VALUES BELOW COME FROM PARTNER CENTER and must match it
+# character for character, capitals included. They are not secrets — every one
+# of them ships inside the manifest of the package itself. Re-read them at:
+#   Partner Center -> Clips Studio -> General -> View product identity
+# A mismatch is not caught at build time; it fails at upload, after the package
+# has already been made. See docs/MSSTORE.md.
 appx:
-  # "Package/Identity/Name" — a reverse-DNS-ish string Microsoft assigns when
-  # you reserve the name. Looks like 12345ColinGPT9.ClipsStudio
-  identityName: PLACEHOLDER-FROM-PARTNER-CENTER
-  # "Package/Identity/Publisher" — the full subject, e.g.
-  # CN=A1B2C3D4-5678-90AB-CDEF-1234567890AB
-  publisher: PLACEHOLDER-FROM-PARTNER-CENTER
-  # "Publisher display name" — the human name shown on the listing.
-  publisherDisplayName: PLACEHOLDER-FROM-PARTNER-CENTER
+  # "Package/Identity/Name"
+  identityName: ClipsStudio.ClipsStudio
+  # "Package/Identity/Publisher" — the full subject, not just the GUID.
+  publisher: CN=82A1C822-C6B7-41D5-889B-160627060939
+  # "Package/Properties/PublisherDisplayName" — shown on the Store listing.
+  publisherDisplayName: Clips Studio
   # Ours to choose, not Microsoft's. Must not start with a digit and must not
   # change between releases: it is part of the app's identity to Windows.
   applicationId: ClipsStudio

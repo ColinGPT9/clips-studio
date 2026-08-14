@@ -34,16 +34,17 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
 
 ### Account and identity
 
-- [ ] Developer account created at **<https://storedeveloper.microsoft.com>**
+- [x] Developer account created at **<https://storedeveloper.microsoft.com>**
       (free; that URL specifically, or you get the old paid flow — if you are
       asked for a registration fee, you are in the legacy flow, so back out)
-- [ ] Publisher display name decided **before** finishing signup — it is public
-      and cannot be changed later. `ColinGPT9` matches everything else.
-- [ ] Identity verified (government ID + selfie)
-- [ ] Product name reserved: **Apps and games → New product → MSIX or PWA app**
-- [ ] Three values copied from **Product management → View app identity
-      details** into the `appx:` block of `ui/electron-builder.yml`:
-      `identityName`, `publisher`, `publisherDisplayName`
+- [x] Publisher display name settled: **Clips Studio**. It is public and cannot
+      be changed later, and it is not a personal name, so the listing does not
+      identify the account holder.
+- [x] Identity verified (government ID + selfie)
+- [x] Product name reserved: **Apps and games → New product → MSIX or PWA app**
+- [x] Three values copied from **General → View product identity** into the
+      `appx:` block of `ui/electron-builder.yml` — done, and recorded in
+      MSSTORE.md so a future release need not go looking
 
 `scripts/build_msix.py` refuses to run until those are filled in.
 
@@ -88,7 +89,8 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
 
 - [ ] Certification report read
 - [ ] Published
-- [ ] Store link added to the README and the website
+- [ ] Store link added to the README and the website —
+      `https://apps.microsoft.com/detail/9NB6XT7DSQZZ` (404s until it publishes)
 - [ ] `CHANGELOG.md` notes that 0.1.2 is on the Store
 
 ## Not blocking, but worth doing

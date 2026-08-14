@@ -97,20 +97,33 @@ exists.
 
 ## Step 3 — Copy your identity values
 
-This is the step everything else waits on.
+**Done.** Recorded here so they can be checked without logging in, and so a
+future release does not have to go looking. None of these are secrets — every
+one ships inside the manifest of the package itself.
 
-**General → View product identity.**
+**Where they came from:** Partner Center → Clips Studio → General → **View
+product identity**.
 
-Copy these four into the `appx:` block of `ui/electron-builder.yml`, replacing
-the `PLACEHOLDER-FROM-PARTNER-CENTER` values. They are **case-sensitive** and
-must match character for character.
-
-| Partner Center calls it | Goes into | Looks like |
+| Partner Center calls it | Goes into | Value |
 |---|---|---|
-| Package/Identity/Name | `identityName` | `12345ColinGPT9.ClipsStudio` |
-| Package/Identity/Publisher | `publisher` | `CN=A1B2C3D4-5678-90AB-CDEF-1234567890AB` |
-| Publisher display name | `publisherDisplayName` | `ColinGPT9` |
-| Package Family Name | *(nothing — note it for support requests)* | `12345ColinGPT9.ClipsStudio_abc123def456` |
+| Package/Identity/Name | `identityName` | `ClipsStudio.ClipsStudio` |
+| Package/Identity/Publisher | `publisher` | `CN=82A1C822-C6B7-41D5-889B-160627060939` |
+| Package/Properties/PublisherDisplayName | `publisherDisplayName` | `Clips Studio` |
+| Package Family Name | *(nothing — quote it in support requests)* | `ClipsStudio.ClipsStudio_315g1r74a6w58` |
+| Store ID | *(the links below)* | `9NB6XT7DSQZZ` |
+
+Once the product is live, the Store ID gives you these — add them to the README
+and the website then, not before, because they 404 until it publishes:
+
+- Web listing: `https://apps.microsoft.com/detail/9NB6XT7DSQZZ`
+- Opens the Store app directly: `ms-windows-store://pdp/?productid=9NB6XT7DSQZZ`
+
+**The publisher display name is "Clips Studio", not a personal name**, so the
+listing does not show who owns the account.
+
+A mismatch in any of the three is not caught at build time. It fails at upload,
+after the package has already been built, which is why `build_msix.py` checks
+they are at least present before it starts.
 
 `applicationId: ClipsStudio` is ours, not Microsoft's. Never change it: it is
 part of the app's identity to Windows, and changing it makes the next release
