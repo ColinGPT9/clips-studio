@@ -418,6 +418,25 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     row = db.conn.execute(
         "SELECT title, channel_name FROM videos WHERE video_id = ?", (video_id,)
     ).fetchone()
+    title = (row["title"] if row and row["title"] else "") or ""
+    channel = (row["channel_name"] if row else "") or ""
+
+    # A cached file usually means a row written when it was downloaded. Not
+    # always: the database can be reset, moved, or lost while downloads/
+    # survives, and files get copied in by hand. Falling back to the ID there
+    # is not just an ugly label — an empty channel attaches the video to no
+    # creator, so catchphrase learning and preference history silently never
+    # run on it. One metadata request is cheap next to re-fetching several GB.
+    if not title or title == video_id or not channel:
+        try:
+            fetched_title, fetched_channel = dispatch.metadata(url)
+            title = title if title and title != video_id else fetched_title
+            channel = channel or fetched_channel
+        except Exception as e:
+            # Offline, rate-limited, or a local upload. The whole point of this
+            # branch is that reprocessing works without the platform, so this
+            # stays non-fatal and the ID remains the fallback.
+            print(f"      (could not fetch title/channel: {e})")
 
     probe = subprocess.run(
         [ffprobe(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(cached)],
@@ -427,10 +446,10 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     print("      Source already downloaded — skipping YouTube")
     return DownloadedVideo(
         video_id=video_id,
-        title=(row["title"] if row and row["title"] else video_id),
+        title=title or video_id,
         path=cached,
         duration=duration,
-        channel=(row["channel_name"] if row else "") or "",
+        channel=channel,
     )
 
 

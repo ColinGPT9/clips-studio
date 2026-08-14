@@ -48,6 +48,39 @@ def _clear_stale_partials(output_dir: Path, video_id: str | None) -> None:
                 pass  # locked or already gone — never block the download
 
 
+def metadata(url: str) -> tuple[str, str]:
+    """(title, channel) for a URL, without downloading the video.
+
+    For the case where the source file is already on disk but nothing is known
+    about it — a database that was reset or moved, or a file copied into
+    downloads/ by hand. Without this the title falls back to the raw video ID
+    and the channel to an empty string, and an empty channel means the video is
+    attached to no creator, so catchphrase learning and preference history
+    never run on it.
+
+    One metadata request rather than re-fetching several GB. Raises on failure
+    rather than returning empty strings, so the caller can decide whether being
+    offline is fatal — in the cached path it is not, and the ID is still a
+    usable fallback.
+    """
+    source, _ = identify(url)
+    if source == "local":
+        # An imported file has no platform to ask; whatever the user typed at
+        # import is all there ever was.
+        raise ValueError("local uploads carry no remote metadata")
+
+    import yt_dlp
+
+    opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    return (
+        info.get("title") or "",
+        info.get("channel") or info.get("uploader") or "",
+    )
+
+
 def download(url: str, output_dir: Path) -> DownloadedVideo:
     source, video_id = identify(url)
     if source == "local":

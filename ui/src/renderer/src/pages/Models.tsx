@@ -152,20 +152,26 @@ export default function Models(): JSX.Element {
         {pullStatus && <p className="text-sm text-accent">{pullStatus}</p>}
         {/* Two tables, because there are two different questions. This one
             answers "what will my machine run"; every row is a VRAM tier. */}
+        {/* pr-6 on every cell but the last: without it the columns touch, and
+            the headings render as one word — "RECOMMENDEDWHY". The model
+            column is nowrap so a tag never wraps mid-name, and align-top keeps
+            short cells level with notes that run to two lines. */}
         <table className="w-full text-sm mt-2">
           <thead>
             <tr className="label text-left">
-              <th className="pb-2 font-normal">Your hardware</th>
-              <th className="pb-2 font-normal">Recommended</th>
+              <th className="pb-2 pr-6 font-normal">Your hardware</th>
+              <th className="pb-2 pr-6 font-normal">Recommended</th>
               <th className="pb-2 font-normal">Why</th>
             </tr>
           </thead>
           <tbody>
             {info.recommendations.map((r) => (
               <tr key={r.hardware} className="border-t border-raised/50">
-                <td className="py-2 text-muted">{r.hardware}</td>
-                <td className="py-2 font-mono text-xs">{r.model}</td>
-                <td className="py-2 text-muted">{r.note}</td>
+                <td className="py-2 pr-6 align-top text-muted">{r.hardware}</td>
+                <td className="py-2 pr-6 align-top font-mono text-xs whitespace-nowrap">
+                  {r.model}
+                </td>
+                <td className="py-2 align-top text-muted">{r.note}</td>
               </tr>
             ))}
           </tbody>
@@ -189,17 +195,19 @@ export default function Models(): JSX.Element {
             <table className="w-full text-sm mt-2">
               <thead>
                 <tr className="label text-left">
-                  <th className="pb-2 font-normal">For</th>
-                  <th className="pb-2 font-normal">Model</th>
+                  <th className="pb-2 pr-6 font-normal">For</th>
+                  <th className="pb-2 pr-6 font-normal">Model</th>
                   <th className="pb-2 font-normal">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {info.other_models.map((r) => (
                   <tr key={r.purpose} className="border-t border-raised/50">
-                    <td className="py-2 text-muted">{r.purpose}</td>
-                    <td className="py-2 font-mono text-xs">{r.model}</td>
-                    <td className="py-2 text-muted">{r.note}</td>
+                    <td className="py-2 pr-6 align-top text-muted">{r.purpose}</td>
+                    <td className="py-2 pr-6 align-top font-mono text-xs whitespace-nowrap">
+                      {r.model}
+                    </td>
+                    <td className="py-2 align-top text-muted">{r.note}</td>
                   </tr>
                 ))}
               </tbody>
