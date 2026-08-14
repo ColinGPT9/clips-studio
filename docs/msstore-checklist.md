@@ -50,18 +50,25 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
 
 ### Build and test
 
-- [ ] Windows Developer Mode on (*Settings → System → For developers*) —
-      currently **off** on this machine
-- [ ] `python scripts/build_msix.py` completes
-- [ ] `AppxManifest.xml` inside the package shows version `1.1.2.0`,
-      `ProcessorArchitecture="x64"`, `runFullTrust` and nothing else
-- [ ] Package signed with a self-signed cert and installed locally
-- [ ] Installed package: launches, imports a video, processes it, exports
-- [ ] Model switching works **inside the package** — this is the one that would
-      have failed before the config fix, so it is the one worth checking
+- [x] Windows Developer Mode on (*Settings → System → For developers*)
+- [x] `python scripts/build_msix.py` completes
+- [x] `AppxManifest.xml` shows `1.1.2.0`, `ProcessorArchitecture="x64"`,
+      `runFullTrust` and nothing else — verified by reading the manifest out of
+      the built package
+- [x] Package signed and installed locally — `python scripts/sign_msix.py`,
+      then the two commands it prints. No Windows SDK needed.
+- [x] Installed package launches (window, engine and bundled Ollama all start)
+- [ ] Import a video, process it, export — **not done end to end in the
+      package**; only the launch and model paths were exercised
+- [x] Model switching works **inside the package** — `/models/activate`
+      returns 200 and the choice persists. It returned **500** before the
+      config fix, so this is the one that mattered.
 - [ ] Restart, uninstall, reinstall
-- [ ] Nothing was written into the package directory
-- [ ] Windows App Certification Kit passes
+- [x] Nothing written into the package directory — settings land in
+      `%LOCALAPPDATA%\Clips Studio\settings.yaml`, confirmed after a switch
+- [ ] Windows App Certification Kit passes — **cannot run here**, `appcert.exe`
+      ships with the Windows SDK which is not installed. Optional, but it
+      catches manifest problems before Microsoft's testers do.
 
 ### Submission
 
@@ -78,8 +85,12 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
 - [ ] Age rating questionnaire completed
 - [ ] Package uploaded (`release/*.appx`)
 - [ ] Listing: description, feature bullets, search terms
-- [ ] **At least one screenshot** — four or more recommended
-- [ ] 1:1 box art uploaded (`site/assets/mascot.png` works as-is)
+- [x] Four screenshots ready in `docs/store-screenshots/` — dashboard and
+      queue from the Store build, models and settings from the dev build. None
+      show a face, a video title or a channel name.
+- [ ] 1:1 box art uploaded — `docs/store-art/box-art-1x1.png`
+- [ ] 2:3 poster art uploaded — `docs/store-art/poster-art-2x3.png` (this is
+      what the Store shows in most browsing surfaces)
 - [ ] Certification notes pasted in
 - [ ] **Publishing set to manual, not automatic** — so you read the
       certification report before it goes live
