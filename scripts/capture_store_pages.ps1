@@ -1,38 +1,60 @@
-﻿# Walk Clips Studio's sidebar and capture each page for the Store listing.
+﻿# Capture Clips Studio's people-free pages for the Microsoft Store listing.
 #
 #     powershell -ExecutionPolicy Bypass -File scripts\capture_store_pages.ps1
 #
-# Partner Center wants four or more screenshots and this is the tedious way to
-# get them by hand: switch page, screenshot, repeat. It only ever clicks the
-# left-hand navigation, never a button that does anything - nothing here starts
-# a job, deletes a clip, or changes a setting.
+# ONLY visits Dashboard, Queue, Models and Settings. Clip Studio and Creators
+# are skipped on purpose: both show clip thumbnails, thumbnails are faces, and
+# a Store listing must not carry someone's face without their consent. That is
+# four screens, which is Partner Center's recommended count, so nothing is lost.
 #
-# Output: docs/store-screenshots/ (gitignored)
+# Uses PrintWindow rather than a screen grab. A screen grab copies whatever
+# pixels are at the window's coordinates, so if the app loses focus for even a
+# moment the image fills with the desktop behind it - file paths, other
+# applications, whatever happens to be open. PrintWindow asks the window to
+# draw itself into a bitmap instead, so nothing else can appear in the frame.
+# PW_RENDERFULLCONTENT (0x2) is the flag that makes it work for the
+# hardware-composited surfaces Chromium uses.
+#
+# Output: docs/store-screenshots/ (gitignored). Check every image before
+# uploading anyway.
 
 Add-Type -AssemblyName System.Drawing
-Add-Type @"
+# -ReferencedAssemblies: the inline C# below uses System.Drawing.Bitmap, and
+# loading the assembly into PowerShell does not put it on the compiler's path.
+Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 using System;
+using System.Drawing;
 using System.Runtime.InteropServices;
-public class Nav {
+public class Shot {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, int e);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+
+  public static Bitmap Grab(IntPtr h) {
+    RECT r; GetWindowRect(h, out r);
+    Bitmap bmp = new Bitmap(r.R - r.L, r.B - r.T);
+    using (Graphics g = Graphics.FromImage(bmp)) {
+      IntPtr dc = g.GetHdc();
+      PrintWindow(h, dc, 0x2);   // PW_RENDERFULLCONTENT
+      g.ReleaseHdc(dc);
+    }
+    return bmp;
+  }
 }
 "@
 $DOWN = 0x0002; $UP = 0x0004
 
-# Sidebar entries, as offsets from the window's top-left. Taken from a
-# 1440x900 window; the sidebar is fixed-width so these hold as it grows.
+# Sidebar offsets from the window's top-left, on a 1440x900 window. The
+# sidebar is a fixed width, so these hold as the window grows.
 $pages = @(
-  @{ n = "1-dashboard";  y = 133 },
-  @{ n = "2-queue";      y = 181 },
-  @{ n = "3-clipstudio"; y = 229 },
-  @{ n = "4-creators";   y = 277 },
-  @{ n = "5-models";     y = 325 },
-  @{ n = "6-settings";   y = 373 }
+  @{ n = "1-dashboard"; y = 133 },
+  @{ n = "2-queue";     y = 181 },
+  @{ n = "3-models";    y = 325 },
+  @{ n = "4-settings";  y = 373 }
 )
 $sidebarX = 110
 
@@ -40,37 +62,39 @@ $proc = Get-Process -Name "Clips Studio" -ErrorAction SilentlyContinue |
         Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
         Select-Object -First 1
 if (-not $proc) { Write-Output "Clips Studio is not running."; exit 1 }
+$h = $proc.MainWindowHandle
 
 $outDir = Join-Path $PSScriptRoot "..\docs\store-screenshots"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+Get-ChildItem $outDir -Filter *.png -ErrorAction SilentlyContinue | Remove-Item -Force
 
-[void][Nav]::ShowWindow($proc.MainWindowHandle, 9)
-[void][Nav]::SetForegroundWindow($proc.MainWindowHandle)
-Start-Sleep -Milliseconds 800
+[void][Shot]::ShowWindow($h, 9)
+[void][Shot]::SetForegroundWindow($h)
+Start-Sleep -Milliseconds 900
 
-$r = New-Object Nav+RECT
-[void][Nav]::GetWindowRect($proc.MainWindowHandle, [ref]$r)
-$w = $r.R - $r.L; $h = $r.B - $r.T
-Write-Output "window ${w}x${h} at $($r.L),$($r.T)"
-if ($w -lt 1366) { Write-Output "NOTE: under the Store 1366px minimum - maximise and re-run" }
+$r = New-Object Shot+RECT
+[void][Shot]::GetWindowRect($h, [ref]$r)
+Write-Output "window $($r.R - $r.L)x$($r.B - $r.T)"
+if (($r.R - $r.L) -lt 1366) { Write-Output "NOTE: under the Store 1366px minimum - maximise and re-run" }
 
 foreach ($p in $pages) {
-    [void][Nav]::SetCursorPos($r.L + $sidebarX, $r.T + $p.y)
-    Start-Sleep -Milliseconds 150
-    [Nav]::mouse_event($DOWN, 0, 0, 0, 0)
-    [Nav]::mouse_event($UP, 0, 0, 0, 0)
-    Start-Sleep -Milliseconds 1600      # let the page render and any fetch land
+    # Re-assert focus before every click; a click on an unfocused window is
+    # consumed activating it and never reaches the button.
+    [void][Shot]::SetForegroundWindow($h)
+    Start-Sleep -Milliseconds 250
+    [void][Shot]::SetCursorPos($r.L + $sidebarX, $r.T + $p.y)
+    Start-Sleep -Milliseconds 200
+    [Shot]::mouse_event($DOWN, 0, 0, 0, 0)
+    [Shot]::mouse_event($UP, 0, 0, 0, 0)
+    Start-Sleep -Milliseconds 2000     # render, plus any fetch the page makes
 
-    [void][Nav]::GetWindowRect($proc.MainWindowHandle, [ref]$r)
-    $bmp = New-Object System.Drawing.Bitmap ($r.R - $r.L), ($r.B - $r.T)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+    $bmp = [Shot]::Grab($h)
     $path = Join-Path $outDir "$($p.n).png"
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose(); $bmp.Dispose()
+    $bmp.Dispose()
     Write-Output "  $($p.n).png"
 }
 
 Write-Output ""
-Write-Output "Captured to docs\store-screenshots\. Review them before uploading -"
-Write-Output "pick the four that show the app doing something, not empty states."
+Write-Output "Captured to docs\store-screenshots\."
+Write-Output "Clip Studio and Creators were skipped deliberately - they show faces."
