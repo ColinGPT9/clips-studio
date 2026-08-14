@@ -128,6 +128,42 @@ def whisper_model(size: str) -> str:
     return size
 
 
+def yolo_weights(name: str) -> str:
+    """An absolute path to bundled YOLO weights, or `name` unchanged.
+
+    Exactly the same reasoning as whisper_model(), and the same failure when
+    it is missing. Ultralytics reads a bare filename like "yolov8n-pose.pt"
+    as "look next to the working directory, and if it is not there, download
+    it from GitHub". The spec bundles these files precisely so nobody's first
+    video stalls on that download -- but bundling them achieves nothing while
+    the loader is still passed a bare name.
+
+    Electron spawns the engine without setting a working directory, so the
+    lookup resolves against somewhere arbitrary and misses the copy sitting in
+    _internal/. The download then happens anyway, and on a machine with no
+    route to GitHub the whole job fails:
+
+        Download failure for .../yolov8n-pose.pt. Retry limit reached.
+
+    Observed on a real Store build, which is exactly what a certification
+    tester on a restricted network would have seen.
+
+    A checkout with no bundled copy still gets the bare name back, so
+    ultralytics downloads once and caches it, which is the right behaviour
+    there.
+    """
+    filename = Path(name).name
+    # The repo root too: a checkout keeps these beside the code, and resolving
+    # them absolutely means `python main.py` works from any directory rather
+    # than only from the repo root.
+    roots = [*_search_roots("weights"), Path(__file__).resolve().parent.parent]
+    for root in roots:
+        candidate = root / filename
+        if candidate.exists():
+            return str(candidate)
+    return name
+
+
 def bundled_whisper_sizes() -> list[str]:
     """Which Whisper sizes this install actually carries.
 

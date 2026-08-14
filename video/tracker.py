@@ -96,7 +96,14 @@ def _get_model(model_name: str):
             import torch
             from ultralytics import YOLO  # lazy: heavy import, pulls in torch
 
-            _model = YOLO(model_name)
+            from core.binaries import yolo_weights
+
+            # Absolute path, not the bare name: ultralytics resolves a bare
+            # name against the working directory and downloads it when that
+            # misses. The engine is spawned without a working directory, so
+            # that miss is guaranteed in a packaged build and the download
+            # fails outright on a machine with no route to GitHub.
+            _model = YOLO(yolo_weights(model_name))
             if torch.cuda.is_available():
                 _model.to("cuda")  # explicit: detection runs on the GPU
     return _model

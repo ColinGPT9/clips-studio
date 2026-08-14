@@ -168,3 +168,38 @@ def test_no_module_calls_ffmpeg_by_bare_name():
         "these call FFmpeg by bare name and will fail in an installed copy; "
         f"use core.binaries.ffmpeg() instead: {offenders}"
     )
+
+
+def test_yolo_weights_are_never_loaded_by_bare_name():
+    """Same failure as the FFmpeg one above, with a worse ending.
+
+    Ultralytics reads a bare "yolov8n-pose.pt" as "look next to the working
+    directory, then download it from GitHub". The spec bundles these weights
+    so a first video never stalls on that download, but bundling achieves
+    nothing while the loader is handed a bare name — and the engine is spawned
+    with no working directory, so the lookup misses every time.
+
+    A Store build did exactly this and the job died with
+    "Download failure for .../yolov8n-pose.pt. Retry limit reached", which is
+    what anyone behind a firewall would have seen.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(binaries.__file__).resolve().parent.parent
+    offenders = []
+    skip = {"vendor", "build", "dist", "release", "data", "site", "ui", "tests", ".git"}
+
+    for path in root.rglob("*.py"):
+        if set(path.relative_to(root).parts) & skip or path.name == "binaries.py":
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            m = re.search(r"YOLO\(\s*([^)]*)\)", line)
+            if m and "yolo_weights" not in m.group(1):
+                offenders.append(f"{path.relative_to(root)}:{n}")
+
+    assert not offenders, (
+        "these hand ultralytics a path it will resolve against the working "
+        "directory and then download; wrap it in core.binaries.yolo_weights(): "
+        f"{offenders}"
+    )
