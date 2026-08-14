@@ -1,0 +1,145 @@
+# Checks the Microsoft Store packaging config without building it.
+#
+# It deliberately does NOT build the package. The unpacked app is around 7 GB,
+# mostly CUDA PyTorch, and a GitHub-hosted runner has 14 GB of disk — the
+# existing docker-image workflow already has to delete 20 GB of preinstalled
+# toolchains to build a 3 GB image. Building the appx stays a local job until
+# there is a self-hosted runner.
+#
+# What it can do is catch the mistakes that would otherwise be found twenty
+# minutes into a local build, or worse, at the Partner Center upload step.
+#
+# Manual only: this changes a few times a year, and there is no reason to spend
+# a minute of CI on every push.
+
+name: Store packaging check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ui/electron-builder.yml'
+      - 'scripts/build_msix.py'
+      - 'scripts/build_appx_assets.py'
+      - 'ui/src/main/distribution.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Config and version mapping
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install what these checks need
+        run: pip install pyyaml pillow
+
+      - name: The appx block is present and complete
+        run: |
+          python - <<'PY'
+          import sys, yaml, pathlib
+          cfg = yaml.safe_load(pathlib.Path("ui/electron-builder.yml").read_text(encoding="utf-8"))
+          appx = cfg.get("appx")
+          if not appx:
+              sys.exit("no `appx:` block in ui/electron-builder.yml")
+
+          required = ("identityName", "publisher", "publisherDisplayName", "applicationId")
+          missing = [k for k in required if not appx.get(k)]
+          if missing:
+              sys.exit(f"appx block is missing: {', '.join(missing)}")
+
+          # applicationId is part of the app's identity to Windows. Changing it
+          # makes the next release look like a different app to everyone who
+          # already installed it.
+          if appx["applicationId"] != "ClipsStudio":
+              sys.exit(f"applicationId changed to {appx['applicationId']!r} — it must stay 'ClipsStudio'")
+          if appx["applicationId"][0].isdigit():
+              sys.exit("applicationId cannot start with a digit")
+
+          # The default build must stay exactly what it was: appx is opt-in via
+          # the command line, never a member of win.target.
+          targets = cfg.get("win", {}).get("target", [])
+          names = {t.get("target") if isinstance(t, dict) else t for t in targets}
+          if "appx" in names:
+              sys.exit("appx must not be in win.target — it would change the default build")
+
+          print("appx block OK; win.target still", sorted(n for n in names if n))
+          PY
+
+      - name: Version maps to something the Store will accept
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          sys.path.insert(0, "scripts")
+
+          # store_version() alone, without importing build_installer (Windows-only).
+          src = pathlib.Path("scripts/build_msix.py").read_text(encoding="utf-8")
+          start = src.index("def store_version")
+          end = src.index("def developer_mode_on")
+          ns = {"sys": sys}
+          exec(src[start:end], ns)
+          store_version = ns["store_version"]
+
+          app = json.loads(pathlib.Path("ui/package.json").read_text(encoding="utf-8"))["version"]
+          got = store_version(app)
+          print(f"app {app} -> package {got}")
+
+          parts = [int(p) for p in got.split(".")]
+          if len(parts) != 4:
+              sys.exit("package version must have four parts")
+          if parts[0] == 0:
+              sys.exit("the Store rejects a major of 0")
+          if parts[3] != 0:
+              sys.exit("the fourth part is reserved for the Store and must be 0")
+          if any(p > 65535 for p in parts):
+              sys.exit("every part must be 0-65535")
+
+          # Monotonic across the 1.0.0 boundary, which is where a fixed leading
+          # 1 would silently start producing lower versions than what is live.
+          seq = ["0.1.2", "0.1.3", "0.2.0", "0.9.9", "1.0.0", "1.0.1", "2.0.0"]
+          prev = None
+          for v in seq:
+              cur = tuple(int(p) for p in store_version(v).split("."))
+              if prev is not None and cur <= prev:
+                  sys.exit(f"not monotonic: {v} -> {cur} is not above {prev}")
+              prev = cur
+          print("monotonic across", " -> ".join(seq))
+          PY
+
+      - name: Store tiles exist and are the right size
+        run: |
+          python - <<'PY'
+          import sys, pathlib
+          from PIL import Image
+          sys.path.insert(0, "scripts")
+          from build_appx_assets import SIZES, DEST
+
+          for name, (w, h) in SIZES.items():
+              p = DEST / name
+              if not p.exists():
+                  sys.exit(f"missing {p} — run: python scripts/build_appx_assets.py")
+              got = Image.open(p).size
+              if got != (w, h):
+                  sys.exit(f"{name} is {got}, expected {(w, h)}")
+              print(f"  {name:24} {w}x{h} ok")
+          PY
+
+      - name: The privacy policy the Store requires is still published
+        run: |
+          test -f site/privacy.html || {
+            echo "site/privacy.html is gone. Store policy 10.5.1 requires a privacy"
+            echo "policy for Win32/Desktop Bridge products and Partner Center will"
+            echo "not accept a submission without the URL."
+            exit 1
+          }
+          grep -q "AGPL" site/privacy.html || {
+            echo "privacy.html no longer names the licence correctly"
+            exit 1
+          }
+          echo "privacy policy present"

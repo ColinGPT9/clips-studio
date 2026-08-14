@@ -438,6 +438,20 @@ Face Space. See [docs/MIRRORS.md](docs/MIRRORS.md) — **GitHub is where work
 happens**, and the website mirror is force-pushed one way, so a commit made on it
 will be overwritten.
 
+Packaging and release documentation:
+
+- **[docs/RELEASING.md](docs/RELEASING.md)** — building and publishing the Windows
+  installer, which is the primary channel
+- **[docs/MSSTORE.md](docs/MSSTORE.md)** — the Microsoft Store package, from
+  creating a developer account through to certification
+- **[packaging/winget/](packaging/winget/)** — the winget manifests, which point at
+  the installer above
+- **[docs/DOCKER.md](docs/DOCKER.md)** — running the engine without installing
+  Python, FFmpeg and PyTorch yourself
+- **[PRIVACY](https://colingpt9.github.io/clips-studio/privacy.html)** — what the
+  app stores and what can leave your machine (short answer: nothing, unless you
+  submit a bug report)
+
 ## Changelog, known issues, roadmap
 
 - **[CHANGELOG.md](CHANGELOG.md)** — what changed in each release, in plain terms.

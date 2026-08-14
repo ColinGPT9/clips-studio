@@ -225,3 +225,41 @@ in `ui/electron-builder.yml`, and turning it back on is documented there.
 
 Version lives in `ui/package.json` only. Bump it, commit, then build — the
 artifact names and `latest.yml` follow from it.
+
+## The other two channels
+
+Everything above is the standalone installer, which is the primary channel and
+the one this document is about. Two others exist and are deliberately separate
+so a problem in either cannot affect it.
+
+### Microsoft Store
+
+`python scripts/build_msix.py` produces an appx from the same source. It is a
+different wrapper, not a different app: the only runtime differences are that a
+Store copy is updated by the Store rather than by `electron-updater`, and its
+donate button opens the system browser. Both are decided at runtime in
+`ui/src/main/distribution.ts`.
+
+The package version is **not** the app version — the Store forbids a major of
+0, so 0.1.2 ships as package `1.1.2.0`. The script computes that; do not set it
+by hand.
+
+Full process in [MSSTORE.md](MSSTORE.md), and a tick-list for the first
+submission in [msstore-checklist.md](msstore-checklist.md). Later releases use
+**Start update** on the existing Partner Center product — never a new product,
+which would discard the ratings and the Store URL.
+
+### winget
+
+[`packaging/winget/`](../packaging/winget/) points at the installer this
+document already produces, so there is nothing extra to build. Each release
+needs the version, URL and SHA256 updated in the manifest and a pull request to
+`microsoft/winget-pkgs`. No account, no certificate, no certification.
+
+### Per-release, once all three are live
+
+| | Rebuild needed | Where |
+|---|---|---|
+| Installer | yes | GitHub release + Hugging Face payload |
+| Microsoft Store | yes, separate appx | Partner Center → Start update |
+| winget | no | manifest PR with the new URL and hash |
