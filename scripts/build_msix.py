@@ -34,6 +34,7 @@ import os
 import re
 import sys
 import winreg
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -135,6 +136,40 @@ def read_app_version() -> str:
     return json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["version"]
 
 
+def stale_backend() -> tuple[Path, float] | None:
+    """The newest engine source newer than the frozen api.exe, if any.
+
+    --skip-backend is there to save the several minutes PyInstaller spends on
+    PyTorch, and it is genuinely useful while iterating on packaging. It is
+    also a trap: the package looks finished and ships an engine from whenever
+    you last froze it.
+
+    That is not hypothetical. The first Store package built here carried an
+    engine two days old, so it was missing the very fix that stops settings
+    writes landing inside the read-only package -- and switching models in the
+    installed package failed with HTTP 500, which is precisely the bug the fix
+    exists to prevent.
+    """
+    exe = ROOT / "build" / "dist" / "backend" / "api.exe"
+    if not exe.exists():
+        return None
+    frozen_at = exe.stat().st_mtime
+    newest: tuple[Path, float] | None = None
+    for folder in ("core", "server", "llm", "video", "analysis", "multilingual",
+                   "sources", "transcription", "publish", "longform", "creator",
+                   "video_editor", "config"):
+        for path in (ROOT / folder).rglob("*.py"):
+            mtime = path.stat().st_mtime
+            if mtime > frozen_at and (newest is None or mtime > newest[1]):
+                newest = (path, mtime)
+    for name in ("main.py", "clips-studio.spec"):
+        path = ROOT / name
+        if path.exists() and path.stat().st_mtime > frozen_at:
+            if newest is None or path.stat().st_mtime > newest[1]:
+                newest = (path, path.stat().st_mtime)
+    return newest
+
+
 def check_identity() -> None:
     """Refuse to build on placeholder Store identity."""
     text = BUILDER_CONFIG.read_text(encoding="utf-8")
@@ -206,6 +241,17 @@ def main() -> int:
         smoke_test_backend()
     else:
         print("\n=== 2/4: reusing the frozen backend")
+        stale = stale_backend()
+        if stale:
+            path, mtime = stale
+            when = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+            sys.exit(
+                f"\nThe frozen engine is older than the source.\n\n"
+                f"  {path.relative_to(ROOT)} changed {when}, after api.exe was built.\n\n"
+                "Packaging now would ship an engine that does not contain that change,\n"
+                "and the package would look perfectly fine while behaving like old code.\n\n"
+                "Drop --skip-backend and build properly."
+            )
 
     if not args.skip_ui:
         build_ui()
