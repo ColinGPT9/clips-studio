@@ -30,6 +30,7 @@ WHAT YOU MUST DO FIRST
 
 import argparse
 import json
+import os
 import re
 import sys
 import winreg
@@ -90,13 +91,11 @@ def store_version(app_version: str) -> str:
 
 
 def developer_mode_on() -> bool:
-    """Windows Developer Mode, which this build needs for two reasons.
+    """Windows Developer Mode.
 
-    electron-builder's appx target runs makeappx.exe out of its winCodeSign
-    download, and that archive carries macOS symlinks an ordinary account
-    cannot extract -- the same failure that put `signAndEditExecutable: false`
-    in electron-builder.yml. Installing the finished package for testing needs
-    it too, because the package is deliberately unsigned.
+    NOT required to build -- see makeappx_available(). It is required to
+    *install* the finished package, because the package is deliberately
+    unsigned and Windows will not sideload one without it.
     """
     try:
         key = winreg.OpenKey(
@@ -107,6 +106,23 @@ def developer_mode_on() -> bool:
             return winreg.QueryValueEx(key, "AllowDevelopmentWithoutDevLicense")[0] == 1
     except OSError:
         return False
+
+
+def orphaned_wincodesign_dirs() -> list[Path]:
+    """Half-extracted winCodeSign attempts left behind by failed builds.
+
+    Each failed attempt downloads the archive again and extracts it to a fresh
+    numerically-named directory, then abandons it. They are ~25 MB each and
+    nothing ever reads them, so the build offers to clear them.
+
+    They look usable -- makeappx.exe and signtool.exe are both in there, and
+    the file list matches a good extraction exactly. They are not: app-builder
+    picks its own directory name per attempt and never looks at these again.
+    """
+    cache = Path(os.environ.get("LOCALAPPDATA", "")) / "electron-builder" / "Cache" / "winCodeSign"
+    if not cache.is_dir():
+        return []
+    return [d for d in cache.iterdir() if d.is_dir() and d.name.isdigit()]
 
 
 def read_app_version() -> str:
@@ -152,14 +168,28 @@ def main() -> int:
     check_tools(args.skip_ui)
     check_identity()
     if not developer_mode_on():
+        orphans = orphaned_wincodesign_dirs()
         sys.exit(
-            "\nWindows Developer Mode is off, and the appx build needs it.\n\n"
+            "\nWindows Developer Mode is off, and the appx build cannot work without it.\n\n"
             "  Settings > System > For developers > Developer Mode\n\n"
-            "electron-builder unpacks makeappx.exe from an archive containing macOS\n"
-            "symlinks, which an ordinary account cannot extract. Developer Mode is\n"
-            "also what lets you install the finished package to test it."
+            "electron-builder fetches makeappx.exe inside an archive that also contains\n"
+            "macOS symlinks. An ordinary Windows account cannot create those, so the\n"
+            "extraction exits non-zero and the whole build is abandoned -- every time,\n"
+            "because it re-downloads to a fresh directory on each attempt rather than\n"
+            "reusing the previous one.\n\n"
+            "The half-extracted directories it leaves behind LOOK usable (makeappx.exe\n"
+            "and signtool.exe are both in them, and the file list matches a good\n"
+            "extraction exactly). They are not: app-builder never looks at them again.\n"
+            + (
+                f"\nThere are {len(orphans)} of them, about {25 * len(orphans)} MB, safe to delete:\n"
+                f"  {orphans[0].parent}\n"
+                if orphans
+                else ""
+            )
+            + "\nDeveloper Mode is also what lets you install the finished package to\n"
+            "test it, so it is needed either way."
         )
-    print("    Developer Mode: on")
+    print("    Developer Mode:  on")
     print(f"    app version:     {app_version}")
     print(f"    package version: {package_version}   (major +1: the Store forbids a 0 major)")
 
