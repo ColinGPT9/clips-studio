@@ -149,6 +149,13 @@ def stale_backend() -> tuple[Path, float] | None:
     writes landing inside the read-only package -- and switching models in the
     installed package failed with HTTP 500, which is precisely the bug the fix
     exists to prevent.
+
+    Timestamps, because there is no cheap way to ask the exe what it contains.
+    PyInstaller stores modules zlib-compressed inside the executable's PYZ
+    archive, so grepping api.exe for a function name finds nothing whether or
+    not it is in there -- `resolve_data_dir` has been in core/paths.py for
+    months and is equally invisible. The only real check is behavioural: run
+    the packaged app and see what it does.
     """
     exe = ROOT / "build" / "dist" / "backend" / "api.exe"
     if not exe.exists():
