@@ -41,10 +41,6 @@ RELEASE = ROOT / "release"
 BUILDER_CONFIG = ROOT / "ui" / "electron-builder.yml"
 WORK = ROOT / "build" / "msix-signing"
 
-# Not a secret in any meaningful sense: it protects a throwaway certificate that
-# exists only to let this machine install a package it just built. It never
-# leaves build/, which is gitignored, and the Store never sees this signature.
-PFX_PASSWORD = "clips-studio-local-test"
 
 
 def find_tool(name: str) -> Path:
@@ -93,48 +89,61 @@ def main() -> int:
     package = newest_package()
     WORK.mkdir(parents=True, exist_ok=True)
 
-    cer, pfx = WORK / "test.cer", WORK / "test.pfx"
+    cer = WORK / "test.cer"
     signed = WORK / package.name
 
     print(f"package:   {package.relative_to(ROOT)}  ({package.stat().st_size / 1e9:.2f} GB)")
     print(f"publisher: {publisher}")
 
-    if not pfx.exists():
-        print("\n1/3  making a test certificate")
-        # New-SelfSignedCertificate rather than the makecert.exe sitting in the
-        # same cache: makecert's -sv opens a GUI password prompt and hangs
-        # anything unattended. This is non-interactive and built into Windows.
-        #   2.5.29.37 = Enhanced Key Usage, 1.3.6.1.5.5.7.3.3 = code signing
-        script = f"""
+    print("\n1/3  test certificate")
+    # Created in the current user's certificate store and used from there, by
+    # thumbprint. Deliberately NOT exported to a .pfx: a .pfx carries the
+    # private key, so it needs a password, and that password would then have to
+    # be handed to signtool on a command line this script prints. CodeQL was
+    # right to flag that (py/clear-text-logging-sensitive-data); the fix is for
+    # the secret not to exist rather than to hide it from the log.
+    #
+    # New-SelfSignedCertificate rather than the makecert.exe in the same cache:
+    # makecert's -sv opens a GUI password prompt and hangs anything unattended.
+    #   2.5.29.37 = Enhanced Key Usage, 1.3.6.1.5.5.7.3.3 = code signing
+    script = f"""
 $ErrorActionPreference = 'Stop'
-$c = New-SelfSignedCertificate -Type Custom -Subject '{publisher}' `
-  -KeyUsage DigitalSignature -FriendlyName 'Clips Studio test signing' `
-  -CertStoreLocation 'Cert:\\CurrentUser\\My' `
-  -TextExtension @('2.5.29.37={{text}}1.3.6.1.5.5.7.3.3', '2.5.29.19={{text}}')
-$p = ConvertTo-SecureString -String '{PFX_PASSWORD}' -Force -AsPlainText
-Export-PfxCertificate -Cert $c -FilePath '{pfx}' -Password $p | Out-Null
-Export-Certificate  -Cert $c -FilePath '{cer}' | Out-Null
+$existing = Get-ChildItem Cert:\\CurrentUser\\My |
+  Where-Object {{ $_.Subject -eq '{publisher}' }} |
+  Sort-Object NotAfter -Descending | Select-Object -First 1
+if ($existing) {{
+  $c = $existing
+  Write-Output "REUSED"
+}} else {{
+  $c = New-SelfSignedCertificate -Type Custom -Subject '{publisher}' `
+    -KeyUsage DigitalSignature -FriendlyName 'Clips Studio test signing' `
+    -CertStoreLocation 'Cert:\\CurrentUser\\My' `
+    -TextExtension @('2.5.29.37={{text}}1.3.6.1.5.5.7.3.3', '2.5.29.19={{text}}')
+  Write-Output "CREATED"
+}}
+Export-Certificate -Cert $c -FilePath '{cer}' | Out-Null
 Write-Output $c.Thumbprint
 """
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True, text=True,
-        )
-        if result.returncode != 0 or not pfx.exists():
-            sys.exit(f"\ncertificate creation failed:\n{(result.stdout + result.stderr)[-1500:]}")
-        print(f"    thumbprint {result.stdout.strip().splitlines()[-1]}")
-    else:
-        print("\n1/3  reusing the existing test certificate")
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not cer.exists():
+        sys.exit(f"\ncertificate setup failed:\n{(result.stdout + result.stderr)[-1500:]}")
+    lines = result.stdout.strip().splitlines()
+    thumbprint = lines[-1].strip()
+    print(f"    {'reused' if 'REUSED' in result.stdout else 'created'}, thumbprint {thumbprint}")
 
     print("\n2/3  signing a copy (the original stays unsigned for Partner Center)")
     print(f"    copying {package.stat().st_size / 1e9:.1f} GB, this takes a minute")
     shutil.copyfile(package, signed)
+    # /sha1 picks the key out of the user's certificate store, so no private key
+    # and no password ever reach the command line.
     run(
         [
             str(find_tool("signtool.exe")), "sign",
             "/fd", "SHA256",
-            "/f", str(pfx),
-            "/p", PFX_PASSWORD,
+            "/sha1", thumbprint,
             str(signed),
         ],
         "signtool",
