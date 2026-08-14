@@ -112,21 +112,51 @@ Copyright (c) 2026 ColinGPT9. AGPL-3.0.
 
 **Required: 1. Recommended: 4 or more. Maximum: 10.** PNG, 1366x768 or larger.
 
+### Two hard rules before anything else
+
+**No identifiable people without their consent.** Test footage is somebody
+else's video. Processing it locally to check the pipeline is one thing;
+publishing their face on a Microsoft Store page to advertise a product is
+another, and it is not covered by anything. That rules out most of the
+interesting screens, because clip thumbnails are faces by definition — Clip
+Studio, the clip grid, the editor preview.
+
+Options, in order of preference:
+
+1. Footage of a creator who has actually agreed, ideally one whose clips you
+   already have permission to post
+2. Your own face
+3. Screens with no thumbnails in them at all: Models, Settings, the queue
+   mid-job showing progress rather than results
+4. A video with no people in it — screen recording, gameplay, b-roll
+
+**Nothing but the app in the frame.** Capture the window, never the desktop.
+A full-screen grab picks up whatever else is open: file paths, other
+applications, message windows. `scripts/capture_screenshots.ps1` grabs the
+window rectangle for this reason, but check every image before uploading —
+if the app loses focus mid-capture, the rectangle fills with whatever is
+behind it.
+
+### What to show
+
 Capture on a clean install with a real video, not placeholder data — a listing
 with obviously fake content reads as fake.
 
-| # | Shows | Why it earns the slot |
-|---|---|---|
-| 1 | The queue mid-job, progress bar and ETA visible | The first screenshot is the one everybody sees. It should show the app *working*. |
-| 2 | The clips grid with real thumbnails and scores | Proves it produced something, and that the scoring is visible rather than magic |
-| 3 | The editor with a clip open, subtitles and crop visible | Answers "can I change what it decided?" |
-| 4 | The model picker with the hardware recommendation | This is the local-AI story, which is the whole positioning |
-| 5 | Settings on the language selector | Shows the 19 languages are real |
-| 6 | A long-form assembly, if it looks good | Optional, and only if it does |
+| # | Shows | Faces? | Why it earns the slot |
+|---|---|---|---|
+| 1 | The queue mid-job, progress bar and ETA visible | no | The first screenshot is the one everybody sees. It should show the app *working*, and progress bars contain no people. |
+| 2 | The model picker with the hardware recommendation | no | The local-AI story, which is the whole positioning |
+| 3 | Settings on the language selector | no | Shows the 19 languages are real |
+| 4 | The dashboard with its options and the processed list | no | The one screen that explains what the app does at a glance |
+| 5 | The clips grid with thumbnails and scores | **yes** | Only with consented footage. Proves it produced something, and that the scoring is visible rather than magic. |
+| 6 | The editor with a clip open, subtitles and crop visible | **yes** | Only with consented footage. Answers "can I change what it decided?" |
 
-Avoid: empty states, error messages, anything with a real person's face you do
-not have permission to use, and anything showing a channel name you have not
-cleared.
+The first four need no consent from anyone and are enough to satisfy Partner
+Center's recommended four. Treat 5 and 6 as upgrades to take once there is
+footage you are entitled to publish.
+
+Avoid: empty states, error messages, any face you do not have permission to
+use, and any channel name you have not cleared.
 
 ## Store logos
 
