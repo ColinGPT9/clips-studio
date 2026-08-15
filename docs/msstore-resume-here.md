@@ -37,14 +37,20 @@ Download failure for .../yolov8n-pose.pt. Retry limit reached.
 That is fixed and committed, and the package now contains the fix. What has
 not happened is confirming a video processes to completion *on this build*.
 
-To do it:
+**Signing is already done**, so skip that step. The signed copy is at
+`build\msix-signing\ClipsStudio-1.1.2-x64.appx`, signature Valid, and the
+original in `release\` is correctly still unsigned for upload.
 
-```
-python scripts/sign_msix.py
+Install it from an **admin** PowerShell:
+
+```powershell
+Import-Certificate -FilePath "build\msix-signing\test.cer" `
+    -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+Add-AppxPackage "build\msix-signing\ClipsStudio-1.1.2-x64.appx"
 ```
 
-then the two commands it prints (they need an admin PowerShell for the
-certificate import), then launch the app and process
+(The certificate is probably still trusted from last time, in which case only
+the second line is needed.) Then launch the app and process
 `tests/assets/sample_video.mp4`. Generate that file first if it is gone:
 
 ```
