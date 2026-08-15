@@ -118,10 +118,15 @@ def main() -> int:
     for name, (w, h) in STORE_SIZES.items():
         out = Image.new("RGBA", (w, h), (*BRAND_BG, 255))
 
-        # Box art is a tile: the mascot alone reads better small, and the name
-        # is shown beside it by the Store anyway. The wider shapes are browsing
-        # surfaces where the art has to say what the app is on its own.
-        wordmark = name != "box-art-1x1.png"
+        # Which shapes carry the name, and it is a rule rather than taste:
+        #
+        #   box art     - no. A tile, read small, with the name shown beside it.
+        #   poster art  - yes. A browsing surface with no other text near it.
+        #   hero art    - NO, and Partner Center enforces this: "Must not
+        #                 include the product's title". It sits behind the
+        #                 listing header, which already prints the name over
+        #                 the top, so a wordmark here collides with it.
+        wordmark = name == "poster-art-2x3.png"
 
         side = int(min(w, h) * (0.52 if wordmark else 0.72))
         scaled = src.resize((side, side), Image.Resampling.LANCZOS)

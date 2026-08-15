@@ -21,10 +21,14 @@ Two rules this copy follows deliberately:
 Clips Studio
 ```
 
-## Short description (1,000 max)
+## Short description
+
+Field limit is 1,000, but Partner Center recommends **270 or fewer** because
+this is what shows at the top of the listing before anyone expands it. Kept
+under that:
 
 ```
-Turn long videos into vertical clips with AI that runs on your own PC. Paste a YouTube, Twitch or Kick link, or open a video file, and Clips Studio finds the moments worth clipping, follows whoever is speaking, adds subtitles and renders them ready to post. Your footage never leaves your computer. No subscription, no upload, no clip limit. Free and open source.
+Turn long videos into vertical clips using AI that runs on your own PC. Paste a YouTube, Twitch or Kick link and Clips Studio finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Nothing is uploaded. Free and open source.
 ```
 
 ## Description (10,000 max)
