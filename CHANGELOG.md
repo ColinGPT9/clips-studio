@@ -8,6 +8,35 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- **Processing no longer needs to reach GitHub.** The first video on a fresh
+  install downloaded a 7 MB detection model even though that file was already
+  inside the installer. Behind a firewall, on a locked-down machine, or just
+  offline, the job failed outright with "Download failure … Retry limit
+  reached". It now uses the copy it shipped with. **This affected 0.1.2**, so
+  if your first video failed with a download error, this was why.
+- **A video whose details were lost keeps its name.** Reprocessing a video
+  after the database had been reset or moved showed the raw ID instead of the
+  title, and no channel at all. The empty channel was the worse half: creator
+  profiles are matched on it, so catchphrase learning and preference history
+  quietly did not run for that video. It now re-fetches the title and channel
+  without re-downloading the video, and still works offline.
+- **The Models page headings no longer run together.** "Recommended" was wider
+  than its column and collided with the next heading, reading as
+  "RECOMMENDEDWHY". The column is now labelled "Model", which is what it holds.
+
+### Added
+
+- **Clips Studio is coming to the Microsoft Store.** Same application, same
+  local processing; the Store version is updated by the Store rather than by
+  the in-app updater, and its donate button opens your browser. The standalone
+  installer is unchanged and stays the main way to get it.
+
+---
+
 ## 0.1.2 (2026-08-10)
 
 ### Fixed
