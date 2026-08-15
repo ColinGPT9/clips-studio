@@ -52,6 +52,13 @@ STORE_SIZES: dict[str, tuple[int, int]] = {
     "box-art-1x1.png": (1080, 1080),
     "poster-art-2x3.png": (720, 1080),
     "super-hero-art-16x9.png": (1920, 1080),
+    # "Store display images" on the listing page. Without these the Store falls
+    # back to the tiles inside the package, whose largest square is 150x150 --
+    # so the 300x300 slot gets an upscaled, soft version of it. That icon is
+    # the first thing anyone sees, so it is worth supplying at native size.
+    "display-tile-300.png": (300, 300),
+    "display-tile-150.png": (150, 150),
+    "display-tile-71.png": (71, 71),
 }
 
 
