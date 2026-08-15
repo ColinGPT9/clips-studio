@@ -10,6 +10,12 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ## Unreleased
 
+> **The Microsoft Store build of 0.1.2 already contains the fixes below.** The
+> GitHub installer of 0.1.2 does not. Same version number, two different
+> builds, on purpose: the Store package was submitted with them rather than
+> waiting for the next release. When someone reports a problem, it is worth
+> asking where they installed from before anything else.
+
 ### Fixed
 
 - **Processing no longer needs to reach GitHub.** Every video tried to download
