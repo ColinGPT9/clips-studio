@@ -45,14 +45,19 @@ anyone can install it.
 
 | | Minimum | Recommended |
 |---|---|---|
-| Memory | 16 GB | 16 GB |
-| DirectX | — | — |
-| Video memory | — | 8 GB |
-| Processor | x64 | x64 |
-| Graphics | — | NVIDIA GPU |
+| Memory | **16 GB** | **16 GB** |
+| everything else | Not specified | Not specified |
 
-16 GB is not padding. Below it a video is analysed and then rendering fails,
-which is in KNOWN-ISSUES.md and would otherwise become one-star reviews.
+Memory is the only one to fill in. 16 GB is not padding: below it a video is
+analysed and then rendering fails, which is in KNOWN-ISSUES.md and would
+otherwise become one-star reviews.
+
+Leave Video memory, Processor and Graphics blank on purpose. A GPU makes the
+app much faster but is not required, and anything entered under Minimum becomes
+a hard requirement: the Store warns the customer and blocks them from rating
+the app. "NVIDIA GPU" there would exclude every AMD and Intel user, all of whom
+can run it. The description already says a graphics card helps, which is the
+honest version of that claim.
 
 ## 3. Age ratings
 
@@ -101,13 +106,30 @@ description, full description, feature bullets, and the seven search terms.
 
 None contains a face, a video title or a channel name.
 
-**Store logos** — `docs/store-art/`:
+**Store logos and display images** — all from `docs/store-art/`:
 
-| File | Field |
-|---|---|
-| `box-art-1x1.png` | 1:1 box art — **required** |
-| `poster-art-2x3.png` | 2:3 poster art — what the Store shows in most browsing surfaces |
-| `super-hero-art-16x9.png` | 16:9 super hero art — optional |
+| Slot on the page | File | Size |
+|---|---|---|
+| 9:16 Poster art | `poster-art-2x3.png` | 1440x2160 |
+| 1:1 Box art | `box-art-1x1.png` | 1080x1080 |
+| 16:9 Super hero art | `super-hero-art-16x9.png` | 1920x1080 |
+| 1:1 App tile icon | `display-tile-300.png` | 300x300 |
+| 1:1 | `display-tile-150.png` | 150x150 |
+| 1:1 | `display-tile-71.png` | 71x71 |
+
+Partner Center labels the poster slot "9:16" but asks for 2:3 dimensions. The
+pixel sizes are what it validates; the label is simply wrong.
+
+The three display tiles are optional — without them the Store upscales the
+150x150 out of the package into the 300x300 slot, and that icon is the first
+thing anyone sees.
+
+**Skip entirely:** trailers, all Xbox images (branded key art, titled hero art,
+featured promotional square art), Short title and Voice title. Every one of
+those is Xbox-only or needs a trailer you do not have yet.
+
+Regenerate any of these with `python scripts/build_appx_assets.py`; the folder
+is gitignored, so the script is what is versioned.
 
 ## 6. Submission options
 
