@@ -40,9 +40,10 @@ there is no cap on how many clips you make.
 - [Supported languages](#supported-languages)
 - [GPU acceleration](#gpu-acceleration)
 - [Command line use](#command-line-use)
+- [Build on it](#build-on-it)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
-- [Roadmap](#roadmap)
+- [Roadmap](#roadmap-detail)
 - [License](#license)
 
 ---
@@ -419,6 +420,37 @@ Settings live in [config/settings.yaml](config/settings.yaml) — the top of the
 a short quick-setup block, everything advanced is below it. Every LLM prompt is a plain
 text file in [config/prompts/](config/prompts/), so you can tune how clips are scored
 without touching Python.
+
+## Build on it
+
+The desktop app is a window onto a **local HTTP API**, which is running whenever
+Clips Studio is open. A Discord bot, a batch runner, a web front end or an OBS
+integration can drive the same pipeline, and nothing has to be added to the app
+first.
+
+```bash
+python main.py serve --port 8765          # the engine on its own, no window
+
+curl -X POST http://127.0.0.1:8765/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.youtube.com/watch?v=VIDEO_ID"}'
+# {"job_id": 149}
+```
+
+Clips come back as JSON, with the score breakdown that produced them and an MP4
+you can stream:
+
+```bash
+curl -s http://127.0.0.1:8765/videos/VIDEO_ID/clips \
+  | python -c "import json,sys; [print(c['score'], c['title']) for c in json.load(sys.stdin)]"
+```
+
+**[docs/API.md](docs/API.md)** documents the endpoints worth building on, with
+working examples and the traps that cost people an afternoon. The service also
+serves its own interactive docs at `http://127.0.0.1:8765/docs`.
+
+It has **no authentication** and it binds localhost for that reason — see the
+security note in the API docs before you point anything at it.
 
 ## Architecture
 

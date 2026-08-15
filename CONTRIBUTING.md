@@ -84,6 +84,20 @@ no Ollama and no waiting, and behaves the same way every run. If you are
 changing how clips get picked, that loop is worth learning first — the
 alternative is a full transcribe-and-render per attempt.
 
+## Building on the app rather than in it
+
+You do not have to change Clips Studio to use it. The desktop window is one
+client of a local HTTP API, and anything else can be another — a bot, a batch
+runner, a different interface entirely.
+
+- **[docs/API.md](docs/API.md)** — the endpoints meant to be built on, the
+  supported-versus-internal line, and the traps worth knowing first
+- **[docs/EXTENDING.md](docs/EXTENDING.md)** — changing the app itself: adding
+  a language, a platform, an AI model or an export format
+
+If you build something, say so in an issue. Needing an endpoint is the fastest
+way to get it moved from internal to supported.
+
 ## Building the Windows installer
 
 ```

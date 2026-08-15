@@ -516,6 +516,10 @@ seconds longer", "the caption says gost, it should say ghost") are interpreted i
 FastAPI + uvicorn on `127.0.0.1:8765`, bound to localhost only. The server wraps the
 pipeline; it does not fork its logic.
 
+The list below is the whole surface, for orientation. **[docs/API.md](docs/API.md)** is
+the document for building against it: which of these are supported rather than internal,
+what the requests and responses actually look like, and working examples.
+
 ```
 POST   /jobs                      queue a video (URL or local file)
 GET    /jobs                      queue state

@@ -6,6 +6,10 @@ sprawling diff, something has drifted and the design is worth a second look.
 
 Read [ARCHITECTURE.md](../ARCHITECTURE.md) first for how the pieces fit.
 
+If you want to build something *beside* the app rather than change it — a bot,
+a batch runner, another front end — you probably want [API.md](API.md)
+instead. The whole pipeline is already reachable over HTTP.
+
 ---
 
 ## Add a language
