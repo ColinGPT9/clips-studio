@@ -40,6 +40,13 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Russian is now fully translated**, thanks to [@4nmus](https://github.com/4nmus),
+  the first contribution to Clips Studio from outside. Russian was listed as a
+  finished language and was not: 92 of the app's 208 phrases were quietly
+  falling back to English. All 92 are translated now, and 56 of the existing
+  ones were rewritten by someone who actually speaks Russian rather than by a
+  machine. If you use the app in Russian and something still reads oddly,
+  [#60](https://github.com/ColinGPT9/clips-studio/issues/60) is the place to say so.
 - **Clips Studio is coming to the Microsoft Store.** Same application, same
   local processing; the Store version is updated by the Store rather than by
   the in-app updater, and its donate button opens your browser. The standalone
