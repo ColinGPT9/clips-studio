@@ -111,6 +111,36 @@ None contains a face, a video title or a channel name.
 
 ## 6. Submission options
 
+**Publishing hold:** select *Don't publish this submission until I select
+Publish now*. That is what lets you read the certification report before
+anyone can install it.
+
+### Restricted capability justification
+
+Partner Center detects `runFullTrust` in the manifest and asks why it is
+needed. It is the only capability the package declares. Paste:
+
+```
+Clips Studio is a desktop application packaged with the Desktop Bridge, so runFullTrust is required for it to run at all. It is the only capability the package declares.
+
+It is needed for three things, all local to the user's own machine:
+
+1. The app spawns its own child processes. A frozen Python engine performs the video analysis, FFmpeg does all decoding and encoding, and an Ollama runtime hosts the AI model. All three ship inside the package and are launched as child processes, which an AppContainer app cannot do.
+
+2. The AI model runs locally on the user's hardware, using CPU or GPU. It is not a cloud service, so the app needs ordinary desktop process and hardware access to run inference.
+
+3. It reads and writes video files the user chooses through a standard file dialog, and writes finished clips to the user's own folders.
+
+The app requires no network access to function beyond downloading a video the user explicitly asks for and, on first run, an AI model the user selects. No user data, video or telemetry is transmitted anywhere. There is no account and no sign-in.
+```
+
+Every claim there is verifiable in the package: `resources/backend/api.exe`,
+`_internal/ffmpeg/ffmpeg.exe` and `_internal/ollama/ollama.exe` are all
+spawned by `ui/src/main/index.ts`, and `runFullTrust` is the only entry under
+`<Capabilities>` in the manifest.
+
+### Notes for certification
+
 Paste into **Notes for certification**:
 
 ```
