@@ -75,18 +75,20 @@ It was built for IRL, just-chatting and talking-head content, which is what it h
 
 ## App features (200 chars each, 20 max)
 
+Displayed as a bulleted list, so short lines beat complete sentences. Eight
+rather than the maximum twenty: a reader skims the first few and stops, and a
+long list buries the two that actually sell it (nothing uploaded, no
+subscription).
+
 ```
-Runs entirely on your own PC — your video is never uploaded
-Works from YouTube, Twitch and Kick links, or your own video files
-Finds clip-worthy moments using speech, audience reaction and what is on screen
-Tracks the active speaker by lip movement, so the right face stays in frame
+Runs entirely on your PC. Nothing is uploaded
+Works from YouTube, Twitch and Kick links, or your own files
+Finds the best moments from speech, audience reaction and video
+Keeps whoever is talking in frame
 Burns in word-timed subtitles
-Translates, subtitles and dubs into 19 languages
-Choose your own local AI model to match your hardware
-Learns a creator's recurring jokes and catchphrases
-Assembles long-form edits as well as shorts
+Translates and dubs into 19 languages
+Pick the local AI model that suits your hardware
 No subscription, no account, no clip limit
-Free and open source under AGPL-3.0
 ```
 
 ## Search terms (7 max, 40 chars each, 21 unique words total)
