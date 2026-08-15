@@ -12,12 +12,16 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
-- **Processing no longer needs to reach GitHub.** The first video on a fresh
-  install downloaded a 7 MB detection model even though that file was already
-  inside the installer. Behind a firewall, on a locked-down machine, or just
-  offline, the job failed outright with "Download failure … Retry limit
-  reached". It now uses the copy it shipped with. **This affected 0.1.2**, so
-  if your first video failed with a download error, this was why.
+- **Processing no longer needs to reach GitHub.** Every video tried to download
+  a 7 MB detection model, even though that file was already inside the
+  installer. If the download failed, so did the job: "Download failure … Retry
+  limit reached". It now uses the copy it shipped with.
+
+  **This affected 0.1.2**, so if a video failed with a download error, this was
+  why. It was unpredictable rather than universal: the app looked for the file
+  in whatever folder Windows happened to start it from, so it worked or failed
+  depending on where the shortcut pointed, and it always worked when run from a
+  developer's own copy of the source. That is why it survived to a release.
 - **A video whose details were lost keeps its name.** Reprocessing a video
   after the database had been reset or moved showed the raw ID instead of the
   title, and no channel at all. The empty channel was the worse half: creator

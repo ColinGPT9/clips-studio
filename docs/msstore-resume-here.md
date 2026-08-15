@@ -44,12 +44,16 @@ Nothing about the pipeline is unverified any more.
 
 ## Worth knowing
 
-- The YOLO download bug **is in the shipped 0.1.2 installer too**. Anyone whose
-  first video failed with a download error hit it. Recorded in CHANGELOG under
-  Unreleased.
-- The same end-to-end test has never been run against the **NSIS** build. Worth
-  doing before 0.1.3: `python tests/assets/make_sample_video.py`, then import
-  it and lower `clips.min_score` so candidates actually render.
+- The YOLO download bug **is in the shipped 0.1.2 installer**, confirmed by
+  running it, not inferred. Launched from a normal working directory it fails
+  with "Download failure ... Retry limit reached"; launched from a folder that
+  happens to contain the weights it passes. That is why it reached a release:
+  it always works on a developer's machine, because the source tree has the
+  file sitting in it.
+- Both builds have now been through the same end-to-end test. To repeat it:
+  `python tests/assets/make_sample_video.py`, import the result, and lower
+  `clips.min_score` so candidates actually render. Launch the app with a
+  working directory outside the source tree or the test proves nothing.
 - `build\msix-signing\` holds a 7.1 GB signed copy, only needed to reinstall
   locally. Safe to delete; `sign_msix.py` regenerates it.
 - The Windows App Certification Kit cannot run here: `appcert.exe` ships with
