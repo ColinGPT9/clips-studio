@@ -118,20 +118,27 @@ anyone can install it.
 ### Restricted capability justification
 
 Partner Center detects `runFullTrust` in the manifest and asks why it is
-needed. It is the only capability the package declares. Paste:
+needed. It is the only capability the package declares.
+
+**The field is limited to about 500 characters**, so this is the version that
+fits. Paste exactly:
 
 ```
-Clips Studio is a desktop application packaged with the Desktop Bridge, so runFullTrust is required for it to run at all. It is the only capability the package declares.
+Clips Studio is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run. It is the only capability declared.
 
-It is needed for three things, all local to the user's own machine:
+It launches three child processes that ship inside the package: a frozen Python engine for video analysis, FFmpeg for decoding and encoding, and an Ollama runtime that hosts the AI model on the user's own hardware. AppContainer cannot launch these.
 
-1. The app spawns its own child processes. A frozen Python engine performs the video analysis, FFmpeg does all decoding and encoding, and an Ollama runtime hosts the AI model. All three ship inside the package and are launched as child processes, which an AppContainer app cannot do.
+It reads and writes only video files the user picks. No account, no telemetry, nothing uploaded.
+```
 
-2. The AI model runs locally on the user's hardware, using CPU or GPU. It is not a cloud service, so the app needs ordinary desktop process and hardware access to run inference.
+If even that is rejected as too long, this says the same in 384:
 
-3. It reads and writes video files the user chooses through a standard file dialog, and writes finished clips to the user's own folders.
+```
+Clips Studio is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run, and it is the only capability declared.
 
-The app requires no network access to function beyond downloading a video the user explicitly asks for and, on first run, an AI model the user selects. No user data, video or telemetry is transmitted anywhere. There is no account and no sign-in.
+It launches three child processes bundled in the package: a frozen Python engine for analysis, FFmpeg for encoding, and Ollama hosting the AI model locally. AppContainer cannot do this.
+
+No account, no telemetry, nothing uploaded.
 ```
 
 Every claim there is verifiable in the package: `resources/backend/api.exe`,
