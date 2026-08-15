@@ -50,7 +50,11 @@ SIZES: dict[str, tuple[int, int]] = {
 # browsing surfaces, so it is the one that decides whether anyone clicks.
 STORE_SIZES: dict[str, tuple[int, int]] = {
     "box-art-1x1.png": (1080, 1080),
-    "poster-art-2x3.png": (720, 1080),
+    # Partner Center accepts 720x1080 or 1440x2160 for poster art. Supply the
+    # larger: the mascot source is 1024px square, so even at 2160 tall it is
+    # being scaled down rather than stretched, and this is the image the Store
+    # uses as the main logo on Windows 10/11.
+    "poster-art-2x3.png": (1440, 2160),
     "super-hero-art-16x9.png": (1920, 1080),
     # "Store display images" on the listing page. Without these the Store falls
     # back to the tiles inside the package, whose largest square is 150x150 --
