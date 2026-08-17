@@ -157,6 +157,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history: build_sitemap.py reads each page's lastmod from
+          # `git log`, and a shallow clone has only the tip commit, so every
+          # page comes back dated today. The generated sitemap then matches
+          # the committed one only on the day the site last changed — the
+          # check passed by coincidence and failed the rest of the time.
+          fetch-depth: 0
 
       - name: Links and paths
         # The site is published to GitHub Pages AND a Hugging Face Space. A
