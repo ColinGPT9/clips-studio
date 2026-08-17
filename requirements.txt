@@ -23,7 +23,7 @@ yt-dlp>=2025.12.8
 # interchangeable with another MFCC implementation.
 python_speech_features>=0.6,<1
 faster-whisper>=1.2.1,<2
-ultralytics>=8.4.116,<9
+ultralytics>=8.4.120,<9
 # <5 matters. opencv-python 5.0 is out and pip takes it without this.
 opencv-python>=4.14.0.94,<5
 
