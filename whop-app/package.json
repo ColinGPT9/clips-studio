@@ -1,0 +1,32 @@
+{
+  "name": "clips-studio-whop-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "whop-proxy --command 'next dev --turbopack'",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vercel/functions": "^3.1.4",
+    "@whop/react": "0.3.0",
+    "@whop/sdk": "0.0.3",
+    "next": "16.1.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.6",
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "^20.19.21",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@whop-apps/dev-proxy": "0.0.1-canary.117",
+    "dotenv-cli": "^10.0.0",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.9.3"
+  },
+  "description": "Marketing surface for Clips Studio inside Whop clipping communities"
+}

@@ -478,6 +478,9 @@ Packaging and release documentation:
   creating a developer account through to certification
 - **[packaging/winget/](packaging/winget/)** — the winget manifests, which point at
   the installer above
+- **[whop-app/](whop-app/)** — the Whop app, which puts Clips Studio in front of
+  members of clipping communities. Marketing pages only: it does not process
+  video, store anything, or talk to the desktop app
 - **[docs/DOCKER.md](docs/DOCKER.md)** — running the engine without installing
   Python, FFmpeg and PyTorch yourself
 - **[PRIVACY](https://colingpt9.github.io/clips-studio/privacy.html)** — what the
