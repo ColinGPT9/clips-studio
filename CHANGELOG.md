@@ -47,6 +47,15 @@ were often broken in a way that only showed up on somebody else's machine.
   ones were rewritten by someone who actually speaks Russian rather than by a
   machine. If you use the app in Russian and something still reads oddly,
   [#60](https://github.com/ColinGPT9/clips-studio/issues/60) is the place to say so.
+- **Brazilian Portuguese is now fully translated**, thanks to
+  [@espinafr](https://github.com/espinafr), the second contribution from
+  outside. Portuguese was listed as finished and was not: 133 of the app's 208
+  phrases were falling back to English. All of them are translated now, and 30
+  of the existing ones were rewritten by someone who speaks the language. The
+  most visible change is that clips are "cortes" rather than "clipes", which is
+  what Brazilian editors actually call them. If something still reads oddly,
+  [#59](https://github.com/ColinGPT9/clips-studio/issues/59) is the place to
+  say so — two phrases are already known to need a second opinion.
 - **Clips Studio is coming to the Microsoft Store.** Same application, same
   local processing; the Store version is updated by the Store rather than by
   the in-app updater, and its donate button opens your browser. The standalone
