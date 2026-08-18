@@ -75,11 +75,37 @@ gets a failed install.
 
 ## Deploying
 
-Hosted on Vercel's free tier; Whop only needs a public HTTPS URL.
+Whop does not host anything — it stores a URL and renders it in an iframe.
+Something has to serve the page, and that is Vercel's free tier here.
+
+### Recommended: connect the GitHub repo
+
+On vercel.com, **Add New → Project**, import `ColinGPT9/clips-studio`, and
+set:
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `whop-app` |
+| Framework preset | Next.js (detected) |
+
+**Root Directory is not optional.** The repository root is a Python and
+Electron project; pointed at it, Vercel finds no Next.js app and the build
+fails.
+
+Every push to `main` then redeploys automatically, so shipping a new
+`VERSION` is one commit. [`vercel.json`](vercel.json) carries an
+`ignoreCommand` that skips the build when nothing under `whop-app/` changed
+— without it, every commit to the Python engine, the docs or the website
+would rebuild this app for no reason.
+
+### Or deploy by hand
 
 ```bash
 npx vercel --prod
 ```
+
+Fine for a one-off, but then every future change needs remembering to run
+it from the right machine.
 
 Then in the Whop dashboard set the app's base URL to the deployment, and the
 view paths to `/experiences/[experienceId]` and `/dashboard/[companyId]`.
