@@ -16,8 +16,8 @@ import {
 } from "@/components/Brand";
 import { PcCheck } from "@/components/PcCheck";
 import { verifiedUserId } from "@/lib/auth";
-import { LINKS, PLATFORMS, SELLING_POINTS } from "@/lib/content";
-import { whopsdk } from "@/lib/whop-sdk";
+import { DOWNLOAD_NOTE, LINKS, PLATFORMS, SELLING_POINTS } from "@/lib/content";
+import { whop } from "@/lib/whop-sdk";
 
 export default async function ExperiencePage({
 	params,
@@ -31,7 +31,7 @@ export default async function ExperiencePage({
 	const userId = await verifiedUserId();
 	if (!userId) return <OpenInWhop />;
 
-	const user = await whopsdk.users.retrieve(userId);
+	const user = await whop().users.retrieve(userId);
 	const firstName = (user.name || user.username || "").split(" ")[0];
 
 	return (
@@ -79,11 +79,7 @@ export default async function ExperiencePage({
 					See what it looks like
 				</a>
 			</div>
-			<p className="cs-note">
-				Roughly 5 GB. The installer carries the engine, FFmpeg, the AI
-				runtime and the tracking and transcription models, so there is
-				nothing else to install.
-			</p>
+			<p className="cs-note">{DOWNLOAD_NOTE}</p>
 
 			<h2 className="cs-h2">How it works</h2>
 			<Steps />

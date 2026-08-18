@@ -11,7 +11,7 @@ import { Footer, Hero, Limits, OpenInWhop, Requirements } from "@/components/Bra
 import { CopyBlurb } from "@/components/CopyBlurb";
 import { verifiedUserId } from "@/lib/auth";
 import { LINKS } from "@/lib/content";
-import { whopsdk } from "@/lib/whop-sdk";
+import { whop } from "@/lib/whop-sdk";
 
 export default async function DashboardPage({
 	params,
@@ -23,7 +23,7 @@ export default async function DashboardPage({
 	const userId = await verifiedUserId();
 	if (!userId) return <OpenInWhop />;
 
-	const company = await whopsdk.companies.retrieve(companyId);
+	const company = await whop().companies.retrieve(companyId);
 
 	return (
 		<main className="cs-page">

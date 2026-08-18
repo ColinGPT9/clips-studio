@@ -11,11 +11,33 @@
  *  bundled), macOS, live stream capture, any hosted or multi-user service.
  */
 
+/** The version this app sends people to.
+ *
+ *  PINNED ON PURPOSE — do not change it to "whatever is newest".
+ *
+ *  The Web Setup on GitHub is only ~800 KB. During install it fetches
+ *  `clips-studio-<version>-x64.nsis.7z` **by name** from the Hugging Face
+ *  repo, because a GitHub release asset is capped at 2 GiB and the payload
+ *  is 5.88 GiB. So the setup and the payload are a matched pair: pointing
+ *  at a setup whose payload has not been uploaded yet gives every person
+ *  who clicks a failed install.
+ *
+ *  When a new version ships, this changes ONLY after its payload is live on
+ *  Hugging Face. See docs/RELEASING.md in the main repo.
+ *
+ *  Verified 2026-08-18: the newest payload on Hugging Face is
+ *  `clips-studio-0.1.2-x64.nsis.7z`, so 0.1.2 is what this must point at —
+ *  not whatever GitHub happens to have newest. One version everywhere.
+ */
+export const VERSION = "0.1.2";
+
 export const LINKS = {
-	/** /releases/latest resolves to the newest release forever. The website
-	 *  hardcodes a versioned .exe URL and has to be hand-edited every
-	 *  release (issue #36) — this app should not inherit that chore. */
-	download: "https://github.com/ColinGPT9/clips-studio/releases/latest",
+	/** Straight to the installer for VERSION, so a clipper gets one click
+	 *  rather than a list of three alpha releases to choose between.
+	 *  Deliberately not /releases/latest: every release is flagged as a
+	 *  prerelease, so GitHub's "latest" is undefined — the API 404s and the
+	 *  web URL silently redirects to the full list. */
+	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsStudio-Web-Setup-${VERSION}.exe`,
 	site: "https://colingpt9.github.io/clips-studio/",
 	github: "https://github.com/ColinGPT9/clips-studio",
 	issues: "https://github.com/ColinGPT9/clips-studio/issues",
@@ -93,6 +115,13 @@ export const LIMITS: { lead: string; body: string }[] = [
 ];
 
 export const PLATFORMS = ["Twitch VODs", "Kick VODs", "YouTube"] as const;
+
+/** What actually happens when they click download.
+ *
+ *  The file itself is under a megabyte and then pulls ~6 GB, which is a
+ *  surprise worth having in advance — someone on a phone tether or a metered
+ *  connection needs to know before they start, not 4 GB in. */
+export const DOWNLOAD_NOTE = `Version ${VERSION}. The setup is under 1 MB and then downloads about 6 GB — the engine, FFmpeg, the AI runtime and the tracking and transcription models. That is everything; there is nothing else to install afterwards.`;
 
 /** Paste-ready text for a community owner to post to their members. Kept
  *  short enough to survive a Discord or Whop chat message, and honest

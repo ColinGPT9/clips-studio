@@ -38,18 +38,40 @@ work anywhere.
 
 ### Environment
 
-Create `.env.local` (git-ignored) with the real values from the Whop
-dashboard:
+Two values, both from the app's page in the Whop dashboard. Put them in
+`.env.local`, which is git-ignored:
 
 ```
-NEXT_PUBLIC_WHOP_APP_ID=...
-WHOP_API_KEY=...
-WHOP_WEBHOOK_SECRET=...
+NEXT_PUBLIC_WHOP_APP_ID=app_xxxxx
+WHOP_API_KEY=xxxxx
 ```
+
+There is **no webhook secret**, because there is no webhook route — Clips
+Studio is free, so there are no payments to be notified about. The
+template's `/api/webhooks` handler was deleted rather than left as dead code
+that fails the build without a key nobody needs.
 
 `.env.development` is committed and holds **placeholders only**. Never put a
-real key in it — it is tracked, and `WHOP_API_KEY` is a secret that can act
-as your app.
+real key in it — it is tracked in a public repo, and `WHOP_API_KEY` acts as
+your app.
+
+`npm run build` needs `.env.local` to exist. `NEXT_PUBLIC_WHOP_APP_ID` is
+inlined into the browser bundle at build time, so it has to be set *before*
+the build, not after — the same is true of Vercel's environment variables.
+The build failing on a missing value is deliberate: shipping a placeholder
+would look fine until it reached a real community.
+
+### The pinned version
+
+[`lib/content.ts`](lib/content.ts) has a `VERSION` constant and every
+download link is built from it. **It is pinned on purpose.**
+
+The Web Setup on GitHub is ~800 KB and fetches
+`clips-studio-<version>-x64.nsis.7z` **by name** from the Hugging Face
+release repo, because a GitHub release asset is capped at 2 GiB and the
+payload is 5.88 GiB. Setup and payload are a matched pair. Bump `VERSION`
+only once the new payload is live on Hugging Face, or everyone who clicks
+gets a failed install.
 
 ## Deploying
 
@@ -61,8 +83,8 @@ npx vercel --prod
 
 Then in the Whop dashboard set the app's base URL to the deployment, and the
 view paths to `/experiences/[experienceId]` and `/dashboard/[companyId]`.
-Put the three environment variables into Vercel's project settings — not into
-a committed file.
+Put both environment variables into Vercel's project settings — not into a
+committed file — and set them **before** the first production build.
 
 ## Getting it in front of a community
 

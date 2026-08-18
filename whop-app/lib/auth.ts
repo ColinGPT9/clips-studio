@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { whopsdk } from "@/lib/whop-sdk";
+import { whop } from "@/lib/whop-sdk";
 
 /** The verified Whop user, or null when there is no valid token.
  *
@@ -16,7 +16,7 @@ import { whopsdk } from "@/lib/whop-sdk";
  */
 export async function verifiedUserId(): Promise<string | null> {
 	try {
-		const { userId } = await whopsdk.verifyUserToken(await headers());
+		const { userId } = await whop().verifyUserToken(await headers());
 		return userId ?? null;
 	} catch {
 		return null;
