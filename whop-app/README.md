@@ -61,6 +61,16 @@ the build, not after — the same is true of Vercel's environment variables.
 The build failing on a missing value is deliberate: shipping a placeholder
 would look fine until it reached a real community.
 
+### Analytics
+
+`<Analytics />` from `@vercel/analytics` is in the layout. It records page
+views for this marketing page only — cookieless, no cross-site tracking, so
+no consent banner is required, and it sends nothing at all until **Web
+Analytics is switched on for the project** in the Vercel dashboard.
+
+It says nothing about what anyone clips. The desktop app has no telemetry
+and this does not change that.
+
 ### The pinned version
 
 [`lib/content.ts`](lib/content.ts) has a `VERSION` constant and every

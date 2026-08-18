@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "@vercel/functions": "^3.1.4",
     "@whop/react": "0.3.0",
     "@whop/sdk": "0.0.3",
