@@ -7,8 +7,9 @@
  *  without writing anything.
  */
 
-import { Footer, Hero, Limits, OpenInWhop, Requirements } from "@/components/Brand";
+import { Footer, Hero, Limits, Requirements } from "@/components/Brand";
 import { CopyBlurb } from "@/components/CopyBlurb";
+import { Pitch } from "@/components/Pitch";
 import { verifiedUserId } from "@/lib/auth";
 import { LINKS } from "@/lib/content";
 import { whop } from "@/lib/whop-sdk";
@@ -21,7 +22,7 @@ export default async function DashboardPage({
 	const { companyId } = await params;
 
 	const userId = await verifiedUserId();
-	if (!userId) return <OpenInWhop />;
+	if (!userId) return <Pitch note="Opened outside a Whop community, so this is the public version of the page. Everything you need is above." />;
 
 	const company = await whop().companies.retrieve(companyId);
 

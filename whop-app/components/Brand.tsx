@@ -82,35 +82,6 @@ export function DownloadButton({ label = "Download for Windows" }: { label?: str
 	);
 }
 
-/** Shown when a page is opened without a valid Whop token — a direct visit
- *  to the deployment URL, or a reviewer poking at it. Deliberately carries
- *  no user or company data, only the public pitch. */
-export function OpenInWhop() {
-	return (
-		<main className="cs-page">
-			<Hero eyebrow="Clips Studio" title="Open this from inside Whop">
-				<p className="cs-lede">
-					This page is part of the Clips Studio app for Whop communities
-					and needs to be opened from within one. If you just want the
-					software, it is free and the download is right here.
-				</p>
-				<div className="cs-cta-row">
-					<DownloadButton />
-					<a
-						className="cs-ghost"
-						href={LINKS.site}
-						target="_blank"
-						rel="noreferrer"
-					>
-						Website
-					</a>
-				</div>
-			</Hero>
-			<Footer />
-		</main>
-	);
-}
-
 export function Footer() {
 	return (
 		<footer className="cs-foot">

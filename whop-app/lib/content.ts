@@ -39,6 +39,9 @@ export const LINKS = {
 	 *  web URL silently redirects to the full list. */
 	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsStudio-Web-Setup-${VERSION}.exe`,
 	site: "https://colingpt9.github.io/clips-studio/",
+	/** Same destination as the desktop app's donate button and the website,
+	 *  so there is one place money goes. */
+	donate: "https://paypal.me/clipsstudio",
 	github: "https://github.com/ColinGPT9/clips-studio",
 	issues: "https://github.com/ColinGPT9/clips-studio/issues",
 	privacy: "https://colingpt9.github.io/clips-studio/privacy.html",

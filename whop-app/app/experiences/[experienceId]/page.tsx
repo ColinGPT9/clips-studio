@@ -10,11 +10,11 @@ import {
 	DownloadButton,
 	Hero,
 	Limits,
-	OpenInWhop,
 	Requirements,
 	Steps,
 } from "@/components/Brand";
 import { PcCheck } from "@/components/PcCheck";
+import { Pitch } from "@/components/Pitch";
 import { verifiedUserId } from "@/lib/auth";
 import { DOWNLOAD_NOTE, LINKS, PLATFORMS, SELLING_POINTS } from "@/lib/content";
 import { whop } from "@/lib/whop-sdk";
@@ -29,7 +29,7 @@ export default async function ExperiencePage({
 	// Verify the Whop-issued token before touching the Whop API. Without a
 	// valid one we show the public notice and make no API calls at all.
 	const userId = await verifiedUserId();
-	if (!userId) return <OpenInWhop />;
+	if (!userId) return <Pitch note="Opened outside a Whop community, so this is the public version of the page. Everything you need is above." />;
 
 	const user = await whop().users.retrieve(userId);
 	const firstName = (user.name || user.username || "").split(" ")[0];

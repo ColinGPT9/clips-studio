@@ -39,6 +39,27 @@ body {
 	max-width: 860px;
 	margin: 0 auto;
 	padding: 28px 20px 56px;
+	/* Set explicitly rather than inherited from body: Whop wraps the app in
+	   its own themed container, and inheriting its light-theme colour once
+	   made the whole page white text on white. */
+	color: var(--cs-ink);
+	position: relative;
+	z-index: 0;
+}
+
+/* The brand background, painted by the page itself.
+   `body { background }` is not enough — Whop's wrapper sits between body and
+   this content and paints its own (white, in light theme) straight over it,
+   which left light brand text on a white page and made the app unreadable.
+   A fixed layer behind the content covers the viewport whatever the host
+   does, and the z-index pair keeps it above that wrapper but below the
+   text. */
+.cs-page::before {
+	content: "";
+	position: fixed;
+	inset: 0;
+	background: var(--cs-base);
+	z-index: -1;
 }
 
 .cs-hero {
