@@ -225,3 +225,35 @@ def cached_source(downloads: Path, video_id: str | None) -> Path | None:
         if ext in found:
             return found[ext]
     return None
+
+
+def discard(path: Path | None) -> bool:
+    """Delete a scratch file, and never raise. Returns True if it is gone.
+
+    Cleanup is not worth failing an operation over, and on Windows it very
+    much can. A `.source.mp4` still held open by a decoder gives
+    `PermissionError [WinError 32]`, and `unlink(missing_ok=True)` does NOT
+    cover that — `missing_ok` only suppresses FileNotFoundError.
+
+    Issue #74 is what that costs. The scratch cleanup ran inside a `finally`,
+    so the PermissionError REPLACED the exception that was already in flight:
+    the real reason the render failed was destroyed and every clip reported
+    the same misleading "file is being used by another process". Worse, the
+    caller treats any exception as a failed render, so clips that had already
+    been written to disk were thrown away.
+
+    Leaving the file behind costs nothing by comparison — core/housekeeping.py
+    lists the scratch suffixes and sweeps them later.
+    """
+    if path is None:
+        return False
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return True          # already gone: the desired state
+    except OSError as e:
+        # Worth one line, because a file that will not delete is usually a
+        # handle this process failed to close — a bug, just not a fatal one.
+        print(f"      (could not remove {path.name}: {e})")
+        return False

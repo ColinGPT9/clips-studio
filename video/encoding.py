@@ -19,6 +19,7 @@ Config: video.encoder in settings.yaml — "auto" (default) or force one of
 import subprocess
 
 from core.binaries import ffmpeg, ffprobe
+from core.paths import discard
 
 CPU_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
 
@@ -235,6 +236,6 @@ def ensure_h264_source(path, config: dict | None = None) -> bool:
             # But silence here is how "why does this video take twice as
             # long?" becomes unanswerable.
             print(f"      (H.264 conversion failed, using the original: {e})")
-    tmp.unlink(missing_ok=True)
+    discard(tmp)
     print("      (conversion failed — continuing with the original file)")
     return False

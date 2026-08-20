@@ -19,6 +19,7 @@ from pathlib import Path
 
 from core import cancel, progress, queue
 from core.cancel import CancelledError
+from core.paths import discard
 from core.prefetch import Prefetcher
 from core.state import StateDB
 from server import feedback
@@ -488,4 +489,4 @@ class Worker(threading.Thread):
             restore["render_opts"] = _json.dumps(render_opts)
             db.set_clip(new_row["id"], **restore)
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
-            old_path.unlink(missing_ok=True)
+            discard(old_path)

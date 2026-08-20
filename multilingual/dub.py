@@ -27,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from core.binaries import ffmpeg, ffprobe
+from core.paths import discard
 
 # Default voice per language; creators pick a different one in the UI.
 # Languages absent from Piper's catalogue simply aren't in here.
@@ -246,7 +247,7 @@ def dub(
     # undefined slots that would raise while merely reporting a failure.
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     for wav, _ in pieces:
-        wav.unlink(missing_ok=True)
+        discard(wav)
     if r.returncode != 0:
         print(f"      (dub mix failed: {(r.stderr or '')[-200:]})")
         return None

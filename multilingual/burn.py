@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 from core.binaries import ffmpeg, ffprobe
+from core.paths import discard
 from multilingual.languages import english_name
 
 
@@ -104,4 +105,4 @@ def burn(
             return None
         return out_path
     finally:
-        built.unlink(missing_ok=True)
+        discard(built)

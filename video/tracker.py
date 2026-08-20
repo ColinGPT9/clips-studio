@@ -66,6 +66,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from video.capture import video_capture
+
 # Shared framing components, factored out of the Podcast rebuild. Cut
 # detection, "commit to one subject", and hold-then-move all apply here too.
 from video.framing import HoldMove, is_cut, small_gray, stable_target
@@ -518,10 +520,9 @@ def score_faces(clip_path: Path, seen_by_track: dict, duration: float,
     # ---- one pass over the video, cropping every candidate per frame ------
     size = asd.FACE_SIZE
     crops = {tid: np.zeros((n_frames, size, size), dtype=np.uint8) for tid in candidates}
-    cap = cv2.VideoCapture(str(clip_path))
-    if not cap.isOpened():
-        return None
-    try:
+    with video_capture(clip_path, required=False) as cap:
+        if cap is None:
+            return None
         wanted = np.rint(times * video_fps).astype(np.int64)
         needed = np.zeros(n_frames, dtype=bool)
         for a, b in spans:
@@ -554,8 +555,6 @@ def score_faces(clip_path: Path, seen_by_track: dict, duration: float,
                             crops[tid][j] = patch
                     j += 1
             idx += 1
-    finally:
-        cap.release()
 
     # ---- score each contested stretch, on its own slice of the audio ------
     # -inf everywhere else: a frame nobody scored is not a quiet frame, it is
@@ -756,168 +755,164 @@ def compute_tracking(
     force_fit_blur: bool = False,     # user override: always letterbox, cropped
                                       # tight to the subject like the automatic one
 ) -> dict:
-    cap = cv2.VideoCapture(str(clip_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"OpenCV could not open {clip_path}")
+    with video_capture(clip_path) as cap:
+        video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        frame_step = max(1, round(video_fps / sample_fps))
+        model = _get_model(model_name)
 
-    video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    frame_step = max(1, round(video_fps / sample_fps))
-    model = _get_model(model_name)
+        tracks: dict[int, _Track] = {}
+        active_id: int | None = None
+        challenger_id: int | None = None
+        challenger_since = 0.0
 
-    tracks: dict[int, _Track] = {}
-    active_id: int | None = None
-    challenger_id: int | None = None
-    challenger_since = 0.0
+        # dead_zone becomes the distance the subject may drift before the camera
+        # bothers to move; settling well inside it is what makes a move look
+        # finished rather than endlessly corrected.
+        pan = HoldMove(
+            move_trigger=max(dead_zone, 0.05),
+            settle=dead_zone * 0.4,
+            smoothing=smoothing,
+            max_pan_speed=max_pan_speed,
+        )
+        # The audio, one value per sample. Mouth motion alone cannot separate a
+        # talker from a listener who is simply moving; matching each person's
+        # mouth against the sound can. None for a silent clip, which just means
+        # the visual-only behaviour below.
+        env = speech_envelope(clip_path, sample_fps)
 
-    # dead_zone becomes the distance the subject may drift before the camera
-    # bothers to move; settling well inside it is what makes a move look
-    # finished rather than endlessly corrected.
-    pan = HoldMove(
-        move_trigger=max(dead_zone, 0.05),
-        settle=dead_zone * 0.4,
-        smoothing=smoothing,
-        max_pan_speed=max_pan_speed,
-    )
-    # The audio, one value per sample. Mouth motion alone cannot separate a
-    # talker from a listener who is simply moving; matching each person's
-    # mouth against the sound can. None for a silent clip, which just means
-    # the visual-only behaviour below.
-    env = speech_envelope(clip_path, sample_fps)
+        # What each sample saw, so framing can be decided after TalkNet has had a
+        # look rather than guessed at during the frame pass. See _Sample.
+        samples: list[_Sample] = []
 
-    # What each sample saw, so framing can be decided after TalkNet has had a
-    # look rather than guessed at during the frame pass. See _Sample.
-    samples: list[_Sample] = []
+        path: list[tuple[float, float]] = []
+        smoothed_x: float | None = None
+        prev_small = None            # previous frame's thumbnail, for cut detection
+        last_sample_t = 0.0          # real time of the last processed sample
+        n_samples = 0
+        wide_boxes: list[tuple[float, float, float, float]] = []  # subject bbox when a
+        #                                             9:16 crop can't hold it (normalized)
+        frame_idx = 0
 
-    path: list[tuple[float, float]] = []
-    smoothed_x: float | None = None
-    prev_small = None            # previous frame's thumbnail, for cut detection
-    last_sample_t = 0.0          # real time of the last processed sample
-    n_samples = 0
-    wide_boxes: list[tuple[float, float, float, float]] = []  # subject bbox when a
-    #                                             9:16 crop can't hold it (normalized)
-    frame_idx = 0
+        while True:
+            ok = cap.grab()
+            if not ok:
+                break
+            if frame_idx % frame_step != 0:
+                frame_idx += 1
+                continue
+            ok, frame = cap.retrieve()
+            if not ok:
+                break
 
-    while True:
-        ok = cap.grab()
-        if not ok:
-            break
-        if frame_idx % frame_step != 0:
-            frame_idx += 1
-            continue
-        ok, frame = cap.retrieve()
-        if not ok:
-            break
+            t = frame_idx / video_fps
+            h, w = frame.shape[:2]
+            n_samples += 1
 
-        t = frame_idx / video_fps
-        h, w = frame.shape[:2]
-        n_samples += 1
+            # ---- camera cuts, checked on the SAMPLE grid ---------------------
+            # Only sample frames are decoded. Decoding every frame just to spot
+            # the occasional cut doubled processing time on long streams — and
+            # streams are one continuous camera that almost never cuts. Between
+            # samples there is far more motion than between adjacent frames, so
+            # the threshold is raised well above that motion (a fast pan peaks
+            # around 40; a real hard cut is 75+): it fires only on an unmistakable
+            # scene change, so a continuous stream never trips it, while edited
+            # sources (talking heads, highlight reels) still snap at their cuts.
+            cur_small = small_gray(frame)
+            at_cut = is_cut(prev_small, cur_small, _CUT_DIFF_SAMPLED)
+            prev_small = cur_small
+            if at_cut:
+                # Per-subject state belongs to the shot that just ended. Mouth
+                # motion especially: across a cut every mouth region changes at
+                # once, so the talking detector would score everyone a speaker.
+                for tr in tracks.values():
+                    tr.prev_mouth = None
+                    tr.speak = 0.0
+                # NB: dropping the challenger at a cut belongs to the framing
+                # pass, not here — see the loop below. Doing it in this pass sets
+                # a variable that pass never reads.
 
-        # ---- camera cuts, checked on the SAMPLE grid ---------------------
-        # Only sample frames are decoded. Decoding every frame just to spot
-        # the occasional cut doubled processing time on long streams — and
-        # streams are one continuous camera that almost never cuts. Between
-        # samples there is far more motion than between adjacent frames, so
-        # the threshold is raised well above that motion (a fast pan peaks
-        # around 40; a real hard cut is 75+): it fires only on an unmistakable
-        # scene change, so a continuous stream never trips it, while edited
-        # sources (talking heads, highlight reels) still snap at their cuts.
-        cur_small = small_gray(frame)
-        at_cut = is_cut(prev_small, cur_small, _CUT_DIFF_SAMPLED)
-        prev_small = cur_small
-        if at_cut:
-            # Per-subject state belongs to the shot that just ended. Mouth
-            # motion especially: across a cut every mouth region changes at
-            # once, so the talking detector would score everyone a speaker.
-            for tr in tracks.values():
-                tr.prev_mouth = None
-                tr.speak = 0.0
-            # NB: dropping the challenger at a cut belongs to the framing
-            # pass, not here — see the loop below. Doing it in this pass sets
-            # a variable that pass never reads.
-
-        visible = _assign(tracks, _detect(model, frame, min_confidence), t)
-        faces_here: dict[int, tuple] = {}   # for TalkNet, after the pass
-        for tid in visible:
-            tr = tracks[tid]
-            x1, y1, x2, y2, conf = tr.box[:5]
-            area_frac = (x2 - x1) * (y2 - y1) / (w * h)
-            tr.dominance = 0.7 * tr.dominance + 0.3 * (conf * area_frac)
-            tr.n_seen += 1
-            # Anti-jitter center: the body box is always stable; the HEAD
-            # refines it as a SMOOTHED OFFSET from the body center. The head
-            # position comes from pose keypoints (nose/eyes/ears) — these
-            # work even when the face is wet, tilted, turned, or too small
-            # for the face detector (pool/beach/action shots), so the crop
-            # keeps priority on the head over the body. The Haar face box is
-            # the fallback signal and still drives the talking detector.
-            body_cx = ((x1 + x2) / 2) / w
-            head = tr.box[5] if len(tr.box) > 5 else None
-            if head is not None:
-                head_cx, head_cy, head_w = head
-                tr.head_rate = 0.8 * tr.head_rate + 0.2
-                tr.head_offset = 0.7 * tr.head_offset + 0.3 * (head_cx / w - body_cx)
-                tr.face_w = 0.7 * tr.face_w + 0.3 * (head_w / w)
-                tr.head_cys.append(head_cy / h)
-            else:
-                tr.head_rate = 0.8 * tr.head_rate
-            if head is not None:
-                # Pose already told us where the head is. Running the Haar
-                # cascade on top of that was 63% of all tracking time for a
-                # position that is discarded three lines later in favour of
-                # these very keypoints. Haar stays for the case it is actually
-                # needed — below, when pose found nothing.
-                #
-                # face_rate/face_offset are deliberately NOT decayed here. They
-                # mean "how reliable is the Haar fallback", and not looking is
-                # not evidence of unreliability; decaying them would degrade
-                # the fallback for the samples where pose later drops out.
-                faces_here[tid] = head_box(head)          # square: ASD wants this
-                _update_speaking(tr, frame, mouth_region(head))  # face-shaped
-            else:
-                face = _face_box(frame, tr.box)
-                if face is not None:
-                    faces_here[tid] = face
-                    fx1, fy1, fx2, fy2 = face
-                    face_cx = ((fx1 + fx2) / 2) / w
-                    tr.face_rate = 0.8 * tr.face_rate + 0.2
-                    tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
-                    tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
-                    tr.head_cys.append(((fy1 + fy2) / 2) / h)
-                    _update_speaking(tr, frame, face)
+            visible = _assign(tracks, _detect(model, frame, min_confidence), t)
+            faces_here: dict[int, tuple] = {}   # for TalkNet, after the pass
+            for tid in visible:
+                tr = tracks[tid]
+                x1, y1, x2, y2, conf = tr.box[:5]
+                area_frac = (x2 - x1) * (y2 - y1) / (w * h)
+                tr.dominance = 0.7 * tr.dominance + 0.3 * (conf * area_frac)
+                tr.n_seen += 1
+                # Anti-jitter center: the body box is always stable; the HEAD
+                # refines it as a SMOOTHED OFFSET from the body center. The head
+                # position comes from pose keypoints (nose/eyes/ears) — these
+                # work even when the face is wet, tilted, turned, or too small
+                # for the face detector (pool/beach/action shots), so the crop
+                # keeps priority on the head over the body. The Haar face box is
+                # the fallback signal and still drives the talking detector.
+                body_cx = ((x1 + x2) / 2) / w
+                head = tr.box[5] if len(tr.box) > 5 else None
+                if head is not None:
+                    head_cx, head_cy, head_w = head
+                    tr.head_rate = 0.8 * tr.head_rate + 0.2
+                    tr.head_offset = 0.7 * tr.head_offset + 0.3 * (head_cx / w - body_cx)
+                    tr.face_w = 0.7 * tr.face_w + 0.3 * (head_w / w)
+                    tr.head_cys.append(head_cy / h)
                 else:
-                    tr.face_rate = 0.8 * tr.face_rate  # detection unreliable
-                    tr.speak *= 0.9  # no visible face: talking evidence fades
-            # Framing priority: pose head keypoints > face box > body center.
-            if tr.head_rate > 0.3:
-                refine = tr.head_offset
-            elif tr.face_rate > 0.45:
-                refine = tr.face_offset
-            else:
-                refine = 0.0
-            tr.centers.append(body_cx + refine)
-            tr.areas.append(area_frac)
-            tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
+                    tr.head_rate = 0.8 * tr.head_rate
+                if head is not None:
+                    # Pose already told us where the head is. Running the Haar
+                    # cascade on top of that was 63% of all tracking time for a
+                    # position that is discarded three lines later in favour of
+                    # these very keypoints. Haar stays for the case it is actually
+                    # needed — below, when pose found nothing.
+                    #
+                    # face_rate/face_offset are deliberately NOT decayed here. They
+                    # mean "how reliable is the Haar fallback", and not looking is
+                    # not evidence of unreliability; decaying them would degrade
+                    # the fallback for the samples where pose later drops out.
+                    faces_here[tid] = head_box(head)          # square: ASD wants this
+                    _update_speaking(tr, frame, mouth_region(head))  # face-shaped
+                else:
+                    face = _face_box(frame, tr.box)
+                    if face is not None:
+                        faces_here[tid] = face
+                        fx1, fy1, fx2, fy2 = face
+                        face_cx = ((fx1 + fx2) / 2) / w
+                        tr.face_rate = 0.8 * tr.face_rate + 0.2
+                        tr.face_offset = 0.7 * tr.face_offset + 0.3 * (face_cx - body_cx)
+                        tr.face_w = 0.7 * tr.face_w + 0.3 * ((fx2 - fx1) / w)
+                        tr.head_cys.append(((fy1 + fy2) / 2) / h)
+                        _update_speaking(tr, frame, face)
+                    else:
+                        tr.face_rate = 0.8 * tr.face_rate  # detection unreliable
+                        tr.speak *= 0.9  # no visible face: talking evidence fades
+                # Framing priority: pose head keypoints > face box > body center.
+                if tr.head_rate > 0.3:
+                    refine = tr.head_offset
+                elif tr.face_rate > 0.45:
+                    refine = tr.face_offset
+                else:
+                    refine = 0.0
+                tr.centers.append(body_cx + refine)
+                tr.areas.append(area_frac)
+                tr.norm_boxes.append((x1 / w, y1 / h, x2 / w, y2 / h))
 
-        samples.append(_Sample(
-            t=t, frame_idx=frame_idx, w=w, h=h, at_cut=at_cut,
-            visible=list(visible),
-            state={tid: _Moment(
-                box=tracks[tid].box,
-                dominance=tracks[tid].dominance,
-                speak=tracks[tid].speak,
-                n_seen=tracks[tid].n_seen,
-                head_rate=tracks[tid].head_rate,
-                face_rate=tracks[tid].face_rate,
-                head_offset=tracks[tid].head_offset,
-                face_offset=tracks[tid].face_offset,
-                face_w=tracks[tid].face_w,
-                n_centers=len(tracks[tid].centers),
-            ) for tid in visible},
-            faces=faces_here,
-        ))
-        frame_idx += 1
+            samples.append(_Sample(
+                t=t, frame_idx=frame_idx, w=w, h=h, at_cut=at_cut,
+                visible=list(visible),
+                state={tid: _Moment(
+                    box=tracks[tid].box,
+                    dominance=tracks[tid].dominance,
+                    speak=tracks[tid].speak,
+                    n_seen=tracks[tid].n_seen,
+                    head_rate=tracks[tid].head_rate,
+                    face_rate=tracks[tid].face_rate,
+                    head_offset=tracks[tid].head_offset,
+                    face_offset=tracks[tid].face_offset,
+                    face_w=tracks[tid].face_w,
+                    n_centers=len(tracks[tid].centers),
+                ) for tid in visible},
+                faces=faces_here,
+            ))
+            frame_idx += 1
 
-    cap.release()
 
     # ---- who is speaking, before deciding where to point ------------------
     # None when TalkNet cannot or need not answer (no model, no audio, fewer

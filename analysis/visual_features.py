@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from core.binaries import ffmpeg
+from video.capture import video_capture
 
 SAMPLE_FPS = 2.0
 FRAME_W, FRAME_H = 160, 90  # analysis resolution; plenty for motion/cuts
@@ -106,32 +107,31 @@ def reaction_for_window(
     from video.tracker import _get_model  # reuse the cached YOLO instance
 
     model = _get_model(detector)
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        return 0.0
+    with video_capture(video_path, required=False) as cap:
+        if cap is None:
+            return 0.0
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    times = np.arange(start, end, 1.0 / sample_fps)
-    presence, areas = [], []
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        times = np.arange(start, end, 1.0 / sample_fps)
+        presence, areas = [], []
 
-    for t in times:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * fps))
-        ok, frame = cap.read()
-        if not ok:
-            continue
-        from video.tracker import _infer_lock
+        for t in times:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * fps))
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            from video.tracker import _infer_lock
 
-        with _infer_lock:
-            results = model.predict(frame, classes=[0], conf=0.4, verbose=False)
-        best_area = 0.0
-        for r in results:
-            for b in r.boxes:
-                x1, y1, x2, y2 = b.xyxy[0].tolist()
-                best_area = max(best_area, (x2 - x1) * (y2 - y1) / (frame.shape[0] * frame.shape[1]))
-        presence.append(1.0 if best_area > 0 else 0.0)
-        areas.append(best_area)
+            with _infer_lock:
+                results = model.predict(frame, classes=[0], conf=0.4, verbose=False)
+            best_area = 0.0
+            for r in results:
+                for b in r.boxes:
+                    x1, y1, x2, y2 = b.xyxy[0].tolist()
+                    best_area = max(best_area, (x2 - x1) * (y2 - y1) / (frame.shape[0] * frame.shape[1]))
+            presence.append(1.0 if best_area > 0 else 0.0)
+            areas.append(best_area)
 
-    cap.release()
     if not areas:
         return 0.0
 

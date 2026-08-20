@@ -44,6 +44,7 @@ import numpy as np
 
 # Shared framing components — cut detection and "commit to one subject" live
 # in video/framing.py now, because the stream tracker needs them too.
+from video.capture import video_capture
 from video.framing import is_cut, pick_focus, refine_cuts, small_gray
 
 # Read-only reuse of the tracker's detection machinery. Importing these
@@ -74,117 +75,114 @@ def analyze(
     Returns {"mode": "track", "path": [...], "face_y": ...} where the path is
     a STEP function: constant inside each shot, jumping exactly at the cuts.
     Rendered by the existing renderer unchanged."""
-    cap = cv2.VideoCapture(str(clip_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"OpenCV could not open {clip_path}")
-    video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    frame_step = max(1, round(video_fps / sample_fps))
-    model = _get_model(model_name)
+    with video_capture(clip_path) as cap:
+        video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        frame_step = max(1, round(video_fps / sample_fps))
+        model = _get_model(model_name)
 
-    shots: list[dict] = []          # finished shots: {"t0_idx","t1_idx","x","cy"}
-    prev_small = None               # downscaled gray of the previous SAMPLE
-    shot_start_idx: int | None = None  # frame index the current shot began at
-    shot_tracks: dict = {}          # per-shot identity tracking (reset at cuts)
-    shot_stats: dict[int, dict] = {}  # tid -> per-subject accumulators (below)
-    cut_regions: list[tuple[int, int]] = []  # (prev_sample, cut_sample) to refine
-    last_sample_idx = 0
-    w = h = None
-    frame_idx = 0
+        shots: list[dict] = []          # finished shots: {"t0_idx","t1_idx","x","cy"}
+        prev_small = None               # downscaled gray of the previous SAMPLE
+        shot_start_idx: int | None = None  # frame index the current shot began at
+        shot_tracks: dict = {}          # per-shot identity tracking (reset at cuts)
+        shot_stats: dict[int, dict] = {}  # tid -> per-subject accumulators (below)
+        cut_regions: list[tuple[int, int]] = []  # (prev_sample, cut_sample) to refine
+        last_sample_idx = 0
+        w = h = None
+        frame_idx = 0
 
-    def close_shot(end_idx: int) -> None:
-        """Pick this shot's one subject and freeze a tight, face-centered crop."""
-        if shot_start_idx is None or (end_idx - shot_start_idx) / video_fps < _MIN_SHOT:
-            return
-        # A subject counts only if it was seen as a face/head (not just legs
-        # at the frame edge) and is prominent enough in THIS shot.
-        cands = [
-            (tid, s) for tid, s in shot_stats.items()
-            if s["face_xs"] and float(np.median(s["areas"])) >= _MIN_AREA
-        ]
-        if not cands:
-            shots.append({"t0_idx": shot_start_idx, "t1_idx": end_idx, "x": None, "cy": None})
-            return
-        # Talk rate = mouth motion per face sighting. The shared chooser picks
-        # the clear talker, else the most prominent face — always exactly ONE
-        # subject, never an average of two.
-        s = pick_focus(
-            cands,
-            talk_rate=lambda kv: kv[1]["speak"] / max(len(kv[1]["face_xs"]), 1),
-            prominence=lambda kv: float(np.median(kv[1]["areas"])),
-            talk_floor=_TALK_FLOOR,
-            talk_margin=_TALK_MARGIN,
-        )[1]
-        # Center on the FACE positions only — a robust median, so a stray
-        # body-center sample or a moment of mis-detection can't drag the crop.
-        shots.append({
-            "t0_idx": shot_start_idx, "t1_idx": end_idx,
-            "x": float(np.median(s["face_xs"])),
-            "cy": float(np.median(s["face_ys"])) if s["face_ys"] else None,
-        })
+        def close_shot(end_idx: int) -> None:
+            """Pick this shot's one subject and freeze a tight, face-centered crop."""
+            if shot_start_idx is None or (end_idx - shot_start_idx) / video_fps < _MIN_SHOT:
+                return
+            # A subject counts only if it was seen as a face/head (not just legs
+            # at the frame edge) and is prominent enough in THIS shot.
+            cands = [
+                (tid, s) for tid, s in shot_stats.items()
+                if s["face_xs"] and float(np.median(s["areas"])) >= _MIN_AREA
+            ]
+            if not cands:
+                shots.append({"t0_idx": shot_start_idx, "t1_idx": end_idx, "x": None, "cy": None})
+                return
+            # Talk rate = mouth motion per face sighting. The shared chooser picks
+            # the clear talker, else the most prominent face — always exactly ONE
+            # subject, never an average of two.
+            s = pick_focus(
+                cands,
+                talk_rate=lambda kv: kv[1]["speak"] / max(len(kv[1]["face_xs"]), 1),
+                prominence=lambda kv: float(np.median(kv[1]["areas"])),
+                talk_floor=_TALK_FLOOR,
+                talk_margin=_TALK_MARGIN,
+            )[1]
+            # Center on the FACE positions only — a robust median, so a stray
+            # body-center sample or a moment of mis-detection can't drag the crop.
+            shots.append({
+                "t0_idx": shot_start_idx, "t1_idx": end_idx,
+                "x": float(np.median(s["face_xs"])),
+                "cy": float(np.median(s["face_ys"])) if s["face_ys"] else None,
+            })
 
-    while True:
-        ok = cap.grab()
-        if not ok:
-            break
-        # Only sample frames are decoded and analysed. Cut detection compares
-        # consecutive SAMPLES (coarse); the exact cut frame is recovered after
-        # the pass by refining the short span around each coarse cut. This
-        # keeps the frame-exact snap while decoding ~1/frame_step of the video
-        # instead of every frame — the podcast pass is back to sampling speed.
-        if frame_idx % frame_step != 0:
+        while True:
+            ok = cap.grab()
+            if not ok:
+                break
+            # Only sample frames are decoded and analysed. Cut detection compares
+            # consecutive SAMPLES (coarse); the exact cut frame is recovered after
+            # the pass by refining the short span around each coarse cut. This
+            # keeps the frame-exact snap while decoding ~1/frame_step of the video
+            # instead of every frame — the podcast pass is back to sampling speed.
+            if frame_idx % frame_step != 0:
+                frame_idx += 1
+                continue
+            ok, frame = cap.retrieve()
+            if not ok:
+                break
+            t = frame_idx / video_fps
+            h, w = frame.shape[:2]
+
+            # ---- coarse cut detection between consecutive samples ------------
+            small = small_gray(frame)
+            if is_cut(prev_small, small):
+                # A camera cut fell between the previous sample and this one; mark
+                # the span for exact-frame refinement, and start a new shot here.
+                cut_regions.append((last_sample_idx, frame_idx))
+                close_shot(frame_idx)
+                shot_start_idx = None
+                shot_tracks = {}
+                shot_stats = {}
+            prev_small = small
+            if shot_start_idx is None:
+                shot_start_idx = frame_idx
+
+            # ---- per-shot people tracking (identities never cross a cut) ------
+            for tid in _assign(shot_tracks, _detect(model, frame, 0.4), t):
+                tr = shot_tracks[tid]
+                x1, y1, x2, y2, conf = tr.box[:5]
+                # face_xs/face_ys hold ONLY real face/head sightings — the crop
+                # centers on these. areas track prominence regardless.
+                st = shot_stats.setdefault(
+                    tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0}
+                )
+                head = tr.box[5] if len(tr.box) > 5 else None
+                # Haar only when pose found nothing. This used to run every sample
+                # for every person and then have its answer thrown away whenever
+                # pose had the head — 78% of detections, and 81% of the time this
+                # function spent.
+                face = head_box(head) if head is not None else _face_box(frame, tr.box)
+                # Motion needs a face-SHAPED region; the box above is square. See
+                # mouth_region() for why feeding the wrong one moves the framing.
+                mouth = mouth_region(head) if head is not None else face
+                if face is not None:
+                    fx1, fy1, fx2, fy2 = face
+                    st["face_xs"].append(((fx1 + fx2) / 2) / w)
+                    st["face_ys"].append(((fy1 + fy2) / 2) / h)
+                st["areas"].append((x2 - x1) * (y2 - y1) / (w * h))
+                if mouth is not None:
+                    _update_speaking(tr, frame, mouth)
+                    st["speak"] += tr.speak
+                else:
+                    tr.speak *= 0.9
+            last_sample_idx = frame_idx
             frame_idx += 1
-            continue
-        ok, frame = cap.retrieve()
-        if not ok:
-            break
-        t = frame_idx / video_fps
-        h, w = frame.shape[:2]
-
-        # ---- coarse cut detection between consecutive samples ------------
-        small = small_gray(frame)
-        if is_cut(prev_small, small):
-            # A camera cut fell between the previous sample and this one; mark
-            # the span for exact-frame refinement, and start a new shot here.
-            cut_regions.append((last_sample_idx, frame_idx))
-            close_shot(frame_idx)
-            shot_start_idx = None
-            shot_tracks = {}
-            shot_stats = {}
-        prev_small = small
-        if shot_start_idx is None:
-            shot_start_idx = frame_idx
-
-        # ---- per-shot people tracking (identities never cross a cut) ------
-        for tid in _assign(shot_tracks, _detect(model, frame, 0.4), t):
-            tr = shot_tracks[tid]
-            x1, y1, x2, y2, conf = tr.box[:5]
-            # face_xs/face_ys hold ONLY real face/head sightings — the crop
-            # centers on these. areas track prominence regardless.
-            st = shot_stats.setdefault(
-                tid, {"face_xs": [], "face_ys": [], "areas": [], "speak": 0.0}
-            )
-            head = tr.box[5] if len(tr.box) > 5 else None
-            # Haar only when pose found nothing. This used to run every sample
-            # for every person and then have its answer thrown away whenever
-            # pose had the head — 78% of detections, and 81% of the time this
-            # function spent.
-            face = head_box(head) if head is not None else _face_box(frame, tr.box)
-            # Motion needs a face-SHAPED region; the box above is square. See
-            # mouth_region() for why feeding the wrong one moves the framing.
-            mouth = mouth_region(head) if head is not None else face
-            if face is not None:
-                fx1, fy1, fx2, fy2 = face
-                st["face_xs"].append(((fx1 + fx2) / 2) / w)
-                st["face_ys"].append(((fy1 + fy2) / 2) / h)
-            st["areas"].append((x2 - x1) * (y2 - y1) / (w * h))
-            if mouth is not None:
-                _update_speaking(tr, frame, mouth)
-                st["speak"] += tr.speak
-            else:
-                tr.speak *= 0.9
-        last_sample_idx = frame_idx
-        frame_idx += 1
-    cap.release()
     close_shot(frame_idx)  # frame_idx is now the total frame count = clip end
 
     if not shots or w is None:

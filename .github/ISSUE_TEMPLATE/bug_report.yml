@@ -7,7 +7,8 @@ body:
       value: |
         Thanks for the report! Tip: if you use Clips Studio, the in-app
         **💬 Feedback** button on the Dashboard files this for you and
-        attaches your versions/hardware/log automatically.
+        attaches your versions/hardware/log automatically — it is quicker
+        than this form and fills in the diagnostics below for you.
   - type: textarea
     id: trying
     attributes:
@@ -24,25 +25,53 @@ body:
     id: expected
     attributes:
       label: What did you expect to happen?
+    validations:
+      required: true
   - type: dropdown
     id: repro
     attributes:
       label: Can you make it happen again?
       options: [Always, Sometimes, Only once]
+    validations:
+      required: true
   - type: dropdown
     id: severity
     attributes:
       label: How serious is it?
       options: [Low — cosmetic, Medium, High — blocks my work, Critical — app unusable]
+    validations:
+      required: true
   - type: textarea
     id: diagnostics
     attributes:
       label: Diagnostics
       description: |
-        App version, Windows version, GPU, AI model (e.g. gemma:7b, Q4, Ollama 0.x),
-        FFmpeg version — the in-app Feedback button collects all of this automatically.
+        **The in-app 💬 Feedback button collects all of this for you** — paste
+        what it produced. Without it, a bug can rarely be reproduced, and a
+        report nobody can reproduce usually cannot be fixed.
+
+        Filling it in by hand instead? These six, please:
+
+        - Clips Studio version (Settings → bottom of the page)
+        - Windows version
+        - CPU
+        - GPU and how much VRAM it has
+        - RAM
+        - Where the video came from — Twitch, Kick, YouTube or a local file
+      placeholder: |
+        Clips Studio: 0.1.2
+        Windows: 11
+        CPU: Intel Core i5-13400F
+        GPU: RTX 3060 12 GB
+        RAM: 32 GB
+        Source: local file
       render: text
+    validations:
+      required: true
   - type: textarea
     id: notes
     attributes:
       label: Anything else?
+      description: >
+        Screenshots, the log from Settings → Open logs folder, or anything
+        else that might matter. Optional.

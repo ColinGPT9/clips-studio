@@ -17,7 +17,7 @@ from analysis.metadata import ClipMetadata, generate_metadata_batch
 from core import cancel, progress
 from core.binaries import ffprobe
 from core.models import ClipCandidate, RenderedClip, Segment
-from core.paths import cached_source
+from core.paths import cached_source, discard
 from core.state import StateDB
 from llm.registry import create_backend
 from transcription.transcriber import transcribe
@@ -409,7 +409,7 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
             # the old one — so without this the video is on disk twice, at a
             # couple of GB each. Only the file we just replaced is removed.
             if fresh.path.resolve() != cached.resolve() and cached.exists():
-                cached.unlink(missing_ok=True)
+                discard(cached)
                 print(f"      Removed the superseded {cached.suffix} copy")
             return fresh
         except Exception:
@@ -599,7 +599,7 @@ def _render_files(
                 edited = clip_dir / f"{stem}.edited.mp4"
                 scratch.append(edited)
                 apply_edits(intermediate, edit, edited)
-                intermediate.unlink(missing_ok=True)
+                discard(intermediate)
                 intermediate = edited
 
             if podcast:
@@ -668,11 +668,17 @@ def _render_files(
                 cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra,
                          normalize=normalize)
     finally:
+        # NEVER raise from here. This runs in a `finally`, so an exception
+        # would REPLACE whatever the render actually failed with — and the
+        # caller treats any exception as a failed clip, so a clip that had
+        # already been written would be thrown away too. That is issue #74:
+        # a leaked decoder handle made these unlinks fail on Windows, and the
+        # resulting WinError 32 buried the real error for every clip.
         for p in scratch:
-            p.unlink(missing_ok=True)
+            discard(p)
 
     if ass_path is not None:
-        ass_path.unlink(missing_ok=True)
+        discard(ass_path)
 
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):

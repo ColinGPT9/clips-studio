@@ -29,6 +29,8 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from video.capture import video_capture
+
 # ---- cut detection ----------------------------------------------------------
 # A camera cut changes nearly every pixel at once, so a mean absolute
 # difference over a tiny grayscale thumbnail separates cuts from motion
@@ -70,9 +72,8 @@ def refine_cuts(clip_path, regions, threshold: float = CUT_DIFF) -> dict:
     """
     if not regions:
         return {}
-    cap = cv2.VideoCapture(str(clip_path))
     out: dict[int, int] = {}
-    try:
+    with video_capture(clip_path) as cap:
         for a, b in regions:
             # Seek a little before the span so the decoder is already producing
             # exact frames by the time we reach it (POS_FRAMES lands on the
@@ -92,8 +93,6 @@ def refine_cuts(clip_path, regions, threshold: float = CUT_DIFF) -> dict:
                         best_diff, best_idx = d, idx
                 prev = cur
             out[b] = best_idx
-    finally:
-        cap.release()
     return out
 
 

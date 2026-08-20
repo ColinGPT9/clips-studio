@@ -13,6 +13,7 @@ from pathlib import Path
 
 from core import cancel
 from core.binaries import ffmpeg
+from core.paths import discard
 from video.encoding import video_encoder_args
 
 _FIT = (
@@ -73,5 +74,8 @@ def assemble(
         return output_path
     finally:
         for f in segdir.glob("*"):
-            f.unlink(missing_ok=True)
-        segdir.rmdir()
+            discard(f)
+        try:
+            segdir.rmdir()
+        except OSError:
+            pass  # a file we could not remove is still in it; swept later

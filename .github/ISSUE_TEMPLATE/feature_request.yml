@@ -17,9 +17,13 @@ body:
   - type: textarea
     id: workflow
     attributes:
-      label: How would it fit your workflow?
+      label: How would it fit your workflow?
+    validations:
+      required: true
   - type: dropdown
     id: importance
     attributes:
       label: How important is this to you?
-      options: [Nice to have, Would use it weekly, Would use it every video, Can’t use the app well without it]
+      options: [Nice to have, Would use it weekly, Would use it every video, Can’t use the app well without it]
+    validations:
+      required: true

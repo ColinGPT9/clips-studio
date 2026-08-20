@@ -30,7 +30,7 @@ import subprocess
 from pathlib import Path
 
 from core.binaries import ffmpeg
-from core.paths import safe_name
+from core.paths import discard, safe_name
 from video.encoding import video_encoder_args
 
 # ASS numpad alignment per named position (7 8 9 / 4 5 6 / 1 2 3).
@@ -267,6 +267,6 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        tmp.unlink(missing_ok=True)
+        discard(tmp)
         raise RuntimeError(f"watermark overlay failed:\n{result.stderr[-1500:]}")
     tmp.replace(video_path)

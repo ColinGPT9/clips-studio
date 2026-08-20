@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from core.binaries import ffmpeg
+from video.capture import video_capture
 from video.encoding import audio_filter_args, video_encoder_args
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
@@ -129,113 +130,131 @@ def _render_tracked(
     face_y: float | None = None,
     normalize: bool = True,
 ) -> Path:
-    cap = cv2.VideoCapture(str(clip_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"OpenCV could not open {clip_path}")
+    with video_capture(clip_path) as cap:
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # Face in the top quarter of a full-height crop would sit under the
-    # TikTok/Instagram tab bar. For those clips, crop a WIDER 4:5 window
-    # instead: shown at full output width it's shorter than the screen, so it
-    # can start below the tab area — blurred bands land on top/bottom ONLY
-    # (never at the sides), and the wider view shows more of the scene.
-    top_safe = face_y is not None and face_y < 0.25
-    crop_w = int(src_h * (4 / 5 if top_safe else 9 / 16))
-    crop_w -= crop_w % 2  # even width required by H.264
-    crop_w = min(crop_w, src_w)
+        # Face in the top quarter of a full-height crop would sit under the
+        # TikTok/Instagram tab bar. For those clips, crop a WIDER 4:5 window
+        # instead: shown at full output width it's shorter than the screen, so it
+        # can start below the tab area — blurred bands land on top/bottom ONLY
+        # (never at the sides), and the wider view shows more of the scene.
+        top_safe = face_y is not None and face_y < 0.25
+        crop_w = int(src_h * (4 / 5 if top_safe else 9 / 16))
+        crop_w -= crop_w % 2  # even width required by H.264
+        crop_w = min(crop_w, src_w)
 
-    def produce(write) -> None:
-        """Decode, follow the subject, and hand each cropped frame to ffmpeg.
+        def produce(write) -> None:
+            """Decode, follow the subject, and hand each cropped frame to ffmpeg.
 
-        Frames go straight down the pipe — no intermediate file. Writing an
-        mp4v staging file here cost a whole CPU encode and threw away detail
-        the NVENC pass then could not get back.
+            Frames go straight down the pipe — no intermediate file. Writing an
+            mp4v staging file here cost a whole CPU encode and threw away detail
+            the NVENC pass then could not get back.
 
-        Decoding happens in FFmpeg, on the GPU, not in cv2. Same frames in the
-        same order — sampled_frames(every=1) is every frame — but cv2 has no
-        CUDA in any pip wheel and its decoder ignores every thread limit going,
-        so it cost 6.2 CORES to decode a 23s 1080p60 clip. Three clips render
-        at once, which is why the machine locked up during a job. NVDEC does it
-        for 0.4 cores and leaves the CPU for the crop and the pipe.
+            Decoding happens in FFmpeg, on the GPU, not in cv2. Same frames in the
+            same order — sampled_frames(every=1) is every frame — but cv2 has no
+            CUDA in any pip wheel and its decoder ignores every thread limit going,
+            so it cost 6.2 CORES to decode a 23s 1080p60 clip. Three clips render
+            at once, which is why the machine locked up during a job. NVDEC does it
+            for 0.4 cores and leaves the CPU for the crop and the pipe.
 
-        cv2 stays as the fallback: if FFmpeg cannot start or the stream ends
-        early, this drops back rather than producing a truncated clip.
-        """
-        from video.encoding import sampled_frames
+            cv2 stays as the fallback: if FFmpeg cannot start or the stream ends
+            early, this drops back rather than producing a truncated clip.
+            """
+            from video.encoding import sampled_frames
 
-        written = 0
+            written = 0
 
-        def emit(frame, frame_idx: int) -> None:
-            t = frame_idx / fps
-            center_x = _interpolate(crop_path, t) * src_w
-            x0 = int(round(center_x - crop_w / 2))
-            x0 = max(0, min(src_w - crop_w, x0))  # clamp inside the frame
-            # Column slices are non-contiguous views; the pipe needs bytes.
-            write(np.ascontiguousarray(frame[:, x0 : x0 + crop_w]).tobytes())
+            def emit(frame, frame_idx: int) -> None:
+                t = frame_idx / fps
+                center_x = _interpolate(crop_path, t) * src_w
+                x0 = int(round(center_x - crop_w / 2))
+                x0 = max(0, min(src_w - crop_w, x0))  # clamp inside the frame
+                # Column slices are non-contiguous views; the pipe needs bytes.
+                write(np.ascontiguousarray(frame[:, x0 : x0 + crop_w]).tobytes())
 
-        try:
-            for frame_idx, frame in sampled_frames(clip_path, 1, src_w, src_h):
-                emit(frame, frame_idx)
-                written += 1
-        except Exception as e:
-            print(f"      (GPU decode unavailable, using CPU: {e})")
-
-        if written == 0:
-            # Nothing came through — fall back rather than emit an empty clip.
-            frame_idx = 0
             try:
+                for frame_idx, frame in sampled_frames(clip_path, 1, src_w, src_h):
+                    emit(frame, frame_idx)
+                    written += 1
+            except Exception as e:
+                print(f"      (GPU decode unavailable, using CPU: {e})")
+
+            if written == 0:
+                # Nothing came through — fall back rather than emit an empty clip.
+                frame_idx = 0
                 while True:
                     ok, frame = cap.read()
                     if not ok:
                         break
                     emit(frame, frame_idx)
                     frame_idx += 1
-            finally:
-                cap.release()
-        else:
-            cap.release()
 
-    # Input 0 is the raw cropped video on stdin; input 1 stays the original
-    # clip, which is still where the audio comes from.
-    pipe_in = [
-        "-f", "rawvideo", "-pix_fmt", "bgr24",   # OpenCV hands us BGR
-        "-s", f"{crop_w}x{src_h}", "-r", f"{fps}",
-        "-i", "pipe:0",
-    ]
+        # Input 0 is the raw cropped video on stdin; input 1 stays the original
+        # clip, which is still where the audio comes from.
+        pipe_in = [
+            "-f", "rawvideo", "-pix_fmt", "bgr24",   # OpenCV hands us BGR
+            "-s", f"{crop_w}x{src_h}", "-r", f"{fps}",
+            "-i", "pipe:0",
+        ]
 
-    # Platform-safe letterbox: the wider 4:5 crop at FULL output width (1080)
-    # is shorter than the screen, so it starts just below the tab area with
-    # heavily blurred bands above and below it — never at the sides — and the
-    # face lands toward the center of the screen. Nothing is stretched.
-    if top_safe:
-        top = int(0.115 * 1920)            # content starts under the FYP tabs
-        fg = "scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
-        filters = (
-            f"[0:v]split=2[a][b];"
-            # Downscale hard + blur + upscale: an unrecognizable color wash.
-            f"[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];"
-            f"[b]{fg}[fg];"
-            f"[bg][fg]overlay=0:{top},setsar=1[v]"
-        )
+        # Platform-safe letterbox: the wider 4:5 crop at FULL output width (1080)
+        # is shorter than the screen, so it starts just below the tab area with
+        # heavily blurred bands above and below it — never at the sides — and the
+        # face lands toward the center of the screen. Nothing is stretched.
+        if top_safe:
+            top = int(0.115 * 1920)            # content starts under the FYP tabs
+            fg = "scale=1080:-2:flags=lanczos" + (f",{vf_extra}" if vf_extra else "")
+            filters = (
+                f"[0:v]split=2[a][b];"
+                # Downscale hard + blur + upscale: an unrecognizable color wash.
+                f"[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+                f"scale=135:240,gblur=sigma=12,scale=1080:1920:flags=bilinear[bg];"
+                f"[b]{fg}[fg];"
+                f"[bg][fg]overlay=0:{top},setsar=1[v]"
+            )
+            if ass_path is not None:
+                filters += f";[v]subtitles={ass_path.name}[v]"
+            cmd = [
+                ffmpeg(), "-y",
+                *pipe_in,                         # cropped frames on stdin
+                "-i", str(clip_path.resolve()),   # source of the audio
+                "-filter_complex", filters,
+                "-map", "[v]", "-map", "1:a:0?",
+                *video_encoder_args(),
+                # 4:2:0. Feeding NVENC a bgr24 pipe makes it default to gbrp
+                # (High 4:4:4), which browsers and many players CANNOT decode —
+                # the clip renders but won't play. Force standard yuv420p.
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
+                *audio_filter_args(normalize),
+                "-fps_mode", "cfr",
+                "-movflags", "+faststart",
+                "-shortest",
+                str(output_path.resolve()),
+            ]
+            _run_ffmpeg_piped(cmd, ass_path, produce)
+            return output_path
+
+        # Uniform scale to 1080x1920 + color filter + captions + mux audio.
+        vf = "scale=1080:1920:flags=lanczos,setsar=1"
+        if vf_extra:
+            vf += f",{vf_extra}"
         if ass_path is not None:
-            filters += f";[v]subtitles={ass_path.name}[v]"
+            vf += f",subtitles={ass_path.name}"
         cmd = [
             ffmpeg(), "-y",
             *pipe_in,                         # cropped frames on stdin
             "-i", str(clip_path.resolve()),   # source of the audio
-            "-filter_complex", filters,
-            "-map", "[v]", "-map", "1:a:0?",
-            *video_encoder_args(),
-            # 4:2:0. Feeding NVENC a bgr24 pipe makes it default to gbrp
-            # (High 4:4:4), which browsers and many players CANNOT decode —
-            # the clip renders but won't play. Force standard yuv420p.
-            "-pix_fmt", "yuv420p",
+            "-map", "0:v:0", "-map", "1:a:0?",
+            "-vf", vf,
+            *video_encoder_args(),  # NVENC when available
+            "-pix_fmt", "yuv420p",  # 4:2:0 — a bgr24 pipe defaults to gbrp 4:4:4,
+                                    # which browsers/players can't decode
             "-c:a", "aac", "-b:a", "128k",
-            *audio_filter_args(normalize),
+            *audio_filter_args(normalize),             # sync + loudness normalise
             "-fps_mode", "cfr",
             "-movflags", "+faststart",
             "-shortest",
@@ -243,31 +262,6 @@ def _render_tracked(
         ]
         _run_ffmpeg_piped(cmd, ass_path, produce)
         return output_path
-
-    # Uniform scale to 1080x1920 + color filter + captions + mux audio.
-    vf = "scale=1080:1920:flags=lanczos,setsar=1"
-    if vf_extra:
-        vf += f",{vf_extra}"
-    if ass_path is not None:
-        vf += f",subtitles={ass_path.name}"
-    cmd = [
-        ffmpeg(), "-y",
-        *pipe_in,                         # cropped frames on stdin
-        "-i", str(clip_path.resolve()),   # source of the audio
-        "-map", "0:v:0", "-map", "1:a:0?",
-        "-vf", vf,
-        *video_encoder_args(),  # NVENC when available
-        "-pix_fmt", "yuv420p",  # 4:2:0 — a bgr24 pipe defaults to gbrp 4:4:4,
-                                # which browsers/players can't decode
-        "-c:a", "aac", "-b:a", "128k",
-        *audio_filter_args(normalize),             # sync + loudness normalise
-        "-fps_mode", "cfr",
-        "-movflags", "+faststart",
-        "-shortest",
-        str(output_path.resolve()),
-    ]
-    _run_ffmpeg_piped(cmd, ass_path, produce)
-    return output_path
 
 
 def _interpolate(path: list[tuple[float, float]], t: float) -> float:
@@ -296,10 +290,9 @@ def _render_split(
     cam_position: str = "top",
     normalize: bool = True,
 ) -> Path:
-    cap = cv2.VideoCapture(str(clip_path))
-    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    cap.release()
+    with video_capture(clip_path) as cap:
+        src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     bx, by, bw, bh = webcam_box
     cam_x, cam_y = int(bx * src_w), int(by * src_h)

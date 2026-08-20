@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from core import queue
 from core.binaries import ffmpeg, ffprobe
-from core.paths import picked_file, safe_name
+from core.paths import discard, picked_file, safe_name
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
@@ -640,7 +640,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 )
                 converted = remux.returncode == 0
                 if not converted:
-                    dest.unlink(missing_ok=True)  # e.g. PCM audio mp4 can't carry
+                    discard(dest)  # e.g. PCM audio mp4 can't carry
             if not converted:
                 from video.encoding import hwaccel_input_args, video_encoder_args
 
@@ -654,7 +654,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     capture_output=True, text=True,
                 )
                 if reenc.returncode != 0:
-                    dest.unlink(missing_ok=True)
+                    discard(dest)
                     raise HTTPException(
                         400,
                         "couldn't convert this file — export it as MP4 (H.264) and try again",
