@@ -1,8 +1,7 @@
 # Clips Kitty — open-source AI video clipping that runs on your own PC
 
-> **Clips Kitty was called Clips Studio until version 1.1.3.** Same app, same
-> repository, same data — only the name changed. It was renamed because "Clip
-> Studio" is a registered trademark belonging to CELSYS, Inc.
+> **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
+> Microsoft Store naming requirements. Same app, same repository, same data.
 
 <img src="docs/brand/mascot.png" alt="" width="150" align="right">
 

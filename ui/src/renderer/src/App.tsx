@@ -20,9 +20,9 @@ const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
   { id: 'queue', label: 'Queue', icon: '≡' },
-  // "Clip Editor" until 1.1.3. That is CELSYS's registered trademark
-  // verbatim (Clip Editor Paint), sitting in the sidebar of an app being
-  // submitted to the same store. Renamed to what it actually is.
+  // Renamed in 1.1.3. The previous label matched an existing product closely
+  // enough to block the Microsoft Store listing, so do not change it back —
+  // "Clip Editor" is also just what the page is.
   { id: 'studio', label: 'Clip Editor', icon: '✂' },
   { id: 'creators', label: 'Creators', icon: '◉' },
   { id: 'models', label: 'Models', icon: '⬢' },

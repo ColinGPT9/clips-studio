@@ -14,12 +14,9 @@ were often broken in a way that only showed up on somebody else's machine.
 > profiles stay exactly where they are and open as normal. Only the name
 > changed.
 
-**Why:** the Microsoft Store rejected the listing under policy 10.1.1.1 — a
-product name may not contain the title of another piece of software. **Clip
-Studio** is a registered trademark of CELSYS, Inc., whose Clip Studio Paint
-sits on the same store. The clip editor page inside the app was called "Clip
-Studio" too, which was their trademark used verbatim; it is now **Clip
-Editor**.
+**Why:** the old name was too close to existing software to be listed on the
+Microsoft Store. The clip editor page had the same problem and is now called
+**Clip Editor**.
 
 Everything that is a link stayed a link: the GitHub repository, this website
 and the download addresses are all unchanged, so nothing anyone has bookmarked
