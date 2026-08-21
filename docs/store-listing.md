@@ -15,6 +15,13 @@ Two rules this copy follows deliberately:
 
 ---
 
+> **Do not mention the previous name anywhere in this listing.** The
+> submission was rejected under policy 10.1.1.1 because the product name was
+> too close to another product's; writing "formerly ..." into the description
+> puts that same string back into the listing. The "formerly" note belongs on
+> the README and the website, where it helps people find the project, and
+> nowhere near Partner Center.
+
 ## Product name
 
 ```
@@ -68,7 +75,7 @@ WHAT YOU NEED
 
 ALPHA SOFTWARE
 
-Clips Kitty is version 0.1.2 and it is early. It works, and it is rough in places. The known issues are listed openly in the repository, and there is a feedback button in the app that files a report for you without needing a GitHub account.
+Clips Kitty is version 1.1.3 and it is early. It works, and it is rough in places. The known issues are listed openly in the repository, and there is a feedback button in the app that files a report for you without needing a GitHub account.
 
 It was built for IRL, just-chatting and talking-head content, which is what it has been tested on. Gaming footage with a busy background is the weakest case today.
 ```
