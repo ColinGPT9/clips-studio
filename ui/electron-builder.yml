@@ -8,6 +8,19 @@
 # Built by scripts/build_installer.py, which freezes the backend first and
 # leaves it in build/dist/backend/ for the extraResources rule below.
 
+# appId and the "name" field in package.json BOTH stay as they are, and
+# neither is a leftover from the 1.1.3 rename:
+#
+#   * package.json "name" (clips-studio) is what Electron derives userData
+#     from — %APPDATA%\clips-studio — which holds localStorage: the caption
+#     style, the 60s+/podcast/longform toggles, the chosen interface language
+#     and update-prefs.json. Rename it and every user's settings vanish on
+#     upgrade while looking like a bug.
+#   * appId is the Windows application identity, and changing it makes the
+#     installer treat the new version as a different app rather than an
+#     upgrade.
+#
+# Only productName, which is what people actually read, changed.
 appId: com.clipsstudio.app
 productName: Clips Kitty
 copyright: Copyright © 2026 ColinGPT9
@@ -61,7 +74,7 @@ win:
     - target: zip
       arch:
         - x64
-  artifactName: ClipsStudio-${version}-${arch}.${ext}
+  artifactName: ClipsKitty-${version}-${arch}.${ext}
   # No code-signing certificate yet. Windows SmartScreen will warn on first
   # run until the installer builds reputation or a certificate is bought —
   # documented in the release notes so it doesn't look like a virus.
@@ -127,7 +140,7 @@ nsis:
   # a program should never delete someone's footage.
 
 nsisWeb:
-  artifactName: ClipsStudio-Web-Setup-${version}.${ext}
+  artifactName: ClipsKitty-Web-Setup-${version}.${ext}
 
 compression: maximum
 
@@ -139,7 +152,7 @@ compression: maximum
 # capped at 2 GiB and the payload is already over it:
 #
 #   clips-studio-<v>-x64.nsis.7z   2.09 GiB
-#   ClipsStudio-<v>-x64.zip        2.83 GiB
+#   ClipsKitty-<v>-x64.zip        2.83 GiB
 #
 # Uploading either one fails, which is why nothing has shipped yet. Hugging
 # Face has no such cap, costs nothing, serves from a CDN, and this project
