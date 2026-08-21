@@ -1,10 +1,10 @@
-# Partner Center paste sheet — Clips Studio 0.1.2
+# Partner Center paste sheet — Clips Kitty 0.1.2
 
 Every field, in the order Partner Center asks for it. Open this beside the
 dashboard and work down. [MSSTORE.md](MSSTORE.md) explains *why* for anything
 that looks odd; this file is just the values.
 
-**Start:** Partner Center → Apps and games → Clips Studio → **Start submission**
+**Start:** Partner Center → Apps and games → Clips Kitty → **Start submission**
 
 ---
 
@@ -61,7 +61,7 @@ honest version of that claim.
 
 ## 3. Age ratings
 
-Complete the IARC questionnaire. Every answer is **No** for Clips Studio. The
+Complete the IARC questionnaire. Every answer is **No** for Clips Kitty. The
 two that need thought rather than reflex:
 
 - **Does the app allow users to share content?** No. It writes files to the
@@ -146,7 +146,7 @@ needed. It is the only capability the package declares.
 fits. Paste exactly:
 
 ```
-Clips Studio is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run. It is the only capability declared.
+Clips Kitty is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run. It is the only capability declared.
 
 It launches three child processes that ship inside the package: a frozen Python engine for video analysis, FFmpeg for decoding and encoding, and an Ollama runtime that hosts the AI model on the user's own hardware. AppContainer cannot launch these.
 
@@ -156,7 +156,7 @@ It reads and writes only video files the user picks. No account, no telemetry, n
 If even that is rejected as too long, this says the same in 384:
 
 ```
-Clips Studio is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run, and it is the only capability declared.
+Clips Kitty is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run, and it is the only capability declared.
 
 It launches three child processes bundled in the package: a frozen Python engine for analysis, FFmpeg for encoding, and Ollama hosting the AI model locally. AppContainer cannot do this.
 
@@ -173,7 +173,7 @@ spawned by `ui/src/main/index.ts`, and `runFullTrust` is the only entry under
 Paste into **Notes for certification**:
 
 ```
-Clips Studio processes video locally using an AI model that is downloaded on
+Clips Kitty processes video locally using an AI model that is downloaded on
 first run, so the first launch shows a model download of roughly 3-5 GB with a
 progress bar. This is model weights (data), not executable code. Nothing is
 uploaded; all processing happens on the device.

@@ -1,6 +1,6 @@
 # Roadmap
 
-Where Clips Studio is going, and what is already done. Anything marked shipped
+Where Clips Kitty is going, and what is already done. Anything marked shipped
 is in a release you can install today, not a plan.
 
 ---
@@ -68,7 +68,7 @@ None of this delays the alpha.
 
 ## Long-term
 
-Clips Studio is a **local-first** creator platform. That word carries the whole
+Clips Kitty is a **local-first** creator platform. That word carries the whole
 design: your footage, your workflows and your data stay on your machine, and
 the app gets better as your hardware does rather than as someone's subscription
 tier does.

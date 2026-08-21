@@ -3,7 +3,7 @@
 Ollama runs the language model that scores and titles clips. It used to be the
 creator's job: the setup wizard stopped and asked them to go to ollama.com,
 download a second installer, run it, and come back. That is the single biggest
-thing standing between "downloaded Clips Studio" and "made a clip", and it is
+thing standing between "downloaded Clips Kitty" and "made a clip", and it is
 the kind of errand people abandon.
 
 So the app carries its own copy. This fetches the standalone Windows build --
@@ -54,7 +54,7 @@ NOTICE = f"""Ollama
 This application bundles an unmodified Ollama runtime ({OLLAMA_VERSION},
 {ASSET}).
 
-Ollama is free software licensed under the MIT License. Clips Studio starts
+Ollama is free software licensed under the MIT License. Clips Kitty starts
 it as a separate program on a private port and does not link against it.
 
 Source code and releases:

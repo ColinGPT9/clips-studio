@@ -51,7 +51,7 @@ function detect(): Verdict {
 			tone: "warn",
 			headline: "This browser does not look like Windows",
 			detail:
-				"Clips Studio is a Windows application and there is no Mac build yet. If you are reading this on a phone or a Mac, open it on your Windows PC.",
+				"Clips Kitty is a Windows application and there is no Mac build yet. If you are reading this on a phone or a Mac, open it on your Windows PC.",
 		};
 	}
 
@@ -62,7 +62,7 @@ function detect(): Verdict {
 		return {
 			tone: "warn",
 			headline: "Your PC may not have enough memory",
-			detail: `Your browser reports about ${mem} GB of RAM. Clips Studio needs 16 GB — below that it analyses the whole video and then fails at the render stage.`,
+			detail: `Your browser reports about ${mem} GB of RAM. Clips Kitty needs 16 GB — below that it analyses the whole video and then fails at the render stage.`,
 		};
 	}
 

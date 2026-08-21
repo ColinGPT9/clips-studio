@@ -8,7 +8,7 @@
 /* biome-ignore lint/suspicious/noUnknownAtRules: this rule is imported from whop */
 @config '../tailwind.config.ts';
 
-/* Clips Studio brand. Same values as site/styles.css in the main repo — if
+/* Clips Kitty brand. Same values as site/styles.css in the main repo — if
    the site palette changes, change it here too, or the app stops looking
    like the thing it is advertising. Deliberately dark in both colour
    schemes: the product's own identity is dark, and a Whop app that

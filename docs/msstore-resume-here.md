@@ -49,7 +49,7 @@ metadata recovery and the Models table fix; the GitHub installer of 0.1.2 does
 not have them.
 
 **So the first question on any bug report is where they installed from.**
-"Clips Studio 0.1.2" is not one thing until the next release lines them up
+"Clips Kitty 0.1.2" is not one thing until the next release lines them up
 again. The next GitHub release should be 0.1.3 and should include everything in
 the CHANGELOG's Unreleased section.
 

@@ -1,6 +1,6 @@
 # Feedback relay (Cloudflare Worker)
 
-This tiny worker is what lets Clips Studio users send bug reports and
+This tiny worker is what lets Clips Kitty users send bug reports and
 feature requests **without a GitHub account**. The app posts the report
 here; the worker checks it (proof-of-work challenge, per-IP daily limit,
 size caps, field validation, honeypot) and files it as a GitHub Issue

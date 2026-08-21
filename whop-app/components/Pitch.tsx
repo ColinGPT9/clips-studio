@@ -23,7 +23,7 @@ export function Pitch({ note }: { note?: string }) {
 			>
 				<p className="cs-lede">
 					Paste a link to a Twitch VOD, a Kick VOD or a YouTube video.
-					Clips Studio watches the whole thing, picks the moments worth
+					Clips Kitty watches the whole thing, picks the moments worth
 					posting, crops them to a phone screen with the speaker kept in
 					frame, burns in word-synced captions and writes the titles.{" "}
 					<strong>No credits, no watermark, no subscription.</strong>
@@ -68,7 +68,7 @@ export function Pitch({ note }: { note?: string }) {
 			<h2 className="cs-h2">Free, and staying that way</h2>
 			<div className="cs-card">
 				<p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6 }}>
-					Clips Studio runs entirely on your own PC and charges nothing —
+					Clips Kitty runs entirely on your own PC and charges nothing —
 					no credits, no seats, no cut of what you earn from your clips.
 					If it saves you time, a donation helps cover development and
 					keeps it free for everyone.
@@ -80,7 +80,7 @@ export function Pitch({ note }: { note?: string }) {
 						target="_blank"
 						rel="noreferrer"
 					>
-						Donate to Clips Studio
+						Donate to Clips Kitty
 					</a>
 				</div>
 				<p className="cs-note" style={{ marginTop: 10 }}>

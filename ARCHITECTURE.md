@@ -1,6 +1,6 @@
-# Architecture — Clips Studio
+# Architecture — Clips Kitty
 
-Clips Studio is a local-first AI clipping engine with a desktop front end. It ingests a
+Clips Kitty is a local-first AI clipping engine with a desktop front end. It ingests a
 long video, finds the moments worth posting using a local LLM plus multimodal signal
 analysis, renders speaker-tracked captioned vertical clips, and hands them to a review
 and editing studio. Nothing is sent to a cloud AI service, and there is no paid
@@ -33,7 +33,7 @@ document — design notes that used to live separately have been folded in here.
 
 ```
                         ┌───────────────────────────────┐
-                        │   Clips Studio desktop app    │
+                        │   Clips Kitty desktop app    │
                         │   Electron + React + Vite     │
                         └───────────────┬───────────────┘
                                         │  HTTP + WebSocket (127.0.0.1:8765)
@@ -636,7 +636,7 @@ or the filesystem directly — context isolation on, no node integration, everyt
 through the local API.
 
 Pages: **Dashboard** (system widgets, processed videos, live log), **Queue** (batch
-add, per-video settings, reorder/pause/retry, queue-wide time estimate), **Clip Studio**
+add, per-video settings, reorder/pause/retry, queue-wide time estimate), **Clip Editor**
 (the core loop: paste a link, watch progress, review the results grid, open the editor),
 **Creators**, **Models**, and **Settings**.
 

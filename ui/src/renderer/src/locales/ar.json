@@ -1,5 +1,5 @@
 {
-  "Clip Studio": "استوديو المقاطع",
+  "Clip Editor": "محرر المقاطع",
   "Creators": "صناع المحتوى",
   "Models": "النماذج",
   "Settings": "الإعدادات",
@@ -8,7 +8,6 @@
   "view & modify on GitHub": "عرض وتعديل على GitHub",
   "100% local · no cloud AI": "محلي 100% · بدون ذكاء اصطناعي سحابي",
   "AGPL-3.0 · 100% local · no cloud AI": "AGPL-3.0 · محلي 100% · بدون ذكاء اصطناعي سحابي",
-
   "Processed videos": "الفيديوهات المعالجة",
   "Search title or channel…": "ابحث عن عنوان أو قناة…",
   "Sort": "ترتيب",
@@ -24,10 +23,9 @@
   "Waiting for events…": "في انتظار الأحداث…",
   "Loading clips…": "جارٍ تحميل المقاطع…",
   "No clips generated.": "لم يتم إنشاء مقاطع.",
-  "Clips Studio is free & open source ❤️": "\u200FClips Studio مجاني ومفتوح المصدر ❤️",
+  "Clips Kitty is free & open source ❤️": "‏Clips Kitty مجاني ومفتوح المصدر ❤️",
   "It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.": "يعمل بالكامل على جهازك دون أي رسوم. فكر في التبرع للمساعدة في تغطية تكاليف التطوير وإبقائه مجانيًا للجميع.",
-  "Donate to Clips Studio": "تبرع لـ Clips Studio",
-
+  "Donate to Clips Kitty": "تبرع لـ Clips Kitty",
   "Paste a YouTube, Twitch, or Kick URL…": "الصق رابط YouTube أو Twitch أو Kick…",
   "Captions": "الترجمات",
   "Caption style": "نمط الترجمة",
@@ -49,7 +47,6 @@
   "Video title": "عنوان الفيديو",
   "Creator / channel name": "اسم الصانع / القناة",
   "Platform": "المنصة",
-
   "Appearance & accessibility": "المظهر وسهولة الوصول",
   "Font": "الخط",
   "Text colour": "لون النص",
@@ -63,7 +60,6 @@
   "Auto-detect (per video)": "اكتشاف تلقائي (لكل فيديو)",
   "The app follows your Windows language unless you choose one here.": "يتبع التطبيق لغة Windows ما لم تختر لغة هنا.",
   "Transcription and burned-in captions use this language. Auto works for most streams; force it if a bilingual stream gets the wrong captions.": "يُستخدم هذا في التفريغ والترجمات المدمجة في الفيديو. «تلقائي» يناسب معظم البثوث؛ حدد اللغة إذا حصل بث ثنائي اللغة على ترجمات خاطئة.",
-
   "Feedback": "ملاحظات",
   "Feedback Hub": "مركز الملاحظات",
   "Report a bug": "الإبلاغ عن خلل",
@@ -97,7 +93,7 @@
   "Would use it every video": "سأستخدمها في كل فيديو",
   "Can’t use the app well without it": "يصعب استخدام التطبيق بدونها",
   "What would you like improved?": "ما الذي تريد تحسينه؟",
-  "Why would it improve Clips Studio?": "لماذا سيحسن هذا Clips Studio؟",
+  "Why would it improve Clips Kitty?": "لماذا سيحسن هذا Clips Kitty؟",
   "Which app inspired this? (optional)": "ما التطبيق الذي ألهمك؟ (اختياري)",
   "Links / screenshots of that feature (optional)": "روابط / لقطات شاشة لتلك الميزة (اختياري)",
   "Which part of the app is this about? (optional)": "عن أي جزء من التطبيق تتحدث؟ (اختياري)",

@@ -1,5 +1,5 @@
 {
-  "Clip Studio": "क्लिप स्टूडियो",
+  "Clip Editor": "क्लिप एडिटर",
   "Creators": "क्रिएटर्स",
   "Models": "मॉडल",
   "Settings": "सेटिंग्स",
@@ -8,7 +8,6 @@
   "view & modify on GitHub": "GitHub पर देखें और बदलें",
   "100% local · no cloud AI": "100% लोकल · कोई क्लाउड AI नहीं",
   "AGPL-3.0 · 100% local · no cloud AI": "AGPL-3.0 · 100% लोकल · कोई क्लाउड AI नहीं",
-
   "Processed videos": "प्रोसेस किए गए वीडियो",
   "Search title or channel…": "टाइटल या चैनल खोजें…",
   "Sort": "क्रम",
@@ -24,10 +23,9 @@
   "Waiting for events…": "इवेंट्स की प्रतीक्षा…",
   "Loading clips…": "क्लिप्स लोड हो रही हैं…",
   "No clips generated.": "कोई क्लिप नहीं बनी।",
-  "Clips Studio is free & open source ❤️": "क्लिप्स स्टूडियो मुफ़्त और ओपन सोर्स है ❤️",
+  "Clips Kitty is free & open source ❤️": "क्लिप्स स्टूडियो मुफ़्त और ओपन सोर्स है ❤️",
   "It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.": "यह बिना किसी शुल्क के पूरी तरह आपके PC पर चलता है। विकास की लागत में मदद और इसे सबके लिए मुफ़्त रखने के लिए दान करने पर विचार करें।",
-  "Donate to Clips Studio": "Clips Studio को दान करें",
-
+  "Donate to Clips Kitty": "Clips Kitty को दान करें",
   "Paste a YouTube, Twitch, or Kick URL…": "YouTube, Twitch या Kick का लिंक पेस्ट करें…",
   "Captions": "कैप्शन",
   "Caption style": "कैप्शन स्टाइल",
@@ -49,7 +47,6 @@
   "Video title": "वीडियो का टाइटल",
   "Creator / channel name": "क्रिएटर / चैनल का नाम",
   "Platform": "प्लैटफ़ॉर्म",
-
   "Appearance & accessibility": "दिखावट और सुलभता",
   "Font": "फ़ॉन्ट",
   "Text colour": "टेक्स्ट का रंग",
@@ -63,7 +60,6 @@
   "Auto-detect (per video)": "अपने आप पहचानें (हर वीडियो)",
   "The app follows your Windows language unless you choose one here.": "जब तक आप यहाँ कोई भाषा नहीं चुनते, ऐप आपकी Windows भाषा अपनाता है।",
   "Transcription and burned-in captions use this language. Auto works for most streams; force it if a bilingual stream gets the wrong captions.": "ट्रांसक्रिप्शन और वीडियो में जुड़े कैप्शन इसी भाषा में बनते हैं। ज़्यादातर स्ट्रीम के लिए «Auto» ठीक है; अगर द्विभाषी स्ट्रीम के कैप्शन गलत बनें तो भाषा तय करें।",
-
   "Feedback": "फ़ीडबैक",
   "Feedback Hub": "फ़ीडबैक हब",
   "Report a bug": "बग रिपोर्ट करें",
@@ -97,7 +93,7 @@
   "Would use it every video": "हर वीडियो में इस्तेमाल करूँगा",
   "Can’t use the app well without it": "इसके बिना ऐप ठीक से नहीं चला सकता",
   "What would you like improved?": "आप किसमें सुधार चाहते हैं?",
-  "Why would it improve Clips Studio?": "इससे क्लिप्स स्टूडियो बेहतर कैसे होगा?",
+  "Why would it improve Clips Kitty?": "इससे क्लिप्स स्टूडियो बेहतर कैसे होगा?",
   "Which app inspired this? (optional)": "किस ऐप से यह आइडिया मिला? (वैकल्पिक)",
   "Links / screenshots of that feature (optional)": "उस सुविधा के लिंक / स्क्रीनशॉट (वैकल्पिक)",
   "Which part of the app is this about? (optional)": "यह ऐप के किस हिस्से के बारे में है? (वैकल्पिक)",

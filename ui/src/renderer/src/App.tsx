@@ -20,7 +20,10 @@ const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
   { id: 'queue', label: 'Queue', icon: '≡' },
-  { id: 'studio', label: 'Clip Studio', icon: '✂' },
+  // "Clip Editor" until 1.1.3. That is CELSYS's registered trademark
+  // verbatim (Clip Editor Paint), sitting in the sidebar of an app being
+  // submitted to the same store. Renamed to what it actually is.
+  { id: 'studio', label: 'Clip Editor', icon: '✂' },
   { id: 'creators', label: 'Creators', icon: '◉' },
   { id: 'models', label: 'Models', icon: '⬢' },
   { id: 'settings', label: 'Settings', icon: '⚙' }
@@ -85,7 +88,7 @@ export default function App(): JSX.Element {
           />
           <div className="min-w-0">
             <h1 className="text-lg font-bold leading-tight">
-              Clips <span className="text-accent">Studio</span>
+              Clips <span className="text-accent">Kitty</span>
             </h1>
             <p className="text-xs text-muted mt-px">{t('local-first AI clipping')}</p>
           </div>

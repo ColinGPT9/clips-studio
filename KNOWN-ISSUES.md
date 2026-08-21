@@ -12,7 +12,7 @@ report without needing a GitHub account, or open an
 
 ## Only three AI models have actually been tested
 
-Clips Studio can run any model Ollama serves, and the Models page lists several.
+Clips Kitty can run any model Ollama serves, and the Models page lists several.
 **Only these three have been run against real streams:**
 
 - `gemma:7b`
@@ -57,9 +57,9 @@ is what it is tuned for and tested on.
 
 Downloading is handled by yt-dlp, which is bundled inside the app. Twitch, Kick
 and YouTube change things regularly; yt-dlp fixes them within days, but the
-copy inside Clips Studio is fixed at build time.
+copy inside Clips Kitty is fixed at build time.
 
-So there is a window — from a site changing to the next Clips Studio release —
+So there is a window — from a site changing to the next Clips Kitty release —
 where downloads from that one site fail even though the fix already exists.
 Other sites keep working, which is the tell: **if Twitch works and Kick does
 not, it is this, not your setup.**

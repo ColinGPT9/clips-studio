@@ -1,5 +1,5 @@
 name: 🚀 Improvement suggestion
-description: Make an existing part of Clips Studio better
+description: Make an existing part of Clips Kitty better
 labels: [enhancement]
 body:
   - type: textarea
@@ -11,7 +11,7 @@ body:
   - type: textarea
     id: why
     attributes:
-      label: Why would it improve Clips Studio?
+      label: Why would it improve Clips Kitty?
     validations:
       required: true
   - type: input

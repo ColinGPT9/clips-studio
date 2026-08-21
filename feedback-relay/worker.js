@@ -1,5 +1,5 @@
 /**
- * Clips Studio feedback relay — a tiny Cloudflare Worker that lets app
+ * Clips Kitty feedback relay — a tiny Cloudflare Worker that lets app
  * users file bug reports / feature requests WITHOUT a GitHub account.
  *
  * The app POSTs a report here; this worker validates it, applies anti-spam

@@ -37,7 +37,7 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
 - [x] Developer account created at **<https://storedeveloper.microsoft.com>**
       (free; that URL specifically, or you get the old paid flow — if you are
       asked for a registration fee, you are in the legacy flow, so back out)
-- [x] Publisher display name settled: **Clips Studio**. It is public and cannot
+- [x] Publisher display name settled: **Clips Kitty**. It is public and cannot
       be changed later, and it is not a personal name, so the listing does not
       identify the account holder.
 - [x] Identity verified (government ID + selfie)

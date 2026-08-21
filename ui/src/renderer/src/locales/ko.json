@@ -1,5 +1,5 @@
 {
-  "Clip Studio": "클립 스튜디오",
+  "Clip Editor": "클립 편집기",
   "Creators": "크리에이터",
   "Models": "모델",
   "Settings": "설정",
@@ -21,7 +21,7 @@
   "Time": "시간",
   "Activity": "활동",
   "Waiting for events…": "이벤트 대기 중…",
-  "Donate to Clips Studio": "Clips Studio 후원하기",
+  "Donate to Clips Kitty": "Clips Kitty 후원하기",
   "Paste a YouTube, Twitch, or Kick URL…": "YouTube, Twitch 또는 Kick 링크를 붙여넣으세요…",
   "Captions": "자막",
   "Caption style": "자막 스타일",

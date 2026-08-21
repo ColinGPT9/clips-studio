@@ -4,7 +4,7 @@
 # They are kept here so the next release can copy and edit them rather than
 # rediscovering the format. See packaging/winget/README.md.
 PackageIdentifier: ColinGPT9.ClipsStudio
-PackageVersion: 0.1.2
+PackageVersion: 1.1.3
 DefaultLocale: en-US
 ManifestType: version
 ManifestVersion: 1.6.0

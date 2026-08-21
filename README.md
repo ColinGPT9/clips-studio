@@ -1,9 +1,13 @@
-# Clips Studio — open-source AI video clipping that runs on your own PC
+# Clips Kitty — open-source AI video clipping that runs on your own PC
+
+> **Clips Kitty was called Clips Studio until version 1.1.3.** Same app, same
+> repository, same data — only the name changed. It was renamed because "Clip
+> Studio" is a registered trademark belonging to CELSYS, Inc.
 
 <img src="docs/brand/mascot.png" alt="" width="150" align="right">
 
 **Turn long streams and videos into ready-to-post Shorts, Reels, and TikToks —
-entirely on your own machine.** Clips Studio is a free, open-source AI clip generator
+entirely on your own machine.** Clips Kitty is a free, open-source AI clip generator
 and video editor for creators: paste a YouTube, Twitch, or Kick link and it finds the
 best moments, crops them to 9:16 with the speaker kept centred, burns in word-synced
 captions, and writes titles, descriptions, and hashtags.
@@ -21,7 +25,7 @@ there is no cap on how many clips you make.
 > **Kick clip generator** · **YouTube Shorts automation** · **AI video editor** ·
 > **open-source OpusClip alternative**
 
-<!-- TODO: a screenshot of Clip Studio mid-run, and a short demo GIF, both ~1600px
+<!-- TODO: a screenshot of Clip Editor mid-run, and a short demo GIF, both ~1600px
      wide in docs/images/. Nothing sells a video tool like seeing it work. -->
 
 ---
@@ -50,7 +54,7 @@ there is no cap on how many clips you make.
 
 ## What it does
 
-You give Clips Studio a long video. It gives you back a folder of finished vertical
+You give Clips Kitty a long video. It gives you back a folder of finished vertical
 clips you can post, plus a studio to review and fix them before you do.
 
 It is built for the content most clipping tools handle worst: **live streams, IRL and
@@ -219,10 +223,10 @@ pip install -r requirements.txt
 
 cd ui
 npm install
-npm run dev        # opens the Clips Studio desktop app
+npm run dev        # opens the Clips Kitty desktop app
 ```
 
-The app starts its own Python engine automatically. Paste a link in **Clip Studio**,
+The app starts its own Python engine automatically. Paste a link in **Clip Editor**,
 press *Generate clips*, and watch the progress live.
 
 Building the installer yourself is one command — see
@@ -300,7 +304,7 @@ Anything Ollama serves works, and switching is one click. Translation can use a
 
 ## Tested hardware and performance
 
-Clips Studio is developed and tested daily on this machine, so it's a useful reference
+Clips Kitty is developed and tested daily on this machine, so it's a useful reference
 point if you're comparing your own results:
 
 | | |
@@ -317,7 +321,7 @@ analysis chunk size — is tuned for roughly this class of machine. On a bigger 
 raise `llm.num_ctx` and `analysis.chunk_seconds` together and move up a model size;
 on a smaller one, drop to `gemma3:4b`.
 
-If you benchmark Clips Studio on different hardware, please post it in
+If you benchmark Clips Kitty on different hardware, please post it in
 [Discussions](../../discussions) — real numbers from real machines help everyone size
 their setup.
 
@@ -424,7 +428,7 @@ without touching Python.
 ## Build on it
 
 The desktop app is a window onto a **local HTTP API**, which is running whenever
-Clips Studio is open. A Discord bot, a batch runner, a web front end or an OBS
+Clips Kitty is open. A Discord bot, a batch runner, a web front end or an OBS
 integration can drive the same pipeline, and nothing has to be added to the app
 first.
 
@@ -478,7 +482,7 @@ Packaging and release documentation:
   creating a developer account through to certification
 - **[packaging/winget/](packaging/winget/)** — the winget manifests, which point at
   the installer above
-- **[whop-app/](whop-app/)** — the Whop app, which puts Clips Studio in front of
+- **[whop-app/](whop-app/)** — the Whop app, which puts Clips Kitty in front of
   members of clipping communities. Marketing pages only: it does not process
   video, store anything, or talk to the desktop app
 - **[docs/DOCKER.md](docs/DOCKER.md)** — running the engine without installing

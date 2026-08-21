@@ -55,7 +55,7 @@ python examples/drive_the_api.py --file "D:/footage/stream.mp4"
 
 It submits the job, follows progress over the WebSocket, and lists the
 clips. Nothing in it is privileged — the Electron UI makes the same calls.
-If you want Clips Studio to do something on a schedule, or from a bot, or
+If you want Clips Kitty to do something on a schedule, or from a bot, or
 across a folder of old VODs, this file is the starting point.
 
 ## Writing your own

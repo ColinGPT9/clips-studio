@@ -18,7 +18,7 @@ export function Hero({
 			<div className="cs-hero">
 				<Image
 					src="/mascot.png"
-					alt="Clippy the Cat, the Clips Studio mascot"
+					alt="Clippy the Kitty, the app's mascot"
 					width={84}
 					height={84}
 					priority
@@ -101,7 +101,7 @@ export function Footer() {
 				Privacy
 			</a>
 			<p style={{ margin: "10px 0 0" }}>
-				Clips Studio is free and open source under AGPL-3.0, and is not
+				Clips Kitty is free and open source under AGPL-3.0, and is not
 				affiliated with Whop. Everything runs on your own computer.
 			</p>
 		</footer>

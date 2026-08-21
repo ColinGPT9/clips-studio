@@ -11,7 +11,7 @@ const DRAFT_KEY = 'queue-draft'
 const REASONS: Record<string, string> = {
   already_processed: 'already processed',
   already_queued: 'already in the queue',
-  unrecognized: 'not a link Clips Studio recognises',
+  unrecognized: 'not a link Clips Kitty recognises',
   bad_option: 'a setting on this video was rejected',
   queue_full: 'the queue is full — let one finish first'
 }

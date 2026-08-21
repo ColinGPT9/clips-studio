@@ -100,16 +100,24 @@ jobs:
           if any(p > 65535 for p in parts):
               sys.exit("every part must be 0-65535")
 
-          # Monotonic across the 1.0.0 boundary, which is where a fixed leading
-          # 1 would silently start producing lower versions than what is live.
-          seq = ["0.1.2", "0.1.3", "0.2.0", "0.9.9", "1.0.0", "1.0.1", "2.0.0"]
-          prev = None
+          # The app version IS the Store version since 1.1.3. Still has to
+          # climb, and still has to stay above 1.1.2.0, which is published.
+          seq = ["1.1.3", "1.1.4", "1.2.0", "1.9.9", "2.0.0"]
+          prev = tuple(int(p) for p in "1.1.2.0".split("."))   # already live
           for v in seq:
               cur = tuple(int(p) for p in store_version(v).split("."))
-              if prev is not None and cur <= prev:
+              if cur <= prev:
                   sys.exit(f"not monotonic: {v} -> {cur} is not above {prev}")
               prev = cur
-          print("monotonic across", " -> ".join(seq))
+          print("monotonic from the published 1.1.2.0 across", " -> ".join(seq))
+
+          # A 0.x major would bring back the two-numbers-per-release mapping.
+          try:
+              store_version("0.9.9")
+          except SystemExit as e:
+              print("0.x correctly refused:", str(e).strip().splitlines()[0])
+          else:
+              sys.exit("store_version accepted a 0.x major")
           PY
 
       - name: Store tiles exist and are the right size

@@ -1,4 +1,4 @@
-# Releasing Clips Studio
+# Releasing Clips Kitty
 
 How to turn a commit into something a creator can install.
 
@@ -40,7 +40,7 @@ Measured at 0.1.0, the first build carrying the bundled runtime and weights:
 | `nsis-web/ClipsStudio-Web-Setup-<v>.exe` | 813 KB | What people download. Fetches the payload and installs it. |
 | `nsis-web/clips-studio-<v>-x64.nsis.7z` | 5.88 GiB | The payload the setup downloads. |
 | `nsis-web/latest.yml` | 586 B | Version + SHA512 of both. The update checker reads this. |
-| `ClipsStudio-<v>-x64.zip` | 6.90 GiB | Offline alternative: unzip, run `Clips Studio.exe`. |
+| `ClipsStudio-<v>-x64.zip` | 6.90 GiB | Offline alternative: unzip, run `Clips Kitty.exe`. |
 
 Installed, that unpacks to about **10 GB**. Roughly 4 GB of the growth is the
 bundled Ollama runtime and the two Whisper models; the rest is CUDA PyTorch,
@@ -129,7 +129,7 @@ Check after publishing:
 - [ ] Release notes mention the SmartScreen warning (see below)
 - [ ] Release notes written for creators — they appear inside the app, in the
       update bar's "What's new"
-- [ ] Downloaded the Web Setup on a machine that has never run Clips Studio,
+- [ ] Downloaded the Web Setup on a machine that has never run Clips Kitty,
       and installed it end to end
 
 ## Testing it the way a stranger meets it
@@ -188,7 +188,7 @@ untested.
 **Included:** the Electron app, the frozen Python engine, every Python
 dependency, CUDA PyTorch, FFmpeg, the Ollama runtime, and the YOLO, TalkNet
 and Whisper weights. No Python install, no second installer, no PATH edits,
-no terminal. A creator installs Clips Studio and nothing else.
+no terminal. A creator installs Clips Kitty and nothing else.
 
 The bundled Ollama listens on **127.0.0.1:11435**, not its default 11434, so
 it cannot collide with one the creator already runs. Electron starts it, tells

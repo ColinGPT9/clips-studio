@@ -1,5 +1,5 @@
 ---
-title: Clips Studio
+title: Clips Kitty
 emoji: 🐱
 colorFrom: blue
 colorTo: indigo
@@ -10,13 +10,13 @@ license: agpl-3.0
 short_description: Free open-source AI video clipping that runs on your own PC
 ---
 
-# Clips Studio
+# Clips Kitty
 
 Free, open-source AI video clipping that runs on your own computer. Paste a
 Twitch, Kick or YouTube link and get vertical clips with captions and titles —
 no upload, no subscription, no per-clip fee.
 
-**This Space is the project website.** Clips Studio is a Windows desktop
+**This Space is the project website.** Clips Kitty is a Windows desktop
 application; it cannot run inside a Space, because it needs a local GPU, FFmpeg
 and your own files.
 

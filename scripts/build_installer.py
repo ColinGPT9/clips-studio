@@ -213,7 +213,7 @@ def package_installer() -> None:
         "                     install that reads it starts downloading at once.\n"
         "      GitHub release the Web Setup .exe and the notes. Nothing else\n"
         "                     fits; the payload upload is rejected outright.\n"
-        "    The .zip is the offline alternative: unzip and run Clips Studio.exe."
+        "    The .zip is the offline alternative: unzip and run Clips Kitty.exe."
     )
 
 

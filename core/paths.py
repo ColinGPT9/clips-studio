@@ -36,6 +36,12 @@ def resolve_data_dir(config: dict) -> Path:
 
     if getattr(sys, "frozen", False):
         # Installed: per-user, writable, and survives reinstalling the app.
+        #
+        # "Clips Studio" is NOT a leftover. The app was renamed to Clips Kitty
+        # in 1.1.3, and this folder deliberately kept the old name: it is where
+        # every existing user's library, settings, creator profiles and clips
+        # already live. Renaming it makes an upgrade look like a factory reset.
+        # No user ever sees this string. Leave it.
         base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
         return base / "Clips Studio" / raw
 
@@ -73,6 +79,8 @@ def user_config_path(bundled: Path) -> Path:
         return bundled
 
     base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    # Same folder as resolve_data_dir, and kept under the pre-1.1.3 name for
+    # the same reason — see the note there before changing it.
     user_copy = base / "Clips Studio" / bundled.name
 
     if not user_copy.exists():

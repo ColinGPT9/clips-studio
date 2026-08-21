@@ -61,11 +61,11 @@ docker compose run --rm engine python tests/assets/make_sample_video.py
 
 ## What this is for
 
-Working on Clips Studio without installing Python, FFmpeg, PyTorch, OpenCV,
+Working on Clips Kitty without installing Python, FFmpeg, PyTorch, OpenCV,
 Node and the rest on your own machine — and letting someone on Linux or
 macOS contribute to a project whose app only ships for Windows.
 
-**It is not how anyone installs Clips Studio.** Creators use the Windows
+**It is not how anyone installs Clips Kitty.** Creators use the Windows
 installer. Nothing here replaces that.
 
 ## The one piece that is not in the container: Electron

@@ -1,4 +1,4 @@
-# Contributor environment: the Clips Studio engine plus Ollama.
+# Contributor environment: the Clips Kitty engine plus Ollama.
 #
 #   docker compose up --build        engine on http://localhost:8765
 #   docker compose run --rm engine pytest

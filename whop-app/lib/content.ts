@@ -71,7 +71,7 @@ export const REQUIREMENTS: { label: string; value: string; note?: string }[] = [
 ];
 
 export const STEPS: string[] = [
-	"Install Clips Studio and let it pick an AI model that fits your graphics card.",
+	"Install Clips Kitty and let it pick an AI model that fits your graphics card.",
 	"Paste a link to a Twitch VOD, a Kick VOD or a YouTube video.",
 	"Leave it running. It watches the whole thing, picks the moments, crops them vertical with the speaker kept in frame, and burns in word-synced captions.",
 	"Review the clips, fix anything the AI got wrong in the editor, and export.",
@@ -129,7 +129,7 @@ export const DOWNLOAD_NOTE = `Version ${VERSION}. The setup is under 1 MB and th
 /** Paste-ready text for a community owner to post to their members. Kept
  *  short enough to survive a Discord or Whop chat message, and honest
  *  about the hardware so their members do not bounce off a failed install. */
-export const OWNER_BLURB = `Clips Studio — free, open-source AI clipping that runs on your own PC.
+export const OWNER_BLURB = `Clips Kitty — free, open-source AI clipping that runs on your own PC.
 
 Paste a Twitch, Kick or YouTube VOD and it finds the moments worth posting, crops them vertical with the speaker kept in frame, burns in word-synced captions and writes titles. No credits, no watermark, no subscription, and the video never leaves your machine.
 

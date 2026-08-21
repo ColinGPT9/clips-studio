@@ -91,7 +91,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
       if (m?.recommended) setRec(m.recommended)
     } catch (e) {
       setError(
-        'Could not reach the Clips Studio engine. If you just installed, give it a few seconds and try again.'
+        'Could not reach the Clips Kitty engine. If you just installed, give it a few seconds and try again.'
       )
     } finally {
       setChecking(false)
@@ -176,9 +176,9 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
           {/* ---------------------------------------------- 0: welcome */}
           {step === 0 && (
             <>
-              <h2 className="text-2xl font-bold">Welcome to Clips Studio</h2>
+              <h2 className="text-2xl font-bold">Welcome to Clips Kitty</h2>
               <p className="text-sm text-muted mt-3 leading-relaxed">
-                Paste a link to a YouTube video, Twitch VOD or Kick VOD and Clips Studio finds
+                Paste a link to a YouTube video, Twitch VOD or Kick VOD and Clips Kitty finds
                 the best moments, crops them to fit a phone screen, and writes captions and
                 titles for you.
               </p>
@@ -198,7 +198,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
             <>
               <h2 className="text-2xl font-bold">Setting up</h2>
               <p className="text-sm text-muted mt-3 leading-relaxed">
-                Everything Clips Studio needs came with it, apart from the AI model that picks
+                Everything Clips Kitty needs came with it, apart from the AI model that picks
                 the moments worth clipping. We&apos;re fetching the one that suits your graphics
                 card now — it downloads once and then works offline.
               </p>
@@ -272,7 +272,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
               {pre?.ready ? (
                 <>
                   <p className="text-sm text-muted mt-3 leading-relaxed">
-                    Everything is installed. Paste a video link on the Clip Studio page and
+                    Everything is installed. Paste a video link on the Clip Editor page and
                     press <b>Generate clips</b>.
                   </p>
                   <p className="text-sm text-muted mt-3 leading-relaxed">

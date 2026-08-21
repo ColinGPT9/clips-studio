@@ -176,7 +176,7 @@ export default function Queue({
       <div className="flex items-baseline gap-3 flex-wrap">
         <h1 className="text-xl font-bold">{t('Processing queue')}</h1>
         <p className="text-sm text-muted">
-          {t('Queue up a batch, then leave Clips Studio running — it works through them on its own.')}
+          {t('Queue up a batch, then leave Clips Kitty running — it works through them on its own.')}
         </p>
       </div>
 

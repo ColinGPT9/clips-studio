@@ -12,7 +12,7 @@ The binaries are NOT committed — they're build inputs, fetched on the
 machine that builds the installer.
 
 Licensing note: this pulls a GPL build, because CPU encoding uses libx264
-which is GPL. Clips Studio only runs FFmpeg as a separate process and does
+which is GPL. Clips Kitty only runs FFmpeg as a separate process and does
 not link against it, so shipping the unmodified binary alongside the app is
 mere aggregation — but the GPL still requires that users can get FFmpeg's
 source. vendor/ffmpeg/README-FFMPEG.txt is written next to the binaries with
@@ -42,7 +42,7 @@ This application bundles unmodified FFmpeg binaries ({BUILD_NAME}).
 
 FFmpeg is free software licensed under the GNU General Public License
 version 3 or later, because this build includes GPL components (libx264).
-Clips Studio invokes FFmpeg as a separate program and does not link
+Clips Kitty invokes FFmpeg as a separate program and does not link
 against it.
 
 The complete corresponding source code for FFmpeg is available from:

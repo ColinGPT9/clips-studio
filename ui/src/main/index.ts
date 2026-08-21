@@ -22,7 +22,7 @@ let ollama: ChildProcess | null = null
 /** Start the Ollama runtime that ships inside the app.
  *
  *  Packaged builds carry their own copy (see scripts/fetch_ollama.py) so that
- *  installing Clips Studio installs everything Clips Studio needs. In a
+ *  installing Clips Kitty installs everything Clips Kitty needs. In a
  *  checkout there is nothing to start: a developer already has Ollama on its
  *  default port, and the engine falls back to that because startBackend only
  *  overrides the host when packaged.
@@ -39,7 +39,7 @@ function startOllama(): void {
   // in core/paths.py, or the engine and the runtime disagree about what is
   // downloaded.
   const localAppData = process.env.LOCALAPPDATA ?? join(app.getPath('home'), 'AppData', 'Local')
-  const models = join(localAppData, 'Clips Studio', 'data', 'models')
+  const models = join(localAppData, 'Clips Kitty', 'data', 'models')
 
   ollama = spawn(exe, ['serve'], {
     stdio: 'ignore',

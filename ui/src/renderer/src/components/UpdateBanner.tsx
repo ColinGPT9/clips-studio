@@ -79,7 +79,7 @@ export default function UpdateBanner(): JSX.Element | null {
       <div className={`${bar} bg-accent/10 border-accent/30`}>
         <span className="font-medium">Version {s.version} is ready to install.</span>
         <span className="text-xs text-muted">
-          Clips Studio will close and reopen. Finish anything that&apos;s rendering first.
+          Clips Kitty will close and reopen. Finish anything that&apos;s rendering first.
         </span>
         <button
           className="btn-accent !py-1 ml-auto shrink-0"

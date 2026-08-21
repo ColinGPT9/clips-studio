@@ -311,7 +311,7 @@ REQUIRED_FIELDS: dict[str, list[tuple[str, str]]] = {
     ],
     "improvement": [
         ("what", "What would you like improved?"),
-        ("why", "Why would it improve Clips Studio?"),
+        ("why", "Why would it improve Clips Kitty?"),
     ],
 }
 
@@ -353,7 +353,7 @@ def build_markdown(kind: str, answers: dict, diagnostics: dict | None) -> str:
         if a.get("inspiration"):
             lines.append(f"**Inspired by:** {a['inspiration']}\n")
         sec("What would you like improved?", "what")
-        sec("Why would it improve Clips Studio?", "why")
+        sec("Why would it improve Clips Kitty?", "why")
         sec("Links / references", "links")
 
     if diagnostics:

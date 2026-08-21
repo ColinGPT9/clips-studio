@@ -7,10 +7,10 @@ tags:
   - installer
 ---
 
-# Clips Studio — release payload
+# Clips Kitty — release payload
 
 **This repository is not a model.** It holds the installer payload for
-[Clips Studio](https://github.com/ColinGPT9/clips-studio), a free, open-source
+[Clips Kitty](https://github.com/ColinGPT9/clips-studio), a free, open-source
 AI video clipping app that runs entirely on your own Windows PC.
 
 It lives on Hugging Face for one dull reason: a GitHub release asset is capped
@@ -21,7 +21,7 @@ everything the app needs rather than sending you off to install it yourself.
 
 They will not do anything on their own. **Get the installer instead:**
 
-### → [Download Clips Studio](https://github.com/ColinGPT9/clips-studio/releases/latest)
+### → [Download Clips Kitty](https://github.com/ColinGPT9/clips-studio/releases/latest)
 
 The Web Setup is about 1 MB. Run it, and it fetches the payload from here by
 itself, checks it against the SHA512 in `latest.yml`, and installs the app.
@@ -30,9 +30,9 @@ itself, checks it against the SHA512 in `latest.yml`, and installs the app.
 |---|---|
 | `clips-studio-<version>-x64.nsis.7z` | What the Web Setup downloads. Not usable by hand. |
 | `latest.yml` | Version and SHA512. The in-app updater reads this. |
-| `ClipsStudio-<version>-x64.zip` | Offline alternative: unzip it and run `Clips Studio.exe`. No installer, no shortcuts. |
+| `ClipsStudio-<version>-x64.zip` | Offline alternative: unzip it and run `Clips Kitty.exe`. No installer, no shortcuts. |
 
-## What Clips Studio does
+## What Clips Kitty does
 
 Paste a Twitch, Kick or YouTube link and it finds the good moments, crops them
 to a phone screen with subject tracking, writes captions and titles, and gives

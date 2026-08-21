@@ -8,7 +8,7 @@ Two rules this copy follows deliberately:
 - **No comparative claims.** Not "an OpusClip alternative", not "better than".
   Store policy 11.2 covers third-party names, and a listing that leans on
   someone else's product reads as derivative even where it is permitted. The
-  positioning is what Clips Studio *is* — local, open source, yours — which is
+  positioning is what Clips Kitty *is* — local, open source, yours — which is
   the genuine difference anyway.
 - **No unmeasured performance numbers.** Nothing about speed appears here that
   is not in the README's tested-hardware table.
@@ -18,7 +18,7 @@ Two rules this copy follows deliberately:
 ## Product name
 
 ```
-Clips Studio
+Clips Kitty
 ```
 
 ## Short description
@@ -28,17 +28,17 @@ this is what shows at the top of the listing before anyone expands it. Kept
 under that:
 
 ```
-Turn long videos into vertical clips using AI that runs on your own PC. Paste a YouTube, Twitch or Kick link and Clips Studio finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Nothing is uploaded. Free and open source.
+Turn long videos into vertical clips using AI that runs on your own PC. Paste a YouTube, Twitch or Kick link and Clips Kitty finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Nothing is uploaded. Free and open source.
 ```
 
 ## Description (10,000 max)
 
 ```
-Clips Studio finds the best moments in a long video and cuts them into vertical clips for Shorts, TikTok and Reels. Give it a YouTube, Twitch or Kick link, or a video file from your own disk, and it does the rest.
+Clips Kitty finds the best moments in a long video and cuts them into vertical clips for Shorts, TikTok and Reels. Give it a YouTube, Twitch or Kick link, or a video file from your own disk, and it does the rest.
 
 Everything runs on your computer.
 
-That is the part that makes it different. Most AI clipping tools upload your video to a server, charge a monthly fee, and cap how many clips you get. Clips Studio does the transcription, the scoring, the speaker tracking, the subtitles and the rendering locally, on your own hardware. Your footage is never uploaded. There is no subscription, no clip limit, and no account to create.
+That is the part that makes it different. Most AI clipping tools upload your video to a server, charge a monthly fee, and cap how many clips you get. Clips Kitty does the transcription, the scoring, the speaker tracking, the subtitles and the rendering locally, on your own hardware. Your footage is never uploaded. There is no subscription, no clip limit, and no account to create.
 
 WHAT IT DOES
 
@@ -68,7 +68,7 @@ WHAT YOU NEED
 
 ALPHA SOFTWARE
 
-Clips Studio is version 0.1.2 and it is early. It works, and it is rough in places. The known issues are listed openly in the repository, and there is a feedback button in the app that files a report for you without needing a GitHub account.
+Clips Kitty is version 0.1.2 and it is early. It works, and it is rough in places. The known issues are listed openly in the repository, and there is a feedback button in the app that files a report for you without needing a GitHub account.
 
 It was built for IRL, just-chatting and talking-head content, which is what it has been tested on. Gaming footage with a busy background is the weakest case today.
 ```

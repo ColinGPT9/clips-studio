@@ -399,7 +399,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import feedback as feedback_mod
 
     feedback_mod.install_log_capture()  # pipeline prints -> bug-report log tail
-    app = FastAPI(title="Clips Studio API", version="0.1")
+    app = FastAPI(title="Clips Kitty API", version="0.1")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Vite dev server

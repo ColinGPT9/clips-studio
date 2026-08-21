@@ -297,7 +297,7 @@ export default function FeedbackHub(): JSX.Element {
                 {kind === 'improvement' && (
                   <>
                     {field('what', 'What would you like improved?', 'e.g. The timeline is hard to use with a trackpad')}
-                    {field('why', 'Why would it improve Clips Studio?', 'What gets easier or faster?')}
+                    {field('why', 'Why would it improve Clips Kitty?', 'What gets easier or faster?')}
                     {field('inspiration', 'Which app inspired this? (optional)', 'e.g. CapCut’s keyframe editor', 2, true)}
                     {field('links', 'Links / screenshots of that feature (optional)', 'A YouTube video, docs page…', 2, true)}
                   </>

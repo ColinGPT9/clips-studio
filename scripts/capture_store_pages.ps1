@@ -1,9 +1,9 @@
-﻿# Capture Clips Studio's people-free pages for the Microsoft Store listing.
+﻿# Capture Clips Kitty's people-free pages for the Microsoft Store listing.
 #
 #     powershell -ExecutionPolicy Bypass -File scripts\capture_store_pages.ps1
 #
 # ONLY visits Models and Settings. Every other page shows the library: clip
-# thumbnails on Clip Studio and Creators, and video titles and channel names on
+# thumbnails on Clip Editor and Creators, and video titles and channel names on
 # Dashboard and Queue. None of that belongs in a public listing - the footage
 # is someone else's, and neither their face nor their channel name is ours to
 # advertise with.
@@ -68,10 +68,10 @@ if ($All) {
 }
 $sidebarX = 110
 
-$proc = Get-Process -Name "Clips Studio" -ErrorAction SilentlyContinue |
+$proc = Get-Process -Name "Clips Kitty" -ErrorAction SilentlyContinue |
         Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
         Select-Object -First 1
-if (-not $proc) { Write-Output "Clips Studio is not running."; exit 1 }
+if (-not $proc) { Write-Output "Clips Kitty is not running."; exit 1 }
 $h = $proc.MainWindowHandle
 
 $outDir = Join-Path $PSScriptRoot "..\docs\store-screenshots"

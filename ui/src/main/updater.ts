@@ -1,4 +1,4 @@
-// Checking for a newer Clips Studio, and installing it.
+// Checking for a newer Clips Kitty, and installing it.
 //
 // This exists because of when it has to exist: the moment somebody installs a
 // build, you need a way to move them off it. Adding updates after a release

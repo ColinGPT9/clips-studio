@@ -1,12 +1,12 @@
 # The local API
 
-Clips Studio is a desktop app on top of a **local HTTP service**. The desktop
+Clips Kitty is a desktop app on top of a **local HTTP service**. The desktop
 window is one client of it. Anything else can be another: a Discord bot that
 clips a stream on command, a batch runner, a web front end, an OBS integration,
 a script that queues last night's VOD every morning.
 
 Nothing needs to be added to the app for that to work. The service is already
-running whenever Clips Studio is open, on `127.0.0.1:8765`.
+running whenever Clips Kitty is open, on `127.0.0.1:8765`.
 
 The service has 71 HTTP endpoints and a WebSocket. This document covers the
 subset meant to be built against — most of the rest are the desktop UI talking

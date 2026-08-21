@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the report! Tip: if you use Clips Studio, the in-app
+        Thanks for the report! Tip: if you use Clips Kitty, the in-app
         **💬 Feedback** button on the Dashboard files this for you and
         attaches your versions/hardware/log automatically — it is quicker
         than this form and fills in the diagnostics below for you.
@@ -52,14 +52,14 @@ body:
 
         Filling it in by hand instead? These six, please:
 
-        - Clips Studio version (Settings → bottom of the page)
+        - Clips Kitty version (Settings → bottom of the page)
         - Windows version
         - CPU
         - GPU and how much VRAM it has
         - RAM
         - Where the video came from — Twitch, Kick, YouTube or a local file
       placeholder: |
-        Clips Studio: 0.1.2
+        Clips Kitty: 1.1.3
         Windows: 11
         CPU: Intel Core i5-13400F
         GPU: RTX 3060 12 GB

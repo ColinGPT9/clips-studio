@@ -26,7 +26,7 @@ export default class AppBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('Clips Studio crashed:', error, info.componentStack)
+    console.error('Clips Kitty crashed:', error, info.componentStack)
   }
 
   render(): ReactNode {
@@ -40,7 +40,7 @@ export default class AppBoundary extends Component<
     return (
       <div className="h-screen grid place-items-center p-8 bg-base text-ink">
         <div className="max-w-lg space-y-4">
-          <h1 className="text-xl font-bold">Clips Studio hit a problem</h1>
+          <h1 className="text-xl font-bold">Clips Kitty hit a problem</h1>
           <p className="text-sm text-muted leading-relaxed">
             The window failed to draw. Your videos, clips and edits are safe — they live on
             disk and in the database, not in this window.

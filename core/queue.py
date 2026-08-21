@@ -1,6 +1,6 @@
 """Queue manager: the orchestration layer around the existing pipeline.
 
-Clips Studio already ran jobs one at a time — a `jobs` row, a single worker
+Clips Kitty already ran jobs one at a time — a `jobs` row, a single worker
 thread, and crash recovery (see server/jobs.py). What was missing is the part
 a person needs to leave a batch running overnight: ordering, pausing, retrying,
 and knowing how long it will take. That is what lives here.

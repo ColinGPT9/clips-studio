@@ -1,6 +1,6 @@
-# Contributing to Clips Studio
+# Contributing to Clips Kitty
 
-Thanks for helping! Clips Studio is a local-first AI clipping app — Python
+Thanks for helping! Clips Kitty is a local-first AI clipping app — Python
 FastAPI backend + Electron/React UI. Issues labeled
 [`good-first-issue`](../../labels/good-first-issue) are small and
 well-scoped if you want a place to start.
@@ -86,7 +86,7 @@ alternative is a full transcribe-and-render per attempt.
 
 ## Building on the app rather than in it
 
-You do not have to change Clips Studio to use it. The desktop window is one
+You do not have to change Clips Kitty to use it. The desktop window is one
 client of a local HTTP API, and anything else can be another — a bot, a batch
 runner, a different interface entirely.
 
@@ -161,7 +161,7 @@ canonical issue so reactions concentrate in one place.
 
 ## Licence
 
-Clips Studio is **AGPL-3.0**, and contributions are accepted under the same
+Clips Kitty is **AGPL-3.0**, and contributions are accepted under the same
 terms — opening a PR means you are licensing your change that way.
 
 Practically: your work stays available to the creators this was built for,

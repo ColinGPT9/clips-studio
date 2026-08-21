@@ -1,8 +1,8 @@
-# Translating and testing Clips Studio in your language
+# Translating and testing Clips Kitty in your language
 
 **The person who wrote this app only speaks English.**
 
-Clips Studio ships in 19 languages, and the maintainer cannot tell whether 18
+Clips Kitty ships in 19 languages, and the maintainer cannot tell whether 18
 of them read naturally, use the right words for video editing, or make sense to
 somebody who actually speaks the language. Machine translation gets the meaning
 across and still sounds wrong, and there is no way to notice that from the
@@ -102,7 +102,7 @@ Anything from one string to a hundred is welcome.
 
 Optional, and a much bigger job than the wording. Skip it freely.
 
-Clips Studio transcribes speech, picks moments, and writes titles, all locally.
+Clips Kitty transcribes speech, picks moments, and writes titles, all locally.
 Whether it does that well in your language is unknown, and nobody has measured
 it. If you want to find out, run a video that is naturally spoken in your
 language, a podcast, an interview, a talking-head video, and report what

@@ -8,13 +8,29 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## Unreleased
+## 1.1.3 — the app is now called Clips Kitty
 
-> **The Microsoft Store build of 0.1.2 already contains the fixes below.** The
-> GitHub installer of 0.1.2 does not. Same version number, two different
-> builds, on purpose: the Store package was submitted with them rather than
-> waiting for the next release. When someone reports a problem, it is worth
-> asking where they installed from before anything else.
+> **Same app, same data, nothing to do.** Your clips, settings and creator
+> profiles stay exactly where they are and open as normal. Only the name
+> changed.
+
+**Why:** the Microsoft Store rejected the listing under policy 10.1.1.1 — a
+product name may not contain the title of another piece of software. **Clip
+Studio** is a registered trademark of CELSYS, Inc., whose Clip Studio Paint
+sits on the same store. The clip editor page inside the app was called "Clip
+Studio" too, which was their trademark used verbatim; it is now **Clip
+Editor**.
+
+Everything that is a link stayed a link: the GitHub repository, this website
+and the download addresses are all unchanged, so nothing anyone has bookmarked
+or shared has broken.
+
+**The version jumped from 0.1.2 to 1.1.3**, which looks odd and is deliberate.
+The Store will not accept a version starting with 0, so every release used to
+carry two numbers — 0.1.2 in the app and 1.1.2.0 on the Store — and somebody
+had to remember the mapping. 1.1.3 is above the 1.1.2.0 already published, so
+from here the app version and the Store version are the same number. This is
+still alpha software; the leading 1 is a Store requirement, not a claim.
 
 ### Fixed
 

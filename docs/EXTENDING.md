@@ -1,4 +1,4 @@
-# Extending Clips Studio
+# Extending Clips Kitty
 
 The four changes people most often want to make, and what each actually
 touches. All of them are deliberately small — if one of these turns into a

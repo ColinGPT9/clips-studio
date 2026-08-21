@@ -153,7 +153,7 @@ def main() -> int:
             sub_font = _font(sub_px, bold=False)
 
             y = top + side + int(h * 0.035)
-            _centre(draw, out.width, y, "Clips Studio", title_font, (255, 255, 255))
+            _centre(draw, out.width, y, "Clips Kitty", title_font, (255, 255, 255))
             y += int(title_px * 1.35)
             _centre(
                 draw, out.width, y,

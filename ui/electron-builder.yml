@@ -1,4 +1,4 @@
-# Windows installer for Clips Studio.
+# Windows installer for Clips Kitty.
 #
 # Produces an NSIS installer that carries everything the app needs: the
 # Electron front end, the frozen Python engine, FFmpeg, and the YOLO
@@ -9,7 +9,7 @@
 # leaves it in build/dist/backend/ for the extraResources rule below.
 
 appId: com.clipsstudio.app
-productName: Clips Studio
+productName: Clips Kitty
 copyright: Copyright © 2026 ColinGPT9
 
 directories:
@@ -90,7 +90,7 @@ win:
 # THE THREE IDENTITY VALUES BELOW COME FROM PARTNER CENTER and must match it
 # character for character, capitals included. They are not secrets — every one
 # of them ships inside the manifest of the package itself. Re-read them at:
-#   Partner Center -> Clips Studio -> General -> View product identity
+#   Partner Center -> Clips Kitty -> General -> View product identity
 # A mismatch is not caught at build time; it fails at upload, after the package
 # has already been made. See docs/MSSTORE.md.
 appx:
@@ -103,7 +103,7 @@ appx:
   # Ours to choose, not Microsoft's. Must not start with a digit and must not
   # change between releases: it is part of the app's identity to Windows.
   applicationId: ClipsStudio
-  displayName: Clips Studio
+  displayName: Clips Kitty
   backgroundColor: '#0A1628'
   languages:
     - en-US
@@ -118,7 +118,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Clips Studio
+  shortcutName: Clips Kitty
   # The payload is several gigabytes, so give the user a real progress
   # dialog rather than a frozen window.
   deleteAppDataOnUninstall: false

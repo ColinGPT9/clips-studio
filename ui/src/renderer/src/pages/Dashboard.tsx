@@ -275,7 +275,7 @@ export default function Dashboard({
                                   <button
                                     className="text-left text-accent hover:underline"
                                     onClick={() => onOpenInStudio(v.video_id, c.id)}
-                                    title="Open this clip in Clip Studio"
+                                    title="Open this clip in Clip Editor"
                                   >
                                     {c.title || c.hook || 'Untitled'}
                                   </button>{' '}
@@ -316,7 +316,7 @@ export default function Dashboard({
       {/* Pinned bottom: prominent, persistent donate section */}
       <div className="shrink-0 card flex items-center justify-between gap-6 flex-wrap bg-gradient-to-r from-accent/15 to-accent/25 border border-accent/40 !py-5">
         <div>
-          <p className="font-bold text-xl text-ink">{t('Clips Studio is free & open source ❤️')}</p>
+          <p className="font-bold text-xl text-ink">{t('Clips Kitty is free & open source ❤️')}</p>
           <p className="text-base text-ink/80 mt-1">
             {t('It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.')}
           </p>
@@ -326,7 +326,7 @@ export default function Dashboard({
           className="btn-accent shrink-0 text-lg px-8 py-3 font-semibold"
           title={DONATE_URL}
         >
-          {t('Donate to Clips Studio')}
+          {t('Donate to Clips Kitty')}
         </button>
       </div>
     </div>

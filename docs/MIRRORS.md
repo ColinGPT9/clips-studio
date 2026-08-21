@@ -1,6 +1,6 @@
 # Mirrors
 
-Clips Studio lives on GitHub, but people look for software in more than one
+Clips Kitty lives on GitHub, but people look for software in more than one
 place. These mirrors exist so the project can be found by someone who never
 visits GitHub — and so it survives any single platform.
 
@@ -48,7 +48,7 @@ the project in front of people already searching for local AI tools.
 static Space. It is pushed as the Space's root, which is why every path in the
 HTML is relative.
 
-**A Space cannot run Clips Studio.** It is a Windows desktop app needing a local
+**A Space cannot run Clips Kitty.** It is a Windows desktop app needing a local
 GPU, FFmpeg and your files. The Space is the website, and says so.
 
 ## Why the website is mirrored but the code is not

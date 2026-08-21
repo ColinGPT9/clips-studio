@@ -38,15 +38,23 @@ def _sources():
 # ---- behaviour ---------------------------------------------------------------
 
 
+# discard() is called on its own line throughout, never inside an assert.
+# `python -O` strips asserts, and an assert that both performs the deletion
+# and checks it would quietly become a no-op — a test that passes by not
+# running.
+
+
 def test_discard_removes_a_file(tmp_path):
     f = tmp_path / "clip.source.mp4"
     f.write_bytes(b"x")
-    assert discard(f) is True
+    removed = discard(f)
+    assert removed is True
     assert not f.exists()
 
 
 def test_discard_is_happy_when_the_file_is_already_gone(tmp_path):
-    assert discard(tmp_path / "never-existed.mp4") is True
+    removed = discard(tmp_path / "never-existed.mp4")
+    assert removed is True
 
 
 def test_discard_swallows_a_windows_style_lock(tmp_path, monkeypatch, capsys):
@@ -63,7 +71,8 @@ def test_discard_swallows_a_windows_style_lock(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(pathlib.Path, "unlink", locked)
 
-    assert discard(f) is False           # reported, not raised
+    removed = discard(f)
+    assert removed is False              # reported, not raised
     assert "could not remove" in capsys.readouterr().out
 
 
@@ -77,19 +86,27 @@ def test_a_locked_scratch_file_cannot_hide_the_real_error():
     def real_work():
         raise RuntimeError("tracking failed: no subject found")
 
-    # What the code used to do.
-    with pytest.raises(PermissionError):
+    def the_old_way():
+        """Cleanup that raises from a `finally`, as the pipeline used to."""
         try:
             real_work()
         finally:
             raise PermissionError(32, "file is being used by another process")
 
-    # What it must do now: cleanup reports and the real error survives.
-    with pytest.raises(RuntimeError, match="tracking failed"):
+    def the_new_way():
+        """Cleanup that reports instead, so the real error survives."""
         try:
             real_work()
         finally:
-            discard(None)  # best-effort cleanup, never raises
+            discard(None)  # best-effort, never raises
+
+    # The bug: the cleanup error replaces the one actually being raised.
+    with pytest.raises(PermissionError):
+        the_old_way()
+
+    # The fix: the caller finds out why the render really failed.
+    with pytest.raises(RuntimeError, match="tracking failed"):
+        the_new_way()
 
 
 def test_video_capture_releases_even_when_the_body_raises(monkeypatch):
@@ -107,9 +124,12 @@ def test_video_capture_releases_even_when_the_body_raises(monkeypatch):
 
     monkeypatch.setattr(capture.cv2, "VideoCapture", lambda _p: FakeCap())
 
-    with pytest.raises(ValueError):
+    def body_that_blows_up():
         with capture.video_capture("clip.mp4"):
             raise ValueError("tracking blew up")
+
+    with pytest.raises(ValueError):
+        body_that_blows_up()
 
     assert released, "the capture handle was leaked — this is issue #74"
 
@@ -124,17 +144,13 @@ def test_video_capture_releases_a_file_it_could_not_open(monkeypatch):
         def release(self):
             released.append(True)
 
-    monkeypatch.setattr(capture_module().cv2, "VideoCapture", lambda _p: FakeCap())
-
-    with capture_module().video_capture("clip.mp4", required=False) as cap:
-        assert cap is None
-    assert released
-
-
-def capture_module():
     import video.capture as capture
 
-    return capture
+    monkeypatch.setattr(capture.cv2, "VideoCapture", lambda _p: FakeCap())
+
+    with capture.video_capture("clip.mp4", required=False) as cap:
+        assert cap is None
+    assert released
 
 
 # ---- scans, so a new file cannot reintroduce either mistake ------------------

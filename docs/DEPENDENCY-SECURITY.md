@@ -17,7 +17,7 @@ Last assessed: **2026-07-26**, against electron 31.7.7 / electron-builder
 | `brace-expansion` | No — build tooling | No | Transitive |
 | `esbuild`, `vite` | No — dev server only | No | Dev-time only |
 
-Only the first row can reach anyone who installs Clips Studio. Everything
+Only the first row can reach anyone who installs Clips Kitty. Everything
 else lives in tooling that produces the installer and is never inside it.
 
 ## electron 31.7.7 — the one that matters

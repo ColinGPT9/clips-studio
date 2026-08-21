@@ -47,7 +47,7 @@ export function useQueueNotifications(): void {
 
     if (notifyOnFinish()) {
       if (e.status === 'failed') {
-        send('Clips Studio', `${name} failed — ${e.error || 'see the queue for details'}`)
+        send('Clips Kitty', `${name} failed — ${e.error || 'see the queue for details'}`)
       } else {
         const left =
           remaining === null
@@ -55,14 +55,14 @@ export function useQueueNotifications(): void {
             : remaining === 0
               ? ''
               : ` ${remaining} ${remaining === 1 ? 'video' : 'videos'} remaining.`
-        send('Clips Studio', `${name} has finished processing.${left}`)
+        send('Clips Kitty', `${name} has finished processing.${left}`)
       }
     }
 
     // The batch is done. Sent separately from the per-video toast so turning
     // per-video notifications off still leaves the one that matters most.
     if (remaining === 0 && notifyOnQueueEmpty()) {
-      send('Clips Studio', 'All queued videos have finished processing.')
+      send('Clips Kitty', 'All queued videos have finished processing.')
     }
   })
 }

@@ -1,5 +1,5 @@
 {
-  "Clip Studio": "Clip Studio",
+  "Clip Editor": "Clip Editor",
   "Creators": "Kreator",
   "Models": "Model",
   "Settings": "Pengaturan",
@@ -24,9 +24,9 @@
   "Waiting for events…": "Menunggu aktivitas…",
   "Loading clips…": "Memuat klip…",
   "No clips generated.": "Tidak ada klip yang dibuat.",
-  "Clips Studio is free & open source ❤️": "Clips Studio gratis & sumber terbuka ❤️",
+  "Clips Kitty is free & open source ❤️": "Clips Kitty gratis & sumber terbuka ❤️",
   "It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.": "Berjalan sepenuhnya di PC-mu tanpa biaya. Pertimbangkan berdonasi untuk membantu biaya pengembangan dan menjaganya tetap gratis untuk semua.",
-  "Donate to Clips Studio": "Donasi untuk Clips Studio",
+  "Donate to Clips Kitty": "Donasi untuk Clips Kitty",
 
   "Paste a YouTube, Twitch, or Kick URL…": "Tempel tautan YouTube, Twitch, atau Kick…",
   "Captions": "Takarir",
@@ -97,7 +97,7 @@
   "Would use it every video": "Akan kupakai di tiap video",
   "Can’t use the app well without it": "Sulit memakai aplikasi tanpa ini",
   "What would you like improved?": "Apa yang ingin kamu perbaiki?",
-  "Why would it improve Clips Studio?": "Mengapa ini membuat Clips Studio lebih baik?",
+  "Why would it improve Clips Kitty?": "Mengapa ini membuat Clips Kitty lebih baik?",
   "Which app inspired this? (optional)": "Aplikasi apa yang menginspirasi? (opsional)",
   "Links / screenshots of that feature (optional)": "Tautan / tangkapan layar fitur itu (opsional)",
   "Which part of the app is this about? (optional)": "Tentang bagian aplikasi yang mana? (opsional)",

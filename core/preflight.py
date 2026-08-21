@@ -76,7 +76,7 @@ def check_ffmpeg() -> list[Check]:
             ok=bool(version),
             detail=version or "not found",
             fix="" if version else
-                "This should ship with Clips Studio. Reinstall the app, or "
+                "This should ship with Clips Kitty. Reinstall the app, or "
                 "install FFmpeg and put it on your PATH.",
         ))
     return checks
@@ -101,12 +101,12 @@ def check_ollama(host: str, model: str) -> list[Check]:
             name="ollama",
             ok=False,
             detail=f"not reachable at {host} ({type(e).__name__})",
-            fix="The AI runtime that ships with Clips Studio did not start. "
+            fix="The AI runtime that ships with Clips Kitty did not start. "
                 "Restarting the app usually fixes it. If it keeps happening, "
                 "please report it — this one is not your fault."
                 if has_bundled_ollama() else
                 "Install Ollama from https://ollama.com and let it run in the "
-                "background. Clips Studio uses it for the AI that picks and "
+                "background. Clips Kitty uses it for the AI that picks and "
                 "titles clips.",
         )]
 
@@ -180,7 +180,7 @@ def check_gpu() -> Check:
         return Check(
             name="gpu", ok=False, blocking=False,
             detail="no CUDA GPU detected — running on CPU",
-            fix="Clips Studio works without a GPU, but processing is much "
+            fix="Clips Kitty works without a GPU, but processing is much "
                 "slower. An NVIDIA GPU gives the biggest speed-up.",
         )
     except Exception as e:

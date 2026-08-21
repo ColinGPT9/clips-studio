@@ -1,5 +1,5 @@
 # Tooling config for the Python engine. There is no build system here on
-# purpose — Clips Studio ships as a frozen application, not a pip package.
+# purpose — Clips Kitty ships as a frozen application, not a pip package.
 
 [tool.ruff]
 # The code was written around 100 columns and a handful of lines run to ~130.

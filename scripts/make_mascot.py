@@ -1,4 +1,4 @@
-"""Draw the Clips Studio mascot and the app icon.
+"""Draw the Clips Kitty mascot and the app icon.
 
 A cat-monkey. Cat's head and ears; monkey's heart-shaped face patch, long
 curling tail and little grabby hands. Dark navy fur from the dashboard

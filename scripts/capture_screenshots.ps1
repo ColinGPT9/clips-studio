@@ -1,4 +1,4 @@
-# Capture the running Clips Studio window for the Microsoft Store listing.
+# Capture the running Clips Kitty window for the Microsoft Store listing.
 #
 #     powershell -ExecutionPolicy Bypass -File scripts\capture_screenshots.ps1
 #
@@ -28,12 +28,12 @@ public class WinCap {
 }
 "@
 
-$proc = Get-Process -Name "Clips Studio" -ErrorAction SilentlyContinue |
+$proc = Get-Process -Name "Clips Kitty" -ErrorAction SilentlyContinue |
         Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
         Select-Object -First 1
 
 if (-not $proc) {
-    Write-Output "Clips Studio is not running with a visible window."
+    Write-Output "Clips Kitty is not running with a visible window."
     Write-Output "Start it, open the page you want, then run this again."
     exit 1
 }
@@ -53,7 +53,7 @@ $h = $r.B - $r.T
 
 if ($w -lt 1366) {
     Write-Output "WARNING: the window is ${w}px wide. The Store wants 1366 or more."
-    Write-Output "Maximise Clips Studio and run this again."
+    Write-Output "Maximise Clips Kitty and run this again."
 }
 
 $bmp = New-Object System.Drawing.Bitmap $w, $h

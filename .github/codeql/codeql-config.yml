@@ -39,7 +39,7 @@
 # a `query-filters: - exclude: id: py/path-injection` here would end it
 # permanently, at the cost of hiding the rule repo-wide.
 
-name: Clips Studio
+name: Clips Kitty
 
 paths-ignore:
   - third_party

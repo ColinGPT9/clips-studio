@@ -1,5 +1,5 @@
 {
-  "Clip Studio": "クリップスタジオ",
+  "Clip Editor": "クリップエディター",
   "Creators": "クリエイター",
   "Models": "モデル",
   "Settings": "設定",
@@ -8,7 +8,6 @@
   "view & modify on GitHub": "GitHubで見る・編集する",
   "100% local · no cloud AI": "100%ローカル · クラウドAIなし",
   "AGPL-3.0 · 100% local · no cloud AI": "AGPL-3.0 · 100%ローカル · クラウドAIなし",
-
   "Processed videos": "処理済みの動画",
   "Search title or channel…": "タイトルまたはチャンネルを検索…",
   "Sort": "並べ替え",
@@ -24,10 +23,9 @@
   "Waiting for events…": "イベントを待機中…",
   "Loading clips…": "クリップを読み込み中…",
   "No clips generated.": "クリップは作成されませんでした。",
-  "Clips Studio is free & open source ❤️": "Clips Studio は無料＆オープンソース ❤️",
+  "Clips Kitty is free & open source ❤️": "Clips Kitty は無料＆オープンソース ❤️",
   "It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.": "料金なしで、すべてあなたのPC上で動きます。開発費を支え、みんなが無料で使い続けられるよう、寄付をご検討ください。",
-  "Donate to Clips Studio": "Clips Studio に寄付",
-
+  "Donate to Clips Kitty": "Clips Kitty に寄付",
   "Paste a YouTube, Twitch, or Kick URL…": "YouTube・Twitch・Kick のリンクを貼り付け…",
   "Captions": "字幕",
   "Caption style": "字幕スタイル",
@@ -49,7 +47,6 @@
   "Video title": "動画タイトル",
   "Creator / channel name": "クリエイター／チャンネル名",
   "Platform": "プラットフォーム",
-
   "Appearance & accessibility": "外観とアクセシビリティ",
   "Font": "フォント",
   "Text colour": "文字色",
@@ -63,7 +60,6 @@
   "Auto-detect (per video)": "自動検出（動画ごと）",
   "The app follows your Windows language unless you choose one here.": "ここで選ばない限り、アプリはWindowsの言語に従います。",
   "Transcription and burned-in captions use this language. Auto works for most streams; force it if a bilingual stream gets the wrong captions.": "文字起こしと焼き込み字幕はこの言語で作られます。ほとんどの配信は「自動」で問題ありません。二か国語の配信で字幕の言語が間違う場合に指定してください。",
-
   "Feedback": "フィードバック",
   "Feedback Hub": "フィードバックハブ",
   "Report a bug": "バグを報告",
@@ -97,7 +93,7 @@
   "Would use it every video": "毎動画で使う",
   "Can’t use the app well without it": "これがないと困る",
   "What would you like improved?": "何を改善してほしいですか？",
-  "Why would it improve Clips Studio?": "それでClips Studioはどう良くなりますか？",
+  "Why would it improve Clips Kitty?": "それでClips Kittyはどう良くなりますか？",
   "Which app inspired this? (optional)": "参考にしたアプリは？（任意）",
   "Links / screenshots of that feature (optional)": "その機能のリンク／スクリーンショット（任意）",
   "Which part of the app is this about? (optional)": "アプリのどの部分についてですか？（任意）",

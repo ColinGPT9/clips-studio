@@ -1,11 +1,11 @@
-# The Clips Studio Whop app
+# The Clips Kitty Whop app
 
-A marketing surface that puts Clips Studio in front of the people who would
+A marketing surface that puts Clips Kitty in front of the people who would
 use it: members of clipping communities on [Whop](https://whop.com), who cut
 streamer VODs into vertical shorts and get paid per view.
 
 **It is a set of pages, nothing more.** It does not process video, store
-anything, talk to a member's PC, or connect to the Clips Studio engine. The
+anything, talk to a member's PC, or connect to the Clips Kitty engine. The
 desktop app has no idea this exists and works exactly the same without it.
 
 ## What it is
@@ -14,7 +14,7 @@ Whop embeds the app in an iframe and routes to three surfaces:
 
 | Route | Who sees it | What it says |
 |---|---|---|
-| `/experiences/[experienceId]` | **members**, in the community sidebar | what Clips Studio does, what their PC needs, the download, how it works, what it does not do |
+| `/experiences/[experienceId]` | **members**, in the community sidebar | what Clips Kitty does, what their PC needs, the download, how it works, what it does not do |
 | `/dashboard/[companyId]` | the **community owner**, in their dashboard | why it is worth recommending, what members need, and a message they can paste into their community |
 | `/discover` | anyone browsing the **App Store** | the listing pitch |
 

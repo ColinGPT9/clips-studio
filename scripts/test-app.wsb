@@ -20,7 +20,7 @@
         & "$env:WINDIR\System32\WindowsSandbox.exe" scripts\test-app.wsb
 
     Then, inside: open the ClipsStudio folder on the desktop and run
-    "Clips Studio.exe".
+    "Clips Kitty.exe".
 
     Still a clean Windows: no Python, no Ollama, no FFmpeg, none of your files.
     So it answers the real question, whether the app runs somewhere none of its

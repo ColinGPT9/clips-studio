@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-	title: "Clips Studio",
+	title: "Clips Kitty",
 	description:
 		"Free, open-source AI video clipping that runs on your own PC. Turn Twitch, Kick and YouTube VODs into vertical clips with captions.",
 	icons: { icon: "/mascot-head.png" },

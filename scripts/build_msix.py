@@ -56,39 +56,42 @@ from build_installer import (  # noqa: E402
 
 
 def store_version(app_version: str) -> str:
-    """The four-part package version for an app version like "0.1.2".
+    """The four-part package version: the app's own version, plus ".0".
+
+        1.1.3  ->  1.1.3.0
+        1.2.0  ->  1.2.0.0
+        2.0.0  ->  2.0.0.0
 
     Microsoft's rule, from the MSIX app package requirements: the fourth part
     is reserved for the Store and must be 0, the rest are 0-65535, "except for
-    the first section, which cannot be 0". So 0.1.2.0 -- the obvious choice --
-    is rejected at upload.
+    the first section, which cannot be 0".
 
-    The mapping adds one to the major, and nothing else:
+    This used to add one to the major, because the app was on 0.x and 0.1.2.0
+    is rejected at upload. That produced two version numbers for one release --
+    0.1.2 in the app, 1.1.2.0 on the Store -- which is a mapping somebody has
+    to remember and get right on every submission.
 
-        0.1.2  ->  1.1.2.0
-        0.1.3  ->  1.1.3.0
-        0.2.0  ->  1.2.0.0
-        1.0.0  ->  2.0.0.0
+    The app moved to 1.1.3 to end that. It is deliberately not 1.0.0: the
+    Store also requires each submission to be higher than the last, and
+    1.1.2.0 is already published, so 1.0.0.0 would be refused. 1.1.3.0 clears
+    it and lets the two numbers finally be the same one.
 
-    It has to be that rather than a fixed leading 1, because the Store also
-    requires each submission to be higher than the last. Pinning the major at 1
-    works until the app reaches 1.0.0, at which point 1.0.0.0 sorts BELOW the
-    1.1.2.0 already published and the update is refused. Deriving the major
-    from the app's own keeps it monotonic through that boundary.
-
-    The user-facing version stays whatever package.json says. Only the package
-    identity uses this.
+    Which is why the major may never be 0 again -- that would reintroduce the
+    offset and the confusion with it.
     """
     parts = app_version.split("-")[0].split(".")
     if len(parts) != 3 or not all(p.isdigit() for p in parts):
         sys.exit(f"\nCannot map version {app_version!r} to a Store version: expected X.Y.Z")
     major, minor, patch = (int(p) for p in parts)
-    for name, value in (("minor", minor), ("patch", patch)):
+    if major == 0:
+        sys.exit(
+            f"\nversion {app_version} has a major of 0, which the Store rejects. "
+            "Since 1.1.3 the app version IS the Store version — use 1.x or above."
+        )
+    for name, value in (("major", major), ("minor", minor), ("patch", patch)):
         if value > 65535:
             sys.exit(f"\n{name} version {value} exceeds the 65535 the Store allows")
-    if major + 1 > 65535:
-        sys.exit(f"\nmajor version {major} is too large to map")
-    return f"{major + 1}.{minor}.{patch}.0"
+    return f"{major}.{minor}.{patch}.0"
 
 
 def developer_mode_on() -> bool:

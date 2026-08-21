@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Clips Studio has not had a stable release yet. Security fixes land on `main`, and the
+Clips Kitty has not had a stable release yet. Security fixes land on `main`, and the
 latest commit is the only supported version. Once releases begin, this table will list
 the supported ones.
 
@@ -27,7 +27,7 @@ anonymous.
 
 ## What is in scope
 
-Clips Studio is a **local desktop application**. The interesting attack surface is
+Clips Kitty is a **local desktop application**. The interesting attack surface is
 mostly about untrusted input and local exposure:
 
 - **The local API** (`server/`) binds to `127.0.0.1:8765`. Anything that lets a remote
@@ -43,14 +43,14 @@ mostly about untrusted input and local exposure:
 - **The feedback relay** (`feedback-relay/`) and the diagnostics attached to in-app
   reports. Diagnostics are redacted before leaving the reporter's machine; a leak of
   secrets or personal data through that path is in scope and important.
-- **Dependency vulnerabilities** that are actually reachable from Clips Studio code.
+- **Dependency vulnerabilities** that are actually reachable from Clips Kitty code.
 
 ## What is out of scope
 
 - Attacks needing an attacker who already has local code execution or admin rights on
   the machine. A local desktop app can't defend against that.
 - Vulnerabilities in Ollama, FFmpeg, yt-dlp, or the AI models themselves — report those
-  upstream. If Clips Studio *uses* one of them unsafely, that part is in scope.
+  upstream. If Clips Kitty *uses* one of them unsafely, that part is in scope.
 - The quality, bias, or content of AI-generated clips, titles, or translations. Those
   are bugs or feature requests, not security issues.
 - Denial of service by feeding the app a deliberately enormous video.
@@ -67,7 +67,7 @@ anything it does not cover.
 
 ## A note on what this app does
 
-Clips Studio downloads videos with yt-dlp and processes them locally. It never uploads
+Clips Kitty downloads videos with yt-dlp and processes them locally. It never uploads
 your footage anywhere. The only outbound network traffic in a normal run is fetching
 the source video, an optional Twitch chat-replay request, model downloads you ask for,
 and — only if you submit one — an in-app feedback report.

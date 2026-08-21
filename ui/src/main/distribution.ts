@@ -1,6 +1,6 @@
 // Which distribution this copy came from, and the two things that depend on it.
 //
-// Clips Studio ships from two places out of one codebase: the NSIS installer
+// Clips Kitty ships from two places out of one codebase: the NSIS installer
 // on GitHub/Hugging Face, and an MSIX package in the Microsoft Store. The
 // binaries are identical. Two behaviours are not, and both are rules rather
 // than preferences:
