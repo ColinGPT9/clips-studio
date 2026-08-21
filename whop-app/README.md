@@ -47,7 +47,7 @@ WHOP_API_KEY=xxxxx
 ```
 
 There is **no webhook secret**, because there is no webhook route — Clips
-Studio is free, so there are no payments to be notified about. The
+Kitty is free, so there are no payments to be notified about. The
 template's `/api/webhooks` handler was deleted rather than left as dead code
 that fails the build without a key nobody needs.
 

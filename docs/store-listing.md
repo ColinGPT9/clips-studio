@@ -125,7 +125,7 @@ else's video. Processing it locally to check the pipeline is one thing;
 publishing their face on a Microsoft Store page to advertise a product is
 another, and it is not covered by anything. That rules out most of the
 interesting screens, because clip thumbnails are faces by definition — Clip
-Studio, the clip grid, the editor preview.
+Editor, the clip grid, the editor preview.
 
 Options, in order of preference:
 
