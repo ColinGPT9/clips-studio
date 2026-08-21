@@ -242,7 +242,7 @@ def main() -> int:
         )
     print("    Developer Mode:  on")
     print(f"    app version:     {app_version}")
-    print(f"    package version: {package_version}   (major +1: the Store forbids a 0 major)")
+    print(f"    package version: {package_version}   (the app version, plus the Store's trailing .0)")
 
     if not args.skip_backend:
         say("2/4", "fetching vendored binaries and freezing the Python engine")
