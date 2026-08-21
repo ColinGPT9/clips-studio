@@ -28,7 +28,11 @@ hiddenimports = []
 #   ultralytics  — model/task registry, plus its config yaml
 #   faster_whisper / ctranslate2 — native libs + tokenizer assets
 #   curl_cffi    — bundled libcurl binaries
-for package in ("yt_dlp", "ultralytics", "faster_whisper", "ctranslate2", "curl_cffi"):
+#   piper        — espeak-ng phoneme data (19 MB) resolved from its own
+#                  package directory at runtime, plus the espeak bridge
+#   onnxruntime  — native inference libs Piper loads by name
+for package in ("yt_dlp", "ultralytics", "faster_whisper", "ctranslate2",
+                "curl_cffi", "piper", "onnxruntime"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
     datas += pkg_datas
     binaries += pkg_binaries

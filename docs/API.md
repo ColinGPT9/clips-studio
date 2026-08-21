@@ -516,9 +516,10 @@ font for the script — Chinese gets Microsoft YaHei, Hindi gets Nirmala UI —
 because the default Latin fonts render those as empty boxes, permanently, in
 the video.
 
-**`dubbing_available` is false on an installed build.** The speech engine is an
-optional dependency and deliberately not bundled; `can_dub` describes the
-language, not your installation. Check the top-level flag.
+**`dubbing_available` reflects whether the speech engine is importable.** It
+is true in installed builds from 1.1.3, which bundle it, and false in a source
+checkout without the optional dependency. `can_dub` describes the language, not
+your installation — check both.
 
 ### `POST /translate`
 
@@ -658,8 +659,8 @@ Collected because each one has cost somebody time:
    boundary.
 7. **A source checkout and an installed build have different libraries** on the
    same machine, and both want port 8765.
-8. **`dubbing_available` is false on installed builds** regardless of
-   `can_dub`.
+8. **`dubbing_available` and `can_dub` are different questions** — one is
+   your installation, the other is whether the language has a voice at all.
 9. **One worker, one video at a time.** GPU contention makes parallel jobs
    pointless on consumer hardware, so a queued job waits — that is not a hang.
 10. **No pagination.** `GET /videos` returns everything.

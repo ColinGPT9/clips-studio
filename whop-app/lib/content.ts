@@ -7,8 +7,8 @@
  *  tables, and site/twitch.html's "What it does not do".
  *
  *  Deliberately ABSENT, because none of it is true of an installed build:
- *  cloud or external AI APIs (Ollama only), AI dubbing (Piper is not
- *  bundled), macOS, live stream capture, any hosted or multi-user service.
+ *  cloud or external AI APIs (Ollama only), macOS, live stream capture,
+ *  any hosted or multi-user service.
  */
 
 /** The version this app sends people to.

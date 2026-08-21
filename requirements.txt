@@ -42,3 +42,14 @@ curl_cffi>=0.15.0,<0.16
 # the ceiling sits at the major that is actually tested.
 psutil>=5.9.8,<6
 nvidia-ml-py>=12.575.51,<14
+
+# ---- AI dubbing --------------------------------------------------------
+# Bundled since 1.1.3. It was previously left out on purpose so an installed
+# copy simply reported dubbing unavailable, because the code shelled out to
+# `sys.executable -m piper` — which is api.exe in a frozen build and cannot
+# run `-m module`. multilingual/dub.py now calls Piper's Python API
+# in-process, so it can ship.
+#
+# Voices are NOT bundled: ~60 MB each across 15 languages, downloaded on
+# demand into data/voices/ the first time a language is dubbed.
+piper-tts>=1.5.0,<2

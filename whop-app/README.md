@@ -146,5 +146,4 @@ Two rules that matter more than they look:
   learns that after a 5 GB download files a bug; someone who reads it first
   does not.
 - **Do not add a claim that is not true of an installed build.** No cloud or
-  external AI (Ollama only), no AI dubbing (Piper is deliberately not
-  bundled), no macOS, no live stream capture.
+  external AI (Ollama only), no macOS, no live stream capture.

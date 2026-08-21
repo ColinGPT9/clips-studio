@@ -359,6 +359,7 @@ identical.
 - **It cannot be built in CI.** A GitHub-hosted runner has 14 GB of disk; the
   unpacked app alone is larger than that. Building the Store package is a local
   job until there is a self-hosted runner.
-- **AI dubbing cannot be tested from any packaged build.** Piper is
-  deliberately absent from `requirements.txt`, so `dub.available()` is False in
-  every installed copy. Pre-existing, and documented in `docs/TRANSLATING.md`.
+- **AI dubbing ships as of 1.1.3.** Piper is bundled, so `dub.available()`
+  is True in a packaged build. Voices are not bundled — each is ~60 MB and is
+  downloaded into `data/voices/` the first time a language is dubbed, so
+  dubbing needs a working connection once per language.

@@ -22,7 +22,7 @@ dependency than this stage is worth.
 
 import os
 import subprocess
-import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -56,18 +56,20 @@ DUCK = 0.12                        # original audio kept this loud underneath
 
 
 def available() -> bool:
-    """True when the optional Piper dependency is installed.
+    """True when Piper can be imported.
 
-    Piper is deliberately not in requirements.txt, so an installed copy does
-    not have it and dubbing is reported unavailable rather than failing —
-    server.api gates every dubbing route on this.
+    Piper IS bundled as of 1.1.3, so this is normally true in an installed
+    copy. It stays a check rather than an assumption because a source checkout
+    without the optional dependency should still run everything else, with
+    dubbing reported unavailable rather than failing — server.api gates every
+    dubbing route on this.
 
-    If it is ever bundled, the two `sys.executable -m piper` calls below must
-    change first. In a frozen build sys.executable is api.exe, not python.exe,
-    and a PyInstaller executable cannot run `-m module`: they would work in a
-    checkout and fail silently in the shipped app, which is the same trap that
-    hid the missing FFmpeg path from yt-dlp. Call Piper's Python API in-process
-    instead of shelling out.
+    Bundling it required dropping the two `sys.executable -m piper` calls that
+    used to live below. In a frozen build sys.executable is api.exe, not
+    python.exe, and a PyInstaller executable cannot run `-m module`: they
+    worked in a checkout and would have failed silently in the shipped app,
+    which is the same trap that hid the missing FFmpeg path from yt-dlp.
+    Everything now goes through Piper's Python API in-process.
     """
     try:
         import piper  # noqa: F401
@@ -92,12 +94,15 @@ def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -
     if (voices_dir / f"{name}.onnx").exists():
         return _installed_name(voices_dir, name)
     print(f"      Downloading the {language} voice ({name})…")
-    r = subprocess.run(
-        [sys.executable, "-m", "piper.download_voices", name, "--data-dir", str(voices_dir)],
-        capture_output=True, text=True, timeout=900,
-    )
-    if r.returncode != 0 or not (voices_dir / f"{name}.onnx").exists():
-        print(f"      (voice download failed: {(r.stderr or '')[-200:]})")
+    try:
+        from piper.download_voices import download_voice
+
+        download_voice(name, voices_dir)
+    except Exception as e:
+        print(f"      (voice download failed: {e})")
+        return None
+    if not (voices_dir / f"{name}.onnx").exists():
+        print("      (voice download produced no model file)")
         return None
     return _installed_name(voices_dir, name)
 
@@ -135,22 +140,71 @@ def _duration(path: Path) -> float:
         return 0.0
 
 
+# One loaded voice per model file. Loading builds an ONNX session and reads
+# the model off disk, and the old process-per-utterance approach paid that on
+# every line of a clip.
+_voices: dict[str, object] = {}
+# Synthesis is serialised on purpose. It is called from a ThreadPoolExecutor
+# (see the lanes below), and espeak-ng phonemization keeps process-global
+# state, so two lanes phonemizing at once can corrupt each other's output.
+# Same reasoning as the YOLO inference lock in video/tracker.py: the GPU work
+# was never the parallel part worth having, and a wrong result is worse than
+# a slower one.
+_speak_lock = threading.Lock()
+
+
+def _load_voice(model: Path):
+    """The PiperVoice for this model, loaded once and kept.
+
+    espeak_data_dir is left at its default, which Piper derives from its own
+    package directory — that resolves correctly both in a checkout and inside
+    the frozen bundle, where the data ships alongside the module.
+    """
+    key = str(model)
+    voice = _voices.get(key)
+    if voice is None:
+        from piper import PiperVoice
+
+        voice = PiperVoice.load(model)
+        _voices[key] = voice
+    return voice
+
+
 def _speak(text: str, voice: str, voices_dir: Path, out: Path, rate: float = 1.0,
            speaker: int | None = None) -> bool:
-    cmd = [
-        sys.executable, "-m", "piper", "-m", voice, "--data-dir", str(voices_dir),
-        "-f", str(out), "--length-scale", f"{rate:.3f}",
-    ]
+    """Synthesize one utterance to `out` as a wav.
+
+    In-process rather than `python -m piper`: sys.executable is api.exe in a
+    frozen build and cannot run `-m module`, so shelling out worked in a
+    checkout and would have failed silently in the shipped app.
+    """
+    import wave
+
+    from piper import SynthesisConfig
+
+    model = voices_dir / f"{voice}.onnx"
+    if not model.exists():
+        print(f"      (voice model missing: {model.name})")
+        return False
+
+    config = SynthesisConfig(length_scale=float(rate))
     if speaker is not None:
-        cmd += ["-s", str(speaker)]
-    # encoding is NOT optional: text=True alone encodes stdin with the
-    # Windows locale codec (cp1252), which cannot represent Hindi, Arabic,
-    # Chinese, Urdu, Bengali, Korean or Thai — every such utterance died with
-    # UnicodeEncodeError and the language was silently skipped.
-    r = subprocess.run(
-        cmd, input=text, text=True, encoding="utf-8", capture_output=True, timeout=300
-    )
-    return r.returncode == 0 and out.exists()
+        config.speaker_id = int(speaker)
+
+    with _speak_lock:
+        try:
+            piper_voice = _load_voice(model)
+            with wave.open(str(out), "wb") as wav:
+                piper_voice.synthesize_wav(text, wav, syn_config=config)
+        except Exception as e:
+            # Unicode is the historical failure here: the old subprocess path
+            # encoded stdin with the Windows locale codec and silently lost
+            # every Hindi, Arabic, Chinese, Urdu, Bengali, Korean and Thai
+            # utterance. In-process there is no encoding step to get wrong.
+            print(f"      (speech failed: {e})")
+            return False
+
+    return out.exists() and out.stat().st_size > 0
 
 
 def _utterances(lines: list[dict]) -> list[tuple[str, float, float]]:

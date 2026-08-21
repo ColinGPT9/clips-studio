@@ -124,10 +124,11 @@ Two honest caveats:
   multilingually. That is reputation, not a measurement, which is exactly the
   gap worth closing. See
   [#38](https://github.com/ColinGPT9/clips-studio/issues/38).
-- **AI dubbing cannot be tested from an installed copy.** The text-to-speech
-  engine is not bundled, so dubbing reports itself unavailable. Only a
-  development checkout with Piper installed can exercise it. Do not spend time
-  looking for it.
+- **AI dubbing works in an installed copy as of 1.1.3.** The speech engine
+  ships with the app. The voice for a language is downloaded the first time
+  that language is dubbed (~60 MB), so the first run needs a connection.
+  Languages with no Piper voice — Filipino, Thai, Korean — are subtitle-only,
+  and the app says so rather than skipping them silently.
 
 Say plainly which kind of problem you found, because the fixes are unrelated:
 
