@@ -31,6 +31,12 @@ body {
 	background: var(--cs-base);
 	color: var(--cs-ink);
 	font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+	/* Whop's theme script writes color-scheme onto <html> from the viewer's
+	   own theme, which would leave a light-mode visitor with pale scrollbars
+	   and form controls on this deliberately dark page. The property
+	   inherits, so claiming it here covers everything inside without
+	   fighting an inline style. */
+	color-scheme: dark;
 }
 
 /* The app is embedded in an iframe that supplies its own scroll container,

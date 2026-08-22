@@ -17,7 +17,7 @@ import { PcCheck } from "@/components/PcCheck";
 import { Pitch } from "@/components/Pitch";
 import { verifiedUserId } from "@/lib/auth";
 import { DOWNLOAD_NOTE, LINKS, PLATFORMS, SELLING_POINTS } from "@/lib/content";
-import { whop } from "@/lib/whop-sdk";
+import { optional, whop } from "@/lib/whop-sdk";
 
 export default async function ExperiencePage({
 	params,
@@ -31,8 +31,10 @@ export default async function ExperiencePage({
 	const userId = await verifiedUserId();
 	if (!userId) return <Pitch note="Opened outside a Whop community, so this is the public version of the page. Everything you need is above." />;
 
-	const user = await whop().users.retrieve(userId);
-	const firstName = (user.name || user.username || "").split(" ")[0];
+	// Decorative only — see `optional`. If this fails the page still renders,
+	// it just greets nobody by name.
+	const user = await optional(() => whop().users.retrieve(userId));
+	const firstName = (user?.name || user?.username || "").split(" ")[0];
 
 	return (
 		<main className="cs-page">

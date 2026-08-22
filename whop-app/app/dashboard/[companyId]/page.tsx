@@ -12,7 +12,7 @@ import { CopyBlurb } from "@/components/CopyBlurb";
 import { Pitch } from "@/components/Pitch";
 import { verifiedUserId } from "@/lib/auth";
 import { LINKS } from "@/lib/content";
-import { whop } from "@/lib/whop-sdk";
+import { optional, whop } from "@/lib/whop-sdk";
 
 export default async function DashboardPage({
 	params,
@@ -24,7 +24,9 @@ export default async function DashboardPage({
 	const userId = await verifiedUserId();
 	if (!userId) return <Pitch note="Opened outside a Whop community, so this is the public version of the page. Everything you need is above." />;
 
-	const company = await whop().companies.retrieve(companyId);
+	// Decorative only — see `optional`. Without it the sentence below says
+	// "no per-member cost to you", which reads fine.
+	const company = await optional(() => whop().companies.retrieve(companyId));
 
 	return (
 		<main className="cs-page">
