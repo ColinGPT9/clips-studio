@@ -1,6 +1,9 @@
 ---
 license: agpl-3.0
 tags:
+  # Both names on purpose. The app is Clips Kitty from 1.1.3; the old tag
+  # stays so anything already pointing at it keeps resolving.
+  - clips-kitty
   - clips-studio
   - video
   - windows

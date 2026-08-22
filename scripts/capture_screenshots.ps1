@@ -24,7 +24,15 @@ public class WinCap {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  // The CLIENT rect is the app's own pixels. GetWindowRect includes the
+  // invisible resize border and drop shadow Windows draws around a window,
+  // and copying that region off the screen pulls in whatever is behind it —
+  // the desktop, or another window. That is how wallpaper ended up down the
+  // edge of a Store screenshot.
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
 }
 "@
 
@@ -41,24 +49,28 @@ if (-not $proc) {
 $outDir = Join-Path $PSScriptRoot "..\docs\store-screenshots"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-# Bring it to the front and let the compositor finish drawing.
-[void][WinCap]::ShowWindow($proc.MainWindowHandle, 9)   # SW_RESTORE
+# MAXIMISE, not restore. SW_RESTORE un-maximises an already-maximised
+# window, which is how these were being shot as a small window floating on
+# the desktop instead of filling the screen.
+[void][WinCap]::ShowWindow($proc.MainWindowHandle, 3)   # SW_MAXIMIZE
 [void][WinCap]::SetForegroundWindow($proc.MainWindowHandle)
-Start-Sleep -Milliseconds 900
+Start-Sleep -Milliseconds 1200
 
-$r = New-Object WinCap+RECT
-[void][WinCap]::GetWindowRect($proc.MainWindowHandle, [ref]$r)
-$w = $r.R - $r.L
-$h = $r.B - $r.T
+# Client area only — see the note on GetClientRect above.
+$c = New-Object WinCap+RECT
+[void][WinCap]::GetClientRect($proc.MainWindowHandle, [ref]$c)
+$origin = New-Object WinCap+POINT
+[void][WinCap]::ClientToScreen($proc.MainWindowHandle, [ref]$origin)
+$w = $c.R - $c.L
+$h = $c.B - $c.T
 
 if ($w -lt 1366) {
     Write-Output "WARNING: the window is ${w}px wide. The Store wants 1366 or more."
-    Write-Output "Maximise Clips Kitty and run this again."
 }
 
 $bmp = New-Object System.Drawing.Bitmap $w, $h
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+$g.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bmp.Size)
 
 $stamp = Get-Date -Format "HHmmss"
 $path = Join-Path $outDir "$Name-$stamp.png"

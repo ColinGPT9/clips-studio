@@ -25,11 +25,12 @@
  *  When a new version ships, this changes ONLY after its payload is live on
  *  Hugging Face. See docs/RELEASING.md in the main repo.
  *
- *  Verified 2026-08-18: the newest payload on Hugging Face is
- *  `clips-studio-0.1.2-x64.nsis.7z`, so 0.1.2 is what this must point at —
- *  not whatever GitHub happens to have newest. One version everywhere.
+ *  Verified 2026-08-21: `clips-studio-1.1.3-x64.nsis.7z` is live on Hugging
+ *  Face (6,338,199,990 bytes, fetched and size-checked), so the pin moves to
+ *  1.1.3. Not before — this app redeploys on push, so bumping it ahead of the
+ *  upload puts a broken download in front of people within seconds.
  */
-export const VERSION = "0.1.2";
+export const VERSION = "1.1.3";
 
 export const LINKS = {
 	/** Straight to the installer for VERSION, so a clipper gets one click
@@ -37,7 +38,7 @@ export const LINKS = {
 	 *  Deliberately not /releases/latest: every release is flagged as a
 	 *  prerelease, so GitHub's "latest" is undefined — the API 404s and the
 	 *  web URL silently redirects to the full list. */
-	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsStudio-Web-Setup-${VERSION}.exe`,
+	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsKitty-Web-Setup-${VERSION}.exe`,
 	site: "https://colingpt9.github.io/clips-studio/",
 	/** Same destination as the desktop app's donate button and the website,
 	 *  so there is one place money goes. */
