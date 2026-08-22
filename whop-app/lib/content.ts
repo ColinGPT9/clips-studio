@@ -35,9 +35,11 @@ export const VERSION = "1.1.3";
 export const LINKS = {
 	/** Straight to the installer for VERSION, so a clipper gets one click
 	 *  rather than a list of three alpha releases to choose between.
-	 *  Deliberately not /releases/latest: every release is flagged as a
-	 *  prerelease, so GitHub's "latest" is undefined — the API 404s and the
-	 *  web URL silently redirects to the full list. */
+	 *  Deliberately not /releases/latest, even though 1.1.3 fixed that URL by
+	 *  being the first release not flagged as a prerelease. "Latest" moves the
+	 *  moment a release is published; VERSION above moves only once its payload
+	 *  is confirmed live on Hugging Face. Pinning the version keeps those two
+	 *  from drifting apart and handing someone a setup with nothing to fetch. */
 	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsKitty-Web-Setup-${VERSION}.exe`,
 	site: "https://colingpt9.github.io/clips-studio/",
 	/** Same destination as the desktop app's donate button and the website,
