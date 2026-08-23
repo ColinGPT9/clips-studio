@@ -12,6 +12,30 @@
 
 export const VERSION = "1.1.3";
 
+/** The public address this tool is meant to live at — and the single switch
+ *  that turns search-engine indexing on.
+ *
+ *  **Leave empty until a real domain is pointed at the deployment.** While it
+ *  is empty the page asks not to be indexed, and that is deliberate rather
+ *  than cautious: letting Google index the `*.vercel.app` URL first means
+ *  that address accumulates the ranking, and moving to a proper domain later
+ *  leaves a duplicate you cannot easily retire. Better to have no index entry
+ *  for a week than the wrong one for a year.
+ *
+ *  Setting it does three things at once — allows indexing, sets the canonical
+ *  URL, and fills in the sitemap. No other file needs touching.
+ *
+ *  Prefer a subdomain or path of whatever domain the marketing site ends up
+ *  on (`try.example.com`, or `example.com/try`) rather than a separate
+ *  domain. Two domains split the link equity between the page that explains
+ *  the product and the page that demonstrates it; one consolidates it.
+ *
+ *  Annotated `: string` deliberately. Without it TypeScript infers the
+ *  literal type `""`, every `if (SITE_URL)` becomes provably false, and the
+ *  branches that use it narrow to `never` — the compiler rejects code that is
+ *  correct the moment a real value is filled in. */
+export const SITE_URL: string = "";
+
 export const LINKS = {
 	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsKitty-Web-Setup-${VERSION}.exe`,
 	site: "https://colingpt9.github.io/clips-studio/",

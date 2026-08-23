@@ -393,7 +393,21 @@ function Header({
 				<div>
 					<h1 className="text-2xl font-bold sm:text-3xl">Clips Kitty Web</h1>
 					<p className="mt-1 text-sm" style={{ color: "var(--cs-muted)" }}>
-						Find the moments worth clipping, in your browser.
+						Find the moments worth clipping, in your browser.{" "}
+						{/* Said up here, not only in the footer. A good share of the
+						    people who arrive from OpenRouter's app directory are
+						    developers rather than clippers, and for them "open
+						    source, AGPL" is the interesting fact about this page —
+						    they should not have to scroll past the whole pitch to
+						    find the repo. */}
+						<a
+							href={LINKS.github}
+							className="underline underline-offset-2"
+							style={{ color: "var(--cs-accent)" }}
+						>
+							Open source
+						</a>
+						, AGPL-3.0.
 					</p>
 				</div>
 			</div>

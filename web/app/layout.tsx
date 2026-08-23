@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/content";
 import "./globals.css";
 
 /** Social preview art, absolute and hosted on the GitHub Pages site.
@@ -28,6 +29,15 @@ export const metadata: Metadata = {
 	title: TITLE,
 	description: DESCRIPTION,
 	icons: { icon: "/mascot-head.png" },
+
+	// Indexing is off until `SITE_URL` names a real domain — see the note on
+	// that constant. Vercel already sends `X-Robots-Tag: noindex` on preview
+	// deployments, but production is exactly the case that needs the guard.
+	metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
+	alternates: SITE_URL ? { canonical: SITE_URL } : undefined,
+	robots: SITE_URL
+		? { index: true, follow: true }
+		: { index: false, follow: true },
 	openGraph: {
 		title: TITLE,
 		description: DESCRIPTION,
