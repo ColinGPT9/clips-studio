@@ -61,7 +61,7 @@ import {
 	transcribeChunk,
 } from "@/lib/openrouter";
 import { type Clip, findClips } from "@/lib/score";
-import { identify, masterPlaylistUrl } from "@/lib/source";
+import { identify, masterPlaylistUrl, SUPPORTED_LABEL } from "@/lib/source";
 
 type Phase =
 	| "idle"
@@ -552,7 +552,7 @@ function Controls({
 							: "cs-btn-quiet px-4 py-1.5 text-sm"
 					}
 				>
-					A Kick VOD
+					A {SUPPORTED_LABEL()} VOD
 				</button>
 			</div>
 
@@ -600,12 +600,12 @@ function Controls({
 			) : (
 				<>
 					<label className="block text-sm font-semibold" htmlFor={urlId}>
-						Kick VOD link
+						{SUPPORTED_LABEL()} VOD link
 					</label>
 					<input
 						id={urlId}
 						type="url"
-						placeholder="https://kick.com/channel/videos/..."
+						placeholder="https://www.twitch.tv/videos/… or kick.com/…"
 						value={url}
 						disabled={busy}
 						onChange={(e) => onUrl(e.target.value)}
@@ -613,8 +613,8 @@ function Controls({
 					/>
 					<p className="mt-2 text-xs" style={{ color: "var(--cs-muted)" }}>
 						Downloads only the cheapest audio track to find moments, then just
-						the seconds it needs to cut them — straight from Kick to your
-						browser. Twitch and YouTube links need the desktop app.
+						the seconds it needs to cut them. YouTube links need the desktop
+						app.
 					</p>
 					{hint?.kind === "unsupported" && (
 						<p

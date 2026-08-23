@@ -25,6 +25,7 @@ import * as kick from "./kick";
 import * as twitch from "./twitch";
 
 export type Source =
+	| { kind: "twitch"; id: string }
 	| { kind: "kick"; id: string }
 	| { kind: "unsupported"; message: string };
 
@@ -48,16 +49,24 @@ const YOUTUBE = /(^|\.)(youtube\.com|youtu\.be)$/i;
  *  someone's name on the traffic. The desktop app already does this properly
  *  with yt-dlp. */
 const TWITCH_BLOCKED =
-	"Twitch VODs cannot be opened from a browser — Twitch's video servers refuse cross-origin requests, and no web page can get around that. The desktop app handles Twitch links directly. Kick VOD links work here, and so does any video file from your computer.";
+	"Twitch links are not available here at the moment — Twitch's video servers refuse cross-origin requests, so reading a VOD needs a relay that is not currently running. The desktop app handles Twitch directly. Kick VOD links work here, and so does any video file from your computer.";
 
 export function identify(input: string): Source {
 	const text = input.trim();
 	if (!text) {
-		return { kind: "unsupported", message: "Paste a Kick VOD link." };
+		return {
+			kind: "unsupported",
+			message: twitch.enabled()
+				? "Paste a Twitch or Kick VOD link."
+				: "Paste a Kick VOD link.",
+		};
 	}
 
-	if (twitch.parseVodId(text)) {
-		return { kind: "unsupported", message: TWITCH_BLOCKED };
+	const twitchId = twitch.parseVodId(text);
+	if (twitchId) {
+		return twitch.enabled()
+			? { kind: "twitch", id: twitchId }
+			: { kind: "unsupported", message: TWITCH_BLOCKED };
 	}
 
 	const kickId = kick.parseVideoId(text);
@@ -96,14 +105,29 @@ export function identify(input: string): Source {
 
 	return {
 		kind: "unsupported",
-		message:
-			"Only Kick VOD links work here. For anything else, download the video and choose it as a file above.",
+		message: twitch.enabled()
+			? "Only Twitch and Kick VOD links work here. For anything else, download the video and choose it as a file above."
+			: "Only Kick VOD links work here. For anything else, download the video and choose it as a file above.",
 	};
 }
 
-/** The master playlist URL for a source, however that platform hands it over. */
+/** The master playlist URL for a source, however that platform hands it over.
+ *
+ *  Kick's comes straight from Kick; Twitch's comes from our own proxy, which
+ *  has already done the token dance and rewritten the playlist. `hls.ts` sees
+ *  no difference between them. */
 export function masterPlaylistUrl(source: Source): Promise<string> {
-	return source.kind === "kick"
-		? kick.masterPlaylistUrl(source.id)
-		: Promise.reject(new Error(source.message));
+	switch (source.kind) {
+		case "kick":
+			return kick.masterPlaylistUrl(source.id);
+		case "twitch":
+			return twitch.masterPlaylistUrl(source.id);
+		default:
+			return Promise.reject(new Error(source.message));
+	}
 }
+
+/** What the link box should say it accepts, which depends on whether the
+ *  Twitch proxy is deployed. */
+export const SUPPORTED_LABEL = (): string =>
+	twitch.enabled() ? "Twitch or Kick" : "Kick";

@@ -1,77 +1,122 @@
-# Twitch probe
+# Twitch proxy
 
-**A throwaway diagnostic, not a feature.** It answers one question, and then
-it either becomes the real proxy or gets deleted.
+A Cloudflare Worker that makes Twitch VODs readable from a browser. It is the
+only server the web version has, and it exists for one reason.
 
-## The question
+## Why
 
-Twitch VODs cannot be read from a browser. `gql.twitch.tv` is fine, but
-`usher.ttvnw.net` returns **no CORS headers on a successful response**, and
-neither does the CloudFront CDN behind it — not for the manifests and not for
-the `.ts` segments. The browser therefore refuses to hand any of it to the
-page, which is why `web/` shows "failed to fetch" on a Twitch link.
+Twitch VODs cannot be read from a browser. `gql.twitch.tv` is fine — it
+allows the origin and the `Client-ID` header. Everything after it is not:
+`usher.ttvnw.net` sends **no CORS headers on a successful response**, and
+neither does the CloudFront CDN behind it, for the manifests or the `.ts`
+segments. The browser refuses to hand any of it to the page, which surfaces
+as "failed to fetch".
 
-> Worth knowing, because it is what made this look fine the first time it was
-> checked: Twitch **does** send `Access-Control-Allow-Origin: *` on *error*
-> responses. A made-up VOD id 403s with permissive headers and looks like
-> proof the path is open. Test CORS against a **successful** response or the
-> errors will lie to you.
+> **The trap, recorded because it caught us once.** Twitch **does** send
+> `Access-Control-Allow-Origin: *` on *error* responses. A made-up VOD id
+> 403s with permissive headers and reads as proof the path is open. Test CORS
+> against a **successful** response, or the errors will lie to you.
 
-The only fix is a proxy that fetches on the visitor's behalf and adds the
-header. Before building one, there is a prior question that kills the whole
-idea if the answer is no:
+No client-side trick fixes this. Something has to fetch on the visitor's
+behalf and add the header, so this does exactly that and nothing else — no
+transcoding, no caching of media, no storage.
 
-**Does Twitch serve requests coming from Cloudflare's network at all?**
+## Why Cloudflare rather than Vercel
 
-Twitch is entitled to refuse datacenter IPs, and Cloudflare's egress is about
-as datacenter as it gets. This cannot be answered from a laptop — from a home
-connection every step already works, which is how the chain was mapped. The
-only variable is the source IP, so the test has to run where the proxy would.
+**Cloudflare does not bill egress for Workers.** A two-hour VOD is ~190 MB of
+audio; that would consume Vercel's entire 100 GB monthly allowance in about
+500 runs. Here the bytes are free and only the *request count* is metered.
 
-## Run it
+| | Free | Paid |
+|---|---|---|
+| Requests | 100,000/day | 10M/month, then $0.30/million |
+| Bandwidth | not billed | not billed |
+| Cost | $0 | $5/month |
+
+At roughly 750 requests per two-hour VOD (~720 audio segments plus the clip
+segments), that is about **130 VODs a day free**, or **13,000 a month** on the
+$5 plan. Past that it is about 1,300 more VODs per 30¢. The bill is not what
+will limit this.
+
+## Deploy
 
 ```bash
 cd twitch-proxy
-npx wrangler login      # opens a browser, click Allow
-npx wrangler deploy     # prints your workers.dev URL
+npx wrangler login     # opens a browser, click Allow
+npx wrangler deploy    # prints your workers.dev URL
 ```
 
-Then, with a **current** Twitch VOD id — they expire, so grab one from a
-channel's Videos tab:
+Then **set `ALLOWED_ORIGINS` in `wrangler.toml`** to the deployed web app's
+origin and deploy again. Leaving it empty means any site may use this worker,
+which is somebody else's free bandwidth on your account.
+
+Finally, put the worker's URL into `TWITCH_PROXY` in `web/lib/content.ts`.
+Until that is set the web app recognises Twitch links and explains that they
+are unavailable, rather than offering a button that fails.
+
+## Check it works
 
 ```bash
-curl "https://clips-kitty-twitch-probe.<your-subdomain>.workers.dev/?vod=<id>"
+curl "https://clips-kitty-twitch.<your-subdomain>.workers.dev/health?vod=<id>"
 ```
 
-## Reading the result
+Use a **current** VOD id — Twitch VODs expire. If every step 404s the id is
+stale rather than anything being blocked.
 
-It walks the same four steps the real proxy would and reports each, so a
-failure names the step rather than just failing:
+This is the question the whole design hangs on, and it cannot be answered from
+a laptop: from a home connection every step already works, which is how the
+chain was mapped. Twitch is entitled to refuse datacenter IPs, and
+Cloudflare's egress is about as datacenter as it gets — so the test has to run
+where the proxy runs.
 
-| Step | What it proves |
+| Step | Proves |
 |---|---|
 | `1-gql-token` | Twitch issues a playback token to this IP |
 | `2-usher-master` | usher serves the master playlist |
 | `3-cdn-playlist` | the CDN serves a media playlist |
 | `4-cdn-segment` | the CDN serves actual video bytes |
 
-`"verdict": "WORKS — ..."` means all four passed and the proxy is worth
-building.
+`"verdict": "WORKS — Twitch serves Cloudflare."` means all four passed.
 
-If **every** step 404s, the VOD id is stale rather than Cloudflare being
-blocked. Retry with a current one before concluding anything.
+## Endpoints
 
-## If it works
+| | |
+|---|---|
+| `GET /master?vod=<id>` | playback token + manifest, rendition URLs rewritten to `/media` |
+| `GET /media?u=<url>` | a rendition playlist, segment names rewritten to `/seg` |
+| `GET /seg?u=<url>` | one segment, streamed straight through |
+| `GET /health[?vod=]` | the four-step check above |
 
-Roughly what the real proxy would cost, so the decision is made with numbers:
+Deliberately **not** a generic `?url=` proxy — that is an open relay, and
+anyone who found the URL would get free bandwidth on your account. Instead the
+playlists are rewritten so every URL a client follows points back here, and
+requests are limited to `ALLOWED_ORIGINS` and to Twitch-owned hostnames.
 
-- audio-only for a 2-hour VOD is ~190 MB and ~720 segment requests
-- clip cutting adds only the segments covering chosen moments
-- Cloudflare Workers' free tier is 100,000 requests/day — about 130 VODs —
-  and does not meter egress the way Vercel does
+## Built around the free plan
 
-## Then delete it
+- **50 subrequests per invocation**, so the worker never fetches and stitches a
+  whole VOD. The browser pulls each segment through separately — one upstream
+  fetch per request.
+- **Streaming, never buffering.** `upstream.body` is handed straight to the
+  `Response`, so the worker connects two pipes rather than holding the bytes.
+  CPU stays near zero regardless of segment size; buffering would be the
+  difference between free and billed.
+- Segments are cached for a day (they are immutable once written), manifests
+  for five minutes, tokens not at all.
 
-This worker has **no authentication and no rate limiting**. It is a
-ten-minute experiment, and an open proxy left running is someone else's free
-bandwidth. Replace it with the real thing or take it down.
+## What this costs in honesty
+
+With this deployed, Twitch links no longer go browser-to-Twitch. They route
+through infrastructure the project runs. The web app's claim that nothing of
+yours touches our servers still holds for local files and for Kick — but not
+for Twitch, and the page says so.
+
+## If it gets abused
+
+The origin check stops a browser being drafted into spending your request
+budget; it does not stop someone determined with curl. The upgrade is to sign
+the rewritten URLs: HMAC the target in `/master` and `/media`, verify it in
+`/seg`, so only URLs this worker emitted are proxyable. That costs a
+`wrangler secret put` and about ten lines. It was left out deliberately —
+setup steps are a real cost for a free tool — but the design has a place for
+it.

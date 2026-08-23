@@ -1,31 +1,33 @@
-/** Finding the master playlist for a Twitch VOD, from the browser.
+/** Twitch VODs, by way of the proxy.
  *
- *  No server of ours is involved: `gql.twitch.tv` and `usher.ttvnw.net` both
- *  send permissive CORS headers, so the visitor's own browser can do exactly
- *  what the Twitch web player does — ask for a playback token, then ask usher
- *  for the manifest. Everything after that is ordinary HLS, handled in
- *  `hls.ts`.
+ *  ## Why there is almost nothing here any more
  *
- *  ## This will break sometimes
+ *  An earlier version did the whole dance in the browser: a GraphQL call for
+ *  a playback token, then `usher.ttvnw.net` for the manifest. The token step
+ *  works fine — `gql.twitch.tv` allows the origin and the `Client-ID` header.
+ *  Everything after it does not. `usher` sends **no CORS headers on a
+ *  successful response**, and neither does the CloudFront CDN behind it, for
+ *  the manifests or the `.ts` segments. The browser refuses to hand any of it
+ *  to the page.
  *
- *  The client-id and persisted-query hash below are the ones Twitch's own web
- *  player uses. They are not documented or promised to anyone, and Twitch
- *  changes them. When that happens this stops working and the desktop app —
- *  which uses yt-dlp and is maintained against exactly this churn — does not.
- *  Fail loudly and point there rather than trying to be clever.
+ *  > Recorded because it already caught us: Twitch DOES send
+ *  > `Access-Control-Allow-Origin: *` on ERROR responses. A made-up VOD id
+ *  > 403s with permissive headers and reads as proof the path is open. Verify
+ *  > CORS against a SUCCESSFUL response.
+ *
+ *  So the token and manifest logic moved to `twitch-proxy/`, a Cloudflare
+ *  Worker, and this file is reduced to recognising a link and pointing at it.
+ *  The worker rewrites every URL in the playlists to point back at itself, so
+ *  `hls.ts` needs no knowledge of any of this — it fetches a master playlist
+ *  and follows the URLs it finds, exactly as it does for Kick.
  */
 
+import { TWITCH_PROXY } from "./content";
 import { VodError } from "./hls";
 
-/** The public web client-id Twitch's own player sends. Not a secret, not
- *  ours, and not tied to any account — it identifies the web player, which is
- *  what we are imitating. */
-const CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
-
-/** Persisted-query hash for PlaybackAccessToken. Twitch rotates these
- *  occasionally; a `null` token with no error is the symptom. */
-const PLAYBACK_QUERY_HASH =
-	"0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712";
+/** Whether Twitch links can be offered at all — false until the worker in
+ *  `twitch-proxy/` is deployed and its URL set in `content.ts`. */
+export const enabled = (): boolean => Boolean(TWITCH_PROXY);
 
 /** Pull the VOD id out of whatever the visitor pasted.
  *
@@ -52,52 +54,15 @@ export function parseVodId(input: string): string | null {
 	return null;
 }
 
-type AccessToken = { value: string; signature: string };
-
-async function playbackToken(vodId: string): Promise<AccessToken> {
-	const res = await fetch("https://gql.twitch.tv/gql", {
-		method: "POST",
-		headers: { "Client-ID": CLIENT_ID, "Content-Type": "application/json" },
-		body: JSON.stringify({
-			operationName: "PlaybackAccessToken",
-			variables: {
-				isLive: false,
-				login: "",
-				isVod: true,
-				vodID: vodId,
-				playerType: "embed",
-			},
-			extensions: {
-				persistedQuery: { version: 1, sha256Hash: PLAYBACK_QUERY_HASH },
-			},
-		}),
-	});
-
-	if (!res.ok) {
-		throw new VodError(
-			`Twitch refused the request (HTTP ${res.status}). This usually means Twitch has changed something — the desktop app handles Twitch reliably.`,
-		);
-	}
-
-	const token = (await res.json())?.data?.videoPlaybackAccessToken;
-	if (!token?.value || !token?.signature) {
-		throw new VodError(
-			"Twitch would not hand out a playback token for that VOD. It may be deleted, private, or subscriber-only.",
-		);
-	}
-	return token;
-}
-
-/** The master playlist URL for a VOD, signed and ready to fetch. */
+/** The master playlist URL — served by the proxy, not by Twitch.
+ *
+ *  Async only to match the Kick source's shape, so `source.ts` can treat the
+ *  two identically. There is nothing to await. */
 export async function masterPlaylistUrl(vodId: string): Promise<string> {
-	const { value, signature } = await playbackToken(vodId);
-
-	const url = new URL(`https://usher.ttvnw.net/vod/${vodId}.m3u8`);
-	url.searchParams.set("allow_source", "true");
-	url.searchParams.set("allow_audio_only", "true");
-	url.searchParams.set("player", "twitchweb");
-	url.searchParams.set("sig", signature);
-	url.searchParams.set("token", value);
-
-	return url.toString();
+	if (!TWITCH_PROXY) {
+		throw new VodError(
+			"Twitch links are not available here at the moment. The desktop app handles Twitch directly.",
+		);
+	}
+	return `${TWITCH_PROXY.replace(/\/$/, "")}/master?vod=${encodeURIComponent(vodId)}`;
 }

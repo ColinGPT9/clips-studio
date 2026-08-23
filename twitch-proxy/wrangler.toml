@@ -1,7 +1,18 @@
-name = "clips-kitty-twitch-probe"
+name = "clips-kitty-twitch"
 main = "worker.js"
 compatibility_date = "2026-01-01"
 
-# Free Workers Logs — `npx wrangler tail` shows live requests.
+# Free Workers Logs — `npx wrangler tail` shows live traffic and abuse.
 [observability]
 enabled = true
+
+[vars]
+# Which pages may use this proxy, comma separated, no trailing slash.
+#
+# LEAVE THIS SET. Empty means "any origin", which is fine while developing
+# against localhost and wrong in production — an open proxy is somebody else's
+# free bandwidth on your Cloudflare account.
+#
+# Add the real domain here once the web app has one, alongside or instead of
+# the vercel.app address.
+ALLOWED_ORIGINS = "http://localhost:3000"

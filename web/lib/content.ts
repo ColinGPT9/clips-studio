@@ -46,6 +46,24 @@ export const LINKS = {
 	openRouterCredits: "https://openrouter.ai/settings/credits",
 } as const;
 
+/** The Cloudflare Worker that makes Twitch VODs readable — and the switch
+ *  that turns Twitch links on.
+ *
+ *  **Leave empty until `twitch-proxy/` is deployed.** While it is empty,
+ *  Twitch links are recognised and refused with an explanation, which is far
+ *  better than offering a button that fails with "failed to fetch".
+ *
+ *  Why a proxy is needed at all: `usher.ttvnw.net` and Twitch's CDN send no
+ *  CORS headers on successful responses, so a browser is not permitted to
+ *  read the manifests or the segments. Nothing client-side fixes that. See
+ *  `twitch-proxy/README.md`.
+ *
+ *  Note what this costs in honesty: with it set, Twitch links no longer go
+ *  browser-to-Twitch. They route through infrastructure the project runs, and
+ *  the "nothing of yours touches our servers" claim holds for local files and
+ *  Kick but not for Twitch. The copy on the page says so. */
+export const TWITCH_PROXY: string = "";
+
 /** Recommended defaults.
  *
  *  Preferences, not a hardcoded catalogue: the model list is fetched live
