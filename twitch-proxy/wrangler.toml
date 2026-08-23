@@ -1,0 +1,7 @@
+name = "clips-kitty-twitch-probe"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Free Workers Logs — `npx wrangler tail` shows live requests.
+[observability]
+enabled = true
