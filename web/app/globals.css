@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* Clips Kitty brand. Same values as site/styles.css and whop-app's
+   globals.css in the main repo — if the site palette changes, change it here
+   too, or the tool stops looking like the thing it is advertising.
+
+   Deliberately dark for everyone rather than following the visitor's system
+   theme: the product's own identity is dark, and a half-matched theme reads
+   as somebody else's page. */
+:root {
+	--cs-base: #0a1628;
+	--cs-surface: #13243d;
+	--cs-raised: #1c3354;
+	--cs-accent: #38bdf8;
+	--cs-accent-strong: #0ea5e9;
+	--cs-ink: #f1f5f9;
+	--cs-muted: #94a3b8;
+	--cs-success: #34d399;
+	--cs-warn: #fbbf24;
+	--cs-danger: #f87171;
+	--cs-radius: 14px;
+	--cs-line: rgba(148, 163, 184, 0.18);
+}
+
+body {
+	background: var(--cs-base);
+	color: var(--cs-ink);
+	font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+	/* Inherits to form controls and scrollbars, so a light-mode visitor does
+	   not get pale native widgets on a dark page. */
+	color-scheme: dark;
+}
+
+.cs-card {
+	background: var(--cs-surface);
+	border: 1px solid var(--cs-line);
+	border-radius: var(--cs-radius);
+}
+
+.cs-raised {
+	background: var(--cs-raised);
+	border: 1px solid var(--cs-line);
+	border-radius: var(--cs-radius);
+}
+
+.cs-btn {
+	background: var(--cs-accent);
+	color: #04121f;
+	border-radius: 10px;
+	font-weight: 650;
+	transition: background 120ms ease;
+}
+
+.cs-btn:hover:not(:disabled) {
+	background: var(--cs-accent-strong);
+}
+
+.cs-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.cs-btn-quiet {
+	background: transparent;
+	color: var(--cs-ink);
+	border: 1px solid var(--cs-line);
+	border-radius: 10px;
+	transition: border-color 120ms ease;
+}
+
+.cs-btn-quiet:hover:not(:disabled) {
+	border-color: var(--cs-accent);
+}

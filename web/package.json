@@ -1,0 +1,31 @@
+{
+	"name": "clips-kitty-web",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Browser-only free tier for Clips Kitty. Runs on the visitor's own OpenRouter account; no server, no inference cost.",
+	"scripts": {
+		"postinstall": "node scripts/copy-ffmpeg-core.mjs",
+		"dev": "next dev --turbopack",
+		"prebuild": "node scripts/copy-ffmpeg-core.mjs",
+		"build": "next build",
+		"start": "next start",
+		"lint": "biome lint",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@ffmpeg/ffmpeg": "^0.12.15",
+		"next": "16.1.1",
+		"react": "19.2.0",
+		"react-dom": "19.2.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.2.6",
+		"@ffmpeg/core": "^0.12.10",
+		"@tailwindcss/postcss": "^4.1.14",
+		"@types/node": "^20.19.21",
+		"@types/react": "19.2.2",
+		"@types/react-dom": "19.2.2",
+		"tailwindcss": "^4.1.14",
+		"typescript": "^5.9.3"
+	}
+}
