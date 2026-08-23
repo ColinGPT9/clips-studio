@@ -25,20 +25,40 @@ import * as kick from "./kick";
 import * as twitch from "./twitch";
 
 export type Source =
-	| { kind: "twitch"; id: string }
 	| { kind: "kick"; id: string }
 	| { kind: "unsupported"; message: string };
 
 const YOUTUBE = /(^|\.)(youtube\.com|youtu\.be)$/i;
 
+/** Why Twitch is recognised but refused.
+ *
+ *  It was built and then removed, so this is worth stating precisely enough
+ *  that nobody rebuilds it. The GraphQL token step works fine from a browser —
+ *  `gql.twitch.tv` allows the origin and the `Client-ID` header. The failure
+ *  is one step later: `usher.ttvnw.net` returns **no CORS headers at all on a
+ *  successful response**, and neither does the CloudFront CDN behind it. The
+ *  browser therefore refuses to hand the playlist to the page.
+ *
+ *  The trap is that Twitch DOES send `Access-Control-Allow-Origin: *` on
+ *  error responses — a 403 for a nonexistent VOD looks permissive, which is
+ *  what made this appear to work when it was checked against a made-up ID.
+ *  Verify against a real VOD, or the errors lie to you.
+ *
+ *  Fixing it needs a proxy, which means a server, its bandwidth bill, and
+ *  someone's name on the traffic. The desktop app already does this properly
+ *  with yt-dlp. */
+const TWITCH_BLOCKED =
+	"Twitch VODs cannot be opened from a browser — Twitch's video servers refuse cross-origin requests, and no web page can get around that. The desktop app handles Twitch links directly. Kick VOD links work here, and so does any video file from your computer.";
+
 export function identify(input: string): Source {
 	const text = input.trim();
 	if (!text) {
-		return { kind: "unsupported", message: "Paste a Twitch or Kick VOD link." };
+		return { kind: "unsupported", message: "Paste a Kick VOD link." };
 	}
 
-	const twitchId = twitch.parseVodId(text);
-	if (twitchId) return { kind: "twitch", id: twitchId };
+	if (twitch.parseVodId(text)) {
+		return { kind: "unsupported", message: TWITCH_BLOCKED };
+	}
 
 	const kickId = kick.parseVideoId(text);
 	if (kickId) return { kind: "kick", id: kickId };
@@ -71,33 +91,19 @@ export function identify(input: string): Source {
 	}
 
 	if (/twitch\.tv$/i.test(host)) {
-		return {
-			kind: "unsupported",
-			message:
-				"That is a Twitch link, but not to a VOD. Use a /videos/ link — clips and live channels cannot be processed.",
-		};
+		return { kind: "unsupported", message: TWITCH_BLOCKED };
 	}
 
 	return {
 		kind: "unsupported",
 		message:
-			"Only Twitch and Kick VOD links work here. For anything else, download the video and choose it as a file above.",
+			"Only Kick VOD links work here. For anything else, download the video and choose it as a file above.",
 	};
 }
 
 /** The master playlist URL for a source, however that platform hands it over. */
 export function masterPlaylistUrl(source: Source): Promise<string> {
-	switch (source.kind) {
-		case "twitch":
-			return twitch.masterPlaylistUrl(source.id);
-		case "kick":
-			return kick.masterPlaylistUrl(source.id);
-		default:
-			return Promise.reject(new Error(source.message));
-	}
+	return source.kind === "kick"
+		? kick.masterPlaylistUrl(source.id)
+		: Promise.reject(new Error(source.message));
 }
-
-export const PLATFORM_LABEL: Record<"twitch" | "kick", string> = {
-	twitch: "Twitch",
-	kick: "Kick",
-};

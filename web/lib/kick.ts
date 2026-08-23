@@ -53,10 +53,15 @@ export async function masterPlaylistUrl(videoId: string): Promise<string> {
 	});
 
 	if (!res.ok) {
+		// A 404 here means only "Kick has nothing at that id". It could be
+		// expired, deleted, private, or a link shape this does not recognise —
+		// and Kick's retention varies by channel, so naming a number would be
+		// inventing a cause. An earlier version confidently blamed a 30-day
+		// expiry and told someone their three-day-old VOD had aged out.
 		throw new VodError(
 			res.status === 404
-				? "Kick has no such VOD. Kick deletes VODs after 30 days, so an older link will have expired."
-				: `Kick refused the request (HTTP ${res.status}). Kick sits behind bot protection that sometimes blocks browsers it does not recognise — the desktop app handles Kick reliably.`,
+				? "Kick has no VOD at that link. Check the URL looks like kick.com/<channel>/videos/<id> — otherwise it may have been deleted, made private, or aged out of Kick's storage."
+				: `Kick refused the request (HTTP ${res.status}). Kick sits behind bot protection that sometimes blocks requests it does not recognise — the desktop app handles Kick reliably.`,
 		);
 	}
 

@@ -40,6 +40,9 @@ export const LINKS = {
 	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsKitty-Web-Setup-${VERSION}.exe`,
 	site: "https://colingpt9.github.io/clips-studio/",
 	github: "https://github.com/ColinGPT9/clips-studio",
+	/** Same destination as the desktop app's donate button and the website, so
+	 *  there is one place money goes. See DONATE_NOTE for what it funds. */
+	donate: "https://paypal.me/clipsstudio",
 	openRouterCredits: "https://openrouter.ai/settings/credits",
 } as const;
 
@@ -103,6 +106,16 @@ export const DESKTOP_ONLY: { title: string; body: string }[] = [
  *  discovered later. */
 export const DESKTOP_IS_FREE =
 	"Clips Kitty for Windows is completely free to run. It is open source, there is no subscription, no credits and no watermark — and because the AI runs on your own PC, clipping a hundred VODs costs exactly nothing. Only this browser version uses paid API credits, because a browser cannot run the model itself.";
+
+/** What the donate button is actually for.
+ *
+ *  A "Donate" button beside a free app reads as a price tag with extra steps
+ *  unless it says otherwise. Nothing here is paywalled, there is no upgrade,
+ *  and the money is not income — it pays people to fix issues. Worth one
+ *  sentence, because the alternative is that some readers quietly assume the
+ *  free version is crippled. */
+export const DONATE_NOTE =
+	"Clips Kitty is free and always will be — there is no paid tier and nothing is held back. Donations go towards paying people to fix bugs and build features, not to the maintainer.";
 
 /** Said before anyone signs in, because it is the thing people are wary of. */
 export const PRIVACY_NOTE =

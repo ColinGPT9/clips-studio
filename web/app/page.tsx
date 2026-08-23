@@ -36,6 +36,7 @@ import {
 	COST_NOTE,
 	DESKTOP_IS_FREE,
 	DESKTOP_ONLY,
+	DONATE_NOTE,
 	LINKS,
 	PREFERRED_SCORE_MODEL,
 	PREFERRED_TRANSCRIBE_MODEL,
@@ -317,6 +318,7 @@ export default function Page() {
 						account={account}
 						mode={mode}
 						onMode={setMode}
+						selectedFile={file}
 						onFile={setFile}
 						url={url}
 						onUrl={setUrl}
@@ -476,6 +478,7 @@ function Controls({
 	account,
 	mode,
 	onMode,
+	selectedFile,
 	onFile,
 	url,
 	onUrl,
@@ -492,6 +495,7 @@ function Controls({
 	account: KeyInfo | null;
 	mode: Mode;
 	onMode: (m: Mode) => void;
+	selectedFile: File | null;
 	onFile: (f: File | null) => void;
 	url: string;
 	onUrl: (u: string) => void;
@@ -548,14 +552,37 @@ function Controls({
 							: "cs-btn-quiet px-4 py-1.5 text-sm"
 					}
 				>
-					A Twitch or Kick VOD
+					A Kick VOD
 				</button>
 			</div>
 
 			{mode === "file" ? (
 				<>
-					<label className="block text-sm font-semibold" htmlFor={fileId}>
-						Your recording
+					<span className="block text-sm font-semibold">Your recording</span>
+
+					{/* The native file input is hidden and driven by this label.
+					    Left visible it renders as the browser's own tiny grey
+					    "Choose File" control, which on this dark page reads as
+					    nothing at all — the first person to try it could not find
+					    the upload button. A label IS the accessible control for a
+					    file input, so this keeps keyboard and screen-reader
+					    behaviour while looking like the rest of the page. */}
+					<label
+						htmlFor={fileId}
+						className="cs-raised mt-2 flex cursor-pointer flex-col items-center gap-1 px-4 py-6 text-center transition-colors hover:border-current"
+						style={{ borderStyle: "dashed" }}
+					>
+						<span
+							className="text-sm font-semibold"
+							style={{ color: "var(--cs-accent)" }}
+						>
+							{selectedFile ? "Choose a different file" : "Choose a video file"}
+						</span>
+						<span className="text-xs" style={{ color: "var(--cs-muted)" }}>
+							{selectedFile
+								? `${selectedFile.name} · ${(selectedFile.size / 1e6).toFixed(0)} MB`
+								: `MP4, MOV, WebM, MP3 or WAV — up to ${MAX_DURATION_SECONDS / 60} minutes`}
+						</span>
 					</label>
 					<input
 						id={fileId}
@@ -563,22 +590,22 @@ function Controls({
 						accept="video/*,audio/*"
 						disabled={busy}
 						onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-						className="mt-2 block w-full text-sm"
+						className="sr-only"
 					/>
 					<p className="mt-2 text-xs" style={{ color: "var(--cs-muted)" }}>
-						MP4, MOV, WebM, MP3 or WAV, up to {MAX_DURATION_SECONDS / 60}{" "}
-						minutes. It stays on your computer — nothing is uploaded.
+						It stays on your computer — the video is read in the browser and
+						never uploaded to us.
 					</p>
 				</>
 			) : (
 				<>
 					<label className="block text-sm font-semibold" htmlFor={urlId}>
-						Twitch or Kick VOD link
+						Kick VOD link
 					</label>
 					<input
 						id={urlId}
 						type="url"
-						placeholder="https://www.twitch.tv/videos/123456789"
+						placeholder="https://kick.com/channel/videos/..."
 						value={url}
 						disabled={busy}
 						onChange={(e) => onUrl(e.target.value)}
@@ -586,8 +613,8 @@ function Controls({
 					/>
 					<p className="mt-2 text-xs" style={{ color: "var(--cs-muted)" }}>
 						Downloads only the cheapest audio track to find moments, then just
-						the seconds it needs to cut them. Straight from Twitch or Kick to
-						your browser.
+						the seconds it needs to cut them — straight from Kick to your
+						browser. Twitch and YouTube links need the desktop app.
 					</p>
 					{hint?.kind === "unsupported" && (
 						<p
@@ -859,7 +886,18 @@ function DesktopPitch() {
 				<a href={LINKS.github} className="cs-btn-quiet px-5 py-2.5 text-sm">
 					Source on GitHub
 				</a>
+				<a href={LINKS.donate} className="cs-btn-quiet px-5 py-2.5 text-sm">
+					Donate
+				</a>
 			</div>
+
+			{/* Says where the money goes, because "Donate" next to a free app
+			    invites the assumption that it is really a price tag. It is not:
+			    nothing here is paywalled, and donations pay people to fix
+			    issues. */}
+			<p className="mt-4 text-xs" style={{ color: "var(--cs-muted)" }}>
+				{DONATE_NOTE}
+			</p>
 
 			<p className="mt-4 text-xs" style={{ color: "var(--cs-muted)" }}>
 				Needs Windows and 16 GB of RAM. An NVIDIA graphics card makes it much
