@@ -376,11 +376,26 @@ function Header({
 }) {
 	return (
 		<header className="mb-8 flex items-start justify-between gap-4">
-			<div>
-				<h1 className="text-2xl font-bold sm:text-3xl">Clips Kitty Web</h1>
-				<p className="mt-1 text-sm" style={{ color: "var(--cs-muted)" }}>
-					Find the moments worth clipping, in your browser.
-				</p>
+			<div className="flex items-center gap-3">
+				{/* biome-ignore lint/performance/noImgElement: next/image cannot
+				    optimise anything in a static export — it requires
+				    `images.unoptimized`, which makes it a plain <img> wearing a
+				    costume. The rule's real concern is weight, and that is
+				    handled instead: this file is pre-scaled to 128px and 17 KB,
+				    down from the 166 KB original in docs/brand. */}
+				<img
+					src="/mascot-head.png"
+					alt=""
+					width={52}
+					height={52}
+					className="h-11 w-11 shrink-0 sm:h-13 sm:w-13"
+				/>
+				<div>
+					<h1 className="text-2xl font-bold sm:text-3xl">Clips Kitty Web</h1>
+					<p className="mt-1 text-sm" style={{ color: "var(--cs-muted)" }}>
+						Find the moments worth clipping, in your browser.
+					</p>
+				</div>
 			</div>
 			{signedIn && (
 				<button
