@@ -109,9 +109,16 @@ export const DESKTOP_ONLY: { title: string; body: string }[] = [
 		title: "Local AI, nothing metered",
 		body: "Runs the model on your own machine, so there is no per-clip cost and no daily request cap however many hours you get through.",
 	},
+	// Wording taken from site/index.html's "19 languages" section rather than
+	// written here. An earlier version of this entry advertised "queue them
+	// straight to YouTube on a schedule" — a feature the maintainer had not
+	// shipped, invented by describing code (`core/scheduler.py`) instead of
+	// asking what actually works. Uploading needs the user's own Google API
+	// credentials and, until their app passes YouTube's audit, lands every
+	// upload as private. None of that belongs in a one-line boast.
 	{
-		title: "19 languages, scheduling and uploads",
-		body: "Translate, subtitle and dub clips, then queue them straight to YouTube on a schedule.",
+		title: "19 languages",
+		body: "Translate, subtitle or dub a clip, with every line shown for review before anything is burned in. The app itself is translated into all 19 too.",
 	},
 ];
 
