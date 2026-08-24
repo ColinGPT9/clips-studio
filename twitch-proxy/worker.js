@@ -96,7 +96,16 @@ function corsHeaders(request, env) {
 	// being drafted into spending the request budget — it is curl, or the
 	// /health check. Refusing those would 403 the first thing anyone runs
 	// after deploying, while protecting nothing.
-	const ok = allowed.length === 0 || !origin || allowed.includes(origin);
+	// Any localhost origin passes, whatever the port. A browser sends the exact
+	// origin it is on, so "localhost:3000" in a list does not match a build
+	// being served on 127.0.0.1:4321 — and chasing that mismatch port by port
+	// wastes time on a value that can only ever come from the developer's own
+	// machine. Not a hole: nothing on the public internet can present a
+	// localhost origin to this worker.
+	const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
+	const ok =
+		allowed.length === 0 || !origin || isLocal || allowed.includes(origin);
 
 	return {
 		// ALWAYS permissive, even when the origin is refused. This looks

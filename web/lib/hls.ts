@@ -108,10 +108,24 @@ export type VodInfo = {
 export async function loadFromMaster(masterUrl: string): Promise<VodInfo> {
 	const res = await fetch(masterUrl);
 	if (!res.ok) {
+		// Prefer whatever the responder actually said. A 403 here used to be
+		// reported as "subscriber-only", which is one possible cause and was
+		// stated as if it were the only one — so a proxy refusing the request's
+		// ORIGIN, an entirely different problem with an entirely different fix,
+		// was blamed on the channel's subscriber settings. Both the Twitch
+		// proxy and Kick's API answer with a JSON `error`; read it.
+		let detail = "";
+		try {
+			detail = String((await res.json())?.error || "");
+		} catch {
+			// Not JSON — nothing more to learn from the body.
+		}
+
 		throw new VodError(
-			res.status === 403
-				? "That VOD is not publicly readable — subscriber-only VODs cannot be opened here."
-				: `The VOD's playlist could not be read (HTTP ${res.status}).`,
+			detail ||
+				(res.status === 403
+					? "That VOD could not be opened. It may be subscriber-only, private, or deleted."
+					: `The VOD's playlist could not be read (HTTP ${res.status}).`),
 		);
 	}
 
