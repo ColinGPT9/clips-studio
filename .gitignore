@@ -270,3 +270,10 @@ _test_*.py
 # Speaker-detection weights: fetched by scripts/fetch_asd_model.py and
 # bundled into the installer, not committed (63 MB).
 /models/
+
+# Scratch files from probing the Twitch proxy by hand. m3u8 dumps and .ts
+# segments are test output, not source — one of these was a 320 KB video.
+/master.txt
+/media.txt
+/seg.ts
+*.ts.tmp

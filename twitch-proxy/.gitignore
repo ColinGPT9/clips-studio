@@ -1,0 +1,4 @@
+# wrangler's local cache. Holds the Cloudflare account id and name — not a
+# credential (no token, and the id appears in dashboard URLs), but it is
+# machine-local state that has no business in a shared repo.
+.wrangler/
