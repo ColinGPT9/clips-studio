@@ -129,12 +129,11 @@ export const DESKTOP_IS_FREE =
 /** What the donate button is actually for.
  *
  *  A "Donate" button beside a free app reads as a price tag with extra steps
- *  unless it says otherwise. Nothing here is paywalled, there is no upgrade,
- *  and the money is not income — it pays people to fix issues. Worth one
- *  sentence, because the alternative is that some readers quietly assume the
- *  free version is crippled. */
+ *  unless it says otherwise. Nothing here is paywalled and there is no
+ *  upgrade — worth one sentence, because the alternative is that some readers
+ *  quietly assume the free version is crippled. */
 export const DONATE_NOTE =
-	"Clips Kitty is free and always will be — there is no paid tier and nothing is held back. Donations go towards paying people to fix bugs and build features, not to the maintainer.";
+	"Clips Kitty is free and always will be — there is no paid tier and nothing is held back. Donations go towards paying people to fix bugs and build features.";
 
 /** Said before anyone signs in, because it is the thing people are wary of.
  *
