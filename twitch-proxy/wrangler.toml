@@ -15,4 +15,7 @@ enabled = true
 #
 # Add the real domain here once the web app has one, alongside or instead of
 # the vercel.app address.
-ALLOWED_ORIGINS = "http://localhost:3000"
+# Both spellings of localhost, and both the Next dev port and the port used
+# when serving a static build locally — a browser sends the exact origin it
+# is on, and 127.0.0.1 does not match "localhost".
+ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:4321,http://127.0.0.1:4321"

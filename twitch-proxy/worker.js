@@ -99,7 +99,13 @@ function corsHeaders(request, env) {
 	const ok = allowed.length === 0 || !origin || allowed.includes(origin);
 
 	return {
-		"Access-Control-Allow-Origin": ok ? origin || "*" : "null",
+		// ALWAYS permissive, even when the origin is refused. This looks
+		// backwards and is not: the protection is that a refused origin gets no
+		// video, not that it is denied the ability to READ the refusal. An
+		// earlier version returned "null" here, which meant the browser blocked
+		// the 403 and the page saw a bare "Failed to fetch" — the carefully
+		// worded error explaining exactly what to fix was itself unreadable.
+		"Access-Control-Allow-Origin": origin || "*",
 		"Access-Control-Allow-Methods": "GET, OPTIONS",
 		"Access-Control-Max-Age": "86400",
 		Vary: "Origin",
