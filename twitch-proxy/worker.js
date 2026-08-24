@@ -351,16 +351,22 @@ export default {
 			return json({ error: "GET only." }, request, env, 405);
 		}
 		if (!corsHeaders(request, env)._ok) {
-			return json(
-				{
-					error:
-						"This proxy does not accept requests from that origin. Add it to ALLOWED_ORIGINS in twitch-proxy/wrangler.toml and redeploy.",
-					origin: request.headers.get("Origin") || null,
-				},
-				request,
-				env,
-				403,
-			);
+			const origin = request.headers.get("Origin") || "";
+
+			// Name the origin IN THE MESSAGE, not just in a sibling field. The
+			// page only surfaces `error`, so an origin tucked beside it is
+			// invisible to the one person who needs it — and "that origin" sends
+			// them hunting for a value only this response knows.
+			//
+			// `null` is its own case and worth catching by name: browsers send it
+			// for a page opened straight off disk with file://, where no
+			// allowlist entry can ever match because there is no origin to list.
+			const explanation =
+				origin === "null"
+					? "This page was opened directly from a file, which browsers give no origin, so the proxy cannot accept it. Serve the folder over http instead — for example `npx serve out` — and open the address it prints."
+					: `This proxy does not accept requests from ${origin || "(no origin)"}. Add it to ALLOWED_ORIGINS in twitch-proxy/wrangler.toml and redeploy.`;
+
+			return json({ error: explanation, origin: origin || null }, request, env, 403);
 		}
 
 		const vod = url.searchParams.get("vod") || "";
