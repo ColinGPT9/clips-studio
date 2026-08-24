@@ -81,6 +81,30 @@ function allowedHost(url) {
  *  with curl, which is a deliberate trade: the alternative is signing every
  *  URL, which costs a secret and a setup step for a tool whose whole point is
  *  being free and easy to run. Upgrade if it is ever actually abused. */
+/** Does `origin` match one allowlist entry, which may contain `*`?
+ *
+ *  Wildcards exist because Vercel mints a NEW HOSTNAME FOR EVERY DEPLOYMENT —
+ *  previews, and the per-deployment URL sitting behind the production alias.
+ *  A literal list is therefore correct for exactly as long as it takes to push
+ *  again, which is how this spent several rounds failing with the same error.
+ *
+ *  `*` becomes `[^.]*` rather than `.*`, on purpose. `.*` would let
+ *  `https://clips-kitty-web-*.vercel.app` match
+ *  `https://evil.clips-kitty-web-x.vercel.app` — a domain anybody can create,
+ *  because a dot would be inside the wildcard. Refusing to cross a label
+ *  boundary keeps the pattern to the one level it is meant to cover. */
+function matchesOrigin(origin, entry) {
+	if (!entry.includes("*")) return origin === entry;
+
+	const pattern = entry
+		// Escape every regex metacharacter EXCEPT `*`, which is the one
+		// character we mean to interpret.
+		.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+		.replace(/\*/g, "[^.]*");
+
+	return new RegExp(`^${pattern}$`).test(origin);
+}
+
 function corsHeaders(request, env) {
 	const origin = request.headers.get("Origin") || "";
 	const allowed = (env.ALLOWED_ORIGINS || "")
@@ -105,7 +129,10 @@ function corsHeaders(request, env) {
 	const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 
 	const ok =
-		allowed.length === 0 || !origin || isLocal || allowed.includes(origin);
+		allowed.length === 0 ||
+		!origin ||
+		isLocal ||
+		allowed.some((entry) => matchesOrigin(origin, entry));
 
 	return {
 		// ALWAYS permissive, even when the origin is refused. This looks

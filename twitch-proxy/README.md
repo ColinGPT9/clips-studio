@@ -50,6 +50,33 @@ Then **set `ALLOWED_ORIGINS` in `wrangler.toml`** to the deployed web app's
 origin and deploy again. Leaving it empty means any site may use this worker,
 which is somebody else's free bandwidth on your account.
 
+### Entries are patterns, not literals — and they have to be
+
+`ALLOWED_ORIGINS` entries may contain `*`, matching within a single hostname
+label. That is not a convenience:
+
+> **Vercel mints a new hostname for every deployment** — previews, and the
+> per-deployment URL sitting behind the production alias. A literal list is
+> correct only until the next push, at which point Twitch breaks again with
+> "This proxy does not accept requests from …". That failure already cost
+> several rounds of chasing one origin at a time.
+
+So the shipped value covers the production host *and* the deployment hosts:
+
+```
+https://clips-kitty-web.vercel.app,https://clips-kitty-web-*.vercel.app
+```
+
+`*` expands to `[^.]*`, never `.*`, so it cannot cross a dot — otherwise
+`https://evil.clips-kitty-web-x.vercel.app`, a domain anybody can create, would
+match.
+
+**Localhost needs no entry.** Any `localhost` or `127.0.0.1` origin is allowed
+in code on any port, because a browser sends the exact origin it is on and
+`localhost:3000` does not match a build served on `127.0.0.1:4321`.
+
+**A custom domain** is one more comma-separated entry, then `wrangler deploy`.
+
 Finally, put the worker's URL into `TWITCH_PROXY` in `web/lib/content.ts`.
 Until that is set the web app recognises Twitch links and explains that they
 are unavailable, rather than offering a button that fails.

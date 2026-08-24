@@ -15,7 +15,19 @@ enabled = true
 #
 # Add the real domain here once the web app has one, alongside or instead of
 # the vercel.app address.
-# Both spellings of localhost, and both the Next dev port and the port used
-# when serving a static build locally — a browser sends the exact origin it
-# is on, and 127.0.0.1 does not match "localhost".
-ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:4321,http://127.0.0.1:4321"
+# Entries may contain `*`, which matches within a single hostname label.
+#
+# The wildcard is not laziness. Vercel mints a NEW HOSTNAME FOR EVERY
+# DEPLOYMENT — previews, and the per-deployment URL behind the production
+# alias — so a literal list is correct only until the next push, and then
+# Twitch breaks again with this exact error.
+#
+# Trade worth knowing: the second pattern would also match a Vercel project
+# someone else names `clips-kitty-web-…` under their own account. That costs a
+# stranger's traffic against this worker's free request budget and takes
+# deliberate targeting, whereas breaking on every deploy is a certainty. See
+# README.md for the HMAC upgrade if it is ever actually abused.
+#
+# Localhost needs no entry — any localhost/127.0.0.1 origin is allowed in code,
+# on any port. Add a custom domain here as one more comma-separated entry.
+ALLOWED_ORIGINS = "https://clips-kitty-web.vercel.app,https://clips-kitty-web-*.vercel.app"
