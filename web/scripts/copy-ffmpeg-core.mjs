@@ -55,7 +55,14 @@ const to = join(root, "public", "ffmpeg");
  *  Three files and no more: `worker.js` imports only `./const.js` and
  *  `./errors.js`, and both of those import nothing. They must stay flat and
  *  beside each other, because those imports are relative. */
-const workerFrom = join(root, "node_modules", "@ffmpeg", "ffmpeg", "dist", "esm");
+const workerFrom = join(
+	root,
+	"node_modules",
+	"@ffmpeg",
+	"ffmpeg",
+	"dist",
+	"esm",
+);
 const WORKER_FILES = ["worker.js", "const.js", "errors.js"];
 
 await mkdir(to, { recursive: true });

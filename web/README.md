@@ -90,7 +90,10 @@ is upgraded.
    WORKERFS and read lazily rather than copied; a Twitch or Kick VOD uses the
    cheapest audible rendition, so transcribing a long stream pulls tens of
    megabytes rather than gigabytes.
-2. **Transcribe.** One request per segment. Ten minutes is ~18 MB, under the
+2. **Transcribe.** One request per segment. ffmpeg only *copies* the audio
+   (`-c:a copy`) and the browser decodes each segment, so the platform's own
+   decoder does the work rather than a wasm thread — 0.58s vs 1.27s natively
+   on a 38-minute source, and half the bytes. Ten minutes is ~9 MB, under the
    25 MB upload cap — the old 60-second chunk came from misreading the limit
    as 60 seconds of *audio* when it is 60 seconds of *processing*, and cost
    10x the requests. Offsets accumulate **real sample counts**, not

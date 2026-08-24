@@ -299,7 +299,10 @@ export async function transcribeChunk(
 	offsetSeconds: number,
 ): Promise<Segment[]> {
 	const form = new FormData();
-	form.append("file", audio, "chunk.wav");
+	// The extension is how the endpoint infers the format, so it has to match
+	// what `segmentAudio` actually produces — which is copied AAC in an MP4
+	// container, not the decoded WAV this used to send.
+	form.append("file", audio, "chunk.m4a");
 	form.append("model", model);
 	form.append("response_format", "verbose_json");
 
