@@ -90,7 +90,13 @@ function corsHeaders(request, env) {
 
 	// No configured list means "any", which is right for local development
 	// and wrong for production — the README says so.
-	const ok = allowed.length === 0 || allowed.includes(origin);
+	//
+	// A request with NO Origin is allowed regardless. Browsers always send it
+	// on a cross-origin fetch, so its absence means this is not a web page
+	// being drafted into spending the request budget — it is curl, or the
+	// /health check. Refusing those would 403 the first thing anyone runs
+	// after deploying, while protecting nothing.
+	const ok = allowed.length === 0 || !origin || allowed.includes(origin);
 
 	return {
 		"Access-Control-Allow-Origin": ok ? origin || "*" : "null",
