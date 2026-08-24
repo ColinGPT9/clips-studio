@@ -84,14 +84,18 @@ is upgraded.
 
 ## How a run works
 
-1. **Audio.** A local file is decoded with the Web Audio API at 16 kHz mono —
-   resampled *during* decode, so the 48 kHz intermediate never exists. A
-   Twitch VOD uses the manifest's `audio_only` rendition, so transcribing a
-   long stream pulls tens of megabytes rather than gigabytes.
-2. **Transcribe.** Split into 60-second chunks and sent to OpenRouter's STT
-   endpoint. 60 seconds is a *processing* budget — upstream providers time out
-   after about that long, which binds well before the 25 MB upload cap.
-   Timestamps are offset back onto the recording's clock as they return.
+1. **Audio.** ffmpeg cuts it into **10-minute 16 kHz mono WAVs**, handled one
+   at a time, so peak memory is one segment (~57 MB) no matter how long the
+   recording is — there is no duration limit. A local file is *mounted* via
+   WORKERFS and read lazily rather than copied; a Twitch or Kick VOD uses the
+   cheapest audible rendition, so transcribing a long stream pulls tens of
+   megabytes rather than gigabytes.
+2. **Transcribe.** One request per segment. Ten minutes is ~18 MB, under the
+   25 MB upload cap — the old 60-second chunk came from misreading the limit
+   as 60 seconds of *audio* when it is 60 seconds of *processing*, and cost
+   10x the requests. Offsets accumulate **real sample counts**, not
+   `index × 600`: the segment muxer cuts on packet boundaries, so segments are
+   600 seconds *ish* and nominal offsets drift into mis-cut clips.
 3. **Score.** `lib/score.ts` is a port of `analysis/highlights.py`, using the
    same prompt. See *How much of the real pipeline this is* below — it is one
    stage, not the whole thing.
@@ -143,6 +147,17 @@ what numpy picks from. Analysis cost for those 38 minutes: **137 ms**.
 server to read the repo from. `tests/test_web_prompt_sync.py` fails the build
 if the two drift. If you improve the prompt upstream, copy it here — do not
 edit the `.txt` to match this.
+
+**ffmpeg's worker and core are self-hosted, and must stay that way.**
+`scripts/copy-ffmpeg-core.mjs` copies five files into `public/ffmpeg/`: the
+**ESM** core (the loader builds a `type: "module"` worker, and the UMD build
+has no ES export, so shipping umd meant ffmpeg never started at all), plus
+`worker.js`, `const.js` and `errors.js`. Those three are served raw and loaded
+via `classWorkerURL` specifically to keep the bundler away from them —
+Turbopack cannot statically resolve the `await import(coreURL)` inside
+`worker.js` and replaces it with a stub that throws "Cannot find module as
+expression is too dynamic". If the engine ever stops starting, check those
+first.
 
 **No COOP/COEP, on purpose.** ffmpeg.wasm only needs `SharedArrayBuffer` when
 it runs multi-threaded, and stream-copying is I/O rather than compute. Adding

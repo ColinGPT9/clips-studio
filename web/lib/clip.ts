@@ -34,6 +34,20 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 const CORE_URL = "/ffmpeg/ffmpeg-core.js";
 const WASM_URL = "/ffmpeg/ffmpeg-core.wasm";
 
+/** The library's own worker, served by us rather than bundled.
+ *
+ *  Without this, Turbopack bundles `@ffmpeg/ffmpeg`'s worker along with the
+ *  app, hits the `await import(coreURL)` inside it, cannot resolve a runtime
+ *  variable statically, and swaps it for a stub that throws "Cannot find
+ *  module as expression is too dynamic". The engine then never starts, which
+ *  breaks every path in the app.
+ *
+ *  Pointing at a copy in `public/` keeps the bundler out of it: the worker
+ *  loads natively, its dynamic import survives, and it resolves CORE_URL at
+ *  runtime. All three URLs here are absolute paths on our own origin —
+ *  nothing is fetched from a CDN. */
+const CLASS_WORKER_URL = "/ffmpeg/worker.js";
+
 const MOUNT = "/mount";
 
 let loading: Promise<FFmpeg> | null = null;
@@ -82,7 +96,11 @@ export function loadFFmpeg(onLog?: (line: string) => void): Promise<FFmpeg> {
 		});
 
 		try {
-			await ffmpeg.load({ coreURL: CORE_URL, wasmURL: WASM_URL });
+			await ffmpeg.load({
+				coreURL: CORE_URL,
+				wasmURL: WASM_URL,
+				classWorkerURL: CLASS_WORKER_URL,
+			});
 		} catch (e) {
 			// Let the next attempt retry rather than returning a permanently
 			// rejected promise for the rest of the session.

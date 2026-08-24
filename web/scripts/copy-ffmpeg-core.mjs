@@ -40,9 +40,32 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const from = join(root, "node_modules", "@ffmpeg", "core", "dist", "esm");
 const to = join(root, "public", "ffmpeg");
 
+/** The library's own worker, served raw so the BUNDLER NEVER SEES IT.
+ *
+ *  `worker.js` calls `await import(coreURL)` on a runtime variable. Turbopack
+ *  bundles the worker with the rest of the app, cannot statically resolve that
+ *  import, and replaces it with a stub that throws "Cannot find module as
+ *  expression is too dynamic" — so the video engine never starts. The
+ *  library's `/* @vite-ignore *\/` hint is understood by Vite, not Turbopack.
+ *
+ *  Serving these three files as plain static assets and pointing `load()` at
+ *  them with `classWorkerURL` keeps the bundler out of it entirely, so the
+ *  dynamic import survives and resolves the core at runtime.
+ *
+ *  Three files and no more: `worker.js` imports only `./const.js` and
+ *  `./errors.js`, and both of those import nothing. They must stay flat and
+ *  beside each other, because those imports are relative. */
+const workerFrom = join(root, "node_modules", "@ffmpeg", "ffmpeg", "dist", "esm");
+const WORKER_FILES = ["worker.js", "const.js", "errors.js"];
+
 await mkdir(to, { recursive: true });
 
 for (const name of ["ffmpeg-core.js", "ffmpeg-core.wasm"]) {
 	await copyFile(join(from, name), join(to, name));
 	console.log(`ffmpeg core: ${name}`);
+}
+
+for (const name of WORKER_FILES) {
+	await copyFile(join(workerFrom, name), join(to, name));
+	console.log(`ffmpeg worker: ${name}`);
 }
