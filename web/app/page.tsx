@@ -37,6 +37,7 @@ import {
 	DESKTOP_IS_FREE,
 	DESKTOP_ONLY,
 	DONATE_NOTE,
+	DONATE_TITLE,
 	LINKS,
 	PREFERRED_SCORE_MODEL,
 	PREFERRED_TRANSCRIBE_MODEL,
@@ -891,13 +892,17 @@ function DesktopPitch() {
 				</a>
 			</div>
 
-			{/* Says where the money goes, because "Donate" next to a free app
-			    invites the assumption that it is really a price tag. It is not:
-			    nothing here is paywalled, and donations pay people to fix
-			    issues. */}
-			<p className="mt-4 text-xs" style={{ color: "var(--cs-muted)" }}>
-				{DONATE_NOTE}
-			</p>
+			{/* Word for word what the desktop app and the website say. Copied,
+			    not rewritten — see the note in content.ts. */}
+			<div className="cs-card mt-6 p-4">
+				<p className="text-sm font-semibold">{DONATE_TITLE}</p>
+				<p
+					className="mt-1 text-sm leading-relaxed"
+					style={{ color: "var(--cs-muted)" }}
+				>
+					{DONATE_NOTE}
+				</p>
+			</div>
 
 			<p className="mt-4 text-xs" style={{ color: "var(--cs-muted)" }}>
 				Needs Windows and 16 GB of RAM. An NVIDIA graphics card makes it much

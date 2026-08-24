@@ -119,21 +119,33 @@ export const DESKTOP_ONLY: { title: string; body: string }[] = [
  *
  *  This page costs the visitor real credits every time they use it, because
  *  it rents someone else's GPU by the token. The desktop app rents nothing —
- *  the model runs on their own machine — so it is free to run, forever, with
- *  no cap on how many hours of VOD they get through. Anyone weighing "should
- *  I bother downloading it" deserves that stated plainly rather than
- *  discovered later. */
+ *  the model runs on their own machine — so today it costs nothing to run,
+ *  however many hours of VOD they get through. Anyone weighing "should I
+ *  bother downloading it" deserves that stated plainly rather than discovered
+ *  later.
+ *
+ *  Present tense on purpose. What the app costs in future is the maintainer's
+ *  call, and copy here should describe what is true now rather than commit
+ *  them to anything. */
 export const DESKTOP_IS_FREE =
 	"Clips Kitty for Windows is completely free to run. It is open source, there is no subscription, no credits and no watermark — and because the AI runs on your own PC, clipping a hundred VODs costs exactly nothing. Only this browser version uses paid API credits, because a browser cannot run the model itself.";
 
-/** What the donate button is actually for.
+/** The donate copy, taken VERBATIM from the desktop app and the website.
  *
- *  A "Donate" button beside a free app reads as a price tag with extra steps
- *  unless it says otherwise. Nothing here is paywalled and there is no
- *  upgrade — worth one sentence, because the alternative is that some readers
- *  quietly assume the free version is crippled. */
+ *  `ui/src/renderer/src/pages/Dashboard.tsx` and `site/index.html` already say
+ *  this, word for word, and this is the third surface — so it is copied rather
+ *  than rewritten. Brand voice is the maintainer's to set, and an earlier
+ *  version of this file did not copy it: it invented "free and always will
+ *  be", which is a PROMISE ABOUT THE FUTURE nobody had made and which is not
+ *  true. Note what the real copy does instead — "keep it free for everyone" is
+ *  an aspiration donations support, not a guarantee.
+ *
+ *  If the wording changes in the app or on the site, change it here too. Do
+ *  not improve it here. */
+export const DONATE_TITLE = "Clips Kitty is free & open source ❤️";
+
 export const DONATE_NOTE =
-	"Clips Kitty is free and always will be — there is no paid tier and nothing is held back. Donations go towards paying people to fix bugs and build features.";
+	"It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.";
 
 /** Said before anyone signs in, because it is the thing people are wary of.
  *
