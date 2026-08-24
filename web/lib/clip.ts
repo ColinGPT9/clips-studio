@@ -38,6 +38,32 @@ const MOUNT = "/mount";
 
 let loading: Promise<FFmpeg> | null = null;
 
+/** The last lines ffmpeg printed.
+ *
+ *  ffmpeg reports its real complaints here — "Unknown format", "No such file
+ *  or directory", "Conversion failed" — and none of it reaches a caller
+ *  otherwise: `exec` resolves with an exit code, and failures inside the
+ *  worker arrive as a bare stringified error. Without this the page can say
+ *  something failed but never what.
+ *
+ *  Bounded because a long conversion prints thousands of progress lines and
+ *  none of the early ones matter. */
+const LOG_LINES = 40;
+const log: string[] = [];
+
+/** The tail of ffmpeg's log, for attaching to an error message. Empty when
+ *  ffmpeg has said nothing worth repeating. */
+export function recentLog(): string {
+	const lines = log
+		.map((l) => l.trim())
+		.filter(Boolean)
+		// Progress spam drowns the one line that explains the failure.
+		.filter((l) => !/^(frame|size)=/.test(l))
+		.slice(-8);
+
+	return lines.length ? `ffmpeg said:\n${lines.join("\n")}` : "";
+}
+
 /** Load ffmpeg once and reuse it.
  *
  *  The wasm binary is ~30 MB, so this is deliberately lazy — someone who
@@ -48,8 +74,23 @@ export function loadFFmpeg(onLog?: (line: string) => void): Promise<FFmpeg> {
 
 	loading = (async () => {
 		const ffmpeg = new FFmpeg();
-		if (onLog) ffmpeg.on("log", ({ message }) => onLog(message));
-		await ffmpeg.load({ coreURL: CORE_URL, wasmURL: WASM_URL });
+
+		ffmpeg.on("log", ({ message }) => {
+			log.push(message);
+			if (log.length > LOG_LINES) log.shift();
+			onLog?.(message);
+		});
+
+		try {
+			await ffmpeg.load({ coreURL: CORE_URL, wasmURL: WASM_URL });
+		} catch (e) {
+			// Let the next attempt retry rather than returning a permanently
+			// rejected promise for the rest of the session.
+			loading = null;
+			throw new Error(
+				`The video engine could not start: ${e instanceof Error ? e.message : String(e)}`,
+			);
+		}
 		return ffmpeg;
 	})();
 
@@ -216,7 +257,22 @@ export async function mountSource(ffmpeg: FFmpeg, file: File): Promise<string> {
 
 	// `WORKERFS` as a string rather than the FFFSType enum: the enum moved
 	// between 0.12.x releases and the worker only ever compares the string.
-	await ffmpeg.mount("WORKERFS" as never, { files: [file] }, MOUNT);
+	//
+	// The return value matters. `mount` RESOLVES WITH `false` when the
+	// filesystem is not available (worker.js:90-97) rather than throwing, so
+	// ignoring it lets a failed mount look like success — and the failure then
+	// resurfaces much later as ffmpeg reporting a missing input file, which
+	// points at entirely the wrong thing.
+	const mounted = await ffmpeg.mount(
+		"WORKERFS" as never,
+		{ files: [file] },
+		MOUNT,
+	);
+	if (mounted === false) {
+		throw new Error(
+			"This browser could not give the video engine access to that file (WORKERFS unavailable).",
+		);
+	}
 	return file.name;
 }
 

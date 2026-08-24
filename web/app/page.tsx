@@ -16,12 +16,7 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-	AudioDecodeError,
-	probeDuration,
-	SEGMENT_SECONDS,
-	segmentAudio,
-} from "@/lib/audio";
+import { probeDuration, SEGMENT_SECONDS, segmentAudio } from "@/lib/audio";
 import {
 	combineFeatures,
 	extractFeatures,
@@ -34,6 +29,7 @@ import {
 	discardSource,
 	loadFFmpeg,
 	mountSource,
+	recentLog,
 	writeSource,
 } from "@/lib/clip";
 import {
@@ -95,6 +91,24 @@ function estimateRequests(durationSeconds: number): number {
 		Math.ceil(durationSeconds / SEGMENT_SECONDS) +
 		estimateScoringRequests(durationSeconds)
 	);
+}
+
+/** Render whatever was thrown, whatever shape it is.
+ *
+ *  Not defensive programming for its own sake — ffmpeg.wasm genuinely rejects
+ *  with STRINGS. `@ffmpeg/ffmpeg`'s worker posts `data: e.toString()`
+ *  (worker.js:153) and the client rejects with that raw value
+ *  (classes.js:54), so nothing it fails at is ever an `Error`.
+ *
+ *  The previous version tested `instanceof Error` and fell back to "Something
+ *  went wrong" — which meant that for weeks the app reported every ffmpeg
+ *  failure with those three words while the library was saying, precisely,
+ *  "failed to import ffmpeg-core.js". The real message was there the whole
+ *  time and this line threw it away. */
+function describeError(e: unknown): string {
+	if (e instanceof Error) return e.message;
+	if (typeof e === "string") return e;
+	return String(e);
 }
 
 /** What a free OpenRouter account gets per day. Buying $10 of credit once
@@ -317,12 +331,16 @@ export default function Page() {
 			setClips(found);
 			setPhase("done");
 		} catch (e) {
+			// ffmpeg says useful things ("Unknown format", "No such file or
+			// directory") that only reach us through its log, so carry the tail
+			// of it alongside the thrown value.
+			const detail = recentLog();
 			setError(
-				e instanceof AudioDecodeError
-					? e.message
-					: e instanceof Error
-						? e.message
-						: "Something went wrong.",
+				detail
+					? `${describeError(e)}
+
+${detail}`
+					: describeError(e),
 			);
 			setPhase("idle");
 		} finally {
@@ -367,7 +385,7 @@ export default function Page() {
 					[index]: URL.createObjectURL(result.blob),
 				}));
 			} catch (e) {
-				setError(e instanceof Error ? e.message : "Could not cut that clip.");
+				setError(describeError(e));
 			} finally {
 				setCutting(null);
 			}

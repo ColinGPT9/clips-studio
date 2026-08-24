@@ -114,7 +114,11 @@ export async function* segmentAudio(
 	// `-vn` matters: Kick has no audio-only rendition, so what arrives can be a
 	// low-quality video stream whose video track must be dropped rather than
 	// transcoded. `-f segment` writes seg0000.wav, seg0001.wav, …
-	await ffmpeg.exec([
+	// `exec` RESOLVES WITH ffmpeg's exit code — it does not throw on a non-zero
+	// one (worker.js:42-48). Ignoring it means a failed conversion is only
+	// noticed further down as "no segments produced", which describes the
+	// symptom and hides the cause.
+	const code = await ffmpeg.exec([
 		"-i",
 		inputPath,
 		"-vn",
@@ -128,6 +132,12 @@ export async function* segmentAudio(
 		String(SEGMENT_SECONDS),
 		`${prefix}%04d.wav`,
 	]);
+
+	if (code !== 0) {
+		throw new AudioDecodeError(
+			`The video engine could not read the audio out of that (ffmpeg exited ${code}).`,
+		);
+	}
 
 	const produced = (await ffmpeg.listDir("/"))
 		.filter(

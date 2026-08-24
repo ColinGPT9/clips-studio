@@ -15,7 +15,29 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const from = join(root, "node_modules", "@ffmpeg", "core", "dist", "umd");
+
+/** ESM, and it MUST be ESM. Do not "simplify" this to umd.
+ *
+ *  `@ffmpeg/ffmpeg` creates its worker with `type: "module"`
+ *  (classes.js:104-112, unconditionally). A module worker has no
+ *  `importScripts`, so the loader falls through to a dynamic `import()` and
+ *  reads `.default` off it. The UMD build has no ES export — it ends in
+ *  `module.exports` / `define` / `exports[...]` — so `.default` is undefined,
+ *  it overwrites `self.createFFmpegCore` with that undefined, and throws
+ *  `failed to import ffmpeg-core.js`.
+ *
+ *  The loader does try to rescue this, but only by rewriting `/umd/` to
+ *  `/esm/` when the core URL is its own default. Ours is served from
+ *  `/ffmpeg/`, so the rescue never fires.
+ *
+ *  Shipping umd meant ffmpeg never loaded at all, which broke every path in
+ *  the app — file uploads and VOD links alike — and reported it as
+ *  "Something went wrong", because the library stringifies worker errors and
+ *  the page only rendered `Error` instances.
+ *
+ *  The .wasm is byte-identical between the two builds; only this wrapper
+ *  differs. */
+const from = join(root, "node_modules", "@ffmpeg", "core", "dist", "esm");
 const to = join(root, "public", "ffmpeg");
 
 await mkdir(to, { recursive: true });
