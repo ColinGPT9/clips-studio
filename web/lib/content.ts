@@ -62,7 +62,8 @@ export const LINKS = {
  *  browser-to-Twitch. They route through infrastructure the project runs, and
  *  the "nothing of yours touches our servers" claim holds for local files and
  *  Kick but not for Twitch. The copy on the page says so. */
-export const TWITCH_PROXY: string = "";
+export const TWITCH_PROXY: string =
+	"https://clips-kitty-twitch.clipsstudio.workers.dev";
 
 /** Recommended defaults.
  *
@@ -135,9 +136,17 @@ export const DESKTOP_IS_FREE =
 export const DONATE_NOTE =
 	"Clips Kitty is free and always will be — there is no paid tier and nothing is held back. Donations go towards paying people to fix bugs and build features, not to the maintainer.";
 
-/** Said before anyone signs in, because it is the thing people are wary of. */
+/** Said before anyone signs in, because it is the thing people are wary of.
+ *
+ *  This used to end "we have no server in the middle", which stopped being
+ *  true the moment the Twitch proxy went live. Twitch's video servers refuse
+ *  browsers outright, so a Twitch VOD is relayed through a Cloudflare Worker
+ *  we run. It stores nothing and never sees an OpenRouter key — but "relayed
+ *  through our infrastructure" and "never touches our infrastructure" are
+ *  different claims, and the smaller one is the true one. Local files and Kick
+ *  still never touch us at all. */
 export const PRIVACY_NOTE =
-	"Your recording never leaves your computer — it is read in the browser and never uploaded to us. Only short audio snippets are sent, and they go directly to OpenRouter on your own account. We have no server in the middle and never see your key.";
+	"Your own files never leave your computer — they are read in the browser and never uploaded. Only short audio snippets are sent for transcription, straight to OpenRouter on your own account; we never see your key. Twitch VODs are the one exception: Twitch blocks browsers from reading them, so those are relayed through a small server we run, which stores nothing.";
 
 export const COST_NOTE =
 	"You pay OpenRouter directly, at cost. A 30-minute recording is usually a few cents. New OpenRouter accounts also get 50 free requests a day, which covers a short recording outright.";

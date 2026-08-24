@@ -336,7 +336,16 @@ export default {
 			return json({ error: "GET only." }, request, env, 405);
 		}
 		if (!corsHeaders(request, env)._ok) {
-			return json({ error: "This proxy is not open to that origin." }, request, env, 403);
+			return json(
+				{
+					error:
+						"This proxy does not accept requests from that origin. Add it to ALLOWED_ORIGINS in twitch-proxy/wrangler.toml and redeploy.",
+					origin: request.headers.get("Origin") || null,
+				},
+				request,
+				env,
+				403,
+			);
 		}
 
 		const vod = url.searchParams.get("vod") || "";
