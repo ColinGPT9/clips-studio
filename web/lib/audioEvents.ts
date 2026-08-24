@@ -45,15 +45,48 @@ const MAX_EVENTS = 120;
 
 export type AudioEvent = { second: number; description: string };
 
-/** Per-second excitement, 0..1, ranked within this recording. */
-export function audioExcitement(pcm: Float32Array): Float32Array {
-	if (pcm.length < SAMPLE_RATE) return new Float32Array(0);
+/** Raw per-second measurements for one slice of audio.
+ *
+ *  Deliberately raw — no ranking, no gating, no rolling median. Those all
+ *  compare a second against the WHOLE recording, so they cannot be computed
+ *  from a slice without changing the answer. Extract here, judge in
+ *  `combineFeatures` once every slice has been seen.
+ *
+ *  This split is what lets a three-hour VOD be processed ten minutes at a
+ *  time. The samples for a slice are released as soon as it is measured; all
+ *  that survives is three numbers per second, which for six hours is about
+ *  260 KB. */
+export type SecondFeatures = {
+	loudness: Float32Array;
+	burst: Float32Array;
+	noisiness: Float32Array;
+	/** RMS of this slice's final 50 ms frame, to be handed to the next slice.
+	 *
+	 *  Onsets are defined against the PREVIOUS frame, and the first frame of a
+	 *  slice has none — so without carrying this, every slice boundary silently
+	 *  loses one possible onset. Measured: that alone moved the excitement
+	 *  curve by up to 0.01 against processing the file whole, because `burst`
+	 *  is full of ties and losing one shifts a rank. */
+	lastFrameRms: number;
+};
+
+/** Measure one slice. See `SecondFeatures` for why nothing is normalised. */
+export function extractFeatures(
+	pcm: Float32Array,
+	previousFrameRms = 0,
+): SecondFeatures {
+	const empty = {
+		loudness: new Float32Array(0),
+		burst: new Float32Array(0),
+		noisiness: new Float32Array(0),
+		lastFrameRms: previousFrameRms,
+	};
+	if (pcm.length < SAMPLE_RATE) return empty;
 
 	const nFrames = Math.floor(pcm.length / FRAME);
 	const nSecs = Math.floor(nFrames / FRAMES_PER_SEC);
-	if (nSecs === 0) return new Float32Array(0);
+	if (nSecs === 0) return empty;
 
-	// 50 ms frame energies are the working unit for everything below.
 	const frameRms = new Float32Array(nFrames);
 	const frameZcr = new Float32Array(nFrames);
 
@@ -92,7 +125,11 @@ export function audioExcitement(pcm: Float32Array): Float32Array {
 			// Onset: energy jumping >2x over the previous frame. Laughter and
 			// applause are onset-dense, which is what separates them from
 			// someone simply talking loudly.
-			if (f > 0 && frameRms[f] > 2 * Math.max(frameRms[f - 1], 1e-6)) onsets++;
+			// f === 0 uses the carried frame from the previous slice, so a
+			// boundary behaves exactly as mid-file does. 0 for the first slice,
+			// where there genuinely is no earlier frame.
+			const previous = f > 0 ? frameRms[f - 1] : previousFrameRms;
+			if (previous > 0 && frameRms[f] > 2 * Math.max(previous, 1e-6)) onsets++;
 		}
 
 		loudness[s] = rmsSum / FRAMES_PER_SEC;
@@ -100,11 +137,38 @@ export function audioExcitement(pcm: Float32Array): Float32Array {
 		noisiness[s] = zcrSum / FRAMES_PER_SEC;
 	}
 
+	return { loudness, burst, noisiness, lastFrameRms: frameRms[nFrames - 1] };
+}
+
+/** Turn every slice's measurements into one excitement curve.
+ *
+ *  Everything comparative happens here, over the concatenated recording, so
+ *  the result is identical to measuring the whole thing at once: the rolling
+ *  median spans slice boundaries, the audible floor is the whole recording's
+ *  mean, and percentile ranks are global. Doing any of it per slice would
+ *  quietly rank a quiet ten minutes against itself and call its loudest
+ *  moments notable. */
+export function combineFeatures(parts: SecondFeatures[]): Float32Array {
+	const total = parts.reduce((n, p) => n + p.loudness.length, 0);
+	if (total === 0) return new Float32Array(0);
+
+	const loudness = new Float32Array(total);
+	const burst = new Float32Array(total);
+	const noisiness = new Float32Array(total);
+
+	let at = 0;
+	for (const part of parts) {
+		loudness.set(part.loudness, at);
+		burst.set(part.burst, at);
+		noisiness.set(part.noisiness, at);
+		at += part.loudness.length;
+	}
+
 	// Spike: this second against the rolling 30 s median, so a quiet streamer
 	// and a loud one are measured against themselves rather than each other.
 	const median = rollingMedian(loudness, 30);
-	const spike = new Float32Array(nSecs);
-	for (let s = 0; s < nSecs; s++) {
+	const spike = new Float32Array(total);
+	for (let s = 0; s < total; s++) {
 		spike[s] = Math.min(
 			5,
 			Math.max(0, loudness[s] / Math.max(median[s], 1e-6)),
@@ -114,13 +178,19 @@ export function audioExcitement(pcm: Float32Array): Float32Array {
 	// Only count noisiness where something is actually audible, or silence
 	// full of low-level hiss reads as a room full of laughter.
 	let loudnessSum = 0;
-	for (let s = 0; s < nSecs; s++) loudnessSum += loudness[s];
-	const audibleFloor = Math.max((loudnessSum / nSecs) * 0.3, 1e-6);
-	for (let s = 0; s < nSecs; s++) {
+	for (let s = 0; s < total; s++) loudnessSum += loudness[s];
+	const audibleFloor = Math.max((loudnessSum / total) * 0.3, 1e-6);
+	for (let s = 0; s < total; s++) {
 		if (loudness[s] <= audibleFloor) noisiness[s] = 0;
 	}
 
 	return combine([percentile(spike), percentile(burst), percentile(noisiness)]);
+}
+
+/** Whole-recording excitement in one call. Kept for short inputs and tests;
+ *  the segmented path uses `extractFeatures` + `combineFeatures`. */
+export function audioExcitement(pcm: Float32Array): Float32Array {
+	return combineFeatures([extractFeatures(pcm)]);
 }
 
 /** Standout seconds, as `(second, description)` pairs. */

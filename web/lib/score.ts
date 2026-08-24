@@ -106,6 +106,18 @@ const LONG_VIDEO_THRESHOLD = 420;
  *  moment found twice, which is exactly what chunk overlap produces. */
 const MAX_OVERLAP = 0.4;
 
+/** How many scoring calls a recording of this length will cost.
+ *
+ *  Mirrors `chunkSegments` exactly, including that short recordings go in
+ *  whole. Used to warn about OpenRouter's daily allowance BEFORE a run starts:
+ *  a free account gets 50 requests a day, and a three-hour VOD needs more than
+ *  that, which is much better learned up front than as a 429 halfway through a
+ *  run the visitor has already partly paid for. */
+export function estimateScoringRequests(durationSeconds: number): number {
+	if (durationSeconds <= LONG_VIDEO_THRESHOLD) return 1;
+	return Math.ceil(durationSeconds / (CHUNK_SECONDS - CHUNK_OVERLAP_SECONDS));
+}
+
 export type Clip = {
 	start: number;
 	end: number;

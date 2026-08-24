@@ -120,53 +120,36 @@ export async function cutClip(
 	};
 }
 
-/** Decode MPEG-TS audio into a WAV the browser can read.
+/** Put a blob into ffmpeg's filesystem and return the path to it.
  *
- *  Needed only on the VOD paths. `decodeAudioData` handles MP4, WebM, MP3 and
- *  WAV, but not a raw `.ts` container — so the HLS segments we join have to go
- *  through ffmpeg before the normal decode path can touch them. Audio-only
- *  transcoding is cheap even in wasm; this is nothing like asking it to
- *  re-encode video.
+ *  Used for the VOD paths, where the audio arrives as joined MPEG-TS segments
+ *  with no file behind them. A local file does NOT come through here — it is
+ *  mounted with `mountSource` instead, which reads lazily and so never copies
+ *  a multi-gigabyte recording into memory.
  *
- *  `-vn` matters more for Kick than Twitch: Kick has no audio-only rendition,
- *  so what arrives here is a low-quality *video* stream and the video track
- *  has to be thrown away rather than transcoded.
- *
- *  Output is already 16 kHz mono, matching what `audio.ts` would resample to
- *  anyway, which keeps the WAV small enough to hand straight back. */
-export async function tsAudioToWav(ffmpeg: FFmpeg, audio: Blob): Promise<Blob> {
-	const input = "vod-audio.ts";
-	const output = "vod-audio.wav";
+ *  This does hold the bytes: a three-hour Twitch audio-only track is ~290 MB.
+ *  That is the one unavoidable copy on the VOD path, and it is still far
+ *  cheaper than decoding the recording to samples, which would be 690 MB for
+ *  the same three hours. */
+export async function writeSource(
+	ffmpeg: FFmpeg,
+	source: Blob,
+	name: string,
+): Promise<string> {
+	await ffmpeg.writeFile(name, new Uint8Array(await source.arrayBuffer()));
+	return name;
+}
 
-	await ffmpeg.writeFile(input, new Uint8Array(await audio.arrayBuffer()));
-	await ffmpeg.exec([
-		"-i",
-		input,
-		"-vn",
-		"-ac",
-		"1",
-		"-ar",
-		"16000",
-		"-f",
-		"wav",
-		output,
-	]);
-
-	const data = (await ffmpeg.readFile(output)) as Uint8Array;
-
-	// Both copies are large — a long VOD's audio is tens of megabytes each —
-	// so drop them from the virtual filesystem before returning rather than
-	// leaving them there for the rest of the session.
-	await ffmpeg.deleteFile(input);
-	await ffmpeg.deleteFile(output);
-
-	if (!data.length) {
-		throw new Error("Could not read the audio out of that VOD.");
+/** Remove a file written by `writeSource`, once its segments have been cut. */
+export async function discardSource(
+	ffmpeg: FFmpeg,
+	name: string,
+): Promise<void> {
+	try {
+		await ffmpeg.deleteFile(name);
+	} catch {
+		// Already gone, or never written. Nothing to do.
 	}
-
-	const owned = new Uint8Array(data.byteLength);
-	owned.set(data);
-	return new Blob([owned.buffer], { type: "audio/wav" });
 }
 
 /** Cut from bytes already in memory, rather than a mounted file.

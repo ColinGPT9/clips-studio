@@ -18,19 +18,23 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
 	AudioDecodeError,
-	AudioTooLongError,
-	decodeToMono16k,
-	MAX_DURATION_SECONDS,
-	toChunks,
+	probeDuration,
+	SEGMENT_SECONDS,
+	segmentAudio,
 } from "@/lib/audio";
-import { audioExcitement } from "@/lib/audioEvents";
+import {
+	combineFeatures,
+	extractFeatures,
+	type SecondFeatures,
+} from "@/lib/audioEvents";
 import {
 	clipFilename,
 	cutClip,
 	cutFromBlob,
+	discardSource,
 	loadFFmpeg,
 	mountSource,
-	tsAudioToWav,
+	writeSource,
 } from "@/lib/clip";
 import {
 	COST_NOTE,
@@ -61,14 +65,13 @@ import {
 	type Segment,
 	transcribeChunk,
 } from "@/lib/openrouter";
-import { type Clip, findClips } from "@/lib/score";
+import { type Clip, estimateScoringRequests, findClips } from "@/lib/score";
 import { identify, masterPlaylistUrl, SUPPORTED_LABEL } from "@/lib/source";
 
 type Phase =
 	| "idle"
 	| "downloading"
 	| "reading"
-	| "listening"
 	| "transcribing"
 	| "scoring"
 	| "done";
@@ -76,14 +79,28 @@ type Phase =
 const PHASE_LABEL: Record<Phase, string> = {
 	idle: "",
 	downloading: "Downloading the audio",
-	reading: "Reading the audio",
-	listening: "Listening for reactions",
-	transcribing: "Transcribing",
+	reading: "Splitting the audio up",
+	transcribing: "Transcribing and listening for reactions",
 	scoring: "Finding the best moments",
 	done: "",
 };
 
 type Mode = "file" | "url";
+
+/** Requests a recording of this length will cost at OpenRouter: one
+ *  transcription call per audio segment, plus the scoring calls. */
+function estimateRequests(durationSeconds: number): number {
+	if (!durationSeconds) return 0;
+	return (
+		Math.ceil(durationSeconds / SEGMENT_SECONDS) +
+		estimateScoringRequests(durationSeconds)
+	);
+}
+
+/** What a free OpenRouter account gets per day. Buying $10 of credit once
+ *  raises it to 1000, which is why the warning says so rather than just
+ *  refusing. */
+const FREE_DAILY_REQUESTS = 50;
 
 export default function Page() {
 	const [apiKey, setApiKey] = useState<string | null>(null);
@@ -97,6 +114,10 @@ export default function Page() {
 	const [mode, setMode] = useState<Mode>("file");
 	const [file, setFile] = useState<File | null>(null);
 	const [url, setUrl] = useState("");
+	/** Length of the chosen source, once known — from a cheap metadata probe
+	 *  for a file, or the manifest for a VOD. Drives the cost estimate shown
+	 *  before anything is spent. */
+	const [duration, setDuration] = useState(0);
 	/** Held after a VOD run so cutting can fetch just the segments it needs,
 	 *  instead of downloading the whole thing again per clip. */
 	const [vod, setVod] = useState<VodInfo | null>(null);
@@ -137,6 +158,18 @@ export default function Page() {
 			.catch(() => setModels([]));
 	}, []);
 
+	const chooseFile = useCallback((f: File | null) => {
+		setFile(f);
+		setDuration(0);
+		// Reads only the container header, so this is instant even on a
+		// multi-gigabyte recording — and it is what makes the cost estimate
+		// available BEFORE the run rather than after it has spent anything.
+		if (f)
+			probeDuration(f)
+				.then(setDuration)
+				.catch(() => setDuration(0));
+	}, []);
+
 	const signOut = () => {
 		clearKey();
 		setApiKey(null);
@@ -147,12 +180,29 @@ export default function Page() {
 
 	// ---- the run ---------------------------------------------------------
 
-	/** Get 16 kHz mono PCM from whichever source the visitor chose. */
-	const readAudio = useCallback(async (): Promise<Float32Array> => {
+	/** Get the audio into ffmpeg's filesystem, and say how long it runs.
+	 *
+	 *  A local file is MOUNTED rather than copied — WORKERFS reads it lazily,
+	 *  so a multi-gigabyte recording costs nothing to make available. A VOD has
+	 *  no file behind it, so its joined segments are written instead; that is
+	 *  the one real copy, and it is the cheap audio-only track. */
+	const prepareSource = useCallback(async (): Promise<{
+		ffmpeg: Awaited<ReturnType<typeof loadFFmpeg>>;
+		inputPath: string;
+		durationSeconds: number;
+		written: string | null;
+	}> => {
+		const ffmpeg = await loadFFmpeg();
+
 		if (mode === "file") {
 			if (!file) throw new Error("Choose a file first.");
 			setPhase("reading");
-			return decodeToMono16k(file);
+			return {
+				ffmpeg,
+				inputPath: `/mount/${await mountSource(ffmpeg, file)}`,
+				durationSeconds: await probeDuration(file).catch(() => 0),
+				written: null,
+			};
 		}
 
 		const source = identify(url);
@@ -162,24 +212,19 @@ export default function Page() {
 		setProgress({ done: 0, total: 1 });
 
 		const info = await loadFromMaster(await masterPlaylistUrl(source));
-		if (info.durationSeconds > MAX_DURATION_SECONDS) {
-			throw new AudioTooLongError(
-				`That VOD is ${Math.round(info.durationSeconds / 60)} minutes. This page handles up to ${
-					MAX_DURATION_SECONDS / 60
-				} — the desktop app sits on a three-hour VOD happily.`,
-			);
-		}
 		setVod(info);
 
 		const ts = await fetchAudio(info, (done, total) =>
 			setProgress({ done, total }),
 		);
 
-		// Browsers decode MP4, WebM, MP3 and WAV but not raw MPEG-TS, so the
-		// joined segments go through ffmpeg before the normal decode path.
 		setPhase("reading");
-		const ffmpeg = await loadFFmpeg();
-		return decodeToMono16k(await tsAudioToWav(ffmpeg, ts));
+		return {
+			ffmpeg,
+			inputPath: await writeSource(ffmpeg, ts, "vod-audio.ts"),
+			durationSeconds: info.durationSeconds,
+			written: "vod-audio.ts",
+		};
 	}, [mode, file, url]);
 
 	const run = useCallback(async () => {
@@ -190,40 +235,69 @@ export default function Page() {
 		setCuts({});
 		setVod(null);
 
+		let ffmpeg: Awaited<ReturnType<typeof loadFFmpeg>> | null = null;
+		let written: string | null = null;
+
 		try {
-			const pcm = await readAudio();
+			const prepared = await prepareSource();
+			ffmpeg = prepared.ffmpeg;
+			written = prepared.written;
+			setDuration(prepared.durationSeconds);
 
-			// Cheap and worth it: the transcript alone misses the moment the
-			// chat loses it. Pure signal processing over PCM we already hold,
-			// so it costs no requests and no download. See audioEvents.ts.
-			setPhase("listening");
-			const excitement = audioExcitement(pcm);
-
-			const chunks = toChunks(pcm);
-			if (!chunks.length) {
-				throw new Error("There is no audio long enough to transcribe.");
+			// Last moment before anything is spent. A VOD's length is only known
+			// once its manifest is read, so this cannot happen any earlier for
+			// that path — but it still happens before the first OpenRouter call,
+			// which is the part that matters. Failing here costs nothing;
+			// failing halfway through costs everything spent so far.
+			const cost = estimateRequests(prepared.durationSeconds);
+			if (account?.isFreeTier && cost > FREE_DAILY_REQUESTS) {
+				throw new Error(
+					`That recording is about ${Math.round(prepared.durationSeconds / 60)} minutes, which needs roughly ${cost} OpenRouter requests. A free account allows ${FREE_DAILY_REQUESTS} a day, so this would stop partway through. Buying $10 of credit once raises the limit to 1000 a day — or try a shorter recording.`,
+				);
 			}
 
+			// Transcribe and measure one segment at a time, keeping only the
+			// transcript lines and three numbers per second. This is what lets a
+			// six-hour VOD cost the same memory as a ten-minute one — holding
+			// the decoded recording would be 230 MB per hour.
 			setPhase("transcribing");
-			setProgress({ done: 0, total: chunks.length });
+			const expected = prepared.durationSeconds
+				? Math.max(1, Math.ceil(prepared.durationSeconds / SEGMENT_SECONDS))
+				: 0;
+			setProgress({ done: 0, total: expected });
+
+			const transcript: Segment[] = [];
+			const features: SecondFeatures[] = [];
+			let carry = 0;
+			let seen = 0;
 
 			// Sequential, not parallel: free OpenRouter accounts are capped at
-			// 20 requests a minute, and firing every chunk at once turns a
+			// 20 requests a minute, and firing every segment at once turns a
 			// working run into a wall of 429s.
-			const segments: Segment[] = [];
-			for (let i = 0; i < chunks.length; i++) {
-				segments.push(
+			for await (const segment of segmentAudio(ffmpeg, prepared.inputPath)) {
+				const measured = extractFeatures(segment.pcm, carry);
+				carry = measured.lastFrameRms;
+				features.push(measured);
+
+				transcript.push(
 					...(await transcribeChunk(
 						apiKey,
-						chunks[i].blob,
+						segment.blob,
 						transcribeModel,
-						chunks[i].offsetSeconds,
+						segment.offsetSeconds,
 					)),
 				);
-				setProgress({ done: i + 1, total: chunks.length });
+
+				seen++;
+				setProgress({ done: seen, total: Math.max(expected, seen) });
 			}
 
-			if (!segments.length) {
+			if (written && ffmpeg) {
+				await discardSource(ffmpeg, written);
+				written = null;
+			}
+
+			if (!transcript.length) {
 				throw new Error(
 					"Nothing was transcribed. If the recording has no speech there is nothing to score.",
 				);
@@ -235,8 +309,8 @@ export default function Page() {
 			const found = await findClips(
 				apiKey,
 				scoreModel,
-				segments,
-				excitement,
+				transcript,
+				combineFeatures(features),
 				(done, total) => setProgress({ done, total }),
 			);
 
@@ -244,15 +318,19 @@ export default function Page() {
 			setPhase("done");
 		} catch (e) {
 			setError(
-				e instanceof AudioTooLongError || e instanceof AudioDecodeError
+				e instanceof AudioDecodeError
 					? e.message
 					: e instanceof Error
 						? e.message
 						: "Something went wrong.",
 			);
 			setPhase("idle");
+		} finally {
+			// A failed run must not leave a 300 MB VOD sitting in ffmpeg's
+			// filesystem for the rest of the session.
+			if (written && ffmpeg) await discardSource(ffmpeg, written);
 		}
-	}, [apiKey, readAudio, scoreModel, transcribeModel]);
+	}, [apiKey, account, prepareSource, scoreModel, transcribeModel]);
 
 	const cut = useCallback(
 		async (clip: Clip, index: number) => {
@@ -320,7 +398,8 @@ export default function Page() {
 						mode={mode}
 						onMode={setMode}
 						selectedFile={file}
-						onFile={setFile}
+						durationSeconds={duration}
+						onFile={chooseFile}
 						url={url}
 						onUrl={setUrl}
 						busy={busy}
@@ -480,6 +559,7 @@ function Controls({
 	mode,
 	onMode,
 	selectedFile,
+	durationSeconds,
 	onFile,
 	url,
 	onUrl,
@@ -497,6 +577,7 @@ function Controls({
 	mode: Mode;
 	onMode: (m: Mode) => void;
 	selectedFile: File | null;
+	durationSeconds: number;
 	onFile: (f: File | null) => void;
 	url: string;
 	onUrl: (u: string) => void;
@@ -524,9 +605,9 @@ function Controls({
 					className="cs-raised mb-5 p-3 text-sm leading-relaxed"
 					style={{ color: "var(--cs-warn)" }}
 				>
-					Your OpenRouter account is on the free tier: 50 requests a day. A
-					recording of about 10 minutes fits comfortably; an hour will not.
-					Buying $10 of credit once raises it to 1000 a day.
+					Your OpenRouter account is on the free tier: {FREE_DAILY_REQUESTS}{" "}
+					requests a day. That covers a recording of roughly two hours. Buying
+					$10 of credit once raises it to 1000 a day.
 				</p>
 			)}
 
@@ -582,7 +663,7 @@ function Controls({
 						<span className="text-xs" style={{ color: "var(--cs-muted)" }}>
 							{selectedFile
 								? `${selectedFile.name} · ${(selectedFile.size / 1e6).toFixed(0)} MB`
-								: `MP4, MOV, WebM, MP3 or WAV — up to ${MAX_DURATION_SECONDS / 60} minutes`}
+								: "MP4, MOV, WebM, MP3 or WAV — any length"}
 						</span>
 					</label>
 					<input
@@ -644,6 +725,30 @@ function Controls({
 					disabled={busy}
 				/>
 			</div>
+
+			{/* Shown as soon as a file is chosen, which is the only moment a
+			    warning is worth anything — after the run starts, the requests
+			    are already spent. A VOD's length is not known until its manifest
+			    is read, so that path is checked in `run` instead, still before
+			    the first OpenRouter call. */}
+			{durationSeconds > 0 && (
+				<p
+					className="mt-4 text-xs"
+					style={{
+						color:
+							account?.isFreeTier &&
+							estimateRequests(durationSeconds) > FREE_DAILY_REQUESTS
+								? "var(--cs-warn)"
+								: "var(--cs-muted)",
+					}}
+				>
+					{Math.round(durationSeconds / 60)} minutes — about{" "}
+					{estimateRequests(durationSeconds)} OpenRouter requests.
+					{account?.isFreeTier &&
+						estimateRequests(durationSeconds) > FREE_DAILY_REQUESTS &&
+						` That is more than a free account's ${FREE_DAILY_REQUESTS} a day, so it would stop partway through.`}
+				</p>
+			)}
 
 			<button
 				type="button"
