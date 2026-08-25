@@ -103,11 +103,27 @@ No subscription, no account, no clip limit
 Policy 10.1.3: at most seven, relevant, no pricing words, no other products'
 names. These are phrases someone would actually type, not a keyword dump.
 
+**No brand names here, and the rule is stricter than it looks.** The 2026-08-24
+submission (`9NB6XT7DSQZZ`) failed certification on exactly this, with
+"twitch clip maker" and "youtube shorts maker" flagged:
+
+> keywords which are product titles that aren't published by you
+> Problematic Keyword(s): YouTube, Twitch
+
+"Shorts" is itself a YouTube product name, so that second term broke the rule
+twice. "Reels" and "TikTok" are out for the same reason.
+
+The DESCRIPTION is a different field and may keep them — the same reviewer read
+"Paste a YouTube, Twitch or Kick link" above and did not object, because 10.1.3
+governs search terms only. Saying what the app works with is fine; using
+someone else's product name as a keyword is not. Do not strip the description
+in a panic; it costs real discoverability for no compliance benefit.
+
 ```
 ai video clipper
 local ai video editing
-twitch clip maker
-youtube shorts maker
+stream clip maker
+short form video maker
 vertical video editor
 open source video ai
 auto subtitle generator
