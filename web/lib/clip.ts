@@ -30,23 +30,39 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
  *
  *  Copied there by `scripts/copy-ffmpeg-core.mjs` at install time. Local
  *  rather than unpkg so the tool has no third-party runtime dependency that
- *  can rot, rate-limit, or be blocked on a corporate network. */
-const CORE_URL = "/ffmpeg/ffmpeg-core.js";
-const WASM_URL = "/ffmpeg/ffmpeg-core.wasm";
+ *  can rot, rate-limit, or be blocked on a corporate network.
+ *
+ *  The worker in particular is served raw so the BUNDLER NEVER SEES IT: it
+ *  contains `await import(coreURL)` on a runtime variable, which Turbopack
+ *  cannot resolve statically and replaces with a stub that throws "Cannot
+ *  find module as expression is too dynamic". */
+const CORE_PATH = "/ffmpeg/ffmpeg-core.js";
+const WASM_PATH = "/ffmpeg/ffmpeg-core.wasm";
+const WORKER_PATH = "/ffmpeg/worker.js";
 
-/** The library's own worker, served by us rather than bundled.
+/** A fully-qualified URL on the page's own origin.
  *
- *  Without this, Turbopack bundles `@ffmpeg/ffmpeg`'s worker along with the
- *  app, hits the `await import(coreURL)` inside it, cannot resolve a runtime
- *  variable statically, and swaps it for a stub that throws "Cannot find
- *  module as expression is too dynamic". The engine then never starts, which
- *  breaks every path in the app.
+ *  ## Why these cannot be root-relative paths
  *
- *  Pointing at a copy in `public/` keeps the bundler out of it: the worker
- *  loads natively, its dynamic import survives, and it resolves CORE_URL at
- *  runtime. All three URLs here are absolute paths on our own origin —
- *  nothing is fetched from a CDN. */
-const CLASS_WORKER_URL = "/ffmpeg/worker.js";
+ *  `@ffmpeg/ffmpeg` resolves `classWorkerURL` with
+ *  `new Worker(new URL(path, import.meta.url))`. Turbopack replaces
+ *  `import.meta.url` in the bundle with a module descriptor carrying a
+ *  **file:// path from the machine that built it**, so `"/ffmpeg/worker.js"`
+ *  resolved to `file:///ffmpeg/worker.js` and the browser refused it:
+ *
+ *      Failed to construct 'Worker': Script at 'file:///ffmpeg/worker.js'
+ *      cannot be accessed from origin 'https://…'
+ *
+ *  An ABSOLUTE url makes `new URL(absolute, base)` ignore the base entirely,
+ *  so whatever the bundler did to `import.meta.url` stops mattering. That is
+ *  the whole fix — do not "tidy" these back into relative paths.
+ *
+ *  Resolved lazily rather than at module scope because this is a static
+ *  export: module-level code runs during prerender, where `window` does not
+ *  exist. */
+function asset(path: string): string {
+	return new URL(path, window.location.href).href;
+}
 
 const MOUNT = "/mount";
 
@@ -97,9 +113,9 @@ export function loadFFmpeg(onLog?: (line: string) => void): Promise<FFmpeg> {
 
 		try {
 			await ffmpeg.load({
-				coreURL: CORE_URL,
-				wasmURL: WASM_URL,
-				classWorkerURL: CLASS_WORKER_URL,
+				coreURL: asset(CORE_PATH),
+				wasmURL: asset(WASM_PATH),
+				classWorkerURL: asset(WORKER_PATH),
 			});
 		} catch (e) {
 			// Let the next attempt retry rather than returning a permanently
