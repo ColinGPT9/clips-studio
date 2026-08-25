@@ -35,13 +35,13 @@ this is what shows at the top of the listing before anyone expands it. Kept
 under that:
 
 ```
-Turn long videos into vertical clips using AI that runs on your own PC. Paste a YouTube, Twitch or Kick link and Clips Kitty finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Nothing is uploaded. Free and open source.
+Turn long videos into vertical clips using AI that runs on your own PC. Paste a stream or video link and Clips Kitty finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Nothing is uploaded. Free and open source.
 ```
 
 ## Description (10,000 max)
 
 ```
-Clips Kitty finds the best moments in a long video and cuts them into vertical clips for Shorts, TikTok and Reels. Give it a YouTube, Twitch or Kick link, or a video file from your own disk, and it does the rest.
+Clips Kitty finds the best moments in a long video and cuts them into vertical clips ready to post anywhere short-form video goes. Give it a stream link, a video link, or a file from your own disk, and it does the rest. The supported sites are listed on the project page.
 
 Everything runs on your computer.
 
@@ -55,7 +55,7 @@ WHAT IT DOES
 • Burns in subtitles — word-level timing, styled, in the language of the clip
 • Speaks 19 languages — translate, subtitle and dub clips into any of them
 • Learns a creator — recurring jokes, catchphrases and running bits feed into how their moments are scored
-• Longer edits too — assemble a long-form cut, not only shorts
+• Longer edits too — assemble a long-form cut, not only short clips
 • Edit before you publish — adjust the crop, the captions, the music and the branding
 
 YOUR CHOICE OF AI MODEL
@@ -89,7 +89,7 @@ subscription).
 
 ```
 Runs entirely on your PC. Nothing is uploaded
-Works from YouTube, Twitch and Kick links, or your own files
+Works from stream and video links, or your own files
 Finds the best moments from speech, audience reaction and video
 Keeps whoever is talking in frame
 Burns in word-timed subtitles
@@ -113,11 +113,22 @@ submission (`9NB6XT7DSQZZ`) failed certification on exactly this, with
 "Shorts" is itself a YouTube product name, so that second term broke the rule
 twice. "Reels" and "TikTok" are out for the same reason.
 
-The DESCRIPTION is a different field and may keep them — the same reviewer read
-"Paste a YouTube, Twitch or Kick link" above and did not object, because 10.1.3
-governs search terms only. Saying what the app works with is fine; using
-someone else's product name as a keyword is not. Do not strip the description
-in a panic; it costs real discoverability for no compliance benefit.
+**The description was cleared of them too, by choice rather than by rule.**
+10.1.3 governs search terms only, and the same reviewer read "Paste a YouTube,
+Twitch or Kick link" in the short description, the full description and a
+feature bullet without objecting — so keeping them was permitted. They were
+removed anyway, because a second rejection costs another review cycle and the
+words were not worth that risk.
+
+What that costs, so the trade is visible if anyone reconsiders: a reader can no
+longer tell from the listing alone which sites are supported. The description
+now points at the project page for that list, which Store policy does not
+govern.
+
+Names kept on purpose, because they state requirements rather than chase
+search traffic: Windows and NVIDIA under WHAT YOU NEED (10.4.1 wants
+compatibility stated), GitHub for the source link, and Ollama, without which
+"pick your own AI model" cannot be explained.
 
 ```
 ai video clipper
