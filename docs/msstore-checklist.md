@@ -70,6 +70,25 @@ Full instructions for each step are in [MSSTORE.md](MSSTORE.md).
       ships with the Windows SDK which is not installed. Optional, but it
       catches manifest problems before Microsoft's testers do.
 
+### Resubmitting after a listing-only rejection
+
+The 2026-08-24 review (`9NB6XT7DSQZZ`) failed on **one** thing: policy 10.1.3,
+search terms containing "YouTube" and "Twitch". A Microsoft report lists every
+issue it found, so everything else — package, screenshots, age rating, pricing,
+declarations — was acceptable and **carries over in Partner Center**.
+
+So a listing-only rejection needs only:
+
+- [ ] Search terms replaced (all seven — see `store-listing.md`)
+- [ ] Description and feature bullets repasted, if they changed
+- [ ] Publishing still set to **manual**
+- [ ] Submit
+
+**Do not re-upload or version-bump the package.** It was not what failed, and
+the version only has to increase above what is *published* — nothing is.
+
+The full list below is for a first submission.
+
 ### Submission
 
 - [ ] Pricing: **Free**
