@@ -238,7 +238,31 @@ export type Model = {
 	/** Transcription models are a different list from chat models and must
 	 *  never appear in the same dropdown. */
 	isTranscription: boolean;
+	/** Approximate USD per HOUR of audio, for transcription models only.
+	 *
+	 *  Approximate because OpenRouter reports speech pricing in more than one
+	 *  unit and does not say which. Two clusters are clearly present:
+	 *
+	 *    per SECOND   whisper-large-v3-turbo 3.33e-6  -> ~$0.012/hr
+	 *    per MINUTE   openai/whisper-1       0.006    ->  $0.36/hr
+	 *                 deepgram/nova-3        0.0043   ->  $0.26/hr
+	 *                 google/chirp-3         0.016    ->  $0.96/hr
+	 *
+	 *  Each of those matches the provider's own published rate, and every
+	 *  model in the catalogue falls on one side or the other of 1e-4 — so that
+	 *  is the split used below. It is a heuristic, which is why the UI prefixes
+	 *  the figure with "~" and why the REAL number reported by OpenRouter in
+	 *  `usage.cost` is shown once a run has actually spent something.
+	 *
+	 *  Getting the unit wrong would misprice by 60x, so do not present this as
+	 *  exact. Token-billed models (those with a `completion` price, such as the
+	 *  gpt-4o transcribe pair) are understated here, since the output side
+	 *  cannot be predicted from audio length. */
+	audioPerHour: number | null;
 };
+
+/** Where the per-second and per-minute clusters divide. See `audioPerHour`. */
+const PER_SECOND_CEILING = 1e-4;
 
 function toModel(m: Record<string, unknown>): Model {
 	const pricing = (m.pricing ?? {}) as Record<string, string>;
@@ -263,7 +287,15 @@ function toModel(m: Record<string, unknown>): Model {
 			params.includes("structured_outputs"),
 		isTranscription:
 			Array.isArray(outputs) && outputs.includes("transcription"),
+		audioPerHour: audioRate(pricing.prompt),
 	};
+}
+
+/** Estimated USD per hour of audio from a raw speech price. */
+function audioRate(raw: string | undefined): number | null {
+	const n = Number(raw);
+	if (!raw || Number.isNaN(n) || n <= 0) return null;
+	return n < PER_SECOND_CEILING ? n * 3600 : n * 60;
 }
 
 /** Chat models this visitor can actually use.
@@ -323,6 +355,12 @@ export async function transcribeChunk(
 	audio: Blob,
 	model: string,
 	offsetSeconds: number,
+	/** Called with what OpenRouter says this request actually cost, in USD.
+	 *
+	 *  The ground truth the `audioPerHour` estimate cannot be: OpenRouter
+	 *  reports speech pricing in units it does not name, so the figure in the
+	 *  picker is inferred. This one is measured. */
+	onCost?: (usd: number) => void,
 ): Promise<Segment[]> {
 	const form = new FormData();
 	// The extension is how the endpoint infers the format, so it has to match
@@ -340,6 +378,9 @@ export async function transcribeChunk(
 	if (!res.ok) throw await explain(res);
 
 	const body = await res.json();
+
+	const cost = Number(body?.usage?.cost);
+	if (Number.isFinite(cost) && cost > 0) onCost?.(cost);
 
 	// `verbose_json` is only honoured by OpenAI-compatible providers; anything
 	// else returns plain `{text}`. One un-timed segment covering the chunk is

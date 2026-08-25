@@ -145,6 +145,9 @@ export default function Page() {
 	const [progress, setProgress] = useState({ done: 0, total: 0 });
 	const [clips, setClips] = useState<Clip[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	/** What the run has actually cost, as reported by OpenRouter. Exact, unlike
+	 *  the estimate in the picker. */
+	const [spent, setSpent] = useState(0);
 
 	/** Object URLs for cut clips, by clip index. Revoked on unmount — a
 	 *  handful of 50 MB blobs left dangling is real memory on the machines
@@ -261,6 +264,7 @@ export default function Page() {
 		setClips(null);
 		setCuts({});
 		setVod(null);
+		setSpent(0);
 
 		let ffmpeg: Awaited<ReturnType<typeof loadFFmpeg>> | null = null;
 		let written: string | null = null;
@@ -312,6 +316,7 @@ export default function Page() {
 						segment.blob,
 						transcribeModel,
 						segment.offsetSeconds,
+						(usd) => setSpent((total) => total + usd),
 					)),
 				);
 
@@ -414,10 +419,12 @@ ${detail}`
 	const scoreChoices = models
 		.filter((m) => m.supportsJson && !m.isTranscription)
 		.sort((a, b) => (a.promptPerM ?? 1e9) - (b.promptPerM ?? 1e9));
-	// Cheapest first, so the default sits at the top and the expensive ones
-	// take a deliberate scroll.
+	// Sorted by the per-HOUR estimate, not the raw price. Sorting by the raw
+	// number was wrong: OpenRouter reports speech pricing per second for some
+	// models and per minute for others, so ranking them against each other put
+	// a $0.36/hour model above a $0.012/hour one.
 	const transcribeChoices = [...sttModels].sort(
-		(a, b) => (a.promptPerM ?? 1e9) - (b.promptPerM ?? 1e9),
+		(a, b) => (a.audioPerHour ?? 1e9) - (b.audioPerHour ?? 1e9),
 	);
 
 	return (
@@ -453,6 +460,7 @@ ${detail}`
 							label={PHASE_LABEL[phase]}
 							done={progress.done}
 							total={progress.total}
+							spent={spent}
 						/>
 					)}
 				</>
@@ -825,6 +833,7 @@ function ModelPicker({
 					completionPerM: null,
 					supportsJson: true,
 					isTranscription: false,
+					audioPerHour: null,
 				},
 			];
 
@@ -848,9 +857,10 @@ function ModelPicker({
 						    provider — the SAME model is per-hour on Groq and
 						    per-second on DeepInfra — so rendering their number as
 						    "$/M tokens" would be a confident lie. */}
-						{!m.isTranscription &&
-							m.promptPerM !== null &&
-							` — $${m.promptPerM.toFixed(2)}/M in`}
+						{m.isTranscription
+							? m.audioPerHour !== null &&
+								` — ~$${m.audioPerHour.toFixed(3)}/hour of audio`
+							: m.promptPerM !== null && ` — $${m.promptPerM.toFixed(2)}/M in`}
 					</option>
 				))}
 			</select>
@@ -862,10 +872,12 @@ function Progress({
 	label,
 	done,
 	total,
+	spent,
 }: {
 	label: string;
 	done: number;
 	total: number;
+	spent: number;
 }) {
 	const pct = total ? Math.round((done / total) * 100) : 0;
 	return (
@@ -887,6 +899,17 @@ function Progress({
 					style={{ width: `${pct}%`, background: "var(--cs-accent)" }}
 				/>
 			</div>
+
+			{/* What OpenRouter says this has ACTUALLY cost, from `usage.cost` on
+			    each response. The figure in the model picker is an estimate —
+			    OpenRouter reports speech pricing in units it does not name — so
+			    this is the number to trust, and it is worth showing while the
+			    run is happening rather than after the money is gone. */}
+			{spent > 0 && (
+				<p className="mt-2 text-xs" style={{ color: "var(--cs-muted)" }}>
+					Spent so far: ${spent.toFixed(4)}
+				</p>
+			)}
 		</section>
 	);
 }
