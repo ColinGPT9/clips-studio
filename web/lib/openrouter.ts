@@ -240,7 +240,33 @@ export type Model = {
 	isTranscription: boolean;
 };
 
-/** Models this visitor can actually use.
+function toModel(m: Record<string, unknown>): Model {
+	const pricing = (m.pricing ?? {}) as Record<string, string>;
+	const perM = (raw: string | undefined): number | null => {
+		const n = Number(raw);
+		return !raw || Number.isNaN(n) || n < 0 ? null : n * 1_000_000;
+	};
+	const params = Array.isArray(m.supported_parameters)
+		? (m.supported_parameters as string[])
+		: [];
+	const outputs = ((m.architecture ?? {}) as Record<string, unknown>)
+		.output_modalities;
+
+	return {
+		id: String(m.id),
+		name: String(m.name ?? m.id),
+		contextLength: Number(m.context_length ?? 0),
+		promptPerM: perM(pricing.prompt),
+		completionPerM: perM(pricing.completion),
+		supportsJson:
+			params.includes("response_format") ||
+			params.includes("structured_outputs"),
+		isTranscription:
+			Array.isArray(outputs) && outputs.includes("transcription"),
+	};
+}
+
+/** Chat models this visitor can actually use.
  *
  *  `/models/user` rather than `/models`: it already applies their own privacy
  *  settings and provider preferences, so we never offer a model their account
@@ -252,33 +278,33 @@ export async function listModels(key: string): Promise<Model[]> {
 	if (!res.ok) throw await explain(res);
 
 	const { data } = await res.json();
-	return (data ?? [])
-		.map((m: Record<string, unknown>) => {
-			const pricing = (m.pricing ?? {}) as Record<string, string>;
-			const perM = (raw: string | undefined): number | null => {
-				const n = Number(raw);
-				return !raw || Number.isNaN(n) || n < 0 ? null : n * 1_000_000;
-			};
-			const params = Array.isArray(m.supported_parameters)
-				? (m.supported_parameters as string[])
-				: [];
-			const outputs = ((m.architecture ?? {}) as Record<string, unknown>)
-				.output_modalities;
+	return ((data ?? []) as Record<string, unknown>[])
+		.map(toModel)
+		.filter((m) => m.id);
+}
 
-			return {
-				id: String(m.id),
-				name: String(m.name ?? m.id),
-				contextLength: Number(m.context_length ?? 0),
-				promptPerM: perM(pricing.prompt),
-				completionPerM: perM(pricing.completion),
-				supportsJson:
-					params.includes("response_format") ||
-					params.includes("structured_outputs"),
-				isTranscription:
-					Array.isArray(outputs) && outputs.includes("transcription"),
-			};
-		})
-		.filter((m: Model) => m.id);
+/** Transcription models, from the PUBLIC catalogue.
+ *
+ *  Deliberately not `/models/user`, which is where the transcription picker
+ *  went wrong: that endpoint returns the visitor's chat models and no
+ *  speech-to-text ones, so filtering it for transcription produced an empty
+ *  list and the picker collapsed to a single fixed option — a dropdown with
+ *  nothing to drop down.
+ *
+ *  `/models?output_modalities=transcription` needs no auth and returns the
+ *  full set (19 at the time of writing, every one reporting
+ *  `output_modalities: ["transcription"]`), so the picker has something to
+ *  offer before the account is even known. */
+export async function listTranscriptionModels(): Promise<Model[]> {
+	const res = await fetch(
+		`${BASE}/models?output_modalities=transcription&limit=50`,
+	);
+	if (!res.ok) throw await explain(res);
+
+	const { data } = await res.json();
+	return ((data ?? []) as Record<string, unknown>[])
+		.map(toModel)
+		.filter((m) => m.id && m.isTranscription);
 }
 
 // ---- transcription -------------------------------------------------------

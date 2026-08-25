@@ -167,4 +167,4 @@ export const PRIVACY_NOTE =
 	"Your own files never leave your computer — they are read in the browser and never uploaded. Only short audio snippets are sent for transcription, straight to OpenRouter on your own account; we never see your key. Twitch VODs are the one exception: Twitch blocks browsers from reading them, so those are relayed through a small server we run, which stores nothing.";
 
 export const COST_NOTE =
-	"You pay OpenRouter directly, at cost. A 30-minute recording is usually a few cents. New OpenRouter accounts also get 50 free requests a day, which covers a short recording outright.";
+	"You pay OpenRouter directly, at cost. A 30-minute recording is usually a few cents. Transcription needs a funded account — OpenRouter requires at least $0.50 of credit before it will accept audio, so the free daily allowance covers the scoring but not the listening.";

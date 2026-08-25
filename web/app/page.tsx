@@ -56,6 +56,7 @@ import {
 	type KeyInfo,
 	keyInfo,
 	listModels,
+	listTranscriptionModels,
 	loadKey,
 	type Model,
 	type Segment,
@@ -120,6 +121,10 @@ export default function Page() {
 	const [apiKey, setApiKey] = useState<string | null>(null);
 	const [account, setAccount] = useState<KeyInfo | null>(null);
 	const [models, setModels] = useState<Model[]>([]);
+	/** Kept apart from `models` because they come from a different endpoint:
+	 *  `/models/user` has no speech-to-text models in it, which is why the
+	 *  transcription picker used to have nothing to offer. */
+	const [sttModels, setSttModels] = useState<Model[]>([]);
 	const [scoreModel, setScoreModel] = useState(PREFERRED_SCORE_MODEL);
 	const [transcribeModel, setTranscribeModel] = useState(
 		PREFERRED_TRANSCRIBE_MODEL,
@@ -156,6 +161,14 @@ export default function Page() {
 	}, []);
 
 	// ---- session ---------------------------------------------------------
+
+	// Needs no key, so the picker is populated whether or not anyone is signed
+	// in — and a failure here only costs the dropdown, not the run.
+	useEffect(() => {
+		listTranscriptionModels()
+			.then(setSttModels)
+			.catch(() => setSttModels([]));
+	}, []);
 
 	useEffect(() => {
 		const stored = loadKey();
@@ -401,7 +414,11 @@ ${detail}`
 	const scoreChoices = models
 		.filter((m) => m.supportsJson && !m.isTranscription)
 		.sort((a, b) => (a.promptPerM ?? 1e9) - (b.promptPerM ?? 1e9));
-	const transcribeChoices = models.filter((m) => m.isTranscription);
+	// Cheapest first, so the default sits at the top and the expensive ones
+	// take a deliberate scroll.
+	const transcribeChoices = [...sttModels].sort(
+		(a, b) => (a.promptPerM ?? 1e9) - (b.promptPerM ?? 1e9),
+	);
 
 	return (
 		<main className="mx-auto max-w-3xl px-5 py-10 sm:py-16">
@@ -624,8 +641,10 @@ function Controls({
 					style={{ color: "var(--cs-warn)" }}
 				>
 					Your OpenRouter account is on the free tier: {FREE_DAILY_REQUESTS}{" "}
-					requests a day. That covers a recording of roughly two hours. Buying
-					$10 of credit once raises it to 1000 a day.
+					requests a day, which covers roughly two hours of scoring. But
+					transcription needs a funded account whatever the allowance says —
+					OpenRouter wants at least $0.50 of balance before it will accept audio
+					at all.
 				</p>
 			)}
 
@@ -824,7 +843,14 @@ function ModelPicker({
 				{options.map((m) => (
 					<option key={m.id} value={m.id}>
 						{m.name}
-						{m.promptPerM !== null && ` — $${m.promptPerM.toFixed(2)}/M in`}
+						{/* Price is shown for chat models only. Transcription models
+						    are billed per second or per hour depending on the
+						    provider — the SAME model is per-hour on Groq and
+						    per-second on DeepInfra — so rendering their number as
+						    "$/M tokens" would be a confident lie. */}
+						{!m.isTranscription &&
+							m.promptPerM !== null &&
+							` — $${m.promptPerM.toFixed(2)}/M in`}
 					</option>
 				))}
 			</select>
