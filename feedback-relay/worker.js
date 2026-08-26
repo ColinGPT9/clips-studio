@@ -200,7 +200,22 @@ async function handleSubmit(request, env, ip) {
       imagesMd += `\n![screenshot ${i + 1}](${rawUrl})`;
     }
   }
-  const fullBody = markdown + (imagesMd ? `\n\n### Screenshots\n${imagesMd}` : "");
+  // Every report opens by saying where it came from.
+  //
+  // The relay authenticates with the maintainer's own PAT, so GitHub records
+  // the MAINTAINER as the author of every issue it files - reports written by
+  // app users appear, to anyone reading, to have been written by him. Reports
+  // land overnight under his name and read as though he filed them.
+  //
+  // A banner does not change the author field; only a separate account can do
+  // that (see README). It does make every issue say plainly, in its own first
+  // line, that a user wrote it. The duplicate-comment path below has always
+  // said "Another user reported..." - new issues never got the same courtesy.
+  const ATTRIBUTION = `> **Submitted by a Clips Kitty user** through the in-app feedback hub, and filed here automatically. Not written by the maintainer.
+
+`;
+
+  const fullBody = ATTRIBUTION + markdown + (imagesMd ? `\n\n### Screenshots\n${imagesMd}` : "");
 
   // ---- duplicate layer 2: same problem already reported by someone else?
   // One search call; on a strong title match the report becomes a comment
