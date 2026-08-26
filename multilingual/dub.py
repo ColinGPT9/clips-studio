@@ -91,8 +91,19 @@ def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -
     if not name:
         return None
     voices_dir.mkdir(parents=True, exist_ok=True)
-    if (voices_dir / f"{name}.onnx").exists():
-        return _installed_name(voices_dir, name)
+
+    # Ask the directory what it holds; never build a path out of `name`.
+    # resolve() has already checked its shape and does block traversal, but a
+    # regex is a promise a scanner cannot verify, and `voices_dir /
+    # f"{name}.onnx"` is still a path expression assembled from an API
+    # parameter however well guarded it is. Matching against a listing asks
+    # the same question in a form that cannot leave the folder even if the
+    # shape check is one day loosened — which is the guarantee
+    # _installed_name() was written to give, and this was going around it.
+    installed = _installed_name(voices_dir, name)
+    if installed:
+        return installed
+
     print(f"      Downloading the {language} voice ({name})…")
     try:
         from piper.download_voices import download_voice
@@ -101,10 +112,12 @@ def ensure_voice(language: str, voices_dir: Path, voice_id: str | None = None) -
     except Exception as e:
         print(f"      (voice download failed: {e})")
         return None
-    if not (voices_dir / f"{name}.onnx").exists():
+
+    installed = _installed_name(voices_dir, name)
+    if not installed:
         print("      (voice download produced no model file)")
         return None
-    return _installed_name(voices_dir, name)
+    return installed
 
 
 def _installed_name(voices_dir: Path, name: str) -> str | None:

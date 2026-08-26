@@ -256,6 +256,59 @@ def test_installed_voice_name_is_unchanged_for_a_real_voice(tmp_path):
     assert _installed_name(tmp_path, "../../etc/passwd") is None
 
 
+def test_ensure_voice_never_builds_a_path_from_the_voice_id():
+    """CodeQL #106, "uncontrolled data in a path expression".
+
+    `_installed_name` was added to answer "is this voice here?" from a
+    directory listing, but `ensure_voice` went on asking it twice the old way,
+    with `voices_dir / f"{name}.onnx"` — so the tainted path expression the
+    helper existed to remove was still in the file, and the alert stayed.
+
+    Checked in the source rather than through behaviour because behaviour
+    cannot tell the two apart: the regex in `resolve()` does block traversal,
+    so both spellings give the same answer today. What differs is whether the
+    guarantee survives someone loosening that regex, and whether a scanner can
+    see it — taint stops at a directory listing and cannot be followed through
+    a regex. Dismissing the alert instead would not last: dismissals are pinned
+    to a line and come back the next time one nearby is edited.
+    """
+    source = (Path(__file__).resolve().parent.parent / "multilingual" / "dub.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'voices_dir / f"{name}' not in source, (
+        "ensure_voice is building a path out of the voice id again — ask "
+        "_installed_name() instead, which matches against a directory listing"
+    )
+
+
+def test_ensure_voice_still_finds_and_still_refuses(tmp_path):
+    """The rewrite must not change what the function actually does."""
+    from multilingual.dub import ensure_voice
+
+    (tmp_path / "fr_FR-siwis-medium.onnx").write_bytes(b"model")
+
+    assert ensure_voice("fr", tmp_path, "fr_FR-siwis-medium") == "fr_FR-siwis-medium"
+    # Traversal never reaches the filesystem: resolve() replaces it with the
+    # language default, which here happens to be the file above. The guarantee
+    # under test is that nothing outside tmp_path is ever consulted.
+    assert ensure_voice("fr", tmp_path, "../../etc/passwd") == "fr_FR-siwis-medium"
+
+
+def test_voice_id_validation_rejects_a_trailing_newline():
+    """`$` also matches just before a trailing newline in Python, so
+    "fr_FR-upmc-medium\\n" satisfied a check written to mean "ends here".
+
+    Nothing reachable turned that into an escape. It is closed because a
+    validator that accepts a character it meant to reject is a fact about the
+    regex, not about the code paths that happen to use it today.
+    """
+    from multilingual.voices import _VOICE_ID
+
+    assert _VOICE_ID.match("fr_FR-upmc-medium")
+    assert not _VOICE_ID.match("fr_FR-upmc-medium\n")
+    assert not _VOICE_ID.match("\nfr_FR-upmc-medium")
+
+
 def test_asset_lookup_finds_real_files_and_nothing_else(tmp_path):
     from video_editor.watermark import _asset_in
 

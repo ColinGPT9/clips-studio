@@ -107,7 +107,12 @@ def list_for(language: str, voices_dir: Path) -> list[dict]:
 # Piper voice ids look like "fr_FR-upmc-medium": language, region, speaker
 # name, quality. The catalogue is downloaded, so the set cannot be hardcoded —
 # but the SHAPE can, and that is enough to keep the value out of trouble.
-_VOICE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]*(-[A-Za-z0-9_]+)+$")
+#
+# `\Z` rather than `$`, which in Python also matches immediately before a
+# trailing newline — so "fr_FR-upmc-medium\n" passed this check. Nothing
+# reachable turned that into an escape, but a validator that accepts a
+# character it meant to reject is worth closing rather than reasoning about.
+_VOICE_ID = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_]*(-[A-Za-z0-9_]+)+\Z")
 
 
 def resolve(voice_id: str | None, language: str) -> tuple[str, int | None]:

@@ -358,7 +358,13 @@ async function handleHealth(vod, request, env) {
 			env,
 		);
 	} catch (e) {
-		steps.push({ step: "threw", error: String(e) });
+		// The error's CLASS, not its message. Which step threw and what kind of
+		// failure it was is the whole diagnostic value here, and it survives;
+		// the message is where an internal path or hostname would ride along to
+		// a public endpoint. The full object goes to the log for whoever runs
+		// this, who can read far more there than a caller ever should.
+		console.error("twitch-proxy: /health threw", e);
+		steps.push({ step: "threw", error: e?.name || "Error" });
 		return json({ verdict: "failed", steps }, request, env, 502);
 	}
 }
@@ -428,7 +434,18 @@ export default {
 					);
 			}
 		} catch (e) {
-			return json({ error: String(e.message || e) }, request, env, 502);
+			// Everything a caller can actually act on is returned deliberately
+			// above — a refused origin, a bad vod id, an upstream status. So
+			// anything arriving here is this Worker malfunctioning, and its
+			// message describes the proxy's insides rather than anything the
+			// page could fix. Log it where the operator reads logs; tell the
+			// caller only that it broke.
+			//
+			// This does NOT walk back the readable-errors rule above: that is
+			// about refusals the caller caused and can correct, which are still
+			// spelled out in full.
+			console.error("twitch-proxy: unhandled error", e);
+			return json({ error: "The proxy hit an unexpected error." }, request, env, 502);
 		}
 	},
 };
