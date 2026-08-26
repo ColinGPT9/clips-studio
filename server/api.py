@@ -2156,9 +2156,35 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                                 "total": info.get("total"),
                             }
                         )
+                _select_if_nothing_usable(body.tag)
                 broadcaster.publish({"type": "model_pull", "tag": body.tag, "status": "done"})
             except Exception as e:
                 broadcaster.publish({"type": "model_pull", "tag": body.tag, "status": "error", "error": str(e)})
+
+        def _select_if_nothing_usable(tag: str) -> None:
+            """Make the download count as a choice when nothing else can run.
+
+            Setup pulls the model it recommends for the hardware, which on a
+            machine with no graphics card is not the one settings.yaml ships
+            with. Downloading it and leaving the old one selected is what left
+            a Store reviewer looking at a finished download and a red error.
+
+            Only when the current selection is unusable, though: someone on
+            gemma:7b pulling gemma3:27b to try later must not be switched out
+            from under them.
+            """
+            try:
+                from llm.manager import installed_models, model_is_installed, switch_model
+
+                installed = [m["name"] for m in installed_models(ollama_host)]
+                current = config["llm"]["backend"]
+                if model_is_installed(current, installed):
+                    return
+                config["llm"]["backend"] = switch_model(settings_path, tag)
+            except Exception:
+                # Never fail a completed download over bookkeeping — the model
+                # is on disk either way, and the Models page can still select it.
+                pass
 
         threading.Thread(target=_pull, daemon=True).start()
         return {"started": body.tag}

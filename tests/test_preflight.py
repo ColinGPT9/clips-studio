@@ -8,6 +8,8 @@ Nothing in preflight may raise — a check that fails to run is reported as a
 failed check, because a crashing health check is worse than no health check.
 """
 
+import pytest
+
 from core import preflight
 
 
@@ -81,6 +83,121 @@ def test_a_model_that_is_missing_never_suggests_the_command_line(monkeypatch):
     assert model.name == "model"
     assert model.ok is False
     assert "ollama pull" not in model.fix.lower()
+
+
+def _ollama_with(monkeypatch, installed: list[str]) -> None:
+    """Stub Ollama as holding exactly `installed`."""
+    import requests
+
+    class Response:
+        @staticmethod
+        def raise_for_status() -> None:
+            """A 200."""
+
+        @staticmethod
+        def json() -> dict:
+            return {"models": [{"name": n, "size": 3_000_000_000} for n in installed]}
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Response())
+    monkeypatch.setattr(preflight, "has_bundled_ollama", lambda: True)
+
+
+def test_the_microsoft_certification_scenario(monkeypatch):
+    """The submission failed 10.1.2.10 "Unusable Feature: Install AI Model".
+
+    A reviewer on a laptop with no graphics card let setup download the model
+    it recommended for that hardware — gemma3:4b — watched it reach 100%, and
+    was still told "gemma:7b not installed". The runtime line said one model
+    was installed directly above it, which is what made the app look broken.
+
+    The check was asking whether one specific tag was present. It must ask
+    whether anything can run, because setup downloads what suits the machine
+    and settings.yaml ships the tag that suits an 8 GB card.
+    """
+    _ollama_with(monkeypatch, ["gemma3:4b"])
+    model = preflight.check_ollama("http://localhost:11434", "gemma:7b")[1]
+
+    assert model.ok is True, "this is the exact assertion that failed certification"
+    assert model.detail == "gemma3:4b installed"
+    assert "gemma:7b" not in model.detail, "must not name a model nobody chose"
+
+
+@pytest.mark.parametrize(
+    "installed, expected, why",
+    [
+        ([], False, "nothing installed is the only real failure"),
+        (["gemma3:4b"], True, "the model the reviewer actually downloaded"),
+        (["gemma:7b"], True, "the shipped default still works"),
+        (["qwen3:8b"], True, "not a Gemma at all, and still fine"),
+        (["mistral-nemo:12b"], True, "any installed Ollama model counts"),
+        (["gemma3:4b", "gemma:7b"], True, "several installed"),
+    ],
+)
+def test_the_check_is_model_agnostic(monkeypatch, installed, expected, why):
+    """gemma:7b being absent must never fail the check on its own.
+
+    It is the default in settings.yaml, so it is the tag most likely to be
+    configured and missing at once — which is precisely the combination that
+    failed the Store review.
+    """
+    _ollama_with(monkeypatch, installed)
+    model = preflight.check_ollama("http://localhost:11434", "gemma:7b")[1]
+    assert model.ok is expected, why
+
+
+def test_the_check_reads_live_state_rather_than_remembering(monkeypatch):
+    """Install then remove: the verdict has to follow the machine, not a cached
+    success from earlier in the session."""
+    _ollama_with(monkeypatch, ["gemma3:4b"])
+    assert preflight.check_ollama("http://localhost:11434", "gemma:7b")[1].ok is True
+
+    _ollama_with(monkeypatch, [])
+    gone = preflight.check_ollama("http://localhost:11434", "gemma:7b")[1]
+    assert gone.ok is False
+    assert gone.detail == "no AI model installed"
+
+
+def test_no_model_says_no_model_rather_than_naming_one(monkeypatch):
+    """"gemma:7b not installed" reads as "this app needs a thing you do not
+    have". "No AI model installed" is the true statement, and the action that
+    follows it — open the Models page — works whatever the hardware."""
+    _ollama_with(monkeypatch, [])
+    model = preflight.check_ollama("http://localhost:11434", "gemma:7b")[1]
+
+    assert model.ok is False
+    assert "gemma" not in model.detail.lower()
+    assert "Models page" in model.fix
+
+
+def test_the_pipeline_loads_the_model_the_check_promised(monkeypatch):
+    """A green check has to mean the model that will load is present.
+
+    Reporting gemma3:4b as usable while the pipeline still builds a gemma:7b
+    backend would move the failure out of setup and into the first video —
+    still an unusable feature, just found later.
+    """
+    from core.pipeline import _with_usable_model
+
+    monkeypatch.setattr(
+        "llm.manager.installed_models",
+        lambda host: [{"name": "gemma3:4b", "size_gb": 3.3}],
+    )
+    resolved = _with_usable_model({"backend": "ollama/gemma:7b"})
+    assert resolved["backend"] == "ollama/gemma3:4b"
+
+
+def test_an_installed_model_is_left_alone(monkeypatch):
+    """The fallback must not second-guess a choice that works — a 12 GB card
+    running gemma3:12b keeps it, rather than being pulled to a smaller one."""
+    from core.pipeline import _with_usable_model
+
+    monkeypatch.setattr(
+        "llm.manager.installed_models",
+        lambda host: [{"name": "gemma3:4b", "size_gb": 3.3},
+                      {"name": "gemma3:12b", "size_gb": 8.1}],
+    )
+    cfg = {"backend": "ollama/gemma3:12b"}
+    assert _with_usable_model(cfg)["backend"] == "ollama/gemma3:12b"
 
 
 def test_absent_whisper_weights_warn_without_blocking(monkeypatch):

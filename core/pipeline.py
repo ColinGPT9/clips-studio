@@ -92,6 +92,32 @@ def _share_the_cpu(workers: int) -> None:
           f"({workers} workers, {cores} cores, 2 held back for the desktop)")
 
 
+def _with_usable_model(llm_config: dict) -> dict:
+    """Point the backend at a model that is actually installed.
+
+    The setup check reports whichever model can really run rather than the one
+    named in settings.yaml, because the two drift apart — setup downloads what
+    it recommends for the hardware, which on a machine with no graphics card is
+    not the shipped default. Loading the configured tag regardless would make
+    that check a lie: green in setup, "model not found" on the first video.
+
+    Returns the config untouched when nothing needs changing, including when
+    Ollama cannot be reached — the preflight check is what reports that.
+    """
+    from llm.manager import resolve_usable_model
+
+    spec = llm_config.get("backend") or ""
+    configured = spec.split("/")[-1]
+    usable = resolve_usable_model(
+        llm_config.get("ollama_host", "http://localhost:11434"), configured
+    )
+    if not usable or usable == configured:
+        return llm_config
+
+    print(f"      AI model: '{configured}' is not installed — using '{usable}'")
+    return {**llm_config, "backend": f"ollama/{usable}"}
+
+
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     import time
 
@@ -236,7 +262,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     progress.emit(stage="analyze", video_id=video.video_id)
     signals_thread.join()  # usually already done — transcription takes longer
     hype_thread.join(timeout=60)  # network fetch; hard cap so it never stalls
-    llm = create_backend(config["llm"])
+    llm = create_backend(_with_usable_model(config["llm"]))
     candidates, rejections = find_clips(
         video.path, segments, llm, config,
         signals=signals_out.get("signals"),

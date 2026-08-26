@@ -12,6 +12,23 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **Setup no longer asks for a model you were never meant to install.** On a PC
+  without a graphics card, setup downloads the smaller AI model that suits it —
+  and then told you a *different* model was missing, with a red error, directly
+  under a line confirming a model was installed. The download had worked. The
+  check was asking the wrong question: it wanted one specific model rather than
+  any model that runs.
+
+  It now checks whether an AI model is available at all, and names the one it
+  will actually use. Downloading a model from setup also selects it, unless you
+  already have a working one chosen — so picking a bigger model to try later
+  will not switch you over without asking.
+
+  **This affected every PC whose recommended model was not the shipped
+  default**, which is any machine without an 8 GB graphics card. If setup told
+  you `gemma:7b` was not installed straight after a download finished, this was
+  why, and there was no way past it.
+
 - **A failed YouTube download now says what went wrong.** Pasting a YouTube
   link could fail with a wall of technical text ending in `HTTP Error 403:
   Forbidden`. That looks like a broken app and reads like a broken link, and it

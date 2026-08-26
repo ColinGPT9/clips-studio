@@ -126,6 +126,52 @@ def installed_models(host: str) -> list[dict]:
     ]
 
 
+def model_is_installed(tag: str, installed: list[str]) -> bool:
+    """Whether `tag` names one of the models Ollama actually has.
+
+    Ollama reports "gemma:7b"; a config may say "gemma:7b", "ollama/gemma:7b",
+    or just the family. All three have to match the same model.
+    """
+    wanted = tag.split("/")[-1]
+    return any(
+        m == wanted or m.startswith(f"{wanted}:") or m.split(":")[0] == wanted
+        for m in installed
+    )
+
+
+def resolve_usable_model(host: str, configured: str) -> str | None:
+    """The model this app will really load, or None if there is not one.
+
+    Selected, installed and recommended are three different things, and
+    conflating them is what failed Store certification: setup downloaded the
+    model it *recommended* while the health check demanded the model that was
+    *configured*, and nothing reconciled the two. So this is the single answer
+    to "what will actually run", and the check, the pipeline and the UI all ask
+    it rather than each deciding for themselves.
+
+    Any installed model counts. RECOMMENDATIONS is advice about what runs well
+    on which hardware; treating it as a list of permitted models is exactly the
+    bug, so it is used only to break ties.
+    """
+    try:
+        installed = [m["name"] for m in installed_models(host)]
+    except Exception:
+        return None  # Ollama unreachable; the runtime check reports that
+
+    if not installed:
+        return None
+    if configured and model_is_installed(configured, installed):
+        return configured.split("/")[-1]
+
+    # Nothing selected that can be used, so pick for them rather than stopping.
+    # Preferring the recommendation order means the choice matches what the
+    # Models page would have suggested, instead of whatever Ollama lists first.
+    for _hardware, tag, _note in RECOMMENDATIONS:
+        if model_is_installed(tag, installed):
+            return tag
+    return installed[0]
+
+
 def switch_model(settings_path: Path, model_tag: str) -> str:
     """Rewrite the `model:` line in the quick-setup block at the top of
     settings.yaml (preserves all user comments). Returns the new spec."""

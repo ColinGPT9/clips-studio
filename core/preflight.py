@@ -113,20 +113,30 @@ def check_ollama(host: str, model: str) -> list[Check]:
     checks = [Check(name="ollama", ok=True,
                     detail=f"running, {len(installed)} model(s) installed")]
 
-    # Ollama reports "gemma:7b"; a config may say "gemma:7b" or "ollama/gemma:7b".
-    wanted = model.split("/")[-1]
-    have = any(m == wanted or m.startswith(f"{wanted}:") or m.split(":")[0] == wanted
-               for m in installed)
+    # Ask whether a model can be used, NOT whether one particular model is
+    # present. Demanding the configured tag failed Store certification: setup
+    # downloads the model it recommends for your hardware, which on a machine
+    # with no graphics card is not the one settings.yaml ships with, so a
+    # reviewer watched gemma3:4b reach 100% and still be told gemma:7b was
+    # missing. "The recommended model is absent" and "there is no AI at all"
+    # are completely different situations and only the second is a failure.
+    from llm.manager import model_is_installed, resolve_usable_model
+
+    usable = (
+        model.split("/")[-1]
+        if model and model_is_installed(model, installed)
+        else resolve_usable_model(host, model)
+    )
     checks.append(Check(
         name="model",
-        ok=have,
-        detail=f"{wanted} installed" if have else f"{wanted} not installed",
+        ok=bool(usable),
+        detail=f"{usable} installed" if usable else "no AI model installed",
         # No `ollama pull` hint for an installed copy: the bundled runtime has
         # its own port and its own model folder, so a command typed into a
         # terminal would download into a store this app never reads.
-        fix="" if have else
-            f"Download {wanted} from the Models page." if has_bundled_ollama() else
-            f"Download it from the Models page, or run: ollama pull {wanted}",
+        fix="" if usable else
+            "Download a model from the Models page." if has_bundled_ollama() else
+            "Download one from the Models page, or run: ollama pull gemma3:4b",
     ))
     return checks
 
@@ -227,7 +237,11 @@ def run(config: dict) -> Preflight:
 
     llm = config.get("llm") or {}
     host = llm.get("ollama_host") or "http://localhost:11434"
-    model = config.get("model") or "gemma:7b"
+    # `llm.backend` is what the pipeline actually loads (llm/registry.py), and
+    # load_config derives it from the flat `model:` key. Reading that key here
+    # instead was a second source of truth, and defaulting it to a hard-coded
+    # gemma:7b made the check demand a model nobody had chosen.
+    model = (llm.get("backend") or config.get("model") or "").split("/")[-1]
     pf.checks += check_ollama(host, model)
 
     whisper = (config.get("whisper") or {}).get("model") or "auto"
