@@ -195,10 +195,17 @@ def _speak(text: str, voice: str, voices_dir: Path, out: Path, rate: float = 1.0
 
     from piper import SynthesisConfig
 
-    model = voices_dir / f"{voice}.onnx"
-    if not model.exists():
-        print(f"      (voice model missing: {model.name})")
+    # Same laundering ensure_voice() does: the stem comes back from a directory
+    # listing, so the path cannot point outside this folder. Every caller today
+    # already passes a name ensure_voice() returned, which is why no scanner
+    # flags the line — the safety lives one function away and would vanish
+    # quietly the first time _speak() is called from anywhere else. It costs a
+    # glob to make it a property of this function instead.
+    installed = _installed_name(voices_dir, voice)
+    if installed is None:
+        print(f"      (voice model missing: {voice}.onnx)")
         return False
+    model = voices_dir / f"{installed}.onnx"
 
     config = SynthesisConfig(length_scale=float(rate))
     if speaker is not None:
