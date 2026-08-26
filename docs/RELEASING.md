@@ -6,8 +6,17 @@ How to turn a commit into something a creator can install.
 
 ```
 pip install -r requirements-build.txt
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 python scripts/build_installer.py
 ```
+
+**The torch line is not optional and not in `requirements.txt`.** It cannot be:
+the Windows wheel on PyPI is CPU-only, so the CUDA build is chosen by the index
+you install from, and whichever one this machine happens to have is the one
+that ships. Building on the default wheel produces an installer that works and
+has no GPU support whatsoever. The build refuses to start in that case, and
+warns if the CUDA is too old for current cards, but the reliable fix is to run
+the line above.
 
 One command, and it stops at the first failure with an explanation. Expect
 **about two and a half hours** — 149 minutes at 0.1.0, nearly all of it

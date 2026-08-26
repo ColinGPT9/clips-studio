@@ -174,6 +174,36 @@ def _gpu() -> dict:
     return {"name": wmic.splitlines()[0] if wmic else "unknown", "vram": "?", "driver": "?"}
 
 
+def _cuda() -> dict:
+    """Whether PyTorch can actually use the GPU, and what it was built for.
+
+    Both halves are needed together. Issue #83 was a GPU newer than the bundled
+    CUDA, and pinning that down took the build's architecture list held up
+    against the card's compute capability — neither one alone says anything.
+    Reporting them means the next such report diagnoses itself.
+    """
+    try:
+        import torch
+
+        from core.gpu import cuda_usable
+
+        usable, reason = cuda_usable()
+        out: dict = {
+            "usable": usable,
+            "reason": reason,
+            "torch": torch.__version__,
+            "built_for": torch.cuda.get_arch_list(),
+        }
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability(0)
+            out["device_capability"] = f"sm_{major}{minor}"
+        return out
+    except Exception as e:
+        # Importing torch is seconds and can fail outright; a report missing
+        # this section is far better than a report that never sends.
+        return {"usable": "?", "reason": f"could not check ({type(e).__name__})"}
+
+
 def _ram_gb() -> float:
     try:
         import ctypes
@@ -251,6 +281,7 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
         "os": platform.platform(),
         "cpu": {"name": platform.processor() or "?", "cores": __import__("os").cpu_count()},
         "gpu": _gpu(),
+        "cuda": _cuda(),
         "ram_gb": _ram_gb(),
         "ai": _model_info(config),
         "versions": _versions(),

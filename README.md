@@ -391,8 +391,20 @@ torch` gives you the **CPU-only** build — for NVIDIA:
 
 ```bash
 pip uninstall torch torchvision -y
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 ```
+
+**Use cu130, not an older index.** CUDA 12.6 has no kernels for anything newer
+than Hopper, so an RTX 50-series card (Blackwell, `sm_120`) installs cleanly,
+reports `torch.cuda.is_available() == True`, and then dies on the first
+inference with "no kernel image is available for execution on the device".
+CUDA 13 covers Turing through Blackwell.
+
+The trade is at the other end: CUDA 13 drops Maxwell, Pascal and Volta, so a
+GTX 10-series card runs tracking on the CPU. That is deliberate. Those are
+2014-2016 parts without tensor cores, and Turing survives, so a GTX 1660 still
+uses its GPU. Whichever build ships, some card falls outside it and runs on the
+CPU with a note rather than crashing.
 
 AMD GPU owners: tracking and transcription run on CPU on Windows — still fully
 functional, just slower. Your GPU is still used for video encoding via AMF and for the

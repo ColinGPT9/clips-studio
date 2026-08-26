@@ -27,7 +27,30 @@ were often broken in a way that only showed up on somebody else's machine.
   actually fixes it. Reported by a user through the in-app feedback hub
   ([#81](https://github.com/ColinGPT9/clips-studio/issues/81)).
 
+- **RTX 50-series cards no longer crash every job.** On a GeForce RTX 50 card
+  processing failed part-way through with `CUDA error: no kernel image is
+  available for execution on the device`, every single time. Clips Kitty was
+  built against a version of CUDA that predates those cards, so it could see
+  the GPU, report it as working, and then have no code it could actually run on
+  it. It now ships CUDA 13, which supports them properly. Reported by a user
+  through the in-app feedback hub
+  ([#83](https://github.com/ColinGPT9/clips-studio/issues/83)).
+
+- **A GPU that cannot be used falls back to the CPU instead of failing.**
+  Whichever version of CUDA the app ships, some graphics card sits outside it.
+  Until now that meant a job died in the middle; it now finishes on the CPU and
+  says which card it could not use and why. The startup check reports this too,
+  rather than calling the GPU fine right up until the crash.
+
 ### Changed
+
+- **Very old NVIDIA cards now run on the CPU.** Moving to CUDA 13 for the RTX
+  50-series means GeForce GTX 900 and 10-series cards, and the Titan V, are no
+  longer used for detection and transcription. Everything still works and
+  produces identical clips, just more slowly on those machines, and video
+  encoding still uses the GPU as before. GTX 16-series and RTX cards are
+  unaffected. No version of CUDA supports both those cards and current ones, so
+  this was a choice between the two.
 
 - **The YouTube downloader is six weeks newer** (yt-dlp 2026.8.19). YouTube
   changes how it serves video often enough that this is the one component worth

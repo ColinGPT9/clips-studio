@@ -72,6 +72,31 @@ def check_tools(skip_ui: bool) -> None:
     except ImportError:
         missing.append("PyInstaller — run: pip install -r requirements-build.txt")
 
+    # Which CUDA architectures ship is decided by the index this machine
+    # installed torch from, and it cannot be expressed in requirements.txt: the
+    # Windows PyPI wheel is CPU-only. Get it wrong and the build succeeds, the
+    # installer works, and it silently has no GPU support at all — found by
+    # users rather than here, two and a half hours too late.
+    try:
+        import torch
+
+        archs = torch.cuda.get_arch_list()
+        if not archs:
+            missing.append(
+                "CUDA PyTorch — this environment has the CPU-only build, so "
+                "the installer would ship with no GPU support. Run: pip "
+                "install torch torchvision --index-url "
+                "https://download.pytorch.org/whl/cu130"
+            )
+        else:
+            print(f"    PyTorch: {torch.__version__} ({archs[0]} to {archs[-1]})")
+            if "sm_120" not in archs:
+                print("    WARNING: built without sm_120 — RTX 50-series cards "
+                      "will fall back to CPU. Install from the cu130 index to "
+                      "include them.")
+    except ImportError:
+        missing.append("PyTorch — run: pip install -r requirements.txt")
+
     if not skip_ui:
         npm = shutil.which("npm")
         print(f"    npm: {npm or 'NOT FOUND'}")
