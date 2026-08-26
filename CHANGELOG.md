@@ -8,7 +8,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## Unreleased
+## 1.1.4 — setup stops asking for a model you never chose
 
 ### Fixed
 
@@ -58,6 +58,16 @@ were often broken in a way that only showed up on somebody else's machine.
   Until now that meant a job died in the middle; it now finishes on the CPU and
   says which card it could not use and why. The startup check reports this too,
   rather than calling the GPU fine right up until the crash.
+
+### Security
+
+- **Voice files are now found by listing the folder rather than by building a
+  path from the requested name.** No release was vulnerable — the name was
+  already checked against a strict pattern that rejects anything resembling a
+  path — but the check was a rule about the text, and this is a property of
+  where the value comes from, which is the stronger of the two. A related
+  pattern that only rejected a name ending in a newline was tightened at the
+  same time.
 
 ### Changed
 
