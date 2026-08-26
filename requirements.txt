@@ -52,4 +52,4 @@ nvidia-ml-py>=12.575.51,<14
 #
 # Voices are NOT bundled: ~60 MB each across 15 languages, downloaded on
 # demand into data/voices/ the first time a language is dubbed.
-piper-tts>=1.5.0,<2
+piper-tts>=1.7.0,<2
