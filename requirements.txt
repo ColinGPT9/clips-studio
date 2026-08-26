@@ -15,7 +15,7 @@
 
 # Extractors break whenever a site changes, so this is the one dependency
 # you always want newest. No ceiling.
-yt-dlp>=2025.12.8
+yt-dlp>=2026.8.19
 
 # ---- transcription and vision --------------------------------------------
 # MFCC features for the active-speaker model. Tiny and pure Python; the

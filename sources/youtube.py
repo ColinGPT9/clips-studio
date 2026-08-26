@@ -99,6 +99,29 @@ def poll_channel(channel_id: str, timeout: int = 30) -> list[dict]:
     return entries
 
 
+def _friendly_message(error: str) -> str | None:
+    """Plain English for the yt-dlp failures a creator can actually act on.
+
+    Returns None for anything unrecognised, so unknown errors keep their
+    original text rather than being flattened into a vague apology.
+    """
+    # Extraction already succeeded by the time this fires — the page was read
+    # and the formats listed — and Google then refused to hand over the bytes.
+    # That makes it a property of the network, not of the link, so the obvious
+    # advice ("try another video") sends people in circles. Retrying harder
+    # does not help either: ytdlp_common already spends ten backed-off retries
+    # before giving up.
+    if "403" in error or "Forbidden" in error:
+        return (
+            "YouTube refused to send this video's data to your network. The "
+            "link is fine — Google rate-limits the connection itself, and it "
+            "usually clears on its own. Wait an hour and try again, switch "
+            "off a VPN if you have one on, or try a different network. "
+            "Twitch, Kick and local files are not affected."
+        )
+    return None
+
+
 def download(url: str, output_dir: Path) -> DownloadedVideo:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -133,8 +156,14 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         **progress_opts(extract_video_id(url)),
     }
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except yt_dlp.utils.DownloadError as e:
+        friendly = _friendly_message(str(e))
+        if friendly:
+            raise ValueError(friendly) from e
+        raise
 
     video_id = info["id"]
     path = output_dir / f"{video_id}.mp4"

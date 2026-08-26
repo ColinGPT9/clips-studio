@@ -8,6 +8,34 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- **A failed YouTube download now says what went wrong.** Pasting a YouTube
+  link could fail with a wall of technical text ending in `HTTP Error 403:
+  Forbidden`. That looks like a broken app and reads like a broken link, and it
+  is neither. YouTube hands over the video's details and then refuses to send
+  the actual data to your network, which is Google rate-limiting the connection
+  itself. It usually clears on its own within an hour, and Twitch, Kick and
+  local files keep working while it does. The app now explains that in plain
+  English instead of printing the error.
+
+  **What the app cannot do is prevent it.** Nothing in Clips Kitty can persuade
+  Google to serve a connection it has decided to throttle. If it keeps
+  happening, switching off a VPN or moving to a different network is what
+  actually fixes it. Reported by a user through the in-app feedback hub
+  ([#81](https://github.com/ColinGPT9/clips-studio/issues/81)).
+
+### Changed
+
+- **The YouTube downloader is six weeks newer** (yt-dlp 2026.8.19). YouTube
+  changes how it serves video often enough that this is the one component worth
+  keeping current, and the shipped copy had fallen behind. Older copies
+  gradually lose access to formats as YouTube moves on.
+
+---
+
 ## 1.1.3 — the app is now called Clips Kitty
 
 > **Same app, same data, nothing to do.** Your clips, settings and creator
