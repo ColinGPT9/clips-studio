@@ -71,13 +71,13 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Changed
 
-- **Very old NVIDIA cards now run on the CPU.** Moving to CUDA 13 for the RTX
-  50-series means GeForce GTX 900 and 10-series cards, and the Titan V, are no
-  longer used for detection and transcription. Everything still works and
-  produces identical clips, just more slowly on those machines, and video
-  encoding still uses the GPU as before. GTX 16-series and RTX cards are
-  unaffected. No version of CUDA supports both those cards and current ones, so
-  this was a choice between the two.
+- **GTX 10-series and older cards now run on the CPU.** Supporting the RTX
+  50-series meant moving to a newer CUDA, and that does not reach back to cards
+  that old. **GTX 16-series and every RTX card are unaffected** — an RTX 2060 is
+  the oldest card that still uses its GPU. On the machines this does affect,
+  everything still works and produces identical clips, just more slowly, and
+  video encoding uses the GPU exactly as before. No version of CUDA supports
+  both those cards and current ones, so it was a choice between the two.
 
 - **The YouTube downloader is six weeks newer** (yt-dlp 2026.8.19). YouTube
   changes how it serves video often enough that this is the one component worth
