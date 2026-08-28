@@ -1,0 +1,62 @@
+# Record the audience numbers before GitHub deletes them.
+#
+# GitHub keeps **14 days** of traffic data and no more. Cumulative download
+# counts live forever, but views and clones fall off the end of a rolling
+# window, and the launch week is already gone. "3,371 views in a fortnight" is
+# a snapshot; "unique visitors per day since launch, and the line goes up" is
+# what a sponsor actually asks for, and it can only exist if something writes
+# it down every day.
+#
+# So this is not analytics on users — it collects nothing about anybody, adds
+# nothing to the app, and reads only numbers GitHub already computed about this
+# repository. It exists because those numbers expire.
+#
+# Idempotent by date: the API window overlaps every run, a re-run changes
+# nothing, and a few missed days are backfilled from whatever of the 14 is
+# still there.
+
+name: Stats
+
+on:
+  schedule:
+    # 05:00 UTC. After midnight in every timezone the traffic API buckets by,
+    # so a day is complete before it is recorded.
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+# Deliberately NOT on push. A stats job firing on every commit is noise, and
+# two runs writing the same CSV would race each other.
+
+permissions:
+  contents: write   # it commits the data back to this repository
+
+concurrency:
+  # A scheduled run and a manual one at the same moment would both read, both
+  # append, and one would lose.
+  group: stats
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Snapshot traffic and downloads
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Collect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: python .github/scripts/collect_stats.py
+
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet -- docs/stats; then
+            echo "No new data — nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/stats
+          git commit -m "Stats: $(date -u +%Y-%m-%d)"
+          git push
