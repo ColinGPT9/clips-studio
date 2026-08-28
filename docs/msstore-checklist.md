@@ -94,7 +94,10 @@ The full list below is for a first submission.
 - [ ] Pricing: **Free**
 - [ ] Markets: all
 - [ ] Discoverability: available and discoverable in the Store
-- [ ] Category: Multimedia design → Video editing
+- [ ] Category: primary **Photo + video**, secondary **Multimedia design →
+      Photo + video production**. NOT "Multimedia design → Video editing" —
+      that subcategory does not exist, and Multimedia design is for graphics
+      and art rather than video. See MSSTORE.md.
 - [ ] Privacy policy URL:
       `https://colingpt9.github.io/clips-studio/privacy.html`
 - [ ] System requirements entered — **16 GB RAM minimum**, x64, Windows 10 1809+

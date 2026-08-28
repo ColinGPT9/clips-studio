@@ -225,7 +225,28 @@ From the app overview, click **Start submission**.
 
 ### Properties
 
-- **Category:** Multimedia design → Video editing
+- **Category:** primary **Photo + video**; secondary **Multimedia design →
+  Photo + video production**.
+
+  An earlier version of this page said "Multimedia design → Video editing",
+  which is wrong twice over and produced a miscategorised listing. There is no
+  **Video editing** subcategory anywhere in the Store — Multimedia design offers
+  only Illustration + graphic design, Music production, and Photo + video
+  production — so the instruction named something unselectable.
+
+  And Multimedia design is the wrong parent. Microsoft describes it as tools for
+  "creating or editing **graphics, art, design**", with examples that are
+  entirely image editing, painting, sketchbooks, 3D modelling and fine arts —
+  no video at all. **Photo + video** is described as "capturing, **editing**,
+  and sharing photos or **videos**", and lists photo/video editing outright.
+
+  Non-Games apps get a secondary category from the same list, so both can be
+  claimed rather than traded. See
+  [categories and subcategories](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/categories-and-subcategories).
+
+  Changing this later is a metadata-only submission: no package upload, the
+  published listing stays live throughout, and with manual publishing it only
+  changes when you click.
 - **Privacy policy URL:** `https://colingpt9.github.io/clips-studio/privacy.html`
   This is **required** — Store policy 10.5.1 says Win32 and Desktop Bridge
   products "must always have privacy policies".
