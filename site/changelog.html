@@ -36,7 +36,7 @@
           "name": "Clips Kitty",
           "applicationCategory": "MultimediaApplication",
           "operatingSystem": "Windows",
-          "softwareVersion": "1.1.3",
+          "softwareVersion": "1.1.4",
           "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
         }
       }
@@ -80,6 +80,45 @@
           </p>
         </div>
       </div>
+
+      <section>
+        <div class="wrap">
+          <h2>1.1.4 (28 August 2026) — RTX 50-series support, and setup stops asking for the wrong model</h2>
+          <p>
+            <strong>GeForce RTX 50 cards now work.</strong> Processing used to fail part-way
+            through on those cards, every single time. Clips Kitty shipped a version of CUDA
+            older than the cards themselves, so it could see the graphics card, report it as
+            working, and then have no code it could actually run on it.
+          </p>
+          <ul class="ticks">
+            <li>
+              <strong>Which cards use the GPU:</strong> GTX 16-series, RTX 20-series and
+              everything newer, including the RTX 50-series. GTX 10-series and older now run
+              detection on the processor — still fully working, just slower, and video
+              encoding still uses the graphics card as before. No version of CUDA supports
+              both those cards and current ones, so it was a choice between the two.
+            </li>
+            <li>
+              <strong>Setup no longer asks for a model you never chose.</strong> On a PC
+              without a graphics card, setup downloads the smaller AI model that suits it —
+              and then reported a <em>different</em> model as missing, with a red error,
+              directly beneath a line confirming a model was installed. It now checks whether
+              an AI model is available at all, and names the one it will actually use.
+            </li>
+            <li>
+              <strong>A failed YouTube download says what went wrong.</strong> A
+              "403 Forbidden" is Google rate-limiting your connection, not a broken app and
+              not a broken link. It usually clears within an hour, and Twitch, Kick and local
+              files keep working meanwhile.
+            </li>
+            <li>
+              <strong>A graphics card that cannot be used falls back to the processor</strong>
+              instead of killing the job halfway through, and the startup check says which
+              card it could not use and why.
+            </li>
+          </ul>
+        </div>
+      </section>
 
       <section>
         <div class="wrap">
