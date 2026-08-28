@@ -1,5 +1,17 @@
 # Clips Kitty — open-source AI video clipping that runs on your own PC
 
+<a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20dark.svg">
+    <img alt="Get Clips Kitty from the Microsoft Store" src="https://get.microsoft.com/images/en-us%20light.svg" height="52">
+  </picture>
+</a>
+
+[![Latest release](https://img.shields.io/github/v/release/ColinGPT9/clips-studio?label=release)](https://github.com/ColinGPT9/clips-studio/releases)
+[![Downloads](https://img.shields.io/github/downloads/ColinGPT9/clips-studio/total?label=downloads)](https://github.com/ColinGPT9/clips-studio/releases)
+[![Licence](https://img.shields.io/github/license/ColinGPT9/clips-studio)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/ColinGPT9/clips-studio?style=flat)](https://github.com/ColinGPT9/clips-studio/stargazers)
+
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
 
@@ -199,7 +211,12 @@ Running from source needs the things the installer would otherwise bundle for yo
 
 ## Install and run
 
-**Most people want the installer.** Grab the latest **Web Setup** from
+**The easiest way is the [Microsoft Store](https://apps.microsoft.com/detail/9NB6XT7DSQZZ).**
+One click, it updates itself, and Windows raises no security prompt — Microsoft
+certified and signed the package, so the SmartScreen warning described below
+does not appear at all.
+
+**Or grab the installer.** The latest **Web Setup** from
 [Releases](../../releases) and run it. It carries the app, the Python engine, every
 library, FFmpeg, the AI runtime and all the detection and transcription weights — no
 Python, no PATH, no terminal, and no second program to install.

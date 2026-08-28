@@ -82,6 +82,14 @@ export function DownloadButton({ label = "Download for Windows" }: { label?: str
 	);
 }
 
+export function StoreButton({ label = "Get it from Microsoft Store" }: { label?: string }) {
+	return (
+		<a className="cs-cta-quiet" href={LINKS.msstore} target="_blank" rel="noreferrer">
+			{label}
+		</a>
+	);
+}
+
 export function Footer() {
 	return (
 		<footer className="cs-foot">

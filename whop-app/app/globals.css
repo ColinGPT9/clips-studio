@@ -186,6 +186,29 @@ h2.cs-h2 {
 	background: var(--cs-accent);
 }
 
+/* Secondary CTA, for the Microsoft Store link beside the direct download.
+   Same geometry as .cs-cta so the two sit level in a row, but without the
+   accent fill — two solid accent buttons side by side read as a mistake. */
+.cs-cta-quiet {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	background: transparent;
+	color: var(--cs-ink);
+	font-weight: 600;
+	font-size: 15px;
+	padding: 13px 22px;
+	border-radius: 11px;
+	text-decoration: none;
+	border: 1px solid var(--cs-line, rgba(255, 255, 255, 0.18));
+	cursor: pointer;
+}
+
+.cs-cta-quiet:hover {
+	border-color: var(--cs-accent);
+	color: var(--cs-accent);
+}
+
 .cs-cta-row {
 	display: flex;
 	flex-wrap: wrap;

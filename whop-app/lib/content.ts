@@ -46,6 +46,12 @@ export const LINKS = {
 	 *  so there is one place money goes. */
 	donate: "https://paypal.me/clipsstudio",
 	github: "https://github.com/ColinGPT9/clips-studio",
+	/** The Microsoft Store listing. Canonical URL with no query string on
+	 *  purpose: the share link Microsoft hands you carries hl=en-us&gl=US,
+	 *  which forces a US English page on every visitor — wrong for an app that
+	 *  ships 19 languages — plus an ocid= share-tracking parameter that means
+	 *  nothing coming from our own pages. */
+	msstore: "https://apps.microsoft.com/detail/9NB6XT7DSQZZ",
 	issues: "https://github.com/ColinGPT9/clips-studio/issues",
 	privacy: "https://colingpt9.github.io/clips-studio/privacy.html",
 } as const;

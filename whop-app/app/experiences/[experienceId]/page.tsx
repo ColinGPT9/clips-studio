@@ -8,6 +8,7 @@
 import {
 	Footer,
 	DownloadButton,
+	StoreButton,
 	Hero,
 	Limits,
 	Requirements,
@@ -72,6 +73,7 @@ export default async function ExperiencePage({
 
 			<div className="cs-cta-row">
 				<DownloadButton />
+					<StoreButton />
 				<a
 					className="cs-ghost"
 					href={LINKS.site}

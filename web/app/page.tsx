@@ -1056,6 +1056,9 @@ function DesktopPitch() {
 				<a href={LINKS.download} className="cs-btn px-5 py-2.5 text-sm">
 					Download Clips Kitty — free
 				</a>
+				<a href={LINKS.msstore} className="cs-btn-quiet px-5 py-2.5 text-sm">
+					Get it from Microsoft Store
+				</a>
 				<a href={LINKS.github} className="cs-btn-quiet px-5 py-2.5 text-sm">
 					Source on GitHub
 				</a>

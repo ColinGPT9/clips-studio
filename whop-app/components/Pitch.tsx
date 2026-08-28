@@ -11,7 +11,7 @@
  *  and a download button, and the Whop-specific detail is a footnote.
  */
 
-import { Footer, DownloadButton, Hero, Limits, Requirements, Steps } from "@/components/Brand";
+import { Footer, DownloadButton, StoreButton, Hero, Limits, Requirements, Steps } from "@/components/Brand";
 import { DOWNLOAD_NOTE, LINKS, SELLING_POINTS } from "@/lib/content";
 
 export function Pitch({ note }: { note?: string }) {
@@ -30,6 +30,7 @@ export function Pitch({ note }: { note?: string }) {
 				</p>
 				<div className="cs-cta-row">
 					<DownloadButton />
+					<StoreButton />
 					<a
 						className="cs-ghost"
 						href={LINKS.site}
