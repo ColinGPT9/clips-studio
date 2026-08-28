@@ -1,4 +1,4 @@
-PackageIdentifier: ColinGPT9.ClipsStudio
+PackageIdentifier: ColinGPT9.ClipsKitty
 PackageVersion: 1.1.4
 PackageLocale: en-US
 Publisher: ColinGPT9
@@ -28,7 +28,7 @@ Description: |-
 
   Alpha software: it works, it is rough in places, and the known issues are listed
   in the repository.
-Moniker: clips-studio
+Moniker: clips-kitty
 Tags:
   - ai
   - video
