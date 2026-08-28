@@ -84,12 +84,22 @@ Tag the GitHub release to match the version in `ui/package.json` (`v0.1.0` for
 > confusing error, because the installer is a downloader with nothing to
 > download.
 
-Files that big need Git LFS on the Hugging Face side, or `huggingface-cli
-upload`, which handles the chunking itself:
+Files that big need Git LFS on the Hugging Face side, or the `hf` CLI, which
+handles the chunking itself:
 
 ```
-huggingface-cli upload ColinGPT9/clips-studio-releases release/nsis-web/ . --repo-type=model
+hf upload ColinGPT9/clips-studio-releases release/nsis-web/ . --repo-type=model
 ```
+
+**`huggingface-cli` no longer works.** It was deprecated and now exits with
+"use `hf` instead" rather than uploading anything, so the old command in this
+file silently did nothing. Upload one file at a time if you want to control the
+order, which matters here — see the warning above about `latest.yml`.
+
+Expect it to be faster than the file sizes suggest. Hugging Face deduplicates
+against what is already in the repo, and consecutive releases share most of
+their bundled runtime, so a 6 GB payload can be a couple of hundred MB of
+genuinely new data.
 
 ### Updates come from the feed file, not from the release page
 
