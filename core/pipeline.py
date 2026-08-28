@@ -44,9 +44,22 @@ def _render_failure_reason(err: Exception) -> str:
             "ran out of memory while encoding. Close other applications, or "
             "lower video.parallel_renders in settings.yaml"
         )
-    # Not a known signature: keep it, but one line rather than a wall.
-    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "unknown error")
-    return first[:300]
+
+    # Not a known signature: keep one line rather than a wall — but the LAST
+    # meaningful one, not the first.
+    #
+    # This used to take line one, which for the error that matters most is
+    # "ffmpeg cut failed:" — our own prefix from video/cutter.py. The 2000
+    # characters of FFmpeg stderr underneath it were captured and then thrown
+    # away one line later, so a user watching every clip fail saw a message
+    # that named the stage and nothing about the cause. That is what made #84
+    # impossible to diagnose from a bug report.
+    #
+    # FFmpeg puts the fatal error last, after the banner and stream dumps, so
+    # reading from the end is what finds it.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    lines = [ln for ln in lines if not ln.endswith(":")] or lines
+    return (lines[-1] if lines else "unknown error")[:300]
 
 
 def _share_the_cpu(workers: int) -> None:

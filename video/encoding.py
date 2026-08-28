@@ -181,6 +181,18 @@ def video_encoder_args(config: dict | None = None) -> list[str]:
     return _selected[1]
 
 
+def using_hardware_encoder() -> bool:
+    """Whether the selected encoder is a GPU one, so a caller can retry on CPU.
+
+    `_probe()` encodes a synthetic 256x256 black frame, which proves the
+    encoder loads — not that it accepts the footage in hand. h264_nvenc
+    refuses 10-bit input, for one, so the probe can pass and every real encode
+    still fail. A caller that knows it asked for hardware can fall back;
+    without this it cannot tell whether falling back would change anything.
+    """
+    return _selected is not None and _selected[0] != "cpu"
+
+
 # Codecs that software-decode slowly enough to drag the whole pipeline
 # (tracking + every clip render re-reads the source). H.264 stays the one
 # codec everything downstream is fast and predictable with.
@@ -198,6 +210,33 @@ def source_codec(path) -> str:
         return r.stdout.strip()
     except Exception:
         return ""
+
+
+def source_probe(path) -> dict:
+    """Codec and pixel format of a source, for bug reports.
+
+    Both, because either alone misleads. "h264" says nothing about whether
+    h264_nvenc will take it — a 10-bit H.264 file is rejected while an 8-bit
+    one encodes fine — and ensure_h264_source() only normalises to 8-bit for
+    codecs in SLOW_SOURCE_CODECS, so a 10-bit H.264 reaches the encoder as it
+    arrived. Reported together, "every clip failed to cut" becomes a one-line
+    diagnosis instead of a round trip.
+    """
+    try:
+        r = subprocess.run(
+            [ffprobe(), "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name,pix_fmt,width,height",
+             "-of", "default=nw=1:nk=0", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        out = {}
+        for line in r.stdout.splitlines():
+            key, _, value = line.partition("=")
+            if value.strip():
+                out[f"source_{key.strip()}"] = value.strip()
+        return out
+    except Exception:
+        return {}
 
 
 def ensure_h264_source(path, config: dict | None = None) -> bool:

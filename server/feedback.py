@@ -257,13 +257,37 @@ def _versions() -> dict:
 
 
 def _app_version() -> dict:
+    """The version this report came from.
+
+    A report that cannot be dated cannot be triaged: three arrived saying
+    `"app": "?"` before it was noticed, and the last of them was a new bug
+    against the newest build that read exactly like an old one against an old
+    build. Worth some care.
+
+    The version lives in ui/package.json and nowhere else. Beside the code in a
+    checkout; bundled into the executable in a frozen build, where sys._MEIPASS
+    is the unpack directory and Path(__file__).parent.parent points inside the
+    exe at a path that does not exist.
+    """
+    import sys
+
     root = Path(__file__).parent.parent
-    out: dict = {}
-    try:
-        pkg = json.loads((root / "ui" / "package.json").read_text(encoding="utf-8"))
-        out["app"] = pkg.get("version", "?")
-    except Exception:
-        out["app"] = "?"
+    candidates = [root / "ui" / "package.json"]
+    if getattr(sys, "frozen", False):
+        # Bundled at the root of the unpack dir; see the datas block in
+        # clips-studio.spec. Tried first, because in a frozen build the
+        # checkout path is the one that cannot work.
+        candidates.insert(0, Path(getattr(sys, "_MEIPASS", root)) / "package.json")
+
+    out: dict = {"app": "?"}
+    for path in candidates:
+        try:
+            out["app"] = json.loads(path.read_text(encoding="utf-8")).get("version", "?")
+            break
+        except Exception:
+            continue
+
+    # Only meaningful in a checkout; an installed copy has no repository.
     commit = _run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"])
     if commit:
         out["commit"] = commit
@@ -307,6 +331,20 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
             plat = ("twitch" if vid.startswith("tw_") else "kick" if vid.startswith("kick_")
                     else "local file" if vid.startswith("local_") else "youtube")
             d["video"] = {"platform": plat, "channel": row["channel_name"], "status": row["status"]}
+            # Codec and pixel format of the source. Rendering failures are
+            # frequently a property of the file rather than the machine —
+            # h264_nvenc refuses 10-bit input, for one — and without these two
+            # fields a report saying "every clip failed to cut" gives a triager
+            # nothing to go on. Cheap: one ffprobe on a file already on disk.
+            try:
+                from core.paths import cached_source, resolve_data_dir
+                from video.encoding import source_probe
+
+                src = cached_source(resolve_data_dir(config) / "downloads", vid)
+                if src and src.exists():
+                    d["video"].update(source_probe(src))
+            except Exception:
+                pass  # a missing source must never cost us the whole report
             job = db.conn.execute(
                 "SELECT status, error FROM jobs WHERE payload LIKE ? ORDER BY id DESC LIMIT 1",
                 (f"%{vid}%",),

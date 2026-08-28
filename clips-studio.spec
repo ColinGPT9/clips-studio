@@ -68,6 +68,13 @@ hiddenimports += [
 datas += [
     (str(ROOT / "config" / "settings.yaml"), "config"),
     (str(ROOT / "config" / "prompts"), "config/prompts"),
+    # The app version, for bug reports. ui/package.json is the only place the
+    # version is written, and in a frozen build it is not on disk beside the
+    # code — so every report from an installed copy said "app": "?" and could
+    # not be dated. Three reports arrived that way before anyone noticed.
+    # Bundling the file keeps one source of truth rather than stamping the
+    # version into a generated module that could drift from it.
+    (str(ROOT / "ui" / "package.json"), "."),
 ]
 
 # YOLO weights. Ultralytics would otherwise download them on first use, which
