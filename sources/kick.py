@@ -10,6 +10,7 @@ so they can never collide with YouTube or Twitch ids anywhere in the app.
 """
 
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 import yt_dlp
@@ -47,6 +48,36 @@ def _impersonation() -> dict:
         return {}  # curl_cffi missing: try without (may 403; error will say so)
 
 
+@contextmanager
+def _gone_or_raise():
+    """Turn Kick's 404 into "this VOD was deleted", and leave everything else.
+
+    Kick removes VODs after a retention window, so a link that worked last
+    month stops working with no warning. The raw error for that is "HTTP Error
+    404: Unable to download JSON metadata", which reads like the app broke.
+
+    Issue #87 was reported as Kick support being broken, and it was not:
+    checked at the time, the channel's API answered 200 and listed five current
+    VODs, the reported id was not among them, and another VOD from that same
+    channel downloaded at 1080p60 through the same yt-dlp and extractor. The
+    tooling was fine; the message was the bug.
+
+    Only the 404 is translated. A real outage has to keep its own error, or the
+    next genuine breakage gets misread as a deleted video.
+    """
+    try:
+        yield
+    except yt_dlp.utils.DownloadError as e:
+        if "404" not in str(e):
+            raise
+        raise ValueError(
+            "That Kick VOD no longer exists. Kick deletes VODs after a while, "
+            "so a link that worked before can stop working without notice. "
+            "Open the channel's Videos tab and pick one that is still listed "
+            "— Kick itself is working."
+        ) from e
+
+
 def download(url: str, output_dir: Path) -> DownloadedVideo:
     video_id = extract_vod_id(url)
     if video_id is None:
@@ -58,8 +89,13 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Both calls below go through _gone_or_raise: a deleted VOD fails at
+    # whichever one reaches Kick's API first, which is the probe, not the
+    # download. Handling only the download would have left the real failure
+    # path untouched.
     with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, **_impersonation()}) as probe:
-        info = probe.extract_info(url, download=False)
+        with _gone_or_raise():
+            info = probe.extract_info(url, download=False)
     if info.get("is_live"):
         raise ValueError("This VOD is still being streamed — wait until the broadcast ends.")
 
@@ -75,7 +111,8 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         **progress_opts(video_id),
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+        with _gone_or_raise():
+            info = ydl.extract_info(url, download=True)
 
     path = output_dir / f"{video_id}.mp4"
     if not path.exists():
