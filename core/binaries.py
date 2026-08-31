@@ -164,6 +164,44 @@ def yolo_weights(name: str) -> str:
     return name
 
 
+def haar_cascade(filename: str) -> str | None:
+    """An absolute path to a bundled OpenCV Haar cascade, or None.
+
+    `cv2.data.haarcascades` points inside the installed opencv-python package.
+    That works in a checkout and NOT in a frozen build: the spec lists cv2 as a
+    hidden import, so the module ships and its data directory does not.
+
+    Nothing announces that. CascadeClassifier given a path that does not exist
+    returns an EMPTY classifier rather than raising, and the failure only
+    surfaces later inside detectMultiScale as:
+
+        (-215:Assertion failed) !empty() in function 'detectMultiScale'
+
+    which reads as a rendering bug. Issue #86 was exactly this: a job analysed
+    a video, picked a clip, and produced zero clips because the crop needed the
+    Haar fallback.
+
+    Returns None when the file cannot be found anywhere, so callers can skip
+    face refinement instead of crashing.
+    """
+    roots = [*_search_roots("cascades")]
+    try:
+        import cv2
+
+        roots.append(Path(cv2.data.haarcascades))
+    except Exception:
+        pass  # cv2 missing entirely is the caller's problem, not ours
+
+    for root in roots:
+        try:
+            candidate = Path(root) / filename
+            if candidate.is_file():
+                return str(candidate)
+        except Exception:
+            continue
+    return None
+
+
 def bundled_whisper_sizes() -> list[str]:
     """Which Whisper sizes this install actually carries.
 

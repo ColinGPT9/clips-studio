@@ -77,6 +77,31 @@ datas += [
     (str(ROOT / "ui" / "package.json"), "."),
 ]
 
+# OpenCV Haar cascades. cv2 is a hidden import above, which ships the MODULE
+# and not its data directory -- so cv2.data.haarcascades resolves to a path
+# that does not exist in an installed build. CascadeClassifier does not raise
+# on a missing file; it returns an empty classifier and detectMultiScale then
+# fails with "(-215:Assertion failed) !empty()", which reads as a rendering
+# bug. That was issue #86: a job analysed a video, chose a clip, and produced
+# zero clips because the crop needed the face fallback.
+#
+# Only the two files video/tracker.py actually loads. collect_all("cv2") would
+# bring the whole data directory -- cascades for eyes, plates, bodies and the
+# rest -- none of which this app ever opens, in an installer already near 7 GB.
+try:
+    import cv2 as _cv2
+
+    _cascade_dir = Path(_cv2.data.haarcascades)
+    for _cascade in ("haarcascade_frontalface_default.xml",
+                     "haarcascade_profileface.xml"):
+        _src = _cascade_dir / _cascade
+        if _src.is_file():
+            datas += [(str(_src), "cascades")]
+except Exception:
+    # A build machine without cv2 cannot produce a working app anyway, and the
+    # runtime now degrades to pose-only cropping rather than crashing.
+    pass
+
 # YOLO weights. Ultralytics would otherwise download them on first use, which
 # means a creator's first video stalls on a silent network fetch.
 for weights in ("yolov8n-pose.pt", "yolov8n.pt"):

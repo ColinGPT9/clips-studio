@@ -132,16 +132,54 @@ def _get_model(model_name: str):
 
 
 def _get_cascades():
-    # Per-thread instances: detectMultiScale is not thread-safe on a shared one.
+    """The two Haar cascades, or None when they are not on this machine.
+
+    Per-thread instances: detectMultiScale is not thread-safe on a shared one.
+
+    Returns None rather than an unusable classifier. cv2.CascadeClassifier
+    given a missing file does NOT raise — it hands back an empty classifier,
+    and the error only appears later inside detectMultiScale as
+    "(-215:Assertion failed) !empty()". That killed every render needing the
+    face fallback in installed builds (#86) while working perfectly from a
+    checkout, because the frozen app ships cv2 without its data directory.
+
+    Resolved through core.binaries so the bundled copy is found in a packaged
+    build, with cv2's own directory as the fallback for a checkout.
+    """
+    if getattr(_thread_local, "cascades_missing", False):
+        return None
+
     cascades = getattr(_thread_local, "cascades", None)
     if cascades is None:
-        frontal = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-        profile = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_profileface.xml"
-        )
-        cascades = (frontal, profile)
+        from core.binaries import haar_cascade
+
+        paths = [
+            haar_cascade("haarcascade_frontalface_default.xml"),
+            haar_cascade("haarcascade_profileface.xml"),
+        ]
+        if not all(paths):
+            _thread_local.cascades_missing = True
+            print("      Face refinement unavailable (Haar cascades not found) "
+                  "— cropping from pose detection only")
+            return None
+
+        # Both failure modes, because they are different and neither is
+        # obvious: a MISSING file gives an empty classifier and no error, while
+        # a file that exists but is not a cascade raises SystemError out of the
+        # constructor. Checking .empty() alone still crashed on the second.
+        try:
+            loaded = tuple(cv2.CascadeClassifier(p) for p in paths)
+            unusable = any(c.empty() for c in loaded)
+        except Exception:
+            unusable = True
+
+        if unusable:
+            _thread_local.cascades_missing = True
+            print("      Face refinement unavailable (Haar cascades unreadable) "
+                  "— cropping from pose detection only")
+            return None
+
+        cascades = loaded
         _thread_local.cascades = cascades
     return cascades
 
@@ -164,7 +202,13 @@ def _face_box(frame, box) -> tuple[int, int, int, int] | None:
     if roi.size == 0:
         return None
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    frontal, profile = _get_cascades()
+    cascades = _get_cascades()
+    if cascades is None:
+        # No face refinement available. The caller already handles "no face
+        # found" — it falls back to the pose box — so this costs a little crop
+        # precision rather than the whole clip.
+        return None
+    frontal, profile = cascades
 
     faces = frontal.detectMultiScale(gray, 1.15, 4, minSize=(36, 36))
     if len(faces) == 0:

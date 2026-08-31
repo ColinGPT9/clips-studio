@@ -9,16 +9,37 @@ body:
         **💬 Feedback** button on the Dashboard files this for you and
         attaches your versions/hardware/log automatically — it is quicker
         than this form and fills in the diagnostics below for you.
+  - type: input
+    id: source
+    attributes:
+      label: The video you were processing
+      description: >-
+        Paste the exact link, or say "local file" and give the length, and what
+        it is (a stream VOD, a talking-head upload, gameplay). Without this a
+        report usually cannot be acted on: the same step fails for different
+        reasons on different footage, and guessing which is not possible from a
+        description alone.
+      placeholder: https://... or "local file, 42 min talking head"
+    validations:
+      required: true
   - type: textarea
     id: trying
     attributes:
       label: What were you trying to do?
+      description: The steps you took, in order, so it can be repeated exactly.
+      placeholder: |
+        1. Pasted the link into the queue
+        2. Pressed Generate
+        3. It ran for about 4 minutes and finished with no clips
     validations:
       required: true
   - type: textarea
     id: happened
     attributes:
       label: What happened?
+      description: >-
+        Include any error text exactly as it appeared, even if it looks like
+        nonsense. The precise wording is usually what identifies the cause.
     validations:
       required: true
   - type: textarea

@@ -366,6 +366,10 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
 # forcing filler into "Anything else?" produces noise, not information.
 REQUIRED_FIELDS: dict[str, list[tuple[str, str]]] = {
     "bug": [
+        # The video first, and required. A bug report without it usually cannot
+        # be acted on: the same stage fails for different reasons on different
+        # footage, and which one it was cannot be recovered from a description.
+        ("source", "Which video were you processing?"),
         ("trying", "What were you trying to do?"),
         ("happened", "What happened?"),
         ("expected", "What did you expect to happen?"),

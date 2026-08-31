@@ -89,6 +89,7 @@ export default function FeedbackHub(): JSX.Element {
   // again server-side.
   const REQUIRED: Record<Kind, [string, string][]> = {
     bug: [
+      ['source', 'which video you were processing'],
       ['trying', 'what you were trying to do'],
       ['happened', 'what happened'],
       ['expected', 'what you expected'],
@@ -222,6 +223,11 @@ export default function FeedbackHub(): JSX.Element {
               <div className="space-y-3">
                 {kind === 'bug' && (
                   <>
+                    {field(
+                      'source',
+                      'Which video were you processing?',
+                      'e.g. https://twitch.tv/videos/123456  —  or "local file, 40 min talking head"'
+                    )}
                     {field('trying', 'What were you trying to do?', 'e.g. Export a clip of my Twitch stream')}
                     {field('happened', 'What happened?', 'e.g. The export button froze the whole app')}
                     {field('expected', 'What did you expect to happen?', 'e.g. The clip saves to my Downloads')}
