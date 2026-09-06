@@ -228,6 +228,7 @@ class SettingsPatch(BaseModel):
     privacy: str | None = None
     content_language: str | None = None  # auto / ISO code (es, pt, hi, id...)
     translation_model: str | None = None  # local model used for translation
+    outro: bool | None = None  # append the Clips Kitty end card (clips.outro)
 
 
 class TranslateIn(BaseModel):
@@ -2207,6 +2208,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "privacy": config.get("upload", {}).get("privacy", "public"),
             "content_language": config.get("content_language", "auto"),
             "translation_model": config.get("llm", {}).get("translation_model", ""),
+            # Absent counts as ON, matching how the pipeline reads it, so the
+            # toggle shows the state an upgrading user actually gets.
+            "outro": config.get("clips", {}).get("outro", True),
         }
 
     @app.patch("/settings")
@@ -2225,6 +2229,22 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             r"auto|[a-z]{2,3}", body.content_language
         ):
             raise HTTPException(400, "content_language must be 'auto' or an ISO code")
+        if body.outro is not None:
+            # clips.outro is NESTED under `clips:`, so the flat rewrite below --
+            # which is anchored at column 0 -- can never match its indented
+            # line. Same shape as translation_model above, plus an insert: no
+            # existing user's settings.yaml has an `outro:` line, so without
+            # the insert this would 400 for exactly the people turning it off.
+            value = "true" if body.outro else "false"
+            text, n = re.subn(r"(?m)^(\s*outro:\s*)\S*", rf"\g<1>{value}",
+                              text, count=1)
+            if n == 0:
+                text, n = re.subn(r"(?m)^(clips:[^\S\n]*$)",
+                                  rf"\g<1>\n  outro: {value}", text, count=1)
+            if n == 0:
+                raise HTTPException(400, "no 'clips:' section in settings.yaml")
+            config.setdefault("clips", {})["outro"] = body.outro
+
         edits = {
             "model": body.model,
             "channel": f'"{body.channel}"' if body.channel is not None else None,

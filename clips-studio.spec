@@ -75,6 +75,12 @@ datas += [
     # Bundling the file keeps one source of truth rather than stamping the
     # version into a generated module that could drift from it.
     (str(ROOT / "ui" / "package.json"), "."),
+    # Prebuilt end cards, one per clip format the pipeline actually emits
+    # (two canvases x 30/60fps). video/outro.py falls back to rendering one,
+    # which takes ~20s — bundling these means the common paths never wait,
+    # and video/mascot_art.py is imported rather than scripts/, which is not
+    # packaged at all.
+    (str(ROOT / "assets" / "outro"), "assets/outro"),
 ]
 
 # OpenCV Haar cascades. cv2 is a hidden import above, which ships the MODULE

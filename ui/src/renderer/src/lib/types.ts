@@ -323,6 +323,7 @@ export interface Settings {
   privacy: string
   content_language: string // 'auto' or ISO code (es / pt / hi / id ...)
   translation_model: string // local model used for translation ('' = the main one)
+  outro: boolean // append the Clips Kitty end card to each clip (clips.outro)
 }
 
 /** Events arriving over the WebSocket. */

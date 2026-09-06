@@ -137,6 +137,12 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     data_dir = Path(config["paths"]["data_dir"])
     started = time.monotonic()
 
+    # Per-job, not per-process: the server is long-lived, so without this the
+    # end-card tally would report every job it had ever run.
+    from video import outro as _outro
+
+    _outro.reset_tally()
+
     print(f"[1/4] Downloading: {url}")
     progress.emit(stage="download", message=url)
     video = _cached_or_download(url, data_dir, db)
@@ -395,7 +401,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                     repeated_failures = 0
                     print(f"      Render failed for {where}: {reason}")
                 continue
-            clip = _register_clip(db, video.video_id, candidate, final_path, meta, render_opts_json)
+            clip = _register_clip(db, video.video_id, candidate, final_path, meta,
+                                  render_opts_json, config)
             if clip:
                 rendered.append(clip)
 
@@ -411,6 +418,10 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     progress.emit(
         stage="done", video_id=video.video_id, clips=len(rendered), seconds=round(elapsed, 1)
     )
+    from video import outro as _outro
+
+    if (_line := _outro.summary()):
+        print(f"      {_line}")
     print(f"      Done in {elapsed / 60:.1f} min ({len(rendered)} clips)")
     return rendered
 
@@ -530,6 +541,21 @@ def _render_files(
     stem = f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}"
     final_path = clip_dir / f"{stem}.mp4"
     clip_dir.mkdir(parents=True, exist_ok=True)
+
+    # The end card is part of PRODUCING the clip, not something applied to it
+    # afterwards -- the same way CapCut exports its outro. So when it is on,
+    # everything below renders to a scratch file and the final clip is written
+    # once, by the concat in outro.finish(), already containing the card.
+    #
+    # This is not a style preference. A clip open in the app's preview holds a
+    # Windows handle that forbids DELETING the file but permits WRITING it, so
+    # every version that replaced a finished clip lost its card to whichever
+    # clips you happened to be looking at -- one run managed 37 of 49 and spent
+    # twelve minutes stalling on locks it could never win.
+    from video import outro as _outro
+
+    wants_card = _outro.enabled(config)
+    render_path = clip_dir / f"{stem}.pre-card.mp4" if wants_card else final_path
 
     # Longform rendering profile (render_opts["profile"], set only by the
     # longform module): 16:9 1920x1080 output, no vertical crop/tracking.
@@ -662,7 +688,7 @@ def _render_files(
                 elif crop_mode == "letterbox":
                     decision = {"mode": "fit_blur", "region": None}
                 podcast_mod.render_clip(
-                    intermediate, final_path, decision, ass_path=ass_path,
+                    intermediate, render_path, decision, ass_path=ass_path,
                     vf_extra=vf_extra, normalize=normalize,
                 )
             else:
@@ -690,7 +716,7 @@ def _render_files(
                         shift = -0.12 if crop_mode == "bias_left" else 0.12
                         tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
                 render_vertical(
-                    intermediate, tracking, final_path, ass_path=ass_path, vf_extra=vf_extra,
+                    intermediate, tracking, render_path, ass_path=ass_path, vf_extra=vf_extra,
                     normalize=normalize,
                 )
         else:
@@ -702,9 +728,9 @@ def _render_files(
                 plain = clip_dir / f"{stem}.plain.mp4"
                 scratch.append(plain)
                 cut_clip(source, padded, plain, vf_extra=vf_extra)
-                apply_edits(plain, edit, final_path, ass_path=ass_path, normalize=normalize)
+                apply_edits(plain, edit, render_path, ass_path=ass_path, normalize=normalize)
             else:
-                cut_clip(source, padded, final_path, ass_path=ass_path, vf_extra=vf_extra,
+                cut_clip(source, padded, render_path, ass_path=ass_path, vf_extra=vf_extra,
                          normalize=normalize)
     finally:
         # NEVER raise from here. This runs in a `finally`, so an exception
@@ -721,7 +747,14 @@ def _render_files(
 
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
-        _wm.apply_image(final_path, wm_cfg, canvas, wm_assets)
+        _wm.apply_image(render_path, wm_cfg, canvas, wm_assets)
+
+    # Writes final_path complete, with the card. Never raises and never loses
+    # the clip: if the card cannot be made it still writes final_path without
+    # one, because every step here WRITES the destination rather than
+    # replacing it, which is what a held file permits.
+    if wants_card:
+        _outro.finish(render_path, final_path, config)
 
     render_opts_json = json.dumps(
         {
@@ -746,9 +779,18 @@ def _register_clip(
     final_path: Path,
     meta: ClipMetadata,
     render_opts_json: str,
+    config: dict | None = None,
 ) -> RenderedClip | None:
     """DB write for one rendered clip. Main thread only (sqlite connections
-    are not shareable across threads)."""
+    are not shareable across threads).
+
+    The branded end card is appended HERE rather than in _render_files,
+    because this is the one place every finished video passes through. The
+    longform Highlights and Edited Stream modes build their output with
+    longform.assemble and never call _render_files at all, so hooking the
+    renderer silently left two of the four longform profiles with no end card.
+    Hooking the funnel means a mode added later cannot miss it either.
+    """
     clip_id = db.add_clip(
         video_id,
         candidate.start,

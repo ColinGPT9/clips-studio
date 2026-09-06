@@ -57,6 +57,9 @@ clips:
                         # (turn on the 60s+ toggle for TikTok-length clips)
   vertical: true        # true 9:16 1080x1920 with YOLOv8 subject tracking
   captions: true        # burn word-synced captions into the clips
+  outro: true           # append the 2.9s Clips Kitty end card to each clip.
+                        # Stream-copied, so the clip is never re-encoded.
+                        # Absent counts as true, so upgrading turns it on.
 
 scoring:
   # Multimodal fusion weights (must sum to 1.0). Raise audio/visual for

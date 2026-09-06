@@ -27,6 +27,9 @@ _NUDGE = 0.011
 
 def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None:
     from analysis.fusion import find_clips
+    from video import outro as _outro
+
+    _outro.reset_tally()
     from analysis.metadata import generate_metadata_batch
     from core.pipeline import _cached_or_download, _register_clip, _render_files, _safe_name
     from llm.registry import create_backend
@@ -136,12 +139,17 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
             except Exception as e:
                 print(f"      Render failed for {candidate.start:.0f}s-{candidate.end:.0f}s: {e}")
                 continue
-            _register_clip(db, video.video_id, candidate, final_path, meta, render_opts_json)
+            _register_clip(db, video.video_id, candidate, final_path, meta,
+                           render_opts_json, config)
 
     elapsed = time.monotonic() - started
     db.set_process_seconds(video.video_id, elapsed)
     db.set_video_status(video.video_id, "done")
     progress.emit(stage="done", video_id=video.video_id, clips=done_count, seconds=round(elapsed, 1))
+    from video import outro as _outro
+
+    if (_line := _outro.summary()):
+        print(f"      {_line}")
     print(f"      Longform done in {elapsed / 60:.1f} min ({done_count} clips)")
 
 
@@ -187,6 +195,7 @@ def _highlights(
         on_progress=lambda i, n: progress.emit(
             stage="render", video_id=video.video_id, clip=i, total=n
         ),
+        config=config,
     )
 
     top = max(candidates, key=lambda c: c.score)
@@ -201,12 +210,17 @@ def _highlights(
         ),
         hashtags=[],
     )
-    _register_clip(db, video.video_id, candidate, out, meta, json.dumps({"profile": "highlights"}))
+    _register_clip(db, video.video_id, candidate, out, meta,
+                   json.dumps({"profile": "highlights"}), config)
 
     elapsed = time.monotonic() - started
     db.set_process_seconds(video.video_id, elapsed)
     db.set_video_status(video.video_id, "done")
     progress.emit(stage="done", video_id=video.video_id, clips=1, seconds=round(elapsed, 1))
+    from video import outro as _outro
+
+    if (_line := _outro.summary()):
+        print(f"      {_line}")
     print(f"      Highlights done in {elapsed / 60:.1f} min -> {out.name}")
 
 
@@ -251,6 +265,7 @@ def _edited_stream(video, config: dict, db: StateDB, data_dir: Path, profile: di
         on_progress=lambda i, n: progress.emit(
             stage="render", video_id=video.video_id, clip=i, total=n
         ),
+        config=config,
     )
 
     candidate = ClipCandidate(start=0.0, end=round(video.duration, 2), score=0, hook="Edited stream")
@@ -259,10 +274,15 @@ def _edited_stream(video, config: dict, db: StateDB, data_dir: Path, profile: di
         description=f"Full stream with {removed_s / 60:.0f} minutes of downtime removed.",
         hashtags=[],
     )
-    _register_clip(db, video.video_id, candidate, out, meta, json.dumps({"profile": "edited_stream"}))
+    _register_clip(db, video.video_id, candidate, out, meta,
+                   json.dumps({"profile": "edited_stream"}), config)
 
     elapsed = time.monotonic() - started
     db.set_process_seconds(video.video_id, elapsed)
     db.set_video_status(video.video_id, "done")
     progress.emit(stage="done", video_id=video.video_id, clips=1, seconds=round(elapsed, 1))
+    from video import outro as _outro
+
+    if (_line := _outro.summary()):
+        print(f"      {_line}")
     print(f"      Edited stream done in {elapsed / 60:.1f} min -> {out.name}")
