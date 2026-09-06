@@ -165,3 +165,119 @@ def test_real_machine_agrees_with_torch():
     assert usable is expected, (
         f"sm_{device[0]}{device[1]} against {torch.cuda.get_arch_list()}: {reason}"
     )
+
+
+# ---------------------------------------------------------------------------
+# A GPU that is too OLD. Everything above was written for the too-new case
+# (issue #83, an RTX 5070 Ti). The other end arrived as a GTX 1060 crashing at
+# the reactions stage, after preflight had already told its owner he was on CPU.
+# ---------------------------------------------------------------------------
+SHIPPED = ["sm_75", "sm_80", "sm_86", "sm_90", "sm_100", "sm_120"]
+
+
+def test_an_old_card_is_told_about_the_floor_not_the_ceiling(monkeypatch):
+    """Reporting only the ceiling reads as nonsense to a GTX 10-series owner.
+
+    He was told "sm_61, and this build only goes up to sm_120", reasonably
+    concluded 61 < 120 so it should work, and opened a bug quoting the README.
+    The number that excludes him is the FLOOR.
+    """
+    fake = _FakeCuda(available=True, archs=SHIPPED, capability=(6, 1))
+    fake.get_device_name = lambda _i=0: "NVIDIA GeForce GTX 1060 6GB"
+    _patch(monkeypatch, fake)
+
+    usable, reason = cuda_usable()
+    assert usable is False
+    assert "sm_61" in reason
+    assert "older than" in reason and "sm_75" in reason
+    assert "only goes up to" not in reason, "that wording is for the too-NEW case"
+
+
+def test_too_old_and_too_new_are_told_apart(monkeypatch):
+    """They need opposite advice: one is fixed by a future release, the other
+    is made worse by it — the CUDA that adds Blackwell dropped Pascal."""
+    from core.gpu import gpu_too_old
+
+    old = _FakeCuda(available=True, archs=SHIPPED, capability=(6, 1))
+    _patch(monkeypatch, old)
+    assert gpu_too_old(cuda_usable()[1]) is True
+
+    new = _FakeCuda(available=True, archs=["sm_75", "sm_90"], capability=(12, 0))
+    _patch(monkeypatch, new)
+    assert gpu_too_old(cuda_usable()[1]) is False
+
+
+def test_torch_device_follows_usability(monkeypatch):
+    import core.gpu as gpu
+
+    monkeypatch.setattr(gpu, "_DEVICE", None)
+    _patch(monkeypatch, _FakeCuda(available=True, archs=SHIPPED, capability=(6, 1)))
+    assert gpu.torch_device() == "cpu"
+
+    monkeypatch.setattr(gpu, "_DEVICE", None)
+    _patch(monkeypatch, _FakeCuda(available=True, archs=SHIPPED, capability=(8, 6)))
+    assert gpu.torch_device() == "cuda"
+
+
+# ---------------------------------------------------------------------------
+# The two guards that would have caught the crash. Both defects were a single
+# missing argument, invisible to every other test in the suite.
+# ---------------------------------------------------------------------------
+def _engine_sources():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for pkg in ("core", "video", "analysis", "longform", "server", "transcription"):
+        for path in (root / pkg).rglob("*.py"):
+            if "third_party" not in path.parts:
+                yield path
+
+
+def test_no_inference_call_lets_ultralytics_pick_the_device():
+    """`predict()` without `device=` calls `select_device("")`, which
+    "auto-selects the first available GPU" — silently undoing a deliberate CPU
+    decision and killing the job on the first frame. That is the GTX 1060 bug.
+    """
+    import re
+
+    offenders = []
+    for path in _engine_sources():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r"\.predict\(", text):
+            # Scan from the opening bracket, not from the dot: starting at "."
+            # the depth counter is already balanced and the scan stops on the
+            # second character, before it has seen any arguments.
+            start = m.end() - 1
+            depth, end = 0, len(text)
+            for i in range(start, min(start + 600, len(text))):
+                depth += text[i] == "("
+                depth -= text[i] == ")"
+                if depth == 0:
+                    end = i
+                    break
+            if "device=" not in text[start:end]:
+                line = text[:m.start()].count("\n") + 1
+                offenders.append(f"{path.name}:{line}")
+    assert not offenders, (
+        "these let ultralytics choose the device, which overrides the CPU "
+        f"fallback and crashes unsupported GPUs: {offenders}")
+
+
+def test_device_choice_goes_through_core_gpu():
+    """`torch.cuda.is_available()` answers "is a driver and card present", not
+    "can this build run on it". core/gpu.py exists to replace it; video/asd.py
+    still used it and would have crashed the same cards one stage later."""
+    offenders = []
+    for path in _engine_sources():
+        if path.name in ("gpu.py", "feedback.py"):
+            # gpu.py is the one place allowed to ask torch directly, and
+            # feedback.py only REPORTS what torch sees for a bug report -- it
+            # never picks a device from the answer.
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), 1):
+            if "torch.cuda.is_available()" in line and not line.lstrip().startswith("#"):
+                offenders.append(f"{path.name}:{i}")
+    assert not offenders, (
+        "use core.gpu.torch_device() instead — is_available() is true for a "
+        f"card this build has no kernels for: {offenders}")

@@ -120,10 +120,16 @@ def reaction_for_window(
             ok, frame = cap.read()
             if not ok:
                 continue
+            from core.gpu import torch_device
             from video.tracker import _infer_lock
 
             with _infer_lock:
-                results = model.predict(frame, classes=[0], conf=0.4, verbose=False)
+                # device= is not optional -- see core.gpu.torch_device.
+                # This is the call that crashed a GTX 1060 at the
+                # reactions stage: the model was on CPU, ultralytics put
+                # the predictor back on cuda:0.
+                results = model.predict(frame, classes=[0], conf=0.4,
+                                        device=torch_device(), verbose=False)
             best_area = 0.0
             for r in results:
                 for b in r.boxes:

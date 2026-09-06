@@ -104,7 +104,11 @@ def _load():
         from loss import lossAV
         from model.talkNetModel import talkNetModel
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # NOT torch.cuda.is_available(): that answers 'is a driver and card
+    # present', not 'can this build run on it'. See core/gpu.py.
+    from core.gpu import torch_device
+
+    device = torch_device()
     model, head = talkNetModel().to(device), lossAV().to(device)
 
     # The checkpoint was saved from the training wrapper, so its keys carry

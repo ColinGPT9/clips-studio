@@ -193,15 +193,30 @@ and nobody comments on it, expect to find it yourself in the editor.
 
 ## Requirements
 
-If you use the installer, this is the whole list:
+|             | Minimum                                      | Recommended                     |
+| ----------- | -------------------------------------------- | ------------------------------- |
+| **GPU**     | NVIDIA RTX 2060 (6 GB)                       | RTX 3060 12 GB or better        |
+| **CPU**     | Intel Core i3-9100 / AMD Ryzen 3 3200G (2019)| 6 cores or more                 |
+| **RAM**     | 16 GB                                        | 16 GB or more                   |
+| **Disk**    | ~20 GB, plus room for the videos you clip    |                                 |
+| **OS**      | Windows 10 or 11                             |                                 |
 
-- **Windows** PC (the Python engine should run on Linux/macOS; the app is developed
-  and tested on Windows). No Mac build exists and the maintainer has no Mac to test
-  one on — see [#62](../../issues/62) if you have one and want to help
-- **16 GB of RAM.** Not a suggestion: 8 GB will analyse a whole video and then
-  render nothing, which looks like a crash rather than a memory limit
-- Recommended: an **NVIDIA GPU** (see [GPU acceleration](#gpu-acceleration))
-- Around **20 GB** free, plus room for the videos you clip
+**Below the minimum it may still run, but it is not supported and it will be
+slow.** Clipping a stream is hours of video decoding, transcription and
+encoding; hardware from before roughly 2019 will take long enough that the app
+feels broken even when it is working correctly.
+
+Two of those are worth expanding on:
+
+- **16 GB of RAM is not a suggestion.** 8 GB will analyse a whole video and then
+  render nothing, which looks like a crash rather than a memory limit.
+- **A GPU is optional, not required.** Without one everything runs on the CPU —
+  slower, but complete. The RTX 2060 line is where the GPU path starts working;
+  see [GPU acceleration](#gpu-acceleration).
+
+**Windows only** for the app. The Python engine should run on Linux/macOS, but
+no Mac build exists and the maintainer has no Mac to test one on — see
+[#62](../../issues/62) if you have one and want to help.
 
 Running from source needs the things the installer would otherwise bundle for you:
 
@@ -412,8 +427,13 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 ```
 
 **Which cards use the GPU:** GTX 16-series, RTX 20-series, and everything newer
-including the RTX 50-series. GTX 10-series and older run detection on the CPU —
-still fully functional, just slower.
+including the RTX 50-series.
+
+**GTX 10-series and older are below the minimum.** They are not a supported
+configuration. The app does not refuse to start on them — detection falls back
+to the CPU and everything still works — but it will be slow, and a machine that
+old is usually paired with a CPU that makes the whole job slow rather than just
+the detection stage.
 
 Use the `cu130` index above, not an older one. Older CUDA builds have no code
 for recent cards, and the app then falls back to the CPU on hardware that

@@ -28,7 +28,11 @@
         "@type": "SoftwareApplication",
         "name": "Clips Kitty",
         "applicationCategory": "MultimediaApplication",
-        "operatingSystem": "Windows",
+        "operatingSystem": "Windows 10, Windows 11",
+        "processorRequirements": "Intel Core i3-9100 / AMD Ryzen 3 3200G (2019) or newer",
+        "memoryRequirements": "16 GB",
+        "storageRequirements": "20 GB",
+        "softwareRequirements": "NVIDIA RTX 2060 or newer for GPU acceleration (optional; runs on CPU without one)",
         "description": "Open-source AI video clipping that runs locally. Turns Twitch, Kick and YouTube videos into vertical clips with captions and titles.",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "license": "https://www.gnu.org/licenses/agpl-3.0.html",
@@ -82,7 +86,7 @@
               >
               <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">View on GitHub</a
               >
-              <span class="cta-note">Windows · NVIDIA GPU recommended</span>
+              <span class="cta-note">Windows 10/11 · 16 GB RAM · RTX 2060 or newer recommended</span>
             </div>
             <p class="star-note">
               ★ If you find it useful,
@@ -269,6 +273,65 @@
             Nothing here refuses to run. Feed it anything and it will produce clips.
             These are the cases where it's doing less thinking than it looks like, and
             where you should expect to reach for the editor more often.
+          </p>
+        </div>
+      </section>
+
+      <section id="requirements">
+        <div class="wrap">
+          <h2>What you need to run it</h2>
+          <p class="section-lead">
+            Everything happens on your own machine, so your hardware is what decides how
+            long a stream takes. Worth checking before you download.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>&nbsp;</th>
+                  <th>Minimum</th>
+                  <th>Recommended</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>GPU</strong></td>
+                  <td>NVIDIA RTX 2060 (6 GB)</td>
+                  <td>RTX 3060 12 GB or better</td>
+                </tr>
+                <tr>
+                  <td><strong>CPU</strong></td>
+                  <td>Intel Core i3-9100 / AMD Ryzen 3 3200G (2019)</td>
+                  <td>6 cores or more</td>
+                </tr>
+                <tr>
+                  <td><strong>RAM</strong></td>
+                  <td>16 GB</td>
+                  <td>16 GB or more</td>
+                </tr>
+                <tr>
+                  <td><strong>Disk</strong></td>
+                  <td>~20 GB, plus room for the videos you clip</td>
+                  <td>An SSD</td>
+                </tr>
+                <tr>
+                  <td><strong>OS</strong></td>
+                  <td>Windows 10 or 11</td>
+                  <td>&mdash;</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            <strong>A graphics card is optional.</strong> Without one everything runs on
+            the CPU &mdash; slower, but complete. The RTX 2060 is where the GPU path
+            starts working; GTX 10-series and older fall back to the CPU and are below
+            the minimum.
+          </p>
+          <p class="note">
+            Below the minimum it may still run &mdash; nothing refuses to start &mdash;
+            but it isn't supported, and hardware from before roughly 2019 will be slow
+            enough that the app feels broken when it's actually working.
           </p>
         </div>
       </section>
