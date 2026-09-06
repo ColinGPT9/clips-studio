@@ -478,7 +478,8 @@ class Worker(threading.Thread):
             description=clip["description"] or "",
             hashtags=_json.loads(clip["hashtags"]) if clip["hashtags"] else [],
         )
-        rendered = _register_clip(db, video_id, candidate, final_path, meta, _json.dumps(render_opts))
+        rendered = _register_clip(db, video_id, candidate, final_path, meta,
+                                  _json.dumps(render_opts), self.config)
 
         new_row = db.conn.execute(
             "SELECT id FROM clips WHERE video_id = ? AND start_s = ? AND end_s = ?",

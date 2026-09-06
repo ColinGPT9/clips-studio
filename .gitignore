@@ -8,6 +8,13 @@ exports/
 *.mkv
 *.webm
 
+# ...except the prebuilt end cards, which are build inputs, not user content.
+# clips-studio.spec bundles this folder so the common clip formats never spend
+# ~20s rendering a card the app could have shipped. Without this exception they
+# are ignored by the *.mp4 rule above: present on the machine that generated
+# them, absent from every clone and from the release build.
+!assets/outro/*.mp4
+
 # Secrets — never commit these (each user creates their own)
 config/client_secret.json
 *token*.json

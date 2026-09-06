@@ -127,6 +127,10 @@ def main() -> int:
 
     sub.add_parser("run", help="Run the automation daemon (RSS monitor + scheduler)")
     sub.add_parser("status", help="Show processing/scheduling state")
+    p_outro = sub.add_parser(
+        "outro-backfill",
+        help="Add the end card to finished clips that are missing one")
+    p_outro.add_argument("--video", help="Only this video id (default: all)")
     sub.add_parser("auth", help="One-time YouTube authorization (opens browser)")
     sub.add_parser("upload", help="Upload today's scheduled clips now")
 
@@ -173,6 +177,26 @@ def main() -> int:
 
         if args.command == "status":
             _print_status(db)
+            return 0
+
+        if args.command == "outro-backfill":
+            # A repair pass, not part of normal use: clips that missed their
+            # end card (a locked file, or a build from before the feature) get
+            # one without being re-rendered, which would cost minutes each.
+            from video import outro
+
+            if not outro.enabled(config):
+                print("clips.outro is off in settings.yaml — nothing to do.")
+                return 0
+            print("Checking finished clips for a missing end card...")
+            s = outro.backfill(db, config, args.video)
+            print(f"\n  checked {s['checked']}  |  added {s['added']}  |  "
+                  f"already had one {s['already']}")
+            if s["missing"]:
+                print(f"  {s['missing']} clip(s) listed in the database are no "
+                      f"longer on disk")
+            if s["failed"]:
+                print(f"  {s['failed']} could not be updated — see above")
             return 0
 
         if args.command == "auth":
