@@ -50,6 +50,16 @@ human, so it is held back rather than shipped half-working.
 Reaction videos sit out for a related reason: clips are chosen from what is
 **said**, and the app cannot see the video you are reacting to.
 
+**Top-down games get nothing at all, not just bad framing.** MOBAs, strategy
+and tower-defence games — Dota 2, League, and anything viewed from above — have
+no person-shaped subject on screen. Part of a clip's score measures whether a
+human is visible and being emphasised, and with nothing detected that part is
+zero rather than merely low. Scored gameplay therefore lands under the
+threshold, the run finishes normally, and you get **no clips and no error** —
+the log line is `No clips passed the score threshold`. Lowering
+**Minimum score** in Settings will start producing clips, but they are chosen
+without the visual half of the signal, so expect them to be arbitrary.
+
 **What works well:** IRL, just chatting, podcasts, vlogs and interviews. That
 is what it is tuned for and tested on.
 
