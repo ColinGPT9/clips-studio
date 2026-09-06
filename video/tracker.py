@@ -122,7 +122,8 @@ def _get_model(model_name: str):
                 # Calls predict directly rather than _detect, which would
                 # deadlock on the non-reentrant lock already held here.
                 try:
-                    _model.predict(np.zeros((32, 32, 3), np.uint8), verbose=False)
+                    _model.predict(np.zeros((32, 32, 3), np.uint8),
+                                   device="cuda", verbose=False)
                 except Exception as e:
                     _model.to("cpu")
                     print(f"  Tracking: GPU unusable ({str(e)[:90]}) — using CPU")
@@ -1294,8 +1295,14 @@ def _detect(model, frame, min_confidence) -> list[tuple]:
     head is (head_cx_px, head_cy_px, head_w_px) from the nose/eye/ear keypoints — the most
     reliable "where is the head" signal there is (needs no visible face). With
     a plain detection model, head is None and the Haar face box fills in."""
+    from core.gpu import torch_device
+
     with _infer_lock:
-        results = model.predict(frame, classes=[0], conf=min_confidence, verbose=False)
+        # device= is not optional. Without it ultralytics calls
+        # select_device(''), which auto-selects the first available GPU and
+        # silently undoes the CPU decision _get_model just made.
+        results = model.predict(frame, classes=[0], conf=min_confidence,
+                                device=torch_device(), verbose=False)
     out = []
     for r in results:
         kp = getattr(r, "keypoints", None)

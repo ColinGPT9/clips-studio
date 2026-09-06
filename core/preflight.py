@@ -179,7 +179,7 @@ def check_whisper(configured: str) -> Check:
 def check_gpu() -> Check:
     """Not blocking: the app works on CPU, just slowly. Worth saying so
     plainly rather than letting someone conclude it's broken."""
-    from core.gpu import NO_GPU, cuda_usable
+    from core.gpu import NO_GPU, cuda_usable, gpu_too_old
 
     usable, reason = cuda_usable()
 
@@ -202,6 +202,15 @@ def check_gpu() -> Check:
     if reason == NO_GPU:
         fix = ("Clips Kitty works without a GPU, but processing is much "
                "slower. An NVIDIA GPU gives the biggest speed-up.")
+    elif gpu_too_old(reason):
+        # Told to wait for a newer build, a GTX 10-series owner would be
+        # waiting for the release that removes their card: the CUDA that adds
+        # Blackwell is the same one that dropped Maxwell, Pascal and Volta.
+        # Saying "permanent" is kinder than an upgrade that never arrives.
+        fix = ("Processing will run on the CPU, which works but is slower. "
+               "This is permanent for this graphics card — the CUDA versions "
+               "that support newer cards dropped support for this one, so a "
+               "future release will not change it.")
     else:
         fix = ("Processing will run on the CPU, which works but is slower. "
                "Nothing to do on your end: this needs a Clips Kitty build "

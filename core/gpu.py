@@ -25,6 +25,20 @@ crash halfway through their video.
 # by identity rather than by matching on prose, which would rot.
 NO_GPU = "no CUDA GPU detected"
 
+_DEVICE: str | None = None
+
+
+def gpu_too_old(reason: str) -> bool:
+    """Whether `reason` describes a card BELOW the build's oldest architecture.
+
+    The two unusable cases need opposite advice. A card newer than the build is
+    ours to fix in a release; a card older than it never will be, because the
+    CUDA that gains new architectures is the same one that drops old ones.
+    Telling a GTX 1060 owner to wait for a newer build is telling them to wait
+    for the thing that would remove their card entirely.
+    """
+    return "older than" in reason
+
 
 def _parse_arch(arch: str) -> tuple[int, int] | None:
     """`"sm_86"` -> `(8, 6)`. The last digit is the minor version and
@@ -81,12 +95,48 @@ def cuda_usable() -> tuple[bool, str]:
         if any(_runs_on(a, device) for a in archs):
             return True, name
 
+        # WHICH SIDE the card falls on decides what the user should do, so the
+        # message has to say. Reporting only the ceiling reads as nonsense for
+        # an old card — a GTX 1060 owner is told "sm_61, build goes up to
+        # sm_120", concludes 61 < 120 so it should work, and reports a bug.
+        # The number that excludes them is the FLOOR.
+        here = f"sm_{device[0]}{device[1]}"
+        if device < min(archs):
+            oldest = min(archs)
+            return False, (
+                f"{name} is compute capability {here}, which is older than the "
+                f"oldest this PyTorch build supports (sm_{oldest[0]}{oldest[1]})"
+            )
         newest = max(archs)
         return False, (
-            f"{name} is compute capability sm_{device[0]}{device[1]}, and this "
+            f"{name} is compute capability {here}, and this "
             f"PyTorch build only goes up to sm_{newest[0]}{newest[1]}"
         )
     except Exception as e:
         # Never let a diagnostic take the caller down: an unreadable GPU is a
         # reason to use the CPU, not a reason to fail.
         return False, f"could not check the GPU ({type(e).__name__})"
+
+
+def torch_device() -> str:
+    """`"cuda"` or `"cpu"` — the device every model and inference call must use.
+
+    Exists because "don't move the model to CUDA" turned out not to be enough.
+    Ultralytics rebuilds its predictor on each call with
+    `select_device(self.args.device)`, and that default "auto-selects the first
+    available GPU" — so a model deliberately left on the CPU was silently put
+    back on a GPU this build has no kernels for, and died at the first frame.
+    A GTX 1060 owner hit exactly that, at the reactions stage, after preflight
+    had already told him he was running on CPU.
+
+    Passing this explicitly at every call site removes the dependency on a
+    third-party default that can change under us, which is the real lesson.
+
+    Cached: cuda_usable() imports torch and queries the driver, and this is
+    called per frame. The answer cannot change inside one process.
+    """
+    global _DEVICE
+    if _DEVICE is None:
+        usable, _ = cuda_usable()
+        _DEVICE = "cuda" if usable else "cpu"
+    return _DEVICE
