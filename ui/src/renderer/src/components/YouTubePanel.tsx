@@ -147,7 +147,9 @@ export default function YouTubePanel({
         default_language: metadata.default_language,
         notify_subscribers: metadata.notify_subscribers,
         playlist_id: metadata.playlist_id,
-        thumbnail,
+        // The backend looks the chosen thumbnail up from the clip id; it no
+        // longer accepts a path, so this only says whether to use one.
+        thumbnail: Boolean(thumbnail),
         channel_id: channelId || null,
         render_first: pendingRender ?? null
       })

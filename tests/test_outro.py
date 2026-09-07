@@ -349,7 +349,8 @@ def test_append_does_not_re_encode_the_clip(clip_factory, cfg):
     before = _packets(clip)
     original = _video_hash(clip, before)
 
-    assert outro.append(clip, cfg) is True
+    appended = outro.append(clip, cfg)
+    assert appended is True
 
     assert _packets(clip) == before + round(30 * outro.DURATION)
     assert _video_hash(clip, before) == original, "the clip was re-encoded"
@@ -384,7 +385,8 @@ def test_disabled_leaves_the_clip_exactly_as_it_was(clip_factory, cfg):
     before, digest = _packets(clip), _video_hash(clip, _packets(clip))
     cfg["clips"]["outro"] = False
 
-    assert outro.append(clip, cfg) is False
+    appended = outro.append(clip, cfg)
+    assert appended is False
     assert _packets(clip) == before
     assert _video_hash(clip, before) == digest
 
@@ -399,7 +401,8 @@ def test_a_broken_outro_never_costs_the_clip(clip_factory, cfg, monkeypatch, cap
     monkeypatch.setattr(outro, "ensure_outro",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
 
-    assert outro.append(clip, cfg) is False       # no exception escapes
+    appended = outro.append(clip, cfg)
+    assert appended is False       # no exception escapes
     assert _packets(clip) == before
     assert _video_hash(clip, before) == digest
     assert "outro skipped" in capsys.readouterr().out
@@ -447,7 +450,8 @@ def test_a_truly_unwritable_clip_is_left_alone(clip_factory, cfg, monkeypatch, c
     monkeypatch.setattr(outro, "_overwrite_in_place", lambda s, d: False)
     monkeypatch.setattr(outro.time, "sleep", lambda _s: None)
 
-    assert outro.append(clip, cfg) is False
+    appended = outro.append(clip, cfg)
+    assert appended is False
     assert _packets(clip) == before
     assert _video_hash(clip, before) == digest
     assert "outro skipped" in capsys.readouterr().out
@@ -476,7 +480,8 @@ def test_stale_build_dirs_are_swept(tmp_path):
 def test_unprobeable_input_is_skipped_not_fatal(tmp_path, cfg):
     junk = tmp_path / "not-a-video.mp4"
     junk.write_bytes(b"nonsense")
-    assert outro.append(junk, cfg) is False
+    appended = outro.append(junk, cfg)
+    assert appended is False
     assert junk.read_bytes() == b"nonsense"
 
 
@@ -493,7 +498,8 @@ def test_an_unshipped_format_still_works(clip_factory, cfg):
     before = _packets(odd)
     original = _video_hash(odd, before)
 
-    assert outro.append(odd, cfg) is True
+    appended = outro.append(odd, cfg)
+    assert appended is True
     assert _packets(odd) == before + round(30 * outro.DURATION)
     assert _video_hash(odd, before) == original
 
@@ -649,7 +655,8 @@ def test_a_relative_clip_path_still_works(clip_factory, cfg, monkeypatch):
     assert not relative.is_absolute()
 
     before = _packets(clip)
-    assert outro.append(relative, cfg) is True
+    appended = outro.append(relative, cfg)
+    assert appended is True
     assert _packets(clip) == before + round(30 * outro.DURATION)
 
 
@@ -708,7 +715,8 @@ def test_end_card_lands_even_while_the_app_previews_the_clip(clip_factory, cfg):
     before = _packets(clip)
 
     with _held_like_a_player(clip):
-        assert outro.append(clip, cfg) is True
+        appended = outro.append(clip, cfg)
+        assert appended is True
 
     assert _packets(clip) == before + round(30 * outro.DURATION)
 
@@ -724,7 +732,8 @@ def test_uncontended_clips_still_use_the_atomic_rename(clip_factory, cfg, monkey
     monkeypatch.setattr(outro, "_overwrite_in_place",
                         lambda s, d: used.append(1) or real(s, d))
 
-    assert outro.append(clip_factory(secs=2), cfg) is True
+    appended = outro.append(clip_factory(secs=2), cfg)
+    assert appended is True
     assert not used, "wrote in place when a plain rename would have worked"
 
 
@@ -740,7 +749,7 @@ def test_a_short_write_keeps_the_recoverable_copy(tmp_path, monkeypatch):
     def truncating_open(path, mode="r", *a, **k):
         f = real_open(path, mode, *a, **k)
         if Path(path) == dst and "r+b" in str(mode):
-            f.write = lambda data: real_open.__self__ if False else None  # no-op
+            f.write = lambda data: None  # swallow the write, leaving dst truncated
         return f
 
     monkeypatch.setattr("builtins.open", truncating_open)

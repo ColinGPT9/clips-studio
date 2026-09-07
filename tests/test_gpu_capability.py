@@ -208,7 +208,7 @@ def test_too_old_and_too_new_are_told_apart(monkeypatch):
 
 
 def test_torch_device_follows_usability(monkeypatch):
-    import core.gpu as gpu
+    from core import gpu
 
     monkeypatch.setattr(gpu, "_DEVICE", None)
     _patch(monkeypatch, _FakeCuda(available=True, archs=SHIPPED, capability=(6, 1)))

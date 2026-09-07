@@ -16,15 +16,27 @@
 # writes is still scanned, including video/asd.py, which is the code that
 # calls into TalkNet.
 
-# Four alerts are dismissed in code scanning rather than fixed, because the
+# Five alerts are dismissed in code scanning rather than fixed, because the
 # thing they describe is the product:
 #
-#   py/path-injection x3   core/paths.py (resolve + stat) and the image read in
-#                          server/api.py. Importing a video or a logo from
-#                          anywhere on your own disk is the feature; the path
-#                          comes from a native file dialog, the API binds
-#                          127.0.0.1, and picked_file() already rejects UNC
-#                          paths, non-files and unexpected extensions.
+#   py/path-injection x4   core/paths.py (resolve + stat), the image read in
+#                          server/api.py, and the thumbnail read in
+#                          server/youtube_api.py. Importing a video, a logo or
+#                          a thumbnail from anywhere on your own disk is the
+#                          feature; the path comes from a native file dialog,
+#                          the API binds 127.0.0.1, and picked_file() already
+#                          rejects UNC paths, non-files and unexpected
+#                          extensions.
+#
+#                          Every one of these goes through picked_file(). That
+#                          matters: publishing first shipped with its own copy
+#                          of the validation, which put TEN path-injection
+#                          alerts on server/youtube_api.py instead of one, and
+#                          re-created the bug picked_file()'s docstring warns
+#                          about — a helper that returns a bare Path leaves
+#                          each caller re-stat-ing untrusted input. If a new
+#                          endpoint needs a file the user picked, call
+#                          picked_file(); do not write a second validator.
 #   py/file-not-closed     server/feedback.py — the job log handle belongs to
 #                          _job_sink until close_job_log() runs, which is a
 #                          lifetime the rule cannot follow.
