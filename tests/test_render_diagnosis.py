@@ -20,12 +20,9 @@ real footage, and retrying on the CPU turns an empty job into a slow one.
 import json
 import sys
 
-import pytest
-
 from core.pipeline import _render_failure_reason
 from video.cutter import _swap_encoder
-from video.encoding import CPU_ARGS, _CANDIDATES
-
+from video.encoding import _CANDIDATES, CPU_ARGS
 
 # The exact shape video/cutter.py raises: our prefix, then FFmpeg's stderr.
 CUT_FAILURE = (

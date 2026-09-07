@@ -80,7 +80,7 @@ def assemble(
                     if fmt:
                         parts.append(outro.ensure_outro(fmt, config))
                         outro._tally["added"] += 1
-            except Exception as exc:            # noqa: BLE001
+            except Exception as exc:
                 print(f"  end card skipped: {type(exc).__name__}: {exc}")
 
         # Identical codec parameters on every part -> lossless concat join.
