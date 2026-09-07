@@ -41,6 +41,7 @@ export function installBrowserShim(): void {
       unavailable('Choosing video files')
       return []
     },
+    pickThumbnailImage: async () => null,
     pickImageFile: async () => {
       unavailable('Choosing an image')
       return null
