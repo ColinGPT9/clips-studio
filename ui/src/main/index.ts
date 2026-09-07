@@ -227,6 +227,10 @@ ipcMain.handle('notify', (event, payload: unknown) => {
   return true
 })
 
+// YouTube's thumbnail limit, mirrored from publish/images.py so an oversized
+// file is refused before it becomes a base64 string.
+const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
+
 // Thumbnails come back as DATA, not as a path, and that is the point: this
 // process ran the dialog, so it already has the file. Handing the renderer a
 // path to POST would mean the backend re-opening an arbitrary path from an
@@ -240,15 +244,25 @@ ipcMain.handle('pick-thumbnail-image', async () => {
     filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg'] }]
   })
   if (result.canceled || !result.filePaths[0]) return null
+  const path = result.filePaths[0]
   try {
-    const { readFile, stat } = await import('node:fs/promises')
-    const path = result.filePaths[0]
-    const info = await stat(path)
-    // Refused here as well as in the backend, so a 40 MB photo is never turned
-    // into a 53 MB base64 string and pushed through IPC just to be rejected.
-    if (info.size > 2 * 1024 * 1024) return { error: 'too-large' }
-    const bytes = await readFile(path)
-    return { name: basename(path), data: bytes.toString('base64') }
+    const { open } = await import('node:fs/promises')
+    // One handle for both the size check and the read. Calling stat(path) and
+    // then readFile(path) looks equivalent but resolves the name twice, so
+    // what gets measured and what gets read are not guaranteed to be the same
+    // file — swap it in between and the size limit measures nothing.
+    const handle = await open(path, 'r')
+    try {
+      // Checked here as well as in the backend, so a 40 MB photo is never
+      // turned into a 53 MB base64 string and pushed through IPC just to be
+      // rejected at the other end.
+      const info = await handle.stat()
+      if (info.size > THUMBNAIL_MAX_BYTES) return { error: 'too-large' }
+      const bytes = await handle.readFile()
+      return { name: basename(path), data: bytes.toString('base64') }
+    } finally {
+      await handle.close()
+    }
   } catch {
     return { error: 'unreadable' }
   }
