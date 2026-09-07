@@ -1,4 +1,18 @@
+"""The original file-based auth path, which core/scheduler.py and
+`python main.py auth` still use.
+
+CI installs four packages and none of them is google-auth, so these skip there
+the way every other heavy-dependency test in this suite does. Without the
+guard they errored on every run — the imports below are inside the test bodies,
+so collection succeeded and the failure only showed up at call time.
+"""
+
 from pathlib import Path
+
+import pytest
+
+pytest.importorskip("google.oauth2", reason="google-auth is not installed on CI")
+pytest.importorskip("google_auth_oauthlib", reason="google-auth-oauthlib is not installed on CI")
 
 from publish.youtube_shorts import (
     ANALYTICS_SCOPE,

@@ -200,10 +200,16 @@ def main() -> int:
             return 0
 
         if args.command == "auth":
+            from core.paths import resolve_config_file
             from publish.youtube_shorts import YouTubeShortsPublisher
 
             publisher = YouTubeShortsPublisher(
-                client_secret=Path(config["upload"]["client_secret"]),
+                # Not Path(...) directly: the shipped value is relative, and a
+                # relative path here resolved against the working directory,
+                # which Electron does not set. See core/paths.py.
+                client_secret=resolve_config_file(
+                    config, config["upload"]["client_secret"], args.config
+                ),
                 token_path=Path(config["paths"]["data_dir"]) / "youtube_token.json",
             )
             publisher.authenticate(interactive=True)

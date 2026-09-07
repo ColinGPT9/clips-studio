@@ -121,10 +121,13 @@ def upload_scheduled(config: dict, db: StateDB) -> int:
     if not rows:
         return 0
 
+    from core.paths import resolve_config_file
     from publish.youtube_shorts import YouTubeShortsPublisher  # lazy: google libs
 
     publisher = YouTubeShortsPublisher(
-        client_secret=Path(config["upload"]["client_secret"]),
+        # Relative by default, and a bare Path() resolved it against the
+        # working directory — which Electron never sets. See core/paths.py.
+        client_secret=resolve_config_file(config, config["upload"]["client_secret"]),
         token_path=Path(config["paths"]["data_dir"]) / "youtube_token.json",
         privacy=config["upload"].get("privacy", "public"),
     )

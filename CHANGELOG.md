@@ -8,6 +8,52 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
+## Unreleased — publish to YouTube without leaving the editor
+
+### Added
+
+- **Publish to YouTube from the editor.** Finish a clip, press **YouTube**, fill
+  in the title, description, tags, thumbnail, playlist, audience and visibility,
+  and press Upload. Clips Kitty renders your unsaved edits and uploads straight
+  to your channel. No exporting the file first, no hunting for it on disk, no
+  separate publishing screen — you never leave the editor.
+
+  **Scheduling uploads the video now** and asks YouTube to publish it later, so
+  you can close Clips Kitty and switch your computer off. There is no timer in
+  this app and nothing to leave running.
+
+  It is **off until you turn it on** in Settings, and it uses your own free
+  Google API key rather than a shared one — which is what stops every user in the
+  world drawing from the same daily upload allowance. If you never enable it, the
+  editor looks exactly as it did.
+
+  One thing worth knowing before you rely on it: until your Google Cloud project
+  passes YouTube's free audit, **YouTube locks every video uploaded through an
+  API to private, permanently**, and it cannot be undone in Studio. That is
+  YouTube's policy, not a bug, and no software can work around it. Clips Kitty
+  checks after every upload and tells you if it happened instead of claiming
+  success. Uploading as unlisted or private is unaffected. See
+  [README "Posting publicly"](README.md#posting-publicly).
+
+### Fixed
+
+- **Editing a clip you had translated no longer fails the render.** Translating a
+  clip in the Subtitles tab and then pressing "Apply edits" failed the job with a
+  database error, mentioning nothing you had actually done. Re-rendering replaces
+  the clip's row, and the translation still pointed at the old one. Translations
+  now follow the clip across a re-render, and so do publishing records.
+
+- **Your YouTube sign-in is no longer stored in readable form.** The saved token
+  used to sit in plain JSON in the data folder. It is now encrypted against your
+  Windows account, so copying the folder to another PC or user does not carry it
+  over. Existing sign-ins are moved across automatically the first time.
+
+- **`python main.py auth` works in the installed app.** It looked for your
+  credentials file relative to whatever folder it happened to be started from,
+  which for an installed copy is not where the file is.
+
+---
+
 ## 1.1.4 — setup stops asking for a model you never chose
 
 ### Fixed

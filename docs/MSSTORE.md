@@ -330,9 +330,9 @@ the tester will see on first run is unusual:
 > required; on less, clips are analysed but rendering fails with an
 > out-of-memory error.
 >
-> No account or login is needed. The optional YouTube publishing feature is
-> disabled by default, is command-line only, and requires Google Cloud
-> credentials the user supplies themselves, so it is not reachable in this
+> No account or login is needed to use the app. Optional YouTube publishing is
+> off by default, requires the user's own Google Cloud API key, and uploads
+> directly from the device to YouTube. A reviewer cannot exercise it in this
 > build.
 >
 > Setup picks the AI model to download from the test machine's hardware, so on

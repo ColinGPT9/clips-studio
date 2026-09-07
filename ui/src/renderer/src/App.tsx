@@ -54,6 +54,13 @@ export default function App(): JSX.Element {
     window.addEventListener('open-queue', open)
     return () => window.removeEventListener('open-queue', open)
   }, [])
+  // Same door for Settings: the editor's YouTube panel sends people here to
+  // connect an account, rather than duplicating the setup flow inside a tab.
+  useEffect(() => {
+    const open = (): void => setPage('settings')
+    window.addEventListener('open-settings', open)
+    return () => window.removeEventListener('open-settings', open)
+  }, [])
   // Mounted at the shell, not on the queue page: the point of a notification
   // is to reach someone who is NOT looking at the queue.
   useQueueNotifications()

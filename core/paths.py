@@ -49,6 +49,37 @@ def resolve_data_dir(config: dict) -> Path:
     return _REPO_ROOT / raw
 
 
+def resolve_config_file(config: dict, raw: str | Path, settings_path: Path | None = None) -> Path:
+    """A path from settings.yaml that names a FILE, resolved the same way
+    resolve_data_dir() resolves the data directory.
+
+    Same bug, different value: `upload.client_secret` ships as the relative
+    "config/client_secret.json" and was passed straight to Path(), so it
+    resolved against the current working directory. Electron does not set one,
+    so an installed build looked for the file in whatever directory it happened
+    to inherit and reported it missing when it was sitting right there.
+
+    Absolute wins. Otherwise try the places it could sensibly live, and if
+    none of them has it, return the data-dir candidate so the "missing file"
+    message names somewhere the user can actually write to.
+    """
+    raw = Path(str(raw))
+    if raw.is_absolute():
+        return raw
+
+    candidates = []
+    if settings_path is not None:
+        candidates.append(Path(settings_path).resolve().parent / raw)
+    data_candidate = resolve_data_dir(config) / raw
+    candidates.append(data_candidate)
+    candidates.append(_REPO_ROOT / raw)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return data_candidate
+
+
 def user_config_path(bundled: Path) -> Path:
     """The settings.yaml this install should READ AND WRITE.
 

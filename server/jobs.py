@@ -464,6 +464,11 @@ class Worker(threading.Thread):
             "status": clip["status"],
         }
         old_path = Path(clip["path"]) if clip["path"] else None
+        # Translations, uploads and feedback REFERENCE this clip, and
+        # foreign_keys is ON, so they have to be lifted out before the row can
+        # go — otherwise this DELETE raises "FOREIGN KEY constraint failed" and
+        # the render fails for anyone who had translated or published the clip.
+        detached = db.detach_clip_rows(clip["id"])
         db.conn.execute("DELETE FROM clips WHERE id = ?", (clip["id"],))  # avoid UNIQUE clash
         db.conn.commit()
 
@@ -489,5 +494,11 @@ class Worker(threading.Thread):
             restore = {k: v for k, v in keep.items() if v}
             restore["render_opts"] = _json.dumps(render_opts)
             db.set_clip(new_row["id"], **restore)
+            db.reattach_clip_rows(new_row["id"], detached)
+        elif detached:
+            # The re-render produced no row to hang them off. Say so rather
+            # than dropping a translation or an upload record in silence.
+            print(f"Re-render left no clip row; discarded {sum(len(v) for v in detached.values())} "
+                  "dependent row(s)")
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
             discard(old_path)

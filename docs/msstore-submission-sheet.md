@@ -64,9 +64,11 @@ honest version of that claim.
 Complete the IARC questionnaire. Every answer is **No** for Clips Kitty. The
 two that need thought rather than reflex:
 
-- **Does the app allow users to share content?** No. It writes files to the
-  user's own disk. It posts nowhere. The optional YouTube upload path is
-  disabled, command-line only, and needs Google credentials the user creates.
+- **Does the app allow users to share content?** No. This question is about
+  users sharing with *each other* and being exposed to other users' content,
+  and nothing here does that. The optional YouTube publishing feature uploads
+  the user's own clip to their own channel using their own Google API key; no
+  user is ever exposed to another user's content through Clips Kitty.
 - **Does it display user-generated or uncurated content?** The user's own
   video, to themselves. Nothing from other users.
 
@@ -146,11 +148,11 @@ needed. It is the only capability the package declares.
 fits. Paste exactly:
 
 ```
-Clips Kitty is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required for it to run. It is the only capability declared.
+Clips Kitty is a Win32 desktop app packaged with the Desktop Bridge, so runFullTrust is required and is the only capability declared.
 
-It launches three child processes that ship inside the package: a frozen Python engine for video analysis, FFmpeg for decoding and encoding, and an Ollama runtime that hosts the AI model on the user's own hardware. AppContainer cannot launch these.
+It launches three child processes bundled in the package: a frozen Python engine for analysis, FFmpeg for encoding, and Ollama hosting the AI model on the user's own hardware. AppContainer cannot launch these.
 
-It reads and writes only video files the user picks. No account, no telemetry, nothing uploaded.
+It reads and writes only video files the user picks. No telemetry. Optional YouTube publishing is off by default and needs the user's own Google key.
 ```
 
 If even that is rejected as too long, this says the same in 384:
@@ -160,7 +162,7 @@ Clips Kitty is a Win32 desktop app packaged with the Desktop Bridge, so runFullT
 
 It launches three child processes bundled in the package: a frozen Python engine for analysis, FFmpeg for encoding, and Ollama hosting the AI model locally. AppContainer cannot do this.
 
-No account, no telemetry, nothing uploaded.
+No telemetry. Optional YouTube publishing is off by default and uses the user's own Google API key.
 ```
 
 Every claim there is verifiable in the package: `resources/backend/api.exe`,
@@ -183,11 +185,14 @@ download a model first if none is present. A machine with 16 GB of RAM is
 required - on less, clips are analysed but rendering fails with an
 out-of-memory error.
 
-No account or login is needed anywhere in the app.
+No account or login is needed to use the app. There is no Clips Kitty
+account or server at any point.
 
-The optional YouTube publishing feature is disabled by default, is
-command-line only, and requires Google Cloud credentials the user supplies
-themselves, so it is not reachable in this build.
+The app can optionally publish a finished clip to the user's own YouTube
+channel. It is off by default and must be switched on in Settings, and it
+requires the user to create their own free Google Cloud API key first, so a
+reviewer cannot exercise it without setting up a Google Cloud project. The
+upload goes directly from the device to YouTube; no data reaches us.
 
 The donate button opens PayPal in the system browser (third-party purchase
 API, declared in Product declarations).

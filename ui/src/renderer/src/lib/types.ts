@@ -328,11 +328,24 @@ export interface Settings {
 
 /** Events arriving over the WebSocket. */
 export interface StudioEvent {
-  /** 'queue' is a bare ping meaning "the queue changed, re-read it". */
-  type: 'progress' | 'job' | 'model_pull' | 'queue'
+  /** 'queue' is a bare ping meaning "the queue changed, re-read it".
+   *  'publish' is a YouTube upload. It is deliberately NOT 'job': jobProgress
+   *  resets the global processing bar on any 'job' event, and an upload has
+   *  nothing to do with the video pipeline's progress. */
+  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish'
   job_id?: number
   /** Present on 'job' events: lets the queue ignore re-renders. */
   job_type?: 'process' | 'render' | 'translate'
+  /** Publish events only. */
+  publish_job?: number
+  clip_id?: number
+  phase?: 'prepare' | 'upload' | 'metadata' | 'done' | 'failed' | 'cancelled' | 'checked'
+  terminal?: 'done' | 'failed' | 'cancelled' | 'checked'
+  youtube_id?: string
+  url?: string
+  warnings?: string[]
+  locked_private?: boolean
+  state?: string
   status?: string
   stage?: string
   message?: string

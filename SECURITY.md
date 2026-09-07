@@ -68,6 +68,26 @@ anything it does not cover.
 ## A note on what this app does
 
 Clips Kitty downloads videos with yt-dlp and processes them locally. It never uploads
-your footage anywhere. The only outbound network traffic in a normal run is fetching
-the source video, an optional Twitch chat-replay request, model downloads you ask for,
-and — only if you submit one — an in-app feedback report.
+your footage anywhere unless you ask it to. The only outbound network traffic in a
+normal run is fetching the source video, an optional Twitch chat-replay request, model
+downloads you ask for, and — only if you submit one — an in-app feedback report.
+
+The exception is publishing. If you switch on **Settings → Publish to YouTube**, connect
+your own Google account and press Upload, the clip goes from your machine straight to
+YouTube. That is the whole point of the feature, and it never happens on its own: it is
+off by default, it needs your own Google Cloud API key, and every upload is one you
+pressed a button for. Nothing is proxied through a Clips Kitty server, because there
+isn't one.
+
+Two things worth knowing if you turn it on:
+
+- **The local API has no authentication** (see above). While an account is connected,
+  anything that can reach `127.0.0.1:8765` can publish to your channel. That is the same
+  trust boundary as the rest of the API — it can already read your footage — but the
+  consequence is more visible here.
+- **Your credentials stay on your machine.** The OAuth token and your Google client
+  secret are stored with Windows DPAPI, encrypted against your Windows account, so
+  copying the data folder to another PC or user does not carry them over. On Linux and
+  in the Docker image there is no DPAPI, and they fall back to an owner-only (0600)
+  file — which protects against other users on the box, not against someone who already
+  has your account.

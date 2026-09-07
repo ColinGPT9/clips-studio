@@ -177,6 +177,34 @@ CREATE TABLE IF NOT EXISTS clip_translations (
     PRIMARY KEY (clip_id, language)
 );
 
+-- One row per publish attempt, kept OUT of the jobs table on purpose.
+--
+-- jobs rows are re-queued on startup by recover_interrupted_jobs(). For a
+-- video that means "resume a stage"; for an upload it would mean posting the
+-- same video to someone's channel a second time. A publish left running by a
+-- crash has to become 'interrupted' and stop there, which is the opposite
+-- recovery rule, so it needs its own table.
+--
+-- The Queue page also renders every jobs row, and publishing is meant to have
+-- no footprint at all for people who never turn it on.
+CREATE TABLE IF NOT EXISTS publish_jobs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Deliberately NOT a foreign key: a re-render deletes the clip row and
+    -- inserts a new one with a new id (server/jobs.py::_rerender_clip), so a
+    -- publish chained after a render has to re-find its clip by timestamps.
+    clip_id      INTEGER NOT NULL,
+    video_id     TEXT NOT NULL DEFAULT '',
+    start_s      REAL NOT NULL DEFAULT 0,
+    end_s        REAL NOT NULL DEFAULT 0,
+    request      TEXT NOT NULL DEFAULT '{}',  -- JSON PublishRequest. No credentials.
+    after_job_id INTEGER NOT NULL DEFAULT 0,  -- jobs.id of a render to wait for, 0 = none
+    status       TEXT NOT NULL DEFAULT 'queued',
+    error        TEXT NOT NULL DEFAULT '',
+    youtube_id   TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
 -- Small key/value store for app-level flags that must outlive a restart.
 -- Currently just the queue's paused state: stopping the queue is a decision
 -- the user made, so a crash or a reboot must not quietly resume processing.
@@ -250,6 +278,30 @@ class StateDB:
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, position, id)"
         )
+        upload_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(uploads)")}
+        for column, decl in (
+            # Identity that outlives a re-render. clip_id alone cannot find
+            # this row again, because applying edits gives the clip a new id.
+            ("video_id", "TEXT NOT NULL DEFAULT ''"),
+            ("start_s", "REAL NOT NULL DEFAULT 0"),
+            ("end_s", "REAL NOT NULL DEFAULT 0"),
+            ("title", "TEXT NOT NULL DEFAULT ''"),
+            ("privacy", "TEXT NOT NULL DEFAULT ''"),  # what we asked for
+            # What YouTube actually applied. These differ when an unaudited API
+            # project has its uploads locked private, which is unappealable and
+            # invisible unless it is read back and compared.
+            ("actual_privacy", "TEXT NOT NULL DEFAULT ''"),
+            ("publish_at", "TEXT NOT NULL DEFAULT ''"),  # UTC RFC3339, '' = published now
+            ("channel_id", "TEXT NOT NULL DEFAULT ''"),
+            ("channel_title", "TEXT NOT NULL DEFAULT ''"),
+            ("thumbnail_set", "INTEGER NOT NULL DEFAULT 0"),
+            ("playlist_id", "TEXT NOT NULL DEFAULT ''"),
+            ("state", "TEXT NOT NULL DEFAULT 'uploaded'"),
+            ("error", "TEXT NOT NULL DEFAULT ''"),
+            ("checked_at", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if column not in upload_cols:
+                self.conn.execute(f"ALTER TABLE uploads ADD COLUMN {column} {decl}")
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
@@ -316,6 +368,58 @@ class StateDB:
         self.conn.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
         self.conn.commit()
         return row["path"]
+
+    # ---- re-render support ------------------------------------------------
+    #
+    # A re-render does not UPDATE a clip, it deletes the row and inserts a new
+    # one (server/jobs.py::_rerender_clip), because the new timestamps would
+    # otherwise collide with UNIQUE(video_id, start_s, end_s). That gives the
+    # clip a NEW id, and foreign_keys is ON, so any row still pointing at the
+    # old id makes the DELETE fail outright:
+    #
+    #     sqlite3.IntegrityError: FOREIGN KEY constraint failed
+    #
+    # Which meant translating a clip in the Subtitles tab and then pressing
+    # "Apply edits" failed the render job with a message about nothing the
+    # user had done. Publishing adds a second way in, via uploads.clip_id.
+    # These two lift the dependent rows out of the way and put them back on
+    # the new id.
+
+    _CLIP_DEPENDENTS = ("uploads", "clip_translations", "clip_feedback")
+
+    def detach_clip_rows(self, clip_id: int) -> dict[str, list[dict]]:
+        """Read and remove every row that REFERENCES this clip, so the clip
+        row itself can be deleted. Returns them for reattach_clip_rows()."""
+        saved: dict[str, list[dict]] = {}
+        for table in self._CLIP_DEPENDENTS:
+            rows = self.conn.execute(
+                f"SELECT * FROM {table} WHERE clip_id = ?", (clip_id,)
+            ).fetchall()
+            if rows:
+                saved[table] = [dict(r) for r in rows]
+                self.conn.execute(f"DELETE FROM {table} WHERE clip_id = ?", (clip_id,))
+        self.conn.commit()
+        return saved
+
+    def reattach_clip_rows(self, new_clip_id: int, saved: dict[str, list[dict]]) -> None:
+        """Put rows from detach_clip_rows() back, pointed at the new clip id.
+
+        Best-effort per row: a re-render that changed the clip's boundaries can
+        make an old row invalid, and losing one translation is a far better
+        outcome than failing a render the user is waiting on."""
+        for table, rows in saved.items():
+            for row in rows:
+                row = {**row, "clip_id": new_clip_id}
+                columns = ", ".join(row)
+                placeholders = ", ".join("?" for _ in row)
+                try:
+                    self.conn.execute(
+                        f"INSERT OR REPLACE INTO {table} ({columns}) VALUES ({placeholders})",
+                        tuple(row.values()),
+                    )
+                except sqlite3.Error as e:
+                    print(f"Could not restore {table} row for clip {new_clip_id}: {e}")
+        self.conn.commit()
 
     def delete_creator(self, creator_id: int) -> dict:
         """Remove a creator profile and everything learned about them.
@@ -581,15 +685,167 @@ class StateDB:
         self.conn.commit()
         return rows
 
-    # ---- uploads (consumed by the future YouTube upload module) -------
+    # ---- uploads -------------------------------------------------------
 
     def record_upload(self, clip_id: int, youtube_id: str) -> None:
+        """Record a bare upload. Kept for core/scheduler.py's daemon path.
+
+        An UPSERT rather than an INSERT: uploads.clip_id is the primary key, so
+        publishing a clip a second time used to fail on the unique constraint.
+        """
         self.conn.execute(
-            "INSERT INTO uploads (clip_id, youtube_id, uploaded_at) VALUES (?, ?, ?)",
+            "INSERT INTO uploads (clip_id, youtube_id, uploaded_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(clip_id) DO UPDATE SET "
+            "youtube_id = excluded.youtube_id, uploaded_at = excluded.uploaded_at",
             (clip_id, youtube_id, _now()),
         )
         self.conn.execute("UPDATE clips SET status = 'uploaded' WHERE id = ?", (clip_id,))
         self.conn.commit()
+
+    def record_publish(self, clip_id: int, fields: dict) -> None:
+        """Record a full publish result against a clip.
+
+        `fields` carries whatever of the widened uploads columns the caller
+        knows; unknown keys are ignored rather than raising, so a provider that
+        cannot report (say) a channel handle does not have to fake one.
+
+        The clip's status becomes 'uploaded' for a scheduled video too — it HAS
+        been uploaded; only its going-live is in the future, and that is
+        YouTube's business, not a state this app has to track.
+        """
+        allowed = {r["name"] for r in self.conn.execute("PRAGMA table_info(uploads)")}
+        row = {k: v for k, v in fields.items() if k in allowed and k != "clip_id"}
+        row.setdefault("youtube_id", "")
+        row["uploaded_at"] = _now()
+
+        columns = ", ".join(["clip_id", *row])
+        placeholders = ", ".join("?" for _ in range(len(row) + 1))
+        updates = ", ".join(f"{k} = excluded.{k}" for k in row)
+        self.conn.execute(
+            f"INSERT INTO uploads ({columns}) VALUES ({placeholders}) "
+            f"ON CONFLICT(clip_id) DO UPDATE SET {updates}",
+            (clip_id, *row.values()),
+        )
+        self.conn.execute("UPDATE clips SET status = 'uploaded' WHERE id = ?", (clip_id,))
+        self.conn.commit()
+
+    def get_upload(self, clip_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM uploads WHERE clip_id = ?", (clip_id,)
+        ).fetchone()
+
+    def recent_uploads(self, limit: int = 50) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT u.*, c.hook FROM uploads u LEFT JOIN clips c ON c.id = u.clip_id "
+            "ORDER BY u.uploaded_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+    # ---- publish jobs --------------------------------------------------
+
+    def add_publish_job(
+        self,
+        clip_id: int,
+        request: str,
+        *,
+        video_id: str = "",
+        start_s: float = 0.0,
+        end_s: float = 0.0,
+        after_job_id: int = 0,
+    ) -> int:
+        now = _now()
+        cur = self.conn.execute(
+            "INSERT INTO publish_jobs "
+            "(clip_id, video_id, start_s, end_s, request, after_job_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (clip_id, video_id, start_s, end_s, request, after_job_id, now, now),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def claim_next_publish_job(self) -> sqlite3.Row | None:
+        """Take the oldest queued publish whose render (if any) has finished.
+
+        A job waiting on a render that failed or was cancelled is failed here
+        rather than left queued forever — there is no file to upload, and a row
+        that never moves looks like a hang.
+        """
+        rows = self.conn.execute(
+            "SELECT * FROM publish_jobs WHERE status = 'queued' ORDER BY id"
+        ).fetchall()
+        for row in rows:
+            if row["after_job_id"]:
+                dependency = self.conn.execute(
+                    "SELECT status FROM jobs WHERE id = ?", (row["after_job_id"],)
+                ).fetchone()
+                if dependency is None:
+                    self.finish_publish_job(row["id"], "failed", error="The render job vanished.")
+                    continue
+                if dependency["status"] in ("queued", "running"):
+                    continue  # still rendering; look at the next one
+                if dependency["status"] != "done":
+                    self.finish_publish_job(
+                        row["id"],
+                        "failed",
+                        error=f"The render {dependency['status']}, so there was nothing to upload.",
+                    )
+                    continue
+            self.conn.execute(
+                "UPDATE publish_jobs SET status = 'running', updated_at = ? WHERE id = ?",
+                (_now(), row["id"]),
+            )
+            self.conn.commit()
+            return self.conn.execute(
+                "SELECT * FROM publish_jobs WHERE id = ?", (row["id"],)
+            ).fetchone()
+        return None
+
+    def finish_publish_job(
+        self, job_id: int, status: str, *, error: str = "", youtube_id: str = ""
+    ) -> None:
+        self.conn.execute(
+            "UPDATE publish_jobs SET status = ?, error = ?, youtube_id = ?, updated_at = ? "
+            "WHERE id = ?",
+            (status, error[:500], youtube_id, _now(), job_id),
+        )
+        self.conn.commit()
+
+    def get_publish_job(self, job_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM publish_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+
+    def active_publish_job_for_clip(self, clip_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM publish_jobs WHERE clip_id = ? AND status IN ('queued', 'running') "
+            "ORDER BY id DESC LIMIT 1",
+            (clip_id,),
+        ).fetchone()
+
+    def set_publish_job_clip(self, job_id: int, clip_id: int) -> None:
+        """Re-point a job at the clip row a re-render just created."""
+        self.conn.execute(
+            "UPDATE publish_jobs SET clip_id = ?, updated_at = ? WHERE id = ?",
+            (clip_id, _now(), job_id),
+        )
+        self.conn.commit()
+
+    def recover_running_publish_jobs(self) -> int:
+        """Mark uploads that a crash interrupted, and never retry them.
+
+        The opposite of recover_interrupted_jobs(). We cannot tell from here
+        whether YouTube finished receiving the file, so retrying risks posting
+        the video twice — the user is asked to check their channel instead.
+        """
+        cur = self.conn.execute(
+            "UPDATE publish_jobs SET status = 'interrupted', updated_at = ?, "
+            "error = 'Clips Kitty closed while this was uploading. Check your "
+            "channel before trying again — it may have finished.' "
+            "WHERE status = 'running'",
+            (_now(),),
+        )
+        self.conn.commit()
+        return cur.rowcount
 
     # ---- monitored channels --------------------------------------------
 

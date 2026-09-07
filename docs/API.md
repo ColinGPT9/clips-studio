@@ -8,7 +8,7 @@ a script that queues last night's VOD every morning.
 Nothing needs to be added to the app for that to work. The service is already
 running whenever Clips Kitty is open, on `127.0.0.1:8765`.
 
-The service has 71 HTTP endpoints and a WebSocket. This document covers the
+The service has 86 HTTP endpoints and a WebSocket. This document covers the
 subset meant to be built against — most of the rest are the desktop UI talking
 to itself, and are listed as internal below.
 
@@ -32,6 +32,7 @@ to itself, and are listed as internal below.
 - [Results](#results)
 - [Models](#models)
 - [Languages and export](#languages-and-export)
+- [Publishing to YouTube](#publishing-to-youtube)
 - [WebSocket events](#websocket-events)
 - [A complete example](#a-complete-example)
 - [Gotchas](#gotchas)
@@ -544,13 +545,145 @@ exist** — check the array, not the status.
 
 `POST /export/batch` takes `{"clip_ids": [...], "folder": "..."}`.
 
+## Publishing to YouTube
+
+Optional, and **off unless the user has switched it on** in Settings. While it is
+off, `GET /youtube/status` returns `{"enabled": false}` and every other endpoint
+here returns **404** — a disabled feature looks absent rather than refused. Check
+status first; do not treat a 404 as a fault.
+
+Publishing needs the user's own Google Cloud OAuth client. Nothing is proxied
+through a server, and **no endpoint here ever returns a token or a client
+secret**, in any form.
+
+### Is it available?
+
+```bash
+curl http://127.0.0.1:8765/youtube/status
+```
+
+```json
+{
+  "enabled": true,
+  "backend": "windows-dpapi",
+  "has_client": true,
+  "connected": true,
+  "scopes": ["https://www.googleapis.com/auth/youtube.upload",
+             "https://www.googleapis.com/auth/youtube.readonly"],
+  "playlists_available": false,
+  "channel": {"id": "UCxxxxxxxx", "title": "My Channel", "handle": "@mychannel"},
+  "settings": {"enabled": true, "privacy": "public", "category_id": "22",
+               "made_for_kids": false, "playlists_enabled": false,
+               "notify_subscribers": true, "region": "US"},
+  "quota": {"uploads_used": 3, "uploads_limit": 100, "remaining": 97, "resets_at": ""}
+}
+```
+
+`quota` counts **uploads**, not units. Since June 2026 `videos.insert` has its own
+daily bucket — 100 per Google Cloud project — separate from the 10,000-unit pool
+the other endpoints share. The count is advisory: two installs sharing one key
+cannot see each other, so a 403 from YouTube is always the truth.
+
+### Publish a clip
+
+```bash
+curl -X POST http://127.0.0.1:8765/clips/812/publish   -H 'Content-Type: application/json'   -d '{"title": "The comeback", "description": "No way", "tags": ["gaming"],
+       "privacy": "public", "made_for_kids": false}'
+```
+
+```json
+{"publish_job_id": 4, "render_job_id": null}
+```
+
+Returns immediately. Watch the `publish` WebSocket events, or poll
+`GET /clips/812/publish`.
+
+| Field | Notes |
+|---|---|
+| `title` | required, 100 characters |
+| `description` | 5,000 characters. Timestamps become chapters. |
+| `tags` | 500 characters in total, not a count |
+| `category_id` | see `GET /youtube/categories` |
+| `privacy` | `public` / `unlisted` / `private` |
+| `publish_at` | RFC 3339 with an offset. Forces `privacy` to `private`. |
+| `made_for_kids` | YouTube requires an explicit answer |
+| `contains_synthetic_media` | altered/synthetic-content disclosure |
+| `license` | `youtube` or `creativeCommon` |
+| `embeddable`, `public_stats_viewable`, `notify_subscribers` | booleans |
+| `default_language`, `playlist_id`, `thumbnail` | optional |
+| `render_first` | `{start?, end?, render_opts?}` — re-render before uploading |
+
+**`render_first` is how "no manual export" works.** Pass the editor's pending
+`render_opts` and the clip is re-rendered through the ordinary `render` job
+first, then uploaded. Omit it and the existing rendered file is used as-is.
+Either way the clip's own `render_opts` are never modified — the project stays
+editable.
+
+### Scheduling
+
+Send `publish_at`. The video is uploaded **now**, set private, and YouTube
+publishes it at that time. There is no local timer and nothing has to stay
+running; once the call returns, this app has no further part in it.
+
+Must be at least 15 minutes ahead, and must carry an offset (`...Z` or
+`+01:00`) — a bare local time is rejected rather than guessed at.
+
+### Publishing state
+
+```bash
+curl http://127.0.0.1:8765/clips/812/publish
+```
+
+```json
+{
+  "upload": {"clip_id": 812, "youtube_id": "dQw4w9WgXcQ", "privacy": "public",
+             "actual_privacy": "private", "state": "locked_private",
+             "publish_at": "", "channel_title": "My Channel"},
+  "job": null
+}
+```
+
+**Compare `privacy` against `actual_privacy`.** When they differ and `state` is
+`locked_private`, YouTube overrode the request — which is what happens to every
+upload from a Google Cloud project that has not passed YouTube's compliance
+audit. It is permanent and cannot be undone in Studio. Surface it; do not report
+success.
+
+`state` is one of `uploaded`, `locked_private`, `rejected`, `failed`.
+
+### The rest
+
+| Endpoint | Purpose |
+|---|---|
+| `PATCH /youtube/settings` | enable/disable and publishing defaults |
+| `PUT`/`DELETE /youtube/credentials` | install or remove the user's OAuth client |
+| `POST`/`GET /youtube/connect` | start the browser consent, then poll it |
+| `POST /youtube/disconnect` | revoke and forget the token |
+| `GET /youtube/categories?region=US` | assignable categories |
+| `GET /youtube/playlists` | needs the full `youtube` scope (opt-in) |
+| `GET /youtube/uploads?limit=50` | publishing history |
+| `POST /publish/{job_id}/cancel` | cancel an upload in flight |
+| `GET /clips/{id}/frame?t=12.5` | a JPEG frame, for a thumbnail picker |
+| `POST /clips/{id}/thumbnail` | choose a thumbnail by `path` or by `t` |
+
+Of these, `GET /youtube/status`, `POST /clips/{id}/publish` and
+`GET /clips/{id}/publish` are **supported**; the rest exist to serve the Settings
+screen and may change with it.
+
+### One thing that will surprise you
+
+An upload interrupted by a crash or a quit is marked `interrupted` and is
+**never retried automatically**. From the outside there is no way to tell whether
+YouTube finished receiving the file, and a retry that guesses wrong posts the
+video to someone's channel twice. Ask the user to check their channel instead.
+
 ## WebSocket events
 
 ```
 ws://127.0.0.1:8765/ws
 ```
 
-Connect and listen. The server never expects a message from you. Four event
+Connect and listen. The server never expects a message from you. Five event
 types:
 
 ```json
@@ -558,6 +691,7 @@ types:
 {"type": "job", "job_id": 149, "job_type": "process", "status": "running", "title": "Friday stream", "remaining": 2}
 {"type": "progress", "job_id": 149, "stage": "transcribe", "video_id": "aB3dEfGhIjK"}
 {"type": "model_pull", "tag": "gemma3:12b", "status": "done"}
+{"type": "publish", "publish_job": 4, "clip_id": 812, "stage": "publish", "phase": "upload", "fraction": 0.42, "message": "Uploading to YouTube"}
 ```
 
 - **`queue`** carries no data. It means "something changed, re-fetch
@@ -570,6 +704,14 @@ types:
   **`job_id` is `null` for prefetch downloads**, which belong to a future job,
   not the running one — never attribute them to the current job.
 - **`model_pull`** is download progress for `POST /models/pull`.
+- **`publish`** is a YouTube upload. `phase` moves through `prepare`, `upload`,
+  `metadata`, then one of `done` / `failed` / `cancelled` — the terminal one
+  also sets `terminal` to the same value, and `done` carries `youtube_id`,
+  `url`, and any `warnings`. A later `checked` event may arrive about a minute
+  after `done` if YouTube rejected the video or locked it to private.
+  **It is deliberately not a `job` event**: publish jobs live in their own
+  table and have nothing to do with the video pipeline's progress, so a client
+  tracking pipeline state should ignore `publish` entirely.
 
 Events are dropped rather than queued for a slow client (a 200-event buffer per
 connection). Treat the WebSocket as a hint to re-read state, not as the state
