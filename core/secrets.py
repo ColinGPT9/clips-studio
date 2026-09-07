@@ -131,19 +131,25 @@ def load(data_dir: Path, name: str) -> dict | None:
         return None
 
 
-def wipe(data_dir: Path, name: str) -> None:
-    """Delete a stored secret.
+def wipe(data_dir: Path, name: str) -> bool:
+    """Delete a stored secret. True if it is gone.
 
     A failure here matters more than it looks: disconnecting an account would
-    report success while the token stayed on disk. Say so rather than swallow
-    it — but do not raise, because the caller has already revoked the token at
+    report success while the token stayed on disk. Hence the return value --
+    but this never raises, because the caller has already revoked the token at
     Google and a half-finished disconnect is worse than a noisy one.
     """
-    target = _path(data_dir, name)
     try:
-        target.unlink(missing_ok=True)
-    except OSError as e:
-        print(f"Could not delete the stored credential {target.name}: {e}")
+        _path(data_dir, name).unlink(missing_ok=True)
+        return True
+    except OSError:
+        # Says nothing about WHICH credential, or what the OS complained
+        # about: the error text carries the full path to a token file, and
+        # this module's one rule is that it never puts anything about a
+        # secret into the log. The caller knows which account it was
+        # disconnecting and can say so itself.
+        print("A stored credential could not be deleted and is still on disk.")
+        return False
 
 
 def has(data_dir: Path, name: str) -> bool:

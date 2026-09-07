@@ -31,6 +31,9 @@ interface Window {
     /** Multi-select, for queueing a batch of local files at once. */
     pickVideoFiles: () => Promise<string[]>
     pickImageFile: () => Promise<string | null>
+    pickThumbnailImage: () => Promise<
+      { name: string; data: string } | { error: string } | null
+    >
     getDownloadsPath: () => Promise<string>
     pickFolder: () => Promise<string | null>
     openDonateWindow: () => Promise<void>

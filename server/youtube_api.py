@@ -22,7 +22,8 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from core.paths import picked_file, within
+from core.paths import within
+from publish.errors import PublishError
 from server import youtube_service as service
 from server.feedback import redact
 
@@ -92,18 +93,19 @@ class PublishIn(BaseModel):
 
 
 class ThumbnailIn(BaseModel):
-    path: str | None = None
+    # The image itself, base64, not a path to it. The desktop app's file
+    # dialog runs in Electron's main process, which already has the bytes, so
+    # there is no reason to send a filename over the API and have the backend
+    # re-open it -- which would mean trusting an arbitrary path from an
+    # unauthenticated local endpoint. Sending the data also lets the format be
+    # checked from the actual bytes rather than from the name on the end.
+    image: str | None = None
     t: float | None = None
 
 
 # Where a just-granted token waits while we ask YouTube which channel it is
 # for. Never the unqualified slot — that may already hold another channel.
 PENDING = "pending"
-
-# Narrower than server/api.py's _IMAGE_SUFFIXES on purpose: that one accepts
-# WebP for watermarks, and YouTube rejects WebP thumbnails.
-_THUMB_SUFFIXES = (".jpg", ".jpeg", ".png")
-THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
 
 PRIVACIES = ("public", "unlisted", "private")
 LICENSES = ("youtube", "creativeCommon")
@@ -124,8 +126,6 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         return service.default_channel_id(d)
 
     def _fail(e: Exception) -> HTTPException:
-        from publish.errors import PublishError
-
         message = e.message if isinstance(e, PublishError) else str(e)
         return HTTPException(400, redact(message)[:500])
 
@@ -529,33 +529,20 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
 
         target = _thumb_path(clip_id, "chosen")
 
-        if body.path:
-            # picked_file() is the one place in this repo that turns a path
-            # from a request into something safe to open: it resolves, rejects
-            # UNC paths, stats once, and checks the suffix BEFORE anything
-            # reads the file. Rolling a second version of it here is what put
-            # ten path-injection alerts on this file — and its own docstring
-            # warns about exactly that, because a helper that hands back a
-            # bare Path leaves every caller re-stat-ing untrusted input.
-            picked = picked_file(body.path, _THUMB_SUFFIXES)
-            if picked is None:
-                raise HTTPException(400, "YouTube accepts JPEG and PNG thumbnails.")
-            src, _suffix, st = picked
-            # Checked on the stat picked_file already took, so an oversized
-            # file is refused without being loaded into memory first.
-            if st.st_size > THUMBNAIL_MAX_BYTES:
-                raise HTTPException(400, "YouTube's limit for a thumbnail is 2 MB.")
-            # Reading the image the user picked is the feature; code scanning
-            # flags it as py/path-injection and it is dismissed there, the same
-            # way the logo import in server/api.py is.
-            target.write_bytes(src.read_bytes())
+        if body.image:
+            from publish.images import decode_thumbnail
+
+            try:
+                target.write_bytes(decode_thumbnail(body.image))
+            except PublishError as e:
+                raise HTTPException(400, e.message) from e
         elif body.t is not None:
             source = Path(clip["path"] or "")
             if not source.exists():
                 raise HTTPException(404, "this clip has no rendered file")
             _extract_frame(source, max(0.0, body.t), target)
         else:
-            raise HTTPException(400, "Give either an image path or a time in the clip.")
+            raise HTTPException(400, "Give either an image or a time in the clip.")
         return {"thumbnail": str(target)}
 
 

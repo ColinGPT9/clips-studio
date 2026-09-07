@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('studio', {
   pickVideoFiles: (): Promise<string[]> => ipcRenderer.invoke('pick-video-files'),
   // Native image-file picker (watermark logo upload).
   pickImageFile: (): Promise<string | null> => ipcRenderer.invoke('pick-image-file'),
+  /** A thumbnail as base64 data rather than a path — the backend never sees a
+   *  filename, so it never has to trust one. */
+  pickThumbnailImage: (): Promise<
+    { name: string; data: string } | { error: string } | null
+  > => ipcRenderer.invoke('pick-thumbnail-image'),
   // Export destination: the OS Downloads folder + a folder picker.
   getDownloadsPath: (): Promise<string> => ipcRenderer.invoke('get-downloads-path'),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-folder'),

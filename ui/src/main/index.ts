@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { setupUpdater } from './updater'
 import { isMicrosoftStore } from './distribution'
 
@@ -225,6 +225,33 @@ ipcMain.handle('notify', (event, payload: unknown) => {
   })
   n.show()
   return true
+})
+
+// Thumbnails come back as DATA, not as a path, and that is the point: this
+// process ran the dialog, so it already has the file. Handing the renderer a
+// path to POST would mean the backend re-opening an arbitrary path from an
+// unauthenticated local endpoint, which is a worse trade than a base64 string
+// for an image capped at 2 MB.
+ipcMain.handle('pick-thumbnail-image', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose a thumbnail',
+    properties: ['openFile'],
+    // YouTube takes JPEG and PNG. WebP is deliberately absent.
+    filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg'] }]
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+  try {
+    const { readFile, stat } = await import('node:fs/promises')
+    const path = result.filePaths[0]
+    const info = await stat(path)
+    // Refused here as well as in the backend, so a 40 MB photo is never turned
+    // into a 53 MB base64 string and pushed through IPC just to be rejected.
+    if (info.size > 2 * 1024 * 1024) return { error: 'too-large' }
+    const bytes = await readFile(path)
+    return { name: basename(path), data: bytes.toString('base64') }
+  } catch {
+    return { error: 'unreadable' }
+  }
 })
 
 ipcMain.handle('pick-image-file', async () => {

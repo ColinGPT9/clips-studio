@@ -54,16 +54,26 @@ export default function YouTubeThumbnail({
   }
 
   const upload = async (): Promise<void> => {
-    const path = await window.studio.pickImageFile()
-    if (!path) return
+    // The dialog runs in Electron's main process, which reads the file there
+    // and hands back the bytes. Nothing sends a path to the backend.
+    const picked = await window.studio.pickThumbnailImage()
+    if (!picked) return
+    if ('error' in picked) {
+      setNotice(
+        picked.error === 'too-large'
+          ? t("That image is over YouTube's 2 MB limit for thumbnails.")
+          : t('That image could not be read.')
+      )
+      return
+    }
     setBusy(true)
     setNotice('')
     try {
-      const { thumbnail } = await api.chooseThumbnail(clipId, { path })
+      const { thumbnail } = await api.chooseThumbnail(clipId, { image: picked.data })
       onChange(thumbnail)
       setChosenAt(null)
     } catch (e) {
-      setNotice(String(e))
+      setNotice(String(e).replace(/^Error:\s*/, ''))
     } finally {
       setBusy(false)
     }

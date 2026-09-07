@@ -455,7 +455,9 @@ export const api = {
   /** A frame from the clip, for the thumbnail picker. Needs img-src in the CSP. */
   clipFrameUrl: (clipId: number, t: number) =>
     `${API_BASE}/clips/${clipId}/frame?t=${t.toFixed(3)}`,
-  chooseThumbnail: (clipId: number, body: { path?: string; t?: number }) =>
+  /** `image` is base64 data, not a path: the backend never receives a filename
+   *  for the thumbnail, so it never has to trust one. */
+  chooseThumbnail: (clipId: number, body: { image?: string; t?: number }) =>
     request<{ thumbnail: string }>(`/clips/${clipId}/thumbnail`, {
       method: 'POST',
       body: JSON.stringify(body)
