@@ -7,10 +7,10 @@ The cheap ones run always. The ones that shell out to FFmpeg build a few
 seconds of test video, so they are skipped when FFmpeg is not resolvable.
 """
 
+import contextlib
 import copy
 import hashlib
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -659,7 +659,6 @@ def test_a_relative_clip_path_still_works(clip_factory, cfg, monkeypatch):
 # A stubbed PermissionError cannot test this, because it cannot tell the rename
 # and the in-place write apart -- and the whole fix is that they differ.
 # ---------------------------------------------------------------------------
-import contextlib
 
 
 @contextlib.contextmanager

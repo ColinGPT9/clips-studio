@@ -453,7 +453,7 @@ class Yarn:
         if pts:
             # The live length from the last laid point up to the ball is part
             # of the thread, so the string stays one continuous piece.
-            pts = pts + [(self.x, self.y)]
+            pts = [*pts, (self.x, self.y)]
         if len(pts) < 2:
             return pts
         out = []
@@ -756,11 +756,10 @@ def _text(img, L, t):
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     a = int(255 * _clamp01(p * 1.6))
-    w = img.width
 
     y = L.text_top
     d.text((L.text_x(L.kb[2] - L.kb[0]), y - L.kb[1]), KICKER,
-           font=L.f_kick, fill=INK_SOFT + (a,))
+           font=L.f_kick, fill=(*INK_SOFT, a))
     y += L.kh + L.gap_kick
 
     # Two-tone, the way the app's sidebar sets it, drawn as two runs positioned
@@ -774,15 +773,15 @@ def _text(img, L, t):
     wy = y + L.wh / 2 - (wb[3] - wb[1]) / 2 - wb[1]
     for run, fill in ((WORDMARK.split()[0], CLIPS), (WORDMARK.split()[1], KITTY)):
         dx = 0 if fill is CLIPS else d.textlength(WORDMARK.split()[0] + " ", font=fw)
-        d.text((wx + dx, wy), run, font=fw, fill=fill + (a,),
-               stroke_width=sw, stroke_fill=STROKE + (a,))
+        d.text((wx + dx, wy), run, font=fw, fill=(*fill, a),
+               stroke_width=sw, stroke_fill=(*STROKE, a))
     y += L.wh + L.gap_tag
 
     q = _seg(t, TEXT_IN + 0.20, TEXT_IN + 0.45)
     if q > 0:
         d.text((L.text_x(L.tb[2] - L.tb[0]),
                 y - L.tb[1] + round(20 * L.k * (1 - _ease_out(q)))), TAGLINE,
-               font=L.f_tag, fill=INK_SOFT + (int(255 * _clamp01(q * 1.6)),))
+               font=L.f_tag, fill=(*INK_SOFT, int(255 * _clamp01(q * 1.6))))
 
     img.alpha_composite(layer)
 
@@ -827,22 +826,22 @@ def frames(w, h, fps):
         paw = (SWAT_UP * _seg(t, 0.30, 0.52)
                + (SWAT_DOWN - SWAT_UP) * _seg(t, 0.52, 0.63)
                - SWAT_DOWN * _seg(t, 0.63, 0.88))
-        pose = dict(
-            look=L.look_at(x, y),
-            head_tilt=15 * L.look_at(x)[0] - 10 * leap,
-            head_dy=(12 * crouch - 26 * leap + 14 * land) * k,
-            paw_l=paw,
-            paw_r=22 * leap,
-            squash=0.70 * crouch - 1.0 * leap + 1.0 * land,
-            tail=20 * math.sin(t * 7.5) + 30 * leap,
-            blink=1.0 if (0.58 < t < 0.66 or 1.78 < t < 1.88
+        pose = {
+            "look": L.look_at(x, y),
+            "head_tilt": 15 * L.look_at(x)[0] - 10 * leap,
+            "head_dy": (12 * crouch - 26 * leap + 14 * land) * k,
+            "paw_l": paw,
+            "paw_r": 22 * leap,
+            "squash": 0.70 * crouch - 1.0 * leap + 1.0 * land,
+            "tail": 20 * math.sin(t * 7.5) + 30 * leap,
+            "blink": 1.0 if (0.58 < t < 0.66 or 1.78 < t < 1.88
                           or 2.42 < t < 2.52) else 0.0,
-        )
+        }
         body = ((-78 * leap - 46 * land) * k,
                 (24 * crouch - 92 * leap + 30 * land
                  + 7 * math.sin(t * 3.1) * _seg(t, 1.6, 2.0)) * k)
 
-        img = Image.new("RGBA", (w, h), ORANGE + (255,))
+        img = Image.new("RGBA", (w, h), (*ORANGE, 255))
         img.alpha_composite(draw_clippy(L.cat, **pose), (int(L.cat_x + body[0]), int(L.cat_y + body[1])))
         # The yarn goes AFTER him -- ball and string both -- so it is in front
         # for the whole animation. Drawn before him the string vanished behind
@@ -1194,7 +1193,7 @@ def append(clip: Path, config: dict) -> bool:
             # suppresses FileNotFoundError.
             discard(listing)
             discard(joined)
-    except Exception as exc:                      # noqa: BLE001 - never lose a clip
+    except Exception as exc:  # never lose a clip
         print(f"  outro skipped: {type(exc).__name__}: {exc}")
         _tally["skipped"] += 1
         return False
@@ -1348,7 +1347,7 @@ def finish(src: Path, dst: Path, config: dict) -> bool:
             print(f"  end card skipped: {r.stderr.strip()[-200:] or 'concat failed'}")
         else:
             print(f"  end card skipped: could not probe {src.name}")
-    except Exception as exc:                  # noqa: BLE001 - never lose a clip
+    except Exception as exc:  # never lose a clip
         print(f"  end card skipped: {type(exc).__name__}: {exc}")
 
     # The card could not be made. The clip itself still has to arrive at dst,
