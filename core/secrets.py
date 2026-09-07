@@ -118,11 +118,11 @@ def load(data_dir: Path, name: str) -> dict | None:
     account is undecryptable by design, and the right answer to that is
     "reconnect your account", not a crash on startup.
     """
-    target = _path(data_dir, name)
-    if not target.exists():
-        return None
+    # No exists() check first: the read below already answers that, and asking
+    # twice means the file could go between the two answers. Same class of bug
+    # as stat-then-read, and here it buys nothing.
     try:
-        raw = target.read_bytes()
+        raw = _path(data_dir, name).read_bytes()
         if backend_name() == "windows-dpapi":
             raw = _dpapi(False, raw)
         value = json.loads(raw.decode("utf-8"))
