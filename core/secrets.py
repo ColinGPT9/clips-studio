@@ -49,10 +49,13 @@ def _path(data_dir: Path, name: str) -> Path:
 
 def _dpapi(encrypt: bool, payload: bytes) -> bytes:
     import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
 
     class BLOB(ctypes.Structure):
-        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+        _fields_ = [
+            ("cbData", ctypes.wintypes.DWORD),
+            ("pbData", ctypes.POINTER(ctypes.c_char)),
+        ]
 
         @classmethod
         def of(cls, data: bytes) -> "BLOB":
@@ -129,10 +132,18 @@ def load(data_dir: Path, name: str) -> dict | None:
 
 
 def wipe(data_dir: Path, name: str) -> None:
+    """Delete a stored secret.
+
+    A failure here matters more than it looks: disconnecting an account would
+    report success while the token stayed on disk. Say so rather than swallow
+    it — but do not raise, because the caller has already revoked the token at
+    Google and a half-finished disconnect is worse than a noisy one.
+    """
+    target = _path(data_dir, name)
     try:
-        _path(data_dir, name).unlink(missing_ok=True)
-    except OSError:
-        pass
+        target.unlink(missing_ok=True)
+    except OSError as e:
+        print(f"Could not delete the stored credential {target.name}: {e}")
 
 
 def has(data_dir: Path, name: str) -> bool:

@@ -32,6 +32,7 @@ Anything unusual renders once, in about 20 seconds, and is then cached.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -920,11 +921,12 @@ def _cache_dir(config: dict) -> Path:
     # older than an hour, which cannot be a build still in progress.
     cutoff = time.time() - 3600
     for stale in d.glob(".build_*"):
-        try:
+        # A scratch directory that cannot be read or removed is somebody else's
+        # build still running, or a permission we do not have. Either way it is
+        # not this call's problem.
+        with contextlib.suppress(OSError):
             if stale.is_dir() and stale.stat().st_mtime < cutoff:
                 shutil.rmtree(stale, ignore_errors=True)
-        except OSError:
-            pass
     return d
 
 
@@ -1361,6 +1363,8 @@ def finish(src: Path, dst: Path, config: dict) -> bool:
             discard(src)
             return False
     except OSError:
+        # The remux was a shortcut. Falling through to the copy below is the
+        # whole point of trying it, so there is nothing to report.
         pass
     shutil.copyfile(src, dst)                 # last resort; still a write
     discard(src)

@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.paths import picked_file, within
 from server import youtube_service as service
 from server.feedback import redact
 
@@ -81,7 +82,11 @@ class PublishIn(BaseModel):
     default_language: str | None = None
     notify_subscribers: bool = True
     playlist_id: str | None = None
-    thumbnail: str | None = None
+    # A flag, not a path. The thumbnail is chosen beforehand through
+    # POST /clips/{id}/thumbnail and stored under an id-derived name, so there
+    # is no reason for this body to be able to name a file — and letting it
+    # meant any caller could have an arbitrary image uploaded to the channel.
+    thumbnail: bool = False
     channel_id: str | None = None
     render_first: RenderFirst | None = None
 
@@ -94,6 +99,11 @@ class ThumbnailIn(BaseModel):
 # Where a just-granted token waits while we ask YouTube which channel it is
 # for. Never the unqualified slot — that may already hold another channel.
 PENDING = "pending"
+
+# Narrower than server/api.py's _IMAGE_SUFFIXES on purpose: that one accepts
+# WebP for watermarks, and YouTube rejects WebP thumbnails.
+_THUMB_SUFFIXES = (".jpg", ".jpeg", ".png")
+THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
 
 PRIVACIES = ("public", "unlisted", "private")
 LICENSES = ("youtube", "creativeCommon")
@@ -371,7 +381,11 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
 
             thumbnail = None
             if body.thumbnail:
-                thumbnail = _resolve_thumbnail(body.thumbnail)
+                thumbnail = _thumb_path(clip_id, "chosen")
+                if not thumbnail.exists():
+                    raise HTTPException(
+                        400, "No thumbnail has been chosen for this clip yet."
+                    )
 
             # Which channel this goes to. Named explicitly, or the default.
             channel_id = body.channel_id or service.default_channel_id(d)
@@ -462,6 +476,23 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
 
     # ---- thumbnails ------------------------------------------------------
 
+    def _thumb_path(clip_id: int, tag: str) -> Path:
+        """Where a generated thumbnail for this clip lives.
+
+        Both parts of the name are integers by the time they get here — FastAPI
+        has already coerced the route's `clip_id: int` and `t: float` — so no
+        separator can survive into the filename. The int() calls are written
+        out anyway so that is visible in this function rather than inferred
+        from a type annotation two screens away, and within() states the
+        confinement instead of leaving it to be worked out.
+        """
+        folder = (Path(data_dir) / "thumbnails").resolve()
+        target = folder / f"clip_{int(clip_id)}_{tag}.jpg"
+        if not within(folder, target):
+            raise HTTPException(400, "bad thumbnail name")  # unreachable with ints
+        folder.mkdir(parents=True, exist_ok=True)
+        return target
+
     @app.get("/clips/{clip_id}/frame")
     def clip_frame(clip_id: int, t: float = 0.0):
         """One JPEG frame from a clip, for the thumbnail picker."""
@@ -473,14 +504,15 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
             d.close()
         if clip is None or not clip["path"]:
             raise HTTPException(404, "no such clip")
+        # From the database, written by the render pipeline — not from the request.
         source = Path(clip["path"])
         if not source.exists():
             raise HTTPException(404, "this clip has no rendered file")
 
-        target = Path(data_dir) / "thumbnails" / f"clip_{clip_id}_{int(max(0.0, t) * 1000)}.jpg"
-        target.parent.mkdir(parents=True, exist_ok=True)
+        at = max(0.0, t)
+        target = _thumb_path(clip_id, str(int(at * 1000)))
         if not target.exists():
-            _extract_frame(source, max(0.0, t), target)
+            _extract_frame(source, at, target)
         return FileResponse(str(target), media_type="image/jpeg")
 
     @app.post("/clips/{clip_id}/thumbnail")
@@ -495,14 +527,28 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         if clip is None:
             raise HTTPException(404, "no such clip")
 
-        target = Path(data_dir) / "thumbnails" / f"clip_{clip_id}_chosen.jpg"
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target = _thumb_path(clip_id, "chosen")
 
         if body.path:
-            chosen = _resolve_thumbnail(body.path)
-            if chosen.stat().st_size > 2 * 1024 * 1024:
+            # picked_file() is the one place in this repo that turns a path
+            # from a request into something safe to open: it resolves, rejects
+            # UNC paths, stats once, and checks the suffix BEFORE anything
+            # reads the file. Rolling a second version of it here is what put
+            # ten path-injection alerts on this file — and its own docstring
+            # warns about exactly that, because a helper that hands back a
+            # bare Path leaves every caller re-stat-ing untrusted input.
+            picked = picked_file(body.path, _THUMB_SUFFIXES)
+            if picked is None:
+                raise HTTPException(400, "YouTube accepts JPEG and PNG thumbnails.")
+            src, _suffix, st = picked
+            # Checked on the stat picked_file already took, so an oversized
+            # file is refused without being loaded into memory first.
+            if st.st_size > THUMBNAIL_MAX_BYTES:
                 raise HTTPException(400, "YouTube's limit for a thumbnail is 2 MB.")
-            target.write_bytes(chosen.read_bytes())
+            # Reading the image the user picked is the feature; code scanning
+            # flags it as py/path-injection and it is dismissed there, the same
+            # way the logo import in server/api.py is.
+            target.write_bytes(src.read_bytes())
         elif body.t is not None:
             source = Path(clip["path"] or "")
             if not source.exists():
@@ -511,21 +557,6 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         else:
             raise HTTPException(400, "Give either an image path or a time in the clip.")
         return {"thumbnail": str(target)}
-
-
-def _resolve_thumbnail(raw: str) -> Path:
-    """Validate a user-supplied image path.
-
-    The same shape as core/paths.py::picked_file — an absolute path the user
-    chose in a native dialog, checked for a real image extension so nothing
-    else can be handed to the uploader.
-    """
-    path = Path(raw)
-    if not path.is_absolute() or not path.exists() or not path.is_file():
-        raise HTTPException(400, "That image could not be found.")
-    if path.suffix.lower() not in (".jpg", ".jpeg", ".png"):
-        raise HTTPException(400, "YouTube accepts JPEG and PNG thumbnails.")
-    return path
 
 
 def _extract_frame(source: Path, at: float, target: Path) -> None:
