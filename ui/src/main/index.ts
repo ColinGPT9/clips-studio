@@ -293,7 +293,14 @@ ipcMain.handle('open-donate-window', (event) => {
 // Ollama, which is deliberately not bundled.
 const EXTERNAL_ALLOWED = [
   /^https:\/\/ollama\.com\//,
-  /^https:\/\/github\.com\/ColinGPT9\/clips-studio(\/|$)/
+  /^https:\/\/github\.com\/ColinGPT9\/clips-studio(\/|$)/,
+  // YouTube publishing: the setup wizard sends people to Cloud Console and
+  // the audit form, and a published clip links to its own watch/Studio page.
+  /^https:\/\/console\.cloud\.google\.com\//,
+  /^https:\/\/studio\.youtube\.com\//,
+  /^https:\/\/www\.youtube\.com\/watch\?v=/,
+  /^https:\/\/support\.google\.com\/youtube\//,
+  /^https:\/\/developers\.google\.com\/youtube\//
 ]
 
 ipcMain.handle('open-external', (_event, url: unknown) => {

@@ -15,7 +15,7 @@
     <meta property="og:title" content="Clips Kitty privacy policy" />
     <meta
       property="og:description"
-      content="No telemetry, no account, no uploads. What the app stores, what leaves your machine, and when."
+      content="No telemetry, no account, nothing sent on its own. What the app stores, what leaves your machine, and when."
     />
     <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
   </head>
@@ -49,11 +49,12 @@
           <span class="eyebrow">Privacy policy</span>
           <h1>Clips Kitty does not collect anything about you</h1>
           <p class="lead">
-            No account, no sign-in, no telemetry, no analytics inside the app. Your video is
-            processed on your own computer and never uploaded anywhere. This page explains
-            exactly what is stored, what can leave your machine, and what triggers it.
+            No telemetry, no analytics, and nothing sent anywhere on its own. Your video is
+            processed on your own computer, and the only way any of it leaves is if you
+            connect your own YouTube account and press publish. This page explains exactly
+            what is stored, what can leave your machine, and what triggers it.
           </p>
-          <p><strong>Last updated:</strong> 12 August 2026</p>
+          <p><strong>Last updated:</strong> 7 September 2026</p>
         </div>
       </div>
 
@@ -62,10 +63,10 @@
           <h2>The short version</h2>
           <ul>
             <li><strong>No telemetry.</strong> The app reports nothing back. There is no usage tracking, no crash reporting, and no analytics of any kind inside Clips Kitty.</li>
-            <li><strong>No account.</strong> There is nothing to sign up for and nothing to sign in to.</li>
-            <li><strong>Your video never leaves your PC.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware.</li>
+            <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The one optional sign-in is to <em>your own</em> YouTube account, and it goes straight to Google.</li>
+            <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware. Publishing to YouTube is off by default and described below.</li>
             <li><strong>The AI runs locally too.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else.</li>
-            <li><strong>Two things reach the internet, and both are obvious:</strong> downloading a video you asked for, and downloading an AI model you chose.</li>
+            <li><strong>Three things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, and — only if you switch it on — publishing a clip to your own YouTube channel.</li>
           </ul>
         </div>
       </section>
@@ -99,6 +100,33 @@
             <li><strong>Downloading a video.</strong> Pasting a YouTube, Twitch or Kick link fetches that video from that platform. Your request goes to them, subject to their own privacy policies, exactly as if you had opened the page in a browser.</li>
             <li><strong>Downloading an AI model.</strong> Choosing a model fetches it from the Ollama library. That is a file download; nothing about you is sent with it.</li>
             <li><strong>Checking for updates.</strong> The desktop app asks a static file on Hugging Face whether a newer version exists. This is a plain file fetch with no identifier attached, and it can be turned off in Settings. Copies installed from the Microsoft Store do not do this at all, because the Store handles updates.</li>
+          </ul>
+
+          <h3>Only if you turn on YouTube publishing</h3>
+          <p>
+            Clips Kitty can upload a finished clip straight to your own YouTube channel.
+            This is <strong>off by default</strong> and has to be switched on in Settings,
+            where it also asks you to create your own free Google API key — the app does
+            not ship with a shared one.
+          </p>
+          <ul>
+            <li><strong>Nothing is uploaded until you press a button.</strong> There is no
+              automatic posting, no background sync, and no scheduled upload that happens
+              without you asking for it.</li>
+            <li><strong>The clip goes from your computer to YouTube directly.</strong> It is
+              not proxied, copied or queued through any Clips Kitty server, because there
+              isn't one. We never receive your video, your channel details, or anything
+              about your account.</li>
+            <li><strong>Your Google sign-in stays on your machine.</strong> The token is
+              stored encrypted with Windows DPAPI, tied to your Windows user account, so
+              copying the folder to another PC or user does not carry it over. On Linux it
+              is an owner-only file instead.</li>
+            <li><strong>You can disconnect at any time.</strong> Settings &rarr; Publish to
+              YouTube &rarr; Disconnect deletes the stored sign-in and tells Google to
+              revoke it.</li>
+            <li><strong>Google sees what you would expect.</strong> Once a video is on
+              YouTube it is subject to Google's privacy policy and terms, exactly as if you
+              had uploaded it through the YouTube website.</li>
           </ul>
 
           <h3>Only if you submit a report</h3>

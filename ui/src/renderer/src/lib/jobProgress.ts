@@ -47,6 +47,10 @@ export function applyEvent(p: JobProgress, e: StudioEvent): JobProgress {
   }
   if (e.type !== 'progress') return p
   if (e.stage === 'done') return { ...emptyProgress }
+  // A YouTube upload is not the video pipeline. Without this the unknown-stage
+  // branch below would set active:true and light up the global processing bar
+  // with a stale label for the duration of every publish.
+  if (e.stage === 'publish') return p
 
   const startedAt = p.active && p.startedAt ? p.startedAt : Date.now()
   const title = e.title || p.title

@@ -225,3 +225,15 @@ export const Image = (p: IconProps = {}): JSX.Element =>
       <path d="M21 15l-5-5-11 11" />
     </>
   )
+
+/** YouTube publishing. A play triangle in the platform's rounded rectangle,
+ *  drawn in the same stroke language as the rest of the set rather than the
+ *  filled brand mark, so it sits with its neighbours in the tab strip. */
+export const YouTube = (p: IconProps = {}): JSX.Element =>
+  base(
+    p,
+    <>
+      <rect x="2" y="5" width="20" height="14" rx="4" />
+      <path d="M10 9.2v5.6l4.8-2.8z" />
+    </>
+  )

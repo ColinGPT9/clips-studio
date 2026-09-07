@@ -35,7 +35,7 @@ this is what shows at the top of the listing before anyone expands it. Kept
 under that:
 
 ```
-Turn long videos into vertical clips using AI that runs on your own PC. Paste a stream or video link and Clips Kitty finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Nothing is uploaded. Free and open source.
+Turn long videos into vertical clips using AI that runs on your own PC. Paste a stream or video link and Clips Kitty finds the moments worth clipping, keeps the speaker in frame and adds subtitles. Your footage stays on your PC. Free and open source.
 ```
 
 ## Description (10,000 max)
@@ -45,7 +45,7 @@ Clips Kitty finds the best moments in a long video and cuts them into vertical c
 
 Everything runs on your computer.
 
-That is the part that makes it different. Most AI clipping tools upload your video to a server, charge a monthly fee, and cap how many clips you get. Clips Kitty does the transcription, the scoring, the speaker tracking, the subtitles and the rendering locally, on your own hardware. Your footage is never uploaded. There is no subscription, no clip limit, and no account to create.
+That is the part that makes it different. Most AI clipping tools upload your video to a server, charge a monthly fee, and cap how many clips you get. Clips Kitty does the transcription, the scoring, the speaker tracking, the subtitles and the rendering locally, on your own hardware. Your footage never leaves your computer unless you tell it to publish, and then it goes straight to YouTube. There is no subscription, no clip limit, and no account to create.
 
 WHAT IT DOES
 
@@ -84,11 +84,11 @@ It was built for IRL, just-chatting and talking-head content, which is what it h
 
 Displayed as a bulleted list, so short lines beat complete sentences. Eight
 rather than the maximum twenty: a reader skims the first few and stops, and a
-long list buries the two that actually sell it (nothing uploaded, no
+long list buries the two that actually sell it (runs on your PC, no
 subscription).
 
 ```
-Runs entirely on your PC. Nothing is uploaded
+Runs entirely on your PC. Nothing uploaded unless you publish
 Works from stream and video links, or your own files
 Finds the best moments from speech, audience reaction and video
 Keeps whoever is talking in frame

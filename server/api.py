@@ -417,14 +417,36 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         # threads; per-request connections are effectively free.
         return StateDB(db_path)
 
+    # Uploads get their own thread. They must not queue behind an hour of GPU
+    # work, must not be blocked by the queue's default-paused state, and must
+    # never be re-run by crash recovery — see server/publisher.py.
+    from server.publisher import PublishWorker
+
+    publish_worker = PublishWorker(config, db_path, data_dir)
+
     @app.on_event("startup")
     async def _startup():
         broadcaster.attach_loop(asyncio.get_running_loop())
         worker.start()
+        publish_worker.start()
 
     @app.on_event("shutdown")
     async def _shutdown():
         worker.stop()
+        publish_worker.stop()
+
+    # Publishing lives in its own module: it is optional, self-contained and
+    # removable, and threading ~15 routes through this file would end that.
+    from server import youtube_api
+
+    youtube_api.install(
+        app,
+        config=config,
+        db=db,
+        data_dir=data_dir,
+        worker=worker,
+        publish_worker=publish_worker,
+    )
 
     # ---- health / system -----------------------------------------------
 

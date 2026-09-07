@@ -23,6 +23,7 @@ import {
   setAppLanguage,
   t
 } from '../lib/i18n'
+import YouTubeCard from '../components/YouTubeCard'
 import { Folder } from '../components/icons'
 
 // Content languages offered in the dropdown — the transcription/caption
@@ -614,6 +615,8 @@ export default function Settings(): JSX.Element {
       <UpdateCard />
 
       <BrandingCard />
+
+      <YouTubeCard />
 
       <div className="card text-sm text-muted">
         The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced

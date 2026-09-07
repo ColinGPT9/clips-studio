@@ -12,11 +12,15 @@ content_language: auto # language of the streams you clip: auto = detect per
 
 auto_upload: false     # true = post Shorts to YouTube automatically
                        # (needs one-time setup: README "Enable uploads")
+                       # NOTE: this is the command-line daemon only. To publish
+                       # from the editor instead, turn on Settings -> Publish
+                       # to YouTube; it ignores both of these keys.
 
 privacy: public        # public / unlisted / private for posted Shorts.
-                       # NOTE: until your API app passes YouTube's free audit,
-                       # YouTube forces API uploads to private regardless of
-                       # this setting — see README "Posting publicly".
+                       # NOTE: until your API project passes YouTube's free
+                       # audit, YouTube locks API uploads to private whatever
+                       # this says — permanently, and it cannot be undone in
+                       # Studio. See README "Posting publicly".
 
 # ==============================================================
 #   Advanced settings — defaults are fine for most people
@@ -118,7 +122,15 @@ tracking:
   sample_fps: 8          # detection sampling rate (higher = tighter tracking)
 
 upload:
-  daily_limit: 6         # hard cap on Shorts scheduled per calendar day
+  # Both keys belong to the command-line daemon (`python main.py upload`).
+  # Publishing from the editor uses your own key, set up in Settings, and is
+  # capped by YouTube rather than by anything here.
+  daily_limit: 6         # hard cap on Shorts scheduled per calendar day.
+                         # Sized for the OLD quota model, where one upload cost
+                         # 1,600 of a shared 10,000 units a day. Since June 2026
+                         # videos.insert has its own bucket of 100 uploads a day
+                         # per Google Cloud project, so this is now a self-imposed
+                         # pacing limit, not a technical one.
   client_secret: config/client_secret.json   # from Google Cloud Console
 
 feedback:

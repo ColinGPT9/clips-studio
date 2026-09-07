@@ -10,6 +10,38 @@ report without needing a GitHub account, or open an
 
 ---
 
+## YouTube locks uploads to private until your API project is audited
+
+If you publish from the editor and the video arrives on your channel as
+**private** when you asked for public, this is why — and it is not something
+Clips Kitty can fix.
+
+YouTube restricts uploads made through the API by any Google Cloud project that
+has not passed its free compliance audit. The lock is **permanent**: you cannot
+change the video to public in YouTube Studio afterwards, and there is no appeal.
+The only remedy is uploading the video again from an audited project.
+
+Clips Kitty reads the privacy back after every upload and tells you when this
+has happened, rather than reporting success for a video nobody can watch.
+
+**What to do:** submit the
+[YouTube API Services audit form](https://support.google.com/youtube/contact/yt_api_form)
+before you rely on public publishing. Uploading as **unlisted** or **private** is
+not affected, so it is a usable workflow in the meantime.
+
+## Your YouTube sign-in expires weekly if the consent screen is on "Testing"
+
+Google expires the sign-in for an OAuth app in *Testing* after 7 days, so
+Clips Kitty asks you to reconnect every week.
+
+**Fix:** in the Google Cloud Console, open the OAuth consent screen and press
+**Publish app**. "In production" does not mean verified and costs nothing — you
+will simply see a "Google hasn't verified this app" warning when connecting, and
+**Advanced → Go to (unsafe)** gets past it. It is your own app warning you about
+yourself.
+
+---
+
 ## Only three AI models have actually been tested
 
 Clips Kitty can run any model Ollama serves, and the Models page lists several.

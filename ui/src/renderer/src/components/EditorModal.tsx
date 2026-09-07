@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api } from '../lib/api'
 import type { Clip, LiveOverlay, TranslationPreview, WatermarkConfig } from '../lib/types'
-import { Scissors } from './icons'
+import { Scissors, YouTube } from './icons'
 import LiveTextOverlay from './LiveTextOverlay'
 import TimelineEditor from './TimelineEditor'
 import { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import { youtubeEnabledSync } from '../lib/youtube'
 
 /** Live, draggable watermark preview over the editor video. Shows the
  *  text/logo where it will burn in, updates as the controls change, and
@@ -184,6 +185,24 @@ export default function EditorView({
       }
     : liveOverlay
 
+  // The header's YouTube button just asks the timeline editor to open its
+  // YouTube tab. activeTab lives down there, and lifting it up here for one
+  // button would be a lot of plumbing for a shortcut.
+  const [tabRequest, setTabRequest] = useState<{ tab: 'youtube'; n: number } | null>(null)
+  const [ytEnabled, setYtEnabled] = useState(youtubeEnabledSync())
+  useEffect(() => {
+    let alive = true
+    api
+      .youtubeStatus()
+      .then((s) => alive && setYtEnabled(Boolean(s.enabled)))
+      .catch(() => {
+        /* leave the mirror's answer alone */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
@@ -204,6 +223,16 @@ export default function EditorView({
         <p className="font-semibold truncate inline-flex items-center gap-2">
           <Scissors size={15} /> Editing — {clip.title || clip.hook || 'Untitled clip'}
         </p>
+        {/* Nothing at all when publishing is switched off in Settings. */}
+        {ytEnabled && (
+          <button
+            onClick={() => setTabRequest({ tab: 'youtube', n: (tabRequest?.n ?? 0) + 1 })}
+            className="ml-auto shrink-0 px-3 py-1.5 rounded-lg bg-raised text-sm hover:bg-raised/70 inline-flex items-center gap-1.5"
+            title="Publish this clip to YouTube"
+          >
+            <YouTube size={15} /> YouTube
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
@@ -257,6 +286,7 @@ export default function EditorView({
             onTranslationPreview={setTranslated}
             watermark={watermark}
             setWatermark={setWatermark}
+            tabRequest={tabRequest ?? undefined}
           />
         </div>
       </div>

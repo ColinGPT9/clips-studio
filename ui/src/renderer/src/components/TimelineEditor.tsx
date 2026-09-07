@@ -29,13 +29,16 @@ import {
   TrimEnd,
   TrimStart,
   Undo as UndoIcon,
+  YouTube as YouTubeIcon,
   Zap
 } from './icons'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
+import YouTubePanel from './YouTubePanel'
+import { rememberYoutubeEnabled, youtubeEnabledSync, type YouTubeStatus } from '../lib/youtube'
 
-type Tab = 'captions' | 'subtitles' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai'
+type Tab = 'captions' | 'subtitles' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai' | 'youtube'
 const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
   { id: 'captions', label: 'Captions', icon: <span className="font-bold text-[11px] leading-none">Aa</span> },
   { id: 'subtitles', label: 'Subtitles', icon: <span className="font-bold text-[11px] leading-none">文</span> },
@@ -45,6 +48,17 @@ const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
   { id: 'color', label: 'Color', icon: <Palette /> },
   { id: 'ai', label: 'AI edit', icon: <Sparkle /> }
 ]
+
+/** Appended only when YouTube publishing is switched on in Settings.
+ *
+ *  Kept OUT of TABS rather than filtered out of it, so that an install which
+ *  never enables the feature renders exactly the tab strip it always had —
+ *  no gap, no disabled entry, nothing to explain. */
+const YOUTUBE_TAB: { id: Tab; label: string; icon: JSX.Element } = {
+  id: 'youtube',
+  label: 'YouTube',
+  icon: <YouTubeIcon />
+}
 
 /** A user text correction for one transcript word (misheard by Whisper). */
 interface WordEdit {
@@ -158,7 +172,8 @@ export default function TimelineEditor({
   onLiveOverlay,
   onTranslationPreview,
   watermark,
-  setWatermark
+  setWatermark,
+  tabRequest
 }: {
   clip: Clip
   videoRef: React.RefObject<HTMLVideoElement>
@@ -169,6 +184,10 @@ export default function TimelineEditor({
   onTranslationPreview: (p: TranslationPreview | null) => void
   watermark: WatermarkConfig | null
   setWatermark: (w: WatermarkConfig | null) => void
+  /** Lets the editor header open a tab. `n` increments on every press so
+   *  clicking the same button twice still re-opens it; activeTab lives here,
+   *  and lifting it out just for one button would be a lot of plumbing. */
+  tabRequest?: { tab: Tab; n: number }
 }): JSX.Element {
   const duration = clip.end_s - clip.start_s
   const baked = useMemo<EditData | null>(() => clip.render_opts?.edit ?? null, [clip.id])
@@ -195,6 +214,11 @@ export default function TimelineEditor({
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
   // Which editing panel is open (CapCut-style tabs replace the old stack).
   const [activeTab, setActiveTab] = useState<Tab>('captions')
+  // Read synchronously from the localStorage mirror so the FIRST paint is
+  // already right. Asking the API first would flash a YouTube tab in and out
+  // of the strip on every editor open for people who have it switched off.
+  const [ytEnabled, setYtEnabled] = useState(youtubeEnabledSync())
+  const [ytStatus, setYtStatus] = useState<YouTubeStatus | null>(null)
   const [tightening, setTightening] = useState(false)
   const [tightenNote, setTightenNote] = useState('')
 
@@ -733,17 +757,62 @@ export default function TimelineEditor({
     onPreview(null)
   }
 
+  // The mirror is a guess from last session; the API is the authority. If it
+  // says off, the tab disappears and we fall back off it.
+  useEffect(() => {
+    let alive = true
+    api
+      .youtubeStatus()
+      .then((status) => {
+        if (!alive) return
+        setYtStatus(status)
+        setYtEnabled(Boolean(status.enabled))
+        rememberYoutubeEnabled(Boolean(status.enabled))
+      })
+      .catch(() => {
+        // Backend not up yet, or an older build with no such route. Leave the
+        // mirror alone rather than hiding a tab someone is mid-way through.
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!ytEnabled) {
+      setActiveTab((current) => (current === 'youtube' ? 'captions' : current))
+    }
+  }, [ytEnabled])
+
+  useEffect(() => {
+    if (tabRequest) setActiveTab(tabRequest.tab)
+  }, [tabRequest?.n])
+
+  const tabs = useMemo(() => (ytEnabled ? [...TABS, YOUTUBE_TAB] : TABS), [ytEnabled])
+
+  /** The render options Apply edits would send.
+   *
+   *  Publishing calls this exact function rather than rebuilding the object,
+   *  so an uploaded video can never drift from what Apply produces — a copy
+   *  here would go stale the first time a new edit type is added. */
+  const buildRenderOpts = (): Record<string, unknown> => {
+    const renderOpts: Record<string, unknown> = {
+      edit: isDefault(edit, duration) ? null : edit
+    }
+    if (layoutDirty) renderOpts.crop = layout
+    if (styleDirty) renderOpts.caption_style = captionStyle
+    if (wmDirty) renderOpts.watermark = watermark
+    const lines = pendingCaptionLines()
+    if (lines) renderOpts.caption_lines = lines
+    return renderOpts
+  }
+
   const apply = async (): Promise<void> => {
     setBusy(true)
     setNotice('')
     try {
       const cleared = isDefault(edit, duration)
-      const renderOpts: Record<string, unknown> = { edit: cleared ? null : edit }
-      if (layoutDirty) renderOpts.crop = layout
-      if (styleDirty) renderOpts.caption_style = captionStyle
-      if (wmDirty) renderOpts.watermark = watermark
-      const lines = pendingCaptionLines()
-      if (lines) renderOpts.caption_lines = lines
+      const renderOpts = buildRenderOpts()
       await api.rerenderClip(clip.id, undefined, renderOpts)
       setNotice(cleared ? 'Restoring original — re-rendering…' : 'Applying edits — re-rendering…')
       onChanged()
@@ -1139,7 +1208,7 @@ export default function TimelineEditor({
 
       {/* ── editing tabs (grouped, CapCut-style) ── */}
       <div className="flex gap-0.5 border-b border-raised/60 text-xs overflow-x-auto" role="tablist">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const changed =
             (t.id === 'captions' && (styleDirty || wordEdits.length > 0)) ||
             (t.id === 'watermark' && wmDirty) ||
@@ -1539,6 +1608,24 @@ export default function TimelineEditor({
         <ColorControls clip={clip} videoRef={videoRef} onChanged={onChanged} />
       )}
       {activeTab === 'ai' && <EditChat clip={clip} onQueued={setNotice} />}
+
+      {/* Publishing. Fenced like the other optional panels: a failure in here
+          must not blank an editor holding unsaved trims. */}
+      {activeTab === 'youtube' && ytEnabled && ytStatus?.enabled && (
+        <FeatureBoundary name="YouTube publishing">
+          <YouTubePanel
+            clip={clip}
+            status={ytStatus}
+            // Unsaved edits mean the publish renders first, through the very
+            // same job Apply edits queues — so what lands on YouTube is what
+            // the preview showed, and the timeline stays editable after.
+            pendingRender={dirty ? { render_opts: buildRenderOpts() } : null}
+            duration={duration}
+            currentTime={playhead}
+            onOpenSettings={() => window.dispatchEvent(new CustomEvent('open-settings'))}
+          />
+        </FeatureBoundary>
+      )}
 
       {/* draft preview: the real result — captions, hook, music, everything */}
       <div className="flex gap-2 items-center flex-wrap">

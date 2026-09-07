@@ -20,6 +20,15 @@ import type {
   WatermarkConfig,
   Word
 } from './types'
+import type {
+  Playlist,
+  PublishJobRow,
+  PublishRecord,
+  VideoCategory,
+  YouTubeChannel,
+  YouTubeSettings,
+  YouTubeStatus
+} from './youtube'
 
 export const API_BASE = 'http://127.0.0.1:8765'
 
@@ -375,5 +384,80 @@ export const api = {
 
   settings: () => request<Settings>('/settings'),
   patchSettings: (patch: Partial<Settings>) =>
-    request<{ ok: boolean }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) })
+    request<{ ok: boolean }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  // ---- YouTube publishing ----
+  // Every route here 404s while the feature is disabled, which is why callers
+  // check youtubeStatus() first rather than treating an error as a fault.
+
+  youtubeStatus: () => request<YouTubeStatus>('/youtube/status'),
+  patchYoutubeSettings: (patch: Partial<YouTubeSettings>) =>
+    request<{ settings: YouTubeSettings; status: YouTubeStatus }>('/youtube/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  /** Bring your own Google Cloud project. The secret goes straight into the
+   *  encrypted store and is never returned by any route. */
+  putYoutubeCredentials: (clientId: string, clientSecret: string) =>
+    request<{ ok: boolean; client_id_tail: string }>('/youtube/credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret })
+    }),
+  deleteYoutubeCredentials: () =>
+    request<{ cleared: boolean }>('/youtube/credentials', { method: 'DELETE' }),
+  /** Starts the browser consent on a background thread; poll pollYoutubeConnect. */
+  /** Each consent ADDS a channel. To publish to a second channel, run this
+   *  again and pick the other one on Google's channel chooser. */
+  startYoutubeConnect: (playlists: boolean, add = false) =>
+    request<{ state: string }>('/youtube/connect', {
+      method: 'POST',
+      body: JSON.stringify({ playlists, add })
+    }),
+  pollYoutubeConnect: () =>
+    request<{
+      state: string
+      channel?: YouTubeChannel | null
+      error?: string
+      status?: YouTubeStatus
+    }>('/youtube/connect'),
+  /** Omit channelId to disconnect every channel. */
+  youtubeDisconnect: (channelId?: string) =>
+    request<{ disconnected: boolean; status?: YouTubeStatus }>('/youtube/disconnect', {
+      method: 'POST',
+      body: JSON.stringify({ channel_id: channelId ?? null })
+    }),
+  setDefaultYoutubeAccount: (channelId: string) =>
+    request<{ status: YouTubeStatus }>('/youtube/default-account', {
+      method: 'PATCH',
+      body: JSON.stringify({ channel_id: channelId })
+    }),
+
+  youtubeCategories: (region: string) =>
+    request<{ categories: VideoCategory[] }>(`/youtube/categories?region=${region}`),
+  youtubePlaylists: () => request<{ playlists: Playlist[] }>('/youtube/playlists'),
+  youtubeUploads: (limit = 20) =>
+    request<{ uploads: PublishRecord[] }>(`/youtube/uploads?limit=${limit}`),
+
+  clipPublishStatus: (clipId: number) =>
+    request<{ upload: PublishRecord | null; job: PublishJobRow | null }>(
+      `/clips/${clipId}/publish`
+    ),
+  publishClip: (clipId: number, body: Record<string, unknown>) =>
+    request<{ publish_job_id: number; render_job_id: number | null }>(
+      `/clips/${clipId}/publish`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+  cancelPublish: (jobId: number) =>
+    request<{ cancelled?: boolean; cancelling?: boolean }>(`/publish/${jobId}/cancel`, {
+      method: 'POST'
+    }),
+
+  /** A frame from the clip, for the thumbnail picker. Needs img-src in the CSP. */
+  clipFrameUrl: (clipId: number, t: number) =>
+    `${API_BASE}/clips/${clipId}/frame?t=${t.toFixed(3)}`,
+  chooseThumbnail: (clipId: number, body: { path?: string; t?: number }) =>
+    request<{ thumbnail: string }>(`/clips/${clipId}/thumbnail`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
 }

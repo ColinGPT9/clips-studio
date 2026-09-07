@@ -98,7 +98,7 @@ clips-studio/
 │   ├── queue.py                # queue manager: order, pause, retry, estimate
 │   ├── prefetch.py             # download-ahead for queued jobs
 │   ├── housekeeping.py         # disk reclamation
-│   └── scheduler.py            # (dormant) poll loop and upload scheduling
+│   └── scheduler.py            # (dormant) poll loop and unattended upload scheduling
 ├── sources/                    # ── one file per platform ──
 │   ├── dispatch.py             # URL → the right source module
 │   ├── youtube.py              # yt-dlp download, H.264 selection, heatmap
@@ -166,7 +166,7 @@ clips-studio/
 │   ├── jobs.py                 # SQLite-backed worker
 │   ├── events.py               # WebSocket broadcasting
 │   └── feedback.py             # in-app bug reports + diagnostics
-├── publish/                    # (dormant) YouTube Data API upload
+├── publish/                    # YouTube Data API upload, metadata, scheduling
 ├── third_party/talknet/        # vendored TalkNet-ASD — do not edit
 ├── models/                     # TalkNet weights (pretrain_TalkSet.model)
 ├── ui/                         # ── desktop app ──

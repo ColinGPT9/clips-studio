@@ -23,7 +23,8 @@ and video editor for creators: paste a YouTube, Twitch, or Kick link and it find
 best moments, crops them to 9:16 with the speaker kept centred, burns in word-synced
 captions, and writes titles, descriptions, and hashtags.
 
-No cloud AI. No subscription. No per-clip fees. No upload of your footage to anyone.
+No cloud AI. No subscription. No per-clip fees. Your footage never leaves your
+computer — unless you ask it to publish a clip to your own YouTube channel.
 
 **Why it exists:** most creators growing a channel are doing all of it themselves —
 filming, streaming, editing, posting. Clipping is how people find you and it is usually
@@ -53,6 +54,7 @@ there is no cap on how many clips you make.
 - [Tested hardware and performance](#tested-hardware-and-performance)
 - [Supported platforms](#supported-platforms)
 - [Supported languages](#supported-languages)
+- [Publish to YouTube](#publish-to-youtube)
 - [GPU acceleration](#gpu-acceleration)
 - [Command line use](#command-line-use)
 - [Build on it](#build-on-it)
@@ -174,6 +176,9 @@ through Ollama.
 - **Watermark and branding profiles** — per-creator defaults applied automatically.
 - **Model manager** — swap the AI brain from inside the app; download, remove, and
   switch models with progress bars and no terminal.
+- **Publish to YouTube from the editor** — title, description, tags, thumbnail,
+  playlist, audience and visibility, then Upload now or schedule it. Optional, off
+  by default, and it uses your own Google API key.
 - **In-app feedback** — bug reports with auto-collected diagnostics, no account needed.
 - **Accessible UI** — keyboard focus, reduced-motion support, adjustable font and size.
 
@@ -411,6 +416,78 @@ contribution** — no pull request needed. [How it works](docs/TRANSLATING.md).
 
 Want a language that isn't here? [#61](../../issues/61).
 
+## Publish to YouTube
+
+Off by default. Turn it on in **Settings → Publish to YouTube** and a **YouTube**
+tab appears in the editor: fill in the title, description, tags, thumbnail,
+playlist, audience and visibility, then press **Upload now**. Clips Kitty renders
+the clip if you have unsaved edits and uploads it straight to your channel. There
+is no export step and no separate publishing page — you never leave the editor.
+
+If you leave it switched off, nothing changes anywhere in the app.
+
+### Scheduling
+
+Choosing **Schedule on YouTube** uploads the video *immediately*, marks it
+private, and hands YouTube a publish time. YouTube publishes it on the day.
+
+**You can close Clips Kitty and switch your computer off.** There is no timer in
+this app, no background service, and nothing to leave running — once YouTube has
+accepted the video, Clips Kitty's job is done.
+
+### You need your own Google API key
+
+Clips Kitty does not ship a shared one, and this is not just caution. Google's
+upload quota is **per Cloud project**: one shared key would mean every user in the
+world drawing from the same 100 uploads a day. Your own project gives you your own
+allowance, and your credentials never leave your machine — there is no Clips Kitty
+server in the path.
+
+Setup is free and takes about ten minutes; the wizard in Settings walks through it:
+
+1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/projectcreate).
+2. Enable **YouTube Data API v3** under APIs & Services → Library.
+3. Fill in the OAuth consent screen, then press **Publish app**. This one matters:
+   left on *Testing*, Google expires your sign-in every 7 days and you would have
+   to reconnect weekly. "In production" does not mean verified and costs nothing.
+4. Credentials → Create credentials → OAuth client ID → type **Desktop app**.
+5. Paste the client ID and secret into Settings, then connect your channel.
+
+You will see a "Google hasn't verified this app" warning when you connect. That is
+your own app warning you about yourself — **Advanced → Go to (unsafe)** gets past
+it.
+
+### Posting publicly
+
+One thing to know before you rely on this, because no software can work around it:
+
+> **Until your Google Cloud project passes YouTube's free API audit, YouTube locks
+> every video uploaded through it to private.** The lock is permanent — you cannot
+> make the video public afterwards in Studio, and there is no appeal. The only fix
+> is uploading it again from an audited project.
+
+Clips Kitty checks after every upload and tells you plainly if it happened, rather
+than reporting success for a video nobody can watch. If you intend to publish
+publicly, submit the
+[YouTube API Services audit form](https://support.google.com/youtube/contact/yt_api_form)
+first. Uploading as **unlisted** or **private** is unaffected.
+
+### What it can and cannot set
+
+Everything the public API exposes: title, description (timestamps in it become
+chapters), tags, category, language, visibility, scheduled publish time, made-for-kids,
+altered/synthetic-content disclosure, licence, embedding, public stats, custom
+thumbnail, and adding to a playlist.
+
+Some YouTube Studio features are not in the public API at all, so there is
+deliberately no control for them rather than one that quietly does nothing:
+monetization and ad breaks, paid-promotion disclosure, end screens and cards,
+comment settings, age restriction, Premieres, and Shorts remix permissions. The
+panel links you to Studio for those.
+
+Shorts need nothing special — no separate mode and no `#Shorts` tag. YouTube
+classifies a video as a Short from its shape and length on its own.
+
 ## GPU acceleration
 
 **Video encoding** is hardware-accelerated automatically on all three vendors — NVIDIA
@@ -552,12 +629,14 @@ calls is below, because "why not yet" is usually more useful than "not yet".
    only, to comply with Play Store policy.
 2. **Remote rendering** — hand the rendering work to another machine, so a long stream
    doesn't tie up the computer you're using.
-3. **Automated posting** *(possible future plan)* — channel monitoring, scheduling and
-   auto-upload are coded in the repo but **dormant and not exposed in the UI**. The
-   upload path hasn't been tested end-to-end against a real server, because it needs
-   your own API credentials and Google's API audit to post publicly. Posting to TikTok
-   and Instagram belongs here too — export alone adds little, since the work is in the
-   posting, and that needs a server this app deliberately doesn't have yet.
+3. **Fully automated posting** *(possible future plan)* — publishing a clip you are
+   looking at now works: see "Publish to YouTube" above. What is still dormant is the
+   *unattended* half — channel monitoring that clips a new stream and posts the results
+   with nobody watching. That is coded in the repo but not exposed in the UI, and it is
+   a bigger promise than it looks: posting on your behalf while you sleep needs to be
+   right about what it picked, not just able to upload. Posting to TikTok and Instagram
+   belongs here too — export alone adds little, since the work is in the posting, and
+   neither has a desktop-friendly upload API the way YouTube does.
 4. **Gaming and reaction layouts** *(possible future plan)* — a dedicated layout for
    gameplay-with-facecam and for reaction videos, composing the creator's webcam and
    what they're reacting to into one vertical frame.
