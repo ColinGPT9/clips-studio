@@ -323,6 +323,22 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
                 (video_id,),
             ).fetchone()
         if row is None:
+            # The most recent JOB, not the most recent surviving video. People
+            # routinely delete the video before filing -- the report that
+            # prompted this had `DELETE /videos/...` in its own log excerpt --
+            # and jobs keep the id and title after the video row is gone.
+            job_row = db.conn.execute(
+                "SELECT video_id FROM jobs WHERE video_id != '' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if job_row:
+                row = db.conn.execute(
+                    "SELECT video_id, channel_name, status FROM videos WHERE video_id = ?",
+                    (job_row["video_id"],),
+                ).fetchone()
+                if row is None:
+                    # Deleted. Report what is still knowable rather than nothing.
+                    d["video"] = {"video_id": job_row["video_id"], "deleted_by_user": True}
+        if row is None and "video" not in d:
             row = db.conn.execute(
                 "SELECT video_id, channel_name, status FROM videos ORDER BY updated_at DESC LIMIT 1"
             ).fetchone()
@@ -345,6 +361,16 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
                     d["video"].update(source_probe(src))
             except Exception:
                 pass  # a missing source must never cost us the whole report
+            # Why this run produced the clips it did. For the commonest
+            # report of all -- "clips didn't get created" -- this IS the
+            # answer, and it arrives whether or not the reporter writes
+            # anything useful in the free-text boxes.
+            try:
+                outcome = db.get_outcome(vid)
+                if outcome:
+                    d["video"]["outcome"] = outcome
+            except Exception:
+                pass
             job = db.conn.execute(
                 "SELECT status, error FROM jobs WHERE payload LIKE ? ORDER BY id DESC LIMIT 1",
                 (f"%{vid}%",),
@@ -408,6 +434,7 @@ def build_markdown(kind: str, answers: dict, diagnostics: dict | None) -> str:
             lines.append(f"### {title}\n{a[key]}\n")
 
     if kind == "bug":
+        sec("Which video were you processing?", "source")
         sec("What were you trying to do?", "trying")
         sec("What happened?", "happened")
         sec("What did you expect to happen?", "expected")

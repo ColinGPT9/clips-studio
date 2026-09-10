@@ -1,3 +1,17 @@
+/** Why a finished run produced the clips it did. Absent on videos processed
+ *  before runs were summarised, so every reader must cope with null. */
+export interface RunOutcome {
+  clips: number
+  candidates: number
+  best_score: number | null
+  min_score: number
+  rejected: Record<string, number>
+  measured: number
+  nothing_detected: number
+  /** Only set when no clips came out, and only when the evidence earns it. */
+  cause: 'no_people' | 'duplicates' | 'below_threshold' | 'no_candidates' | null
+}
+
 export interface Video {
   video_id: string
   channel_id: string
@@ -10,6 +24,7 @@ export interface Video {
   process_seconds: number
   creator_id: number | null
   creator_name: string | null
+  outcome?: RunOutcome | null
 }
 
 export interface SubScores {

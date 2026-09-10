@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import type { Video } from '../lib/types'
+import NoClipsExplanation from './NoClipsExplanation'
 import { Bug, Bulb, Chat, Image as ImageIcon, TrendUp } from './icons'
 
 /** Feedback Hub: report a bug / request a feature / suggest an improvement
@@ -40,13 +42,40 @@ export default function FeedbackHub(): JSX.Element {
   const [images, setImages] = useState<string[]>([])
   const [includeDiag, setIncludeDiag] = useState(true)
   const [diagPreview, setDiagPreview] = useState<string | null>(null)
+  // Which video this report is about, chosen from a list rather than typed.
+  // A free-text box asking "which video were you processing?" reliably comes
+  // back as "a video" — and the answer is the single most useful field on a
+  // bug report, so it should not depend on someone's patience.
+  const [videos, setVideos] = useState<Video[]>([])
+  const [videoId, setVideoId] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (!open) return
+    api
+      .videos()
+      .then((v) => setVideos(v.slice(0, 25)))
+      .catch(() => setVideos([]))
+  }, [open])
+
+  /** The run summary for the chosen video, when it produced nothing. This is
+   *  what turns "clips didn't get created" from a bug report into an answer. */
+  const zeroClipOutcome = (() => {
+    const v = videos.find((x) => x.video_id === videoId)
+    const o = v?.outcome
+    return o && o.clips === 0 && o.cause ? o : null
+  })()
+
   const set = (k: string, v: string): void => setAnswers((a) => ({ ...a, [k]: v }))
+  /** The picker's value, unless they chose the escape hatch. */
+  const realVideoId = (): string | undefined =>
+    videoId && videoId !== '__other__' ? videoId : undefined
+
   const reset = (): void => {
     setKind(null)
+    setVideoId('')
     setAnswers({})
     setAreas([])
     setImages([])
@@ -223,10 +252,46 @@ export default function FeedbackHub(): JSX.Element {
               <div className="space-y-3">
                 {kind === 'bug' && (
                   <>
-                    {field(
-                      'source',
-                      'Which video were you processing?',
-                      'e.g. https://twitch.tv/videos/123456  —  or "local file, 40 min talking head"'
+                    <div>
+                      <label htmlFor="fb-video" className="label">
+                        {t('Which video were you processing?')}
+                        <span className="text-accent"> *</span>
+                      </label>
+                      <select
+                        id="fb-video"
+                        className="input mt-1"
+                        value={videoId}
+                        onChange={(e) => {
+                          setVideoId(e.target.value)
+                          const v = videos.find((x) => x.video_id === e.target.value)
+                          set('source', v ? `${v.title} (${v.video_id})` : '')
+                        }}
+                      >
+                        <option value="">{t('Choose the video…')}</option>
+                        {videos.map((v) => (
+                          <option key={v.video_id} value={v.video_id}>
+                            {v.title || v.video_id} — {v.clip_count} {t('clips')}
+                          </option>
+                        ))}
+                        <option value="__other__">{t('Something else / not listed')}</option>
+                      </select>
+                    </div>
+                    {videoId === '__other__' &&
+                      field(
+                        'source',
+                        'Which video was it?',
+                        'e.g. https://twitch.tv/videos/123456  —  or "local file, 40 min talking head"'
+                      )}
+
+                    {zeroClipOutcome && (
+                      <div className="space-y-2">
+                        <NoClipsExplanation outcome={zeroClipOutcome} />
+                        <p className="text-[11px] text-muted">
+                          {t(
+                            'If that explains it, you can close this — nothing is wrong. If it does not match what you saw, please do carry on and tell us.'
+                          )}
+                        </p>
+                      </div>
                     )}
                     {field('trying', 'What were you trying to do?', 'e.g. Export a clip of my Twitch stream')}
                     {field('happened', 'What happened?', 'e.g. The export button froze the whole app')}
@@ -374,7 +439,7 @@ export default function FeedbackHub(): JSX.Element {
                           setDiagPreview(null)
                           return
                         }
-                        const d = await api.feedbackDiagnostics()
+                        const d = await api.feedbackDiagnostics(realVideoId())
                         setDiagPreview(JSON.stringify(d, null, 2))
                       }}
                     >

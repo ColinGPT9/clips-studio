@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import NoClipsExplanation from '../components/NoClipsExplanation'
 import AddVideos from '../components/queue/AddVideos'
 import { Trash } from '../components/icons'
 import ProcessingBar from '../components/ProcessingBar'
@@ -267,7 +268,7 @@ export default function Dashboard({
                           {clipsByVideo[v.video_id] === undefined ? (
                             <p className="text-muted text-xs">{t('Loading clips…')}</p>
                           ) : clipsByVideo[v.video_id].length === 0 ? (
-                            <p className="text-muted text-xs">{t('No clips generated.')}</p>
+                            <NoClipsExplanation outcome={v.outcome} compact />
                           ) : (
                             <ul className="space-y-1 text-xs text-muted pl-1">
                               {clipsByVideo[v.video_id].map((c) => (

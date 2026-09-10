@@ -185,6 +185,12 @@ def find_clips(
             detector=config["tracking"]["detector"],
         )
         c.subscores["reaction"] = round(r * 100)
+        # Distinguishes a MEASURED zero -- nothing person-shaped on screen --
+        # from the neutral 50 placeholder above, which only means this
+        # candidate never got the expensive pass. Without the marker the two
+        # are indistinguishable downstream, and "we found no people" would be
+        # claimed about windows nobody ever looked at.
+        c.subscores["reaction_measured"] = 1
 
     ctx_cap = int(scoring_cfg.get("creator_context_max", 6))
     action_bonus = int(scoring_cfg.get("action_bonus", 10))
