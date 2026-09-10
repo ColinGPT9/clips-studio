@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import NoClipsExplanation from '../components/NoClipsExplanation'
 import AddVideos from '../components/queue/AddVideos'
 import { Trash } from '../components/icons'
@@ -6,6 +6,7 @@ import ProcessingBar from '../components/ProcessingBar'
 import SystemStats from '../components/SystemStats'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
+import { useJobWatch } from '../lib/useJobWatch'
 import { t } from '../lib/i18n'
 import type { Clip, Settings, StudioEvent, Video } from '../lib/types'
 
@@ -41,11 +42,22 @@ export default function Dashboard({
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [clipsByVideo, setClipsByVideo] = useState<Record<string, Clip[]>>({})
+  const lastEventAt = useRef(Date.now())
+  // Only watch while something is actually in flight, so an idle Dashboard
+  // never polls.
+  const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
 
   const refresh = async (): Promise<void> => {
     try {
       setVideos(await api.videos())
       setSettings(await api.settings())
+      // An expanded row keeps the clips it fetched when it was opened, so
+      // after a re-render it would go on showing the previous version. Re-read
+      // whichever row is open rather than leaving it stale.
+      if (expanded) {
+        const fresh = await api.clips(expanded)
+        setClipsByVideo((prev) => ({ ...prev, [expanded]: fresh }))
+      }
     } catch {
       /* backend not up yet */
     }
@@ -56,6 +68,7 @@ export default function Dashboard({
   }, [])
 
   useEvents((e) => {
+    lastEventAt.current = Date.now()
     const msg = describeEvent(e)
     const line = `${new Date().toLocaleTimeString()}  ${msg}`
     setLog((prev) => {
@@ -66,6 +79,13 @@ export default function Dashboard({
     })
     if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) refresh()
   })
+
+  // That single event is not guaranteed to arrive -- the server drops events
+  // for a client that falls behind, and a long render emits thousands. Miss it
+  // once and this page shows an empty video after a run that worked, which
+  // reads as "no clips were created". Ask the server when the stream goes
+  // quiet instead of assuming.
+  useJobWatch({ active: busy, lastEventAt, onSettled: refresh })
 
   const remove = async (videoId: string, label: string): Promise<void> => {
     if (!window.confirm(`Delete "${label}" and all its clips? This removes the files from disk too.`))

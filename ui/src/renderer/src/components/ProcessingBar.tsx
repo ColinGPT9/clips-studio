@@ -2,12 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { applyEvent, emptyProgress, etaSeconds, formatEta, progressStore } from '../lib/jobProgress'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
-
-// How long the event stream may go quiet before we stop believing it and ask
-// the server directly. Long enough that a slow stage (a big download, a long
-// analysis chunk) never triggers a pointless check.
-const SILENCE_BEFORE_RECHECK_MS = 45_000
-const RECHECK_EVERY_MS = 10_000
+import { useJobWatch } from '../lib/useJobWatch'
 
 /** Live progress for the running job: stage label, percent bar, an estimated
  *  time remaining that ticks down, and a Cancel button. Hidden when idle. */
@@ -30,36 +25,18 @@ export default function ProcessingBar(): JSX.Element | null {
     return () => clearInterval(id)
   }, [])
 
-  // The bar used to be cleared ONLY by a terminal event. If the socket was
-  // down at the moment the job finished — a reconnect, a reload, the backend
-  // restarting — that event never arrived and the bar claimed to be
-  // processing forever, across page switches, until the app was restarted.
-  // So when events go quiet, stop trusting them and ask what is really
-  // running. The server is the authority; the event stream is just faster.
-  useEffect(() => {
-    if (!progress.active) return
-    const id = setInterval(() => {
-      if (Date.now() - lastEventAt.current < SILENCE_BEFORE_RECHECK_MS) return
-      void api
-        .jobs()
-        .then((jobs) => {
-          const live = jobs.some((j) => j.status === 'running' || j.status === 'queued')
-          if (!live) {
-            progressStore.current = { ...emptyProgress }
-            setProgress(progressStore.current)
-            setCancelling(false)
-          } else {
-            // Something IS running — the socket just missed events. Reset the
-            // clock so we re-check on the next quiet stretch, not every tick.
-            lastEventAt.current = Date.now()
-          }
-        })
-        .catch(() => {
-          /* backend unreachable — say nothing rather than wrongly clear */
-        })
-    }, RECHECK_EVERY_MS)
-    return () => clearInterval(id)
-  }, [progress.active])
+  // The bar used to be cleared ONLY by a terminal event, and would claim to be
+  // processing forever if that event went missing. useJobWatch is where that
+  // lesson now lives, so the Dashboard and the clip list get it too.
+  useJobWatch({
+    active: progress.active,
+    lastEventAt,
+    onSettled: () => {
+      progressStore.current = { ...emptyProgress }
+      setProgress(progressStore.current)
+      setCancelling(false)
+    }
+  })
 
   if (!progress.active) return null
   const eta = etaSeconds(progress, now)
