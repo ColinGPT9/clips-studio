@@ -8,6 +8,40 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
+## Unreleased — a run that makes no clips now says why
+
+### Added
+
+- **"No clips" explains itself.** When a video produces nothing, the app now
+  says so where the clips would have been, with the numbers behind it: how many
+  moments were considered, the best score any of them reached, and the
+  threshold they were measured against.
+
+  When the reason is that nobody was on screen — gameplay, top-down games,
+  anything without a person in frame — it says that too. Part of a clip's score
+  is whether someone is visible, so that footage scores zero on it rather than
+  merely low, lands under the threshold, and comes back empty. That is working
+  as designed, and until now the app gave no hint of it: the screen just said
+  "No clips for this video yet", which reads like a fault.
+
+  It only names that cause when the detector actually looked and found nobody.
+  A quiet talking-head video that simply did not score well is told apart from
+  gameplay and gets the plain numbers instead — being confidently wrong about
+  someone's footage would be worse than saying nothing.
+
+### Fixed
+
+- **Bug reports lost the one field that mattered.** The reporter is required to
+  say which video they were processing, and the answer was then dropped before
+  the report was built. It now appears, and the question is a list of your
+  recent videos rather than a text box.
+- Reports also carry the video and the run summary automatically, so they are
+  useful even when the description is three words. Previously the video was
+  guessed from "most recently updated", which found nothing at all if the
+  reporter had deleted the video first — as they usually have.
+
+---
+
 ## Unreleased — publish to YouTube without leaving the editor
 
 ### Added

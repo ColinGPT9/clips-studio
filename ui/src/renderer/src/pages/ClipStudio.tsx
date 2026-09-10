@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import NoClipsExplanation from '../components/NoClipsExplanation'
 import ClipCard from '../components/ClipCard'
 import ClipEditor from '../components/ClipEditor'
 import EditorView from '../components/EditorModal'
@@ -198,9 +199,11 @@ export default function ClipStudio({
                   />
                 ))}
               {clips.length === 0 && (
-                <p className="text-muted text-sm col-span-full">
-                  No clips for this video yet — or pick another video above.
-                </p>
+                <div className="col-span-full">
+                  <NoClipsExplanation
+                    outcome={videos.find((v) => v.video_id === activeVideo)?.outcome}
+                  />
+                </div>
               )}
             </div>
           </div>

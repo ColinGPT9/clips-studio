@@ -87,8 +87,11 @@ and tower-defence games — Dota 2, League, and anything viewed from above — h
 no person-shaped subject on screen. Part of a clip's score measures whether a
 human is visible and being emphasised, and with nothing detected that part is
 zero rather than merely low. Scored gameplay therefore lands under the
-threshold, the run finishes normally, and you get **no clips and no error** —
-the log line is `No clips passed the score threshold`. Lowering
+threshold and the run finishes normally. **The app now tells you this where
+the clips would have been**, with the numbers behind it — how many moments were
+considered, the best score any of them reached, and how many had nobody on
+screen — so a run that produces nothing explains itself rather than looking
+broken. Lowering
 **Minimum score** in Settings will start producing clips, but they are chosen
 without the visual half of the signal, so expect them to be arbitrary.
 

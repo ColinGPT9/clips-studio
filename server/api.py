@@ -1173,7 +1173,19 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                    LEFT JOIN creators cr ON cr.creator_id = v.creator_id
                    GROUP BY v.video_id ORDER BY v.created_at DESC"""
             ).fetchall()
-            return [dict(r) for r in rows]
+            # `outcome` is stored as JSON (why this run produced the clips it
+            # did). Decoded here rather than in the UI, the same way clips
+            # decode their scores/render_opts at this boundary.
+            out = []
+            for r in rows:
+                v = dict(r)
+                raw = v.get("outcome")
+                try:
+                    v["outcome"] = json.loads(raw) if raw else None
+                except (ValueError, TypeError):
+                    v["outcome"] = None
+                out.append(v)
+            return out
         finally:
             d.close()
 

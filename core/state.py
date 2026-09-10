@@ -6,6 +6,7 @@ BEFORE the next stage runs, so a crash at any point resumes cleanly and
 nothing is ever reprocessed or double-uploaded.
 """
 
+import json
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -278,6 +279,20 @@ class StateDB:
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, position, id)"
         )
+        rejection_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(rejections)")}
+        if "subscores" not in rejection_cols:
+            # The per-signal breakdown, not just the total. Without it a run
+            # that produced nothing can say "nothing scored high enough" but
+            # not WHY -- and the difference between "gameplay, so the
+            # person-on-screen term was zero" and "a quiet talking-head video"
+            # is the whole of what a user needs told.
+            self.conn.execute("ALTER TABLE rejections ADD COLUMN subscores TEXT DEFAULT ''")
+        video_outcome_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(videos)")}
+        if "outcome" not in video_outcome_cols:
+            # Why a finished run produced the clips it did (or did not). JSON,
+            # following the render_opts precedent: a blob column beats a table
+            # for something only ever read whole.
+            self.conn.execute("ALTER TABLE videos ADD COLUMN outcome TEXT DEFAULT ''")
         upload_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(uploads)")}
         for column, decl in (
             # Identity that outlives a re-render. clip_id alone cannot find
@@ -649,14 +664,41 @@ class StateDB:
         reason: str,
         kept_start: float | None = None,
         kept_end: float | None = None,
+        subscores: dict | None = None,
     ) -> None:
         self.conn.execute(
             """INSERT INTO rejections (video_id, start_s, end_s, score, reason,
-                                       kept_start_s, kept_end_s, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (video_id, round(start, 2), round(end, 2), score, reason, kept_start, kept_end, _now()),
+                                       kept_start_s, kept_end_s, subscores, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (video_id, round(start, 2), round(end, 2), score, reason, kept_start, kept_end,
+             json.dumps(subscores) if subscores else "", _now()),
         )
         self.conn.commit()
+
+    # ---- why a run produced what it produced -----------------------------
+
+    def set_outcome(self, video_id: str, outcome: dict) -> None:
+        """Record why this video ended with the clips it did.
+
+        Read by the UI when there are none, so "no clips" can be explained
+        where the user is looking rather than in a log they never open.
+        """
+        self.conn.execute(
+            "UPDATE videos SET outcome = ? WHERE video_id = ?",
+            (json.dumps(outcome), video_id),
+        )
+        self.conn.commit()
+
+    def get_outcome(self, video_id: str) -> dict:
+        row = self.conn.execute(
+            "SELECT outcome FROM videos WHERE video_id = ?", (video_id,)
+        ).fetchone()
+        if not row or not row["outcome"]:
+            return {}
+        try:
+            return json.loads(row["outcome"])
+        except (ValueError, TypeError):
+            return {}
 
     # ---- daily scheduling --------------------------------------------
 

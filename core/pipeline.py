@@ -17,6 +17,7 @@ from analysis.metadata import ClipMetadata, generate_metadata_batch
 from core import cancel, progress
 from core.binaries import ffprobe
 from core.models import ClipCandidate, RenderedClip, Segment
+from core.outcome import explain_no_clips, summarise_run
 from core.paths import cached_source, discard
 from core.state import StateDB
 from llm.registry import create_backend
@@ -295,14 +296,22 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             r.candidate.start, r.candidate.end, r.candidate.score, r.reason,
             kept_start=r.kept.start if r.kept else None,
             kept_end=r.kept.end if r.kept else None,
+            subscores=r.candidate.subscores,
         )
     dup_count = sum(1 for r in rejections if r.reason not in ("below_min_score", "over_limit"))
     if dup_count:
         print(f"      Rejected {dup_count} duplicate/overlapping candidate(s) (logged)")
     db.set_video_status(video.video_id, "analyzed")
 
+    outcome = summarise_run(candidates, rejections, config)
+    db.set_outcome(video.video_id, outcome)
+
     if not candidates:
-        print("      No clips passed the score threshold. Try lowering clips.min_score in config/settings.yaml.")
+        # This is the single most common "bug" report: a finished run, no
+        # error, and no clips. The reason is knowable -- it is right here in
+        # the scores -- so record it where the UI can read it instead of only
+        # printing it to a log nobody opens.
+        print(f"      {explain_no_clips(outcome)}")
         db.set_video_status(video.video_id, "done")
         return []
     for c in candidates:
