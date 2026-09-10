@@ -6,6 +6,7 @@ import EditorView from '../components/EditorModal'
 import ProcessingBar from '../components/ProcessingBar'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
+import { useJobWatch } from '../lib/useJobWatch'
 import type { StudioTarget } from '../App'
 import type { Clip, StudioEvent, Video } from '../lib/types'
 
@@ -26,6 +27,9 @@ export default function ClipStudio({
   const [videoSearch, setVideoSearch] = useState('')
   const [clipType, setClipType] = useState<'all' | 'shorts' | 'longform'>('all')
   const pendingClip = useRef<number | null>(null)
+  const lastEventAt = useRef(Date.now())
+  // Only while something is in flight, so an idle page never polls.
+  const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
 
   const refreshVideos = async (): Promise<void> => {
     try {
@@ -78,6 +82,7 @@ export default function ClipStudio({
   }, [activeVideo])
 
   useEvents((e: StudioEvent) => {
+    lastEventAt.current = Date.now()
     if (e.type === 'progress' && (e.stage === 'render' || e.stage === 'done') && e.video_id) {
       refreshVideos()
       if (activeVideo === e.video_id || !activeVideo) {
@@ -86,6 +91,18 @@ export default function ClipStudio({
       }
     }
     if (e.type === 'job' && e.status === 'done' && activeVideo) refreshClips(activeVideo)
+  })
+
+  // Same reason as the Dashboard: the terminal event can be dropped for a
+  // client that falls behind, and this page would then keep showing the clip
+  // list from before the render.
+  useJobWatch({
+    active: busy,
+    lastEventAt,
+    onSettled: () => {
+      refreshVideos()
+      if (activeVideo) refreshClips(activeVideo)
+    }
   })
 
   const current = useMemo(() => clips.find((c) => c.id === selectedClip) ?? null, [clips, selectedClip])
