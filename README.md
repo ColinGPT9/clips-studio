@@ -33,18 +33,19 @@ clipping tools charge per video or per month, and cutting them by hand takes a d
 needed elsewhere. This runs on hardware you already own, so it costs nothing to use and
 there is no cap on how many clips you make.
 
-> **Local AI video processing** · **AI clip generator** · **Twitch clip generator** ·
-> **Kick clip generator** · **YouTube Shorts automation** · **AI video editor** ·
-> **open-source OpusClip alternative**
+<img src="docs/store-screenshots/fs-dashboard-202754.png" width="100%"
+     alt="The Clips Kitty dashboard: paste a YouTube, Twitch or Kick URL, pick caption and
+          format options, and a finished video row showing 38 clips produced in 19m 38s,
+          with live CPU, RAM, GPU and storage readouts beside it.">
 
-<!-- TODO: a screenshot of Clip Editor mid-run, and a short demo GIF, both ~1600px
-     wide in docs/images/. Nothing sells a video tool like seeing it work. -->
+<sub>38 clips from one video in 19 minutes, on one PC, with nothing uploaded.</sub>
 
 ---
 
 ## Contents
 
 - [What it does](#what-it-does)
+- [How it compares to Opus Clip](#how-it-compares-to-opus-clip)
 - [How it works](#how-it-works)
 - [Features](#features)
 - [What it's built for](#what-its-built-for)
@@ -73,6 +74,30 @@ clips you can post, plus a studio to review and fix them before you do.
 It is built for the content most clipping tools handle worst: **live streams, IRL and
 talking-head footage, podcasts, and gym/fitness content** — long, loosely structured
 videos where the good moments are buried and a transcript alone won't find them.
+
+## How it compares to Opus Clip
+
+Clips Kitty is an open-source alternative to cloud clipping tools. The difference that
+matters is where the work happens: your video is never uploaded, so there is nothing to
+meter and nothing to charge for.
+
+|                          | Clips Kitty                  | Opus Clip                     |
+| ------------------------ | ---------------------------- | ----------------------------- |
+| Price                    | Free                         | Free tier, $15/mo, $29/mo     |
+| Clips per month          | Unlimited                    | Allocated by plan             |
+| Watermark                | Never                        | On the free tier              |
+| Export limits            | None                         | Free exports expire in 3 days |
+| Where video is processed | Your PC                      | Their servers                 |
+| Works offline            | Yes                          | No                            |
+| Source code              | Open                         | Closed                        |
+| Requirements             | Windows, 16 GB RAM, GPU rec. | A browser                     |
+
+**Opus Clip is the better choice** if you don't have a Windows PC with a graphics card,
+you clip occasionally, or you need to work from a phone. Clips Kitty is built for
+clipping at volume on hardware you already own.
+
+<sub>Opus Clip pricing checked September 2026. Their plans change; this table won't
+update itself.</sub>
 
 ## How it works
 
