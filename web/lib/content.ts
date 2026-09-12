@@ -89,11 +89,11 @@ export const PREFERRED_SCORE_MODEL = "google/gemini-2.5-flash-lite";
 export const DESKTOP_ONLY: { title: string; body: string }[] = [
 	{
 		title: "Better clip picking",
-		body: "This page reads the transcript and listens for laughter and loud reactions. The desktop app adds what it can see — on-screen motion, scene cuts, who is speaking — plus Twitch chat spikes, and reranks the finalists. The gap is widest on gameplay, where the best moment is something that happens rather than something said.",
+		body: "This page reads the transcript and listens for laughter and loud reactions. The desktop app adds what it can see (on-screen motion, scene cuts, who is speaking) plus Twitch chat spikes, and reranks the finalists. The gap is widest on gameplay, where the best moment is something that happens rather than something said.",
 	},
 	{
 		title: "It learns your creators",
-		body: "The desktop app builds a profile per creator — running jokes, catchphrases, storylines, collaborators — and remembers which clips you keep, so its picks improve over time. This page starts from nothing every visit.",
+		body: "The desktop app builds a profile per creator (running jokes, catchphrases, storylines, collaborators) and remembers which clips you keep, so its picks improve over time. This page starts from nothing every visit.",
 	},
 	{
 		title: "Vertical 9:16 with the speaker kept in frame",
@@ -141,7 +141,7 @@ export const DESKTOP_ONLY: { title: string; body: string }[] = [
  *  call, and copy here should describe what is true now rather than commit
  *  them to anything. */
 export const DESKTOP_IS_FREE =
-	"Clips Kitty for Windows is completely free to run. It is open source, there is no subscription, no credits and no watermark — and because the AI runs on your own PC, clipping a hundred VODs costs exactly nothing. Only this browser version uses paid API credits, because a browser cannot run the model itself.";
+	"Clips Kitty for Windows is completely free to run. It is open source, there is no subscription, no credits and no watermark, and because the AI runs on your own PC, clipping a hundred VODs costs exactly nothing. Only this browser version uses paid API credits, because a browser cannot run the model itself.";
 
 /** The donate copy, taken VERBATIM from the desktop app and the website.
  *
@@ -170,7 +170,7 @@ export const DONATE_NOTE =
  *  different claims, and the smaller one is the true one. Local files and Kick
  *  still never touch us at all. */
 export const PRIVACY_NOTE =
-	"Your own files never leave your computer — they are read in the browser and never uploaded. Only short audio snippets are sent for transcription, straight to OpenRouter on your own account; we never see your key. Twitch VODs are the one exception: Twitch blocks browsers from reading them, so those are relayed through a small server we run, which stores nothing.";
+	"Your own files never leave your computer. They are read in the browser and never uploaded. Only short audio snippets are sent for transcription, straight to OpenRouter on your own account; we never see your key. Twitch VODs are the one exception: Twitch blocks browsers from reading them, so those are relayed through a small server we run, which stores nothing.";
 
 export const COST_NOTE =
-	"You pay OpenRouter directly, at cost. A 30-minute recording is usually a few cents. Transcription needs a funded account — OpenRouter requires at least $0.50 of credit before it will accept audio, so the free daily allowance covers the scoring but not the listening.";
+	"You pay OpenRouter directly, at cost. A 30-minute recording is usually a few cents. Transcription needs a funded account. OpenRouter requires at least $0.50 of credit before it will accept audio, so the free daily allowance covers the scoring but not the listening.";
