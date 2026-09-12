@@ -6,9 +6,9 @@
 > word-synced captions and writes the titles. No uploads, no subscription, no
 > per-clip fee. AGPL-3.0.
 
-Clips Kitty is a desktop application, not a web service. Everything — the
-transcription, the clip selection, the subject tracking and the language model
-— runs on the user's own machine. It is a local-first alternative to cloud
+Clips Kitty is a desktop application, not a web service. Everything (the
+transcription, the clip selection, the subject tracking and the language model)
+runs on the user's own machine. It is a local-first alternative to cloud
 clipping tools such as OpusClip, aimed at creators who would rather not pay per
 video or upload their footage to someone else's server.
 
@@ -17,7 +17,7 @@ video or upload their footage to someone else's server.
 - **Transcribes** with faster-whisper at word level, so captions land on the
   right syllable and clips start on real sentence boundaries.
 - **Scores** candidate moments with a local language model reading the
-  transcript alongside audio and visual signals — loudness, laughter-shaped
+  transcript alongside audio and visual signals: loudness, laughter-shaped
   bursts, scene cuts, motion, on-screen reactions.
 - **Reframes** to 9:16 with YOLO pose tracking and active-speaker detection, so
   the person talking stays in shot and it cuts between speakers rather than
@@ -36,7 +36,7 @@ video or upload their footage to someone else's server.
 ## Requirements
 
 Windows 10 or 11, 64-bit. 16 GB RAM recommended, ~20 GB free disk. An NVIDIA
-GPU is strongly recommended — it runs on CPU, just far slower. One installer
+GPU is strongly recommended. It runs on CPU, just far slower. One installer
 carries the app, the engine, FFmpeg, the Ollama runtime and the tracking and
 transcription models; the language model downloads on first launch, sized to
 the graphics card.
