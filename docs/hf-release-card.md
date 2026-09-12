@@ -5,16 +5,33 @@ tags:
   # stays so anything already pointing at it keeps resolving.
   - clips-kitty
   - clips-studio
+  # The rest are here to be searched for. `installer` and `windows` describe
+  # what the files are; nobody browses Hugging Face looking for those.
   - video
-  - windows
-  - installer
+  - video-editing
+  - ai-video
+  - clips
+  - shorts
+  - whisper
+  - ollama
+  - local-ai
+  - open-source
+  - twitch
+  - youtube
+  - kick
 ---
 
-# Clips Kitty: release payload
+# Clips Kitty: free AI video clipping that runs on your own PC
 
-**This repository is not a model.** It holds the installer payload for
-[Clips Kitty](https://github.com/ColinGPT9/clips-studio), a free, open-source
-AI video clipping app that runs entirely on your own Windows PC.
+[Clips Kitty](https://github.com/ColinGPT9/clips-studio) turns long streams and
+videos into ready-to-post vertical clips, entirely on your own Windows machine.
+Paste a Twitch, Kick or YouTube link and it finds the best moments, crops them
+to 9:16 with the speaker kept in frame, burns in word-synced captions and writes
+the titles. It is an open-source alternative to cloud clipping tools: nothing is
+uploaded, so there is no subscription, no watermark and no cap on how many clips
+you make. [Full comparison with Opus Clip](https://colingpt9.github.io/clips-studio/opus-clip-alternative.html).
+
+**This repository is not a model.** It holds the installer payload.
 
 It lives on Hugging Face for one dull reason: a GitHub release asset is capped
 at 2 GiB and the payload is roughly twice that, because the installer bundles

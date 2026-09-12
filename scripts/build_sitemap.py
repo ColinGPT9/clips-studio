@@ -27,6 +27,7 @@ BASE = "https://colingpt9.github.io/clips-studio/"
 # they read once they are here.
 PRIORITY = {
     "index.html": "1.0",
+    "opus-clip-alternative.html": "0.9",
     "twitch.html": "0.8",
     "kick.html": "0.8",
     "youtube.html": "0.8",

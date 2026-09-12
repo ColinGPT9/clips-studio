@@ -8,9 +8,21 @@
 
 Clips Kitty is a desktop application, not a web service. Everything (the
 transcription, the clip selection, the subject tracking and the language model)
-runs on the user's own machine. It is a local-first alternative to cloud
-clipping tools such as OpusClip, aimed at creators who would rather not pay per
-video or upload their footage to someone else's server.
+runs on the user's own machine. It is a local-first, open-source alternative to
+Opus Clip and other cloud clipping tools, aimed at creators who would rather not
+pay per video or upload their footage to someone else's server.
+
+## How it compares to Opus Clip
+
+- **Price:** free, AGPL-3.0, no paid tier. Opus Clip has a free tier plus
+  $15/mo and $29/mo plans (checked 12 September 2026).
+- **Uploads:** none. The video is read where it sits. Opus Clip uploads the
+  whole video to its servers before processing.
+- **Limits:** no clip cap, no watermark, no export expiry. Opus Clip's free
+  tier watermarks, caps at 1080p and expires exports after three days.
+- **The catch:** Clips Kitty needs Windows, 16 GB of RAM and ideally an NVIDIA
+  GPU. Opus Clip runs in any browser, including on a phone. If you have no
+  suitable PC, or you clip only occasionally, Opus Clip is the better choice.
 
 ## What it actually does
 
@@ -54,6 +66,7 @@ the graphics card.
 - [Clipping Kick](https://colingpt9.github.io/clips-studio/kick.html)
 - [Clipping YouTube](https://colingpt9.github.io/clips-studio/youtube.html)
 - [Local vs cloud clipping](https://colingpt9.github.io/clips-studio/local-vs-cloud.html)
+- [Opus Clip alternative](https://colingpt9.github.io/clips-studio/opus-clip-alternative.html)
 
 ## Status
 

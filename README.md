@@ -96,6 +96,8 @@ meter and nothing to charge for.
 you clip occasionally, or you need to work from a phone. Clips Kitty is built for
 clipping at volume on hardware you already own.
 
+**[Full comparison, with the year-one cost and the cases where Opus Clip wins](https://colingpt9.github.io/clips-studio/opus-clip-alternative.html)**
+
 <sub>Opus Clip pricing checked September 2026. Their plans change; this table won't
 update itself.</sub>
 
