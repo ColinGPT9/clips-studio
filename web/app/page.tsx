@@ -283,7 +283,7 @@ export default function Page() {
 			const cost = estimateRequests(prepared.durationSeconds);
 			if (account?.isFreeTier && cost > FREE_DAILY_REQUESTS) {
 				throw new Error(
-					`That recording is about ${Math.round(prepared.durationSeconds / 60)} minutes, which needs roughly ${cost} OpenRouter requests. A free account allows ${FREE_DAILY_REQUESTS} a day, so this would stop partway through. Buying $10 of credit once raises the limit to 1000 a day — or try a shorter recording.`,
+					`That recording is about ${Math.round(prepared.durationSeconds / 60)} minutes, which needs roughly ${cost} OpenRouter requests. A free account allows ${FREE_DAILY_REQUESTS} a day, so this would stop partway through. Buying $10 of credit once raises the limit to 1000 a day, or try a shorter recording.`,
 				);
 			}
 
@@ -503,7 +503,7 @@ function Header({
 		<header className="mb-8 flex items-start justify-between gap-4">
 			<div className="flex items-center gap-3">
 				{/* biome-ignore lint/performance/noImgElement: next/image cannot
-				    optimise anything in a static export — it requires
+				    optimise anything in a static export. It requires
 				    `images.unoptimized`, which makes it a plain <img> wearing a
 				    costume. The rule's real concern is weight, and that is
 				    handled instead: this file is pre-scaled to 128px and 17 KB,
@@ -522,7 +522,7 @@ function Header({
 						{/* Said up here, not only in the footer. A good share of the
 						    people who arrive from OpenRouter's app directory are
 						    developers rather than clippers, and for them "open
-						    source, AGPL" is the interesting fact about this page —
+						    source, AGPL" is the interesting fact about this page:
 						    they should not have to scroll past the whole pitch to
 						    find the repo. */}
 						<a
@@ -574,7 +574,7 @@ function SignIn() {
 
 			<p className="mt-4 text-xs" style={{ color: "var(--cs-muted)" }}>
 				You will be asked to authorise Clips Kitty Web on your own OpenRouter
-				account. We never see your key — it is stored in this browser only.
+				account. We never see your key. It is stored in this browser only.
 			</p>
 
 			{/* Said here, before they spend anything, rather than only at the
@@ -590,7 +590,7 @@ function SignIn() {
 				>
 					The desktop app is free
 				</a>{" "}
-				and needs no account or credits at all — it runs the AI on your own PC,
+				and needs no account or credits at all. It runs the AI on your own PC,
 				and it does the vertical cropping and captions this page cannot.
 			</p>
 		</section>
@@ -650,7 +650,7 @@ function Controls({
 				>
 					Your OpenRouter account is on the free tier: {FREE_DAILY_REQUESTS}{" "}
 					requests a day, which covers roughly two hours of scoring. But
-					transcription needs a funded account whatever the allowance says —
+					transcription needs a funded account whatever the allowance says:
 					OpenRouter wants at least $0.50 of balance before it will accept audio
 					at all.
 				</p>
@@ -690,7 +690,7 @@ function Controls({
 					{/* The native file input is hidden and driven by this label.
 					    Left visible it renders as the browser's own tiny grey
 					    "Choose File" control, which on this dark page reads as
-					    nothing at all — the first person to try it could not find
+					    nothing at all. The first person to try it could not find
 					    the upload button. A label IS the accessible control for a
 					    file input, so this keeps keyboard and screen-reader
 					    behaviour while looking like the rest of the page. */}
@@ -708,7 +708,7 @@ function Controls({
 						<span className="text-xs" style={{ color: "var(--cs-muted)" }}>
 							{selectedFile
 								? `${selectedFile.name} · ${(selectedFile.size / 1e6).toFixed(0)} MB`
-								: "MP4, MOV, WebM, MP3 or WAV — any length"}
+								: "MP4, MOV, WebM, MP3 or WAV: any length"}
 						</span>
 					</label>
 					<input
@@ -720,7 +720,7 @@ function Controls({
 						className="sr-only"
 					/>
 					<p className="mt-2 text-xs" style={{ color: "var(--cs-muted)" }}>
-						It stays on your computer — the video is read in the browser and
+						It stays on your computer. The video is read in the browser and
 						never uploaded to us.
 					</p>
 				</>
@@ -772,7 +772,7 @@ function Controls({
 			</div>
 
 			{/* Shown as soon as a file is chosen, which is the only moment a
-			    warning is worth anything — after the run starts, the requests
+			    warning is worth anything, after the run starts, the requests
 			    are already spent. A VOD's length is not known until its manifest
 			    is read, so that path is checked in `run` instead, still before
 			    the first OpenRouter call. */}
@@ -787,7 +787,7 @@ function Controls({
 								: "var(--cs-muted)",
 					}}
 				>
-					{Math.round(durationSeconds / 60)} minutes — about{" "}
+					{Math.round(durationSeconds / 60)} minutes: about{" "}
 					{estimateRequests(durationSeconds)} OpenRouter requests.
 					{account?.isFreeTier &&
 						estimateRequests(durationSeconds) > FREE_DAILY_REQUESTS &&
@@ -854,13 +854,13 @@ function ModelPicker({
 						{m.name}
 						{/* Price is shown for chat models only. Transcription models
 						    are billed per second or per hour depending on the
-						    provider — the SAME model is per-hour on Groq and
-						    per-second on DeepInfra — so rendering their number as
+						    provider. The SAME model is per-hour on Groq and
+						    per-second on DeepInfra, so rendering their number as
 						    "$/M tokens" would be a confident lie. */}
 						{m.isTranscription
 							? m.audioPerHour !== null &&
-								` — ~$${m.audioPerHour.toFixed(3)}/hour of audio`
-							: m.promptPerM !== null && ` — $${m.promptPerM.toFixed(2)}/M in`}
+								`: ~$${m.audioPerHour.toFixed(3)}/hour of audio`
+							: m.promptPerM !== null && `: $${m.promptPerM.toFixed(2)}/M in`}
 					</option>
 				))}
 			</select>
@@ -901,8 +901,8 @@ function Progress({
 			</div>
 
 			{/* What OpenRouter says this has ACTUALLY cost, from `usage.cost` on
-			    each response. The figure in the model picker is an estimate —
-			    OpenRouter reports speech pricing in units it does not name — so
+			    each response. The figure in the model picker is an estimate:
+			    OpenRouter reports speech pricing in units it does not name, so
 			    this is the number to trust, and it is worth showing while the
 			    run is happening rather than after the money is gone. */}
 			{spent > 0 && (
@@ -939,7 +939,7 @@ function Results({
 				<h2 className="text-lg font-semibold">Nothing scored highly enough</h2>
 				<p className="mt-2 text-sm leading-relaxed">
 					The model did not find a self-contained moment it rated worth posting.
-					That is a real answer, not a failure — try a longer recording, or one
+					That is a real answer, not a failure. Try a longer recording, or one
 					with more talking in it.
 				</p>
 			</section>
@@ -1016,7 +1016,7 @@ function Results({
 
 			<p className="mt-4 text-xs" style={{ color: "var(--cs-muted)" }}>
 				Clips are cut without re-encoding, so they are quick but start at the
-				nearest keyframe — up to a second or so early. They come out at the
+				nearest keyframe: up to a second or so early. They come out at the
 				original shape, ready to edit.
 			</p>
 		</section>
@@ -1027,7 +1027,7 @@ function DesktopPitch() {
 	return (
 		<section className="mt-14">
 			<h2 className="text-lg font-semibold">
-				The Windows app is free — and does much more
+				The Windows app is free, and does much more
 			</h2>
 			<p className="mt-2 text-sm leading-relaxed">{DESKTOP_IS_FREE}</p>
 			<p
@@ -1054,7 +1054,7 @@ function DesktopPitch() {
 
 			<div className="mt-6 flex flex-wrap gap-3">
 				<a href={LINKS.download} className="cs-btn px-5 py-2.5 text-sm">
-					Download Clips Kitty — free
+					Download Clips Kitty for free
 				</a>
 				<a href={LINKS.msstore} className="cs-btn-quiet px-5 py-2.5 text-sm">
 					Get it from Microsoft Store
@@ -1068,7 +1068,7 @@ function DesktopPitch() {
 			</div>
 
 			{/* Word for word what the desktop app and the website say. Copied,
-			    not rewritten — see the note in content.ts. */}
+			    not rewritten. See the note in content.ts. */}
 			<div className="cs-card mt-6 p-4">
 				<p className="text-sm font-semibold">{DONATE_TITLE}</p>
 				<p

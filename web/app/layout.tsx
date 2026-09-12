@@ -11,9 +11,9 @@ import "./globals.css";
  *  (see the og:image in site/index.html), so it is one asset, one place. */
 const OG_IMAGE = "https://colingpt9.github.io/clips-studio/assets/mascot.png";
 
-const TITLE = "Clips Kitty Web — find your best clips in the browser";
+const TITLE = "Clips Kitty Web: find your best clips in the browser";
 const DESCRIPTION =
-	"Paste a Twitch or Kick VOD, or drop in a recording, and get the moments worth clipping — cut and ready to edit. Runs entirely in your browser. Nothing to install, and your video is never uploaded.";
+	"Paste a Twitch or Kick VOD, or drop in a recording, and get the moments worth clipping: cut and ready to edit. Runs entirely in your browser. Nothing to install, and your video is never uploaded.";
 
 /** Written for the places this link actually gets pasted.
  *
