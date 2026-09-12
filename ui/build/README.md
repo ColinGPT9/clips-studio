@@ -1,10 +1,10 @@
 # Build resources
 
 electron-builder picks files up from this folder by name. Nothing here is
-code — it's the artwork and metadata that make the packaged app look like a
+code. It's the artwork and metadata that make the packaged app look like a
 real product rather than a generic Electron shell.
 
-## icon.ico — the one thing still missing
+## icon.ico: the one thing still missing
 
 Drop a Windows icon here as `icon.ico` and the build uses it automatically:
 no config change needed. Without it the build logs

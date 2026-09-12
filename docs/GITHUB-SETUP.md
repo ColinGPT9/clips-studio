@@ -1,6 +1,6 @@
 # GitHub setup
 
-Everything that can live in a file already does — CI, CodeQL, Dependabot,
+Everything that can live in a file already does. CI, CodeQL, Dependabot,
 labels, issue and PR templates. The rest are switches only a repository admin
 can flip, and they are listed here so nobody has to guess what was meant to be
 on.
@@ -21,7 +21,7 @@ and every pull request will sit blocked.
 | **Push protection** | Blocks the push *before* the secret lands. This is the one that saves you. |
 | **Private vulnerability reporting** | The route `SECURITY.md` sends people down. Without it, that link 404s. |
 
-`.github/workflows/codeql.yml` handles code scanning itself — no setup beyond
+`.github/workflows/codeql.yml` handles code scanning itself: no setup beyond
 letting Actions run.
 
 ## 2. Discussions (Settings → General → Features)
@@ -55,7 +55,7 @@ Target `main`, and require:
 - Conversation resolution before merging
 - Block force pushes
 
-**Leave "Require approvals" at 0 while you are the only maintainer** — set to
+**Leave "Require approvals" at 0 while you are the only maintainer**. Set to
 1 and you cannot merge your own work, which means either the rule gets
 disabled in frustration or every change waits on a reviewer who does not
 exist. Raise it the day someone else has commit rights.
@@ -66,7 +66,7 @@ hatch for a broken release.
 
 ## 5. Actions permissions (Settings → Actions → General)
 
-- **Allow all actions and reusable workflows** — the workflows here use
+- **Allow all actions and reusable workflows**: the workflows here use
   `actions/*` and `github/codeql-action/*` only.
 - Workflow permissions: **Read repository contents** (each workflow requests
   the extra scopes it needs, and nothing more).

@@ -19,12 +19,12 @@ warns if the CUDA is too old for current cards, but the reliable fix is to run
 the line above.
 
 One command, and it stops at the first failure with an explanation. Expect
-**about two and a half hours** — 149 minutes at 0.1.0, nearly all of it
+**about two and a half hours**: 149 minutes at 0.1.0, nearly all of it
 compressing 10 GB of payload twice, once into the `.7z` and once into the
-`.zip` — and around 30 GB of free disk while it works.
+`.zip`, and around 30 GB of free disk while it works.
 
 The first run also downloads what the installer bundles but the repo does not
-store — FFmpeg, the Ollama runtime and the Whisper weights, roughly 3 GB into
+store. FFmpeg, the Ollama runtime and the Whisper weights, roughly 3 GB into
 `vendor/`. That happens once; later builds find them and skip it. To refresh
 one deliberately, run its script with `--force`:
 
@@ -35,7 +35,7 @@ python scripts/fetch_whisper.py --force
 ```
 
 `--skip-backend` and `--skip-ui` reuse the previous run's output. Use them
-when only the icon or the packaging config changed — but **never** when
+when only the icon or the packaging config changed, but **never** when
 Python code changed, or you will ship a stale engine.
 
 ## What comes out
@@ -60,7 +60,7 @@ which was always the bulk of it.
 Two destinations, and which file goes where is not a preference.
 
 **A GitHub release asset is capped at 2 GiB.** The payload passed that before
-anything was bundled — 2.09 GiB at 0.1.0 — and carrying Ollama and the Whisper
+anything was bundled (2.09 GiB at 0.1.0) and carrying Ollama and the Whisper
 weights roughly doubles it. Uploading it to a release does not work, and no
 amount of retrying changes that.
 
@@ -94,7 +94,7 @@ hf upload ColinGPT9/clips-studio-releases release/nsis-web/ . --repo-type=model
 **`huggingface-cli` no longer works.** It was deprecated and now exits with
 "use `hf` instead" rather than uploading anything, so the old command in this
 file silently did nothing. Upload one file at a time if you want to control the
-order, which matters here — see the warning above about `latest.yml`.
+order, which matters here. See the warning above about `latest.yml`.
 
 Expect it to be faster than the file sizes suggest. Hugging Face deduplicates
 against what is already in the repo, and consecutive releases share most of
@@ -105,7 +105,7 @@ genuinely new data.
 
 The app never reads the GitHub releases API. `electron-updater` fetches one
 YAML file from the Hugging Face repo and compares versions, so **an update
-exists the moment that file is uploaded** — before you have written a single
+exists the moment that file is uploaded**, before you have written a single
 line of release notes, and whether or not the GitHub release is still a draft.
 Upload the payload first and the feed file last.
 
@@ -114,13 +114,13 @@ the GitHub provider understood:
 
 | Channel in the app | Fetches | Falls back to |
 |---|---|---|
-| Stable (default) | `latest.yml` | — |
+| Stable (default) | `latest.yml` |: |
 | Beta | `beta.yml` | `latest.yml` |
 | Alpha | `alpha.yml` | `latest.yml` |
 
 The fallback is what keeps the old promise that alpha and beta users also see
 finished releases. It also means **a pre-release channel with no file is not an
-error** — between pre-releases those users quietly get the stable feed.
+error**: between pre-releases those users quietly get the stable feed.
 
 To ship something stable users must not be pulled onto, upload it as
 `alpha.yml` or `beta.yml` and leave `latest.yml` alone.
@@ -134,7 +134,7 @@ paths resolve; it cannot tell that an external GitHub URL now points at a
 release that does not exist.
 
 The version-free `releases/latest/download/...` form would avoid this, but
-GitHub's "latest" **skips pre-releases** — while the project ships alphas, that
+GitHub's "latest" **skips pre-releases**, while the project ships alphas, that
 URL 404s. Switch to it when a release goes out without the pre-release flag.
 
 Check after publishing:
@@ -146,7 +146,7 @@ Check after publishing:
 - [ ] Feed file uploaded **last**, after the payload finished
 - [ ] Named `alpha.yml` / `beta.yml` if stable users should not get it
 - [ ] Release notes mention the SmartScreen warning (see below)
-- [ ] Release notes written for creators — they appear inside the app, in the
+- [ ] Release notes written for creators: they appear inside the app, in the
       update bar's "What's new"
 - [ ] Downloaded the Web Setup on a machine that has never run Clips Kitty,
       and installed it end to end
@@ -154,8 +154,8 @@ Check after publishing:
 ## Testing it the way a stranger meets it
 
 A development machine has Python, FFmpeg and Ollama lying around, so it will
-pass an install test it should fail. The claim being made — install one thing
-and nothing else — can only be checked somewhere none of that exists.
+pass an install test it should fail. The claim being made. Install one thing
+and nothing else: can only be checked somewhere none of that exists.
 
 **Windows Sandbox** is the cheap way to get that: a throwaway Windows that
 boots clean and is destroyed on close.
@@ -178,21 +178,21 @@ boots clean and is destroyed on close.
    is. Launching the exe explicitly sidesteps it.
 
    The Web Setup lands on the sandbox desktop. Only `release/sandbox-test` is
-   mapped, which holds the installer and nothing else — mapping
+   mapped, which holds the installer and nothing else: mapping
    `release/nsis-web` would put the payload beside it, and an installer that
    finds its payload locally never downloads one, which is the entire thing
    being tested.
 
 What to confirm in there:
 
-- [ ] The setup downloads its payload — this is the only real proof the
+- [ ] The setup downloads its payload: this is the only real proof the
       Hugging Face URL baked into the exe is correct
 - [ ] The wizard never asks you to install anything
 - [ ] The model pull starts by itself and reports progress
 - [ ] A clip renders end to end
 
 Two things the sandbox cannot tell you. **CUDA does not work in it**, so the
-app will report no GPU and run on CPU — expected there, and no reflection on a
+app will report no GPU and run on CPU: expected there, and no reflection on a
 real install. And everything is destroyed on close, including the ~6 GB it
 downloaded, so do not close the window mid-run.
 
@@ -214,8 +214,8 @@ it cannot collide with one the creator already runs. Electron starts it, tells
 the engine where it is via `CLIPS_STUDIO_OLLAMA_HOST`, and kills the process
 tree on quit. Its models go to `%LOCALAPPDATA%\Clips Studio\data\models`.
 
-**Not included:** the language model itself. Not for packaging reasons — it
-would fit — but licensing ones: Gemma and friends ship under terms the person
+**Not included:** the language model itself. Not for packaging reasons. It
+would fit, but licensing ones: Gemma and friends ship under terms the person
 downloading has to accept, and bundling them would mean accepting on their
 behalf. It is also 5 GB whose right size depends on their VRAM. The app pulls
 it on first launch behind a progress bar, which works because Ollama's pull
@@ -227,7 +227,7 @@ creator can act on.
 
 Installed copies keep videos, clips and the database in
 `%LOCALAPPDATA%\Clips Studio\data`, never inside Program Files. Uninstalling
-leaves that alone — removing a program must not delete someone's footage.
+leaves that alone: removing a program must not delete someone's footage.
 
 ## SmartScreen
 
@@ -242,7 +242,7 @@ in `ui/electron-builder.yml`, and turning it back on is documented there.
 
 ## Version bump
 
-Version lives in `ui/package.json` only. Bump it, commit, then build — the
+Version lives in `ui/package.json` only. Bump it, commit, then build. The
 artifact names and `latest.yml` follow from it.
 
 ## The other two channels
@@ -259,13 +259,13 @@ Store copy is updated by the Store rather than by `electron-updater`, and its
 donate button opens the system browser. Both are decided at runtime in
 `ui/src/main/distribution.ts`.
 
-The package version is **not** the app version — the Store forbids a major of
+The package version is **not** the app version. The Store forbids a major of
 0, so 0.1.2 ships as package `1.1.2.0`. The script computes that; do not set it
 by hand.
 
 Full process in [MSSTORE.md](MSSTORE.md), and a tick-list for the first
 submission in [msstore-checklist.md](msstore-checklist.md). Later releases use
-**Start update** on the existing Partner Center product — never a new product,
+**Start update** on the existing Partner Center product: never a new product,
 which would discard the ratings and the Store URL.
 
 ### winget

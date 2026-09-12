@@ -1,6 +1,6 @@
 # Contributing to Clips Kitty
 
-Thanks for helping! Clips Kitty is a local-first AI clipping app — Python
+Thanks for helping! Clips Kitty is a local-first AI clipping app. Python
 FastAPI backend + Electron/React UI. Issues labeled
 [`good-first-issue`](../../labels/good-first-issue) are small and
 well-scoped if you want a place to start.
@@ -17,7 +17,7 @@ streamers, but each one carries an auto-collected **Diagnostics** block:
 - the non-secret settings, the video's platform, and the recent log tail
 
 That block is the reproduction recipe: match the model + settings and feed
-a similar video (platform matters — Twitch/Kick VODs are H.264; YouTube
+a similar video (platform matters. Twitch/Kick VODs are H.264; YouTube
 sources are H.264 by design, see `video/encoding.py`). Secrets and
 usernames are redacted before reports ever leave the reporter's machine.
 
@@ -32,7 +32,7 @@ npm run dev                      # starts Electron + the backend together
 
 Working on the interface only? `npm run dev:web` serves it in a browser
 instead, with no Electron and no rebuild loop. The Electron-only calls
-(file pickers, the donate window) are stubbed there — see
+(file pickers, the donate window) are stubbed there. See
 `ui/src/renderer/src/lib/browserShim.ts`.
 
 Before a PR:
@@ -44,9 +44,9 @@ cd ui && npm run typecheck && npm run build
 ```
 
 Want to add a language, a model, a platform or an export format? Each is a
-small, well-defined change — see [docs/EXTENDING.md](docs/EXTENDING.md).
+small, well-defined change. See [docs/EXTENDING.md](docs/EXTENDING.md).
 
-### Or use Docker — nothing else to install
+### Or use Docker: nothing else to install
 
 Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/) and
 that is the whole list. Compose ships inside it; there is no second install.
@@ -59,7 +59,7 @@ docker compose run --rm engine pytest
 
 Saves installing Python, FFmpeg, PyTorch, OpenCV and Node locally, and lets
 you contribute from Linux or macOS to an app that only ships for Windows.
-Electron itself still runs on your host, since it needs a display — see
+Electron itself still runs on your host, since it needs a display. See
 [docs/DOCKER.md](docs/DOCKER.md).
 
 ## Something to run against
@@ -81,18 +81,18 @@ python examples/drive_the_api.py               # the pipeline over HTTP
 
 `--fake` uses a canned model reply, so scoring logic can be worked on with
 no Ollama and no waiting, and behaves the same way every run. If you are
-changing how clips get picked, that loop is worth learning first — the
+changing how clips get picked, that loop is worth learning first. The
 alternative is a full transcribe-and-render per attempt.
 
 ## Building on the app rather than in it
 
 You do not have to change Clips Kitty to use it. The desktop window is one
-client of a local HTTP API, and anything else can be another — a bot, a batch
+client of a local HTTP API, and anything else can be another. A bot, a batch
 runner, a different interface entirely.
 
-- **[docs/API.md](docs/API.md)** — the endpoints meant to be built on, the
+- **[docs/API.md](docs/API.md)**: the endpoints meant to be built on, the
   supported-versus-internal line, and the traps worth knowing first
-- **[docs/EXTENDING.md](docs/EXTENDING.md)** — changing the app itself: adding
+- **[docs/EXTENDING.md](docs/EXTENDING.md)**: changing the app itself, by adding
   a language, a platform, an AI model or an export format
 
 If you build something, say so in an issue. Needing an endpoint is the fastest
@@ -111,7 +111,7 @@ smoke-test the frozen engine → build the renderer → wrap it all up. The
 results land in `release/`: a small **Web Setup .exe**, the **.7z payload**
 it downloads, and a **.zip** for offline installs.
 
-Publish the Web Setup and the .7z to the *same* GitHub release — the setup
+Publish the Web Setup and the .7z to the *same* GitHub release. The setup
 fetches the payload by name, so one without the other is useless. Full
 release checklist: [docs/RELEASING.md](docs/RELEASING.md).
 
@@ -125,11 +125,11 @@ Things worth knowing before you change any of it:
 - **The backend is frozen as a console app on purpose.** A windowed
   PyInstaller build gives the process no stdout, and every `print()` in the
   pipeline then raises. Electron passes `windowsHide` so no console appears.
-- **PyTorch ships as the CUDA build.** It isn't only for tracking — those
+- **PyTorch ships as the CUDA build.** It isn't only for tracking: those
   wheels carry the cuBLAS/cuDNN DLLs that CTranslate2 needs for GPU
   transcription, so a CPU build silently drops Whisper to CPU as well.
 - **FFmpeg comes from `vendor/`,** fetched by `scripts/fetch_ffmpeg.py` and
-  gitignored. Never call `ffmpeg` by bare name — use `core.binaries.ffmpeg()`,
+  gitignored. Never call `ffmpeg` by bare name. Use `core.binaries.ffmpeg()`,
   or an installed copy will look for a binary the user doesn't have.
 - **Code signing is off** (`signAndEditExecutable: false`). electron-builder
   otherwise downloads a bundle containing macOS symlinks, which an ordinary
@@ -144,11 +144,11 @@ Things worth knowing before you change any of it:
 
 - Keep PRs focused on one issue; link it ("Fixes #123").
 - `npm run typecheck` clean; try the affected flow in the running app.
-- Match the style around you — comments explain *why*, not *what*.
+- Match the style around you: comments explain *why*, not *what*.
 
 CI runs on every PR: Python compiles, config and prompts parse, the desktop
 app typechecks and builds, and website links resolve. It is fast and it is
-narrow — a runner has no GPU, no Ollama and no footage, so **a green tick does
+narrow. A runner has no GPU, no Ollama and no footage, so **a green tick does
 not mean clips still come out well.** Anything touching scoring, tracking,
 captions or rendering needs testing against a real video, and the PR should
 say which one.
@@ -162,7 +162,7 @@ canonical issue so reactions concentrate in one place.
 ## Licence
 
 Clips Kitty is **AGPL-3.0**, and contributions are accepted under the same
-terms — opening a PR means you are licensing your change that way.
+terms: opening a PR means you are licensing your change that way.
 
 Practically: your work stays available to the creators this was built for,
 and nobody can take the project closed.

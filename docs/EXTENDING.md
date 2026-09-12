@@ -1,13 +1,13 @@
 # Extending Clips Kitty
 
 The four changes people most often want to make, and what each actually
-touches. All of them are deliberately small — if one of these turns into a
+touches. All of them are deliberately small, if one of these turns into a
 sprawling diff, something has drifted and the design is worth a second look.
 
 Read [ARCHITECTURE.md](../ARCHITECTURE.md) first for how the pieces fit.
 
-If you want to build something *beside* the app rather than change it — a bot,
-a batch runner, another front end — you probably want [API.md](API.md)
+If you want to build something *beside* the app rather than change it. A bot,
+a batch runner, another front end. You probably want [API.md](API.md)
 instead. The whole pipeline is already reachable over HTTP.
 
 ---
@@ -16,24 +16,24 @@ instead. The whole pipeline is already reachable over HTTP.
 
 Translation, subtitles, dubbing and the interface all key off one table.
 
-1. **`multilingual/languages.py`** — add a row to `LANGUAGES`:
+1. **`multilingual/languages.py`**: add a row to `LANGUAGES`:
    ```python
    "pl": ("Polish", "Polski", "Polish"),
    ```
    The third value is the name used *in the translation prompt*; be specific
    where it matters ("Brazilian Portuguese", "neutral Latin American Spanish").
 
-2. **Same file, `SAMPLES`** — one sentence, **written in that language**. It
+2. **Same file, `SAMPLES`**: one sentence, **written in that language**. It
    is what a creator hears when auditioning a dub voice, and hearing English
    in a Polish voice tells them nothing about a Polish dub.
 
-3. **`ui/src/renderer/src/locales/pl.json`** — copy an existing locale and
+3. **`ui/src/renderer/src/locales/pl.json`**: copy an existing locale and
    translate the values. Then import it in `lib/i18n.ts` and add it to
    `LOCALES`.
 
 The translator and subtitle writer are language-agnostic, so nothing else
 changes. `tests/` has a check that the language table and the locale folder
-stay in step — run `pytest` after.
+stay in step. Run `pytest` after.
 
 **Right-to-left scripts** (Arabic, Urdu, Hebrew) need a font with the glyphs
 before burned captions look right; see `multilingual/burn.py`.
@@ -42,14 +42,14 @@ before burned captions look right; see `multilingual/burn.py`.
 
 ## Add an AI model
 
-Anything Ollama serves already works — set it on the Models page. What needs
+Anything Ollama serves already works. Set it on the Models page. What needs
 code is only the **recommendation**, so the setup wizard suggests it.
 
 - **`llm/manager.py`** → `RECOMMENDATIONS` (the table shown on the Models
   page) and `recommend_for()` (the single model the wizard offers).
 
-Keep those two consistent. They disagreed once — a 12 GB card was told
-`gemma3:12b` by one screen and `gemma:7b` by the other — which is why
+Keep those two consistent. They disagreed once. A 12 GB card was told
+`gemma3:12b` by one screen and `gemma:7b` by the other, which is why
 `recommend_for()` exists at all and why a test pins them together.
 
 A model that does not fit in VRAM spills into system RAM and crawls, which
@@ -70,7 +70,7 @@ backend, so nothing else changes.
    others do.
 2. Register the URL pattern in `sources/dispatch.py`.
 
-Everything downstream — transcription, scoring, tracking, rendering — is
+Everything downstream (transcription, scoring, tracking, rendering) is
 untouched, because it only ever sees a local file and a transcript.
 
 Two things worth copying from the existing sources:
@@ -80,7 +80,7 @@ Two things worth copying from the existing sources:
   processing time. See `sources/ytdlp_common.py`.
 - **Audience signals are optional and capped.** Twitch chat replay is read
   where it exists; Kick discards chat entirely and scores fine without it. If
-  your platform has something similar, add it in `analysis/hype.py` — never as
+  your platform has something similar, add it in `analysis/hype.py`: never as
   a hard dependency.
 
 ---
@@ -89,7 +89,7 @@ Two things worth copying from the existing sources:
 
 `video_editor/export.py` renders the final file. `longform/profiles.py` holds
 the 16:9 output shapes (`short_clips`, `clips_140`, `highlights`,
-`edited_stream`) — a new one is usually a new entry there rather than new
+`edited_stream`). A new one is usually a new entry there rather than new
 rendering code.
 
 Anything that shells out to FFmpeg **must** use `core.binaries.ffmpeg()`.
@@ -110,4 +110,4 @@ cd ui && npm run typecheck && npm run build
 CI runs all of that. It is fast, and it is narrow: a runner has no GPU, no
 Ollama and no footage, so **a green tick does not mean clips still come out
 well.** Anything touching scoring, tracking, captions or rendering needs
-testing against a real video — say which one in the PR.
+testing against a real video: say which one in the PR.

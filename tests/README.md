@@ -7,7 +7,7 @@ pytest
 
 ## What is tested, and what deliberately isn't
 
-These cover the **deterministic** parts of the engine — the code where a
+These cover the **deterministic** parts of the engine. The code where a
 given input must always produce the same output, and where a regression is
 silent rather than loud.
 
@@ -37,7 +37,7 @@ expensive to notice.
 
 | Fixture | What it gives you |
 |---|---|
-| `sample_transcript` | Two minutes of written-out stream, parsed into `Segment`s — including a genuinely repeated phrase *and* a vivid one-off that must not be mistaken for one |
+| `sample_transcript` | Two minutes of written-out stream, parsed into `Segment`s: including a genuinely repeated phrase *and* a vivid one-off that must not be mistaken for one |
 | `sample_video` | The generated test video, or a **skip** if it has not been built |
 
 `sample_video` skips rather than fails on purpose: the file is gitignored and
@@ -50,7 +50,7 @@ python tests/assets/make_sample_video.py
 
 ## Writing more
 
-Keep them **fast and offline**. No model calls, no network, no real video —
+Keep them **fast and offline**. No model calls, no network, no real video,
 CI has no GPU and no Ollama. Need a model? Use `FakeBackend` from
 [`../examples/fake_backend.py`](../examples/fake_backend.py), which returns a
 fixed reply and records the prompts it was handed. If a test genuinely needs

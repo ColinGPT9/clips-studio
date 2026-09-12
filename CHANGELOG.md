@@ -8,7 +8,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## Unreleased — a run that makes no clips now says why
+## Unreleased: a run that makes no clips now says why
 
 ### Added
 
@@ -17,8 +17,8 @@ were often broken in a way that only showed up on somebody else's machine.
   moments were considered, the best score any of them reached, and the
   threshold they were measured against.
 
-  When the reason is that nobody was on screen — gameplay, top-down games,
-  anything without a person in frame — it says that too. Part of a clip's score
+  When the reason is that nobody was on screen: gameplay, top-down games,
+  anything without a person in frame. It says that too. Part of a clip's score
   is whether someone is visible, so that footage scores zero on it rather than
   merely low, lands under the threshold, and comes back empty. That is working
   as designed, and until now the app gave no hint of it: the screen just said
@@ -26,7 +26,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
   It only names that cause when the detector actually looked and found nobody.
   A quiet talking-head video that simply did not score well is told apart from
-  gameplay and gets the plain numbers instead — being confidently wrong about
+  gameplay and gets the plain numbers instead: being confidently wrong about
   someone's footage would be worse than saying nothing.
 
 ### Fixed
@@ -38,11 +38,11 @@ were often broken in a way that only showed up on somebody else's machine.
 - Reports also carry the video and the run summary automatically, so they are
   useful even when the description is three words. Previously the video was
   guessed from "most recently updated", which found nothing at all if the
-  reporter had deleted the video first — as they usually have.
+  reporter had deleted the video first, as they usually have.
 
 ---
 
-## Unreleased — publish to YouTube without leaving the editor
+## Unreleased: publish to YouTube without leaving the editor
 
 ### Added
 
@@ -50,14 +50,14 @@ were often broken in a way that only showed up on somebody else's machine.
   in the title, description, tags, thumbnail, playlist, audience and visibility,
   and press Upload. Clips Kitty renders your unsaved edits and uploads straight
   to your channel. No exporting the file first, no hunting for it on disk, no
-  separate publishing screen — you never leave the editor.
+  separate publishing screen. You never leave the editor.
 
   **Scheduling uploads the video now** and asks YouTube to publish it later, so
   you can close Clips Kitty and switch your computer off. There is no timer in
   this app and nothing to leave running.
 
   It is **off until you turn it on** in Settings, and it uses your own free
-  Google API key rather than a shared one — which is what stops every user in the
+  Google API key rather than a shared one, which is what stops every user in the
   world drawing from the same daily upload allowance. If you never enable it, the
   editor looks exactly as it did.
 
@@ -88,12 +88,12 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## 1.1.4 — setup stops asking for a model you never chose
+## 1.1.4: setup stops asking for a model you never chose
 
 ### Fixed
 
 - **Setup no longer asks for a model you were never meant to install.** On a PC
-  without a graphics card, setup downloads the smaller AI model that suits it —
+  without a graphics card, setup downloads the smaller AI model that suits it,
   and then told you a *different* model was missing, with a red error, directly
   under a line confirming a model was installed. The download had worked. The
   check was asking the wrong question: it wanted one specific model rather than
@@ -101,7 +101,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
   It now checks whether an AI model is available at all, and names the one it
   will actually use. Downloading a model from setup also selects it, unless you
-  already have a working one chosen — so picking a bigger model to try later
+  already have a working one chosen, so picking a bigger model to try later
   will not switch you over without asking.
 
   **This affected every PC whose recommended model was not the shipped
@@ -142,9 +142,9 @@ were often broken in a way that only showed up on somebody else's machine.
 ### Security
 
 - **Voice files are now found by listing the folder rather than by building a
-  path from the requested name.** No release was vulnerable — the name was
+  path from the requested name.** No release was vulnerable. The name was
   already checked against a strict pattern that rejects anything resembling a
-  path — but the check was a rule about the text, and this is a property of
+  path, but the check was a rule about the text, and this is a property of
   where the value comes from, which is the stronger of the two. A related
   pattern that only rejected a name ending in a newline was tightened at the
   same time.
@@ -153,7 +153,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
 - **GTX 10-series and older cards now run on the CPU.** Supporting the RTX
   50-series meant moving to a newer CUDA, and that does not reach back to cards
-  that old. **GTX 16-series and every RTX card are unaffected** — an RTX 2060 is
+  that old. **GTX 16-series and every RTX card are unaffected**. An RTX 2060 is
   the oldest card that still uses its GPU. On the machines this does affect,
   everything still works and produces identical clips, just more slowly, and
   video encoding uses the GPU exactly as before. No version of CUDA supports
@@ -166,7 +166,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## 1.1.3 — the app is now called Clips Kitty
+## 1.1.3: the app is now called Clips Kitty
 
 > **Same app, same data, nothing to do.** Your clips, settings and creator
 > profiles stay exactly where they are and open as normal. Only the name
@@ -182,7 +182,7 @@ or shared has broken.
 
 **The version jumped from 0.1.2 to 1.1.3**, which looks odd and is deliberate.
 The Store will not accept a version starting with 0, so every release used to
-carry two numbers — 0.1.2 in the app and 1.1.2.0 on the Store — and somebody
+carry two numbers (0.1.2 in the app and 1.1.2.0 on the Store) and somebody
 had to remember the mapping. 1.1.3 is above the 1.1.2.0 already published, so
 from here the app version and the Store version are the same number. This is
 still alpha software; the leading 1 is a Store requirement, not a claim.
@@ -226,7 +226,7 @@ still alpha software; the leading 1 is a Store requirement, not a claim.
   most visible change is that clips are "cortes" rather than "clipes", which is
   what Brazilian editors actually call them. If something still reads oddly,
   [#59](https://github.com/ColinGPT9/clips-studio/issues/59) is the place to
-  say so — two phrases are already known to need a second opinion.
+  say so: two phrases are already known to need a second opinion.
 - **Clips Studio is coming to the Microsoft Store.** Same application, same
   local processing; the Store version is updated by the Store rather than by
   the in-app updater, and its donate button opens your browser. The standalone

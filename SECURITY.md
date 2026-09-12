@@ -32,14 +32,14 @@ mostly about untrusted input and local exposure:
 
 - **The local API** (`server/`) binds to `127.0.0.1:8765`. Anything that lets a remote
   or cross-origin page reach it, or that widens that binding, is in scope.
-- **Path handling** — export folders, media serving, and file imports. Path traversal
+- **Path handling**: export folders, media serving, and file imports. Path traversal
   out of the data directory is in scope.
 - **Untrusted video and transcript content** reaching a shell, an FFmpeg argument, or a
   file path. Command injection through a video title or filename is in scope.
 - **Prompt content reaching disk or the shell.** The LLM's output is treated as
   untrusted and validated before it is applied; a way around that validation is in
   scope.
-- **Credential handling** — YouTube OAuth tokens and `config/client_secret.json`.
+- **Credential handling**: YouTube OAuth tokens and `config/client_secret.json`.
 - **The feedback relay** (`feedback-relay/`) and the diagnostics attached to in-app
   reports. Diagnostics are redacted before leaving the reporter's machine; a leak of
   secrets or personal data through that path is in scope and important.
@@ -49,7 +49,7 @@ mostly about untrusted input and local exposure:
 
 - Attacks needing an attacker who already has local code execution or admin rights on
   the machine. A local desktop app can't defend against that.
-- Vulnerabilities in Ollama, FFmpeg, yt-dlp, or the AI models themselves — report those
+- Vulnerabilities in Ollama, FFmpeg, yt-dlp, or the AI models themselves: report those
   upstream. If Clips Kitty *uses* one of them unsafely, that part is in scope.
 - The quality, bias, or content of AI-generated clips, titles, or translations. Those
   are bugs or feature requests, not security issues.
@@ -62,7 +62,7 @@ mostly about untrusted input and local exposure:
 *builds* the installer rather than in anything shipped to a user.
 [docs/DEPENDENCY-SECURITY.md](docs/DEPENDENCY-SECURITY.md) goes through them
 one at a time: what ships, what does not, what is reachable from app code, and
-what is already mitigated. Please read it before reporting one — and do report
+what is already mitigated. Please read it before reporting one, and do report
 anything it does not cover.
 
 ## A note on what this app does
@@ -70,7 +70,7 @@ anything it does not cover.
 Clips Kitty downloads videos with yt-dlp and processes them locally. It never uploads
 your footage anywhere unless you ask it to. The only outbound network traffic in a
 normal run is fetching the source video, an optional Twitch chat-replay request, model
-downloads you ask for, and — only if you submit one — an in-app feedback report.
+downloads you ask for, and (only if you submit one) an in-app feedback report.
 
 The exception is publishing. If you switch on **Settings → Publish to YouTube**, connect
 your own Google account and press Upload, the clip goes from your machine straight to
@@ -83,11 +83,11 @@ Two things worth knowing if you turn it on:
 
 - **The local API has no authentication** (see above). While an account is connected,
   anything that can reach `127.0.0.1:8765` can publish to your channel. That is the same
-  trust boundary as the rest of the API — it can already read your footage — but the
+  trust boundary as the rest of the API (it can already read your footage) but the
   consequence is more visible here.
 - **Your credentials stay on your machine.** The OAuth token and your Google client
   secret are stored with Windows DPAPI, encrypted against your Windows account, so
   copying the data folder to another PC or user does not carry them over. On Linux and
   in the Docker image there is no DPAPI, and they fall back to an owner-only (0600)
-  file — which protects against other users on the box, not against someone who already
+  file, which protects against other users on the box, not against someone who already
   has your account.

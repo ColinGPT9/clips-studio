@@ -2,7 +2,7 @@
 
 Clips Kitty lives on GitHub, but people look for software in more than one
 place. These mirrors exist so the project can be found by someone who never
-visits GitHub — and so it survives any single platform.
+visits GitHub, and so it survives any single platform.
 
 Everything below is automated by
 [`.github/workflows/mirror.yml`](../.github/workflows/mirror.yml), which runs on
@@ -11,11 +11,11 @@ workflow is harmless until you set one up, and starts working the moment you do.
 
 | Mirror | What goes there | Secrets needed |
 |---|---|---|
-| GitHub Pages | The website (`site/`) | none — uses the built-in token |
+| GitHub Pages | The website (`site/`) | none: uses the built-in token |
 | Hugging Face Space | The website (`site/`) | `HF_TOKEN`, `HF_SPACE` |
 
 A third Hugging Face repository, `clips-studio-releases`, holds the installer
-payload. It is **not** a mirror and not automated — it exists because a GitHub
+payload. It is **not** a mirror and not automated. It exists because a GitHub
 release asset is capped at 2 GiB and the payload is roughly twice that, so it
 is the primary download rather than a copy of one. Uploading is a manual step
 in [RELEASING.md](RELEASING.md).
@@ -38,7 +38,7 @@ confusing way to lose an afternoon. Published at
 A static Space that serves the same `site/` folder. Worth having because it puts
 the project in front of people already searching for local AI tools.
 
-1. Create a Space at <https://huggingface.co/new-space> — **SDK: Static**.
+1. Create a Space at <https://huggingface.co/new-space>: **SDK: Static**.
 2. Create a token at <https://huggingface.co/settings/tokens> with **write**
    access.
 3. Add secrets: `HF_TOKEN` (the token) and `HF_SPACE` (e.g.
@@ -59,7 +59,7 @@ to keep in step, and it earns nothing unless people are actually looking for the
 project there. Nobody was. (Gitee additionally wants real-name verification with
 a phone number and ID, and reviews new repositories before pushes go through.)
 
-The website is a different case — it costs one force-push and puts the project
+The website is a different case. It costs one force-push and puts the project
 in front of people searching Hugging Face for local AI tools.
 
 If that changes, any git host works the same way: add a job to
@@ -74,5 +74,5 @@ this repo.
 
 Every job does a `--force` push from GitHub. **A commit made directly on a mirror
 will be overwritten on the next push to `main`.** Keep GitHub as the place work
-happens, and point contributors there — a note in each mirror's description
+happens, and point contributors there. A note in each mirror's description
 saves confusion.

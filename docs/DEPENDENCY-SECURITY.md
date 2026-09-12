@@ -11,16 +11,16 @@ Last assessed: **2026-07-26**, against electron 31.7.7 / electron-builder
 
 | Package | Ships to users? | Reachable here? | Status |
 |---|---|---|---|
-| `electron` | **Yes** — it is the app | Partly | Open. Upgrade planned |
-| `tar` (via electron-builder) | No — build machine only | No | Fixed by an override |
-| `app-builder-lib`, `builder-util-runtime` | No — build machine only | No | Needs electron-builder 26 |
-| `brace-expansion` | No — build tooling | No | Transitive |
-| `esbuild`, `vite` | No — dev server only | No | Dev-time only |
+| `electron` | **Yes**. It is the app | Partly | Open. Upgrade planned |
+| `tar` (via electron-builder) | No: build machine only | No | Fixed by an override |
+| `app-builder-lib`, `builder-util-runtime` | No: build machine only | No | Needs electron-builder 26 |
+| `brace-expansion` | No: build tooling | No | Transitive |
+| `esbuild`, `vite` | No: dev server only | No | Dev-time only |
 
 Only the first row can reach anyone who installs Clips Kitty. Everything
 else lives in tooling that produces the installer and is never inside it.
 
-## electron 31.7.7 — the one that matters
+## electron 31.7.7: the one that matters
 
 Seventeen published advisories, all fixed in **>= 39.8.5**. Use-after-frees,
 service-worker spoofing of `executeJavaScript` IPC replies, wrong origin
@@ -41,7 +41,7 @@ app has almost none:
   not `paypal.com` / `paypal.me`.
 
 So the sandboxed remote-content window is the realistic surface, and it has
-no bridge into the app. That is mitigation, not a fix — a renderer sandbox
+no bridge into the app. That is mitigation, not a fix. A renderer sandbox
 escape is exactly what several of these advisories describe.
 
 **The upgrade is a real piece of work, not a version bump.** Electron 31 to
@@ -49,14 +49,14 @@ escape is exactly what several of these advisories describe.
 Electron. That is the whole packaging chain: the `nsis-web` target (chosen
 because 32-bit `makensis` dies around 2 GB), `signAndEditExecutable: false`,
 and the `afterPack` rcedit hook that exists *because* signing is off. None of
-that can be verified by CI — it needs a full `scripts/build_installer.py`
+that can be verified by CI. It needs a full `scripts/build_installer.py`
 run and an install on a clean machine.
 
 Do it deliberately, with time to test, and process a real video afterwards.
 Not as a drive-by merge the night before a release. Upgrading also closes the
 `app-builder-lib` and `builder-util-runtime` advisories in the same move.
 
-## tar — fixed by an override
+## tar: fixed by an override
 
 `tar@6.2.1` arrived via `electron-builder` -> `app-builder-lib` and carried
 twelve advisories including the only **critical** one. The 6.x line was never
@@ -70,7 +70,7 @@ patched; the fix exists only in 7.x.
 
 Checked before committing: `require('tar')` still resolves and still exposes
 `extract`/`create`/`list`, which is what `app-builder-lib/out/targets/archive.js`
-calls. Build-machine scope either way — nothing here is inside the shipped app.
+calls. Build-machine scope either way: nothing here is inside the shipped app.
 
 **Delete this override when electron-builder reaches 26**, which ships a
 patched tar of its own. Leaving a stale override pinned across a major
@@ -79,7 +79,7 @@ upgrade is its own hazard.
 ## Why `npm audit fix --force` is the wrong button
 
 It proposes electron-builder 26 as a breaking change, which is the packaging
-upgrade above — a decision with a test plan attached, not something to accept
+upgrade above. A decision with a test plan attached, not something to accept
 from a prompt. Run `npm audit` to read, never `--force` to fix.
 
 ## Re-checking this
