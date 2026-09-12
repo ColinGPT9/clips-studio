@@ -41,3 +41,10 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@v5
+
+      # Tell the IndexNow engines the site changed, so Bing crawls it in hours
+      # rather than weeks. continue-on-error because a refused submission is
+      # not a failed deploy, and the site is already live by this point.
+      - name: Tell search engines
+        continue-on-error: true
+        run: python scripts/ping_indexnow.py
