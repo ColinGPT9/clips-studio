@@ -9,6 +9,7 @@ pinned: true
 license: agpl-3.0
 short_description: Free open-source Opus Clip alternative that runs on your PC
 tags:
+  - gemma
   - video
   - video-editing
   - ai-video
