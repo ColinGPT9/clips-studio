@@ -96,6 +96,12 @@ hf upload ColinGPT9/clips-studio-releases release/nsis-web/ . --repo-type=model
 file silently did nothing. Upload one file at a time if you want to control the
 order, which matters here. See the warning above about `latest.yml`.
 
+**Then paste the card.** `docs/hf-release-card.md` is the README for that model
+repo, and nothing uploads it: no workflow references the file at all. Copy it
+into the Hugging Face web editor by hand after the upload. It is worth the
+thirty seconds, because that card is what Hugging Face search and Google index
+for the repo, and it drifts silently when skipped.
+
 Expect it to be faster than the file sizes suggest. Hugging Face deduplicates
 against what is already in the repo, and consecutive releases share most of
 their bundled runtime, so a 6 GB payload can be a couple of hundred MB of
