@@ -1,13 +1,13 @@
 # Examples
 
 Small runnable programs, each showing one way into the codebase. They are
-meant to be read and then edited — copy one, change it, see what happens.
+meant to be read and then edited. Copy one, change it, see what happens.
 
 Run them from the repo root.
 
 | | What it shows |
 |---|---|
-| [`score_a_transcript.py`](score_a_transcript.py) | Clip selection on its own — no video, no rendering, seconds per run |
+| [`score_a_transcript.py`](score_a_transcript.py) | Clip selection on its own: no video, no rendering, seconds per run |
 | [`drive_the_api.py`](drive_the_api.py) | The whole pipeline over HTTP, exactly as the desktop app drives it |
 | [`fake_backend.py`](fake_backend.py) | A deterministic stand-in for the model, so scoring runs without Ollama |
 
@@ -29,7 +29,7 @@ what you want when the thing you are changing is the prompt in
 python examples/score_a_transcript.py
 ```
 
-Re-score a stream you have already processed — no re-download, no
+Re-score a stream you have already processed: no re-download, no
 re-transcribe:
 
 ```
@@ -54,14 +54,14 @@ python examples/drive_the_api.py --file "D:/footage/stream.mp4"
 ```
 
 It submits the job, follows progress over the WebSocket, and lists the
-clips. Nothing in it is privileged — the Electron UI makes the same calls.
+clips. Nothing in it is privileged. The Electron UI makes the same calls.
 If you want Clips Kitty to do something on a schedule, or from a bot, or
 across a folder of old VODs, this file is the starting point.
 
 ## Writing your own
 
 The engine imports cleanly from the repo root, so a script only needs the
-root on `sys.path` — each example does this in its first few lines. From
+root on `sys.path`. Each example does this in its first few lines. From
 there:
 
 ```python
@@ -80,4 +80,4 @@ Two things to respect, both of which will bite otherwise:
   `%LOCALAPPDATA%`, because Program Files is not writable.
 
 Adding a language, model, platform or export format is a smaller change than
-it looks — [`../docs/EXTENDING.md`](../docs/EXTENDING.md) has each one.
+it looks. [`../docs/EXTENDING.md`](../docs/EXTENDING.md) has each one.

@@ -127,7 +127,7 @@ Two honest caveats:
 - **AI dubbing works in an installed copy as of 1.1.3.** The speech engine
   ships with the app. The voice for a language is downloaded the first time
   that language is dubbed (~60 MB), so the first run needs a connection.
-  Languages with no Piper voice — Filipino, Thai, Korean — are subtitle-only,
+  Languages with no Piper voice (Filipino, Thai, Korean) are subtitle-only,
   and the app says so rather than skipping them silently.
 
 Say plainly which kind of problem you found, because the fixes are unrelated:

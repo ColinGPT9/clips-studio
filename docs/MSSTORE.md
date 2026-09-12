@@ -24,12 +24,12 @@ You will need:
 Pick **Individual**, not Company. Microsoft's own guidance says Individual is
 for "independent developers whose distribution of apps through the Store is not
 in relation to their business, trade, or profession", which is this. Note that
-Individual cannot later be converted to Company — you would have to create a
+Individual cannot later be converted to Company. You would have to create a
 new account.
 
 ---
 
-## Step 1 — Create the developer account
+## Step 1: Create the developer account
 
 Go to **<https://storedeveloper.microsoft.com>** and click *Get started for
 free*.
@@ -40,7 +40,7 @@ you the old flow instead.
 
 1. Choose **Individual developer**
 2. Sign in with your Microsoft account
-3. Verify your identity — government ID plus a selfie, done on a phone
+3. Verify your identity: government ID plus a selfie, done on a phone
 4. Fill in your profile
 5. Click **Go to Partner Center dashboard**
 
@@ -67,7 +67,7 @@ The publisher display name is what customers see on the listing, and **neither
 it nor the account type can be changed after registration.** Individual
 accounts are described by Microsoft as publishing "under your own name".
 
-Use **ColinGPT9** — it is already what the repository, the website, the winget
+Use **ColinGPT9**. It is already what the repository, the website, the winget
 manifest and the copyright line say, so anything else creates a second identity
 to keep straight.
 
@@ -75,30 +75,30 @@ What is *not* published: Store policy 10.14 requires customer support contact
 information to appear on the product page for **Company** accounts "in certain
 regions", and states no such requirement for Individual accounts. The
 trader/business-verification rules that come from the EU Digital Services Act
-are likewise tied to Company accounts — Individual is explicitly the
+are likewise tied to Company accounts. Individual is explicitly the
 hobbyist and non-commercial category.
 
 If you want to publish under a name that is not your legal one, ask
 [developer support](https://aka.ms/windowsdevelopersupport) **before** finishing
 signup. It cannot be undone afterwards.
 
-## Step 2 — Reserve the name
+## Step 2: Reserve the name
 
 In Partner Center: **Apps and games → New product → MSIX or PWA app**.
 
 Search for **Clips Kitty** and reserve it if it is free. If it is taken, try
 `Clips Kitty - AI Video Clipper`. Do not add descriptive words just for search
-reach — Store policy 10.1.1 says the product name "must not contain marketing
+reach. Store policy 10.1.1 says the product name "must not contain marketing
 or descriptive text, including extraneous use of keywords", and a name that
 breaks it fails certification.
 
 The name is reserved to you as soon as you claim it, before any submission
 exists.
 
-## Step 3 — Copy your identity values
+## Step 3: Copy your identity values
 
 **Done.** Recorded here so they can be checked without logging in, and so a
-future release does not have to go looking. None of these are secrets — every
+future release does not have to go looking. None of these are secrets. Every
 one ships inside the manifest of the package itself.
 
 **Where they came from:** Partner Center → Clips Kitty → General → **View
@@ -109,10 +109,10 @@ product identity**.
 | Package/Identity/Name | `identityName` | `ClipsStudio.ClipsStudio` |
 | Package/Identity/Publisher | `publisher` | `CN=82A1C822-C6B7-41D5-889B-160627060939` |
 | Package/Properties/PublisherDisplayName | `publisherDisplayName` | `Clips Studio` |
-| Package Family Name | *(nothing — quote it in support requests)* | `ClipsStudio.ClipsStudio_315g1r74a6w58` |
+| Package Family Name | *(nothing: quote it in support requests)* | `ClipsStudio.ClipsStudio_315g1r74a6w58` |
 | Store ID | *(the links below)* | `9NB6XT7DSQZZ` |
 
-Once the product is live, the Store ID gives you these — add them to the README
+Once the product is live, the Store ID gives you these. Add them to the README
 and the website then, not before, because they 404 until it publishes:
 
 - Web listing: `https://apps.microsoft.com/detail/9NB6XT7DSQZZ`
@@ -132,7 +132,7 @@ look like a different app.
 `scripts/build_msix.py` refuses to run while any placeholder is still there, so
 you cannot accidentally build a package that cannot be uploaded.
 
-## Step 4 — Build the package
+## Step 4: Build the package
 
 ```
 python scripts/build_msix.py
@@ -163,8 +163,8 @@ by adding one to the major:
 | 1.0.0 | 2.0.0.0 |
 
 The leading `1` is a Store requirement, not a claim that this is a 1.0 release.
-Everything a user sees — the README, the GitHub release, this site, the Store
-description — still says **0.1.2**.
+Everything a user sees. The README, the GitHub release, this site, the Store
+description: still says **0.1.2**.
 
 It has to derive from the app's major rather than being pinned at 1, because
 the Store also requires every submission to be higher than the last. If the
@@ -174,7 +174,7 @@ rejected.
 
 ### Installing it yourself before uploading
 
-The package is unsigned on purpose — Microsoft re-signs it after certification,
+The package is unsigned on purpose. Microsoft re-signs it after certification,
 so no certificate is needed to submit. But Windows will not install an unsigned
 package, so testing what you are about to ship means signing it first:
 
@@ -204,13 +204,13 @@ Add-AppxPackage "build\msix-signing\ClipsStudio-1.1.2-x64.appx"
 To remove it again: `Get-AppxPackage *ClipsStudio* | Remove-AppxPackage`
 
 The certificate subject must equal `publisher` exactly, so the script reads it
-from `electron-builder.yml` rather than having it typed twice — a mismatch
+from `electron-builder.yml` rather than having it typed twice. A mismatch
 makes Windows refuse the install with an error that names neither value.
 
 Then run the [Windows App Certification Kit](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-app-certification-kit)
 against the installed package before uploading.
 
-## Step 5 — Create the submission
+## Step 5: Create the submission
 
 From the app overview, click **Start submission**.
 
@@ -219,7 +219,7 @@ From the app overview, click **Start submission**.
 - **Price:** Free
 - **Markets:** all
 - **Discoverability:** *Make this product available and discoverable in the
-  Store* — the whole point of being here
+  Store*. The whole point of being here
 - **Schedule:** publish manually. **Do not** let it go live automatically on
   the first submission; you want to read the certification report first.
 
@@ -230,13 +230,13 @@ From the app overview, click **Start submission**.
 
   An earlier version of this page said "Multimedia design → Video editing",
   which is wrong twice over and produced a miscategorised listing. There is no
-  **Video editing** subcategory anywhere in the Store — Multimedia design offers
+  **Video editing** subcategory anywhere in the Store. Multimedia design offers
   only Illustration + graphic design, Music production, and Photo + video
-  production — so the instruction named something unselectable.
+  production, so the instruction named something unselectable.
 
   And Multimedia design is the wrong parent. Microsoft describes it as tools for
   "creating or editing **graphics, art, design**", with examples that are
-  entirely image editing, painting, sketchbooks, 3D modelling and fine arts —
+  entirely image editing, painting, sketchbooks, 3D modelling and fine arts,
   no video at all. **Photo + video** is described as "capturing, **editing**,
   and sharing photos or **videos**", and lists photo/video editing outright.
 
@@ -248,7 +248,7 @@ From the app overview, click **Start submission**.
   published listing stays live throughout, and with manual publishing it only
   changes when you click.
 - **Privacy policy URL:** `https://colingpt9.github.io/clips-studio/privacy.html`
-  This is **required** — Store policy 10.5.1 says Win32 and Desktop Bridge
+  This is **required**. Store policy 10.5.1 says Win32 and Desktop Bridge
   products "must always have privacy policies".
 - **Website:** `https://colingpt9.github.io/clips-studio/`
 - **Support contact:** `https://github.com/ColinGPT9/clips-studio/issues`
@@ -264,8 +264,8 @@ System requirements, taken from the README rather than invented:
 | OS | Windows 10 1809 or later |
 
 **Product declarations:** tick that the product uses **live generative AI**.
-Policy 11.16 requires it — the app writes clip titles with a language model in
-response to user input — and it requires the metadata to disclose it and a way
+Policy 11.16 requires it. The app writes clip titles with a language model in
+response to user input, and it requires the metadata to disclose it and a way
 for users to report bad output. The in-app Feedback Hub covers the last part.
 
 **Do not declare a third-party purchase API.** An earlier version of this page
@@ -273,7 +273,7 @@ said to, and that was wrong. Nothing in Clips Kitty is for sale: the donate
 button is optional, it buys nothing, and in Store builds it hands PayPal to the
 *system browser* rather than opening a payment page inside the app (see
 `ui/src/main/distribution.ts`). No purchase API is used and no transaction
-happens in the app, so there is nothing to declare — declaring one would invite
+happens in the app, so there is nothing to declare: declaring one would invite
 questions about a payment flow that does not exist.
 
 The browser handoff is still the right behaviour and stays: policy 10.8.2 is
@@ -284,7 +284,7 @@ payment page hosted inside the app.
 ### Age rating
 
 Complete the IARC questionnaire honestly. For Clips Kitty the answers are all
-"no" — no violence, no sexual content, no gambling, no profanity generated by
+"no": no violence, no sexual content, no gambling, no profanity generated by
 the app, no user-to-user communication, no location sharing, no advertising.
 
 Two that need thought rather than a reflex "no":
@@ -311,7 +311,7 @@ PDBs to contribute, so the wrapper would add nothing. Partner Center accepts
 
 Copy from [`store-listing.md`](store-listing.md).
 
-Required: a description and at least one screenshot. Provide four or more —
+Required: a description and at least one screenshot. Provide four or more,
 they are what people actually look at.
 
 ### Submission options
@@ -325,7 +325,7 @@ the tester will see on first run is unusual:
 > a progress bar. This is model weights (data), not executable code. Nothing is
 > uploaded; all processing is on-device.
 >
-> To test without waiting for a download, paste any short YouTube link — the
+> To test without waiting for a download, paste any short YouTube link. The
 > app will prompt to download a model first. A machine with 16 GB of RAM is
 > required; on less, clips are analysed but rendering fails with an
 > out-of-memory error.
@@ -337,7 +337,7 @@ the tester will see on first run is unusual:
 >
 > Setup picks the AI model to download from the test machine's hardware, so on
 > a PC without a graphics card it installs a smaller one. The "AI model" row
-> then names whichever model was installed — it is not expected to name any
+> then names whichever model was installed. It is not expected to name any
 > particular model, and a name that differs from any documentation is correct
 > rather than a failure.
 >
@@ -350,7 +350,7 @@ for their hardware, saw the check name a different one, and reported the
 feature as unusable. The check no longer does that (see the 1.1.4 changelog),
 but a tester reads the notes before they read the screen.
 
-## Step 6 — Submit, and what happens next
+## Step 6: Submit, and what happens next
 
 Click **Submit to the Store**.
 
@@ -358,7 +358,7 @@ Certification usually takes a few hours to three days. Status appears on the
 submission page and you get email at each stage.
 
 **If it fails**, the report names the policy number. Fix it, then use **Update**
-on the submission — you do not start over. Microsoft's own published statistics
+on the submission. You do not start over. Microsoft's own published statistics
 show 623 overturned decisions out of 1,118 appeals, so if a rejection looks
 wrong, appealing is worthwhile: `reportapp@microsoft.com`.
 
@@ -381,7 +381,7 @@ Ratings and reviews carry across, and existing users update automatically.
 
 Both distributions are the same binary content. Two behaviours differ, decided
 at runtime in `ui/src/main/distribution.ts` by checking `process.windowsStore`
-— a fact Electron sets from the package itself, so it cannot disagree with
+a fact Electron sets from the package itself, so it cannot disagree with
 reality:
 
 | | Standalone | Store |
@@ -389,7 +389,7 @@ reality:
 | Updates | electron-updater, Hugging Face feed | the Store |
 | Donate button | PayPal in a locked-down in-app window | PayPal in the system browser |
 
-Everything else — the engine, the models, the pipeline, the data directory — is
+Everything else (the engine, the models, the pipeline, the data directory) is
 identical.
 
 ## Known gaps
@@ -400,6 +400,6 @@ identical.
   unpacked app alone is larger than that. Building the Store package is a local
   job until there is a self-hosted runner.
 - **AI dubbing ships as of 1.1.3.** Piper is bundled, so `dub.available()`
-  is True in a packaged build. Voices are not bundled — each is ~60 MB and is
+  is True in a packaged build. Voices are not bundled. Each is ~60 MB and is
   downloaded into `data/voices/` the first time a language is dubbed, so
   dubbing needs a working connection once per language.

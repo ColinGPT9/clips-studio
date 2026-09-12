@@ -10,7 +10,7 @@ tags:
   - installer
 ---
 
-# Clips Kitty — release payload
+# Clips Kitty: release payload
 
 **This repository is not a model.** It holds the installer payload for
 [Clips Kitty](https://github.com/ColinGPT9/clips-studio), a free, open-source
@@ -51,9 +51,9 @@ than something that can be handed over in a box.
 
 Source, issues and contributing guide: **<https://github.com/ColinGPT9/clips-studio>**
 
-- [Architecture](https://github.com/ColinGPT9/clips-studio/blob/main/ARCHITECTURE.md) — how the pipeline fits together
+- [Architecture](https://github.com/ColinGPT9/clips-studio/blob/main/ARCHITECTURE.md): how the pipeline fits together
 - [Contributing](https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md)
-- [Engine container image](https://github.com/ColinGPT9/clips-studio/blob/main/docs/DOCKER.md) — work on the Python engine without installing PyTorch locally
+- [Engine container image](https://github.com/ColinGPT9/clips-studio/blob/main/docs/DOCKER.md): work on the Python engine without installing PyTorch locally
 - Website: <https://colingpt9.github.io/clips-studio/> · Space: <https://huggingface.co/spaces/ColinGPT9/Clips-Studio>
 
 Licensed AGPL-3.0. The bundled components keep their own licences; see

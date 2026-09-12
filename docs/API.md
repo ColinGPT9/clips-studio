@@ -9,7 +9,7 @@ Nothing needs to be added to the app for that to work. The service is already
 running whenever Clips Kitty is open, on `127.0.0.1:8765`.
 
 The service has 86 HTTP endpoints and a WebSocket. This document covers the
-subset meant to be built against — most of the rest are the desktop UI talking
+subset meant to be built against. Most of the rest are the desktop UI talking
 to itself, and are listed as internal below.
 
 > **Every example here was run against a live instance**, and the responses are
@@ -41,7 +41,7 @@ to itself, and are listed as internal below.
 
 ## Start it
 
-If the desktop app is open, the API is already up — it is the same process
+If the desktop app is open, the API is already up. It is the same process
 tree, and the app is just a window onto it.
 
 Headless, which is usually what an integrator wants:
@@ -62,7 +62,7 @@ running code rather than written by hand, so they never drift:
 
 | | |
 |---|---|
-| `http://127.0.0.1:8765/docs` | Swagger UI — every endpoint, try them in the browser |
+| `http://127.0.0.1:8765/docs` | Swagger UI. Every endpoint, try them in the browser |
 | `http://127.0.0.1:8765/redoc` | the same thing, easier to read |
 | `http://127.0.0.1:8765/openapi.json` | the schema, for generating a client |
 
@@ -104,7 +104,7 @@ Easy to lose an hour to, so it is near the top:
 These are **separate libraries with separate databases**. A checkout resolves
 the relative `paths.data_dir` against the repo, not the working directory, so a
 dev instance and an installed instance disagree about which videos exist even
-though they serve identical routes on the same machine — and will happily fight
+though they serve identical routes on the same machine, and will happily fight
 over the same port.
 
 Two consequences worth knowing before you debug something confusing:
@@ -119,7 +119,7 @@ Two consequences worth knowing before you debug something confusing:
 The endpoints in this document are the ones intended to be built on. They will
 not change shape without a note in [CHANGELOG.md](../CHANGELOG.md).
 
-**Everything else is internal** — branding assets, creator memory, caption
+**Everything else is internal**: branding assets, creator memory, caption
 editing, the AI edit endpoints, feedback submission. They exist to serve one
 specific screen and they change when that screen changes. They are visible in
 `/docs`, they work, and depending on them is at your own risk.
@@ -180,7 +180,7 @@ Whether it can actually *do* anything, which is a different question.
 
 Seven checks: `ffmpeg`, `ffprobe`, `ollama`, `model`, `whisper`, `gpu`, `disk`.
 **Call this before submitting work.** A failing `blocking` check means the job
-will be accepted and then die — no model installed is the common one. `fix`
+will be accepted and then die: no model installed is the common one. `fix`
 carries a human-readable remedy when a check fails.
 
 `gpu` and `disk` are non-blocking: it runs on the CPU, slowly.
@@ -226,7 +226,7 @@ values in `config/settings.yaml`:
 | `caption_style` | object | font, size, colour, position, `words_per_caption` |
 | `long_clips` | bool | 61–180s clips, for TikTok monetisation |
 | `podcast` | bool | multi-camera: letterbox, no subject tracking |
-| `longform` | object | `{"mode": ...}` — `short_clips`, `clips_140`, `highlights` or `edited_stream` |
+| `longform` | object | `{"mode": ...}`: `short_clips`, `clips_140`, `highlights` or `edited_stream` |
 | `filter` | string | colour preset from `video/filters.py` |
 | `watermark_profile_id` | int | branding profile applied to every clip |
 
@@ -244,8 +244,8 @@ being `null`** rather than assuming a job was created. Retry with
 
 Other outcomes:
 
-- `409` — the queue is full (the cap is a real limit, not a greyed-out button)
-- `422` — no `url` field
+- `409`: the queue is full (the cap is a real limit, not a greyed-out button)
+- `422`: no `url` field
 
 > Two known warts, both harmless: this returns **200**, not 201, and it accepts
 > a stray `status_code` query parameter that does nothing. Do not send it.
@@ -270,7 +270,7 @@ curl -X POST http://127.0.0.1:8765/jobs/batch \
 **Deliberately tolerant**: one bad link in a list of twelve reports itself and
 the other eleven still queue. `reason` is one of `unrecognized`,
 `already_processed`, `already_queued`, `queue_full`, `bad_option`. Always read
-`skipped` — the request succeeds with a 200 even when nothing was queued.
+`skipped`. The request succeeds with a 200 even when nothing was queued.
 
 ### `POST /videos/local`
 
@@ -322,7 +322,7 @@ One job, same shape. `404 {"detail": "no such job"}` if it is gone.
 ```
 
 The run's own log file, last 300 lines. `?tail=2000` for more. `missing` is
-true when the file has been cleaned up — the in-memory event stream only holds
+true when the file has been cleaned up. The in-memory event stream only holds
 minutes, which is no use for a batch that failed at 3am. **This is the endpoint
 to surface when a job fails**; `error` on the job row is one line, and the log
 is why.
@@ -337,7 +337,7 @@ Re-queue a failed job with its original settings.
 {"deleted": 149}
 ```
 
-Removes a queued job. Also works on a running one — see `POST /cancel` first.
+Removes a queued job. Also works on a running one. See `POST /cancel` first.
 
 ### `POST /cancel`
 
@@ -354,7 +354,7 @@ curl -X POST http://127.0.0.1:8765/cancel \
 (or aborts the download). A job cancelled during transcription keeps running
 until transcription finishes. Accepts `video_id` or `url`; `400` with neither.
 
-A cancelled download can leave a `.part` file in `data/downloads/` — see
+A cancelled download can leave a `.part` file in `data/downloads/`. See
 `POST /storage/cleanup`.
 
 ## The queue
@@ -378,7 +378,7 @@ one:
 `POST /jobs` returns `409` and `POST /jobs/batch` skips with
 `"reason": "queue_full"`.
 
-Job objects here are **richer than in `GET /jobs`** — they add `log_path`,
+Job objects here are **richer than in `GET /jobs`**. They add `log_path`,
 `display_title`, `channel`, `url`, `source_seconds`, `video_status` and the
 `settings` snapshot.
 
@@ -393,7 +393,7 @@ which you have. Do not show a countdown when it is false.
 ```
 
 Stops claiming new work. Whatever is running keeps running. **The pause state
-lives in the database**, so it survives a restart — and a paused queue that
+lives in the database**, so it survives a restart, and a paused queue that
 nobody un-paused looks exactly like a broken app. Check `paused` before
 reporting that nothing is happening.
 
@@ -455,7 +455,7 @@ curl -r 0-63 http://127.0.0.1:8765/media/80
 ```
 
 Supports range requests, so it can be the `src` of a `<video>` element and seek
-properly. `404` if the clip or its file is gone. **`HEAD` returns 405** — use a
+properly. `404` if the clip or its file is gone. **`HEAD` returns 405**. Use a
 one-byte range request if you only want the size.
 
 ### `GET /clips/{clip_id}/captions`
@@ -492,7 +492,7 @@ VRAM. `recommendations` is the whole table.
 ```
 
 `400 {"detail": "'x' is not pulled yet"}` if it is not installed. Anything
-Ollama serves works — the app has no allow-list.
+Ollama serves works. The app has no allow-list.
 
 ### `POST /models/pull`
 
@@ -513,14 +513,14 @@ on a slow connection is not an HTTP request you want to hold open.
 ```
 
 19 languages. `caption_font` is non-null where burned captions need a specific
-font for the script — Chinese gets Microsoft YaHei, Hindi gets Nirmala UI —
+font for the script. Chinese gets Microsoft YaHei, Hindi gets Nirmala UI,
 because the default Latin fonts render those as empty boxes, permanently, in
 the video.
 
 **`dubbing_available` reflects whether the speech engine is importable.** It
 is true in installed builds from 1.1.3, which bundle it, and false in a source
 checkout without the optional dependency. `can_dub` describes the language, not
-your installation — check both.
+your installation. Check both.
 
 ### `POST /translate`
 
@@ -541,7 +541,7 @@ an empty list.
 
 Copies the clip out with its final filename. Returns `{"exported": [...]}`, and
 **returns 200 with an empty list rather than 404 when the clip does not
-exist** — check the array, not the status.
+exist**. Check the array, not the status.
 
 `POST /export/batch` takes `{"clip_ids": [...], "folder": "..."}`.
 
@@ -549,7 +549,7 @@ exist** — check the array, not the status.
 
 Optional, and **off unless the user has switched it on** in Settings. While it is
 off, `GET /youtube/status` returns `{"enabled": false}` and every other endpoint
-here returns **404** — a disabled feature looks absent rather than refused. Check
+here returns **404**. A disabled feature looks absent rather than refused. Check
 status first; do not treat a 404 as a fault.
 
 Publishing needs the user's own Google Cloud OAuth client. Nothing is proxied
@@ -580,7 +580,7 @@ curl http://127.0.0.1:8765/youtube/status
 ```
 
 `quota` counts **uploads**, not units. Since June 2026 `videos.insert` has its own
-daily bucket — 100 per Google Cloud project — separate from the 10,000-unit pool
+daily bucket (100 per Google Cloud project) separate from the 10,000-unit pool
 the other endpoints share. The count is advisory: two installs sharing one key
 cannot see each other, so a 403 from YouTube is always the truth.
 
@@ -611,12 +611,12 @@ Returns immediately. Watch the `publish` WebSocket events, or poll
 | `license` | `youtube` or `creativeCommon` |
 | `embeddable`, `public_stats_viewable`, `notify_subscribers` | booleans |
 | `default_language`, `playlist_id`, `thumbnail` | optional |
-| `render_first` | `{start?, end?, render_opts?}` — re-render before uploading |
+| `render_first` | `{start?, end?, render_opts?}`: re-render before uploading |
 
 **`render_first` is how "no manual export" works.** Pass the editor's pending
 `render_opts` and the clip is re-rendered through the ordinary `render` job
 first, then uploaded. Omit it and the existing rendered file is used as-is.
-Either way the clip's own `render_opts` are never modified — the project stays
+Either way the clip's own `render_opts` are never modified. The project stays
 editable.
 
 ### Scheduling
@@ -626,7 +626,7 @@ publishes it at that time. There is no local timer and nothing has to stay
 running; once the call returns, this app has no further part in it.
 
 Must be at least 15 minutes ahead, and must carry an offset (`...Z` or
-`+01:00`) — a bare local time is rejected rather than guessed at.
+`+01:00`). A bare local time is rejected rather than guessed at.
 
 ### Publishing state
 
@@ -644,7 +644,7 @@ curl http://127.0.0.1:8765/clips/812/publish
 ```
 
 **Compare `privacy` against `actual_privacy`.** When they differ and `state` is
-`locked_private`, YouTube overrode the request — which is what happens to every
+`locked_private`, YouTube overrode the request, which is what happens to every
 upload from a Google Cloud project that has not passed YouTube's compliance
 audit. It is permanent and cannot be undone in Studio. Surface it; do not report
 success.
@@ -702,10 +702,10 @@ types:
   `downloaded`, `converting source to H.264`, `transcribe`, `analyze`,
   `render`, `done`. Render events carry `clip` and `total`.
   **`job_id` is `null` for prefetch downloads**, which belong to a future job,
-  not the running one — never attribute them to the current job.
+  not the running one: never attribute them to the current job.
 - **`model_pull`** is download progress for `POST /models/pull`.
 - **`publish`** is a YouTube upload. `phase` moves through `prepare`, `upload`,
-  `metadata`, then one of `done` / `failed` / `cancelled` — the terminal one
+  `metadata`, then one of `done` / `failed` / `cancelled`. The terminal one
   also sets `terminal` to the same value, and `done` carries `youtube_id`,
   `url`, and any `warnings`. A later `checked` event may arrive about a minute
   after `done` if YouTube rejected the video or locked it to private.
@@ -720,8 +720,8 @@ itself.
 ## A complete example
 
 **[`examples/drive_the_api.py`](../examples/drive_the_api.py) is a working
-program** that walks the whole path — preflight, submit, follow the WebSocket,
-read the clips — and it is kept running as part of the repo:
+program** that walks the whole path: preflight, submit, follow the WebSocket,
+read the clips, and it is kept running as part of the repo:
 
 ```bash
 python main.py serve                                  # in another terminal
@@ -801,21 +801,21 @@ Collected because each one has cost somebody time:
    boundary.
 7. **A source checkout and an installed build have different libraries** on the
    same machine, and both want port 8765.
-8. **`dubbing_available` and `can_dub` are different questions** — one is
+8. **`dubbing_available` and `can_dub` are different questions**: one is
    your installation, the other is whether the language has a voice at all.
 9. **One worker, one video at a time.** GPU contention makes parallel jobs
-   pointless on consumer hardware, so a queued job waits — that is not a hang.
+   pointless on consumer hardware, so a queued job waits. That is not a hang.
 10. **No pagination.** `GET /videos` returns everything.
 
 ---
 
 ## Building something?
 
-Open an issue and say what you are building — partly so it can be linked from
+Open an issue and say what you are building: partly so it can be linked from
 the README, and partly because the fastest way to get an internal endpoint
 promoted to supported is for somebody to need it.
 
 For changing the app itself rather than building beside it, see
-[EXTENDING.md](EXTENDING.md) — adding a language, a platform, an AI model or an
+[EXTENDING.md](EXTENDING.md): adding a language, a platform, an AI model or an
 export format. [ARCHITECTURE.md](../ARCHITECTURE.md) explains how the pipeline
 fits together.

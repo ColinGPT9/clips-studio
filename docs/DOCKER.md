@@ -1,7 +1,7 @@
 # Docker (for contributors)
 
 You need [Docker Desktop](https://docs.docker.com/get-started/get-docker/), and
-that is the whole list. Compose comes with it — `docker compose` (a space, not
+that is the whole list. Compose comes with it: `docker compose` (a space, not
 a hyphen) is part of Docker, not a separate program to install.
 
 ```
@@ -18,7 +18,7 @@ amd64 and runs under emulation, which is fine for editing code and running
 tests. A local build produces an arm64 image, and one dependency has no arm64
 wheel and has to compile, which fails because the base image ships no C
 compiler. [#62](https://github.com/ColinGPT9/clips-studio/issues/62) tracks
-that. Do not reach for `--platform=linux/amd64` on a local build either — that
+that. Do not reach for `--platform=linux/amd64` on a local build either. That
 emulates the whole ten-minute build, not just the run.
 
 **Give the Docker Desktop VM 12 GB of memory, and 4 CPUs.** Docker Desktop,
@@ -26,14 +26,14 @@ Settings, Resources. This is the setting that decides whether renders work at
 all, and the default is not enough: 8 GB analyses a video and then produces
 zero clips, and the first contributor to get a full run through had to raise it
 to 12. The app is developed against a 16 GB machine. Memory is also what caps
-video length — an hour of source is around the limit at 12 GB.
+video length. An hour of source is around the limit at 12 GB.
 
 Three services, and you need nothing installed but Docker:
 
 | | |
 |---|---|
-| **engine** | <http://localhost:8765> — the Python pipeline and its API |
-| **ui** | <http://localhost:5173> — the interface, in your browser |
+| **engine** | <http://localhost:8765>. The Python pipeline and its API |
+| **ui** | <http://localhost:5173>. The interface, in your browser |
 | **ollama** | the model the scoring runs against |
 
 Run the checks without installing Python:
@@ -50,7 +50,7 @@ Pull a model the first time:
 docker compose exec ollama ollama pull gemma3:4b
 ```
 
-Generate a test video to actually run something against — see
+Generate a test video to actually run something against. See
 [`../tests/assets/`](../tests/assets/):
 
 ```
@@ -62,7 +62,7 @@ docker compose run --rm engine python tests/assets/make_sample_video.py
 ## What this is for
 
 Working on Clips Kitty without installing Python, FFmpeg, PyTorch, OpenCV,
-Node and the rest on your own machine — and letting someone on Linux or
+Node and the rest on your own machine, and letting someone on Linux or
 macOS contribute to a project whose app only ships for Windows.
 
 **It is not how anyone installs Clips Kitty.** Creators use the Windows
@@ -72,12 +72,12 @@ installer. Nothing here replaces that.
 
 The `ui` service runs Vite, so the **interface** is containerised and you can
 work on it in a browser. What is not containerised is the Electron shell
-around it, which needs a display and a real windowing system — forwarding
+around it, which needs a display and a real windowing system: forwarding
 that through X or VNC costs more than it gives.
 
 In a browser everything that talks to the engine works normally, because that
 is all HTTP to `:8765`. What is missing is the handful of things that live in
-Electron's preload — native file pickers, the donate window, opening external
+Electron's preload: native file pickers, the donate window, opening external
 links. Rather than crashing on those, the renderer installs a stand-in
 (`ui/src/renderer/src/lib/browserShim.ts`) that logs what it cannot do. Open
 the console and you will see exactly which call it was.
@@ -88,9 +88,9 @@ Without Docker, the same thing is:
 cd ui && npm run dev:web
 ```
 
-That covers most interface work. When you need the real thing — anything
+That covers most interface work. When you need the real thing: anything
 touching IPC, the preload, the updater, window behaviour, or the packaged
-app — run Electron on your host against the containerised engine:
+app. Run Electron on your host against the containerised engine:
 
 ```
 docker compose up -d engine ollama      # engine on :8765
@@ -109,7 +109,7 @@ If you do want GPU inside Docker: install the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
 uncomment the `deploy` block under `ollama` in `docker-compose.yml`, and
 build the engine against the CUDA wheels instead of the CPU index. On Windows
-this needs WSL2 and Docker Desktop with GPU support enabled — several moving
+this needs WSL2 and Docker Desktop with GPU support enabled: several moving
 parts, each of which can fail quietly.
 
 **Clip quality still cannot be judged here.** Same limit as CI: no GPU, and
@@ -139,6 +139,6 @@ asked to bind anything other than `127.0.0.1`.
 Ten minutes or so, mostly PyTorch and OpenCV. Afterwards Docker caches the
 dependency layer, and only a change to `requirements.txt` re-triggers it.
 
-`.dockerignore` keeps `data/` out of the build context — without it Docker
+`.dockerignore` keeps `data/` out of the build context, without it Docker
 would upload every downloaded video and rendered clip before running a single
 step.

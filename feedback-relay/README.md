@@ -4,22 +4,22 @@ This tiny worker is what lets Clips Kitty users send bug reports and
 feature requests **without a GitHub account**. The app posts the report
 here; the worker checks it (proof-of-work challenge, per-IP daily limit,
 size caps, field validation, honeypot) and files it as a GitHub Issue
-using a token that only exists in the worker's secrets — never in the app.
+using a token that only exists in the worker's secrets: never in the app.
 
 ## One-time setup (~10 minutes, free)
 
-1. **Cloudflare account** — sign up free at https://dash.cloudflare.com/sign-up
+1. **Cloudflare account**: sign up free at https://dash.cloudflare.com/sign-up
    (no domain or credit card needed; Workers free tier is 100k requests/day).
 
-2. **GitHub token** — github.com → Settings → Developer settings →
+2. **GitHub token**: github.com → Settings → Developer settings →
    Fine-grained personal access tokens → Generate new token:
    - Repository access: *Only select repositories* → `clips-studio`
    - Permissions → Repository → **Issues: Read and write**
      and **Contents: Read and write** (Contents is only for screenshot
-     uploads to the `feedback-assets` branch — skip it to disable those).
+     uploads to the `feedback-assets` branch: skip it to disable those).
    - Expiration: 1 year (set a reminder to rotate).
 
-3. **Screenshots branch** — `feedback-assets` (already created and pushed
+3. **Screenshots branch**: `feedback-assets` (already created and pushed
    for this repo; for a fork: `git switch --orphan feedback-assets`,
    empty commit, push).
 
@@ -35,7 +35,7 @@ using a token that only exists in the worker's secrets — never in the app.
    The deploy prints your URL, e.g.
    `https://clips-studio-feedback.<your-subdomain>.workers.dev`
 
-5. **Point the app at it** — in `config/settings.yaml`:
+5. **Point the app at it**: in `config/settings.yaml`:
    ```yaml
    feedback:
      relay_url: https://clips-studio-feedback.<your-subdomain>.workers.dev
@@ -71,7 +71,7 @@ npx wrangler deploy
 Issues then appear from the bot, which is what a reader expects of an automated
 relay.
 
-**Name it as a bot** — `clips-kitty-bot` or similar, with a profile that says
+**Name it as a bot**: `clips-kitty-bot` or similar, with a profile that says
 what it is. The goal is accurate attribution: these reports genuinely are not
 the maintainer's, and a clearly-labelled machine account says so. A second
 account posing as a *person* would be the opposite, and would breach GitHub's

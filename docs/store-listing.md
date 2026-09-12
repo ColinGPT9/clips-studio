@@ -8,7 +8,7 @@ Two rules this copy follows deliberately:
 - **No comparative claims.** Not "an OpusClip alternative", not "better than".
   Store policy 11.2 covers third-party names, and a listing that leans on
   someone else's product reads as derivative even where it is permitted. The
-  positioning is what Clips Kitty *is* — local, open source, yours — which is
+  positioning is what Clips Kitty *is* (local, open source, yours) which is
   the genuine difference anyway.
 - **No unmeasured performance numbers.** Nothing about speed appears here that
   is not in the README's tested-hardware table.
@@ -49,14 +49,14 @@ That is the part that makes it different. Most AI clipping tools upload your vid
 
 WHAT IT DOES
 
-• Finds the moments — transcribes the whole video, then scores every candidate on what was said, how the audience reacted, and what is happening on screen
-• Keeps the speaker in frame — tracks who is actually talking, by lip movement rather than by who is biggest in the shot, so a two-person conversation does not jump to the wrong face
-• Writes the titles — a local language model drafts a title and description for each clip
-• Burns in subtitles — word-level timing, styled, in the language of the clip
-• Speaks 19 languages — translate, subtitle and dub clips into any of them
-• Learns a creator — recurring jokes, catchphrases and running bits feed into how their moments are scored
-• Longer edits too — assemble a long-form cut, not only short clips
-• Edit before you publish — adjust the crop, the captions, the music and the branding
+• Finds the moments: transcribes the whole video, then scores every candidate on what was said, how the audience reacted, and what is happening on screen
+• Keeps the speaker in frame: tracks who is actually talking, by lip movement rather than by who is biggest in the shot, so a two-person conversation does not jump to the wrong face
+• Writes the titles: a local language model drafts a title and description for each clip
+• Burns in subtitles: word-level timing, styled, in the language of the clip
+• Speaks 19 languages: translate, subtitle and dub clips into any of them
+• Learns a creator: recurring jokes, catchphrases and running bits feed into how their moments are scored
+• Longer edits too: assemble a long-form cut, not only short clips
+• Edit before you publish: adjust the crop, the captions, the music and the branding
 
 YOUR CHOICE OF AI MODEL
 
@@ -64,7 +64,7 @@ The language model runs through Ollama, on your machine, and you pick it. A smal
 
 FREE AND OPEN SOURCE
 
-The whole thing is on GitHub under the AGPL-3.0 licence. You can read exactly what it does, including every line that touches the network. Bug reports, translations and pull requests are welcome — 18 of the 19 interface translations have never been checked by a native speaker, and that is an open invitation.
+The whole thing is on GitHub under the AGPL-3.0 licence. You can read exactly what it does, including every line that touches the network. Bug reports, translations and pull requests are welcome: 18 of the 19 interface translations have never been checked by a native speaker, and that is an open invitation.
 
 WHAT YOU NEED
 
@@ -116,7 +116,7 @@ twice. "Reels" and "TikTok" are out for the same reason.
 **The description was cleared of them too, by choice rather than by rule.**
 10.1.3 governs search terms only, and the same reviewer read "Paste a YouTube,
 Twitch or Kick link" in the short description, the full description and a
-feature bullet without objecting — so keeping them was permitted. They were
+feature bullet without objecting, so keeping them was permitted. They were
 removed anyway, because a second rejection costs another review cycle and the
 words were not worth that risk.
 
@@ -158,7 +158,7 @@ Copyright (c) 2026 ColinGPT9. AGPL-3.0.
 else's video. Processing it locally to check the pipeline is one thing;
 publishing their face on a Microsoft Store page to advertise a product is
 another, and it is not covered by anything. That rules out most of the
-interesting screens, because clip thumbnails are faces by definition — Clip
+interesting screens, because clip thumbnails are faces by definition. Clip
 Editor, the clip grid, the editor preview.
 
 Options, in order of preference:
@@ -168,18 +168,18 @@ Options, in order of preference:
 2. Your own face
 3. Screens with no thumbnails in them at all: Models, Settings, the queue
    mid-job showing progress rather than results
-4. A video with no people in it — screen recording, gameplay, b-roll
+4. A video with no people in it: screen recording, gameplay, b-roll
 
 **Nothing but the app in the frame.** Capture the window, never the desktop.
 A full-screen grab picks up whatever else is open: file paths, other
 applications, message windows. `scripts/capture_screenshots.ps1` grabs the
-window rectangle for this reason, but check every image before uploading —
+window rectangle for this reason, but check every image before uploading,
 if the app loses focus mid-capture, the rectangle fills with whatever is
 behind it.
 
 ### What to show
 
-Capture on a clean install with a real video, not placeholder data — a listing
+Capture on a clean install with a real video, not placeholder data. A listing
 with obviously fake content reads as fake.
 
 | # | Shows | Faces? | Why it earns the slot |
@@ -200,13 +200,13 @@ use, and any channel name you have not cleared.
 
 ## Store logos
 
-- **1:1 box art — required.** 300x300 minimum. `site/assets/mascot.png` is
+- **1:1 box art: required.** 300x300 minimum. `site/assets/mascot.png` is
   1024x1024 and works directly.
-- **2:3 poster art — recommended.** 720x1080. Needs making; the mascot centred
+- **2:3 poster art: recommended.** 720x1080. Needs making; the mascot centred
   on the app's dark background (`#0A1628`) is enough.
 
 ## Trailer
 
 Optional, and issue #35 already tracks making a demo video. If one exists by
-submission time, add it — a fifteen-second clip of a link going in and a
+submission time, add it. A fifteen-second clip of a link going in and a
 finished vertical clip coming out is worth more than any of the screenshots.

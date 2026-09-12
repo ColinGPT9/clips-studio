@@ -22,7 +22,7 @@ One row per day.
 
 ## `releases.csv`
 
-One row per release asset per day, holding a **cumulative** total — GitHub only
+One row per release asset per day, holding a **cumulative** total. GitHub only
 ever reports a running count. Storing it daily is what makes the curve
 recoverable: the difference between two dates is that period's downloads.
 
@@ -35,8 +35,8 @@ numbers, so:
   Completing an install means downloading a 5.8 GB payload from Hugging Face
   afterwards, and many downloads will not get that far.
 - **Hugging Face cannot tell us how many did.** Its download counter only tracks
-  library-recognised files and reports 0 for raw URL fetches, so the payload —
-  the closest thing to a true install count — is invisible.
+  library-recognised files and reports 0 for raw URL fetches, so the payload
+  (the closest thing to a true install count) is invisible.
 - **Clones are not people.** CI, mirrors and bots clone. `clones_unique` is
   closer, still not a headcount.
 - **Unique views are GitHub's definition of unique**, over a day, and not
@@ -44,7 +44,7 @@ numbers, so:
 - **None of this measures active users.** Nothing here says whether anyone
   opened the app twice. Every running copy does poll `latest.yml` for updates,
   which would be a heartbeat needing no new telemetry, but Hugging Face exposes
-  no request logs — and counting it would mean putting a service in the desktop
+  no request logs, and counting it would mean putting a service in the desktop
   update path, which this project deliberately does not do.
 - **winget publishes no per-package install counts.** Being in winget is not
   measurable from outside.

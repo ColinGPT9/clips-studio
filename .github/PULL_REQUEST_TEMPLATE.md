@@ -1,4 +1,4 @@
-<!-- Thanks for contributing to Clips Kitty. Keep this short — a few honest
+<!-- Thanks for contributing to Clips Kitty. Keep this short. A few honest
      sentences beat a filled-in form. Delete any section that doesn't apply. -->
 
 ## What this changes
@@ -13,13 +13,13 @@ Fixes #
 
 ## How you tested it
 
-<!-- Be specific — "ran a 2h Twitch VOD, clips still land on sentence boundaries"
+<!-- Be specific: "ran a 2h Twitch VOD, clips still land on sentence boundaries"
      is useful; "works fine" isn't. If it touches clipping, tracking, captions, or
      rendering, please test on a REAL video, not just a unit-sized one. -->
 
 - [ ] `npm run typecheck` passes (in `ui/`)
 - [ ] Tried the affected flow in the running app
-- [ ] Tested on a real video — platform and length:
+- [ ] Tested on a real video: platform and length:
 
 ## Anything reviewers should know
 
@@ -31,7 +31,7 @@ Fixes #
 <!-- A few things that will come up in review, so you can save a round trip:
 
   * Comments should explain WHY, not what. Match the style around you.
-  * Learned data must never be able to lower a clip's score — score
+  * Learned data must never be able to lower a clip's score: score
     contributions from accumulated knowledge stay additive, capped, and
     disableable (see ARCHITECTURE.md §14).
   * The LLM proposes, deterministic code disposes. Parsing and validation
@@ -39,5 +39,5 @@ Fixes #
   * Optional subsystems fail soft: a broken side feature should degrade that
     feature, never break a pipeline run.
   * Changing scoring defaults, thresholds, or weights? Say what you tested it
-    against — those numbers are tuned on real footage.
+    against: those numbers are tuned on real footage.
 -->
