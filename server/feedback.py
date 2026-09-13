@@ -370,7 +370,7 @@ def collect_diagnostics(config: dict, db, video_id: str | None = None) -> dict:
                 if outcome:
                     d["video"]["outcome"] = outcome
             except Exception:
-                pass
+                pass  # the outcome is extra context; the report must still send without it
             job = db.conn.execute(
                 "SELECT status, error FROM jobs WHERE payload LIKE ? ORDER BY id DESC LIMIT 1",
                 (f"%{vid}%",),
