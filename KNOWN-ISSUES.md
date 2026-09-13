@@ -57,6 +57,17 @@ because it is a sensible size for the hardware and is free to use commercially,
 app talks to all of them the same way. Nobody has checked whether they pick
 better or worse moments.
 
+Three reasoning models on the Models page have had a shorter check: parts of one
+real gym stream transcript, not full runs. All three returned scored clips with
+hooks taken from what was actually said.
+
+- `deepseek-r1:8b` found about as many moments as `gemma:7b`, at a similar speed.
+  On a line with explicit language it once wrote a refusal ("I'm sorry, but I
+  cannot provide...") as a clip's hook instead of a quote, so check its titles.
+- `gpt-oss:20b` found good clips but is slow: close to a minute for every five
+  minutes of video on a 12 GB card, because it thinks before every answer.
+- `nemotron-3-nano:4b` works, but found far fewer moments than the others.
+
 If you try one, saying how it went is genuinely useful. That is a gap that
 only gets closed by people running different models on different content.
 

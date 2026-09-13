@@ -29,6 +29,12 @@ were often broken in a way that only showed up on somebody else's machine.
   gameplay and gets the plain numbers instead: being confidently wrong about
   someone's footage would be worse than saying nothing.
 
+- **Reasoning models find clips.** DeepSeek-R1, OpenAI's gpt-oss and NVIDIA's
+  Nemotron 3 Nano could finish a video with no clips and no error: Ollama either
+  spent their answer on thinking or blanked it while they reasoned. Each is now
+  sent what it needs, and all three are listed on the Models page. The models
+  setup installs are sent exactly what they were before.
+
 ### Fixed
 
 - **Bug reports lost the one field that mattered.** The reporter is required to

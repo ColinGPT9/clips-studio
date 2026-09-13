@@ -54,9 +54,15 @@ RECOMMENDATIONS = [
 # Licence is called out because this audience monetises its clips. Everything
 # here is free to run locally, but the terms differ — Qwen and Mistral are
 # Apache-2.0, Phi-4 is MIT, Llama and Gemma carry their own terms that permit
-# commercial use with conditions. Deliberately absent: Cohere's Aya Expanse and
-# Command-R7B, excellent multilingually and licensed CC-BY-NC, so they cannot
-# be used for anything anyone earns from.
+# commercial use with conditions. DeepSeek-R1 is MIT and gpt-oss is Apache-2.0.
+# Nemotron's NVIDIA Open Model License allows commercial use with no registration
+# and no credit; its attribution notice applies only to redistributing the model
+# itself, which nothing here does.
+#
+# Deliberately absent: Cohere's Aya Expanse and Command-R7B, excellent
+# multilingually and licensed CC-BY-NC, so they cannot be used for anything
+# anyone earns from. Also GLM-4 9B, whose licence requires registering with
+# Zhipu and showing a "Built with glm-4" credit before any commercial use.
 OTHER_MODELS = [
     ("Translation / multilingual", "qwen3:8b / qwen3:14b",
      "strongest multilingual here; set as llm.translation_model. Apache-2.0"),
@@ -64,6 +70,17 @@ OTHER_MODELS = [
      "Apache-2.0 and MIT, no additional terms"),
     ("Older, still solid", "llama3.1:8b / qwen2.5:14b",
      "swap freely, same one-line change"),
+    # Reasoning models. OllamaBackend adjusts what they are sent: DeepSeek-R1
+    # answers without thinking, while gpt-oss and Nemotron keep reasoning
+    # because they return empty clip lists without it.
+    ("DeepSeek reasoning", "deepseek-r1:8b / deepseek-r1:14b",
+     "MIT. 8 GB or 16 GB of VRAM"),
+    ("OpenAI open model", "gpt-oss:20b",
+     "Apache-2.0. Wants 16 GB of VRAM. It thinks before every answer, so it is "
+     "the slowest here, especially on a 12 GB card"),
+    ("NVIDIA Nemotron", "nemotron-3-nano:4b",
+     "NVIDIA Open Model License. Small enough for 6 GB of VRAM, and thinks "
+     "before answering"),
 ]
 
 
