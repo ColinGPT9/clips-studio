@@ -68,6 +68,28 @@ the graphics card.
 - [Local vs cloud clipping](https://colingpt9.github.io/clips-studio/local-vs-cloud.html)
 - [Opus Clip alternative](https://colingpt9.github.io/clips-studio/opus-clip-alternative.html)
 
+## In other languages
+
+The same overview, written in each language the app supports:
+[Español](https://colingpt9.github.io/clips-studio/es.html) ·
+[Português](https://colingpt9.github.io/clips-studio/pt.html) ·
+[Français](https://colingpt9.github.io/clips-studio/fr.html) ·
+[Deutsch](https://colingpt9.github.io/clips-studio/de.html) ·
+[हिन्दी](https://colingpt9.github.io/clips-studio/hi.html) ·
+[Bahasa Indonesia](https://colingpt9.github.io/clips-studio/id.html) ·
+[日本語](https://colingpt9.github.io/clips-studio/ja.html) ·
+[Русский](https://colingpt9.github.io/clips-studio/ru.html) ·
+[العربية](https://colingpt9.github.io/clips-studio/ar.html) ·
+[简体中文](https://colingpt9.github.io/clips-studio/zh.html) ·
+[Tiếng Việt](https://colingpt9.github.io/clips-studio/vi.html) ·
+[Filipino](https://colingpt9.github.io/clips-studio/tl.html) ·
+[Türkçe](https://colingpt9.github.io/clips-studio/tr.html) ·
+[اردو](https://colingpt9.github.io/clips-studio/ur.html) ·
+[বাংলা](https://colingpt9.github.io/clips-studio/bn.html) ·
+[ไทย](https://colingpt9.github.io/clips-studio/th.html) ·
+[한국어](https://colingpt9.github.io/clips-studio/ko.html) ·
+[Italiano](https://colingpt9.github.io/clips-studio/it.html)
+
 ## Status
 
 Alpha. It works and is used daily, but it is early and has rough edges, which
