@@ -22,6 +22,23 @@ tags:
   - twitch
   - youtube
   - kick
+  - nvidia
+  - rtx
+  - nemotron
+  - deepseek
+  - gpt-oss
+models:
+  - nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
+  - openai/gpt-oss-20b
+  - deepseek-ai/DeepSeek-R1-0528-Qwen3-8B
+  - google/gemma-4-E4B-it
+  - google/gemma-4-E2B-it
+  - google/gemma-3-4b-it
+  - google/gemma-3-12b-it
+  - google/gemma-3-27b-it
+  - google/gemma-7b-it
+  - Systran/faster-whisper-small
+  - dropbox-dash/faster-whisper-large-v3-turbo
 ---
 
 # Clips Kitty
