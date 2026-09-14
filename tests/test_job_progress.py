@@ -9,13 +9,14 @@ import time
 
 import pytest
 
+try:
+    from server.jobs import Worker
+except ImportError as e:  # CI installs only the light dependencies
+    pytest.skip(f"worker imports unavailable: {e}", allow_module_level=True)
+
 
 @pytest.fixture
 def worker(tmp_path):
-    try:
-        from server.jobs import Worker
-    except ImportError as e:  # CI installs only the light dependencies
-        pytest.skip(f"worker imports unavailable: {e}")
     w = Worker({"paths": {"data_dir": str(tmp_path)}})
     w._progress[7] = {"started": time.time() - 100, "fraction": 0.0, "stage": "", "label": "Starting"}
     return w
