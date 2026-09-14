@@ -14,6 +14,7 @@ Job types:
 import copy
 import json
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -29,6 +30,21 @@ from server.events import broadcaster
 # retries; older ones are pruned so the folder can't grow without limit.
 _KEEP_LOGS = 50
 
+# (base, weight, label) per pipeline stage, folded into one overall progress
+# figure. Kept identical to the UI's STAGES in ui/src/renderer/src/lib/
+# jobProgress.ts, so the app and an integration's dock never show different
+# percentages for the same job.
+_STAGES = {
+    "download": (0.0, 0.15, "Downloading video"),
+    "downloaded": (0.15, 0.0, "Downloaded"),
+    "transcribe": (0.15, 0.25, "Transcribing speech"),
+    "signals": (0.40, 0.05, "Analyzing audio & visuals"),
+    "analyze": (0.45, 0.20, "Finding the best moments"),
+    "ranking": (0.65, 0.05, "Ranking the best moments"),
+    "reactions": (0.70, 0.08, "Scoring on-screen reactions"),
+    "render": (0.78, 0.22, "Rendering clips"),
+}
+
 
 class Worker(threading.Thread):
     def __init__(self, config: dict):
@@ -41,6 +57,10 @@ class Worker(threading.Thread):
         )
         self._wake = threading.Event()
         self._stop = threading.Event()
+        # Latest progress per running job, for a client that was not connected
+        # to /ws when the events went out, such as a dock opened mid-run.
+        self._progress: dict[int, dict] = {}
+        self._progress_lock = threading.Lock()
 
     def notify(self) -> None:
         """Called by the API when a job is enqueued, or when the queue is
@@ -86,17 +106,16 @@ class Worker(threading.Thread):
         # Pipeline progress events get tagged with the active job and fanned
         # out to UI clients.
         current_job_id: list[int | None] = [None]
-        progress.set_handler(
-            lambda event: broadcaster.publish(
-                {
-                    "type": "progress",
-                    # Prefetch downloads belong to a FUTURE job, not the one
-                    # running now — never attribute them to it.
-                    "job_id": None if event.get("prefetch") else current_job_id[0],
-                    **event,
-                }
-            )
-        )
+
+        def on_progress(event: dict) -> None:
+            # Prefetch downloads belong to a FUTURE job, not the one running
+            # now — never attribute them to it.
+            job_id = None if event.get("prefetch") else current_job_id[0]
+            if job_id is not None:
+                self._record_progress(job_id, event)
+            broadcaster.publish({"type": "progress", "job_id": job_id, **event})
+
+        progress.set_handler(on_progress)
 
         while not self._stop.is_set():
             # Paused means "claim nothing new". The video already running is
@@ -114,6 +133,10 @@ class Worker(threading.Thread):
                 continue
 
             current_job_id[0] = job["id"]
+            with self._progress_lock:
+                self._progress[job["id"]] = {
+                    "started": time.time(), "fraction": 0.0, "stage": "", "label": "Starting",
+                }
             payload = json.loads(job["payload"])
             # One log file per job, so a batch that ran overnight is still
             # diagnosable in the morning: the 400-line in-memory ring holds
@@ -218,9 +241,55 @@ class Worker(threading.Thread):
                 self._announce(db, job, "failed", str(e)[:500])
             finally:
                 current_job_id[0] = None
+                with self._progress_lock:
+                    self._progress.pop(job["id"], None)
                 cancel.set_active(None)
                 feedback.close_job_log()
                 self._prune_logs()
+
+    def _record_progress(self, job_id: int, event: dict) -> None:
+        stage = _STAGES.get(event.get("stage") or "")
+        if stage is None:
+            return  # 'done', 'publish' and unknown stages do not move the figure
+        base, weight, label = stage
+        within = 0.5
+        if isinstance(event.get("fraction"), (int, float)):
+            within = float(event["fraction"])
+        elif isinstance(event.get("clip"), int) and event.get("total"):
+            within = (event["clip"] - 1) / event["total"]
+        elif isinstance(event.get("current"), int) and event.get("total"):
+            within = max(0, event["current"] - 1) / event["total"]
+        fraction = min(0.99, base + weight * min(1.0, max(0.0, within)))
+        if event.get("stage") == "render" and event.get("clip") and event.get("total"):
+            label = f"Rendering clip {event['clip']}/{event['total']}"
+        with self._progress_lock:
+            entry = self._progress.get(job_id)
+            if entry is None:
+                return
+            entry["fraction"] = max(entry["fraction"], fraction)  # never moves backwards
+            entry["stage"] = event.get("stage") or ""
+            entry["label"] = label
+
+    def progress_snapshot(self, job_id: int) -> dict | None:
+        """Where a running job is, in the same terms the app shows, or None if
+        it is not running."""
+        with self._progress_lock:
+            entry = self._progress.get(job_id)
+            if entry is None:
+                return None
+            entry = dict(entry)
+        elapsed = max(0.0, time.time() - entry["started"])
+        fraction = entry["fraction"]
+        eta = None
+        if fraction >= 0.06:  # below this an estimate is noise; the UI waits too
+            eta = round(elapsed * (1 - fraction) / fraction)
+        return {
+            "stage": entry["stage"],
+            "label": entry["label"],
+            "percent": round(fraction * 100),
+            "eta_seconds": eta,
+            "elapsed_seconds": round(elapsed),
+        }
 
     def _announce(self, db: StateDB, job, status: str, error: str = "") -> None:
         """Tell the UI a job ended, and how much queue is left.
@@ -237,6 +306,17 @@ class Worker(threading.Thread):
             "title": job["title"] or "",
             "remaining": remaining,
         }
+        # For integrations: which video this was and what it produced. A run
+        # that found nothing, or a video already processed, emits no 'done'
+        # progress event, so this is the one place a clip count always arrives.
+        # Re-read the row: the video id is filled in after the job is claimed.
+        row = db.get_job(job["id"])
+        video_id = (row["video_id"] if row else "") or ""
+        if video_id:
+            event["video_id"] = video_id
+            event["clips"] = db.conn.execute(
+                "SELECT COUNT(*) FROM clips WHERE video_id = ?", (video_id,)
+            ).fetchone()[0]
         if error:
             event["error"] = error
         broadcaster.publish(event)

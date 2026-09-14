@@ -27,6 +27,10 @@ from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
 
+# Version of the supported API described in docs/API.md. Bumped only when a
+# supported endpoint changes shape, never for additions.
+API_VERSION = 1
+
 # ---- request bodies ----------------------------------------------------------
 
 
@@ -407,6 +411,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Answer only requests addressed to this machine. There is no auth, so a web
+    # page could otherwise reach the API by DNS rebinding: its own domain pointed
+    # at 127.0.0.1 passes the browser's same-origin rules, but still carries its
+    # own name in the Host header, which this refuses.
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
+
+    # Read once: `git rev-parse` in a checkout is not free, and the version
+    # cannot change while the process runs.
+    app_version = feedback_mod._app_version().get("app", "?")
 
     data_dir = Path(config["paths"]["data_dir"]).resolve()
     db_path = data_dir / "state.db"
@@ -429,11 +444,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         broadcaster.attach_loop(asyncio.get_running_loop())
         worker.start()
         publish_worker.start()
+        stream_watcher.start()
 
     @app.on_event("shutdown")
     async def _shutdown():
         worker.stop()
         publish_worker.stop()
+        stream_watcher.stop()
 
     # Publishing lives in its own module: it is optional, self-contained and
     # removable, and threading ~15 routes through this file would end that.
@@ -448,11 +465,20 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker=publish_worker,
     )
 
+    # Streamer integrations such as the OBS plugin: hand over a finished stream,
+    # find its VOD, report progress. Its own module for the same reason.
+    from server import integrations
+
+    stream_watcher = integrations.install(app, db=db, worker=worker, broadcaster=broadcaster)
+
     # ---- health / system -----------------------------------------------
 
     @app.get("/health")
     def health():
-        return {"ok": True}
+        # Integrations such as the OBS plugin read these to tell "Clips Kitty is
+        # running" apart from "this Clips Kitty is too old for me". api_version
+        # moves only when a supported endpoint changes shape.
+        return {"ok": True, "app_version": app_version, "api_version": API_VERSION}
 
     @app.get("/health/preflight")
     def preflight_check():
