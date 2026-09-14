@@ -103,6 +103,33 @@ def capacity(db) -> int:
     return max(0, MAX_ACTIVE - active_count(db))
 
 
+def waiting_ahead(db, job_id: int) -> int:
+    """Videos queued to run before this job."""
+    ahead = 0
+    for row in db.queued_jobs():
+        if row["id"] == job_id:
+            return ahead
+        if row["type"] == "process":
+            ahead += 1
+    return ahead
+
+
+def start_if_alone(db, job_id: int) -> bool:
+    """Start the queue for this one job, but never for anyone else's.
+
+    Adding a video does not start processing (see is_paused). A job handed over
+    by an integration counts as the user's go-ahead for that job only: if other
+    videos were already waiting, starting the queue would run those too, which
+    nobody asked for. Returns whether the queue is now running."""
+    if not is_paused(db):
+        return True
+    others = [r for r in db.queued_jobs() if r["id"] != job_id and r["type"] == "process"]
+    if others:
+        return False
+    set_paused(db, False)
+    return True
+
+
 # ---- ordering -------------------------------------------------------------
 
 

@@ -556,6 +556,9 @@ POST   /models/activate           switch model
 GET    /system/stats              CPU, RAM, GPU, VRAM, disk
 GET    /settings  PATCH /settings settings.yaml as JSON
 POST   /feedback/submit           in-app bug report
+POST   /integrations/streams      hand over a finished livestream (OBS plugin)
+GET    /integrations/streams/{id} its state: waiting for VOD, queued, progress, clips
+GET    /integrations/presets      named option bundles for integrations
 ```
 
 Integration mechanics:
@@ -567,6 +570,15 @@ Integration mechanics:
   (`recover_stuck_videos`), so nothing appears stuck forever.
 - Pipeline stages emit progress callbacks that broadcast over the WebSocket, so the UI
   can show real stage progress and a time estimate.
+- **Streamer integrations** (`server/integrations.py`) hold the logic an OBS plugin
+  would otherwise have to rebuild:
+  - **One `streams` row per stream.** The integration's session id makes a repeated
+    request a no-op.
+  - **A low-frequency `StreamWatcher` thread.** It finds the VOD with
+    `sources/vod_finder.py` and queues it once, starting the queue only when nothing
+    else is waiting.
+  - **A progress snapshot kept per running job.** A dock that connects mid-run sees
+    the same percentage and time left as the app.
 - Electron spawns the backend as a child process, health-checks `GET /health`, and
   kills it on exit. In development they run separately.
 

@@ -35,8 +35,25 @@ were often broken in a way that only showed up on somebody else's machine.
   sent what it needs, and all three are listed on the Models page. The models
   setup installs are sent exactly what they were before.
 
+- **Streamer tools can hand a finished stream to Clips Kitty.** A new supported
+  API, `/integrations/streams`, takes a stream's platform, channel and start and
+  end times.
+  - **Finds the VOD:** looks up the one Twitch or YouTube publishes afterwards,
+    and queues it once.
+  - **Asks when it can't look:** Kick, or no channel name, gets a request for the
+    link.
+  - **Never starts other waiting videos** along with it.
+  - **Reports progress and time left** in the same terms the app shows.
+
+  The OBS plugin is the first thing built on it. `/health` now also reports
+  `app_version` and `api_version`, so a tool can tell when Clips Kitty needs
+  updating.
+
 ### Fixed
 
+- **The local API only answers requests addressed to this computer.** A web page
+  could previously reach it by pointing its own domain at 127.0.0.1 (DNS
+  rebinding). Requests carrying any other host name are now refused.
 - **Bug reports lost the one field that mattered.** The reporter is required to
   say which video they were processing, and the answer was then dropped before
   the report was built. It now appears, and the question is a list of your

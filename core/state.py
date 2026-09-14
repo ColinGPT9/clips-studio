@@ -213,7 +213,37 @@ CREATE TABLE IF NOT EXISTS app_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- A livestream an integration (the OBS plugin) handed over after it ended. One
+-- row per stream: session_id comes from the integration, so a repeated request,
+-- or the same stream reported again after a crash, lands on this row instead of
+-- creating a second job.
+CREATE TABLE IF NOT EXISTS streams (
+    session_id     TEXT PRIMARY KEY,
+    source         TEXT NOT NULL DEFAULT '',  -- which integration, e.g. 'obs'
+    platform       TEXT NOT NULL DEFAULT '',  -- twitch | youtube | kick
+    channel        TEXT NOT NULL DEFAULT '',
+    started_at     REAL NOT NULL DEFAULT 0,   -- unix seconds, as the integration saw them
+    ended_at       REAL NOT NULL DEFAULT 0,
+    preset         TEXT NOT NULL DEFAULT '',
+    state          TEXT NOT NULL DEFAULT 'waiting_for_vod',
+    vod_url        TEXT NOT NULL DEFAULT '',
+    video_id       TEXT NOT NULL DEFAULT '',
+    job_id         INTEGER NOT NULL DEFAULT 0,
+    waiting_behind INTEGER NOT NULL DEFAULT 0,  -- other videos queued ahead when handed over
+    error          TEXT NOT NULL DEFAULT '',
+    next_check_at  REAL NOT NULL DEFAULT 0,     -- unix seconds; when to look for the VOD again
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
 """
+
+# Columns set_stream() may change. Names are interpolated into SQL, so they come
+# from this list and never from a caller.
+STREAM_COLUMNS = frozenset({
+    "source", "platform", "channel", "started_at", "ended_at", "preset", "state",
+    "vod_url", "video_id", "job_id", "waiting_behind", "error", "next_check_at",
+})
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
 # Clip lifecycle:   rendered -> queued -> scheduled -> uploaded | failed
@@ -1048,6 +1078,50 @@ class StateDB:
             (key, value),
         )
         self.conn.commit()
+
+    # ---- streams handed over by integrations -------------------------------
+
+    def insert_stream(self, session_id: str, **fields) -> bool:
+        """Create the row for a stream. False if this session already exists,
+        which is how a repeated request stays a single job."""
+        bad = set(fields) - STREAM_COLUMNS
+        if bad:
+            raise ValueError(f"unknown stream columns: {sorted(bad)}")
+        now = _now()
+        row = {"session_id": session_id, "created_at": now, "updated_at": now, **fields}
+        cur = self.conn.execute(
+            f"INSERT OR IGNORE INTO streams ({', '.join(row)}) "
+            f"VALUES ({', '.join('?' * len(row))})",
+            tuple(row.values()),
+        )
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def get_stream(self, session_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM streams WHERE session_id = ?", (session_id,)
+        ).fetchone()
+
+    def set_stream(self, session_id: str, **fields) -> None:
+        bad = set(fields) - STREAM_COLUMNS
+        if bad:
+            raise ValueError(f"unknown stream columns: {sorted(bad)}")
+        if not fields:
+            return
+        assignments = ", ".join(f"{column} = ?" for column in fields)
+        self.conn.execute(
+            f"UPDATE streams SET {assignments}, updated_at = ? WHERE session_id = ?",
+            (*fields.values(), _now(), session_id),
+        )
+        self.conn.commit()
+
+    def streams_due(self, now: float) -> list[sqlite3.Row]:
+        """Streams still waiting for their VOD whose next look is due."""
+        return self.conn.execute(
+            "SELECT * FROM streams WHERE state = 'waiting_for_vod' AND next_check_at <= ? "
+            "ORDER BY next_check_at",
+            (now,),
+        ).fetchall()
 
     def get_clip(self, clip_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()

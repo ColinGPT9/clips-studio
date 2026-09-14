@@ -33,6 +33,7 @@ to itself, and are listed as internal below.
 - [Models](#models)
 - [Languages and export](#languages-and-export)
 - [Publishing to YouTube](#publishing-to-youtube)
+- [Streamer integrations](#streamer-integrations)
 - [WebSocket events](#websocket-events)
 - [A complete example](#a-complete-example)
 - [Gotchas](#gotchas)
@@ -86,6 +87,13 @@ means anything that can reach the port can:
 ```
 WARNING: binding 0.0.0.0 — this API has no authentication.
 ```
+
+**Requests must be addressed to `127.0.0.1` or `localhost`.**
+- **Other hosts are refused.** A request whose `Host` header names anything else
+  gets a 400. That stops a web page from reaching the API through DNS rebinding,
+  where its own domain is pointed at this computer.
+- **This is not authentication.** Any program running on this computer can still
+  call the API.
 
 **Exposing this to a network is not a supported configuration.** If you need
 remote access, put your own authenticated service in front of it and keep the
@@ -155,10 +163,15 @@ guarantee of never changing.
 ### `GET /health`
 
 ```json
-{"ok": true}
+{"ok": true, "app_version": "1.1.4", "api_version": 1}
 ```
 
 The liveness check. Cheap enough to poll.
+
+- **`api_version`** changes only when a supported endpoint changes shape. A tool
+  can check it once and tell its user to update Clips Kitty, instead of failing
+  in some stranger way later.
+- **`app_version`** is the installed release.
 
 ### `GET /health/preflight`
 
@@ -677,6 +690,107 @@ An upload interrupted by a crash or a quit is marked `interrupted` and is
 YouTube finished receiving the file, and a retry that guesses wrong posts the
 video to someone's channel twice. Ask the user to check their channel instead.
 
+## Streamer integrations
+
+For a tool that sits next to a livestream, such as the Clips Kitty OBS Plugin.
+
+- **Your tool** decides the stream has really ended, then hands it over.
+- **Clips Kitty** finds the VOD the platform publishes afterwards, queues it once,
+  and reports progress in terms a small dock can show.
+
+Clips Kitty does not need to be running while the stream is live. Launch it
+after the stream, wait for `GET /health`, then post the stream.
+
+### `POST /integrations/streams`
+
+```json
+{
+  "session_id": "3f2a9c1e-7b64-4d8a-9e21-5c0b6a1f4d77",
+  "source": "obs",
+  "platform": "twitch",
+  "channel": "yourchannel",
+  "started_at": 1757790000,
+  "ended_at": 1757801400,
+  "preset": "standard"
+}
+```
+
+| Field | Notes |
+|---|---|
+| `session_id` | Yours: 8 to 64 letters, digits and hyphens. A UUID works. Posting the same id again returns the existing stream and creates nothing. |
+| `platform` | `twitch`, `youtube` or `kick`. |
+| `channel` | The channel handle, without `@`. Needed to find the VOD automatically. |
+| `started_at`, `ended_at` | Unix seconds, as your tool saw them. The VOD is matched by start time. |
+| `preset` | An `id` from `GET /integrations/presets`. |
+
+Returns the stream, as below, plus `"created": true` or `false`.
+
+### `GET /integrations/streams/{session_id}`
+
+```json
+{
+  "session_id": "3f2a9c1e-7b64-4d8a-9e21-5c0b6a1f4d77",
+  "source": "obs", "platform": "twitch", "channel": "yourchannel",
+  "started_at": 1757790000.0, "ended_at": 1757801400.0, "preset": "standard",
+  "state": "processing",
+  "vod_url": "https://www.twitch.tv/videos/2869889709", "video_id": "tw_2869889709",
+  "job_id": 212, "waiting_behind": 0, "error": "",
+  "progress": {"stage": "analyze", "label": "Finding the best moments",
+               "percent": 57, "eta_seconds": 1480, "elapsed_seconds": 1930}
+}
+```
+
+| `state` | Meaning | Extra fields |
+|---|---|---|
+| `waiting_for_vod` | Looking for the VOD every 5 minutes, for up to 2 hours after the stream ended. | |
+| `needs_link` | It can't look (Kick, or no channel name) or didn't find the VOD. `error` says which, in words a streamer can read. Post the link. | |
+| `queued` | In the queue. | `waiting_behind`: videos ahead of it. `queue_paused`: `true` while it waits for someone to press Start. |
+| `processing` | Running. | `progress`: stage, label, percent and `eta_seconds` (`null` for the first few percent). |
+| `complete` | Done, or that VOD had already been processed. | `clips`: how many were made. |
+| `error` | The job failed, or the queue was full. | `error` for the streamer, `details` for a log. |
+| `cancelled` | Cancelled here, or removed from the queue in the app. | |
+
+Poll it every few seconds while a dock is open. It reads the queue live, so it
+never goes stale.
+
+**It never starts other videos.** Clips Kitty does not start processing on its
+own; the queue starts stopped. A stream you hand over counts as the go-ahead for
+that stream only.
+- **Nothing else waiting, queue stopped:** the queue starts.
+- **Other videos already waiting:** it stays stopped and `queue_paused` is
+  `true`. Tell the user to press Start in Clips Kitty.
+
+The percentages use the same stage weights as the app, so a dock and the app
+never disagree about the same job.
+
+### `POST /integrations/streams/{session_id}/link`
+
+```json
+{"url": "https://kick.com/yourchannel/videos/12345678-1234-1234-1234-123456789abc"}
+```
+
+For `needs_link`: queues that link instead. Once the stream is queued,
+processing or complete, posting again returns it unchanged.
+
+### `DELETE /integrations/streams/{session_id}`
+
+Removes a queued job, or cancels a running one, and marks the stream
+`cancelled`. A finished stream is left as it is.
+
+### `GET /integrations/presets`
+
+```json
+[
+  {"id": "standard", "name": "Standard", "description": "Vertical clips with captions.", "options": {}},
+  {"id": "podcast", "name": "Podcast", "description": "Letterboxed framing for multi-camera podcasts, without subject tracking.", "options": {"podcast": true}},
+  {"id": "long_clips", "name": "Long clips", "description": "Clips between 61 and 180 seconds long.", "options": {"long_clips": true}},
+  {"id": "highlights", "name": "Stream highlights", "description": "A horizontal highlights video of the stream.", "options": {"longform": {"mode": "highlights"}}}
+]
+```
+
+Named bundles of options `POST /jobs` already accepts. Show `name` and
+`description`, and send `id`.
+
 ## WebSocket events
 
 ```
@@ -811,9 +925,10 @@ Collected because each one has cost somebody time:
 
 ## Building something?
 
-Open an issue and say what you are building: partly so it can be linked from
-the README, and partly because the fastest way to get an internal endpoint
-promoted to supported is for somebody to need it.
+- **Get it listed:** add it to [PROJECTS.md](../PROJECTS.md) with a pull request,
+  so people can find it.
+- **Need an internal endpoint?** Open an issue saying what you are building. The
+  fastest way to get one promoted to supported is for somebody to need it.
 
 For changing the app itself rather than building beside it, see
 [EXTENDING.md](EXTENDING.md): adding a language, a platform, an AI model or an

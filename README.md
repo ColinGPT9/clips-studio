@@ -605,6 +605,12 @@ serves its own interactive docs at `http://127.0.0.1:8765/docs`.
 It has **no authentication** and it binds localhost for that reason. See the
 security note in the API docs before you point anything at it.
 
+### Built with Clips Kitty
+
+Projects that run on this API are listed in **[PROJECTS.md](PROJECTS.md)**.
+Built one? Add it with a pull request, and give your repository the
+`clips-kitty` topic.
+
 ## Architecture
 
 See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the full design: the pipeline, the
