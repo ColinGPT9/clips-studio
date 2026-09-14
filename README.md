@@ -607,9 +607,10 @@ security note in the API docs before you point anything at it.
 
 ### Built with Clips Kitty
 
-Projects that run on this API are listed in **[PROJECTS.md](PROJECTS.md)**.
-Built one? Add it with a pull request, and give your repository the
-`clips-kitty` topic.
+Projects that run on this API are listed in **[PROJECTS.md](PROJECTS.md)**. The
+first is the [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin),
+an OBS Studio dock that hands your stream to Clips Kitty after it ends. Built one?
+Add it with a pull request, and give your repository the `clips-kitty` topic.
 
 ## Architecture
 
