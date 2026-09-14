@@ -10,8 +10,7 @@ the clips it made. Start with [docs/API.md](docs/API.md).
 
 Built and maintained alongside Clips Kitty.
 
-_The Clips Kitty OBS Plugin is in development and will be listed here when its
-first release is out._
+- [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin) - An OBS Studio dock that hands your stream to Clips Kitty after it ends, and shows progress and time remaining. Nothing runs while you are live. (Windows, in development)
 
 ## Community
 
