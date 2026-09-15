@@ -15,9 +15,7 @@ were often broken in a way that only showed up on somebody else's machine.
 - **Every clip ends with a short Clips Kitty end card.** A 2.9-second card with
   the Clips Kitty mascot is added to the end of each clip you make, so people
   who watch your clips can find the app that made them. It is joined on without
-  re-encoding, so the clip itself is untouched. It is on by default, including
-  for anyone updating; turn it off in **Settings** with "Add the Clips Kitty end
-  card to every clip".
+  re-encoding, so the clip itself is untouched.
 
 - **Korean is now fully translated**, thanks to
   [@doeil1614-ops](https://github.com/doeil1614-ops). Korean was listed as a
