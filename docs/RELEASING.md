@@ -218,7 +218,9 @@ no terminal. A creator installs Clips Kitty and nothing else.
 The bundled Ollama listens on **127.0.0.1:11435**, not its default 11434, so
 it cannot collide with one the creator already runs. Electron starts it, tells
 the engine where it is via `CLIPS_STUDIO_OLLAMA_HOST`, and kills the process
-tree on quit. Its models go to `%LOCALAPPDATA%\Clips Studio\data\models`.
+tree on quit. Its models go to `%LOCALAPPDATA%\Clips Studio\data\models`,
+except on installs where 1.1.3 or 1.1.4 already downloaded them to
+`%LOCALAPPDATA%\Clips Kitty\data\models`, which keep using that folder.
 
 **Not included:** the language model itself. Not for packaging reasons. It
 would fit, but licensing ones: Gemma and friends ship under terms the person

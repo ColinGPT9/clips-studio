@@ -151,26 +151,26 @@ The result is `release/Clips Kitty-<version>-x64.appx`, around 6 GB.
 
 ### About the version number
 
-The Store will not accept `0.1.2.0`. Its rule is that the fourth part must be 0
-and the first part **cannot** be 0. So the script derives the package version
-by adding one to the major:
+A Store package version always has four parts. Microsoft's rule is that the
+fourth part is reserved for the Store and must be 0, and the first part cannot
+be 0. So the package version is the app version with `.0` on the end:
 
 | App version | MSIX package version |
 |---|---|
-| 0.1.2 | **1.1.2.0** |
-| 0.1.3 | 1.1.3.0 |
-| 0.2.0 | 1.2.0.0 |
-| 1.0.0 | 2.0.0.0 |
+| 1.1.3 | 1.1.3.0 |
+| 1.2.0 | **1.2.0.0** |
+| 2.0.0 | 2.0.0.0 |
 
-The leading `1` is a Store requirement, not a claim that this is a 1.0 release.
-Everything a user sees. The README, the GitHub release, this site, the Store
-description: still says **0.1.2**.
+That `.0` cannot be left off, and it is the only difference. It appears in
+Partner Center and in Windows' package details. Everything else shows the app
+version: the app itself, bug reports, the GitHub release, the website and the
+Store description all say **1.2.0**.
 
-It has to derive from the app's major rather than being pinned at 1, because
-the Store also requires every submission to be higher than the last. If the
-major were fixed at 1, then shipping app version 1.0.0 would produce `1.0.0.0`,
-which sorts *below* the `1.1.2.0` already published, and the update would be
-rejected.
+Before 1.1.3 the app was on 0.x, which the Store rejects, so the script added
+one to the major and 0.1.2 shipped as `1.1.2.0`. The app moved to 1.1.3 to end
+that second number. It could not move to 1.0.0, because every submission must
+be higher than the last, and `1.0.0.0` sorts below the `1.1.2.0` already
+published.
 
 ### Installing it yourself before uploading
 
