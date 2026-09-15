@@ -267,9 +267,21 @@ class StateDB:
     def _migrate(self) -> None:
         """Add columns introduced after a DB was first created."""
         existing = {r["name"] for r in self.conn.execute("PRAGMA table_info(clips)")}
-        for column in ("title", "description", "hashtags", "scores", "render_opts"):
+        for column in ("title", "description", "hashtags", "scores", "render_opts",
+                       "exported_at"):
             if column not in existing:
                 self.conn.execute(f"ALTER TABLE clips ADD COLUMN {column} TEXT DEFAULT ''")
+        if "exported_at" not in existing:
+            # Exports were only logged as a learning signal before the mark
+            # existed. Carry that history over once, so a clip exported last
+            # week doesn't read as never exported.
+            self.conn.execute(
+                "UPDATE clips SET exported_at = ("
+                " SELECT MAX(f.created_at) FROM clip_feedback f"
+                " WHERE f.clip_id = clips.id AND f.action = 'exported')"
+                " WHERE EXISTS (SELECT 1 FROM clip_feedback f"
+                " WHERE f.clip_id = clips.id AND f.action = 'exported')"
+            )
         video_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(videos)")}
         if "channel_name" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN channel_name TEXT DEFAULT ''")

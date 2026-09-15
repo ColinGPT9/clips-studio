@@ -195,7 +195,15 @@ export const api = {
 
   videos: () => request<Video[]>('/videos'),
   clips: (videoId: string) => request<Clip[]>(`/videos/${videoId}/clips`),
-  patchClip: (id: number, patch: { title?: string; description?: string; hashtags?: string[] }) =>
+  patchClip: (
+    id: number,
+    patch: {
+      title?: string
+      description?: string
+      hashtags?: string[]
+      exported?: boolean
+    }
+  ) =>
     request<Clip>(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   captions: (id: number) => request<{ lines: CaptionLine[] }>(`/clips/${id}/captions`),
   saveCaptions: (id: number, lines: CaptionLine[]) =>

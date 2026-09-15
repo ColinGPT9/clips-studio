@@ -76,6 +76,7 @@ export default function ClipEditor({
     run('export', async () => {
       const res = await api.exportClip(clip.id, folder)
       flash(res.exported.length ? `Exported: ${res.exported[0]}` : 'Nothing exported')
+      onChanged() // exporting stars the clip; show it on its card
     })
 
   return (

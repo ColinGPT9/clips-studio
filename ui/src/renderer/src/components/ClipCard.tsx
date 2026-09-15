@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
 import ScoreBadge from './ScoreBadge'
-import { Trash } from './icons'
+import { Star, Trash } from './icons'
 
 const PROFILE_BADGE: Record<string, string> = {
   short_clips: '▭ 16:9',
@@ -15,18 +15,22 @@ export default function ClipCard({
   clip,
   selected,
   onClick,
-  onDelete
+  onDelete,
+  onToggleExported
 }: {
   clip: Clip
   selected: boolean
   onClick: () => void
   /** Cull this clip straight from the grid, without opening it. */
   onDelete?: () => void
+  /** Star or unstar the clip as exported, without opening it. */
+  onToggleExported?: () => void
 }): JSX.Element {
   const duration = Math.round(clip.end_s - clip.start_s)
   const name = clip.title || clip.hook || 'Untitled clip'
   const profile = clip.render_opts?.profile
   const badge = profile ? (PROFILE_BADGE[profile] ?? '▭ 16:9') : null
+  const exported = !!clip.exported_at
 
   // Lazy-load the thumbnail. Chromium allows only ~6 connections per host, so
   // a grid of 100+ <video> elements pointed at the local server starves its
@@ -59,7 +63,7 @@ export default function ClipCard({
         onClick={onClick}
         aria-label={`${name}, ${duration} seconds, score ${clip.score}${
           badge ? ', horizontal longform' : ', vertical Short'
-        }${selected ? ', selected' : ''}`}
+        }${exported ? ', exported' : ''}${selected ? ', selected' : ''}`}
         aria-pressed={selected}
         className={`w-full text-left rounded-xl overflow-hidden bg-surface border transition-colors ${
           selected ? 'border-accent' : 'border-raised/60 hover:border-raised'
@@ -99,6 +103,35 @@ export default function ClipCard({
           </p>
         </div>
       </button>
+      {onToggleExported && (
+        <button
+          aria-label={exported ? `Unstar ${name} (not exported)` : `Star ${name} as exported`}
+          aria-pressed={exported}
+          title={
+            exported
+              ? 'Exported. Click to unstar.'
+              : 'Star as exported. Export all skips starred clips.'
+          }
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleExported()
+          }}
+          // Starred, the star sits in the corner on its own. On hover the trash
+          // takes the corner, so the star steps in beside it. Unstarred, the
+          // star only appears then, in that same spot beside the trash.
+          className={`absolute top-2 z-10 p-1.5 rounded-md bg-black/60 transition-all ${
+            exported
+              ? `text-amber-400 opacity-100 ${
+                  onDelete ? 'right-2 group-hover:right-10 group-focus-within:right-10' : 'right-2'
+                }`
+              : `text-white/80 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-amber-400 ${
+                  onDelete ? 'right-10' : 'right-2'
+                }`
+          }`}
+        >
+          <Star className={exported ? 'fill-current' : ''} />
+        </button>
+      )}
       {onDelete && (
         <button
           aria-label={`Delete ${name}`}

@@ -104,6 +104,7 @@ class ClipPatch(BaseModel):
     title: str | None = None
     description: str | None = None
     hashtags: list[str] | None = None
+    exported: bool | None = None  # the clip's star; exporting also sets it
 
 
 class MergeIn(BaseModel):
@@ -1227,7 +1228,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     def patch_clip(clip_id: int, body: ClipPatch):
         d = db()
         try:
-            if d.get_clip(clip_id) is None:
+            row = d.get_clip(clip_id)
+            if row is None:
                 raise HTTPException(404, "no such clip")
             fields = {}
             if body.title is not None:
@@ -1236,6 +1238,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 fields["description"] = body.description.strip()
             if body.hashtags is not None:
                 fields["hashtags"] = json.dumps(body.hashtags)
+            # The clip's star, set by hand. Starring again keeps the first time,
+            # and it is not logged as feedback: only a real export says "keep
+            # this style".
+            from core.state import _now
+
+            if body.exported is False:
+                fields["exported_at"] = ""
+            elif body.exported and not row["exported_at"]:
+                fields["exported_at"] = _now()
             if fields:
                 d.set_clip(clip_id, **fields)
             return _clip_json(d.get_clip(clip_id))
@@ -1774,6 +1785,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         return {"exported": _export(body.clip_ids, Path(body.folder))}
 
     def _export(clip_ids: list[int], folder: Path) -> list[str]:
+        from core.state import _now
+
         folder.mkdir(parents=True, exist_ok=True)
         d = db()
         exported = []
@@ -1786,6 +1799,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 target = _unique_path(folder, name)
                 shutil.copy2(row["path"], target)
                 exported.append(str(target))
+                d.set_clip(cid, exported_at=_now())  # Export all skips it from now on
                 _log_feedback(d, row, "exported")  # exports = strongest "keep" signal
         finally:
             d.close()

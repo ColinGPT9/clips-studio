@@ -90,6 +90,12 @@ export const Trash = (p: IconProps = {}): JSX.Element =>
     </>
   )
 
+export const Star = (p: IconProps = {}): JSX.Element =>
+  base(
+    p,
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+  )
+
 export const Zap = (p: IconProps = {}): JSX.Element =>
   base(p, <path d="M13 2 3 14h7l-1 8 12-13h-8l1-7z" />)
 

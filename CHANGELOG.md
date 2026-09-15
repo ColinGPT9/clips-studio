@@ -12,6 +12,13 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Star the clips you have exported, and export a whole video at once.** Each
+  clip in the Clip Editor has a star next to its delete button. Exporting a clip
+  stars it, and you can star or unstar any clip by hand. **Export all** saves
+  every clip from a video or stream that is not starred yet, so nothing gets
+  exported twice. Clips you exported before this update start out starred, from
+  the app's export history.
+
 - **"No clips" explains itself.** When a video produces nothing, the app now
   says so where the clips would have been, with the numbers behind it: how many
   moments were considered, the best score any of them reached, and the
