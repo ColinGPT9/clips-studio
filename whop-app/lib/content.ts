@@ -25,12 +25,12 @@
  *  When a new version ships, this changes ONLY after its payload is live on
  *  Hugging Face. See docs/RELEASING.md in the main repo.
  *
- *  Verified 2026-08-21: `clips-studio-1.1.3-x64.nsis.7z` is live on Hugging
- *  Face (6,338,199,990 bytes, fetched and size-checked), so the pin moves to
- *  1.1.3. Not before — this app redeploys on push, so bumping it ahead of the
- *  upload puts a broken download in front of people within seconds.
+ *  Verified 2026-09-15: `clips-studio-1.2.0-x64.nsis.7z` is live on Hugging
+ *  Face (6,156,604,703 bytes, size-checked against the local build), so the
+ *  pin moves to 1.2.0. Not before — this app redeploys on push, so bumping it
+ *  ahead of the upload puts a broken download in front of people within seconds.
  */
-export const VERSION = "1.1.3";
+export const VERSION = "1.2.0";
 
 export const LINKS = {
 	/** Straight to the installer for VERSION, so a clipper gets one click
