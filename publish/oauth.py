@@ -98,7 +98,16 @@ def _explain(exc: Exception) -> str:
     text = str(exc)
     lowered = text.lower()
     if "access_denied" in lowered:
-        return "You declined the permission request, so nothing was connected."
+        # Google sends the same code for pressing Cancel and for an OAuth project
+        # still in Testing that does not list this account as a test user ("has
+        # not completed the Google verification process"). The second is the one
+        # people get stuck on, so the message has to cover both.
+        return (
+            "Google did not give Clips Kitty access. If you pressed Cancel, press "
+            "Connect and try again. If Google said the app has not completed "
+            "verification, your Google Cloud project is still in Testing: open "
+            "Google Auth Platform, then Audience, press Publish app, and connect again."
+        )
     if "timed out" in lowered or "timeout" in lowered:
         return "The sign-in window timed out. Press Connect and try again."
     if "invalid_client" in lowered:
