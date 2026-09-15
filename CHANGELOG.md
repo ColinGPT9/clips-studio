@@ -8,9 +8,51 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## Unreleased: a run that makes no clips now says why
+## 1.2.0: every clip now ends with a Clips Kitty end card
 
 ### Added
+
+- **Every clip ends with a short Clips Kitty end card.** A 2.9-second card with
+  the Clips Kitty mascot is added to the end of each clip you make, so people
+  who watch your clips can find the app that made them. It is joined on without
+  re-encoding, so the clip itself is untouched. It is on by default, including
+  for anyone updating; turn it off in **Settings** with "Add the Clips Kitty end
+  card to every clip".
+
+- **Korean is now fully translated**, thanks to
+  [@doeil1614-ops](https://github.com/doeil1614-ops). Korean was listed as a
+  finished language and was not: 68 of the app's phrases were falling back to
+  English. All of them are translated now, and the existing wording was reviewed
+  by a native speaker, so clips are called "하이라이트 영상" (highlight videos)
+  where that is what Korean creators say. If something still reads oddly,
+  [#45](https://github.com/ColinGPT9/clips-studio/issues/45) is the place to say
+  so.
+
+- **Publish to YouTube from the editor.** Finish a clip, press **YouTube**, fill
+  in the title, description, tags, thumbnail, playlist, audience and visibility,
+  and press Upload. Clips Kitty renders your unsaved edits and uploads straight
+  to your channel. No exporting the file first, no hunting for it on disk, no
+  separate publishing screen. You never leave the editor.
+
+  **Scheduling uploads the video now** and asks YouTube to publish it later, so
+  you can close Clips Kitty and switch your computer off. There is no timer in
+  this app and nothing to leave running.
+
+  It is **off until you turn it on** in Settings, and it uses your own free
+  Google API key rather than a shared one, which is what stops every user in the
+  world drawing from the same daily upload allowance. If you never enable it, the
+  editor looks exactly as it did.
+
+  One thing worth knowing before you rely on it: until your Google Cloud project
+  passes YouTube's free audit, **YouTube locks every video uploaded through an
+  API to private, permanently**, and it cannot be undone in Studio. That is
+  YouTube's policy, not a bug, and no software can work around it. Clips Kitty
+  checks after every upload and tells you if it happened instead of claiming
+  success. Uploading as unlisted or private is unaffected. See
+  [README "Posting publicly"](README.md#posting-publicly).
+
+  This is new, and few people have tried it yet. If you set it up, tell us how it
+  went through the Feedback Hub, whether it worked or not.
 
 - **Star the clips you have exported, and export a whole video at once.** Each
   clip in the Clip Editor has a star next to its delete button. Exporting a clip
@@ -69,38 +111,6 @@ were often broken in a way that only showed up on somebody else's machine.
   useful even when the description is three words. Previously the video was
   guessed from "most recently updated", which found nothing at all if the
   reporter had deleted the video first, as they usually have.
-
----
-
-## Unreleased: publish to YouTube without leaving the editor
-
-### Added
-
-- **Publish to YouTube from the editor.** Finish a clip, press **YouTube**, fill
-  in the title, description, tags, thumbnail, playlist, audience and visibility,
-  and press Upload. Clips Kitty renders your unsaved edits and uploads straight
-  to your channel. No exporting the file first, no hunting for it on disk, no
-  separate publishing screen. You never leave the editor.
-
-  **Scheduling uploads the video now** and asks YouTube to publish it later, so
-  you can close Clips Kitty and switch your computer off. There is no timer in
-  this app and nothing to leave running.
-
-  It is **off until you turn it on** in Settings, and it uses your own free
-  Google API key rather than a shared one, which is what stops every user in the
-  world drawing from the same daily upload allowance. If you never enable it, the
-  editor looks exactly as it did.
-
-  One thing worth knowing before you rely on it: until your Google Cloud project
-  passes YouTube's free audit, **YouTube locks every video uploaded through an
-  API to private, permanently**, and it cannot be undone in Studio. That is
-  YouTube's policy, not a bug, and no software can work around it. Clips Kitty
-  checks after every upload and tells you if it happened instead of claiming
-  success. Uploading as unlisted or private is unaffected. See
-  [README "Posting publicly"](README.md#posting-publicly).
-
-### Fixed
-
 - **Editing a clip you had translated no longer fails the render.** Translating a
   clip in the Subtitles tab and then pressing "Apply edits" failed the job with a
   database error, mentioning nothing you had actually done. Re-rendering replaces
@@ -115,6 +125,11 @@ were often broken in a way that only showed up on somebody else's machine.
 - **`python main.py auth` works in the installed app.** It looked for your
   credentials file relative to whatever folder it happened to be started from,
   which for an installed copy is not where the file is.
+
+- **A blocked YouTube sign-in now says how to fix it.** If your Google Cloud
+  project is still set to Testing, Google refuses the sign-in, and the app used
+  to tell you that you had declined the permission request. It now says to open
+  Google Auth Platform, then Audience, and press Publish app.
 
 ---
 
