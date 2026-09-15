@@ -21,11 +21,13 @@ refinement instead of raising.
 
 import threading
 
-import numpy as np
 import pytest
 
-import core.binaries as binaries
-import video.tracker as tracker
+np = pytest.importorskip("numpy", reason="numpy is not installed on CI")
+pytest.importorskip("cv2", reason="OpenCV is not installed on CI")
+
+import core.binaries as binaries  # noqa: E402
+import video.tracker as tracker  # noqa: E402
 
 FRAME = np.zeros((400, 400, 3), dtype=np.uint8)
 BOX = (50, 50, 250, 350)

@@ -176,6 +176,7 @@ def test_the_pipeline_loads_the_model_the_check_promised(monkeypatch):
     backend would move the failure out of setup and into the first video —
     still an unusable feature, just found later.
     """
+    pytest.importorskip("numpy", reason="core.pipeline imports numpy, which CI does not install")
     from core.pipeline import _with_usable_model
 
     monkeypatch.setattr(
@@ -189,6 +190,7 @@ def test_the_pipeline_loads_the_model_the_check_promised(monkeypatch):
 def test_an_installed_model_is_left_alone(monkeypatch):
     """The fallback must not second-guess a choice that works — a 12 GB card
     running gemma3:12b keeps it, rather than being pulled to a smaller one."""
+    pytest.importorskip("numpy", reason="core.pipeline imports numpy, which CI does not install")
     from core.pipeline import _with_usable_model
 
     monkeypatch.setattr(

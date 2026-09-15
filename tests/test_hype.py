@@ -1,6 +1,8 @@
-import numpy as np
+import pytest
 
-from analysis import hype
+np = pytest.importorskip("numpy", reason="numpy is not installed on CI")
+
+from analysis import hype  # noqa: E402
 
 
 def test_organic_retention_spike_becomes_clip_scale_hot_zone():

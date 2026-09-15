@@ -15,9 +15,10 @@ YouTube 403 in #81 and the discarded FFmpeg error in #84.
 """
 
 import pytest
-import yt_dlp
 
-from sources import kick
+yt_dlp = pytest.importorskip("yt_dlp", reason="yt-dlp is not installed on CI")
+
+from sources import kick  # noqa: E402
 
 VOD_URL = "https://kick.com/deepak/videos/01a01a47-04a8-7432-bdfb-57393cbe75f5"
 

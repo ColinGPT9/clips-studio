@@ -98,7 +98,7 @@ class _FakeCuda:
 
 
 def _patch(monkeypatch, fake):
-    import torch
+    torch = pytest.importorskip("torch", reason="torch is not installed on CI")
 
     monkeypatch.setattr(torch, "cuda", fake)
 
