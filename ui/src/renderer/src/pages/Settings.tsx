@@ -415,7 +415,13 @@ function UpdateCard(): JSX.Element {
       case 'available':
         return `Version ${state.version} is available — see the bar at the top.`
       case 'downloading':
-        return `Downloading… ${state.percent ?? 0}%`
+        if (state.phase === 'package')
+          return state.percent === undefined
+            ? 'Downloading the app files…'
+            : `Downloading the app files… ${state.percent}%`
+        return (state.percent ?? 0) >= 100
+          ? 'Preparing the app files download…'
+          : `Downloading… ${state.percent ?? 0}%`
       case 'ready':
         return `Version ${state.version} is ready to install.`
       case 'none':

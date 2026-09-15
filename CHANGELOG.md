@@ -131,6 +131,19 @@ were often broken in a way that only showed up on somebody else's machine.
   to tell you that you had declined the permission request. It now says to open
   Google Auth Platform, then Audience, and press Publish app.
 
+- **Updates no longer offer an older version.** An installed copy could offer to
+  "update" itself to a version older than the one it was running whenever the
+  update feed was behind it.
+
+- **Downloading an update shows real progress.** After a small first step, the
+  bar used to sit at 100% for the whole multi-gigabyte download, which looked
+  frozen. From this version on it counts through the app files as they arrive.
+
+- **AI models from older versions are found again.** Since 1.1.3 the app kept its
+  models in a different folder from the rest of its data, so people coming from
+  0.1.x downloaded their model a second time. It now keeps using whichever folder
+  already has your models.
+
 ---
 
 ## 1.1.4: setup stops asking for a model you never chose

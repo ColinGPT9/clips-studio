@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 
-function mb(n?: number): string {
-  return n ? `${(n / 1e6).toFixed(0)} MB` : ''
+/** "813 MB" or "6.2 GB": update downloads span both. */
+function size(n?: number): string {
+  if (!n) return ''
+  return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${(n / 1e6).toFixed(0)} MB`
 }
 
 /** Strips HTML tags from release notes, which arrive as markup from the
@@ -57,19 +59,34 @@ export default function UpdateBanner(): JSX.Element | null {
   const bar = 'w-full px-4 py-2.5 flex items-center gap-3 text-sm border-b'
 
   if (s.state === 'downloading') {
+    // Two downloads: the small setup, then the app files. Between them the
+    // updater is briefly silent, and a bar parked at 100% reads as frozen, so
+    // that gap gets its own words instead of a finished-looking number.
+    const packagePhase = s.phase === 'package'
     const pct = s.percent ?? 0
+    const betweenDownloads = !packagePhase && pct >= 100
+    const label = packagePhase
+      ? 'Downloading the app files…'
+      : betweenDownloads
+        ? 'Preparing the app files download…'
+        : 'Downloading update…'
+    const detail = betweenDownloads
+      ? 'This can take a while'
+      : packagePhase && !s.total
+        ? `${size(s.transferred)} downloaded`
+        : `${pct}%${s.total ? ` · ${size(s.transferred)} of ${size(s.total)}` : ''}`
     return (
       <div className={`${bar} bg-surface border-raised/60`}>
-        <span className="shrink-0 font-medium">Downloading update…</span>
+        <span className="shrink-0 font-medium">{label}</span>
         <div className="flex-1 h-2 rounded-full bg-raised overflow-hidden max-w-md">
           <div
-            className="h-full bg-accent rounded-full transition-[width] duration-500"
-            style={{ width: `${Math.max(2, pct)}%` }}
+            className={`h-full bg-accent rounded-full transition-[width] duration-500${
+              betweenDownloads ? ' animate-pulse' : ''
+            }`}
+            style={{ width: `${betweenDownloads ? 100 : Math.max(2, pct)}%` }}
           />
         </div>
-        <span className="text-xs text-muted tabular-nums shrink-0">
-          {pct}%{s.total ? ` · ${mb(s.transferred)} of ${mb(s.total)}` : ''}
-        </span>
+        <span className="text-xs text-muted tabular-nums shrink-0">{detail}</span>
       </div>
     )
   }

@@ -16,6 +16,9 @@ interface UpdateState {
   version?: string
   notes?: string
   date?: string
+  /** A web-installer update downloads twice: the small setup, then the app
+   *  files. Which of the two the numbers describe. */
+  phase?: 'installer' | 'package'
   percent?: number
   transferred?: number
   total?: number
