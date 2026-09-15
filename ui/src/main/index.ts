@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { setupUpdater } from './updater'
 import { isMicrosoftStore } from './distribution'
@@ -39,7 +40,15 @@ function startOllama(): void {
   // in core/paths.py, or the engine and the runtime disagree about what is
   // downloaded.
   const localAppData = process.env.LOCALAPPDATA ?? join(app.getPath('home'), 'AppData', 'Local')
-  const models = join(localAppData, 'Clips Kitty', 'data', 'models')
+  // The 1.1.3 rename (d708b34) moved this folder to "Clips Kitty" while
+  // core/paths.py rightly kept the data folder at "Clips Studio", so the two
+  // stopped matching: models from earlier versions were stranded and fetched
+  // again. Keep whichever folder already holds models, so 1.1.3 and 1.1.4
+  // installs keep theirs; otherwise use the data folder's own name.
+  const kittyModels = join(localAppData, 'Clips Kitty', 'data', 'models')
+  const models = existsSync(join(kittyModels, 'manifests'))
+    ? kittyModels
+    : join(localAppData, 'Clips Studio', 'data', 'models')
 
   ollama = spawn(exe, ['serve'], {
     stdio: 'ignore',

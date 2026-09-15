@@ -14,7 +14,7 @@
 // publish block in electron-builder.yml.
 
 import { app, ipcMain, type BrowserWindow } from 'electron'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { isMicrosoftStore } from './distribution'
@@ -62,6 +62,10 @@ function send(channel: string, payload: unknown): void {
  *  `beta.yml`, `alpha.yml`) and the updater fetches exactly the one named. */
 function applyChannel(channel: Channel): void {
   autoUpdater.channel = channel === 'stable' ? 'latest' : channel
+  // electron-updater's channel setter quietly turns downgrades on. Left that
+  // way, any feed older than this build is offered as an "update": 1.2.0
+  // offered 1.1.4 while its own feed was not yet published. Updates only go up.
+  autoUpdater.allowDowngrade = false
 }
 
 /** True while a pre-release check is in flight that a stable check will follow.
@@ -95,6 +99,58 @@ async function check(): Promise<{ ok: boolean; reason?: string }> {
   } finally {
     willRetryOnStable = false
   }
+}
+
+/** The update on offer, and the size of the app files its web installer
+ *  fetches after itself (latest.yml's `packages`). */
+let offered: { version: string; packageSize: number } | null = null
+let packageTimer: ReturnType<typeof setInterval> | null = null
+let packageStarted = false
+
+function packageSize(info: UpdateInfo): number {
+  const packages = (info as UpdateInfo & { packages?: Record<string, { size?: number }> }).packages
+  const first = packages ? Object.values(packages)[0] : undefined
+  return typeof first?.size === 'number' ? first.size : 0
+}
+
+/** Report the app files download as it happens.
+ *
+ *  A web-installer update is two downloads. electron-updater reports progress
+ *  for the first, the ~1 MB setup, then writes the multi-gigabyte app package
+ *  straight to its pending folder without reporting anything, which left the
+ *  bar at "100% · 1 MB of 1 MB" for as long as that took and read as frozen.
+ *  The file is written in place, so its size on disk is the real figure. */
+function watchPackageDownload(): void {
+  stopPackageWatch()
+  packageStarted = false
+  const target = offered
+  if (!target) return
+  packageTimer = setInterval(() => {
+    const helper = (autoUpdater as unknown as {
+      downloadedUpdateHelper?: { cacheDirForPendingUpdate: string }
+    }).downloadedUpdateHelper
+    if (!helper) return
+    let transferred = 0
+    try {
+      transferred = statSync(join(helper.cacheDirForPendingUpdate, `package-${target.version}.7z`)).size
+    } catch {
+      return // the app files download has not started yet
+    }
+    packageStarted = true
+    const total = target.packageSize
+    send('update:state', {
+      state: 'downloading',
+      phase: 'package',
+      transferred,
+      total: total || undefined,
+      percent: total ? Math.min(99, Math.round((transferred / total) * 100)) : undefined
+    })
+  }, 1000)
+}
+
+function stopPackageWatch(): void {
+  if (packageTimer) clearInterval(packageTimer)
+  packageTimer = null
 }
 
 export function setupUpdater(win: BrowserWindow): void {
@@ -136,6 +192,7 @@ export function setupUpdater(win: BrowserWindow): void {
       send('update:state', { state: 'none' })
       return
     }
+    offered = { version: info.version, packageSize: packageSize(info) }
     send('update:state', {
       state: 'available',
       version: info.version,
@@ -146,21 +203,27 @@ export function setupUpdater(win: BrowserWindow): void {
 
   autoUpdater.on('update-not-available', () => send('update:state', { state: 'none' }))
 
-  autoUpdater.on('download-progress', (p) =>
+  autoUpdater.on('download-progress', (p) => {
+    // Once the app files are downloading, the watcher reports them; this
+    // event would otherwise overwrite that with the finished setup's 100%.
+    if (packageStarted) return
     send('update:state', {
       state: 'downloading',
+      phase: 'installer',
       percent: Math.round(p.percent),
       transferred: p.transferred,
       total: p.total,
       bytesPerSecond: p.bytesPerSecond
     })
-  )
+  })
 
-  autoUpdater.on('update-downloaded', (info: UpdateInfo) =>
+  autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+    stopPackageWatch()
     send('update:state', { state: 'ready', version: info.version })
-  )
+  })
 
   autoUpdater.on('error', (err) => {
+    stopPackageWatch()
     // An empty pre-release feed is about to be retried against stable, and
     // the retry reports the real outcome.
     if (willRetryOnStable) return
@@ -179,12 +242,15 @@ export function setupUpdater(win: BrowserWindow): void {
   })
 
   ipcMain.handle('update:download', async () => {
+    watchPackageDownload()
     try {
       await autoUpdater.downloadUpdate()
       return { ok: true }
     } catch (e) {
       send('update:state', { state: 'error', message: String(e) })
       return { ok: false }
+    } finally {
+      stopPackageWatch()
     }
   })
 
