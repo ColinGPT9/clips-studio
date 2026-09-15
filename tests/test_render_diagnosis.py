@@ -20,6 +20,10 @@ real footage, and retrying on the CPU turns an empty job into a slow one.
 import json
 import sys
 
+import pytest
+
+pytest.importorskip("numpy", reason="core.pipeline imports numpy, which CI does not install")
+
 from core.pipeline import _render_failure_reason
 from video.cutter import _swap_encoder
 from video.encoding import _CANDIDATES, CPU_ARGS

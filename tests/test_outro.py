@@ -17,6 +17,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+pytest.importorskip("numpy", reason="the end card is drawn with numpy, which CI does not install")
+pytest.importorskip("PIL", reason="the end card is drawn with Pillow, which CI does not install")
+
 from core import binaries
 from video import outro
 

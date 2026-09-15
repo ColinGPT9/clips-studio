@@ -111,6 +111,7 @@ def test_a_locked_scratch_file_cannot_hide_the_real_error():
 
 def test_video_capture_releases_even_when_the_body_raises(monkeypatch):
     """The leak that started it. Release must happen on the exception path."""
+    pytest.importorskip("cv2", reason="OpenCV is not installed on CI")
     import video.capture as capture
 
     released = []
@@ -144,6 +145,7 @@ def test_video_capture_releases_a_file_it_could_not_open(monkeypatch):
         def release(self):
             released.append(True)
 
+    pytest.importorskip("cv2", reason="OpenCV is not installed on CI")
     import video.capture as capture
 
     monkeypatch.setattr(capture.cv2, "VideoCapture", lambda _p: FakeCap())
