@@ -558,6 +558,12 @@ exist**. Check the array, not the status.
 
 `POST /export/batch` takes `{"clip_ids": [...], "folder": "..."}`.
 
+Every clip that is copied out gets `exported_at` set to the time of the export.
+Clip JSON from `GET /videos/{video_id}/clips` carries `exported_at`, an ISO
+timestamp or `""`. Set or clear it by hand with `PATCH /clips/{clip_id}` and
+`{"exported": true}` or `{"exported": false}`. Marking a clip that is already
+marked keeps its original time.
+
 ## Publishing to YouTube
 
 Optional, and **off unless the user has switched it on** in Settings. While it is

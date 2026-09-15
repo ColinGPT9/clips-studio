@@ -200,6 +200,8 @@ export interface Clip {
   scores: SubScores
   render_opts: RenderOpts
   created_at: string
+  /** When the clip was exported, '' if never. Exporting sets it, and so does its star. */
+  exported_at: string
 }
 
 export interface Job {
