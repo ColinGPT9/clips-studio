@@ -31,6 +31,10 @@ export default function YouTubeThumbnail({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [chosenAt, setChosenAt] = useState<number | null>(null)
+  // Candidates made from the clip itself. Count, not images: each one is
+  // fetched by URL like the fixed suggestions are.
+  const [generated, setGenerated] = useState(0)
+  const [chosenGenerated, setChosenGenerated] = useState<number | null>(null)
 
   // The same three positions Studio offers. Recomputed only when the clip
   // changes, so the <img> elements are not rebuilt on every playhead move.
@@ -46,8 +50,40 @@ export default function YouTubeThumbnail({
       const { thumbnail } = await api.chooseThumbnail(clipId, { t: at })
       onChange(thumbnail)
       setChosenAt(at)
+      setChosenGenerated(null)
     } catch (e) {
       setNotice(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const generate = async (): Promise<void> => {
+    setBusy(true)
+    setNotice('')
+    try {
+      const { generated: made } = await api.generateThumbnails(clipId)
+      setGenerated(made)
+      if (made === 0) {
+        setNotice(t('No usable frames in this clip. The suggestions above still work.'))
+      }
+    } catch (e) {
+      setNotice(String(e).replace(/^Error:\s*/, ''))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pickGenerated = async (index: number): Promise<void> => {
+    setBusy(true)
+    setNotice('')
+    try {
+      const { thumbnail } = await api.chooseThumbnail(clipId, { generated: index })
+      onChange(thumbnail)
+      setChosenGenerated(index)
+      setChosenAt(null)
+    } catch (e) {
+      setNotice(String(e).replace(/^Error:\s*/, ''))
     } finally {
       setBusy(false)
     }
@@ -105,7 +141,39 @@ export default function YouTubeThumbnail({
         ))}
       </div>
 
+      {generated > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {Array.from({ length: generated }, (_, i) => (
+            <button
+              key={`gen-${i}`}
+              type="button"
+              disabled={disabled || busy}
+              onClick={() => pickGenerated(i)}
+              aria-label={`${t('Use generated thumbnail')} ${i + 1}`}
+              className={`relative rounded-md overflow-hidden border-2 transition-colors ${
+                chosenGenerated === i ? 'border-accent' : 'border-transparent hover:border-raised'
+              }`}
+            >
+              <img
+                src={api.generatedThumbnailUrl(clipId, i)}
+                alt=""
+                loading="lazy"
+                className="w-full aspect-video object-cover bg-raised"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-ghost !px-2.5 !py-1 text-xs"
+          disabled={disabled || busy}
+          onClick={generate}
+        >
+          {generated > 0 ? t('Make new ones') : t('Make thumbnails')}
+        </button>
         <button
           type="button"
           className="btn-ghost !px-2.5 !py-1 text-xs"
@@ -130,6 +198,7 @@ export default function YouTubeThumbnail({
             onClick={() => {
               onChange(null)
               setChosenAt(null)
+              setChosenGenerated(null)
             }}
           >
             {t('Clear')}

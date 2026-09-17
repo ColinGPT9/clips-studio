@@ -835,6 +835,37 @@ Removes a queued job, or cancels a running one, and marks the stream
 Named bundles of options `POST /jobs` already accepts. Show `name` and
 `description`, and send `id`.
 
+### Thumbnails made on this machine
+
+`POST /clips/{clip_id}/thumbnail/generate?count=3` looks through the clip for
+frames with a face in them, crops each to 16:9 around the face, burns the clip's
+hook across the bottom and writes up to four candidates.
+
+```json
+{"generated": 3}
+```
+
+**Zero is a normal answer**, not an error: a clip with no readable frame gets
+none, and the three fixed suggestions (a quarter, half and three quarters in)
+are still there. Everything degrades rather than fails, so a missing face
+cascade means a centre crop and a machine with no usable font means no burned
+text.
+
+Fetch one with `GET /clips/{clip_id}/thumbnail/generated/{index}`, where index 0
+is the best-ranked. Keep one with the normal chooser:
+
+```json
+{"generated": 0}
+```
+
+`POST /clips/{clip_id}/thumbnail` takes exactly one of `image` (base64),
+`t` (seconds into the clip) or `generated` (an index). Candidates are replaced
+each time you generate, so an index only refers to the most recent run.
+
+Nothing here calls out to anything: the faces come from the Haar cascades
+already bundled for the tracker, the frames from the bundled FFmpeg's decoder,
+and the type from a font already on the machine.
+
 ## MCP: let an AI agent drive it
 
 Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use the

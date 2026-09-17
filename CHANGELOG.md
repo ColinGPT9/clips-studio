@@ -22,6 +22,14 @@ were often broken in a way that only showed up on somebody else's machine.
   dock or an automation can sit quiet instead of asking every few seconds. Add a
   secret and the message is signed, so your listener knows it is really us.
 
+- **Thumbnails made from the clip, on your PC.** Press **Make thumbnails** in the
+  YouTube panel and Clips Kitty looks through the clip for frames where someone
+  is facing the camera, crops each to 16:9 around them and puts the clip's hook
+  across the bottom. Pick one like any other thumbnail. It costs nothing and
+  sends nothing anywhere: the faces, the frames and the type all come from what
+  is already on your machine. The three fixed suggestions are still there, and a
+  clip with no usable frame simply offers none.
+
 - **Highlight videos get chapter timestamps.** The description now lists each
   moment with the time it starts, so viewers can skip straight to the bit they
   want. They are added only when YouTube's own rules allow it: a chapter list
