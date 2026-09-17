@@ -194,13 +194,17 @@ def generate(video_path: Path, hook: str, targets: list[Path]) -> list[Path]:
     Best candidate first. An empty list means nothing usable came out, which
     is a normal outcome and not an error.
     """
+    # The cheap answers come first, and deliberately before the imports: asking
+    # for no candidates, or naming a file that is not there, is answerable
+    # without OpenCV, and a machine without it should still get the honest
+    # empty list rather than an ImportError. CI is exactly that machine.
+    if not targets or not Path(video_path).exists():
+        return []
+
     import cv2
     from PIL import Image, ImageDraw
 
     from video.capture import video_capture
-
-    if not targets or not Path(video_path).exists():
-        return []
 
     scored: list[tuple[float, object, tuple | None]] = []
     with video_capture(Path(video_path)) as cap:
