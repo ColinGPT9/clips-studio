@@ -202,11 +202,18 @@ def _highlights(
     candidate = ClipCandidate(
         start=0.0, end=round(total, 2), score=top.score, hook="Highlights"
     )
+    # Chapters make a dozen unrelated moments navigable, which is the whole
+    # problem with a highlight video. Appended only when YouTube would honour
+    # them; see longform/chapters.py for the rules it enforces.
+    from longform.chapters import with_chapters
+
     meta = ClipMetadata(
         title=f"{video.title} — highlights",
-        description=(
+        description=with_chapters(
             f"The best {total / 60:.0f} minutes of the stream —"
-            f" {len(keep)} moments, in order."
+            f" {len(keep)} moments, in order.",
+            keep,
+            candidates,
         ),
         hashtags=[],
     )

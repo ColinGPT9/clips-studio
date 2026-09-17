@@ -8,6 +8,28 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
+## Unreleased
+
+### Added
+
+- **Ask an AI assistant to do it.** Clips Kitty now speaks MCP, so Claude, Cursor
+  or any MCP client can queue a stream, follow the job, read back the clips it
+  chose and export one, in plain language. It needs no API key of any kind,
+  because the model doing the work is the one already on your PC.
+
+- **Integrations can be told when a job finishes.** Send a webhook address with a
+  video and Clips Kitty posts to it once, the moment that video is done, so a
+  dock or an automation can sit quiet instead of asking every few seconds. Add a
+  secret and the message is signed, so your listener knows it is really us.
+
+- **Highlight videos get chapter timestamps.** The description now lists each
+  moment with the time it starts, so viewers can skip straight to the bit they
+  want. They are added only when YouTube's own rules allow it: a chapter list
+  that breaks them is ignored completely, and a list that silently does nothing
+  is worse than none.
+
+---
+
 ## 1.2.0: every clip now ends with a Clips Kitty end card
 
 ### Added

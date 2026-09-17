@@ -209,6 +209,8 @@ through Ollama.
 - **Multilingual publishing**: 19 languages, with review before anything is burned.
 - **AI dubbing**: local text-to-speech with voice auditioning per language.
 - **Long-form export**: 16:9 clips, highlight reels, or a de-duplicated stream edit.
+  A highlight reel's description carries **chapter timestamps**, so viewers can skip
+  between moments on YouTube.
 - **Watermark and branding profiles**: per-creator defaults applied automatically.
 - **Model manager**: swap the AI brain from inside the app; download, remove, and
   switch models with progress bars and no terminal.
