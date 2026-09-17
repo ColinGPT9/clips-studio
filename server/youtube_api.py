@@ -101,6 +101,10 @@ class ThumbnailIn(BaseModel):
     # checked from the actual bytes rather than from the name on the end.
     image: str | None = None
     t: float | None = None
+    # Which generated candidate to keep (0 is the best one). Generated
+    # thumbnails already sit in the thumbnails folder under a name derived
+    # from the clip id, so this is an index rather than image data.
+    generated: int | None = None
 
 
 # Where a just-granted token waits while we ask YouTube which channel it is
@@ -515,9 +519,51 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
             _extract_frame(source, at, target)
         return FileResponse(str(target), media_type="image/jpeg")
 
+    @app.post("/clips/{clip_id}/thumbnail/generate")
+    def generate_thumbnails(clip_id: int, count: int = 3):
+        """Thumbnail candidates made from the clip itself, on this machine.
+
+        The three suggestions beside this are fixed positions: a quarter, half
+        and three quarters in. These look for a frame with a face in it,
+        crop 16:9 around them and burn the clip's hook across the bottom.
+
+        Returns how many were made. An empty list is a normal answer for a
+        clip with no readable frames, not an error: the fixed suggestions are
+        still there.
+        """
+        d = db()
+        try:
+            _guard(d)
+            clip = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if clip is None or not clip["path"]:
+            raise HTTPException(404, "no such clip")
+        source = Path(clip["path"])
+        if not source.exists():
+            raise HTTPException(404, "this clip has no rendered file")
+
+        from video.thumbnail import generate
+
+        wanted = max(1, min(int(count), 4))
+        targets = [_thumb_path(clip_id, f"gen{i}") for i in range(wanted)]
+        for stale in targets:
+            stale.unlink(missing_ok=True)
+        made = generate(source, clip["hook"] or clip["title"] or "", targets)
+        return {"generated": len(made)}
+
+    @app.get("/clips/{clip_id}/thumbnail/generated/{index}")
+    def generated_thumbnail(clip_id: int, index: int):
+        """One generated candidate, for the picker to show."""
+        target = _thumb_path(clip_id, f"gen{max(0, int(index))}")
+        if not target.exists():
+            raise HTTPException(404, "no such generated thumbnail")
+        return FileResponse(str(target), media_type="image/jpeg")
+
     @app.post("/clips/{clip_id}/thumbnail")
     def choose_thumbnail(clip_id: int, body: ThumbnailIn):
-        """Pick a thumbnail: either a local image, or a frame from the clip."""
+        """Pick a thumbnail: a local image, a frame from the clip, or one of
+        the generated candidates."""
         d = db()
         try:
             _guard(d)
@@ -536,13 +582,20 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
                 target.write_bytes(decode_thumbnail(body.image))
             except PublishError as e:
                 raise HTTPException(400, e.message) from e
+        elif body.generated is not None:
+            candidate = _thumb_path(clip_id, f"gen{max(0, int(body.generated))}")
+            if not candidate.exists():
+                raise HTTPException(404, "that generated thumbnail is gone")
+            target.write_bytes(candidate.read_bytes())
         elif body.t is not None:
             source = Path(clip["path"] or "")
             if not source.exists():
                 raise HTTPException(404, "this clip has no rendered file")
             _extract_frame(source, max(0.0, body.t), target)
         else:
-            raise HTTPException(400, "Give either an image or a time in the clip.")
+            raise HTTPException(
+                400, "Give an image, a time in the clip, or a generated candidate."
+            )
         return {"thumbnail": str(target)}
 
 

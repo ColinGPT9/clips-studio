@@ -465,9 +465,19 @@ export const api = {
     `${API_BASE}/clips/${clipId}/frame?t=${t.toFixed(3)}`,
   /** `image` is base64 data, not a path: the backend never receives a filename
    *  for the thumbnail, so it never has to trust one. */
-  chooseThumbnail: (clipId: number, body: { image?: string; t?: number }) =>
+  chooseThumbnail: (clipId: number, body: { image?: string; t?: number; generated?: number }) =>
     request<{ thumbnail: string }>(`/clips/${clipId}/thumbnail`, {
       method: 'POST',
       body: JSON.stringify(body)
-    })
+    }),
+  /** Make thumbnail candidates from the clip itself, on this machine: a frame
+   *  with a face in it, cropped to 16:9, with the hook burned across it.
+   *  Returns how many were made; zero is a normal answer for a clip with no
+   *  readable frames, and the fixed suggestions are still there. */
+  generateThumbnails: (clipId: number, count = 3) =>
+    request<{ generated: number }>(`/clips/${clipId}/thumbnail/generate?count=${count}`, {
+      method: 'POST'
+    }),
+  generatedThumbnailUrl: (clipId: number, index: number) =>
+    `${API_BASE}/clips/${clipId}/thumbnail/generated/${index}`
 }
