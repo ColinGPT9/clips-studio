@@ -34,6 +34,7 @@ to itself, and are listed as internal below.
 - [Languages and export](#languages-and-export)
 - [Publishing to YouTube](#publishing-to-youtube)
 - [Streamer integrations](#streamer-integrations)
+- [MCP: let an AI agent drive it](#mcp-let-an-ai-agent-drive-it)
 - [WebSocket events](#websocket-events)
 - [A complete example](#a-complete-example)
 - [Gotchas](#gotchas)
@@ -796,6 +797,36 @@ Removes a queued job, or cancels a running one, and marks the stream
 
 Named bundles of options `POST /jobs` already accepts. Show `name` and
 `description`, and send `id`.
+
+## MCP: let an AI agent drive it
+
+Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use the
+endpoints above in plain language: queue a stream, follow the job, read the clips it
+chose, export one. It is a translation layer over this same API, talking to the running
+engine on `127.0.0.1:8765`, and it needs no API key of any kind, because the model that
+picks the clips is the one on this machine.
+
+```bash
+claude mcp add clips-kitty -- python main.py mcp
+```
+
+Installed builds ship the engine as `api.exe` in the app's `resourcesackend` folder, so
+the command there is `api.exe mcp`. `CLIPS_STUDIO_API` overrides the address if the engine
+is on another port.
+
+Nine tools: `queue_video`, `queue_local_file`, `job_status`, `queue_status`,
+`list_videos`, `list_clips`, `clip_captions`, `export_clip`, `engine_status`.
+
+stdio only, newline-delimited JSON-RPC, protocol version `2025-06-18` (an older version
+from the client is accepted and echoed back). **No dependency was added for it**: the
+transport is standard library in `server/mcp.py`, because requirements.txt is pinned per
+line and an SDK would also mean a new hidden import and a re-frozen backend.
+
+The tools carry the traps in their own output, since an agent reads nothing else: a
+`job_id` of `null` means "not queued" rather than "failed", an unknown video id returns an
+empty clip list rather than a 404, and a paused queue looks exactly like a stalled app.
+
+An agent skill for clients that support them is in [`skills/clips-kitty/`](../skills/clips-kitty/).
 
 ## WebSocket events
 

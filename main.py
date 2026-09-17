@@ -146,6 +146,10 @@ def main() -> int:
         help="interface to bind (default 127.0.0.1; use 0.0.0.0 only inside a container)",
     )
 
+    sub.add_parser(
+        "mcp",
+        help="Talk MCP over stdin/stdout, so an AI agent can drive the engine")
+
     p_channels = sub.add_parser("channels", help="Manage monitored channels")
     ch_sub = p_channels.add_subparsers(dest="channels_command", required=True)
     p_ch_add = ch_sub.add_parser("add", help="Add a channel by @handle, URL, or ID")
@@ -236,6 +240,16 @@ def main() -> int:
                 print(f"  WARNING: binding {args.host} — this API has no authentication.")
             uvicorn.run(create_app(config, args.config), host=args.host, port=args.port)
             return 0
+
+        if args.command == "mcp":
+            # Nothing may be printed here: stdout carries the protocol, and a
+            # stray line makes the client drop the connection.
+            from server.mcp import serve as serve_mcp
+
+            db.close()  # this talks to the running engine over HTTP, not the DB
+            if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8")
+            return serve_mcp()
 
         if args.command == "channels":
             return _handle_channels(args, db)
