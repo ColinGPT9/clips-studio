@@ -46,6 +46,8 @@ class JobIn(BaseModel):
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
     podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
+    webhook_url: str | None = None  # POST once when this job reaches a terminal state
+    webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
 
 
 class JobPatch(BaseModel):
@@ -65,6 +67,8 @@ class JobPatch(BaseModel):
     longform: dict | None = None
     watermark_profile_id: int | None = None
     podcast: bool | None = None
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
     # Options to drop back to the app-wide default. Needed because null means
     # "unchanged" above, so there would otherwise be no way to turn one off.
     clear: list[str] = []
@@ -89,6 +93,8 @@ class BatchItemIn(BaseModel):
     longform: dict | None = None
     watermark_profile_id: int | None = None
     podcast: bool | None = None
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
 
 class BatchJobIn(BaseModel):
@@ -171,6 +177,8 @@ class LocalVideoIn(BaseModel):
     min_score: int | None = None
     max_clips: int | None = None
     force: bool = False
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
 
 class RenderIn(BaseModel):
@@ -394,6 +402,16 @@ def _process_options(body, into: dict | None = None) -> dict:
         payload["filter"] = body.filter
     if getattr(body, "min_score", None) is not None:
         payload["min_score"] = max(0, min(100, body.min_score))
+    if getattr(body, "webhook_url", None):
+        from server.webhooks import is_deliverable
+
+        # Rejected here rather than at delivery time: a typo that is only
+        # discovered when the job ends, forty minutes later, is a bad trade.
+        if not is_deliverable(body.webhook_url):
+            raise HTTPException(400, "webhook_url must be an http or https URL")
+        payload["webhook_url"] = body.webhook_url
+        if getattr(body, "webhook_secret", None):
+            payload["webhook_secret"] = body.webhook_secret
     # Explicit "back to the default" — an absent field means unchanged, so a
     # toggle being switched off needs to say so.
     for key in getattr(body, "clear", []) or []:

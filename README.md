@@ -613,6 +613,11 @@ serves its own interactive docs at `http://127.0.0.1:8765/docs`.
 It has **no authentication** and it binds localhost for that reason. See the
 security note in the API docs before you point anything at it.
 
+**Nothing has to poll.** Submit a job with a `webhook_url` and the engine POSTs
+once when it finishes, signed with your own secret if you pass one, so a dock or
+an n8n flow can sit quiet for the forty minutes a stream takes instead of asking
+every few seconds. Details in [docs/API.md](docs/API.md#webhooks-being-told-instead-of-asking).
+
 ### Ask an AI agent to do it
 
 Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can drive
