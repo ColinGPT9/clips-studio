@@ -48,7 +48,7 @@ there is no cap on how many clips you make.
 ## Contents
 
 - [What it does](#what-it-does)
-- [How it compares to Opus Clip](#how-it-compares-to-opus-clip)
+- [How it compares to Opus Clip, Klap, Vizard and CapCut](#how-it-compares-to-opus-clip-klap-vizard-and-capcut)
 - [How it works](#how-it-works)
 - [Features](#features)
 - [What it's built for](#what-its-built-for)
@@ -78,31 +78,36 @@ It is built for the content most clipping tools handle worst: **live streams, IR
 talking-head footage, podcasts, and gym/fitness content**: long, loosely structured
 videos where the good moments are buried and a transcript alone won't find them.
 
-## How it compares to Opus Clip
+## How it compares to Opus Clip, Klap, Vizard and CapCut
 
 Clips Kitty is an open-source alternative to cloud clipping tools. The difference that
 matters is where the work happens: your video is never uploaded, so there is nothing to
 meter and nothing to charge for.
 
-|                          | Clips Kitty                  | Opus Clip                     |
-| ------------------------ | ---------------------------- | ----------------------------- |
-| Price                    | Free                         | Free tier, $15/mo, $29/mo     |
-| Clips per month          | Unlimited                    | Allocated by plan             |
-| Watermark                | Never                        | On the free tier              |
-| Export limits            | None                         | Free exports expire in 3 days |
-| Where video is processed | Your PC                      | Their servers                 |
-| Works offline            | Yes                          | No                            |
-| Source code              | Open                         | Closed                        |
-| Requirements             | Windows, 16 GB RAM, GPU rec. | A browser                     |
+| Tool | Price, billed monthly | Free tier | Finds the clips for you | Watermark | Uploads your video | Open source |
+| ---- | --------------------- | --------- | ----------------------- | --------- | ------------------ | ----------- |
+| **Clips Kitty** | Free, no paid tier | The whole app | Yes | Never | No, runs on your PC | Yes, AGPL-3.0 |
+| Opus Clip | $15 Starter, $29 Pro | 1080p, watermarked, expires in 3 days | Yes | On the free tier | Yes | No |
+| Klap | $29 Pro, $14 Basic billed yearly | One video | Yes | Not stated | Yes | No |
+| Vizard | $29 Creator, $14.50 billed yearly | 60 credits a month, 720p | Yes | On the free tier | Yes | No |
+| quso.ai | $29 to $49 | 75 credits a month, 720p | Yes | Not stated | Yes | No |
+| Ssemble | $15 to $60, $6 to $24 billed yearly | None listed | Yes | Not stated | Yes | No |
+| Descript | $16, $24, $50 | 60 minutes a month, 720p | Partly, it is a transcript editor | On Free and Hobbyist | Yes | No |
+| CapCut | Free to use, paid tiers at capcut.com | The whole editor | **No, you cut by hand** | Varies by feature | No on the desktop app | No |
 
-**Opus Clip is the better choice** if you don't have a Windows PC with a graphics card,
-you clip occasionally, or you need to work from a phone. Clips Kitty is built for
-clipping at volume on hardware you already own.
+**CapCut is the one worth understanding**, because it is the free answer everyone gives.
+It is a good editor and it costs nothing, but you find every moment and crop every clip
+yourself. Clips Kitty is also free, and that first pass is the part it does for you.
 
-**[Full comparison, with the year-one cost and the cases where Opus Clip wins](https://colingpt9.github.io/clips-studio/opus-clip-alternative.html)**
+**Opus Clip, Klap or Vizard are the better choice** if you don't have a Windows PC with a
+graphics card, you clip occasionally, or you need to work from a phone. Clips Kitty is
+built for clipping at volume on hardware you already own.
 
-<sub>Opus Clip pricing checked September 2026. Their plans change; this table won't
-update itself.</sub>
+**[Full comparison of all seven, with what each one is best at](https://colingpt9.github.io/clips-studio/alternatives.html)**
+
+<sub>Prices checked on each company's own pricing page, 17 September 2026. CapCut
+publishes no pricing page we could read, so no price is quoted for it. Plans change; this
+table won't update itself.</sub>
 
 ## How it works
 
