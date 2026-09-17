@@ -322,6 +322,23 @@ class Worker(threading.Thread):
         broadcaster.publish(event)
         broadcaster.publish({"type": "queue"})
 
+        # And tell whatever asked to be told. Only jobs submitted with a
+        # webhook_url cost anything here, this is the one place every terminal
+        # state passes through, and a delivery that fails is logged inside
+        # deliver() rather than raised: the job is already finished either way.
+        try:
+            payload = json.loads(job["payload"] or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        if payload.get("webhook_url"):
+            from server import webhooks
+
+            webhooks.deliver(
+                payload["webhook_url"],
+                webhooks.body_for(event),
+                payload.get("webhook_secret") or "",
+            )
+
     def _translate_clips(self, db: StateDB, payload: dict) -> None:
         """Multilingual publishing: subtitle tracks for finished clips.
 

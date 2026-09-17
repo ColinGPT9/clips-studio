@@ -243,6 +243,8 @@ values in `config/settings.yaml`:
 | `longform` | object | `{"mode": ...}`: `short_clips`, `clips_140`, `highlights` or `edited_stream` |
 | `filter` | string | colour preset from `video/filters.py` |
 | `watermark_profile_id` | int | branding profile applied to every clip |
+| `webhook_url` | string | http(s) URL to POST once when this job finishes |
+| `webhook_secret` | string | signs that POST, so the listener can trust it |
 
 **Two responses that are not failures and not `job_id`:**
 
@@ -263,6 +265,41 @@ Other outcomes:
 
 > Two known warts, both harmless: this returns **200**, not 201, and it accepts
 > a stray `status_code` query parameter that does nothing. Do not send it.
+
+### Webhooks: being told instead of asking
+
+Pass `webhook_url` and the engine POSTs once, when the job reaches a terminal
+state. That is the whole feature: no polling loop in your dock, your cron job or
+your n8n flow for the forty minutes a stream takes.
+
+```json
+{"event": "job.done", "job_id": 149, "job_type": "process", "status": "done",
+ "video_id": "aB3dEfGhIjK", "title": "Friday stream", "clips": 38, "error": ""}
+```
+
+`event` is `job.done`, `job.failed` or `job.cancelled`, so a listener can switch
+on one field. Every key is always present, including on a job that failed before
+its video was identified.
+
+Add `webhook_secret` and the body is signed:
+
+```
+X-Clips-Kitty-Signature: sha256=<hmac-sha256 of the exact body bytes>
+```
+
+Verify against the **raw bytes you received**, not a re-serialised copy of them:
+key order and spacing would differ and every signature would fail.
+
+Three deliberate limits:
+
+- **One attempt.** A retry queue turns a listener that was down into a burst of
+  duplicate deliveries later, and `GET /jobs/{id}` is always there.
+- **A 10 second timeout.** Delivery runs on the worker thread between two jobs,
+  so a listener that accepts the connection and then hangs would stall the queue.
+- **A failed delivery never fails the job.** It is a line in the job log.
+
+`webhook_url` must be `http` or `https`; anything else is rejected at submission
+with a `400`, rather than discovered forty minutes later.
 
 ### `POST /jobs/batch`
 
