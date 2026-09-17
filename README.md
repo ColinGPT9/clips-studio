@@ -613,6 +613,24 @@ serves its own interactive docs at `http://127.0.0.1:8765/docs`.
 It has **no authentication** and it binds localhost for that reason. See the
 security note in the API docs before you point anything at it.
 
+### Ask an AI agent to do it
+
+Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can drive
+the same pipeline in plain language: queue a stream, follow the job, read the clips
+it chose, export one.
+
+```bash
+claude mcp add clips-kitty -- python main.py mcp
+```
+
+In an installed build the engine's binary is `api.exe` (in the app's
+`resources\backend` folder), so the command there is `api.exe mcp`.
+
+It talks to the running engine over `127.0.0.1:8765`, so Clips Kitty has to be
+open, and it needs no API key of any kind: the model doing the clipping is the one
+on your own machine. An agent skill for clients that support them is in
+[skills/clips-kitty/](skills/clips-kitty/).
+
 ### Built with Clips Kitty
 
 Projects that run on this API are listed in **[PROJECTS.md](PROJECTS.md)**. The
