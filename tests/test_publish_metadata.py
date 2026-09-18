@@ -12,6 +12,7 @@ from publish.metadata import (
     clamp_description,
     clamp_tags,
     clamp_title,
+    creator_tag,
     description_with_hashtags,
     parts_for,
 )
@@ -62,10 +63,54 @@ def test_a_tag_with_a_space_costs_two_extra_characters():
     assert len(clamp_tags(spaced)) < 3, "quoting pushes these over the 500-char budget"
 
 
-def test_hashtags_are_capped_at_fifteen():
-    """Past fifteen, YouTube ignores every hashtag rather than the excess."""
+def test_hashtags_are_capped_at_five():
+    """Five is our rule. Fifteen is where YouTube ignores every one of them."""
     text = description_with_hashtags("Body", [f"#t{i}" for i in range(40)])
-    assert text.count("#") == 15
+    assert text.count("#") == 5
+
+
+def test_the_creator_tag_leads_and_survives_the_cap():
+    # The cut takes the tail, so the one tag that must always appear has to be
+    # at the front. This is the whole point of the feature.
+    text = description_with_hashtags(
+        "Body", [f"#t{i}" for i in range(40)], creator="penguinz0"
+    )
+    assert text.count("#") == 5
+    assert text.splitlines()[-1].split(" ")[0] == "#penguinz0"
+
+
+def test_a_channel_name_becomes_a_usable_tag():
+    assert creator_tag("penguinz0") == "#penguinz0"
+    assert creator_tag("Some Streamer") == "#SomeStreamer"
+    assert creator_tag("  ") == ""
+    assert creator_tag("") == ""
+
+
+def test_the_creator_tag_is_not_repeated_when_the_clip_already_has_it():
+    text = description_with_hashtags("Body", ["#PenguinZ0", "#funny"], creator="penguinz0")
+    assert text.lower().count("#penguinz0") == 1
+    assert "#funny" in text
+
+
+def test_publishing_the_same_clip_twice_does_not_stack_a_second_block():
+    # The editor prefills its box with what went up last time, so the input to
+    # the second publish already ends in the line this function added.
+    first = description_with_hashtags("Watch this", ["#funny"], creator="penguinz0")
+    again = description_with_hashtags(first, ["#funny"], creator="penguinz0")
+    assert again == first
+    assert again.count("#penguinz0") == 1
+
+
+def test_a_description_that_ends_in_the_users_own_hashtags_is_not_doubled():
+    written = "Watch this" + chr(10) + chr(10) + "#mytag"
+    text = description_with_hashtags(written, ["#mytag"], creator="")
+    assert text.count("#mytag") == 1
+    assert text.startswith("Watch this")
+
+
+def test_a_creator_with_no_usable_characters_is_skipped():
+    text = description_with_hashtags("Body", ["#funny"], creator="!!!")
+    assert text.endswith("#funny")
 
 
 def test_hashtags_are_appended_below_the_description():

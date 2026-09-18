@@ -118,6 +118,15 @@ class PublishWorker(threading.Thread):
         publisher = service.make_publisher(
             self.config, self.data_dir, channel_id=channel_id
         )
+        # Hashtags belong in the DESCRIPTION, which is where viewers see them
+        # and where the creator's own tag has to appear. Until now the clip's
+        # hashtags were only ever sent as `tags`, YouTube's invisible keyword
+        # field, so no published clip ever carried one. Done here rather than
+        # in the editor because this is the one point both the editor and an
+        # agent pass through, so neither can skip it, and because it applies to
+        # clips that were generated long before any of this existed.
+        request_data["description"] = _describe(db, clip, request_data.get("description", ""))
+
         request = PublishRequest(
             video_path=path,
             **{k: v for k, v in request_data.items() if k != "video_path"},
@@ -301,3 +310,36 @@ def seconds_until(iso: str) -> float:
     except (ValueError, AttributeError):
         return 0.0
     return max(0.0, (moment - datetime.now(timezone.utc)) / timedelta(seconds=1))
+
+
+def _describe(db: StateDB, clip, description: str) -> str:
+    """The description as it will appear on YouTube, hashtags included.
+
+    The creator's tag comes from the video's channel name rather than from
+    anything typed per clip, so "#streamername on every video" needs no setup
+    and cannot be forgotten on clip 14 of 30.
+
+    Failure here must never cost an upload that is otherwise ready, so a
+    missing video row or unreadable hashtags just means the description goes up
+    as written.
+    """
+    from publish.metadata import description_with_hashtags
+
+    try:
+        hashtags = json.loads(clip["hashtags"] or "[]")
+        if not isinstance(hashtags, list):
+            hashtags = []
+    except (TypeError, ValueError):
+        hashtags = []
+
+    creator = ""
+    try:
+        row = db.conn.execute(
+            "SELECT channel_name FROM videos WHERE video_id = ?", (clip["video_id"],)
+        ).fetchone()
+        if row:
+            creator = row["channel_name"] or ""
+    except Exception:
+        creator = ""
+
+    return description_with_hashtags(description, hashtags, creator=creator)
