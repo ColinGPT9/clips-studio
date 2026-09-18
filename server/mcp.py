@@ -85,11 +85,122 @@ def _request(method: str, path: str, body: dict | None = None, timeout: float = 
 # ever sees these words. docs/API.md documents the same traps for humans.
 
 
+# Kept in step with video/captions.py FONTS and CaptionStyleControls.tsx: the
+# name is written into the ASS header, and anything else silently renders as
+# something else entirely. mcp.py stays stdlib-only, so this is a copy rather
+# than an import of the render path.
+CAPTION_FONTS = [
+    "Arial", "Arial Black", "Impact", "Verdana", "Tahoma",
+    "Trebuchet MS", "Segoe UI", "Georgia", "Comic Sans MS", "Courier New",
+]
+
+CAPTION_POSITIONS = ("bottom", "middle", "top")
+
+# People say "yellow", not "#FFE600". Refusing a colour name would make the
+# obvious phrasing the wrong one.
+COLOUR_NAMES = {
+    "black": "#000000", "white": "#FFFFFF", "red": "#FF0000",
+    "orange": "#FF8A00", "yellow": "#FFE600", "gold": "#FFD700",
+    "green": "#22C55E", "lime": "#A3E635", "blue": "#3B82F6",
+    "cyan": "#22D3EE", "purple": "#A855F7", "pink": "#EC4899",
+    "magenta": "#FF00FF", "grey": "#9CA3AF", "gray": "#9CA3AF",
+}
+
+
+def _colour(value: str, field: str) -> str:
+    """A hex colour from a hex colour or an ordinary colour word."""
+    text = str(value).strip()
+    if text.startswith("#") and len(text) == 7:
+        return text.upper()
+    named = COLOUR_NAMES.get(text.casefold())
+    if named:
+        return named
+    raise ValueError(
+        f"{field}: {value!r} is not a colour I can use. Give a hex value like "
+        f"#FFE600, or one of: {', '.join(sorted(COLOUR_NAMES))}."
+    )
+
+
+def _caption_style(raw: dict) -> dict:
+    """Validate what the model asked for against what the renderer accepts.
+
+    Wrong values here are not obvious later: an unknown font falls back
+    silently, so every clip of a stream renders in the wrong one. Saying no now
+    lets the model correct itself, which it cannot do once the clips exist.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("caption_style must be an object.")
+    style: dict = {}
+
+    if raw.get("font") is not None:
+        wanted = str(raw["font"]).strip().casefold()
+        match = next((f for f in CAPTION_FONTS if f.casefold() == wanted), None)
+        if match is None:
+            match = next((f for f in CAPTION_FONTS if wanted and wanted in f.casefold()), None)
+        if match is None:
+            raise ValueError(
+                f"No font called {raw['font']!r}. Choose one of: "
+                f"{', '.join(CAPTION_FONTS)}."
+            )
+        style["font"] = match
+
+    if raw.get("position") is not None:
+        pos = str(raw["position"]).strip().casefold()
+        pos = {"center": "middle", "centre": "middle"}.get(pos, pos)
+        if pos not in CAPTION_POSITIONS:
+            raise ValueError(
+                f"Caption position {raw['position']!r} is not one of: "
+                f"{', '.join(CAPTION_POSITIONS)}."
+            )
+        style["position"] = pos
+
+    for field in ("color", "highlight_color"):
+        if raw.get(field) is not None:
+            style[field] = _colour(raw[field], field)
+
+    if raw.get("font_size") is not None:
+        style["font_size"] = max(24, min(160, int(raw["font_size"])))
+    if raw.get("words_per_caption") is not None:
+        style["words_per_caption"] = max(1, min(6, int(raw["words_per_caption"])))
+    for flag in ("uppercase", "highlight"):
+        if raw.get(flag) is not None:
+            style[flag] = bool(raw[flag])
+    return style
+
+
+def _branding_id(name: str) -> int:
+    """Turn a watermark profile's name into its id.
+
+    A model cannot know the id, and guessing one would brand every clip of a
+    stream with the wrong logo. An unknown name lists the real ones instead,
+    so the next attempt can be right rather than another guess.
+    """
+    profiles = _request("GET", "/branding") or []
+    wanted = name.strip().casefold()
+    for row in profiles:
+        if str(row.get("name", "")).strip().casefold() == wanted:
+            return int(row["id"])
+    for row in profiles:
+        if wanted and wanted in str(row.get("name", "")).casefold():
+            return int(row["id"])
+    names = ", ".join(repr(str(r.get("name", ""))) for r in profiles)
+    raise ValueError(
+        f"No watermark called {name!r}. "
+        + (f"Saved profiles: {names}." if names else "None are saved yet.")
+    )
+
+
 def _queue_video(args: dict) -> str:
     body: dict = {"url": args["url"]}
-    for key in ("force", "min_score", "max_clips", "podcast", "long_clips"):
+    for key in ("force", "min_score", "max_clips", "podcast", "long_clips", "captions"):
         if args.get(key) is not None:
             body[key] = args[key]
+    if args.get("watermark"):
+        body["watermark_profile_id"] = _branding_id(args["watermark"])
+    if args.get("longform"):
+        body["longform"] = {"mode": args["longform"]}
+    if args.get("caption_style"):
+        body["caption_style"] = _caption_style(args["caption_style"])
     out = _request("POST", "/jobs", body)
     if out.get("job_id") is None:
         if out.get("already_processed"):
@@ -399,7 +510,66 @@ TOOLS: list[dict] = [
                 },
                 "long_clips": {
                     "type": "boolean",
-                    "description": "61-180s clips instead of 10-60s",
+                    "description": (
+                        "61-180s vertical clips instead of 10-60s. Still 9:16 for "
+                        "TikTok and Shorts. For a wide 16:9 video use longform."
+                    ),
+                },
+                "captions": {
+                    "type": "boolean",
+                    "description": (
+                        "Burn captions into the clips. On unless set to false."
+                    ),
+                },
+                "watermark": {
+                    "type": "string",
+                    "description": (
+                        "Name of a saved branding profile to put on every clip. "
+                        "Names are matched loosely; a wrong one lists the real ones."
+                    ),
+                },
+                "longform": {
+                    "type": "string",
+                    "enum": ["short_clips", "clips_140", "highlights", "edited_stream"],
+                    "description": (
+                        "Make horizontal 1920x1080 video instead of vertical clips. "
+                        "short_clips = up to 60s. clips_140 = up to 140s, for X. "
+                        "highlights = one best-of video, 8-20 min. edited_stream = "
+                        "the whole stream with the downtime removed. "
+                        "Leave unset for normal vertical clips."
+                    ),
+                },
+                "caption_style": {
+                    "type": "object",
+                    "description": (
+                        "How the burned-in captions look. Set only what was asked "
+                        "for; anything left out keeps the saved setting."
+                    ),
+                    "properties": {
+                        "font": {"type": "string", "enum": CAPTION_FONTS},
+                        "font_size": {
+                            "type": "integer",
+                            "description": "24-160. 84 is the default.",
+                        },
+                        "color": {
+                            "type": "string",
+                            "description": "Hex like #FFFFFF, or a colour word.",
+                        },
+                        "position": {"type": "string", "enum": list(CAPTION_POSITIONS)},
+                        "words_per_caption": {
+                            "type": "integer",
+                            "description": "1-6 words on screen at once. 3 is default.",
+                        },
+                        "uppercase": {"type": "boolean"},
+                        "highlight": {
+                            "type": "boolean",
+                            "description": "Light each word up as it is spoken",
+                        },
+                        "highlight_color": {
+                            "type": "string",
+                            "description": "Hex, or a colour word. Default #FFE600.",
+                        },
+                    },
                 },
             },
             "required": ["url"],
