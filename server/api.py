@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 import threading
+import urllib.error
 from pathlib import Path
 
 import requests as _requests
@@ -219,6 +220,12 @@ class CancelIn(BaseModel):
 
 class AiEditIn(BaseModel):
     message: str
+
+
+class AgentIn(BaseModel):
+    message: str
+    # Prior turns, so "now schedule them an hour apart" knows what "them" is.
+    history: list[dict] = []
 
 
 class ExportIn(BaseModel):
@@ -2168,6 +2175,89 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
         return {"creator_id": creator_id, "default_branding_id": body.branding_id}
+
+    # ---- the assistant -----------------------------------------------------
+
+    @app.get("/agent/status")
+    def agent_status():
+        """Whether the box can work, and which model it would use.
+
+        The app's default clip-scoring model cannot call tools, so this is a
+        real question rather than a formality, and the answer belongs in the
+        window instead of arriving as a confusing reply.
+        """
+        from server.agent import usable_model
+
+        configured = (config["llm"].get("backend") or "").split("/")[-1]
+        model = usable_model(ollama_host, configured)
+        return {
+            "ready": bool(model),
+            "model": model,
+            "configured": configured,
+            "reason": "" if model else (
+                "No installed model can use tools. Install Gemma 4 on the Models page: "
+                "gemma4:e4b for a 6 GB graphics card, gemma4:e2b for less."
+            ),
+        }
+
+    @app.post("/agent/chat")
+    def agent_chat(body: AgentIn):
+        """One exchange with the assistant."""
+        from server.agent import run, usable_model
+        from server.mcp import TOOLS
+
+        if not body.message.strip():
+            raise HTTPException(400, "Say what you would like done.")
+
+        configured = (config["llm"].get("backend") or "").split("/")[-1]
+        model = usable_model(ollama_host, configured)
+        if not model:
+            raise HTTPException(
+                400,
+                "No installed model can use tools. Install Gemma 4 on the Models page.",
+            )
+
+        # The plan tool's structured items go to the window, which turns them
+        # into a Confirm button; the model only needs to describe the plan.
+        def call_tool(name: str, arguments: dict):
+            tool = next((x for x in TOOLS if x["name"] == name), None)
+            if tool is None:
+                return f"There is no tool called {name}.", None
+            try:
+                text = tool["handler"](arguments)
+            except urllib.error.HTTPError as e:
+                # Hand back WHY. "400 Bad Request" tells the model nothing and
+                # it cannot correct itself; "that time is in the past" it can.
+                try:
+                    detail = json.loads(e.read() or b"{}").get("detail", "")
+                except Exception:
+                    detail = ""
+                return f"That was refused: {detail or e.reason}", None
+            except Exception as e:  # a tool failing is news, not a crash
+                return f"That did not work: {e}", None
+            structured = None
+            if name == "publish_plan":
+                # Same call the tool just made, for the items rather than the
+                # prose. Through server.mcp's own client so there is one place
+                # that knows where the engine listens.
+                from server.mcp import _request as _api
+
+                try:
+                    structured = _api(
+                        "POST",
+                        "/publish/plan",
+                        {k: v for k, v in arguments.items() if v is not None},
+                    )
+                except Exception:
+                    structured = None
+            return text, structured
+
+        try:
+            return run(
+                body.message, body.history, TOOLS, call_tool, ollama_host, model
+            )
+        except Exception as e:
+            raise HTTPException(500, f"The assistant could not run: {e}") from e
 
     # ---- models ------------------------------------------------------------
 

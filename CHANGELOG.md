@@ -36,6 +36,40 @@ were often broken in a way that only showed up on somebody else's machine.
   that breaks them is ignored completely, and a list that silently does nothing
   is worse than none.
 
+- **Tell Clips Kitty what to do, in a sentence.** There is a box on the dashboard
+  now. Write something like "clip the newest stream and schedule the clips an
+  hour apart from tomorrow morning" and a Gemma model running on your PC works
+  out which steps to take and takes them, showing you each one as it goes.
+  Uploading is the exception: it can plan a batch of uploads, but the plan comes
+  back for you to read, and nothing goes to YouTube until you press the button.
+  The box needs a model that can call tools, which means Gemma 4 or newer; if the
+  model you have cannot, it says so rather than guessing.
+
+- **Plan a batch of uploads before any of it happens.** Assistants and MCP
+  clients can ask for a publishing plan: which clips, what each one's title and
+  description will be, and when each goes out. Nothing is created until the plan
+  is sent back for execution, so a batch with the wrong description is something
+  you catch while reading rather than something you undo thirty times.
+
+- **Put the same links under every video.** The YouTube panel has an "Add to
+  every description" box for your Twitch, your Discord, whatever you always
+  paste. It goes under each description as the clip is published, once, without
+  repeating itself when you publish a clip again.
+
+### Fixed
+
+- **Hashtags now actually appear under your videos.** Clips Kitty has always
+  chosen hashtags for a clip, but they were being sent to YouTube's keyword
+  field, which nobody sees, and the description went up without them. They are
+  now written into the description, where they show above the title and are
+  searchable. This reaches clips you made months ago, because it happens when
+  the clip is published rather than when it was created.
+
+- **Your channel name is always the first hashtag.** Descriptions were missing
+  the one hashtag that matters most for finding your other videos. Each clip now
+  carries at most five, and the creator's name leads them, so the cap can never
+  cut it off.
+
 ---
 
 ## 1.2.0: every clip now ends with a Clips Kitty end card
