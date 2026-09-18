@@ -211,7 +211,170 @@ def _engine_status(_args: dict) -> str:
     )
 
 
+def _youtube_status(_args: dict) -> str:
+    status = _request("GET", "/youtube/status")
+    if not status.get("enabled"):
+        return (
+            "YouTube publishing is switched off. Open Clips Kitty, go to Settings, and "
+            "turn on Publish to YouTube. It needs the user's own Google key, so this is "
+            "not something to work around from here."
+        )
+    if not status.get("connected"):
+        return "YouTube is on but no channel is connected. Connect one in Settings."
+    channel = (status.get("channel") or {}).get("title") or "a channel"
+    quota = status.get("quota") or {}
+    return (
+        f"Connected to {channel}. "
+        f"{quota.get('remaining', '?')} of {quota.get('uploads_limit', '?')} uploads left today."
+    )
+
+
+def _publish_plan(args: dict) -> str:
+    body = {"clip_ids": list(args.get("clip_ids") or [])}
+    for key in ("start_at", "every_hours", "privacy"):
+        if args.get(key) is not None:
+            body[key] = args[key]
+    out = _request("POST", "/publish/plan", body)
+    items = out.get("items") or []
+    if not items:
+        return "Nothing to publish: " + ("; ".join(out.get("warnings") or []) or "no usable clips.")
+    lines = ["This is the plan. NOTHING has been uploaded yet.", ""]
+    for item in items:
+        when = item.get("publish_at") or "as soon as it uploads"
+        lines.append(f"  clip {item['clip_id']}: {item['title'][:60]}  ->  {when}")
+    for warning in out.get("warnings") or []:
+        lines.append(f"  warning: {warning}")
+    lines += [
+        "",
+        "Show this to the person and get a clear yes before calling publish_plan_execute. "
+        "Uploads cannot be taken back, and each one spends their daily quota.",
+    ]
+    return "\n".join(lines)
+
+
+def _publish_plan_execute(args: dict) -> str:
+    items = args.get("items") or []
+    if not items:
+        return "No items were given, so nothing was published."
+    out = _request("POST", "/publish/plan/execute", {"items": items})
+    started, skipped = out.get("started") or [], out.get("skipped") or []
+    lines = [f"Started {len(started)} upload(s)."]
+    for row in skipped:
+        lines.append(f"  clip {row['clip_id']} skipped: {row['reason']}")
+    if started:
+        lines.append("Follow them with publish_status. Uploading takes a few minutes each.")
+    return "\n".join(lines)
+
+
+def _publish_status(args: dict) -> str:
+    clip_id = args.get("clip_id")
+    if clip_id is not None:
+        out = _request("GET", f"/clips/{int(clip_id)}/publish")
+        upload, job = out.get("upload"), out.get("job")
+        if job:
+            return f"Clip {clip_id}: {job.get('status')} ({job.get('error') or 'in progress'})"
+        if upload:
+            return (
+                f"Clip {clip_id} is on YouTube as {upload.get('youtube_id')}, "
+                f"{upload.get('actual_privacy') or upload.get('privacy')}."
+            )
+        return f"Clip {clip_id} has not been published."
+    uploads = _request("GET", "/youtube/uploads")
+    rows = uploads if isinstance(uploads, list) else uploads.get("uploads") or []
+    if not rows:
+        return "Nothing has been published yet."
+    return "\n".join(
+        f"  clip {r.get('clip_id')}: {r.get('youtube_id')} "
+        f"({r.get('actual_privacy') or r.get('privacy')})"
+        for r in rows[:20]
+    )
+
+
 TOOLS: list[dict] = [
+    {
+        "name": "youtube_status",
+        "title": "Is YouTube connected",
+        "description": (
+            "Whether Clips Kitty can publish to YouTube right now, which channel, and how "
+            "many uploads are left today. Check this before planning a batch."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": _youtube_status,
+    },
+    {
+        "name": "publish_plan",
+        "title": "Plan a batch of uploads",
+        "description": (
+            "Work out what publishing these clips would do: final titles, descriptions and "
+            "publish times. Creates nothing. Give start_at (with a timezone offset) and "
+            "every_hours to space them out, or neither to upload as soon as each is ready. "
+            "ALWAYS show the plan and get a yes before executing it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "clip_ids": {
+                    "type": "array", "items": {"type": "integer"},
+                    "description": "Clips to publish, from list_clips",
+                },
+                "start_at": {
+                    "type": "string",
+                    "description": "When the first goes out, RFC 3339 with an offset, e.g. 2026-09-18T12:00:00-05:00",
+                },
+                "every_hours": {
+                    "type": "number", "description": "Hours between videos, e.g. 1 or 0.5",
+                },
+                "privacy": {
+                    "type": "string",
+                    "description": "public, unlisted or private. Scheduled videos are private until their time.",
+                },
+            },
+            "required": ["clip_ids"],
+        },
+        "handler": _publish_plan,
+    },
+    {
+        "name": "publish_plan_execute",
+        "title": "Carry out a publishing plan",
+        "description": (
+            "Upload the clips in a plan, one job each, so one failure does not stop the "
+            "rest. Only call this after the person has agreed to the plan. Uploads cannot "
+            "be undone and each one spends their daily quota."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "The plan's items, as publish_plan returned them",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "clip_id": {"type": "integer"},
+                            "title": {"type": "string"},
+                            "publish_at": {"type": "string"},
+                            "privacy": {"type": "string"},
+                        },
+                        "required": ["clip_id"],
+                    },
+                },
+            },
+            "required": ["items"],
+        },
+        "handler": _publish_plan_execute,
+    },
+    {
+        "name": "publish_status",
+        "title": "How an upload is going",
+        "description": (
+            "Where a clip's upload has got to, or the recent uploads when no clip is named."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"clip_id": {"type": "integer"}},
+        },
+        "handler": _publish_status,
+    },
     {
         "name": "queue_video",
         "title": "Clip a video or stream",

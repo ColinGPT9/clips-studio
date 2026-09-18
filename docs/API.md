@@ -835,6 +835,45 @@ Removes a queued job, or cancels a running one, and marks the stream
 Named bundles of options `POST /jobs` already accepts. Show `name` and
 `description`, and send `id`.
 
+### Publishing a batch: plan first, then execute
+
+`POST /publish/plan` works out what publishing a set of clips would do and
+**creates nothing**:
+
+```json
+{"clip_ids": [80, 81, 82], "start_at": "2026-09-18T12:00:00-05:00", "every_hours": 1}
+```
+
+```json
+{"items": [{"clip_id": 80, "title": "...", "description": "...",
+            "privacy": "private", "publish_at": "2026-09-18T17:00:00Z"}],
+ "warnings": []}
+```
+
+The description is resolved exactly as the worker will build it, standing block
+and hashtags included, so the preview is the truth rather than an approximation.
+Scheduled items come back **private**: YouTube rejects `publishAt` on anything
+else, and flips them public itself at the time.
+
+Omit `start_at` and `every_hours` to upload as soon as each is ready. An interval
+without a start is refused, as is a start inside the 15 minute lead time, because
+a batch must not slip past a check a single upload has to pass.
+
+`warnings` is where a plan bigger than today's remaining quota says so, before
+anything is spent.
+
+`POST /publish/plan/execute` takes the items back and creates one ordinary
+publish job per clip:
+
+```json
+{"started": [{"clip_id": 80, "publish_job_id": 12}],
+ "skipped": [{"clip_id": 81, "reason": "This clip has no rendered file yet."}]}
+```
+
+**One clip's problem never costs the batch.** Titles are optional on the way
+back: an agent that only moved the schedule does not have to repeat metadata it
+never touched, and the clip's own title is used.
+
 ### Thumbnails made on this machine
 
 `POST /clips/{clip_id}/thumbnail/generate?count=3` looks through the clip for
@@ -882,8 +921,15 @@ Installed builds ship the engine as `api.exe` in the app's `resourcesackend` fo
 the command there is `api.exe mcp`. `CLIPS_STUDIO_API` overrides the address if the engine
 is on another port.
 
-Nine tools: `queue_video`, `queue_local_file`, `job_status`, `queue_status`,
-`list_videos`, `list_clips`, `clip_captions`, `export_clip`, `engine_status`.
+Thirteen tools. Processing: `queue_video`, `queue_local_file`, `job_status`,
+`queue_status`, `list_videos`, `list_clips`, `clip_captions`, `export_clip`,
+`engine_status`. Publishing: `youtube_status`, `publish_plan`,
+`publish_plan_execute`, `publish_status`.
+
+The publishing tools are deliberately two steps. `publish_plan` returns a
+proposal and says in its own output that nothing has been uploaded; an agent is
+told to get a clear yes before calling `publish_plan_execute`. Uploads cannot be
+taken back and each one spends the user's daily quota.
 
 stdio only, newline-delimited JSON-RPC, protocol version `2025-06-18` (an older version
 from the client is accepted and echoed back). **No dependency was added for it**: the

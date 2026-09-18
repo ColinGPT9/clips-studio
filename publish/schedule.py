@@ -79,3 +79,25 @@ def validate_publish_at(value: str, now: datetime | None = None) -> str:
     if moment > now + timedelta(days=MAX_LEAD_DAYS):
         raise PublishError("That date is more than two years away — check the year.")
     return to_rfc3339(moment)
+
+
+def spread(start: str, count: int, every_hours: float, now: datetime | None = None) -> list[str]:
+    """`count` publish times, `every_hours` apart, beginning at `start`.
+
+    "Schedule them an hour apart starting tomorrow at noon" is the whole reason
+    this exists. Each time is validated exactly as a hand-picked one is, so a
+    batch cannot smuggle past a check a single upload has to pass.
+
+    The interval may be fractional (0.5 is half an hour) but not zero: a batch
+    that all publishes at the same instant is a mistake every time, and asking
+    for that is better answered with "upload now" than with a schedule.
+    """
+    if count < 1:
+        return []
+    if every_hours <= 0:
+        raise PublishError("Put some time between the videos, or upload them all now.")
+    first = parse(start)
+    times = [first + timedelta(hours=every_hours * i) for i in range(count)]
+    # Validate through the same door as a single upload: the first must clear
+    # the lead time, the last must be inside the far limit.
+    return [validate_publish_at(to_rfc3339(moment), now=now) for moment in times]
