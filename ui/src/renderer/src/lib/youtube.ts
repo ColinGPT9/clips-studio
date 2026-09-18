@@ -21,6 +21,8 @@ export interface YouTubeSettings {
   playlists_enabled: boolean
   notify_subscribers: boolean
   region: string
+  /** Put under every video's own description: where to watch live, socials. */
+  common_description: string
 }
 
 /** One connected channel. A creator running a main channel and a clips channel

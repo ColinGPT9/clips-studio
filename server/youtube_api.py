@@ -32,6 +32,11 @@ from server.feedback import redact
 _flow = {"thread": None}
 
 
+# Room for a few links and a line of thanks, not an essay: the clip's own
+# description has to survive YouTube's 5,000-character limit alongside it.
+COMMON_DESCRIPTION_MAX = 1500
+
+
 class YouTubeSettingsPatch(BaseModel):
     enabled: bool | None = None
     privacy: str | None = None
@@ -40,6 +45,7 @@ class YouTubeSettingsPatch(BaseModel):
     playlists_enabled: bool | None = None
     notify_subscribers: bool | None = None
     region: str | None = None
+    common_description: str | None = None
 
 
 class CredentialsIn(BaseModel):
@@ -148,6 +154,14 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         patch = {k: v for k, v in body.model_dump().items() if v is not None}
         if "privacy" in patch and patch["privacy"] not in PRIVACIES:
             raise HTTPException(400, f"privacy must be one of {', '.join(PRIVACIES)}")
+        if len(patch.get("common_description") or "") > COMMON_DESCRIPTION_MAX:
+            # YouTube's own limit is 5,000 for the whole description. Capping the
+            # standing part well below it leaves room for the clip's own words,
+            # which would otherwise be the half that gets truncated away.
+            raise HTTPException(
+                400,
+                f"Keep the common description under {COMMON_DESCRIPTION_MAX} characters.",
+            )
         d = db()
         try:
             saved = service.save_settings(d, patch)

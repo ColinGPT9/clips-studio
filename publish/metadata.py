@@ -79,21 +79,48 @@ def _normalise(hashtags: list[str]) -> list[str]:
     return out
 
 
-def _without_trailing_hashtags(description: str) -> str:
-    """The description minus a final line that is nothing but hashtags.
+def _strip_our_last_tag_line(description: str, ours: set[str]) -> str:
+    """The description minus the tag line THIS module put there last time.
 
-    Publishing a clip twice would otherwise stack a second block: the editor's
-    box is prefilled with whatever was sent last time, which by then already
-    ends in the line this module added.
+    Publishing a clip twice would otherwise stack a second line: the editor's
+    box is prefilled with whatever went up before, which already ends in one.
+
+    Recognised by content, not by position. A creator's standing block can end
+    in a hashtag of its own, and removing any trailing hashtag line would eat
+    that on the first publish, leave the block no longer matching, and re-add
+    the whole thing on the next one, growing the description forever. A line
+    only qualifies if every tag on it is one we are about to write anyway.
     """
     lines = description.rstrip().split("\n")
-    while lines:
+    if lines:
         words = lines[-1].split()
-        if words and all(w.startswith("#") for w in words):
+        if (
+            words
+            and all(w.startswith("#") for w in words)
+            and {w.lower() for w in words} <= ours
+        ):
             lines.pop()
-            continue
-        break
     return "\n".join(lines).rstrip()
+
+
+def with_common_block(description: str, common: str) -> str:
+    """The description with the creator's standing block under it.
+
+    The block is the same on every video: where to watch live, the Discord,
+    the socials. It goes between the clip's own description and the hashtag
+    line, which is where a viewer expects it and where it does not push the
+    first sentence out of the preview.
+
+    Skipped when the text is already there, so re-publishing a clip does not
+    repeat the links.
+    """
+    block = (common or "").strip()
+    if not block:
+        return description
+    body = description.rstrip()
+    if block in body:
+        return body
+    return f"{body}\n\n{block}" if body else block
 
 
 def description_with_hashtags(
@@ -116,9 +143,9 @@ def description_with_hashtags(
         seen.add(key)
         unique.append(tag)
 
-    body = _without_trailing_hashtags(description)
+    body = _strip_our_last_tag_line(description, {tag.lower() for tag in unique})
     if not unique:
-        return clamp_description(body)
+        return clamp_description(_strip_our_last_tag_line(description, set()))
     line = " ".join(unique[:MAX_HASHTAGS])
     return clamp_description(f"{body}\n\n{line}" if body else line)
 

@@ -323,7 +323,7 @@ def _describe(db: StateDB, clip, description: str) -> str:
     missing video row or unreadable hashtags just means the description goes up
     as written.
     """
-    from publish.metadata import description_with_hashtags
+    from publish.metadata import description_with_hashtags, with_common_block
 
     try:
         hashtags = json.loads(clip["hashtags"] or "[]")
@@ -342,4 +342,13 @@ def _describe(db: StateDB, clip, description: str) -> str:
     except Exception:
         creator = ""
 
-    return description_with_hashtags(description, hashtags, creator=creator)
+    # Order: the clip's own words, then the standing block, then the tags.
+    common = ""
+    try:
+        common = service.load_settings(db).get("common_description") or ""
+    except Exception:
+        common = ""
+
+    return description_with_hashtags(
+        with_common_block(description, common), hashtags, creator=creator
+    )

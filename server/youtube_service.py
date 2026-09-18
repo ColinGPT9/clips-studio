@@ -28,6 +28,10 @@ DEFAULTS = {
     "playlists_enabled": False,
     "notify_subscribers": True,
     "region": "US",
+    # Text put under every video's own description: where to watch live, the
+    # Discord, the socials. Empty by default, because a standing block nobody
+    # asked for is just noise on someone's channel.
+    "common_description": "",
 }
 
 
