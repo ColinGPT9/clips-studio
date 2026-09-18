@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from publish.errors import PublishError
-from publish.schedule import MIN_LEAD_SECONDS, parse, to_rfc3339, validate_publish_at
+from publish.schedule import MIN_LEAD_SECONDS, parse, spread, to_rfc3339, validate_publish_at
 
 NOW = datetime(2026, 9, 7, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -81,3 +81,47 @@ def test_daylight_saving_is_the_browsers_job_not_ours():
     assert before == "2026-10-25T00:30:00Z"
     assert after == "2026-10-25T01:30:00Z"
     assert before != after, "the same wall clock either side of the change is a different instant"
+
+
+# ---- spacing a batch out ----------------------------------------------------
+
+
+def _soon(hours: float = 2) -> str:
+    return to_rfc3339(NOW + timedelta(hours=hours))
+
+
+def test_a_batch_is_spaced_by_the_interval():
+    times = spread(_soon(), 4, 1, now=NOW)
+    assert len(times) == 4
+    gaps = [
+        (parse(b) - parse(a)).total_seconds() / 3600
+        for a, b in zip(times, times[1:])
+    ]
+    assert gaps == [1, 1, 1]
+
+
+def test_half_hour_intervals_work():
+    times = spread(_soon(), 3, 0.5, now=NOW)
+    assert (parse(times[-1]) - parse(times[0])).total_seconds() == 3600
+
+
+def test_the_first_one_is_the_start_time():
+    start = _soon()
+    assert parse(spread(start, 3, 1, now=NOW)[0]) == parse(start)
+
+
+def test_no_interval_is_refused_rather_than_publishing_all_at_once():
+    """Everything at the same instant is a mistake every time. "Upload now" is
+    the honest way to ask for that."""
+    with pytest.raises(PublishError):
+        spread(_soon(), 3, 0, now=NOW)
+
+
+def test_a_batch_cannot_smuggle_a_time_past_the_lead_check():
+    # A single upload this soon is refused, so a batch starting there is too.
+    with pytest.raises(PublishError):
+        spread(to_rfc3339(NOW + timedelta(seconds=60)), 3, 1, now=NOW)
+
+
+def test_asking_for_nothing_gets_nothing():
+    assert spread(_soon(), 0, 1, now=NOW) == []

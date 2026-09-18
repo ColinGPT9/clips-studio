@@ -93,6 +93,68 @@ def test_a_stopped_engine_is_a_tool_error_not_a_crash(monkeypatch):
     assert "not answering" in reply["result"]["content"][0]["text"]
 
 
+def test_the_publishing_tools_are_offered():
+    tools = _send(_request(20, "tools/list"))["result"]["tools"]
+    names = {t["name"] for t in tools}
+    assert {"youtube_status", "publish_plan", "publish_plan_execute", "publish_status"} <= names
+
+
+def test_a_plan_says_plainly_that_nothing_was_uploaded(monkeypatch):
+    # An agent reads only this text, so it has to carry the fact that a plan is
+    # a proposal and the confirmation step is not optional.
+    monkeypatch.setattr(mcp, "_request", lambda *a, **k: {
+        "items": [{"clip_id": 1, "title": "One", "publish_at": None},
+                  {"clip_id": 2, "title": "Two", "publish_at": "2026-09-18T17:00:00Z"}],
+        "warnings": [],
+    })
+    reply = _send(_request(21, "tools/call", {
+        "name": "publish_plan", "arguments": {"clip_ids": [1, 2]}}))
+    text = reply["result"]["content"][0]["text"]
+    assert "NOTHING has been uploaded" in text
+    assert "publish_plan_execute" in text
+    assert "clip 1" in text and "clip 2" in text
+
+
+def test_a_plan_passes_on_the_quota_warning(monkeypatch):
+    monkeypatch.setattr(mcp, "_request", lambda *a, **k: {
+        "items": [{"clip_id": 1, "title": "One", "publish_at": None}],
+        "warnings": ["3 clips, but only 1 uploads left on today's quota."],
+    })
+    reply = _send(_request(22, "tools/call", {
+        "name": "publish_plan", "arguments": {"clip_ids": [1]}}))
+    assert "quota" in reply["result"]["content"][0]["text"]
+
+
+def test_executing_reports_what_was_skipped(monkeypatch):
+    monkeypatch.setattr(mcp, "_request", lambda *a, **k: {
+        "started": [{"clip_id": 1, "publish_job_id": 9}],
+        "skipped": [{"clip_id": 2, "reason": "This clip has no rendered file yet."}],
+    })
+    reply = _send(_request(23, "tools/call", {
+        "name": "publish_plan_execute", "arguments": {"items": [{"clip_id": 1}, {"clip_id": 2}]}}))
+    text = reply["result"]["content"][0]["text"]
+    assert "Started 1 upload" in text
+    assert "clip 2 skipped" in text
+
+
+def test_executing_nothing_uploads_nothing(monkeypatch):
+    def explode(*_a, **_k):
+        raise AssertionError("must not call the API with an empty plan")
+
+    monkeypatch.setattr(mcp, "_request", explode)
+    reply = _send(_request(24, "tools/call", {
+        "name": "publish_plan_execute", "arguments": {"items": []}}))
+    assert "nothing was published" in reply["result"]["content"][0]["text"]
+
+
+def test_youtube_off_tells_the_agent_to_stop_rather_than_improvise(monkeypatch):
+    monkeypatch.setattr(mcp, "_request", lambda *a, **k: {"enabled": False})
+    reply = _send(_request(25, "tools/call", {"name": "youtube_status", "arguments": {}}))
+    text = reply["result"]["content"][0]["text"]
+    assert "switched off" in text
+    assert "not something to work around" in text
+
+
 def test_serve_reads_lines_and_writes_one_message_per_line():
     stdin = io.StringIO(
         json.dumps(_request(1, "initialize", {"protocolVersion": "2025-06-18"})) + "\n"

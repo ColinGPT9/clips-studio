@@ -37,6 +37,30 @@ _flow = {"thread": None}
 COMMON_DESCRIPTION_MAX = 1500
 
 
+class PlanIn(BaseModel):
+    """Ask for a publishing plan. Nothing is created by asking."""
+
+    clip_ids: list[int] = []
+    # Omit both and the plan is "upload these now". Give a start and an
+    # interval and YouTube holds each one until its turn.
+    start_at: str | None = None          # RFC 3339, WITH an offset
+    every_hours: float | None = None
+    privacy: str = "public"
+
+
+class PlanItemIn(BaseModel):
+    clip_id: int
+    title: str | None = None
+    publish_at: str | None = None
+    privacy: str | None = None
+
+
+class PlanExecuteIn(BaseModel):
+    """A plan handed back to be carried out, one ordinary publish job per clip."""
+
+    items: list[PlanItemIn] = []
+
+
 class YouTubeSettingsPatch(BaseModel):
     enabled: bool | None = None
     privacy: str | None = None
@@ -532,6 +556,119 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
         if not target.exists():
             _extract_frame(source, at, target)
         return FileResponse(str(target), media_type="image/jpeg")
+
+    @app.post("/publish/plan")
+    def publish_plan(body: PlanIn):
+        """What publishing these clips would do. Creates nothing.
+
+        The point of a plan is that a batch is consequential: thirty uploads
+        with the wrong description cannot be taken back, and each one spends
+        quota. So the caller sees the resolved titles, times and descriptions
+        first, and executes a plan it has actually looked at.
+        """
+        from publish.errors import PublishError as _PublishError
+        from publish.schedule import spread, validate_publish_at
+        from server.publisher import _describe
+
+        if not body.clip_ids:
+            raise HTTPException(400, "No clips were given.")
+        if body.privacy not in PRIVACIES:
+            raise HTTPException(400, f"privacy must be one of {', '.join(PRIVACIES)}")
+
+        times: list[str | None] = [None] * len(body.clip_ids)
+        if body.start_at:
+            try:
+                if body.every_hours:
+                    times = list(spread(body.start_at, len(body.clip_ids), body.every_hours))
+                else:
+                    times = [validate_publish_at(body.start_at)] + [None] * (
+                        len(body.clip_ids) - 1
+                    )
+            except _PublishError as e:
+                raise HTTPException(400, getattr(e, "message", str(e))) from e
+        elif body.every_hours:
+            raise HTTPException(
+                400, "An interval needs a starting time: say when the first one goes out."
+            )
+
+        d = db()
+        try:
+            _guard(d)
+            items, warnings = [], []
+            for clip_id, when in zip(body.clip_ids, times):
+                clip = d.get_clip(clip_id)
+                if clip is None:
+                    warnings.append(f"Clip {clip_id} no longer exists.")
+                    continue
+                if not (clip["path"] and Path(clip["path"]).exists()):
+                    warnings.append(f"Clip {clip_id} has no rendered file yet.")
+                    continue
+                items.append({
+                    "clip_id": clip_id,
+                    "title": clip["title"] or clip["hook"] or f"Clip {clip_id}",
+                    # Resolved exactly as the worker will build it, standing
+                    # block and hashtags included, so the preview is the truth.
+                    "description": _describe(d, clip, clip["description"] or ""),
+                    # YouTube rejects publishAt on anything but a private video,
+                    # so a scheduled item is private until its moment arrives.
+                    "privacy": "private" if when else body.privacy,
+                    "publish_at": when,
+                })
+
+            ledger = service.load_ledger(d)
+            room = ledger.remaining()
+            if len(items) > room:
+                warnings.append(
+                    f"{len(items)} clips, but only {room} uploads left on today's quota. "
+                    "The rest will fail until it resets at midnight Pacific."
+                )
+            return {"items": items, "warnings": warnings}
+        finally:
+            d.close()
+
+    @app.post("/publish/plan/execute")
+    def publish_plan_execute(body: PlanExecuteIn):
+        """Carry out a plan: one ordinary publish job per clip.
+
+        Each clip goes through the same path a single publish from the editor
+        takes, so one failure leaves the others alone.
+        """
+        if not body.items:
+            raise HTTPException(400, "The plan is empty.")
+
+        # Titles are optional in a plan: an agent that only reordered the
+        # schedule should not have to repeat metadata it never touched.
+        titles: dict[int, str] = {}
+        d = db()
+        try:
+            _guard(d)
+            for item in body.items:
+                if item.title:
+                    continue
+                clip = d.get_clip(item.clip_id)
+                if clip is not None:
+                    titles[item.clip_id] = (
+                        clip["title"] or clip["hook"] or f"Clip {item.clip_id}"
+                    )
+        finally:
+            d.close()
+
+        started, skipped = [], []
+        for item in body.items:
+            try:
+                created = publish_clip(
+                    item.clip_id,
+                    PublishIn(
+                        title=item.title or titles.get(item.clip_id, ""),
+                        privacy=item.privacy or ("private" if item.publish_at else "public"),
+                        publish_at=item.publish_at,
+                    ),
+                )
+                started.append({"clip_id": item.clip_id, **created})
+            except HTTPException as e:
+                # One clip's problem must not cost the rest of the batch.
+                skipped.append({"clip_id": item.clip_id, "reason": str(e.detail)})
+        return {"started": started, "skipped": skipped}
 
     @app.post("/clips/{clip_id}/thumbnail/generate")
     def generate_thumbnails(clip_id: int, count: int = 3):
