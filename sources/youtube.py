@@ -7,6 +7,7 @@ uploads only.
 
 import re
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from pathlib import Path
 
 import requests
@@ -119,7 +120,35 @@ def _friendly_message(error: str) -> str | None:
             "off a VPN if you have one on, or try a different network. "
             "Twitch, Kick and local files are not affected."
         )
+
+    # Age-gated videos need a signed-in session, which Clips Kitty does not
+    # have: it downloads anonymously on purpose. yt-dlp's own text points at
+    # two wiki pages about exporting cookies, which reads like a crash rather
+    # than like a video YouTube will not hand over. Retrying never helps.
+    if "confirm your age" in error or "age-restricted" in error.lower():
+        return (
+            "YouTube will not serve this video to anyone who is not signed "
+            "in, because it is age-restricted. Clips Kitty downloads without "
+            "an account, so it cannot fetch this one. The same stream on "
+            "Twitch or Kick will work, as will a local file."
+        )
     return None
+
+
+@contextmanager
+def _friendly_errors():
+    """Swap yt-dlp's text for advice, wherever in a download it is raised.
+
+    The probe below is the first network call and so the likeliest to fail,
+    which made it the one place the mapping did not reach.
+    """
+    try:
+        yield
+    except yt_dlp.utils.DownloadError as e:
+        friendly = _friendly_message(str(e))
+        if friendly:
+            raise ValueError(friendly) from e
+        raise
 
 
 def download(url: str, output_dir: Path) -> DownloadedVideo:
@@ -127,8 +156,9 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
 
     # Refuse live streams BEFORE downloading: a live URL would start an
     # open-ended real-time capture instead of fetching a finished file.
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as probe:
-        probe_info = probe.extract_info(url, download=False)
+    with _friendly_errors():
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as probe:
+            probe_info = probe.extract_info(url, download=False)
     if probe_info.get("is_live"):
         raise ValueError(
             "This is a live stream — live processing isn't supported. "
@@ -156,14 +186,9 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         **progress_opts(extract_video_id(url)),
     }
 
-    try:
+    with _friendly_errors():
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
-    except yt_dlp.utils.DownloadError as e:
-        friendly = _friendly_message(str(e))
-        if friendly:
-            raise ValueError(friendly) from e
-        raise
 
     video_id = info["id"]
     path = output_dir / f"{video_id}.mp4"
