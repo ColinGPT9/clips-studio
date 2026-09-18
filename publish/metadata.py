@@ -11,10 +11,12 @@ finished render to that would be an unkind way to find out.
 
 from publish.base import DESCRIPTION_MAX, TAGS_BUDGET, TITLE_MAX, PublishRequest
 
-# YouTube ignores ALL hashtags in a description once there are more than 15,
-# rather than just the excess. Our generated descriptions append the clip's
-# hashtags, so this is easy to trip.
-MAX_HASHTAGS = 15
+# Five is ours, not YouTube's. A description reads better with a handful of
+# real tags than a wall of them, and YouTube only shows the first three above
+# the title anyway. Fifteen is the cliff: past that it ignores EVERY hashtag on
+# the video rather than the excess, so five sits well clear of it instead of
+# near it.
+MAX_HASHTAGS = 5
 
 # Angle brackets are rejected outright in titles and descriptions.
 _FORBIDDEN = str.maketrans({"<": "", ">": ""})
@@ -53,13 +55,71 @@ def clamp_tags(tags: list[str]) -> list[str]:
     return kept
 
 
-def description_with_hashtags(description: str, hashtags: list[str]) -> str:
-    """Append the clip's hashtags, capped so YouTube doesn't ignore them all."""
-    tags = [h if h.startswith("#") else f"#{h}" for h in hashtags if h.strip()]
-    if not tags:
-        return clamp_description(description)
-    body = description.rstrip()
-    line = " ".join(tags[:MAX_HASHTAGS])
+def creator_tag(name: str) -> str:
+    """A channel name as a hashtag, or "" when nothing usable is left.
+
+    YouTube hashtags carry no spaces or punctuation, so "Some Streamer" has to
+    become "#SomeStreamer": left as it is, YouTube reads the tag "#Some" and
+    then some loose words.
+    """
+    kept = "".join(c for c in (name or "") if c.isalnum())
+    return f"#{kept}" if kept else ""
+
+
+def _normalise(hashtags: list[str]) -> list[str]:
+    """Bare words gain their hash; blanks and lone hashes are dropped."""
+    out = []
+    for raw in hashtags:
+        tag = (raw or "").strip()
+        if not tag:
+            continue
+        tag = tag if tag.startswith("#") else f"#{tag}"
+        if len(tag) > 1:
+            out.append(tag)
+    return out
+
+
+def _without_trailing_hashtags(description: str) -> str:
+    """The description minus a final line that is nothing but hashtags.
+
+    Publishing a clip twice would otherwise stack a second block: the editor's
+    box is prefilled with whatever was sent last time, which by then already
+    ends in the line this module added.
+    """
+    lines = description.rstrip().split("\n")
+    while lines:
+        words = lines[-1].split()
+        if words and all(w.startswith("#") for w in words):
+            lines.pop()
+            continue
+        break
+    return "\n".join(lines).rstrip()
+
+
+def description_with_hashtags(
+    description: str, hashtags: list[str], creator: str = ""
+) -> str:
+    """Put the clip's hashtags in the description, the creator's tag first.
+
+    First because the list is cut at MAX_HASHTAGS, so whatever must survive
+    has to lead. Duplicates fold together case-insensitively: a generated
+    "#penguinz0" and a channel called "penguinz0" are one tag, not two.
+    """
+    tags = _normalise(([creator_tag(creator)] if creator else []) + list(hashtags))
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for tag in tags:
+        key = tag.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(tag)
+
+    body = _without_trailing_hashtags(description)
+    if not unique:
+        return clamp_description(body)
+    line = " ".join(unique[:MAX_HASHTAGS])
     return clamp_description(f"{body}\n\n{line}" if body else line)
 
 
