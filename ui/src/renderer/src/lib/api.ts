@@ -11,6 +11,7 @@ import type {
   JobOptions,
   ModelsInfo,
   Preflight,
+  PublishPlanItem,
   QueueSnapshot,
   RenderOpts,
   Settings,
@@ -221,6 +222,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ silence: opts?.silence ?? true, fillers: opts?.fillers ?? true })
     }),
+  /** Whether the assistant can run, and which model it would use. The app's
+   *  default scoring model cannot call tools, so this is a real question. */
+  agentStatus: () =>
+    request<{ ready: boolean; model: string; configured: string; reason: string }>(
+      '/agent/status'
+    ),
+  /** One exchange with the assistant. `steps` is what it actually did, `plan`
+   *  is a proposed batch of uploads that NOTHING has acted on yet. */
+  agentChat: (message: string, history: { role: string; content: string }[]) =>
+    request<{
+      reply: string
+      model: string
+      steps: { tool: string; arguments: Record<string, unknown>; result: string }[]
+      plan: { items: PublishPlanItem[]; warnings: string[] } | null
+    }>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, history }) }),
+  /** Carry out a plan the person has agreed to. Only a click reaches this. */
+  executePublishPlan: (items: PublishPlanItem[]) =>
+    request<{
+      started: { clip_id: number; publish_job_id: number }[]
+      skipped: { clip_id: number; reason: string }[]
+    }>('/publish/plan/execute', { method: 'POST', body: JSON.stringify({ items }) }),
   aiEdit: (id: number, message: string) =>
     request<{ reply: string; job_id: number | null }>(`/clips/${id}/ai-edit`, {
       method: 'POST',

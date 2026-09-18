@@ -442,3 +442,13 @@ export interface CreatorDetail {
   feedback: Record<string, number>
   preferences: { weight_bias: Record<string, number>; preferred_duration: number | null; signals: number } | null
 }
+
+/** One clip in a proposed batch of uploads. A plan is a proposal: nothing has
+ *  been uploaded until somebody confirms it. */
+export interface PublishPlanItem {
+  clip_id: number
+  title: string
+  description: string
+  privacy: string
+  publish_at: string | null
+}

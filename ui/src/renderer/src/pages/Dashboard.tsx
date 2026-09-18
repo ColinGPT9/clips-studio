@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Assistant from '../components/Assistant'
 import NoClipsExplanation from '../components/NoClipsExplanation'
 import AddVideos from '../components/queue/AddVideos'
 import { Trash } from '../components/icons'
@@ -173,6 +174,8 @@ export default function Dashboard({
 
       {/* Middle: videos + activity, each scrolls on its own */}
       <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <Assistant />
+
         <section className="card flex flex-col overflow-hidden" aria-label="Processed videos">
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap shrink-0">
             <h3 className="font-semibold">{t('Processed videos')}</h3>
