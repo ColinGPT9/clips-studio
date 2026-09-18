@@ -109,18 +109,21 @@ export default function Assistant(): JSX.Element | null {
   }
 
   return (
-    <section className="card flex flex-col" aria-label={t('Assistant')}>
-      <div className="flex items-baseline justify-between">
+    <section
+      className="card flex flex-col h-full min-h-0 overflow-hidden"
+      aria-label={t('Assistant')}
+    >
+      <div className="flex items-baseline justify-between shrink-0">
         <p className="font-semibold">{t('Ask Clips Kitty')}</p>
         {model && <span className="text-[11px] text-muted tabular-nums">{model}</span>}
       </div>
-      <p className="text-[11px] text-muted mt-0.5">
-        {t('e.g. "clip this stream, then plan the best three an hour apart from tomorrow noon"')}
-      </p>
-
-      {turns.length > 0 && (
-        <div ref={scrollRef} className="mt-2 max-h-72 overflow-y-auto space-y-2 pr-1">
-          {turns.map((turn, i) => (
+      <div ref={scrollRef} className="mt-3 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+        {turns.length === 0 ? (
+          <p className="text-sm text-muted">
+            {t('Ask for something like "clip this stream, then plan the best three an hour apart from tomorrow noon". It can queue a stream, read back the clips it chose and plan a batch of uploads for you to approve.')}
+          </p>
+        ) : (
+          turns.map((turn, i) => (
             <div key={i} className={turn.role === 'user' ? 'text-right' : ''}>
               <p
                 className={
@@ -134,19 +137,21 @@ export default function Assistant(): JSX.Element | null {
               {turn.steps && turn.steps.length > 0 && (
                 <ul className="mt-1 space-y-0.5">
                   {turn.steps.map((step, j) => (
-                    <li key={j} className="text-[11px] text-muted font-mono">
+                    <li key={j} className="text-xs text-muted font-mono">
                       {step.tool}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       {plan && (
-        <div className="mt-2 border border-accent/40 rounded-lg p-2 space-y-1">
+        // The plan gives way rather than growing: the card clips what does not
+        // fit, and what sits below it is the input.
+        <div className="mt-2 border border-accent/40 rounded-lg p-2 space-y-1 min-h-0 overflow-y-auto">
           <p className="text-xs font-medium">
             {plan.length} {t('clips ready to upload. Nothing has been uploaded yet.')}
           </p>
@@ -171,7 +176,7 @@ export default function Assistant(): JSX.Element | null {
         </div>
       )}
 
-      <div className="flex gap-2 mt-2">
+      <div className="flex gap-2 mt-3 shrink-0">
         <input
           className="input flex-1"
           value={input}
