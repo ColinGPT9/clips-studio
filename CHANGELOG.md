@@ -56,6 +56,19 @@ were often broken in a way that only showed up on somebody else's machine.
   paste. It goes under each description as the clip is published, once, without
   repeating itself when you publish a clip again.
 
+- **Say how you want the clips made, in the same sentence.** The box and any
+  MCP client can now set what the panel's tick boxes and menus set: captions on
+  or off, the caption font, size, colour, position and word count, a watermark
+  by the name you saved it under, podcast footage, longer clips, and the
+  horizontal longform modes. "Clip this with big yellow captions at the top and
+  my Main channel watermark" now does all three. A font or colour it does not
+  have is refused with the list of real ones, rather than quietly rendering
+  every clip of the stream in the wrong one.
+
+- **Drag the assistant to the height you want it.** There is a grip on its top
+  edge, and the size is remembered. It never grows past the space there is, so
+  the box you type into stays on screen.
+
 ### Fixed
 
 - **Hashtags now actually appear under your videos.** Clips Kitty has always
@@ -69,6 +82,18 @@ were often broken in a way that only showed up on somebody else's machine.
   the one hashtag that matters most for finding your other videos. Each clip now
   carries at most five, and the creator's name leads them, so the cap can never
   cut it off.
+
+- **An age-restricted video says so.** YouTube will not hand these over to
+  anyone who is not signed in, and Clips Kitty downloads without an account. It
+  used to fail with a wall of yt-dlp text about exporting cookies, which read
+  like a crash. It now says what happened and what will work instead. The same
+  plain wording now covers failures during the first check of a link, which is
+  the likeliest moment to fail and the one place it was missing.
+
+- **The activity list follows what is happening.** New lines were being added
+  at the top, so the newest event was never where you were looking. It now
+  reads downwards with the newest at the bottom and scrolls to keep up, unless
+  you have scrolled up to read something, in which case it leaves you alone.
 
 ---
 

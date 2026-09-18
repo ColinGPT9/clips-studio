@@ -13,6 +13,31 @@ import type { Clip, Settings, StudioEvent, Video } from '../lib/types'
 
 const DONATE_URL = 'https://paypal.me/clipsstudio'
 
+// The assistant shares the window with the two cards above it, so its
+// height is the user's call rather than ours. Remembered per machine.
+const ASSISTANT_H_KEY = 'dashboard.assistantHeight'
+const ASSISTANT_H_MIN = 132
+const ASSISTANT_H_MAX = 620
+const ASSISTANT_H_DEFAULT = 164
+
+// Space kept for the two cards above, so dragging can never collapse them
+// entirely and cannot push the assistant's own input off the bottom.
+const ASSISTANT_H_RESERVE = 180
+
+function clampHeight(px: number, max: number = ASSISTANT_H_MAX): number {
+  return Math.max(ASSISTANT_H_MIN, Math.min(max, Math.round(px)))
+}
+
+function rememberHeight(px: number): void {
+  // Written on release rather than on every pointer move, and never worth
+  // failing a resize over: private windows can refuse to store anything.
+  try {
+    localStorage.setItem(ASSISTANT_H_KEY, String(px))
+  } catch {
+    /* the panel still resizes, it just forgets */
+  }
+}
+
 type SortMode = 'newest' | 'channel'
 
 function describeEvent(e: StudioEvent): string {
@@ -42,8 +67,23 @@ export default function Dashboard({
   } | null>(null)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [assistantH, setAssistantH] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(ASSISTANT_H_KEY))
+      return saved ? clampHeight(saved) : ASSISTANT_H_DEFAULT
+    } catch {
+      return ASSISTANT_H_DEFAULT
+    }
+  })
   const [clipsByVideo, setClipsByVideo] = useState<Record<string, Clip[]>>({})
   const lastEventAt = useRef(Date.now())
+  const logRef = useRef<HTMLDivElement>(null)
+  // Only follow the feed while the user is already at the bottom, so
+  // scrolling up to read something is not yanked away by the next event.
+  const logPinned = useRef(true)
+  const resizeFrom = useRef<{ y: number; h: number } | null>(null)
+  const poolRef = useRef<HTMLDivElement>(null)
+  const [poolH, setPoolH] = useState(0)
   // Only watch while something is actually in flight, so an idle Dashboard
   // never polls.
   const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
@@ -68,6 +108,54 @@ export default function Dashboard({
     refresh()
   }, [])
 
+  useEffect(() => {
+    const el = logRef.current
+    if (el && logPinned.current) el.scrollTop = el.scrollHeight
+  }, [log])
+
+  useEffect(() => {
+    const el = poolRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setPoolH(entry.contentRect.height))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const maxAssistantH = poolH
+    ? Math.max(ASSISTANT_H_MIN, Math.min(ASSISTANT_H_MAX, poolH - ASSISTANT_H_RESERVE))
+    : ASSISTANT_H_MAX
+  const shownAssistantH = Math.min(assistantH, maxAssistantH)
+
+  function startResize(e: React.PointerEvent<HTMLDivElement>): void {
+    e.preventDefault()
+    resizeFrom.current = { y: e.clientY, h: shownAssistantH }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function onResize(e: React.PointerEvent<HTMLDivElement>): void {
+    const from = resizeFrom.current
+    if (!from) return
+    // The panel grows upwards from its own top edge, so dragging up makes
+    // it taller and the cards above it give up the space.
+    setAssistantH(clampHeight(from.h - (e.clientY - from.y), maxAssistantH))
+  }
+
+  function endResize(e: React.PointerEvent<HTMLDivElement>): void {
+    if (!resizeFrom.current) return
+    resizeFrom.current = null
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    rememberHeight(assistantH)
+  }
+
+  function onResizeKey(e: React.KeyboardEvent<HTMLDivElement>): void {
+    const step = e.key === 'ArrowUp' ? 24 : e.key === 'ArrowDown' ? -24 : 0
+    if (!step) return
+    e.preventDefault()
+    const next = clampHeight(shownAssistantH + step, maxAssistantH)
+    setAssistantH(next)
+    rememberHeight(next)
+  }
+
   useEvents((e) => {
     lastEventAt.current = Date.now()
     const msg = describeEvent(e)
@@ -75,8 +163,11 @@ export default function Dashboard({
     setLog((prev) => {
       // Skip consecutive duplicates: only log when the message actually
       // changes, so a stage that emits every second doesn't spam the feed.
-      if (prev.length && prev[0].slice(prev[0].indexOf('  ') + 2) === msg) return prev
-      return [line, ...prev].slice(0, 200)
+      const last = prev[prev.length - 1]
+      if (last && last.slice(last.indexOf('  ') + 2) === msg) return prev
+      // Oldest first, newest at the bottom: a feed you read downwards, and
+      // the only order in which following it means anything.
+      return [...prev, line].slice(-200)
     })
     if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) refresh()
   })
@@ -173,9 +264,13 @@ export default function Dashboard({
       </div>
 
       {/* Middle: videos + activity, each scrolls on its own */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Assistant />
-
+      {/* Two tall cards side by side, with the assistant on its own row beneath
+          so neither of them loses width or height to it. */}
+      {/* One pool of space, split between the cards and the assistant. The
+          pool's own height does not depend on where the split falls, which is
+          what makes the cap below stable. */}
+      <div ref={poolRef} className="flex-1 min-h-0 flex flex-col gap-5">
+        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section className="card flex flex-col overflow-hidden" aria-label="Processed videos">
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap shrink-0">
             <h3 className="font-semibold">{t('Processed videos')}</h3>
@@ -323,7 +418,15 @@ export default function Dashboard({
 
         <section className="card flex flex-col overflow-hidden" aria-label="Activity log">
           <h3 className="font-semibold mb-3 shrink-0">{t('Activity')}</h3>
-          <div className="overflow-y-auto flex-1 min-h-0 font-mono text-xs space-y-1 text-muted" role="log">
+          <div
+            ref={logRef}
+            onScroll={(e) => {
+              const el = e.currentTarget
+              logPinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+            }}
+            className="overflow-y-auto flex-1 min-h-0 font-mono text-xs space-y-1 text-muted"
+            role="log"
+          >
             {log.length === 0 ? (
               <p>{t('Waiting for events…')}</p>
             ) : (
@@ -335,6 +438,31 @@ export default function Dashboard({
             <SystemStats compact />
           </div>
         </section>
+
+        </div>
+
+        <div
+          className="shrink-0 flex flex-col"
+          style={{ height: shownAssistantH }}
+        >
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('Drag to resize Ask Clips Kitty')}
+            tabIndex={0}
+            onPointerDown={startResize}
+            onPointerMove={onResize}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+            onKeyDown={onResizeKey}
+            className="h-3 shrink-0 cursor-ns-resize flex items-center justify-center group rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            <div className="h-1 w-20 rounded-full bg-raised transition-colors group-hover:bg-accent/70 group-focus:bg-accent" />
+          </div>
+          <div className="flex-1 min-h-0">
+            <Assistant />
+          </div>
+        </div>
       </div>
 
       {/* Pinned bottom: prominent, persistent donate section */}
