@@ -23,6 +23,10 @@ export default function YouTubeCard(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [connecting, setConnecting] = useState(false)
+  // Held locally while it is typed, saved on blur: a PATCH per keystroke would
+  // be absurd, and this is a paragraph, not a toggle.
+  const [common, setCommon] = useState('')
+  const [commonSaved, setCommonSaved] = useState('')
   const poll = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = (): void => {
@@ -31,6 +35,9 @@ export default function YouTubeCard(): JSX.Element {
       .then((s) => {
         setStatus(s)
         rememberYoutubeEnabled(Boolean(s.enabled))
+        const stored = s.settings?.common_description ?? ''
+        setCommon(stored)
+        setCommonSaved(stored)
       })
       .catch(() => setStatus({ enabled: false }))
   }
@@ -52,6 +59,22 @@ export default function YouTubeCard(): JSX.Element {
       rememberYoutubeEnabled(Boolean(r.status.enabled))
     } catch (e) {
       setNotice(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveCommon = async (): Promise<void> => {
+    if (common === commonSaved) return // nothing typed since the last save
+    setBusy(true)
+    setNotice('')
+    try {
+      const r = await api.patchYoutubeSettings({ common_description: common })
+      setStatus(r.status)
+      setCommonSaved(common)
+      setNotice(t('Saved. It goes on every video you publish from now on.'))
+    } catch (e) {
+      setNotice(String(e).replace(/^Error:\s*/, ''))
     } finally {
       setBusy(false)
     }
@@ -250,6 +273,26 @@ export default function YouTubeCard(): JSX.Element {
                   </span>
                 </span>
               </label>
+              <div className="pt-1">
+                <label className="label" htmlFor="yt-common">
+                  {t('Add to every description')}
+                </label>
+                <textarea
+                  id="yt-common"
+                  className="input mt-1 h-24 font-mono text-xs"
+                  value={common}
+                  disabled={busy}
+                  placeholder={'Watch me live: twitch.tv/you' + String.fromCharCode(10) + 'Discord: discord.gg/you'}
+                  onChange={(e) => setCommon(e.target.value)}
+                  onBlur={saveCommon}
+                />
+                <p className="text-[11px] text-muted mt-1">
+                  {t(
+                    'Goes under each clip’s own description, above the hashtags. Your channel name is already added as a hashtag on every video.'
+                  )}
+                </p>
+              </div>
+
               <div className="flex gap-2 pt-1">
                 <button className="btn-ghost !px-3 !py-1 text-xs" disabled={busy} onClick={removeKey}>
                   {t('Remove API key')}

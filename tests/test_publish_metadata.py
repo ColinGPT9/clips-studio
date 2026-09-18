@@ -15,6 +15,7 @@ from publish.metadata import (
     creator_tag,
     description_with_hashtags,
     parts_for,
+    with_common_block,
 )
 
 
@@ -125,6 +126,55 @@ def test_hashtags_alone_still_produce_a_description():
 
 def test_no_hashtags_leaves_the_description_alone():
     assert description_with_hashtags("Just this", []) == "Just this"
+
+
+# ---- the standing block ----------------------------------------------------
+
+
+def test_the_standing_block_goes_under_the_description():
+    text = with_common_block("Watch this", "Live: twitch.tv/example")
+    assert text == "Watch this" + chr(10) * 2 + "Live: twitch.tv/example"
+
+
+def test_an_empty_standing_block_changes_nothing():
+    assert with_common_block("Watch this", "") == "Watch this"
+    assert with_common_block("Watch this", "   ") == "Watch this"
+
+
+def test_the_standing_block_is_not_repeated_on_a_second_publish():
+    once = with_common_block("Watch this", "Discord: discord.gg/example")
+    twice = with_common_block(once, "Discord: discord.gg/example")
+    assert twice == once
+
+
+def test_a_standing_block_ending_in_a_hashtag_survives_republishing():
+    # The reason the trailing-hashtag strip takes exactly one line: this block
+    # ends in a tag of its own, and a greedy strip would eat it and then put
+    # the whole block back, growing the description on every publish.
+    block = "Watch me live: twitch.tv/example" + chr(10) + "#streamer"
+    first = description_with_hashtags(
+        with_common_block("A clip", block), ["#funny"], creator="penguinz0"
+    )
+    again = description_with_hashtags(
+        with_common_block(first, block), ["#funny"], creator="penguinz0"
+    )
+    assert again == first
+    assert first.count("twitch.tv/example") == 1
+    assert first.count("#streamer") == 1
+
+
+def test_the_whole_description_reads_in_the_right_order():
+    text = description_with_hashtags(
+        with_common_block("The clip itself.", "Live: twitch.tv/example"),
+        ["#funny"],
+        creator="penguinz0",
+    )
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    assert lines == [
+        "The clip itself.",
+        "Live: twitch.tv/example",
+        "#penguinz0 #funny",
+    ]
 
 
 # ---- the body itself -------------------------------------------------------
