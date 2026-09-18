@@ -8,6 +8,8 @@ import io
 import json
 import urllib.error
 
+import pytest
+
 from server import mcp
 
 
@@ -178,3 +180,117 @@ def test_bad_json_gets_a_parse_error():
 def test_the_api_base_can_be_overridden(monkeypatch):
     monkeypatch.setenv("CLIPS_STUDIO_API", "http://127.0.0.1:9999/")
     assert mcp.api_base() == "http://127.0.0.1:9999"
+
+
+def test_the_box_can_set_the_things_the_panel_has_checkboxes_for(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.update({"body": b})
+                        or {"job_id": 7})
+    mcp.handle(_request(30, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x", "captions": False, "long_clips": True,
+        "podcast": True}}))
+    assert sent["body"]["captions"] is False
+    assert sent["body"]["long_clips"] is True
+    assert sent["body"]["podcast"] is True
+
+
+def test_captions_left_alone_are_not_sent_at_all(monkeypatch):
+    # The default lives in settings; sending None would override it with nothing.
+    sent = {}
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.update({"body": b})
+                        or {"job_id": 7})
+    mcp.handle(_request(31, "tools/call", {
+        "name": "queue_video", "arguments": {"url": "https://youtu.be/x"}}))
+    assert "captions" not in sent["body"]
+
+
+def test_longform_becomes_a_mode(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.update({"body": b})
+                        or {"job_id": 7})
+    mcp.handle(_request(32, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x", "longform": "highlights"}}))
+    assert sent["body"]["longform"] == {"mode": "highlights"}
+
+
+def test_a_watermark_is_looked_up_by_name(monkeypatch):
+    calls = []
+
+    def fake(method, path, body=None):
+        calls.append(path)
+        if path == "/branding":
+            return [{"id": 3, "name": "Main channel"}, {"id": 4, "name": "Alt"}]
+        return {"job_id": 7, "_body": body}
+
+    monkeypatch.setattr(mcp, "_request", fake)
+    mcp.handle(_request(33, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x", "watermark": "main channel"}}))
+    assert "/branding" in calls
+
+
+def test_a_watermark_that_does_not_exist_lists_the_real_ones(monkeypatch):
+    # Guessing an id here would brand a whole stream with the wrong logo.
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: (
+        [{"id": 3, "name": "Main channel"}] if p == "/branding" else {"job_id": 7}))
+    reply = mcp.handle(_request(34, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x", "watermark": "nope"}}))
+    text = reply["result"]["content"][0]["text"]
+    assert reply["result"]["isError"] is True
+    assert "Main channel" in text
+
+
+def test_every_longform_mode_in_the_dropdown_can_be_asked_for():
+    # The panel offers four; the box offered three, so "clips up to 140s for X"
+    # quietly did something else.
+    tools = {t["name"]: t for t in mcp.TOOLS}
+    modes = tools["queue_video"]["inputSchema"]["properties"]["longform"]["enum"]
+    assert modes == ["short_clips", "clips_140", "highlights", "edited_stream"]
+
+
+def test_a_caption_font_is_matched_however_it_was_typed():
+    assert mcp._caption_style({"font": "impact"})["font"] == "Impact"
+    assert mcp._caption_style({"font": "comic sans"})["font"] == "Comic Sans MS"
+
+
+def test_a_font_that_is_not_installed_is_refused_with_the_list():
+    # An unknown font renders as something else without complaining, so every
+    # clip of the stream would be wrong and nothing would say why.
+    with pytest.raises(ValueError, match="Impact"):
+        mcp._caption_style({"font": "Papyrus"})
+
+
+def test_colour_words_work_as_well_as_hex():
+    assert mcp._caption_style({"color": "yellow"})["color"] == "#FFE600"
+    assert mcp._caption_style({"color": "#ff0000"})["color"] == "#FF0000"
+    with pytest.raises(ValueError, match="not a colour"):
+        mcp._caption_style({"highlight_color": "chartreuse"})
+
+
+def test_centre_means_middle():
+    assert mcp._caption_style({"position": "centre"})["position"] == "middle"
+    assert mcp._caption_style({"position": "Center"})["position"] == "middle"
+    with pytest.raises(ValueError, match="bottom, middle, top"):
+        mcp._caption_style({"position": "diagonal"})
+
+
+def test_sizes_are_clamped_rather_than_refused():
+    # "make them huge" is a real request; it should land at the top of the
+    # range instead of failing.
+    assert mcp._caption_style({"font_size": 900})["font_size"] == 160
+    assert mcp._caption_style({"words_per_caption": 99})["words_per_caption"] == 6
+
+
+def test_what_was_not_asked_for_is_left_alone():
+    # Anything sent here overrides the user's saved style, so silence matters.
+    assert mcp._caption_style({"uppercase": False}) == {"uppercase": False}
+
+
+def test_a_caption_request_reaches_the_job(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.update({"body": b})
+                        or {"job_id": 7})
+    mcp.handle(_request(35, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x",
+        "caption_style": {"position": "top", "highlight": True, "highlight_color": "gold"}}}))
+    assert sent["body"]["caption_style"] == {
+        "position": "top", "highlight": True, "highlight_color": "#FFD700"}
