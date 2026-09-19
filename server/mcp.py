@@ -358,7 +358,7 @@ def _publish_plan(args: dict) -> str:
     lines += [
         "",
         "Show this to the person and get a clear yes before calling publish_plan_execute. "
-        "Uploads cannot be taken back, and each one spends their daily quota.",
+        + "Uploads cannot be taken back, and each one spends their daily quota.",
     ]
     return "\n".join(lines)
 

@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 import threading
+import traceback
 import urllib.error
 from pathlib import Path
 
@@ -2257,7 +2258,16 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 body.message, body.history, TOOLS, call_tool, ollama_host, model
             )
         except Exception as e:
-            raise HTTPException(500, f"The assistant could not run: {e}") from e
+            # The detail goes to the backend console rather than the reply.
+            # The renderer prints whatever comes back straight into the chat,
+            # and an exception's text can carry absolute paths and internals.
+            # The case worth naming — no usable model — is already reported
+            # by /agent/status, which is what the panel checks before it will
+            # let you type.
+            traceback.print_exc()
+            raise HTTPException(
+                500, "The assistant could not run. The backend log has the details."
+            ) from e
 
     # ---- models ------------------------------------------------------------
 

@@ -36,7 +36,7 @@ class _Ollama:
             def raise_for_status(self):
                 return None
 
-            def json(self_inner):
+            def json(self):
                 return {"message": reply}
 
         return Response()
