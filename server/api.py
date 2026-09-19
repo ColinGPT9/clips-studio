@@ -2234,8 +2234,14 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 except Exception:
                     detail = ""
                 return f"That was refused: {detail or e.reason}", None
-            except Exception as e:  # a tool failing is news, not a crash
-                return f"That did not work: {e}", None
+            except Exception:  # a tool failing is news, not a crash
+                # Unlike the refusal above, this is an unexpected internal
+                # failure rather than our own API saying no. Its text can
+                # carry absolute paths and internal names, it goes into the
+                # steps the window shows, and the model cannot correct itself
+                # from it anyway. The console gets the whole thing.
+                traceback.print_exc()
+                return "That did not work — something failed inside the app.", None
             structured = None
             if name == "publish_plan":
                 # Same call the tool just made, for the items rather than the
