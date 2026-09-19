@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Assistant from '../components/Assistant'
 import NoClipsExplanation from '../components/NoClipsExplanation'
 import AddVideos from '../components/queue/AddVideos'
@@ -20,9 +20,19 @@ const ASSISTANT_H_MIN = 132
 const ASSISTANT_H_MAX = 620
 const ASSISTANT_H_DEFAULT = 164
 
-// Space kept for the two cards above, so dragging can never collapse them
-// entirely and cannot push the assistant's own input off the bottom.
-const ASSISTANT_H_RESERVE = 180
+// The smallest useful height for the videos card: its own chrome, the table
+// head, and two whole channel rows, so dragging the assistant up can never
+// slice a channel name in half. Measured at runtime, because the card's
+// header wraps — on width, on the language, and on whether the channel
+// filter chip is showing — so a fixed number is only ever right on the
+// window it was measured on. This is what stands in until the first
+// measurement lands; it matches the steady state at a typical width, so the
+// panel does not twitch on mount.
+const VIDEOS_FLOOR_FALLBACK = 174
+
+// Matches `gap-5` on the pool below: the space between the cards and the
+// assistant, which comes out of the pool before either of them.
+const GRID_GAP = 20
 
 function clampHeight(px: number, max: number = ASSISTANT_H_MAX): number {
   return Math.max(ASSISTANT_H_MIN, Math.min(max, Math.round(px)))
@@ -84,6 +94,15 @@ export default function Dashboard({
   const resizeFrom = useRef<{ y: number; h: number } | null>(null)
   const poolRef = useRef<HTMLDivElement>(null)
   const [poolH, setPoolH] = useState(0)
+  // The three pieces the drag cap is measured from: the videos card and its
+  // scrolling list, plus the activity card, whose position tells us whether
+  // the two are side by side or stacked.
+  const videosCardRef = useRef<HTMLElement>(null)
+  const videosHeaderRef = useRef<HTMLDivElement>(null)
+  const videosScrollRef = useRef<HTMLDivElement>(null)
+  const activityCardRef = useRef<HTMLElement>(null)
+  const [videosFloor, setVideosFloor] = useState(VIDEOS_FLOOR_FALLBACK)
+  const [stacked, setStacked] = useState(false)
   // Only watch while something is actually in flight, so an idle Dashboard
   // never polls.
   const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
@@ -121,8 +140,69 @@ export default function Dashboard({
     return () => observer.disconnect()
   }, [])
 
+  // What the videos card needs to keep two whole channel names on screen.
+  // Null means "cannot tell right now" — never zero — so the caller holds on
+  // to the last good answer rather than letting the cap jump.
+  function measureVideosFloor(): number | null {
+    const card = videosCardRef.current
+    const scroller = videosScrollRef.current
+    if (!card || !scroller) return null
+    const scrollH = scroller.getBoundingClientRect().height
+    // A card squeezed past its own chrome reports a zero-height scroller,
+    // which would make the chrome below look bigger than it is and hand back
+    // too generous a floor. Wait for the next pass instead.
+    if (scrollH <= 0) return null
+    const rows = scroller.querySelectorAll('tr[data-video-row]')
+    if (rows.length === 0) return null
+    const head = scroller.querySelector('thead')
+    // The scroller is the card's only growing child, so everything else in
+    // the card is a fixed cost that does not move when the card resizes.
+    // That is what keeps this from chasing its own tail.
+    const chrome = card.getBoundingClientRect().height - scrollH
+    // Every collapsed row is the same height, so one of them stands in for
+    // two — which also means a list of one video still measures correctly.
+    const unit = rows[0].getBoundingClientRect().height
+    const headH = head ? head.getBoundingClientRect().height : 0
+    // Whole pixels: rounding down here is what clips a row by a hair, and an
+    // integer settles, so re-measuring after our own resize returns the same
+    // number and React stops re-rendering.
+    return Math.ceil(chrome + headH + unit * 2)
+  }
+
+  // Side by side the two cards share the grid's height; stacked they each
+  // want their own. Read it off the rectangles rather than repeating
+  // Tailwind's breakpoint here, so this stays true if the grid changes.
+  function measureStacked(): boolean | null {
+    const videos = videosCardRef.current?.getBoundingClientRect()
+    const activity = activityCardRef.current?.getBoundingClientRect()
+    if (!videos || !activity) return null
+    return activity.top >= videos.bottom - 1
+  }
+
+  function remeasure(): void {
+    const floor = measureVideosFloor()
+    if (floor != null) setVideosFloor(floor)
+    const isStacked = measureStacked()
+    if (isStacked != null) setStacked(isStacked)
+  }
+
+  // Watch the header rather than the card. The card is the thing our own cap
+  // resizes, so observing it would feed back into itself; the header is
+  // fixed-height within the card and still changes on every input that moves
+  // the floor — wrapping on width, the filter chip appearing, a wordier
+  // language, zoom.
+  useEffect(() => {
+    const el = videosHeaderRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => remeasure())
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const gridFloor = stacked ? videosFloor * 2 + GRID_GAP : videosFloor
+
   const maxAssistantH = poolH
-    ? Math.max(ASSISTANT_H_MIN, Math.min(ASSISTANT_H_MAX, poolH - ASSISTANT_H_RESERVE))
+    ? Math.max(ASSISTANT_H_MIN, Math.min(ASSISTANT_H_MAX, poolH - GRID_GAP - gridFloor))
     : ASSISTANT_H_MAX
   const shownAssistantH = Math.min(assistantH, maxAssistantH)
 
@@ -144,7 +224,14 @@ export default function Dashboard({
     if (!resizeFrom.current) return
     resizeFrom.current = null
     e.currentTarget.releasePointerCapture(e.pointerId)
-    rememberHeight(assistantH)
+    // What is on screen, not the raw preference: pressing the grip without
+    // moving it never runs onResize, so `assistantH` can still hold a height
+    // this window is too small for, and storing that would disagree with
+    // what the user is looking at. The stored value on load is deliberately
+    // left unclamped though — poolH is 0 on first render so there is nothing
+    // to clamp against, and keeping the preference means a big panel comes
+    // back when the window is big again.
+    rememberHeight(shownAssistantH)
   }
 
   function onResizeKey(e: React.KeyboardEvent<HTMLDivElement>): void {
@@ -243,7 +330,12 @@ export default function Dashboard({
       list.sort((a, b) => b.created_at.localeCompare(a.created_at))
     }
     return list
-  }, [videos, sort, channelFilter])
+  }, [videos, sort, channelFilter, search])
+
+  // The rest of what the header observer cannot see: the first rows
+  // arriving, and the first pass once the pool has reported its height.
+  // Before paint, so the cap is already right the first time it is drawn.
+  useLayoutEffect(remeasure, [shown.length, poolH])
 
   return (
     <div className="h-full flex flex-col p-6 gap-4">
@@ -271,8 +363,15 @@ export default function Dashboard({
           what makes the cap below stable. */}
       <div ref={poolRef} className="flex-1 min-h-0 flex flex-col gap-5">
         <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <section className="card flex flex-col overflow-hidden" aria-label="Processed videos">
-          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap shrink-0">
+        <section
+          ref={videosCardRef}
+          className="card flex flex-col overflow-hidden"
+          aria-label="Processed videos"
+        >
+          <div
+            ref={videosHeaderRef}
+            className="flex items-center justify-between mb-3 gap-3 flex-wrap shrink-0"
+          >
             <h3 className="font-semibold">{t('Processed videos')}</h3>
             <div className="flex items-center gap-2 flex-wrap">
               <input
@@ -303,7 +402,7 @@ export default function Dashboard({
             </div>
           </div>
 
-          <div className="overflow-y-auto flex-1 min-h-0">
+          <div ref={videosScrollRef} className="overflow-y-auto flex-1 min-h-0">
           {shown.length === 0 ? (
             <p className="text-muted text-sm">{t('Nothing yet — paste a link above to make your first clips.')}</p>
           ) : (
@@ -321,7 +420,9 @@ export default function Dashboard({
               <tbody>
                 {shown.map((v) => (
                   <>
-                    <tr key={v.video_id} className="border-t border-raised/50">
+                    {/* Marked so the drag cap can measure a row's height
+                        without picking up an expanded row's clip list. */}
+                    <tr key={v.video_id} data-video-row className="border-t border-raised/50">
                       <td className="py-2 pr-2 max-w-36">
                         <button
                           className="text-accent hover:underline truncate block max-w-full text-left"
@@ -416,7 +517,11 @@ export default function Dashboard({
           </div>
         </section>
 
-        <section className="card flex flex-col overflow-hidden" aria-label="Activity log">
+        <section
+          ref={activityCardRef}
+          className="card flex flex-col overflow-hidden"
+          aria-label="Activity log"
+        >
           <h3 className="font-semibold mb-3 shrink-0">{t('Activity')}</h3>
           <div
             ref={logRef}
