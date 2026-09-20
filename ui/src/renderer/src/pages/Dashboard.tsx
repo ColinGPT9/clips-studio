@@ -101,8 +101,17 @@ export default function Dashboard({
   const videosHeaderRef = useRef<HTMLDivElement>(null)
   const videosScrollRef = useRef<HTMLDivElement>(null)
   const activityCardRef = useRef<HTMLElement>(null)
+  // The promo cards now share the pool with the grid and the chat, so
+  // their height comes out of what the chat may grow into. Measured
+  // because they wrap to one column below the md breakpoint, which
+  // roughly doubles them.
+  const promoRef = useRef<HTMLDivElement>(null)
+  const [promoH, setPromoH] = useState(0)
   const [videosFloor, setVideosFloor] = useState(VIDEOS_FLOOR_FALLBACK)
   const [stacked, setStacked] = useState(false)
+  // The publishing referral, if one has been configured. Empty means the
+  // call to action does not exist rather than pointing nowhere.
+  const [publishUrl, setPublishUrl] = useState('')
   // Only watch while something is actually in flight, so an idle Dashboard
   // never polls.
   const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
@@ -128,6 +137,15 @@ export default function Dashboard({
   }, [])
 
   useEffect(() => {
+    api
+      .woopSocialStatus()
+      .then((s) => setPublishUrl(s.affiliate_url || ''))
+      .catch(() => {
+        /* backend not up, or an older build: no call to action */
+      })
+  }, [])
+
+  useEffect(() => {
     const el = logRef.current
     if (el && logPinned.current) el.scrollTop = el.scrollHeight
   }, [log])
@@ -140,6 +158,44 @@ export default function Dashboard({
     return () => observer.disconnect()
   }, [])
 
+  /** Size the list to a whole number of rows.
+   *
+   *  Scrolling a list whose box is not a multiple of the row height always
+   *  ends with a channel name sliced through the middle at the bottom edge.
+   *  Rather than leaving that to chance, the box is set to exactly as many
+   *  whole rows as fit — nine rows and a little empty space beats nine and
+   *  a half.
+   *
+   *  It has to be max-height, not height: the box is a `flex-1` child, and
+   *  flex-grow overrides a plain height outright — the first version of this
+   *  set 320px and the browser rendered 339. A maximum is respected by flex
+   *  layout, so it actually binds.
+   *
+   *  Cleared before measuring so the layout reports the space really
+   *  available; measuring the already-clamped box would shrink it a little
+   *  more on every pass.
+   */
+  function snapListToWholeRows(): void {
+    const scroller = videosScrollRef.current
+    if (!scroller) return
+    scroller.style.maxHeight = ''
+    const rows = scroller.querySelectorAll('tr[data-video-row]')
+    const head = scroller.querySelector('thead')
+    if (rows.length === 0) return
+    const available = scroller.getBoundingClientRect().height
+    const headH = head ? head.getBoundingClientRect().height : 0
+    const rowH = rows[0].getBoundingClientRect().height
+    if (rowH <= 0 || available <= 0) return
+    const fits = Math.floor((available - headH) / rowH)
+    // Only when the list actually overflows. A short list keeps its natural
+    // size rather than being padded out to a box it does not fill.
+    if (fits >= 1 && rows.length > fits) {
+      // Rounded UP: the header is a fractional 24.5px, and flooring left the
+      // last row half a pixel short of the edge, which costs a whole row.
+      scroller.style.maxHeight = `${Math.ceil(headH + fits * rowH)}px`
+    }
+  }
+
   // What the videos card needs to keep two whole channel names on screen.
   // Null means "cannot tell right now" — never zero — so the caller holds on
   // to the last good answer rather than letting the cap jump.
@@ -147,6 +203,9 @@ export default function Dashboard({
     const card = videosCardRef.current
     const scroller = videosScrollRef.current
     if (!card || !scroller) return null
+    // Unclamped, for the same reason as above: the chrome is derived by
+    // subtracting this, and a snapped box would inflate it every pass.
+    scroller.style.maxHeight = ''
     const scrollH = scroller.getBoundingClientRect().height
     // A card squeezed past its own chrome reports a zero-height scroller,
     // which would make the chrome below look bigger than it is and hand back
@@ -182,6 +241,10 @@ export default function Dashboard({
   function remeasure(): void {
     const floor = measureVideosFloor()
     if (floor != null) setVideosFloor(floor)
+    // After the floor, because it needs the box unconstrained to measure.
+    snapListToWholeRows()
+    const promo = promoRef.current?.getBoundingClientRect().height
+    if (promo != null) setPromoH(Math.ceil(promo))
     const isStacked = measureStacked()
     if (isStacked != null) setStacked(isStacked)
   }
@@ -192,17 +255,24 @@ export default function Dashboard({
   // the floor — wrapping on width, the filter chip appearing, a wordier
   // language, zoom.
   useEffect(() => {
-    const el = videosHeaderRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
+    if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => remeasure())
-    observer.observe(el)
+    // Neither of these is resized by the cap this feeds, so watching them
+    // cannot loop — unlike the videos card, which is.
+    if (videosHeaderRef.current) observer.observe(videosHeaderRef.current)
+    if (promoRef.current) observer.observe(promoRef.current)
     return () => observer.disconnect()
   }, [])
 
   const gridFloor = stacked ? videosFloor * 2 + GRID_GAP : videosFloor
 
+  // The pool now holds three things with two gaps between them: the cards,
+  // the promos, and the chat.
   const maxAssistantH = poolH
-    ? Math.max(ASSISTANT_H_MIN, Math.min(ASSISTANT_H_MAX, poolH - GRID_GAP - gridFloor))
+    ? Math.max(
+        ASSISTANT_H_MIN,
+        Math.min(ASSISTANT_H_MAX, poolH - 2 * GRID_GAP - promoH - gridFloor)
+      )
     : ASSISTANT_H_MAX
   const shownAssistantH = Math.min(assistantH, maxAssistantH)
 
@@ -335,7 +405,7 @@ export default function Dashboard({
   // The rest of what the header observer cannot see: the first rows
   // arriving, and the first pass once the pool has reported its height.
   // Before paint, so the cap is already right the first time it is drawn.
-  useLayoutEffect(remeasure, [shown.length, poolH])
+  useLayoutEffect(remeasure, [shown.length, poolH, publishUrl, shownAssistantH, expanded])
 
   return (
     <div className="h-full flex flex-col p-6 gap-4">
@@ -404,7 +474,7 @@ export default function Dashboard({
 
           <div ref={videosScrollRef} className="overflow-y-auto flex-1 min-h-0">
           {shown.length === 0 ? (
-            <p className="text-muted text-sm">{t('Nothing yet — paste a link above to make your first clips.')}</p>
+            <p className="text-muted text-sm">{t('Nothing yet - paste a link above to make your first clips.')}</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -546,6 +616,86 @@ export default function Dashboard({
 
         </div>
 
+
+        {/* Sits above the chat box rather than under it. The assistant is the
+            last thing on the page because that is where every chat app puts
+            its input, and reaching past it to a promo would be odd.
+
+            Two asks of equal weight. Publishing sits first
+            because it is what someone looking at a finished clip wants next,
+            and because it is the one that pays for the app.
+
+            Both cards are the same three rows — blurb, button, footnote — so
+            the buttons land on the same line however the text above them
+            wraps.
+
+            Flat tint rather than the gradient this used to be: split across
+            two cards, a left-to-right gradient ended one half bright and
+            started the next half dark, so the seam down the middle read as
+            two different colours. */}
+        <div ref={promoRef} className="shrink-0 grid gap-4 md:grid-cols-2 items-stretch">
+          {publishUrl && (
+            <div className="card bg-accent/20 border border-accent/40 !py-3">
+              {/* The footnote sits inside the text column rather than under
+                  the whole card, so the button centres against everything
+                  beside it instead of floating above the optical middle. */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-bold text-lg text-ink">
+                    {t('Post your clips everywhere 🚀')}
+                  </p>
+                  <p className="text-sm text-ink/80 mt-0.5">
+                    {t('YouTube, TikTok, Instagram and more, in one go. Free plan, no watermark.')}
+                  </p>
+                  {/* Readable, not buried: it has to be legible to be a
+                      disclosure at all. */}
+                  <p className="text-xs text-ink/70 mt-1.5">
+                    {t(
+                      'Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.'
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => void window.studio.openExternal(publishUrl)}
+                  className="btn-accent shrink-0 text-lg px-8 py-3.5 font-semibold"
+                  title={publishUrl}
+                >
+                  {t('Get started free ↗')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div
+            className={`card bg-accent/20 border border-accent/40 !py-3${
+              publishUrl ? '' : ' md:col-span-2'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-bold text-lg text-ink">
+                  {t('Clips Kitty is free & open source ❤️')}
+                </p>
+                <p className="text-sm text-ink/80 mt-0.5">
+                  {t('It runs on your PC with no fees. Donations cover development.')}
+                </p>
+                {/* Mirrors the footnote opposite, so the two cards are the
+                    same height and both buttons sit on the same line. */}
+                <p className="text-xs text-ink/70 mt-1.5">
+                  {t('Any amount, one-off or monthly, through PayPal. No account needed.')}
+                </p>
+              </div>
+              <button
+                onClick={() => window.studio.openDonateWindow()}
+                className="btn-accent shrink-0 text-lg px-8 py-3.5 font-semibold"
+                title={DONATE_URL}
+              >
+                {t('Donate ❤️')}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div
           className="shrink-0 flex flex-col"
           style={{ height: shownAssistantH }}
@@ -568,23 +718,6 @@ export default function Dashboard({
             <Assistant />
           </div>
         </div>
-      </div>
-
-      {/* Pinned bottom: prominent, persistent donate section */}
-      <div className="shrink-0 card flex items-center justify-between gap-6 flex-wrap bg-gradient-to-r from-accent/15 to-accent/25 border border-accent/40 !py-5">
-        <div>
-          <p className="font-bold text-xl text-ink">{t('Clips Kitty is free & open source ❤️')}</p>
-          <p className="text-base text-ink/80 mt-1">
-            {t('It runs entirely on your PC with no fees. Please consider donating to help cover development costs and keep it free for everyone.')}
-          </p>
-        </div>
-        <button
-          onClick={() => window.studio.openDonateWindow()}
-          className="btn-accent shrink-0 text-lg px-8 py-3 font-semibold"
-          title={DONATE_URL}
-        >
-          {t('Donate to Clips Kitty')}
-        </button>
       </div>
     </div>
   )
