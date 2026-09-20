@@ -27,7 +27,7 @@ export default function NoClipsExplanation({ outcome, compact }: Props): JSX.Ele
   if (!outcome || !outcome.candidates) {
     return (
       <p className={`text-muted ${size}`}>
-        {t('No clips for this video — or pick another video above.')}
+        {t('No clips for this video - or pick another video above.')}
       </p>
     )
   }
@@ -54,7 +54,7 @@ export default function NoClipsExplanation({ outcome, compact }: Props): JSX.Ele
           <p className="text-muted">
             {t('Nothing person-shaped was detected in')} {nothing_detected} {t('of')} {measured}{' '}
             {t(
-              'of the moments it looked at. Part of a clip’s score is whether someone is on screen, so gameplay and top-down footage score zero there rather than just low — which puts them under the threshold.'
+              'of the moments it looked at. Part of a clip’s score is whether someone is on screen, so gameplay and top-down footage score zero there rather than just low - which puts them under the threshold.'
             )}
           </p>
           <p className="text-muted">
@@ -82,7 +82,7 @@ export default function NoClipsExplanation({ outcome, compact }: Props): JSX.Ele
       <p className="text-muted">
         {cause === 'no_people'
           ? t(
-              'Lowering Minimum score in Settings will start producing clips, but they will be picked without the visual half of the signal — expect them to be arbitrary.'
+              'Lowering Minimum score in Settings will start producing clips, but they will be picked without the visual half of the signal - expect them to be arbitrary.'
             )
           : t('Lowering Minimum score in Settings would let more of these through.')}
       </p>

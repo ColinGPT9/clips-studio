@@ -82,7 +82,7 @@ export default function YouTubeSchedule({
               a timer in this app. It has to be on screen, not in the docs. */}
           <p className="text-xs bg-raised/40 border border-raised/60 rounded-md p-2">
             {t(
-              'Clips Kitty uploads the video to YouTube now and asks YouTube to publish it at that time. You can close Clips Kitty and turn off your computer — YouTube handles the rest.'
+              'Clips Kitty uploads the video to YouTube now and asks YouTube to publish it at that time. You can close Clips Kitty and turn off your computer - YouTube handles the rest.'
             )}
           </p>
         </div>

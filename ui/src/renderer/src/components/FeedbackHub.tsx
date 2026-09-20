@@ -158,7 +158,7 @@ export default function FeedbackHub(): JSX.Element {
         images: images.map((p) => ({ path: p }))
       })
       if (res.ok) {
-        setDone(t('Sent — thank you! Your report went straight to the developers.'))
+        setDone(t('Sent - thank you! Your report went straight to the developers.'))
       } else {
         // Relay unreachable/not configured: save the report locally instead.
         const blob = new Blob([res.markdown], { type: 'text/markdown' })
@@ -230,7 +230,7 @@ export default function FeedbackHub(): JSX.Element {
             ) : kind === null ? (
               <div className="space-y-2">
                 <p className="text-sm text-muted">
-                  {t('Found a problem or have an idea? Tell us in plain words — technical details are collected automatically, and you don’t need an account for anything.')}
+                  {t('Found a problem or have an idea? Tell us in plain words - technical details are collected automatically, and you don’t need an account for anything.')}
                 </p>
                 {KINDS.map((k) => (
                   <button
@@ -288,7 +288,7 @@ export default function FeedbackHub(): JSX.Element {
                         <NoClipsExplanation outcome={zeroClipOutcome} />
                         <p className="text-[11px] text-muted">
                           {t(
-                            'If that explains it, you can close this — nothing is wrong. If it does not match what you saw, please do carry on and tell us.'
+                            'If that explains it, you can close this - nothing is wrong. If it does not match what you saw, please do carry on and tell us.'
                           )}
                         </p>
                       </div>
@@ -329,10 +329,10 @@ export default function FeedbackHub(): JSX.Element {
                           <option value="" disabled>
                             {t('Choose…')}
                           </option>
-                          <option value="low">{t('Low — cosmetic')}</option>
+                          <option value="low">{t('Low - cosmetic')}</option>
                           <option value="medium">{t('Medium')}</option>
-                          <option value="high">{t('High — blocks my work')}</option>
-                          <option value="critical">{t('Critical — app unusable')}</option>
+                          <option value="high">{t('High - blocks my work')}</option>
+                          <option value="critical">{t('Critical - app unusable')}</option>
                         </select>
                       </div>
                     </div>
@@ -429,7 +429,7 @@ export default function FeedbackHub(): JSX.Element {
                       checked={includeDiag}
                       onChange={(e) => setIncludeDiag(e.target.checked)}
                     />
-                    {t('Include technical details (PC specs, app version, AI model, recent log) — this is what lets someone actually fix it')}
+                    {t('Include technical details (PC specs, app version, AI model, recent log) - this is what lets someone actually fix it')}
                   </label>
                   {includeDiag && (
                     <button

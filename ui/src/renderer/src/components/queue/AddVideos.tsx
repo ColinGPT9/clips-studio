@@ -552,15 +552,15 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
 
       {full && (
         <p className="text-xs text-muted px-1">
-          {t('The queue holds')} {maxActive} {t('videos at a time — start these, then add more when one finishes.')}
+          {t('The queue holds')} {maxActive} {t('videos at a time - start these, then add more when one finishes.')}
         </p>
       )}
 
       {added !== null && added > 0 && (
         <p className="text-sm text-accent px-1">
           {added === 1
-            ? t('Started — watch the progress below.')
-            : `${added} ${t('videos queued — working through them one at a time.')}`}{' '}
+            ? t('Started - watch the progress below.')
+            : `${added} ${t('videos queued - working through them one at a time.')}`}{' '}
           <button
             className="underline hover:text-ink"
             onClick={() => window.dispatchEvent(new CustomEvent('open-queue'))}
@@ -576,7 +576,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
             {alreadyDone.length === 1
               ? t('That video was already processed.')
               : `${alreadyDone.length} ${t('of those were already processed.')}`}{' '}
-            {t('Make clips again with the settings you chose? Existing clips are kept — new ones are added alongside them.')}
+            {t('Make clips again with the settings you chose? Existing clips are kept - new ones are added alongside them.')}
           </p>
           <button
             className="btn-accent shrink-0"

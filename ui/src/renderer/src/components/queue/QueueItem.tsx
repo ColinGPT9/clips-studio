@@ -112,7 +112,7 @@ export default function QueueItem({
           {waiting && (
             <p className="text-sm text-muted mt-0.5">
               {job.interrupted
-                ? t('Restarted after an interruption — resumes from its last finished stage')
+                ? t('Restarted after an interruption - resumes from its last finished stage')
                 : t('Waiting')}
             </p>
           )}

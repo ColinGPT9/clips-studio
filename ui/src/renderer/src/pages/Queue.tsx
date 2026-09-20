@@ -176,7 +176,7 @@ export default function Queue({
       <div className="flex items-baseline gap-3 flex-wrap">
         <h1 className="text-xl font-bold">{t('Processing queue')}</h1>
         <p className="text-sm text-muted">
-          {t('Queue up a batch, then leave Clips Kitty running — it works through them on its own.')}
+          {t('Queue up a batch, then leave Clips Kitty running - it works through them on its own.')}
         </p>
       </div>
 
@@ -198,8 +198,8 @@ export default function Queue({
             {paused && (
               <p className="text-sm text-warn mt-0.5">
                 {snapshot && snapshot.processing.length > 0
-                  ? t('Stopping — the current video finishes, then the queue stops.')
-                  : t('Stopped — nothing runs until you press Start queue.')}
+                  ? t('Stopping - the current video finishes, then the queue stops.')
+                  : t('Stopped - nothing runs until you press Start queue.')}
               </p>
             )}
           </div>

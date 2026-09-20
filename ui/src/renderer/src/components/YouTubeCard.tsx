@@ -100,8 +100,8 @@ export default function YouTubeCard(): JSX.Element {
     setConnecting(true)
     setNotice(
       add
-        ? t('A browser window has opened — pick the OTHER channel there, not the one already connected.')
-        : t('A browser window has opened — finish signing in there.')
+        ? t('A browser window has opened - pick the OTHER channel there, not the one already connected.')
+        : t('A browser window has opened - finish signing in there.')
     )
     try {
       await api.startYoutubeConnect(playlists, add)
@@ -174,7 +174,7 @@ export default function YouTubeCard(): JSX.Element {
           <h3 className="font-semibold">{t('Publish to YouTube')}</h3>
           <p className="text-xs text-muted mt-0.5">
             {t(
-              'Upload finished clips straight from the editor. Needs your own Google API key — free, about ten minutes to set up.'
+              'Upload finished clips straight from the editor. Needs your own Google API key - free, about ten minutes to set up.'
             )}
           </p>
         </div>
@@ -245,7 +245,7 @@ export default function YouTubeCard(): JSX.Element {
               </button>
               <p className="text-[11px] text-muted">
                 {t(
-                  'Google asks which channel to grant access to. To add a second one, sign in again and pick a different channel on that screen — picking the same one just updates it.'
+                  'Google asks which channel to grant access to. To add a second one, sign in again and pick a different channel on that screen - picking the same one just updates it.'
                 )}
               </p>
               {status.quota && (
@@ -349,7 +349,7 @@ function SetupWizard(props: WizardProps): JSX.Element {
         <p className="text-xs font-medium text-warn">{t('Read this first')}</p>
         <p className="text-[11px]">
           {t(
-            'Until your Google Cloud project passes YouTube’s free audit, YouTube locks every video uploaded through it to private — permanently. You cannot make it public afterwards in Studio; the only fix is uploading it again from an audited project. Clips Kitty checks after each upload and tells you if it happened.'
+            'Until your Google Cloud project passes YouTube’s free audit, YouTube locks every video uploaded through it to private - permanently. You cannot make it public afterwards in Studio; the only fix is uploading it again from an audited project. Clips Kitty checks after each upload and tells you if it happened.'
           )}
         </p>
         <button className="text-[11px] text-accent hover:underline" onClick={open(AUDIT_FORM)}>
@@ -371,7 +371,7 @@ function SetupWizard(props: WizardProps): JSX.Element {
           </span>
           <span className="block text-muted mt-0.5">
             {t(
-              'This one matters: leaving it on Testing makes Google expire your sign-in every 7 days, so you would have to reconnect weekly. "In production" does not mean verified and costs nothing — you will see a "Google hasn’t verified this app" warning when you connect, and Advanced → Go to (unsafe) gets past it. It is your own app warning you about yourself.'
+              'This one matters: leaving it on Testing makes Google expire your sign-in every 7 days, so you would have to reconnect weekly. "In production" does not mean verified and costs nothing - you will see a "Google hasn’t verified this app" warning when you connect, and Advanced → Go to (unsafe) gets past it. It is your own app warning you about yourself.'
             )}
           </span>
         </li>

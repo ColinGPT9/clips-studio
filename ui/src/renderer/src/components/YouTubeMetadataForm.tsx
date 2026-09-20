@@ -314,7 +314,7 @@ export default function YouTubeMetadataForm({
               onChange={(e) => onChange({ license: e.target.value })}
             >
               <option value="youtube">{t('Standard YouTube License')}</option>
-              <option value="creativeCommon">{t('Creative Commons — Attribution')}</option>
+              <option value="creativeCommon">{t('Creative Commons - Attribution')}</option>
             </select>
           </div>
           <label className="flex items-center gap-2">

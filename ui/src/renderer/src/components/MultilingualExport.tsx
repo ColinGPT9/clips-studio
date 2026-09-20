@@ -468,7 +468,7 @@ export default function MultilingualExport({
           in a tooltip just reads as "it didn't work". */}
       {picked.length > 0 && !waiting && readyCount === 0 && (
         <p className="text-xs text-warn">
-          {t('Translate these languages first — Export writes the text you have reviewed.')}
+          {t('Translate these languages first - Export writes the text you have reviewed.')}
         </p>
       )}
 
@@ -485,7 +485,7 @@ export default function MultilingualExport({
                 value={previewLang ?? ''}
                 onChange={(e) => setPreviewLang(e.target.value || null)}
               >
-                <option value="">{t('Off — original captions')}</option>
+                <option value="">{t('Off - original captions')}</option>
                 {picked
                   .filter((c) => reviewed.includes(c))
                   .map((c) => (
@@ -663,7 +663,7 @@ export default function MultilingualExport({
       {!canDub && (
         <p className="text-xs text-muted">
           {t(
-            'Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts — then restart the app. Voices download per language, about 60 MB each, and stay on your PC.'
+            'Dubbing needs one extra local package (Piper). Install it with: pip install piper-tts - then restart the app. Voices download per language, about 60 MB each, and stay on your PC.'
           )}
         </p>
       )}

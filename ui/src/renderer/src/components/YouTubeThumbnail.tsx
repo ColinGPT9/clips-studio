@@ -212,7 +212,7 @@ export default function YouTubeThumbnail({
       {notice && <p className="text-[11px] text-error">{notice}</p>}
       <p className="text-[11px] text-muted">
         {t(
-          'Custom thumbnails need a phone-verified YouTube channel, and the Shorts feed does not show them — they appear on the watch page and your channel. JPEG or PNG, up to 2 MB.'
+          'Custom thumbnails need a phone-verified YouTube channel, and the Shorts feed does not show them - they appear on the watch page and your channel. JPEG or PNG, up to 2 MB.'
         )}
       </p>
     </fieldset>

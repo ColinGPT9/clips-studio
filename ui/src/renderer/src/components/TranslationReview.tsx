@@ -100,7 +100,7 @@ export default function TranslationReview({
         const { [item.language]: _dropped, ...rest } = d
         return rest
       })
-      setNote(`${nameOf(item.language)} ${t('saved — Export will use your version.')}`)
+      setNote(`${nameOf(item.language)} ${t('saved - Export will use your version.')}`)
     } catch (e) {
       setNote(`Error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -120,7 +120,7 @@ export default function TranslationReview({
         return keep
       })
       setOpen(null)
-      setNote(`${nameOf(item.language)} ${t('discarded — translate again for a fresh version.')}`)
+      setNote(`${nameOf(item.language)} ${t('discarded - translate again for a fresh version.')}`)
     } catch (e) {
       setNote(`Error: ${e instanceof Error ? e.message : String(e)}`)
     }
