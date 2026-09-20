@@ -31,7 +31,16 @@ MAX_TURNS = 8
 TOOL_OUTPUT_LIMIT = 4000
 
 # Never offered to the model. See the module docstring.
-HUMAN_ONLY = {"publish_plan_execute"}
+#
+# uploadpost_publish joins it for the same reason: it posts publicly, to
+# several platforms at once, and cannot be taken back. The model may check
+# status and read results, so it can still describe what would happen and
+# report what did — a person presses the button in the app.
+HUMAN_ONLY = {
+    "publish_plan_execute",
+    "uploadpost_publish",
+    "schedule_clips_execute",
+}
 
 SYSTEM = (
     "You drive Clips Kitty, a local video clipping app, through its tools.\n"

@@ -30,6 +30,13 @@ export default function Assistant(): JSX.Element | null {
   const [busy, setBusy] = useState(false)
   const [plan, setPlan] = useState<PublishPlanItem[] | null>(null)
   const [planNote, setPlanNote] = useState('')
+  // A social-platform schedule is a different plan from a YouTube one:
+  // different confirm, different wording. Null means the YouTube kind.
+  const [schedule, setSchedule] = useState<{
+    platforms: string[]
+    every_hours: number
+    hashtags: string[]
+  } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -53,6 +60,7 @@ export default function Assistant(): JSX.Element | null {
     setInput('')
     setPlan(null)
     setPlanNote('')
+    setSchedule(null)
     setTurns((prior) => [...prior, { role: 'user', text }])
     setBusy(true)
     try {
@@ -72,6 +80,21 @@ export default function Assistant(): JSX.Element | null {
       if (res.plan?.items?.length) {
         setPlan(res.plan.items)
         setPlanNote((res.plan.warnings || []).join(' '))
+        const p = res.plan as unknown as {
+          provider?: string
+          platforms?: string[]
+          every_hours?: number
+          hashtags?: string[]
+        }
+        setSchedule(
+          p.provider === 'woopsocial'
+            ? {
+                platforms: p.platforms || ['youtube'],
+                every_hours: p.every_hours || 0,
+                hashtags: p.hashtags || []
+              }
+            : null
+        )
       }
     } catch (e) {
       setTurns((prior) => [
@@ -87,6 +110,23 @@ export default function Assistant(): JSX.Element | null {
     if (!plan || busy) return
     setBusy(true)
     try {
+      // A social-platform schedule goes through the batch route; a YouTube
+      // plan through the one it has always used.
+      if (schedule) {
+        const res = await api.woopSocialBatch({
+          clip_ids: plan.map((i) => i.clip_id),
+          platforms: schedule.platforms,
+          every_hours: schedule.every_hours
+        })
+        const parts = [`${t('Scheduled')} ${res.started.length}.`]
+        for (const row of res.skipped) {
+          parts.push(`${t('Skipped clip')} ${row.clip_id}: ${row.reason}`)
+        }
+        setTurns((prior) => [...prior, { role: 'assistant', text: parts.join(' ') }])
+        setPlan(null)
+        setSchedule(null)
+        return
+      }
       const res = await api.executePublishPlan(plan)
       const parts = [`${t('Uploading')} ${res.started.length}.`]
       for (const row of res.skipped) parts.push(`${t('Skipped clip')} ${row.clip_id}: ${row.reason}`)
@@ -153,8 +193,19 @@ export default function Assistant(): JSX.Element | null {
         // fit, and what sits below it is the input.
         <div className="mt-2 border border-accent/40 rounded-lg p-2 space-y-1 min-h-0 overflow-y-auto">
           <p className="text-xs font-medium">
-            {plan.length} {t('clips ready to upload. Nothing has been uploaded yet.')}
+            {schedule
+              ? `${plan.length} ${t('clips ready to post to')} ${schedule.platforms.join(', ')}${
+                  schedule.every_hours
+                    ? `, ${t('one every')} ${schedule.every_hours}h`
+                    : ''
+                }. ${t('Nothing has been posted yet.')}`
+              : `${plan.length} ${t('clips ready to upload. Nothing has been uploaded yet.')}`}
           </p>
+          {schedule && schedule.hashtags.length > 0 && (
+            <p className="text-[11px] text-muted">
+              {t('Adding')} {schedule.hashtags.map((h) => `#${h}`).join(' ')}
+            </p>
+          )}
           {plan.slice(0, 6).map((item) => (
             <p key={item.clip_id} className="text-[11px] text-muted">
               {item.title.slice(0, 48)} · {item.publish_at || t('as soon as it uploads')}
@@ -163,12 +214,12 @@ export default function Assistant(): JSX.Element | null {
           {planNote && <p className="text-[11px] text-warn">{planNote}</p>}
           <div className="flex gap-2 pt-1">
             <button className="btn-accent !py-1 text-xs" disabled={busy} onClick={confirmPlan}>
-              {t('Upload these')}
+              {schedule ? t('Schedule these') : t('Upload these')}
             </button>
             <button
               className="btn-ghost !py-1 text-xs"
               disabled={busy}
-              onClick={() => setPlan(null)}
+              onClick={() => { setPlan(null); setSchedule(null) }}
             >
               {t('Cancel')}
             </button>

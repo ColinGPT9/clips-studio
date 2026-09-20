@@ -37,6 +37,10 @@ interface Window {
     pickThumbnailImage: () => Promise<
       { name: string; data: string } | { error: string } | null
     >
+    /** Whatever is on the clipboard IF it looks like an API key, otherwise
+     *  an empty string. The shape check happens in the main process, so the
+     *  page can never read arbitrary clipboard contents. */
+    readClipboardKey: () => Promise<string>
     getDownloadsPath: () => Promise<string>
     pickFolder: () => Promise<string | null>
     openDonateWindow: () => Promise<void>

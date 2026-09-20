@@ -4,7 +4,9 @@ import ClipCard from '../components/ClipCard'
 import ClipEditor from '../components/ClipEditor'
 import EditorView from '../components/EditorModal'
 import ProcessingBar from '../components/ProcessingBar'
+import PublishAllDialog from '../components/PublishAllDialog'
 import { api } from '../lib/api'
+import type { Provider } from '../lib/uploadpost'
 import { getExportFolder } from '../lib/exportFolder'
 import { useEvents } from '../lib/useEvents'
 import { useJobWatch } from '../lib/useJobWatch'
@@ -26,6 +28,12 @@ export default function ClipStudio({
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
   const [editingClipId, setEditingClipId] = useState<number | null>(null)
   const [videoSearch, setVideoSearch] = useState('')
+  // Publishing is only offered once Upload-Post is switched on AND a key
+  // is stored — the same rule the editor tab follows.
+  const [publishReady, setPublishReady] = useState(false)
+  // Which provider a batch goes through. WoopSocial when it is set up.
+  const [publishProvider, setPublishProvider] = useState<Provider>('woopsocial')
+  const [publishing, setPublishing] = useState(false)
   const [clipType, setClipType] = useState<'all' | 'shorts' | 'longform'>('all')
   const [exportingAll, setExportingAll] = useState(false)
   const [exportNotice, setExportNotice] = useState<string | null>(null)
@@ -76,6 +84,20 @@ export default function ClipStudio({
       setClips([])
     }
   }
+
+  useEffect(() => {
+    // Either provider makes batch publishing available.
+    Promise.allSettled([api.woopSocialStatus(), api.uploadPostStatus()]).then(
+      ([woop, up]) => {
+        const wsReady =
+          woop.status === 'fulfilled' && Boolean(woop.value.enabled && woop.value.has_key)
+        const upReady =
+          up.status === 'fulfilled' && Boolean(up.value.enabled && up.value.has_key)
+        setPublishReady(wsReady || upReady)
+        setPublishProvider(wsReady ? 'woopsocial' : 'uploadpost')
+      }
+    )
+  }, [])
 
   useEffect(() => {
     refreshVideos()
@@ -265,6 +287,20 @@ export default function ClipStudio({
               >
                 {exportingAll ? 'Exporting…' : `Export all (${toExport.length})`}
               </button>
+              {/* Deliberately not styled as a twin of Export beside it.
+                  Export writes files you can delete; this posts publicly and
+                  cannot be undone, so it is quieter to look at and opens a
+                  confirm rather than acting on the click. */}
+              {publishReady && (
+                <button
+                  className="btn-ghost !py-1 !px-3 text-xs"
+                  onClick={() => setPublishing(true)}
+                  disabled={shownClips.length === 0}
+                  title={`Publish the ${shownClips.length} clip${shownClips.length === 1 ? '' : 's'} shown here to your social accounts`}
+                >
+                  {`Publish all (${shownClips.length}) ↗`}
+                </button>
+              )}
             </div>
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -303,6 +339,17 @@ export default function ClipStudio({
             )}
           </div>
         </div>
+      )}
+
+      {publishing && (
+        <PublishAllDialog
+          clips={shownClips}
+          provider={publishProvider}
+          onClose={() => {
+            setPublishing(false)
+            if (activeVideo) refreshClips(activeVideo)
+          }}
+        />
       )}
     </div>
   )

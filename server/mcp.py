@@ -340,6 +340,171 @@ def _youtube_status(_args: dict) -> str:
     )
 
 
+def _uploadpost_status(_args: dict) -> str:
+    status = _request("GET", "/uploadpost/status")
+    if not status.get("enabled"):
+        return (
+            "Multi-platform publishing is switched off. Open Clips Kitty, go to Settings, "
+            "and turn on Publish to several platforms. It needs the user's own Upload-Post "
+            "API key, so this is not something to work around from here."
+        )
+    if not status.get("has_key"):
+        return (
+            "Multi-platform publishing is on but no Upload-Post API key is saved. The user "
+            "adds theirs in Settings; it cannot be supplied from here."
+        )
+    platforms = status.get("platforms") or []
+    last = f" Last used: {', '.join(platforms)}." if platforms else ""
+    return (
+        f"Upload-Post is connected on profile '{status.get('profile') or '?'}'.{last} "
+        "Use uploadpost_publish to send a clip to several platforms at once."
+    )
+
+
+def _uploadpost_publish(args: dict) -> str:
+    """Kept out of the model's hands — see HUMAN_ONLY in server/agent.py.
+
+    Registered anyway so the MCP server can offer it to a client where a
+    human is the one clicking, which is the same arrangement
+    publish_plan_execute has.
+    """
+    clip_id = args.get("clip_id")
+    if not clip_id:
+        return "Which clip? Give clip_id."
+    platforms = [p for p in (args.get("platforms") or []) if p]
+    if not platforms:
+        return "Which platforms? Give a list, e.g. ['youtube', 'tiktok']."
+
+    body = {"platforms": platforms, "title": args.get("title") or ""}
+    for key in ("description", "first_comment", "scheduled_date", "timezone"):
+        if args.get(key):
+            body[key] = args[key]
+    if args.get("add_to_queue"):
+        body["add_to_queue"] = True
+
+    out = _request("POST", f"/uploadpost/clips/{int(clip_id)}/publish", body)
+    rows = out.get("platforms") or []
+    lines = [f"Started. Reference {out.get('request_id') or '?'}."]
+    for row in rows:
+        lines.append(f"  {row.get('platform')}: {row.get('state')}")
+    return chr(10).join(lines)
+
+
+def _uploadpost_result(args: dict) -> str:
+    clip_id = args.get("clip_id")
+    if not clip_id:
+        return "Which clip? Give clip_id."
+    out = _request("GET", f"/uploadpost/clips/{int(clip_id)}")
+    rows = out.get("platforms") or []
+    if not rows:
+        return "That clip has not been published through Upload-Post."
+    lines = []
+    for row in rows:
+        where = f" {row.get('post_url')}" if row.get("post_url") else ""
+        why = f" ({row.get('error')})" if row.get("error") else ""
+        lines.append(f"{row.get('platform')}: {row.get('state')}{where}{why}")
+    return chr(10).join(lines)
+
+
+def _woopsocial_status(_args: dict) -> str:
+    status = _request("GET", "/woopsocial/status")
+    if not status.get("enabled"):
+        return (
+            "Publishing through WoopSocial is switched off. The person turns it on in "
+            "Settings and adds their own API key; it cannot be done from here."
+        )
+    if not status.get("has_key"):
+        return "WoopSocial is on but no API key is saved. The person adds theirs in Settings."
+    platforms = status.get("platforms") or []
+    last = f" Last used: {', '.join(platforms)}." if platforms else ""
+    return f"WoopSocial is connected.{last}"
+
+
+def _schedule_clips_plan(args: dict) -> str:
+    """Work out a posting schedule. Creates nothing and publishes nothing.
+
+    The half of batch publishing a model is allowed to run. Turning a
+    video's clips into a month of posts is exactly the sort of thing worth
+    asking for in a sentence, but it ends in dozens of public posts that
+    cannot be taken back — so this describes the schedule and a person
+    presses the button.
+    """
+    clip_ids = list(args.get("clip_ids") or [])
+    video_id = str(args.get("video_id") or "")
+
+    if not clip_ids and video_id:
+        clips = _request("GET", f"/videos/{video_id}/clips") or []
+        clip_ids = [c["id"] for c in clips if c.get("path")]
+    if not clip_ids:
+        return (
+            "Which clips? Give clip_ids, or a video_id to take every rendered clip "
+            "from that video."
+        )
+
+    body = {
+        "clip_ids": clip_ids,
+        "platforms": [p for p in (args.get("platforms") or ["youtube"]) if p],
+        "every_hours": float(args.get("every_hours") or 0),
+        "hashtags": [h for h in (args.get("hashtags") or []) if h],
+    }
+    if args.get("start_at"):
+        body["start_at"] = args["start_at"]
+
+    out = _request("POST", "/woopsocial/batch/plan", body)
+    items = out.get("items") or []
+    if not items:
+        return "Nothing to schedule: " + (
+            "; ".join(out.get("warnings") or []) or "no rendered clips."
+        )
+
+    where = ", ".join(out.get("platforms") or [])
+    every = out.get("every_hours") or 0
+    spacing = (
+        f"one every {every:g} hours" if every else "all at once"
+    )
+    lines = [
+        f"This is the plan. NOTHING has been posted yet. {len(items)} clip(s) to "
+        f"{where}, {spacing}.",
+        "",
+    ]
+    for item in items[:20]:
+        when = item.get("publish_at") or "as soon as it uploads"
+        lines.append(f"  clip {item['clip_id']}: {item['title'][:60]}  ->  {when}")
+    if len(items) > 20:
+        lines.append(f"  … and {len(items) - 20} more")
+    tags = out.get("hashtags") or []
+    if tags:
+        lines.append("")
+        lines.append("  adding to every one: " + " ".join("#" + t for t in tags))
+    for warning in out.get("warnings") or []:
+        lines.append(f"  warning: {warning}")
+    lines += [
+        "",
+        "Show this to the person and get a clear yes before anything is posted. "
+        + "Posts cannot be taken back, and they go to their real accounts.",
+    ]
+    return chr(10).join(lines)
+
+
+def _schedule_clips_execute(args: dict) -> str:
+    """Kept out of the model's hands — see HUMAN_ONLY in server/agent.py."""
+    body = {
+        "clip_ids": list(args.get("clip_ids") or []),
+        "platforms": [p for p in (args.get("platforms") or ["youtube"]) if p],
+        "every_hours": float(args.get("every_hours") or 0),
+        "hashtags": [h for h in (args.get("hashtags") or []) if h],
+    }
+    if args.get("start_at"):
+        body["start_at"] = args["start_at"]
+    out = _request("POST", "/woopsocial/batch", body)
+    started = out.get("started") or []
+    skipped = out.get("skipped") or []
+    lines = [f"Scheduled {len(started)} clip(s)."]
+    for row in skipped:
+        lines.append(f"  clip {row['clip_id']} skipped: {row['reason']}")
+    return chr(10).join(lines)
+
+
 def _publish_plan(args: dict) -> str:
     body = {"clip_ids": list(args.get("clip_ids") or [])}
     for key in ("start_at", "every_hours", "privacy"):
@@ -411,6 +576,137 @@ TOOLS: list[dict] = [
         ),
         "inputSchema": {"type": "object", "properties": {}},
         "handler": _youtube_status,
+    },
+    {
+        "name": "woopsocial_status",
+        "title": "Is WoopSocial publishing ready",
+        "description": (
+            "Whether Clips Kitty can post to social platforms through the person's "
+            "WoopSocial account. Check this before offering to schedule anything."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": _woopsocial_status,
+    },
+    {
+        "name": "schedule_clips_plan",
+        "title": "Plan a posting schedule",
+        "description": (
+            "Work out what posting a set of clips would do: which clips, which "
+            "platforms, and the exact time each one would go out. Creates nothing and "
+            "posts nothing. Give video_id to take every rendered clip from a video, or "
+            "clip_ids for specific ones, and every_hours for the spacing (24 is one a "
+            "day). Always show the result and get a clear yes — the person confirms in "
+            "the app."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {
+                    "type": "string",
+                    "description": "Take every rendered clip from this video.",
+                },
+                "clip_ids": {"type": "array", "items": {"type": "integer"}},
+                "platforms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Defaults to youtube. e.g. ['youtube', 'tiktok'].",
+                },
+                "every_hours": {
+                    "type": "number",
+                    "description": "Hours between posts. 1 is hourly, 24 is daily.",
+                },
+                "start_at": {
+                    "type": "string",
+                    "description": "RFC 3339 WITH offset. Defaults to now.",
+                },
+                "hashtags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Added to every clip in the run. The # is optional.",
+                },
+            },
+        },
+        "handler": _schedule_clips_plan,
+    },
+    {
+        "name": "schedule_clips_execute",
+        "title": "Carry out a posting schedule",
+        "description": (
+            "Actually schedule the posts worked out by schedule_clips_plan. This posts "
+            "publicly and cannot be undone."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "clip_ids": {"type": "array", "items": {"type": "integer"}},
+                "platforms": {"type": "array", "items": {"type": "string"}},
+                "every_hours": {"type": "number"},
+                "start_at": {"type": "string"},
+                "hashtags": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["clip_ids"],
+        },
+        "handler": _schedule_clips_execute,
+    },
+    {
+        "name": "uploadpost_status",
+        "title": "Is multi-platform publishing ready",
+        "description": (
+            "Whether Clips Kitty can publish to several platforms at once through the "
+            "user's Upload-Post account, and which profile. Check this before offering to "
+            "publish anywhere other than YouTube."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": _uploadpost_status,
+    },
+    {
+        "name": "uploadpost_publish",
+        "title": "Publish a clip to several platforms",
+        "description": (
+            "Send one clip to several platforms in a single upload: YouTube, TikTok, "
+            "Instagram, Facebook, X, Threads, LinkedIn, Pinterest, Bluesky. The same "
+            "title and description go everywhere unless the person asks otherwise. "
+            "Uploads cannot be taken back, so get a clear yes first."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "clip_id": {"type": "integer", "description": "Which clip to publish."},
+                "platforms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "e.g. ['youtube', 'tiktok', 'instagram'].",
+                },
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "first_comment": {"type": "string"},
+                "scheduled_date": {
+                    "type": "string",
+                    "description": "RFC 3339 WITH offset. Leave out to publish now.",
+                },
+                "timezone": {"type": "string", "description": "IANA name, e.g. America/Toronto."},
+                "add_to_queue": {
+                    "type": "boolean",
+                    "description": "Next free slot of their queue. Cannot be used with scheduled_date.",
+                },
+            },
+            "required": ["clip_id", "platforms"],
+        },
+        "handler": _uploadpost_publish,
+    },
+    {
+        "name": "uploadpost_result",
+        "title": "Where a clip ended up",
+        "description": (
+            "Per-platform state and links for a clip published through Upload-Post: which "
+            "platforms went out, which failed and why."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"clip_id": {"type": "integer"}},
+            "required": ["clip_id"],
+        },
+        "handler": _uploadpost_result,
     },
     {
         "name": "publish_plan",

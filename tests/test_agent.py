@@ -16,6 +16,10 @@ def _tools():
          "handler": lambda a: "a plan"},
         {"name": "publish_plan_execute", "description": "Upload", "inputSchema": {"type": "object"},
          "handler": lambda a: "uploaded"},
+        {"name": "uploadpost_status", "description": "Ready?", "inputSchema": {"type": "object"},
+         "handler": lambda a: "connected"},
+        {"name": "uploadpost_publish", "description": "Post everywhere",
+         "inputSchema": {"type": "object"}, "handler": lambda a: "posted"},
     ]
 
 
@@ -60,6 +64,12 @@ def test_uploading_is_never_offered_to_the_model():
     # the tool cannot call it, however it is asked.
     names = [spec["function"]["name"] for spec in agent.tool_specs(_tools())]
     assert "publish_plan_execute" not in names
+    # Posting to several public platforms at once cannot be taken back, so it
+    # is withheld the same way.
+    assert "uploadpost_publish" not in names
+    # Reading is fine: the model can say whether it is set up and report what
+    # happened, it just cannot pull the trigger.
+    assert "uploadpost_status" in names
     assert "publish_plan" in names and "list_videos" in names
 
 
@@ -97,6 +107,17 @@ def test_asking_to_execute_is_refused_even_if_the_model_tries(monkeypatch):
     assert "person confirms" in out["steps"][0]["result"]
 
 
+def test_multi_platform_publishing_is_refused_even_if_the_model_tries(monkeypatch):
+    out, calls, _ = _run(monkeypatch, [
+        {"role": "assistant",
+         "tool_calls": [{"function": {"name": "uploadpost_publish",
+                                      "arguments": {"clip_id": 1, "platforms": ["youtube"]}}}]},
+        {"role": "assistant", "content": "I cannot do that"},
+    ])
+    assert calls == [], "the handler must never run"
+    assert "person confirms" in out["steps"][0]["result"]
+
+
 def test_string_arguments_are_parsed(monkeypatch):
     # Some models hand back the arguments as a JSON string rather than an object.
     out, calls, _ = _run(monkeypatch, [
@@ -124,3 +145,19 @@ def test_the_model_is_told_what_time_it_is(monkeypatch):
     # Without this the model invented a date in the past and the schedule was
     # refused.
     assert "RFC 3339" in system
+
+
+def test_scheduling_a_batch_is_refused_even_if_the_model_tries(monkeypatch):
+    """Turning a video into a month of posts is exactly the sort of thing to
+    ask for in a sentence — and exactly the sort that needs a human yes."""
+    tools = [
+        *_tools(),
+        {"name": "schedule_clips_plan", "description": "Plan", "inputSchema": {"type": "object"},
+         "handler": lambda a: "a schedule"},
+        {"name": "schedule_clips_execute", "description": "Post",
+         "inputSchema": {"type": "object"}, "handler": lambda a: "posted"},
+    ]
+    names = [spec["function"]["name"] for spec in agent.tool_specs(tools)]
+    assert "schedule_clips_execute" not in names
+    # Planning is allowed: the model has to be able to describe the schedule.
+    assert "schedule_clips_plan" in names

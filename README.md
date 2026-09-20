@@ -59,6 +59,7 @@ there is no cap on how many clips you make.
 - [Supported platforms](#supported-platforms)
 - [Supported languages](#supported-languages)
 - [Publish to YouTube](#publish-to-youtube)
+- [Publish to every platform at once](#publish-to-every-platform-at-once)
 - [GPU acceleration](#gpu-acceleration)
 - [Command line use](#command-line-use)
 - [Build on it](#build-on-it)
@@ -525,6 +526,34 @@ panel links you to Studio for those.
 
 Shorts need nothing special: no separate mode and no `#Shorts` tag. YouTube
 classifies a video as a Short from its shape and length on its own.
+
+## Publish to every platform at once
+
+Also off by default. Turn it on in **Settings → Publish through WoopSocial**
+and a **Publish** tab appears in the editor: pick your platforms — or press
+**Everywhere** — write the title and description once, and one upload goes to
+YouTube, TikTok, Instagram, Facebook, X, Threads, LinkedIn, Pinterest and
+Bluesky together. **Publish all** in the Clip Editor does a whole batch,
+spaced out so a dozen clips do not land at the same second.
+
+This one is **not local**. The clip and its details are sent to a publishing
+service, which delivers them and holds the connections to your social
+accounts, so Clips Kitty never asks for a social password. Everything else in
+the app still runs on your PC.
+
+Two services are supported: **[WoopSocial](https://woopsocial.com/)**, whose
+free plan allows unlimited posts on two connected accounts, and
+**[Upload-Post](https://www.upload-post.com/)**, which reaches more
+destinations and adds thumbnails, first comments and a posting queue. Turn on
+either, or both.
+
+**Bring your own key.** You create the account, connect your own socials and
+use your own allowance. Clips Kitty charges nothing, holds no shared key and
+pays for nothing — the same arrangement as the YouTube integration, and for
+the same reason.
+
+Full walkthrough, per-platform support and limits:
+**[docs/UPLOAD-POST.md](docs/UPLOAD-POST.md)**.
 
 ## GPU acceleration
 

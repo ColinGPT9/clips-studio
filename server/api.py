@@ -492,6 +492,33 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker=publish_worker,
     )
 
+    # Publishing to several platforms at once, through the user's own
+    # Upload-Post account. Installed the same way and just as removable: it
+    # owns its own settings, its own key and its own routes, and touches
+    # nothing above when it is switched off.
+    from server import uploadpost_api
+
+    uploadpost_api.install(
+        app,
+        config=config,
+        db=db,
+        data_dir=data_dir,
+        publish_worker=publish_worker,
+    )
+
+    # A second multi-platform provider beside Upload-Post, not instead of it:
+    # a creator uses whichever they have an account with. Independent
+    # settings, independent key, independent routes.
+    from server import woopsocial_api
+
+    woopsocial_api.install(
+        app,
+        config=config,
+        db=db,
+        data_dir=data_dir,
+        publish_worker=publish_worker,
+    )
+
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
     from server import integrations
@@ -2243,6 +2270,30 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 traceback.print_exc()
                 return "That did not work — something failed inside the app.", None
             structured = None
+            if name == "schedule_clips_plan":
+                # The same call the tool just made, for the items rather than
+                # the prose, so the window can offer one button instead of
+                # asking the person to retype what the model just said.
+                from server.mcp import _request as _api
+
+                try:
+                    clip_ids = list(arguments.get("clip_ids") or [])
+                    if not clip_ids and arguments.get("video_id"):
+                        clips = _api("GET", f"/videos/{arguments['video_id']}/clips") or []
+                        clip_ids = [c["id"] for c in clips if c.get("path")]
+                    structured = _api(
+                        "POST",
+                        "/woopsocial/batch/plan",
+                        {
+                            "clip_ids": clip_ids,
+                            "platforms": arguments.get("platforms") or ["youtube"],
+                            "every_hours": float(arguments.get("every_hours") or 0),
+                            "hashtags": arguments.get("hashtags") or [],
+                            **({"start_at": arguments["start_at"]} if arguments.get("start_at") else {}),
+                        },
+                    )
+                except Exception:
+                    structured = None
             if name == "publish_plan":
                 # Same call the tool just made, for the items rather than the
                 # prose. Through server.mcp's own client so there is one place

@@ -30,6 +30,7 @@ import type {
   YouTubeSettings,
   YouTubeStatus
 } from './youtube'
+import type { Capabilities, FanOut, PlatformRow, UploadPostStatus } from './uploadpost'
 
 export const API_BASE = 'http://127.0.0.1:8765'
 
@@ -501,5 +502,139 @@ export const api = {
       method: 'POST'
     }),
   generatedThumbnailUrl: (clipId: number, index: number) =>
-    `${API_BASE}/clips/${clipId}/thumbnail/generated/${index}`
+    `${API_BASE}/clips/${clipId}/thumbnail/generated/${index}`,
+
+  // ---- Upload-Post: publishing to several platforms at once ----
+  // Same rule as the YouTube routes: everything except /status 404s while the
+  // feature is off, so callers check uploadPostStatus() first rather than
+  // treating an error as a fault. The API key is never returned by any of
+  // these — the status carries has_key and a four-character tail instead.
+
+  uploadPostStatus: () => request<UploadPostStatus>('/uploadpost/status'),
+  patchUploadPostSettings: (patch: Record<string, unknown>) =>
+    request<UploadPostStatus>('/uploadpost/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  /** Stores the key, then proves it works before reporting success. A key
+   *  that fails validation is discarded rather than left looking connected. */
+  putUploadPostKey: (apiKey: string) =>
+    request<UploadPostStatus & { plan: string; email: string }>('/uploadpost/key', {
+      method: 'PUT',
+      body: JSON.stringify({ api_key: apiKey })
+    }),
+  deleteUploadPostKey: () =>
+    request<UploadPostStatus & { removed: boolean }>('/uploadpost/key', { method: 'DELETE' }),
+  /** A hosted Upload-Post page for linking social accounts, good for 48 hours.
+   *  Opened in the real browser — Clips Kitty never sees a social password. */
+  uploadPostConnect: (username?: string) =>
+    request<{ url: string; expires_hours: number; profile: string }>('/uploadpost/connect', {
+      method: 'POST',
+      body: JSON.stringify({ username: username ?? '' })
+    }),
+  uploadPostProfiles: () =>
+    request<{ profiles: { username: string }[] }>('/uploadpost/profiles'),
+  /** Which platforms are linked. Polled after sending someone to the
+   *  connection page, so setup finishes on its own. */
+  uploadPostConnections: () =>
+    request<{ profile: string; connected: string[] }>('/uploadpost/connections'),
+  /** One upload, several platforms. Returns straight away with a request_id;
+   *  poll refreshUploadPost until `done`. */
+  uploadPostPublish: (
+    clipId: number,
+    body: {
+      platforms: string[]
+      title: string
+      description?: string
+      tags?: string[]
+      first_comment?: string
+      thumbnail?: boolean
+      overrides?: Record<string, Record<string, string>>
+      scheduled_date?: string
+      timezone?: string
+      add_to_queue?: boolean
+    }
+  ) =>
+    request<FanOut>(`/uploadpost/clips/${clipId}/publish`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+  refreshUploadPost: (requestId: string) =>
+    request<FanOut>(`/uploadpost/refresh/${encodeURIComponent(requestId)}`, { method: 'POST' }),
+  /** Re-runs only the platforms that failed, reusing the media already
+   *  uploaded — never a second upload, which would duplicate the successes. */
+  retryUploadPost: (requestId: string) =>
+    request<FanOut>(`/uploadpost/retry/${encodeURIComponent(requestId)}`, { method: 'POST' }),
+  uploadPostCapabilities: () =>
+    request<{ platforms: Capabilities }>('/uploadpost/capabilities'),
+  /** Several clips, each uploaded once and fanned out. `every_hours` spaces
+   *  them through Upload-Post's scheduler rather than firing a burst. */
+  uploadPostBatch: (body: {
+    clip_ids: number[]
+    platforms: string[]
+    every_hours?: number
+    start_at?: string
+    timezone?: string
+    add_to_queue?: boolean
+  }) =>
+    request<{
+      started: { clip_id: number; request_id: string }[]
+      skipped: { clip_id: number; reason: string }[]
+    }>('/uploadpost/batch', { method: 'POST', body: JSON.stringify(body) }),
+  clipUploadPostRows: (clipId: number) =>
+    request<{ platforms: PlatformRow[] }>(`/uploadpost/clips/${clipId}`),
+
+  // ---- WoopSocial: the second provider ----
+  // Same job as Upload-Post, different account. Routes mirror each other so
+  // the panel can drive either without special-casing.
+
+  woopSocialStatus: () => request<UploadPostStatus>('/woopsocial/status'),
+  patchWoopSocialSettings: (patch: Record<string, unknown>) =>
+    request<UploadPostStatus>('/woopsocial/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  putWoopSocialKey: (apiKey: string) =>
+    request<UploadPostStatus & { projects: number }>('/woopsocial/key', {
+      method: 'PUT',
+      body: JSON.stringify({ api_key: apiKey })
+    }),
+  deleteWoopSocialKey: () =>
+    request<UploadPostStatus & { removed: boolean }>('/woopsocial/key', { method: 'DELETE' }),
+  woopSocialConnections: () => request<{ connected: string[] }>('/woopsocial/connections'),
+  /** WoopSocial authorises one platform at a time, so the caller names it. */
+  woopSocialConnect: (platform: string) =>
+    request<{ url: string; platform: string }>('/woopsocial/connect', {
+      method: 'POST',
+      body: JSON.stringify({ platform })
+    }),
+  woopSocialPublish: (
+    clipId: number,
+    body: {
+      platforms: string[]
+      title: string
+      description?: string
+      tags?: string[]
+      overrides?: Record<string, Record<string, string>>
+      scheduled_date?: string
+    }
+  ) =>
+    request<FanOut>(`/woopsocial/clips/${clipId}/publish`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+  refreshWoopSocial: (postId: string) =>
+    request<FanOut>(`/woopsocial/refresh/${encodeURIComponent(postId)}`, { method: 'POST' }),
+  /** Several clips through WoopSocial, spaced by their own scheduler so a
+   *  run lasting days survives the app being closed. */
+  woopSocialBatch: (body: {
+    clip_ids: number[]
+    platforms: string[]
+    every_hours?: number
+    start_at?: string
+  }) =>
+    request<{
+      started: { clip_id: number; request_id: string; scheduled_for: string }[]
+      skipped: { clip_id: number; reason: string }[]
+    }>('/woopsocial/batch', { method: 'POST', body: JSON.stringify(body) })
 }

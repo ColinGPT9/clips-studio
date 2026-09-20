@@ -23,6 +23,8 @@ import {
   setAppLanguage,
   t
 } from '../lib/i18n'
+import UploadPostCard from '../components/UploadPostCard'
+import WoopSocialCard from '../components/WoopSocialCard'
 import YouTubeCard from '../components/YouTubeCard'
 import { Folder } from '../components/icons'
 
@@ -182,7 +184,7 @@ function StorageCard(): JSX.Element {
                 </div>
               ))}
             {info.reclaimable_bytes === 0 && (
-              <p className="text-muted">{t('Nothing to clean up — no leftovers on disk.')}</p>
+              <p className="text-muted">{t('Nothing to clean up - no leftovers on disk.')}</p>
             )}
           </div>
 
@@ -212,7 +214,7 @@ function StorageCard(): JSX.Element {
           <p className="text-[11px] text-muted/80 border-t border-raised/60 pt-2">
             {t('Source videos')}: {info.sources.files} · {GB(info.sources.bytes)}.{' '}
             {t(
-              'These are the biggest thing on disk and are NOT touched — editing, re-rendering and translated burns all read them. Delete a video from the Dashboard to remove its source along with its clips.'
+              'These are the biggest thing on disk and are NOT touched - editing, re-rendering and translated burns all read them. Delete a video from the Dashboard to remove its source along with its clips.'
             )}
           </p>
         </>
@@ -620,9 +622,14 @@ export default function Settings(): JSX.Element {
 
       <UpdateCard />
 
-      <BrandingCard />
-
+      {/* WoopSocial first: its free plan covers most creators, and it is
+          the one Clips Kitty recommends. Upload-Post last, as the
+          alternative for anyone who wants Bluesky, thumbnails or a queue. */}
+      <WoopSocialCard />
       <YouTubeCard />
+      <UploadPostCard />
+
+      <BrandingCard />
 
       <div className="card text-sm text-muted">
         The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced

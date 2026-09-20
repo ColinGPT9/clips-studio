@@ -35,10 +35,21 @@ import {
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
+import UploadPostPanel from './UploadPostPanel'
 import YouTubePanel from './YouTubePanel'
 import { rememberYoutubeEnabled, youtubeEnabledSync, type YouTubeStatus } from '../lib/youtube'
+import type { Provider, UploadPostStatus } from '../lib/uploadpost'
 
-type Tab = 'captions' | 'subtitles' | 'audio' | 'motion' | 'watermark' | 'color' | 'ai' | 'youtube'
+type Tab =
+  | 'captions'
+  | 'subtitles'
+  | 'audio'
+  | 'motion'
+  | 'watermark'
+  | 'color'
+  | 'ai'
+  | 'youtube'
+  | 'uploadpost'
 const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
   { id: 'captions', label: 'Captions', icon: <span className="font-bold text-[11px] leading-none">Aa</span> },
   { id: 'subtitles', label: 'Subtitles', icon: <span className="font-bold text-[11px] leading-none">文</span> },
@@ -58,6 +69,18 @@ const YOUTUBE_TAB: { id: Tab; label: string; icon: JSX.Element } = {
   id: 'youtube',
   label: 'YouTube',
   icon: <YouTubeIcon />
+}
+
+/** Appended only when Upload-Post is switched on AND a key is stored.
+ *
+ *  Same rule as the YouTube tab, for the same reason: an install that never
+ *  brings an Upload-Post key renders the tab strip it always had. The key
+ *  check matters as well as the toggle — a tab that can only say "not
+ *  connected" is an advertisement, not a feature. */
+const UPLOADPOST_TAB: { id: Tab; label: string; icon: JSX.Element } = {
+  id: 'uploadpost',
+  label: 'Publish',
+  icon: <span className="font-bold text-[11px] leading-none">↗</span>
 }
 
 /** A user text correction for one transcript word (misheard by Whisper). */
@@ -219,6 +242,18 @@ export default function TimelineEditor({
   // of the strip on every editor open for people who have it switched off.
   const [ytEnabled, setYtEnabled] = useState(youtubeEnabledSync())
   const [ytStatus, setYtStatus] = useState<YouTubeStatus | null>(null)
+  const [upStatus, setUpStatus] = useState<UploadPostStatus | null>(null)
+  const [wsStatus, setWsStatus] = useState<UploadPostStatus | null>(null)
+  // WoopSocial is the one Clips Kitty leads with; Upload-Post is the
+  // alternative for anyone who needs what it does that WoopSocial does not.
+  const [provider, setProvider] = useState<Provider>('woopsocial')
+  // Both, not just the toggle: a tab that can only say 'not connected'
+  // is an advertisement rather than a feature.
+  const upReady = Boolean(upStatus?.enabled && upStatus?.has_key)
+  const wsReady = Boolean(wsStatus?.enabled && wsStatus?.has_key)
+  // The tab appears if EITHER provider is set up.
+  const publishReady = upReady || wsReady
+  const activeStatus = provider === 'woopsocial' ? wsStatus : upStatus
   const [tightening, setTightening] = useState(false)
   const [tightenNote, setTightenNote] = useState('')
 
@@ -778,6 +813,27 @@ export default function TimelineEditor({
     }
   }, [])
 
+  // Upload-Post, asked for separately: the two providers are independent and
+  // one being off says nothing about the other.
+  useEffect(() => {
+    let alive = true
+    api
+      .uploadPostStatus()
+      .then((status) => alive && setUpStatus(status))
+      .catch(() => {
+        // Backend not up, or a build without the route. No tab, no noise.
+      })
+    api
+      .woopSocialStatus()
+      .then((status) => alive && setWsStatus(status))
+      .catch(() => {
+        /* same */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   useEffect(() => {
     if (!ytEnabled) {
       setActiveTab((current) => (current === 'youtube' ? 'captions' : current))
@@ -785,10 +841,25 @@ export default function TimelineEditor({
   }, [ytEnabled])
 
   useEffect(() => {
+    // Land on a provider that is actually set up, preferring WoopSocial.
+    if (wsReady) setProvider('woopsocial')
+    else if (upReady) setProvider('uploadpost')
+  }, [upReady, wsReady])
+
+  useEffect(() => {
+    if (!publishReady) {
+      setActiveTab((current) => (current === 'uploadpost' ? 'captions' : current))
+    }
+  }, [publishReady])
+
+  useEffect(() => {
     if (tabRequest) setActiveTab(tabRequest.tab)
   }, [tabRequest?.n])
 
-  const tabs = useMemo(() => (ytEnabled ? [...TABS, YOUTUBE_TAB] : TABS), [ytEnabled])
+  const tabs = useMemo(
+    () => [...TABS, ...(ytEnabled ? [YOUTUBE_TAB] : []), ...(publishReady ? [UPLOADPOST_TAB] : [])],
+    [ytEnabled, publishReady]
+  )
 
   /** The render options Apply edits would send.
    *
@@ -1624,6 +1695,29 @@ export default function TimelineEditor({
             currentTime={playhead}
             onOpenSettings={() => window.dispatchEvent(new CustomEvent('open-settings'))}
           />
+        </FeatureBoundary>
+      )}
+
+      {/* Multi-platform publishing, fenced the same way. Unlike the YouTube
+          panel this one does not render first when there are unsaved edits:
+          it uploads the clip file as it stands, so the button is held until
+          the edits are applied rather than quietly publishing a stale cut. */}
+      {activeTab === 'uploadpost' && publishReady && activeStatus && (
+        <FeatureBoundary name="Upload-Post publishing">
+          {dirty ? (
+            <p className="text-sm text-muted">
+              Apply your edits first — publishing sends the rendered file, so unsaved
+              trims would not be in it.
+            </p>
+          ) : (
+            <UploadPostPanel
+              clip={clip}
+              status={activeStatus}
+              provider={provider}
+              otherAvailable={upReady && wsReady}
+              onSwitchProvider={setProvider}
+            />
+          )}
         </FeatureBoundary>
       )}
 

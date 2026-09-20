@@ -42,6 +42,11 @@ export function installBrowserShim(): void {
       return []
     },
     pickThumbnailImage: async () => null,
+    // No warning: this one is polled speculatively after a signup link is
+    // opened, so a browser contributor would get console noise for a
+    // feature they never asked for. Empty simply means "nothing offered",
+    // which is the same thing an empty clipboard means.
+    readClipboardKey: async () => '',
     pickImageFile: async () => {
       unavailable('Choosing an image')
       return null

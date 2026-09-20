@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -350,7 +350,37 @@ const EXTERNAL_ALLOWED = [
   /^https:\/\/studio\.youtube\.com\//,
   /^https:\/\/www\.youtube\.com\/watch\?v=/,
   /^https:\/\/support\.google\.com\/youtube\//,
-  /^https:\/\/developers\.google\.com\/youtube\//
+  /^https:\/\/developers\.google\.com\/youtube\//,
+  // Upload-Post: the hosted page where a user links their social accounts,
+  // their dashboard, and the signup link. Subdomains are allowed because the
+  // connect flow lives on app.upload-post.com while signup is on www.
+  //
+  // If an approved affiliate referral URL is ever configured and it points at
+  // a DIFFERENT host — Trackdesk hands out links like
+  // <name>.trackdesk.com/... — that host has to be added here too, or the
+  // button will do nothing at all and log a refusal rather than failing
+  // visibly. This is the trap to check first if a referral link seems dead.
+  /^https:\/\/([a-z0-9-]+\.)?upload-post\.com(\/|$|\?)/,
+  // WoopSocial, the second publishing provider: their site, the dashboard
+  // where the API key lives, and the OAuth pages that link each account.
+  // Endorsely hosts their affiliate signup and would issue a referral link
+  // on that domain, so it is allowed too — otherwise the button is dead.
+  /^https:\/\/([a-z0-9-]+\.)?woopsocial\.com(\/|$|\?)/,
+  /^https:\/\/([a-z0-9-]+\.)?endorsely\.com(\/|$|\?)/,
+  // Where a published clip actually ended up. Upload-Post returns one URL per
+  // platform and the publish panel turns each into an "Open" button; without
+  // these the buttons are silently inert. Host-restricted, since the path
+  // shape differs per platform and changes without notice.
+  /^https:\/\/(www\.)?youtu\.be\//,
+  /^https:\/\/(www\.)?tiktok\.com\//,
+  /^https:\/\/(www\.)?instagram\.com\//,
+  /^https:\/\/(www\.|web\.)?facebook\.com\//,
+  /^https:\/\/(www\.)?(x|twitter)\.com\//,
+  /^https:\/\/(www\.)?threads\.(net|com)\//,
+  /^https:\/\/(www\.)?linkedin\.com\//,
+  /^https:\/\/([a-z]{2}\.|www\.)?pinterest\.[a-z.]{2,6}\//,
+  /^https:\/\/(www\.)?bsky\.app\//,
+  /^https:\/\/(www\.)?reddit\.com\//
 ]
 
 ipcMain.handle('open-external', (_event, url: unknown) => {
@@ -361,6 +391,22 @@ ipcMain.handle('open-external', (_event, url: unknown) => {
   }
   void shell.openExternal(url)
   return true
+})
+
+// The one fiddly step of bring-your-own-key setup is copying a key off a
+// website and getting it back into here. This closes that gap — but it
+// deliberately does NOT hand the renderer whatever happens to be on the
+// clipboard.
+//
+// Only something that looks like an API key comes back: one token, no
+// whitespace, long enough to be a credential and short enough not to be a
+// paragraph. Anything else returns empty, so a password or a private message
+// sitting on the clipboard is never readable from the page.
+const KEY_SHAPE = /^[A-Za-z0-9_\-.]{20,200}$/
+
+ipcMain.handle('read-clipboard-key', () => {
+  const text = clipboard.readText().trim()
+  return KEY_SHAPE.test(text) ? text : ''
 })
 
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))

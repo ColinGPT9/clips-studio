@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('studio', {
     { name: string; data: string } | { error: string } | null
   > => ipcRenderer.invoke('pick-thumbnail-image'),
   // Export destination: the OS Downloads folder + a folder picker.
+  /** Whatever is on the clipboard IF it looks like an API key, else ''.
+   *  The main process does the shape check, so the page can never read
+   *  arbitrary clipboard contents. */
+  readClipboardKey: (): Promise<string> => ipcRenderer.invoke('read-clipboard-key'),
   getDownloadsPath: (): Promise<string> => ipcRenderer.invoke('get-downloads-path'),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-folder'),
   // Donation popup: PayPal in a small in-app window (no external browser).

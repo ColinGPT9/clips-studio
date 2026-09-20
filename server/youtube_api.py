@@ -638,18 +638,26 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
 
         # Titles are optional in a plan: an agent that only reordered the
         # schedule should not have to repeat metadata it never touched.
+        #
+        # The clip's own description is read here for the same reason. The
+        # preview from /publish/plan resolves it, so executing without it
+        # published a different video than the one the user agreed to — the
+        # standing block and hashtags survived, but whatever the clip itself
+        # said was silently dropped.
         titles: dict[int, str] = {}
+        descriptions: dict[int, str] = {}
         d = db()
         try:
             _guard(d)
             for item in body.items:
-                if item.title:
-                    continue
                 clip = d.get_clip(item.clip_id)
-                if clip is not None:
+                if clip is None:
+                    continue
+                if not item.title:
                     titles[item.clip_id] = (
                         clip["title"] or clip["hook"] or f"Clip {item.clip_id}"
                     )
+                descriptions[item.clip_id] = clip["description"] or ""
         finally:
             d.close()
 
@@ -660,6 +668,7 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
                     item.clip_id,
                     PublishIn(
                         title=item.title or titles.get(item.clip_id, ""),
+                        description=descriptions.get(item.clip_id, ""),
                         privacy=item.privacy or ("private" if item.publish_at else "public"),
                         publish_at=item.publish_at,
                     ),

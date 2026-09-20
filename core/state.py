@@ -206,6 +206,43 @@ CREATE TABLE IF NOT EXISTS publish_jobs (
     updated_at   TEXT NOT NULL
 );
 
+-- One row per clip per destination, for providers that publish to several
+-- platforms from a single upload.
+--
+-- The older `uploads` table cannot hold this: its primary key is clip_id, so
+-- one clip has exactly one upload row and a second destination would
+-- overwrite the first. That was correct while YouTube was the only
+-- destination. It is left exactly as it is, still owning the direct-YouTube
+-- history, rather than migrated — the two paths keep their own records and
+-- neither can corrupt the other.
+--
+-- Keyed the same way clip_translations is, for the same reason: one clip, N
+-- targets, each with its own state and its own error.
+CREATE TABLE IF NOT EXISTS clip_publishes (
+    clip_id    INTEGER NOT NULL,
+    platform   TEXT NOT NULL,               -- youtube | tiktok | instagram | ...
+    provider   TEXT NOT NULL DEFAULT '',    -- which publisher delivered it
+    -- Identity that outlives a re-render, matching uploads: applying edits
+    -- gives the clip a new id, so clip_id alone cannot find this row again.
+    video_id   TEXT NOT NULL DEFAULT '',
+    start_s    REAL NOT NULL DEFAULT 0,
+    end_s      REAL NOT NULL DEFAULT 0,
+    -- queued | processing | published | failed | skipped
+    -- 'skipped' is its own state on purpose: a platform the user ticked but
+    -- has not connected is not a failure, and reporting it as one sends
+    -- people hunting for a bug that is not there.
+    state      TEXT NOT NULL DEFAULT 'queued',
+    post_id    TEXT NOT NULL DEFAULT '',
+    post_url   TEXT NOT NULL DEFAULT '',
+    error      TEXT NOT NULL DEFAULT '',
+    -- The provider's own id for the whole fan-out, so every row from one
+    -- operation can be found together and retried as a group.
+    request_id TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (clip_id, platform)
+);
+
 -- Small key/value store for app-level flags that must outlive a restart.
 -- Currently just the queue's paused state: stopping the queue is a decision
 -- the user made, so a crash or a reboot must not quietly resume processing.
@@ -822,6 +859,55 @@ class StateDB:
         return self.conn.execute(
             "SELECT u.*, c.hook FROM uploads u LEFT JOIN clips c ON c.id = u.clip_id "
             "ORDER BY u.uploaded_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+    # ---- multi-platform publishes --------------------------------------
+
+    def record_clip_publish(self, clip_id: int, platform: str, fields: dict) -> None:
+        """Record one destination's outcome for one clip.
+
+        Same tolerance as record_publish: unknown keys are dropped rather than
+        raising, so a platform that returns no post URL does not have to
+        invent one. Called once per platform per fan-out, and again on every
+        status poll as a platform moves queued -> processing -> published.
+        """
+        allowed = {r["name"] for r in self.conn.execute("PRAGMA table_info(clip_publishes)")}
+        row = {
+            k: v for k, v in fields.items() if k in allowed and k not in ("clip_id", "platform")
+        }
+        row["updated_at"] = _now()
+
+        columns = ", ".join(["clip_id", "platform", "created_at", *row])
+        placeholders = ", ".join("?" for _ in range(len(row) + 3))
+        # created_at is left alone on conflict: it marks when the clip was
+        # first sent to this platform, not when it was last polled.
+        updates = ", ".join(f"{k} = excluded.{k}" for k in row)
+        self.conn.execute(
+            f"INSERT INTO clip_publishes ({columns}) VALUES ({placeholders}) "
+            f"ON CONFLICT(clip_id, platform) DO UPDATE SET {updates}",
+            (clip_id, platform, _now(), *row.values()),
+        )
+        self.conn.commit()
+
+    def clip_publishes(self, clip_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM clip_publishes WHERE clip_id = ? ORDER BY platform",
+            (clip_id,),
+        ).fetchall()
+
+    def publishes_for_request(self, request_id: str) -> list[sqlite3.Row]:
+        """Every destination from one fan-out, so a retry can find its group."""
+        return self.conn.execute(
+            "SELECT * FROM clip_publishes WHERE request_id = ? ORDER BY platform",
+            (request_id,),
+        ).fetchall()
+
+    def recent_clip_publishes(self, limit: int = 50) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT p.*, c.hook FROM clip_publishes p "
+            "LEFT JOIN clips c ON c.id = p.clip_id "
+            "ORDER BY p.updated_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
 
