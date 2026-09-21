@@ -438,16 +438,16 @@ class UploadPostClient:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            body = ""
+            # Best effort: the real error is the status code, and a body that
+            # will not read or will not parse must never mask it.
             try:
                 body = e.read().decode("utf-8", "replace")
-            except Exception:
-                pass
-            payload = {}
+            except OSError:
+                body = ""
             try:
                 payload = json.loads(body) if body else {}
             except ValueError:
-                pass
+                payload = {}
             raise _classify(int(e.code), payload if isinstance(payload, dict) else {}, body) from e
         except urllib.error.URLError as e:
             err = UploadPostError(

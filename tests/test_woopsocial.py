@@ -176,6 +176,48 @@ def test_the_key_is_sent_as_a_bearer_token(monkeypatch):
     assert seen["url"] == "https://api.woopsocial.com/v1/projects"
 
 
+@pytest.mark.parametrize(
+    "post_id",
+    ["../../api/keys", "abc/def", "a b", "", "x" * 129, "id?x=1", "id#frag"],
+)
+def test_a_post_id_that_could_steer_the_request_is_refused(post_id, monkeypatch):
+    """quote() leaves slashes alone, so an unchecked id walks off /posts/.
+
+    This is the SSRF guard: nothing may reach the network at all.
+    """
+
+    def never(*a, **k):  # pragma: no cover - the point is it is not called
+        raise AssertionError("a request was made for an invalid id")
+
+    monkeypatch.setattr("urllib.request.urlopen", never)
+
+    with pytest.raises(WoopSocialError, match="post id"):
+        WoopSocialClient("k").get_post(post_id)
+
+
+def test_a_normal_post_id_still_reaches_its_own_endpoint(monkeypatch):
+    seen = {}
+
+    class FakeResponse:
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=0):
+        seen["url"] = req.full_url
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    WoopSocialClient("k").get_post("post_ABC-123")
+
+    assert seen["url"] == "https://api.woopsocial.com/v1/posts/post_ABC-123"
+
+
 def test_an_oversized_clip_is_refused_before_uploading(tmp_path: Path, monkeypatch):
     """Their single-request endpoint stops at 100 MB; say so rather than
     sending 400 MB and waiting for a failure."""

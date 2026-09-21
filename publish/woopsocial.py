@@ -21,6 +21,7 @@ Stdlib only, like the rest of `publish/`.
 """
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -100,6 +101,25 @@ def _classify(status: int, payload: dict, body: str) -> PublishError:
     return WoopSocialError(f"WoopSocial rejected the request. {detail}", detail=detail)
 
 
+# WoopSocial's own ids are opaque alphanumeric strings. Anything else is either
+# a bug in our caller or an attempt to steer the request somewhere it was not
+# meant to go, and the difference does not matter here: reject both.
+_ID_SHAPE = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
+def _safe_id(value: str) -> str:
+    """An id that is safe to interpolate into a URL path.
+
+    quote() defaults to safe="/", so a slash in an id survives into the path
+    and walks the request off its endpoint. Validating the shape is what
+    actually closes that; quoting with safe="" is the belt to its braces.
+    """
+    value = (value or "").strip()
+    if not _ID_SHAPE.fullmatch(value):
+        raise WoopSocialError("That does not look like a WoopSocial post id.")
+    return urllib.parse.quote(value, safe="")
+
+
 class WoopSocialClient:
     """Everything Clips Kitty needs from the WoopSocial API.
 
@@ -146,16 +166,16 @@ class WoopSocialClient:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            body = ""
+            # Best effort: the real error is the status code, and a body that
+            # will not read or will not parse must never mask it.
             try:
                 body = e.read().decode("utf-8", "replace")
-            except Exception:
-                pass
-            parsed = {}
+            except OSError:
+                body = ""
             try:
                 parsed = json.loads(body) if body else {}
             except ValueError:
-                pass
+                parsed = {}
             raise _classify(
                 int(e.code), parsed if isinstance(parsed, dict) else {}, body
             ) from e
@@ -255,7 +275,7 @@ class WoopSocialClient:
         return self._request("POST", "/posts", json_body=body, timeout=UPLOAD_TIMEOUT)
 
     def get_post(self, post_id: str) -> dict:
-        return self._request("GET", f"/posts/{urllib.parse.quote(post_id)}")
+        return self._request("GET", f"/posts/{_safe_id(post_id)}")
 
 
 def build_post(

@@ -4,7 +4,6 @@ import { t } from '../lib/i18n'
 import type { Clip } from '../lib/types'
 import {
   MAX_POLLS,
-  PLATFORMS,
   describeState,
   localInputToIso,
   localZone,

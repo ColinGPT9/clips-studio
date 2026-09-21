@@ -16,7 +16,7 @@
 # writes is still scanned, including video/asd.py, which is the code that
 # calls into TalkNet.
 
-# Five alerts are dismissed in code scanning rather than fixed, because the
+# Six alerts are dismissed in code scanning rather than fixed, because the
 # thing they describe is the product:
 #
 #   py/path-injection x4   core/paths.py (resolve + stat), the image read in
@@ -37,6 +37,25 @@
 #                          each caller re-stat-ing untrusted input. If a new
 #                          endpoint needs a file the user picked, call
 #                          picked_file(); do not write a second validator.
+#   py/clear-text-storage-sensitive-data
+#                          core/secrets.py, the non-Windows branch of save().
+#                          It writes 0600 JSON, and the module docstring is
+#                          already explicit that this is the fallback rather
+#                          than protection. It cannot be honestly fixed here:
+#                          encrypting on POSIX needs a master key with nowhere
+#                          safe to put it, which is obfuscation in a security
+#                          costume, and `keyring` was rejected for this exact
+#                          reason - on Linux it wants a Secret Service the
+#                          Docker image does not have and degrades to
+#                          plaintext anyway. The shipped product never reaches
+#                          the branch: releases are a Windows MSIX, so
+#                          backend_name() is always windows-dpapi. Only
+#                          contributor boxes on Linux and macOS hit it.
+#
+#                          Deliberately NOT a query-filter exclusion. This is
+#                          the one rule that should keep firing if someone
+#                          later writes a token to disk somewhere new.
+#
 #   py/file-not-closed     server/feedback.py — the job log handle belongs to
 #                          _job_sink until close_job_log() runs, which is a
 #                          lifetime the rule cannot follow.
