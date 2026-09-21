@@ -15,18 +15,17 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](docs/DOCKER.md)
 
-### Goal: 300 stars ⭐
+### Star and share Clips Kitty ⭐ Goal: 300
 
 [![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=0969da)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 300**
 
-Clips Kitty is a free Opus Clip, Vizard and Klap alternative. It runs **Google
-Gemma** on your own PC. The other tools either charge a subscription or run on
-ChatGPT, Gemini or Claude and pass those usage fees on to the creator. I made
-it for small YouTubers and streamers who cannot afford the other options or an
-editor, and do not have the time to cut clips themselves.
+**Please star the repo and share it.** It costs you nothing, and it is how the
+next small YouTuber or streamer finds out a free option exists.
 
-**If it helps you, please star the repo and share it.** It costs you nothing,
-and it is how the next creator finds out a free option exists.
+**I made it for small YouTubers and streamers** who cannot afford the other
+options or an editor. It is a free Opus Clip, Vizard and Klap alternative that
+runs **Google Gemma** on your own PC: no server cost, no per-clip fee, no AI
+usage fee.
 
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
