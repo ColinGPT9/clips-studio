@@ -15,9 +15,9 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](docs/DOCKER.md)
 
-### Star and share Clips Kitty ⭐ Goal: 300
+### Star and share Clips Kitty ⭐ Goal: 100
 
-[![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=0969da)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 300**
+[![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=0969da)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 100**
 
 **Please star the repo and share it.** It costs you nothing, and there is no
 marketing budget behind this, so word of mouth is the only way the next small
