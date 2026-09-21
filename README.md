@@ -19,12 +19,11 @@
 
 [![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=6f42c1)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 300**
 
-GitHub sorts search results by stars, so this is how someone looking for a free
-Opus Clip alternative finds out one exists. Clips Kitty has no ad budget, no
-newsletter and nothing to sign up for, so that ranking is most of the
-distribution it has.
+Clips Kitty is free for anyone to run and use. No subscription, no per-clip
+fees, nothing to sign up for, and right now it makes no money at all.
 
-**If it saved you an afternoon of editing, starring it is the whole ask.**
+**A star is the only thing I ask for.** It costs you nothing, and it is how the
+next creator finds out a free option exists.
 
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
