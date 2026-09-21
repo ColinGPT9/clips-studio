@@ -15,6 +15,17 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](docs/DOCKER.md)
 
+### Goal: 300 stars ⭐
+
+[![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=6f42c1)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 300**
+
+GitHub sorts search results by stars, so this is how someone looking for a free
+Opus Clip alternative finds out one exists. Clips Kitty has no ad budget, no
+newsletter and nothing to sign up for, so that ranking is most of the
+distribution it has.
+
+**If it saved you an afternoon of editing, starring it is the whole ask.**
+
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
 
