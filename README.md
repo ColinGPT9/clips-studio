@@ -19,12 +19,16 @@
 
 [![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=6f42c1)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 300**
 
-Clips Kitty is a free Opus Clip alternative. I built it for small creators: the
-people who cannot justify a monthly subscription to Opus Clip, Vizard or Klap,
-and cannot afford to pay a video editor either.
+Clips Kitty is a free Opus Clip alternative. I made it entirely free for small
+creators: the people who do not have the money to pay for Opus Clip, Vizard or
+Klap every month, and cannot afford a video editor either. That is the whole
+reason it exists, and making clips will always cost nothing.
 
-It is free for anyone to run and use. No subscription, no per-clip fees,
-nothing to sign up for, and right now it makes no money at all.
+No subscription, no per-clip fees, nothing to sign up for.
+
+One thing to disclose: posting finished clips to social platforms is done by
+third-party services you connect with your own account and key, and my link to
+one of them is a referral. It is optional, and clipping does not depend on it.
 
 **A star is the only thing I ask for.** It costs you nothing, and it is how the
 next creator finds out a free option exists.
