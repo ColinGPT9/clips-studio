@@ -158,6 +158,17 @@ Sports, gaming, reactions, lectures, wildlife: these are examples of what
 someone might want, not a roadmap. Nobody here is building them, and a fork
 that does is the point rather than a problem.
 
+**Give a genre its own section and a dropdown, not a pile of toggles.** If you
+build detection for sports, the Generate bar should get one *Sports* switch
+that reveals a picker for which sport, rather than a separate tick box per
+sport. Same for any other genre with variants. `longform` already works
+exactly this way and is the thing to copy end to end: a registry of modes in
+`longform/profiles.py`, one toggle in
+`ui/src/renderer/src/components/queue/AddVideos.tsx`, and a `<select>` that
+appears only when the toggle is on, sent as `options.longform = {mode}`. Keep
+the list in the registry rather than hardcoded in the JSX, so adding the next
+sport is one entry and no UI work.
+
 **One rule if you want it merged rather than just forked.** Make it opt-in and
 prove it on real footage. Tuning the pipeline for one kind of content has
 already regressed another kind here, so behaviour changes ride behind an
