@@ -1,8 +1,8 @@
 # Extending Clips Kitty
 
-The four changes people most often want to make, and what each actually
-touches. All of them are deliberately small, if one of these turns into a
-sprawling diff, something has drifted and the design is worth a second look.
+The changes people most often want to make, and what each actually touches.
+All of them are deliberately small, if one of these turns into a sprawling
+diff, something has drifted and the design is worth a second look.
 
 Read [ARCHITECTURE.md](../ARCHITECTURE.md) first for how the pieces fit.
 
@@ -96,6 +96,74 @@ Anything that shells out to FFmpeg **must** use `core.binaries.ffmpeg()`.
 Calling `"ffmpeg"` by bare name works on your machine and fails on every
 installed copy, because creators do not have FFmpeg on their PATH. A test
 enforces this.
+
+---
+
+## Bring your own model
+
+Clips Kitty already runs YOLOv8 (ultralytics), OpenCV and TalkNet-ASD locally.
+If you care about a kind of footage it does not understand, you do not need
+permission or a redesign. You need one array.
+
+**A signal is a numpy array over the video's timeline.** That is the whole
+contract. `analysis/fusion.py` percentile-ranks each one to 0..1 with `_pct()`
+and puts it in `peak_signals`:
+
+```python
+peak_signals = [visual_activity, audio_excitement, combined]
+```
+
+Anything in that list gets scanned by `_signal_peak_windows()`, and moments
+above `scoring.signal_peak_percentile` become clip candidates, competing with
+the transcript's own picks. So a detector that emits a per-second confidence
+makes its moments candidates without touching the scorer.
+
+Per-modality scanning matters and is deliberate: averaging first hides content
+strong in only one channel, which is why a silent workout survives at all.
+Add your signal as its own entry rather than folding it into `combined`.
+
+1. **Write the signal.** Copy the shape of `analysis/hype.py`:
+
+   ```python
+   def audience_curve(url: str, video_id: str, duration: float) -> np.ndarray | None:
+   ```
+
+   Returning `None` is a first-class answer. Audience data is missing for
+   every Kick VOD and the pipeline scores fine without it, so nothing may
+   become a hard dependency. Give it a time budget too: `hype.py` caps its
+   fetch at 180s precisely so a slow source cannot stall a job.
+
+2. **Spend detector time inside candidates, not across the whole video.**
+   Global passes are cheap signals only. `analysis/visual_features.py` uses
+   FFmpeg to decode downscaled grayscale frames, ~20x faster than making
+   OpenCV walk every frame, and saves the neural work for
+   `reaction_for_window()`, which runs per candidate window. A YOLO pass over
+   a 30-minute video to find 8 clips is most of an hour spent on footage
+   nobody will watch.
+
+3. **Tune before you code.** `config/settings.yaml` under `scoring` holds the
+   fusion weights, `signal_peak_percentile`, and bonuses like `action_bonus`.
+   Reweighting for your content is config, not a patch, and it is worth
+   exhausting that before adding anything.
+
+**A different detector** goes in `video/tracker.py`, at `_get_model()`. Note
+`_infer_lock` just above it: ultralytics inference is **not thread-safe on one
+model instance**, and renders run in parallel, so the single shared model is
+serialised. Keep that if you swap the model, or give each thread its own.
+
+**A different output shape** is usually a new entry in `longform/profiles.py`,
+not new rendering code.
+
+Sports, gaming, reactions, lectures, wildlife: these are examples of what
+someone might want, not a roadmap. Nobody here is building them, and a fork
+that does is the point rather than a problem.
+
+**One rule if you want it merged rather than just forked.** Make it opt-in and
+prove it on real footage. Tuning the pipeline for one kind of content has
+already regressed another kind here, so behaviour changes ride behind an
+explicit switch and default to today's behaviour. CI has no GPU, no Ollama and
+no footage, so it cannot catch this for you: say in the PR which video you
+tested and what changed.
 
 ---
 

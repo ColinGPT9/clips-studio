@@ -644,6 +644,20 @@ serves its own interactive docs at `http://127.0.0.1:8765/docs`.
 It has **no authentication** and it binds localhost for that reason. See the
 security note in the API docs before you point anything at it.
 
+### Or bring your own model
+
+That is building *around* the app. You can also build *inside* it. The pipeline
+runs **YOLOv8 (ultralytics), OpenCV and TalkNet-ASD** locally, and what decides
+which moments become clips is a set of per-second signals, not a hardcoded idea
+of what is interesting. A detector that emits a confidence over the timeline can
+be added as one more signal, and its peaks become candidate clips.
+
+So if the footage you care about is not what this was tuned for, whether that is
+sports, gaming, reactions, lectures or something nobody has tried, fork it and
+plug your own detection in. **[docs/EXTENDING.md](docs/EXTENDING.md#bring-your-own-model)**
+has the contract, the file to copy, and the performance trap worth knowing before
+you start.
+
 **Nothing has to poll.** Submit a job with a `webhook_url` and the engine POSTs
 once when it finishes, signed with your own secret if you pass one, so a dock or
 an n8n flow can sit quiet for the forty minutes a stream takes instead of asking
