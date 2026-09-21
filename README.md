@@ -19,8 +19,9 @@
 
 [![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=0969da)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 300**
 
-**Please star the repo and share it.** It costs you nothing, and it is how the
-next small YouTuber or streamer finds out a free option exists.
+**Please star the repo and share it.** It costs you nothing, and there is no
+marketing budget behind this, so word of mouth is the only way the next small
+YouTuber or streamer finds out a free option exists.
 
 **I made it for small YouTubers and streamers** who cannot afford the other
 options or an editor. It is a free Opus Clip, Vizard and Klap alternative that
