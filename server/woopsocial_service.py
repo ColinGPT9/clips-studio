@@ -125,24 +125,29 @@ def tags_of(clip) -> list[str]:
     return [str(t).lstrip("#") for t in parsed if str(t).strip()]
 
 
-def record_outcomes(db, clip_id: int, clip, result) -> None:
-    """Write one row per platform for a finished fan-out."""
+def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "") -> None:
+    """Write one row per platform for a finished fan-out.
+
+    `scheduled_for` is when the post is actually due. It is kept because a run
+    spread over days is otherwise invisible: the app sent the times and then
+    forgot them, so the only way to see the plan was the provider's own site.
+    Empty on a refresh, which learns states rather than setting times.
+    """
     for outcome in result.outcomes:
-        db.record_clip_publish(
-            clip_id,
-            outcome.platform,
-            {
-                "provider": "woopsocial",
-                "video_id": (clip["video_id"] if clip is not None else "") or "",
-                "start_s": (clip["start_s"] if clip is not None else 0) or 0,
-                "end_s": (clip["end_s"] if clip is not None else 0) or 0,
-                "state": outcome.state,
-                "post_id": outcome.post_id,
-                "post_url": outcome.post_url,
-                "error": outcome.error,
-                "request_id": result.request_id,
-            },
-        )
+        fields = {
+            "provider": "woopsocial",
+            "video_id": (clip["video_id"] if clip is not None else "") or "",
+            "start_s": (clip["start_s"] if clip is not None else 0) or 0,
+            "end_s": (clip["end_s"] if clip is not None else 0) or 0,
+            "state": outcome.state,
+            "post_id": outcome.post_id,
+            "post_url": outcome.post_url,
+            "error": outcome.error,
+            "request_id": result.request_id,
+        }
+        if scheduled_for:
+            fields["scheduled_for"] = scheduled_for
+        db.record_clip_publish(clip_id, outcome.platform, fields)
 
 
 def publish_clips(
@@ -155,6 +160,9 @@ def publish_clips(
     every_hours: float = 0,
     start_at: str = "",
     overrides: dict | None = None,
+    exclude: dict | None = None,
+    per_day: int = 0,
+    gap_hours: float = 1,
 ) -> dict:
     """Publish a set of clips, optionally spaced out over time.
 
@@ -185,12 +193,48 @@ def publish_clips(
         except ValueError:
             start = datetime.now(tz.utc)
 
+    # A daily budget, when one was asked for. Posting limits are daily -
+    # WoopSocial rations YouTube to five a day to protect the Google Cloud
+    # quota it shares between all its users - so "five a day, an hour apart"
+    # is the shape that works, and a flat interval cannot express it.
+    slot_times: list[str] = []
+    if per_day:
+        from publish.schedule import MIN_LEAD_SECONDS, daily, to_rfc3339
+
+        first = start
+        if not start_at:
+            # "Start now" cannot mean this instant: every generated time goes
+            # through the same validator a hand-picked one does, and that
+            # refuses anything inside the lead time. Begin at the first moment
+            # it would accept rather than failing the whole run.
+            first = datetime.now(tz.utc) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
+        slot_times = daily(
+            to_rfc3339(first), len(clip_ids), int(per_day), float(gap_hours or 1)
+        )
+
+    # Exceptions, keyed by clip id. JSON turns integer keys into strings on
+    # the way in, so both are accepted rather than one silently missing.
+    skip_map: dict[int, set[str]] = {}
+    for key, values in (exclude or {}).items():
+        try:
+            skip_map[int(key)] = {str(v) for v in values}
+        except (TypeError, ValueError):
+            continue
+
     started: list[dict] = []
     skipped: list[dict] = []
+    slot = 0
     for index, clip_id in enumerate(clip_ids):
         clip = db.get_clip(clip_id)
         if clip is None:
             skipped.append({"clip_id": clip_id, "reason": "no such clip"})
+            continue
+
+        # Some platforms are stricter than others, so a clip that is fine on
+        # one is held back from another rather than dropped everywhere.
+        wanted = [p for p in platforms if p not in skip_map.get(clip_id, set())]
+        if not wanted:
+            skipped.append({"clip_id": clip_id, "reason": "excluded from every platform"})
             continue
         if not (clip["path"] and _Path(clip["path"]).exists()):
             skipped.append({"clip_id": clip_id, "reason": "no rendered file yet"})
@@ -211,8 +255,13 @@ def publish_clips(
             text = (text + "\n\n" + " ".join("#" + t for t in tags)).strip()
 
         when = ""
-        if every_hours or start_at:
-            at = start + timedelta(hours=every_hours * index)
+        if slot_times:
+            # `slot` counts clips actually being sent, not the loop index: a
+            # clip skipped for being excluded or unrendered must not burn one
+            # of the day's five slots.
+            when = slot_times[slot] if slot < len(slot_times) else slot_times[-1]
+        elif every_hours or start_at:
+            at = start + timedelta(hours=every_hours * slot)
             # Their scheduler wants UTC and refuses a past time; the first slot
             # of a "starting now" run would otherwise be a second or two behind
             # by the time it arrives.
@@ -223,7 +272,7 @@ def publish_clips(
         try:
             result = publisher.start(
                 _Path(clip["path"]),
-                platforms=platforms,
+                platforms=wanted,
                 title=(clip["title"] or clip["hook"] or f"Clip {clip_id}").strip(),
                 text=text,
                 scheduled_for=when,
@@ -234,13 +283,107 @@ def publish_clips(
             skipped.append({"clip_id": clip_id, "reason": e.message})
             continue
 
-        record_outcomes(db, clip_id, clip, result)
+        record_outcomes(db, clip_id, clip, result, scheduled_for=when)
         started.append(
             {"clip_id": clip_id, "request_id": result.request_id, "scheduled_for": when}
         )
+        slot += 1
 
     save_settings(db, {"platforms": platforms})
     return {"started": started, "skipped": skipped}
+
+
+def in_flight(db) -> list[str]:
+    """Request ids with at least one destination still unfinished.
+
+    One id per fan-out, not per row: a 37-clip batch is 37 rows but they were
+    accepted as separate posts, so this returns each distinct request once and
+    the caller asks about each once.
+    """
+    rows = db.conn.execute(
+        "SELECT DISTINCT request_id FROM clip_publishes "
+        "WHERE request_id != '' AND state IN ('queued', 'processing') "
+        "ORDER BY created_at DESC"
+    ).fetchall()
+    return [r["request_id"] for r in rows]
+
+
+def refresh_in_flight(db, data_dir: Path, *, limit: int = 60) -> dict:
+    """Ask WoopSocial what became of everything still in the air.
+
+    Nothing did this before, so a batch stayed at "processing" forever: the
+    clips were delivered at WoopSocial's own pace and the app never looked
+    again, which left no way to tell a slow queue from a failure. That is the
+    whole reason this exists.
+
+    Failures are counted, not raised. A refresh is a read; one unreachable
+    request must not stop the rest being updated.
+    """
+    from publish.errors import PublishError
+    from publish.woopsocial import WoopSocialPublisher
+
+    ids = in_flight(db)[:limit]
+    if not ids:
+        return {"checked": 0, "updated": 0, "still_waiting": 0, "failed": 0}
+
+    client = make_client(data_dir)
+    publisher = WoopSocialPublisher(client, resolve_project(db, client))
+
+    updated = failed = 0
+    for request_id in ids:
+        rows = db.publishes_for_request(request_id)
+        if not rows:
+            continue
+        clip_id = int(rows[0]["clip_id"])
+        try:
+            result = publisher.check(request_id)
+        except PublishError:
+            failed += 1
+            continue
+        except Exception:
+            failed += 1
+            continue
+        if result.outcomes:
+            record_outcomes(db, clip_id, db.get_clip(clip_id), result)
+            updated += 1
+
+    return {
+        "checked": len(ids),
+        "updated": updated,
+        "still_waiting": len(in_flight(db)),
+        "failed": failed,
+    }
+
+
+def upcoming(db, *, limit: int = 200) -> list[dict]:
+    """What is due, soonest first, with the clip's own title.
+
+    The point of storing scheduled_for: a run spread across eight days is a
+    plan, and a plan you cannot see is indistinguishable from a queue that
+    silently dropped your posts. Which is exactly what happened.
+    """
+    rows = db.conn.execute(
+        "SELECT p.clip_id, p.platform, p.state, p.scheduled_for, p.post_url, "
+        "       p.error, c.title, c.hook "
+        "FROM clip_publishes p LEFT JOIN clips c ON c.id = p.clip_id "
+        "WHERE p.scheduled_for != '' "
+        "ORDER BY p.scheduled_for ASC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
+    out = []
+    for r in rows:
+        out.append(
+            {
+                "clip_id": r["clip_id"],
+                "platform": r["platform"],
+                "state": r["state"],
+                "scheduled_for": r["scheduled_for"],
+                "post_url": r["post_url"] or "",
+                "error": r["error"] or "",
+                "title": (r["title"] or r["hook"] or f"Clip {r['clip_id']}"),
+            }
+        )
+    return out
 
 
 def status_payload(db, data_dir: Path) -> dict:

@@ -238,6 +238,8 @@ CREATE TABLE IF NOT EXISTS clip_publishes (
     -- The provider's own id for the whole fan-out, so every row from one
     -- operation can be found together and retried as a group.
     request_id TEXT NOT NULL DEFAULT '',
+    -- When this post is due, for a run spread across days.
+    scheduled_for TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (clip_id, platform)
@@ -396,6 +398,16 @@ class StateDB:
         ):
             if column not in upload_cols:
                 self.conn.execute(f"ALTER TABLE uploads ADD COLUMN {column} {decl}")
+        # When a scheduled post is actually due. Without it the app forgot the
+        # times the moment it sent them, so a run spread over eight days could
+        # not be shown, only guessed at from the platform's own dashboard.
+        publish_cols = {
+            r["name"] for r in self.conn.execute("PRAGMA table_info(clip_publishes)")
+        }
+        if "scheduled_for" not in publish_cols:
+            self.conn.execute(
+                "ALTER TABLE clip_publishes ADD COLUMN scheduled_for TEXT NOT NULL DEFAULT ''"
+            )
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")

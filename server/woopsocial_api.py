@@ -49,6 +49,15 @@ class BatchIn(BaseModel):
     # Added to every clip in the run, on top of whatever tags each clip
     # already carries. The "#" is optional; duplicates are dropped.
     hashtags: list[str] = []
+    # Clip id -> platforms to hold it back from. Absent means every clip
+    # goes to every platform picked, which is the usual case; this is for
+    # the handful a stricter platform should not get.
+    exclude: dict[str, list[str]] = {}
+    # A daily budget, which is the shape posting limits actually take:
+    # WoopSocial allows five YouTube posts a day. per_day 0 keeps the old
+    # flat every_hours behaviour for anything already calling it.
+    per_day: int = 0
+    gap_hours: float = 1
 
 
 class PublishIn(BaseModel):
@@ -348,6 +357,9 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                     every_hours=body.every_hours,
                     start_at=body.start_at,
                     overrides=body.overrides,
+                    exclude=body.exclude,
+                    per_day=body.per_day,
+                    gap_hours=body.gap_hours,
                 )
             except PublishError as e:
                 raise _fail(e) from e
@@ -368,6 +380,43 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         if not isinstance(parsed, list):
             return []
         return [str(t).lstrip("#") for t in parsed if str(t).strip()]
+
+    @app.post("/woopsocial/refresh")
+    def refresh_all():
+        """Catch up on every publish still in the air.
+
+        A batch is accepted in one go and then delivered at WoopSocial's own
+        pace, so without this the rows stay at "processing" and there is no
+        way to tell a slow queue from a failure.
+        """
+        d = db()
+        try:
+            _guard(d)
+            try:
+                return service.refresh_in_flight(d, data_path)
+            except PublishError as e:
+                raise _fail(e) from e
+        finally:
+            d.close()
+
+    @app.get("/woopsocial/schedule")
+    def schedule():
+        """Everything with a time on it, soonest first."""
+        d = db()
+        try:
+            _guard(d)
+            return {"posts": service.upcoming(d)}
+        finally:
+            d.close()
+
+    @app.get("/woopsocial/in-flight")
+    def in_flight_count():
+        """How much is still unfinished, without asking WoopSocial."""
+        d = db()
+        try:
+            return {"request_ids": service.in_flight(d)}
+        finally:
+            d.close()
 
     @app.post("/woopsocial/refresh/{post_id}")
     def refresh(post_id: str):

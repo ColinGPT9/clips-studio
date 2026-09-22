@@ -81,6 +81,48 @@ def validate_publish_at(value: str, now: datetime | None = None) -> str:
     return to_rfc3339(moment)
 
 
+def daily(
+    start: str,
+    count: int,
+    per_day: int,
+    gap_hours: float,
+    now: datetime | None = None,
+) -> list[str]:
+    """`count` publish times, `per_day` of them each day, `gap_hours` apart.
+
+    "Five a day, an hour apart, until they are all out" is the shape people
+    actually want, and `spread()` cannot express it: one flat interval either
+    bunches everything into today or drags a single post per day out for a
+    month. Posting limits are daily, so the budget has to be daily too.
+
+    Day `i // per_day`, slot `i % per_day`, so 37 clips at five a day from
+    09:00 go out 09:00-13:00 today, the same five slots tomorrow, and finish
+    eight days later.
+
+    A day's posts must fit inside that day. Otherwise the last slot of Monday
+    lands on Tuesday, two days' budgets collide, and the platform rejects the
+    overflow as spam — which is exactly the failure this replaces.
+    """
+    if count < 1:
+        return []
+    if per_day < 1:
+        raise PublishError("Post at least one a day, or upload them all now.")
+    if gap_hours <= 0:
+        raise PublishError("Put some time between the videos, or upload them all now.")
+    if gap_hours * (per_day - 1) >= 24:
+        raise PublishError(
+            f"{per_day} posts {gap_hours} hours apart does not fit in a day. "
+            f"Post fewer a day, or put them closer together."
+        )
+    first = parse(start)
+    times = [
+        first + timedelta(days=i // per_day, hours=gap_hours * (i % per_day))
+        for i in range(count)
+    ]
+    # The same door a hand-picked time goes through, as in spread().
+    return [validate_publish_at(to_rfc3339(moment), now=now) for moment in times]
+
+
 def spread(start: str, count: int, every_hours: float, now: datetime | None = None) -> list[str]:
     """`count` publish times, `every_hours` apart, beginning at `start`.
 
