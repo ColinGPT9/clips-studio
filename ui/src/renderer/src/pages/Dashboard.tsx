@@ -649,9 +649,16 @@ export default function Dashboard({
                   <p className="font-bold text-lg text-ink">
                     {t('Post every clip everywhere 🚀')}
                   </p>
+                  {/* Names the free ceiling instead of praising the free
+                      tier. The referral pays only on a subscription, and the
+                      old line sold the plan that earns nothing. The limit is
+                      real: every tier reaches the same nine networks, but
+                      free connects two accounts, so YouTube plus TikTok plus
+                      Instagram already does not fit. The honest sentence and
+                      the persuasive one are the same sentence. */}
                   <p className="text-sm text-ink/80 mt-0.5">
                     {t(
-                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads, Pinterest and Bluesky. Free plan, no watermark, no per-clip fees.'
+                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads, Pinterest and Bluesky. The free plan connects two accounts. Connect all nine and post to every platform at once.'
                     )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a
@@ -671,7 +678,7 @@ export default function Dashboard({
                   className="btn-accent shrink-0 text-lg px-8 py-3.5 font-semibold"
                   title={publishUrl}
                 >
-                  {t('Get started free ↗')}
+                  {t('Start posting everywhere ↗')}
                 </button>
               </div>
             </div>
