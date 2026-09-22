@@ -349,6 +349,7 @@ export default function ClipStudio({
                 clip={current}
                 onChanged={() => activeVideo && refreshClips(activeVideo)}
                 onOpenEditor={() => setEditingClipId(current.id)}
+                onPublish={publishReady ? () => setPublishOne(current) : undefined}
               />
             ) : (
               <div className="card text-muted text-sm">Select a clip to preview and edit it.</div>

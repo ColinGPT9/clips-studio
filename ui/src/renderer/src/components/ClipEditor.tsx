@@ -9,11 +9,15 @@ const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
 export default function ClipEditor({
   clip,
   onChanged,
-  onOpenEditor
+  onOpenEditor,
+  onPublish
 }: {
   clip: Clip
   onChanged: () => void
   onOpenEditor: () => void
+  /** Publish this one clip. Absent when no provider is set up, which hides
+   *  the button rather than showing one that can only apologise. */
+  onPublish?: () => void
 }): JSX.Element {
   const [title, setTitle] = useState(clip.title)
   const [description, setDescription] = useState(clip.description)
@@ -179,6 +183,17 @@ export default function ClipEditor({
         <button className="btn-ghost" onClick={exportOne} disabled={busy !== null}>
           {busy === 'export' ? 'Exporting…' : 'Export'}
         </button>
+        {/* Beside Export rather than only on the card in the grid: Export
+            writes this one clip to a folder, and Publish is the same scope
+            for the other destination. Only shown once a provider is set up,
+            so the row does not carry a button that can only explain itself.
+            Posting is not undoable, so it opens the confirm dialog rather
+            than acting on the click, exactly like Publish all. */}
+        {onPublish && (
+          <button className="btn-ghost" onClick={onPublish} disabled={busy !== null}>
+            Publish ↗
+          </button>
+        )}
       </div>
       {notice && <p className="text-sm text-accent">{notice}</p>}
     </div>
