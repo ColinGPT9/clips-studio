@@ -112,10 +112,6 @@ export default function Dashboard({
   // The publishing referral, if one has been configured. Empty means the
   // call to action does not exist rather than pointing nowhere.
   const [publishUrl, setPublishUrl] = useState('')
-  // Whether posting is already set up. Without this the card only ever
-  // offered an off-site signup, so someone who already had an account
-  // had no way in from here at all.
-  const [publishReady, setPublishReady] = useState(false)
   // Only watch while something is actually in flight, so an idle Dashboard
   // never polls.
   const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
@@ -143,10 +139,7 @@ export default function Dashboard({
   useEffect(() => {
     api
       .woopSocialStatus()
-      .then((s) => {
-        setPublishUrl(s.affiliate_url || '')
-        setPublishReady(Boolean(s.enabled && s.has_key))
-      })
+      .then((s) => setPublishUrl(s.affiliate_url || ''))
       .catch(() => {
         /* backend not up, or an older build: no call to action */
       })
@@ -648,19 +641,18 @@ export default function Dashboard({
                   beside it instead of floating above the optical middle. */}
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
+                  {/* One message in every state, and it sells. The card used
+                      to go quiet once posting was set up, which wasted the
+                      best spot on the page: the referral is how the app earns
+                      and it is worth showing whether or not this machine has
+                      an account yet. */}
                   <p className="font-bold text-lg text-ink">
-                    {publishReady
-                      ? t('Posting is ready 🚀')
-                      : t('Clips Kitty can post for you 🚀')}
+                    {t('Post every clip everywhere 🚀')}
                   </p>
                   <p className="text-sm text-ink/80 mt-0.5">
-                    {publishReady
-                      ? t(
-                          'Post clips to YouTube, TikTok and Instagram. Spread them over days to stay inside the daily limits.'
-                        )
-                      : t(
-                          'Post clips to YouTube, TikTok and Instagram. Make a free account, then add your API key in Settings.'
-                        )}
+                    {t(
+                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads, Pinterest and Bluesky. Free plan, no watermark, no per-clip fees.'
+                    )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a
                       disclosure at all, and it is never shown apart from the
