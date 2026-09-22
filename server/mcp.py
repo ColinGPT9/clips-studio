@@ -201,6 +201,19 @@ def _queue_video(args: dict) -> str:
         body["longform"] = {"mode": args["longform"]}
     if args.get("caption_style"):
         body["caption_style"] = _caption_style(args["caption_style"])
+    # Passed through as written. Normalising happens once, in the pipeline's
+    # own _clean_hashtags, rather than in a second copy of the same rules here.
+    tags = [str(h).strip() for h in (args.get("hashtags") or []) if str(h).strip()]
+    if tags:
+        body["hashtags"] = tags
+    # "Process this and publish them" cannot be one step: queueing returns in a
+    # second and the clips appear an hour later. The job carries the second
+    # half so it survives the wait (server/jobs.py runs it on completion).
+    if args.get("publish_when_done"):
+        body["then"] = {
+            "action": "publish",
+            "platforms": list(args["publish_when_done"]),
+        }
     out = _request("POST", "/jobs", body)
     if out.get("job_id") is None:
         if out.get("already_processed"):
@@ -815,6 +828,27 @@ TOOLS: list[dict] = [
                     "type": "boolean",
                     "description": (
                         "Burn captions into the clips. On unless set to false."
+                    ),
+                },
+                "hashtags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Hashtags every clip from this video must carry, in its "
+                        "title line and description. Use when they name a tag "
+                        "they want on all of them; do not set metadata clip by "
+                        "clip afterwards instead."
+                    ),
+                },
+                "publish_when_done": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Platforms to publish every clip to as soon as "
+                        "processing finishes, e.g. [\"youtube\"]. Use this when "
+                        "they ask you to process a video AND publish it: the "
+                        "clips do not exist yet while you are replying, so "
+                        "there is nothing to publish until the job completes."
                     ),
                 },
                 "watermark": {

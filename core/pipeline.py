@@ -340,6 +340,29 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         creator_context=(creator_ctx.summary if creator_ctx else ""),
     )
 
+    # Hashtags the request insisted on (chat: "put #sarasaffari on all of
+    # them"). Appended after generation rather than asked of the model: a
+    # required tag that the LLM sometimes forgets is not required. Order keeps
+    # the model's own tags first, and a tag it happened to pick anyway is not
+    # repeated.
+    required = config["clips"].get("required_hashtags") or []
+    if required:
+        from analysis.metadata import _clean_hashtags
+
+        extra = _clean_hashtags(required)
+        for meta in metas:
+            have = {t.casefold() for t in meta.hashtags}
+            meta.hashtags = meta.hashtags + [t for t in extra if t.casefold() not in have]
+            # "titles AND descriptions must have it in them", so the tag goes
+            # on the title too, not just the tag list. YouTube rejects a title
+            # over 100 characters, so a tag that will not fit is left to the
+            # description rather than costing the clip its upload.
+            for tag in extra:
+                if tag.casefold() in meta.title.casefold():
+                    continue
+                if len(meta.title) + len(tag) + 1 <= 100:
+                    meta.title = f"{meta.title} {tag}"
+
     # Creator learning runs in the background WHILE clips render — renders
     # don't use Ollama, so this pass is wall-clock free. It extracts durable
     # facts/events for FUTURE videos and never touches this run's clips.

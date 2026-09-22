@@ -319,97 +319,38 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
     def publish_batch(body: BatchIn):
         """Publish several clips, spaced out over time.
 
-        One post per clip, because each clip is different media. The spacing
-        is done with WoopSocial's own scheduler rather than a timer here, so
-        a run that stretches over days keeps going with Clips Kitty closed —
-        which is the whole point of scheduling a month of Shorts.
+        The loop itself lives in woopsocial_service.publish_clips, because the
+        worker needs the same behaviour when a job was queued with "publish
+        when done" (server/jobs.py). Two copies would drift.
         """
-        from datetime import datetime, timedelta
-        from datetime import timezone as tz
-
         from publish.uploadpost import validate_schedule
-        from publish.woopsocial import WoopSocialPublisher
 
         if not body.clip_ids:
             raise HTTPException(400, "No clips were chosen.")
         if not body.platforms:
             raise HTTPException(400, "Pick at least one platform.")
+        if body.start_at:
+            try:
+                validate_schedule(body.start_at)
+            except PublishError as e:
+                raise _fail(e) from e
 
         d = db()
         try:
             _guard(d)
-            settings = service.load_settings(d)
-            standing = (settings.get("common_description") or "").strip()
-            client = _client()
-            publisher = WoopSocialPublisher(client, _project(d, client))
-
-            start = datetime.now(tz.utc)
-            if body.start_at:
-                try:
-                    validate_schedule(body.start_at)
-                    start = datetime.fromisoformat(body.start_at.replace("Z", "+00:00"))
-                except (PublishError, ValueError) as e:
-                    raise _fail(
-                        e
-                        if isinstance(e, PublishError)
-                        else PublishError("That start time could not be read.")
-                    ) from e
-
-            started, skipped = [], []
-            for index, clip_id in enumerate(body.clip_ids):
-                clip = d.get_clip(clip_id)
-                if clip is None:
-                    skipped.append({"clip_id": clip_id, "reason": "no such clip"})
-                    continue
-                if not (clip["path"] and Path(clip["path"]).exists()):
-                    skipped.append({"clip_id": clip_id, "reason": "no rendered file yet"})
-                    continue
-
-                text = (clip["description"] or "").strip()
-                if standing:
-                    text = f"{text}\n\n{standing}".strip()
-                # The clip's own tags first, then anything asked for
-                # across the whole run, with duplicates dropped so a tag
-                # the clip already had is not repeated.
-                tags = _tags_of(clip)
-                for extra in body.hashtags:
-                    cleaned = extra.lstrip("#").strip()
-                    if cleaned and cleaned.lower() not in {t.lower() for t in tags}:
-                        tags.append(cleaned)
-                if tags:
-                    text = f"{text}\n\n{' '.join('#' + t for t in tags)}".strip()
-
-                when = ""
-                if body.every_hours or body.start_at:
-                    at = start + timedelta(hours=body.every_hours * index)
-                    # Their scheduler wants UTC and refuses a past time; the
-                    # first slot of a "starting now" run would otherwise be a
-                    # second or two behind by the time it arrives.
-                    if at <= datetime.now(tz.utc):
-                        at = datetime.now(tz.utc) + timedelta(minutes=2)
-                    when = at.isoformat()
-
-                try:
-                    result = publisher.start(
-                        Path(clip["path"]),
-                        platforms=body.platforms,
-                        title=(clip["title"] or clip["hook"] or f"Clip {clip_id}").strip(),
-                        text=text,
-                        scheduled_for=when,
-                        overrides=body.overrides,
-                    )
-                except PublishError as e:
-                    # One clip's problem must not cost the rest of the batch.
-                    skipped.append({"clip_id": clip_id, "reason": e.message})
-                    continue
-
-                _record(d, clip_id, clip, result)
-                started.append(
-                    {"clip_id": clip_id, "request_id": result.request_id, "scheduled_for": when}
+            try:
+                return service.publish_clips(
+                    d,
+                    data_path,
+                    clip_ids=body.clip_ids,
+                    platforms=body.platforms,
+                    hashtags=body.hashtags,
+                    every_hours=body.every_hours,
+                    start_at=body.start_at,
+                    overrides=body.overrides,
                 )
-
-            service.save_settings(d, {"platforms": body.platforms})
-            return {"started": started, "skipped": skipped}
+            except PublishError as e:
+                raise _fail(e) from e
         finally:
             d.close()
 

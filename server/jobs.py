@@ -195,6 +195,10 @@ class Worker(threading.Thread):
                         cfg["clips"]["max_duration"] = 180
                     if payload.get("filter"):
                         cfg["clips"]["filter"] = payload["filter"]
+                    if payload.get("hashtags"):
+                        # Tags the request insisted on: every clip of this job
+                        # carries them, on top of whatever the model writes.
+                        cfg["clips"]["required_hashtags"] = list(payload["hashtags"])
                     if payload.get("max_clips"):
                         n = int(payload["max_clips"])
                         cfg["clips"]["max_clips_per_video"] = n
@@ -226,6 +230,7 @@ class Worker(threading.Thread):
                 else:
                     raise ValueError(f"Unknown job type {job['type']!r}")
                 db.finish_job(job["id"], "done")
+                self._run_follow_up(db, job, payload)
                 self._announce(db, job, "done")
             except CancelledError:
                 db.finish_job(job["id"], "cancelled", "Cancelled by user")
@@ -501,6 +506,52 @@ class Worker(threading.Thread):
         except Exception as e:
             print(f"      (could not rebuild captions: {e})")
             return []
+
+    def _run_follow_up(self, db: StateDB, job, payload: dict) -> None:
+        """Do what the request asked for AFTER the clips exist.
+
+        "Process this video and publish them all" cannot be one step: queueing
+        returns in a second and the clips appear an hour later. Asked from the
+        chat box, the second half used to be dropped in silence — the video
+        processed and nothing was ever published. The job carries the
+        intention instead, and it is honoured here.
+
+        Contained like the job itself: a publish that fails marks nothing
+        failed, because the clips were still produced and that is what the job
+        was. The reason goes in the log and the per-platform rows.
+        """
+        then = payload.get("then") or {}
+        if then.get("action") != "publish":
+            return
+        video_id = job["video_id"] if "video_id" in job.keys() else ""
+        if not video_id:
+            return
+        try:
+            from server import woopsocial_service as woop
+
+            if not woop.is_enabled(db) or not woop.has_key(
+                Path(self.config["paths"]["data_dir"])
+            ):
+                print("  Publish skipped: WoopSocial is not set up.")
+                return
+            clip_ids = [int(c["id"]) for c in db.clips_for_video(video_id)]
+            if not clip_ids:
+                print("  Publish skipped: the run produced no clips.")
+                return
+            platforms = list(then.get("platforms") or [])
+            print(f"  Publishing {len(clip_ids)} clip(s) to {', '.join(platforms)}...")
+            out = woop.publish_clips(
+                db,
+                Path(self.config["paths"]["data_dir"]),
+                clip_ids=clip_ids,
+                platforms=platforms,
+                every_hours=float(then.get("every_hours") or 0),
+            )
+            print(
+                f"  Published {len(out['started'])}, skipped {len(out['skipped'])}."
+            )
+        except Exception as e:
+            print(f"  Publish after processing failed: {e}")
 
     def _rerender_clip(self, db: StateDB, payload: dict) -> None:
         """Re-render one clip from the original source video, with optionally

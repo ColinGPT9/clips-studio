@@ -231,13 +231,19 @@ export const api = {
     ),
   /** One exchange with the assistant. `steps` is what it actually did, `plan`
    *  is a proposed batch of uploads that NOTHING has acted on yet. */
-  agentChat: (message: string, history: { role: string; content: string }[]) =>
+  agentChat: (
+    message: string,
+    history: { role: string; content: string }[],
+    /** The Generate bar's current toggles, so a job the assistant queues
+     *  behaves like one started by hand. */
+    defaults?: JobOptions
+  ) =>
     request<{
       reply: string
       model: string
       steps: { tool: string; arguments: Record<string, unknown>; result: string }[]
       plan: { items: PublishPlanItem[]; warnings: string[] } | null
-    }>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, history }) }),
+    }>('/agent/chat', { method: 'POST', body: JSON.stringify({ message, history, defaults }) }),
   /** Carry out a plan the person has agreed to. Only a click reaches this. */
   executePublishPlan: (items: PublishPlanItem[]) =>
     request<{

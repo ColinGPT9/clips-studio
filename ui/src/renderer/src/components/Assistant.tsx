@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import type { PublishPlanItem } from '../lib/types'
+import { seedOptions } from './queue/AddVideos'
 
 interface Turn {
   role: 'user' | 'assistant'
@@ -68,7 +69,12 @@ export default function Assistant(): JSX.Element | null {
       // own answers, and feeding it every raw tool result again would fill
       // the context with things it already summarised.
       const history = turns.map((turn) => ({ role: turn.role, content: turn.text }))
-      const res = await api.agentChat(text, history)
+      // The Generate bar's settings travel with the message. Without
+      // them a job asked for in the chat ignored every toggle above it:
+      // captions came back burned in however often the box was unticked,
+      // because that choice lives in this window and the model never
+      // saw it.
+      const res = await api.agentChat(text, history, seedOptions())
       setTurns((prior) => [
         ...prior,
         {

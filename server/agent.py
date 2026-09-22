@@ -30,17 +30,19 @@ import json
 MAX_TURNS = 8
 TOOL_OUTPUT_LIMIT = 4000
 
-# Never offered to the model. See the module docstring.
+# Never offered to the model.
 #
-# uploadpost_publish joins it for the same reason: it posts publicly, to
-# several platforms at once, and cannot be taken back. The model may check
-# status and read results, so it can still describe what would happen and
-# report what did — a person presses the button in the app.
-HUMAN_ONLY = {
-    "publish_plan_execute",
-    "uploadpost_publish",
-    "schedule_clips_execute",
-}
+# Empty on purpose, and it is a deliberate reversal. Publishing used to sit
+# here because it posts publicly and cannot be taken back. In practice that
+# meant asking the assistant to "process this video and publish them all" got
+# you the processing and silence about the rest: the model could not do the
+# second half and said nothing, which is worse than either doing it or
+# refusing. Colin's call, 2026-09-22: "it should do what i told it to do."
+#
+# What stands in for the gate: the model calls publish_plan before it
+# executes, so there is a record of the intent, and a deferred publish only
+# runs when the request actually asked for one (see `then` in server/jobs.py).
+HUMAN_ONLY: set[str] = set()
 
 SYSTEM = (
     "You drive Clips Kitty, a local video clipping app, through its tools.\n"
@@ -56,9 +58,16 @@ SYSTEM = (
     "mentioning it in your reply: captions on or off and how they look, "
     "longer clips, a watermark by name, podcast footage, or a horizontal "
     "longform video. Ignoring one silently gives them the wrong render.\n"
-    "To publish, call publish_plan and show what it returns. You cannot upload "
-    "anything yourself; the person confirms the plan in the app. Say that "
-    "plainly rather than implying it is done.\n"
+    "To publish, call publish_plan first and show what it returns, then "
+    "execute it. Do this only when they asked you to publish.\n"
+    "If they ask you to process a video AND publish it, the clips do not exist "
+    "yet when you queue the job, so you cannot publish them in this reply. "
+    "Pass publish_when_done to queue_video instead and say you have done so: "
+    "the app publishes them the moment processing finishes.\n"
+    "If they want particular hashtags on every clip, pass hashtags to "
+    "queue_video. Adding them afterwards clip by clip is not the way.\n"
+    "Never drop part of a request in silence. If you cannot do something they "
+    "asked for, say which part and why, in the same reply.\n"
     "Keep answers short and concrete."
 )
 

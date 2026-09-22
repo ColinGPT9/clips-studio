@@ -50,6 +50,11 @@ class JobIn(BaseModel):
     podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
     webhook_url: str | None = None  # POST once when this job reaches a terminal state
     webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
+    hashtags: list[str] | None = None  # tags every clip of this job must carry
+    then: dict | None = None  # what to do once this job finishes, e.g.
+    #     {"action": "publish", "platforms": ["youtube"]}
+    # Queueing returns in a second and the clips appear an hour later, so a
+    # request like "process this and publish them" has to survive the gap.
 
 
 class JobPatch(BaseModel):
@@ -227,6 +232,11 @@ class AgentIn(BaseModel):
     message: str
     # Prior turns, so "now schedule them an hour apart" knows what "them" is.
     history: list[dict] = []
+    # The Generate bar's toggles, sent by the window. A job the assistant
+    # queues should render the same way as one started by hand: these choices
+    # live in the renderer, so without them the chat silently used the config
+    # defaults and burned captions in on a video whose box was unticked.
+    defaults: dict = {}
 
 
 class ExportIn(BaseModel):
@@ -410,6 +420,10 @@ def _process_options(body, into: dict | None = None) -> dict:
         payload["filter"] = body.filter
     if getattr(body, "min_score", None) is not None:
         payload["min_score"] = max(0, min(100, body.min_score))
+    if getattr(body, "hashtags", None):
+        payload["hashtags"] = [str(h) for h in body.hashtags if str(h).strip()]
+    if getattr(body, "then", None):
+        payload["then"] = body.then
     if getattr(body, "webhook_url", None):
         from server.webhooks import is_deliverable
 
@@ -2251,6 +2265,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             tool = next((x for x in TOOLS if x["name"] == name), None)
             if tool is None:
                 return f"There is no tool called {name}.", None
+            if name == "queue_video":
+                # Only where the model said nothing: an explicit "no captions"
+                # in the sentence still beats the bar above it.
+                for key, value in (body.defaults or {}).items():
+                    arguments.setdefault(key, value)
             try:
                 text = tool["handler"](arguments)
             except urllib.error.HTTPError as e:

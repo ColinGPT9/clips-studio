@@ -108,7 +108,12 @@ function remember(key: ToggleKey, on: boolean, mode?: string): void {
   }
 }
 
-function seedOptions(): JobOptions {
+/** The Generate bar's current settings.
+ *
+ *  Exported because the assistant needs them too: a job queued by asking the
+ *  chat box used to ignore every one of these, so captions came back burned
+ *  in however often the box was unticked. One reader, not two. */
+export function seedOptions(): JobOptions {
   const wm = watermarkSelection()
   const o: JobOptions = {
     captions: localStorage.getItem(PREF.captions) !== 'false',

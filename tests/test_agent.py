@@ -59,18 +59,23 @@ def _run(monkeypatch, replies, message="do it"):
     return out, calls, fake
 
 
-def test_uploading_is_never_offered_to_the_model():
-    # The single most important line in this module: a model that cannot see
-    # the tool cannot call it, however it is asked.
+def test_publishing_is_offered_to_the_model():
+    # This assertion used to say the opposite. Withholding the publish tools
+    # meant "process this video and publish them all" got the processing and
+    # silence about the rest, which is worse than either doing it or saying
+    # no. Colin's call, 2026-09-22: it should do what it is told.
     names = [spec["function"]["name"] for spec in agent.tool_specs(_tools())]
-    assert "publish_plan_execute" not in names
-    # Posting to several public platforms at once cannot be taken back, so it
-    # is withheld the same way.
-    assert "uploadpost_publish" not in names
-    # Reading is fine: the model can say whether it is set up and report what
-    # happened, it just cannot pull the trigger.
+    assert "publish_plan_execute" in names
+    assert "uploadpost_publish" in names
+    # Still offered, and still what the model should reach for first.
     assert "uploadpost_status" in names
     assert "publish_plan" in names and "list_videos" in names
+
+
+def test_nothing_is_withheld_from_the_model():
+    # The gate is empty on purpose. If something is ever put back, it needs a
+    # reason written next to it, and this test says so out loud.
+    assert agent.HUMAN_ONLY == set()
 
 
 def test_a_plain_answer_ends_the_loop(monkeypatch):
@@ -97,25 +102,24 @@ def test_a_plan_is_handed_back_for_a_human_to_confirm(monkeypatch):
     assert out["plan"] == {"items": [{"clip_id": 1}]}
 
 
-def test_asking_to_execute_is_refused_even_if_the_model_tries(monkeypatch):
+def test_executing_a_publish_now_runs(monkeypatch):
     out, calls, _ = _run(monkeypatch, [
         {"role": "assistant",
          "tool_calls": [{"function": {"name": "publish_plan_execute", "arguments": {}}}]},
-        {"role": "assistant", "content": "I cannot do that"},
+        {"role": "assistant", "content": "Published"},
     ])
-    assert calls == [], "the handler must never run"
-    assert "person confirms" in out["steps"][0]["result"]
+    assert calls == ["publish_plan_execute"], "the handler must run now"
+    assert out["reply"] == "Published"
 
 
-def test_multi_platform_publishing_is_refused_even_if_the_model_tries(monkeypatch):
+def test_multi_platform_publishing_now_runs(monkeypatch):
     out, calls, _ = _run(monkeypatch, [
         {"role": "assistant",
          "tool_calls": [{"function": {"name": "uploadpost_publish",
                                       "arguments": {"clip_id": 1, "platforms": ["youtube"]}}}]},
-        {"role": "assistant", "content": "I cannot do that"},
+        {"role": "assistant", "content": "Published"},
     ])
-    assert calls == [], "the handler must never run"
-    assert "person confirms" in out["steps"][0]["result"]
+    assert calls == ["uploadpost_publish"]
 
 
 def test_string_arguments_are_parsed(monkeypatch):
@@ -147,9 +151,9 @@ def test_the_model_is_told_what_time_it_is(monkeypatch):
     assert "RFC 3339" in system
 
 
-def test_scheduling_a_batch_is_refused_even_if_the_model_tries(monkeypatch):
+def test_scheduling_a_batch_is_allowed(monkeypatch):
     """Turning a video into a month of posts is exactly the sort of thing to
-    ask for in a sentence — and exactly the sort that needs a human yes."""
+    ask for in a sentence, so the model can now do it when asked."""
     tools = [
         *_tools(),
         {"name": "schedule_clips_plan", "description": "Plan", "inputSchema": {"type": "object"},
@@ -158,6 +162,5 @@ def test_scheduling_a_batch_is_refused_even_if_the_model_tries(monkeypatch):
          "inputSchema": {"type": "object"}, "handler": lambda a: "posted"},
     ]
     names = [spec["function"]["name"] for spec in agent.tool_specs(tools)]
-    assert "schedule_clips_execute" not in names
-    # Planning is allowed: the model has to be able to describe the schedule.
+    assert "schedule_clips_execute" in names
     assert "schedule_clips_plan" in names
