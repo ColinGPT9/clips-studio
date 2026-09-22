@@ -656,43 +656,31 @@ export default function Dashboard({
                   <p className="text-sm text-ink/80 mt-0.5">
                     {publishReady
                       ? t(
-                          'Open a video, pick your clips and publish. Spread them over days so you stay inside the daily limits.'
+                          'Post clips to YouTube, TikTok and Instagram. Spread them over days to stay inside the daily limits.'
                         )
                       : t(
-                          'Send finished clips straight to YouTube, TikTok, Instagram and more. Takes about two minutes to set up.'
+                          'Post clips to YouTube, TikTok and Instagram. Make a free account, then add your API key in Settings.'
                         )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a
-                      disclosure at all. Only shown alongside the link it
-                      describes. */}
-                  {!publishReady && (
-                    <p className="text-xs text-ink/70 mt-1.5">
-                      {t(
-                        'Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.'
-                      )}
-                    </p>
-                  )}
+                      disclosure at all, and it is never shown apart from the
+                      link it describes — so both are here in every state. */}
+                  <p className="text-xs text-ink/70 mt-1.5">
+                    {t(
+                      'Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.'
+                    )}
+                  </p>
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  {/* The in-app door, which did not exist before: the only
-                      button here sent people off-site to sign up, so anyone
-                      who already had an account was stuck. */}
-                  <button
-                    onClick={() => window.dispatchEvent(new Event('open-settings'))}
-                    className="btn-ghost shrink-0 text-lg px-6 py-3.5 font-semibold"
-                  >
-                    {publishReady ? t('Settings') : t('Set it up')}
-                  </button>
-                  {!publishReady && (
-                    <button
-                      onClick={() => void window.studio.openExternal(publishUrl)}
-                      className="btn-accent shrink-0 text-lg px-6 py-3.5 font-semibold"
-                      title={publishUrl}
-                    >
-                      {t('Free account ↗')}
-                    </button>
-                  )}
-                </div>
+                {/* One call to action, not two. A second button competing
+                    with it split the card's job; where to put the key is
+                    said in the text instead. */}
+                <button
+                  onClick={() => void window.studio.openExternal(publishUrl)}
+                  className="btn-accent shrink-0 text-lg px-8 py-3.5 font-semibold"
+                  title={publishUrl}
+                >
+                  {t('Get started free ↗')}
+                </button>
               </div>
             </div>
           )}
