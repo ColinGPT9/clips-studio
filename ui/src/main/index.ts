@@ -348,6 +348,15 @@ const EXTERNAL_ALLOWED = [
   // the audit form, and a published clip links to its own watch/Studio page.
   /^https:\/\/console\.cloud\.google\.com\//,
   /^https:\/\/studio\.youtube\.com\//,
+  // Google's OAuth consent screen. A provider's "connect YouTube" flow hands
+  // back a URL on THIS host, not on the provider's own domain, which is the
+  // one thing Google does differently from every other platform here: TikTok,
+  // Meta, X, LinkedIn and Pinterest all authorise on a domain already listed
+  // below. Missing it made Connect do nothing at all, four clicks in a row,
+  // logging "refused to open external url" and showing the user nothing.
+  // It must open in the system browser: Google rejects OAuth inside an
+  // embedded webview with disallowed_useragent, and offers no way to opt out.
+  /^https:\/\/accounts\.google\.com\//,
   /^https:\/\/www\.youtube\.com\/watch\?v=/,
   /^https:\/\/support\.google\.com\/youtube\//,
   /^https:\/\/developers\.google\.com\/youtube\//,
@@ -362,7 +371,8 @@ const EXTERNAL_ALLOWED = [
   // visibly. This is the trap to check first if a referral link seems dead.
   /^https:\/\/([a-z0-9-]+\.)?upload-post\.com(\/|$|\?)/,
   // WoopSocial, the second publishing provider: their site, the dashboard
-  // where the API key lives, and the OAuth pages that link each account.
+  // where the API key lives, and the callback each OAuth flow returns to.
+  // The consent screen itself is on the platform's own host, not here.
   // Endorsely hosts their affiliate signup and would issue a referral link
   // on that domain, so it is allowed too — otherwise the button is dead.
   /^https:\/\/([a-z0-9-]+\.)?woopsocial\.com(\/|$|\?)/,
