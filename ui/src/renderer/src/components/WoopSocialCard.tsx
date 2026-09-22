@@ -338,23 +338,54 @@ export default function WoopSocialCard(): JSX.Element {
 
           {!status.has_key && (
             <div className="border border-raised rounded-lg p-3 space-y-2">
-              <p className="text-sm font-medium">{t('Don’t have a WoopSocial account?')}</p>
-              <p className="text-xs text-muted">
+              {/* Numbered, because "copy your API key from their dashboard"
+                  is one sentence that assumes the reader has met an API key
+                  before. Most creators have not, and that is the step they
+                  stop on. Each step keeps its button beside it. */}
+              <p className="text-sm font-medium">{t('Set up posting in 3 steps')}</p>
+              <ol className="space-y-2">
+                <li className="flex items-start gap-2">
+                  <span className="text-xs text-muted shrink-0 mt-1">1.</span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-ink">{t('Make a free WoopSocial account.')}</p>
+                    <button
+                      className="btn-accent !py-1 !px-3 text-xs mt-1"
+                      onClick={open(affiliate || SIGNUP)}
+                    >
+                      {t('Create a free account ↗')}
+                    </button>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-xs text-muted shrink-0 mt-1">2.</span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-ink">
+                      {t('On their site open API access, then create a key and copy it.')}
+                    </p>
+                    <button
+                      className="btn-ghost !py-1 !px-3 text-xs mt-1"
+                      onClick={open(DASHBOARD)}
+                    >
+                      {t('Open API access ↗')}
+                    </button>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-xs text-muted shrink-0 mt-1">3.</span>
+                  <p className="text-xs text-ink">
+                    {t('Paste the key in the box above and press Save and check.')}
+                  </p>
+                </li>
+              </ol>
+              {/* Their own pricing page says "unlimited posts". YouTube is
+                  not: they ration one Google Cloud project between all their
+                  users. Saying nothing here is how 37 clips went out at once
+                  and 32 were rejected. */}
+              <p className="text-xs text-warn">
                 {t(
-                  'The free plan includes unlimited posts on two social accounts and API access. Copy your API key from their dashboard.'
+                  'Worth knowing: YouTube allows about 5 posts a day on the free plan. Use the posts-a-day setting when you publish and Clips Kitty spreads them out for you.'
                 )}
               </p>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  className="btn-accent !py-1 !px-3 text-xs"
-                  onClick={open(affiliate || SIGNUP)}
-                >
-                  {t('Create a WoopSocial account ↗')}
-                </button>
-                <button className="btn-ghost !py-1 !px-3 text-xs" onClick={open(DASHBOARD)}>
-                  {t('I already have one ↗')}
-                </button>
-              </div>
               {affiliate && (
                 <p className="text-[11px] text-muted">
                   {t(

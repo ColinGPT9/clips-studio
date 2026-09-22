@@ -112,6 +112,10 @@ export default function Dashboard({
   // The publishing referral, if one has been configured. Empty means the
   // call to action does not exist rather than pointing nowhere.
   const [publishUrl, setPublishUrl] = useState('')
+  // Whether posting is already set up. Without this the card only ever
+  // offered an off-site signup, so someone who already had an account
+  // had no way in from here at all.
+  const [publishReady, setPublishReady] = useState(false)
   // Only watch while something is actually in flight, so an idle Dashboard
   // never polls.
   const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
@@ -139,7 +143,10 @@ export default function Dashboard({
   useEffect(() => {
     api
       .woopSocialStatus()
-      .then((s) => setPublishUrl(s.affiliate_url || ''))
+      .then((s) => {
+        setPublishUrl(s.affiliate_url || '')
+        setPublishReady(Boolean(s.enabled && s.has_key))
+      })
       .catch(() => {
         /* backend not up, or an older build: no call to action */
       })
@@ -642,26 +649,50 @@ export default function Dashboard({
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="font-bold text-lg text-ink">
-                    {t('Post your clips everywhere 🚀')}
+                    {publishReady
+                      ? t('Posting is ready 🚀')
+                      : t('Clips Kitty can post for you 🚀')}
                   </p>
                   <p className="text-sm text-ink/80 mt-0.5">
-                    {t('YouTube, TikTok, Instagram and more, in one go. Free plan, no watermark.')}
+                    {publishReady
+                      ? t(
+                          'Open a video, pick your clips and publish. Spread them over days so you stay inside the daily limits.'
+                        )
+                      : t(
+                          'Send finished clips straight to YouTube, TikTok, Instagram and more. Takes about two minutes to set up.'
+                        )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a
-                      disclosure at all. */}
-                  <p className="text-xs text-ink/70 mt-1.5">
-                    {t(
-                      'Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.'
-                    )}
-                  </p>
+                      disclosure at all. Only shown alongside the link it
+                      describes. */}
+                  {!publishReady && (
+                    <p className="text-xs text-ink/70 mt-1.5">
+                      {t(
+                        'Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.'
+                      )}
+                    </p>
+                  )}
                 </div>
-                <button
-                  onClick={() => void window.studio.openExternal(publishUrl)}
-                  className="btn-accent shrink-0 text-lg px-8 py-3.5 font-semibold"
-                  title={publishUrl}
-                >
-                  {t('Get started free ↗')}
-                </button>
+                <div className="flex gap-2 shrink-0">
+                  {/* The in-app door, which did not exist before: the only
+                      button here sent people off-site to sign up, so anyone
+                      who already had an account was stuck. */}
+                  <button
+                    onClick={() => window.dispatchEvent(new Event('open-settings'))}
+                    className="btn-ghost shrink-0 text-lg px-6 py-3.5 font-semibold"
+                  >
+                    {publishReady ? t('Settings') : t('Set it up')}
+                  </button>
+                  {!publishReady && (
+                    <button
+                      onClick={() => void window.studio.openExternal(publishUrl)}
+                      className="btn-accent shrink-0 text-lg px-6 py-3.5 font-semibold"
+                      title={publishUrl}
+                    >
+                      {t('Free account ↗')}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}

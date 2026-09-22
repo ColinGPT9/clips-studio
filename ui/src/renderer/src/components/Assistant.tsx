@@ -17,10 +17,11 @@ interface Turn {
  *  server gives an outside agent, so there is one set of descriptions to keep
  *  honest rather than two.
  *
- *  It cannot publish. A plan comes back as a proposal with a button under it,
- *  and only that button uploads anything: thirty videos cannot be
- *  un-uploaded, so the confirmation is part of the design rather than
- *  something the model is trusted to ask for.
+ *  It CAN publish, since 2026-09-22. It used to be withheld, which meant
+ *  "process this video and publish them all" got the processing and silence
+ *  about the rest — worse than either doing it or refusing. It still plans
+ *  first, so a proposal with a button under it is the usual path, and a
+ *  publish only happens when the request asked for one.
  */
 export default function Assistant(): JSX.Element | null {
   const [ready, setReady] = useState<boolean | null>(null)
@@ -165,9 +166,27 @@ export default function Assistant(): JSX.Element | null {
       </div>
       <div ref={scrollRef} className="mt-3 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
         {turns.length === 0 ? (
-          <p className="text-sm text-muted">
-            {t('Ask for something like "clip this stream, then plan the best three an hour apart from tomorrow noon". It can queue a stream, read back the clips it chose and plan a batch of uploads for you to approve.')}
-          </p>
+          /* Examples rather than a paragraph. The paragraph that was here got
+             cut in half whenever the panel was dragged short, and a wall of
+             prose is the wrong shape for an empty state anyway: nobody has to
+             invent the phrasing if they can start from a real one. Clicking
+             fills the box instead of sending, so it can be edited first. */
+          <div className="flex flex-wrap gap-1.5 items-baseline">
+            <span className="text-sm text-muted mr-0.5">{t('Try:')}</span>
+            {[
+              t('Clip this stream: '),
+              t('Publish all my clips, 5 a day'),
+              t('My best clips this week')
+            ].map((example) => (
+              <button
+                key={example}
+                onClick={() => setInput(example)}
+                className="text-xs px-2 py-1 rounded-full border border-raised text-muted hover:border-accent hover:text-ink transition-colors"
+              >
+                {example.trim()}
+              </button>
+            ))}
+          </div>
         ) : (
           turns.map((turn, i) => (
             <div key={i} className={turn.role === 'user' ? 'text-right' : ''}>
