@@ -16,7 +16,8 @@ export default function ClipCard({
   selected,
   onClick,
   onDelete,
-  onToggleExported
+  onToggleExported,
+  onPublish
 }: {
   clip: Clip
   selected: boolean
@@ -25,6 +26,8 @@ export default function ClipCard({
   onDelete?: () => void
   /** Star or unstar the clip as exported, without opening it. */
   onToggleExported?: () => void
+  /** Publish this one clip, without opening the editor first. */
+  onPublish?: () => void
 }): JSX.Element {
   const duration = Math.round(clip.end_s - clip.start_s)
   const name = clip.title || clip.hook || 'Untitled clip'
@@ -145,6 +148,23 @@ export default function ClipCard({
           className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-black/60 text-white/80 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-red-500 hover:text-white transition"
         >
           <Trash />
+        </button>
+      )}
+      {/* Publishing one clip meant opening the editor and finding the Publish
+          tab, three steps in. Bottom left: the score badge owns the top left,
+          the star and trash the top right, and the duration the bottom right,
+          so this is the one free corner. */}
+      {onPublish && (
+        <button
+          aria-label={`Publish ${name}`}
+          title="Publish just this clip"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPublish()
+          }}
+          className="absolute bottom-14 left-2 z-10 px-2 py-1 rounded-md bg-black/70 text-white/90 text-[10px] font-semibold opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-accent hover:text-black transition"
+        >
+          Publish ↗
         </button>
       )}
     </div>

@@ -36,11 +36,20 @@ export default function PublishAllDialog({
 }): JSX.Element {
   const [platforms, setPlatforms] = useState<string[]>([])
   const [connected, setConnected] = useState<string[]>([])
-  const [every, setEvery] = useState(1)
-  // Days by default: a video's clips are usually spread across a
-  // posting calendar, not an afternoon.
-  const [unit, setUnit] = useState<'hours' | 'days'>('days')
+  // A DAILY budget, because that is the shape posting limits take: WoopSocial
+  // allows five YouTube posts a day, and sending 37 at once failed 32 of them.
+  // One flat interval could not say "five a day, an hour apart" at all.
+  const [perDay, setPerDay] = useState(5)
+  const [gapHours, setGapHours] = useState(1)
   const [spread, setSpread] = useState(true)
+  // Clips left out entirely, and clip -> platforms it should skip. Everything
+  // starts included, so the common case costs nothing and only the exceptions
+  // are work.
+  const [dropped, setDropped] = useState<Set<number>>(new Set())
+  const [excluded, setExcluded] = useState<Record<number, string[]>>({})
+  // How much is already spoken for. A new batch queues behind it, so the
+  // estimate has to as well or it promises a date that cannot happen.
+  const [queued, setQueued] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState<{ started: number; skipped: { clip_id: number; reason: string }[] } | null>(null)
@@ -50,6 +59,20 @@ export default function PublishAllDialog({
       ? { connections: api.woopSocialConnections, batch: api.woopSocialBatch }
       : { connections: api.uploadPostConnections, batch: api.uploadPostBatch }
   const usable = platformsFor(provider)
+
+  useEffect(() => {
+    if (provider !== 'woopsocial') return
+    api
+      .woopSocialSchedule()
+      .then((got) =>
+        setQueued(
+          got.posts.filter((x) => x.state === 'queued' || x.state === 'processing').length
+        )
+      )
+      .catch(() => {
+        /* no schedule yet is the same as nothing queued */
+      })
+  }, [])
 
   useEffect(() => {
     backend
@@ -66,15 +89,71 @@ export default function PublishAllDialog({
   const toggle = (id: string): void =>
     setPlatforms((c) => (c.includes(id) ? c.filter((p) => p !== id) : [...c, id]))
 
+  const single = clips.length === 1
+  const chosen = clips.filter((c) => !dropped.has(c.id))
+  /** Platforms this clip will actually go to. */
+  const going = (id: number): string[] =>
+    platforms.filter((p) => !(excluded[id] || []).includes(p))
+  const posts = chosen.reduce((n, c) => n + going(c.id).length, 0)
+  // Only clips with somewhere left to go: one excluded from everything is not
+  // a post, and must not take a slot out of the day's budget either.
+  const sending = chosen.filter((c) => going(c.id).length > 0)
+
+  // Posts already queued come first, so this batch starts after them. Mirrors
+  // schedule.daily_after(), which fills each day to per_day and then rolls
+  // over, rather than approximating it — a preview that disagrees with what
+  // gets sent is worse than no preview.
+  const daysBefore = spread && perDay > 0 ? Math.floor(queued / perDay) : 0
+  const totalDays =
+    spread && perDay > 0 ? Math.ceil((queued + sending.length) / perDay) : 1
+  const days = Math.max(1, totalDays - daysBefore)
+  const startAt =
+    spread && queued > 0 ? new Date(Date.now() + daysBefore * 86_400_000) : null
+  const finishAt =
+    spread && sending.length > 1
+      ? new Date(Date.now() + Math.max(0, totalDays - 1) * 86_400_000)
+      : null
+
+  const toggleClip = (id: number): void =>
+    setDropped((c) => {
+      const next = new Set(c)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const togglePlatformFor = (id: number, platform: string): void =>
+    setExcluded((c) => {
+      const off = new Set(c[id] || [])
+      if (off.has(platform)) off.delete(platform)
+      else off.add(platform)
+      return { ...c, [id]: [...off] }
+    })
+
   const run = async (): Promise<void> => {
-    if (busy || !platforms.length || !clips.length) return
+    if (busy || !platforms.length || !sending.length) return
     setBusy(true)
     setError('')
     try {
+      // Only the exceptions travel, and only for clips being sent.
+      const exclude: Record<string, string[]> = {}
+      for (const c of sending) {
+        const off = excluded[c.id] || []
+        if (off.length) exclude[String(c.id)] = off
+      }
+      // Only WoopSocial understands a daily budget; Upload-Post's batch has
+      // its own loop and would accept per_day and then ignore it, firing
+      // everything at once. For that provider the budget becomes the nearest
+      // flat interval it does honour, so the daily ceiling is still roughly
+      // respected instead of silently abandoned.
+      const daily =
+        provider === 'woopsocial'
+          ? { per_day: spread ? perDay : 0, gap_hours: gapHours, exclude }
+          : { every_hours: spread ? 24 / Math.max(1, perDay) : 0 }
       const got = await backend.batch({
-        clip_ids: clips.map((c) => c.id),
+        clip_ids: sending.map((c) => c.id),
         platforms,
-        every_hours: spread ? hoursApart : 0,
+        ...daily,
         timezone: spread ? localZone() : ''
       })
       setDone({ started: got.started.length, skipped: got.skipped })
@@ -84,13 +163,6 @@ export default function PublishAllDialog({
       setBusy(false)
     }
   }
-
-  const posts = clips.length * platforms.length
-  const hoursApart = unit === 'days' ? every * 24 : every
-  const lastAt =
-    spread && clips.length > 1
-      ? new Date(Date.now() + hoursApart * (clips.length - 1) * 3600_000)
-      : null
 
   return (
     <div
@@ -106,7 +178,7 @@ export default function PublishAllDialog({
       >
         <div>
           <h3 className="font-semibold text-lg">
-            {t('Publish')} {clips.length} {clips.length === 1 ? t('clip') : t('clips')}
+            {single ? t('Publish this clip') : `${t('Publish')} ${clips.length} ${t('clips')}`}
           </h3>
           <p className="text-xs text-muted mt-1">
             {t('Each clip is uploaded once and sent to every platform you pick, through your')}{' '}
@@ -177,26 +249,27 @@ export default function PublishAllDialog({
                 {t('Space them out')}
               </label>
               {spread ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted text-xs">{t('One every')}</span>
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    className="input !py-1 text-sm !w-16"
+                    value={perDay}
+                    onChange={(e) => setPerDay(Math.max(1, Number(e.target.value) || 1))}
+                    aria-label="Posts per day"
+                  />
+                  <span className="text-muted text-xs">{t('a day,')}</span>
                   <input
                     type="number"
                     min={0.5}
                     step={0.5}
-                    className="input !py-1 text-sm !w-20"
-                    value={every}
-                    onChange={(e) => setEvery(Math.max(0.5, Number(e.target.value) || 1))}
-                    aria-label="Time between posts"
+                    className="input !py-1 text-sm !w-16"
+                    value={gapHours}
+                    onChange={(e) => setGapHours(Math.max(0.5, Number(e.target.value) || 1))}
+                    aria-label="Hours between posts"
                   />
-                  <select
-                    className="input !py-1 text-sm !w-24"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value as 'hours' | 'days')}
-                    aria-label="Unit"
-                  >
-                    <option value="hours">{t('hours')}</option>
-                    <option value="days">{t('days')}</option>
-                  </select>
+                  <span className="text-muted text-xs">{t('hours apart')}</span>
                 </div>
               ) : (
                 /* Said plainly, because it is the choice that gets accounts
@@ -209,19 +282,87 @@ export default function PublishAllDialog({
               )}
             </div>
 
+            {/* Which clip goes where. Pointless for a single clip, and the
+                exceptions are the only interesting part, so everything starts
+                on and a click is what takes something away. */}
+            {!single && platforms.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="label">{t('Clips')}</p>
+                  <button
+                    className="text-xs text-muted hover:text-accent"
+                    onClick={() =>
+                      setDropped((c) => (c.size ? new Set() : new Set(clips.map((x) => x.id))))
+                    }
+                  >
+                    {dropped.size ? t('Select all') : t('Select none')}
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto border border-raised rounded-lg divide-y divide-raised">
+                  {clips.map((c) => {
+                    const on = !dropped.has(c.id)
+                    return (
+                      <div key={c.id} className="flex items-center gap-2 px-2 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => toggleClip(c.id)}
+                          aria-label={`Include clip ${c.id}`}
+                        />
+                        <span
+                          className={`text-xs flex-1 min-w-0 truncate ${on ? '' : 'text-muted line-through'}`}
+                          title={c.title || c.hook || `Clip ${c.id}`}
+                        >
+                          {c.title || c.hook || `${t('Clip')} ${c.id}`}
+                        </span>
+                        <span className="flex gap-1 shrink-0">
+                          {platforms.map((p) => {
+                            const lit = on && going(c.id).includes(p)
+                            return (
+                              <button
+                                key={p}
+                                disabled={!on}
+                                onClick={() => togglePlatformFor(c.id, p)}
+                                aria-pressed={lit}
+                                title={`${platformLabel(p)}${lit ? '' : ` - ${t('skipped')}`}`}
+                                className={`px-1.5 py-0.5 rounded text-[10px] border ${
+                                  lit
+                                    ? 'border-accent bg-accent/15 text-ink'
+                                    : 'border-raised text-muted line-through'
+                                } ${on ? '' : 'opacity-40'}`}
+                              >
+                                {platformLabel(p)}
+                              </button>
+                            )
+                          })}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* The whole point of the confirm: say what is about to happen,
                 in the units that matter, before it happens. */}
             <div className="border border-raised rounded-lg p-3 text-xs space-y-1">
               <p className="font-medium text-sm">{t('About to')}</p>
               <p>
                 {t('Create')} <span className="text-accent font-medium">{posts}</span>{' '}
-                {posts === 1 ? t('post') : t('posts')} — {clips.length}{' '}
-                {clips.length === 1 ? t('clip') : t('clips')} ×{' '}
+                {posts === 1 ? t('post') : t('posts')} {t('from')} {sending.length}{' '}
+                {sending.length === 1 ? t('clip') : t('clips')} {t('to')}{' '}
                 {platforms.length ? platforms.map(platformLabel).join(', ') : t('nothing yet')}.
               </p>
-              {lastAt && (
+              {finishAt && (
                 <p className="text-muted">
-                  {t('First one now, last one around')} {lastAt.toLocaleString()}.
+                  {perDay} {t('a day')} - {t('finishes')} {finishAt.toLocaleDateString()} (
+                  {days} {days === 1 ? t('day') : t('days')}).
+                </p>
+              )}
+              {startAt && (
+                <p className="text-muted">
+                  {t('Starts')} {startAt.toLocaleDateString()}, {t('after the')} {queued}{' '}
+                  {t('already queued.')}
                 </p>
               )}
               <p className="text-muted">{t('Uploads cannot be taken back.')}</p>
@@ -235,7 +376,7 @@ export default function PublishAllDialog({
               </button>
               <button
                 className="btn-accent flex-1 !py-2"
-                disabled={busy || !platforms.length || !clips.length}
+                disabled={busy || !platforms.length || !sending.length}
                 onClick={() => void run()}
               >
                 {busy

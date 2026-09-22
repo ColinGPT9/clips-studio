@@ -335,3 +335,89 @@ def test_a_skipped_clip_does_not_burn_a_slot(monkeypatch, tmp_path, two_clips):
     )
     assert len(one) == 1
     assert one[0]["scheduled_for"][11:16] == "09:00", "the freed slot is reused"
+
+
+# ---- a second batch queues behind the first ---------------------------------
+
+
+def _at(day_offset, hour):
+    from datetime import datetime, timedelta, timezone
+
+    base = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    return (base + timedelta(days=day_offset, hours=hour)).isoformat()
+
+
+def test_nothing_scheduled_behaves_exactly_like_before():
+    """A first run must not change. This is the common case and it shipped
+    working."""
+    sched = pytest.importorskip("publish.schedule")
+    start = _at(0, 0)
+    assert sched.daily_after([], 7, 5, 1, start) == sched.daily(start, 7, 5, 1)
+
+
+def test_a_second_batch_never_doubles_up_a_day():
+    """The bug this exists for: 37 posts over eight days plus 20 more, both
+    at five a day, used to put ten on each of the first four days. WoopSocial
+    allows five, so half the run failed."""
+    sched = pytest.importorskip("publish.schedule")
+    start = _at(0, 0)
+
+    first = sched.daily(start, 37, 5, 1)
+    second = sched.daily_after(first, 20, 5, 1, start)
+
+    per_day = {}
+    for when in first + second:
+        per_day[when[:10]] = per_day.get(when[:10], 0) + 1
+    assert max(per_day.values()) <= 5, per_day
+    assert len(second) == 20
+
+
+def test_a_part_used_day_is_filled_then_rolls_over():
+    """Two posts already today means three slots left, not five, and the
+    fourth goes tomorrow."""
+    sched = pytest.importorskip("publish.schedule")
+    start = _at(0, 0)
+    taken = [_at(0, 0), _at(0, 1)]
+
+    out = sched.daily_after(taken, 4, 5, 1, start)
+
+    assert [w[11:16] for w in out[:3]] == ["11:00", "12:00", "13:00"]
+    assert out[3][:10] != out[2][:10], "the fourth rolls to the next day"
+    assert out[3][11:16] == "09:00"
+
+
+def test_a_full_day_is_skipped_entirely():
+    sched = pytest.importorskip("publish.schedule")
+    start = _at(0, 0)
+    taken = [_at(0, h) for h in range(5)]   # today is full
+
+    out = sched.daily_after(taken, 2, 5, 1, start)
+
+    assert all(w[:10] != taken[0][:10] for w in out), "nothing lands on a full day"
+
+
+def test_unreadable_committed_times_do_not_fail_the_run():
+    """One bad row must not cost a whole batch its schedule."""
+    sched = pytest.importorskip("publish.schedule")
+    start = _at(0, 0)
+    out = sched.daily_after(["not a date", ""], 3, 5, 1, start)
+    assert len(out) == 3
+
+
+def test_an_explicit_start_beats_the_queue(monkeypatch, tmp_path, two_clips):
+    """Picking a date is an instruction, not a suggestion: it must not be
+    pushed back behind whatever else is scheduled."""
+    sent = []
+    _publisher(monkeypatch, sent)
+    db = _FakeDB(clips=two_clips)
+    monkeypatch.setattr(
+        woop, "committed_times",
+        lambda d: pytest.fail("a chosen start must not consult the queue"),
+    )
+    woop.publish_clips(
+        db, tmp_path, clip_ids=[1], platforms=["youtube"],
+        per_day=5, gap_hours=1, start_at=_at(0, 0),
+    )
+    assert sent[0]["scheduled_for"][11:16] == "09:00"

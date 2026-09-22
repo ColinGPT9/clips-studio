@@ -9,6 +9,7 @@ The API key goes through core/secrets.py, not into the settings blob.
 """
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core import secrets
@@ -150,6 +151,38 @@ def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "") 
         db.record_clip_publish(clip_id, outcome.platform, fields)
 
 
+def committed_times(db) -> list[str]:
+    """Every slot already spoken for, so a new batch queues behind them.
+
+    A daily budget is per day, not per batch: without this, publishing a
+    second video while the first is still going out puts two runs on the same
+    days and the platform rejects the overflow. That is how 32 posts were
+    lost the first time.
+
+    Counted: anything still queued or processing with a time on it, and
+    anything published today, which has already spent part of today's
+    allowance. Not counted: failures, which hold nothing.
+    """
+    rows = db.conn.execute(
+        "SELECT state, scheduled_for, updated_at FROM clip_publishes "
+        "WHERE state IN ('queued', 'processing', 'published')"
+    ).fetchall()
+    today = datetime.now(timezone.utc).date().isoformat()
+    out: list[str] = []
+    for r in rows:
+        when = r["scheduled_for"] or ""
+        if r["state"] == "published":
+            # Only today's posts matter; older ones spent an allowance that
+            # has since reset.
+            stamp = when or (r["updated_at"] or "")
+            if not stamp.startswith(today):
+                continue
+            when = stamp
+        if when:
+            out.append(when)
+    return out
+
+
 def publish_clips(
     db,
     data_dir: Path,
@@ -199,7 +232,7 @@ def publish_clips(
     # is the shape that works, and a flat interval cannot express it.
     slot_times: list[str] = []
     if per_day:
-        from publish.schedule import MIN_LEAD_SECONDS, daily, to_rfc3339
+        from publish.schedule import MIN_LEAD_SECONDS, daily_after, to_rfc3339
 
         first = start
         if not start_at:
@@ -208,8 +241,14 @@ def publish_clips(
             # refuses anything inside the lead time. Begin at the first moment
             # it would accept rather than failing the whole run.
             first = datetime.now(tz.utc) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
-        slot_times = daily(
-            to_rfc3339(first), len(clip_ids), int(per_day), float(gap_hours or 1)
+        # Queue behind whatever is already scheduled rather than on top of
+        # it. An explicit start_at is an instruction, so it still wins.
+        slot_times = daily_after(
+            [] if start_at else committed_times(db),
+            len(clip_ids),
+            int(per_day),
+            float(gap_hours or 1),
+            to_rfc3339(first),
         )
 
     # Exceptions, keyed by clip id. JSON turns integer keys into strings on

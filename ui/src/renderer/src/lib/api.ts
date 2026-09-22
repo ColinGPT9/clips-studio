@@ -638,9 +638,40 @@ export const api = {
     platforms: string[]
     every_hours?: number
     start_at?: string
+    /** A daily budget, which is the shape posting limits actually take:
+     *  WoopSocial allows five YouTube posts a day. Sending 37 at once
+     *  failed 32 of them. */
+    per_day?: number
+    gap_hours?: number
+    /** Clip id to the platforms it should skip, for the handful a stricter
+     *  platform should not get. */
+    exclude?: Record<string, string[]>
   }) =>
     request<{
       started: { clip_id: number; request_id: string; scheduled_for: string }[]
       skipped: { clip_id: number; reason: string }[]
-    }>('/woopsocial/batch', { method: 'POST', body: JSON.stringify(body) })
+    }>('/woopsocial/batch', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** What is due, soonest first. Only rows that were given a time. */
+  woopSocialSchedule: () =>
+    request<{
+      posts: {
+        clip_id: number
+        platform: string
+        state: string
+        scheduled_for: string
+        post_url: string
+        error: string
+        title: string
+      }[]
+    }>('/woopsocial/schedule'),
+
+  /** Ask WoopSocial what became of everything still in the air. Without it
+   *  rows sit at "processing" forever and a slow queue is indistinguishable
+   *  from a batch that failed. */
+  woopSocialRefresh: () =>
+    request<{ checked: number; updated: number; still_waiting: number; failed: number }>(
+      '/woopsocial/refresh',
+      { method: 'POST' }
+    )
 }

@@ -5,6 +5,7 @@ import ClipEditor from '../components/ClipEditor'
 import EditorView from '../components/EditorModal'
 import ProcessingBar from '../components/ProcessingBar'
 import PublishAllDialog from '../components/PublishAllDialog'
+import ScheduleView from '../components/ScheduleView'
 import { api } from '../lib/api'
 import type { Provider } from '../lib/uploadpost'
 import { getExportFolder } from '../lib/exportFolder'
@@ -26,6 +27,11 @@ export default function ClipStudio({
   const [activeVideo, setActiveVideo] = useState<string | null>(null)
   const [clips, setClips] = useState<Clip[]>([])
   const [selectedClip, setSelectedClip] = useState<number | null>(null)
+  // One clip published on its own. The same dialog as Publish all,
+  // handed a list of one, so the platform picker and the daily budget
+  // do not need a second implementation.
+  const [publishOne, setPublishOne] = useState<Clip | null>(null)
+  const [showSchedule, setShowSchedule] = useState(false)
   const [editingClipId, setEditingClipId] = useState<number | null>(null)
   const [videoSearch, setVideoSearch] = useState('')
   // Publishing is only offered once Upload-Post is switched on AND a key
@@ -292,6 +298,7 @@ export default function ClipStudio({
                   cannot be undone, so it is quieter to look at and opens a
                   confirm rather than acting on the click. */}
               {publishReady && (
+                <>
                 <button
                   className="btn-ghost !py-1 !px-3 text-xs"
                   onClick={() => setPublishing(true)}
@@ -300,6 +307,14 @@ export default function ClipStudio({
                 >
                   {`Publish all (${shownClips.length}) ↗`}
                 </button>
+                <button
+                  className="btn-ghost !py-1 !px-3 text-xs"
+                  onClick={() => setShowSchedule(true)}
+                  title="When each scheduled post is due, and what actually posted"
+                >
+                  Schedule
+                </button>
+                </>
               )}
             </div>
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
@@ -312,6 +327,7 @@ export default function ClipStudio({
                   onClick={() => setSelectedClip(clip.id)}
                   onDelete={() => deleteClip(clip.id)}
                   onToggleExported={() => toggleExported(clip)}
+                  onPublish={() => setPublishOne(clip)}
                 />
               ))}
               {clips.length === 0 && (
@@ -339,6 +355,19 @@ export default function ClipStudio({
             )}
           </div>
         </div>
+      )}
+
+      {showSchedule && <ScheduleView onClose={() => setShowSchedule(false)} />}
+
+      {publishOne && (
+        <PublishAllDialog
+          clips={[publishOne]}
+          provider={publishProvider}
+          onClose={() => {
+            setPublishOne(null)
+            if (activeVideo) refreshClips(activeVideo)
+          }}
+        />
       )}
 
       {publishing && (

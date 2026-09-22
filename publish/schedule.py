@@ -12,7 +12,7 @@ tzdata is not a dependency), so this module only ever handles instants that
 already carry an offset.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from publish.errors import PublishError
 
@@ -121,6 +121,71 @@ def daily(
     ]
     # The same door a hand-picked time goes through, as in spread().
     return [validate_publish_at(to_rfc3339(moment), now=now) for moment in times]
+
+
+def daily_after(
+    taken: list[str],
+    count: int,
+    per_day: int,
+    gap_hours: float,
+    earliest: str,
+    now: datetime | None = None,
+) -> list[str]:
+    """`count` times that fit AROUND what is already scheduled.
+
+    A daily budget is per day, not per batch. `daily()` alone applies it per
+    batch, so a second video published while the first is still going out
+    puts two runs on the same days: five a day becomes ten a day, and the
+    platform rejects the overflow. That is the failure this prevents, and it
+    is the same one that lost 32 posts the first time.
+
+    `taken` is every time already committed — posts still queued, and posts
+    already made today, which have spent part of today's allowance. A failed
+    post holds nothing and should not be in the list.
+
+    With nothing taken, this returns exactly what `daily()` returns, so a
+    first run is unchanged.
+    """
+    if count < 1:
+        return []
+    if per_day < 1:
+        raise PublishError("Post at least one a day, or upload them all now.")
+    if gap_hours <= 0:
+        raise PublishError("Put some time between the videos, or upload them all now.")
+    if gap_hours * (per_day - 1) >= 24:
+        raise PublishError(
+            f"{per_day} posts {gap_hours} hours apart does not fit in a day. "
+            f"Post fewer a day, or put them closer together."
+        )
+
+    first = parse(earliest)
+    used: dict[date, int] = {}
+    for value in taken:
+        try:
+            moment = parse(value)
+        except (PublishError, ValueError):
+            continue  # unreadable times are not worth failing a whole run over
+        used[moment.date()] = used.get(moment.date(), 0) + 1
+
+    out: list[datetime] = []
+    day_offset = 0
+    # A guard rather than `while True`: a pathological `used` should not spin
+    # forever. 365 days is already past what validate_publish_at accepts.
+    while len(out) < count and day_offset < 400:
+        when = first + timedelta(days=day_offset)
+        room = per_day - used.get(when.date(), 0)
+        for slot in range(max(0, room)):
+            if len(out) >= count:
+                break
+            # Slots are counted from the START of that day's run, so a day
+            # that is half full continues where it left off rather than
+            # restarting at the first hour.
+            at = when + timedelta(hours=gap_hours * (used.get(when.date(), 0) + slot))
+            if at >= first:
+                out.append(at)
+        day_offset += 1
+
+    return [validate_publish_at(to_rfc3339(moment), now=now) for moment in out[:count]]
 
 
 def spread(start: str, count: int, every_hours: float, now: datetime | None = None) -> list[str]:
