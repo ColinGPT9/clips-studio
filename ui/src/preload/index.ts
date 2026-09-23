@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('studio', {
   // hosts are permitted, so this cannot be used to launch arbitrary URLs.
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke('open-external', url),
+  // Whether closing the window keeps Clips Kitty running in the tray, for
+  // watched channels. Off unless turned on; the main process remembers it.
+  tray: {
+    get: (): Promise<{ keepInTray: boolean }> => ipcRenderer.invoke('tray:get'),
+    set: (on: boolean): Promise<{ keepInTray: boolean }> => ipcRenderer.invoke('tray:set', on)
+  },
 
   // Updates. The renderer never touches electron-updater directly; it asks
   // the main process and listens for state.

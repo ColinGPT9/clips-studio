@@ -12,6 +12,29 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Watch a channel and let Clips Kitty do the rest.** Add a YouTube, Twitch or Kick
+  channel on the new **Watched channels** page. When it posts, the new video joins the
+  queue by itself, and once the clips are made they are published through WoopSocial,
+  either straight away or after you press Publish, which is the default. Set it up
+  once per channel: the clip settings, where the clips go, how many posts a day, and a
+  line under every caption that can link back to the full video.
+  - Adding a channel never clips what is already on it. Those videos are listed, one
+    click from being clipped if you want them.
+  - A video is only ever clipped once, and a clip is only ever posted to a platform
+    once, even after a crash or a restart.
+  - Live streams, premieres and Shorts are waited for or skipped rather than grabbed
+    half-finished.
+  - Videos posted while Clips Kitty was closed are found when it opens. You choose
+    whether to clip only the newest, all of them, the last day's, or none.
+  - To keep watching on a spare PC, turn on **Keep watching when the window is
+    closed**. Clips Kitty then stays in the system tray until you quit it from there.
+    It is off unless you turn it on.
+  - Kick has no official way to list a channel's videos, so Kick watching uses the
+    same unofficial one Kick downloads already rely on, and says so if it stops
+    working.
+  - Opening Clips Kitty a second time now brings the running window forward instead
+    of starting a second copy that cannot work.
+
 - **Ask an AI assistant to do it.** Clips Kitty now speaks MCP, so Claude, Cursor
   or any MCP client can queue a stream, follow the job, read back the clips it
   chose and export one, in plain language. It needs no API key of any kind,

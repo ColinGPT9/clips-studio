@@ -66,7 +66,9 @@ export default function PublishAllDialog({
       .woopSocialSchedule()
       .then((got) =>
         setQueued(
-          got.posts.filter((x) => x.state === 'queued' || x.state === 'processing').length
+          got.posts.filter(
+            (x) => x.state === 'queued' || x.state === 'processing' || x.state === 'sending'
+          ).length
         )
       )
       .catch(() => {

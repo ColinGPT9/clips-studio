@@ -1,6 +1,17 @@
-import { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  Notification,
+  Tray,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeImage,
+  shell
+} from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { setupUpdater } from './updater'
 import { isMicrosoftStore } from './distribution'
@@ -19,6 +30,87 @@ const OLLAMA_HOST = `127.0.0.1:${OLLAMA_PORT}`
 
 let backend: ChildProcess | null = null
 let ollama: ChildProcess | null = null
+
+// ---- keep watching in the tray (opt-in) ------------------------------------
+//
+// Off by default, and while it is off nothing below changes anything: closing
+// the window quits, exactly as it always has. It exists for people who leave
+// Clips Kitty on a spare PC to watch channels (server/automation.py), where
+// closing the window must not stop the watching.
+
+let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+/** True once a real quit is under way: from the tray, the updater, Windows
+ *  shutting down. Then closing the window closes it instead of hiding it. */
+let quitting = false
+let keepInTray = false
+let toldAboutTray = false
+
+function trayPrefsPath(): string {
+  return join(app.getPath('userData'), 'tray.json')
+}
+
+function loadKeepInTray(): boolean {
+  try {
+    return JSON.parse(readFileSync(trayPrefsPath(), 'utf-8')).keepInTray === true
+  } catch {
+    return false // never set, or unreadable: the default, which is off
+  }
+}
+
+function showWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+async function ensureTray(): Promise<void> {
+  if (tray) return
+  // The app's own icon, taken from the running executable, so there is no
+  // separate image to ship or to fall out of step with the installer's.
+  const icon = await app
+    .getFileIcon(process.execPath, { size: 'small' })
+    .catch(() => nativeImage.createEmpty())
+  if (tray) return // a second close raced this one
+  tray = new Tray(icon)
+  tray.setToolTip('Clips Kitty: watching for new videos')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Open Clips Kitty', click: showWindow },
+      { type: 'separator' },
+      {
+        label: 'Quit Clips Kitty',
+        click: () => {
+          quitting = true
+          app.quit()
+        }
+      }
+    ])
+  )
+  tray.on('click', showWindow)
+}
+
+function dropTray(): void {
+  tray?.destroy()
+  tray = null
+}
+
+ipcMain.handle('tray:get', () => ({ keepInTray }))
+
+ipcMain.handle('tray:set', (_event, on: unknown) => {
+  keepInTray = on === true
+  try {
+    writeFileSync(trayPrefsPath(), JSON.stringify({ keepInTray }))
+  } catch {
+    // Not saved: it still applies until the app quits.
+  }
+  if (!keepInTray) dropTray()
+  return { keepInTray }
+})
 
 /** Start the Ollama runtime that ships inside the app.
  *
@@ -150,7 +242,31 @@ function createWindow(): void {
     }
   })
 
+  mainWindow = win
   setupUpdater(win)
+
+  // With "keep watching" on, closing hides the window and the backend keeps
+  // running. A real quit sets `quitting` first, so it is never intercepted.
+  win.on('close', (event) => {
+    if (quitting || !keepInTray) return
+    event.preventDefault()
+    win.hide()
+    void ensureTray()
+    if (!toldAboutTray && Notification.isSupported()) {
+      toldAboutTray = true
+      new Notification({
+        title: 'Clips Kitty is still watching',
+        body: 'It keeps running in the system tray. Quit it from the tray icon.'
+      }).show()
+    }
+  })
+  // Windows logging off or shutting down skips before-quit, so say it here.
+  win.on('session-end', () => {
+    quitting = true
+  })
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
 
   // External links open in the system browser, never inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -358,6 +474,9 @@ const EXTERNAL_ALLOWED = [
   // embedded webview with disallowed_useragent, and offers no way to opt out.
   /^https:\/\/accounts\.google\.com\//,
   /^https:\/\/www\.youtube\.com\/watch\?v=/,
+  // A watched channel's videos, opened from the Watch page.
+  /^https:\/\/www\.twitch\.tv\/videos\/\d+$/,
+  /^https:\/\/kick\.com\/[\w-]+\/videos\/[0-9a-fA-F-]{36}$/,
   /^https:\/\/support\.google\.com\/youtube\//,
   /^https:\/\/developers\.google\.com\/youtube\//,
   // Upload-Post: the hosted page where a user links their social accounts,
@@ -431,20 +550,31 @@ ipcMain.handle('pick-folder', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
-app.whenReady().then(() => {
-  // Windows shows the AppUserModelID as the notification's app name; without
-  // it a toast is attributed to "electron.app.Electron". Must match
-  // electron-builder.yml's appId so dev and packaged builds agree.
-  app.setAppUserModelId('com.clipsstudio.app')
-  // Ollama first: it takes a moment to bind its port, and starting it before
-  // the engine means the first preflight is more likely to find it up.
-  startOllama()
-  startBackend()
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// One Clips Kitty at a time. A second launch used to start a second engine
+// that could not bind port 8765 and a window talking to the first one's; with
+// the window hidden in the tray it would look like the app had not started at
+// all. Now it brings the running one forward instead.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', showWindow)
+
+  app.whenReady().then(() => {
+    // Windows shows the AppUserModelID as the notification's app name; without
+    // it a toast is attributed to "electron.app.Electron". Must match
+    // electron-builder.yml's appId so dev and packaged builds agree.
+    app.setAppUserModelId('com.clipsstudio.app')
+    keepInTray = loadKeepInTray()
+    // Ollama first: it takes a moment to bind its port, and starting it before
+    // the engine means the first preflight is more likely to find it up.
+    startOllama()
+    startBackend()
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
+}
 
 app.on('window-all-closed', () => {
   stopChildren()
@@ -453,5 +583,11 @@ app.on('window-all-closed', () => {
 
 // Also covers the routes that skip window-all-closed — notably the updater's
 // quitAndInstall, which must not leave an Ollama holding the install folder
-// open while the installer tries to replace it.
-app.on('before-quit', stopChildren)
+// open while the installer tries to replace it. It fires before any window is
+// asked to close, so marking the quit here is what lets the updater through a
+// window that would otherwise hide itself in the tray.
+app.on('before-quit', () => {
+  quitting = true
+  dropTray()
+  stopChildren()
+})

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { api } from '../../lib/api'
-import type { CaptionStyle, JobOptions, QueueJob } from '../../lib/types'
+import type { CaptionStyle, JobOptions } from '../../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
 import { watermarkSelection } from '../WatermarkCard'
 import { t } from '../../lib/i18n'
 
-/** Settings for ONE queued video.
+/** Settings for ONE queued video, or for every video a watched channel posts.
  *
  *  Every queued job carries its own snapshot of these options, so changing
  *  them here cannot reach any other video in the queue — that isolation is
@@ -20,10 +20,16 @@ import { t } from '../../lib/i18n'
  *  a request per keystroke would be absurd. */
 export default function QueueItemSettings({
   job,
-  onSaved
+  onSaved,
+  save: saveTo,
+  heading = 'Settings for this video only'
 }: {
-  job: QueueJob
+  job: { id: number; settings: JobOptions }
   onSaved: () => void
+  /** Where the options go. A queued job by default; a watched channel passes
+   *  its own, so both edit the same options through the same controls. */
+  save?: (patch: Partial<JobOptions> & { clear?: string[] }) => Promise<unknown>
+  heading?: string
 }): JSX.Element {
   const s = job.settings ?? {}
   const [captions, setCaptions] = useState(s.captions !== false)
@@ -67,7 +73,7 @@ export default function QueueItemSettings({
       } else clear.push('watermark_profile_id')
       patch.caption_style = style
       patch.clear = clear
-      await api.patchJob(job.id, patch)
+      await (saveTo ? saveTo(patch) : api.patchJob(job.id, patch))
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
       onSaved()
@@ -98,7 +104,7 @@ export default function QueueItemSettings({
 
   return (
     <div className="mt-3 pt-3 border-t border-raised/60 space-y-3">
-      <p className="label">{t('Settings for this video only')}</p>
+      <p className="label">{t(heading)}</p>
       <div className="flex gap-x-5 gap-y-2 flex-wrap">
         {toggle('Captions', '', captions, setCaptions, 'Burn captions into this video’s clips')}
         {toggle(

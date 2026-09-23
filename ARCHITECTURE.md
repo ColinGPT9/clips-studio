@@ -98,12 +98,14 @@ clips-studio/
 │   ├── queue.py                # queue manager: order, pause, retry, estimate
 │   ├── prefetch.py             # download-ahead for queued jobs
 │   ├── housekeeping.py         # disk reclamation
-│   └── scheduler.py            # (dormant) poll loop and unattended upload scheduling
+│   └── scheduler.py            # (legacy CLI) `main.py run` poll loop; the app uses server/automation.py
 ├── sources/                    # ── one file per platform ──
 │   ├── dispatch.py             # URL → the right source module
 │   ├── youtube.py              # yt-dlp download, H.264 selection, heatmap
 │   ├── twitch.py               # VOD download + chat replay
 │   ├── kick.py                 # VOD download
+│   ├── channel_feed.py         # what a watched channel posted (RSS, yt-dlp, Kick API)
+│   ├── vod_finder.py           # the VOD a finished livestream left behind
 │   └── ytdlp_common.py         # chunked, resumable download shared by all
 ├── transcription/
 │   └── transcriber.py          # faster-whisper, word timestamps, GPU/CPU fallback
@@ -559,6 +561,10 @@ POST   /feedback/submit           in-app bug report
 POST   /integrations/streams      hand over a finished livestream (OBS plugin)
 GET    /integrations/streams/{id} its state: waiting for VOD, queued, progress, clips
 GET    /integrations/presets      named option bundles for integrations
+GET    /automation  PATCH ...     watched channels: on/off, interval
+GET    /automation/watches        channels watched, their settings, last check
+GET    /automation/items          what each channel posted, read live from its job
+POST   /automation/items/{id}/publish   publish (or retry) with the watch's settings
 ```
 
 Integration mechanics:
@@ -579,6 +585,21 @@ Integration mechanics:
     else is waiting.
   - **A progress snapshot kept per running job.** A dock that connects mid-run sees
     the same percentage and time left as the app.
+- **Watched channels** (`server/automation.py`) are built the same way:
+  - **Detection only in `sources/channel_feed.py`.** It turns every platform's listing
+    into the same `NewSourceVideo`, with the id a pasted link would get.
+  - **A `ChannelWatcher` thread** moves each video along one step per tick: seen,
+    ready (not live, not a Short), queued once through `queue.enqueue_once`, then
+    published, asked about, or left alone. Every step is persisted before the next,
+    so a restart carries on.
+  - **One video, one job.** `watch_items.video_id` is unique across all watches, and
+    the queue and library are checked before anything is added.
+  - **Publishing never repeats.** `publish_clips(once=True)` skips anything sent or on
+    its way, records each send before the request, and `reconcile_sending` settles an
+    interrupted one by finding the post that holds its uploaded media.
+  - Off until switched on, and it only runs while the backend does. With the opt-in
+    "keep watching" setting, closing the window hides it in the tray instead of
+    quitting.
 - Electron spawns the backend as a child process, health-checks `GET /health`, and
   kills it on exit. In development they run separately.
 

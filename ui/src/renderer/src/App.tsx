@@ -5,6 +5,7 @@ import Creators from './pages/Creators'
 import Models from './pages/Models'
 import Queue from './pages/Queue'
 import Settings from './pages/Settings'
+import Watch from './pages/Watch'
 import FeedbackHub from './components/FeedbackHub'
 import ModelSwitcher from './components/ModelSwitcher'
 import SetupWizard, { setupDone } from './components/SetupWizard'
@@ -13,13 +14,14 @@ import { activeLocale, t } from './lib/i18n'
 import { useQueueNotifications } from './lib/queueNotifications'
 import mascot from './assets/mascot.png'
 
-type Page = 'dashboard' | 'queue' | 'studio' | 'creators' | 'models' | 'settings'
+type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'creators' | 'models' | 'settings'
 
 const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◧' },
   { id: 'queue', label: 'Queue', icon: '≡' },
+  { id: 'watch', label: 'Watched channels', icon: '◎' },
   // Renamed in 1.1.3. The previous label matched an existing product closely
   // enough to block the Microsoft Store listing, so do not change it back —
   // "Clip Editor" is also just what the page is.
@@ -141,6 +143,7 @@ export default function App(): JSX.Element {
         <UpdateBanner />
         {page === 'dashboard' && <Dashboard onOpenInStudio={openInStudio} />}
         {page === 'queue' && <Queue onOpenInStudio={(videoId) => openInStudio(videoId)} />}
+        {page === 'watch' && <Watch onOpenInStudio={(videoId) => openInStudio(videoId)} />}
         {page === 'studio' && (
           <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />
         )}

@@ -1,4 +1,5 @@
 import type {
+  AutomationStatus,
   BrandingProfile,
   CaptionLine,
   CaptionStyle,
@@ -18,6 +19,10 @@ import type {
   SystemStats,
   Translation,
   Video,
+  Watch,
+  WatchItem,
+  WatchPlatform,
+  WatchPublish,
   WatermarkConfig,
   Word
 } from './types'
@@ -673,5 +678,66 @@ export const api = {
     request<{ checked: number; updated: number; still_waiting: number; failed: number }>(
       '/woopsocial/refresh',
       { method: 'POST' }
-    )
+    ),
+
+  // ---- watched channels ----
+  // A channel posts, its video is queued once, and its clips are published,
+  // asked about, or left alone. Off until switched on.
+
+  automation: () => request<AutomationStatus>('/automation'),
+  setAutomation: (enabled: boolean) =>
+    request<AutomationStatus>('/automation', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled })
+    }),
+  watches: () => request<Watch[]>('/automation/watches'),
+  addWatch: (platform: WatchPlatform, channel: string) =>
+    request<Watch & { created: boolean }>('/automation/watches', {
+      method: 'POST',
+      body: JSON.stringify({ platform, channel })
+    }),
+  patchWatch: (
+    id: number,
+    patch: {
+      enabled?: boolean
+      preset?: string
+      options?: Partial<JobOptions> & { clear?: string[] }
+      publish?: WatchPublish
+      backlog?: Watch['backlog']
+      min_minutes?: number
+    }
+  ) =>
+    request<Watch>(`/automation/watches/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  deleteWatch: (id: number) =>
+    request<{ deleted: boolean }>(`/automation/watches/${id}`, { method: 'DELETE' }),
+  checkWatch: (id: number) =>
+    request<{ checking: boolean }>(`/automation/watches/${id}/check`, { method: 'POST' }),
+  watchItems: (watchId: number, limit = 100) =>
+    request<WatchItem[]>(`/automation/items?watch_id=${watchId}&limit=${limit}`),
+  /** Clip a video the watch set aside (back catalogue, missed, too short). */
+  clipWatchItem: (id: number) =>
+    request<WatchItem>(`/automation/items/${id}/queue`, { method: 'POST' }),
+  /** Publish with the watch's settings. Also the retry: only what is not
+   *  already sent, or on its way, goes out. */
+  publishWatchItem: (id: number) =>
+    request<WatchItem>(`/automation/items/${id}/publish`, { method: 'POST' }),
+  skipWatchItem: (id: number) =>
+    request<WatchItem>(`/automation/items/${id}/skip`, { method: 'POST' })
+}
+
+/** The server's own words from a failed request, for showing to a person.
+ *  request() throws "400 /path: {"detail":"..."}"; this returns the detail. */
+export function errorText(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  const body = raw.slice(raw.indexOf(': ') + 2)
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown }
+    if (typeof parsed.detail === 'string') return parsed.detail
+  } catch {
+    // not JSON: fall through to the raw text
+  }
+  return raw
 }

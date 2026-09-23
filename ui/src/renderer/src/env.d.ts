@@ -49,6 +49,11 @@ interface Window {
     /** Opens an allow-listed URL in the user's browser. Resolves false if
      *  the main process refused it. */
     openExternal: (url: string) => Promise<boolean>
+    /** Absent in the browser shim and in a preload older than the renderer. */
+    tray?: {
+      get: () => Promise<{ keepInTray: boolean }>
+      set: (on: boolean) => Promise<{ keepInTray: boolean }>
+    }
     update: {
       check: () => Promise<{ ok: boolean; reason?: string }>
       download: () => Promise<{ ok: boolean }>

@@ -757,14 +757,15 @@ calls is below, because "why not yet" is usually more useful than "not yet".
    only, to comply with Play Store policy.
 2. **Remote rendering**: hand the rendering work to another machine, so a long stream
    doesn't tie up the computer you're using.
-3. **Fully automated posting** *(possible future plan)*: publishing a clip you are
-   looking at now works: see "Publish to YouTube" above. What is still dormant is the
-   *unattended* half, channel monitoring that clips a new stream and posts the results
-   with nobody watching. That is coded in the repo but not exposed in the UI, and it is
-   a bigger promise than it looks: posting on your behalf while you sleep needs to be
-   right about what it picked, not just able to upload. Posting to TikTok and Instagram
-   belongs here too: export alone adds little, since the work is in the posting, and
-   neither has a desktop-friendly upload API the way YouTube does.
+3. **Fully automated posting**: the **Watched channels** page now covers the
+   unattended half. It watches a YouTube, Twitch or Kick channel, clips each new video
+   once, and publishes the clips through WoopSocial automatically or after you say so.
+   It is off until you switch it on, it asks before publishing unless you tell it not
+   to, and it never posts a clip to the same platform twice. What remains is trust:
+   posting on your behalf while you sleep needs to be right about what it picked, not
+   just able to upload, which is why "Ask first" is the default. The old command-line
+   monitor (`python main.py run`) still works, but it predates the queue and
+   WoopSocial, so use the page instead.
 4. **Gaming and reaction layouts** *(possible future plan)*: a dedicated layout for
    gameplay-with-facecam and for reaction videos, composing the creator's webcam and
    what they're reacting to into one vertical frame.

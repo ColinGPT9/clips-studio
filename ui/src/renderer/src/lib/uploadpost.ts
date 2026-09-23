@@ -21,8 +21,15 @@ export type UploadPostStatus = {
   storage: string
 }
 
-/** queued | processing | published | failed | skipped */
-export type PublishState = 'queued' | 'processing' | 'published' | 'failed' | 'skipped'
+/** sending | queued | processing | published | failed | skipped. 'sending' is
+ *  written before the request goes out, by background publishing only. */
+export type PublishState =
+  | 'sending'
+  | 'queued'
+  | 'processing'
+  | 'published'
+  | 'failed'
+  | 'skipped'
 
 export type PlatformRow = {
   clip_id: number
@@ -147,6 +154,8 @@ export function describeState(row: PlatformRow): string {
       return row.error || 'Not connected'
     case 'processing':
       return 'Processing'
+    case 'sending':
+      return 'Sending'
     default:
       return 'Queued'
   }

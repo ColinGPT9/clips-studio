@@ -349,7 +349,7 @@ export interface StudioEvent {
    *  'publish' is a YouTube upload. It is deliberately NOT 'job': jobProgress
    *  resets the global processing bar on any 'job' event, and an upload has
    *  nothing to do with the video pipeline's progress. */
-  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish'
+  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish' | 'automation'
   job_id?: number
   /** Present on 'job' events: lets the queue ignore re-renders. */
   job_type?: 'process' | 'render' | 'translate'
@@ -451,4 +451,89 @@ export interface PublishPlanItem {
   description: string
   privacy: string
   publish_at: string | null
+}
+
+// ---- watched channels (server/automation.py) ---------------------------------
+
+export type WatchPlatform = 'youtube' | 'twitch' | 'kick'
+
+/** What happens to a watched video's clips. Configured once per channel. */
+export interface WatchPublish {
+  /** off: leave them. ask: stop at "ready to publish". auto: publish at once. */
+  mode: 'off' | 'ask' | 'auto'
+  platforms: string[]
+  /** A daily budget, queued behind everything already scheduled. */
+  per_day: number
+  gap_hours: number
+  hashtags: string[]
+  /** Under each caption. {source_url}, {source_title}, {source_channel} and
+   *  {source_platform} are filled in. */
+  footer: string
+  overrides: Record<string, Record<string, string>>
+}
+
+export interface Watch {
+  id: number
+  platform: WatchPlatform
+  channel_key: string
+  name: string
+  enabled: boolean
+  preset: string
+  options: JobOptions
+  publish: WatchPublish
+  backlog: 'all' | 'newest' | 'day' | 'none'
+  min_minutes: number
+  last_ok_poll_at: number
+  next_poll_at: number
+  last_error: string
+  counts: Record<string, number>
+}
+
+export interface WatchDelivery {
+  clip_id: number
+  platform: string
+  state: string
+  post_url: string
+  scheduled_for: string
+  error: string
+}
+
+export interface WatchItem {
+  id: number
+  watch_id: number
+  platform: WatchPlatform
+  video_id: string
+  url: string
+  title: string
+  published_at: number
+  detected_at: number
+  status:
+    | 'earlier'
+    | 'waiting_for_video'
+    | 'waiting_for_queue'
+    | 'queued'
+    | 'processing'
+    | 'complete'
+    | 'failed'
+    | 'cancelled'
+    | 'skipped'
+    | 'error'
+  reason: string
+  job_id: number
+  publish_state: '' | 'off' | 'ask' | 'publishing' | 'done'
+  publish_error: string
+  clips?: number
+  deliveries?: WatchDelivery[]
+  progress?: { percent?: number; label?: string } | null
+  waiting_behind?: number
+  queue_paused?: boolean
+  details?: string
+}
+
+export interface AutomationStatus {
+  enabled: boolean
+  interval_minutes: number
+  watches: number
+  watching: number
+  presets: { id: string; name: string; description: string }[]
 }

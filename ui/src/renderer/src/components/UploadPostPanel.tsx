@@ -227,7 +227,9 @@ export default function UploadPostPanel({
     )
 
   const open = (url: string) => () => void window.studio.openExternal(url)
-  const inFlight = rows.some((r) => r.state === 'queued' || r.state === 'processing')
+  const inFlight = rows.some(
+    (r) => r.state === 'queued' || r.state === 'processing' || r.state === 'sending'
+  )
   const anyFailed = rows.some((r) => r.state === 'failed')
   const lacking = missingRequired(platforms, caps, overrides)
   // Everything they have linked that can take a video. Falls back to the

@@ -75,7 +75,9 @@ export default function ScheduleView({ onClose }: { onClose: () => void }): JSX.
 
   const done = posts.filter((p) => p.state === 'published').length
   const failed = posts.filter((p) => p.state === 'failed').length
-  const waiting = posts.filter((p) => p.state === 'queued' || p.state === 'processing').length
+  const waiting = posts.filter(
+    (p) => p.state === 'queued' || p.state === 'processing' || p.state === 'sending'
+  ).length
 
   return (
     <div
