@@ -32,6 +32,7 @@ from core import queue
 from core.state import StateDB
 
 ENABLED_KEY = "automation_enabled"
+DELETE_SOURCES_KEY = "automation_delete_sources"
 
 PLATFORM_NAMES = {"youtube": "YouTube", "twitch": "Twitch", "kick": "Kick"}
 
@@ -48,6 +49,21 @@ GIVE_UP_SECONDS = 7 * 24 * 60 * 60
 DAY_SECONDS = 24 * 60 * 60
 
 BACKLOG = ("all", "newest", "day", "none")
+
+# A hands-off channel (publishing set to Automatic) runs on a PC nobody is
+# watching, so a failure that might pass is tried again instead of waiting for
+# a person. Each list is the wait before each successive try; when it runs out,
+# the video stays as it is with the reason showing.
+#   - A download or processing run that failed: a dropped connection, a 403
+#     from YouTube. Twice, half an hour and then three hours later.
+PROCESS_RETRY_DELAYS = (30 * 60, 3 * 60 * 60)
+#   - A publish that could not start because WoopSocial was unreachable, busy
+#     or rate limiting. Every 15 minutes, six times, then ask.
+PUBLISH_RETRY_SECONDS = 15 * 60
+PUBLISH_START_ATTEMPTS = 6
+#   - Posts the platform rejected, typically a daily cap that other posts
+#     already used. Only the rejected ones are sent again, 6 and 24 hours on.
+DELIVERY_RETRY_DELAYS = (6 * 60 * 60, 24 * 60 * 60)
 
 _MISSED = "Posted while Clips Kitty wasn't watching."
 _BASELINE = "Posted before you started watching this channel."
@@ -79,12 +95,18 @@ class PublishSettings(BaseModel):
 
 
 class AutomationPatch(BaseModel):
-    enabled: bool
+    enabled: bool | None = None
+    # Delete a watched video's download once its clips are published, so an
+    # always-on PC does not fill its disk with multi-gigabyte sources.
+    delete_sources: bool | None = None
 
 
 class WatchIn(BaseModel):
     platform: Literal["youtube", "twitch", "kick"]
     channel: str = Field(min_length=1, max_length=300)
+    # What happens to its clips, chosen when the channel is added, so a
+    # hands-off channel is one step to set up rather than two.
+    publish: PublishSettings | None = None
 
 
 class WatchPatch(BaseModel):
@@ -169,6 +191,8 @@ def view_item(d: StateDB, item, worker) -> dict:
         for key in (
             "id", "watch_id", "platform", "video_id", "url", "title", "published_at",
             "detected_at", "state", "reason", "job_id", "publish_state", "publish_error",
+            "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
+            "source_freed",
         )
     }
     status = {
@@ -247,9 +271,11 @@ class ChannelWatcher(threading.Thread):
         broadcaster,
         publisher: Callable[..., dict] | None = None,
         interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
+        downloads=None,
         clock=time.time,
     ):
         super().__init__(daemon=True, name="channel-watcher")
+        self._downloads = downloads
         self._db = db
         self._feed = feed
         self._worker = worker
@@ -293,7 +319,10 @@ class ChannelWatcher(threading.Thread):
                 self._poll(d, watch, now)
             self._check_readiness(d, now)
             self._queue_waiting(d)
+            self._retry_failed_runs(d, now)
+            self._retry_rejected_posts(d, now)
             self._decide_publishing(d)
+            self._free_disk(d)
         finally:
             d.close()
 
@@ -431,11 +460,14 @@ class ChannelWatcher(threading.Thread):
         half done, and both simply run again: publish_clips(once=True) skips
         every clip already sent or on its way, so a repeat sends only what is
         missing or failed."""
+        now = self._clock()
         for item in d.watch_items(states=("queued",)):
             if item["publish_state"] not in ("", "publishing"):
                 continue
             if item["publish_state"] == "" and not new:
                 continue
+            if item["publish_state"] == "publishing" and item["publish_retry_at"] > now:
+                continue  # waiting out a failed start before trying again
             if _job_status(d, item) != "done":
                 continue
             watch = d.get_watch(item["watch_id"])
@@ -477,19 +509,121 @@ class ChannelWatcher(threading.Thread):
                 footer=render_footer(settings.footer, item, watch),
             )
         except Exception as e:
-            # Not set up, or unreachable before anything was sent. Falling back
-            # to asking keeps it in front of a person instead of retrying blind.
             print(f"Watch publish for {item['video_id']} did not start: {e}")
-            d.set_watch_item(item["id"], publish_state="ask", publish_error=_short(e))
+            attempts = int(item["publish_attempts"] or 0)
+            if (
+                settings.mode == "auto"
+                and getattr(e, "retryable", False)
+                and attempts < PUBLISH_START_ATTEMPTS
+            ):
+                # Unreachable, busy or rate limiting: likely to pass, and a
+                # hands-off channel has nobody to press Publish later.
+                d.set_watch_item(
+                    item["id"], publish_state="publishing", publish_attempts=attempts + 1,
+                    publish_retry_at=self._clock() + PUBLISH_RETRY_SECONDS,
+                    publish_error=_short(e),
+                )
+                return {}
+            # Not set up, no account, a key refused, or out of tries: only a
+            # person can fix these, so it waits in front of one.
+            d.set_watch_item(item["id"], publish_state="ask", publish_error=_short(e),
+                             publish_retry_at=0)
             return {}
         problems = sorted({
             s.get("reason", "") for s in out.get("skipped", [])
             if s.get("reason") and s.get("reason") != "already sent"
         })
-        d.set_watch_item(item["id"], publish_state="done",
-                         publish_error="; ".join(problems)[:500])
+        d.set_watch_item(item["id"], publish_state="done", publish_attempts=0,
+                         publish_retry_at=0, publish_error="; ".join(problems)[:500])
         print(f"Watch published {len(out.get('started', []))} clip(s) of {item['video_id']}")
         return out
+
+    # -- 5. keep a hands-off channel going -------------------------------------
+
+    def _hands_off(self, d: StateDB, item):
+        """The item's watch if it is enabled and publishes automatically, else
+        None. Only those retry: anywhere else a person is in the loop."""
+        watch = d.get_watch(item["watch_id"])
+        if watch is None or not watch["enabled"] or publish_settings(watch).mode != "auto":
+            return None
+        return watch
+
+    def _retry_failed_runs(self, d: StateDB, now: float) -> None:
+        """A download or processing run that failed is queued again later."""
+        started = False
+        for item in d.watch_items(states=("queued",)):
+            tries = int(item["retries"] or 0)
+            if item["publish_state"] != "" or tries >= len(PROCESS_RETRY_DELAYS):
+                continue
+            if _job_status(d, item) != "failed" or self._hands_off(d, item) is None:
+                continue
+            if not item["retry_at"]:
+                d.set_watch_item(item["id"], retry_at=now + PROCESS_RETRY_DELAYS[tries])
+                continue
+            if item["retry_at"] > now:
+                continue
+            if queue.retry(d, item["job_id"]) is None:
+                continue
+            queue.start_if_alone(d, item["job_id"])
+            d.set_watch_item(item["id"], retries=tries + 1, retry_at=0)
+            print(f"Watch: trying {item['video_id']} again (retry {tries + 1})")
+            started = True
+        if started:
+            self._worker.notify()
+            self._broadcaster.publish({"type": "queue"})
+            self._broadcaster.publish({"type": "automation"})
+
+    def _retry_rejected_posts(self, d: StateDB, now: float) -> None:
+        """Posts a platform rejected are sent again later, and only those.
+
+        Rejections arrive after the publish, as the status refresh learns them,
+        so this looks at finished items rather than at the publish itself. The
+        re-send goes through publish(), where publish_clips(once=True) passes
+        over every clip already published or on its way."""
+        for item in d.watch_items(states=("queued",)):
+            tries = int(item["delivery_retries"] or 0)
+            if item["publish_state"] != "done" or tries >= len(DELIVERY_RETRY_DELAYS):
+                continue
+            if self._hands_off(d, item) is None:
+                continue
+            rejected = d.conn.execute(
+                "SELECT COUNT(*) FROM clip_publishes WHERE video_id = ? AND state = 'failed'",
+                (item["video_id"],),
+            ).fetchone()[0]
+            if not rejected:
+                continue
+            if not item["publish_retry_at"]:
+                d.set_watch_item(item["id"],
+                                 publish_retry_at=now + DELIVERY_RETRY_DELAYS[tries])
+                continue
+            if item["publish_retry_at"] > now:
+                continue
+            d.set_watch_item(item["id"], publish_state="publishing", publish_retry_at=0,
+                             publish_attempts=0, delivery_retries=tries + 1)
+            print(f"Watch: sending {rejected} rejected post(s) of {item['video_id']} again")
+
+    def _free_disk(self, d: StateDB) -> None:
+        """Delete a watched video's download once its clips are published, when
+        asked to. Clips, transcripts and the library entry stay; only the
+        several-gigabyte source goes, which an always-on PC would otherwise
+        pile up until the disk is full."""
+        if self._downloads is None or d.get_flag(DELETE_SOURCES_KEY, "0") != "1":
+            return
+        from core.paths import cached_source, discard
+
+        for item in d.watch_items(states=("queued",)):
+            if item["source_freed"] or item["publish_state"] not in ("done", "off"):
+                continue
+            if _job_status(d, item) != "done":
+                continue
+            source = cached_source(self._downloads, item["video_id"])
+            if source is None:
+                # Nothing on disk to free. Marked so the folder is not scanned
+                # for it again, and told apart so nobody is told it was deleted.
+                d.set_watch_item(item["id"], source_freed=2)
+            elif discard(source):
+                d.set_watch_item(item["id"], source_freed=1)
+                print(f"Watch: deleted {source.name}, its clips are published")
 
 
 def woopsocial_publisher(data_dir) -> Callable[..., dict]:
@@ -540,9 +674,12 @@ def install(
 
     if publisher is None and data_dir is not None:
         publisher = woopsocial_publisher(data_dir)
+    from pathlib import Path
+
     watcher = ChannelWatcher(
         db, feed=feed, worker=worker, broadcaster=broadcaster, publisher=publisher,
         interval_minutes=interval_minutes, clock=clock,
+        downloads=Path(data_dir) / "downloads" if data_dir is not None else None,
     )
 
     def load_watch(d: StateDB, watch_id: int):
@@ -561,6 +698,7 @@ def install(
         watches = d.list_watches()
         return {
             "enabled": is_enabled(d),
+            "delete_sources": d.get_flag(DELETE_SOURCES_KEY, "0") == "1",
             "interval_minutes": watcher.interval_seconds / 60,
             "watches": len(watches),
             "watching": sum(1 for w in watches if w["enabled"]),
@@ -579,7 +717,10 @@ def install(
     def patch_automation(body: AutomationPatch):
         d = db()
         try:
-            d.set_flag(ENABLED_KEY, "1" if body.enabled else "0")
+            if body.enabled is not None:
+                d.set_flag(ENABLED_KEY, "1" if body.enabled else "0")
+            if body.delete_sources is not None:
+                d.set_flag(DELETE_SOURCES_KEY, "1" if body.delete_sources else "0")
             result = status(d)
         finally:
             d.close()
@@ -608,7 +749,7 @@ def install(
                 return {"created": False, **view_watch(d, existing)}
             watch_id = d.insert_watch(
                 channel.platform, channel.channel_key, name=channel.name,
-                publish=PublishSettings().model_dump_json(),
+                publish=(body.publish or PublishSettings()).model_dump_json(),
             )
             result = {"created": True, **view_watch(d, load_watch(d, watch_id))}
         finally:
@@ -716,8 +857,10 @@ def install(
             item = load_item(d, item_id)
             if item["state"] != "queued" or _job_status(d, item) != "done":
                 raise HTTPException(409, "This video's clips aren't ready yet.")
-            if item["publish_state"] != "publishing":
-                d.set_watch_item(item_id, publish_state="publishing", publish_error="")
+            if item["publish_state"] != "publishing" or item["publish_retry_at"]:
+                # A person asking is the go-ahead now, not after a wait.
+                d.set_watch_item(item_id, publish_state="publishing", publish_error="",
+                                 publish_retry_at=0, publish_attempts=0)
             result = view_item(d, load_item(d, item_id), worker)
         finally:
             d.close()

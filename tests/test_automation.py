@@ -81,16 +81,19 @@ class Env:
         self.db_path = tmp_path / "state.db"
         self.worker = FakeWorker()
         self.published: list[dict] = []
+        self.publish_calls = 0
         self.publish_error: Exception | None = None
+        self.data_dir = tmp_path
         app = FastAPI()
         self.watcher = automation.install(
             app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
             options_from=lambda raw: dict(raw), feed=self.feed, clock=lambda: self.now,
-            interval_minutes=15, publisher=self.publisher,
+            interval_minutes=15, publisher=self.publisher, data_dir=tmp_path,
         )
         self.client = TestClient(app, base_url="http://127.0.0.1")
 
     def publisher(self, d, **kwargs):
+        self.publish_calls += 1
         if self.publish_error:
             raise self.publish_error
         self.published.append(kwargs)
@@ -536,3 +539,161 @@ def test_the_footer_placeholders_are_filled_and_other_braces_kept():
         item, watch,
     )
     assert got == "Title on YouTube by LTT: https://youtu.be/x {not_a_field}"
+
+
+# ---- hands-off: an always-on PC with nobody watching --------------------------
+
+
+class Unreachable(Exception):
+    """What a network blip, a 5xx or a 429 looks like to the watcher."""
+
+    retryable = True
+
+
+def test_a_channel_can_be_added_hands_off_in_one_step(env):
+    env.feed.listings[UC] = []
+    response = env.client.post("/automation/watches", json={
+        "platform": "youtube", "channel": UC,
+        "publish": {"mode": "auto", "platforms": ["youtube", "tiktok"]},
+    })
+    assert response.status_code == 200
+    publish = response.json()["publish"]
+    assert publish["mode"] == "auto" and publish["platforms"] == ["youtube", "tiktok"]
+    assert publish["per_day"] == 5  # the rest keeps its defaults
+
+
+def test_a_failed_run_is_tried_again_twice_then_left(env):
+    publishing_watch(env)
+    for delay in automation.PROCESS_RETRY_DELAYS:
+        env.finish("newnewnew01", status="failed")
+        env.later(5)  # schedules the retry
+        assert env.item("newnewnew01")["status"] == "failed"
+        env.later(delay)
+        assert env.item("newnewnew01")["status"] == "queued"
+    env.finish("newnewnew01", status="failed")
+    env.later(5)
+    env.later(max(automation.PROCESS_RETRY_DELAYS) * 2)
+    item = env.item("newnewnew01")
+    assert item["status"] == "failed" and item["retries"] == 2
+    assert len(env.jobs()) == 1  # the same job, retried, never a second one
+
+
+def test_only_hands_off_channels_retry(env):
+    publishing_watch(env, mode="ask")
+    env.finish("newnewnew01", status="failed")
+    env.later(5)
+    env.later(max(automation.PROCESS_RETRY_DELAYS) * 2)
+    assert env.item("newnewnew01")["status"] == "failed"
+    assert env.item("newnewnew01")["retries"] == 0
+
+
+def test_an_unreachable_woopsocial_is_tried_again_then_asked_about(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.publish_error = Unreachable("Could not reach WoopSocial.")
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert item["publish_state"] == "publishing" and item["publish_attempts"] == 1
+    env.later(60)
+    assert env.publish_calls == 1  # not before the wait is up
+    for _ in range(automation.PUBLISH_START_ATTEMPTS):
+        env.later(automation.PUBLISH_RETRY_SECONDS)
+    assert env.publish_calls == automation.PUBLISH_START_ATTEMPTS + 1
+    assert env.item("newnewnew01")["publish_state"] == "ask"
+
+
+def test_it_publishes_once_woopsocial_is_back(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.publish_error = Unreachable("503")
+    env.later(5)
+    env.publish_error = None
+    env.later(automation.PUBLISH_RETRY_SECONDS)
+    assert len(env.published) == 1
+    assert env.item("newnewnew01")["publish_state"] == "done"
+
+
+def reject_a_post(env, video_id="newnewnew01"):
+    def go(d):
+        clip = d.clips_for_video(video_id)[0]
+        d.record_clip_publish(clip["id"], "youtube", {
+            "provider": "woopsocial", "video_id": video_id, "state": "failed",
+            "error": "WoopSocial allows 5 YouTube posts a day on your plan.",
+        })
+    env.run(go)
+
+
+def test_rejected_posts_are_sent_again_later(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert len(env.published) == 1
+    reject_a_post(env)
+    for delay in automation.DELIVERY_RETRY_DELAYS:
+        env.later(5)  # notices the rejection, schedules the re-send
+        before = len(env.published)
+        env.later(delay)
+        assert len(env.published) == before + 1
+    env.later(5)
+    env.later(max(automation.DELIVERY_RETRY_DELAYS) * 2)
+    assert len(env.published) == 1 + len(automation.DELIVERY_RETRY_DELAYS)
+
+
+def test_nothing_is_sent_again_when_nothing_was_rejected(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    env.later(max(automation.DELIVERY_RETRY_DELAYS) * 2)
+    assert len(env.published) == 1
+
+
+def download(env, video_id="newnewnew01"):
+    folder = env.data_dir / "downloads"
+    folder.mkdir(exist_ok=True)
+    source = folder / f"{video_id}.mp4"
+    source.write_bytes(b"several gigabytes")
+    return source
+
+
+def test_the_download_is_deleted_once_its_clips_are_published(env):
+    env.client.patch("/automation", json={"delete_sources": True})
+    publishing_watch(env)
+    source = download(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert not source.exists()
+    assert env.item("newnewnew01")["source_freed"] == 1
+
+
+def test_the_download_is_kept_unless_asked(env):
+    publishing_watch(env)
+    source = download(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert source.exists()
+
+
+def test_the_download_is_kept_while_the_clips_wait_to_be_published(env):
+    env.client.patch("/automation", json={"delete_sources": True})
+    publishing_watch(env, mode="ask")
+    source = download(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert source.exists()  # a person may still edit before publishing
+
+
+def test_only_a_watched_videos_download_is_ever_deleted(env):
+    env.client.patch("/automation", json={"delete_sources": True})
+    publishing_watch(env, mode="off")
+    other = download(env, "somethingelse")
+    finished_with_clips(env)
+    env.later(5)
+    assert other.exists()
+
+
+def test_a_video_with_no_download_is_not_reported_as_deleted(env):
+    env.client.patch("/automation", json={"delete_sources": True})
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert env.item("newnewnew01")["source_freed"] == 2

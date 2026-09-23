@@ -340,6 +340,8 @@ WATCH_COLUMNS = frozenset({
 WATCH_ITEM_COLUMNS = frozenset({
     "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
     "reason", "job_id", "next_check_at", "publish_state", "publish_error",
+    "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
+    "source_freed",
 })
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -491,6 +493,23 @@ class StateDB:
             self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_seen TEXT")
         if "last_video" not in knowledge_cols:
             self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_video TEXT")
+        item_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(watch_items)")}
+        for column, decl in (
+            # A hands-off channel runs on a PC nobody is looking at, so a
+            # failure is tried again rather than left for a person. These count
+            # the tries and say when the next one is due.
+            ("retries", "INTEGER NOT NULL DEFAULT 0"),           # processing runs retried
+            ("retry_at", "REAL NOT NULL DEFAULT 0"),
+            ("publish_attempts", "INTEGER NOT NULL DEFAULT 0"),  # publishes that could not start
+            ("publish_retry_at", "REAL NOT NULL DEFAULT 0"),
+            ("delivery_retries", "INTEGER NOT NULL DEFAULT 0"),  # re-sends of rejected posts
+            # 1: the download was deleted once its clips were published. 2: there
+            # was none to delete. Either way the folder is not scanned for it
+            # again on every tick.
+            ("source_freed", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if column not in item_cols:
+                self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")
         # Channels added with the old `python main.py channels add` become
         # watches once, switched off: they were set up for the CLI daemon, and
         # having the app act on them is the user's call, not a migration's.

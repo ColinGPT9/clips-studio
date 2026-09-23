@@ -929,20 +929,31 @@ How each channel is read:
 ### `GET /automation` · `PATCH /automation`
 
 ```json
-{"enabled": true, "interval_minutes": 15, "watches": 2, "watching": 1,
+{"enabled": true, "delete_sources": false, "interval_minutes": 15, "watches": 2,
+ "watching": 1,
  "presets": [{"id": "standard", "name": "Standard", "description": "...", "options": {}}]}
 ```
 
-Send `{"enabled": true}` or `{"enabled": false}`. The interval comes from
-`poll_interval_minutes` in settings.yaml, and is never less than 5 minutes.
+PATCH takes either field, or both:
+
+- `enabled`: switch watching on or off.
+- `delete_sources`: delete each watched video's download once its clips are
+  published. The clips and the library entry stay, and videos no watch queued
+  are never touched.
+
+The interval comes from `poll_interval_minutes` in settings.yaml, and is never
+less than 5 minutes.
 
 ### `POST /automation/watches`
 
 ```json
-{"platform": "youtube", "channel": "https://www.youtube.com/@LinusTechTips"}
+{"platform": "youtube", "channel": "https://www.youtube.com/@LinusTechTips",
+ "publish": {"mode": "auto", "platforms": ["youtube", "tiktok"]}}
 ```
 
-`channel` accepts a channel link, an `@handle` or a bare name. A YouTube channel
+`channel` accepts a channel link, an `@handle` or a bare name. `publish` is
+optional and takes the same fields as the watch's `publish` below, so a
+hands-off channel is one request. A YouTube channel
 is resolved to its `UC...` id, so the handle and the id name the same watch.
 Returns the watch plus `"created": true`, or `false` if the channel was already
 watched. A channel that can't be found or read returns 400 with a message a
@@ -974,7 +985,7 @@ PATCH takes any of the following, and changes only what it is sent:
 | `enabled` | Whether this watch is looked at. |
 | `preset` | An `id` from `GET /automation` (the same presets as integrations). |
 | `options` | The same per-video options as `PATCH /jobs/{id}`, validated the same way. |
-| `publish.mode` | `off`: leave the clips alone. `ask`: stop at "ready to publish" (the default). `auto`: publish as soon as the clips exist. |
+| `publish.mode` | `off`: leave the clips alone. `ask`: stop at "ready to publish" (the default). `auto`: publish as soon as the clips exist, and retry on failure (see below). |
 | `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. |
 | `publish.per_day`, `publish.gap_hours` | A daily budget, queued behind everything already scheduled. WoopSocial's free plan allows about 5 YouTube posts a day. |
 | `publish.footer` | Text added under each caption. `{source_url}`, `{source_title}`, `{source_channel}` and `{source_platform}` are filled in; other braces are left as typed. |
@@ -1024,6 +1035,22 @@ The videos a watch has seen, newest first.
 
 `deliveries` holds one row per clip and platform. Its state is `sending`,
 `queued`, `processing`, `published`, `failed` or `skipped`.
+
+**Hands-off retries.** For a watch whose `publish.mode` is `auto`, a failure
+is tried again instead of waiting for a person, since nobody may be at the PC:
+
+- **A failed download or processing run** is re-queued (the same job) after
+  30 minutes and then after 3 hours. `retries` counts these, and `retry_at` is
+  when the next one is due (unix seconds, 0 when none is scheduled).
+- **A publish that could not start** because WoopSocial was unreachable, busy
+  or rate limiting is tried every 15 minutes, 6 times, then falls back to
+  `ask`. `publish_attempts` and `publish_retry_at` track this. Setup problems,
+  such as no key, no platforms or an unconnected account, go to `ask` at once.
+- **Posts a platform rejected** are sent again after 6 hours and after 24
+  hours. `delivery_retries` counts these. Only the rejected ones go; nothing
+  published or on its way is ever sent twice.
+
+`source_freed` is 1 once the video's download was deleted (`delete_sources`), and 2 if there was none to delete.
 
 ### `POST /automation/items/{id}/queue`
 
