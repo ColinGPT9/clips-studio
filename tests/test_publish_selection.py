@@ -421,3 +421,146 @@ def test_an_explicit_start_beats_the_queue(monkeypatch, tmp_path, two_clips):
         per_day=5, gap_hours=1, start_at=_at(0, 0),
     )
     assert sent[0]["scheduled_for"][11:16] == "09:00"
+
+
+# ---- the caption leads with the hook ----------------------------------------
+#
+# TikTok has no title field, so the title was simply dropped and the caption
+# opened with the description. The hook, the line written to stop someone
+# scrolling, never reached the one platform where the caption is the hook.
+
+
+def _caption(monkeypatch, tmp_path, *, title="", hook="", description=""):
+    sent = []
+    _publisher(monkeypatch, sent)
+    clip = _Row(
+        id=1, path=str(tmp_path / "a.mp4"), title=title, hook=hook,
+        description=description, hashtags="", video_id="v", start_s=0, end_s=1,
+    )
+    (tmp_path / "a.mp4").write_bytes(b"x")
+
+    captured = {}
+
+    class FakePublisher:
+        def __init__(self, client, project):
+            pass
+
+        def start(self, path, *, platforms, title, text, scheduled_for, overrides):
+            captured["text"] = text
+            captured["title"] = title
+            return _Result(platforms)
+
+    monkeypatch.setattr("publish.woopsocial.WoopSocialPublisher", FakePublisher)
+    woop.publish_clips(
+        _FakeDB(clips={1: clip}), tmp_path, clip_ids=[1], platforms=["tiktok"]
+    )
+    return captured
+
+
+def test_the_title_opens_the_caption(monkeypatch, tmp_path):
+    got = _caption(
+        monkeypatch, tmp_path,
+        title="She said WHAT about her brother",
+        description="Creator reacts to a message from her brother.",
+    )
+    assert got["text"].startswith("She said WHAT about her brother")
+    assert "Creator reacts" in got["text"], "the description still follows"
+
+
+def test_the_hook_is_used_when_there_is_no_title(monkeypatch, tmp_path):
+    got = _caption(monkeypatch, tmp_path, hook="The bit that goes viral", description="d")
+    assert got["text"].startswith("The bit that goes viral")
+
+
+def test_a_title_the_description_already_opens_with_is_not_repeated(monkeypatch, tmp_path):
+    got = _caption(
+        monkeypatch, tmp_path,
+        title="Leg day",
+        description="Leg day, and it did not go to plan.",
+    )
+    assert got["text"].count("Leg day") == 1
+
+
+def test_a_clip_with_only_a_description_still_posts(monkeypatch, tmp_path):
+    got = _caption(monkeypatch, tmp_path, description="Just a description.")
+    assert got["text"] == "Just a description."
+
+
+def test_a_clip_with_only_a_title_still_posts(monkeypatch, tmp_path):
+    got = _caption(monkeypatch, tmp_path, title="Only a title")
+    assert got["text"] == "Only a title"
+
+
+# ---- "sending" has to stop saying sending -----------------------------------
+#
+# Every row sat at "processing" for good, because the only thing that asked
+# the provider was a button in a view nobody had open. Sixty posts read as
+# "sending" long after some had published and others had failed.
+
+
+class _Worker:
+    """The publish worker's refresh, without starting its thread."""
+
+    def __init__(self, tmp_path):
+        from server.publisher import PublishWorker
+
+        self.w = PublishWorker.__new__(PublishWorker)
+        self.w.data_dir = tmp_path
+        self.w._next_provider_check = 0.0
+
+
+def test_the_worker_asks_the_provider_on_its_own(monkeypatch, tmp_path):
+    called = {}
+    monkeypatch.setattr(woop, "is_enabled", lambda db: True)
+    monkeypatch.setattr(woop, "has_key", lambda d: True)
+    monkeypatch.setattr(woop, "in_flight", lambda db: ["req-a"])
+    monkeypatch.setattr(
+        woop, "refresh_in_flight",
+        lambda db, d: called.setdefault("ran", True)
+        or {"checked": 1, "updated": 1, "still_waiting": 0, "failed": 0},
+    )
+    _Worker(tmp_path).w._refresh_provider_posts(object())
+    assert called.get("ran"), "nothing asked the provider"
+
+
+def test_it_does_not_ask_again_immediately(monkeypatch, tmp_path):
+    """Delivery takes hours. A tight loop would spend its life asking about
+    posts due on Thursday."""
+    runs = []
+    monkeypatch.setattr(woop, "is_enabled", lambda db: True)
+    monkeypatch.setattr(woop, "has_key", lambda d: True)
+    monkeypatch.setattr(woop, "in_flight", lambda db: ["req-a"])
+    monkeypatch.setattr(
+        woop, "refresh_in_flight",
+        lambda db, d: runs.append(1) or {"checked": 1, "updated": 0, "still_waiting": 1, "failed": 0},
+    )
+    worker = _Worker(tmp_path).w
+    worker._refresh_provider_posts(object())
+    worker._refresh_provider_posts(object())
+    worker._refresh_provider_posts(object())
+    assert len(runs) == 1, "asked more than once inside the interval"
+
+
+def test_nothing_in_flight_asks_nothing(monkeypatch, tmp_path):
+    monkeypatch.setattr(woop, "is_enabled", lambda db: True)
+    monkeypatch.setattr(woop, "has_key", lambda d: True)
+    monkeypatch.setattr(woop, "in_flight", lambda db: [])
+    monkeypatch.setattr(
+        woop, "refresh_in_flight", lambda db, d: pytest.fail("nothing to ask about")
+    )
+    _Worker(tmp_path).w._refresh_provider_posts(object())
+
+
+def test_an_unreachable_provider_does_not_break_the_worker(monkeypatch, tmp_path, capsys):
+    """This worker exists to run uploads. A status check failing must never
+    disturb that."""
+    monkeypatch.setattr(woop, "is_enabled", lambda db: True)
+    monkeypatch.setattr(woop, "has_key", lambda d: True)
+    monkeypatch.setattr(woop, "in_flight", lambda db: ["req-a"])
+
+    def boom(db, d):
+        raise RuntimeError("woopsocial is down")
+
+    monkeypatch.setattr(woop, "refresh_in_flight", boom)
+    _Worker(tmp_path).w._refresh_provider_posts(object())  # must not raise
+    assert "woopsocial is down" in capsys.readouterr().out

@@ -279,7 +279,17 @@ def publish_clips(
             skipped.append({"clip_id": clip_id, "reason": "no rendered file yet"})
             continue
 
-        text = (clip["description"] or "").strip()
+        # The title leads. Only YouTube has a title field, so everywhere else
+        # it used to be discarded and the caption opened with the description:
+        # on TikTok the hook, which is the whole reason the line was written,
+        # never reached the post at all. Skipped when the description already
+        # opens with it, so nothing reads twice.
+        headline = (clip["title"] or clip["hook"] or "").strip()
+        body = (clip["description"] or "").strip()
+        if headline and not body.casefold().startswith(headline.casefold()):
+            text = (headline + "\n\n" + body).strip()
+        else:
+            text = body or headline
         if standing:
             text = (text + "\n\n" + standing).strip()
         # The clip's own tags first, then anything asked for across the whole

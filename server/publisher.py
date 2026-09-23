@@ -44,6 +44,8 @@ class PublishWorker(threading.Thread):
         self._wake = threading.Event()
         self._cancelled: set[int] = set()
         self._verify: list[tuple[float, int, str]] = []  # (due_at, clip_id, video_id)
+        # When to next ask a provider what became of the posts it accepted.
+        self._next_provider_check = 0.0
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -66,6 +68,7 @@ class PublishWorker(threading.Thread):
 
             while not self._stop.is_set():
                 self._run_due_verifications(db)
+                self._refresh_provider_posts(db)
                 job = db.claim_next_publish_job()
                 if job is None:
                     self._wake.wait(timeout=2.0)
@@ -77,6 +80,43 @@ class PublishWorker(threading.Thread):
                     self._fail(db, job, e)
         finally:
             db.close()
+
+    # ---- what became of what we sent -------------------------------------
+
+    #: How often to ask. Delivery takes hours or days, so a tight loop would
+    #: spend its life asking about posts due on Thursday.
+    PROVIDER_CHECK_SECONDS = 180
+
+    def _refresh_provider_posts(self, db: StateDB) -> None:
+        """Move accepted posts off "processing" once they actually land.
+
+        A batch is accepted in one call and delivered at the provider's own
+        pace, so without this every row sat at "processing" for good: 60 posts
+        read as "sending" long after some of them had published and others had
+        failed, and the only way to find out was the provider's own website.
+
+        Contained and quiet: this is a read, and a provider being unreachable
+        must never disturb the uploads this worker is actually here to run.
+        """
+        now = time.monotonic()
+        if now < self._next_provider_check:
+            return
+        self._next_provider_check = now + self.PROVIDER_CHECK_SECONDS
+        try:
+            from server import woopsocial_service as woop
+
+            if not woop.is_enabled(db) or not woop.has_key(self.data_dir):
+                return
+            if not woop.in_flight(db):
+                return
+            out = woop.refresh_in_flight(db, self.data_dir)
+            if out.get("updated"):
+                print(
+                    f"  Publish status: {out['updated']} updated, "
+                    f"{out['still_waiting']} still waiting."
+                )
+        except Exception as e:
+            print(f"  Could not check publish status: {e}")
 
     # ---- one job ---------------------------------------------------------
 
