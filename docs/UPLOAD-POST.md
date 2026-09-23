@@ -5,20 +5,23 @@ X, Threads, LinkedIn, Pinterest and Bluesky **in one upload**, through a
 service called [Upload-Post](https://www.upload-post.com/).
 
 It is off until you turn it on, and it needs an account with one of two
-services — **WoopSocial** (the one to start with) or **Upload-Post**. Both
-are bring-your-own-key:
+services — **[WoopSocial](https://woopsocial.com/?via=colin279)** (the one to
+start with) or **Upload-Post**. Both are bring-your-own-key:
 Clips Kitty does not resell, proxy or subsidise anything, and holds no shared
 key for either. Your account, your connected socials, your allowance.
 
+<sub>Affiliate link - Clips Kitty may earn a commission if you sign up through
+it, at no extra cost to you.</sub>
+
 ## Which one
 
-**Start with WoopSocial.** Its free plan covers most creators outright:
-unlimited posts on two connected accounts, with API access. Upload-Post is
-there for what WoopSocial does not do.
+**Start with WoopSocial.** Its free plan covers most creators outright: two
+connected accounts with API access, and roughly 5 YouTube posts a day.
+Upload-Post is there for what WoopSocial does not do.
 
 | | WoopSocial | Upload-Post |
 |---|---|---|
-| Free plan | **Unlimited posts, 2 accounts**, API included | 10 uploads a month, no TikTok |
+| Free plan | **2 accounts**, API included, about 5 YouTube posts a day | 10 uploads a month, no TikTok |
 | Paid from | $19/month, 20 accounts | $24/month ($16 annual) |
 | Destinations | 8 | 9, including **Bluesky** |
 | Thumbnails | not through their API | YouTube, LinkedIn, Facebook video |
@@ -87,8 +90,10 @@ makes no network calls at all while it is switched off.
 
 **Settings → Publish through WoopSocial → On.** (Or **Upload-Post** further down, if you are using that one.)
 
-1. **Create an Upload-Post account** and connect your social accounts there.
-   The button in Settings opens their site in your browser.
+1. **Create your account** and connect your social accounts there, at
+   [WoopSocial](https://woopsocial.com/?via=colin279) or
+   [Upload-Post](https://www.upload-post.com/). The button in Settings opens
+   the right site in your browser.
 2. **Copy your API key** from their dashboard.
 3. **Paste it into Clips Kitty** and press *Save and check*.
 

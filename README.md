@@ -554,11 +554,15 @@ service, which delivers them and holds the connections to your social
 accounts, so Clips Kitty never asks for a social password. Everything else in
 the app still runs on your PC.
 
-Two services are supported: **[WoopSocial](https://woopsocial.com/)**, whose
-free plan allows unlimited posts on two connected accounts, and
+Two services are supported: **[WoopSocial](https://woopsocial.com/?via=colin279)**,
+whose free plan connects two accounts and allows roughly 5 YouTube posts a
+day, with the paid plans lifting both, and
 **[Upload-Post](https://www.upload-post.com/)**, which reaches more
 destinations and adds thumbnails, first comments and a posting queue. Turn on
 either, or both.
+
+<sub>Affiliate link - Clips Kitty may earn a commission if you sign up through
+it, at no extra cost to you.</sub>
 
 **Bring your own key.** You create the account, connect your own socials and
 use your own allowance. Clips Kitty charges nothing, holds no shared key and

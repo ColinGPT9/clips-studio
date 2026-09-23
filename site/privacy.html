@@ -53,10 +53,11 @@
           <p class="lead">
             No telemetry, no analytics, and nothing sent anywhere on its own. Your video is
             processed on your own computer, and the only way any of it leaves is if you
-            connect your own YouTube account and press publish. This page explains exactly
-            what is stored, what can leave your machine, and what triggers it.
+            press publish, either to your own YouTube channel or through a publishing
+            service you have connected. This page explains exactly what is stored, what can
+            leave your machine, and what triggers it.
           </p>
-          <p><strong>Last updated:</strong> 7 September 2026</p>
+          <p><strong>Last updated:</strong> 23 September 2026</p>
         </div>
       </div>
 
@@ -65,10 +66,10 @@
           <h2>The short version</h2>
           <ul>
             <li><strong>No telemetry.</strong> The app reports nothing back. There is no usage tracking, no crash reporting, and no analytics of any kind inside Clips Kitty.</li>
-            <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The one optional sign-in is to <em>your own</em> YouTube account, and it goes straight to Google.</li>
-            <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware. Publishing to YouTube is off by default and described below.</li>
+            <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The optional sign-ins are to <em>your own</em> accounts: YouTube, which goes straight to Google, and a publishing service if you choose to use one.</li>
+            <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware. Both ways of publishing are off by default and described below.</li>
             <li><strong>The AI runs locally too.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else.</li>
-            <li><strong>Three things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, and, only if you switch it on, publishing a clip to your own YouTube channel.</li>
+            <li><strong>Four things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, and publishing a clip through a social publishing service. The last two only happen if you switch them on.</li>
           </ul>
         </div>
       </section>
@@ -130,6 +131,44 @@
               YouTube it is subject to Google's privacy policy and terms, exactly as if you
               had uploaded it through the YouTube website.</li>
           </ul>
+
+          <h3>Only if you turn on publishing through a service</h3>
+          <p>
+            Clips Kitty can also post a finished clip to YouTube, TikTok, Instagram,
+            Facebook, X, Threads, LinkedIn, Pinterest and Bluesky in one go. This is
+            <strong>off by default</strong> and has to be switched on in Settings, where it
+            asks for an API key from your own account with
+            <a href="https://woopsocial.com/?via=colin279" target="_blank" rel="noopener noreferrer sponsored">WoopSocial</a>
+            or <a href="https://www.upload-post.com/" target="_blank" rel="noopener noreferrer">Upload-Post</a>.
+          </p>
+          <ul>
+            <li><strong>This part is not local, and that is the trade.</strong> Unlike
+              everything else in the app, the clip does not go straight to the platform. The
+              video file, the title, the description and the platforms you picked are sent
+              to the service you chose, and it delivers them for you.</li>
+            <li><strong>It is still not us.</strong> The service is your account, not a
+              Clips Kitty one. Nothing is proxied through a Clips Kitty server, because
+              there isn't one, and we never receive your video or anything about your
+              social accounts.</li>
+            <li><strong>Clips Kitty never sees a social password.</strong> You connect
+              TikTok, Instagram and the rest on the service's own site, and it holds those
+              connections. The app only ever holds the API key you pasted in.</li>
+            <li><strong>Your API key stays on your machine</strong>, stored the same way as
+              the YouTube token, and it is write-only in the app: once saved, it is never
+              displayed back.</li>
+            <li><strong>Nothing is sent until you press Publish</strong>, and the feature
+              makes no network calls at all while it is switched off.</li>
+            <li><strong>Their policy applies to what you send.</strong> Once a clip is with
+              the service it is subject to that company's privacy policy and terms, and
+              then to each platform's once it is posted. Read theirs before you switch this
+              on, because this is the one part of Clips Kitty where a third party is
+              involved.</li>
+          </ul>
+          <p class="note">
+            The WoopSocial link above is an affiliate link. Clips Kitty may earn a
+            commission if you sign up through it, at no extra cost to you. It is the only
+            way the project earns anything, and it does not change what is written here.
+          </p>
 
           <h3>Only if you submit a report</h3>
           <p>
