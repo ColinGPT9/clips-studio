@@ -165,7 +165,7 @@ def committed_times(db) -> list[str]:
     """
     rows = db.conn.execute(
         "SELECT state, scheduled_for, updated_at FROM clip_publishes "
-        "WHERE state IN ('queued', 'processing', 'published')"
+        "WHERE state IN ('queued', 'processing', 'published', 'sending')"
     ).fetchall()
     today = datetime.now(timezone.utc).date().isoformat()
     out: list[str] = []
@@ -183,6 +183,30 @@ def committed_times(db) -> list[str]:
     return out
 
 
+# States in which a clip counts as sent, or on its way, to a platform.
+ALIVE = ("queued", "processing", "published", "sending")
+
+# How long a post may sit at "sending" before it is treated as interrupted.
+# Longer than the upload and create timeouts together can run, so a slow send
+# that is still in progress is never mistaken for one that died.
+STALE_SENDING_SECONDS = 20 * 60
+
+
+def already_sent(db, clip, platforms: list[str]) -> set[str]:
+    """The platforms this clip already went to, or is on its way to.
+
+    Matched on the clip's lasting identity as well as its id, because a
+    re-render gives the same clip a new id. A failure or a skip holds nothing:
+    those are exactly what a retry is for."""
+    marks = ",".join("?" * len(ALIVE))
+    rows = db.conn.execute(
+        f"SELECT platform FROM clip_publishes WHERE state IN ({marks}) AND "
+        "(clip_id = ? OR (video_id != '' AND video_id = ? AND start_s = ? AND end_s = ?))",
+        (*ALIVE, clip["id"], clip["video_id"] or "", clip["start_s"], clip["end_s"]),
+    ).fetchall()
+    return {r["platform"] for r in rows} & set(platforms)
+
+
 def publish_clips(
     db,
     data_dir: Path,
@@ -196,17 +220,32 @@ def publish_clips(
     exclude: dict | None = None,
     per_day: int = 0,
     gap_hours: float = 1,
+    footer: str = "",
+    once: bool = False,
+    remember: bool = True,
 ) -> dict:
     """Publish a set of clips, optionally spaced out over time.
 
-    Lives here rather than in the route because two callers need it: the
-    /woopsocial/batch endpoint, and the worker finishing a job that was asked
-    to publish when it was queued (server/jobs.py). A second copy of this loop
-    would drift from the first the moment either changed.
+    Lives here rather than in the route because several callers need it: the
+    /woopsocial/batch endpoint, the worker finishing a job that was asked to
+    publish when it was queued (server/jobs.py), and watched channels
+    (server/automation.py). A second copy of this loop would drift from the
+    first the moment either changed.
 
     One post per clip, because each clip is different media. The spacing uses
     WoopSocial's own scheduler rather than a timer here, so a run stretching
     over days keeps going with Clips Kitty closed.
+
+    `once` is for callers nobody is watching, which may run this again for the
+    same clips after a restart or to retry failures. WoopSocial has no
+    idempotency key, so the guard is here: a clip already sent or on its way to
+    a platform is left alone, and each send is recorded as "sending" before any
+    request goes out, then tagged with its media the moment the upload lands,
+    so reconcile_sending can settle it if Clips Kitty stops halfway. Without
+    `once` nothing changes: a person pressing Publish again means it.
+
+    `footer` goes under the standing text. `remember` keeps a background run
+    from changing the platforms the publish dialog offers next time.
     """
     from datetime import datetime, timedelta
     from datetime import timezone as tz
@@ -278,6 +317,13 @@ def publish_clips(
         if not (clip["path"] and _Path(clip["path"]).exists()):
             skipped.append({"clip_id": clip_id, "reason": "no rendered file yet"})
             continue
+        if once:
+            sent = already_sent(db, clip, wanted)
+            wanted = [p for p in wanted if p not in sent]
+            if not wanted:
+                # Not a slot: nothing is being sent.
+                skipped.append({"clip_id": clip_id, "reason": "already sent"})
+                continue
 
         # The title leads. Only YouTube has a title field, so everywhere else
         # it used to be discarded and the caption opened with the description:
@@ -292,6 +338,8 @@ def publish_clips(
             text = body or headline
         if standing:
             text = (text + "\n\n" + standing).strip()
+        if footer.strip():
+            text = (text + "\n\n" + footer.strip()).strip()
         # The clip's own tags first, then anything asked for across the whole
         # run, with duplicates dropped so a tag the clip already had is not
         # repeated.
@@ -318,6 +366,25 @@ def publish_clips(
                 at = datetime.now(tz.utc) + timedelta(minutes=2)
             when = at.isoformat()
 
+        uploaded: list[str] = []
+        on_media = None
+        if once:
+            for platform in wanted:
+                db.record_clip_publish(clip_id, platform, {
+                    "provider": "woopsocial", "video_id": clip["video_id"] or "",
+                    "start_s": clip["start_s"] or 0, "end_s": clip["end_s"] or 0,
+                    "state": "sending", "post_id": "", "post_url": "", "error": "",
+                    "request_id": "", "media_id": "", "scheduled_for": when,
+                })
+
+            def on_media(media_id, clip_id=clip_id, targets=tuple(wanted), uploaded=uploaded):
+                uploaded.append(media_id)
+                for platform in targets:
+                    db.record_clip_publish(clip_id, platform, {"media_id": media_id})
+
+        # Only a background run asks to hear about the media; a person's
+        # publish calls start() exactly as it always has.
+        extra = {"on_media": on_media} if on_media is not None else {}
         try:
             result = publisher.start(
                 _Path(clip["path"]),
@@ -326,10 +393,20 @@ def publish_clips(
                 text=text,
                 scheduled_for=when,
                 overrides=overrides or {},
+                **extra,
             )
         except PublishError as e:
             # One clip's problem must not cost the rest of the batch.
             skipped.append({"clip_id": clip_id, "reason": e.message})
+            if once and not (uploaded and e.retryable):
+                # Refused outright, or stopped before the upload landed: no
+                # post exists, so it is safe to send again.
+                for platform in wanted:
+                    db.record_clip_publish(
+                        clip_id, platform, {"state": "failed", "error": e.message[:300]}
+                    )
+            # A timeout after the upload may or may not have created the post.
+            # That row stays "sending" for reconcile_sending to settle.
             continue
 
         record_outcomes(db, clip_id, clip, result, scheduled_for=when)
@@ -338,8 +415,61 @@ def publish_clips(
         )
         slot += 1
 
-    save_settings(db, {"platforms": platforms})
+    if remember:
+        save_settings(db, {"platforms": platforms})
     return {"started": started, "skipped": skipped}
+
+
+def reconcile_sending(db, data_dir: Path, *, older_than: float = STALE_SENDING_SECONDS) -> dict:
+    """Settle posts Clips Kitty stopped in the middle of sending.
+
+    A row still at "sending" long after any send could have finished means the
+    app stopped between writing it and learning the result. Either the post
+    was never created, and the clip can safely be sent again, or it was, and
+    sending again would post it twice. The uploaded media tells which: no media
+    means no post could exist, and a post carrying the media is adopted with
+    its id, so the ordinary status refresh follows it from there.
+    """
+    from datetime import timedelta
+
+    from publish.errors import PublishError
+    from publish.woopsocial import WoopSocialPublisher
+
+    cutoff = (datetime.now() - timedelta(seconds=older_than)).isoformat(timespec="seconds")
+    rows = db.conn.execute(
+        "SELECT * FROM clip_publishes WHERE state = 'sending' AND updated_at <= ? "
+        "ORDER BY clip_id",
+        (cutoff,),
+    ).fetchall()
+    if not rows:
+        return {"adopted": 0, "failed": 0}
+
+    groups: dict[tuple[int, str], list] = {}
+    for row in rows:
+        groups.setdefault((int(row["clip_id"]), row["media_id"] or ""), []).append(row)
+
+    publisher = None
+    adopted = failed = 0
+    never_sent = "Clips Kitty stopped before this was sent. It is safe to send again."
+    for (clip_id, media_id), group in groups.items():
+        platforms = [r["platform"] for r in group]
+        found = None
+        if media_id:
+            try:
+                if publisher is None:
+                    client = make_client(data_dir)
+                    publisher = WoopSocialPublisher(client, resolve_project(db, client))
+                found = publisher.find_by_media(media_id, platforms)
+            except PublishError:
+                continue  # unreachable now; a later refresh tries again
+        if found is not None and found.outcomes:
+            record_outcomes(db, clip_id, db.get_clip(clip_id), found)
+            adopted += 1
+            platforms = [p for p in platforms if p not in {o.platform for o in found.outcomes}]
+        for platform in platforms:
+            db.record_clip_publish(clip_id, platform, {"state": "failed", "error": never_sent})
+            failed += 1
+    return {"adopted": adopted, "failed": failed}
 
 
 def in_flight(db) -> list[str]:

@@ -107,6 +107,18 @@ class PublishWorker(threading.Thread):
 
             if not woop.is_enabled(db) or not woop.has_key(self.data_dir):
                 return
+            # First, anything a stop in mid-send left unsettled, so it is either
+            # followed like any other post or safe to send again. Contained on
+            # its own: failing here must not stop the ordinary refresh below.
+            try:
+                settled = woop.reconcile_sending(db, self.data_dir)
+                if settled["adopted"] or settled["failed"]:
+                    print(
+                        f"  Interrupted sends: {settled['adopted']} found on WoopSocial, "
+                        f"{settled['failed']} never sent."
+                    )
+            except Exception as e:
+                print(f"  Could not settle interrupted sends: {e}")
             if not woop.in_flight(db):
                 return
             out = woop.refresh_in_flight(db, self.data_dir)

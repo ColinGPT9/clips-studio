@@ -560,6 +560,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         worker=worker,
         broadcaster=broadcaster,
         options_from=_watch_options,
+        data_dir=data_dir,
         interval_minutes=float(config.get("poll_interval_minutes") or 15),
     )
 

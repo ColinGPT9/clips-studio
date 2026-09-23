@@ -80,13 +80,21 @@ class Env:
         self.feed = feed or FakeFeed()
         self.db_path = tmp_path / "state.db"
         self.worker = FakeWorker()
+        self.published: list[dict] = []
+        self.publish_error: Exception | None = None
         app = FastAPI()
         self.watcher = automation.install(
             app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
             options_from=lambda raw: dict(raw), feed=self.feed, clock=lambda: self.now,
-            interval_minutes=15,
+            interval_minutes=15, publisher=self.publisher,
         )
         self.client = TestClient(app, base_url="http://127.0.0.1")
+
+    def publisher(self, d, **kwargs):
+        if self.publish_error:
+            raise self.publish_error
+        self.published.append(kwargs)
+        return {"started": [{"clip_id": c} for c in kwargs["clip_ids"]], "skipped": []}
 
     def db(self):
         return StateDB(self.db_path)
@@ -415,3 +423,116 @@ def test_legacy_cli_channels_come_across_switched_off(tmp_path):
     rows = d.list_watches()
     d.close()
     assert [(r["channel_key"], r["enabled"]) for r in rows] == [(UC, 0)]
+
+
+# ---- publishing --------------------------------------------------------------
+
+
+def finished_with_clips(env, video_id="newnewnew01", n=3):
+    env.finish(video_id)
+    env.run(lambda d: [d.add_clip(video_id, i * 10.0, i * 10.0 + 8, 90 - i, f"hook {i}")
+                       for i in range(n)])
+
+
+def publishing_watch(env, mode="auto", **publish):
+    watch = watched(env)
+    settings = {"mode": mode, "platforms": ["youtube", "tiktok"], "per_day": 3,
+                "footer": "Full video: {source_url}", **publish}
+    env.client.patch(f"/automation/watches/{watch['id']}", json={"publish": settings})
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    return watch
+
+
+def test_automatic_publishes_once_with_the_watchs_settings(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    env.later(5)
+    assert len(env.published) == 1
+    sent = env.published[0]
+    assert len(sent["clip_ids"]) == 3
+    assert sent["platforms"] == ["youtube", "tiktok"]
+    assert sent["per_day"] == 3
+    assert sent["footer"] == "Full video: https://www.youtube.com/watch?v=newnewnew01"
+    assert env.item("newnewnew01")["publish_state"] == "done"
+
+
+def test_a_publish_the_app_stopped_in_the_middle_of_runs_again(env, tmp_path):
+    publishing_watch(env, mode="ask")
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item("newnewnew01")
+    env.run(lambda d: d.set_watch_item(item["id"], publish_state="publishing"))
+    restarted = Env(tmp_path, feed=env.feed)
+    restarted.now = env.now + 5
+    restarted.watcher.tick()
+    # Runs again; publish_clips(once=True) is what keeps that from double posting.
+    assert len(restarted.published) == 1
+    assert restarted.item("newnewnew01")["publish_state"] == "done"
+
+
+def test_ask_first_publishes_when_told_to(env):
+    publishing_watch(env, mode="ask")
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert item["publish_state"] == "ask" and env.published == []
+    response = env.client.post(f"/automation/items/{item['id']}/publish")
+    assert response.status_code == 200
+    env.later(5)
+    assert len(env.published) == 1
+    assert env.item("newnewnew01")["publish_state"] == "done"
+
+
+def test_publish_is_refused_before_the_clips_exist(env):
+    publishing_watch(env, mode="ask")
+    item = env.item("newnewnew01")
+    assert env.client.post(f"/automation/items/{item['id']}/publish").status_code == 409
+
+
+def test_an_approved_publish_goes_out_even_with_watching_switched_off(env):
+    publishing_watch(env, mode="ask")
+    finished_with_clips(env)
+    env.later(5)
+    env.client.patch("/automation", json={"enabled": False})
+    env.client.post(f"/automation/items/{env.item('newnewnew01')['id']}/publish")
+    env.later(5)
+    assert len(env.published) == 1
+
+
+def test_a_publish_that_cannot_start_falls_back_to_asking(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.publish_error = RuntimeError("WoopSocial isn't set up. Add your key in Settings.")
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert item["publish_state"] == "ask"
+    assert "isn't set up" in item["publish_error"]
+
+
+def test_no_platforms_chosen_means_asking_not_guessing(env):
+    publishing_watch(env, platforms=[])
+    finished_with_clips(env)
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert env.published == []
+    assert item["publish_state"] == "ask"
+
+
+def test_a_run_with_no_clips_has_nothing_to_publish(env):
+    publishing_watch(env)
+    env.finish("newnewnew01")
+    env.later(5)
+    assert env.published == []
+    assert env.item("newnewnew01")["publish_state"] == "done"
+
+
+def test_the_footer_placeholders_are_filled_and_other_braces_kept():
+    watch = {"name": "LTT", "channel_key": UC, "platform": "youtube"}
+    item = {"url": "https://youtu.be/x", "title": "Title"}
+    got = automation.render_footer(
+        "{source_title} on {source_platform} by {source_channel}: {source_url} {not_a_field}",
+        item, watch,
+    )
+    assert got == "Title on YouTube by LTT: https://youtu.be/x {not_a_field}"

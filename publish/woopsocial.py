@@ -25,6 +25,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 from publish.errors import (
@@ -277,6 +278,18 @@ class WoopSocialClient:
     def get_post(self, post_id: str) -> dict:
         return self._request("GET", f"/posts/{_safe_id(post_id)}")
 
+    def social_account_posts(self, account_ids: list[str], *, limit: int = 100) -> list[dict]:
+        """The newest posts on some connected accounts, one entry per account."""
+        ids = ",".join(_safe_id(str(a)) for a in account_ids if a)
+        if not ids:
+            return []
+        got = self._request(
+            "GET", "/social-account-posts", params={"socialAccountId": ids, "limit": limit}
+        )
+        if isinstance(got, list):
+            return got
+        return got.get("socialAccountPosts") or got.get("data") or []
+
 
 def _readable_error(raw: str) -> str:
     """A delivery failure as a person should read it.
@@ -465,6 +478,7 @@ class WoopSocialPublisher:
         text: str,
         scheduled_for: str = "",
         overrides: dict[str, dict] | None = None,
+        on_media: Callable[[str], None] | None = None,
     ) -> FanOutResult:
         if not self.project_id:
             raise NotConnected(
@@ -487,6 +501,10 @@ class WoopSocialPublisher:
             )
 
         media_id = self.client.upload_media(video, self.project_id)
+        if on_media is not None:
+            # Before the post exists, so a caller can find it again by its media
+            # if nothing after this line gets the chance to run.
+            on_media(media_id)
         got = self.client.create_post(
             build_post(
                 media_id=media_id,
@@ -521,3 +539,22 @@ class WoopSocialPublisher:
         if not result.request_id:
             result.request_id = post_id
         return result
+
+    def find_by_media(self, media_id: str, platforms: list[str]) -> FanOutResult | None:
+        """The post that carries this uploaded clip, if one was ever created.
+
+        Answers the one question a crash between creating a post and recording
+        it leaves open. WoopSocial takes no reference of ours, but every post
+        names its media, and each upload is used by exactly one post."""
+        wanted = {PLATFORMS[p] for p in platforms if p in PLATFORMS}
+        accounts = [
+            str(a.get("id") or "")
+            for a in self.client.social_accounts(self.project_id)
+            if str(a.get("platform") or "").upper() in wanted
+        ]
+        for entry in self.client.social_account_posts(accounts):
+            for item in entry.get("content") or []:
+                for media in (item or {}).get("media") or []:
+                    if str((media or {}).get("mediaId") or "") == media_id and entry.get("postId"):
+                        return self.check(str(entry["postId"]))
+        return None

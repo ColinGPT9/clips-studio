@@ -34,6 +34,7 @@ to itself, and are listed as internal below.
 - [Languages and export](#languages-and-export)
 - [Publishing to YouTube](#publishing-to-youtube)
 - [Streamer integrations](#streamer-integrations)
+- [Watched channels](#watched-channels)
 - [MCP: let an AI agent drive it](#mcp-let-an-ai-agent-drive-it)
 - [WebSocket events](#websocket-events)
 - [A complete example](#a-complete-example)
@@ -905,6 +906,143 @@ Nothing here calls out to anything: the faces come from the Haar cascades
 already bundled for the tracker, the frames from the bundled FFmpeg's decoder,
 and the type from a font already on the machine.
 
+## Watched channels
+
+Clips Kitty watches a YouTube, Twitch or Kick channel. When the channel posts,
+Clips Kitty queues the video exactly once, like a pasted link, and then
+publishes the clips through WoopSocial, asks first, or leaves them alone,
+depending on the watch's settings. This is what the Watch page in the app uses.
+
+Nothing happens until automation is switched on (`PATCH /automation`) and the
+watch is enabled. Watching only happens while Clips Kitty is running. Anything
+posted while it was closed is found on the next look, and the watch's `backlog`
+choice decides what happens to it.
+
+How each channel is read:
+
+- **YouTube:** the channel's RSS feed. If the feed fails or comes back empty,
+  the uploads playlist through yt-dlp.
+- **Twitch:** past broadcasts, through yt-dlp.
+- **Kick:** Kick's own channel videos endpoint. It is unofficial; if it stops
+  answering, the watch's `last_error` says so.
+
+### `GET /automation` · `PATCH /automation`
+
+```json
+{"enabled": true, "interval_minutes": 15, "watches": 2, "watching": 1,
+ "presets": [{"id": "standard", "name": "Standard", "description": "...", "options": {}}]}
+```
+
+Send `{"enabled": true}` or `{"enabled": false}`. The interval comes from
+`poll_interval_minutes` in settings.yaml, and is never less than 5 minutes.
+
+### `POST /automation/watches`
+
+```json
+{"platform": "youtube", "channel": "https://www.youtube.com/@LinusTechTips"}
+```
+
+`channel` accepts a channel link, an `@handle` or a bare name. A YouTube channel
+is resolved to its `UC...` id, so the handle and the id name the same watch.
+Returns the watch plus `"created": true`, or `false` if the channel was already
+watched. A channel that can't be found or read returns 400 with a message a
+person can read.
+
+The first look records everything already on the channel with status
+`earlier`. Adding a channel never queues its back catalogue.
+
+### `GET /automation/watches` · `PATCH` / `DELETE /automation/watches/{id}`
+
+```json
+{
+  "id": 1, "platform": "youtube", "channel_key": "UCXuqSBlHAE6Xw-yeJA0Tunw",
+  "name": "Linus Tech Tips", "enabled": true,
+  "preset": "standard", "options": {"max_clips": 5},
+  "publish": {"mode": "ask", "platforms": ["youtube", "tiktok"], "per_day": 5,
+              "gap_hours": 1, "hashtags": [], "footer": "Full video: {source_url}",
+              "overrides": {"youtube": {"privacy": "private"}}},
+  "backlog": "newest", "min_minutes": 3,
+  "last_ok_poll_at": 1790190000.0, "next_poll_at": 1790190900.0, "last_error": "",
+  "counts": {"baseline": 15, "queued": 2, "skipped": 1}
+}
+```
+
+PATCH takes any of the following, and changes only what it is sent:
+
+| Field | Notes |
+|---|---|
+| `enabled` | Whether this watch is looked at. |
+| `preset` | An `id` from `GET /automation` (the same presets as integrations). |
+| `options` | The same per-video options as `PATCH /jobs/{id}`, validated the same way. |
+| `publish.mode` | `off`: leave the clips alone. `ask`: stop at "ready to publish" (the default). `auto`: publish as soon as the clips exist. |
+| `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. |
+| `publish.per_day`, `publish.gap_hours` | A daily budget, queued behind everything already scheduled. WoopSocial's free plan allows about 5 YouTube posts a day. |
+| `publish.footer` | Text added under each caption. `{source_url}`, `{source_title}`, `{source_channel}` and `{source_platform}` are filled in; other braces are left as typed. |
+| `publish.overrides` | Per-platform fields, as the publish dialog sends them, for example `{"youtube": {"privacy": "private"}}`. |
+| `backlog` | What to do when several videos appeared while Clips Kitty wasn't watching: `newest` (default), `all`, `day` (the last 24 hours) or `none`. Videos that aren't taken are listed as `skipped`, never dropped. |
+| `min_minutes` | Shorter videos (Shorts) are skipped. |
+
+`DELETE` stops watching and forgets the watch's list. Jobs and clips it
+produced stay in the library.
+
+### `POST /automation/watches/{id}/check`
+
+Look at the channel now instead of waiting for the next interval.
+
+### `GET /automation/items?watch_id=`
+
+The videos a watch has seen, newest first.
+
+```json
+{
+  "id": 7, "watch_id": 1, "platform": "youtube", "video_id": "XM04mbymDsE",
+  "url": "https://www.youtube.com/watch?v=XM04mbymDsE", "title": "...",
+  "published_at": 1790184627.0, "detected_at": 1790185000.0,
+  "status": "complete", "reason": "", "job_id": 214,
+  "publish_state": "done", "publish_error": "", "clips": 6,
+  "deliveries": [{"clip_id": 901, "platform": "youtube", "state": "published",
+                  "post_url": "https://www.youtube.com/watch?v=...",
+                  "scheduled_for": "2026-09-24T13:00:00+00:00", "error": ""}]
+}
+```
+
+| `status` | Meaning |
+|---|---|
+| `earlier` | Already on the channel when the watch was added. |
+| `waiting_for_video` | Live, premiering or still processing on the platform. Checked again every 15 minutes, for up to a week. `reason` says which. |
+| `waiting_for_queue` | Ready, but the queue is full. |
+| `queued` · `processing` · `complete` · `failed` · `cancelled` | Read live from the video's job, as in `GET /integrations/streams/{session_id}`, with the same extra fields. |
+| `skipped` | Set aside. `reason` says why: too short, posted while Clips Kitty wasn't watching, already clipped, members-only. |
+
+`publish_state` is empty until the clips exist. Then it is one of:
+
+- `off`: publishing is off for this watch.
+- `ask`: waiting to be told. `publish_error` says why if an automatic publish
+  could not start, for example WoopSocial not being set up.
+- `publishing`
+- `done`
+
+`deliveries` holds one row per clip and platform. Its state is `sending`,
+`queued`, `processing`, `published`, `failed` or `skipped`.
+
+### `POST /automation/items/{id}/queue`
+
+Clip a video that was set aside (`earlier` or `skipped`). The person asking is
+the go-ahead, so the minimum length does not apply. A video that is still live
+waits as `waiting_for_video`.
+
+### `POST /automation/items/{id}/publish`
+
+Publish a finished video's clips with its watch's settings. This is both the
+answer to `ask` and the retry for failed deliveries. Only clips not already
+sent, or on their way, to a platform go out, so pressing it twice never posts
+anything twice. It returns at once; the upload runs in the background.
+Returns 409 until the clips exist.
+
+### `POST /automation/items/{id}/skip`
+
+Set aside a video that hasn't been queued yet, or decline an `ask`.
+
 ## MCP: let an AI agent drive it
 
 Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use the
@@ -948,7 +1086,7 @@ An agent skill for clients that support them is in [`skills/clips-kitty/`](../sk
 ws://127.0.0.1:8765/ws
 ```
 
-Connect and listen. The server never expects a message from you. Five event
+Connect and listen. The server never expects a message from you. Six event
 types:
 
 ```json
@@ -957,6 +1095,7 @@ types:
 {"type": "progress", "job_id": 149, "stage": "transcribe", "video_id": "aB3dEfGhIjK"}
 {"type": "model_pull", "tag": "gemma3:12b", "status": "done"}
 {"type": "publish", "publish_job": 4, "clip_id": 812, "stage": "publish", "phase": "upload", "fraction": 0.42, "message": "Uploading to YouTube"}
+{"type": "automation"}
 ```
 
 - **`queue`** carries no data. It means "something changed, re-fetch
@@ -969,6 +1108,8 @@ types:
   **`job_id` is `null` for prefetch downloads**, which belong to a future job,
   not the running one: never attribute them to the current job.
 - **`model_pull`** is download progress for `POST /models/pull`.
+- **`automation`** carries no data, like `queue`: a watch found something or
+  moved a video along. Re-fetch `GET /automation/items`.
 - **`publish`** is a YouTube upload. `phase` moves through `prepare`, `upload`,
   `metadata`, then one of `done` / `failed` / `cancelled`. The terminal one
   also sets `terminal` to the same value, and `done` carries `youtube_id`,

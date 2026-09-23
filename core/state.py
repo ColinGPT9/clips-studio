@@ -466,6 +466,15 @@ class StateDB:
             self.conn.execute(
                 "ALTER TABLE clip_publishes ADD COLUMN scheduled_for TEXT NOT NULL DEFAULT ''"
             )
+        if "media_id" not in publish_cols:
+            # The provider's id for the uploaded clip, written the moment the
+            # upload finishes and before the post is created. WoopSocial takes
+            # no reference of ours, so if Clips Kitty stops between their
+            # accepting a post and this row learning its id, the media is the
+            # only way to find that post again instead of sending it twice.
+            self.conn.execute(
+                "ALTER TABLE clip_publishes ADD COLUMN media_id TEXT NOT NULL DEFAULT ''"
+            )
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")

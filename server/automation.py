@@ -285,6 +285,9 @@ class ChannelWatcher(threading.Thread):
         d = self._db()
         try:
             if not is_enabled(d):
+                # Watching is off, but a publish someone asked for, or one a
+                # restart interrupted, still goes out.
+                self._decide_publishing(d, new=False)
                 return
             for watch in d.watches_due(now):
                 self._poll(d, watch, now)
@@ -421,9 +424,17 @@ class ChannelWatcher(threading.Thread):
 
     # -- 4. decide what happens to the clips ----------------------------------
 
-    def _decide_publishing(self, d: StateDB) -> None:
+    def _decide_publishing(self, d: StateDB, *, new: bool = True) -> None:
+        """Once a video's clips exist: publish, ask, or leave them be.
+
+        "publishing" is also what an approval sets and what a restart finds
+        half done, and both simply run again: publish_clips(once=True) skips
+        every clip already sent or on its way, so a repeat sends only what is
+        missing or failed."""
         for item in d.watch_items(states=("queued",)):
-            if item["publish_state"] != "":
+            if item["publish_state"] not in ("", "publishing"):
+                continue
+            if item["publish_state"] == "" and not new:
                 continue
             if _job_status(d, item) != "done":
                 continue
@@ -431,10 +442,68 @@ class ChannelWatcher(threading.Thread):
             if watch is None:
                 continue
             mode = publish_settings(watch).mode
-            # Automatic publishing arrives with the guard that makes a repeated
-            # attempt safe; until then an automatic watch asks first.
-            d.set_watch_item(item["id"], publish_state="off" if mode == "off" else "ask")
+            if item["publish_state"] == "publishing" or mode == "auto":
+                self.publish(d, item, watch)
+            else:
+                d.set_watch_item(item["id"], publish_state="off" if mode == "off" else "ask")
             self._broadcaster.publish({"type": "automation"})
+
+    def publish(self, d: StateDB, item, watch) -> dict:
+        """Send a finished video's clips out with its watch's settings."""
+        settings = publish_settings(watch)
+        clip_ids = [int(c["id"]) for c in d.clips_for_video(item["video_id"])]
+        if not clip_ids:
+            d.set_watch_item(item["id"], publish_state="done",
+                             publish_error="The run made no clips to publish.")
+            return {}
+        if not settings.platforms:
+            d.set_watch_item(item["id"], publish_state="ask",
+                             publish_error="Choose where this channel's clips go.")
+            return {}
+        if self._publisher is None:
+            d.set_watch_item(item["id"], publish_state="ask",
+                             publish_error="Publishing isn't available.")
+            return {}
+        d.set_watch_item(item["id"], publish_state="publishing", publish_error="")
+        try:
+            out = self._publisher(
+                d,
+                clip_ids=clip_ids,  # best first, so the daily budget goes to them
+                platforms=list(settings.platforms),
+                hashtags=list(settings.hashtags),
+                per_day=settings.per_day,
+                gap_hours=settings.gap_hours,
+                overrides=dict(settings.overrides),
+                footer=render_footer(settings.footer, item, watch),
+            )
+        except Exception as e:
+            # Not set up, or unreachable before anything was sent. Falling back
+            # to asking keeps it in front of a person instead of retrying blind.
+            print(f"Watch publish for {item['video_id']} did not start: {e}")
+            d.set_watch_item(item["id"], publish_state="ask", publish_error=_short(e))
+            return {}
+        problems = sorted({
+            s.get("reason", "") for s in out.get("skipped", [])
+            if s.get("reason") and s.get("reason") != "already sent"
+        })
+        d.set_watch_item(item["id"], publish_state="done",
+                         publish_error="; ".join(problems)[:500])
+        print(f"Watch published {len(out.get('started', []))} clip(s) of {item['video_id']}")
+        return out
+
+
+def woopsocial_publisher(data_dir) -> Callable[..., dict]:
+    """Publishing for watched channels: WoopSocial, with the duplicate guard on
+    and the publish dialog's remembered platforms left alone."""
+
+    def publish(d: StateDB, **kwargs) -> dict:
+        from server import woopsocial_service as woop
+
+        if not woop.is_enabled(d) or not woop.has_key(data_dir):
+            raise RuntimeError("WoopSocial isn't set up. Add your key in Settings to publish.")
+        return woop.publish_clips(d, data_dir, once=True, remember=False, **kwargs)
+
+    return publish
 
 
 def _short(error) -> str:
@@ -452,6 +521,7 @@ def install(
     worker,
     broadcaster,
     options_from: Callable[[dict], dict],
+    data_dir=None,
     interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
     feed=None,
     publisher=None,
@@ -468,6 +538,8 @@ def install(
 
     from server.integrations import PRESETS
 
+    if publisher is None and data_dir is not None:
+        publisher = woopsocial_publisher(data_dir)
     watcher = ChannelWatcher(
         db, feed=feed, worker=worker, broadcaster=broadcaster, publisher=publisher,
         interval_minutes=interval_minutes, clock=clock,
@@ -631,6 +703,26 @@ def install(
         finally:
             d.close()
         watcher.wake()
+        return result
+
+    @app.post("/automation/items/{item_id}/publish")
+    def publish_item(item_id: int):
+        """Publish a finished video's clips with its watch's settings: the
+        answer to "ask first", and the retry for any that failed. Only what is
+        not already sent or on its way goes out. Runs on the watcher's thread,
+        so the request returns at once and uploads never hold it open."""
+        d = db()
+        try:
+            item = load_item(d, item_id)
+            if item["state"] != "queued" or _job_status(d, item) != "done":
+                raise HTTPException(409, "This video's clips aren't ready yet.")
+            if item["publish_state"] != "publishing":
+                d.set_watch_item(item_id, publish_state="publishing", publish_error="")
+            result = view_item(d, load_item(d, item_id), worker)
+        finally:
+            d.close()
+        watcher.wake()
+        broadcaster.publish({"type": "automation"})
         return result
 
     @app.post("/automation/items/{item_id}/skip")
