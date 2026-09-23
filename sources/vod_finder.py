@@ -116,12 +116,12 @@ def find_stream_vod(
     return pick(full, started_at, ended_at)
 
 
-def _extract(url: str, *, flat: bool) -> dict | None:
+def _extract(url: str, *, flat: bool, size: int = CANDIDATES) -> dict | None:
     import yt_dlp
 
     opts: dict = {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 30}
     if flat:
-        opts.update({"extract_flat": "in_playlist", "playlistend": CANDIDATES})
+        opts.update({"extract_flat": "in_playlist", "playlistend": size})
     with yt_dlp.YoutubeDL(opts) as ydl:
         # process=False: the start time, length and live status are all in the
         # raw metadata, so there is no reason to resolve download formats here.

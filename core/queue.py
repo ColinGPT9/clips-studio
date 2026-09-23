@@ -91,6 +91,30 @@ def enqueue(db, type_: str, payload: dict, video_id: str = "", title: str = "") 
     return db.add_job(type_, json.dumps(payload), video_id=video_id, title=title)
 
 
+def enqueue_once(db, video_id: str, payload: dict, title: str = "") -> tuple[str, int]:
+    """Queue a video that nobody pasted, unless that would repeat work.
+
+    For callers that find videos on their own (a streamer tool handing over a
+    finished stream, a watched channel posting), where the same video can
+    arrive twice and nobody is there to notice. Returns (outcome, job_id):
+
+      "done"      already processed; job_id is 0
+      "existing"  already waiting or running; that job's id
+      "full"      the queue is at MAX_ACTIVE; job_id is 0, try again later
+      "queued"    a new job was added
+
+    Starting the queue is left to the caller, which knows whose go-ahead it has.
+    """
+    if db.video_status(video_id) == "done":
+        return "done", 0
+    existing = duplicate_of(db, video_id)
+    if existing is not None:
+        return "existing", existing
+    if capacity(db) <= 0:
+        return "full", 0
+    return "queued", enqueue(db, "process", payload, video_id=video_id, title=title)
+
+
 def active_count(db) -> int:
     """Videos waiting or running. Finished ones are history, not work."""
     return db.conn.execute(

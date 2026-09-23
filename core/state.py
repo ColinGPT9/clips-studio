@@ -275,6 +275,54 @@ CREATE TABLE IF NOT EXISTS streams (
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
+
+-- ---- Watched channels (server/automation.py) -------------------------------
+-- A channel whose new videos are queued without anyone pasting a link. Only
+-- the detection facts and the publish decision live here: once a video has a
+-- job, the job and clip_publishes are the truth about what became of it.
+
+CREATE TABLE IF NOT EXISTS watches (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform        TEXT NOT NULL,                -- youtube | twitch | kick
+    channel_key     TEXT NOT NULL,                -- UC id | Twitch login | Kick slug
+    name            TEXT NOT NULL DEFAULT '',
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    options         TEXT NOT NULL DEFAULT '{}',   -- JSON: job options, as the Generate bar sends them
+    publish         TEXT NOT NULL DEFAULT '{}',   -- JSON: mode, platforms, per_day, gap_hours, ...
+    backlog         TEXT NOT NULL DEFAULT 'newest',  -- all | newest | day | none
+    min_minutes     REAL NOT NULL DEFAULT 3,      -- shorter videos (Shorts) are not clipped
+    last_ok_poll_at REAL NOT NULL DEFAULT 0,      -- unix seconds; 0 = never looked yet
+    next_poll_at    REAL NOT NULL DEFAULT 0,
+    last_error      TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE (platform, channel_key)
+);
+
+-- One row per video a watch has ever seen. video_id is unique across ALL
+-- watches, so a video found twice (two watches, a re-added watch, a feed that
+-- repeats itself) is still one row and at most one job.
+CREATE TABLE IF NOT EXISTS watch_items (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    watch_id      INTEGER NOT NULL,
+    platform      TEXT NOT NULL DEFAULT '',
+    video_id      TEXT NOT NULL UNIQUE,
+    url           TEXT NOT NULL DEFAULT '',
+    title         TEXT NOT NULL DEFAULT '',
+    published_at  REAL NOT NULL DEFAULT 0,
+    detected_at   REAL NOT NULL DEFAULT 0,
+    -- baseline | new | not_ready | waiting | queued | skipped | error
+    state         TEXT NOT NULL DEFAULT 'new',
+    reason        TEXT NOT NULL DEFAULT '',
+    job_id        INTEGER NOT NULL DEFAULT 0,
+    next_check_at REAL NOT NULL DEFAULT 0,
+    -- '' (not decided yet) | off | ask | publishing | done
+    publish_state TEXT NOT NULL DEFAULT '',
+    publish_error TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_watch_items_watch ON watch_items(watch_id, id);
 """
 
 # Columns set_stream() may change. Names are interpolated into SQL, so they come
@@ -282,6 +330,16 @@ CREATE TABLE IF NOT EXISTS streams (
 STREAM_COLUMNS = frozenset({
     "source", "platform", "channel", "started_at", "ended_at", "preset", "state",
     "vod_url", "video_id", "job_id", "waiting_behind", "error", "next_check_at",
+})
+
+# Same rule for the watch tables.
+WATCH_COLUMNS = frozenset({
+    "name", "enabled", "options", "publish", "backlog", "min_minutes",
+    "last_ok_poll_at", "next_poll_at", "last_error",
+})
+WATCH_ITEM_COLUMNS = frozenset({
+    "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
+    "reason", "job_id", "next_check_at", "publish_state", "publish_error",
 })
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -424,6 +482,23 @@ class StateDB:
             self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_seen TEXT")
         if "last_video" not in knowledge_cols:
             self.conn.execute("ALTER TABLE creator_knowledge ADD COLUMN last_video TEXT")
+        # Channels added with the old `python main.py channels add` become
+        # watches once, switched off: they were set up for the CLI daemon, and
+        # having the app act on them is the user's call, not a migration's.
+        imported = self.conn.execute(
+            "SELECT 1 FROM app_state WHERE key = 'watches_imported'"
+        ).fetchone()
+        if imported is None:
+            now = _now()
+            self.conn.execute(
+                "INSERT OR IGNORE INTO watches "
+                "(platform, channel_key, name, enabled, created_at, updated_at) "
+                "SELECT 'youtube', channel_id, COALESCE(name, ''), 0, ?, ? FROM channels",
+                (now, now),
+            )
+            self.conn.execute(
+                "INSERT INTO app_state (key, value) VALUES ('watches_imported', '1')"
+            )
 
     def recover_stuck_videos(self) -> int:
         """Videos left mid-pipeline by a crash/force-close (downloaded,
@@ -1231,6 +1306,116 @@ class StateDB:
             "SELECT * FROM streams WHERE state = 'waiting_for_vod' AND next_check_at <= ? "
             "ORDER BY next_check_at",
             (now,),
+        ).fetchall()
+
+    # ---- watched channels ----------------------------------------------------
+
+    def insert_watch(self, platform: str, channel_key: str, **fields) -> int | None:
+        """Create a watch. None if this channel is already watched."""
+        bad = set(fields) - WATCH_COLUMNS
+        if bad:
+            raise ValueError(f"unknown watch columns: {sorted(bad)}")
+        now = _now()
+        row = {"platform": platform, "channel_key": channel_key,
+               "created_at": now, "updated_at": now, **fields}
+        cur = self.conn.execute(
+            f"INSERT OR IGNORE INTO watches ({', '.join(row)}) "
+            f"VALUES ({', '.join('?' * len(row))})",
+            tuple(row.values()),
+        )
+        self.conn.commit()
+        return cur.lastrowid if cur.rowcount == 1 else None
+
+    def get_watch(self, watch_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM watches WHERE id = ?", (watch_id,)).fetchone()
+
+    def find_watch(self, platform: str, channel_key: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM watches WHERE platform = ? AND channel_key = ?",
+            (platform, channel_key),
+        ).fetchone()
+
+    def list_watches(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM watches ORDER BY id").fetchall()
+
+    def set_watch(self, watch_id: int, **fields) -> None:
+        bad = set(fields) - WATCH_COLUMNS
+        if bad:
+            raise ValueError(f"unknown watch columns: {sorted(bad)}")
+        if not fields:
+            return
+        assignments = ", ".join(f"{column} = ?" for column in fields)
+        self.conn.execute(
+            f"UPDATE watches SET {assignments}, updated_at = ? WHERE id = ?",
+            (*fields.values(), _now(), watch_id),
+        )
+        self.conn.commit()
+
+    def delete_watch(self, watch_id: int) -> bool:
+        """Stop watching and forget what it saw. Jobs and clips it produced are
+        untouched: they belong to the library now, not to the watch."""
+        self.conn.execute("DELETE FROM watch_items WHERE watch_id = ?", (watch_id,))
+        cur = self.conn.execute("DELETE FROM watches WHERE id = ?", (watch_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def watches_due(self, now: float) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM watches WHERE enabled = 1 AND next_poll_at <= ? ORDER BY next_poll_at",
+            (now,),
+        ).fetchall()
+
+    def insert_watch_item(self, video_id: str, **fields) -> bool:
+        """Record a video a watch found. False if any watch already has it,
+        which is what keeps a repeated or doubly-found video to one job."""
+        bad = set(fields) - WATCH_ITEM_COLUMNS
+        if bad:
+            raise ValueError(f"unknown watch item columns: {sorted(bad)}")
+        now = _now()
+        row = {"video_id": video_id, "created_at": now, "updated_at": now, **fields}
+        cur = self.conn.execute(
+            f"INSERT OR IGNORE INTO watch_items ({', '.join(row)}) "
+            f"VALUES ({', '.join('?' * len(row))})",
+            tuple(row.values()),
+        )
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def get_watch_item(self, item_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM watch_items WHERE id = ?", (item_id,)
+        ).fetchone()
+
+    def watch_item_ids(self) -> set[str]:
+        return {r[0] for r in self.conn.execute("SELECT video_id FROM watch_items")}
+
+    def set_watch_item(self, item_id: int, **fields) -> None:
+        bad = set(fields) - WATCH_ITEM_COLUMNS
+        if bad:
+            raise ValueError(f"unknown watch item columns: {sorted(bad)}")
+        if not fields:
+            return
+        assignments = ", ".join(f"{column} = ?" for column in fields)
+        self.conn.execute(
+            f"UPDATE watch_items SET {assignments}, updated_at = ? WHERE id = ?",
+            (*fields.values(), _now(), item_id),
+        )
+        self.conn.commit()
+
+    def watch_items(
+        self, *, watch_id: int | None = None, states: tuple[str, ...] = (), limit: int = 200
+    ) -> list[sqlite3.Row]:
+        """Newest first, optionally for one watch and in some states."""
+        where, args = [], []
+        if watch_id is not None:
+            where.append("watch_id = ?")
+            args.append(watch_id)
+        if states:
+            where.append(f"state IN ({','.join('?' * len(states))})")
+            args.extend(states)
+        clause = f"WHERE {' AND '.join(where)} " if where else ""
+        return self.conn.execute(
+            f"SELECT * FROM watch_items {clause}ORDER BY id DESC LIMIT ?", (*args, limit)
         ).fetchall()
 
     def get_clip(self, clip_id: int) -> sqlite3.Row | None:

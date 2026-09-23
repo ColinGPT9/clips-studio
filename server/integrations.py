@@ -11,7 +11,6 @@ Supported API, documented in docs/API.md. Shapes change only with a note in
 CHANGELOG.md, and an incompatible change bumps API_VERSION in server/api.py.
 """
 
-import json
 import threading
 import time
 import traceback
@@ -135,20 +134,19 @@ def queue_vod(d: StateDB, row, url: str, worker, broadcaster) -> None:
         d.set_stream(row["session_id"], state="needs_link",
                      error="That link isn't a video Clips Kitty can open.")
         return
-    if d.video_status(vid) == "done":
+    preset = PRESETS.get(row["preset"]) or PRESETS["standard"]
+    outcome, job_id = queue.enqueue_once(
+        d, vid, {"url": url, **preset["options"]},
+        title=f"{row['channel'] or row['platform'].title()} stream",
+    )
+    if outcome == "done":
         d.set_stream(row["session_id"], state="complete", vod_url=url, video_id=vid,
                      job_id=0, error="")
         return
-    job_id = queue.duplicate_of(d, vid)
-    if job_id is None:
-        if queue.capacity(d) <= 0:
-            d.set_stream(row["session_id"], state="error", vod_url=url, video_id=vid,
-                         error=f"The Clips Kitty queue is full ({queue.MAX_ACTIVE} videos).")
-            return
-        preset = PRESETS.get(row["preset"]) or PRESETS["standard"]
-        payload = {"url": url, **preset["options"]}
-        title = f"{row['channel'] or row['platform'].title()} stream"
-        job_id = d.add_job("process", json.dumps(payload), video_id=vid, title=title)
+    if outcome == "full":
+        d.set_stream(row["session_id"], state="error", vod_url=url, video_id=vid,
+                     error=f"The Clips Kitty queue is full ({queue.MAX_ACTIVE} videos).")
+        return
     queue.start_if_alone(d, job_id)
     d.set_stream(row["session_id"], state="queued", vod_url=url, video_id=vid, job_id=job_id,
                  waiting_behind=queue.waiting_ahead(d, job_id), error="")
