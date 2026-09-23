@@ -278,6 +278,17 @@ class WoopSocialClient:
         return self._request("GET", f"/posts/{_safe_id(post_id)}")
 
 
+def _flag(overrides: dict, name: str, default: bool) -> bool:
+    """A required boolean, taken from the caller only when actually given.
+
+    `or default` would be wrong: it turns an explicit False back into True for
+    every flag whose default is True, which is how a creator asking to disable
+    duets would silently get them enabled.
+    """
+    value = overrides.get(name)
+    return default if value is None else bool(value)
+
+
 def build_post(
     *,
     media_id: str,
@@ -303,11 +314,43 @@ def build_post(
             "socialAccountId": account["id"],
         }
         mine = (overrides or {}).get(name) or {}
-        # YouTube is the one that always needs a title of its own; a video
-        # with no title is rejected rather than defaulted.
+        # Each platform has its own required fields, and a child missing one
+        # is rejected outright: TikTok answers with a decode error naming all
+        # seven it wanted. This used to special-case YouTube only, so every
+        # other destination failed the moment it was actually tried.
         if name == "youtube":
+            # A video with no title is rejected rather than defaulted.
             child["title"] = (mine.get("title") or title or "")[:100]
             child["privacy"] = mine.get("privacy") or "public"
+        elif name == "tiktok":
+            child["postType"] = mine.get("postType") or "VIDEO"
+            child["privacyLevel"] = mine.get("privacyLevel") or "PUBLIC_TO_EVERYONE"
+            # TikTok's own defaults. Quietly turning off a creator's duets or
+            # comments would be a worse failure than a rejected request.
+            child["allowComment"] = _flag(mine, "allowComment", True)
+            child["allowDuet"] = _flag(mine, "allowDuet", True)
+            child["allowStitch"] = _flag(mine, "allowStitch", True)
+            # Disclosures, not preferences. These declare a paid partnership
+            # and promotion of your own brand, so the app must not assert
+            # either on a creator's behalf: false is both the safe default and
+            # the true one for an ordinary clip. Anyone doing branded content
+            # sets them through overrides.
+            child["isYourBrand"] = _flag(mine, "isYourBrand", False)
+            child["isBrandedContent"] = _flag(mine, "isBrandedContent", False)
+            # Applies to photo posts; required but unused for video, per their
+            # own field notes.
+            child["autoAddMusic"] = _flag(mine, "autoAddMusic", False)
+        elif name in ("instagram", "facebook"):
+            # Vertical clips, so a Reel on both rather than a feed post.
+            child["postType"] = mine.get("postType") or "REEL"
+        elif name == "pinterest":
+            # A board id exists only in the creator's own account, so there is
+            # nothing sensible to default. Sending the child anyway earns a
+            # decode error; leaving it out reports honestly instead.
+            board = mine.get("pinterestBoardId") or ""
+            if not board:
+                continue
+            child["pinterestBoardId"] = board
         elif mine.get("title"):
             child["title"] = mine["title"]
         children.append(child)

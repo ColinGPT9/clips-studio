@@ -53,18 +53,24 @@ def test_a_youtube_title_is_clamped_to_youtubes_limit():
 
 
 def test_per_platform_overrides_land_on_their_own_child():
-    """Different objects, so an Instagram caption cannot reach YouTube."""
+    """Different objects, so one platform's setting cannot reach another.
+
+    This used to assert Instagram got a `title`. It does not have one: their
+    InstagramInput is platform, socialAccountId, contentOverride and postType,
+    so we were sending a field the API does not define.
+    """
     body = build_post(
         media_id="m",
         text="common",
         accounts=[{"platform": "YOUTUBE", "id": "a1"}, {"platform": "INSTAGRAM", "id": "a2"}],
         title="Common title",
-        overrides={"instagram": {"title": "IG only"}, "youtube": {"privacy": "unlisted"}},
+        overrides={"instagram": {"postType": "STORY"}, "youtube": {"privacy": "unlisted"}},
     )
     by_platform = {c["platform"]: c for c in body["socialAccounts"]}
     assert by_platform["YOUTUBE"]["title"] == "Common title"
     assert by_platform["YOUTUBE"]["privacy"] == "unlisted"
-    assert by_platform["INSTAGRAM"]["title"] == "IG only"
+    assert by_platform["INSTAGRAM"]["postType"] == "STORY"
+    assert "postType" not in by_platform["YOUTUBE"], "Instagram's setting stayed put"
 
 
 def test_publish_now_versus_scheduled():
@@ -305,3 +311,95 @@ def test_no_project_is_refused(tmp_path: Path):
         WoopSocialPublisher(_FakeClient([]), "").start(
             clip, platforms=["youtube"], title="T", text="b"
         )
+
+
+# ---- every platform's own required fields -----------------------------------
+#
+# build_post special-cased YouTube and nothing else, so a bare child went to
+# every other destination. TikTok answered with a decode error naming seven
+# missing fields and all 37 clips failed. "Post everywhere" had only ever been
+# tried on the one platform it happened to handle.
+
+
+def _child(platform, **kw):
+    body = build_post(
+        media_id="m1", text="c",
+        accounts=[{"platform": platform, "id": "acc1"}],
+        title="A clip", **kw
+    )
+    return next(iter(body["socialAccounts"]), None)
+
+
+def test_tiktok_carries_every_field_the_api_demands():
+    """The exact seven from the rejection, plus privacyLevel."""
+    child = _child("TIKTOK")
+    for field in (
+        "postType", "privacyLevel", "allowComment", "allowDuet",
+        "allowStitch", "isYourBrand", "isBrandedContent", "autoAddMusic",
+    ):
+        assert field in child, f"{field} is required and was missing"
+    assert child["postType"] == "VIDEO", "clips are video, not photo"
+    assert child["privacyLevel"] == "PUBLIC_TO_EVERYONE"
+
+
+def test_tiktok_disclosures_are_false_unless_asked_for():
+    """isYourBrand and isBrandedContent declare a paid partnership. The app
+    must never assert one on a creator's behalf."""
+    child = _child("TIKTOK")
+    assert child["isYourBrand"] is False
+    assert child["isBrandedContent"] is False
+
+
+def test_tiktok_interaction_flags_follow_tiktoks_own_defaults():
+    child = _child("TIKTOK")
+    assert child["allowComment"] is True
+    assert child["allowDuet"] is True
+    assert child["allowStitch"] is True
+
+
+def test_turning_a_flag_off_is_not_overwritten_by_its_default():
+    """`or default` would flip an explicit False back to True, so asking to
+    disable duets would quietly enable them."""
+    child = _child("TIKTOK", overrides={"tiktok": {"allowDuet": False}})
+    assert child["allowDuet"] is False
+    assert child["allowComment"] is True, "the others keep their default"
+
+
+def test_branded_content_can_be_declared_when_it_is_true():
+    child = _child("TIKTOK", overrides={"tiktok": {"isBrandedContent": True}})
+    assert child["isBrandedContent"] is True
+
+
+def test_instagram_and_facebook_post_reels():
+    """Vertical clips, so a Reel rather than a feed post."""
+    assert _child("INSTAGRAM")["postType"] == "REEL"
+    assert _child("FACEBOOK")["postType"] == "REEL"
+
+
+def test_a_story_can_be_asked_for_instead():
+    child = _child("INSTAGRAM", overrides={"instagram": {"postType": "STORY"}})
+    assert child["postType"] == "STORY"
+
+
+def test_pinterest_without_a_board_is_left_out_rather_than_rejected():
+    """A board id exists only in the creator's account. Sending the child
+    anyway earns a decode error and tells them nothing."""
+    assert _child("PINTEREST") is None
+
+
+def test_pinterest_with_a_board_is_sent():
+    child = _child("PINTEREST", overrides={"pinterest": {"pinterestBoardId": "b1"}})
+    assert child["pinterestBoardId"] == "b1"
+
+
+def test_youtube_is_unchanged():
+    """It was the one platform that worked; this must not break it."""
+    child = _child("YOUTUBE")
+    assert child["title"] == "A clip"
+    assert child["privacy"] == "public"
+
+
+def test_platforms_needing_nothing_extra_stay_minimal():
+    for platform in ("LINKEDIN", "X"):
+        child = _child(platform)
+        assert set(child) == {"platform", "socialAccountId"}, platform
