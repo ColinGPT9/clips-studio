@@ -761,7 +761,9 @@ calls is below, because "why not yet" is usually more useful than "not yet".
    unattended half. It watches a YouTube, Twitch or Kick channel, clips each new video
    once, and publishes the clips through WoopSocial automatically or after you say so.
    It is off until you switch it on, it asks before publishing unless you tell it not
-   to, and it never posts a clip to the same platform twice. What remains is trust:
+   to, and it never posts a clip to the same platform twice. Set a channel to
+   hands-off and an always-on PC clips and publishes everything it posts, retrying
+   whatever fails, with nobody there. What remains is trust:
    posting on your behalf while you sleep needs to be right about what it picked, not
    just able to upload, which is why "Ask first" is the default. The old command-line
    monitor (`python main.py run`) still works, but it predates the queue and

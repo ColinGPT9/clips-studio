@@ -15,6 +15,17 @@ export const WATCH_PLATFORM_LABEL: Record<string, string> = {
 /** How many videos the history shows before "show more". */
 const SHOWN = 8
 
+/** "14:30", or "Thu 14:30" when it is not in the next day. */
+function clockTime(seconds: number): string {
+  const when = new Date(seconds * 1000)
+  const soon = Math.abs(seconds - Date.now() / 1000) < 20 * 3600
+  return when.toLocaleString([], {
+    ...(soon ? {} : { weekday: 'short' }),
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 /** "5 min ago" / "in 12 min", from unix seconds. */
 export function relative(seconds: number, now = Date.now() / 1000): string {
   const diff = Math.round(seconds - now)
@@ -333,7 +344,9 @@ function ItemRow({
   } else if (item.status === 'processing' && item.progress?.percent != null) {
     detail = `${item.progress.percent}% · ${item.progress.label ?? ''}`
   } else if (item.status === 'failed') {
-    detail = item.details || ''
+    detail = item.retry_at
+      ? `${t('Trying again at')} ${clockTime(item.retry_at)} (${t('retry')} ${item.retries + 1} ${t('of')} 2)`
+      : item.details || ''
   } else if (item.status === 'complete') {
     detail = `${item.clips ?? 0} ${item.clips === 1 ? t('clip') : t('clips')}`
   }
@@ -412,8 +425,23 @@ function ItemRow({
               </button>
             </div>
           )}
-          {item.publish_state === 'publishing' && (
-            <span className="text-accent">{t('Publishing…')}</span>
+          {item.publish_state === 'publishing' &&
+            (item.publish_retry_at > Date.now() / 1000 ? (
+              <span className="text-warn">
+                {t('Publishing did not start.')} {t('Trying again at')}{' '}
+                {clockTime(item.publish_retry_at)} ({t('attempt')} {item.publish_attempts + 1}{' '}
+                {t('of')} 7)
+              </span>
+            ) : (
+              <span className="text-accent">{t('Publishing…')}</span>
+            ))}
+          {item.publish_state === 'done' && item.publish_retry_at > 0 && (
+            <span className="text-muted">
+              {t('Sending the rejected ones again at')} {clockTime(item.publish_retry_at)}
+            </span>
+          )}
+          {item.source_freed === 1 && (
+            <span className="text-muted block">{t('Download deleted to save space.')}</span>
           )}
           {item.publish_state === 'off' && deliveries.length === 0 && (
             <span className="text-muted">{t('Not published.')}</span>

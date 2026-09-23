@@ -4,10 +4,39 @@ import type { Watch, WatchPublish } from '../../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../../lib/uploadpost'
 import { t } from '../../lib/i18n'
 
+/** Whether WoopSocial can publish, and which accounts it has. Null while
+ *  loading. Shared by the add form and each channel's settings, so both offer
+ *  the same platforms. */
+export function useWoopAccounts(): { ready: boolean; connected: string[] } | null {
+  const [woop, setWoop] = useState<{ ready: boolean; connected: string[] } | null>(null)
+  useEffect(() => {
+    let live = true
+    const load = async (): Promise<void> => {
+      try {
+        const status = await api.woopSocialStatus()
+        const ready = status.enabled && status.has_key
+        const connected = ready ? (await api.woopSocialConnections()).connected : []
+        if (live) setWoop({ ready, connected })
+      } catch {
+        if (live) setWoop({ ready: false, connected: [] })
+      }
+    }
+    void load()
+    return () => {
+      live = false
+    }
+  }, [])
+  return woop
+}
+
 const MODES: { id: WatchPublish['mode']; label: string; hint: string }[] = [
   { id: 'off', label: 'Off', hint: 'Only make the clips.' },
   { id: 'ask', label: 'Ask first', hint: 'Make the clips, then wait for you to press Publish.' },
-  { id: 'auto', label: 'Automatic', hint: 'Publish as soon as the clips are made.' }
+  {
+    id: 'auto',
+    label: 'Automatic (hands-off)',
+    hint: 'Publish as soon as the clips are made. Anything that fails is tried again, so it keeps going with nobody at the PC.'
+  }
 ]
 
 const BACKLOG: { id: Watch['backlog']; label: string }[] = [
@@ -40,28 +69,10 @@ export default function WatchPublishSettings({
   const [privacy, setPrivacy] = useState(p.overrides?.youtube?.privacy ?? 'public')
   const [backlog, setBacklog] = useState(watch.backlog)
   const [minMinutes, setMinMinutes] = useState(watch.min_minutes)
-  const [woop, setWoop] = useState<{ ready: boolean; connected: string[] } | null>(null)
+  const woop = useWoopAccounts()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-
-  useEffect(() => {
-    let live = true
-    const load = async (): Promise<void> => {
-      try {
-        const status = await api.woopSocialStatus()
-        const ready = status.enabled && status.has_key
-        const connected = ready ? (await api.woopSocialConnections()).connected : []
-        if (live) setWoop({ ready, connected })
-      } catch {
-        if (live) setWoop({ ready: false, connected: [] })
-      }
-    }
-    void load()
-    return () => {
-      live = false
-    }
-  }, [])
 
   // Connected accounts, plus anything already chosen that has since been
   // disconnected, so a stale choice stays visible and can be unticked.

@@ -34,6 +34,13 @@ were often broken in a way that only showed up on somebody else's machine.
     working.
   - Opening Clips Kitty a second time now brings the running window forward instead
     of starting a second copy that cannot work.
+  - **Hands-off, for an always-on PC.** Choose "Clip and publish automatically" when
+    you add a channel, tick where the clips go, and leave Clips Kitty running. Every
+    new video is then queued, clipped and published with nobody at the PC. It keeps
+    going through the usual hiccups: a failed download is tried again, a publish that
+    cannot reach WoopSocial waits and tries again, and posts a platform turned down
+    are sent again later, only those ones. Turn on **Delete each watched video's
+    download once its clips are published** so the disk does not fill up.
 
 - **Ask an AI assistant to do it.** Clips Kitty now speaks MCP, so Claude, Cursor
   or any MCP client can queue a stream, follow the job, read back the clips it

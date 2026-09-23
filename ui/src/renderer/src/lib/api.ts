@@ -687,16 +687,18 @@ export const api = {
   // asked about, or left alone. Off until switched on.
 
   automation: () => request<AutomationStatus>('/automation'),
-  setAutomation: (enabled: boolean) =>
+  setAutomation: (patch: { enabled?: boolean; delete_sources?: boolean }) =>
     request<AutomationStatus>('/automation', {
       method: 'PATCH',
-      body: JSON.stringify({ enabled })
+      body: JSON.stringify(patch)
     }),
   watches: () => request<Watch[]>('/automation/watches'),
-  addWatch: (platform: WatchPlatform, channel: string) =>
+  /** `publish` sets what happens to its clips in the same step, so a
+   *  hands-off channel is set up once. */
+  addWatch: (platform: WatchPlatform, channel: string, publish?: Partial<WatchPublish>) =>
     request<Watch & { created: boolean }>('/automation/watches', {
       method: 'POST',
-      body: JSON.stringify({ platform, channel })
+      body: JSON.stringify({ platform, channel, ...(publish ? { publish } : {}) })
     }),
   patchWatch: (
     id: number,

@@ -528,10 +528,22 @@ export interface WatchItem {
   waiting_behind?: number
   queue_paused?: boolean
   details?: string
+  /** Hands-off retries: how many were used and when the next is due
+   *  (unix seconds, 0 when none is scheduled). */
+  retries: number
+  retry_at: number
+  publish_attempts: number
+  publish_retry_at: number
+  delivery_retries: number
+  /** 1: the download was deleted once the clips were published. 2: there was
+   *  none to delete. 0: kept. */
+  source_freed: number
 }
 
 export interface AutomationStatus {
   enabled: boolean
+  /** Delete each watched video's download once its clips are published. */
+  delete_sources: boolean
   interval_minutes: number
   watches: number
   watching: number

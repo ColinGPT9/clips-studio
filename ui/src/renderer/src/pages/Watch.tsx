@@ -3,7 +3,17 @@ import { api, errorText } from '../lib/api'
 import type { AutomationStatus, StudioEvent, Watch as WatchRow, WatchPlatform } from '../lib/types'
 import { useEvents } from '../lib/useEvents'
 import WatchCard from '../components/watch/WatchCard'
+import { useWoopAccounts } from '../components/watch/WatchPublishSettings'
+import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
 import { t } from '../lib/i18n'
+
+type AddMode = 'auto' | 'ask' | 'off'
+
+const ADD_MODES: { id: AddMode; label: string }[] = [
+  { id: 'auto', label: 'Clip and publish automatically (hands-off)' },
+  { id: 'ask', label: 'Clip, then ask me before publishing' },
+  { id: 'off', label: 'Only clip' }
+]
 
 const PLACEHOLDER: Record<WatchPlatform, string> = {
   youtube: 'https://www.youtube.com/@channel or @handle',
@@ -31,7 +41,15 @@ export default function Watch({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tray, setTray] = useState<boolean | null>(null)
+  const woop = useWoopAccounts()
+  const [addMode, setAddMode] = useState<AddMode | null>(null)
+  const [addPlatforms, setAddPlatforms] = useState<string[] | null>(null)
   const inFlight = useRef(false)
+  // Until touched, the add form follows what WoopSocial can do: hands-off with
+  // every connected account when it is set up, asking first when it is not.
+  const mode: AddMode = addMode ?? (woop?.ready ? 'auto' : 'ask')
+  const connected = WOOPSOCIAL_PLATFORMS.filter((id) => woop?.connected.includes(id))
+  const platforms = addPlatforms ?? connected
 
   const refresh = useCallback(async (): Promise<void> => {
     if (inFlight.current) return
@@ -100,7 +118,7 @@ export default function Watch({
     setAdding(true)
     setError(null)
     try {
-      await api.addWatch(platform, channel.trim())
+      await api.addWatch(platform, channel.trim(), { mode, platforms })
       setChannel('')
       await refresh()
     } catch (e) {
@@ -125,7 +143,7 @@ export default function Watch({
             <h2 className="font-semibold">{t('Watch channels')}</h2>
             <p className="text-sm text-muted mt-1 max-w-2xl">
               {status?.enabled
-                ? `${t('Each channel is checked every')} ${status.interval_minutes} ${t('minutes while Clips Kitty is open. New videos join the queue by themselves.')}`
+                ? `${t('Each channel is checked every')} ${status.interval_minutes} ${t('minutes while Clips Kitty is open. Hands-off channels are queued, clipped and published with nobody at the PC, so leave Clips Kitty running.')}`
                 : t('Off. Nothing is checked, queued or published until you switch it on.')}
             </p>
           </div>
@@ -135,12 +153,29 @@ export default function Watch({
               className="size-4 accent-[#38BDF8]"
               checked={Boolean(status?.enabled)}
               disabled={busy || status === null}
-              onChange={(e) => void act(() => api.setAutomation(e.target.checked))}
+              onChange={(e) => void act(() => api.setAutomation({ enabled: e.target.checked }))}
               aria-label={t('Watch channels')}
             />
             {status?.enabled ? t('On') : t('Off')}
           </label>
         </div>
+        <label className="flex items-start gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            className="size-4 mt-0.5 accent-[#38BDF8]"
+            checked={Boolean(status?.delete_sources)}
+            disabled={busy || status === null}
+            onChange={(e) => void act(() => api.setAutomation({ delete_sources: e.target.checked }))}
+          />
+          <span>
+            {t('Delete each watched video’s download once its clips are published')}
+            <span className="block text-xs text-muted">
+              {t(
+                'Keeps an always-on PC from filling its disk. The clips stay. Re-rendering one of those clips later needs the video downloaded again.'
+              )}
+            </span>
+          </span>
+        </label>
         {tray !== null && (
           <label className="flex items-start gap-2 text-sm cursor-pointer">
             <input
@@ -188,10 +223,70 @@ export default function Watch({
             {adding ? t('Finding the channel…') : t('Add')}
           </button>
         </div>
-        <p className="text-xs text-muted">
-          {t(
-            'Videos already on the channel are listed but not clipped. Only what it posts from now on is, unless you pick one yourself.'
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="label">{t('When it posts')}</span>
+            <select
+              className="input !w-96"
+              value={mode}
+              onChange={(e) => setAddMode(e.target.value as AddMode)}
+              aria-label={t('When it posts')}
+            >
+              {ADD_MODES.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {t(m.label)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {mode !== 'off' && woop && !woop.ready && (
+            <div className="text-sm text-warn flex items-center gap-3 flex-wrap">
+              {t('Publishing goes through WoopSocial. Add your WoopSocial API key in Settings first.')}
+              <button
+                className="btn-ghost !px-2 !py-1 text-xs"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-settings'))}
+              >
+                {t('Open Settings')}
+              </button>
+            </div>
           )}
+          {mode !== 'off' && woop?.ready && (
+            <div className="flex items-center gap-x-5 gap-y-2 flex-wrap text-sm">
+              <span className="label">{t('Publish to')}</span>
+              {connected.length === 0 ? (
+                <span className="text-muted">
+                  {t('No accounts are connected to WoopSocial yet. Connect them in Settings.')}
+                </span>
+              ) : (
+                connected.map((id) => (
+                  <label key={id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[#38BDF8]"
+                      checked={platforms.includes(id)}
+                      onChange={(e) =>
+                        setAddPlatforms(
+                          e.target.checked
+                            ? [...platforms, id]
+                            : platforms.filter((x) => x !== id)
+                        )
+                      }
+                    />
+                    {platformLabel(id)}
+                  </label>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-muted">
+          {mode === 'auto'
+            ? t(
+                'From now on, each new video is queued, clipped and published five a day, with nobody at the PC. Videos already on the channel are listed but not clipped. Change anything later in the channel’s settings.'
+              )
+            : t(
+                'Videos already on the channel are listed but not clipped. Only what it posts from now on is, unless you pick one yourself.'
+              )}
         </p>
         {platform === 'kick' && (
           <p className="text-xs text-warn">

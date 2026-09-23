@@ -660,7 +660,7 @@ export default function Dashboard({
                       sentence. */}
                   <p className="text-sm text-ink/80 mt-0.5">
                     {t(
-                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads and Pinterest. The free plan connects two accounts. Connect all eight and post to every platform at once.'
+                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads and Pinterest. The free plan connects two accounts. Connect all eight and post to every platform at once. Then add your WoopSocial API key in Settings so Clips Kitty can post for you.'
                     )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a
