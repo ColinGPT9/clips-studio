@@ -278,6 +278,36 @@ class WoopSocialClient:
         return self._request("GET", f"/posts/{_safe_id(post_id)}")
 
 
+def _readable_error(raw: str) -> str:
+    """A delivery failure as a person should read it.
+
+    Theirs arrive as a chain of wrapped messages ending in the platform's raw
+    JSON ("failed to send post to platform: failed to create video: ... API
+    returned status 429. Response: {...}"). A posting limit is the failure
+    people actually hit, so that one is said plainly; anything else keeps its
+    own words, trimmed."""
+    text = raw.strip()
+    lowered = text.lower()
+    # "organization posting restricted: org 1760... has published 5 YOUTUBE
+    # posts in the past 24 hours, limit is 5": WoopSocial's own daily allowance.
+    allowance = re.search(r"published (\d+) (\w+) posts in the past 24 hours", text)
+    if "posting restricted" in lowered and allowance:
+        platform = FROM_PLATFORM.get(allowance.group(2).upper(), allowance.group(2).lower())
+        shown = {"youtube": "YouTube", "tiktok": "TikTok", "linkedin": "LinkedIn"}.get(
+            platform, platform.title()
+        )
+        return (
+            f"WoopSocial allows {allowance.group(1)} {shown} posts a day on "
+            "your plan, and they were used. Retry this one tomorrow."
+        )
+    if "rate_limit" in lowered or "status 429" in lowered:
+        return (
+            "The platform's posting limit was reached. Post fewer a day, "
+            "then retry this one."
+        )
+    return text[:300]
+
+
 def _flag(overrides: dict, name: str, default: bool) -> bool:
     """A required boolean, taken from the caller only when actually given.
 
@@ -385,24 +415,32 @@ def parse_post(payload: dict) -> FanOutResult:
         name = FROM_PLATFORM.get(str(child.get("platform") or "").upper())
         if not name:
             continue
-        status = str(child.get("status") or "").upper()
+        # Their field is deliveryStatus: NOT_STARTED, SENDING, PUBLISHED or
+        # FAILED. This read "status", which they never send, so every post sat
+        # at "processing" for good, including TikTok posts that had failed on a
+        # rate limit and YouTube ones that had gone out. "status" stays as a
+        # fallback only.
+        status = str(child.get("deliveryStatus") or child.get("status") or "").upper()
         if status in ("PUBLISHED", "SUCCESS", "COMPLETED"):
             state = "published"
         elif status in ("FAILED", "ERROR"):
             state = "failed"
-        elif status in ("SCHEDULED", "PENDING", "DRAFT", "QUEUED"):
+        elif status in ("NOT_STARTED", "SCHEDULED", "PENDING", "DRAFT", "QUEUED"):
             state = "queued"
         else:
             state = "processing"
+        error = (
+            child.get("errorMessage") or child.get("error") or child.get("failureReason") or ""
+        )
         result.outcomes.append(
             PlatformOutcome(
                 platform=name,
                 state=state,
                 post_id=str(child.get("externalPostId") or child.get("id") or ""),
-                post_url=str(child.get("permalink") or child.get("url") or ""),
-                error=str(child.get("error") or child.get("failureReason") or "")[:300]
-                if state == "failed"
-                else "",
+                post_url=str(
+                    child.get("externalPostUrl") or child.get("permalink") or child.get("url") or ""
+                ),
+                error=_readable_error(str(error)) if state == "failed" else "",
             )
         )
     result.outcomes.sort(key=lambda o: o.platform)

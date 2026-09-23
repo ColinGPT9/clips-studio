@@ -118,6 +118,46 @@ def test_scheduled_children_read_as_queued_not_done():
     assert not got.done
 
 
+def test_the_delivery_status_they_actually_send_is_read():
+    # Trimmed from a real GET /posts/{id}, 2026-09-23. The status is in
+    # deliveryStatus, which was never read, so this TikTok post showed as
+    # "processing" for good when it had failed on a rate limit.
+    got = parse_post({
+        "id": "176155634863964160",
+        "socialAccountPosts": [
+            {"platform": "TIKTOK", "deliveryStatus": "FAILED",
+             "errorMessage": "failed to send post to platform: failed to create video: "
+                             "failed to make request: API returned status 429. Response: "
+                             '{"data":{},"error":{"code":"rate_limit_exceeded"}}',
+             "externalPostId": None, "externalPostUrl": None,
+             "socialAccountId": "176131237373542400"},
+            {"platform": "YOUTUBE", "deliveryStatus": "PUBLISHED",
+             "externalPostId": "abc", "externalPostUrl": "https://youtube.com/shorts/abc"},
+            {"platform": "INSTAGRAM", "deliveryStatus": "NOT_STARTED"},
+            {"platform": "FACEBOOK", "deliveryStatus": "SENDING"},
+        ],
+    })
+    by = {o.platform: o for o in got.outcomes}
+    assert by["tiktok"].state == "failed"
+    assert "posting limit" in by["tiktok"].error
+    assert "{" not in by["tiktok"].error
+    assert by["youtube"].state == "published"
+    assert by["youtube"].post_url == "https://youtube.com/shorts/abc"
+    assert by["instagram"].state == "queued"
+    assert by["facebook"].state == "processing"
+
+
+def test_their_daily_allowance_is_explained_not_quoted():
+    got = parse_post({"id": "p", "socialAccountPosts": [{
+        "platform": "YOUTUBE", "deliveryStatus": "FAILED",
+        "errorMessage": "organization posting restricted: org 176041218826829824 has "
+                        "published 5 YOUTUBE posts in the past 24 hours, limit is 5",
+    }]})
+    error = got.outcomes[0].error
+    assert "5 YouTube posts a day" in error
+    assert "176041218826829824" not in error
+
+
 def test_an_empty_or_odd_response_does_not_crash():
     assert parse_post({}).outcomes == []
     assert parse_post({"socialAccountPosts": None}).outcomes == []

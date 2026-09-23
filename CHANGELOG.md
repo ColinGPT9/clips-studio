@@ -71,6 +71,14 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **WoopSocial posts now show what really happened to them.** Every post sent
+  through WoopSocial stayed at "processing" for good, because Clips Kitty was
+  reading the wrong field of WoopSocial's reply. Posts that went out now show as
+  published with their link, and ones that did not show as failed with the
+  reason in plain words, such as WoopSocial's five-a-day YouTube allowance or
+  TikTok's posting limit. Posts you already sent correct themselves the next
+  time Clips Kitty checks, within a few minutes of opening it.
+
 - **Hashtags now actually appear under your videos.** Clips Kitty has always
   chosen hashtags for a clip, but they were being sent to YouTube's keyword
   field, which nobody sees, and the description went up without them. They are
