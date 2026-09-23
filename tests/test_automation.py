@@ -1,0 +1,417 @@
+"""Watched channels: a creator posts and Clips Kitty clips it, once.
+
+The promises pinned here: adding a channel never queues its back catalogue, a
+video becomes at most one job however it is seen (twice in one feed, by two
+watches, after a restart, after a title change, or after being clipped by
+hand), nothing live is handed to the downloader, content missed while the app
+was closed is never silently lost, and nothing is published unless asked.
+"""
+
+import json
+
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from core import queue
+from core.state import StateDB
+from server import automation
+from sources.channel_feed import Channel, NewSourceVideo, Readiness
+
+UC = "UCXuqSBlHAE6Xw-yeJA0Tunw"
+START = 1_800_000_000.0
+INTERVAL = 15 * 60
+
+
+def yt(vid, title=None, published_at=0.0, channel=UC):
+    return NewSourceVideo("youtube", channel, vid, f"https://www.youtube.com/watch?v={vid}",
+                          title or f"Video {vid}", published_at)
+
+
+class FakeFeed:
+    def __init__(self):
+        self.listings: dict[str, list] = {}
+        self.ready: dict[str, Readiness] = {}
+        self.fail: Exception | None = None
+        self.readiness_calls: list[str] = []
+
+    def resolve(self, platform, text):
+        return Channel(platform, text, f"Channel {text}")
+
+    def latest(self, platform, channel_key):
+        if self.fail:
+            raise self.fail
+        return list(self.listings.get(channel_key, []))
+
+    def readiness(self, url, min_seconds=0):
+        self.readiness_calls.append(url)
+        found = self.ready.get(url, Readiness("ready", duration=3600))
+        if found.state == "ready" and min_seconds and found.duration < min_seconds:
+            return Readiness("skip", "Shorter than the minimum.", duration=found.duration)
+        return found
+
+
+class FakeWorker:
+    def __init__(self):
+        self.notified = 0
+
+    def notify(self):
+        self.notified += 1
+
+    def progress_snapshot(self, job_id):
+        return {"fraction": 0.5}
+
+
+class FakeBroadcaster:
+    def __init__(self):
+        self.events = []
+
+    def publish(self, event):
+        self.events.append(event)
+
+
+class Env:
+    def __init__(self, tmp_path, feed=None):
+        self.now = START
+        self.feed = feed or FakeFeed()
+        self.db_path = tmp_path / "state.db"
+        self.worker = FakeWorker()
+        app = FastAPI()
+        self.watcher = automation.install(
+            app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
+            options_from=lambda raw: dict(raw), feed=self.feed, clock=lambda: self.now,
+            interval_minutes=15,
+        )
+        self.client = TestClient(app, base_url="http://127.0.0.1")
+
+    def db(self):
+        return StateDB(self.db_path)
+
+    def run(self, fn):
+        d = self.db()
+        try:
+            return fn(d)
+        finally:
+            d.close()
+
+    def enable(self):
+        assert self.client.patch("/automation", json={"enabled": True}).status_code == 200
+
+    def add(self, key=UC, platform="youtube"):
+        response = self.client.post("/automation/watches", json={"platform": platform, "channel": key})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def later(self, seconds=INTERVAL + 1):
+        self.now += seconds
+        self.watcher.tick()
+
+    def jobs(self):
+        return self.run(lambda d: [dict(r) for r in d.list_jobs(limit=100)])
+
+    def items(self, **params):
+        return self.client.get("/automation/items", params=params).json()
+
+    def item(self, video_id):
+        return next(i for i in self.items() if i["video_id"] == video_id)
+
+    def finish(self, video_id, status="done"):
+        def go(d):
+            job = d.job_for_video(video_id, ("queued", "running"))
+            d.finish_job(job["id"], status)
+            d.upsert_video(video_id, title="t")
+            d.set_video_status(video_id, "done" if status == "done" else "failed")
+        self.run(go)
+
+
+@pytest.fixture
+def env(tmp_path):
+    e = Env(tmp_path)
+    e.enable()
+    return e
+
+
+def watched(env, *videos, key=UC):
+    """A watch whose first look saw `videos` (the back catalogue)."""
+    env.feed.listings[key] = list(videos)
+    watch = env.add(key)
+    env.watcher.tick()
+    return watch
+
+
+def test_nothing_happens_until_automation_is_switched_on(tmp_path):
+    e = Env(tmp_path)
+    e.feed.listings[UC] = [yt("aaaaaaaaaaa")]
+    e.add()
+    e.watcher.tick()
+    assert e.items() == []
+    assert e.client.get("/automation").json()["enabled"] is False
+
+
+def test_adding_a_channel_never_queues_its_back_catalogue(env):
+    watched(env, yt("aaaaaaaaaaa"), yt("bbbbbbbbbbb"))
+    assert env.jobs() == []
+    assert {i["status"] for i in env.items()} == {"earlier"}
+
+
+def test_a_new_upload_is_queued_once(env):
+    watched(env, yt("aaaaaaaaaaa"))
+    env.feed.listings[UC].insert(0, yt("newnewnew01"))
+    env.later()
+    jobs = env.jobs()
+    assert len(jobs) == 1
+    assert jobs[0]["video_id"] == "newnewnew01"
+    assert json.loads(jobs[0]["payload"])["url"] == "https://www.youtube.com/watch?v=newnewnew01"
+    assert env.item("newnewnew01")["status"] == "queued"
+    # Nothing else was waiting, so the watch's go-ahead started the queue.
+    assert env.run(queue.is_paused) is False
+    assert env.worker.notified >= 1
+
+
+def test_the_same_video_seen_again_or_retitled_is_not_a_second_job(env):
+    watched(env)
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    env.feed.listings[UC] = [yt("newnewnew01", title="Retitled (and a new thumbnail)")]
+    env.later()
+    env.later()
+    assert len(env.jobs()) == 1
+    assert len(env.items()) == 1
+
+
+def test_a_feed_that_repeats_an_entry_gives_one_job(env):
+    watched(env)
+    env.feed.listings[UC] = [yt("newnewnew01"), yt("newnewnew01")]
+    env.later()
+    assert len(env.jobs()) == 1
+
+
+def test_two_watches_that_find_the_same_video_give_one_job(env):
+    other = "UC" + "x" * 22
+    watched(env)
+    watched(env, key=other)
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.feed.listings[other] = [yt("newnewnew01", channel=other)]
+    env.later()
+    assert len(env.jobs()) == 1
+    assert len(env.items()) == 1
+
+
+def test_a_restart_does_not_queue_anything_twice(env, tmp_path):
+    watched(env)
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    restarted = Env(tmp_path, feed=env.feed)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    restarted.later()
+    assert len(restarted.jobs()) == 1
+
+
+def test_a_video_already_clipped_by_hand_is_not_clipped_again(env):
+    watched(env)
+    env.run(lambda d: (d.upsert_video("newnewnew01"), d.set_video_status("newnewnew01", "done")))
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    assert env.jobs() == []
+    item = env.item("newnewnew01")
+    assert item["status"] == "skipped"
+    assert "Already clipped" in item["reason"]
+
+
+def test_a_video_already_in_the_queue_is_joined_not_duplicated(env):
+    watched(env)
+    job_id = env.run(lambda d: queue.enqueue(
+        d, "process", {"url": "https://www.youtube.com/watch?v=newnewnew01"},
+        video_id="newnewnew01"))
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    assert len(env.jobs()) == 1
+    assert env.item("newnewnew01")["job_id"] == job_id
+
+
+def test_a_full_queue_waits_and_then_queues(env):
+    watched(env)
+    for n in range(queue.MAX_ACTIVE):
+        env.run(lambda d, n=n: queue.enqueue(d, "process", {"url": f"u{n}"}, video_id=f"other{n}"))
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    item = env.item("newnewnew01")
+    assert item["status"] == "waiting_for_queue"
+    assert "room in the queue" in item["reason"]
+    env.run(lambda d: d.finish_job(d.job_for_video("other0", ("queued",))["id"], "done"))
+    env.later(5)
+    assert env.item("newnewnew01")["status"] == "queued"
+
+
+def test_staged_videos_are_not_started_by_a_watch(env):
+    watched(env)
+    env.run(lambda d: queue.enqueue(d, "process", {"url": "staged"}, video_id="staged01"))
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    assert env.item("newnewnew01")["status"] == "queued"
+    assert env.run(queue.is_paused) is True  # the user has not pressed Start
+
+
+def test_a_live_video_waits_until_it_has_finished(env):
+    watched(env)
+    url = "https://www.youtube.com/watch?v=livelive001"
+    env.feed.ready[url] = Readiness("not_yet", "Still live.")
+    env.feed.listings[UC] = [yt("livelive001")]
+    env.later()
+    assert env.jobs() == []
+    assert env.item("livelive001")["status"] == "waiting_for_video"
+    env.later(60)  # not due yet: no second look within the recheck window
+    assert env.feed.readiness_calls.count(url) == 1
+    env.feed.ready[url] = Readiness("ready", duration=7200)
+    env.later(automation.RECHECK_SECONDS)
+    assert env.item("livelive001")["status"] == "queued"
+
+
+def test_a_video_that_never_finishes_is_eventually_set_aside(env):
+    watched(env)
+    url = "https://www.youtube.com/watch?v=premiere001"
+    env.feed.ready[url] = Readiness("not_yet", "Premieres next month.")
+    env.feed.listings[UC] = [yt("premiere001")]
+    env.later()
+    env.later(automation.GIVE_UP_SECONDS + 1)
+    assert env.item("premiere001")["status"] == "skipped"
+
+
+def test_shorts_are_not_clipped(env):
+    watched(env)
+    env.feed.ready["https://www.youtube.com/watch?v=shortshort1"] = Readiness("ready", duration=41)
+    env.feed.listings[UC] = [yt("shortshort1")]
+    env.later()
+    assert env.jobs() == []
+    assert env.item("shortshort1")["status"] == "skipped"
+
+
+def test_a_platform_that_cannot_be_read_says_so_and_loses_nothing(env):
+    watched(env)
+    env.feed.fail = OSError("503 Service Unavailable")
+    env.later()
+    watch = env.client.get("/automation/watches").json()[0]
+    assert "503" in watch["last_error"]
+    env.feed.fail = None
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    watch = env.client.get("/automation/watches").json()[0]
+    assert watch["last_error"] == ""
+    assert len(env.jobs()) == 1
+
+
+# ---- catching up after being closed ------------------------------------------
+
+
+def closed_for_a_while(env, backlog, *videos):
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}", json={"backlog": backlog})
+    env.feed.listings[UC] = list(videos)
+    env.later(10 * INTERVAL)
+
+
+def test_catch_up_newest_only_by_default(env):
+    closed_for_a_while(env, "newest", yt("cccccccccc3"), yt("bbbbbbbbbb2"), yt("aaaaaaaaaa1"))
+    assert [j["video_id"] for j in env.jobs()] == ["cccccccccc3"]
+    skipped = [i for i in env.items() if i["status"] == "skipped"]
+    assert len(skipped) == 2  # listed, one click from being clipped
+    assert all("wasn't watching" in i["reason"] for i in skipped)
+
+
+def test_catch_up_all(env):
+    closed_for_a_while(env, "all", yt("cccccccccc3"), yt("bbbbbbbbbb2"))
+    assert len(env.jobs()) == 2
+
+
+def test_catch_up_none_keeps_everything_for_you_to_choose(env):
+    closed_for_a_while(env, "none", yt("cccccccccc3"), yt("bbbbbbbbbb2"))
+    assert env.jobs() == []
+    assert len([i for i in env.items() if i["status"] == "skipped"]) == 2
+
+
+def test_catch_up_last_day(env):
+    now = START + 10 * INTERVAL  # when the catch-up look happens
+    closed_for_a_while(
+        env, "day",
+        yt("cccccccccc3", published_at=now - 3600),
+        yt("bbbbbbbbbb2", published_at=now - 2 * 3600),
+        yt("aaaaaaaaaa1", published_at=now - 3 * 86400),
+    )
+    assert sorted(j["video_id"] for j in env.jobs()) == ["bbbbbbbbbb2", "cccccccccc3"]
+
+
+def test_two_uploads_between_normal_looks_are_both_clipped(env):
+    watched(env)
+    env.feed.listings[UC] = [yt("cccccccccc3"), yt("bbbbbbbbbb2")]
+    env.later()
+    assert len(env.jobs()) == 2
+
+
+def test_clip_this_takes_a_set_aside_video(env):
+    watched(env, yt("aaaaaaaaaaa"))
+    item = env.item("aaaaaaaaaaa")
+    response = env.client.post(f"/automation/items/{item['id']}/queue")
+    assert response.status_code == 200
+    env.later(5)
+    assert env.item("aaaaaaaaaaa")["status"] == "queued"
+
+
+# ---- after the clips exist ---------------------------------------------------
+
+
+def with_publish_mode(env, mode):
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}",
+                     json={"publish": {"mode": mode, "platforms": ["youtube"]}})
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    return watch
+
+
+@pytest.mark.parametrize("mode, expected", [("off", "off"), ("ask", "ask")])
+def test_finished_clips_wait_to_be_asked_or_stay_put(env, mode, expected):
+    with_publish_mode(env, mode)
+    env.later(5)
+    assert env.item("newnewnew01")["publish_state"] == ""  # not done yet
+    env.finish("newnewnew01")
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert item["status"] == "complete"
+    assert item["publish_state"] == expected
+
+
+def test_a_failed_run_is_not_published(env):
+    with_publish_mode(env, "ask")
+    env.finish("newnewnew01", status="failed")
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert item["status"] == "failed"
+    assert item["publish_state"] == ""
+
+
+def test_watch_options_reach_the_job(env):
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}",
+                     json={"preset": "podcast", "options": {"max_clips": 4}})
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert payload["podcast"] is True and payload["max_clips"] == 4
+    assert "preset" not in payload
+
+
+def test_legacy_cli_channels_come_across_switched_off(tmp_path):
+    path = tmp_path / "old.db"
+    d = StateDB(path)
+    d.conn.execute("DELETE FROM app_state WHERE key = 'watches_imported'")
+    d.add_channel(UC, "Linus Tech Tips")
+    d.close()
+    d = StateDB(path)
+    rows = d.list_watches()
+    d.close()
+    assert [(r["channel_key"], r["enabled"]) for r in rows] == [(UC, 0)]

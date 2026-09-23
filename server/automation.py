@@ -1,0 +1,651 @@
+"""Watched channels: a creator posts, Clips Kitty clips it, nobody pastes a link.
+
+This is orchestration only. Detection is sources/channel_feed.py, processing is
+the ordinary queue and worker, and publishing is woopsocial_service. What lives
+here is the part that joins them without a person in between: noticing a new
+video once, waiting until it can be downloaded, queueing it once, and deciding
+what happens to its clips.
+
+Built the way server/integrations.py is. Only the detection facts and the
+publish decision are stored; once a video has a job, the job row and
+clip_publishes are the truth about it, read live, so there is no second copy of
+state to drift.
+
+Off unless switched on. Nothing in this app starts processing on its own
+(core/queue.is_paused), so turning automation on, and each watch, is the
+standing go-ahead for exactly those videos and no others.
+
+Supported API, documented in docs/API.md.
+"""
+
+import json
+import threading
+import time
+import traceback
+from collections.abc import Callable
+from typing import Literal
+
+from fastapi import HTTPException
+from pydantic import BaseModel, Field
+
+from core import queue
+from core.state import StateDB
+
+ENABLED_KEY = "automation_enabled"
+
+PLATFORM_NAMES = {"youtube": "YouTube", "twitch": "Twitch", "kick": "Kick"}
+
+WATCH_TICK_SECONDS = 30
+DEFAULT_INTERVAL_MINUTES = 15
+# A look every few minutes is plenty for videos that take an hour to process,
+# and each look is a request to someone else's platform.
+MIN_INTERVAL_MINUTES = 5
+# How soon to look again at a video that is live, premiering or processing.
+RECHECK_SECONDS = 15 * 60
+# A premiere can be scheduled days ahead; past a week it is not coming.
+GIVE_UP_SECONDS = 7 * 24 * 60 * 60
+# The "last 24 hours" catch-up policy.
+DAY_SECONDS = 24 * 60 * 60
+
+BACKLOG = ("all", "newest", "day", "none")
+
+_MISSED = "Posted while Clips Kitty wasn't watching."
+_BASELINE = "Posted before you started watching this channel."
+
+_JOB_STATES = {
+    "queued": "queued",
+    "running": "processing",
+    "done": "complete",
+    "failed": "failed",
+    "cancelled": "cancelled",
+}
+
+
+# ---- request bodies ---------------------------------------------------------
+
+
+class PublishSettings(BaseModel):
+    """What to do with a watched video's clips. Configured once per channel."""
+
+    mode: Literal["off", "ask", "auto"] = "ask"
+    platforms: list[str] = []
+    # A daily budget, not a flat gap: WoopSocial allows about five YouTube posts
+    # a day, and a burst past that is rejected (see woopsocial_service).
+    per_day: int = Field(default=5, ge=1, le=50)
+    gap_hours: float = Field(default=1, ge=0.25, le=24)
+    hashtags: list[str] = []
+    footer: str = Field(default="", max_length=1000)
+    overrides: dict = {}
+
+
+class AutomationPatch(BaseModel):
+    enabled: bool
+
+
+class WatchIn(BaseModel):
+    platform: Literal["youtube", "twitch", "kick"]
+    channel: str = Field(min_length=1, max_length=300)
+
+
+class WatchPatch(BaseModel):
+    enabled: bool | None = None
+    name: str | None = Field(default=None, max_length=100)
+    preset: str | None = None
+    options: dict | None = None
+    publish: PublishSettings | None = None
+    backlog: Literal["all", "newest", "day", "none"] | None = None
+    min_minutes: float | None = Field(default=None, ge=0, le=600)
+
+
+# ---- reading state ----------------------------------------------------------
+
+
+def is_enabled(d: StateDB) -> bool:
+    return d.get_flag(ENABLED_KEY, "0") == "1"
+
+
+def publish_settings(watch) -> PublishSettings:
+    try:
+        return PublishSettings(**json.loads(watch["publish"] or "{}"))
+    except Exception:
+        return PublishSettings()
+
+
+def watch_options(watch) -> dict:
+    try:
+        options = json.loads(watch["options"] or "{}")
+    except ValueError:
+        options = {}
+    return options if isinstance(options, dict) else {}
+
+
+def job_payload(watch, url: str) -> dict:
+    """What the queue is given for one of this watch's videos: the preset, then
+    the watch's own options on top, exactly as a pasted link would carry them."""
+    from server.integrations import PRESETS
+
+    options = watch_options(watch)
+    preset = PRESETS.get(options.pop("preset", "standard")) or PRESETS["standard"]
+    return {"url": url, **preset["options"], **options}
+
+
+def render_footer(template: str, item, watch) -> str:
+    """Fill the source placeholders. Plain replacement, not str.format, so any
+    other braces a person typed stay exactly as they typed them."""
+    values = {
+        "{source_url}": item["url"] or "",
+        "{source_title}": item["title"] or "",
+        "{source_channel}": watch["name"] or watch["channel_key"],
+        "{source_platform}": PLATFORM_NAMES.get(watch["platform"], watch["platform"]),
+    }
+    for placeholder, value in values.items():
+        template = template.replace(placeholder, value)
+    return template.strip()
+
+
+def _job_status(d: StateDB, item) -> str | None:
+    """The item's job status, or None when it has no job. A job row cleared
+    from the queue's history still counts as done if its video finished."""
+    if not item["job_id"]:
+        return None
+    job = d.get_job(item["job_id"])
+    if job is not None:
+        return job["status"]
+    return "done" if d.video_status(item["video_id"]) == "done" else "cancelled"
+
+
+def _deliveries(d: StateDB, video_id: str) -> list[dict]:
+    rows = d.conn.execute(
+        "SELECT p.clip_id, p.platform, p.state, p.post_url, p.scheduled_for, p.error "
+        "FROM clip_publishes p WHERE p.video_id = ? ORDER BY p.clip_id, p.platform",
+        (video_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def view_item(d: StateDB, item, worker) -> dict:
+    out = {
+        key: item[key]
+        for key in (
+            "id", "watch_id", "platform", "video_id", "url", "title", "published_at",
+            "detected_at", "state", "reason", "job_id", "publish_state", "publish_error",
+        )
+    }
+    status = {
+        "baseline": "earlier",
+        "new": "waiting_for_video",
+        "not_ready": "waiting_for_video",
+        "waiting": "waiting_for_queue",
+        "skipped": "skipped",
+        "error": "error",
+    }.get(item["state"], "queued")
+    job_status = _job_status(d, item) if item["state"] == "queued" else None
+    if job_status is not None:
+        status = _JOB_STATES.get(job_status, "queued")
+        if job_status == "queued":
+            out["waiting_behind"] = queue.waiting_ahead(d, item["job_id"])
+            out["queue_paused"] = queue.is_paused(d)
+        elif job_status == "running":
+            out["progress"] = worker.progress_snapshot(item["job_id"])
+        elif job_status == "failed":
+            job = d.get_job(item["job_id"])
+            out["details"] = ((job["error"] if job is not None else "") or "")[:500]
+    out["status"] = status
+    if status == "complete":
+        out["clips"] = d.conn.execute(
+            "SELECT COUNT(*) FROM clips WHERE video_id = ?", (item["video_id"],)
+        ).fetchone()[0]
+        out["deliveries"] = _deliveries(d, item["video_id"])
+    return out
+
+
+def view_watch(d: StateDB, watch) -> dict:
+    counts = {
+        r["state"]: r["n"]
+        for r in d.conn.execute(
+            "SELECT state, COUNT(*) AS n FROM watch_items WHERE watch_id = ? GROUP BY state",
+            (watch["id"],),
+        )
+    }
+    options = watch_options(watch)
+    return {
+        "id": watch["id"],
+        "platform": watch["platform"],
+        "channel_key": watch["channel_key"],
+        "name": watch["name"],
+        "enabled": bool(watch["enabled"]),
+        "preset": options.pop("preset", "standard"),
+        "options": options,
+        "publish": publish_settings(watch).model_dump(),
+        "backlog": watch["backlog"],
+        "min_minutes": watch["min_minutes"],
+        "last_ok_poll_at": watch["last_ok_poll_at"],
+        "next_poll_at": watch["next_poll_at"],
+        "last_error": watch["last_error"],
+        "counts": counts,
+    }
+
+
+# ---- the watcher ------------------------------------------------------------
+
+
+class ChannelWatcher(threading.Thread):
+    """Looks at each watched channel every few minutes and moves what it finds
+    along: detected, ready, queued, published or waiting to be asked.
+
+    Every step reads its state from the database and writes it back before the
+    next, so a restart at any point carries on from where it stopped. A video is
+    one row keyed by its id, which is what keeps it to one job however many
+    times, or by however many watches, it is seen."""
+
+    def __init__(
+        self,
+        db: Callable[[], StateDB],
+        *,
+        feed,
+        worker,
+        broadcaster,
+        publisher: Callable[..., dict] | None = None,
+        interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
+        clock=time.time,
+    ):
+        super().__init__(daemon=True, name="channel-watcher")
+        self._db = db
+        self._feed = feed
+        self._worker = worker
+        self._broadcaster = broadcaster
+        self._publisher = publisher
+        self._interval = max(MIN_INTERVAL_MINUTES, float(interval_minutes)) * 60
+        self._clock = clock
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+
+    @property
+    def interval_seconds(self) -> float:
+        return self._interval
+
+    def wake(self) -> None:
+        self._wake.set()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._wake.set()
+
+    def run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.tick()
+            except Exception:
+                traceback.print_exc()  # the watcher must outlive any one failure
+            self._wake.wait(timeout=WATCH_TICK_SECONDS)
+            self._wake.clear()
+
+    def tick(self) -> None:
+        now = self._clock()
+        d = self._db()
+        try:
+            if not is_enabled(d):
+                return
+            for watch in d.watches_due(now):
+                self._poll(d, watch, now)
+            self._check_readiness(d, now)
+            self._queue_waiting(d)
+            self._decide_publishing(d)
+        finally:
+            d.close()
+
+    # -- 1. look at the channel -----------------------------------------------
+
+    def _poll(self, d: StateDB, watch, now: float) -> None:
+        try:
+            videos = self._feed.latest(watch["platform"], watch["channel_key"])
+        except Exception as e:
+            print(f"Watch {watch['id']} ({watch['name']}): couldn't check: {e}")
+            d.set_watch(watch["id"], last_error=_short(e), next_poll_at=now + self._interval)
+            return
+        known = d.watch_item_ids()
+        fresh, seen = [], set()
+        for video in videos:
+            if video.video_id and video.video_id not in known and video.video_id not in seen:
+                fresh.append(video)
+                seen.add(video.video_id)
+
+        if not watch["last_ok_poll_at"]:
+            # The first look records what is already there, so adding a channel
+            # never queues its back catalogue. Listed, so any of it can still be
+            # clipped with one click.
+            for video in fresh:
+                self._insert(d, watch, video, now, "baseline", _BASELINE)
+        else:
+            take, hold = fresh, []
+            missed = now - watch["last_ok_poll_at"] > 2 * self._interval
+            if missed and len(fresh) > 1:
+                take, hold = self._catch_up(watch["backlog"], fresh, now)
+            for video in take:
+                self._insert(d, watch, video, now, "new", "")
+                print(f"Watch {watch['id']}: new video {video.video_id} {video.title!r}")
+            for video in hold:
+                self._insert(d, watch, video, now, "skipped", _MISSED)
+        d.set_watch(watch["id"], last_ok_poll_at=now, next_poll_at=now + self._interval,
+                    last_error="")
+        if fresh:
+            self._broadcaster.publish({"type": "automation"})
+
+    def _insert(self, d: StateDB, watch, video, now: float, state: str, reason: str) -> None:
+        d.insert_watch_item(
+            video.video_id, watch_id=watch["id"], platform=watch["platform"], url=video.url,
+            title=video.title, published_at=video.published_at, detected_at=now, state=state,
+            reason=reason, next_check_at=now,
+        )
+
+    def _catch_up(self, policy: str, fresh: list, now: float) -> tuple[list, list]:
+        """Several videos appeared while nobody was watching. Which to clip.
+
+        Newest first throughout, because every listing is. Nothing is dropped:
+        what is not taken is recorded as skipped, visible, one click from being
+        clipped after all."""
+        if policy == "all":
+            return fresh, []
+        if policy == "none":
+            return [], fresh
+        if policy == "day":
+            take = []
+            for index, video in enumerate(fresh):
+                if not video.published_at:
+                    # Twitch listings carry no dates; the video's own page does.
+                    video.published_at = self._feed.readiness(video.url, 0).published_at
+                if video.published_at and now - video.published_at > DAY_SECONDS:
+                    return take, fresh[index:]
+                take.append(video)
+            return take, []
+        return fresh[:1], fresh[1:]  # "newest", the default
+
+    # -- 2. wait until it can be downloaded -----------------------------------
+
+    def _check_readiness(self, d: StateDB, now: float) -> None:
+        for item in reversed(d.watch_items(states=("new", "not_ready"))):
+            if item["next_check_at"] > now:
+                continue
+            watch = d.get_watch(item["watch_id"])
+            if watch is None or not watch["enabled"]:
+                continue
+            if item["state"] == "not_ready" and now - item["detected_at"] > GIVE_UP_SECONDS:
+                d.set_watch_item(item["id"], state="skipped",
+                                 reason="It never became available to download.")
+                continue
+            found = self._feed.readiness(item["url"], float(watch["min_minutes"] or 0) * 60)
+            facts = {}
+            if found.title and not item["title"]:
+                facts["title"] = found.title
+            if found.published_at and not item["published_at"]:
+                facts["published_at"] = found.published_at
+            if found.state == "ready":
+                d.set_watch_item(item["id"], state="waiting", reason="", **facts)
+            elif found.state == "not_yet":
+                d.set_watch_item(item["id"], state="not_ready", reason=found.reason,
+                                 next_check_at=now + RECHECK_SECONDS, **facts)
+            else:
+                d.set_watch_item(item["id"], state="skipped", reason=found.reason, **facts)
+
+    # -- 3. queue it, once ------------------------------------------------------
+
+    def _queue_waiting(self, d: StateDB) -> None:
+        queued_any = False
+        for item in reversed(d.watch_items(states=("waiting",))):
+            watch = d.get_watch(item["watch_id"])
+            if watch is None or not watch["enabled"]:
+                continue
+            title = item["title"] or f"{watch['name'] or watch['channel_key']} video"
+            outcome, job_id = queue.enqueue_once(
+                d, item["video_id"], job_payload(watch, item["url"]), title=title
+            )
+            if outcome == "done":
+                d.set_watch_item(item["id"], state="skipped",
+                                 reason="Already clipped in Clips Kitty.")
+                continue
+            if outcome == "full":
+                d.set_watch_item(
+                    item["id"],
+                    reason=f"Waiting for room in the queue ({queue.MAX_ACTIVE} videos at most).",
+                )
+                break  # nothing else fits either
+            # The watch is the user's go-ahead for its own videos, not for
+            # anything else they staged and have not started.
+            queue.start_if_alone(d, job_id)
+            d.set_watch_item(item["id"], state="queued", job_id=job_id, reason="")
+            queued_any = True
+        if queued_any:
+            self._worker.notify()
+            self._broadcaster.publish({"type": "queue"})
+            self._broadcaster.publish({"type": "automation"})
+
+    # -- 4. decide what happens to the clips ----------------------------------
+
+    def _decide_publishing(self, d: StateDB) -> None:
+        for item in d.watch_items(states=("queued",)):
+            if item["publish_state"] != "":
+                continue
+            if _job_status(d, item) != "done":
+                continue
+            watch = d.get_watch(item["watch_id"])
+            if watch is None:
+                continue
+            mode = publish_settings(watch).mode
+            # Automatic publishing arrives with the guard that makes a repeated
+            # attempt safe; until then an automatic watch asks first.
+            d.set_watch_item(item["id"], publish_state="off" if mode == "off" else "ask")
+            self._broadcaster.publish({"type": "automation"})
+
+
+def _short(error) -> str:
+    text = str(error).strip()
+    return (text.splitlines()[0] if text else type(error).__name__).replace("ERROR: ", "")[:300]
+
+
+# ---- routes -----------------------------------------------------------------
+
+
+def install(
+    app,
+    *,
+    db: Callable[[], StateDB],
+    worker,
+    broadcaster,
+    options_from: Callable[[dict], dict],
+    interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
+    feed=None,
+    publisher=None,
+    clock=time.time,
+) -> ChannelWatcher:
+    """Add the automation routes to `app`. Returns the watcher for the caller
+    to start and stop with the rest of the server.
+
+    `options_from` turns a watch's processing options into the job payload the
+    worker reads, through the same validation a queued job's options go
+    through, so there is one set of rules for both."""
+    if feed is None:
+        from sources import channel_feed as feed
+
+    from server.integrations import PRESETS
+
+    watcher = ChannelWatcher(
+        db, feed=feed, worker=worker, broadcaster=broadcaster, publisher=publisher,
+        interval_minutes=interval_minutes, clock=clock,
+    )
+
+    def load_watch(d: StateDB, watch_id: int):
+        row = d.get_watch(watch_id)
+        if row is None:
+            raise HTTPException(404, "no such watch")
+        return row
+
+    def load_item(d: StateDB, item_id: int):
+        row = d.get_watch_item(item_id)
+        if row is None:
+            raise HTTPException(404, "no such video")
+        return row
+
+    def status(d: StateDB) -> dict:
+        watches = d.list_watches()
+        return {
+            "enabled": is_enabled(d),
+            "interval_minutes": watcher.interval_seconds / 60,
+            "watches": len(watches),
+            "watching": sum(1 for w in watches if w["enabled"]),
+            "presets": [{"id": key, **value} for key, value in PRESETS.items()],
+        }
+
+    @app.get("/automation")
+    def get_automation():
+        d = db()
+        try:
+            return status(d)
+        finally:
+            d.close()
+
+    @app.patch("/automation")
+    def patch_automation(body: AutomationPatch):
+        d = db()
+        try:
+            d.set_flag(ENABLED_KEY, "1" if body.enabled else "0")
+            result = status(d)
+        finally:
+            d.close()
+        watcher.wake()
+        broadcaster.publish({"type": "automation"})
+        return result
+
+    @app.get("/automation/watches")
+    def list_watches():
+        d = db()
+        try:
+            return [view_watch(d, w) for w in d.list_watches()]
+        finally:
+            d.close()
+
+    @app.post("/automation/watches")
+    def add_watch(body: WatchIn):
+        try:
+            channel = feed.resolve(body.platform, body.channel)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        d = db()
+        try:
+            existing = d.find_watch(channel.platform, channel.channel_key)
+            if existing is not None:
+                return {"created": False, **view_watch(d, existing)}
+            watch_id = d.insert_watch(
+                channel.platform, channel.channel_key, name=channel.name,
+                publish=PublishSettings().model_dump_json(),
+            )
+            result = {"created": True, **view_watch(d, load_watch(d, watch_id))}
+        finally:
+            d.close()
+        watcher.wake()
+        broadcaster.publish({"type": "automation"})
+        return result
+
+    @app.patch("/automation/watches/{watch_id}")
+    def patch_watch(watch_id: int, body: WatchPatch):
+        d = db()
+        try:
+            watch = load_watch(d, watch_id)
+            fields: dict = {}
+            if body.enabled is not None:
+                fields["enabled"] = 1 if body.enabled else 0
+            if body.name is not None and body.name.strip():
+                fields["name"] = body.name.strip()
+            if body.options is not None or body.preset is not None:
+                options = watch_options(watch)
+                preset = body.preset if body.preset is not None else options.get("preset", "standard")
+                if preset not in PRESETS:
+                    raise HTTPException(400, f"unknown preset '{preset}'")
+                if body.options is not None:
+                    options = options_from(body.options)
+                options["preset"] = preset
+                fields["options"] = json.dumps(options)
+            if body.publish is not None:
+                fields["publish"] = body.publish.model_dump_json()
+            if body.backlog is not None:
+                fields["backlog"] = body.backlog
+            if body.min_minutes is not None:
+                fields["min_minutes"] = body.min_minutes
+            d.set_watch(watch_id, **fields)
+            result = view_watch(d, load_watch(d, watch_id))
+        finally:
+            d.close()
+        watcher.wake()
+        broadcaster.publish({"type": "automation"})
+        return result
+
+    @app.delete("/automation/watches/{watch_id}")
+    def delete_watch(watch_id: int):
+        d = db()
+        try:
+            load_watch(d, watch_id)
+            d.delete_watch(watch_id)
+        finally:
+            d.close()
+        broadcaster.publish({"type": "automation"})
+        return {"deleted": True}
+
+    @app.post("/automation/watches/{watch_id}/check")
+    def check_now(watch_id: int):
+        d = db()
+        try:
+            load_watch(d, watch_id)
+            d.set_watch(watch_id, next_poll_at=0)
+        finally:
+            d.close()
+        watcher.wake()
+        return {"checking": True}
+
+    @app.get("/automation/items")
+    def list_items(watch_id: int | None = None, limit: int = 100):
+        d = db()
+        try:
+            rows = d.watch_items(watch_id=watch_id, limit=max(1, min(500, limit)))
+            return [view_item(d, r, worker) for r in rows]
+        finally:
+            d.close()
+
+    @app.post("/automation/items/{item_id}/queue")
+    def clip_this(item_id: int):
+        """Clip a video the watch set aside: back catalogue, missed while
+        closed, too short, or anything else skipped. The person asking is the
+        go-ahead, so the minimum length does not apply."""
+        d = db()
+        try:
+            item = load_item(d, item_id)
+            if item["state"] not in ("baseline", "skipped", "error"):
+                return view_item(d, item, worker)
+            found = feed.readiness(item["url"], 0)
+            if found.state == "ready":
+                d.set_watch_item(item_id, state="waiting", reason="")
+            elif found.state == "not_yet":
+                d.set_watch_item(item_id, state="not_ready", reason=found.reason,
+                                 detected_at=clock(), next_check_at=clock() + RECHECK_SECONDS)
+            else:
+                raise HTTPException(409, found.reason or "That video can't be clipped.")
+            result = view_item(d, load_item(d, item_id), worker)
+        finally:
+            d.close()
+        watcher.wake()
+        return result
+
+    @app.post("/automation/items/{item_id}/skip")
+    def skip_item(item_id: int):
+        d = db()
+        try:
+            item = load_item(d, item_id)
+            if item["state"] in ("new", "not_ready", "waiting"):
+                d.set_watch_item(item_id, state="skipped", reason="Skipped by you.")
+            elif item["publish_state"] == "ask":
+                d.set_watch_item(item_id, publish_state="off")
+            result = view_item(d, load_item(d, item_id), worker)
+        finally:
+            d.close()
+        broadcaster.publish({"type": "automation"})
+        return result
+
+    return watcher

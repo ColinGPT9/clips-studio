@@ -486,12 +486,14 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         worker.start()
         publish_worker.start()
         stream_watcher.start()
+        channel_watcher.start()
 
     @app.on_event("shutdown")
     async def _shutdown():
         worker.stop()
         publish_worker.stop()
         stream_watcher.stop()
+        channel_watcher.stop()
 
     # Publishing lives in its own module: it is optional, self-contained and
     # removable, and threading ~15 routes through this file would end that.
@@ -538,6 +540,28 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import integrations
 
     stream_watcher = integrations.install(app, db=db, worker=worker, broadcaster=broadcaster)
+
+    # Watched channels: a creator posts, the video is queued and its clips are
+    # published without anyone pasting a link. Off until switched on.
+    from server import automation
+
+    def _watch_options(raw: dict) -> dict:
+        # The same door a queued job's options go through, so a watch cannot
+        # hold a setting the queue would refuse.
+        try:
+            patch = JobPatch(**raw)
+        except Exception as e:
+            raise HTTPException(400, f"invalid options: {e}") from e
+        return _process_options(patch)
+
+    channel_watcher = automation.install(
+        app,
+        db=db,
+        worker=worker,
+        broadcaster=broadcaster,
+        options_from=_watch_options,
+        interval_minutes=float(config.get("poll_interval_minutes") or 15),
+    )
 
     # ---- health / system -----------------------------------------------
 
