@@ -651,6 +651,8 @@ export const api = {
     /** Clip id to the platforms it should skip, for the handful a stricter
      *  platform should not get. */
     exclude?: Record<string, string[]>
+    /** Added to every clip in the run, on top of each clip's own. */
+    hashtags?: string[]
   }) =>
     request<{
       started: { clip_id: number; request_id: string; scheduled_for: string }[]

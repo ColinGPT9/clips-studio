@@ -300,6 +300,15 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                         "publish_at": at.isoformat() if body.every_hours or body.start_at else "",
                     }
                 )
+            if body.per_day:
+                # The same slots publish_clips will use, so the plan a person
+                # agrees to is the schedule that is sent.
+                slots = service.schedule_times(
+                    d, len(items), per_day=body.per_day, gap_hours=body.gap_hours,
+                    start_at=body.start_at,
+                )
+                for item, when in zip(items, slots, strict=False):
+                    item["publish_at"] = when
 
             connected: list[str] = []
             try:
@@ -317,6 +326,8 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 "provider": "woopsocial",
                 "platforms": platforms,
                 "every_hours": body.every_hours,
+                "per_day": body.per_day,
+                "gap_hours": body.gap_hours,
                 "hashtags": [h.lstrip("#").strip() for h in body.hashtags if h.strip()],
                 "items": items,
                 "warnings": warnings,

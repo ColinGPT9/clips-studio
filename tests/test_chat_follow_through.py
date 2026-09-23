@@ -224,3 +224,74 @@ def test_json_round_trip_of_the_then_block():
     """It rides in the job's payload column, which is text."""
     then = {"action": "publish", "platforms": ["youtube"], "every_hours": 1}
     assert json.loads(json.dumps({"then": then}))["then"] == then
+
+
+# ---- how fast it publishes ---------------------------------------------------
+
+
+def _capture_publish(monkeypatch, tmp_path):
+    jobs = pytest.importorskip("server.jobs")
+    woop = pytest.importorskip("server.woopsocial_service")
+    called = {}
+    monkeypatch.setattr(woop, "is_enabled", lambda db: True)
+    monkeypatch.setattr(woop, "has_key", lambda d: True)
+    monkeypatch.setattr(
+        woop, "publish_clips",
+        lambda db, data_dir, **kw: called.update(kw) or {"started": [], "skipped": []},
+    )
+    worker = jobs.Worker.__new__(jobs.Worker)
+    worker.config = {"paths": {"data_dir": str(tmp_path)}}
+    return worker, called, woop
+
+
+def test_publish_when_done_goes_out_on_a_daily_budget(monkeypatch, tmp_path):
+    """"Publish them all" once sent 37 clips at once, and WoopSocial took five.
+    Asked to publish without being told how fast, it uses the daily budget."""
+    worker, called, woop = _capture_publish(monkeypatch, tmp_path)
+    worker._run_follow_up(
+        _FakeDB([{"id": 1}, {"id": 2}]), {"video_id": "abc"},
+        {"then": {"action": "publish", "platforms": ["youtube"]}},
+    )
+    assert called["per_day"] == woop.DEFAULT_PER_DAY
+    assert called["every_hours"] == 0
+    # Nobody is watching: a clip already sent stays sent.
+    assert called["once"] is True and called["remember"] is False
+
+
+def test_a_spacing_that_was_asked_for_wins(monkeypatch, tmp_path):
+    worker, called, _ = _capture_publish(monkeypatch, tmp_path)
+    worker._run_follow_up(
+        _FakeDB([{"id": 1}]), {"video_id": "abc"},
+        {"then": {"action": "publish", "platforms": ["youtube"], "every_hours": 24}},
+    )
+    assert called["every_hours"] == 24 and called["per_day"] == 0
+
+
+def test_a_schedule_from_the_chat_defaults_to_the_daily_budget(monkeypatch):
+    sent = {}
+
+    def fake_request(method, path, body=None, timeout=60.0):
+        sent[path] = body
+        return {"started": [], "skipped": []}
+
+    monkeypatch.setattr(mcp, "_request", fake_request)
+    mcp._schedule_clips_execute({"clip_ids": [1, 2], "platforms": ["youtube"]})
+    body = sent["/woopsocial/batch"]
+    assert body["per_day"] == 5 and body["gap_hours"] == 1
+    mcp._schedule_clips_execute({"clip_ids": [1], "every_hours": 24})
+    assert "per_day" not in sent["/woopsocial/batch"]
+    mcp._schedule_clips_execute({"clip_ids": [1], "per_day": 3, "gap_hours": 2})
+    assert sent["/woopsocial/batch"]["per_day"] == 3
+    assert sent["/woopsocial/batch"]["gap_hours"] == 2
+
+
+def test_the_plan_says_the_budget_out_loud(monkeypatch):
+    monkeypatch.setattr(
+        mcp, "_request",
+        lambda m, p, body=None, timeout=60.0: {
+            "platforms": ["youtube"], "per_day": 5, "gap_hours": 1,
+            "items": [{"clip_id": 1, "title": "t", "publish_at": "2026-09-24T13:00:00+00:00"}],
+        },
+    )
+    text = mcp._schedule_clips_plan({"clip_ids": [1]})
+    assert "5 a day, 1 hour apart, after what is already scheduled" in text

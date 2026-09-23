@@ -2319,6 +2319,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 # the prose, so the window can offer one button instead of
                 # asking the person to retype what the model just said.
                 from server.mcp import _request as _api
+                from server.mcp import _spacing
 
                 try:
                     clip_ids = list(arguments.get("clip_ids") or [])
@@ -2331,8 +2332,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                         {
                             "clip_ids": clip_ids,
                             "platforms": arguments.get("platforms") or ["youtube"],
-                            "every_hours": float(arguments.get("every_hours") or 0),
                             "hashtags": arguments.get("hashtags") or [],
+                            **_spacing(arguments),
                             **({"start_at": arguments["start_at"]} if arguments.get("start_at") else {}),
                         },
                     )

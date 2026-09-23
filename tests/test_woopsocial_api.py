@@ -357,3 +357,33 @@ def test_a_batch_needs_clips_and_platforms(client, monkeypatch):
     assert client.post(
         "/woopsocial/batch", json={"clip_ids": [1], "platforms": []}
     ).status_code == 400
+
+
+def test_a_daily_plan_shows_the_slots_that_will_be_used(client, monkeypatch, tmp_path):
+    """The plan a person agrees to has to be the schedule that is sent, so
+    it comes from the same slotting the publish uses."""
+    from datetime import datetime
+
+    _enable(client)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+
+    class FakeClient:
+        def projects(self):
+            return [{"id": "proj1"}]
+
+        def connected_platforms(self, project_id):
+            return ["youtube"]
+
+    monkeypatch.setattr(service, "make_client", lambda _p: FakeClient())
+    ids = _clips(client, tmp_path, 4)
+    got = client.post(
+        "/woopsocial/batch/plan",
+        json={"clip_ids": ids, "platforms": ["youtube"], "per_day": 2, "gap_hours": 1},
+    )
+    assert got.status_code == 200
+    plan = got.json()
+    assert plan["per_day"] == 2
+    times = [datetime.fromisoformat(i["publish_at"]) for i in plan["items"]]
+    assert (times[1] - times[0]).total_seconds() == 3600
+    assert (times[2] - times[0]).total_seconds() == 24 * 3600
+    assert (times[3] - times[2]).total_seconds() == 3600

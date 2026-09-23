@@ -37,6 +37,9 @@ export default function Assistant(): JSX.Element | null {
   const [schedule, setSchedule] = useState<{
     platforms: string[]
     every_hours: number
+    /** A daily budget. 0 means a flat every_hours gap instead. */
+    per_day: number
+    gap_hours: number
     hashtags: string[]
   } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -91,6 +94,8 @@ export default function Assistant(): JSX.Element | null {
           provider?: string
           platforms?: string[]
           every_hours?: number
+          per_day?: number
+          gap_hours?: number
           hashtags?: string[]
         }
         setSchedule(
@@ -98,6 +103,8 @@ export default function Assistant(): JSX.Element | null {
             ? {
                 platforms: p.platforms || ['youtube'],
                 every_hours: p.every_hours || 0,
+                per_day: p.per_day || 0,
+                gap_hours: p.gap_hours || 1,
                 hashtags: p.hashtags || []
               }
             : null
@@ -120,10 +127,15 @@ export default function Assistant(): JSX.Element | null {
       // A social-platform schedule goes through the batch route; a YouTube
       // plan through the one it has always used.
       if (schedule) {
+        // Everything the plan showed, so what is sent is what was agreed:
+        // the daily budget, and the hashtags, which used to be dropped here.
         const res = await api.woopSocialBatch({
           clip_ids: plan.map((i) => i.clip_id),
           platforms: schedule.platforms,
-          every_hours: schedule.every_hours
+          every_hours: schedule.every_hours,
+          per_day: schedule.per_day || undefined,
+          gap_hours: schedule.per_day ? schedule.gap_hours : undefined,
+          hashtags: schedule.hashtags
         })
         const parts = [`${t('Scheduled')} ${res.started.length}.`]
         for (const row of res.skipped) {
@@ -220,9 +232,11 @@ export default function Assistant(): JSX.Element | null {
           <p className="text-xs font-medium">
             {schedule
               ? `${plan.length} ${t('clips ready to post to')} ${schedule.platforms.join(', ')}${
-                  schedule.every_hours
-                    ? `, ${t('one every')} ${schedule.every_hours}h`
-                    : ''
+                  schedule.per_day
+                    ? `, ${schedule.per_day} ${t('a day')}`
+                    : schedule.every_hours
+                      ? `, ${t('one every')} ${schedule.every_hours}h`
+                      : ''
                 }. ${t('Nothing has been posted yet.')}`
               : `${plan.length} ${t('clips ready to upload. Nothing has been uploaded yet.')}`}
           </p>

@@ -94,6 +94,14 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **Publishing from the chat box no longer sends everything at once.** "Process
+  this and publish them all" and "publish all my clips" used to post every clip
+  in one go, and WoopSocial allows about five YouTube posts a day, so most were
+  rejected. Unless you say how fast, clips now go out five a day, an hour
+  apart, after anything already scheduled, and the plan you are shown before
+  saying yes lists those exact times. Hashtags you asked for in the chat now
+  reach the posts too; the confirm button used to drop them.
+
 - **WoopSocial posts now show what really happened to them.** Every post sent
   through WoopSocial stayed at "processing" for good, because Clips Kitty was
   reading the wrong field of WoopSocial's reply. Posts that went out now show as

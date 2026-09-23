@@ -539,13 +539,26 @@ class Worker(threading.Thread):
                 print("  Publish skipped: the run produced no clips.")
                 return
             platforms = list(then.get("platforms") or [])
+            every_hours = float(then.get("every_hours") or 0)
+            per_day = int(then.get("per_day") or 0)
+            if not every_hours and not per_day:
+                # Asked to publish, not told how fast. Everything at once is
+                # the one answer that is always wrong: WoopSocial takes five
+                # YouTube posts a day and rejects the rest.
+                per_day = woop.DEFAULT_PER_DAY
             print(f"  Publishing {len(clip_ids)} clip(s) to {', '.join(platforms)}...")
             out = woop.publish_clips(
                 db,
                 Path(self.config["paths"]["data_dir"]),
                 clip_ids=clip_ids,
                 platforms=platforms,
-                every_hours=float(then.get("every_hours") or 0),
+                every_hours=every_hours,
+                per_day=per_day,
+                gap_hours=float(then.get("gap_hours") or 1),
+                # Nobody is watching this one either, so a clip already sent
+                # stays sent, and the publish dialog's platforms stay put.
+                once=True,
+                remember=False,
             )
             print(
                 f"  Published {len(out['started'])}, skipped {len(out['skipped'])}."

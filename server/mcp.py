@@ -457,8 +457,8 @@ def _schedule_clips_plan(args: dict) -> str:
     body = {
         "clip_ids": clip_ids,
         "platforms": [p for p in (args.get("platforms") or ["youtube"]) if p],
-        "every_hours": float(args.get("every_hours") or 0),
         "hashtags": [h for h in (args.get("hashtags") or []) if h],
+        **_spacing(args),
     }
     if args.get("start_at"):
         body["start_at"] = args["start_at"]
@@ -472,9 +472,17 @@ def _schedule_clips_plan(args: dict) -> str:
 
     where = ", ".join(out.get("platforms") or [])
     every = out.get("every_hours") or 0
-    spacing = (
-        f"one every {every:g} hours" if every else "all at once"
-    )
+    per_day = out.get("per_day") or 0
+    if per_day:
+        gap = out.get("gap_hours") or 1
+        spacing = (
+            f"{per_day} a day, {gap:g} hour{'s' if gap != 1 else ''} apart, "
+            "after what is already scheduled"
+        )
+    elif every:
+        spacing = f"one every {every:g} hours"
+    else:
+        spacing = "all at once"
     lines = [
         f"This is the plan. NOTHING has been posted yet. {len(items)} clip(s) to "
         f"{where}, {spacing}.",
@@ -499,13 +507,35 @@ def _schedule_clips_plan(args: dict) -> str:
     return chr(10).join(lines)
 
 
+def _spacing(args: dict) -> dict:
+    """How far apart the posts go, as the batch routes take it.
+
+    A daily budget unless told otherwise. A flat every_hours still works when
+    given, but "all at once" is never the default: WoopSocial allows about five
+    YouTube posts a day and rejects the rest, which is how 32 of 37 were lost.
+    """
+    from server.woopsocial_service import DEFAULT_PER_DAY
+
+    every_hours = float(args.get("every_hours") or 0)
+    per_day = int(args.get("per_day") or 0)
+    if not every_hours and not per_day:
+        per_day = DEFAULT_PER_DAY
+    out: dict = {"every_hours": every_hours}
+    if per_day:
+        out["per_day"] = per_day
+        out["gap_hours"] = float(args.get("gap_hours") or 1)
+    return out
+
+
 def _schedule_clips_execute(args: dict) -> str:
-    """Kept out of the model's hands — see HUMAN_ONLY in server/agent.py."""
+    """Carry out a schedule. Offered to the model since 2026-09-22 (HUMAN_ONLY
+    in server/agent.py is empty on purpose), so the tool description asks for
+    the plan and a clear yes first."""
     body = {
         "clip_ids": list(args.get("clip_ids") or []),
         "platforms": [p for p in (args.get("platforms") or ["youtube"]) if p],
-        "every_hours": float(args.get("every_hours") or 0),
         "hashtags": [h for h in (args.get("hashtags") or []) if h],
+        **_spacing(args),
     }
     if args.get("start_at"):
         body["start_at"] = args["start_at"]
@@ -607,9 +637,11 @@ TOOLS: list[dict] = [
             "Work out what posting a set of clips would do: which clips, which "
             "platforms, and the exact time each one would go out. Creates nothing and "
             "posts nothing. Give video_id to take every rendered clip from a video, or "
-            "clip_ids for specific ones, and every_hours for the spacing (24 is one a "
-            "day). Always show the result and get a clear yes — the person confirms in "
-            "the app."
+            "clip_ids for specific ones. Spacing: per_day for a daily budget (\"5 a "
+            "day\" is per_day 5, the default when no spacing is given, because "
+            "WoopSocial allows about 5 YouTube posts a day), or every_hours for a flat "
+            "gap (24 is one a day). Always show the result and get a clear yes — the "
+            "person confirms in the app."
         ),
         "inputSchema": {
             "type": "object",
@@ -624,9 +656,19 @@ TOOLS: list[dict] = [
                     "items": {"type": "string"},
                     "description": "Defaults to youtube. e.g. ['youtube', 'tiktok'].",
                 },
+                "per_day": {
+                    "type": "integer",
+                    "description": "Posts a day, queued behind what is already "
+                    "scheduled. Defaults to 5 when no spacing is given.",
+                },
+                "gap_hours": {
+                    "type": "number",
+                    "description": "Hours between a day's posts. Defaults to 1.",
+                },
                 "every_hours": {
                     "type": "number",
-                    "description": "Hours between posts. 1 is hourly, 24 is daily.",
+                    "description": "A flat gap instead of a daily budget. 1 is hourly, "
+                    "24 is daily.",
                 },
                 "start_at": {
                     "type": "string",
@@ -653,6 +695,8 @@ TOOLS: list[dict] = [
             "properties": {
                 "clip_ids": {"type": "array", "items": {"type": "integer"}},
                 "platforms": {"type": "array", "items": {"type": "string"}},
+                "per_day": {"type": "integer"},
+                "gap_hours": {"type": "number"},
                 "every_hours": {"type": "number"},
                 "start_at": {"type": "string"},
                 "hashtags": {"type": "array", "items": {"type": "string"}},

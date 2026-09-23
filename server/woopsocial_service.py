@@ -183,6 +183,48 @@ def committed_times(db) -> list[str]:
     return out
 
 
+# The daily budget used when a request asks to publish but says nothing about
+# spacing: from the chat box, an MCP client, or a job that was queued with
+# "publish when done". WoopSocial rations YouTube to five posts a day to protect
+# the Google Cloud quota it shares between all its users, and 37 clips sent at
+# once lost 32 of them. Five a day is the shape that fits.
+DEFAULT_PER_DAY = 5
+
+
+def schedule_times(db, count: int, *, per_day: int, gap_hours: float = 1,
+                   start_at: str = "") -> list[str]:
+    """When each of `count` posts goes out on a daily budget.
+
+    One copy for the publish and for the plan shown before it, so the plan a
+    person agrees to is the schedule that is sent.
+    """
+    from datetime import timedelta
+
+    from publish.schedule import MIN_LEAD_SECONDS, daily_after, to_rfc3339
+
+    if not count or not per_day:
+        return []
+    first = datetime.now(timezone.utc) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
+    if start_at:
+        try:
+            first = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
+        except ValueError:
+            start_at = ""
+    # "Start now" cannot mean this instant: every generated time goes through
+    # the same validator a hand-picked one does, and that refuses anything
+    # inside the lead time, so it begins at the first moment it would accept.
+    # Without a start it also queues behind whatever is already scheduled
+    # rather than on top of it; an explicit start_at is an instruction, so it
+    # still wins.
+    return daily_after(
+        [] if start_at else committed_times(db),
+        int(count),
+        int(per_day),
+        float(gap_hours or 1),
+        to_rfc3339(first),
+    )
+
+
 # States in which a clip counts as sent, or on its way, to a platform.
 ALIVE = ("queued", "processing", "published", "sending")
 
@@ -265,30 +307,12 @@ def publish_clips(
         except ValueError:
             start = datetime.now(tz.utc)
 
-    # A daily budget, when one was asked for. Posting limits are daily -
-    # WoopSocial rations YouTube to five a day to protect the Google Cloud
-    # quota it shares between all its users - so "five a day, an hour apart"
-    # is the shape that works, and a flat interval cannot express it.
-    slot_times: list[str] = []
-    if per_day:
-        from publish.schedule import MIN_LEAD_SECONDS, daily_after, to_rfc3339
-
-        first = start
-        if not start_at:
-            # "Start now" cannot mean this instant: every generated time goes
-            # through the same validator a hand-picked one does, and that
-            # refuses anything inside the lead time. Begin at the first moment
-            # it would accept rather than failing the whole run.
-            first = datetime.now(tz.utc) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
-        # Queue behind whatever is already scheduled rather than on top of
-        # it. An explicit start_at is an instruction, so it still wins.
-        slot_times = daily_after(
-            [] if start_at else committed_times(db),
-            len(clip_ids),
-            int(per_day),
-            float(gap_hours or 1),
-            to_rfc3339(first),
-        )
+    # A daily budget, when one was asked for. Posting limits are daily, so
+    # "five a day, an hour apart" is the shape that works, and a flat interval
+    # cannot express it.
+    slot_times = schedule_times(
+        db, len(clip_ids), per_day=per_day, gap_hours=gap_hours, start_at=start_at
+    )
 
     # Exceptions, keyed by clip id. JSON turns integer keys into strings on
     # the way in, so both are accepted rather than one silently missing.
