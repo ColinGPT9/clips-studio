@@ -867,6 +867,20 @@ def _ffprobe():
     return binaries.ffprobe()
 
 
+def _timescale(time_base: str | None) -> int:
+    """The denominator of a `1/30000` time_base, which MP4 calls timescale.
+
+    Falls back to 30000 rather than 1: a timescale of 1 would quantise every
+    timestamp to whole seconds.
+    """
+    _, _, den = (time_base or "").partition("/")
+    try:
+        value = int(den)
+    except (TypeError, ValueError):
+        return 30000
+    return value if value > 1 else 30000
+
+
 def probe(path: Path) -> dict | None:
     """The clip's format, which the outro has to match exactly for `-c copy`."""
     r = subprocess.run(
@@ -882,21 +896,29 @@ def probe(path: Path) -> dict | None:
     if not v:
         return None
     a = next((s for s in streams if s.get("codec_type") == "audio"), None)
-    num, _, den = (v.get("r_frame_rate") or "30/1").partition("/")
+    rate = (v.get("r_frame_rate") or "30/1").strip()
+    num, _, den = rate.partition("/")
     try:
         fps = float(num) / float(den or 1)
     except (ValueError, ZeroDivisionError):
-        fps = 30.0
+        fps, rate = 30.0, "30/1"
     return {
         "w": int(v["width"]), "h": int(v["height"]),
         "fps": round(fps, 3),
+        # The EXACT rate and the container timescale, not just the rounded
+        # float. 29.97 is 30000/1001, and a card rendered at the rounded
+        # 2997/100 lands in timebase 1/11988 against the clip's 1/30000.
+        # Concat then has to rescale the card's timestamps, and that rescale
+        # is half of why the card lost its video. The other half is B-frames.
+        "rate": rate,
+        "timescale": _timescale(v.get("time_base")),
         "pix_fmt": v.get("pix_fmt", "yuv420p"),
         "sample_rate": int(a["sample_rate"]) if a else 48000,
         "channels": int(a["channels"]) if a else 2,
     }
 
 
-def _fps_tag(fps) -> str:
+def _fps_tag(fps, rate: str = "") -> str:
     """`30`, not `30.0`.
 
     probe() reads r_frame_rate and divides, so a plain 30fps clip arrives as
@@ -904,13 +926,21 @@ def _fps_tag(fps) -> str:
     the shipped `..._30_...` card, so every install rendered its own copy of a
     file it already had. Fractional rates (29.97) keep their decimals.
     """
+    num, _, den = (rate or "").partition("/")
+    if num.isdigit() and den.isdigit():
+        # Integer rates keep the bare number, so the cards shipped with the
+        # app are still matched rather than re-rendered.
+        return num if int(den) == 1 else f"{num}-{den}"
     f = float(fps)
     return str(int(f)) if f.is_integer() else str(round(f, 3))
 
 
 def _key(fmt: dict) -> str:
-    return ("outro_{w}x{h}_{fps}_{pix_fmt}_{sample_rate}_{channels}.mp4"
-            .format(**{**fmt, "fps": _fps_tag(fmt["fps"])}))
+    # "outro2": the name changed when B-frames were removed. A card built
+    # before that freezes when appended, and it is cached on every machine
+    # that has ever rendered one, so the old name has to stop being used.
+    return ("outro2_{w}x{h}_{fps}_{pix_fmt}_{sample_rate}_{channels}.mp4"
+            .format(**{**fmt, "fps": _fps_tag(fmt["fps"], fmt.get("rate", ""))}))
 
 
 def _cache_dir(config: dict) -> Path:
@@ -996,12 +1026,32 @@ def _render(fmt: dict, dst: Path) -> None:
         tmp_mp4 = tmp_dir / "outro.mp4"
         r = subprocess.run([
             _ffmpeg(), "-y", "-v", "error",
-            "-framerate", str(fmt["fps"]), "-i", str(tmp_dir / "%05d.png"),
+            "-framerate", str(fmt.get("rate") or fmt["fps"]),
+            "-i", str(tmp_dir / "%05d.png"),
             "-i", str(wav),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            # -bf 0: NO B-FRAMES. This is the whole reason the end card
+            # played as a frozen frame with its audio running.
+            #
+            # B-frames make the first packets carry NEGATIVE DTS (-0.067,
+            # -0.033, 0). Appending that to a clip whose timeline is already
+            # at 29 seconds walks the timestamps backwards, so FFmpeg clamps
+            # each one to previous+1 -- 86 "Non-monotonic DTS" warnings, on
+            # stderr, discarded because the command still exits 0 -- and the
+            # card's 86 frames collapse into 86 consecutive ticks. The video
+            # stream ends three seconds before the container does, and a
+            # player holds the last frame while the audio plays on.
+            #
+            # Measured: with B-frames, 86 warnings and the video 2.836s
+            # short. Without them, zero warnings and 0.067s short, which is
+            # two frames of rounding. The concat stays `-c copy` and still
+            # takes a tenth of a second.
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-bf", "0",
             "-pix_fmt", fmt["pix_fmt"],
             "-c:a", "aac", "-b:a", "128k",
             "-ar", str(fmt["sample_rate"]), "-ac", str(fmt["channels"]),
+            # The clip's own container timescale, so concat has nothing to
+            # rescale when it appends this.
+            "-video_track_timescale", str(fmt.get("timescale") or 30000),
             "-shortest", "-movflags", "+faststart", str(tmp_mp4),
         ], capture_output=True, text=True)
         if r.returncode != 0 or not tmp_mp4.exists():
@@ -1182,6 +1232,17 @@ def append(clip: Path, config: dict) -> bool:
                 print(f"  outro skipped: {r.stderr.strip()[-200:] or 'concat failed'}")
                 _tally["skipped"] += 1
                 return False
+            short = _video_falls_short(joined)
+            if short is not None:
+                # The join produced a file whose VIDEO ends before its
+                # container does: the card is there in duration and audio but
+                # has no frames, so it plays as a frozen image. That shipped
+                # for months because concat exits 0 while saying so only on
+                # stderr, which is discarded on success.
+                print(f"  outro skipped: the card lost its video ({short:.2f}s short). "
+                      f"{r.stderr.strip()[-160:]}")
+                _tally["skipped"] += 1
+                return False
             if not _replace_with_retry(joined, clip):
                 _tally["skipped"] += 1
                 return False
@@ -1199,6 +1260,43 @@ def append(clip: Path, config: dict) -> bool:
         print(f"  outro skipped: {type(exc).__name__}: {exc}")
         _tally["skipped"] += 1
         return False
+
+
+def _video_falls_short(path: Path, tolerance: float = 0.5) -> float | None:
+    """How far the video stream ends before the container does, or None.
+
+    A frozen end card is exactly this: the container and the audio run the
+    full length and the video stops early, so a player holds the last frame.
+    Checking it costs one ffprobe and is the difference between noticing on
+    the first render and noticing after publishing.
+
+    Returns None when it cannot tell. An unreadable probe must not throw away
+    a clip that is probably fine.
+    """
+    try:
+        r = subprocess.run(
+            [_ffprobe(), "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "frame=pts_time", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True)
+        stamps = []
+        for line in r.stdout.splitlines():
+            head = line.split(",")[0].strip()
+            try:
+                stamps.append(float(head))
+            except ValueError:
+                pass
+        if not stamps:
+            return None
+        d = subprocess.run(
+            [_ffprobe(), "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+        duration = float((d.stdout or "0").strip() or 0)
+        if duration <= 0:
+            return None
+        gap = duration - max(stamps)
+        return gap if gap > tolerance else None
+    except Exception:
+        return None
 
 
 def verify(size: int = art.SIZE) -> dict:

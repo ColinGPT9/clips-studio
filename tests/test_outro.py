@@ -153,9 +153,11 @@ def test_fps_key_is_not_stringified_float():
     `..._30_...` card — so every install rendered its own copy of a file it
     already had, and the bundled assets were dead weight.
     """
-    fmt = {"w": 1080, "h": 1920, "fps": 30.0, "pix_fmt": "yuv420p",
+    fmt = {"w": 1080, "h": 1920, "fps": 30.0, "rate": "30/1", "pix_fmt": "yuv420p",
            "sample_rate": 48000, "channels": 2}
-    assert outro._key(fmt) == "outro_1080x1920_30_yuv420p_48000_2.mp4"
+    # "outro2" since the cards were rebuilt without B-frames: the old ones
+    # freeze when appended and are cached on every machine that made one.
+    assert outro._key(fmt) == "outro2_1080x1920_30_yuv420p_48000_2.mp4"
     assert outro._fps_tag(29.97) == "29.97"      # fractional rates keep theirs
 
 
