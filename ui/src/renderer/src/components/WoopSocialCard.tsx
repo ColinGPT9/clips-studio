@@ -10,8 +10,10 @@ import { PLATFORMS, WOOPSOCIAL_PLATFORMS, platformLabel } from '../lib/uploadpos
  *  own connected socials, their own allowance. Clips Kitty holds no shared
  *  key and pays for nothing.
  *
- *  Why this one first: their free plan allows unlimited posts on two
- *  connected accounts with API access, which covers most creators outright.
+ *  Why this one first: their free plan connects two accounts with API
+ *  access, which covers most creators outright. Not unlimited, whatever their
+ *  pricing page says: YouTube is about five posts a day (see the warning
+ *  below the setup steps).
  *  Upload-Post reaches more destinations and does thumbnails, first comments
  *  and a posting queue, so it stays available below as the alternative.
  *
@@ -209,7 +211,7 @@ export default function WoopSocialCard(): JSX.Element {
           <h3 className="font-semibold">{t('Publish through WoopSocial')}</h3>
           <p className="text-xs text-muted mt-1 max-w-xl">
             {t(
-              'Send a clip to YouTube, TikTok, Instagram and more in one go, through your own WoopSocial account. Their free plan allows unlimited posts on two connected accounts. Your accounts are connected on WoopSocial, not here, so Clips Kitty never asks for a social password.'
+              'Send a clip to YouTube, TikTok, Instagram and more in one go, through your own WoopSocial account. Their free plan connects two accounts. Your accounts are connected on WoopSocial, not here, so Clips Kitty never asks for a social password.'
             )}
           </p>
         </div>

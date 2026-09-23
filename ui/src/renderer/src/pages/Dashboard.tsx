@@ -652,13 +652,15 @@ export default function Dashboard({
                   {/* Names the free ceiling instead of praising the free
                       tier. The referral pays only on a subscription, and the
                       old line sold the plan that earns nothing. The limit is
-                      real: every tier reaches the same nine networks, but
-                      free connects two accounts, so YouTube plus TikTok plus
-                      Instagram already does not fit. The honest sentence and
-                      the persuasive one are the same sentence. */}
+                      real: every tier reaches the same eight networks through
+                      their API (it has no Bluesky, which an earlier version of
+                      this line claimed), but free connects two accounts, so
+                      YouTube plus TikTok plus Instagram already does not fit.
+                      The honest sentence and the persuasive one are the same
+                      sentence. */}
                   <p className="text-sm text-ink/80 mt-0.5">
                     {t(
-                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads, Pinterest and Bluesky. The free plan connects two accounts. Connect all nine and post to every platform at once.'
+                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads and Pinterest. The free plan connects two accounts. Connect all eight and post to every platform at once.'
                     )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a

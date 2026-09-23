@@ -163,8 +163,8 @@ export function describeState(row: PlatformRow): string {
 
 /** Which service delivers a publish. Both are bring-your-own-key and both
  *  reach the same platforms; a creator uses whichever they have an account
- *  with. Upload-Post covers more destinations, WoopSocial's free tier allows
- *  unlimited posts on two accounts. */
+ *  with. Upload-Post covers more destinations; WoopSocial's free tier
+ *  connects two accounts, with about five YouTube posts a day. */
 export type Provider = 'uploadpost' | 'woopsocial'
 
 export type ProviderStatus = {
