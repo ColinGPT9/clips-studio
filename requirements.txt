@@ -36,7 +36,7 @@ requests>=2.34.2,<3
 # Parses YouTube's RSS feed without expanding entity declarations.
 defusedxml>=0.7.1,<1
 PyYAML>=6.0.3,<7
-google-api-python-client>=2.198.0,<3
+google-api-python-client>=2.200.0,<3
 google-auth-oauthlib>=1.4.0,<2
 # 0.x: a minor bump here can break, so the ceiling is tighter than the rest.
 curl_cffi>=0.15.0,<0.16
