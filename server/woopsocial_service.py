@@ -9,6 +9,7 @@ The API key goes through core/secrets.py, not into the settings blob.
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -123,7 +124,15 @@ def tags_of(clip) -> list[str]:
         return []
     if not isinstance(parsed, list):
         return []
-    return [str(t).lstrip("#") for t in parsed if str(t).strip()]
+    # One tag per word. Clips made before analysis/metadata.py split them can
+    # carry "#juliafillipo#drama#apology" as a single entry, which would go
+    # into a caption as one unreadable hashtag.
+    out: list[str] = []
+    for entry in parsed:
+        for part in re.split(r"[#\s]+", str(entry)):
+            if part.strip() and part not in out:
+                out.append(part.strip())
+    return out
 
 
 def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "") -> None:

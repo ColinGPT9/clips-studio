@@ -321,3 +321,20 @@ def test_a_daily_schedule_keeps_to_the_chosen_time(db):
              for t in service.schedule_times(db, 4, per_day=2, gap_hours=1, day_start="09:00")]
     assert [(t.hour, t.minute) for t in times] == [(9, 0), (10, 0), (9, 0), (10, 0)]
     assert (times[2] - times[0]).days == 1
+
+
+
+def test_hashtags_the_model_ran_together_are_split():
+    from analysis.metadata import _clean_hashtags
+
+    assert _clean_hashtags(["#juliafillipo#drama#apology", "#Bop House"]) == [
+        "#juliafillipo", "#drama", "#apology", "#bop", "#house"]
+
+
+def test_an_old_clip_with_run_together_hashtags_posts_them_separately(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 1)
+    db.conn.execute("UPDATE clips SET hashtags = ? WHERE id = ?",
+                    ('["#juliafillipo#drama#apology"]', ids[0]))
+    db.conn.commit()
+    publish(db, tmp_path, ids)
+    assert woop.posts[0]["text"].splitlines()[-1] == "#juliafillipo #drama #apology"

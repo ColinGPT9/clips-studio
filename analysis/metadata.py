@@ -149,15 +149,19 @@ def _clean_title(title: str) -> str:
 
 
 def _clean_hashtags(tags) -> list[str]:
+    """One hashtag per entry, at most five.
+
+    The model sometimes answers with several run together in one string,
+    "#juliafillipo#drama#apology", and keeping that as one tag put it into
+    posts as a single unreadable hashtag. Split on every # and every space.
+    """
     if not isinstance(tags, list):
         return []
-    cleaned = []
-    for tag in tags[:5]:
-        tag = re.sub(r"[^\w#]", "", str(tag).strip().lower())
-        if not tag:
-            continue
-        if not tag.startswith("#"):
-            tag = f"#{tag}"
-        if len(tag) > 1 and tag != "#shorts":
-            cleaned.append(tag)
-    return cleaned
+    cleaned: list[str] = []
+    for entry in tags:
+        for part in re.split(r"[#\s]+", str(entry).lower()):
+            word = re.sub(r"[^\w]", "", part)
+            tag = f"#{word}"
+            if word and tag != "#shorts" and tag not in cleaned:
+                cleaned.append(tag)
+    return cleaned[:5]

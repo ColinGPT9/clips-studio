@@ -117,6 +117,11 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **Hashtags come out as separate hashtags.** The AI sometimes wrote several
+  hashtags run together, like `#juliafillipo#drama#apology`, and they were
+  posted that way, as one long unreadable tag. They are now split into
+  `#juliafillipo #drama #apology`, for new clips and for clips you already have.
+
 - **No more "Clip from:" captions.** When the AI could not write a clip's caption,
   the clip was given "Clip from: <the video's title>" and a #clips hashtag. Every
   clip of that video then went out with the same caption announcing it was a
