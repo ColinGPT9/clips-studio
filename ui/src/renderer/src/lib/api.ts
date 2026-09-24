@@ -1,4 +1,5 @@
 import type {
+  AutomationActivity,
   AutomationStatus,
   BrandingProfile,
   CaptionLine,
@@ -693,6 +694,8 @@ export const api = {
       body: JSON.stringify(patch)
     }),
   watches: () => request<Watch[]>('/automation/watches'),
+  /** What the watcher is doing right now, and its last few steps. */
+  automationActivity: () => request<AutomationActivity>('/automation/activity'),
   /** When the next posts would go out with these settings. Reserves nothing. */
   automationSlots: (perDay: number, gapHours: number, dayStart: string, count = 3) =>
     request<{ times: string[]; already_scheduled: number }>(

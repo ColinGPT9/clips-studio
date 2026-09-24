@@ -989,6 +989,7 @@ PATCH takes any of the following, and changes only what it is sent:
 | `options` | The same per-video options as `PATCH /jobs/{id}`, validated the same way. |
 | `publish.mode` | `off`: leave the clips alone. `ask`: stop at "ready to publish" (the default). `auto`: publish as soon as the clips exist, and retry on failure (see below). |
 | `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. |
+| `publish.max_posts` | How many of each video's clips to post, best-scoring first. `0` (the default) posts every clip; the rest stay in the library. |
 | `publish.per_day`, `publish.gap_hours` | A daily budget, queued behind everything already scheduled. WoopSocial's free plan allows about 5 YouTube posts a day. |
 | `publish.day_start` | Local `"HH:MM"` for each day's first post, or `""` to start as soon as the scheduler allows. |
 | `publish.hashtags` | The creator's own, set once. They lead every caption, ahead of the AI's, so nothing trims them off. |
@@ -1000,6 +1001,28 @@ PATCH takes any of the following, and changes only what it is sent:
 
 `DELETE` stops watching and forgets the watch's list. Jobs and clips it
 produced stay in the library.
+
+### `GET /automation/activity`
+
+What the watcher is doing right now, and its last steps, newest first. The
+Watched channels page shows this as its live panel.
+
+```json
+{
+  "now": {"state": "busy", "text": "Making clips of \u201cStream highlights\u201d",
+          "progress": {"stage": "analyze", "label": "Finding the best moments",
+                       "percent": 57, "eta_seconds": 1480, "elapsed_seconds": 1930}},
+  "watching": 2, "next_check_at": 1790195678.5,
+  "events": [{"at": 1790194778.5, "text": "Queued \u201cStream highlights\u201d for clipping",
+              "kind": "queued"}]
+}
+```
+
+`now.state` is `off`, `watching`, `waiting` (a video is in the queue) or `busy`
+(checking a channel, clipping, or sending clips). `kind` is one of `found`,
+`queued`, `done`, `posted`, `waiting`, `retry`, `error` or `info`. The steps
+are kept in memory, so a restart starts the list afresh; every `automation`
+WebSocket event is a cue to read this again.
 
 ### `GET /automation/slots?per_day=5&gap_hours=1&day_start=09:00&count=3`
 

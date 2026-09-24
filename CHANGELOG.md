@@ -29,6 +29,11 @@ were often broken in a way that only showed up on somebody else's machine.
   - To keep watching on a spare PC, turn on **Keep watching when the window is
     closed**. Clips Kitty then stays in the system tray until you quit it from there.
     It is off unless you turn it on.
+  - **See it working.** A live panel at the top of Watched channels shows that
+    Clips Kitty is watching and what it is doing right now: checking a channel,
+    a new video found, clips being made with a progress bar, clips scheduled, a
+    post going live. A green dot beside Watched channels in the sidebar shows it
+    from every page, and each channel carries a Watching badge.
   - Kick has no official way to list a channel's videos, so Kick watching uses the
     same unofficial one Kick downloads already rely on, and says so if it stops
     working.
@@ -41,9 +46,11 @@ were often broken in a way that only showed up on somebody else's machine.
     cannot reach WoopSocial waits and tries again, and posts a platform turned down
     are sent again later, only those ones. Turn on **Delete each watched video's
     download once its clips are published** so the disk does not fill up.
-  - **Set everything up once.** A channel you add opens its whole setup: clip
-    settings, where the clips go, posts per day, hours apart and the time the first
-    post of each day goes out, with a preview of the next posting times. Add your
+  - **Set everything up once.** Before you even press Add, choose how many of each
+    video's clips to post (the best ones first, or all), posts per day, hours apart
+    and the time the first post of each day goes out, with a preview of the next
+    posting times, just like the Publish dialog. The channel then opens its whole
+    setup for the rest. Add your
     own hashtags, like `#creatorname #twitch`; they lead every caption so they are
     always kept, and you can leave out the AI's hashtags entirely. Each platform
     has its own settings: YouTube visibility, who can watch on TikTok and whether

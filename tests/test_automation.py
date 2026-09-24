@@ -737,3 +737,101 @@ def test_the_preview_shows_the_slots_that_would_be_used(env):
 def test_a_schedule_that_cannot_fit_in_a_day_is_explained(env):
     got = env.client.get("/automation/slots", params={"per_day": 10, "gap_hours": 3})
     assert got.status_code == 400
+
+
+def test_only_the_best_clips_are_posted_when_asked(env):
+    publishing_watch(env, max_posts=2)
+    finished_with_clips(env, n=4)  # scores 90, 89, 88, 87
+    env.later(5)
+    best = env.run(lambda d: [int(c["id"]) for c in d.clips_for_video("newnewnew01")][:2])
+    assert env.published[0]["clip_ids"] == best
+
+
+def test_every_clip_is_posted_by_default(env):
+    publishing_watch(env)
+    finished_with_clips(env, n=4)
+    env.later(5)
+    assert len(env.published[0]["clip_ids"]) == 4
+
+
+def test_a_retry_of_rejected_posts_stays_within_the_best_clips(env):
+    publishing_watch(env, max_posts=1)
+    finished_with_clips(env, n=3)
+    env.later(5)
+    reject_a_post(env)
+    env.later(5)
+    env.later(automation.DELIVERY_RETRY_DELAYS[0])
+    assert all(len(p["clip_ids"]) == 1 for p in env.published)
+
+
+def test_the_whole_schedule_is_saved_when_the_channel_is_added(env):
+    env.feed.listings[UC] = []
+    response = env.client.post("/automation/watches", json={
+        "platform": "youtube", "channel": UC,
+        "publish": {"mode": "auto", "platforms": ["youtube"], "max_posts": 3, "per_day": 2,
+                    "gap_hours": 3, "day_start": "18:00", "hashtags": ["creatorname", "twitch"],
+                    "ai_hashtags": False},
+    })
+    publish = response.json()["publish"]
+    assert (publish["max_posts"], publish["per_day"], publish["gap_hours"], publish["day_start"])         == (3, 2, 3, "18:00")
+    assert publish["hashtags"] == ["creatorname", "twitch"] and publish["ai_hashtags"] is False
+
+
+
+# ---- the live panel -------------------------------------------------------------
+
+
+def activity(env):
+    return env.client.get("/automation/activity").json()
+
+
+def test_the_panel_says_it_is_watching(env):
+    watched(env)
+    got = activity(env)
+    assert got["now"]["state"] == "watching"
+    assert got["now"]["text"] == "Watching 1 channel"
+    assert got["watching"] == 1 and got["next_check_at"] > 0
+
+
+def test_the_panel_says_when_it_is_off(tmp_path):
+    e = Env(tmp_path)
+    assert activity(e)["now"]["state"] == "off"
+
+
+def test_each_step_is_told_as_it_happens(env):
+    publishing_watch(env)  # adds, baselines, then finds newnewnew01 and queues it
+    finished_with_clips(env)
+    env.later(5)
+    texts = [e["text"] for e in reversed(activity(env)["events"])]
+    assert any(t.startswith("Now watching") for t in texts)
+    assert any("New video on" in t and "Video newnewnew01" in t for t in texts)
+    assert any(t.startswith("Queued") for t in texts)
+    assert any(t.startswith("Scheduled 3 clip(s)") for t in texts)
+
+
+def test_a_video_being_clipped_shows_as_the_current_work(env):
+    publishing_watch(env)
+    env.run(lambda d: d.claim_next_job())  # the worker picks it up
+    now = activity(env)["now"]
+    assert now["state"] == "busy" and now["text"].startswith("Making clips of")
+    assert now["progress"] == {"fraction": 0.5}
+
+
+def test_a_post_going_live_is_announced(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+
+    def land(d):
+        clip = d.clips_for_video("newnewnew01")[0]
+        d.record_clip_publish(clip["id"], "youtube", {
+            "provider": "woopsocial", "video_id": "newnewnew01", "state": "published"})
+    env.run(land)
+    env.later(5)
+    assert activity(env)["events"][0]["text"].endswith("to YouTube")
+
+
+def test_a_check_that_finds_nothing_still_says_so(env):
+    watched(env)
+    env.later()
+    assert activity(env)["events"][0]["text"] == f"Checked Channel {UC}: nothing new"

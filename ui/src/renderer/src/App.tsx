@@ -11,6 +11,9 @@ import ModelSwitcher from './components/ModelSwitcher'
 import SetupWizard, { setupDone } from './components/SetupWizard'
 import UpdateBanner from './components/UpdateBanner'
 import { activeLocale, t } from './lib/i18n'
+import { api } from './lib/api'
+import type { StudioEvent } from './lib/types'
+import { useEvents } from './lib/useEvents'
 import { useQueueNotifications } from './lib/queueNotifications'
 import mascot from './assets/mascot.png'
 
@@ -66,6 +69,28 @@ export default function App(): JSX.Element {
   // Mounted at the shell, not on the queue page: the point of a notification
   // is to reach someone who is NOT looking at the queue.
   useQueueNotifications()
+  // How many channels are being watched, for the live dot beside "Watched
+  // channels", so it shows from every page that the PC is on the job.
+  const [watching, setWatching] = useState(0)
+  useEffect(() => {
+    const load = (): void => {
+      api
+        .automation()
+        .then((s) => setWatching(s.enabled ? s.watching : 0))
+        .catch(() => setWatching(0))
+    }
+    load()
+    const id = setInterval(load, 30000)
+    return () => clearInterval(id)
+  }, [])
+  useEvents((e: StudioEvent) => {
+    if (e.type === 'automation' && !('activity' in e) && !('doing' in e)) {
+      api
+        .automation()
+        .then((s) => setWatching(s.enabled ? s.watching : 0))
+        .catch(() => {})
+    }
+  })
   // Language switches re-render the tree IN PLACE (no reload): the page
   // state lives here, so the user stays wherever they were (e.g. Settings).
   const [locale, setLocale] = useState(activeLocale())
@@ -115,6 +140,16 @@ export default function App(): JSX.Element {
             >
               <span aria-hidden>{item.icon}</span>
               {t(item.label)}
+              {item.id === 'watch' && watching > 0 && (
+                <span
+                  className="ml-auto relative flex size-2.5"
+                  title={`${t('Watching')} ${watching}`}
+                  aria-label={t('Watching')}
+                >
+                  <span className="absolute inline-flex size-full rounded-full bg-success opacity-60 animate-ping" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-success" />
+                </span>
+              )}
             </button>
           ))}
         </nav>

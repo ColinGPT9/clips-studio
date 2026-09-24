@@ -462,6 +462,8 @@ export interface WatchPublish {
   /** off: leave them. ask: stop at "ready to publish". auto: publish at once. */
   mode: 'off' | 'ask' | 'auto'
   platforms: string[]
+  /** Best clips of each video to post. 0 posts every clip. */
+  max_posts: number
   /** A daily budget, queued behind everything already scheduled. */
   per_day: number
   gap_hours: number
@@ -553,4 +555,19 @@ export interface AutomationStatus {
   watches: number
   watching: number
   presets: { id: string; name: string; description: string }[]
+}
+
+/** What the watcher is doing now and did last, for the live panel. */
+export interface AutomationActivity {
+  now: {
+    state: 'off' | 'watching' | 'waiting' | 'busy'
+    text: string
+    progress?: { percent: number; label: string; eta_seconds: number | null } | null
+  }
+  /** Channels being watched right now (0 when watching is off). */
+  watching: number
+  /** Unix seconds of the next channel check, 0 if none is due. */
+  next_check_at: number
+  /** Newest first. */
+  events: { at: number; text: string; kind: string }[]
 }

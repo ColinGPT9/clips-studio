@@ -3,7 +3,9 @@ import { api, errorText } from '../lib/api'
 import type { AutomationStatus, StudioEvent, Watch as WatchRow, WatchPlatform } from '../lib/types'
 import { useEvents } from '../lib/useEvents'
 import WatchCard from '../components/watch/WatchCard'
+import WatchLive from '../components/watch/WatchLive'
 import { useWoopAccounts } from '../components/watch/WatchPublishSettings'
+import WatchSchedule, { type ScheduleValue } from '../components/watch/WatchSchedule'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
 import { t } from '../lib/i18n'
 
@@ -46,6 +48,15 @@ export default function Watch({
   const [addPlatforms, setAddPlatforms] = useState<string[] | null>(null)
   // The channel just added opens its whole setup.
   const [justAdded, setJustAdded] = useState<number | null>(null)
+  // How its clips go out, chosen before Add like in the Publish dialog.
+  const [addSchedule, setAddSchedule] = useState<ScheduleValue>({
+    max_posts: 0,
+    per_day: 5,
+    gap_hours: 1,
+    day_start: ''
+  })
+  const [addHashtags, setAddHashtags] = useState('')
+  const [addOnlyMine, setAddOnlyMine] = useState(false)
   const inFlight = useRef(false)
   // Until touched, the add form follows what WoopSocial can do: hands-off with
   // every connected account when it is set up, asking first when it is not.
@@ -120,7 +131,16 @@ export default function Watch({
     setAdding(true)
     setError(null)
     try {
-      const added = await api.addWatch(platform, channel.trim(), { mode, platforms })
+      const added = await api.addWatch(platform, channel.trim(), {
+        mode,
+        platforms,
+        ...addSchedule,
+        hashtags: addHashtags
+          .split(/[\s,]+/)
+          .map((h) => h.replace(/^#/, '').trim())
+          .filter(Boolean),
+        ai_hashtags: !addOnlyMine
+      })
       setJustAdded(added.id)
       setChannel('')
       await refresh()
@@ -139,6 +159,8 @@ export default function Watch({
           {t('When a channel posts, Clips Kitty clips the new video and publishes the clips the way you set it up.')}
         </p>
       </div>
+
+      <WatchLive />
 
       <section className="card space-y-3" aria-label={t('Watching')}>
         <div className="flex items-start justify-between gap-4">
@@ -281,11 +303,38 @@ export default function Watch({
               )}
             </div>
           )}
+          {mode !== 'off' && (
+            <>
+              <WatchSchedule value={addSchedule} onChange={setAddSchedule} />
+              <div className="text-sm space-y-1">
+                <label className="label block" htmlFor="add-watch-tags">
+                  {t('Hashtags on every post')}
+                </label>
+                <input
+                  id="add-watch-tags"
+                  className="input"
+                  value={addHashtags}
+                  placeholder="#creatorname #twitch"
+                  onChange={(e) => setAddHashtags(e.target.value)}
+                />
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[#38BDF8]"
+                    checked={addOnlyMine}
+                    onChange={(e) => setAddOnlyMine(e.target.checked)}
+                  />
+                  {t('Only use my hashtags')}
+                  <span className="text-muted text-xs">{t('(leave out the ones the AI picks)')}</span>
+                </label>
+              </div>
+            </>
+          )}
         </div>
         <p className="text-xs text-muted">
           {mode === 'auto'
             ? t(
-                'From now on, each new video is queued, clipped and published on the schedule you set next, with nobody at the PC. Videos already on the channel are listed but not clipped.'
+                'From now on, each new video is queued, clipped and published on the schedule above, with nobody at the PC. Videos already on the channel are listed but not clipped. Per-platform settings and caption text open after you add it.'
               )
             : t(
                 'Videos already on the channel are listed but not clipped. Only what it posts from now on is, unless you pick one yourself.'

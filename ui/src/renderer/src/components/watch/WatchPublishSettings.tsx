@@ -4,11 +4,7 @@ import type { Watch, WatchPublish } from '../../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../../lib/uploadpost'
 import { t } from '../../lib/i18n'
 import WatchPlatformOptions, { type PlatformOverrides } from './WatchPlatformOptions'
-
-/** "Thu 09:00", for the schedule preview. */
-function slotLabel(iso: string): string {
-  return new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
-}
+import WatchSchedule, { type ScheduleValue } from './WatchSchedule'
 
 /** Whether WoopSocial can publish, and which accounts it has. Null while
  *  loading. Shared by the add form and each channel's settings, so both offer
@@ -68,17 +64,17 @@ export default function WatchPublishSettings({
   const p = watch.publish
   const [mode, setMode] = useState(p.mode)
   const [platforms, setPlatforms] = useState<string[]>(p.platforms)
-  const [perDay, setPerDay] = useState(p.per_day)
-  const [gapHours, setGapHours] = useState(p.gap_hours)
-  const [dayStart, setDayStart] = useState(p.day_start)
+  const [schedule, setSchedule] = useState<ScheduleValue>({
+    max_posts: p.max_posts ?? 0,
+    per_day: p.per_day,
+    gap_hours: p.gap_hours,
+    day_start: p.day_start
+  })
   const [hashtags, setHashtags] = useState(p.hashtags.map((h) => `#${h.replace(/^#/, '')}`).join(' '))
   const [aiHashtags, setAiHashtags] = useState(p.ai_hashtags)
   const [footer, setFooter] = useState(p.footer)
   const [overrides, setOverrides] = useState<PlatformOverrides>(
     (p.overrides ?? {}) as PlatformOverrides
-  )
-  const [preview, setPreview] = useState<{ times: string[]; already: number } | string | null>(
-    null
   )
   const [backlog, setBacklog] = useState(watch.backlog)
   const [minMinutes, setMinMinutes] = useState(watch.min_minutes)
@@ -86,23 +82,6 @@ export default function WatchPublishSettings({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-
-  // When the next posts would go out, after everything already scheduled.
-  // Asked of the server, which uses the same slotting the publish will, so
-  // the preview is the schedule rather than an estimate of it.
-  useEffect(() => {
-    let live = true
-    const timer = setTimeout(() => {
-      api
-        .automationSlots(perDay, gapHours, dayStart, 3)
-        .then((got) => live && setPreview({ times: got.times, already: got.already_scheduled }))
-        .catch((e) => live && setPreview(errorText(e)))
-    }, 300)
-    return () => {
-      live = false
-      clearTimeout(timer)
-    }
-  }, [perDay, gapHours, dayStart])
 
   // Connected accounts, plus anything already chosen that has since been
   // disconnected, so a stale choice stays visible and can be unticked.
@@ -118,9 +97,7 @@ export default function WatchPublishSettings({
         publish: {
           mode,
           platforms,
-          per_day: perDay,
-          gap_hours: gapHours,
-          day_start: dayStart,
+          ...schedule,
           hashtags: hashtags
             .split(/[\s,]+/)
             .map((h) => h.replace(/^#/, '').trim())
@@ -209,68 +186,7 @@ export default function WatchPublishSettings({
             </div>
           )}
 
-          <div className="flex gap-x-6 gap-y-3 flex-wrap items-end">
-            <label className="text-sm space-y-1">
-              <span className="label block">{t('First post of the day')}</span>
-              <span className="flex items-center gap-2">
-                <input
-                  type="time"
-                  className="input !w-32"
-                  value={dayStart}
-                  onChange={(e) => setDayStart(e.target.value)}
-                />
-                {dayStart && (
-                  <button
-                    className="btn-ghost !px-2 !py-1 text-xs"
-                    onClick={() => setDayStart('')}
-                    title={t('Start as soon as possible instead')}
-                  >
-                    {t('Any time')}
-                  </button>
-                )}
-              </span>
-            </label>
-            <label className="text-sm space-y-1">
-              <span className="label block">{t('Posts per day')}</span>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                className="input !w-24"
-                value={perDay}
-                onChange={(e) => setPerDay(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-              />
-            </label>
-            <label className="text-sm space-y-1">
-              <span className="label block">{t('Hours apart')}</span>
-              <input
-                type="number"
-                min={0.25}
-                max={24}
-                step={0.25}
-                className="input !w-24"
-                value={gapHours}
-                onChange={(e) =>
-                  setGapHours(Math.max(0.25, Math.min(24, Number(e.target.value) || 1)))
-                }
-              />
-            </label>
-          </div>
-          <p className="text-xs text-muted">
-            {typeof preview === 'string' ? (
-              <span className="text-warn">{preview}</span>
-            ) : preview && preview.times.length > 0 ? (
-              <>
-                {t('Next posts:')} {preview.times.map(slotLabel).join(', ')}
-                {preview.already > 0 &&
-                  ` · ${t('after the')} ${preview.already} ${t('already scheduled')}`}
-                {' · '}
-              </>
-            ) : null}
-            {t(
-              'Posts never go out all at once. WoopSocial allows about 5 YouTube posts a day on its free plan.'
-            )}
-          </p>
+          <WatchSchedule value={schedule} onChange={setSchedule} />
 
           <WatchPlatformOptions platforms={platforms} value={overrides} onChange={setOverrides} />
 

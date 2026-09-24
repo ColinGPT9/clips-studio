@@ -127,7 +127,15 @@ export default function WatchCard({
           {WATCH_PLATFORM_LABEL[watch.platform] ?? watch.platform}
         </span>
         <div className="min-w-0">
-          <h3 className="font-semibold truncate">{watch.name || watch.channel_key}</h3>
+          <h3 className="font-semibold truncate flex items-center gap-2">
+            {watch.name || watch.channel_key}
+            {automation.enabled && watch.enabled && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success bg-success/10 rounded-full px-2 py-0.5">
+                <span className="size-1.5 rounded-full bg-success animate-pulse" aria-hidden />
+                {t('Watching')}
+              </span>
+            )}
+          </h3>
           <p className="text-xs text-muted">{status}</p>
         </div>
         <div className="ml-auto flex items-center gap-2 flex-wrap">

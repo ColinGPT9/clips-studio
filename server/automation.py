@@ -22,7 +22,10 @@ import json
 import threading
 import time
 import traceback
+from collections import deque
 from collections.abc import Callable
+from contextlib import contextmanager
+from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException
@@ -49,6 +52,9 @@ GIVE_UP_SECONDS = 7 * 24 * 60 * 60
 DAY_SECONDS = 24 * 60 * 60
 
 BACKLOG = ("all", "newest", "day", "none")
+
+# How many recent steps the page's live panel can show.
+ACTIVITY_KEEP = 30
 
 # A hands-off channel (publishing set to Automatic) runs on a PC nobody is
 # watching, so a failure that might pass is tried again instead of waiting for
@@ -85,6 +91,9 @@ class PublishSettings(BaseModel):
 
     mode: Literal["off", "ask", "auto"] = "ask"
     platforms: list[str] = []
+    # How many of each video's clips to post, best first. 0 posts every clip
+    # the run makes; the rest stay in the library either way.
+    max_posts: int = Field(default=0, ge=0, le=100)
     # A daily budget, not a flat gap: WoopSocial allows about five YouTube posts
     # a day, and a burst past that is rejected (see woopsocial_service).
     per_day: int = Field(default=5, ge=1, le=50)
@@ -296,10 +305,42 @@ class ChannelWatcher(threading.Thread):
         self._clock = clock
         self._wake = threading.Event()
         self._stop = threading.Event()
+        # What it is doing right now, and the last few things it did, for the
+        # page's live panel. In memory only: it is a window onto the work, and
+        # the work itself is all in the database.
+        self._activity: deque[dict] = deque(maxlen=ACTIVITY_KEEP)
+        self._activity_lock = threading.Lock()
+        self._doing = ""
+        self._published_seen: set[tuple[int, str]] | None = None
 
     @property
     def interval_seconds(self) -> float:
         return self._interval
+
+    def activity(self) -> dict:
+        with self._activity_lock:
+            return {"doing": self._doing, "events": list(self._activity)}
+
+    def _say(self, text: str, kind: str = "info") -> None:
+        """One step worth seeing: in the page's live panel, and the log."""
+        event = {"at": self._clock(), "text": text, "kind": kind}
+        with self._activity_lock:
+            self._activity.appendleft(event)
+        print(f"Watch: {text}")
+        self._broadcaster.publish({"type": "automation", "activity": event})
+
+    @contextmanager
+    def _busy(self, text: str):
+        """What it is doing for as long as it takes, shown live on the page."""
+        with self._activity_lock:
+            self._doing = text
+        self._broadcaster.publish({"type": "automation", "doing": text})
+        try:
+            yield
+        finally:
+            with self._activity_lock:
+                self._doing = ""
+            self._broadcaster.publish({"type": "automation", "doing": ""})
 
     def wake(self) -> None:
         self._wake.set()
@@ -334,16 +375,19 @@ class ChannelWatcher(threading.Thread):
             self._retry_rejected_posts(d, now)
             self._decide_publishing(d)
             self._free_disk(d)
+            self._notice_posts(d)
         finally:
             d.close()
 
     # -- 1. look at the channel -----------------------------------------------
 
     def _poll(self, d: StateDB, watch, now: float) -> None:
+        name = watch["name"] or watch["channel_key"]
         try:
-            videos = self._feed.latest(watch["platform"], watch["channel_key"])
+            with self._busy(f"Checking {name} for new videos"):
+                videos = self._feed.latest(watch["platform"], watch["channel_key"])
         except Exception as e:
-            print(f"Watch {watch['id']} ({watch['name']}): couldn't check: {e}")
+            self._say(f"Couldn't check {name}: {_short(e)}", "error")
             d.set_watch(watch["id"], last_error=_short(e), next_poll_at=now + self._interval)
             return
         known = d.watch_item_ids()
@@ -359,6 +403,8 @@ class ChannelWatcher(threading.Thread):
             # clipped with one click.
             for video in fresh:
                 self._insert(d, watch, video, now, "baseline", _BASELINE)
+            self._say(f"Now watching {name}. {len(fresh)} earlier videos noted, none clipped.",
+                      "info")
         else:
             take, hold = fresh, []
             missed = now - watch["last_ok_poll_at"] > 2 * self._interval
@@ -366,9 +412,16 @@ class ChannelWatcher(threading.Thread):
                 take, hold = self._catch_up(watch["backlog"], fresh, now)
             for video in take:
                 self._insert(d, watch, video, now, "new", "")
-                print(f"Watch {watch['id']}: new video {video.video_id} {video.title!r}")
+                self._say(f"New video on {name}: {_quoted(video.title)}", "found")
             for video in hold:
                 self._insert(d, watch, video, now, "skipped", _MISSED)
+            if hold:
+                self._say(f"{len(hold)} older video(s) on {name} were posted while Clips "
+                          "Kitty wasn't watching. Set aside, one click to clip.", "info")
+            if not fresh:
+                # Worth a line too: a panel that only speaks when something is
+                # found looks, for hours at a time, exactly like one that died.
+                self._say(f"Checked {name}: nothing new", "info")
         d.set_watch(watch["id"], last_ok_poll_at=now, next_poll_at=now + self._interval,
                     last_error="")
         if fresh:
@@ -416,7 +469,8 @@ class ChannelWatcher(threading.Thread):
                 d.set_watch_item(item["id"], state="skipped",
                                  reason="It never became available to download.")
                 continue
-            found = self._feed.readiness(item["url"], float(watch["min_minutes"] or 0) * 60)
+            with self._busy(f"Checking whether {_quoted(item['title'])} is ready"):
+                found = self._feed.readiness(item["url"], float(watch["min_minutes"] or 0) * 60)
             facts = {}
             if found.title and not item["title"]:
                 facts["title"] = found.title
@@ -425,9 +479,14 @@ class ChannelWatcher(threading.Thread):
             if found.state == "ready":
                 d.set_watch_item(item["id"], state="waiting", reason="", **facts)
             elif found.state == "not_yet":
+                if item["state"] == "new":
+                    self._say(f"{_quoted(item['title'] or found.title)} isn't ready yet. "
+                              "Looking again in 15 minutes.", "waiting")
                 d.set_watch_item(item["id"], state="not_ready", reason=found.reason,
                                  next_check_at=now + RECHECK_SECONDS, **facts)
             else:
+                self._say(f"Skipped {_quoted(item['title'] or found.title)}: {found.reason}",
+                          "info")
                 d.set_watch_item(item["id"], state="skipped", reason=found.reason, **facts)
 
     # -- 3. queue it, once ------------------------------------------------------
@@ -447,15 +506,16 @@ class ChannelWatcher(threading.Thread):
                                  reason="Already clipped in Clips Kitty.")
                 continue
             if outcome == "full":
-                d.set_watch_item(
-                    item["id"],
-                    reason=f"Waiting for room in the queue ({queue.MAX_ACTIVE} videos at most).",
-                )
+                full = f"Waiting for room in the queue ({queue.MAX_ACTIVE} videos at most)."
+                if item["reason"] != full:
+                    self._say(f"{_quoted(title)} is waiting for room in the queue.", "waiting")
+                d.set_watch_item(item["id"], reason=full)
                 break  # nothing else fits either
             # The watch is the user's go-ahead for its own videos, not for
             # anything else they staged and have not started.
             queue.start_if_alone(d, job_id)
             d.set_watch_item(item["id"], state="queued", job_id=job_id, reason="")
+            self._say(f"Queued {_quoted(title)} for clipping", "queued")
             queued_any = True
         if queued_any:
             self._worker.notify()
@@ -489,12 +549,20 @@ class ChannelWatcher(threading.Thread):
                 self.publish(d, item, watch)
             else:
                 d.set_watch_item(item["id"], publish_state="off" if mode == "off" else "ask")
+                self._say(
+                    f"Clips of {_quoted(item['title'])} are ready"
+                    + (". Waiting for you to publish them." if mode == "ask" else "."),
+                    "done",
+                )
             self._broadcaster.publish({"type": "automation"})
 
     def publish(self, d: StateDB, item, watch) -> dict:
         """Send a finished video's clips out with its watch's settings."""
         settings = publish_settings(watch)
+        # clips_for_video is ordered by score, so "the best N" is the first N.
         clip_ids = [int(c["id"]) for c in d.clips_for_video(item["video_id"])]
+        if settings.max_posts:
+            clip_ids = clip_ids[: settings.max_posts]
         if not clip_ids:
             d.set_watch_item(item["id"], publish_state="done",
                              publish_error="The run made no clips to publish.")
@@ -508,48 +576,71 @@ class ChannelWatcher(threading.Thread):
                              publish_error="Publishing isn't available.")
             return {}
         d.set_watch_item(item["id"], publish_state="publishing", publish_error="")
+        where = ", ".join(_label(p) for p in settings.platforms)
         try:
-            out = self._publisher(
-                d,
-                clip_ids=clip_ids,  # best first, so the daily budget goes to them
-                platforms=list(settings.platforms),
-                lead_hashtags=list(settings.hashtags),
-                ai_hashtags=settings.ai_hashtags,
-                per_day=settings.per_day,
-                gap_hours=settings.gap_hours,
-                day_start=settings.day_start,
-                overrides=dict(settings.overrides),
-                footer=render_footer(settings.footer, item, watch),
-            )
+            with self._busy(f"Sending clips of {_quoted(item['title'])} to {where}"):
+                out = self._publish_now(d, item, watch, settings, clip_ids)
         except Exception as e:
-            print(f"Watch publish for {item['video_id']} did not start: {e}")
-            attempts = int(item["publish_attempts"] or 0)
-            if (
-                settings.mode == "auto"
-                and getattr(e, "retryable", False)
-                and attempts < PUBLISH_START_ATTEMPTS
-            ):
-                # Unreachable, busy or rate limiting: likely to pass, and a
-                # hands-off channel has nobody to press Publish later.
-                d.set_watch_item(
-                    item["id"], publish_state="publishing", publish_attempts=attempts + 1,
-                    publish_retry_at=self._clock() + PUBLISH_RETRY_SECONDS,
-                    publish_error=_short(e),
-                )
-                return {}
-            # Not set up, no account, a key refused, or out of tries: only a
-            # person can fix these, so it waits in front of one.
-            d.set_watch_item(item["id"], publish_state="ask", publish_error=_short(e),
-                             publish_retry_at=0)
-            return {}
+            return self._publish_failed(d, item, settings, e)
         problems = sorted({
             s.get("reason", "") for s in out.get("skipped", [])
             if s.get("reason") and s.get("reason") != "already sent"
         })
         d.set_watch_item(item["id"], publish_state="done", publish_attempts=0,
                          publish_retry_at=0, publish_error="; ".join(problems)[:500])
-        print(f"Watch published {len(out.get('started', []))} clip(s) of {item['video_id']}")
+        started = out.get("started", [])
+        if started:
+            first = _when(
+                next((s.get("scheduled_for") for s in started if s.get("scheduled_for")), "")
+            )
+            self._say(
+                f"Scheduled {len(started)} clip(s) of {_quoted(item['title'])} for {where}"
+                + (f", the first at {first}" if first else "") + ".",
+                "posted",
+            )
+        elif problems:
+            self._say(f"Couldn't send the clips of {_quoted(item['title'])}: {problems[0]}",
+                      "error")
         return out
+
+    def _publish_now(self, d: StateDB, item, watch, settings, clip_ids) -> dict:
+        return self._publisher(
+            d,
+            clip_ids=clip_ids,  # best first, so the daily budget goes to them
+            platforms=list(settings.platforms),
+            lead_hashtags=list(settings.hashtags),
+            ai_hashtags=settings.ai_hashtags,
+            per_day=settings.per_day,
+            gap_hours=settings.gap_hours,
+            day_start=settings.day_start,
+            overrides=dict(settings.overrides),
+            footer=render_footer(settings.footer, item, watch),
+        )
+
+    def _publish_failed(self, d: StateDB, item, settings, e: Exception) -> dict:
+        """A publish that did not start: try again later, or ask a person."""
+        attempts = int(item["publish_attempts"] or 0)
+        if (
+            settings.mode == "auto"
+            and getattr(e, "retryable", False)
+            and attempts < PUBLISH_START_ATTEMPTS
+        ):
+            # Unreachable, busy or rate limiting: likely to pass, and a
+            # hands-off channel has nobody to press Publish later.
+            d.set_watch_item(
+                item["id"], publish_state="publishing", publish_attempts=attempts + 1,
+                publish_retry_at=self._clock() + PUBLISH_RETRY_SECONDS,
+                publish_error=_short(e),
+            )
+            self._say(f"WoopSocial couldn't take the clips of {_quoted(item['title'])} "
+                      "just now. Trying again in 15 minutes.", "retry")
+            return {}
+        # Not set up, no account, a key refused, or out of tries: only a
+        # person can fix these, so it waits in front of one.
+        d.set_watch_item(item["id"], publish_state="ask", publish_error=_short(e),
+                         publish_retry_at=0)
+        self._say(f"Couldn't publish the clips of {_quoted(item['title'])}: {_short(e)}", "error")
+        return {}
 
     # -- 5. keep a hands-off channel going -------------------------------------
 
@@ -579,7 +670,8 @@ class ChannelWatcher(threading.Thread):
                 continue
             queue.start_if_alone(d, item["job_id"])
             d.set_watch_item(item["id"], retries=tries + 1, retry_at=0)
-            print(f"Watch: trying {item['video_id']} again (retry {tries + 1})")
+            self._say(f"Trying {_quoted(item['title'])} again (retry {tries + 1} of "
+                      f"{len(PROCESS_RETRY_DELAYS)})", "retry")
             started = True
         if started:
             self._worker.notify()
@@ -613,7 +705,27 @@ class ChannelWatcher(threading.Thread):
                 continue
             d.set_watch_item(item["id"], publish_state="publishing", publish_retry_at=0,
                              publish_attempts=0, delivery_retries=tries + 1)
-            print(f"Watch: sending {rejected} rejected post(s) of {item['video_id']} again")
+            self._say(f"Sending {rejected} rejected post(s) of {_quoted(item['title'])} again",
+                      "retry")
+
+    def _notice_posts(self, d: StateDB) -> None:
+        """Say so when one of a watched video's posts goes live.
+
+        The publish worker is what learns it, from WoopSocial. This only
+        compares what it saw last time, so the panel can show each post
+        landing. The first look just remembers what was already there."""
+        rows = d.conn.execute(
+            "SELECT p.clip_id, p.platform, c.title, c.hook FROM clip_publishes p "
+            "JOIN watch_items w ON w.video_id = p.video_id "
+            "LEFT JOIN clips c ON c.id = p.clip_id WHERE p.state = 'published'"
+        ).fetchall()
+        seen = {(int(r["clip_id"]), r["platform"]) for r in rows}
+        if self._published_seen is not None:
+            for r in rows:
+                if (int(r["clip_id"]), r["platform"]) not in self._published_seen:
+                    self._say(f"Posted {_quoted(r['title'] or r['hook'] or '')} "
+                              f"to {_label(r['platform'])}", "posted")
+        self._published_seen = seen
 
     def _free_disk(self, d: StateDB) -> None:
         """Delete a watched video's download once its clips are published, when
@@ -636,7 +748,8 @@ class ChannelWatcher(threading.Thread):
                 d.set_watch_item(item["id"], source_freed=2)
             elif discard(source):
                 d.set_watch_item(item["id"], source_freed=1)
-                print(f"Watch: deleted {source.name}, its clips are published")
+                self._say(f"Deleted the download of {_quoted(item['title'])} to save space",
+                          "info")
 
 
 def woopsocial_publisher(data_dir) -> Callable[..., dict]:
@@ -651,6 +764,31 @@ def woopsocial_publisher(data_dir) -> Callable[..., dict]:
         return woop.publish_clips(d, data_dir, once=True, remember=False, **kwargs)
 
     return publish
+
+
+_OPEN, _CLOSE, _MORE = "\u201c", "\u201d", "\u2026"
+
+PLATFORM_LABELS = {"youtube": "YouTube", "tiktok": "TikTok", "linkedin": "LinkedIn"}
+
+
+def _label(platform: str) -> str:
+    return PLATFORM_LABELS.get(platform, platform.title())
+
+
+def _quoted(title: str) -> str:
+    """A video or clip title in curly quotes, trimmed for a one-line panel."""
+    title = (title or "").strip() or "a new video"
+    if len(title) > 70:
+        title = title[:70] + _MORE
+    return _OPEN + title + _CLOSE
+
+
+def _when(iso: str) -> str:
+    """'Thu 18:00' in this PC's time, for saying when a post goes out."""
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%a %H:%M")
+    except (ValueError, AttributeError):
+        return ""
 
 
 def _short(error) -> str:
@@ -740,6 +878,49 @@ def install(
         watcher.wake()
         broadcaster.publish({"type": "automation"})
         return result
+
+    @app.get("/automation/activity")
+    def activity():
+        """What the watcher is doing right now, and what it did last.
+
+        For a live panel: "now" is one line to show big, "events" the recent
+        steps, newest first. Processing is the worker's, so it is read from
+        the job the way the history rows read it."""
+        d = db()
+        try:
+            live = watcher.activity()
+            watches = [w for w in d.list_watches() if w["enabled"]]
+            now: dict
+            if not is_enabled(d):
+                now = {"state": "off", "text": "Not watching. Switch it on to start."}
+            elif live["doing"]:
+                now = {"state": "busy", "text": live["doing"]}
+            else:
+                now = {}
+                for item in d.watch_items(states=("queued",), limit=50):
+                    status = _job_status(d, item)
+                    if status == "running":
+                        now = {"state": "busy",
+                               "text": f"Making clips of {_quoted(item['title'])}",
+                               "progress": worker.progress_snapshot(item["job_id"])}
+                        break
+                    if status == "queued" and not now:
+                        now = {"state": "waiting",
+                               "text": f"{_quoted(item['title'])} is waiting in the queue"}
+                if not now:
+                    count = len(watches)
+                    now = {"state": "watching",
+                           "text": f"Watching {count} channel{'s' if count != 1 else ''}"
+                           if count else "No channels to watch yet"}
+            next_checks = [w["next_poll_at"] for w in watches if w["next_poll_at"]]
+            return {
+                "now": now,
+                "watching": len(watches) if is_enabled(d) else 0,
+                "next_check_at": min(next_checks) if next_checks else 0,
+                "events": live["events"],
+            }
+        finally:
+            d.close()
 
     @app.get("/automation/slots")
     def slots(per_day: int = 5, gap_hours: float = 1, day_start: str = "", count: int = 5):
