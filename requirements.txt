@@ -33,6 +33,8 @@ uvicorn[standard]>=0.52.4,<1
 
 # ---- everything else -------------------------------------------------------
 requests>=2.34.2,<3
+# Parses YouTube's RSS feed without expanding entity declarations.
+defusedxml>=0.7.1,<1
 PyYAML>=6.0.3,<7
 google-api-python-client>=2.198.0,<3
 google-auth-oauthlib>=1.4.0,<2

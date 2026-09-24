@@ -377,21 +377,6 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         finally:
             d.close()
 
-    def _tags_of(clip) -> list[str]:
-        """A clip's hashtags, stored as a JSON list in one column."""
-        import json
-
-        raw = clip["hashtags"] if "hashtags" in clip.keys() else ""
-        if not raw:
-            return []
-        try:
-            parsed = json.loads(raw)
-        except (TypeError, ValueError):
-            return []
-        if not isinstance(parsed, list):
-            return []
-        return [str(t).lstrip("#") for t in parsed if str(t).strip()]
-
     @app.post("/woopsocial/refresh")
     def refresh_all():
         """Catch up on every publish still in the air.

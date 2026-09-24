@@ -966,7 +966,7 @@ The first look records everything already on the channel with status
 
 ```json
 {
-  "id": 1, "platform": "youtube", "channel_key": "UCXuqSBlHAE6Xw-yeJA0Tunw",
+  "id": 1, "platform": "youtube", "channel_key": "UC0123456789abcdefABCDEF",
   "name": "Some Channel", "enabled": true,
   "preset": "standard", "options": {"max_clips": 5},
   "publish": {"mode": "auto", "platforms": ["youtube", "tiktok"], "per_day": 5,

@@ -6,12 +6,16 @@ uploads only.
 """
 
 import re
-import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from pathlib import Path
 
 import requests
 import yt_dlp
+
+# The feed comes off the network, so it is parsed with entity declarations
+# refused: a crafted DOCTYPE ("billion laughs") would otherwise expand into
+# gigabytes. Same Element API as xml.etree.
+from defusedxml import ElementTree as ET
 
 from core.models import DownloadedVideo
 from sources.ytdlp_common import progress_opts

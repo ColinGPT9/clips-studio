@@ -22,7 +22,7 @@ from core.state import StateDB
 from server import automation
 from sources.channel_feed import Channel, NewSourceVideo, Readiness
 
-UC = "UCXuqSBlHAE6Xw-yeJA0Tunw"
+UC = "UC0123456789abcdefABCDEF"
 START = 1_800_000_000.0
 INTERVAL = 15 * 60
 
@@ -87,7 +87,7 @@ class Env:
         app = FastAPI()
         self.watcher = automation.install(
             app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
-            options_from=lambda raw: dict(raw), feed=self.feed, clock=lambda: self.now,
+            options_from=dict, feed=self.feed, clock=lambda: self.now,
             interval_minutes=15, publisher=self.publisher, data_dir=tmp_path,
         )
         self.client = TestClient(app, base_url="http://127.0.0.1")

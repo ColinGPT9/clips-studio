@@ -1284,7 +1284,7 @@ def _video_falls_short(path: Path, tolerance: float = 0.5) -> float | None:
             try:
                 stamps.append(float(head))
             except ValueError:
-                pass
+                continue  # not a timestamp (a blank or a warning): says nothing
         if not stamps:
             return None
         d = subprocess.run(

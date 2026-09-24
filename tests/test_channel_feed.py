@@ -13,7 +13,7 @@ pytest.importorskip("yt_dlp")  # sources.dispatch imports the platform modules
 from sources import channel_feed as cf
 from sources.dispatch import identify
 
-UC = "UCXuqSBlHAE6Xw-yeJA0Tunw"
+UC = "UC0123456789abcdefABCDEF"
 
 
 def rss_entries(*ids):
@@ -48,7 +48,7 @@ def test_a_broken_youtube_feed_falls_back_to_the_uploads_playlist(feed):
         return {"entries": [{"url": "https://www.youtube.com/watch?v=XM04mbymDsE", "title": "A"}]}
 
     videos = cf.latest("youtube", UC, rss=rss, extract=extract)
-    assert asked == ["https://www.youtube.com/playlist?list=UUXuqSBlHAE6Xw-yeJA0Tunw"]
+    assert asked == ["https://www.youtube.com/playlist?list=UU0123456789abcdefABCDEF"]
     assert [v.video_id for v in videos] == ["XM04mbymDsE"]
 
 
