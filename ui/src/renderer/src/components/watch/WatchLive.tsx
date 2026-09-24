@@ -13,7 +13,8 @@ const TONE: Record<string, string> = {
   waiting: 'text-warn',
   retry: 'text-warn',
   error: 'text-error',
-  info: 'text-muted'
+  info: 'text-muted',
+  learned: 'text-accent'
 }
 
 /** The live panel: that Clips Kitty is watching, what it is doing this

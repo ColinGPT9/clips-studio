@@ -938,3 +938,81 @@ def test_the_clip_settings_chosen_at_add_reach_every_job(env):
     payload = json.loads(env.jobs()[0]["payload"])
     assert payload["captions"] is False and payload["podcast"] is True
 
+
+# ---- the creator it learns about --------------------------------------------
+
+
+NAME = f"Channel {UC}"  # what FakeFeed calls the channel
+
+
+def creator_rows(env):
+    return env.run(lambda d: [dict(r) for r in d.conn.execute(
+        "SELECT c.creator_id, c.display_name, a.platform FROM creators c"
+        " JOIN platform_accounts a ON a.creator_id = c.creator_id")])
+
+
+def learned(env, video_id, n, creator_id):
+    """What the pipeline's learning pass stores: facts from this video."""
+    def go(d):
+        for i in range(n):
+            d.conn.execute(
+                "INSERT INTO creator_knowledge (creator_id, knowledge_type, information,"
+                " source_video, created_at) VALUES (?, 'topic', ?, ?, '')",
+                (creator_id, f"fact {i}", video_id))
+        d.conn.commit()
+    env.run(go)
+
+
+def learned_lines(env):
+    events = env.client.get("/automation/activity").json()["events"]
+    return [e["text"] for e in events if e["kind"] == "learned"]
+
+
+def test_adding_a_channel_makes_its_creator_profile_at_once(env):
+    watch = env.add()
+    rows = creator_rows(env)
+    assert [(r["display_name"], r["platform"]) for r in rows] == [(NAME, "youtube")]
+    assert watch["creator"] == {"id": rows[0]["creator_id"], "name": NAME,
+                                "learning": True, "videos": 0, "facts": 0}
+
+
+def test_a_channel_known_only_by_its_id_gets_no_profile(env):
+    env.feed.resolve = lambda platform, text: Channel(platform, text, text)
+    assert env.add()["creator"] is None
+    assert creator_rows(env) == []
+
+
+def test_a_watched_video_learns_into_the_watchs_creator(env):
+    from creator import identity
+
+    creator_id = watched(env)["creator"]["id"]
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    tagged = env.run(lambda d: d.conn.execute(
+        "SELECT creator_id FROM videos WHERE video_id = 'newnewnew01'").fetchone()[0])
+    assert tagged == creator_id
+    # The pipeline tags by what the download calls the channel, and keeps this.
+    assert env.run(lambda d: identity.tag_video(d, "newnewnew01", "Something Else")) == creator_id
+    # A video of the channel clipped by hand, its name in another case, joins it too.
+    assert env.run(lambda d: identity.resolve(d, "byhand00001", NAME.upper())) == creator_id
+    assert len(creator_rows(env)) == 1
+
+
+def test_the_live_panel_says_what_a_video_taught_it_once(env):
+    watch = publishing_watch(env, mode="ask")
+    learned(env, "newnewnew01", 3, watch["creator"]["id"])
+    finished_with_clips(env)
+    env.later(5)
+    env.later(5)
+    assert learned_lines(env) == [
+        f"Learned 3 new things about {NAME} from “Video newnewnew01”"]
+    card = env.client.get("/automation/watches").json()[0]["creator"]
+    assert (card["videos"], card["facts"]) == (1, 3)
+
+
+def test_a_video_that_taught_nothing_says_nothing(env):
+    publishing_watch(env, mode="ask")
+    finished_with_clips(env)
+    env.later(5)
+    assert learned_lines(env) == []
+

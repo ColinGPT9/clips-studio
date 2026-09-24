@@ -275,7 +275,90 @@ def view_watch(d: StateDB, watch) -> dict:
         "next_poll_at": watch["next_poll_at"],
         "last_error": watch["last_error"],
         "counts": counts,
+        "creator": creator_summary(d, watch),
     }
+
+
+# ---- the creator it learns about --------------------------------------------
+
+
+def creator_name(watch) -> str:
+    """The channel name a watch's creator profile goes by, or "" when there
+    is no real one. A YouTube channel whose name could not be read is known
+    only by its UC id, and a profile called that would help nobody."""
+    name = (watch["name"] or "").strip()
+    if watch["platform"] == "youtube" and name == watch["channel_key"]:
+        return ""
+    return name
+
+
+def watch_creator(d: StateDB, watch, *, create: bool = False) -> int | None:
+    """The creator profile a watch's videos learn into.
+
+    Found the way the pipeline finds one, by platform and channel name, so a
+    video of the channel clipped by hand lands on the same profile. Not
+    stored on the watch, so merging or splitting profiles in the Creators tab
+    is followed. `create` makes it on first sight, which is how a channel is
+    in Creators from the moment it is watched."""
+    name = creator_name(watch)
+    if not name:
+        return None
+    if create:
+        from creator import identity
+
+        return identity.resolve(d, "", name, platform=watch["platform"])
+    row = d.conn.execute(
+        "SELECT creator_id FROM platform_accounts"
+        " WHERE platform = ? AND platform_account_id = ? COLLATE NOCASE"
+        " ORDER BY platform_account_id = ? DESC LIMIT 1",
+        (watch["platform"], name, name),
+    ).fetchone()
+    return row["creator_id"] if row else None
+
+
+def creator_summary(d: StateDB, watch) -> dict | None:
+    """What the watch card shows about its creator: who, and how much the
+    app has learned about them so far."""
+    creator_id = watch_creator(d, watch)
+    if creator_id is None:
+        return None
+    row = d.conn.execute(
+        "SELECT display_name, learning_enabled FROM creators WHERE creator_id = ?",
+        (creator_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    def count(sql: str) -> int:
+        return d.conn.execute(sql, (creator_id,)).fetchone()[0]
+
+    return {
+        "id": creator_id,
+        "name": row["display_name"],
+        "learning": bool(row["learning_enabled"]),
+        "videos": count("SELECT COUNT(*) FROM videos WHERE creator_id = ? AND status = 'done'"),
+        "facts": count("SELECT COUNT(*) FROM creator_knowledge WHERE creator_id = ?")
+        + count("SELECT COUNT(*) FROM creator_events WHERE creator_id = ?"),
+    }
+
+
+def learned_from(d: StateDB, video_id: str) -> tuple[str, int] | None:
+    """The creator a video was learned into, and how many new facts and
+    storyline events it gave: (name, count), or None when it has no creator."""
+    row = d.conn.execute(
+        "SELECT c.creator_id, c.display_name FROM videos v"
+        " JOIN creators c ON c.creator_id = v.creator_id WHERE v.video_id = ?",
+        (video_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    n = sum(
+        d.conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE creator_id = ? AND source_video = ?",
+            (row["creator_id"], video_id),
+        ).fetchone()[0]
+        for table in ("creator_knowledge", "creator_events")
+    )
+    return row["display_name"], n
 
 
 # ---- the watcher ------------------------------------------------------------
@@ -525,6 +608,7 @@ class ChannelWatcher(threading.Thread):
                     self._say(f"{_quoted(title)} is waiting for room in the queue.", "waiting")
                 d.set_watch_item(item["id"], reason=full)
                 break  # nothing else fits either
+            self._tag_creator(d, watch, item["video_id"], title)
             # The watch is the user's go-ahead for its own videos, not for
             # anything else they staged and have not started.
             queue.start_if_alone(d, job_id)
@@ -535,6 +619,22 @@ class ChannelWatcher(threading.Thread):
             self._worker.notify()
             self._broadcaster.publish({"type": "queue"})
             self._broadcaster.publish({"type": "automation"})
+
+    def _tag_creator(self, d: StateDB, watch, video_id: str, title: str) -> None:
+        """Put the video on the watch's creator before it runs, the way the
+        upload form does. The pipeline keeps a creator already set, so what it
+        learns lands on this profile whatever the download calls the channel.
+        Never in the way of queueing: without it the pipeline tags as before."""
+        name = creator_name(watch)
+        if not name:
+            return
+        try:
+            from creator import identity
+
+            d.upsert_video(video_id, title=title, channel_name=name)
+            identity.tag_video(d, video_id, name, platform=watch["platform"])
+        except Exception as e:
+            print(f"Watch: couldn't link {video_id} to its creator: {e}")
 
     # -- 4. decide what happens to the clips ----------------------------------
 
@@ -558,6 +658,12 @@ class ChannelWatcher(threading.Thread):
             watch = d.get_watch(item["watch_id"])
             if watch is None:
                 continue
+            if item["publish_state"] == "":
+                learned = learned_from(d, item["video_id"])
+                if learned and learned[1]:
+                    name, n = learned
+                    self._say(f"Learned {n} new thing{'' if n == 1 else 's'} about {name} "
+                              f"from {_quoted(item['title'])}", "learned")
             mode = publish_settings(watch).mode
             if item["publish_state"] == "publishing" or mode == "auto":
                 self.publish(d, item, watch)
@@ -990,7 +1096,14 @@ def install(
                 publish=(body.publish or PublishSettings()).model_dump_json(),
                 options=json.dumps(options),
             )
-            result = {"created": True, **view_watch(d, load_watch(d, watch_id))}
+            watch = load_watch(d, watch_id)
+            # In Creators straight away, before the first video, so what it
+            # learns has somewhere visible to go.
+            try:
+                watch_creator(d, watch, create=True)
+            except Exception as e:
+                print(f"Watch: couldn't make a creator profile for {channel.name}: {e}")
+            result = {"created": True, **view_watch(d, watch)}
         finally:
             d.close()
         watcher.wake()

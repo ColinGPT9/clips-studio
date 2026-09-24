@@ -42,6 +42,7 @@ export interface StudioTarget {
 export default function App(): JSX.Element {
   const [page, setPage] = useState<Page>('dashboard')
   const [studioTarget, setStudioTarget] = useState<StudioTarget | null>(null)
+  const [creatorTarget, setCreatorTarget] = useState<number | null>(null)
   // First run: walk the creator through what the installer can't bundle
   // (Ollama, a model) before they hit a video that fails for want of it.
   // Settings can re-open it, so this is not a one-shot.
@@ -103,6 +104,12 @@ export default function App(): JSX.Element {
   const openInStudio = (videoId: string, clipId?: number): void => {
     setStudioTarget({ videoId, clipId })
     setPage('studio')
+  }
+
+  // A watched channel's card opens its creator profile, already selected.
+  const openCreator = (creatorId: number): void => {
+    setCreatorTarget(creatorId)
+    setPage('creators')
   }
 
   return (
@@ -178,11 +185,15 @@ export default function App(): JSX.Element {
         <UpdateBanner />
         {page === 'dashboard' && <Dashboard onOpenInStudio={openInStudio} />}
         {page === 'queue' && <Queue onOpenInStudio={(videoId) => openInStudio(videoId)} />}
-        {page === 'watch' && <Watch onOpenInStudio={(videoId) => openInStudio(videoId)} />}
+        {page === 'watch' && (
+          <Watch onOpenInStudio={(videoId) => openInStudio(videoId)} onOpenCreator={openCreator} />
+        )}
         {page === 'studio' && (
           <ClipStudio target={studioTarget} onTargetConsumed={() => setStudioTarget(null)} />
         )}
-        {page === 'creators' && <Creators />}
+        {page === 'creators' && (
+          <Creators initialSelected={creatorTarget} onTargetConsumed={() => setCreatorTarget(null)} />
+        )}
         {page === 'models' && <Models />}
         {page === 'settings' && <Settings />}
       </main>

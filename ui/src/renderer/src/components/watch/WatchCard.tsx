@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../../lib/api'
-import type { AutomationStatus, Watch, WatchItem } from '../../lib/types'
+import type { AutomationStatus, Watch, WatchCreator, WatchItem } from '../../lib/types'
 import { platformLabel } from '../../lib/uploadpost'
 import QueueItemSettings from '../queue/QueueItemSettings'
 import WatchPublishSettings from './WatchPublishSettings'
@@ -44,6 +44,36 @@ export function relative(seconds: number, now = Date.now() / 1000): string {
   return diff < 0 ? `${unit} ${t('ago')}` : `${t('in')} ${unit}`
 }
 
+/** The creator profile the channel's videos learn into, how much it knows so
+ *  far, and the way to it. The profile exists from the moment the channel is
+ *  watched, so this is there before the first video too. */
+function CreatorLine({
+  creator,
+  onOpen
+}: {
+  creator: WatchCreator
+  onOpen?: (creatorId: number) => void
+}): JSX.Element {
+  const learned = !creator.learning
+    ? t('Learning is off for this creator.')
+    : creator.facts > 0
+      ? `${creator.facts} ${t(creator.facts === 1 ? 'thing learned from' : 'things learned from')} ` +
+        `${creator.videos} ${t(creator.videos === 1 ? 'video' : 'videos')}`
+      : t('Learns about them from every video it clips.')
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-sm bg-raised/40 rounded-lg px-3 py-2">
+      <span className="text-muted">{t('Creator profile')}:</span>
+      <span className="font-semibold">{creator.name}</span>
+      <span className="text-muted">· {learned}</span>
+      {onOpen && (
+        <button className="btn-ghost !px-2 !py-1 text-xs ml-auto" onClick={() => onOpen(creator.id)}>
+          {t('Open in Creators')} →
+        </button>
+      )}
+    </div>
+  )
+}
+
 /** One watched channel: its settings, and what became of each video it saw.
  *
  *  Everything shown is read from the server, which reads a video's state live
@@ -55,6 +85,7 @@ export default function WatchCard({
   version,
   onChanged,
   onOpenInStudio,
+  onOpenCreator,
   openSetup = false
 }: {
   watch: Watch
@@ -63,6 +94,7 @@ export default function WatchCard({
   version: number
   onChanged: () => void
   onOpenInStudio?: (videoId: string) => void
+  onOpenCreator?: (creatorId: number) => void
   /** Just added: open everything so it is set up before the first new video.
    *  A new channel only records what is already there, so there is time. */
   openSetup?: boolean
@@ -185,6 +217,8 @@ export default function WatchCard({
             ` ${t('Kick has no official way to list videos, so this can stop working without notice.')}`}
         </p>
       )}
+
+      {watch.creator && <CreatorLine creator={watch.creator} onOpen={onOpenCreator} />}
 
       {openSetup && (
         <p className="text-sm text-accent">

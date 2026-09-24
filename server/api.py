@@ -2009,6 +2009,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             ).fetchall()
             accounts = d.conn.execute("SELECT * FROM platform_accounts").fetchall()
             sugg = suggestions(d)
+            # Profiles a watched channel learns into, marked so they are easy
+            # to find among the rest.
+            from server.automation import watch_creator
+
+            watched = {watch_creator(d, w) for w in d.list_watches()}
         finally:
             d.close()
         by_creator: dict[int, list] = {}
@@ -2022,6 +2027,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     **dict(r),
                     "aliases": json.loads(r["aliases"] or "[]"),
                     "accounts": by_creator.get(r["creator_id"], []),
+                    "watched": r["creator_id"] in watched,
                 }
                 for r in rows
             ],

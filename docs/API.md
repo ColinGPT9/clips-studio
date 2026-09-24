@@ -976,9 +976,18 @@ The first look records everything already on the channel with status
                             "tiktok": {"privacyLevel": "PUBLIC_TO_EVERYONE", "allowDuet": false}}},
   "backlog": "newest", "min_minutes": 3,
   "last_ok_poll_at": 1790190000.0, "next_poll_at": 1790190900.0, "last_error": "",
-  "counts": {"baseline": 15, "queued": 2, "skipped": 1}
+  "counts": {"baseline": 15, "queued": 2, "skipped": 1},
+  "creator": {"id": 7, "name": "Some Channel", "learning": true, "videos": 2, "facts": 23}
 }
 ```
+
+`creator` is the creator profile the channel's videos learn into, the one the
+app's Creators page shows. It is made when the channel is added, so
+it is there before the first video, and every video the watch queues is
+learned into it, whatever the download calls the channel. `videos` counts the
+finished ones and `facts` what has been learned from them (facts and
+storylines). It is `null` for a YouTube channel whose name could not be read.
+Removing the watch keeps the profile and what it learned.
 
 PATCH takes any of the following, and changes only what it is sent:
 

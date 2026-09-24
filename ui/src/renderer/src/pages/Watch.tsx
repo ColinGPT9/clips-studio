@@ -32,9 +32,11 @@ const PLACEHOLDER: Record<WatchPlatform, string> = {
  *  the backend (server/automation.py), which keeps going with this page
  *  closed, and, when the tray option is on, with the window closed too. */
 export default function Watch({
-  onOpenInStudio
+  onOpenInStudio,
+  onOpenCreator
 }: {
   onOpenInStudio?: (videoId: string) => void
+  onOpenCreator?: (creatorId: number) => void
 }): JSX.Element {
   const [status, setStatus] = useState<AutomationStatus | null>(null)
   const [watches, setWatches] = useState<WatchRow[] | null>(null)
@@ -401,6 +403,7 @@ export default function Watch({
             version={version}
             onChanged={() => void refresh()}
             onOpenInStudio={onOpenInStudio}
+            onOpenCreator={onOpenCreator}
             openSetup={w.id === justAdded}
           />
         ))}

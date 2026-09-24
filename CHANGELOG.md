@@ -57,6 +57,11 @@ were often broken in a way that only showed up on somebody else's machine.
     has its own settings: YouTube visibility, who can watch on TikTok and whether
     comments, duets and stitches are allowed, Reel or Story on Instagram and
     Facebook, and your Pinterest board.
+  - **It learns about the creator you watch.** Adding a channel gives it a
+    profile in Creators straight away, marked Watched, and every video it clips
+    is learned into that profile. The channel's card shows how much it knows so
+    far, with a button that opens the profile, and the live panel says what each
+    new video taught it.
 
 - **Ask an AI assistant to do it.** Clips Kitty now speaks MCP, so Claude, Cursor
   or any MCP client can queue a stream, follow the job, read back the clips it

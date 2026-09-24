@@ -399,6 +399,8 @@ export interface CreatorSummary {
   clips: number
   avg_score: number | null
   accounts: CreatorAccount[]
+  /** A watched channel learns into this profile. */
+  watched?: boolean
 }
 
 export interface CreatorSuggestion {
@@ -496,6 +498,19 @@ export interface Watch {
   next_poll_at: number
   last_error: string
   counts: Record<string, number>
+  /** The creator profile this channel's videos learn into, or null when the
+   *  channel has no readable name to make one from. */
+  creator?: WatchCreator | null
+}
+
+export interface WatchCreator {
+  id: number
+  name: string
+  learning: boolean
+  /** Videos of this creator finished so far, and facts and storyline events
+   *  learned from them. */
+  videos: number
+  facts: number
 }
 
 export interface WatchDelivery {

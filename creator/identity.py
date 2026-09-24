@@ -40,9 +40,14 @@ def resolve(
         return None
     platform = platform or platform_of(video_id)
 
+    # Case does not make a different channel: Twitch and Kick logins ignore
+    # it, and a watched channel typed as "somestreamer" must find the profile
+    # its downloads call "SomeStreamer". An exact match still wins.
     row = db.conn.execute(
-        "SELECT creator_id FROM platform_accounts WHERE platform = ? AND platform_account_id = ?",
-        (platform, channel),
+        "SELECT creator_id FROM platform_accounts"
+        " WHERE platform = ? AND platform_account_id = ? COLLATE NOCASE"
+        " ORDER BY platform_account_id = ? DESC LIMIT 1",
+        (platform, channel, channel),
     ).fetchone()
     if row:
         return row["creator_id"]

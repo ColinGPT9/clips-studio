@@ -61,10 +61,17 @@ function PlatformBadge({ platform }: { platform: string }): JSX.Element {
   )
 }
 
-export default function Creators(): JSX.Element {
+export default function Creators({
+  initialSelected = null,
+  onTargetConsumed
+}: {
+  /** Open with this profile selected: a watched channel's "Open in Creators". */
+  initialSelected?: number | null
+  onTargetConsumed?: () => void
+} = {}): JSX.Element {
   const [creators, setCreators] = useState<CreatorSummary[]>([])
   const [suggestions, setSuggestions] = useState<CreatorSuggestion[]>([])
-  const [selected, setSelected] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number | null>(initialSelected)
   const [detail, setDetail] = useState<CreatorDetail | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -93,6 +100,17 @@ export default function Creators(): JSX.Element {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Arriving from a watched channel: once the list is there, bring that
+  // profile's card into view, then let the app forget the request.
+  useEffect(() => {
+    if (initialSelected === null || creators.length === 0) return
+    document
+      .querySelector(`[data-creator="${initialSelected}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    onTargetConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelected, creators.length])
 
   useEffect(() => {
     if (selected === null) {
@@ -183,7 +201,7 @@ export default function Creators(): JSX.Element {
             // relative wrapper, not a nested button: the card is itself a
             // button, and a delete control inside it would be invalid markup
             // and swallow the card's own click.
-            <div key={c.creator_id} className="relative group">
+            <div key={c.creator_id} className="relative group" data-creator={c.creator_id}>
               <button
                 onClick={() => setSelected(c.creator_id === selected ? null : c.creator_id)}
                 className={`w-full text-left bg-surface border rounded-xl p-4 pr-10 transition-colors ${
@@ -197,6 +215,14 @@ export default function Creators(): JSX.Element {
                   {c.accounts.map((a) => (
                     <PlatformBadge key={a.account_id} platform={a.platform} />
                   ))}
+                  {c.watched && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-success/15 text-success"
+                      title="A watched channel learns into this profile"
+                    >
+                      Watched
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-muted mt-1.5">
                   {c.videos} video{c.videos === 1 ? '' : 's'} · {c.clips} clip
