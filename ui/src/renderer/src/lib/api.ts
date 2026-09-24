@@ -693,6 +693,13 @@ export const api = {
       body: JSON.stringify(patch)
     }),
   watches: () => request<Watch[]>('/automation/watches'),
+  /** When the next posts would go out with these settings. Reserves nothing. */
+  automationSlots: (perDay: number, gapHours: number, dayStart: string, count = 3) =>
+    request<{ times: string[]; already_scheduled: number }>(
+      `/automation/slots?per_day=${perDay}&gap_hours=${gapHours}&day_start=${encodeURIComponent(
+        dayStart
+      )}&count=${count}`
+    ),
   /** `publish` sets what happens to its clips in the same step, so a
    *  hands-off channel is set up once. */
   addWatch: (platform: WatchPlatform, channel: string, publish?: Partial<WatchPublish>) =>

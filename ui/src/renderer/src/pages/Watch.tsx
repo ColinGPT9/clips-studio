@@ -44,6 +44,8 @@ export default function Watch({
   const woop = useWoopAccounts()
   const [addMode, setAddMode] = useState<AddMode | null>(null)
   const [addPlatforms, setAddPlatforms] = useState<string[] | null>(null)
+  // The channel just added opens its whole setup.
+  const [justAdded, setJustAdded] = useState<number | null>(null)
   const inFlight = useRef(false)
   // Until touched, the add form follows what WoopSocial can do: hands-off with
   // every connected account when it is set up, asking first when it is not.
@@ -118,7 +120,8 @@ export default function Watch({
     setAdding(true)
     setError(null)
     try {
-      await api.addWatch(platform, channel.trim(), { mode, platforms })
+      const added = await api.addWatch(platform, channel.trim(), { mode, platforms })
+      setJustAdded(added.id)
       setChannel('')
       await refresh()
     } catch (e) {
@@ -282,7 +285,7 @@ export default function Watch({
         <p className="text-xs text-muted">
           {mode === 'auto'
             ? t(
-                'From now on, each new video is queued, clipped and published five a day, with nobody at the PC. Videos already on the channel are listed but not clipped. Change anything later in the channel’s settings.'
+                'From now on, each new video is queued, clipped and published on the schedule you set next, with nobody at the PC. Videos already on the channel are listed but not clipped.'
               )
             : t(
                 'Videos already on the channel are listed but not clipped. Only what it posts from now on is, unless you pick one yourself.'
@@ -312,6 +315,7 @@ export default function Watch({
             version={version}
             onChanged={() => void refresh()}
             onOpenInStudio={onOpenInStudio}
+            openSetup={w.id === justAdded}
           />
         ))}
       {!watches && !error && <p className="text-sm text-muted">{t('Loading…')}</p>}

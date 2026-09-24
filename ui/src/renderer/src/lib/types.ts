@@ -465,11 +465,16 @@ export interface WatchPublish {
   /** A daily budget, queued behind everything already scheduled. */
   per_day: number
   gap_hours: number
+  /** Local "HH:MM" for each day's first post, or "" for as soon as possible. */
+  day_start: string
+  /** The creator's own, set once. They lead every caption. */
   hashtags: string[]
+  /** False: only the hashtags above, none of the AI's. */
+  ai_hashtags: boolean
   /** Under each caption. {source_url}, {source_title}, {source_channel} and
    *  {source_platform} are filled in. */
   footer: string
-  overrides: Record<string, Record<string, string>>
+  overrides: Record<string, Record<string, string | boolean>>
 }
 
 export interface Watch {

@@ -41,6 +41,14 @@ were often broken in a way that only showed up on somebody else's machine.
     cannot reach WoopSocial waits and tries again, and posts a platform turned down
     are sent again later, only those ones. Turn on **Delete each watched video's
     download once its clips are published** so the disk does not fill up.
+  - **Set everything up once.** A channel you add opens its whole setup: clip
+    settings, where the clips go, posts per day, hours apart and the time the first
+    post of each day goes out, with a preview of the next posting times. Add your
+    own hashtags, like `#creatorname #twitch`; they lead every caption so they are
+    always kept, and you can leave out the AI's hashtags entirely. Each platform
+    has its own settings: YouTube visibility, who can watch on TikTok and whether
+    comments, duets and stitches are allowed, Reel or Story on Instagram and
+    Facebook, and your Pinterest board.
 
 - **Ask an AI assistant to do it.** Clips Kitty now speaks MCP, so Claude, Cursor
   or any MCP client can queue a stream, follow the job, read back the clips it
@@ -100,6 +108,13 @@ were often broken in a way that only showed up on somebody else's machine.
   the box you type into stays on screen.
 
 ### Fixed
+
+- **No more "Clip from:" captions.** When the AI could not write a clip's caption,
+  the clip was given "Clip from: <the video's title>" and a #clips hashtag. Every
+  clip of that video then went out with the same caption announcing it was a
+  repost, and TikTok flagged them as unoriginal content. A clip like that now
+  gets no caption text beyond its title and your hashtags, and clips that already
+  had it are published without it.
 
 - **Publishing from the chat box no longer sends everything at once.** "Process
   this and publish them all" and "publish all my clips" used to post every clip

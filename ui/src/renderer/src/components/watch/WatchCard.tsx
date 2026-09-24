@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../../lib/api'
 import type { AutomationStatus, Watch, WatchItem } from '../../lib/types'
 import { platformLabel } from '../../lib/uploadpost'
@@ -30,6 +30,9 @@ function clockTime(seconds: number): string {
 export function relative(seconds: number, now = Date.now() / 1000): string {
   const diff = Math.round(seconds - now)
   const abs = Math.abs(diff)
+  // The engine's clock and this one differ by a fraction of a second, which
+  // otherwise reads "checked in 0 sec" for something that just happened.
+  if (abs < 10) return t('just now')
   const unit =
     abs < 90
       ? `${abs} ${t('sec')}`
@@ -51,7 +54,8 @@ export default function WatchCard({
   automation,
   version,
   onChanged,
-  onOpenInStudio
+  onOpenInStudio,
+  openSetup = false
 }: {
   watch: Watch
   automation: AutomationStatus
@@ -59,9 +63,17 @@ export default function WatchCard({
   version: number
   onChanged: () => void
   onOpenInStudio?: (videoId: string) => void
+  /** Just added: open everything so it is set up before the first new video.
+   *  A new channel only records what is already there, so there is time. */
+  openSetup?: boolean
 }): JSX.Element {
   const [items, setItems] = useState<WatchItem[] | null>(null)
-  const [open, setOpen] = useState<'none' | 'clips' | 'publish'>('none')
+  const [openClips, setOpenClips] = useState(openSetup)
+  const [openPublish, setOpenPublish] = useState(openSetup)
+  const cardRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (openSetup) cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [openSetup])
   const [showAll, setShowAll] = useState(false)
   const [showEarlier, setShowEarlier] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -109,7 +121,7 @@ export default function WatchCard({
   const shown = showAll ? visible : visible.slice(0, SHOWN)
 
   return (
-    <section className="card space-y-3" aria-label={watch.name}>
+    <section ref={cardRef} className="card space-y-3" aria-label={watch.name}>
       <div className="flex items-start gap-3 flex-wrap">
         <span className="text-xs font-semibold uppercase tracking-wide bg-raised rounded px-2 py-1 shrink-0">
           {WATCH_PLATFORM_LABEL[watch.platform] ?? watch.platform}
@@ -166,25 +178,30 @@ export default function WatchCard({
         </p>
       )}
 
+      {openSetup && (
+        <p className="text-sm text-accent">
+          {t('Set it up now. Nothing is clipped until the channel posts something new.')}
+        </p>
+      )}
       <div className="flex gap-2 flex-wrap">
         <button
           className="btn-ghost !px-2 !py-1 text-xs"
-          aria-expanded={open === 'clips'}
-          onClick={() => setOpen(open === 'clips' ? 'none' : 'clips')}
+          aria-expanded={openClips}
+          onClick={() => setOpenClips(!openClips)}
         >
-          {t('Clip settings')} {open === 'clips' ? '▾' : '▸'}
+          {t('Clip settings')} {openClips ? '▾' : '▸'}
         </button>
         <button
           className="btn-ghost !px-2 !py-1 text-xs"
-          aria-expanded={open === 'publish'}
-          onClick={() => setOpen(open === 'publish' ? 'none' : 'publish')}
+          aria-expanded={openPublish}
+          onClick={() => setOpenPublish(!openPublish)}
         >
           {t('Publishing')}: {t(publishModeLabel(watch.publish.mode))}{' '}
-          {open === 'publish' ? '▾' : '▸'}
+          {openPublish ? '▾' : '▸'}
         </button>
       </div>
 
-      {open === 'clips' && (
+      {openClips && (
         <div className="space-y-2">
           <label className="text-sm flex items-center gap-3 flex-wrap mt-3">
             <span className="label">{t('Preset')}</span>
@@ -210,7 +227,7 @@ export default function WatchCard({
           />
         </div>
       )}
-      {open === 'publish' && <WatchPublishSettings watch={watch} onSaved={onChanged} />}
+      {openPublish && <WatchPublishSettings watch={watch} onSaved={onChanged} />}
 
       {error && <p className="text-sm text-error">{error}</p>}
 

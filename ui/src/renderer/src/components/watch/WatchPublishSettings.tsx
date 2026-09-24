@@ -3,6 +3,12 @@ import { api, errorText } from '../../lib/api'
 import type { Watch, WatchPublish } from '../../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../../lib/uploadpost'
 import { t } from '../../lib/i18n'
+import WatchPlatformOptions, { type PlatformOverrides } from './WatchPlatformOptions'
+
+/** "Thu 09:00", for the schedule preview. */
+function slotLabel(iso: string): string {
+  return new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+}
 
 /** Whether WoopSocial can publish, and which accounts it has. Null while
  *  loading. Shared by the add form and each channel's settings, so both offer
@@ -64,15 +70,39 @@ export default function WatchPublishSettings({
   const [platforms, setPlatforms] = useState<string[]>(p.platforms)
   const [perDay, setPerDay] = useState(p.per_day)
   const [gapHours, setGapHours] = useState(p.gap_hours)
-  const [hashtags, setHashtags] = useState(p.hashtags.join(' '))
+  const [dayStart, setDayStart] = useState(p.day_start)
+  const [hashtags, setHashtags] = useState(p.hashtags.map((h) => `#${h.replace(/^#/, '')}`).join(' '))
+  const [aiHashtags, setAiHashtags] = useState(p.ai_hashtags)
   const [footer, setFooter] = useState(p.footer)
-  const [privacy, setPrivacy] = useState(p.overrides?.youtube?.privacy ?? 'public')
+  const [overrides, setOverrides] = useState<PlatformOverrides>(
+    (p.overrides ?? {}) as PlatformOverrides
+  )
+  const [preview, setPreview] = useState<{ times: string[]; already: number } | string | null>(
+    null
+  )
   const [backlog, setBacklog] = useState(watch.backlog)
   const [minMinutes, setMinMinutes] = useState(watch.min_minutes)
   const woop = useWoopAccounts()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+
+  // When the next posts would go out, after everything already scheduled.
+  // Asked of the server, which uses the same slotting the publish will, so
+  // the preview is the schedule rather than an estimate of it.
+  useEffect(() => {
+    let live = true
+    const timer = setTimeout(() => {
+      api
+        .automationSlots(perDay, gapHours, dayStart, 3)
+        .then((got) => live && setPreview({ times: got.times, already: got.already_scheduled }))
+        .catch((e) => live && setPreview(errorText(e)))
+    }, 300)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [perDay, gapHours, dayStart])
 
   // Connected accounts, plus anything already chosen that has since been
   // disconnected, so a stale choice stays visible and can be unticked.
@@ -90,12 +120,14 @@ export default function WatchPublishSettings({
           platforms,
           per_day: perDay,
           gap_hours: gapHours,
+          day_start: dayStart,
           hashtags: hashtags
             .split(/[\s,]+/)
             .map((h) => h.replace(/^#/, '').trim())
             .filter(Boolean),
+          ai_hashtags: aiHashtags,
           footer,
-          overrides: { ...p.overrides, youtube: { ...(p.overrides?.youtube ?? {}), privacy } }
+          overrides
         },
         backlog,
         min_minutes: minMinutes
@@ -179,6 +211,26 @@ export default function WatchPublishSettings({
 
           <div className="flex gap-x-6 gap-y-3 flex-wrap items-end">
             <label className="text-sm space-y-1">
+              <span className="label block">{t('First post of the day')}</span>
+              <span className="flex items-center gap-2">
+                <input
+                  type="time"
+                  className="input !w-32"
+                  value={dayStart}
+                  onChange={(e) => setDayStart(e.target.value)}
+                />
+                {dayStart && (
+                  <button
+                    className="btn-ghost !px-2 !py-1 text-xs"
+                    onClick={() => setDayStart('')}
+                    title={t('Start as soon as possible instead')}
+                  >
+                    {t('Any time')}
+                  </button>
+                )}
+              </span>
+            </label>
+            <label className="text-sm space-y-1">
               <span className="label block">{t('Posts per day')}</span>
               <input
                 type="number"
@@ -203,49 +255,62 @@ export default function WatchPublishSettings({
                 }
               />
             </label>
-            {platforms.includes('youtube') && (
-              <label className="text-sm space-y-1">
-                <span className="label block">{t('YouTube visibility')}</span>
-                <select
-                  className="input !w-36"
-                  value={privacy}
-                  onChange={(e) => setPrivacy(e.target.value)}
-                >
-                  <option value="public">{t('Public')}</option>
-                  <option value="unlisted">{t('Unlisted')}</option>
-                  <option value="private">{t('Private')}</option>
-                </select>
-              </label>
-            )}
           </div>
           <p className="text-xs text-muted">
+            {typeof preview === 'string' ? (
+              <span className="text-warn">{preview}</span>
+            ) : preview && preview.times.length > 0 ? (
+              <>
+                {t('Next posts:')} {preview.times.map(slotLabel).join(', ')}
+                {preview.already > 0 &&
+                  ` · ${t('after the')} ${preview.already} ${t('already scheduled')}`}
+                {' · '}
+              </>
+            ) : null}
             {t(
-              'Posts are spread over the day and queue behind anything already scheduled. WoopSocial allows about 5 YouTube posts a day on its free plan.'
+              'Posts never go out all at once. WoopSocial allows about 5 YouTube posts a day on its free plan.'
             )}
           </p>
 
-          <label className="text-sm space-y-1 block">
-            <span className="label block">{t('Extra hashtags')}</span>
+          <WatchPlatformOptions platforms={platforms} value={overrides} onChange={setOverrides} />
+
+          <div className="text-sm space-y-1">
+            <label className="label block" htmlFor={`watch-tags-${watch.id}`}>
+              {t('Hashtags on every post')}
+            </label>
             <input
+              id={`watch-tags-${watch.id}`}
               className="input"
               value={hashtags}
-              placeholder="#gaming #shorts"
+              placeholder="#creatorname #twitch"
               onChange={(e) => setHashtags(e.target.value)}
             />
-          </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-[#38BDF8]"
+                checked={!aiHashtags}
+                onChange={(e) => setAiHashtags(!e.target.checked)}
+              />
+              {t('Only use my hashtags')}
+              <span className="text-muted text-xs">{t('(leave out the ones the AI picks)')}</span>
+            </label>
+            <span className="text-xs text-muted block">
+              {t('These go first on every caption, so they are always kept.')}
+            </span>
+          </div>
 
           <label className="text-sm space-y-1 block">
-            <span className="label block">{t('Under every caption')}</span>
+            <span className="label block">{t('Text under every caption (optional)')}</span>
             <textarea
               className="input min-h-16"
               value={footer}
               maxLength={1000}
-              placeholder={t('Full video: {source_url}')}
               onChange={(e) => setFooter(e.target.value)}
             />
             <span className="text-xs text-muted block">
               {t(
-                '{source_url} becomes the link to the full video. {source_title}, {source_channel} and {source_platform} work too.'
+                "Leave out links and 'clipped from' wording: TikTok can flag those posts as unoriginal content."
               )}
             </span>
           </label>
