@@ -66,6 +66,9 @@ class NewSourceVideo:
     url: str
     title: str = ""
     published_at: float = 0.0  # unix seconds; 0 when the listing does not say
+    # A YouTube Short. There is nothing to clip from one, so watching skips
+    # them outright: only full videos and finished streams are for clipping.
+    short: bool = False
 
 
 @dataclass
@@ -173,11 +176,13 @@ def _youtube_latest(channel_key, extract, rss) -> list[NewSourceVideo]:
     except Exception:
         entries = []
     if entries:
-        return [
-            _video("youtube", channel_key, e.get("url") or "", e.get("title") or "",
-                   _iso_seconds(e.get("published") or ""))
-            for e in entries
-        ]
+        out = []
+        for e in entries:
+            video = _video("youtube", channel_key, e.get("url") or "", e.get("title") or "",
+                           _iso_seconds(e.get("published") or ""))
+            video.short = bool(e.get("short"))
+            out.append(video)
+        return out
     # The uploads playlist is the channel id with UU for UC: every public upload,
     # newest first, the same set the feed carries.
     uploads = f"https://www.youtube.com/playlist?list=UU{channel_key[2:]}"
@@ -217,6 +222,7 @@ def _from_listing(platform: str, channel_key: str, listing: dict) -> list[NewSou
             url = f"https://www.youtube.com/watch?v={url}"
         video = _video(platform, channel_key, url, entry.get("title") or "",
                        float(entry.get("timestamp") or 0))
+        video.short = "/shorts/" in url
         if video.video_id:
             out.append(video)
     return out

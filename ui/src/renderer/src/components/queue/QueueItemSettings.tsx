@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions } from '../../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
@@ -22,7 +22,8 @@ export default function QueueItemSettings({
   job,
   onSaved,
   save: saveTo,
-  heading = 'Settings for this video only'
+  heading = 'Settings for this video only',
+  autoSave = false
 }: {
   job: { id: number; settings: JobOptions }
   onSaved: () => void
@@ -30,6 +31,10 @@ export default function QueueItemSettings({
    *  its own, so both edit the same options through the same controls. */
   save?: (patch: Partial<JobOptions> & { clear?: string[] }) => Promise<unknown>
   heading?: string
+  /** Save each change as it is made, with no Save button. For a watched
+   *  channel, where a second Save button was one too many: captions were
+   *  unticked, the other panel was saved, and clips came out with captions. */
+  autoSave?: boolean
 }): JSX.Element {
   const s = job.settings ?? {}
   const [captions, setCaptions] = useState(s.captions !== false)
@@ -83,6 +88,20 @@ export default function QueueItemSettings({
       setBusy(false)
     }
   }
+
+  // Saves a moment after the last change, so a burst of clicks is one save,
+  // and only when something actually differs from what was last saved.
+  const current = JSON.stringify([captions, longClips, podcast, longform, longformMode, watermark, style])
+  const lastSaved = useRef(current)
+  useEffect(() => {
+    if (!autoSave || current === lastSaved.current) return
+    const id = setTimeout(() => {
+      lastSaved.current = current
+      void save()
+    }, 500)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSave, current])
 
   const toggle = (
     label: string,
@@ -167,9 +186,15 @@ export default function QueueItemSettings({
       )}
 
       <div className="flex items-center gap-3">
-        <button className="btn-accent" onClick={save} disabled={busy}>
-          {busy ? t('Saving…') : t('Save settings')}
-        </button>
+        {autoSave ? (
+          <span className="text-xs text-muted">
+            {busy ? t('Saving…') : t('Changes save as you make them.')}
+          </span>
+        ) : (
+          <button className="btn-accent" onClick={save} disabled={busy}>
+            {busy ? t('Saving…') : t('Save settings')}
+          </button>
+        )}
         {saved && <span className="text-sm text-accent">{t('Saved')}</span>}
         {error && <span className="text-sm text-error">{error}</span>}
       </div>

@@ -705,10 +705,20 @@ export const api = {
     ),
   /** `publish` sets what happens to its clips in the same step, so a
    *  hands-off channel is set up once. */
-  addWatch: (platform: WatchPlatform, channel: string, publish?: Partial<WatchPublish>) =>
+  addWatch: (
+    platform: WatchPlatform,
+    channel: string,
+    publish?: Partial<WatchPublish>,
+    options?: Partial<JobOptions>
+  ) =>
     request<Watch & { created: boolean }>('/automation/watches', {
       method: 'POST',
-      body: JSON.stringify({ platform, channel, ...(publish ? { publish } : {}) })
+      body: JSON.stringify({
+        platform,
+        channel,
+        ...(publish ? { publish } : {}),
+        ...(options ? { options } : {})
+      })
     }),
   patchWatch: (
     id: number,

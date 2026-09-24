@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../../lib/api'
 import type { Watch, WatchPublish } from '../../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../../lib/uploadpost'
@@ -119,6 +119,22 @@ export default function WatchPublishSettings({
       setBusy(false)
     }
   }
+
+  // Every change saves itself a moment later: one panel, no button to forget.
+  // Only real changes, compared with what was last saved.
+  const current = JSON.stringify([
+    mode, platforms, schedule, hashtags, aiHashtags, footer, overrides, backlog, minMinutes
+  ])
+  const lastSaved = useRef(current)
+  useEffect(() => {
+    if (current === lastSaved.current) return
+    const id = setTimeout(() => {
+      lastSaved.current = current
+      void save()
+    }, 600)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current])
 
   return (
     <div className="mt-3 pt-3 border-t border-raised/60 space-y-4">
@@ -265,9 +281,9 @@ export default function WatchPublishSettings({
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="btn-accent" onClick={save} disabled={busy}>
-          {busy ? t('Saving…') : t('Save settings')}
-        </button>
+        <span className="text-xs text-muted">
+          {busy ? t('Saving…') : t('Changes save as you make them.')}
+        </span>
         {saved && <span className="text-sm text-accent">{t('Saved')}</span>}
         {error && <span className="text-sm text-error">{error}</span>}
       </div>

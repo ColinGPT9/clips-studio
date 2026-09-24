@@ -130,6 +130,11 @@ class WatchIn(BaseModel):
     # What happens to its clips, chosen when the channel is added, so a
     # hands-off channel is one step to set up rather than two.
     publish: PublishSettings | None = None
+    # How its clips are made, as the Generate bar sends them (captions,
+    # podcast, caption style...). Without these a watched video got the app's
+    # defaults, captions and all, whatever the person had chosen.
+    options: dict | None = None
+    preset: str | None = None
 
 
 class WatchPatch(BaseModel):
@@ -397,6 +402,8 @@ class ChannelWatcher(threading.Thread):
             self._say(f"Couldn't check {name}: {_short(e)}", "error")
             d.set_watch(watch["id"], last_error=_short(e), next_poll_at=now + self._interval)
             return
+        # Shorts are not watched at all: nothing to clip, so not worth a row.
+        videos = [v for v in videos if not getattr(v, "short", False)]
         known = d.watch_item_ids()
         fresh, seen = [], set()
         for video in videos:
@@ -973,9 +980,15 @@ def install(
             existing = d.find_watch(channel.platform, channel.channel_key)
             if existing is not None:
                 return {"created": False, **view_watch(d, existing)}
+            options = options_from(body.options) if body.options else {}
+            preset = body.preset or "standard"
+            if preset not in PRESETS:
+                raise HTTPException(400, f"unknown preset '{preset}'")
+            options["preset"] = preset
             watch_id = d.insert_watch(
                 channel.platform, channel.channel_key, name=channel.name,
                 publish=(body.publish or PublishSettings()).model_dump_json(),
+                options=json.dumps(options),
             )
             result = {"created": True, **view_watch(d, load_watch(d, watch_id))}
         finally:

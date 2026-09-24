@@ -117,6 +117,17 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **A watched channel uses your clip settings.** Its clips came out with the
+  app's defaults, captions included, even with captions unticked: the choice
+  lived in the Generate bar and never reached the channel, and the channel's
+  own Clip settings needed a separate Save that was easy to miss. Adding a
+  channel now starts from your Generate settings, shown in the form, and a
+  channel's Clip settings and Publishing save themselves as you change them.
+
+- **Watched channels skip YouTube Shorts.** There is nothing to clip from a
+  Short, so they are no longer listed or queued; only full videos and
+  finished streams are.
+
 - **Hashtags come out as separate hashtags.** The AI sometimes wrote several
   hashtags run together, like `#juliafillipo#drama#apology`, and they were
   posted that way, as one long unreadable tag. They are now split into

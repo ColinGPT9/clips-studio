@@ -6,6 +6,8 @@ import WatchCard from '../components/watch/WatchCard'
 import WatchLive from '../components/watch/WatchLive'
 import { useWoopAccounts } from '../components/watch/WatchPublishSettings'
 import WatchSchedule, { type ScheduleValue } from '../components/watch/WatchSchedule'
+import { seedOptions } from '../components/queue/AddVideos'
+import type { JobOptions } from '../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
 import { t } from '../lib/i18n'
 
@@ -56,6 +58,9 @@ export default function Watch({
     gap_hours: 1,
     day_start: ''
   })
+  // How its clips are made: the Generate bar's own settings to start with,
+  // which is what "my settings" means everywhere else in the app.
+  const [addClip, setAddClip] = useState<JobOptions>(() => seedOptions())
   const [addHashtags, setAddHashtags] = useState('')
   const [addOnlyMine, setAddOnlyMine] = useState(false)
   const inFlight = useRef(false)
@@ -141,7 +146,7 @@ export default function Watch({
           .map((h) => h.replace(/^#/, '').trim())
           .filter(Boolean),
         ai_hashtags: !addOnlyMine
-      })
+      }, addClip)
       setJustAdded(added.id)
       setChannel('')
       await refresh()
@@ -304,6 +309,37 @@ export default function Watch({
               )}
             </div>
           )}
+          <div className="flex items-center gap-x-5 gap-y-2 flex-wrap text-sm">
+            <span className="label">{t('Clips')}</span>
+            {(
+              [
+                ['captions', 'Captions', addClip.captions !== false],
+                ['long_clips', '60s+', Boolean(addClip.long_clips)],
+                ['podcast', 'Podcast', Boolean(addClip.podcast)],
+                ['longform', 'Longform', Boolean(addClip.longform)]
+              ] as const
+            ).map(([key, label, on]) => (
+              <label key={key} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[#38BDF8]"
+                  checked={on}
+                  onChange={(e) => {
+                    const next = { ...addClip }
+                    if (key === 'captions') next.captions = e.target.checked
+                    else if (key === 'longform')
+                      next.longform = e.target.checked ? { mode: 'short_clips' } : null
+                    else next[key] = e.target.checked
+                    setAddClip(next)
+                  }}
+                />
+                {t(label)}
+              </label>
+            ))}
+            <span className="text-xs text-muted">
+              {t('Starts from your Generate settings. Caption style and more are in Clip settings after you add it.')}
+            </span>
+          </div>
           {mode !== 'off' && (
             <>
               <WatchSchedule value={addSchedule} onChange={setAddSchedule} />

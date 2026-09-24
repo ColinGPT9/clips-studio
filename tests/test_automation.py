@@ -884,3 +884,48 @@ def test_a_post_going_live_links_to_the_post(env):
     env.later(5)
     assert activity(env)["events"][0]["url"] == "https://www.youtube.com/watch?v=posted0001"
 
+
+# ---- only full videos and finished streams -----------------------------------
+
+
+def short(vid):
+    video = yt(vid)
+    video.url = f"https://www.youtube.com/shorts/{vid}"
+    video.short = True
+    return video
+
+
+def test_shorts_are_never_listed_or_clipped(env):
+    watched(env, short("shortshort1"), yt("aaaaaaaaaaa"))
+    env.feed.listings[UC].insert(0, short("shortshort2"))
+    env.later()
+    ids = {i["video_id"] for i in env.items()}
+    assert ids == {"aaaaaaaaaaa"}
+    assert env.jobs() == []
+
+
+def test_shorts_listed_before_this_are_cleared(tmp_path):
+    path = tmp_path / "state.db"
+    d = StateDB(path)
+    d.insert_watch("youtube", UC, name="x")
+    d.insert_watch_item("s1", watch_id=1, url="https://www.youtube.com/shorts/s1", state="baseline")
+    d.insert_watch_item("v1", watch_id=1, url="https://www.youtube.com/watch?v=v1", state="baseline")
+    d.close()
+    d = StateDB(path)
+    assert d.watch_item_ids() == {"v1"}
+    d.close()
+
+
+def test_the_clip_settings_chosen_at_add_reach_every_job(env):
+    env.feed.listings[UC] = []
+    response = env.client.post("/automation/watches", json={
+        "platform": "youtube", "channel": UC,
+        "options": {"captions": False, "podcast": True}, "preset": "standard",
+    })
+    assert response.json()["options"] == {"captions": False, "podcast": True}
+    env.watcher.tick()
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert payload["captions"] is False and payload["podcast"] is True
+

@@ -78,8 +78,9 @@ def _channel_name_from_rss(channel_id: str) -> str:
 
 def poll_channel(channel_id: str, timeout: int = 30) -> list[dict]:
     """Fetch a channel's RSS feed. Returns newest-first entries:
-    [{"video_id", "title", "url", "published"}]. The feed carries the
-    channel's ~15 most recent uploads."""
+    [{"video_id", "title", "url", "published", "short"}]. The feed carries the
+    channel's ~15 most recent uploads; `short` is True for a YouTube Short,
+    which the feed links as /shorts/<id> rather than /watch?v=<id>."""
     response = requests.get(RSS_URL.format(channel_id), timeout=timeout)
     response.raise_for_status()
     root = ET.fromstring(response.content)
@@ -89,12 +90,15 @@ def poll_channel(channel_id: str, timeout: int = 30) -> list[dict]:
         video_id = entry.findtext("yt:videoId", default="", namespaces=_ATOM_NS)
         if not video_id:
             continue
+        link = entry.find("atom:link", _ATOM_NS)
+        href = link.get("href", "") if link is not None else ""
         entries.append(
             {
                 "video_id": video_id,
                 "title": entry.findtext("atom:title", default="", namespaces=_ATOM_NS),
                 "url": watch_url(video_id),
                 "published": entry.findtext("atom:published", default="", namespaces=_ATOM_NS),
+                "short": "/shorts/" in href,
             }
         )
     return entries

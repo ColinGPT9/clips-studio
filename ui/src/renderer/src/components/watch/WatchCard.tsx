@@ -230,6 +230,7 @@ export default function WatchCard({
             key={`watch-${watch.id}`}
             job={{ id: watch.id, settings: watch.options }}
             heading="Settings for every video from this channel"
+            autoSave
             save={(patch) => api.patchWatch(watch.id, { options: patch })}
             onSaved={onChanged}
           />

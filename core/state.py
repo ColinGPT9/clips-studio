@@ -510,6 +510,12 @@ class StateDB:
         ):
             if column not in item_cols:
                 self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")
+        # Shorts were listed at first, with a Clip this button for something
+        # that cannot be clipped. Watching skips them now; the ones already
+        # listed and never queued go.
+        self.conn.execute(
+            "DELETE FROM watch_items WHERE url LIKE '%/shorts/%' AND job_id = 0"
+        )
         # Channels added with the old `python main.py channels add` become
         # watches once, switched off: they were set up for the CLI daemon, and
         # having the app act on them is the user's call, not a migration's.

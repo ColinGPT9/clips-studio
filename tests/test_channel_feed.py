@@ -156,3 +156,18 @@ def test_resolve_takes_links_or_names(platform, text, key):
 def test_resolve_refuses_what_cannot_be_a_channel(platform, text):
     with pytest.raises(ValueError):
         cf.resolve(platform, text, extract=lambda *a, **k: {}, get_json=lambda url: {})
+
+
+def test_youtube_shorts_are_marked_from_either_source():
+    entries = rss_entries("XM04mbymDsE", "SuIhqDP2VHw")
+    entries[1]["short"] = True
+    videos = cf.latest("youtube", UC, rss=lambda cid: entries)
+    assert [v.short for v in videos] == [False, True]
+
+    def extract(url, *, flat, size=cf.LISTING_SIZE):
+        return {"entries": [{"url": "https://www.youtube.com/shorts/SuIhqDP2VHw"},
+                            {"url": "https://www.youtube.com/watch?v=XM04mbymDsE"}]}
+
+    fallback = cf.latest("youtube", UC, rss=lambda cid: [], extract=extract)
+    assert [v.short for v in fallback] == [True, False]
+
