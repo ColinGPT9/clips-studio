@@ -74,32 +74,32 @@ def test_the_creator_tag_leads_and_survives_the_cap():
     # The cut takes the tail, so the one tag that must always appear has to be
     # at the front. This is the whole point of the feature.
     text = description_with_hashtags(
-        "Body", [f"#t{i}" for i in range(40)], creator="penguinz0"
+        "Body", [f"#t{i}" for i in range(40)], creator="creatorname"
     )
     assert text.count("#") == 5
-    assert text.splitlines()[-1].split(" ")[0] == "#penguinz0"
+    assert text.splitlines()[-1].split(" ")[0] == "#creatorname"
 
 
 def test_a_channel_name_becomes_a_usable_tag():
-    assert creator_tag("penguinz0") == "#penguinz0"
+    assert creator_tag("creatorname") == "#creatorname"
     assert creator_tag("Some Streamer") == "#SomeStreamer"
     assert creator_tag("  ") == ""
     assert creator_tag("") == ""
 
 
 def test_the_creator_tag_is_not_repeated_when_the_clip_already_has_it():
-    text = description_with_hashtags("Body", ["#PenguinZ0", "#funny"], creator="penguinz0")
-    assert text.lower().count("#penguinz0") == 1
+    text = description_with_hashtags("Body", ["#CreatorName", "#funny"], creator="creatorname")
+    assert text.lower().count("#creatorname") == 1
     assert "#funny" in text
 
 
 def test_publishing_the_same_clip_twice_does_not_stack_a_second_block():
     # The editor prefills its box with what went up last time, so the input to
     # the second publish already ends in the line this function added.
-    first = description_with_hashtags("Watch this", ["#funny"], creator="penguinz0")
-    again = description_with_hashtags(first, ["#funny"], creator="penguinz0")
+    first = description_with_hashtags("Watch this", ["#funny"], creator="creatorname")
+    again = description_with_hashtags(first, ["#funny"], creator="creatorname")
     assert again == first
-    assert again.count("#penguinz0") == 1
+    assert again.count("#creatorname") == 1
 
 
 def test_a_description_that_ends_in_the_users_own_hashtags_is_not_doubled():
@@ -153,10 +153,10 @@ def test_a_standing_block_ending_in_a_hashtag_survives_republishing():
     # the whole block back, growing the description on every publish.
     block = "Watch me live: twitch.tv/example" + chr(10) + "#streamer"
     first = description_with_hashtags(
-        with_common_block("A clip", block), ["#funny"], creator="penguinz0"
+        with_common_block("A clip", block), ["#funny"], creator="creatorname"
     )
     again = description_with_hashtags(
-        with_common_block(first, block), ["#funny"], creator="penguinz0"
+        with_common_block(first, block), ["#funny"], creator="creatorname"
     )
     assert again == first
     assert first.count("twitch.tv/example") == 1
@@ -167,13 +167,13 @@ def test_the_whole_description_reads_in_the_right_order():
     text = description_with_hashtags(
         with_common_block("The clip itself.", "Live: twitch.tv/example"),
         ["#funny"],
-        creator="penguinz0",
+        creator="creatorname",
     )
     lines = [ln for ln in text.splitlines() if ln.strip()]
     assert lines == [
         "The clip itself.",
         "Live: twitch.tv/example",
-        "#penguinz0 #funny",
+        "#creatorname #funny",
     ]
 
 

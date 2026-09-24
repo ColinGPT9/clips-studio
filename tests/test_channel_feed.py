@@ -69,8 +69,8 @@ def test_twitch_listing_gives_the_same_id_as_a_pasted_link():
         asked.append((url, flat))
         return listing
 
-    videos = cf.latest("twitch", "xqc", extract=extract)
-    assert asked == [("https://www.twitch.tv/xqc/videos?filter=archives&sort=time", True)]
+    videos = cf.latest("twitch", "streamer", extract=extract)
+    assert asked == [("https://www.twitch.tv/streamer/videos?filter=archives&sort=time", True)]
     assert videos[0].video_id == identify("https://www.twitch.tv/videos/2882100152")[1]
     assert videos[0].video_id == "tw_2882100152"
 
@@ -83,16 +83,16 @@ def test_kick_videos_come_back_newest_first_with_their_vod_links():
          "video": {"uuid": "F12121A7-72E4-4903-A4FB-C58CDEF7766E"}},
         {"start_time": "2026-09-22 17:22:11", "session_title": "No video yet", "video": None},
     ]
-    videos = cf.latest("kick", "xqc", get_json=lambda url: data)
+    videos = cf.latest("kick", "streamer", get_json=lambda url: data)
     assert [v.title for v in videos] == ["Newest", "Older"]
-    assert videos[0].url == "https://kick.com/xqc/videos/F12121A7-72E4-4903-A4FB-C58CDEF7766E"
+    assert videos[0].url == "https://kick.com/streamer/videos/F12121A7-72E4-4903-A4FB-C58CDEF7766E"
     assert videos[0].video_id == "kick_f12121a7-72e4-4903-a4fb-c58cdef7766e"
     assert videos[0].published_at == pytest.approx(1790188848.0)
 
 
 def test_kick_saying_something_unexpected_is_an_error_not_an_empty_channel():
     with pytest.raises(ValueError):
-        cf.latest("kick", "xqc", get_json=lambda url: {"message": "Blocked"})
+        cf.latest("kick", "streamer", get_json=lambda url: {"message": "Blocked"})
 
 
 @pytest.mark.parametrize(
@@ -138,16 +138,16 @@ def test_a_network_blip_is_tried_again():
 @pytest.mark.parametrize(
     "platform, text, key",
     [
-        ("twitch", "https://www.twitch.tv/EmjayPlayss/videos", "emjayplayss"),
-        ("twitch", "@xqc", "xqc"),
-        ("kick", "https://kick.com/xqc", "xqc"),
+        ("twitch", "https://www.twitch.tv/SomeStreamer/videos", "somestreamer"),
+        ("twitch", "@streamer", "streamer"),
+        ("kick", "https://kick.com/streamer", "streamer"),
     ],
 )
 def test_resolve_takes_links_or_names(platform, text, key):
     channel = cf.resolve(
         platform, text,
         extract=lambda url, *, flat, size=1: {"entries": []},
-        get_json=lambda url: {"slug": "xqc", "user": {"username": "xQc"}},
+        get_json=lambda url: {"slug": "streamer", "user": {"username": "Streamer"}},
     )
     assert channel.channel_key == key
 
@@ -188,6 +188,6 @@ def test_a_short_in_the_uploads_playlist_is_known_by_its_length():
 
 def test_twitch_vods_are_never_taken_for_shorts():
     listing = {"entries": [{"url": "https://www.twitch.tv/videos/1", "duration": 60}]}
-    videos = cf.latest("twitch", "xqc", extract=lambda url, *, flat, size=15: listing)
+    videos = cf.latest("twitch", "streamer", extract=lambda url, *, flat, size=15: listing)
     assert videos[0].short is False
 

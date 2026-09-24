@@ -340,7 +340,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         creator_context=(creator_ctx.summary if creator_ctx else ""),
     )
 
-    # Hashtags the request insisted on (chat: "put #sarasaffari on all of
+    # Hashtags the request insisted on (chat: "put #creatorname on all of
     # them"). Appended after generation rather than asked of the model: a
     # required tag that the LLM sometimes forgets is not required. Order keeps
     # the model's own tags first, and a tag it happened to pick anyway is not

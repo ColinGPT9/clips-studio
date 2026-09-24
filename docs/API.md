@@ -967,7 +967,7 @@ The first look records everything already on the channel with status
 ```json
 {
   "id": 1, "platform": "youtube", "channel_key": "UCXuqSBlHAE6Xw-yeJA0Tunw",
-  "name": "Linus Tech Tips", "enabled": true,
+  "name": "Some Channel", "enabled": true,
   "preset": "standard", "options": {"max_clips": 5},
   "publish": {"mode": "auto", "platforms": ["youtube", "tiktok"], "per_day": 5,
               "gap_hours": 1, "day_start": "09:00",

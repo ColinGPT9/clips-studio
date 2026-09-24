@@ -75,7 +75,7 @@ class Env:
     def post(self, **overrides):
         body = {
             "session_id": SESSION, "source": "obs", "platform": "twitch",
-            "channel": "emjayplayss", "started_at": STARTED, "ended_at": ENDED,
+            "channel": "somestreamer", "started_at": STARTED, "ended_at": ENDED,
             "preset": "standard", **overrides,
         }
         return self.client.post("/integrations/streams", json=body)
@@ -111,7 +111,7 @@ def test_the_same_stream_posted_twice_is_one_stream(env):
     env.post()
     again = env.post(channel="someone-else").json()
     assert again["created"] is False
-    assert again["channel"] == "emjayplayss"
+    assert again["channel"] == "somestreamer"
 
 
 @pytest.mark.parametrize(

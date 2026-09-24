@@ -4,7 +4,7 @@ A creator's channel name, the games they play, their collaborators and
 their catchphrases are the things a translator most often mangles — and
 they're exactly what the app already learned into creator_knowledge. This
 turns that into a do-not-translate list the translation prompt carries, so
-"Emjayplays" stays "Emjayplays" and a catchphrase renders the same way in
+"CreatorName" stays "CreatorName" and a catchphrase renders the same way in
 every video instead of drifting per clip.
 
 Read-only against the existing tables: nothing here writes to or changes
@@ -55,7 +55,7 @@ def _candidate_terms(text: str, strict: bool = False) -> list[str]:
     translate the title at all.
 
     strict=False additionally keeps multi-word capitalised sequences —
-    "Sara Saffari" is a real name, "Black" on its own is not."""
+    "Jane Doe" is a real name, "Black" on its own is not."""
     text = text or ""
     out: list[str] = []
     # In a TITLE, capitals are emphasis, not naming: "I TEST DROVE A ..." is

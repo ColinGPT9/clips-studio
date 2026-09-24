@@ -267,13 +267,13 @@ def test_an_old_clip_from_caption_is_never_sent(db, tmp_path, woop):
     db.conn.execute(
         "UPDATE clips SET title = 'He finally admits it', "
         "description = 'Clip from: my brother exposes me', hashtags = ? WHERE id = ?",
-        ('["#clips", "#sarasaffari"]', ids[0]),
+        ('["#clips", "#creatorname"]', ids[0]),
     )
     db.conn.commit()
     publish(db, tmp_path, ids)
     text = woop.posts[0]["text"]
     assert "Clip from" not in text and "#clips" not in text
-    assert "He finally admits it" in text and "#sarasaffari" in text
+    assert "He finally admits it" in text and "#creatorname" in text
 
 
 def test_a_clips_tag_someone_chose_is_left_alone(db, tmp_path, woop):
@@ -327,14 +327,14 @@ def test_a_daily_schedule_keeps_to_the_chosen_time(db):
 def test_hashtags_the_model_ran_together_are_split():
     from analysis.metadata import _clean_hashtags
 
-    assert _clean_hashtags(["#juliafillipo#drama#apology", "#Bop House"]) == [
-        "#juliafillipo", "#drama", "#apology", "#bop", "#house"]
+    assert _clean_hashtags(["#creatorname#drama#apology", "#Late Night"]) == [
+        "#creatorname", "#drama", "#apology", "#late", "#night"]
 
 
 def test_an_old_clip_with_run_together_hashtags_posts_them_separately(db, tmp_path, woop):
     ids = clips(db, tmp_path, 1)
     db.conn.execute("UPDATE clips SET hashtags = ? WHERE id = ?",
-                    ('["#juliafillipo#drama#apology"]', ids[0]))
+                    ('["#creatorname#drama#apology"]', ids[0]))
     db.conn.commit()
     publish(db, tmp_path, ids)
-    assert woop.posts[0]["text"].splitlines()[-1] == "#juliafillipo #drama #apology"
+    assert woop.posts[0]["text"].splitlines()[-1] == "#creatorname #drama #apology"

@@ -152,7 +152,7 @@ def _clean_hashtags(tags) -> list[str]:
     """One hashtag per entry, at most five.
 
     The model sometimes answers with several run together in one string,
-    "#juliafillipo#drama#apology", and keeping that as one tag put it into
+    "#creatorname#drama#apology", and keeping that as one tag put it into
     posts as a single unreadable hashtag. Split on every # and every space.
     """
     if not isinstance(tags, list):

@@ -2,8 +2,8 @@
 
 One message drove all of this:
 
-    "process this video of Sara Saffari <url> and publish them all to my
-     youtube channel all titles and descriptions must have #sarasaffari"
+    "process this video of Jane Doe <url> and publish them all to my
+     youtube channel all titles and descriptions must have #janedoe"
 
 The video processed into 33 clips. None of them carried the hashtag, none of
 them were published, and captions were burned in although the box was
@@ -31,9 +31,9 @@ def test_required_hashtags_reach_the_job(monkeypatch):
         return {"job_id": 7, "video_id": "abc"}
 
     monkeypatch.setattr(mcp, "_request", fake_request)
-    mcp._queue_video({"url": "https://youtu.be/x", "hashtags": ["#sarasaffari", "gym"]})
+    mcp._queue_video({"url": "https://youtu.be/x", "hashtags": ["#janedoe", "gym"]})
 
-    assert sent["body"]["hashtags"] == ["#sarasaffari", "gym"]
+    assert sent["body"]["hashtags"] == ["#janedoe", "gym"]
 
 
 def test_blank_hashtags_are_not_sent(monkeypatch):
@@ -114,23 +114,23 @@ def test_required_tags_are_added_to_every_clip_and_not_duplicated():
 
     metas = [
         metadata.ClipMetadata(title="Gym day", description="d", hashtags=["#fitness"]),
-        metadata.ClipMetadata(title="Leg day", description="d", hashtags=["#sarasaffari"]),
+        metadata.ClipMetadata(title="Leg day", description="d", hashtags=["#janedoe"]),
     ]
-    extra = metadata._clean_hashtags(["#sarasaffari"])
+    extra = metadata._clean_hashtags(["#janedoe"])
     for meta in metas:
         have = {t.casefold() for t in meta.hashtags}
         meta.hashtags = meta.hashtags + [t for t in extra if t.casefold() not in have]
 
-    assert metas[0].hashtags == ["#fitness", "#sarasaffari"]
+    assert metas[0].hashtags == ["#fitness", "#janedoe"]
     # Already had it: not repeated.
-    assert metas[1].hashtags == ["#sarasaffari"]
+    assert metas[1].hashtags == ["#janedoe"]
 
 
 def test_a_tag_that_would_overflow_the_title_is_left_off_it():
     """YouTube refuses a title over 100 characters, and losing the upload
     would be a worse outcome than the tag living only in the description."""
     title = "x" * 98
-    tag = "#sarasaffari"
+    tag = "#janedoe"
     assert len(title) + len(tag) + 1 > 100
     fits = len(title) + len(tag) + 1 <= 100
     assert not fits

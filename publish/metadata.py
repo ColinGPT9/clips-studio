@@ -130,7 +130,7 @@ def description_with_hashtags(
 
     First because the list is cut at MAX_HASHTAGS, so whatever must survive
     has to lead. Duplicates fold together case-insensitively: a generated
-    "#penguinz0" and a channel called "penguinz0" are one tag, not two.
+    "#creatorname" and a channel called "CreatorName" are one tag, not two.
     """
     tags = _normalise(([creator_tag(creator)] if creator else []) + list(hashtags))
 

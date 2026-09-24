@@ -125,7 +125,7 @@ def tags_of(clip) -> list[str]:
     if not isinstance(parsed, list):
         return []
     # One tag per word. Clips made before analysis/metadata.py split them can
-    # carry "#juliafillipo#drama#apology" as a single entry, which would go
+    # carry "#creatorname#drama#apology" as a single entry, which would go
     # into a caption as one unreadable hashtag.
     out: list[str] = []
     for entry in parsed:

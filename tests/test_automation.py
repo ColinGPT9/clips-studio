@@ -423,7 +423,7 @@ def test_legacy_cli_channels_come_across_switched_off(tmp_path):
     path = tmp_path / "old.db"
     d = StateDB(path)
     d.conn.execute("DELETE FROM app_state WHERE key = 'watches_imported'")
-    d.add_channel(UC, "Linus Tech Tips")
+    d.add_channel(UC, "Some Channel")
     d.close()
     d = StateDB(path)
     rows = d.list_watches()

@@ -20,7 +20,7 @@ yt_dlp = pytest.importorskip("yt_dlp", reason="yt-dlp is not installed on CI")
 
 from sources import kick  # noqa: E402
 
-VOD_URL = "https://kick.com/deepak/videos/01a01a47-04a8-7432-bdfb-57393cbe75f5"
+VOD_URL = "https://kick.com/somestreamer/videos/0b5e4f7a-3c21-4d8e-9a6f-2e7d1c4b8a90"
 
 
 def _fail_with(monkeypatch, message):

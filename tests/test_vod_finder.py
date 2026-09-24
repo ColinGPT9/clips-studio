@@ -19,7 +19,7 @@ def entry(url, start, duration=7000, live_status="was_live", key="timestamp"):
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        ("emjayplayss", "emjayplayss"),
+        ("somestreamer", "somestreamer"),
         ("@LinusTechTips", "LinusTechTips"),
         (" name/ ", "name"),
         ("", None),
@@ -35,11 +35,11 @@ def test_only_real_handles_reach_a_url(raw, expected):
 
 def test_listing_urls_per_platform():
     assert (
-        listing_url("twitch", "emjayplayss")
-        == "https://www.twitch.tv/emjayplayss/videos?filter=archives&sort=time"
+        listing_url("twitch", "somestreamer")
+        == "https://www.twitch.tv/somestreamer/videos?filter=archives&sort=time"
     )
     assert listing_url("youtube", "@LinusTechTips") == "https://www.youtube.com/@LinusTechTips/streams"
-    assert listing_url("kick", "adinross") is None
+    assert listing_url("kick", "otherstreamer") is None
     assert listing_url("twitch", "bad handle") is None
 
 
@@ -77,7 +77,7 @@ def test_only_the_newest_few_are_opened():
         n = int(url.rsplit("/", 1)[1])
         return entry(url, STARTED if n == 1 else STARTED - 86400 * (n + 1))
 
-    found = find_stream_vod("twitch", "emjayplayss", STARTED, ENDED, extract=extract)
+    found = find_stream_vod("twitch", "somestreamer", STARTED, ENDED, extract=extract)
     assert found is not None
     assert found.url.endswith("/1")
     assert len(opened) == 3
@@ -98,5 +98,5 @@ def test_kick_and_bad_handles_never_touch_the_network():
     def extract(*args, **kwargs):
         raise AssertionError("the network must not be used")
 
-    assert find_stream_vod("kick", "adinross", STARTED, ENDED, extract=extract) is None
+    assert find_stream_vod("kick", "otherstreamer", STARTED, ENDED, extract=extract) is None
     assert find_stream_vod("twitch", "not a handle", STARTED, ENDED, extract=extract) is None
