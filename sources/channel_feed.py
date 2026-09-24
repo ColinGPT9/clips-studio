@@ -37,6 +37,10 @@ _YOUTUBE_ID = re.compile(r"^UC[0-9A-Za-z_-]{22}$")
 # are placed into a URL.
 _KICK_SLUG = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
+# The longest a YouTube Short can be. The uploads playlist links a Short as
+# /watch?v= like any other video, so its length is how it is recognised there.
+SHORT_MAX_SECONDS = 180
+
 # A broadcast that is live, about to be, or just ended and still processing
 # gives an incomplete file if it is downloaded now. Wait and look again.
 _NOT_READY = ("is_live", "is_upcoming", "post_live")
@@ -222,7 +226,13 @@ def _from_listing(platform: str, channel_key: str, listing: dict) -> list[NewSou
             url = f"https://www.youtube.com/watch?v={url}"
         video = _video(platform, channel_key, url, entry.get("title") or "",
                        float(entry.get("timestamp") or 0))
-        video.short = "/shorts/" in url
+        # A Short, however it is linked. The uploads playlist, which is what
+        # is read when a channel's RSS feed answers 404, gives /watch?v= links
+        # for Shorts as well; a length of three minutes or less gives them away.
+        duration = float(entry.get("duration") or 0)
+        video.short = platform == "youtube" and (
+            "/shorts/" in url or 0 < duration <= SHORT_MAX_SECONDS
+        )
         if video.video_id:
             out.append(video)
     return out

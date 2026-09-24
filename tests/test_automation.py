@@ -904,15 +904,24 @@ def test_shorts_are_never_listed_or_clipped(env):
     assert env.jobs() == []
 
 
-def test_shorts_listed_before_this_are_cleared(tmp_path):
+def test_shorts_listed_before_this_are_cleared_once(tmp_path):
     path = tmp_path / "state.db"
     d = StateDB(path)
+    d.conn.execute("DELETE FROM app_state WHERE key = 'watch_shorts_cleared'")
     d.insert_watch("youtube", UC, name="x")
     d.insert_watch_item("s1", watch_id=1, url="https://www.youtube.com/shorts/s1", state="baseline")
+    d.insert_watch_item("s2", watch_id=1, url="https://www.youtube.com/watch?v=s2",
+                        state="skipped", reason="Shorter than 3 minutes.")
     d.insert_watch_item("v1", watch_id=1, url="https://www.youtube.com/watch?v=v1", state="baseline")
     d.close()
     d = StateDB(path)
     assert d.watch_item_ids() == {"v1"}
+    # Once: a video skipped for length after this stays recorded.
+    d.insert_watch_item("s3", watch_id=1, url="https://www.youtube.com/watch?v=s3",
+                        state="skipped", reason="Shorter than 5 minutes.")
+    d.close()
+    d = StateDB(path)
+    assert d.watch_item_ids() == {"v1", "s3"}
     d.close()
 
 

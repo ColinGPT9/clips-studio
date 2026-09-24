@@ -171,3 +171,23 @@ def test_youtube_shorts_are_marked_from_either_source():
     fallback = cf.latest("youtube", UC, rss=lambda cid: [], extract=extract)
     assert [v.short for v in fallback] == [True, False]
 
+
+def test_a_short_in_the_uploads_playlist_is_known_by_its_length():
+    """The fallback gives Shorts /watch?v= links, so only the length tells."""
+    def extract(url, *, flat, size=cf.LISTING_SIZE):
+        return {"entries": [
+            {"url": "https://www.youtube.com/watch?v=eWunrMg5A70", "duration": 1689},
+            {"url": "https://www.youtube.com/watch?v=raNE4g5sYkA", "duration": 17},
+            {"url": "https://www.youtube.com/watch?v=SJ9M_yflbt4", "duration": 180},
+            {"url": "https://www.youtube.com/watch?v=xIJarngHZVE"},  # length unknown
+        ]}
+
+    videos = cf.latest("youtube", UC, rss=lambda cid: [], extract=extract)
+    assert [v.short for v in videos] == [False, True, True, False]
+
+
+def test_twitch_vods_are_never_taken_for_shorts():
+    listing = {"entries": [{"url": "https://www.twitch.tv/videos/1", "duration": 60}]}
+    videos = cf.latest("twitch", "xqc", extract=lambda url, *, flat, size=15: listing)
+    assert videos[0].short is False
+

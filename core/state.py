@@ -511,11 +511,22 @@ class StateDB:
             if column not in item_cols:
                 self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")
         # Shorts were listed at first, with a Clip this button for something
-        # that cannot be clipped. Watching skips them now; the ones already
-        # listed and never queued go.
-        self.conn.execute(
-            "DELETE FROM watch_items WHERE url LIKE '%/shorts/%' AND job_id = 0"
-        )
+        # that cannot be clipped, and some were recorded as skipped for being
+        # too short. Watching now drops them before anything is recorded, so
+        # the ones already listed and never queued go, once. Only once: done
+        # on every start, a short-but-not-a-Short video would be forgotten and
+        # found again at every check.
+        cleared = self.conn.execute(
+            "SELECT 1 FROM app_state WHERE key = 'watch_shorts_cleared'"
+        ).fetchone()
+        if cleared is None:
+            self.conn.execute(
+                "DELETE FROM watch_items WHERE job_id = 0 AND "
+                "(url LIKE '%/shorts/%' OR (state = 'skipped' AND reason LIKE 'Shorter than%'))"
+            )
+            self.conn.execute(
+                "INSERT INTO app_state (key, value) VALUES ('watch_shorts_cleared', '1')"
+            )
         # Channels added with the old `python main.py channels add` become
         # watches once, switched off: they were set up for the CLI daemon, and
         # having the app act on them is the user's call, not a migration's.
