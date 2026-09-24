@@ -97,7 +97,10 @@ class Env:
         if self.publish_error:
             raise self.publish_error
         self.published.append(kwargs)
-        return {"started": [{"clip_id": c} for c in kwargs["clip_ids"]], "skipped": []}
+        # Like publish_clips: a time for each clip when spaced, none when sent now.
+        when = "2026-09-24T13:00:00+00:00" if kwargs.get("per_day") else ""
+        return {"started": [{"clip_id": c, "scheduled_for": when} for c in kwargs["clip_ids"]],
+                "skipped": []}
 
     def db(self):
         return StateDB(self.db_path)
@@ -835,3 +838,49 @@ def test_a_check_that_finds_nothing_still_says_so(env):
     watched(env)
     env.later()
     assert activity(env)["events"][0]["text"] == f"Checked Channel {UC}: nothing new"
+
+
+def test_post_right_away_sends_without_a_schedule(env):
+    publishing_watch(env, spread=False, max_posts=1, day_start="09:00")
+    finished_with_clips(env)
+    env.later(5)
+    sent = env.published[0]
+    assert sent["per_day"] == 0 and sent["day_start"] == ""
+    assert len(sent["clip_ids"]) == 1
+
+
+def test_spacing_is_the_default(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+    assert env.published[0]["per_day"] == 3
+
+
+def test_clips_sent_right_away_are_told_as_sent_now(env):
+    publishing_watch(env, spread=False, max_posts=1)
+    finished_with_clips(env)
+    env.later(5)
+    texts = [e["text"] for e in activity(env)["events"]]
+    assert any(t.startswith("Sent 1 clip(s)") and t.endswith("now.") for t in texts)
+
+
+def test_a_found_video_links_to_itself(env):
+    publishing_watch(env)
+    found = next(e for e in activity(env)["events"] if e["kind"] == "found")
+    assert found["url"] == "https://www.youtube.com/watch?v=newnewnew01"
+
+
+def test_a_post_going_live_links_to_the_post(env):
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+
+    def land(d):
+        clip = d.clips_for_video("newnewnew01")[0]
+        d.record_clip_publish(clip["id"], "youtube", {
+            "provider": "woopsocial", "video_id": "newnewnew01", "state": "published",
+            "post_url": "https://www.youtube.com/watch?v=posted0001"})
+    env.run(land)
+    env.later(5)
+    assert activity(env)["events"][0]["url"] == "https://www.youtube.com/watch?v=posted0001"
+

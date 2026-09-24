@@ -51,6 +51,7 @@ export default function Watch({
   // How its clips go out, chosen before Add like in the Publish dialog.
   const [addSchedule, setAddSchedule] = useState<ScheduleValue>({
     max_posts: 0,
+    spread: true,
     per_day: 5,
     gap_hours: 1,
     day_start: ''

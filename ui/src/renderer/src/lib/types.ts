@@ -464,6 +464,8 @@ export interface WatchPublish {
   platforms: string[]
   /** Best clips of each video to post. 0 posts every clip. */
   max_posts: number
+  /** False: post each clip as soon as it is made instead of spacing them. */
+  spread: boolean
   /** A daily budget, queued behind everything already scheduled. */
   per_day: number
   gap_hours: number
@@ -568,6 +570,6 @@ export interface AutomationActivity {
   watching: number
   /** Unix seconds of the next channel check, 0 if none is due. */
   next_check_at: number
-  /** Newest first. */
-  events: { at: number; text: string; kind: string }[]
+  /** Newest first. `url` is the video found or the post that went live. */
+  events: { at: number; text: string; kind: string; url?: string }[]
 }

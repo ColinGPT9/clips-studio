@@ -109,7 +109,18 @@ export default function WatchLive(): JSX.Element | null {
               <span className="text-xs text-muted w-20 shrink-0 tabular-nums pt-0.5">
                 {relative(e.at, now)}
               </span>
-              <span className={TONE[e.kind] ?? 'text-ink'}>{e.text}</span>
+              <span className="min-w-0">
+                <span className={TONE[e.kind] ?? 'text-ink'}>{e.text}</span>
+                {e.url && (
+                  <button
+                    className="block text-xs text-accent underline underline-offset-2 hover:text-ink truncate max-w-full text-left"
+                    title={t('Open in your browser')}
+                    onClick={() => void window.studio?.openExternal(e.url as string)}
+                  >
+                    {e.url.replace(/^https?:\/\/(www\.)?/, '')} ↗
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>

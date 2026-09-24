@@ -94,6 +94,9 @@ class PublishSettings(BaseModel):
     # How many of each video's clips to post, best first. 0 posts every clip
     # the run makes; the rest stay in the library either way.
     max_posts: int = Field(default=0, ge=0, le=100)
+    # False: post each clip the moment it is made, as the Publish dialog does
+    # with "Space them out" unticked. True spreads them on the budget below.
+    spread: bool = True
     # A daily budget, not a flat gap: WoopSocial allows about five YouTube posts
     # a day, and a burst past that is rejected (see woopsocial_service).
     per_day: int = Field(default=5, ge=1, le=50)
@@ -321,9 +324,13 @@ class ChannelWatcher(threading.Thread):
         with self._activity_lock:
             return {"doing": self._doing, "events": list(self._activity)}
 
-    def _say(self, text: str, kind: str = "info") -> None:
-        """One step worth seeing: in the page's live panel, and the log."""
+    def _say(self, text: str, kind: str = "info", url: str = "") -> None:
+        """One step worth seeing: in the page's live panel, and the log. `url`
+        is the video found, or the post that went live, so the panel can link
+        straight to it."""
         event = {"at": self._clock(), "text": text, "kind": kind}
+        if url:
+            event["url"] = url
         with self._activity_lock:
             self._activity.appendleft(event)
         print(f"Watch: {text}")
@@ -412,7 +419,7 @@ class ChannelWatcher(threading.Thread):
                 take, hold = self._catch_up(watch["backlog"], fresh, now)
             for video in take:
                 self._insert(d, watch, video, now, "new", "")
-                self._say(f"New video on {name}: {_quoted(video.title)}", "found")
+                self._say(f"New video on {name}: {_quoted(video.title)}", "found", video.url)
             for video in hold:
                 self._insert(d, watch, video, now, "skipped", _MISSED)
             if hold:
@@ -515,7 +522,7 @@ class ChannelWatcher(threading.Thread):
             # anything else they staged and have not started.
             queue.start_if_alone(d, job_id)
             d.set_watch_item(item["id"], state="queued", job_id=job_id, reason="")
-            self._say(f"Queued {_quoted(title)} for clipping", "queued")
+            self._say(f"Queued {_quoted(title)} for clipping", "queued", item["url"])
             queued_any = True
         if queued_any:
             self._worker.notify()
@@ -593,11 +600,12 @@ class ChannelWatcher(threading.Thread):
             first = _when(
                 next((s.get("scheduled_for") for s in started if s.get("scheduled_for")), "")
             )
-            self._say(
-                f"Scheduled {len(started)} clip(s) of {_quoted(item['title'])} for {where}"
-                + (f", the first at {first}" if first else "") + ".",
-                "posted",
-            )
+            if first:
+                self._say(f"Scheduled {len(started)} clip(s) of {_quoted(item['title'])} "
+                          f"for {where}, the first at {first}.", "posted")
+            else:
+                self._say(f"Sent {len(started)} clip(s) of {_quoted(item['title'])} "
+                          f"to {where} now.", "posted")
         elif problems:
             self._say(f"Couldn't send the clips of {_quoted(item['title'])}: {problems[0]}",
                       "error")
@@ -610,9 +618,9 @@ class ChannelWatcher(threading.Thread):
             platforms=list(settings.platforms),
             lead_hashtags=list(settings.hashtags),
             ai_hashtags=settings.ai_hashtags,
-            per_day=settings.per_day,
+            per_day=settings.per_day if settings.spread else 0,
             gap_hours=settings.gap_hours,
-            day_start=settings.day_start,
+            day_start=settings.day_start if settings.spread else "",
             overrides=dict(settings.overrides),
             footer=render_footer(settings.footer, item, watch),
         )
@@ -715,7 +723,7 @@ class ChannelWatcher(threading.Thread):
         compares what it saw last time, so the panel can show each post
         landing. The first look just remembers what was already there."""
         rows = d.conn.execute(
-            "SELECT p.clip_id, p.platform, c.title, c.hook FROM clip_publishes p "
+            "SELECT p.clip_id, p.platform, p.post_url, c.title, c.hook FROM clip_publishes p "
             "JOIN watch_items w ON w.video_id = p.video_id "
             "LEFT JOIN clips c ON c.id = p.clip_id WHERE p.state = 'published'"
         ).fetchall()
@@ -724,7 +732,7 @@ class ChannelWatcher(threading.Thread):
             for r in rows:
                 if (int(r["clip_id"]), r["platform"]) not in self._published_seen:
                     self._say(f"Posted {_quoted(r['title'] or r['hook'] or '')} "
-                              f"to {_label(r['platform'])}", "posted")
+                              f"to {_label(r['platform'])}", "posted", r["post_url"] or "")
         self._published_seen = seen
 
     def _free_disk(self, d: StateDB) -> None:

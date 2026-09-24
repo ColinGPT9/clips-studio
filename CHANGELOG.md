@@ -47,7 +47,8 @@ were often broken in a way that only showed up on somebody else's machine.
     are sent again later, only those ones. Turn on **Delete each watched video's
     download once its clips are published** so the disk does not fill up.
   - **Set everything up once.** Before you even press Add, choose how many of each
-    video's clips to post (the best ones first, or all), posts per day, hours apart
+    video's clips to post (the best ones first, or all), whether to post right away
+    or space them out, posts per day, hours apart
     and the time the first post of each day goes out, with a preview of the next
     posting times, just like the Publish dialog. The channel then opens its whole
     setup for the rest. Add your

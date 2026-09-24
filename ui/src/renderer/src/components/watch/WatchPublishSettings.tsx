@@ -66,6 +66,7 @@ export default function WatchPublishSettings({
   const [platforms, setPlatforms] = useState<string[]>(p.platforms)
   const [schedule, setSchedule] = useState<ScheduleValue>({
     max_posts: p.max_posts ?? 0,
+    spread: p.spread ?? true,
     per_day: p.per_day,
     gap_hours: p.gap_hours,
     day_start: p.day_start
