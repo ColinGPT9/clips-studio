@@ -514,6 +514,12 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
             fetched_title, fetched_channel = dispatch.metadata(url)
             title = title if title and title != video_id else fetched_title
             channel = channel or fetched_channel
+            if row and (title != (row["title"] or "") or channel != (row["channel_name"] or "")):
+                db.conn.execute(
+                    "UPDATE videos SET title = ?, channel_name = ? WHERE video_id = ?",
+                    (title, channel, video_id),
+                )
+                db.conn.commit()
         except Exception as e:
             # Offline, rate-limited, or a local upload. The whole point of this
             # branch is that reprocessing works without the platform, so this
