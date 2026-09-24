@@ -1,13 +1,16 @@
-import sys
-from unittest.mock import MagicMock
+"""A cached download still gets its title and channel (issue #64).
 
-for mod in ["cv2", "numpy", "torch", "ultralytics", "faster_whisper", "ctranslate2", "yt_dlp", "requests", "yaml"]:
-    if mod not in sys.modules:
-        sys.modules[mod] = MagicMock()
+A file already in downloads/ skips the download, and with it the metadata the
+download would have brought. When the database has no row for it, or only a
+placeholder, the title and channel are fetched once and written back, so the
+video is not recorded under its raw ID with no creator.
+"""
 
-from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
 import pytest
+
+pytest.importorskip("numpy", reason="core.pipeline imports numpy, which CI does not install")
 
 from core.models import DownloadedVideo
 from core.pipeline import _cached_or_download
