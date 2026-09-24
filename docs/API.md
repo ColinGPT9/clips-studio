@@ -969,9 +969,11 @@ The first look records everything already on the channel with status
   "id": 1, "platform": "youtube", "channel_key": "UCXuqSBlHAE6Xw-yeJA0Tunw",
   "name": "Linus Tech Tips", "enabled": true,
   "preset": "standard", "options": {"max_clips": 5},
-  "publish": {"mode": "ask", "platforms": ["youtube", "tiktok"], "per_day": 5,
-              "gap_hours": 1, "hashtags": [], "footer": "Full video: {source_url}",
-              "overrides": {"youtube": {"privacy": "private"}}},
+  "publish": {"mode": "auto", "platforms": ["youtube", "tiktok"], "per_day": 5,
+              "gap_hours": 1, "day_start": "09:00",
+              "hashtags": ["creatorname", "twitch"], "ai_hashtags": true, "footer": "",
+              "overrides": {"youtube": {"privacy": "private"},
+                            "tiktok": {"privacyLevel": "PUBLIC_TO_EVERYONE", "allowDuet": false}}},
   "backlog": "newest", "min_minutes": 3,
   "last_ok_poll_at": 1790190000.0, "next_poll_at": 1790190900.0, "last_error": "",
   "counts": {"baseline": 15, "queued": 2, "skipped": 1}
@@ -988,13 +990,29 @@ PATCH takes any of the following, and changes only what it is sent:
 | `publish.mode` | `off`: leave the clips alone. `ask`: stop at "ready to publish" (the default). `auto`: publish as soon as the clips exist, and retry on failure (see below). |
 | `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. |
 | `publish.per_day`, `publish.gap_hours` | A daily budget, queued behind everything already scheduled. WoopSocial's free plan allows about 5 YouTube posts a day. |
-| `publish.footer` | Text added under each caption. `{source_url}`, `{source_title}`, `{source_channel}` and `{source_platform}` are filled in; other braces are left as typed. |
-| `publish.overrides` | Per-platform fields, as the publish dialog sends them, for example `{"youtube": {"privacy": "private"}}`. |
+| `publish.day_start` | Local `"HH:MM"` for each day's first post, or `""` to start as soon as the scheduler allows. |
+| `publish.hashtags` | The creator's own, set once. They lead every caption, ahead of the AI's, so nothing trims them off. |
+| `publish.ai_hashtags` | `false` leaves out the hashtags the AI chose, so only the ones above are used. |
+| `publish.footer` | Optional text under each caption. Links and "clipped from" wording can get TikTok posts flagged as unoriginal content. |
+| `publish.overrides` | Per platform, the fields WoopSocial takes: `youtube.privacy` (`public`, `unlisted`, `private`); `tiktok.privacyLevel` (`PUBLIC_TO_EVERYONE`, `FOLLOWER_OF_CREATOR`, `MUTUAL_FOLLOW_FRIENDS`, `SELF_ONLY`) and the booleans `allowComment`, `allowDuet`, `allowStitch`, `isYourBrand`, `isBrandedContent`; `instagram.postType` (`REEL`, `STORY`); `facebook.postType` (`REEL`, `VIDEO`, `STORY`); `pinterest.pinterestBoardId`. |
 | `backlog` | What to do when several videos appeared while Clips Kitty wasn't watching: `newest` (default), `all`, `day` (the last 24 hours) or `none`. Videos that aren't taken are listed as `skipped`, never dropped. |
 | `min_minutes` | Shorter videos (Shorts) are skipped. |
 
 `DELETE` stops watching and forgets the watch's list. Jobs and clips it
 produced stay in the library.
+
+### `GET /automation/slots?per_day=5&gap_hours=1&day_start=09:00&count=3`
+
+When the next posts would go out with those settings, after everything already
+scheduled. It reserves nothing; the Watched channels page shows it as a preview.
+
+```json
+{"times": ["2026-09-24T13:00:00+00:00", "2026-09-24T14:00:00+00:00",
+           "2026-09-24T15:00:00+00:00"], "already_scheduled": 4}
+```
+
+Returns 400 with the reason when the settings cannot work, such as 10 posts
+3 hours apart, which does not fit in a day.
 
 ### `POST /automation/watches/{id}/check`
 

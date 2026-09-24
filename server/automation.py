@@ -89,8 +89,19 @@ class PublishSettings(BaseModel):
     # a day, and a burst past that is rejected (see woopsocial_service).
     per_day: int = Field(default=5, ge=1, le=50)
     gap_hours: float = Field(default=1, ge=0.25, le=24)
+    # Local "HH:MM" for each day's first post, or "" to start as soon as the
+    # scheduler allows.
+    day_start: str = Field(default="", pattern=r"^$|^([01]\d|2[0-3]):[0-5]\d$")
+    # The creator's own, set once ("#creatorname #twitch"). They lead every
+    # caption so nothing trims them off.
     hashtags: list[str] = []
+    # False: only the hashtags above, none of the ones the model chose.
+    ai_hashtags: bool = True
     footer: str = Field(default="", max_length=1000)
+    # Per platform, the fields WoopSocial's build_post reads: youtube.privacy,
+    # tiktok.privacyLevel / allowComment / allowDuet / allowStitch /
+    # isYourBrand / isBrandedContent, instagram|facebook.postType,
+    # pinterest.pinterestBoardId.
     overrides: dict = {}
 
 
@@ -502,9 +513,11 @@ class ChannelWatcher(threading.Thread):
                 d,
                 clip_ids=clip_ids,  # best first, so the daily budget goes to them
                 platforms=list(settings.platforms),
-                hashtags=list(settings.hashtags),
+                lead_hashtags=list(settings.hashtags),
+                ai_hashtags=settings.ai_hashtags,
                 per_day=settings.per_day,
                 gap_hours=settings.gap_hours,
+                day_start=settings.day_start,
                 overrides=dict(settings.overrides),
                 footer=render_footer(settings.footer, item, watch),
             )
@@ -727,6 +740,30 @@ def install(
         watcher.wake()
         broadcaster.publish({"type": "automation"})
         return result
+
+    @app.get("/automation/slots")
+    def slots(per_day: int = 5, gap_hours: float = 1, day_start: str = "", count: int = 5):
+        """When the next posts would go out with these settings, after
+        everything already scheduled. For the preview beside the controls;
+        it reserves nothing."""
+        from publish.errors import PublishError
+        from server import woopsocial_service as woop
+
+        try:
+            PublishSettings(per_day=per_day, gap_hours=gap_hours, day_start=day_start)
+        except Exception as e:
+            raise HTTPException(400, "Those schedule settings are not valid.") from e
+        d = db()
+        try:
+            times = woop.schedule_times(
+                d, max(1, min(20, count)), per_day=per_day, gap_hours=gap_hours,
+                day_start=day_start,
+            )
+            return {"times": times, "already_scheduled": len(woop.committed_times(d))}
+        except PublishError as e:
+            raise HTTPException(400, e.message) from e
+        finally:
+            d.close()
 
     @app.get("/automation/watches")
     def list_watches():

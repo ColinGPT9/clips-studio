@@ -183,6 +183,10 @@ def committed_times(db) -> list[str]:
     return out
 
 
+# The start of the description analysis/metadata.py wrote when the model could
+# not, until it stopped. Existing clips still carry it.
+FALLBACK_PREFIX = "Clip from: "
+
 # The daily budget used when a request asks to publish but says nothing about
 # spacing: from the chat box, an MCP client, or a job that was queued with
 # "publish when done". WoopSocial rations YouTube to five posts a day to protect
@@ -191,12 +195,29 @@ def committed_times(db) -> list[str]:
 DEFAULT_PER_DAY = 5
 
 
+def first_slot_at(day_start: str, *, now: datetime | None = None) -> datetime:
+    """The next moment, local time, that is `day_start` ("HH:MM") and far
+    enough ahead for the scheduler's lead time. A day's run is anchored there,
+    so "first post at 09:00" means 09:00 every day, not 09:00 once."""
+    from datetime import timedelta
+
+    from publish.schedule import MIN_LEAD_SECONDS
+
+    hours, minutes = (int(part) for part in day_start.split(":", 1))
+    earliest = (now or datetime.now().astimezone()) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
+    first = earliest.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+    if first < earliest:
+        first += timedelta(days=1)
+    return first.astimezone(timezone.utc)
+
+
 def schedule_times(db, count: int, *, per_day: int, gap_hours: float = 1,
-                   start_at: str = "") -> list[str]:
+                   start_at: str = "", day_start: str = "") -> list[str]:
     """When each of `count` posts goes out on a daily budget.
 
     One copy for the publish and for the plan shown before it, so the plan a
-    person agrees to is the schedule that is sent.
+    person agrees to is the schedule that is sent. `day_start` ("HH:MM", local)
+    puts each day's first post at that time; empty starts as soon as allowed.
     """
     from datetime import timedelta
 
@@ -205,6 +226,8 @@ def schedule_times(db, count: int, *, per_day: int, gap_hours: float = 1,
     if not count or not per_day:
         return []
     first = datetime.now(timezone.utc) + timedelta(seconds=MIN_LEAD_SECONDS + 60)
+    if day_start and not start_at:
+        first = first_slot_at(day_start)
     if start_at:
         try:
             first = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
@@ -265,6 +288,9 @@ def publish_clips(
     footer: str = "",
     once: bool = False,
     remember: bool = True,
+    lead_hashtags: list[str] | None = None,
+    ai_hashtags: bool = True,
+    day_start: str = "",
 ) -> dict:
     """Publish a set of clips, optionally spaced out over time.
 
@@ -288,6 +314,12 @@ def publish_clips(
 
     `footer` goes under the standing text. `remember` keeps a background run
     from changing the platforms the publish dialog offers next time.
+
+    `lead_hashtags` are a creator's own, set once ("#creatorname #twitch"):
+    they open the hashtag line, so a platform that trims the end never loses
+    them. `ai_hashtags=False` leaves out the ones the model chose. `day_start`
+    anchors each day's posts at a local "HH:MM". All three default to exactly
+    what every other caller has always had.
     """
     from datetime import datetime, timedelta
     from datetime import timezone as tz
@@ -311,7 +343,8 @@ def publish_clips(
     # "five a day, an hour apart" is the shape that works, and a flat interval
     # cannot express it.
     slot_times = schedule_times(
-        db, len(clip_ids), per_day=per_day, gap_hours=gap_hours, start_at=start_at
+        db, len(clip_ids), per_day=per_day, gap_hours=gap_hours, start_at=start_at,
+        day_start=day_start,
     )
 
     # Exceptions, keyed by clip id. JSON turns integer keys into strings on
@@ -356,6 +389,13 @@ def publish_clips(
         # opens with it, so nothing reads twice.
         headline = (clip["title"] or clip["hook"] or "").strip()
         body = (clip["description"] or "").strip()
+        # What analysis/metadata.py used to write when the model failed. A
+        # caption announcing it is a clip of someone else's video got TikTok
+        # posts flagged as unoriginal, so an old one is never sent, and the
+        # generic #clips that came with it goes too.
+        fallback_caption = body.startswith(FALLBACK_PREFIX)
+        if fallback_caption:
+            body = ""
         if headline and not body.casefold().startswith(headline.casefold()):
             text = (headline + "\n\n" + body).strip()
         else:
@@ -367,11 +407,22 @@ def publish_clips(
         # The clip's own tags first, then anything asked for across the whole
         # run, with duplicates dropped so a tag the clip already had is not
         # repeated.
-        tags = tags_of(clip)
+        tags = tags_of(clip) if ai_hashtags else []
+        if fallback_caption:
+            tags = [t for t in tags if t.lower() != "clips"]
         for extra in hashtags or []:
             cleaned = str(extra).lstrip("#").strip()
             if cleaned and cleaned.lower() not in {t.lower() for t in tags}:
                 tags.append(cleaned)
+        # A creator's own set-ahead tags lead, ahead of everything else.
+        lead = []
+        for extra in lead_hashtags or []:
+            cleaned = str(extra).lstrip("#").strip()
+            if cleaned and cleaned.lower() not in {t.lower() for t in lead}:
+                lead.append(cleaned)
+        if lead:
+            chosen = {t.lower() for t in lead}
+            tags = lead + [t for t in tags if t.lower() not in chosen]
         if tags:
             text = (text + "\n\n" + " ".join("#" + t for t in tags)).strip()
 

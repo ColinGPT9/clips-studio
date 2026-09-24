@@ -237,3 +237,87 @@ def test_a_send_in_progress_holds_its_slot_in_the_schedule(db, tmp_path, woop):
         "provider": "woopsocial", "state": "sending", "scheduled_for": "2099-01-01T09:00:00+00:00",
     })
     assert service.committed_times(db) == ["2099-01-01T09:00:00+00:00"]
+
+
+# ---- captions a creator can leave running -------------------------------------
+
+
+def test_a_failed_metadata_run_writes_no_clip_from_caption():
+    """Seven TikTok posts went out as "Clip from: my brother exposes me…
+    #clips" and were flagged as unoriginal content."""
+    from analysis.metadata import generate_metadata
+    from core.models import ClipCandidate
+
+    class Broken:
+        def generate(self, prompt, json_mode=False):
+            raise RuntimeError("model returned nothing")
+
+    meta = generate_metadata(
+        ClipCandidate(start=0, end=10, score=80, hook="He finally admits it"),
+        [type("S", (), {"start": 0, "end": 10, "text": "words"})()],
+        "my brother exposes me",
+        Broken(),
+    )
+    assert meta.title == "He finally admits it"
+    assert meta.description == "" and meta.hashtags == []
+
+
+def test_an_old_clip_from_caption_is_never_sent(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 1)
+    db.conn.execute(
+        "UPDATE clips SET title = 'He finally admits it', "
+        "description = 'Clip from: my brother exposes me', hashtags = ? WHERE id = ?",
+        ('["#clips", "#sarasaffari"]', ids[0]),
+    )
+    db.conn.commit()
+    publish(db, tmp_path, ids)
+    text = woop.posts[0]["text"]
+    assert "Clip from" not in text and "#clips" not in text
+    assert "He finally admits it" in text and "#sarasaffari" in text
+
+
+def test_a_clips_tag_someone_chose_is_left_alone(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 1)
+    db.conn.execute("UPDATE clips SET description = 'A real one', hashtags = ? WHERE id = ?",
+                    ('["#clips"]', ids[0]))
+    db.conn.commit()
+    publish(db, tmp_path, ids)
+    assert "#clips" in woop.posts[0]["text"]
+
+
+def test_the_creators_own_hashtags_lead_every_caption(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 1)
+    db.conn.execute("UPDATE clips SET hashtags = ? WHERE id = ?",
+                    ('["#funny", "#Twitch"]', ids[0]))
+    db.conn.commit()
+    publish(db, tmp_path, ids, lead_hashtags=["#creatorname", "twitch"])
+    line = woop.posts[0]["text"].splitlines()[-1]
+    assert line == "#creatorname #twitch #funny"
+
+
+def test_only_my_hashtags_leaves_out_the_models(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 1)
+    db.conn.execute("UPDATE clips SET hashtags = ? WHERE id = ?", ('["#funny"]', ids[0]))
+    db.conn.commit()
+    publish(db, tmp_path, ids, lead_hashtags=["#creatorname"], ai_hashtags=False)
+    assert woop.posts[0]["text"].splitlines()[-1] == "#creatorname"
+
+
+def test_the_first_post_of_each_day_goes_out_at_the_chosen_time():
+    from datetime import datetime, timedelta
+
+    now = datetime(2026, 9, 24, 7, 0).astimezone()
+    first = service.first_slot_at("09:30", now=now).astimezone()
+    assert (first.hour, first.minute, first.date()) == (9, 30, now.date())
+    # Too close to the lead time today: tomorrow.
+    late = service.first_slot_at("07:05", now=now).astimezone()
+    assert late.date() == (now + timedelta(days=1)).date() and late.hour == 7
+
+
+def test_a_daily_schedule_keeps_to_the_chosen_time(db):
+    from datetime import datetime
+
+    times = [datetime.fromisoformat(t).astimezone()
+             for t in service.schedule_times(db, 4, per_day=2, gap_hours=1, day_start="09:00")]
+    assert [(t.hour, t.minute) for t in times] == [(9, 0), (10, 0), (9, 0), (10, 0)]
+    assert (times[2] - times[0]).days == 1

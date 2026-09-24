@@ -697,3 +697,43 @@ def test_a_video_with_no_download_is_not_reported_as_deleted(env):
     finished_with_clips(env)
     env.later(5)
     assert env.item("newnewnew01")["source_freed"] == 2
+
+
+# ---- set up once: schedule, hashtags, per-platform settings -------------------
+
+
+def test_the_channels_hashtags_time_and_platform_settings_reach_the_publish(env):
+    publishing_watch(
+        env, hashtags=["#creatorname", "#twitch"], ai_hashtags=False, day_start="09:00",
+        overrides={"tiktok": {"privacyLevel": "SELF_ONLY", "allowDuet": False}},
+    )
+    finished_with_clips(env)
+    env.later(5)
+    sent = env.published[0]
+    assert sent["lead_hashtags"] == ["#creatorname", "#twitch"]
+    assert sent["ai_hashtags"] is False
+    assert sent["day_start"] == "09:00"
+    assert sent["overrides"]["tiktok"] == {"privacyLevel": "SELF_ONLY", "allowDuet": False}
+
+
+def test_a_first_post_time_that_is_not_a_time_is_refused(env):
+    watch = watched(env)
+    response = env.client.patch(f"/automation/watches/{watch['id']}",
+                                json={"publish": {"mode": "auto", "day_start": "25:00"}})
+    assert response.status_code == 422
+
+
+def test_the_preview_shows_the_slots_that_would_be_used(env):
+    from datetime import datetime
+
+    got = env.client.get("/automation/slots",
+                         params={"per_day": 2, "gap_hours": 1, "day_start": "09:00", "count": 3})
+    assert got.status_code == 200
+    times = [datetime.fromisoformat(t).astimezone() for t in got.json()["times"]]
+    assert [(t.hour, t.minute) for t in times] == [(9, 0), (10, 0), (9, 0)]
+    assert got.json()["already_scheduled"] == 0
+
+
+def test_a_schedule_that_cannot_fit_in_a_day_is_explained(env):
+    got = env.client.get("/automation/slots", params={"per_day": 10, "gap_hours": 3})
+    assert got.status_code == 400

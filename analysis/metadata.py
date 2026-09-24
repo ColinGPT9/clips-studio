@@ -117,12 +117,17 @@ def generate_metadata_batch(
 
 
 def _fallback(candidate: ClipCandidate, video_title: str) -> ClipMetadata:
+    """What a clip carries when the model could not write its metadata.
+
+    No description and no hashtags. This used to be "Clip from: <video title>"
+    with #clips, and every clip of a video whose metadata failed got that same
+    caption: seven TikTok posts went out reading "Clip from: my brother exposes
+    me… #clips" and were flagged as unoriginal content, which is exactly what a
+    caption announcing a repost invites. The title still comes from the hook,
+    and the creator's and required hashtags are added where they always were.
+    """
     title = _clean_title(candidate.hook) or _clean_title(video_title) or "Clip"
-    return ClipMetadata(
-        title=title,
-        description=f"Clip from: {video_title}",
-        hashtags=["#clips"],
-    )
+    return ClipMetadata(title=title, description="", hashtags=[])
 
 
 def _parse(raw: str) -> dict | None:
