@@ -117,6 +117,10 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **The Dashboard's Donate button lines up with Start posting everywhere
+  again.** The posting card's text grew, and the Donate button beside it
+  stayed high; both buttons now sit on one line however long either card is.
+
 - **A watched channel uses your clip settings.** Its clips came out with the
   app's defaults, captions included, even with captions unticked: the choice
   lived in the Generate bar and never reached the channel, and the channel's

@@ -635,12 +635,16 @@ export default function Dashboard({
             two different colours. */}
         <div ref={promoRef} className="shrink-0 grid gap-4 md:grid-cols-2 items-stretch">
           {publishUrl && (
-            <div className="card bg-accent/20 border border-accent/40 !py-3">
+            <div className="card bg-accent/20 border border-accent/40 !py-3 flex flex-col">
               {/* The footnote sits inside the text column rather than under
                   the whole card, so the button centres against everything
-                  beside it instead of floating above the optical middle. */}
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
+                  beside it instead of floating above the optical middle.
+                  The row fills the card, which the grid stretches to match
+                  its neighbour, and the button centres on that: however long
+                  either card's text runs, both buttons sit on one line while
+                  both headings stay at the top. */}
+              <div className="flex-1 flex items-center justify-between gap-4">
+                <div className="min-w-0 self-start">
                   {/* One message in every state, and it sells. The card used
                       to go quiet once posting was set up, which wasted the
                       best spot on the page: the referral is how the app earns
@@ -687,20 +691,21 @@ export default function Dashboard({
           )}
 
           <div
-            className={`card bg-accent/20 border border-accent/40 !py-3${
+            className={`card bg-accent/20 border border-accent/40 !py-3 flex flex-col${
               publishUrl ? '' : ' md:col-span-2'
             }`}
           >
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
+            {/* Same shape as the card opposite: the row fills the card and
+                the button centres on it, so the two buttons stay in line. */}
+            <div className="flex-1 flex items-center justify-between gap-4">
+              <div className="min-w-0 self-start">
                 <p className="font-bold text-lg text-ink">
                   {t('Clips Kitty is free & open source ❤️')}
                 </p>
                 <p className="text-sm text-ink/80 mt-0.5">
                   {t('It runs on your PC with no fees. Donations cover development.')}
                 </p>
-                {/* Mirrors the footnote opposite, so the two cards are the
-                    same height and both buttons sit on the same line. */}
+                {/* Mirrors the footnote opposite, so both cards read alike. */}
                 <p className="text-xs text-ink/70 mt-1.5">
                   {t('Any amount, one-off or monthly, through PayPal. No account needed.')}
                 </p>
