@@ -214,3 +214,62 @@ def run(
         "plan": plan,
         "model": model,
     }
+
+
+def run_cloud(message: str, history: list[dict], tools: list[dict], call_tool, backend) -> dict:
+    """The same exchange as run(), on a cloud model with the user's own key.
+
+    run() is the local path and is left exactly as it is. This is its twin for
+    a CloudBackend: the same system prompt, the same tools, the same rules
+    about publishing, and the same answer shape, with each provider's own
+    message format handled inside its adapter (backend.chat).
+    """
+    from datetime import datetime
+
+    now = datetime.now().astimezone()
+    when = (
+        f"The time right now is {now.isoformat(timespec='seconds')}. "
+        "Work out any 'tomorrow' or 'tonight' from that, and always pass times "
+        "in RFC 3339 WITH the offset, like 2026-09-18T12:00:00-05:00."
+    )
+    messages = [{"role": "system", "content": SYSTEM + chr(10) + when}]
+    messages += [{"role": m["role"], "content": str(m.get("content") or "")}
+                 for m in history if m.get("role") in ("user", "assistant")]
+    messages.append({"role": "user", "content": message})
+
+    specs = tool_specs(tools)
+    steps: list[dict] = []
+    plan: dict | None = None
+
+    for _ in range(MAX_TURNS):
+        turn = backend.chat(messages, specs)
+        messages.append({
+            "role": "assistant",
+            "content": turn.text,
+            "tool_calls": [{"id": c.id, "name": c.name, "arguments": c.arguments} for c in turn.tool_calls],
+            "raw": turn.raw,
+        })
+        if not turn.tool_calls:
+            return {"reply": turn.text.strip(), "steps": steps, "plan": plan, "model": backend.name}
+
+        for call in turn.tool_calls:
+            args = dict(call.arguments or {})
+            if call.name in HUMAN_ONLY:
+                text = "Not allowed from here. The person confirms uploads in the app."
+            else:
+                text, structured = call_tool(call.name, args)
+                if call.name == "publish_plan" and structured:
+                    plan = structured
+            steps.append({"tool": call.name, "arguments": args, "result": text[:400]})
+            messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
+                             "content": text[:TOOL_OUTPUT_LIMIT]})
+
+    return {
+        "reply": (
+            "I could not finish that in a reasonable number of steps. "
+            "Try asking for one thing at a time."
+        ),
+        "steps": steps,
+        "plan": plan,
+        "model": backend.name,
+    }

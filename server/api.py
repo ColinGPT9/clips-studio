@@ -2265,7 +2265,27 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         real question rather than a formality, and the answer belongs in the
         window instead of arriving as a confusing reply.
         """
+        from llm.spec import is_local, parse_spec
         from server.agent import usable_model
+
+        backend_spec = config["llm"].get("backend") or ""
+        if not is_local(backend_spec):
+            # A cloud model on the user's own key runs the assistant too: every
+            # provider offered can call tools. What it needs is the key.
+            from llm.providers.catalog import get
+            from llm.providers.keys import has_key
+
+            provider, cloud_model = parse_spec(backend_spec)
+            spec = get(provider)
+            ready = bool(spec and cloud_model and has_key(config["llm"].get("data_dir") or data_dir, provider))
+            return {
+                "ready": ready,
+                "model": backend_spec,
+                "configured": backend_spec,
+                "reason": "" if ready else (
+                    f"Add your {spec.key_label if spec else 'API key'} in Settings → AI to use the assistant."
+                ),
+            }
 
         configured = (config["llm"].get("backend") or "").split("/")[-1]
         model = usable_model(ollama_host, configured)
@@ -2282,19 +2302,23 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     @app.post("/agent/chat")
     def agent_chat(body: AgentIn):
         """One exchange with the assistant."""
-        from server.agent import run, usable_model
+        from llm.spec import is_local
+        from server.agent import run, run_cloud, usable_model
         from server.mcp import TOOLS
 
         if not body.message.strip():
             raise HTTPException(400, "Say what you would like done.")
 
-        configured = (config["llm"].get("backend") or "").split("/")[-1]
-        model = usable_model(ollama_host, configured)
-        if not model:
-            raise HTTPException(
-                400,
-                "No installed model can use tools. Install Gemma 4 on the Models page.",
-            )
+        cloud = not is_local(config["llm"].get("backend") or "")
+        model = ""
+        if not cloud:
+            configured = (config["llm"].get("backend") or "").split("/")[-1]
+            model = usable_model(ollama_host, configured)
+            if not model:
+                raise HTTPException(
+                    400,
+                    "No installed model can use tools. Install Gemma 4 on the Models page.",
+                )
 
         # The plan tool's structured items go to the window, which turns them
         # into a Confirm button; the model only needs to describe the plan.
@@ -2368,10 +2392,21 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             return text, structured
 
         try:
+            if cloud:
+                from llm.registry import create_backend
+
+                return run_cloud(body.message, body.history, TOOLS, call_tool,
+                                 create_backend(config["llm"]))
             return run(
                 body.message, body.history, TOOLS, call_tool, ollama_host, model
             )
         except Exception as e:
+            from llm.providers.base import LLMError
+
+            if isinstance(e, LLMError):
+                # A provider's failure is already in plain words and carries
+                # no key: say it, rather than "see the log".
+                raise HTTPException(400, e.message) from e
             # The detail goes to the backend console rather than the reply.
             # The renderer prints whatever comes back straight into the chat,
             # and an exception's text can carry absolute paths and internals.
