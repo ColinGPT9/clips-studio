@@ -73,10 +73,18 @@ def list_models(spec: ProviderSpec, key: str) -> list[ModelInfo]:
 
 
 def check_key(spec: ProviderSpec, key: str) -> str:
+    return check_key_generic(spec, key, list_models)
+
+
+def check_key_generic(spec: ProviderSpec, key: str, lister) -> str:
+    """Shared by every adapter: the provider's own key check where it has one,
+    otherwise listing the models, which needs a working key everywhere."""
     if spec.key_check_path:
-        send(spec, key, "GET", spec.key_check_path)
+        body = send(spec, key, "GET", spec.key_check_path)
+        if not spec.key_check_ok(body):
+            raise LLMError("invalid_key", f"{spec.label} says this key is blocked or disabled.")
         return f"{spec.label} accepted the key."
-    count = len(list_models(spec, key))
+    count = len(lister(spec, key))
     return f"{spec.label} accepted the key: {count} model(s) available."
 
 

@@ -53,6 +53,10 @@ def _keep(body: dict) -> dict:
     return body
 
 
+def _accept(body: dict) -> bool:
+    return True
+
+
 def _any_model(entry: dict) -> ModelInfo | None:
     model_id = str(entry.get("id") or "")
     return ModelInfo(id=model_id, name=str(entry.get("name") or model_id)) if model_id else None
@@ -81,6 +85,7 @@ class ProviderSpec:
     models_path: str = "/models"
     model_filter: Callable[[dict], ModelInfo | None] = _any_model
     key_check_path: str = ""        # a cheap GET proving the key; "" lists models
+    key_check_ok: Callable[[dict], bool] = _accept  # for a check that answers 200 about a dead key
     stt: dict = field(default_factory=dict)  # online transcription, when offered
 
     def public(self) -> dict:
