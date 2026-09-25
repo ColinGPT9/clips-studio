@@ -44,7 +44,7 @@ def generate(spec: ProviderSpec, key: str, model: str, prompt: str, *,
             continue
         _working_format[(spec.id, model)] = index
         return _text(spec, data, required=True)
-    raise last  # type: ignore[misc]
+    raise last or LLMError("rejected", f"{spec.label} refused every way of asking for this answer.")
 
 
 def chat(spec: ProviderSpec, key: str, model: str, messages: list[dict], tools: list[dict]) -> ChatTurn:

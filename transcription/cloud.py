@@ -79,10 +79,8 @@ def transcribe(video_path: Path, video_id: str, transcript_dir: Path, online: di
     payload = {"video_id": video_id, "language": lang, "source": f"{provider}/{model}",
                "segments": [vars(s) for s in segments]}
     (transcript_dir / f"{video_id}.json").write_text(json.dumps(payload), encoding="utf-8")
-
-    from transcription.transcriber import _collapse_repetition_loops
-
-    _collapse_repetition_loops(segments)
+    # The repetition guard runs in transcriber.transcribe(), on these the same
+    # as on a local transcript; importing it here would make a cycle.
     print(f"      {len(segments)} segments ({lang})")
     return segments
 

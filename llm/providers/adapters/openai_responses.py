@@ -42,7 +42,7 @@ def generate(spec: ProviderSpec, key: str, model: str, prompt: str, *,
         if not text.strip():
             raise _empty(spec, data)
         return text
-    raise last  # type: ignore[misc]
+    raise last or LLMError("rejected", f"{spec.label} refused every way of asking for this answer.")
 
 
 def chat(spec: ProviderSpec, key: str, model: str, messages: list[dict], tools: list[dict]) -> ChatTurn:

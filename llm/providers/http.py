@@ -85,7 +85,7 @@ def send(
                 raise error
         if attempt < ATTEMPTS:
             sleep(min(wait, MAX_WAIT))
-    raise error  # type: ignore[misc]
+    raise error or LLMError("network", f"Couldn't reach {spec.label}. Check your internet connection.")
 
 
 def error_from(spec: ProviderSpec, status: int, body) -> LLMError:

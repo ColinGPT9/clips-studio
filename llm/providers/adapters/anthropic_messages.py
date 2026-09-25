@@ -41,7 +41,7 @@ def generate(spec: ProviderSpec, key: str, model: str, prompt: str, *,
                 raise LLMError("bad_response", f"The {spec.label} model ran out of room before answering.")
             raise LLMError("bad_response", f"{spec.label} sent back an empty answer.")
         return text
-    raise last  # type: ignore[misc]
+    raise last or LLMError("rejected", f"{spec.label} refused every way of asking for this answer.")
 
 
 def chat(spec: ProviderSpec, key: str, model: str, messages: list[dict], tools: list[dict]) -> ChatTurn:
