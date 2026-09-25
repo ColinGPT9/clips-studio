@@ -243,7 +243,8 @@ def test_the_catalogue_is_in_the_order_the_settings_list_it():
 
 def test_openrouter_is_the_recommended_cloud_and_the_rest_are_direct():
     tiers = {spec.id: spec.tier for spec in PROVIDERS.values()}
-    assert tiers.pop("openrouter") == 2
+    openrouter_tier = tiers.pop("openrouter")
+    assert openrouter_tier == 2
     assert set(tiers.values()) == {3}  # every direct provider, all still offered
     assert PROVIDERS["openrouter"].public()["recommended"] is True
     assert not any(PROVIDERS[p].public()["recommended"] for p in tiers)
