@@ -48,7 +48,7 @@ def transcribe(video_path: Path, video_id: str, transcript_dir: Path, online: di
     spec = get(provider)
     if spec is None or not spec.stt:
         raise LLMError("not_configured", f"'{provider}' can't transcribe. Choose another in Settings → AI.")
-    key = keys.load_key(online.get("data_dir") or "data", provider)
+    spec, key = keys.resolve(online.get("data_dir") or "data", spec)
     if not key:
         raise LLMError("not_configured", f"No {spec.label} API key is saved. Add yours in Settings → AI.")
     model = str(online.get("model") or spec.stt["models"][0])

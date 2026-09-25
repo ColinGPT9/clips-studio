@@ -238,7 +238,8 @@ def test_meta_offers_muse_spark_and_warns_about_contributor_models():
 
 
 def test_the_catalogue_is_in_the_order_the_settings_list_it():
-    assert list(PROVIDERS) == ["openrouter", "openai", "anthropic", "gemini", "xai", "meta"]
+    assert list(PROVIDERS) == ["openrouter", "openai", "anthropic", "gemini", "xai", "meta",
+                               "deepseek", "qwen"]
 
 
 def test_openrouter_is_the_recommended_cloud_and_the_rest_are_direct():

@@ -330,6 +330,7 @@ def test_no_provider_key_ships_with_the_app():
     "xai-" + "Qr9" * 20,
     "AIza" + "Sy" * 18,
     "M3ta" + "k9Zq" * 12,
+    "sk-" + "0a1b2c3d" * 4,  # DeepSeek and Qwen (Alibaba Cloud Model Studio) keys
 ])
 def test_every_providers_key_format_is_scrubbed(key):
     from core.scrub import scrub_secrets

@@ -317,6 +317,9 @@ export interface AIProvider {
   stt_models?: string[]
   has_key: boolean
   key_tail: string
+  /** The region the saved key belongs to, for providers whose keys only
+   *  work in one (Qwen); "" otherwise. */
+  key_region?: string
 }
 
 export interface AIStatus {

@@ -15,21 +15,24 @@ class CloudBackend(LLMBackend):
         self.data_dir = data_dir
         self._adapter = adapter_for(spec)
 
-    def _key(self) -> str:
+    def _keyed(self) -> tuple[ProviderSpec, str]:
         # Read at the moment of the request, never kept on the object: this
         # backend can be printed, logged or copied without carrying a secret.
-        key = keys.load_key(self.data_dir, self.spec.id)
+        # The spec comes back at the address of the key's region, if it has one.
+        spec, key = keys.resolve(self.data_dir, self.spec)
         if not key:
             raise LLMError("not_configured", f"No {self.spec.label} API key is saved. "
                                              "Add yours in Settings → AI.")
-        return key
+        return spec, key
 
     def generate(self, prompt: str, *, json_mode: bool = False, schema: dict | None = None) -> str:
-        return self._adapter.generate(self.spec, self._key(), self.model, prompt,
+        spec, key = self._keyed()
+        return self._adapter.generate(spec, key, self.model, prompt,
                                       json_mode=json_mode, schema=schema)
 
     def chat(self, messages: list[dict], tools: list[dict]) -> ChatTurn:
-        return self._adapter.chat(self.spec, self._key(), self.model, messages, tools)
+        spec, key = self._keyed()
+        return self._adapter.chat(spec, key, self.model, messages, tools)
 
     @property
     def name(self) -> str:

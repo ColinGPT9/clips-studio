@@ -19,13 +19,30 @@ def _name(provider: str) -> str:
     return f"{PREFIX}{provider}"
 
 
-def save_key(data_dir, provider: str, key: str) -> None:
-    secrets.save(Path(data_dir), _name(provider), {"api_key": key.strip()})
+def save_key(data_dir, provider: str, key: str, region: str = "") -> None:
+    payload = {"api_key": key.strip()}
+    if region:
+        payload["region"] = region
+    secrets.save(Path(data_dir), _name(provider), payload)
 
 
 def load_key(data_dir, provider: str) -> str:
     payload = secrets.load(Path(data_dir), _name(provider)) or {}
     return str(payload.get("api_key") or "")
+
+
+def load_region(data_dir, provider: str) -> str:
+    """The region the saved key belongs to, for providers whose keys are
+    tied to one ("" otherwise, and for a key saved before regions existed)."""
+    payload = secrets.load(Path(data_dir), _name(provider)) or {}
+    return str(payload.get("region") or "")
+
+
+def resolve(data_dir, spec):
+    """(spec at the address the saved key works at, key). The key is "" when
+    none is saved; callers say so in their own words."""
+    payload = secrets.load(Path(data_dir), _name(spec.id)) or {}
+    return spec.in_region(str(payload.get("region") or "")), str(payload.get("api_key") or "")
 
 
 def has_key(data_dir, provider: str) -> bool:

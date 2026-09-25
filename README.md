@@ -45,7 +45,8 @@ your computer, unless you ask it to publish a clip to your own YouTube channel.
 Local first, cloud when you need it: if your PC is too old to run the AI, bring your
 own API key and a cloud provider runs it instead, billed to your own account.
 **OpenRouter is the recommended cloud path**: one key for many models (Claude, GPT,
-Gemini, Muse Spark and more). OpenAI, Claude, Gemini, xAI and Meta also work directly.
+Gemini, Muse Spark and more). OpenAI, Claude, Gemini, xAI, Meta, DeepSeek and Qwen also
+work directly.
 See [docs/AI-BACKENDS.md](docs/AI-BACKENDS.md).
 
 **Why it exists:** most creators growing a channel are doing all of it themselves:

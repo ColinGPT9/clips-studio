@@ -103,11 +103,31 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
     def _fail(e: LLMError) -> HTTPException:
         return HTTPException(400, scrub_secrets(e.message)[:500])
 
-    def _key(spec) -> str:
-        key = keys.load_key(data_path, spec.id)
+    def _keyed(spec):
+        """(spec at the address of the saved key's region, key)."""
+        spec, key = keys.resolve(data_path, spec)
         if not key:
             raise HTTPException(400, f"Add your {spec.key_label} first.")
-        return key
+        return spec, key
+
+    def _check_key(spec, key: str) -> tuple[str, str]:
+        """(message, region). A provider with regions is tried in each, in
+        order, until one accepts the key: its keys only work where they were
+        made, and the user shouldn't have to know which that was."""
+        adapter = adapter_for(spec)
+        if not spec.regions:
+            return adapter.check_key(spec, key), ""
+        for region_id, label, _url in spec.regions:
+            try:
+                message = adapter.check_key(spec.in_region(region_id), key)
+            except LLMError as e:
+                if e.kind == "invalid_key":
+                    continue
+                raise
+            return f"{message} ({label} region)", region_id
+        names = ", ".join(label for _id, label, _url in spec.regions)
+        raise LLMError("invalid_key", f"{spec.label} didn't accept this key in any region it's "
+                                      f"checked in ({names}). Check it was copied whole.")
 
     def _models(spec, key: str, refresh: bool = False, kind: str = "text") -> tuple[float, list[dict]]:
         """(fetched_at, models). A failed fetch raises: old prices are never
@@ -141,7 +161,8 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             "providers": [LOCAL_ENTRY] + [
                 {**spec.public(),
                  "has_key": keys.has_key(data_path, spec.id),
-                 "key_tail": keys.key_tail(data_path, spec.id)}
+                 "key_tail": keys.key_tail(data_path, spec.id),
+                 "key_region": spec.region_label(keys.load_region(data_path, spec.id))}
                 for spec in PROVIDERS.values()
             ],
         }
@@ -159,10 +180,10 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         # Checked before it is kept: a key that does not work never replaces
         # one that does, and the card never claims a connection that is not there.
         try:
-            message = adapter_for(spec).check_key(spec, key)
+            message, region = _check_key(spec, key)
         except LLMError as e:
             raise _fail(e) from e
-        keys.save_key(data_path, spec.id, key)
+        keys.save_key(data_path, spec.id, key, region)
         _forget_models(spec.id)  # a new key can see different models
         return {**status(), "message": message}
 
@@ -183,7 +204,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         if kind == "stt" and not spec.stt:
             raise HTTPException(400, f"{spec.label} doesn't transcribe here.")
         try:
-            fetched_at, models = _models(spec, _key(spec), refresh, kind)
+            fetched_at, models = _models(*_keyed(spec), refresh, kind)
         except LLMError as e:
             raise _fail(e) from e
         return {"models": models, "fetched_at": fetched_at, "kind": kind}
@@ -191,8 +212,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
     @app.post("/ai/providers/{provider_id}/test")
     def test_provider(provider_id: str, body: TestIn):
         """Key, reachability and model, without spending a single token."""
-        spec = _spec(provider_id)
-        key = _key(spec)
+        spec, key = _keyed(_spec(provider_id))
         model = body.model.strip()
         try:
             if spec.key_check_path or not model:
@@ -270,7 +290,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         model = body.model.strip()
         if not spec.stt or not model:
             raise HTTPException(400, f"{spec.label} doesn't transcribe here.")
-        key = _key(spec)
+        spec, key = _keyed(spec)
         if model in spec.stt["models"]:
             ok, message = True, f"{model} is ready."
         else:

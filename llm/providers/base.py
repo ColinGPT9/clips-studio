@@ -1,7 +1,7 @@
 """What describes a cloud provider, and the one error type they all raise."""
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 class LLMError(Exception):
@@ -111,6 +111,21 @@ class ProviderSpec:
     # card, the API and the docs put a new provider in the right place.
     tier: int = 3
     tagline: str = ""
+    # (id, label, base_url) for a provider whose keys only work in the region
+    # they were made in. The first is the default; the region a key belongs to
+    # is found when it is saved and kept with it (keys.resolve).
+    regions: tuple[tuple[str, str, str], ...] = ()
+
+    def in_region(self, region: str) -> "ProviderSpec":
+        """This provider at the address of one of its regions. Unknown or
+        empty: unchanged, which is the first region."""
+        for region_id, _label, url in self.regions:
+            if region_id == region:
+                return replace(self, base_url=url)
+        return self
+
+    def region_label(self, region: str) -> str:
+        return next((label for region_id, label, _url in self.regions if region_id == region), "")
 
     def public(self) -> dict:
         """What the UI is told about this provider. Never anything secret."""

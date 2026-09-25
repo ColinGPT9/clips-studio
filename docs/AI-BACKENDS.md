@@ -11,7 +11,7 @@ three places, chosen in **Settings → AI**:
    choice.
 2. **OpenRouter** (recommended cloud AI), on your own OpenRouter key.
 3. **A direct provider API** (advanced): OpenAI, Anthropic Claude, Google
-   Gemini, xAI Grok or Meta, on your own key with that provider.
+   Gemini, xAI Grok, Meta, DeepSeek or Qwen, on your own key with that provider.
 
 Every cloud option is **bring your own key**. The key is yours and so is the
 bill: the provider charges your account for what you use. Clips Kitty has no key
@@ -144,8 +144,8 @@ add to them: every one comes from something a user asked for.
 
 ## 3. Direct provider APIs (advanced)
 
-OpenAI, Anthropic Claude, Google Gemini, xAI Grok and Meta (Muse Spark) are all
-available directly, under **Direct provider API**. Choose one if you
+OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Meta (Muse Spark), DeepSeek
+and Qwen are all available directly, under **Direct provider API**. Choose one if you
 specifically want that provider: your account, limits and billing with them, or
 something only their API offers.
 
@@ -156,6 +156,18 @@ something only their API offers.
 | Google Gemini | Yes | Not yet | aistudio.google.com/apikey |
 | xAI Grok | Yes | Yes: grok-voice-transcribe | console.x.ai |
 | Meta (Muse Spark) | Yes: Meta's own Model API | No (no word timings) | dev.meta.ai |
+| DeepSeek | Yes | No | platform.deepseek.com |
+| Qwen (Alibaba Cloud) | Yes, through Model Studio | Not yet | Alibaba Cloud Model Studio console |
+
+- **Qwen keys belong to one region.** An Alibaba Cloud Model Studio key only
+  works in the region it was made in. When you save one, Clips Kitty tries it in
+  Singapore, US (Virginia), China (Beijing) and China (Hong Kong), in that order,
+  keeps the region that accepts it, and shows it beside the key. Keys from the
+  Frankfurt and Tokyo regions need a workspace-specific address and don't work
+  here yet. Qwen is also on OpenRouter (`qwen/…`), on the OpenRouter key.
+- **DeepSeek** is a company based in China; what you send goes to it under
+  DeepSeek's own terms. Its API answers in JSON mode but not with a strict JSON
+  schema, which the app handles. DeepSeek models are also on OpenRouter.
 
 - **Muse Spark** is also on OpenRouter as `meta/muse-spark-1.3`, on the same
   OpenRouter key. Meta's `-contributor` models are cheaper, but Meta may use
@@ -196,7 +208,9 @@ Providers live in `llm/providers/`:
   one, its pricing page, a one-line privacy note, which models to offer, and
   its `tier`: 2 for the recommended cloud path, 3 for a direct provider.
 - `adapters/` has one file per wire format: `chat_completions` (OpenRouter, xAI,
-  Meta), `openai_responses`, `anthropic_messages`, `gemini_generate`.
+  Meta, DeepSeek, Qwen), `openai_responses`, `anthropic_messages`, `gemini_generate`.
+- A provider whose keys only work in one region lists its `regions`; a new key
+  is tried in each and kept with the one that accepts it (Qwen does this).
 
 **A provider that speaks OpenAI-compatible chat completions is one new
 `ProviderSpec` in `catalog.py` and nothing else.** The API, the settings card and

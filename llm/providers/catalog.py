@@ -36,6 +36,31 @@ def _meta_model(entry: dict) -> ModelInfo | None:
     return ModelInfo(id=model_id, name=model_id, json_schema=True, tools=True, note=note)
 
 
+def _deepseek_model(entry: dict) -> ModelInfo | None:
+    model_id = str(entry.get("id") or "")
+    if not model_id or "text" not in (entry.get("output_modalities") or ["text"]):
+        return None
+    # JSON mode is json_object only (no strict schema); the adapter falls back to it.
+    return ModelInfo(id=model_id, name=str(entry.get("name") or model_id),
+                     context=int(entry.get("context_window") or 0), tools=True)
+
+
+# Model Studio lists every model the key can reach, including image, speech,
+# vision and embedding ones; only the text chat models can pick clips.
+_QWEN_NOT_TEXT = ("vl", "audio", "asr", "tts", "omni", "image", "embedding", "rerank",
+                  "ocr", "realtime", "livetranslate", "wan", "mt-")
+
+
+def _qwen_model(entry: dict) -> ModelInfo | None:
+    model_id = str(entry.get("id") or "")
+    lowered = model_id.lower()
+    if not lowered.startswith(("qwen", "qwq")):
+        return None  # Model Studio also resells other makers' models; Qwen is what this entry is for
+    if any(part in lowered for part in _QWEN_NOT_TEXT):
+        return None
+    return ModelInfo(id=model_id, name=model_id, tools=True)
+
+
 XAI = ProviderSpec(
     id="xai",
     label="xAI Grok",
@@ -66,6 +91,43 @@ META = ProviderSpec(
     tagline="Direct Meta Model API (Muse Spark).",
 )
 
+DEEPSEEK = ProviderSpec(
+    id="deepseek",
+    label="DeepSeek",
+    adapter="chat_completions",
+    base_url="https://api.deepseek.com",
+    key_label="DeepSeek API key",
+    key_url="https://platform.deepseek.com/api_keys",
+    pricing_url="https://api-docs.deepseek.com/quick_start/pricing",
+    privacy="Transcripts and prompts are sent to DeepSeek, a company based in China, with your key.",
+    model_filter=_deepseek_model,
+    tagline="Direct DeepSeek API.",
+)
+
+# Alibaba Cloud Model Studio. A key only works in the region it was made in,
+# so a new key is tried in each of these until one accepts it. Keys from the
+# Frankfurt and Tokyo regions need a workspace-specific address and aren't
+# supported yet.
+QWEN = ProviderSpec(
+    id="qwen",
+    label="Qwen (Alibaba Cloud)",
+    adapter="chat_completions",
+    base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    key_label="Alibaba Cloud Model Studio API key",
+    key_url="https://www.alibabacloud.com/help/en/model-studio/get-api-key",
+    pricing_url="https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+    privacy="Transcripts and prompts are sent to Alibaba Cloud Model Studio, in the region your key "
+            "belongs to, with your key.",
+    model_filter=_qwen_model,
+    regions=(
+        ("intl", "Singapore", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+        ("us", "US (Virginia)", "https://dashscope-us.aliyuncs.com/compatible-mode/v1"),
+        ("cn", "China (Beijing)", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        ("hk", "China (Hong Kong)", "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1"),
+    ),
+    tagline="Direct Qwen API, through Alibaba Cloud Model Studio.",
+)
+
 # OpenRouter first: the recommended cloud path (tier 2). The direct provider
 # APIs follow (tier 3), always available, offered as the advanced option.
 _ORDER: tuple[ProviderSpec, ...] = (
@@ -75,6 +137,8 @@ _ORDER: tuple[ProviderSpec, ...] = (
     gemini.SPEC,
     XAI,
     META,
+    DEEPSEEK,
+    QWEN,
 )
 
 PROVIDERS: dict[str, ProviderSpec] = {spec.id: spec for spec in _ORDER}

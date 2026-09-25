@@ -83,7 +83,7 @@ def test_local_then_openrouter_then_direct_providers(env):
     assert (providers[0]["id"], providers[0]["tier"]) == ("ollama", 1)
     assert (providers[1]["id"], providers[1]["tier"], providers[1]["recommended"]) == ("openrouter", 2, True)
     direct = [p["id"] for p in providers if p["tier"] == 3]
-    assert direct == ["openai", "anthropic", "gemini", "xai", "meta"]  # all still offered
+    assert direct == ["openai", "anthropic", "gemini", "xai", "meta", "deepseek", "qwen"]  # all still offered
 
 
 def test_no_route_can_change_the_openrouter_attribution(env):

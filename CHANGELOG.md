@@ -69,8 +69,9 @@ were often broken in a way that only showed up on somebody else's machine.
   now hand the work to a cloud provider on your own account instead. Ollama stays
   first; **OpenRouter** is the recommended cloud option, one key for many models
   you can switch between, shown with each model's price; OpenAI, Google Gemini,
-  Anthropic Claude, xAI Grok and Meta's Muse Spark are there too, as direct
-  providers. The provider bills you directly; Clips Kitty has no key, credits or
+  Anthropic Claude, xAI Grok, Meta's Muse Spark, DeepSeek and Qwen are there
+  too, as direct providers under Advanced (a Qwen key's Alibaba Cloud region is
+  found for you). The provider bills you directly; Clips Kitty has no key, credits or
   server of its own. Where local AI struggles (setup on a PC with no graphics
   card or a small one, a model too big for the card, a job that failed in the
   local AI, Watched channels on a small PC) the app points to OpenRouter. With a cloud model chosen, everything the local model did uses it: clip

@@ -782,6 +782,7 @@ function KeyField({ provider, busy, run }: { provider: AIProvider; busy: boolean
       <div className="flex items-center gap-2 flex-wrap text-sm">
         <span className="text-success">
           ● {t('Key saved')} <span className="text-muted">····{provider.key_tail}</span>
+          {provider.key_region && <span className="text-muted"> · {provider.key_region}</span>}
         </span>
         <button className="btn-ghost !py-0.5 !px-2 text-xs" onClick={() => setReplacing(true)}>
           {t('Replace')}
