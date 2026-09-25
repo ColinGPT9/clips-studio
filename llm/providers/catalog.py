@@ -50,6 +50,7 @@ XAI = ProviderSpec(
     key_check_path="/api-key",
     key_check_ok=_xai_key_ok,
     stt={"format": "xai", "models": ["grok-voice-transcribe-2.0"], "chunk_seconds": 1200},
+    tagline="Direct xAI API.",
 )
 
 META = ProviderSpec(
@@ -62,13 +63,16 @@ META = ProviderSpec(
     pricing_url="https://dev.meta.ai/docs/pricing-rate-limits",
     privacy="Transcripts and prompts are sent to Meta with your key.",
     model_filter=_meta_model,
+    tagline="Direct Meta Model API (Muse Spark).",
 )
 
+# OpenRouter first: the recommended cloud path (tier 2). The direct provider
+# APIs follow (tier 3), always available, offered as the advanced option.
 _ORDER: tuple[ProviderSpec, ...] = (
     openrouter.SPEC,
     openai.SPEC,
-    gemini.SPEC,
     anthropic.SPEC,
+    gemini.SPEC,
     XAI,
     META,
 )

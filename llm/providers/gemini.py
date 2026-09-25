@@ -33,4 +33,5 @@ SPEC = ProviderSpec(
             "Google may use them to improve its products.",
     auth="x-goog-api-key",
     model_filter=model_info,
+    tagline="Direct Google Gemini API.",
 )

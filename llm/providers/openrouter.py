@@ -58,7 +58,21 @@ def model_info(entry: dict) -> ModelInfo | None:
         json_schema="structured_outputs" in params,
         tools="tools" in params,
         note=note,
+        vendor=model_id.split("/", 1)[0] if "/" in model_id else "",
+        price=_price(entry.get("pricing") or {}),
     )
+
+
+def _price(pricing: dict) -> tuple[float, float] | None:
+    """OpenRouter lists USD per token as strings; shown per million tokens.
+    A negative price means "varies" (a router model), which is not a price."""
+    try:
+        per_token = float(pricing["prompt"]), float(pricing["completion"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if min(per_token) < 0:
+        return None
+    return round(per_token[0] * 1_000_000, 4), round(per_token[1] * 1_000_000, 4)
 
 
 SPEC = ProviderSpec(
@@ -75,6 +89,9 @@ SPEC = ProviderSpec(
     body_extras=_route_to_capable_providers,
     model_filter=model_info,
     key_check_path="/key",
+    # The recommended cloud path: one key reaches many models and providers.
+    tier=2,
+    tagline="One API key for many AI models and providers.",
     # Whisper through OpenRouter, with word timings. Short parts: OpenRouter's
     # upstream providers stop after about a minute of processing a request.
     stt={"format": "openrouter", "chunk_seconds": 180,

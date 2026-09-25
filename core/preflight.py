@@ -23,6 +23,9 @@ from core.binaries import bundled_whisper_sizes, ffmpeg, ffprobe, has_bundled_ol
 # Below this a single long video can fill the disk part-way through rendering.
 MIN_FREE_GB = 20
 
+# Where local AI cannot run, the recommended cloud path, on the user's own key.
+_CLOUD_HINT = "Or, if this PC can't run AI, use your own OpenRouter key in Settings → AI."
+
 
 @dataclass
 class Check:
@@ -103,11 +106,11 @@ def check_ollama(host: str, model: str) -> list[Check]:
             detail=f"not reachable at {host} ({type(e).__name__})",
             fix="The AI runtime that ships with Clips Kitty did not start. "
                 "Restarting the app usually fixes it. If it keeps happening, "
-                "please report it — this one is not your fault."
+                f"please report it — this one is not your fault. {_CLOUD_HINT}"
                 if has_bundled_ollama() else
                 "Install Ollama from https://ollama.com and let it run in the "
                 "background. Clips Kitty uses it for the AI that picks and "
-                "titles clips.",
+                f"titles clips. {_CLOUD_HINT}",
         )]
 
     checks = [Check(name="ollama", ok=True,
@@ -135,8 +138,8 @@ def check_ollama(host: str, model: str) -> list[Check]:
         # its own port and its own model folder, so a command typed into a
         # terminal would download into a store this app never reads.
         fix="" if usable else
-            "Download a model from the Models page." if has_bundled_ollama() else
-            "Download one from the Models page, or run: ollama pull gemma3:4b",
+            f"Download a model from the Models page. {_CLOUD_HINT}" if has_bundled_ollama() else
+            f"Download one from the Models page, or run: ollama pull gemma3:4b. {_CLOUD_HINT}",
     ))
     return checks
 

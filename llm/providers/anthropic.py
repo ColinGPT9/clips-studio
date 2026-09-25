@@ -35,4 +35,5 @@ SPEC = ProviderSpec(
     auth="x-api-key",
     extra_headers=_headers,
     model_filter=model_info,
+    tagline="Direct Anthropic API.",
 )

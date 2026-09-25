@@ -238,4 +238,13 @@ def test_meta_offers_muse_spark_and_warns_about_contributor_models():
 
 
 def test_the_catalogue_is_in_the_order_the_settings_list_it():
-    assert list(PROVIDERS) == ["openrouter", "openai", "gemini", "anthropic", "xai", "meta"]
+    assert list(PROVIDERS) == ["openrouter", "openai", "anthropic", "gemini", "xai", "meta"]
+
+
+def test_openrouter_is_the_recommended_cloud_and_the_rest_are_direct():
+    tiers = {spec.id: spec.tier for spec in PROVIDERS.values()}
+    assert tiers.pop("openrouter") == 2
+    assert set(tiers.values()) == {3}  # every direct provider, all still offered
+    assert PROVIDERS["openrouter"].public()["recommended"] is True
+    assert not any(PROVIDERS[p].public()["recommended"] for p in tiers)
+    assert all(spec.tagline for spec in PROVIDERS.values())

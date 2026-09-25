@@ -37,11 +37,15 @@ class ModelInfo:
     json_schema: bool = False  # can hold its answer to a JSON schema
     tools: bool = False        # can call tools (the assistant needs this)
     note: str = ""             # a warning worth showing beside it
+    vendor: str = ""           # who makes it, for grouping a long list ("anthropic", "openai")
+    price: tuple[float, float] | None = None  # USD per 1M input / output tokens, when listed
 
     def as_dict(self) -> dict:
         return {
             "id": self.id, "name": self.name or self.id, "context": self.context,
             "json_schema": self.json_schema, "tools": self.tools, "note": self.note,
+            "vendor": self.vendor,
+            "price": {"input": self.price[0], "output": self.price[1]} if self.price else None,
         }
 
 
@@ -87,6 +91,13 @@ class ProviderSpec:
     key_check_path: str = ""        # a cheap GET proving the key; "" lists models
     key_check_ok: Callable[[dict], bool] = _accept  # for a check that answers 200 about a dead key
     stt: dict = field(default_factory=dict)  # online transcription, when offered
+    # Where it sits in the choice. Local (Ollama and Whisper) is tier 1 and not
+    # a ProviderSpec. Tier 2 is the recommended cloud path, OpenRouter: one key
+    # for many models. Tier 3 is a direct connection to one provider, always
+    # available, presented as the advanced option. Set this and the settings
+    # card, the API and the docs put a new provider in the right place.
+    tier: int = 3
+    tagline: str = ""
 
     def public(self) -> dict:
         """What the UI is told about this provider. Never anything secret."""
@@ -94,6 +105,9 @@ class ProviderSpec:
             "id": self.id,
             "label": self.label,
             "local": False,
+            "tier": self.tier,
+            "recommended": self.tier == 2,
+            "tagline": self.tagline,
             "key_label": self.key_label,
             "key_url": self.key_url,
             "pricing_url": self.pricing_url,

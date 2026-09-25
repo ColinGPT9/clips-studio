@@ -27,6 +27,7 @@ SPEC = ProviderSpec(
     privacy="Transcripts and prompts (and audio, if it transcribes) are sent to OpenAI with your key. "
             "Nothing is stored there by this app's requests.",
     model_filter=model_info,
+    tagline="Direct OpenAI API.",
     # whisper-1 is the OpenAI model that returns word timings; the newer
     # gpt-*-transcribe models do not, and captions need them.
     stt={"format": "openai", "models": ["whisper-1"], "chunk_seconds": 600},

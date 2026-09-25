@@ -2295,7 +2295,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             "configured": configured,
             "reason": "" if model else (
                 "No installed model can use tools. Install Gemma 4 on the Models page: "
-                "gemma4:e4b for a 6 GB graphics card, gemma4:e2b for less."
+                "gemma4:e4b for a 6 GB graphics card, gemma4:e2b for less. "
+                "Or use OpenRouter with your own key in Settings → AI."
             ),
         }
 

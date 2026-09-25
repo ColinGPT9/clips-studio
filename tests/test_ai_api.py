@@ -77,6 +77,28 @@ def test_local_is_listed_first_and_is_the_default(env):
     assert body["providers"][1]["id"] == "openrouter"
 
 
+def test_local_then_openrouter_then_direct_providers(env):
+    providers = env.client.get("/ai").json()["providers"]
+    assert [p["tier"] for p in providers] == sorted(p["tier"] for p in providers)
+    assert (providers[0]["id"], providers[0]["tier"]) == ("ollama", 1)
+    assert (providers[1]["id"], providers[1]["tier"], providers[1]["recommended"]) == ("openrouter", 2, True)
+    direct = [p["id"] for p in providers if p["tier"] == 3]
+    assert direct == ["openai", "anthropic", "gemini", "xai", "meta"]  # all still offered
+
+
+def test_no_route_can_change_the_openrouter_attribution(env):
+    from llm.providers import openrouter
+
+    before = openrouter.attribution_headers()
+    for route in [r for r in env.client.app.routes if getattr(r, "path", "").startswith("/ai")]:
+        assert "attribution" not in route.path and "header" not in route.path
+    assert openrouter.attribution_headers() == before == {
+        "HTTP-Referer": "https://colingpt9.github.io/clips-studio/",
+        "X-OpenRouter-Title": "Clips Kitty",
+        "X-OpenRouter-Categories": "video-gen",
+    }
+
+
 def test_a_key_is_checked_before_it_is_kept_and_never_returned(env):
     env.key_ok = False
     bad = env.client.put("/ai/providers/openrouter/key", json={"api_key": KEY})

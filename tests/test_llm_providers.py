@@ -139,6 +139,18 @@ def test_every_openrouter_request_carries_the_attribution(fake, backend):
         assert call["headers"]["Authorization"] == f"Bearer {KEY}"
 
 
+def test_openrouter_models_carry_their_maker_and_price_per_million():
+    entry = {"id": "anthropic/claude-sonnet-5", "name": "Anthropic: Claude Sonnet 5", "context_length": 200000,
+             "architecture": {"output_modalities": ["text"]},
+             "supported_parameters": ["structured_outputs", "tools"],
+             "pricing": {"prompt": "0.000003", "completion": "0.000015"}}
+    info = openrouter.model_info(entry)
+    assert (info.vendor, info.price, info.context) == ("anthropic", (3.0, 15.0), 200000)
+    assert info.as_dict()["price"] == {"input": 3.0, "output": 15.0}
+    routed = openrouter.model_info({**entry, "id": "openrouter/auto", "pricing": {"prompt": "-1", "completion": "-1"}})
+    assert routed.price is None  # "varies" is not a price
+
+
 def test_the_attribution_is_the_apps_identity_and_the_right_category():
     assert openrouter.attribution_headers() == ATTRIBUTION
     assert PROVIDERS["openrouter"].extra_headers() == ATTRIBUTION
