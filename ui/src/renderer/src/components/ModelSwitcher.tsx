@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { openAISetup } from '../lib/aiSetup'
 import { speedNote } from '../lib/modelSpeed'
 import type { InstalledModel } from '../lib/types'
 
@@ -110,6 +111,16 @@ export default function ModelSwitcher(): JSX.Element {
           {note.tone !== 'ok' && <span aria-hidden="true">⚠ </span>}
           {note.text}
         </p>
+      )}
+      {/* Only when the chosen model will not fit the card: the one case where
+          a cloud model on the user's own key is the plain answer. */}
+      {note?.tone === 'warn' && (
+        <button
+          className="mt-0.5 px-2 text-[11px] text-accent hover:underline text-left"
+          onClick={() => openAISetup('openrouter')}
+        >
+          Or run it in the cloud with OpenRouter →
+        </button>
       )}
     </div>
   )

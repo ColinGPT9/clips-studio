@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
-import { takeAISetupHint } from '../lib/aiSetup'
+import { clearAISetupHint, peekAISetupHint } from '../lib/aiSetup'
 import { t } from '../lib/i18n'
 import type { AIModel, AIProvider, AIStatus } from '../lib/types'
+import { forgetAIStatus } from '../lib/useAIStatus'
 
 /** Settings → AI: where the AI work and the transcription run.
  *
@@ -33,8 +34,9 @@ export default function AICard({ onOpenModels }: { onOpenModels?: () => void }):
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
-  const [hint] = useState(takeAISetupHint)
+  const [hint] = useState(peekAISetupHint)
   const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(clearAISetupHint, [])
 
   useEffect(() => {
     api
@@ -59,6 +61,7 @@ export default function AICard({ onOpenModels }: { onOpenModels?: () => void }):
       const next = await fn()
       if (next) setStatus(next)
       if (done) setNotice(done)
+      forgetAIStatus() // the OpenRouter suggestions elsewhere follow the new choice
       return true
     } catch (e) {
       setError(errorText(e))

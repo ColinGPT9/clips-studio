@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { speedNote } from '../lib/modelSpeed'
 import { useEvents } from '../lib/useEvents'
 import type { ModelsInfo } from '../lib/types'
+import OpenRouterPrompt from '../components/OpenRouterPrompt'
 
 export default function Models(): JSX.Element {
   const [info, setInfo] = useState<ModelsInfo | null>(null)
@@ -111,7 +112,15 @@ export default function Models(): JSX.Element {
   return (
     <div className="p-6 space-y-5 max-w-3xl">
       <h2 className="text-2xl font-bold">Models</h2>
-      {cloudNote}
+      {cloudNote || (
+        // Highlighted when the card is under the "Under 6 GB VRAM" tier or
+        // there is no reading of one: the model guide's own threshold.
+        <OpenRouterPrompt
+          prominent={vram !== null && vram < 5.5 * 1024 ** 3}
+          title="Don't want to run models locally?"
+          body="Try OpenRouter with your own key: one key for many cloud models, billed by OpenRouter to your account."
+        />
+      )}
 
       <section className="card space-y-3">
         <h3 className="font-semibold">Installed</h3>

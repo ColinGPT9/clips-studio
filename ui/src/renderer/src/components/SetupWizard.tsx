@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
 import type { Preflight, PreflightCheck, SystemStats } from '../lib/types'
+import OpenRouterPrompt from './OpenRouterPrompt'
 
 const DONE_KEY = 'setup-wizard-done'
 
@@ -205,20 +206,28 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
                 card now — it downloads once and then works offline.
               </p>
               {/* For the old laptop or low-spec mini PC that cannot run the
-                  model: skip the download and bring an API key instead. */}
-              <p className="text-xs text-muted mt-2">
-                PC too old to run AI?{' '}
-                <button
-                  className="text-accent hover:underline"
-                  onClick={() => {
-                    finish()
-                    window.dispatchEvent(new Event('open-settings'))
-                  }}
-                >
-                  Use your own API key instead
-                </button>{' '}
-                (billed by the provider you choose).
-              </p>
+                  model: OpenRouter on their own key instead. Prominent when
+                  the card is under the "Under 6 GB VRAM, or an older PC" tier
+                  the model guide uses (llm/manager.recommend_for), or there is
+                  no card at all. The local download carries on either way, so
+                  a machine that can run it still ends up ready. */}
+              {(() => {
+                const vram = stats?.gpu?.vram_total ?? 0
+                const lowSpec = !!stats && (!stats.gpu || vram < 5.5 * 1024 ** 3)
+                return (
+                  <OpenRouterPrompt
+                    className="mt-3"
+                    prominent={lowSpec}
+                    title={lowSpec ? 'Local AI may be slow on this computer.' : 'PC too old to run AI?'}
+                    body={
+                      lowSpec
+                        ? 'Recommended: OpenRouter. Bring your own OpenRouter key to use a cloud model instead (billed by OpenRouter to your account).'
+                        : 'Use OpenRouter with your own key instead, billed by OpenRouter to your account.'
+                    }
+                    onSetup={finish}
+                  />
+                )
+              })()}
               {error && (
                 <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-lg px-4 py-2.5">
                   {error}

@@ -16,13 +16,21 @@ export function openAISetup(provider = 'openrouter'): void {
   window.dispatchEvent(new Event('open-settings'))
 }
 
-/** The provider to preselect, read once. */
-export function takeAISetupHint(): string {
+/** The provider to preselect. Read without clearing, because React may run a
+ *  state initializer twice (StrictMode does in development), and clearing on
+ *  the first read left the second with nothing. Clear it after mounting. */
+export function peekAISetupHint(): string {
   try {
-    const value = sessionStorage.getItem(HINT) || ''
-    sessionStorage.removeItem(HINT)
-    return value
+    return sessionStorage.getItem(HINT) || ''
   } catch {
     return ''
+  }
+}
+
+export function clearAISetupHint(): void {
+  try {
+    sessionStorage.removeItem(HINT)
+  } catch {
+    // nothing to clear
   }
 }

@@ -10,6 +10,8 @@ import { seedOptions } from '../components/queue/AddVideos'
 import type { JobOptions } from '../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../lib/uploadpost'
 import { t } from '../lib/i18n'
+import { useAIStatus } from '../lib/useAIStatus'
+import OpenRouterPrompt from '../components/OpenRouterPrompt'
 
 type AddMode = 'auto' | 'ask' | 'off'
 
@@ -39,6 +41,7 @@ export default function Watch({
   onOpenCreator?: (creatorId: number) => void
 }): JSX.Element {
   const [status, setStatus] = useState<AutomationStatus | null>(null)
+  const aiStatus = useAIStatus()
   const [watches, setWatches] = useState<WatchRow[] | null>(null)
   const [version, setVersion] = useState(0)
   const [platform, setPlatform] = useState<WatchPlatform>('youtube')
@@ -167,6 +170,29 @@ export default function Watch({
           {t('When a channel posts, Clips Kitty clips the new video and publishes the clips the way you set it up.')}
         </p>
       </div>
+
+      {/* The use case cloud AI exists for: a small always-on machine. Only
+          the AI moves; watching, downloading, clipping and publishing stay
+          on this PC. */}
+      {aiStatus &&
+        (aiStatus.active.local ? (
+          <OpenRouterPrompt
+            prominent
+            title={t('Running Clips Kitty on a small, always-on PC?')}
+            body={t(
+              'Use OpenRouter with your own key: the AI runs in the cloud, while this PC watches, downloads, clips and publishes. Billed by OpenRouter to your account.'
+            )}
+          />
+        ) : (
+          <p className="text-xs text-muted">
+            {t('AI')}:{' '}
+            <span className="text-ink">
+              {aiStatus.providers.find((p) => p.id === aiStatus.active.provider)?.label ?? aiStatus.active.provider}{' '}
+              · {aiStatus.active.model}
+            </span>{' '}
+            ({t('your own key')})
+          </p>
+        ))}
 
       <WatchLive />
 

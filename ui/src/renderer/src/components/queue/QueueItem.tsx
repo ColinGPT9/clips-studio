@@ -6,6 +6,13 @@ import { etaSeconds, formatEta } from '../../lib/jobProgress'
 import { describeOptions, jobLabel, ranFor, sourceOf } from '../../lib/queue'
 import QueueItemSettings from './QueueItemSettings'
 import { t } from '../../lib/i18n'
+import { useLocalAI } from '../../lib/useAIStatus'
+import OpenRouterPrompt from '../OpenRouterPrompt'
+
+/** A job that failed in a request to the local Ollama runtime: the address it
+ *  listens on or its API paths are in the message. Only then is a cloud
+ *  alternative worth suggesting; a download or render failure is not this. */
+const LOCAL_AI_FAILURE = /\/api\/(generate|chat)|:1143[45]\b|ollama/i
 
 const ICON: Record<string, string> = {
   running: '▶',
@@ -47,6 +54,7 @@ export default function QueueItem({
   onOpenInStudio?: (videoId: string) => void
 }): JSX.Element {
   const [busy, setBusy] = useState(false)
+  const localAI = useLocalAI()
   const [open, setOpen] = useState(false)
   const [log, setLog] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -126,6 +134,13 @@ export default function QueueItem({
 
           {job.error && (
             <p className="text-sm text-error mt-1 break-words">{job.error}</p>
+          )}
+          {job.error && localAI && LOCAL_AI_FAILURE.test(job.error) && (
+            <OpenRouterPrompt
+              className="mt-1.5"
+              title={t('Having trouble running AI locally?')}
+              body={t('OpenRouter is the recommended cloud alternative, on your own key.')}
+            />
           )}
 
           {chips.length > 0 && (
