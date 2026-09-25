@@ -51,9 +51,13 @@ to a provider directly; it makes it simpler.
 2. Create an API key there. Add credit, or start with OpenRouter's free models.
 3. Paste the key into Clips Kitty and press **Save**. Clips Kitty checks it with
    OpenRouter before keeping it.
-4. Pick a model. The list only shows models that can do this job (they can
-   answer in JSON), grouped by who makes them, each with its context size and
-   price per million tokens as OpenRouter lists them.
+4. Pick a **text model**. The list comes live from OpenRouter, for your account
+   (the same list the website uses), and only shows models that can do this job
+   (they can answer in JSON). It can be searched, grouped by who makes each model
+   or sorted by lowest price, and each line shows the context size and the input
+   and output price per million tokens. Under it, the model in use shows every
+   price OpenRouter lists for it (cached input, reasoning, per request and so on),
+   what it can do, and a link to its OpenRouter page.
 5. Optional: **Test connection** checks the key and the model without spending
    anything.
 
@@ -61,8 +65,31 @@ From then on every clip job uses that model. To try another one, pick it from
 the same list; nothing else changes. Choosing **⭐ Ollama** again returns to
 local AI.
 
-For transcription, choose OpenRouter under **Transcription** and pick one of its
-Whisper models. The key is shared, so you only paste it once.
+For transcription, choose OpenRouter under **Transcription** and pick a **voice
+model** from OpenRouter's live speech catalogue. The key is shared, so you only
+paste it once. Captions need the time of every word, and OpenRouter's catalogue
+does not say which models give it, so:
+
+- The Whisper models known to return word timings are listed first and chosen
+  straight away.
+- Any other voice model is checked when you pick it: Clips Kitty sends it a
+  three-second test clip once (a tiny fraction of a cent on your key) and only
+  switches to it if word timings come back. If they don't, it says so and
+  nothing changes.
+
+Prices come from OpenRouter each time the lists are loaded, and are kept for a
+few hours at most; the card says when they were fetched, and **Refresh models**
+fetches models and prices again. If they cannot be fetched, no prices are shown
+rather than old ones. A model you chose that OpenRouter no longer offers is
+flagged, never swapped for another; replacing your key fetches the lists again.
+
+**Voice model prices.** OpenRouter lists a speech price with no unit. A token-
+billed model is shown per million tokens, exactly. For the others, the card shows
+OpenRouter's number as listed, and adds "≈ per hour of audio (estimate)" only
+where the figure is clearly per second (whisper-1: 0.0001, which is OpenAI's own
+$0.006 a minute, so about $0.36 an hour). Larger figures, such as Microsoft's MAI
+Transcribe, are not guessed at; follow the link to OpenRouter for the exact rate.
+The website shows them the same way.
 
 ### What it costs
 

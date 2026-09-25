@@ -77,6 +77,10 @@ were often broken in a way that only showed up on somebody else's machine.
   picking, titles, creator learning, clip edits, translation and the assistant.
   - Transcription is its own choice: Whisper on your PC, or online with your key
     through OpenAI, OpenRouter or xAI, with the word timings captions need.
+  - With OpenRouter, pick the text model and the voice model from its live
+    catalogue, each showing OpenRouter's current prices (and when they were
+    fetched), with a refresh. A voice model not yet known to give word timings
+    is checked with a three-second test clip before it is used.
   - Your key is checked before it is saved, stored encrypted, and never shown
     again apart from its last four characters. **Test connection** checks the
     key and model without spending anything.
