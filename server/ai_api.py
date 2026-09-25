@@ -23,6 +23,7 @@ from llm.providers import keys
 from llm.providers.adapters import adapter_for
 from llm.providers.base import LLMError
 from llm.providers.catalog import PROVIDERS, get
+from llm.providers.speech import list_stt_models
 from llm.spec import LOCAL, is_local, parse_spec
 
 # The local entry the UI lists first. Not a ProviderSpec: nothing about it is
@@ -46,7 +47,9 @@ LOCAL_ENTRY = {
 # The local model in use before switching to a cloud one, so switching back
 # returns to it rather than to whatever happens to be installed.
 LAST_LOCAL_FLAG = "ai_last_local_model"
-MODELS_CACHE_SECONDS = 24 * 60 * 60
+# Models, capabilities and prices are fetched together and kept this long;
+# Refresh models fetches them again at once. Prices change, so not for days.
+MODELS_CACHE_SECONDS = 6 * 60 * 60
 
 
 class KeyIn(BaseModel):
@@ -60,6 +63,10 @@ class TestIn(BaseModel):
 class ActivateIn(BaseModel):
     provider: str
     model: str = ""
+
+
+class SttCheckIn(BaseModel):
+    model: str
 
 
 class TranscriptionIn(BaseModel):
@@ -84,7 +91,8 @@ def write_transcription(settings_path: Path, backend: str, model: str) -> None:
 
 def install(app, *, config, db, data_dir, settings_path) -> None:
     data_path = Path(data_dir)
-    models_cache: dict[str, tuple[float, list[dict]]] = {}
+    # (provider, "text" | "stt") -> (fetched_at, models)
+    models_cache: dict[tuple[str, str], tuple[float, list[dict]]] = {}
 
     def _spec(provider_id: str):
         spec = get(provider_id)
@@ -101,13 +109,27 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             raise HTTPException(400, f"Add your {spec.key_label} first.")
         return key
 
-    def _models(spec, key: str, refresh: bool = False) -> list[dict]:
-        cached = models_cache.get(spec.id)
+    def _models(spec, key: str, refresh: bool = False, kind: str = "text") -> tuple[float, list[dict]]:
+        """(fetched_at, models). A failed fetch raises: old prices are never
+        passed off as current."""
+        cached = models_cache.get((spec.id, kind))
         if cached and not refresh and time.time() - cached[0] < MODELS_CACHE_SECONDS:
-            return cached[1]
-        models = [m.as_dict() for m in adapter_for(spec).list_models(spec, key)]
-        models_cache[spec.id] = (time.time(), models)
-        return models
+            return cached
+        if kind == "stt":
+            listed = list_stt_models(spec, key)
+        else:
+            listed = adapter_for(spec).list_models(spec, key)
+        fresh = (time.time(), [m.as_dict() for m in listed])
+        models_cache[(spec.id, kind)] = fresh
+        return fresh
+
+    def _forget_models(provider_id: str) -> None:
+        for kind in ("text", "stt"):
+            models_cache.pop((provider_id, kind), None)
+
+    def _save_transcription(backend: str, model: str) -> None:
+        write_transcription(settings_path, backend, model)
+        config["transcription"] = {"backend": backend, "model": model}
 
     def status() -> dict:
         provider, model = parse_spec(config["llm"].get("backend") or "")
@@ -141,23 +163,30 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         except LLMError as e:
             raise _fail(e) from e
         keys.save_key(data_path, spec.id, key)
-        models_cache.pop(spec.id, None)
+        _forget_models(spec.id)  # a new key can see different models
         return {**status(), "message": message}
 
     @app.delete("/ai/providers/{provider_id}/key")
     def delete_key(provider_id: str):
         spec = _spec(provider_id)
         removed = keys.wipe_key(data_path, spec.id)
-        models_cache.pop(spec.id, None)
+        _forget_models(spec.id)
         return {**status(), "removed": removed}
 
     @app.get("/ai/providers/{provider_id}/models")
-    def provider_models(provider_id: str, refresh: bool = False):
+    def provider_models(provider_id: str, refresh: bool = False, kind: str = "text"):
+        """The models, capabilities and current prices, from the provider,
+        with the user's key. kind=stt lists voice (transcription) models."""
         spec = _spec(provider_id)
+        if kind not in ("text", "stt"):
+            raise HTTPException(400, "kind is text or stt")
+        if kind == "stt" and not spec.stt:
+            raise HTTPException(400, f"{spec.label} doesn't transcribe here.")
         try:
-            return {"models": _models(spec, _key(spec), refresh)}
+            fetched_at, models = _models(spec, _key(spec), refresh, kind)
         except LLMError as e:
             raise _fail(e) from e
+        return {"models": models, "fetched_at": fetched_at, "kind": kind}
 
     @app.post("/ai/providers/{provider_id}/test")
     def test_provider(provider_id: str, body: TestIn):
@@ -169,7 +198,7 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             if spec.key_check_path or not model:
                 adapter_for(spec).check_key(spec, key)
             if model:
-                listed = [m["id"] for m in _models(spec, key, refresh=True)]
+                listed = [m["id"] for m in _models(spec, key, refresh=True)[1]]
                 if listed and model not in listed:
                     return {"ok": False, "kind": "model_unavailable",
                             "message": f"{spec.label} doesn't list {model} for your key."}
@@ -217,9 +246,35 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
                 raise HTTPException(400, f"{spec.label} can't transcribe with the word timings captions need.")
             if not keys.has_key(data_path, spec.id):
                 raise HTTPException(400, f"Add your {spec.key_label} first.")
-            model = model if model in spec.stt["models"] else spec.stt["models"][0]
+            if model and model not in spec.stt["models"]:
+                # Any other model has to show it returns word timings first.
+                raise HTTPException(400, f"Check {model} first: it has to return the word timings captions need.")
+            model = model or spec.stt["models"][0]
         else:
             model = ""
-        write_transcription(settings_path, backend, model)
-        config["transcription"] = {"backend": backend, "model": model}
+        _save_transcription(backend, model)
         return status()
+
+    @app.post("/ai/providers/{provider_id}/stt-check")
+    def check_voice_model(provider_id: str, body: SttCheckIn):
+        """Choose a voice model, checking it first if it is not a known one.
+
+        A model known to return word timings is saved straight away. Any
+        other is sent a three-second test clip once, through the same code a
+        job uses, and saved only if word timings come back. Only ever run
+        because the user picked the model; nothing changes if it fails.
+        """
+        from transcription.cloud import check_model
+
+        spec = _spec(provider_id)
+        model = body.model.strip()
+        if not spec.stt or not model:
+            raise HTTPException(400, f"{spec.label} doesn't transcribe here.")
+        key = _key(spec)
+        if model in spec.stt["models"]:
+            ok, message = True, f"{model} is ready."
+        else:
+            ok, message = check_model(spec, key, model)
+        if ok:
+            _save_transcription(spec.id, model)
+        return {**status(), "ok": ok, "message": scrub_secrets(message)}

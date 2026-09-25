@@ -31,6 +31,10 @@ from llm.providers.base import LLMError
 from llm.providers.catalog import get
 from llm.providers.http import send
 
+# A three-second spoken phrase, for checking a voice model the app has not
+# seen return word timings before (check_model).
+PROBE = Path(__file__).resolve().parent / "assets" / "probe.mp3"
+
 OVERLAP = 2.0          # seconds of audio shared by neighbouring chunks
 PAUSE = 0.6            # a gap this long between words starts a new segment
 MAX_SEGMENT = 15.0     # and no segment runs longer than this
@@ -83,6 +87,24 @@ def transcribe(video_path: Path, video_id: str, transcript_dir: Path, online: di
     # as on a local transcript; importing it here would make a cycle.
     print(f"      {len(segments)} segments ({lang})")
     return segments
+
+
+def check_model(spec, key: str, model: str) -> tuple[bool, str]:
+    """Does this voice model return the word timings captions need?
+
+    One real request with the short test clip, through exactly the code a job
+    uses, so a yes here means a yes in a job. Only ever run because the user
+    picked the model; it costs a tiny fraction of a cent on their key.
+    """
+    try:
+        words, _language = _request(spec, key, model, PROBE, "en")
+    except LLMError as e:
+        return False, e.message
+    timed = [w for w in words if w["end"] > w["start"]]
+    if not timed:
+        return False, (f"{model} didn't return word timings, which captions and word editing "
+                       "need. Choose another voice model.")
+    return True, f"{model} works: it returned word timings for the test clip."
 
 
 # ---- one request per provider format -------------------------------------------

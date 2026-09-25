@@ -39,6 +39,12 @@ class ModelInfo:
     note: str = ""             # a warning worth showing beside it
     vendor: str = ""           # who makes it, for grouping a long list ("anthropic", "openai")
     price: tuple[float, float] | None = None  # USD per 1M input / output tokens, when listed
+    # Every price the provider lists for it, exactly: (label, USD, unit, estimate).
+    # Only what applies; "estimate" marks a derived figure, which the UI says.
+    pricing: tuple[tuple[str, float, str, bool], ...] = ()
+    free: bool = False         # every listed price is zero, as of this listing
+    verified: bool = False     # known to do this job (transcription: returns word timings)
+    page_url: str = ""         # the provider's own page for it, with the current price
 
     def as_dict(self) -> dict:
         return {
@@ -46,6 +52,11 @@ class ModelInfo:
             "json_schema": self.json_schema, "tools": self.tools, "note": self.note,
             "vendor": self.vendor,
             "price": {"input": self.price[0], "output": self.price[1]} if self.price else None,
+            "pricing": [{"label": label, "amount": amount, "unit": unit, "estimate": estimate}
+                        for label, amount, unit, estimate in self.pricing],
+            "free": self.free,
+            "verified": self.verified,
+            "page_url": self.page_url,
         }
 
 
@@ -91,6 +102,8 @@ class ProviderSpec:
     key_check_path: str = ""        # a cheap GET proving the key; "" lists models
     key_check_ok: Callable[[dict], bool] = _accept  # for a check that answers 200 about a dead key
     stt: dict = field(default_factory=dict)  # online transcription, when offered
+    # Reads one entry of the provider's live speech catalogue (stt["catalog"]).
+    stt_filter: Callable[[dict], ModelInfo | None] | None = None
     # Where it sits in the choice. Local (Ollama and Whisper) is tier 1 and not
     # a ProviderSpec. Tier 2 is the recommended cloud path, OpenRouter: one key
     # for many models. Tier 3 is a direct connection to one provider, always

@@ -68,6 +68,9 @@ hiddenimports += [
 datas += [
     (str(ROOT / "config" / "settings.yaml"), "config"),
     (str(ROOT / "config" / "prompts"), "config/prompts"),
+    # The three-second clip a voice model is checked with before it is used
+    # for online transcription (transcription/cloud.check_model).
+    (str(ROOT / "transcription" / "assets"), "transcription/assets"),
     # The app version, for bug reports. ui/package.json is the only place the
     # version is written, and in a frozen build it is not on disk beside the
     # code — so every report from an installed copy said "app": "?" and could

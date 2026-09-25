@@ -60,7 +60,7 @@ class Env:
         self.calls.append(url)
         if url.endswith("/key"):
             return Response(200, {"data": {}}) if self.key_ok else Response(401, {"error": {"code": 401, "message": "bad key"}})
-        if url.endswith("/models"):
+        if url.endswith("/models/user"):
             return Response(200, MODELS)
         raise AssertionError(url)
 

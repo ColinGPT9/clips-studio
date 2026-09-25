@@ -121,7 +121,7 @@ def test_a_backend_without_schemas_is_called_exactly_as_before():
 def test_every_openrouter_request_carries_the_attribution(fake, backend):
     transport = fake({
         "/chat/completions": [Response(503, {"error": {"message": "busy"}}), reply('{"clips": []}')],
-        "/models": Response(200, {"data": []}),
+        "/models/user": Response(200, {"data": []}),
         "/key": Response(200, {"data": {"label": "x"}}),
     })
     backend.generate("p", json_mode=True, schema={"type": "object"})  # includes a retry

@@ -47,3 +47,10 @@ def test_the_spec_still_bundles_what_the_app_cannot_fetch():
         assert f'"vendor" / "{folder}"' in text or f"vendor_{folder}" in text, (
             f"the spec no longer bundles vendor/{folder}"
         )
+
+
+def test_the_voice_model_check_clip_ships():
+    """Without it, picking an unchecked voice model in an installed copy fails."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert '"transcription" / "assets"' in text
+    assert (SPEC.parent / "transcription" / "assets" / "probe.mp3").stat().st_size > 1000
