@@ -27,7 +27,15 @@ from analysis.audio_features import extract_audio_features
 from analysis.visual_features import extract_visual_features, reaction_for_window
 from core import cancel, progress
 from core.models import ClipCandidate, Rejection, Segment
-from llm.base import LLMBackend
+from llm.base import LLMBackend, generate_json
+
+# The shape rerank.txt asks for; held to it on a cloud model (llm.base.generate_json).
+ORDER_SCHEMA = {
+    "type": "object",
+    "properties": {"order": {"type": "array", "items": {"type": "integer"}}},
+    "required": ["order"],
+    "additionalProperties": False,
+}
 
 RERANK_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "rerank.txt"
 
@@ -455,7 +463,7 @@ def _rerank(finalists: list[ClipCandidate], segments: list[Segment], llm: LLMBac
     prompt = template.replace("{candidates}", "\n".join(lines)).replace("{count}", str(len(finalists)))
 
     try:
-        raw = llm.generate(prompt, json_mode=True)
+        raw = generate_json(llm, prompt, ORDER_SCHEMA)
         order = _parse_order(raw, len(finalists))
     except Exception:
         order = None

@@ -117,8 +117,16 @@ def _with_usable_model(llm_config: dict) -> dict:
 
     Returns the config untouched when nothing needs changing, including when
     Ollama cannot be reached — the preflight check is what reports that.
+
+    A cloud model on the user's own key is used exactly as chosen: it is not
+    "installed" anywhere, and swapping it for a local model would be the
+    silent fallback the user never asked for.
     """
     from llm.manager import resolve_usable_model
+    from llm.spec import is_local
+
+    if not is_local(llm_config.get("backend") or ""):
+        return llm_config
 
     spec = llm_config.get("backend") or ""
     configured = spec.split("/")[-1]

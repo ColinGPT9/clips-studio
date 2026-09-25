@@ -108,6 +108,9 @@ def load_config(path: Path) -> dict:
         config.setdefault("paths", {})["data_dir"] = data_dir
 
     config.setdefault("paths", {})["data_dir"] = str(resolve_data_dir(config))
+    # Where a cloud backend finds the user's own API key (llm/providers/keys).
+    # The path only; the key itself never enters the config.
+    config.setdefault("llm", {})["data_dir"] = config["paths"]["data_dir"]
     return config
 
 

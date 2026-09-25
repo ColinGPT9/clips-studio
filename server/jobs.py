@@ -242,8 +242,14 @@ class Worker(threading.Thread):
                 # batch left running overnight must not stop at the first bad
                 # URL and waste the remaining hours.
                 traceback.print_exc()
-                db.finish_job(job["id"], "failed", str(e)[:2000])
-                self._announce(db, job, "failed", str(e)[:500])
+                # Stored and shown, so anything key-shaped is taken out first.
+                # A cloud provider's error is already written without the key;
+                # this is the net for anything else that might echo one.
+                from core.scrub import scrub_secrets
+
+                message = scrub_secrets(str(e))
+                db.finish_job(job["id"], "failed", message[:2000])
+                self._announce(db, job, "failed", message[:500])
             finally:
                 current_job_id[0] = None
                 with self._progress_lock:
@@ -364,10 +370,14 @@ class Worker(threading.Thread):
         stage = payload.get("stage", "export")
         folder = Path(payload.get("folder") or data_dir)
         languages = payload["languages"]
-        # Translation may run on its own model (see llm.translation_model).
+        # Translation may run on its own local model (see llm.translation_model).
+        # With a cloud model chosen, translation uses it too: everything the
+        # local model would have done runs on the user's own key instead.
+        from llm.spec import is_local
+
         llm_cfg = dict(self.config["llm"])
         tm = str(llm_cfg.get("translation_model") or "").strip()
-        if tm:
+        if tm and is_local(llm_cfg.get("backend") or ""):
             llm_cfg["backend"] = tm if "/" in tm else f"ollama/{tm}"
             print(f"      Translating with {tm}")
         llm = create_backend(llm_cfg)

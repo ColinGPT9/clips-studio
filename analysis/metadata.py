@@ -10,11 +10,36 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.models import ClipCandidate, Segment
-from llm.base import LLMBackend
+from llm.base import LLMBackend, generate_json
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "metadata.txt"
 
 MAX_TITLE_LEN = 95  # leave headroom under YouTube's 100-char limit
+
+# The shapes metadata.txt and metadata_batch.txt ask for. A cloud model on the
+# user's key is held to them (llm.base.generate_json); _parse still checks.
+_METADATA_FIELDS = {
+    "title": {"type": "string"},
+    "description": {"type": "string"},
+    "hashtags": {"type": "array", "items": {"type": "string"}},
+}
+METADATA_SCHEMA = {
+    "type": "object",
+    "properties": _METADATA_FIELDS,
+    "required": ["title", "description", "hashtags"],
+    "additionalProperties": False,
+}
+BATCH_SCHEMA = {
+    "type": "object",
+    "properties": {"items": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"index": {"type": "integer"}, **_METADATA_FIELDS},
+        "required": ["index", "title", "description", "hashtags"],
+        "additionalProperties": False,
+    }}},
+    "required": ["items"],
+    "additionalProperties": False,
+}
 
 
 @dataclass
@@ -43,7 +68,7 @@ def generate_metadata(
         .replace("{clip_text}", clip_text)
     )
     try:
-        raw = llm.generate(prompt, json_mode=True)
+        raw = generate_json(llm, prompt, METADATA_SCHEMA)
         parsed = _parse(raw)
     except Exception:
         parsed = None
@@ -95,7 +120,7 @@ def generate_metadata_batch(
             .replace("{clips}", "\n\n".join(blocks))
         )
         try:
-            data = _parse(llm.generate(prompt, json_mode=True))
+            data = _parse(generate_json(llm, prompt, BATCH_SCHEMA))
         except Exception:
             data = None
         if not data or not isinstance(data.get("items"), list):

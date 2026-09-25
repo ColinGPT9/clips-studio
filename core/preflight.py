@@ -141,6 +141,29 @@ def check_ollama(host: str, model: str) -> list[Check]:
     return checks
 
 
+def check_cloud_ai(provider: str, model: str, data_dir) -> Check:
+    """A cloud model on the user's own key: is one chosen, and is the key saved?
+
+    No network call. Whether the key still works is what Test connection in
+    Settings → AI answers; a check that ran on every page load would spend the
+    user's rate limit to repeat it.
+    """
+    from llm.providers.catalog import get
+    from llm.providers.keys import has_key
+
+    spec = get(provider)
+    if spec is None:
+        return Check(name="ai", ok=False, detail=f"unknown AI provider '{provider}'",
+                     fix="Choose an AI model in Settings → AI.")
+    if not model:
+        return Check(name="ai", ok=False, detail=f"{spec.label}: no model chosen",
+                     fix=f"Choose a {spec.label} model in Settings → AI.")
+    if not has_key(data_dir, provider):
+        return Check(name="ai", ok=False, detail=f"{spec.label}: no API key saved",
+                     fix=f"Add your own {spec.key_label} in Settings → AI.")
+    return Check(name="ai", ok=True, detail=f"{spec.label} · {model} (your API key)")
+
+
 def check_whisper(configured: str) -> Check:
     """Transcription weights.
 
@@ -246,12 +269,21 @@ def run(config: dict) -> Preflight:
 
     llm = config.get("llm") or {}
     host = llm.get("ollama_host") or "http://localhost:11434"
-    # `llm.backend` is what the pipeline actually loads (llm/registry.py), and
-    # load_config derives it from the flat `model:` key. Reading that key here
-    # instead was a second source of truth, and defaulting it to a hard-coded
-    # gemma:7b made the check demand a model nobody had chosen.
-    model = (llm.get("backend") or config.get("model") or "").split("/")[-1]
-    pf.checks += check_ollama(host, model)
+    from llm.spec import parse_spec
+
+    provider, cloud_model = parse_spec(llm.get("backend") or config.get("model") or "")
+    if provider == "ollama":
+        # `llm.backend` is what the pipeline actually loads (llm/registry.py), and
+        # load_config derives it from the flat `model:` key. Reading that key here
+        # instead was a second source of truth, and defaulting it to a hard-coded
+        # gemma:7b made the check demand a model nobody had chosen.
+        model = (llm.get("backend") or config.get("model") or "").split("/")[-1]
+        pf.checks += check_ollama(host, model)
+    else:
+        # A cloud model on the user's own key needs neither Ollama nor a
+        # download, so neither is checked: only that the key and model are set.
+        data_dir = llm.get("data_dir") or config.get("paths", {}).get("data_dir", "data")
+        pf.checks.append(check_cloud_ai(provider, cloud_model, data_dir))
 
     whisper = (config.get("whisper") or {}).get("model") or "auto"
     pf.checks.append(check_whisper(str(whisper)))

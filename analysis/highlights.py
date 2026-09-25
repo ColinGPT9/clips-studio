@@ -24,7 +24,7 @@ from pathlib import Path
 
 from core import cancel, progress
 from core.models import ClipCandidate, Rejection, Segment
-from llm.base import LLMBackend
+from llm.base import LLMBackend, generate_json
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "score_clips.txt"
 WINDOWS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "score_windows.txt"
@@ -262,14 +262,36 @@ def _chunk_segments(
 # ---- LLM I/O robustness -----------------------------------------------------
 
 
+# The shape score_clips.txt and score_windows.txt already ask for. A cloud
+# model on the user's key is held to it; Ollama is sent exactly what it always
+# was (see llm.base.generate_json). _parse_clips_json still checks every item.
+_CLIP = {
+    "type": "object",
+    "properties": {
+        "start": {"type": "number"}, "end": {"type": "number"},
+        "score": {"type": "number"}, "engagement": {"type": "number"},
+        "trending": {"type": "boolean"},
+        "hook": {"type": "string"}, "reason": {"type": "string"},
+    },
+    "required": ["start", "end", "score", "engagement", "trending", "hook", "reason"],
+    "additionalProperties": False,
+}
+CLIPS_SCHEMA = {
+    "type": "object",
+    "properties": {"clips": {"type": "array", "items": _CLIP}},
+    "required": ["clips"],
+    "additionalProperties": False,
+}
+
+
 def _generate_with_retry(llm: LLMBackend, prompt: str) -> str:
-    raw = llm.generate(prompt, json_mode=True)
+    raw = generate_json(llm, prompt, CLIPS_SCHEMA)
     if _parse_clips_json(raw) is not None:
         return raw
     # One retry with an explicit reminder — local models sometimes wrap
     # JSON in prose or markdown fences on the first attempt.
     retry_prompt = prompt + "\n\nIMPORTANT: Respond with ONLY the JSON object. No markdown, no explanation."
-    return llm.generate(retry_prompt, json_mode=True)
+    return generate_json(llm, retry_prompt, CLIPS_SCHEMA)
 
 
 def _parse_clips_json(raw: str) -> list[ClipCandidate] | None:

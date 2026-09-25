@@ -29,6 +29,7 @@ from pathlib import Path
 import requests
 
 from core.binaries import ffmpeg
+from core.scrub import SECRET_PATTERNS
 
 # ---- log ring buffer ---------------------------------------------------------
 
@@ -120,15 +121,8 @@ def recent_log(lines: int = 120) -> str:
 
 # ---- redaction ---------------------------------------------------------------
 
-_SECRET_PATTERNS = [
-    re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),          # Google API keys
-    re.compile(r"gh[pousr]_[0-9A-Za-z]{20,}"),        # GitHub tokens
-    re.compile(r"oauth:[0-9a-zA-Z]{10,}"),            # Twitch chat oauth
-    re.compile(r"eyJ[0-9A-Za-z_\-]{20,}\.[0-9A-Za-z_\-]{10,}\.[0-9A-Za-z_\-]{10,}"),  # JWTs
-    re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[=:]\s*\S{8,}"),
-    re.compile(r"[A-Za-z0-9+/]{48,}={0,2}"),          # long base64 blobs
-    re.compile(r"[0-9a-fA-F]{40,}"),                  # long hex blobs
-]
+# One list for the whole app, including every cloud AI provider's key format.
+_SECRET_PATTERNS = SECRET_PATTERNS
 # Bounded on purpose. The unbounded form backtracks polynomially: on a log
 # line containing a long run of "+" and no "@", the engine retries the scan
 # from every start position. These limits are the real ones from the email
@@ -226,6 +220,13 @@ def _ram_gb() -> float:
 def _model_info(config: dict) -> dict:
     """The exact AI model a bug reporter is running — name, parameter size,
     quantization, Ollama version — so 'works on my PC' is answerable."""
+    from llm.spec import parse_spec
+
+    provider, model = parse_spec(config.get("llm", {}).get("backend") or str(config.get("model") or ""))
+    if provider != "ollama":
+        # A cloud model on the reporter's own key: which one, and nothing
+        # else. The key never goes near a report.
+        return {"model": model, "backend": provider, "local": False}
     info: dict = {"model": config.get("model", "?"), "backend": "ollama"}
     host = config.get("llm", {}).get("ollama_host", "http://localhost:11434")
     try:

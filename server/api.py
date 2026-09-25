@@ -535,6 +535,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker=publish_worker,
     )
 
+    # Settings → AI: local Ollama (the default) or a cloud model on the
+    # user's own key. Its own module, the same way the publishers are.
+    from server import ai_api
+
+    ai_api.install(app, config=config, db=db, data_dir=data_dir, settings_path=settings_path)
+
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
     from server import integrations
@@ -2476,9 +2482,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             """
             try:
                 from llm.manager import installed_models, model_is_installed, switch_model
+                from llm.spec import is_local
 
-                installed = [m["name"] for m in installed_models(ollama_host)]
                 current = config["llm"]["backend"]
+                if not is_local(current):
+                    return  # a cloud model was chosen on purpose; a download is not a vote against it
+                installed = [m["name"] for m in installed_models(ollama_host)]
                 if model_is_installed(current, installed):
                     return
                 config["llm"]["backend"] = switch_model(settings_path, tag)
