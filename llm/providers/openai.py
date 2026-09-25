@@ -26,4 +26,7 @@ SPEC = ProviderSpec(
     pricing_url="https://developers.openai.com/api/docs/pricing",
     privacy="Transcripts and prompts are sent to OpenAI with your key. Nothing is stored there by this app's requests.",
     model_filter=model_info,
+    # whisper-1 is the OpenAI model that returns word timings; the newer
+    # gpt-*-transcribe models do not, and captions need them.
+    stt={"format": "openai", "models": ["whisper-1"], "chunk_seconds": 600},
 )

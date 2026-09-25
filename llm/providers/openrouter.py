@@ -74,4 +74,8 @@ SPEC = ProviderSpec(
     body_extras=_route_to_capable_providers,
     model_filter=model_info,
     key_check_path="/key",
+    # Whisper through OpenRouter, with word timings. Short parts: OpenRouter's
+    # upstream providers stop after about a minute of processing a request.
+    stt={"format": "openrouter", "chunk_seconds": 180,
+         "models": ["openai/whisper-large-v3-turbo", "openai/whisper-large-v3", "openai/whisper-1"]},
 )

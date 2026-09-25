@@ -125,6 +125,22 @@ def test_choosing_a_cloud_model_needs_a_key_and_switching_back_restores_local(en
     assert env.config["llm"]["backend"] == "ollama/gemma:7b"
 
 
+def test_transcription_is_local_until_a_keyed_provider_is_chosen(env):
+    assert env.client.get("/ai").json()["transcription"] == {"backend": "local", "model": ""}
+    assert env.client.post("/ai/transcription", json={"backend": "openrouter"}).status_code == 400  # no key yet
+    assert env.client.post("/ai/transcription", json={"backend": "anthropic"}).status_code == 400  # no audio
+
+    keys.save_key(env.data, "openrouter", KEY)
+    chosen = env.client.post("/ai/transcription", json={"backend": "openrouter"}).json()["transcription"]
+    assert chosen == {"backend": "openrouter", "model": "openai/whisper-large-v3-turbo"}
+    text = env.settings.read_text(encoding="utf-8")
+    assert "transcription:\n  backend: openrouter" in text and "model: gemma:7b" in text  # added, nothing lost
+
+    env.client.post("/ai/transcription", json={"backend": "local"})
+    assert env.config["transcription"] == {"backend": "local", "model": ""}
+    assert env.settings.read_text(encoding="utf-8").count("transcription:") == 1  # replaced, not repeated
+
+
 def test_removing_a_key_forgets_it(env):
     keys.save_key(env.data, "openrouter", KEY)
     env.client.delete("/ai/providers/openrouter/key")

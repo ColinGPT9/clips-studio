@@ -164,6 +164,21 @@ def check_cloud_ai(provider: str, model: str, data_dir) -> Check:
     return Check(name="ai", ok=True, detail=f"{spec.label} · {model} (your API key)")
 
 
+def check_cloud_transcription(provider: str, data_dir) -> Check:
+    """Online transcription on the user's own key: is the key saved?"""
+    from llm.providers.catalog import get
+    from llm.providers.keys import has_key
+
+    spec = get(provider)
+    if spec is None or not spec.stt:
+        return Check(name="transcription", ok=False, detail=f"'{provider}' can't transcribe",
+                     fix="Choose where transcription runs in Settings → AI.")
+    if not has_key(data_dir, provider):
+        return Check(name="transcription", ok=False, detail=f"{spec.label}: no API key saved",
+                     fix=f"Add your own {spec.key_label} in Settings → AI.")
+    return Check(name="transcription", ok=True, detail=f"online with {spec.label} (your API key)")
+
+
 def check_whisper(configured: str) -> Check:
     """Transcription weights.
 
@@ -285,8 +300,13 @@ def run(config: dict) -> Preflight:
         data_dir = llm.get("data_dir") or config.get("paths", {}).get("data_dir", "data")
         pf.checks.append(check_cloud_ai(provider, cloud_model, data_dir))
 
-    whisper = (config.get("whisper") or {}).get("model") or "auto"
-    pf.checks.append(check_whisper(str(whisper)))
+    online = config.get("transcription") or {}
+    if str(online.get("backend") or "local") == "local":
+        whisper = (config.get("whisper") or {}).get("model") or "auto"
+        pf.checks.append(check_whisper(str(whisper)))
+    else:
+        data_dir = llm.get("data_dir") or config.get("paths", {}).get("data_dir", "data")
+        pf.checks.append(check_cloud_transcription(str(online.get("backend")), data_dir))
 
     pf.checks.append(check_gpu())
     pf.checks.append(check_disk(Path(config.get("paths", {}).get("data_dir", "data"))))

@@ -106,6 +106,18 @@ def _share_the_cpu(workers: int) -> None:
           f"({workers} workers, {cores} cores, 2 held back for the desktop)")
 
 
+def online_transcription(config: dict) -> dict | None:
+    """The `transcription` settings when they name a provider, else None.
+
+    None keeps transcription on this PC with Whisper, the default, exactly as
+    it has always run. A provider sends the audio to it on the user's own key.
+    """
+    settings = config.get("transcription") or {}
+    if str(settings.get("backend") or "local") == "local":
+        return None
+    return {**settings, "data_dir": config["paths"]["data_dir"]}
+
+
 def _with_usable_model(llm_config: dict) -> dict:
     """Point the backend at a model that is actually installed.
 
@@ -274,6 +286,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         model_size=config["whisper"]["model"],
         device=config["whisper"]["device"],
         language=None if forced_lang == "auto" else forced_lang,
+        online=online_transcription(config),
     )
     from transcription.transcriber import detected_language
 

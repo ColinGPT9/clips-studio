@@ -11,6 +11,7 @@ checked with the provider before it is kept, and no route ever returns it; the
 UI gets whether one is saved and its last four characters, nothing more.
 """
 
+import re
 import time
 from pathlib import Path
 
@@ -58,6 +59,26 @@ class ActivateIn(BaseModel):
     model: str = ""
 
 
+class TranscriptionIn(BaseModel):
+    backend: str = "local"
+    model: str = ""
+
+
+_TRANSCRIPTION_BLOCK = re.compile(r"(?m)^transcription:[^\n]*\n(?:[ \t]+[^\n]*(?:\n|$))*")
+
+
+def write_transcription(settings_path: Path, backend: str, model: str) -> None:
+    """Rewrite the `transcription:` section of settings.yaml, or add it: an
+    install's own copy predates the section, and local is what it meant."""
+    text = settings_path.read_text(encoding="utf-8")
+    block = f'transcription:\n  backend: {backend}\n  model: "{model}"\n'
+    if _TRANSCRIPTION_BLOCK.search(text):
+        text = _TRANSCRIPTION_BLOCK.sub(lambda _m: block, text, count=1)
+    else:
+        text = text.rstrip("\n") + "\n\n" + block
+    settings_path.write_text(text, encoding="utf-8")
+
+
 def install(app, *, config, db, data_dir, settings_path) -> None:
     data_path = Path(data_dir)
     models_cache: dict[str, tuple[float, list[dict]]] = {}
@@ -87,8 +108,11 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
 
     def status() -> dict:
         provider, model = parse_spec(config["llm"].get("backend") or "")
+        transcription = config.get("transcription") or {}
         return {
             "active": {"provider": provider, "model": model, "local": provider == LOCAL},
+            "transcription": {"backend": str(transcription.get("backend") or "local"),
+                              "model": str(transcription.get("model") or "")},
             "providers": [LOCAL_ENTRY] + [
                 {**spec.public(),
                  "has_key": keys.has_key(data_path, spec.id),
@@ -177,4 +201,22 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         finally:
             d.close()
         config["llm"]["backend"] = spec_text  # live config follows the file
+        return status()
+
+    @app.post("/ai/transcription")
+    def set_transcription(body: TranscriptionIn):
+        """Whisper on this PC (the default), or online on the user's own key."""
+        backend = body.backend.strip() or "local"
+        model = body.model.strip()
+        if backend != "local":
+            spec = _spec(backend)
+            if not spec.stt:
+                raise HTTPException(400, f"{spec.label} can't transcribe with the word timings captions need.")
+            if not keys.has_key(data_path, spec.id):
+                raise HTTPException(400, f"Add your {spec.key_label} first.")
+            model = model if model in spec.stt["models"] else spec.stt["models"][0]
+        else:
+            model = ""
+        write_transcription(settings_path, backend, model)
+        config["transcription"] = {"backend": backend, "model": model}
         return status()

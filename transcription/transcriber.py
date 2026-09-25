@@ -78,10 +78,15 @@ def transcribe(
     model_size: str = "small",
     device: str = "auto",
     language: str | None = None,
+    online: dict | None = None,
 ) -> list[Segment]:
     """language: force a transcription language (ISO code like 'es');
     None = Whisper auto-detects. The detected/forced language is cached in
-    the transcript JSON — read it back with detected_language()."""
+    the transcript JSON — read it back with detected_language().
+
+    online: the `transcription` settings. Local Whisper unless its backend
+    names a provider, in which case the audio goes to that provider on the
+    user's own key (transcription/cloud.py) and comes back in the same shape."""
     transcript_dir.mkdir(parents=True, exist_ok=True)
     cache_path = transcript_dir / f"{video_id}.json"
 
@@ -94,6 +99,11 @@ def transcribe(
         # file itself is left as the raw record of what Whisper returned.
         _collapse_repetition_loops(segments)
         return segments
+
+    if online and str(online.get("backend") or "local") != "local":
+        from transcription import cloud
+
+        return cloud.transcribe(video_path, video_id, transcript_dir, online, language=language)
 
     print(f"  Loading whisper model '{model_size}' (device={device})...")
     model = _load_model(model_size, device)

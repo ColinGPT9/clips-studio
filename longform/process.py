@@ -71,10 +71,13 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     print("[2/4] Transcribing...")
     progress.emit(stage="transcribe", video_id=video.video_id, title=video.title)
     forced_lang = (config.get("content_language") or "auto").lower()
+    from core.pipeline import online_transcription
+
     segments = transcribe(
         video.path, video.video_id, data_dir / "transcripts",
         model_size=config["whisper"]["model"], device=config["whisper"]["device"],
         language=None if forced_lang == "auto" else forced_lang,
+        online=online_transcription(config),
     )
     db.set_video_status(video.video_id, "transcribed")
     cancel.check(video.video_id)

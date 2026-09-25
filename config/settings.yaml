@@ -50,6 +50,13 @@ whisper:
                         # tiny / base / small / medium / large-v3 / large-v3-turbo
   device: auto          # cuda if available, else cpu
 
+# Where transcription runs. "local" is Whisper on this PC (the settings above),
+# the default. Or send the audio, on YOUR OWN API key, to a provider that
+# returns word timings: openai / openrouter / xai. Set it in Settings → AI.
+transcription:
+  backend: local
+  model: ""
+
 clips:
   min_score: 55         # discard candidates scored below this (0-100).
                         # Higher = fewer, better clips. Kept generous on

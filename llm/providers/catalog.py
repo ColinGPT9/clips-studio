@@ -49,6 +49,7 @@ XAI = ProviderSpec(
     model_filter=_xai_model,
     key_check_path="/api-key",
     key_check_ok=_xai_key_ok,
+    stt={"format": "xai", "models": ["grok-voice-transcribe-2.0"], "chunk_seconds": 1200},
 )
 
 META = ProviderSpec(

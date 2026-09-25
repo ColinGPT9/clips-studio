@@ -99,4 +99,5 @@ class ProviderSpec:
             "pricing_url": self.pricing_url,
             "privacy": self.privacy,
             "stt": bool(self.stt),
+            "stt_models": list(self.stt.get("models") or []),
         }
