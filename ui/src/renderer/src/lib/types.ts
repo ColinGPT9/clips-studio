@@ -336,6 +336,22 @@ export interface AIModel {
   vendor: string
   /** USD per 1M input / output tokens, where the provider's list says. */
   price: { input: number; output: number } | null
+  /** Every price the provider lists for it, exactly; `estimate` marks a
+   *  derived figure (a voice model's per-hour guess), which must say so. */
+  pricing: { label: string; amount: number; unit: string; estimate: boolean }[]
+  /** Listed at zero today. */
+  free: boolean
+  /** Known to do the job. For a voice model: returns word timings. */
+  verified: boolean
+  /** The provider's own page for it, with the current price. */
+  page_url: string
+}
+
+export interface AIModelList {
+  models: AIModel[]
+  /** Unix seconds when the models and prices were fetched from the provider. */
+  fetched_at: number
+  kind: 'text' | 'stt'
 }
 
 export interface ModelsInfo {

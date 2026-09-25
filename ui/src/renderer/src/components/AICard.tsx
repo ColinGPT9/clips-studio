@@ -298,8 +298,12 @@ function TierRow({
 }
 
 /** One provider's setup for one job: key, model, connection test, and what
- *  it costs and sends. OpenRouter also gets its three steps, the "why", and a
- *  model list grouped by who makes each model. */
+ *  it costs and sends. OpenRouter also gets its three steps and the "why".
+ *
+ *  The model lists and their prices come from the provider, with the user's
+ *  key, every time the card is opened (cached a few hours by the engine) and
+ *  on Refresh. Nothing here knows a price; if the list cannot be fetched, no
+ *  prices are shown rather than old ones. */
 function ProviderPanel({
   provider,
   job,
@@ -315,29 +319,54 @@ function ProviderPanel({
   run: Run
   recommended?: boolean
 }): JSX.Element {
+  const kind = job === 'ai' ? 'text' : 'stt'
   const [models, setModels] = useState<AIModel[]>([])
-  const [filter, setFilter] = useState('')
-  const [loadingModels, setLoadingModels] = useState(false)
+  const [fetchedAt, setFetchedAt] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [checking, setChecking] = useState('')
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null)
 
-  useEffect(() => {
-    if (job !== 'ai' || !provider.has_key) return
-    setLoadingModels(true)
+  const load = (refresh = false): void => {
+    if (!provider.has_key) return
+    setLoading(true)
+    setLoadError('')
     api
-      .aiModels(provider.id)
-      .then((got) => setModels(got.models))
-      .catch(() => setModels([]))
-      .finally(() => setLoadingModels(false))
-  }, [provider.id, provider.has_key, job])
+      .aiModels(provider.id, refresh, kind)
+      .then((got) => {
+        setModels(got.models)
+        setFetchedAt(got.fetched_at)
+      })
+      .catch((e) => {
+        setModels([])
+        setLoadError(errorText(e))
+      })
+      .finally(() => setLoading(false))
+  }
+
+  // key_tail too: a replaced key is a new account, whose models and prices
+  // may differ, so the list is fetched again rather than kept.
+  useEffect(() => load(), [provider.id, provider.has_key, provider.key_tail, kind]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const choose = (model: string): void => {
     if (!model) return
-    void (job === 'ai'
-      ? run(() => api.activateAI(provider.id, model), `${t('Now using')} ${provider.label} · ${model}.`)
-      : run(() => api.setTranscription(provider.id, model), `${t('Transcribing online with')} ${model}.`))
+    if (job === 'ai') {
+      void run(() => api.activateAI(provider.id, model), `${t('Now using')} ${provider.label} · ${model}.`)
+      return
+    }
+    // A voice model is only saved once it has shown it returns word timings.
+    const known = models.find((m) => m.id === model)?.verified
+    setChecking(known ? '' : model)
+    void run(async () => {
+      const got = await api.checkVoiceModel(provider.id, model)
+      setChecking('')
+      if (!got.ok) throw new Error(got.message)
+      return got
+    }, `${t('Transcribing online with')} ${model}.`).finally(() => setChecking(''))
   }
 
   const current = models.find((m) => m.id === inUse)
+  const missing = !!inUse && !loading && !loadError && models.length > 0 && !current
 
   return (
     <div className="space-y-2">
@@ -369,50 +398,66 @@ function ProviderPanel({
 
       {provider.has_key && (
         <div className="space-y-1.5">
-          {job === 'ai' ? (
-            <ModelPicker
-              models={models}
-              filter={filter}
-              setFilter={setFilter}
-              loading={loadingModels}
-              inUse={inUse}
-              busy={busy}
-              onChoose={choose}
-              grouped={models.some((m) => m.vendor)}
-            />
+          <p className="label !normal-case !tracking-normal text-[11px]">
+            {job === 'ai' ? t('Text model') : t('Voice model')}
+          </p>
+          {loadError ? (
+            <p className="text-xs text-red-400">
+              {t("Couldn't load the models and prices:")} {loadError}{' '}
+              <button className="text-accent hover:underline" onClick={() => load(true)}>
+                {t('Retry')}
+              </button>
+            </p>
+          ) : job === 'ai' ? (
+            <ModelPicker models={models} loading={loading} inUse={inUse} busy={busy} onChoose={choose} />
           ) : (
-            <select
-              className="input !py-1 text-sm"
-              value={inUse}
-              disabled={busy}
-              onChange={(e) => choose(e.target.value)}
-              aria-label={t('Transcription model')}
-            >
-              <option value="">{t('Choose a model')}</option>
-              {(provider.stt_models ?? []).map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            <VoicePicker models={models} loading={loading} inUse={inUse} busy={busy} onChoose={choose} />
           )}
+
+          {checking && (
+            <p className="text-[11px] text-muted">
+              {t('Checking')} {checking} {t('with a 3-second test clip (a tiny fraction of a cent on your key)…')}
+            </p>
+          )}
+          {missing && (
+            <p className="text-[11px] text-amber-400">
+              ⚠ {inUse} {t("isn't offered to your key any more. Jobs will stop until you choose another.")}
+            </p>
+          )}
+          {current && <ModelDetail model={current} voice={job === 'stt'} />}
+
           <div className="flex items-center gap-2 flex-wrap text-xs">
             <span className={inUse ? 'text-success' : 'text-muted'}>
               {inUse ? `● ${t('In use')}: ${inUse}` : t('Not in use yet: choose a model.')}
             </span>
-            <button
-              className="btn-ghost !py-0.5 !px-2 text-xs ml-auto"
-              disabled={busy}
-              onClick={() =>
-                void api
-                  .testAI(provider.id, job === 'ai' ? inUse : '')
-                  .then(setTest)
-                  .catch((e) => setTest({ ok: false, message: errorText(e) }))
-              }
-            >
-              {t('Test connection')}
-            </button>
+            <span className="ml-auto flex gap-1.5">
+              <button
+                className="btn-ghost !py-0.5 !px-2 text-xs"
+                disabled={busy || loading}
+                onClick={() => load(true)}
+                title={t('Fetch the models and their prices again')}
+              >
+                ↻ {t('Refresh models')}
+              </button>
+              <button
+                className="btn-ghost !py-0.5 !px-2 text-xs"
+                disabled={busy}
+                onClick={() =>
+                  void api
+                    .testAI(provider.id, job === 'ai' ? inUse : '')
+                    .then(setTest)
+                    .catch((e) => setTest({ ok: false, message: errorText(e) }))
+                }
+              >
+                {t('Test connection')}
+              </button>
+            </span>
           </div>
+          {fetchedAt > 0 && !loadError && (
+            <p className="text-[11px] text-muted">
+              {t('Prices from')} {provider.label} · {t('updated')} {ago(fetchedAt)}
+            </p>
+          )}
           {current?.note && <p className="text-[11px] text-amber-400">{current.note}</p>}
           {test && (
             <p className={`text-[11px] ${test.ok ? 'text-success' : 'text-red-400'}`}>
@@ -453,18 +498,39 @@ function ProviderPanel({
       )}
 
       <p className="text-[11px] text-muted leading-snug">
-        {t('Billed by')} {provider.label} {t("to your account. Clips Kitty doesn't provide or pay for API use.")}{' '}
-        <button
-          className="text-accent hover:underline"
-          onClick={() => void window.studio.openExternal(provider.pricing_url)}
-        >
-          {t('Pricing')} ↗
-        </button>
+        {provider.id === 'openrouter' ? (
+          <>
+            {t("Prices shown are OpenRouter's current listed prices. API usage is charged to your OpenRouter account; Clips Kitty doesn't provide or pay for it.")}{' '}
+            <button
+              className="text-accent hover:underline"
+              onClick={() => void window.studio.openExternal('https://openrouter.ai/docs/faq')}
+            >
+              {t("OpenRouter's fees")} ↗
+            </button>
+          </>
+        ) : (
+          <>
+            {t('Billed by')} {provider.label} {t("to your account. Clips Kitty doesn't provide or pay for API use.")}{' '}
+            <button
+              className="text-accent hover:underline"
+              onClick={() => void window.studio.openExternal(provider.pricing_url)}
+            >
+              {t('Pricing')} ↗
+            </button>
+          </>
+        )}
         <br />
         {provider.privacy}
       </p>
     </div>
   )
+}
+
+function ago(unixSeconds: number): string {
+  const minutes = Math.round((Date.now() / 1000 - unixSeconds) / 60)
+  if (minutes < 1) return t('just now')
+  if (minutes < 90) return `${minutes} ${t('min ago')}`
+  return `${Math.round(minutes / 60)} ${t('h ago')}`
 }
 
 // OpenRouter's list, grouped by who makes each model. Matched by the id's
@@ -480,43 +546,121 @@ const VENDOR_GROUPS: [string, string[]][] = [
   ['Mistral', ['mistralai']]
 ]
 
+// Who made a model, for "by …": the company, not the dropdown group. Anything
+// not listed shows OpenRouter's own id prefix, which names the maker too.
+const COMPANY: Record<string, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google',
+  meta: 'Meta',
+  'meta-llama': 'Meta',
+  qwen: 'Qwen',
+  'x-ai': 'xAI',
+  deepseek: 'DeepSeek',
+  mistralai: 'Mistral AI',
+  microsoft: 'Microsoft',
+  nvidia: 'NVIDIA'
+}
+
+function makerOf(vendor: string): string {
+  return COMPANY[vendor] ?? vendor
+}
+
 function contextLabel(tokens: number): string {
   if (!tokens) return ''
   return tokens >= 1_000_000 ? `${Math.round(tokens / 100_000) / 10}M` : `${Math.round(tokens / 1000)}K`
 }
 
-function priceLabel(price: AIModel['price']): string {
-  if (!price) return ''
-  if (price.input === 0 && price.output === 0) return t('free')
-  const f = (n: number): string => `$${Number(n.toPrecision(3))}`
-  return `${f(price.input)} / ${f(price.output)} ${t('per 1M')}`
+/** A price as listed: no rounding away of small figures, no invented units. */
+function money(n: number): string {
+  if (n === 0) return '$0'
+  return `$${Number(n.toPrecision(3))}`
+}
+
+/** The short price for a dropdown line: what the provider lists, or free. */
+function shortPrice(m: AIModel): string {
+  if (m.free) return t('free')
+  if (m.price) return `${money(m.price.input)} / ${money(m.price.output)} ${t('per 1M')}`
+  const estimate = m.pricing.find((p) => p.estimate)
+  if (estimate) return `≈ ${money(estimate.amount)}/${t('hr audio (est.)')}`
+  const rate = m.pricing[0]
+  return rate ? `${t('rate')} ${money(rate.amount)} (${t('unit not stated')})` : ''
 }
 
 function optionLabel(m: AIModel): string {
-  return [m.name, contextLabel(m.context), priceLabel(m.price)].filter(Boolean).join(' · ')
+  return [m.name, contextLabel(m.context), shortPrice(m)].filter(Boolean).join(' · ')
+}
+
+/** Everything known about the model in use: who makes it, its size, every
+ *  price the provider lists (estimates marked), what it can do, and a link
+ *  to the provider's page for the exact current price. */
+function ModelDetail({ model, voice }: { model: AIModel; voice: boolean }): JSX.Element {
+  return (
+    <div className="rounded-md bg-raised/40 px-2.5 py-2 text-[11px] space-y-1">
+      <p>
+        <span className="text-ink font-medium">{model.name}</span>
+        {model.vendor && <span className="text-muted"> · {t('by')} {makerOf(model.vendor)}</span>}
+        {model.context > 0 && <span className="text-muted"> · {contextLabel(model.context)} {t('context')}</span>}
+      </p>
+      {model.free ? (
+        <p className="text-success">{t('Listed as free on OpenRouter today.')}</p>
+      ) : (
+        model.pricing.length > 0 && (
+          <p className="text-muted">
+            {model.pricing.map((p, i) => (
+              <span key={p.label}>
+                {i > 0 && ' · '}
+                {p.label} <span className="text-ink">{p.estimate ? '≈ ' : ''}{money(p.amount)}</span>{' '}
+                {p.unit === 'estimate' ? `(${t('estimate')})` : p.unit}
+              </span>
+            ))}
+          </p>
+        )
+      )}
+      <p className="text-muted">
+        {voice
+          ? model.verified
+            ? `✓ ${t('Returns word timings')}`
+            : t('Checked with a test clip when chosen')
+          : [model.json_schema && `✓ ${t('Strict JSON')}`, model.tools && `✓ ${t('Tools (assistant)')}`]
+              .filter(Boolean)
+              .join('  ')}
+        {model.page_url && (
+          <>
+            {'  '}
+            <button
+              className="text-accent hover:underline"
+              onClick={() => void window.studio.openExternal(model.page_url)}
+            >
+              {t('View current pricing')} ↗
+            </button>
+          </>
+        )}
+      </p>
+    </div>
+  )
 }
 
 function ModelPicker({
   models,
-  filter,
-  setFilter,
   loading,
   inUse,
   busy,
-  onChoose,
-  grouped
+  onChoose
 }: {
   models: AIModel[]
-  filter: string
-  setFilter: (v: string) => void
   loading: boolean
   inUse: string
   busy: boolean
   onChoose: (id: string) => void
-  grouped: boolean
 }): JSX.Element {
+  const [filter, setFilter] = useState('')
+  const [sort, setSort] = useState<'maker' | 'price'>('maker')
+  const grouped = sort === 'maker' && models.some((m) => m.vendor)
   const needle = filter.trim().toLowerCase()
   const shown = models.filter((m) => !needle || `${m.id} ${m.name}`.toLowerCase().includes(needle))
+  // Cheapest first by input price, as the website sorts; "varies" last.
+  const byPrice = [...shown].sort((a, b) => (a.price?.input ?? 1e9) - (b.price?.input ?? 1e9))
 
   const groups: [string, AIModel[]][] = []
   if (grouped) {
@@ -540,38 +684,89 @@ function ModelPicker({
           onChange={(e) => setFilter(e.target.value)}
           spellCheck={false}
         />
-        <select
-          className="input !py-1 text-sm flex-[2] min-w-48"
-          value={inUse}
-          disabled={busy || loading}
-          onChange={(e) => onChoose(e.target.value)}
-          aria-label={t('Model')}
-        >
-          <option value="">{inUse || t('Choose a model')}</option>
-          {grouped
-            ? groups.map(([label, list]) => (
-                <optgroup key={label} label={label}>
-                  {list.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {optionLabel(m)}
-                    </option>
-                  ))}
-                </optgroup>
-              ))
-            : shown.slice(0, 300).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {optionLabel(m)}
-                </option>
-              ))}
-        </select>
+        {models.some((m) => m.vendor) && (
+          <select
+            className="input !py-1 text-sm !w-auto"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'maker' | 'price')}
+            aria-label={t('Sort')}
+          >
+            <option value="maker">{t('By maker')}</option>
+            <option value="price">{t('Lowest price')}</option>
+          </select>
+        )}
       </div>
+      <select
+        className="input !py-1 text-sm"
+        value={inUse}
+        disabled={busy || loading}
+        onChange={(e) => onChoose(e.target.value)}
+        aria-label={t('Text model')}
+      >
+        <option value="">{inUse || t('Choose a model')}</option>
+        {grouped
+          ? groups.map(([label, list]) => (
+              <optgroup key={label} label={label}>
+                {list.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {optionLabel(m)}
+                  </option>
+                ))}
+              </optgroup>
+            ))
+          : (sort === 'price' ? byPrice : shown).slice(0, 400).map((m) => (
+              <option key={m.id} value={m.id}>
+                {optionLabel(m)}
+              </option>
+            ))}
+      </select>
       {models.length > 0 && (
         <p className="text-[11px] text-muted">
-          {models.length} {t('models that can do this job.')}{' '}
-          {grouped && t('You can switch models here at any time.')}
+          {models.length} {t('models that can do this job. You can switch models here at any time.')}
         </p>
       )}
     </div>
+  )
+}
+
+/** Voice (transcription) models: the ones known to return word timings
+ *  first; any other is checked with a short test clip when chosen. */
+function VoicePicker({
+  models,
+  loading,
+  inUse,
+  busy,
+  onChoose
+}: {
+  models: AIModel[]
+  loading: boolean
+  inUse: string
+  busy: boolean
+  onChoose: (id: string) => void
+}): JSX.Element {
+  const known = models.filter((m) => m.verified)
+  const others = models.filter((m) => !m.verified)
+  const option = (m: AIModel): JSX.Element => (
+    <option key={m.id} value={m.id}>
+      {[m.name, shortPrice(m)].filter(Boolean).join(' · ')}
+    </option>
+  )
+  return (
+    <select
+      className="input !py-1 text-sm"
+      value={inUse}
+      disabled={busy || loading}
+      onChange={(e) => onChoose(e.target.value)}
+      aria-label={t('Voice model')}
+    >
+      <option value="">{loading ? t('Loading models…') : inUse || t('Choose a voice model')}</option>
+      {known.length > 0 && <optgroup label={t('✓ Returns word timings')}>{known.map(option)}</optgroup>}
+      {others.length > 0 && (
+        <optgroup label={t('Other voice models (checked with a test clip when chosen)')}>
+          {others.map(option)}
+        </optgroup>
+      )}
+    </select>
   )
 }
 

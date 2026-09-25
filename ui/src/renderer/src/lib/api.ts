@@ -1,5 +1,5 @@
 import type {
-  AIModel,
+  AIModelList,
   AIStatus,
   AutomationActivity,
   AutomationStatus,
@@ -370,10 +370,17 @@ export const api = {
     }),
   deleteAIKey: (provider: string) =>
     request<AIStatus>(`/ai/providers/${provider}/key`, { method: 'DELETE' }),
-  aiModels: (provider: string, refresh = false) =>
-    request<{ models: AIModel[] }>(
-      `/ai/providers/${provider}/models${refresh ? '?refresh=true' : ''}`
+  aiModels: (provider: string, refresh = false, kind: 'text' | 'stt' = 'text') =>
+    request<AIModelList>(
+      `/ai/providers/${provider}/models?kind=${kind}${refresh ? '&refresh=true' : ''}`
     ),
+  /** Choose a voice model; one not known to return word timings is checked
+   *  with a short test clip first, and only saved if it does. */
+  checkVoiceModel: (provider: string, model: string) =>
+    request<AIStatus & { ok: boolean; message: string }>(`/ai/providers/${provider}/stt-check`, {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
   testAI: (provider: string, model: string) =>
     request<{ ok: boolean; kind?: string; message: string }>(`/ai/providers/${provider}/test`, {
       method: 'POST',
