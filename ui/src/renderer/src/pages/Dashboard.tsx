@@ -656,15 +656,18 @@ export default function Dashboard({
                   {/* Names the free ceiling instead of praising the free
                       tier. The referral pays only on a subscription, and the
                       old line sold the plan that earns nothing. The limit is
-                      real: every tier reaches the same eight networks through
-                      their API (it has no Bluesky, which an earlier version of
-                      this line claimed), but free connects two accounts, so
-                      YouTube plus TikTok plus Instagram already does not fit.
-                      The honest sentence and the persuasive one are the same
-                      sentence. */}
+                      real: every tier reaches the same networks through their
+                      API (it has no Bluesky, which an earlier version of this
+                      line claimed), but free connects two accounts, so YouTube
+                      plus TikTok plus Instagram already does not fit. The
+                      honest sentence and the persuasive one are the same
+                      sentence.
+                      It names the five that streamers and YouTubers post to.
+                      LinkedIn, Threads and Pinterest still work everywhere
+                      publishing does; they are just not worth the card's space. */}
                   <p className="text-sm text-ink/80 mt-0.5">
                     {t(
-                      'One upload reaches YouTube, TikTok, Instagram, Facebook, X, LinkedIn, Threads and Pinterest. The free plan connects two accounts. Connect all eight and post to every platform at once. Then add your WoopSocial API key in Settings so Clips Kitty can post for you.'
+                      'One upload reaches YouTube, TikTok, Instagram, Facebook and X. The free plan connects two accounts. Connect them all and post everywhere at once. Then add your WoopSocial API key in Settings so Clips Kitty can post for you.'
                     )}
                   </p>
                   {/* Readable, not buried: it has to be legible to be a
