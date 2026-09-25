@@ -10,8 +10,17 @@ export default function ModelSwitcher(): JSX.Element {
   const [active, setActive] = useState('')
   const [switching, setSwitching] = useState(false)
   const [vram, setVram] = useState<number | null>(null)
+  // A cloud model on the user's own key, as "OpenRouter · model", or "".
+  const [cloud, setCloud] = useState('')
 
   const refresh = async (): Promise<void> => {
+    try {
+      const status = await api.ai()
+      const label = status.providers.find((p) => p.id === status.active.provider)?.label
+      setCloud(status.active.local ? '' : `${label ?? status.active.provider} · ${status.active.model}`)
+    } catch {
+      setCloud('')
+    }
     try {
       const info = await api.models()
       setInstalled(info.installed)
@@ -47,6 +56,25 @@ export default function ModelSwitcher(): JSX.Element {
     } finally {
       setSwitching(false)
     }
+  }
+
+  if (cloud) {
+    // Chosen in Settings → AI, so that is where it is changed. Picking a local
+    // model from a dropdown here would quietly switch the user off their cloud
+    // provider, which is exactly the kind of surprise this must not spring.
+    return (
+      <div className="px-3 pb-2">
+        <label className="label px-2">AI model</label>
+        <button
+          className="input mt-1 text-sm text-left truncate"
+          title={cloud}
+          onClick={() => window.dispatchEvent(new Event('open-settings'))}
+        >
+          {cloud}
+        </button>
+        <p className="mt-1 px-2 text-[11px] leading-snug text-muted">Your own key · change in Settings</p>
+      </div>
+    )
   }
 
   if (installed.length === 0) return <></>

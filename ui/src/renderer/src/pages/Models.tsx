@@ -13,6 +13,27 @@ export default function Models(): JSX.Element {
   // For the "won't fit your card" warning — the one speed difference big
   // enough that people report it as the app being broken.
   const [vram, setVram] = useState<number | null>(null)
+  // A cloud provider in use on the user's own key: local models are then
+  // only needed to switch back, and Ollama not running is not a problem.
+  const [cloud, setCloud] = useState('')
+  useEffect(() => {
+    api
+      .ai()
+      .then((s) => {
+        const label = s.providers.find((p) => p.id === s.active.provider)?.label
+        setCloud(s.active.local ? '' : `${label ?? s.active.provider} (${s.active.model})`)
+      })
+      .catch(() => setCloud(''))
+  }, [])
+  const cloudNote = cloud && (
+    <div className="card text-sm">
+      You&apos;re using <span className="text-ink">{cloud}</span> with your own API key, chosen in{' '}
+      <button className="text-accent hover:underline" onClick={() => window.dispatchEvent(new Event('open-settings'))}>
+        Settings → AI
+      </button>
+      . Local models are only needed if you switch back to running AI on this PC.
+    </div>
+  )
 
   const refresh = async (): Promise<void> => {
     try {
@@ -77,9 +98,11 @@ export default function Models(): JSX.Element {
     return (
       <div className="p-6">
         <h2 className="text-2xl font-bold mb-4">Models</h2>
-        <div className="card text-warn">
-          Ollama isn’t reachable. Make sure it’s installed and running, then reopen this page.
-        </div>
+        {cloudNote || (
+          <div className="card text-warn">
+            Ollama isn’t reachable. Make sure it’s installed and running, then reopen this page.
+          </div>
+        )}
       </div>
     )
   }
@@ -88,6 +111,7 @@ export default function Models(): JSX.Element {
   return (
     <div className="p-6 space-y-5 max-w-3xl">
       <h2 className="text-2xl font-bold">Models</h2>
+      {cloudNote}
 
       <section className="card space-y-3">
         <h3 className="font-semibold">Installed</h3>

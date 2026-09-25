@@ -1,4 +1,6 @@
 import type {
+  AIModel,
+  AIStatus,
   AutomationActivity,
   AutomationStatus,
   BrandingProfile,
@@ -359,6 +361,34 @@ export const api = {
     (voice ? `&voice=${encodeURIComponent(voice)}` : ''),
 
   models: () => request<ModelsInfo>('/models'),
+  // Settings → AI: local first, or a cloud provider on the user's own key.
+  ai: () => request<AIStatus>('/ai'),
+  putAIKey: (provider: string, apiKey: string) =>
+    request<AIStatus & { message: string }>(`/ai/providers/${provider}/key`, {
+      method: 'PUT',
+      body: JSON.stringify({ api_key: apiKey })
+    }),
+  deleteAIKey: (provider: string) =>
+    request<AIStatus>(`/ai/providers/${provider}/key`, { method: 'DELETE' }),
+  aiModels: (provider: string, refresh = false) =>
+    request<{ models: AIModel[] }>(
+      `/ai/providers/${provider}/models${refresh ? '?refresh=true' : ''}`
+    ),
+  testAI: (provider: string, model: string) =>
+    request<{ ok: boolean; kind?: string; message: string }>(`/ai/providers/${provider}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
+  activateAI: (provider: string, model = '') =>
+    request<AIStatus>('/ai/activate', {
+      method: 'POST',
+      body: JSON.stringify({ provider, model })
+    }),
+  setTranscription: (backend: string, model = '') =>
+    request<AIStatus>('/ai/transcription', {
+      method: 'POST',
+      body: JSON.stringify({ backend, model })
+    }),
   activateModel: (tag: string) =>
     request<{ active: string }>('/models/activate', { method: 'POST', body: JSON.stringify({ tag }) }),
   pullModel: (tag: string) =>

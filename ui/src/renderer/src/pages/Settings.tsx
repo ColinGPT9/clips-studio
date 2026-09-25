@@ -23,6 +23,7 @@ import {
   setAppLanguage,
   t
 } from '../lib/i18n'
+import AICard from '../components/AICard'
 import UploadPostCard from '../components/UploadPostCard'
 import WoopSocialCard from '../components/WoopSocialCard'
 import YouTubeCard from '../components/YouTubeCard'
@@ -618,6 +619,10 @@ export default function Settings(): JSX.Element {
       <StorageCard />
       <VideoStorageCard />
 
+      {/* Where the AI and transcription run: this PC first, or a cloud
+          provider on the user's own key for PCs that cannot run them. */}
+      <AICard onOpenModels={() => window.dispatchEvent(new Event('open-models'))} />
+
       <SetupCard />
 
       <UpdateCard />
@@ -632,8 +637,9 @@ export default function Settings(): JSX.Element {
       <BrandingCard />
 
       <div className="card text-sm text-muted">
-        The active AI model is managed on the <span className="text-ink">Models</span> page. Advanced
-        options (scoring weights, tracking, captions) live in <code>config/settings.yaml</code>.
+        Local models are managed on the <span className="text-ink">Models</span> page; where the AI runs
+        is chosen under AI above. Advanced options (scoring weights, tracking, captions) live in{' '}
+        <code>config/settings.yaml</code>.
       </div>
     </div>
   )

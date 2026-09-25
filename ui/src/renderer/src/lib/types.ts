@@ -298,6 +298,37 @@ export interface Preflight {
   checks: PreflightCheck[]
 }
 
+/** One entry in Settings → AI: this PC (local, first) or a cloud provider on
+ *  the user's own key. Never carries a key: `key_tail` is the last four. */
+export interface AIProvider {
+  id: string
+  label: string
+  local: boolean
+  key_label: string
+  key_url: string
+  pricing_url: string
+  privacy: string
+  stt: boolean
+  stt_models?: string[]
+  has_key: boolean
+  key_tail: string
+}
+
+export interface AIStatus {
+  active: { provider: string; model: string; local: boolean }
+  transcription: { backend: string; model: string }
+  providers: AIProvider[]
+}
+
+export interface AIModel {
+  id: string
+  name: string
+  context: number
+  json_schema: boolean
+  tools: boolean
+  note: string
+}
+
 export interface ModelsInfo {
   active: string
   installed: InstalledModel[]

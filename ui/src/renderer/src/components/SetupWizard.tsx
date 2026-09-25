@@ -22,7 +22,9 @@ const LABEL: Record<string, string> = {
   // someone to go and install a second copy.
   ollama: 'AI runtime',
   model: 'AI model',
+  ai: 'AI model',
   whisper: 'Transcription',
+  transcription: 'Transcription',
   gpu: 'Graphics card',
   disk: 'Free space'
 }
@@ -201,6 +203,21 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
                 Everything Clips Kitty needs came with it, apart from the AI model that picks
                 the moments worth clipping. We&apos;re fetching the one that suits your graphics
                 card now — it downloads once and then works offline.
+              </p>
+              {/* For the old laptop or low-spec mini PC that cannot run the
+                  model: skip the download and bring an API key instead. */}
+              <p className="text-xs text-muted mt-2">
+                PC too old to run AI?{' '}
+                <button
+                  className="text-accent hover:underline"
+                  onClick={() => {
+                    finish()
+                    window.dispatchEvent(new Event('open-settings'))
+                  }}
+                >
+                  Use your own API key instead
+                </button>{' '}
+                (billed by the provider you choose).
               </p>
               {error && (
                 <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-lg px-4 py-2.5">

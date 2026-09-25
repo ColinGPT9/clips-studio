@@ -67,6 +67,34 @@ export default function App(): JSX.Element {
     window.addEventListener('open-settings', open)
     return () => window.removeEventListener('open-settings', open)
   }, [])
+  // And Models: Settings → AI links here to manage local models.
+  useEffect(() => {
+    const open = (): void => setPage('models')
+    window.addEventListener('open-models', open)
+    return () => window.removeEventListener('open-models', open)
+  }, [])
+  // Whether any AI runs in the cloud on the user's own key, so the sidebar's
+  // "100% local" line is only ever shown when it is true.
+  const [cloudAI, setCloudAI] = useState('')
+  useEffect(() => {
+    const read = (): void => {
+      api
+        .ai()
+        .then((s) => {
+          const label = (id: string): string => s.providers.find((p) => p.id === id)?.label ?? id
+          const parts: string[] = []
+          if (!s.active.local) parts.push(`${t('AI')}: ${label(s.active.provider)}`)
+          if (s.transcription.backend !== 'local') {
+            parts.push(`${t('transcription')}: ${label(s.transcription.backend)}`)
+          }
+          setCloudAI(parts.join(', '))
+        })
+        .catch(() => setCloudAI(''))
+    }
+    read()
+    const id = setInterval(read, 30000)
+    return () => clearInterval(id)
+  }, [])
   // Mounted at the shell, not on the queue page: the point of a notification
   // is to reach someone who is NOT looking at the queue.
   useQueueNotifications()
@@ -178,7 +206,11 @@ export default function App(): JSX.Element {
           {/* The AGPL expects anyone running the program to be able to find
               its source. The link above is that offer, so it names the
               licence rather than leaving "open source" to mean anything. */}
-          <p className="text-[10px] text-muted/60 mt-1.5">{t('AGPL-3.0 · 100% local · no cloud AI')}</p>
+          <p className="text-[10px] text-muted/60 mt-1.5">
+            {cloudAI
+              ? `AGPL-3.0 · ${t('cloud AI on your key')} (${cloudAI})`
+              : t('AGPL-3.0 · 100% local · no cloud AI')}
+          </p>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto flex flex-col">

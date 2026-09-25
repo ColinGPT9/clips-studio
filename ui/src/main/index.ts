@@ -459,6 +459,16 @@ ipcMain.handle('open-donate-window', (event) => {
 // Ollama, which is deliberately not bundled.
 const EXTERNAL_ALLOWED = [
   /^https:\/\/ollama\.com\//,
+  // Settings → AI, bring your own key: each cloud provider's key and pricing
+  // pages (llm/providers/*.py key_url and pricing_url). A provider added
+  // there needs its hosts added here, or its "Get a key" link does nothing.
+  /^https:\/\/openrouter\.ai\//,
+  /^https:\/\/(platform|developers)\.openai\.com\//,
+  /^https:\/\/aistudio\.google\.com\//,
+  /^https:\/\/ai\.google\.dev\//,
+  /^https:\/\/(console|www)\.anthropic\.com\//,
+  /^https:\/\/(console|docs)\.x\.ai\//,
+  /^https:\/\/dev\.meta\.ai\//,
   /^https:\/\/github\.com\/ColinGPT9\/clips-studio(\/|$)/,
   // YouTube publishing: the setup wizard sends people to Cloud Console and
   // the audit form, and a published clip links to its own watch/Studio page.

@@ -69,7 +69,8 @@ SPEC = ProviderSpec(
     key_label="OpenRouter API key",
     key_url="https://openrouter.ai/keys",
     pricing_url="https://openrouter.ai/models",
-    privacy="Transcripts and prompts go to OpenRouter, and on to the model's provider, with your key.",
+    privacy="Transcripts and prompts (and audio, if it transcribes) go to OpenRouter, and on to the "
+            "model's provider, with your key.",
     extra_headers=attribution_headers,
     body_extras=_route_to_capable_providers,
     model_filter=model_info,
