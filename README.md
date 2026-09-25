@@ -42,9 +42,11 @@ captions, and writes titles, descriptions, and hashtags.
 No cloud AI by default. No subscription. No per-clip fees. Your footage never leaves
 your computer, unless you ask it to publish a clip to your own YouTube channel.
 
-Local first, with an escape hatch: if your PC is too old to run the AI, bring your own
-API key (OpenRouter, OpenAI, Gemini, Claude, xAI or Meta) and that provider runs it
-instead, billed to your own account. See [docs/AI-BACKENDS.md](docs/AI-BACKENDS.md).
+Local first, cloud when you need it: if your PC is too old to run the AI, bring your
+own API key and a cloud provider runs it instead, billed to your own account.
+**OpenRouter is the recommended cloud path**: one key for many models (Claude, GPT,
+Gemini, Muse Spark and more). OpenAI, Claude, Gemini, xAI and Meta also work directly.
+See [docs/AI-BACKENDS.md](docs/AI-BACKENDS.md).
 
 **Why it exists:** most creators growing a channel are doing all of it themselves:
 filming, streaming, editing, posting. Clipping is how people find you and it is usually
