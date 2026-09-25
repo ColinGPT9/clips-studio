@@ -238,31 +238,35 @@ export type Model = {
 	/** Transcription models are a different list from chat models and must
 	 *  never appear in the same dropdown. */
 	isTranscription: boolean;
-	/** Approximate USD per HOUR of audio, for transcription models only.
+	/** Approximate USD per HOUR of audio, for transcription models only, and
+	 *  only where the unit is clear. Null otherwise; `audioRate` then holds
+	 *  OpenRouter's number exactly as listed.
 	 *
-	 *  Approximate because OpenRouter reports speech pricing in more than one
-	 *  unit and does not say which. Two clusters are clearly present:
+	 *  OpenRouter lists a speech price with no unit. As of September 2026 it
+	 *  lists them per SECOND, and each matches the provider's own rate:
 	 *
-	 *    per SECOND   whisper-large-v3-turbo 3.33e-6  -> ~$0.012/hr
-	 *    per MINUTE   openai/whisper-1       0.006    ->  $0.36/hr
-	 *                 deepgram/nova-3        0.0043   ->  $0.26/hr
-	 *                 google/chirp-3         0.016    ->  $0.96/hr
+	 *    openai/whisper-1        1.0e-4   -> $0.36/hr  (OpenAI: $0.006/min)
+	 *    deepgram/nova-3         7.17e-5  -> $0.26/hr
+	 *    google/chirp-3          2.67e-4  -> $0.96/hr
+	 *    whisper-large-v3-turbo  3.33e-6  -> $0.012/hr
 	 *
-	 *  Each of those matches the provider's own published rate, and every
-	 *  model in the catalogue falls on one side or the other of 1e-4 — so that
-	 *  is the split used below. It is a heuristic, which is why the UI prefixes
-	 *  the figure with "~" and why the REAL number reported by OpenRouter in
-	 *  `usage.cost` is shown once a run has actually spent something.
+	 *  A few are larger (Microsoft's MAI Transcribe: 0.1, 0.36) and only make
+	 *  sense per HOUR, which nothing in the data says. So a figure below
+	 *  PER_SECOND_CEILING is estimated per hour and marked "~"; anything above
+	 *  is not guessed at. An earlier split at 1e-4, from when whisper-1 was
+	 *  listed per minute, would now price MAI about 60 times too high. The
+	 *  desktop app uses the same rule (llm/providers/openrouter.py).
 	 *
-	 *  Getting the unit wrong would misprice by 60x, so do not present this as
-	 *  exact. Token-billed models (those with a `completion` price, such as the
+	 *  Token-billed models (those with a `completion` price, such as the
 	 *  gpt-4o transcribe pair) are understated here, since the output side
 	 *  cannot be predicted from audio length. */
 	audioPerHour: number | null;
+	/** OpenRouter's listed speech price, unit not stated, for showing as-is. */
+	audioRate: number | null;
 };
 
-/** Where the per-second and per-minute clusters divide. See `audioPerHour`. */
-const PER_SECOND_CEILING = 1e-4;
+/** Below this, a speech price is per second. See `audioPerHour`. */
+const PER_SECOND_CEILING = 1e-3;
 
 function toModel(m: Record<string, unknown>): Model {
 	const pricing = (m.pricing ?? {}) as Record<string, string>;
@@ -287,15 +291,21 @@ function toModel(m: Record<string, unknown>): Model {
 			params.includes("structured_outputs"),
 		isTranscription:
 			Array.isArray(outputs) && outputs.includes("transcription"),
-		audioPerHour: audioRate(pricing.prompt),
+		audioPerHour: perHour(pricing.prompt),
+		audioRate: listedRate(pricing.prompt),
 	};
 }
 
-/** Estimated USD per hour of audio from a raw speech price. */
-function audioRate(raw: string | undefined): number | null {
+/** OpenRouter's speech price as listed, or null. */
+function listedRate(raw: string | undefined): number | null {
 	const n = Number(raw);
-	if (!raw || Number.isNaN(n) || n <= 0) return null;
-	return n < PER_SECOND_CEILING ? n * 3600 : n * 60;
+	return !raw || Number.isNaN(n) || n <= 0 ? null : n;
+}
+
+/** Estimated USD per hour of audio, only where the unit is clearly seconds. */
+function perHour(raw: string | undefined): number | null {
+	const n = listedRate(raw);
+	return n !== null && n < PER_SECOND_CEILING ? n * 3600 : null;
 }
 
 /** Chat models this visitor can actually use.

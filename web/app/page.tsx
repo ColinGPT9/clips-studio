@@ -834,6 +834,7 @@ function ModelPicker({
 					supportsJson: true,
 					isTranscription: false,
 					audioPerHour: null,
+					audioRate: null,
 				},
 			];
 
@@ -858,8 +859,10 @@ function ModelPicker({
 						    per-second on DeepInfra, so rendering their number as
 						    "$/M tokens" would be a confident lie. */}
 						{m.isTranscription
-							? m.audioPerHour !== null &&
-								`: ~$${m.audioPerHour.toFixed(3)}/hour of audio`
+							? m.audioPerHour !== null
+								? `: ~$${m.audioPerHour.toFixed(3)}/hour of audio`
+								: m.audioRate !== null &&
+									`: rate $${m.audioRate} (unit not stated by OpenRouter)`
 							: m.promptPerM !== null && `: $${m.promptPerM.toFixed(2)}/M in`}
 					</option>
 				))}
