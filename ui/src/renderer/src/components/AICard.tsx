@@ -1,48 +1,57 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
+import { takeAISetupHint } from '../lib/aiSetup'
 import { t } from '../lib/i18n'
 import type { AIModel, AIProvider, AIStatus } from '../lib/types'
 
 /** Settings → AI: where the AI work and the transcription run.
  *
- *  This PC first, always: Ollama and Whisper are the default and cost
- *  nothing. The cloud providers are for PCs that cannot run the models, and
- *  every one is bring-your-own-key: the user's key, the user's account, billed
- *  by the provider. Clips Kitty has no key of its own and proxies nothing.
+ *  Local first, cloud when you need it, and OpenRouter the easiest cloud path:
  *
- *  Compact on purpose: one dropdown per job, and only the chosen provider's
- *  key and model below it. Keys are per provider, so switching back and forth
- *  never asks for one twice, but only one key field is ever on screen. The
- *  provider list comes from the engine (GET /ai), so a new provider needs no
- *  change here. The key is write-only: the card is only told whether one is
- *  saved and its last four characters.
+ *    1. This PC (Ollama, Whisper): the default. No key, nothing sent.
+ *    2. OpenRouter: the recommended cloud option. One key reaches many models
+ *       and providers, so switching models needs no new account.
+ *    3. A direct provider API (OpenAI, Claude, Gemini, Grok, Meta): always
+ *       available, offered as the advanced option.
+ *
+ *  Every cloud option is bring-your-own-key: the user's key and account, the
+ *  provider's bill. Clips Kitty has no key of its own and proxies nothing.
+ *  Nothing switches on until the user has pasted their own key and picked a
+ *  model. The tiers come from the engine (GET /ai), so a new provider lands
+ *  in the right place without touching this file. The key is write-only: the
+ *  card only learns whether one is saved and its last four characters.
  */
 
-const LOCAL_AI = 'ollama'
-const LOCAL_STT = 'local'
+type Job = 'ai' | 'stt'
+type Tier = 'local' | 'recommended' | 'direct'
+type Run = (fn: () => Promise<AIStatus | null>, done?: string) => Promise<boolean>
+
+const LOCAL_ID: Record<Job, string> = { ai: 'ollama', stt: 'local' }
 
 export default function AICard({ onOpenModels }: { onOpenModels?: () => void }): JSX.Element {
   const [status, setStatus] = useState<AIStatus | null>(null)
-  const [aiChoice, setAiChoice] = useState('')
-  const [sttChoice, setSttChoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [hint] = useState(takeAISetupHint)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     api
       .ai()
-      .then((s) => {
-        setStatus(s)
-        setAiChoice(s.active.provider)
-        setSttChoice(s.transcription.backend)
-      })
+      .then(setStatus)
       .catch(() => {
         /* engine not up yet */
       })
   }, [])
 
-  const run = async (fn: () => Promise<AIStatus | null>, done = ''): Promise<boolean> => {
+  // Arriving from "Set up OpenRouter" elsewhere in the app: bring the card
+  // into view. It opens on that setup; nothing is switched on.
+  useEffect(() => {
+    if (hint && status) cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hint, status])
+
+  const run: Run = async (fn, done = '') => {
     setBusy(true)
     setError('')
     setNotice('')
@@ -67,114 +76,26 @@ export default function AICard({ onOpenModels }: { onOpenModels?: () => void }):
     )
   }
 
-  const cloud = status.providers.filter((p) => !p.local)
-  const provider = (id: string): AIProvider | undefined => status.providers.find((p) => p.id === id)
-  const aiProvider = provider(aiChoice)
-  const sttProvider = provider(sttChoice)
-
-  const pickAI = (id: string): void => {
-    setAiChoice(id)
-    if (id === LOCAL_AI && !status.active.local) {
-      void run(() => api.activateAI(LOCAL_AI), t('AI runs on this PC again.'))
-    }
-  }
-
-  const pickStt = (id: string): void => {
-    setSttChoice(id)
-    if (id === LOCAL_STT && status.transcription.backend !== LOCAL_STT) {
-      void run(() => api.setTranscription(LOCAL_STT), t('Transcription runs on this PC again.'))
-    } else if (id !== LOCAL_STT && provider(id)?.has_key) {
-      void run(() => api.setTranscription(id), t('Transcription now runs online.'))
-    }
-  }
-
   return (
-    <div className="card space-y-4" aria-label="AI">
+    <div ref={cardRef} className="card space-y-5" aria-label="AI">
       <div>
         <h3 className="font-semibold">{t('AI')}</h3>
         <p className="text-xs text-muted mt-0.5">
-          {t(
-            "Runs on this PC by default, free and private. If your PC can't run it, bring your own API key and a provider runs it instead, billed to your account."
-          )}
+          {t('Local first. Cloud when you need it, on your own API key. OpenRouter is the easiest cloud path.')}
         </p>
       </div>
 
-      <div className="space-y-2">
-        <label className="label block" htmlFor="ai-backend">
-          {t('Clip picking, titles and the assistant')}
-        </label>
-        <select
-          id="ai-backend"
-          className="input text-sm"
-          value={aiChoice}
-          disabled={busy}
-          onChange={(e) => pickAI(e.target.value)}
-        >
-          <option value={LOCAL_AI}>{t('This PC — Ollama (free, private)')}</option>
-          <optgroup label={t('Bring your own key')}>
-            {cloud.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        {aiChoice === LOCAL_AI || !aiProvider ? (
-          <p className="text-xs text-muted">
-            {t('Runs on this PC.')}{' '}
-            {onOpenModels && (
-              <button className="text-accent hover:underline" onClick={onOpenModels}>
-                {t('Manage local models')} →
-              </button>
-            )}
-          </p>
-        ) : (
-          <ProviderPanel
-            key={`ai-${aiProvider.id}`}
-            provider={aiProvider}
-            kind="text"
-            inUse={status.active.provider === aiProvider.id ? status.active.model : ''}
-            busy={busy}
-            run={run}
-          />
-        )}
-      </div>
-
-      <div className="space-y-2 border-t border-raised/60 pt-3">
-        <label className="label block" htmlFor="ai-transcription">
-          {t('Transcription')}
-        </label>
-        <select
-          id="ai-transcription"
-          className="input text-sm"
-          value={sttChoice}
-          disabled={busy}
-          onChange={(e) => pickStt(e.target.value)}
-        >
-          <option value={LOCAL_STT}>{t('This PC — Whisper (free, private)')}</option>
-          <optgroup label={t('Online with your own key')}>
-            {cloud
-              .filter((p) => p.stt)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-          </optgroup>
-        </select>
-        {sttChoice === LOCAL_STT || !sttProvider ? (
-          <p className="text-xs text-muted">{t('Whisper runs on this PC.')}</p>
-        ) : (
-          <ProviderPanel
-            key={`stt-${sttProvider.id}`}
-            provider={sttProvider}
-            kind="stt"
-            inUse={status.transcription.backend === sttProvider.id ? status.transcription.model : ''}
-            busy={busy}
-            run={run}
-          />
-        )}
-      </div>
+      <JobChoice
+        job="ai"
+        title={t('Clip picking, titles and the assistant')}
+        status={status}
+        hint={hint}
+        busy={busy}
+        run={run}
+        onOpenModels={onOpenModels}
+      />
+      <div className="border-t border-raised/60" />
+      <JobChoice job="stt" title={t('Transcription')} status={status} hint={hint} busy={busy} run={run} />
 
       {notice && <p className="text-xs text-success">{notice}</p>}
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -182,79 +103,280 @@ export default function AICard({ onOpenModels }: { onOpenModels?: () => void }):
   )
 }
 
-/** One provider's key, model and connection test, for one job. */
+/** One job's three tiers. Only the selected one opens up. */
+function JobChoice({
+  job,
+  title,
+  status,
+  hint,
+  busy,
+  run,
+  onOpenModels
+}: {
+  job: Job
+  title: string
+  status: AIStatus
+  hint: string
+  busy: boolean
+  run: Run
+  onOpenModels?: () => void
+}): JSX.Element {
+  const usable = status.providers.filter((p) => !p.local && (job === 'ai' || p.stt))
+  const recommended = usable.filter((p) => p.tier === 2)
+  const direct = usable.filter((p) => p.tier === 3)
+  const activeId = job === 'ai' ? status.active.provider : status.transcription.backend
+  const activeModel = job === 'ai' ? status.active.model : status.transcription.model
+
+  const initial = (): { tier: Tier; direct: string } => {
+    const wanted = job === 'ai' ? hint : ''
+    const pick = usable.find((p) => p.id === (wanted || activeId))
+    if (!pick) return { tier: 'local', direct: direct[0]?.id ?? '' }
+    return pick.tier === 2
+      ? { tier: 'recommended', direct: direct[0]?.id ?? '' }
+      : { tier: 'direct', direct: pick.id }
+  }
+  const [tier, setTier] = useState<Tier>(() => initial().tier)
+  const [recommendedId, setRecommendedId] = useState(() => {
+    const pick = recommended.find((p) => p.id === (hint || activeId))
+    return pick?.id ?? recommended[0]?.id ?? ''
+  })
+  const [directId, setDirectId] = useState(() => initial().direct)
+
+  const chooseLocal = (): void => {
+    setTier('local')
+    if (activeId !== LOCAL_ID[job]) {
+      void (job === 'ai'
+        ? run(() => api.activateAI(LOCAL_ID.ai), t('AI runs on this PC again.'))
+        : run(() => api.setTranscription(LOCAL_ID.stt), t('Transcription runs on this PC again.')))
+    }
+  }
+
+  const provider = (id: string): AIProvider | undefined => usable.find((p) => p.id === id)
+  const inUse = (id: string): string => (activeId === id ? activeModel : '')
+
+  return (
+    <div className="space-y-2" role="radiogroup" aria-label={title}>
+      <p className="label">{title}</p>
+
+      <TierRow
+        name={`${job}-tier`}
+        checked={tier === 'local'}
+        onSelect={chooseLocal}
+        busy={busy}
+        title={job === 'ai' ? `⭐ ${t('Ollama')}` : `⭐ ${t('Whisper')}`}
+        badge={t('Local AI · recommended')}
+        tone="local"
+        tagline={
+          job === 'ai'
+            ? t('Runs AI on your computer. No API key needed, nothing sent anywhere. The first choice for Clips Kitty.')
+            : t('Transcribes on your computer. No API key needed, nothing sent anywhere.')
+        }
+      >
+        {job === 'ai' && onOpenModels && (
+          <button className="text-xs text-accent hover:underline" onClick={onOpenModels}>
+            {t('Manage local models')} →
+          </button>
+        )}
+      </TierRow>
+
+      {recommended.map((p) => (
+        <TierRow
+          key={p.id}
+          name={`${job}-tier`}
+          checked={tier === 'recommended' && recommendedId === p.id}
+          onSelect={() => {
+            setTier('recommended')
+            setRecommendedId(p.id)
+          }}
+          busy={busy}
+          title={`🚀 ${p.label}`}
+          badge={t('Recommended cloud AI')}
+          tone="recommended"
+          tagline={p.tagline}
+        >
+          <ProviderPanel provider={p} job={job} inUse={inUse(p.id)} busy={busy} run={run} recommended />
+        </TierRow>
+      ))}
+
+      {direct.length > 0 && (
+        <TierRow
+          name={`${job}-tier`}
+          checked={tier === 'direct'}
+          onSelect={() => setTier('direct')}
+          busy={busy}
+          title={t('Direct provider API')}
+          badge={t('Advanced')}
+          tone="direct"
+          tagline={t('Connect straight to one provider with your own key.')}
+        >
+          <select
+            className="input !py-1 text-sm mb-2"
+            value={directId}
+            onChange={(e) => setDirectId(e.target.value)}
+            aria-label={t('Provider')}
+          >
+            {direct.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+                {activeId === p.id ? ` · ${t('in use')}` : ''}
+              </option>
+            ))}
+          </select>
+          {provider(directId) && (
+            <ProviderPanel
+              key={directId}
+              provider={provider(directId) as AIProvider}
+              job={job}
+              inUse={inUse(directId)}
+              busy={busy}
+              run={run}
+            />
+          )}
+        </TierRow>
+      )}
+    </div>
+  )
+}
+
+function TierRow({
+  name,
+  checked,
+  onSelect,
+  busy,
+  title,
+  badge,
+  tone,
+  tagline,
+  children
+}: {
+  name: string
+  checked: boolean
+  onSelect: () => void
+  busy: boolean
+  title: string
+  badge: string
+  tone: 'local' | 'recommended' | 'direct'
+  tagline: string
+  children?: React.ReactNode
+}): JSX.Element {
+  const badgeTone = {
+    local: 'bg-success/15 text-success',
+    recommended: 'bg-accent/20 text-accent',
+    direct: 'bg-raised text-muted'
+  }[tone]
+  return (
+    <div
+      className={`rounded-lg border p-3 transition-colors ${
+        checked ? 'border-accent/60 bg-accent/5' : 'border-raised/60 hover:border-raised'
+      }`}
+    >
+      <label className="flex gap-3 cursor-pointer">
+        <input
+          type="radio"
+          name={name}
+          checked={checked}
+          disabled={busy}
+          onChange={onSelect}
+          className="mt-1 size-4 accent-[#38BDF8] shrink-0"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold">{title}</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${badgeTone}`}>
+              {badge}
+            </span>
+          </span>
+          <span className="block text-xs text-muted mt-0.5">{tagline}</span>
+        </span>
+      </label>
+      {checked && children && <div className="mt-3 pl-7 space-y-2">{children}</div>}
+    </div>
+  )
+}
+
+/** One provider's setup for one job: key, model, connection test, and what
+ *  it costs and sends. OpenRouter also gets its three steps, the "why", and a
+ *  model list grouped by who makes each model. */
 function ProviderPanel({
   provider,
-  kind,
+  job,
   inUse,
   busy,
-  run
+  run,
+  recommended = false
 }: {
   provider: AIProvider
-  kind: 'text' | 'stt'
+  job: Job
   inUse: string
   busy: boolean
-  run: (fn: () => Promise<AIStatus | null>, done?: string) => Promise<boolean>
+  run: Run
+  recommended?: boolean
 }): JSX.Element {
   const [models, setModels] = useState<AIModel[]>([])
   const [filter, setFilter] = useState('')
   const [loadingModels, setLoadingModels] = useState(false)
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null)
 
-  const sttModels = provider.stt_models ?? []
-
   useEffect(() => {
-    if (kind !== 'text' || !provider.has_key) return
+    if (job !== 'ai' || !provider.has_key) return
     setLoadingModels(true)
     api
       .aiModels(provider.id)
       .then((got) => setModels(got.models))
       .catch(() => setModels([]))
       .finally(() => setLoadingModels(false))
-  }, [provider.id, provider.has_key, kind])
+  }, [provider.id, provider.has_key, job])
 
   const choose = (model: string): void => {
     if (!model) return
-    void (kind === 'text'
+    void (job === 'ai'
       ? run(() => api.activateAI(provider.id, model), `${t('Now using')} ${provider.label} · ${model}.`)
-      : run(() => api.setTranscription(provider.id, model), `${t('Transcribing with')} ${model}.`))
+      : run(() => api.setTranscription(provider.id, model), `${t('Transcribing online with')} ${model}.`))
   }
 
-  const shown = models
-    .filter((m) => !filter || `${m.id} ${m.name}`.toLowerCase().includes(filter.toLowerCase()))
-    .slice(0, 200)
   const current = models.find((m) => m.id === inUse)
 
   return (
-    <div className="space-y-2 rounded-lg bg-raised/30 p-3">
+    <div className="space-y-2">
+      {!recommended && (
+        <p className="text-xs text-muted">
+          {t('Direct provider integration: connect straight to')} {provider.label}{' '}
+          {t('with your own API key. Useful if you want your')} {provider.label}{' '}
+          {t('account, limits and billing.')}
+        </p>
+      )}
+
+      {recommended && !provider.has_key && (
+        <ol className="text-xs text-muted list-decimal pl-4 space-y-0.5">
+          <li>
+            <button
+              className="text-accent hover:underline"
+              onClick={() => void window.studio.openExternal(provider.key_url)}
+            >
+              {t('Open')} {provider.label} ↗
+            </button>{' '}
+            {t('and sign in or create an account.')}
+          </li>
+          <li>{t('Create an API key. Add credit, or start with the free models.')}</li>
+          <li>{t('Paste the key below.')}</li>
+        </ol>
+      )}
+
       <KeyField provider={provider} busy={busy} run={run} />
 
       {provider.has_key && (
         <div className="space-y-1.5">
-          {kind === 'text' ? (
-            <div className="flex gap-2 flex-wrap">
-              <input
-                className="input !py-1 text-sm flex-1 min-w-32"
-                placeholder={loadingModels ? t('Loading models…') : t('Search models')}
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                spellCheck={false}
-              />
-              <select
-                className="input !py-1 text-sm flex-[2] min-w-48"
-                value={inUse}
-                disabled={busy || loadingModels}
-                onChange={(e) => choose(e.target.value)}
-                aria-label={t('Model')}
-              >
-                <option value="">{inUse ? inUse : t('Choose a model')}</option>
-                {shown.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {job === 'ai' ? (
+            <ModelPicker
+              models={models}
+              filter={filter}
+              setFilter={setFilter}
+              loading={loadingModels}
+              inUse={inUse}
+              busy={busy}
+              onChoose={choose}
+              grouped={models.some((m) => m.vendor)}
+            />
           ) : (
             <select
               className="input !py-1 text-sm"
@@ -264,7 +386,7 @@ function ProviderPanel({
               aria-label={t('Transcription model')}
             >
               <option value="">{t('Choose a model')}</option>
-              {sttModels.map((m) => (
+              {(provider.stt_models ?? []).map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
@@ -280,7 +402,7 @@ function ProviderPanel({
               disabled={busy}
               onClick={() =>
                 void api
-                  .testAI(provider.id, kind === 'text' ? inUse : '')
+                  .testAI(provider.id, job === 'ai' ? inUse : '')
                   .then(setTest)
                   .catch((e) => setTest({ ok: false, message: errorText(e) }))
               }
@@ -298,6 +420,35 @@ function ProviderPanel({
         </div>
       )}
 
+      {recommended && job === 'ai' && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-accent">{t('Why OpenRouter?')}</summary>
+          <ul className="mt-1.5 list-disc pl-4 space-y-1 text-muted">
+            <li>
+              {t(
+                'One cloud connection to many AI models and providers: Claude, GPT, Gemini, Muse Spark, Qwen and more, without a separate account and key for each.'
+              )}
+            </li>
+            <li>{t('Switch models here at any time. You are not locked into one.')}</li>
+            <li>
+              {t(
+                'If a provider serving your model is down, OpenRouter can send the request to another provider of the same model.'
+              )}
+            </li>
+            <li>
+              {t(
+                "Compare models and prices in one place. OpenRouter charges the providers' own prices and a fee when you buy credits."
+              )}
+            </li>
+            <li>
+              {t(
+                'Good for a low-spec PC or an always-on mini PC running Watched channels: the AI runs in the cloud while this PC does the rest.'
+              )}
+            </li>
+          </ul>
+        </details>
+      )}
+
       <p className="text-[11px] text-muted leading-snug">
         {t('Billed by')} {provider.label} {t("to your account. Clips Kitty doesn't provide or pay for API use.")}{' '}
         <button
@@ -313,17 +464,117 @@ function ProviderPanel({
   )
 }
 
+// OpenRouter's list, grouped by who makes each model. Matched by the id's
+// prefix, so no model names are written down here to go stale.
+const VENDOR_GROUPS: [string, string[]][] = [
+  ['Claude (Anthropic)', ['anthropic']],
+  ['GPT (OpenAI)', ['openai']],
+  ['Gemini (Google)', ['google']],
+  ['Muse Spark and Llama (Meta)', ['meta', 'meta-llama']],
+  ['Qwen', ['qwen']],
+  ['Grok (xAI)', ['x-ai']],
+  ['DeepSeek', ['deepseek']],
+  ['Mistral', ['mistralai']]
+]
+
+function contextLabel(tokens: number): string {
+  if (!tokens) return ''
+  return tokens >= 1_000_000 ? `${Math.round(tokens / 100_000) / 10}M` : `${Math.round(tokens / 1000)}K`
+}
+
+function priceLabel(price: AIModel['price']): string {
+  if (!price) return ''
+  if (price.input === 0 && price.output === 0) return t('free')
+  const f = (n: number): string => `$${Number(n.toPrecision(3))}`
+  return `${f(price.input)} / ${f(price.output)} ${t('per 1M')}`
+}
+
+function optionLabel(m: AIModel): string {
+  return [m.name, contextLabel(m.context), priceLabel(m.price)].filter(Boolean).join(' · ')
+}
+
+function ModelPicker({
+  models,
+  filter,
+  setFilter,
+  loading,
+  inUse,
+  busy,
+  onChoose,
+  grouped
+}: {
+  models: AIModel[]
+  filter: string
+  setFilter: (v: string) => void
+  loading: boolean
+  inUse: string
+  busy: boolean
+  onChoose: (id: string) => void
+  grouped: boolean
+}): JSX.Element {
+  const needle = filter.trim().toLowerCase()
+  const shown = models.filter((m) => !needle || `${m.id} ${m.name}`.toLowerCase().includes(needle))
+
+  const groups: [string, AIModel[]][] = []
+  if (grouped) {
+    const claimed = new Set<string>()
+    for (const [label, prefixes] of VENDOR_GROUPS) {
+      const inGroup = shown.filter((m) => prefixes.includes(m.vendor))
+      inGroup.forEach((m) => claimed.add(m.id))
+      if (inGroup.length) groups.push([label, inGroup])
+    }
+    const rest = shown.filter((m) => !claimed.has(m.id))
+    if (rest.length) groups.push([t('Other models'), rest])
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-2 flex-wrap">
+        <input
+          className="input !py-1 text-sm flex-1 min-w-32"
+          placeholder={loading ? t('Loading models…') : t('Search models')}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          spellCheck={false}
+        />
+        <select
+          className="input !py-1 text-sm flex-[2] min-w-48"
+          value={inUse}
+          disabled={busy || loading}
+          onChange={(e) => onChoose(e.target.value)}
+          aria-label={t('Model')}
+        >
+          <option value="">{inUse || t('Choose a model')}</option>
+          {grouped
+            ? groups.map(([label, list]) => (
+                <optgroup key={label} label={label}>
+                  {list.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {optionLabel(m)}
+                    </option>
+                  ))}
+                </optgroup>
+              ))
+            : shown.slice(0, 300).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {optionLabel(m)}
+                </option>
+              ))}
+        </select>
+      </div>
+      {models.length > 0 && (
+        <p className="text-[11px] text-muted">
+          {models.length} {t('models that can do this job.')}{' '}
+          {grouped && t('You can switch models here at any time.')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 /** The provider's key: saved (last four only), or a box to paste one into.
  *  Checked with the provider before it is kept. */
-function KeyField({
-  provider,
-  busy,
-  run
-}: {
-  provider: AIProvider
-  busy: boolean
-  run: (fn: () => Promise<AIStatus | null>, done?: string) => Promise<boolean>
-}): JSX.Element {
+function KeyField({ provider, busy, run }: { provider: AIProvider; busy: boolean; run: Run }): JSX.Element {
   const [draft, setDraft] = useState('')
   const [show, setShow] = useState(false)
   const [replacing, setReplacing] = useState(false)

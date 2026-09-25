@@ -304,6 +304,11 @@ export interface AIProvider {
   id: string
   label: string
   local: boolean
+  /** 1 = this PC (the default), 2 = the recommended cloud path (OpenRouter),
+   *  3 = a direct provider API, offered as the advanced option. */
+  tier: 1 | 2 | 3
+  recommended: boolean
+  tagline: string
   key_label: string
   key_url: string
   pricing_url: string
@@ -327,6 +332,10 @@ export interface AIModel {
   json_schema: boolean
   tools: boolean
   note: string
+  /** Who makes it ("anthropic", "openai"), for grouping OpenRouter's long list. */
+  vendor: string
+  /** USD per 1M input / output tokens, where the provider's list says. */
+  price: { input: number; output: number } | null
 }
 
 export interface ModelsInfo {
