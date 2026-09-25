@@ -552,6 +552,44 @@ Downloads a model. Returns immediately; **progress arrives on the WebSocket**
 as `{"type": "model_pull", "tag": …, "status": "done"}` (or `"error"`). A 12 GB model
 on a slow connection is not an HTTP request you want to hold open.
 
+### Where the AI runs: `/ai`
+
+Local (Ollama and Whisper on this machine) is the default. For a machine that
+cannot run the models, a cloud provider can do the AI work, or the transcription,
+on **the user's own API key**, billed by that provider. There is no Clips Kitty key
+or proxy. See [AI-BACKENDS.md](AI-BACKENDS.md) for what each provider does.
+
+`GET /ai`:
+
+```json
+{
+  "active": {"provider": "ollama", "model": "gemma:7b", "local": true},
+  "transcription": {"backend": "local", "model": ""},
+  "providers": [
+    {"id": "ollama", "label": "This PC — Ollama", "local": true, "has_key": false, "key_tail": "", "…": "…"},
+    {"id": "openrouter", "label": "OpenRouter", "local": false, "stt": true,
+     "stt_models": ["openai/whisper-large-v3-turbo", "…"],
+     "key_label": "OpenRouter API key", "key_url": "…", "pricing_url": "…", "privacy": "…",
+     "has_key": true, "key_tail": "9f3a"}
+  ]
+}
+```
+
+No route ever returns a key; `key_tail` is its last four characters.
+
+| Route | What it does |
+|---|---|
+| `PUT /ai/providers/{id}/key` `{"api_key"}` | Checks the key with the provider, then keeps it. A key that fails is not saved; `400` says why in plain words. |
+| `DELETE /ai/providers/{id}/key` | Deletes the stored key. |
+| `GET /ai/providers/{id}/models` | Models that can do the job, from the provider, with the user's key: `{"models": [{"id", "name", "context", "json_schema", "tools", "note"}]}`. Cached for a day; `?refresh=true` asks again. |
+| `POST /ai/providers/{id}/test` `{"model"}` | Key, reachability and whether the model is offered, without spending tokens: `{"ok", "kind"?, "message"}`. |
+| `POST /ai/activate` `{"provider", "model"}` | Which model does the AI work. `"ollama"` switches back to local (the last local model used); a cloud provider needs a saved key. |
+| `POST /ai/transcription` `{"backend", "model"}` | `"local"` (Whisper here, the default) or a provider with `stt`. |
+
+A cloud provider's failure fails the job with a message that says what to do
+(bad key, out of credit, rate limited, model not offered). Nothing ever falls
+back to another provider or to the local model.
+
 ## Languages and export
 
 ### `GET /languages`
@@ -1127,7 +1165,8 @@ Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use
 endpoints above in plain language: queue a stream, follow the job, read the clips it
 chose, export one. It is a translation layer over this same API, talking to the running
 engine on `127.0.0.1:8765`, and it needs no API key of any kind, because the model that
-picks the clips is the one on this machine.
+picks the clips is the one on this machine, or a cloud model the user chose in Settings →
+AI on their own key, which the MCP client never sees.
 
 ```bash
 claude mcp add clips-kitty -- python main.py mcp

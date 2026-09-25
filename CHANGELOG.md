@@ -63,6 +63,24 @@ were often broken in a way that only showed up on somebody else's machine.
     far, with a button that opens the profile, and the live panel says what each
     new video taught it.
 
+- **PC too old to run the AI? Bring your own API key.** Clips Kitty still runs
+  everything on your PC by default, free and private. For a laptop with a small
+  graphics card, or a low-spec mini PC watching channels, **Settings → AI** can
+  now hand the work to a cloud provider on your own account instead: OpenRouter,
+  OpenAI, Google Gemini, Anthropic Claude, xAI Grok, or Meta's Muse Spark. The
+  provider bills you directly; Clips Kitty has no key, credits or server of its
+  own. With a cloud model chosen, everything the local model did uses it: clip
+  picking, titles, creator learning, clip edits, translation and the assistant.
+  - Transcription is its own choice: Whisper on your PC, or online with your key
+    through OpenAI, OpenRouter or xAI, with the word timings captions need.
+  - Your key is checked before it is saved, stored encrypted, and never shown
+    again apart from its last four characters. **Test connection** checks the
+    key and model without spending anything.
+  - If the provider fails (a bad key, no credit left, rate limits) the job says
+    so plainly. Nothing ever switches to another provider, or back to the local
+    model, without you choosing it.
+  - How it works, what it sends and what it costs: `docs/AI-BACKENDS.md`.
+
 - **Ask an AI assistant to do it.** Clips Kitty now speaks MCP, so Claude, Cursor
   or any MCP client can queue a stream, follow the job, read back the clips it
   chose and export one, in plain language. It needs no API key of any kind,

@@ -57,7 +57,7 @@
             service you have connected. This page explains exactly what is stored, what can
             leave your machine, and what triggers it.
           </p>
-          <p><strong>Last updated:</strong> 23 September 2026</p>
+          <p><strong>Last updated:</strong> 25 September 2026</p>
         </div>
       </div>
 
@@ -67,9 +67,9 @@
           <ul>
             <li><strong>No telemetry.</strong> The app reports nothing back. There is no usage tracking, no crash reporting, and no analytics of any kind inside Clips Kitty.</li>
             <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The optional sign-ins are to <em>your own</em> accounts: YouTube, which goes straight to Google, and a publishing service if you choose to use one.</li>
-            <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware. Both ways of publishing are off by default and described below.</li>
-            <li><strong>The AI runs locally too.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else.</li>
-            <li><strong>Four things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, and publishing a clip through a social publishing service. The last two only happen if you switch them on.</li>
+            <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware, by default. Both ways of publishing are off by default and described below.</li>
+            <li><strong>The AI runs locally too, by default.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else, unless you choose one of them yourself, with your own API key, for a PC that cannot run the AI (described below).</li>
+            <li><strong>Five things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, publishing a clip through a social publishing service, and using a cloud AI provider with your own key. The last three only happen if you switch them on.</li>
           </ul>
         </div>
       </section>
@@ -156,19 +156,50 @@
             <li><strong>Your API key stays on your machine</strong>, stored the same way as
               the YouTube token, and it is write-only in the app: once saved, it is never
               displayed back.</li>
-            <li><strong>Nothing is sent until you press Publish</strong>, and the feature
-              makes no network calls at all while it is switched off.</li>
+            <li><strong>Nothing is sent until you press Publish</strong>, or until a watched
+              channel you set to publish automatically has new clips, and the feature makes
+              no network calls at all while it is switched off.</li>
             <li><strong>Their policy applies to what you send.</strong> Once a clip is with
               the service it is subject to that company's privacy policy and terms, and
               then to each platform's once it is posted. Read theirs before you switch this
-              on, because this is the one part of Clips Kitty where a third party is
-              involved.</li>
+              on, because a third party is involved.</li>
           </ul>
           <p class="note">
             The WoopSocial link above is an affiliate link. Clips Kitty may earn a
             commission if you sign up through it, at no extra cost to you. It is the only
             way the project earns anything, and it does not change what is written here.
           </p>
+
+          <h3>Only if you choose cloud AI with your own key</h3>
+          <p>
+            For a PC that cannot run the AI itself, Settings &rarr; AI can hand the work to a
+            cloud provider instead: OpenRouter, OpenAI, Google Gemini, Anthropic Claude, xAI
+            or Meta. This is <strong>off by default</strong>, and it only ever uses an API key
+            from <em>your own</em> account with that provider.
+          </p>
+          <ul>
+            <li><strong>What is sent, and only what the job needs.</strong> For the AI, the
+              transcript text of the video and the app's instructions for picking clips,
+              writing titles, translating or answering the assistant. For online
+              transcription, the video's audio, in short parts. The video picture is never
+              sent.</li>
+            <li><strong>It goes straight to the provider you chose.</strong> From your PC to
+              them, with your key. There is no Clips Kitty server in between, no Clips Kitty
+              key, and no Clips Kitty account; the provider bills you directly for what you
+              use.</li>
+            <li><strong>Your key stays on your machine</strong>, stored the same way as the
+              YouTube token, and it is write-only in the app: once saved, only its last four
+              characters are ever shown.</li>
+            <li><strong>OpenRouter is told it is Clips Kitty.</strong> Requests to OpenRouter
+              carry the app's name, website and category so they count toward Clips Kitty in
+              OpenRouter's app listings. That identifies the app, not you.</li>
+            <li><strong>Their policy applies to what you send.</strong> Each provider handles
+              what it receives under its own privacy policy and terms, which can differ by
+              plan: some may use data sent on free tiers to improve their products. Read
+              theirs before you switch this on.</li>
+            <li><strong>Switching back is one click.</strong> Choosing "This PC" in Settings
+              &rarr; AI returns everything to local, and removing the key deletes it.</li>
+          </ul>
 
           <h3>Only if you submit a report</h3>
           <p>

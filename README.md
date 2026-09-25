@@ -39,8 +39,12 @@ and video editor for creators: paste a YouTube, Twitch, or Kick link and it find
 best moments, crops them to 9:16 with the speaker kept centred, burns in word-synced
 captions, and writes titles, descriptions, and hashtags.
 
-No cloud AI. No subscription. No per-clip fees. Your footage never leaves your
-computer, unless you ask it to publish a clip to your own YouTube channel.
+No cloud AI by default. No subscription. No per-clip fees. Your footage never leaves
+your computer, unless you ask it to publish a clip to your own YouTube channel.
+
+Local first, with an escape hatch: if your PC is too old to run the AI, bring your own
+API key (OpenRouter, OpenAI, Gemini, Claude, xAI or Meta) and that provider runs it
+instead, billed to your own account. See [docs/AI-BACKENDS.md](docs/AI-BACKENDS.md).
 
 **Why it exists:** most creators growing a channel are doing all of it themselves:
 filming, streaming, editing, posting. Clipping is how people find you and it is usually
@@ -695,7 +699,8 @@ In an installed build the engine's binary is `api.exe` (in the app's
 
 It talks to the running engine over `127.0.0.1:8765`, so Clips Kitty has to be
 open, and it needs no API key of any kind: the model doing the clipping is the one
-on your own machine. An agent skill for clients that support them is in
+on your own machine (or, if you chose one in Settings → AI, a cloud model on your own
+key, which the MCP client never sees). An agent skill for clients that support them is in
 [skills/clips-kitty/](skills/clips-kitty/).
 
 ### Built with Clips Kitty
