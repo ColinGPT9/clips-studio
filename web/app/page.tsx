@@ -64,6 +64,7 @@ import {
 } from "@/lib/openrouter";
 import { type Clip, estimateScoringRequests, findClips } from "@/lib/score";
 import { identify, masterPlaylistUrl, SUPPORTED_LABEL } from "@/lib/source";
+import { MISMATCH, orientation, probeSize } from "@/lib/vertical";
 
 type Phase =
 	| "idle"
@@ -133,6 +134,14 @@ export default function Page() {
 	const [mode, setMode] = useState<Mode>("file");
 	const [file, setFile] = useState<File | null>(null);
 	const [url, setUrl] = useState("");
+	/** Vertical Live (lib/vertical.ts): the recording was already vertical
+	 *  when it was streamed. Its own switch; nothing turns it on by itself. */
+	const [verticalLive, setVerticalLive] = useState(false);
+	/** The chosen file's size, for the 9:16 suggestion and check. */
+	const [fileSize, setFileSize] = useState<{
+		width: number;
+		height: number;
+	} | null>(null);
 	/** Length of the chosen source, once known — from a cheap metadata probe
 	 *  for a file, or the manifest for a VOD. Drives the cost estimate shown
 	 *  before anything is spent. */
@@ -191,6 +200,11 @@ export default function Page() {
 	const chooseFile = useCallback((f: File | null) => {
 		setFile(f);
 		setDuration(0);
+		setFileSize(null);
+		if (f)
+			probeSize(f)
+				.then(setFileSize)
+				.catch(() => setFileSize(null));
 		// Reads only the container header, so this is instant even on a
 		// multi-gigabyte recording — and it is what makes the cost estimate
 		// available BEFORE the run rather than after it has spent anything.
@@ -226,6 +240,16 @@ export default function Page() {
 
 		if (mode === "file") {
 			if (!file) throw new Error("Choose a file first.");
+			// Checked before anything is spent: a wrong switch says so at once
+			// rather than clipping the wrong way.
+			if (verticalLive) {
+				const size = await probeSize(file);
+				if (orientation(size.width, size.height) !== "vertical") {
+					throw new Error(
+						`${MISMATCH} This one is ${size.width}×${size.height}.`,
+					);
+				}
+			}
 			setPhase("reading");
 			return {
 				ffmpeg,
@@ -241,7 +265,9 @@ export default function Page() {
 		setPhase("downloading");
 		setProgress({ done: 0, total: 1 });
 
-		const info = await loadFromMaster(await masterPlaylistUrl(source));
+		const info = await loadFromMaster(await masterPlaylistUrl(source), {
+			vertical: verticalLive,
+		});
 		setVod(info);
 
 		const ts = await fetchAudio(info, (done, total) =>
@@ -255,7 +281,7 @@ export default function Page() {
 			durationSeconds: info.durationSeconds,
 			written: "vod-audio.ts",
 		};
-	}, [mode, file, url]);
+	}, [mode, file, url, verticalLive]);
 
 	const run = useCallback(async () => {
 		if (!apiKey) return;
@@ -453,6 +479,9 @@ ${detail}`
 						onTranscribeModel={setTranscribeModel}
 						transcribeChoices={transcribeChoices}
 						onRun={run}
+						verticalLive={verticalLive}
+						onVerticalLive={setVerticalLive}
+						fileSize={fileSize}
 					/>
 
 					{busy && (
@@ -472,6 +501,18 @@ ${detail}`
 					style={{ color: "var(--cs-danger)" }}
 				>
 					{error}
+					{error.startsWith(MISMATCH) && (
+						<button
+							type="button"
+							className="cs-btn-quiet mt-3 block px-3 py-1.5 text-sm"
+							onClick={() => {
+								setVerticalLive(false);
+								setError(null);
+							}}
+						>
+							Use standard processing
+						</button>
+					)}
 				</p>
 			)}
 
@@ -615,6 +656,9 @@ function Controls({
 	onTranscribeModel,
 	transcribeChoices,
 	onRun,
+	verticalLive,
+	onVerticalLive,
+	fileSize,
 }: {
 	account: KeyInfo | null;
 	mode: Mode;
@@ -633,6 +677,9 @@ function Controls({
 	onTranscribeModel: (id: string) => void;
 	transcribeChoices: Model[];
 	onRun: () => void;
+	verticalLive: boolean;
+	onVerticalLive: (on: boolean) => void;
+	fileSize: { width: number; height: number } | null;
 }) {
 	const fileId = useId();
 	const urlId = useId();
@@ -771,6 +818,32 @@ function Controls({
 				/>
 			</div>
 
+			<label className="mt-5 flex cursor-pointer items-start gap-2 text-sm">
+				<input
+					type="checkbox"
+					checked={verticalLive}
+					disabled={busy}
+					onChange={(e) => onVerticalLive(e.target.checked)}
+					className="mt-1"
+				/>
+				<span>
+					<span className="font-semibold">Vertical Live</span>{" "}
+					<span style={{ color: "var(--cs-muted)" }}>(9:16)</span>
+					<span className="block text-xs" style={{ color: "var(--cs-muted)" }}>
+						The recording was already vertical when it was streamed. Clips keep
+						its 9:16 layout, and a Twitch or Kick VOD is cut from its vertical
+						version.
+					</span>
+				</span>
+			</label>
+			{mode === "file" && fileSize && (
+				<VerticalHint
+					size={fileSize}
+					on={verticalLive}
+					onUse={() => onVerticalLive(true)}
+				/>
+			)}
+
 			{/* Shown as soon as a file is chosen, which is the only moment a
 			    warning is worth anything, after the run starts, the requests
 			    are already spent. A VOD's length is not known until its manifest
@@ -805,6 +878,45 @@ function Controls({
 			</button>
 		</section>
 	);
+}
+
+/** Under a chosen file: suggests Vertical Live for a 9:16 file (only a
+ *  suggestion; the switch decides), and warns when it is on for a file that
+ *  isn't 9:16. */
+function VerticalHint({
+	size,
+	on,
+	onUse,
+}: {
+	size: { width: number; height: number };
+	on: boolean;
+	onUse: () => void;
+}) {
+	const shape = orientation(size.width, size.height);
+	if (on && shape !== "vertical") {
+		return (
+			<p className="mt-2 text-xs" style={{ color: "var(--cs-warn)" }}>
+				This video is {size.width}×{size.height}, not 9:16. Vertical Live
+				expects a vertically composed video, so it would be refused.
+			</p>
+		);
+	}
+	if (!on && shape === "vertical") {
+		return (
+			<p className="mt-2 text-xs" style={{ color: "var(--cs-muted)" }}>
+				This video is 9:16. Is it a vertical live?{" "}
+				<button
+					type="button"
+					onClick={onUse}
+					className="underline"
+					style={{ color: "var(--cs-accent)" }}
+				>
+					Use Vertical Live
+				</button>
+			</p>
+		);
+	}
+	return null;
 }
 
 function ModelPicker({

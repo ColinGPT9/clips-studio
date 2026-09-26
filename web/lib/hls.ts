@@ -20,6 +20,8 @@
  *  That is the difference between this being a feature and being impossible.
  */
 
+import { NO_VERTICAL_VERSION } from "./vertical";
+
 /** How many segments to pull at once.
  *
  *  Six is a compromise: an hour of VOD is hundreds of segments, so serial
@@ -40,6 +42,9 @@ type Rendition = {
 	url: string;
 	bandwidth: number;
 	audioOnly: boolean;
+	/** From RESOLUTION, when the playlist gives it (0 otherwise). */
+	width: number;
+	height: number;
 };
 
 /** Pull the rendition list out of a master playlist. */
@@ -53,10 +58,13 @@ function parseMaster(master: string, baseUrl: string): Rendition[] {
 		const url = lines[i + 1];
 		if (!url || url.startsWith("#")) continue;
 
+		const resolution = lines[i].match(/RESOLUTION=(\d+)x(\d+)/);
 		renditions.push({
 			url: new URL(url, baseUrl).toString(),
 			bandwidth: Number(lines[i].match(/BANDWIDTH=(\d+)/)?.[1] ?? 0),
 			audioOnly: /audio.?only/i.test(lines[i]),
+			width: Number(resolution?.[1] ?? 0),
+			height: Number(resolution?.[2] ?? 0),
 		});
 	}
 
@@ -105,7 +113,12 @@ export type VodInfo = {
 
 /** Fetch and parse everything needed to transcribe and later cut, without
  *  pulling any media. */
-export async function loadFromMaster(masterUrl: string): Promise<VodInfo> {
+export async function loadFromMaster(
+	masterUrl: string,
+	/** Vertical Live (lib/vertical.ts): cut from the portrait rendition
+	 *  only, and refuse a VOD that has none rather than cut the landscape one. */
+	options: { vertical?: boolean } = {},
+): Promise<VodInfo> {
 	const res = await fetch(masterUrl);
 	if (!res.ok) {
 		// Prefer whatever the responder actually said. A 403 here used to be
@@ -141,8 +154,14 @@ export async function loadFromMaster(masterUrl: string): Promise<VodInfo> {
 	// does not, so its 160p video stands in — still only a tenth of what the
 	// full-quality stream would cost to download.
 	const audio = audioOnly ?? byBandwidth[0];
-	const video =
-		byBandwidth.filter((r) => !r.audioOnly).at(-1) ?? byBandwidth.at(-1);
+	const playable = byBandwidth.filter((r) => !r.audioOnly);
+	const video = options.vertical
+		? playable.filter((r) => r.height > r.width).at(-1)
+		: (playable.at(-1) ?? byBandwidth.at(-1));
+
+	if (!video && options.vertical) {
+		throw new VodError(NO_VERTICAL_VERSION);
+	}
 
 	if (!video) {
 		throw new VodError("That VOD's playlist has no video track.");
