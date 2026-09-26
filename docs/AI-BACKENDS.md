@@ -15,6 +15,9 @@ three places, chosen in **Settings → AI**:
    Experimental: a paid ChatGPT plan instead of an OpenAI key (see
    [Use a plan you already pay for](#use-a-plan-you-already-pay-for-experimental)).
 
+Every mode uses the AI chosen here, the same way: standard clips, Longform, Podcast and
+[Vertical Live](VERTICAL-LIVE.md) all pick their moments with it.
+
 Every cloud option is **bring your own key**. The key is yours and so is the
 bill: the provider charges your account for what you use. Clips Kitty has no key
 of its own, sells no credits, and runs no server in between; requests go from

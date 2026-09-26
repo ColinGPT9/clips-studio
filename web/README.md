@@ -186,8 +186,8 @@ Studio and drop the file in.
 |---|---|
 | Input length | 60 minutes (`MAX_DURATION_SECONDS`) |
 | File size | ~1.2 GB (`MAX_FILE_BYTES`) |
-| Output | Landscape, original aspect, keyframe-aligned cuts |
-| Sources | A local file, or a Twitch VOD link |
+| Output | The source's own shape and size, keyframe-aligned cuts. A vertical 9:16 recording stays vertical; Vertical Live (`lib/vertical.ts`) cuts a VOD from its portrait rendition and refuses a file that isn't 9:16 |
+| Sources | A local file, or a Twitch or Kick VOD link |
 
 Both caps are conservative guesses about where a browser tab runs out of
 memory, not measured ceilings. If you have measured one, move it and say so.

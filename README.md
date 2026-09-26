@@ -220,6 +220,10 @@ through Ollama.
 - **Podcast mode**: for multi-camera footage, each shot gets its own steady crop on one
   person, so cuts land on a face with no panning. Within a shot the subject is chosen by
   mouth motion, falling back to the most prominent face.
+- **Vertical Live**: for a livestream that was already vertical when it was streamed (a
+  YouTube vertical live, Twitch Dual Format, Streamlabs Dual Output, a downloaded
+  Instagram or TikTok live). Keeps the stream's own 9:16 layout, skips face tracking, and
+  still picks the moments the usual way. See [docs/VERTICAL-LIVE.md](docs/VERTICAL-LIVE.md).
 - **Editable burned-in captions**: word-synced, and styled how you like (colour, size,
   position, words per line, casing, or off). Fix a transcription mistake line by line
   before export.

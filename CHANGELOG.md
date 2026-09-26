@@ -12,6 +12,23 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Vertical Live, for streams that were vertical all along.** A YouTube vertical live,
+  the vertical feed of a Twitch Dual Format or Streamlabs Dual Output stream, or a
+  downloaded Instagram or TikTok live is already a finished 9:16 video. Tick **Vertical
+  Live** and Clips Kitty keeps its layout: no face tracking or reframing, one encode of
+  the whole frame at 1080x1920. The moments are found exactly as before, with your chosen
+  AI, and clips caption, brand, publish and schedule as usual.
+  - YouTube vertical lives now download at 1080x1920 in this mode (standard processing
+    picks a smaller size for vertical video). A video with no vertical version is refused
+    with what to do instead, never swapped for the horizontal one.
+  - A file that isn't 9:16 is refused before any work, with **Use standard processing**.
+    A 9:16 file you add gets "Is it a vertical live?", and can carry its original link.
+  - Watched channels have the same switch. Videos with no vertical version are skipped,
+    so a Streamlabs dual-output channel isn't clipped twice.
+  - In Clips Kitty Web too: a Twitch or Kick VOD is cut from its vertical version.
+  - Twitch's vertical VODs couldn't be downloaded by link when this was built: download
+    the vertical recording and add it as a file.
+
 - **Watch a channel and let Clips Kitty do the rest.** Add a YouTube, Twitch or Kick
   channel on the new **Watched channels** page. When it posts, the new video joins the
   queue by itself, and once the clips are made they are published through WoopSocial,
