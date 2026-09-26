@@ -221,8 +221,6 @@ def retry(db, job_id: int, drop: tuple[str, ...] = ()) -> int | None:
         return None
     payload = row["payload"]
     if drop:
-        import json
-
         settings = json.loads(payload or "{}")
         for key in drop:
             settings.pop(key, None)
