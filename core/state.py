@@ -393,6 +393,14 @@ class StateDB:
             # queue's time estimate divides by this instead of assuming every
             # video takes the same hour (a 6h VOD and a 20min upload do not).
             self.conn.execute("ALTER TABLE videos ADD COLUMN duration REAL DEFAULT 0")
+        # Where the video came from, when known: the link it was clipped from
+        # (a pasted link, or the original of an uploaded file if the user gave
+        # it) and its platform. Clips reach them through video_id. Blank means
+        # not known; nothing is ever made up to fill them.
+        if "source_url" not in video_cols:
+            self.conn.execute("ALTER TABLE videos ADD COLUMN source_url TEXT DEFAULT ''")
+        if "source_platform" not in video_cols:
+            self.conn.execute("ALTER TABLE videos ADD COLUMN source_platform TEXT DEFAULT ''")
         job_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(jobs)")}
         for column, decl in (
             # User-defined queue order. Claiming orders by this, so reordering
@@ -797,6 +805,16 @@ class StateDB:
                  duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE videos.duration END""",
             (video_id, channel_id, title, channel_name, round(duration, 1), _now(), _now()),
         )
+        self.conn.commit()
+
+    def set_video_source(self, video_id: str, url: str = "", platform: str = "") -> None:
+        """Record where a video came from. Only known values are written: a
+        blank never overwrites what an earlier run recorded."""
+        if url:
+            self.conn.execute("UPDATE videos SET source_url = ? WHERE video_id = ?", (url, video_id))
+        if platform:
+            self.conn.execute("UPDATE videos SET source_platform = ? WHERE video_id = ?",
+                              (platform, video_id))
         self.conn.commit()
 
     def set_video_status(self, video_id: str, status: str) -> None:

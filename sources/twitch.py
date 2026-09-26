@@ -34,7 +34,8 @@ def extract_vod_id(url: str) -> str | None:
     return f"tw_{m.group(1)}" if m else None
 
 
-def download(url: str, output_dir: Path) -> DownloadedVideo:
+def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVideo:
+    """`vertical`: the vertical version only, for Vertical Live (sources/vertical.py)."""
     video_id = extract_vod_id(url)
     if video_id is None:
         raise ValueError(
@@ -51,9 +52,12 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
     if info.get("is_live"):
         raise ValueError("This VOD is still being streamed — wait until the broadcast ends.")
 
+    from sources import vertical as vertical_src
+
+    name = f"{video_id}{vertical_src.SUFFIX}" if vertical else video_id
     opts = {
         "format": "best[ext=mp4]/best",
-        "outtmpl": str(output_dir / f"{video_id}.%(ext)s"),
+        "outtmpl": str(output_dir / f"{name}.%(ext)s"),
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
@@ -61,12 +65,19 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         "progress": True,
         **progress_opts(video_id),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    if vertical:
+        opts["format"] = vertical_src.HLS_FORMAT
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except yt_dlp.utils.DownloadError as e:
+        if vertical and vertical_src.is_missing_format(str(e)):
+            raise ValueError(vertical_src.no_vertical_version("twitch")) from e
+        raise
 
-    path = output_dir / f"{video_id}.mp4"
+    path = output_dir / f"{name}.mp4"
     if not path.exists():
-        matches = list(output_dir.glob(f"{video_id}.*"))
+        matches = list(output_dir.glob(f"{name}.*"))
         if not matches:
             raise FileNotFoundError(f"yt-dlp finished but no file found for {video_id}")
         path = matches[0]

@@ -55,20 +55,26 @@ class Prefetcher:
             ).fetchone()
             if row is None:
                 return
-            url = json.loads(row["payload"]).get("url")
+            payload = json.loads(row["payload"])
+            url = payload.get("url")
             if not url:
                 return
+            # Vertical Live fetches the vertical version into its own file.
+            vertical = bool(payload.get("vertical_live"))
             from sources.dispatch import identify
 
             try:
                 _, video_id = identify(url)
             except Exception:
                 return  # bad URL: let the job itself produce the real error
-            if not video_id or (self.downloads_dir / f"{video_id}.mp4").exists():
+            from sources.vertical import SUFFIX
+
+            name = f"{video_id}{SUFFIX}" if vertical else video_id
+            if not video_id or (self.downloads_dir / f"{name}.mp4").exists():
                 return
             self._video_id = video_id
             self._thread = threading.Thread(
-                target=self._run, args=(url, video_id), daemon=True, name="download-prefetch"
+                target=self._run, args=(url, video_id, vertical), daemon=True, name="download-prefetch"
             )
             self._thread.start()
 
@@ -104,7 +110,7 @@ class Prefetcher:
                 if self._video_id == video_id:
                     self._thread, self._video_id = None, None
 
-    def _run(self, url: str, video_id: str) -> None:
+    def _run(self, url: str, video_id: str, vertical: bool = False) -> None:
         from core.state import StateDB
         from sources import dispatch
 
@@ -113,7 +119,7 @@ class Prefetcher:
         progress.set_thread_tags(stage="prefetch", prefetch=True)
         try:
             print(f"      [prefetch] downloading next queued video ({video_id}) in the background")
-            video = dispatch.download(url, self.downloads_dir)
+            video = dispatch.download(url, self.downloads_dir, vertical=vertical)
             db = StateDB(self.db_path)  # sqlite: own connection on this thread
             try:
                 # Title and length recorded now: this runs a job AHEAD, so the

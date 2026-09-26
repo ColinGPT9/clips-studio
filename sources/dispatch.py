@@ -25,6 +25,32 @@ def identify(url: str) -> tuple[str, str | None]:
     return "youtube", youtube.extract_video_id(url)
 
 
+# Hosts of the platforms a downloaded live's original link can point to. Only
+# for recording where a file came from; nothing is fetched from them.
+_PLATFORM_HOSTS = (
+    ("youtube", ("youtube.com", "youtu.be")),
+    ("twitch", ("twitch.tv",)),
+    ("kick", ("kick.com",)),
+    ("instagram", ("instagram.com",)),
+    ("tiktok", ("tiktok.com",)),
+)
+
+
+def platform_of_link(url: str) -> str:
+    """The platform an original link belongs to: youtube, twitch, kick,
+    instagram, tiktok, or "other". Blank for anything that isn't a web link."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit((url or "").strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return ""
+    host = parts.hostname.lower()
+    for platform, domains in _PLATFORM_HOSTS:
+        if any(host == d or host.endswith("." + d) for d in domains):
+            return platform
+    return "other"
+
+
 def _clear_stale_partials(output_dir: Path, video_id: str | None) -> None:
     """Remove leftover .part fragments from an earlier failed download of this
     video before starting a new one.
@@ -81,7 +107,9 @@ def metadata(url: str) -> tuple[str, str]:
     )
 
 
-def download(url: str, output_dir: Path) -> DownloadedVideo:
+def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVideo:
+    """`vertical`: the vertical version only, for Vertical Live. Files are
+    imported as they are, so it makes no difference to them."""
     source, video_id = identify(url)
     if source == "local":
         # Only reachable if the imported copy in downloads/ was deleted.
@@ -90,7 +118,7 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         )
     _clear_stale_partials(output_dir, video_id)
     if source == "twitch":
-        return twitch.download(url, output_dir)
+        return twitch.download(url, output_dir, vertical=vertical)
     if source == "kick":
-        return kick.download(url, output_dir)
-    return youtube.download(url, output_dir)
+        return kick.download(url, output_dir, vertical=vertical)
+    return youtube.download(url, output_dir, vertical=vertical)

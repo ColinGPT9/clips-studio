@@ -166,7 +166,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
     print(f"[1/4] Downloading: {url}")
     progress.emit(stage="download", message=url)
-    video = _cached_or_download(url, data_dir, db)
+    video = _cached_or_download(url, data_dir, db, vertical=_vertical_live_requested(config))
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
@@ -200,6 +200,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         channel_name=video.channel,
         duration=video.duration,
     )
+    # Where it came from, so the clips can point back to it. An uploaded file
+    # records its original link (if the user gave one) at upload instead.
+    from sources.dispatch import identify
+
+    source_name, _ = identify(url)
+    if source_name != "local":
+        db.set_video_source(video.video_id, url, source_name)
     # Creator intelligence: attach the video to its creator profile (created
     # on first sight of this channel). Failure-safe — never blocks processing.
     creator_id = None
@@ -494,7 +501,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     return rendered
 
 
-def _cached_or_download(url: str, data_dir: Path, db: StateDB):
+def _vertical_live_requested(config: dict) -> bool:
+    from core import modes
+
+    return modes.is_vertical_live(config)
+
+
+def _cached_or_download(url: str, data_dir: Path, db: StateDB, vertical: bool = False):
     """Reprocessing must never depend on the platform being reachable: when
     the source file is already on disk, use it (with title/channel from the
     DB) instead of re-contacting YouTube/Twitch — which can rate-limit or
@@ -502,10 +515,18 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     from core.models import DownloadedVideo
     from sources import dispatch
 
-    _, video_id = dispatch.identify(url)
-    cached = cached_source(data_dir / "downloads", video_id)
+    source, video_id = dispatch.identify(url)
+    # Vertical Live keeps its own copy (sources/vertical.py): the horizontal
+    # file of the same video must never stand in for the vertical one. An
+    # uploaded file is what it is, so it has only the one copy.
+    if vertical and source != "local":
+        from sources.vertical import SUFFIX
+
+        cached = cached_source(data_dir / "downloads", f"{video_id}{SUFFIX}")
+    else:
+        cached = cached_source(data_dir / "downloads", video_id)
     if cached is None:
-        return dispatch.download(url, data_dir / "downloads")
+        return dispatch.download(url, data_dir / "downloads", vertical=vertical)
 
     import subprocess
 
@@ -521,7 +542,7 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB):
     if codec in ("av1", "vp9"):
         print(f"      Cached source is {codec} (slow to decode) — re-downloading as H.264")
         try:
-            fresh = dispatch.download(url, data_dir / "downloads")
+            fresh = dispatch.download(url, data_dir / "downloads", vertical=vertical)
             # The replacement usually lands as .mp4 while the slow copy was
             # .webm, and yt-dlp writes the new name rather than overwriting
             # the old one — so without this the video is on disk twice, at a

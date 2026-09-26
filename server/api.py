@@ -836,6 +836,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             d.upsert_video(
                 vid, title=title, channel_name=body.channel.strip(), duration=seconds
             )
+            # The file's original link, only when the user gave one (a downloaded
+            # live's page). Never required, never guessed.
+            from sources.dispatch import platform_of_link
+
+            original = body.source_url.strip()
+            if original and platform_of_link(original):
+                d.set_video_source(vid, original, platform_of_link(original))
             if body.channel.strip():
                 from creator.identity import tag_video
 

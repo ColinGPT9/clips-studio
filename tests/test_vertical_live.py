@@ -165,7 +165,7 @@ def test_a_source_that_isnt_9x16_is_refused_before_any_work(pipeline, monkeypatc
 
     source = tmp_path / "wide.mp4"
     source.write_bytes(b"not really a video")
-    monkeypatch.setattr(pipeline, "_cached_or_download", lambda *_a: DownloadedVideo(
+    monkeypatch.setattr(pipeline, "_cached_or_download", lambda *_a, **_k: DownloadedVideo(
         video_id="local_wide", title="Wide", path=source, duration=600.0))
     monkeypatch.setattr("video.encoding.source_codec", lambda _p: "h264")
     monkeypatch.setattr(modes, "probe_size", lambda _p: (1920, 1080))

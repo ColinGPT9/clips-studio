@@ -159,7 +159,8 @@ def _friendly_errors():
         raise
 
 
-def download(url: str, output_dir: Path) -> DownloadedVideo:
+def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVideo:
+    """`vertical`: the vertical version only, for Vertical Live (sources/vertical.py)."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Refuse live streams BEFORE downloading: a live URL would start an
@@ -193,16 +194,30 @@ def download(url: str, output_dir: Path) -> DownloadedVideo:
         "progress": True,
         **progress_opts(extract_video_id(url)),
     }
+    stem = "%(id)s"
+    if vertical:
+        from sources import vertical as vertical_src
 
-    with _friendly_errors():
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        stem = f"%(id)s{vertical_src.SUFFIX}"
+        opts["format"] = vertical_src.YOUTUBE_FORMAT
+        opts["format_sort"] = vertical_src.FORMAT_SORT
+        opts["outtmpl"] = str(output_dir / f"{stem}.%(ext)s")
+
+    try:
+        with _friendly_errors():
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+    except yt_dlp.utils.DownloadError as e:
+        if vertical and vertical_src.is_missing_format(str(e)):
+            raise ValueError(vertical_src.no_vertical_version("youtube")) from e
+        raise
 
     video_id = info["id"]
-    path = output_dir / f"{video_id}.mp4"
+    name = stem.replace("%(id)s", video_id)
+    path = output_dir / f"{name}.mp4"
     if not path.exists():
         # Fallback for formats that didn't remux to mp4
-        matches = list(output_dir.glob(f"{video_id}.*"))
+        matches = list(output_dir.glob(f"{name}.*"))
         if not matches:
             raise FileNotFoundError(f"yt-dlp finished but no file found for {video_id}")
         path = matches[0]
