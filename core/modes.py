@@ -52,6 +52,19 @@ def is_vertical_live(config_or_opts: dict | None) -> bool:
     return bool(isinstance(clips, dict) and clips.get("vertical_live"))
 
 
+def is_gaming(config_or_opts: dict | None) -> bool:
+    """Gaming / Split-Screen (the gaming/ package, docs/GAMING.md): the
+    streamer's webcam over the game in a split, or the game filling the
+    screen. A toggle of its own like Vertical Live, off unless asked for, and
+    never combined with it, Podcast or Longform."""
+    if not config_or_opts:
+        return False
+    if config_or_opts.get("gaming"):
+        return True
+    clips = config_or_opts.get("clips")
+    return bool(isinstance(clips, dict) and clips.get("gaming"))
+
+
 def needs_framing(config: dict) -> bool:
     """Whether a job's clips need framing decided (face tracking, TalkNet,
     layout). Only framing: importance analysis runs either way."""

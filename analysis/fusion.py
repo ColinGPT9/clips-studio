@@ -49,6 +49,7 @@ def find_clips(
     creator_context=None,  # creator.retrieval.CreatorContext | None
     weight_bias: dict | None = None,  # per-channel multipliers from creator.learning
     audience: "np.ndarray | None" = None,  # analysis.hype curve (chat/heatmap), 0..1
+    measure_reaction: bool = True,  # False for Gaming / Split-Screen, see below
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     clips_cfg = config["clips"]
     analysis_cfg = config["analysis"]
@@ -180,8 +181,18 @@ def find_clips(
             react_set.append(c)
             in_set.add(id(c))
     n_reactions = len(react_set)
-    print(f"  Scoring reactions for {n_reactions} candidate(s) "
-          f"(incl. silent-action clips)...")
+    if measure_reaction:
+        print(f"  Scoring reactions for {n_reactions} candidate(s) "
+              f"(incl. silent-action clips)...")
+    else:
+        # Gaming / Split-Screen (gaming/): "a person on screen, being
+        # emphasised" reads a game's characters as people and a top-down
+        # game as nobody at all, which is how top-down games once got no
+        # clips. The streamer's reaction is in their voice, which the audio
+        # and text channels already score, so every candidate keeps the
+        # neutral 50 rather than being judged on the game's characters.
+        react_set, n_reactions = [], 0
+        print("  Gaming: reactions left neutral (the game's characters are not the streamer)")
     for ri, c in enumerate(react_set, 1):
         # Each pass decodes video around the candidate and runs the detector,
         # so this loop is minutes of work with no natural stopping point.

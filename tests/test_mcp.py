@@ -296,6 +296,17 @@ def test_a_caption_request_reaches_the_job(monkeypatch):
         "position": "top", "highlight": True, "highlight_color": "#FFD700"}
 
 
+def test_gaming_reaches_the_engine(monkeypatch):
+    sent = []
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.append((p, b)) or {"job_id": 7})
+    mcp.handle(_request(33, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x", "gaming": True}}))
+    mcp.handle(_request(34, "tools/call", {"name": "queue_local_file", "arguments": {
+        "path": "C:/vods/vod.mp4", "gaming": True}}))
+    assert sent == [("/jobs", {"url": "https://youtu.be/x", "gaming": True}),
+                    ("/videos/local", {"path": "C:/vods/vod.mp4", "gaming": True})]
+
+
 def test_vertical_live_and_an_original_link_reach_the_engine(monkeypatch):
     sent = []
     monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.append((p, b)) or {"job_id": 7})

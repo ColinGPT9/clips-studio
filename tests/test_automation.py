@@ -1062,6 +1062,22 @@ def test_clip_this_on_a_skipped_landscape_video_runs_it_the_standard_way(env):
     assert payload["origin"] == "manual" and "vertical_live" not in payload
 
 
+def test_a_gaming_watch_queues_its_videos_as_gaming(env):
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}", json={"options": {"gaming": True}})
+    env.feed.listings[UC] = [yt("landscape01")]
+    env.feed.ready["https://www.youtube.com/watch?v=landscape01"] = Readiness(
+        "ready", duration=3600, orientation="horizontal")
+    env.later()
+    assert json.loads(env.jobs()[0]["payload"])["gaming"] is True
+
+
+def test_a_watch_with_gaming_and_another_layout_mode_keeps_the_other():
+    watch = {"options": json.dumps({"gaming": True, "podcast": True})}
+    payload = automation.job_payload(watch, "https://www.youtube.com/watch?v=x")
+    assert payload["podcast"] is True and "gaming" not in payload
+
+
 def test_a_videos_shape_is_read_from_its_formats():
     from sources.channel_feed import _orientation
 

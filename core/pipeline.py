@@ -329,6 +329,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         creator_context=creator_ctx,
         weight_bias=(creator_prefs or {}).get("weight_bias"),
         audience=hype_out.get("curve"),
+        **({"measure_reaction": False} if modes.is_gaming(config) else {}),
     )
     for r in rejections:
         db.log_rejection(
@@ -445,10 +446,14 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # reasons are counted and reported once at the end.
     last_failure: str | None = None
     repeated_failures = 0
+    # Gaming / Split-Screen: find the streamer's webcam once, from several of
+    # the video's clips together, before any of them renders. Off -> None,
+    # exactly the argument every render has always been given.
+    gaming_opts = _gaming_prepare(video.path, candidates, clip_dir, config) if modes.is_gaming(config) else None
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(
-                _render_files, video.path, candidate, segments, clip_dir, config, None,
+                _render_files, video.path, candidate, segments, clip_dir, config, gaming_opts,
                 content_lang,
             ): (candidate, meta)
             for candidate, meta in zip(candidates, metas)
@@ -505,6 +510,35 @@ def _vertical_live_requested(config: dict) -> bool:
     from core import modes
 
     return modes.is_vertical_live(config)
+
+
+def _gaming_prepare(source: Path, candidates: list, clip_dir: Path, config: dict) -> dict | None:
+    """Gaming / Split-Screen's once-per-video webcam search (gaming/run.py),
+    as the render options every clip gets. Fails closed: on any error the
+    clips still render, each deciding for itself or falling back to the
+    standard layout."""
+    try:
+        from gaming import run as gaming_run
+
+        return {"gaming": gaming_run.prepare(source, candidates, config, clip_dir)}
+    except Exception as e:
+        print(f"      (Gaming webcam search failed, each clip decides for itself: {e})")
+        return {"gaming": {}}
+
+
+def _try_gaming_render(intermediate: Path, render_path: Path, opts: dict, config: dict,
+                       ass_path: Path | None, vf_extra: str, normalize: bool) -> dict | None:
+    """One clip in the gaming layout (gaming/run.py). None means the standard
+    renderer takes it: a camera filling the frame, or any error at all."""
+    try:
+        from gaming import run as gaming_run
+
+        g = opts.get("gaming")
+        return gaming_run.render(intermediate, render_path, g if isinstance(g, dict) else {}, config,
+                                 ass_path=ass_path, vf_extra=vf_extra, normalize=normalize)
+    except Exception as e:
+        print(f"      (Gaming layout failed, using the standard layout: {e})")
+        return None
 
 
 def _cached_or_download(url: str, data_dir: Path, db: StateDB, vertical: bool = False):
@@ -670,6 +704,12 @@ def _render_files(
     from core import modes
 
     vertical_live = not landscape and (modes.is_vertical_live(opts) or modes.is_vertical_live(config))
+    # Gaming / Split-Screen (gaming/): opt-in, per video or per clip. Tried
+    # first inside the tracked branch; anything it declines or fails at goes
+    # on to the standard layout below. Off -> never imported.
+    gaming = (not landscape and not vertical_live and not podcast
+              and (modes.is_gaming(opts) or modes.is_gaming(config)))
+    gaming_kept = None
     canvas = (1920, 1080) if landscape else (1080, 1920)
 
     # Color: preset filter (per-clip wins over job/config default) + manual
@@ -778,7 +818,12 @@ def _render_files(
                 discard(intermediate)
                 intermediate = edited
 
-            if podcast:
+            if gaming:
+                gaming_kept = _try_gaming_render(intermediate, render_path, opts, config,
+                                                 ass_path, vf_extra, normalize)
+            if gaming_kept is not None:
+                pass  # rendered in the gaming layout (split or game only)
+            elif podcast:
                 # Separate podcast path (video/podcast.py): tracked crop for a
                 # single speaker, 50/50 split when two speakers can't share one
                 # crop, tight-region letterbox only as a last resort — and cuts
@@ -881,6 +926,9 @@ def _render_files(
             # else the clip has (a job with no caption style or filter would
             # otherwise save nothing at all).
             **({"vertical_live": True} if vertical_live else {}),
+            # Gaming: the webcam and layout this clip got, so a re-render
+            # keeps them (and the editor can show and change them).
+            **({"gaming": gaming_kept} if gaming_kept is not None else {}),
             # Persist the resolved branding so a later re-render reapplies it,
             # even when it came from the job/config default (not per-clip opts).
             **({"watermark": wm_cfg} if wm_cfg else {}),

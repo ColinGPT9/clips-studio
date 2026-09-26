@@ -192,7 +192,8 @@ def _branding_id(name: str) -> int:
 
 def _queue_video(args: dict) -> str:
     body: dict = {"url": args["url"]}
-    for key in ("force", "min_score", "max_clips", "podcast", "vertical_live", "long_clips", "captions"):
+    for key in ("force", "min_score", "max_clips", "podcast", "vertical_live", "gaming", "long_clips",
+                "captions"):
         if args.get(key) is not None:
             body[key] = args[key]
     if args.get("watermark"):
@@ -241,6 +242,8 @@ def _queue_local_file(args: dict) -> str:
         body["channel"] = args["channel"]
     if args.get("vertical_live"):
         body["vertical_live"] = True
+    if args.get("gaming"):
+        body["gaming"] = True
     # Where the file came from (a downloaded live's page), only when known.
     if args.get("source_url"):
         body["source_url"] = args["source_url"]
@@ -874,6 +877,15 @@ TOOLS: list[dict] = [
                         "Refused if the video is not 9:16. Not with podcast or longform."
                     ),
                 },
+                "gaming": {
+                    "type": "boolean",
+                    "description": (
+                        "A game stream: the streamer's webcam in one half and the game in the "
+                        "other, or the game filling the screen when there is no webcam. The "
+                        "streamer is whoever speaks in sync with the audio, never the biggest "
+                        "face. Not with vertical_live, podcast or longform."
+                    ),
+                },
                 "long_clips": {
                     "type": "boolean",
                     "description": (
@@ -982,6 +994,15 @@ TOOLS: list[dict] = [
                         "The video is a livestream that was already vertical (9:16) when "
                         "streamed: keep its own layout, no face tracking or reframing. "
                         "Refused if the video is not 9:16. Not with podcast or longform."
+                    ),
+                },
+                "gaming": {
+                    "type": "boolean",
+                    "description": (
+                        "A game stream: the streamer's webcam in one half and the game in the "
+                        "other, or the game filling the screen when there is no webcam. The "
+                        "streamer is whoever speaks in sync with the audio, never the biggest "
+                        "face. Not with vertical_live, podcast or longform."
                     ),
                 },
                 "source_url": {

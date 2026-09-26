@@ -190,6 +190,10 @@ class Worker(threading.Thread):
                         # An already-composed 9:16 live (core/modes.py): keep
                         # its layout, skip face tracking and reframing.
                         cfg["clips"]["vertical_live"] = True
+                    if payload.get("gaming"):
+                        # Gaming / Split-Screen (gaming/): the streamer's
+                        # webcam over the game, or the game alone.
+                        cfg["clips"]["gaming"] = True
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
                     if payload.get("min_score") is not None:

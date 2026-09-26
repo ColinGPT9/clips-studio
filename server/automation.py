@@ -179,7 +179,13 @@ def job_payload(watch, url: str, origin: str = "watch") -> dict:
 
     options = watch_options(watch)
     preset = PRESETS.get(options.pop("preset", "standard")) or PRESETS["standard"]
-    return {"url": url, **preset["options"], **options, "origin": origin}
+    payload = {"url": url, **preset["options"], **options, "origin": origin}
+    if payload.get("gaming") and any(payload.get(k) for k in ("vertical_live", "podcast", "longform")):
+        # The watch settings never offer Gaming with these; a watch that has
+        # both anyway (made by hand, or by an older version) keeps the other
+        # mode rather than being refused on every video it finds.
+        payload.pop("gaming")
+    return payload
 
 
 def render_footer(template: str, item, watch) -> str:
