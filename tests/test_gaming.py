@@ -205,6 +205,15 @@ def test_a_game_character_in_the_same_spot_is_not_a_webcam():
     assert detect.video_cam([_clip(CORNER, -0.5), _clip(CORNER, 0.3), _clip()]) is not None
 
 
+def test_a_vtuber_avatar_is_never_the_webcam():
+    """Gaming mode is for people on camera; VTubers are not supported. Measured
+    on two VTuber streams: the avatar sat in the same corner in every clip and
+    lip-synced to the voice, but TalkNet never got above -0.35 on it. It must
+    stay that way: the game fills the screen."""
+    avatar = (0.61, 0.5, 0.38, 0.5)
+    assert detect.video_cam([_clip(avatar, -0.35), _clip(avatar, -0.73), _clip(avatar, -0.98)]) is None
+
+
 def test_a_camera_filling_the_frame_never_votes_for_a_split():
     full = detect.ClipFinding({"s": detect.Face((0.2, 0.0, 0.6, 1.0), 1.0, 1.0, 2.0, False)}, "s")
     assert detect.video_cam([full, full]) is None

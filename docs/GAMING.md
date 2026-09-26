@@ -31,6 +31,10 @@ It is a switch of its own, off unless you turn it on, and it can't be combined
 with Vertical Live, Podcast or Longform. With it off, nothing about processing
 changes. If anything in it fails, that clip is made the standard way.
 
+**It is for streamers on a real camera.** The detection is built to find
+people. VTubers aren't supported: an avatar is never taken for the streamer,
+so a VTuber stream gets the game filling the screen.
+
 ## Who the streamer is
 
 **TalkNet decides**: the streamer is the face that speaks in sync with the
@@ -88,7 +92,7 @@ with what was found.
 | Game | Stream | Result |
 |---|---|---|
 | Zelda: Breath of the Wild | speedrun, webcam bottom-left, splits timer and chat around it | ✓ split: webcam found within 1% of the hand-marked box |
-| Zelda: Tears of the Kingdom | VTuber | game fills the screen (an avatar isn't found automatically: set the box once) |
+| Zelda: Tears of the Kingdom | VTuber | not supported: the avatar wasn't taken for the streamer, and the game fills the screen |
 | "Zelda" category (really a gacha RPG) | no webcam, a large anime character on screen | ✓ game fills the screen; the character was not taken for the streamer |
 | World of Warcraft | webcam bottom-left, bags and action bars | ✓ split |
 | World of Warcraft | just chatting, camera fills the frame | ✓ framed the standard way |
@@ -99,7 +103,7 @@ with what was found.
 | Rust | webcam top-left, chat under it | ✓ split, chat left out of the game half |
 | Dota 2 | two casters' webcams and a player cam | ✓ split with a caster's webcam |
 | Persona 3 Reload | VTuber, voiced characters | ✓ game fills the screen: no character was taken for a webcam |
-| Pixel-art game | VTuber | game fills the screen (see above) |
+| Pixel-art game | VTuber | not supported: the game fills the screen |
 
 Time on an RTX 3060: finding the webcam looks at four 40-second pieces of the
 video, about 15 seconds each (6 for person tracking, 8 for TalkNet). Each clip
@@ -110,7 +114,8 @@ standard face tracking.
 
 ## Known limits
 
-- **VTubers**: an avatar is not found automatically. Draw the box once.
+- **VTubers aren't supported.** The detection is for people on camera; a
+  VTuber stream gets the game filling the screen.
 - **Chat under the game** (a strip along the bottom rather than a panel at the
   side) can show at the bottom of the game half, because the game crop is full
   height. Drawing the game area by hand is planned.

@@ -69,8 +69,9 @@ MIN_SPEAKING_SHARE = 0.25
 # a webcam's median logit reached 0.3 to 3.4 in at least one clip of every
 # stream measured. Game characters with voiced lip-flaps (a 3D visual novel,
 # a gacha RPG's lead) and VTuber avatars stayed at -0.2 or below, so they
-# never become the webcam, however much they "speak"; a VTuber draws their
-# box by hand once and it is kept for the creator.
+# never become the webcam, however much they "speak". This is built for
+# people on camera: VTubers are not supported, and their streams get the
+# game filling the screen.
 CAMERA_CONFIDENCE = 0.0
 # Two track pieces are the same person when their median boxes overlap this
 # much and they are hardly ever on screen at the same time (the tracker
