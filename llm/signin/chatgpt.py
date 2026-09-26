@@ -25,6 +25,7 @@ Not in the Store build or the installer yet: the runtime (openai-codex, about
 
 import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 
 from core.scrub import scrub_secrets
@@ -220,10 +221,9 @@ class ChatGPTPlan(SignInProvider):
     def _drop_client(self) -> None:
         client, self._client = self._client, None
         if client is not None:
-            try:
+            # A client being thrown away may already be dead; closing it is best effort.
+            with suppress(Exception):
                 client.close()
-            except Exception:
-                pass
 
     def _call(self, fn):
         """Run fn(client) on the shared client, starting a fresh one once if
@@ -282,10 +282,9 @@ class ChatGPTPlan(SignInProvider):
         except Exception as e:
             error = type(e).__name__
         finally:
-            try:
+            # The sign-in's own Codex process; its answer is already in hand.
+            with suppress(Exception):
                 client.close()
-            except Exception:
-                pass
         with self._flow_lock:
             if token != self._flow_token:
                 return  # cancelled, or a newer sign-in started
@@ -311,14 +310,11 @@ class ChatGPTPlan(SignInProvider):
             self._flow = {"state": "idle", "error": ""}
         if login:
             client, handle = login
-            try:
+            # Stopping a sign-in that may have just finished or died: best effort.
+            with suppress(Exception):
                 handle.cancel()
-            except Exception:
-                pass
-            try:
+            with suppress(Exception):
                 client.close()
-            except Exception:
-                pass
 
     @property
     def _marker(self) -> Path:
