@@ -179,6 +179,18 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         progress.emit(stage="converting source to H.264", video_id=video.video_id)
         ensure_h264_source(video.path, config)
 
+    # Vertical Live (core/modes.py): the source has to actually be a 9:16
+    # video. Checked before any work, so a wrong toggle costs seconds and says
+    # so, rather than an hour of processing the wrong way.
+    from core import modes
+
+    if modes.is_vertical_live(config):
+        width, height = modes.probe_size(video.path)
+        if modes.orientation(width, height) != "vertical":
+            raise modes.NotVerticalError(width, height)
+        print(f"      Vertical Live: {width}×{height}, keeping the stream's own layout "
+              "(no face tracking or reframing)")
+
     cancel.clear(video.video_id)  # fresh start; any stale flag from a prior run gone
     # Source length is stored too: the queue's time estimate scales its history
     # by it, so a long VOD isn't predicted to cost the same as a short upload.
@@ -416,7 +428,10 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     workers = max(1, int(config.get("video", {}).get("parallel_renders", 2)))
-    _share_the_cpu(workers)
+    if modes.needs_framing(config):
+        # Only the tracked render pipes frames through OpenCV/torch; a
+        # Vertical Live render is FFmpeg alone and needs neither loaded.
+        _share_the_cpu(workers)
     done_count = 0
     # One cause usually breaks every clip in the same way. Printing FFmpeg's
     # full output forty times buries the one fact that matters, so identical
@@ -627,6 +642,13 @@ def _render_files(
     # video/podcast.py). Read from the job config or a persisted per-clip flag.
     # When false the tracking path below is entered exactly as before.
     podcast = bool(opts.get("podcast") or config["clips"].get("podcast"))
+    # Vertical Live (core/modes.py): the source is already a finished 9:16
+    # composition. One encode of the whole frame at 1080x1920: no tracking,
+    # no crop, no layout change. Read from the job config or the per-clip flag,
+    # so editor re-renders keep it.
+    from core import modes
+
+    vertical_live = not landscape and (modes.is_vertical_live(opts) or modes.is_vertical_live(config))
     canvas = (1920, 1080) if landscape else (1080, 1920)
 
     # Color: preset filter (per-clip wins over job/config default) + manual
@@ -639,6 +661,12 @@ def _render_files(
             "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
         )
         vf_extra = f"{fit},{vf_extra}" if vf_extra else fit
+    elif vertical_live:
+        # Nothing at all for a 1080x1920 source: the trim and captions need an
+        # encode anyway, a rescale on top would only cost quality.
+        fit = modes.fit_filter(*modes.probe_size(source))
+        if fit:
+            vf_extra = f"{fit},{vf_extra}" if vf_extra else fit
 
     # Manual edits from the Shorts editor (trim/cuts/mutes/volume/fades) —
     # non-destructive: stored in render_opts, applied fresh on every render.
@@ -709,7 +737,10 @@ def _render_files(
     # disk with them.
     scratch: list[Path] = []
     try:
-        if config["clips"].get("vertical", True) and not landscape:
+        # Vertical Live takes the single-encode branch below, like longform:
+        # the tracked path (intermediate cut, face tracking, TalkNet, layout
+        # decisions, frames through Python) is never entered.
+        if config["clips"].get("vertical", True) and not landscape and not vertical_live:
             # Cut a horizontal intermediate, track the subject, render 9:16.
             intermediate = clip_dir / f"{stem}.source.mp4"
             scratch.append(intermediate)
@@ -780,8 +811,9 @@ def _render_files(
                 )
         else:
             if edit is not None:
-                # Horizontal output: cut plain first, then apply edits and
-                # burn captions in the same pass (they land AFTER the cuts).
+                # Horizontal (or Vertical Live) output: cut plain first, then
+                # apply edits and burn captions in the same pass (they land
+                # AFTER the cuts).
                 from video_editor.export import apply_edits
 
                 plain = clip_dir / f"{stem}.plain.mp4"
@@ -823,11 +855,16 @@ def _render_files(
             # Persist podcast (a video-level job flag) per clip, so an editor
             # re-render keeps the letterbox instead of falling back to tracking.
             **({"podcast": True} if podcast else {}),
+            # Same for Vertical Live: a re-render must keep the whole frame,
+            # never fall back to tracking. Always written when set, whatever
+            # else the clip has (a job with no caption style or filter would
+            # otherwise save nothing at all).
+            **({"vertical_live": True} if vertical_live else {}),
             # Persist the resolved branding so a later re-render reapplies it,
             # even when it came from the job/config default (not per-clip opts).
             **({"watermark": wm_cfg} if wm_cfg else {}),
         }
-    ) if (opts or caption_style or filter_name != "none" or wm_cfg) else ""
+    ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live) else ""
     return final_path, render_opts_json
 
 

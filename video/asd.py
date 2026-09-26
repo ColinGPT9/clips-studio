@@ -123,6 +123,9 @@ def _load():
     model.eval()
     head.eval()
     _model, _head = model, head
+    # Said once, like the tracker's "Tracking: GPU (CUDA) active": a job log
+    # then shows which models a run actually started.
+    print(f"      Speaker detection (TalkNet) loaded on {device}")
     return _model, _head
 
 

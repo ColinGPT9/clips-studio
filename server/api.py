@@ -48,6 +48,7 @@ class JobIn(BaseModel):
     longform: dict | None = None  # {"mode": short_clips|clips_140|highlights|edited_stream}
     watermark_profile_id: int | None = None  # branding profile applied to all clips
     podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
+    vertical_live: bool | None = None  # an already-composed 9:16 live: keep its layout, no face tracking
     webhook_url: str | None = None  # POST once when this job reaches a terminal state
     webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
     hashtags: list[str] | None = None  # tags every clip of this job must carry
@@ -74,6 +75,7 @@ class JobPatch(BaseModel):
     longform: dict | None = None
     watermark_profile_id: int | None = None
     podcast: bool | None = None
+    vertical_live: bool | None = None
     webhook_url: str | None = None
     webhook_secret: str | None = None
     # Options to drop back to the app-wide default. Needed because null means
@@ -100,6 +102,7 @@ class BatchItemIn(BaseModel):
     longform: dict | None = None
     watermark_profile_id: int | None = None
     podcast: bool | None = None
+    vertical_live: bool | None = None
     webhook_url: str | None = None
     webhook_secret: str | None = None
 
@@ -173,6 +176,11 @@ class LocalVideoIn(BaseModel):
     caption_style: dict | None = None
     long_clips: bool | None = None
     podcast: bool | None = None  # multi-cam podcast: letterbox, no subject tracking
+    vertical_live: bool | None = None  # an already-composed 9:16 live: keep its layout, no face tracking
+    # Where the file came from, when the user knows (a downloaded live's
+    # original link). Optional: never invented. Kept with the video so the
+    # clips' publishing footers can point back to it.
+    source_url: str = ""
     # The rest of the per-video options, so an uploaded file can be set up
     # exactly like a pasted link — the list builder offers the same switches
     # for both, and a switch that silently did nothing on your own upload
@@ -408,6 +416,8 @@ def _process_options(body, into: dict | None = None) -> dict:
         payload["long_clips"] = True
     if getattr(body, "podcast", None):
         payload["podcast"] = True
+    if getattr(body, "vertical_live", None):
+        payload["vertical_live"] = True
     if getattr(body, "longform", None):
         payload["longform"] = body.longform
     if getattr(body, "watermark_profile_id", None):
@@ -438,6 +448,12 @@ def _process_options(body, into: dict | None = None) -> dict:
     # toggle being switched off needs to say so.
     for key in getattr(body, "clear", []) or []:
         payload.pop(key, None)
+    # Vertical Live keeps a finished 9:16 layout as it is; Podcast reframes a
+    # multi-camera set and Longform makes 16:9. Asking for both is a mistake
+    # worth saying out loud rather than quietly picking one.
+    if payload.get("vertical_live") and (payload.get("podcast") or payload.get("longform")):
+        raise HTTPException(400, "Vertical Live can't be combined with Podcast or Longform: "
+                                 "it keeps the live's own 9:16 layout. Turn one of them off.")
     return payload
 
 

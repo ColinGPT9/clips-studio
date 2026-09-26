@@ -186,6 +186,10 @@ class Worker(threading.Thread):
                     if payload.get("podcast"):
                         # Multi-cam podcast: letterbox every clip, no tracking.
                         cfg["clips"]["podcast"] = True
+                    if payload.get("vertical_live"):
+                        # An already-composed 9:16 live (core/modes.py): keep
+                        # its layout, skip face tracking and reframing.
+                        cfg["clips"]["vertical_live"] = True
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
                     if payload.get("min_score") is not None:
