@@ -184,14 +184,35 @@ export default function Watch({
             )}
           />
         ) : (
-          <p className="text-xs text-muted">
-            {t('AI')}:{' '}
-            <span className="text-ink">
-              {aiStatus.providers.find((p) => p.id === aiStatus.active.provider)?.label ?? aiStatus.active.provider}{' '}
-              · {aiStatus.active.model}
-            </span>{' '}
-            ({t('your own key')})
-          </p>
+          (() => {
+            // A plan signed in to (ChatGPT) only runs unattended jobs once
+            // the user has allowed it in Settings → AI; say so here, where a
+            // watch would otherwise just fail.
+            const plan = aiStatus.signin?.find((s) => s.id === aiStatus.active.provider)
+            const label =
+              plan?.label ??
+              aiStatus.providers.find((p) => p.id === aiStatus.active.provider)?.label ??
+              aiStatus.active.provider
+            return (
+              <div className="space-y-1">
+                <p className="text-xs text-muted">
+                  {t('AI')}:{' '}
+                  <span className="text-ink">
+                    {label} · {aiStatus.active.model}
+                  </span>{' '}
+                  ({plan ? t('your plan') : t('your own key')})
+                </p>
+                {plan && !plan.automation_allowed && (
+                  <p className="text-xs text-amber-400">
+                    ⚠{' '}
+                    {t(
+                      "Watched channels won't use your ChatGPT plan until you allow it in Settings → AI. Videos you clip yourself still use it."
+                    )}
+                  </p>
+                )}
+              </div>
+            )
+          })()
         ))}
 
       <WatchLive />

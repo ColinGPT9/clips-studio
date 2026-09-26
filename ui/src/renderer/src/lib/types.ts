@@ -320,12 +320,56 @@ export interface AIProvider {
   /** The region the saved key belongs to, for providers whose keys only
    *  work in one (Qwen); "" otherwise. */
   key_region?: string
+  /** Why this provider's consumer plan can't be used instead of a key
+   *  (Claude Pro/Max, Google AI Pro/Ultra), with the provider's own page. */
+  plan_note?: string
+  plan_note_url?: string
+}
+
+/** A plan the user already pays for, signed in to instead of an API key
+ *  (llm/signin/). Never carries a token. */
+export interface AISignIn {
+  id: string
+  label: string
+  /** The direct provider it sits under ("openai"). */
+  group: string
+  auth: 'signin'
+  tagline: string
+  privacy: string
+  usage_url: string
+  terms_url: string
+  automation_note: string
+  experimental: boolean
+  available: boolean
+  signin_label: string
+  limit_note: string
+  sign_out_note: string
+  disclaimer: string
+  signed_in: boolean
+  plan: string
+  email: string
+  flow: {
+    state: 'idle' | 'waiting' | 'done' | 'error'
+    error: string
+    device?: boolean
+    verification_url?: string
+    user_code?: string
+  }
+  limits: {
+    windows: { label: string; used_percent: number; resets_at: number | null; minutes: number }[]
+    reached: boolean
+    resets_at: number | null
+    known: boolean
+  }
+  /** Whether Watched channels and stream VODs may use the plan. */
+  automation_allowed: boolean
 }
 
 export interface AIStatus {
   active: { provider: string; model: string; local: boolean }
   transcription: { backend: string; model: string }
   providers: AIProvider[]
+  signin?: AISignIn[]
 }
 
 export interface AIModel {

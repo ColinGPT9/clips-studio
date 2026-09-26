@@ -85,6 +85,14 @@ were often broken in a way that only showed up on somebody else's machine.
   - Your key is checked before it is saved, stored encrypted, and never shown
     again apart from its last four characters. **Test connection** checks the
     key and model without spending anything.
+  - **Experimental: use a ChatGPT plan you already pay for** instead of an API
+    key, through OpenAI's own Codex (OpenAI / ChatGPT plan, under Advanced). Sign
+    in with ChatGPT in your browser; pick a model your plan offers; the card shows
+    how much of the plan's limit is used. It stops at the limit rather than spend
+    ChatGPT credits, and Watched channels only use it if you allow them. It needs
+    a paid plan (OpenAI refuses free accounts outside its own app), and for now
+    only runs from source. Claude and Google plans can't be used by other apps;
+    their entries say so, and why.
   - If the provider fails (a bad key, no credit left, rate limits) the job says
     so plainly. Nothing ever switches to another provider, or back to the local
     model, without you choosing it.

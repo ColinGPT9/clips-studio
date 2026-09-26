@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { clearAISetupHint, peekAISetupHint } from '../lib/aiSetup'
 import { t } from '../lib/i18n'
-import type { AIModel, AIProvider, AIStatus } from '../lib/types'
+import type { AIModel, AIProvider, AISignIn, AIStatus } from '../lib/types'
 import { forgetAIStatus } from '../lib/useAIStatus'
 
 /** Settings → AI: where the AI work and the transcription run.
@@ -12,8 +12,11 @@ import { forgetAIStatus } from '../lib/useAIStatus'
  *    1. This PC (Ollama, Whisper): the default. No key, nothing sent.
  *    2. OpenRouter: the recommended cloud option. One key reaches many models
  *       and providers, so switching models needs no new account.
- *    3. A direct provider API (OpenAI, Claude, Gemini, Grok, Meta): always
- *       available, offered as the advanced option.
+ *    3. A direct provider API (OpenAI, Claude, Gemini, Grok, Meta, DeepSeek,
+ *       Qwen): always available, offered as the advanced option. Where the
+ *       provider allows a plan the user already pays for (ChatGPT, through
+ *       OpenAI's Codex), its entry offers signing in to the plan beside the
+ *       key. Claude and Gemini say why their plans can't be used.
  *
  *  Every cloud option is bring-your-own-key: the user's key and account, the
  *  provider's bill. Clips Kitty has no key of its own and proxies nothing.
@@ -129,9 +132,14 @@ function JobChoice({
   const direct = usable.filter((p) => p.tier === 3)
   const activeId = job === 'ai' ? status.active.provider : status.transcription.backend
   const activeModel = job === 'ai' ? status.active.model : status.transcription.model
+  // Plans signed in to instead of a key sit under their provider's entry.
+  const plans = job === 'ai' ? (status.signin ?? []).filter((s) => s.available) : []
+  const planFor = (id: string): AISignIn | undefined => plans.find((s) => s.group === id)
+  const activePlan = plans.find((s) => s.id === activeId)
 
   const initial = (): { tier: Tier; direct: string } => {
     const wanted = job === 'ai' ? hint : ''
+    if (!wanted && activePlan) return { tier: 'direct', direct: activePlan.group }
     const pick = usable.find((p) => p.id === (wanted || activeId))
     if (!pick) return { tier: 'local', direct: direct[0]?.id ?? '' }
     return pick.tier === 2
@@ -144,6 +152,7 @@ function JobChoice({
     return pick?.id ?? recommended[0]?.id ?? ''
   })
   const [directId, setDirectId] = useState(() => initial().direct)
+  const [usePlan, setUsePlan] = useState(() => !!activePlan)
 
   const chooseLocal = (): void => {
     setTier('local')
@@ -221,11 +230,37 @@ function JobChoice({
             {direct.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label}
-                {activeId === p.id ? ` · ${t('in use')}` : ''}
+                {planFor(p.id) ? ` / ${planFor(p.id)?.label}` : ''}
+                {activeId === p.id || activePlan?.group === p.id ? ` · ${t('in use')}` : ''}
               </option>
             ))}
           </select>
-          {provider(directId) && (
+          {planFor(directId) && (
+            <div className="flex gap-1 mb-2" role="radiogroup" aria-label={t('How to connect')}>
+              {[true, false].map((plan) => (
+                <button
+                  key={String(plan)}
+                  role="radio"
+                  aria-checked={usePlan === plan}
+                  className={`rounded px-2.5 py-1 text-xs border ${
+                    usePlan === plan ? 'border-accent/60 bg-accent/10 text-ink' : 'border-raised/60 text-muted'
+                  }`}
+                  onClick={() => setUsePlan(plan)}
+                >
+                  {plan ? planFor(directId)?.label : `${provider(directId)?.label ?? ''} ${t('API key')}`}
+                </button>
+              ))}
+            </div>
+          )}
+          {planFor(directId) && usePlan ? (
+            <SignInPanel
+              key={`plan-${directId}`}
+              plan={planFor(directId) as AISignIn}
+              inUse={activeId === planFor(directId)?.id ? activeModel : ''}
+              busy={busy}
+              run={run}
+            />
+          ) : provider(directId) && (
             <ProviderPanel
               key={directId}
               provider={provider(directId) as AIProvider}
@@ -394,6 +429,20 @@ function ProviderPanel({
         </ol>
       )}
 
+      {job === 'ai' && provider.plan_note && (
+        <p className="text-[11px] text-muted leading-snug">
+          {provider.plan_note}{' '}
+          {provider.plan_note_url && (
+            <button
+              className="text-accent hover:underline"
+              onClick={() => void window.studio.openExternal(provider.plan_note_url as string)}
+            >
+              {t('Why?')} ↗
+            </button>
+          )}
+        </p>
+      )}
+
       <KeyField provider={provider} busy={busy} run={run} />
 
       {provider.has_key && (
@@ -521,6 +570,272 @@ function ProviderPanel({
         )}
         <br />
         {provider.privacy}
+      </p>
+    </div>
+  )
+}
+
+/** A plan the user already pays for, signed in to instead of a key: sign in
+ *  (their own browser, or a code), the plan's models and usage as the
+ *  provider reports them, whether Watched channels may use it, and sign out.
+ *  Everything it says about the plan comes from the engine (llm/signin/), so
+ *  another plan needs nothing here. It never sees a token. */
+function SignInPanel({
+  plan: given,
+  inUse,
+  busy,
+  run
+}: {
+  plan: AISignIn
+  inUse: string
+  busy: boolean
+  run: Run
+}): JSX.Element {
+  const [plan, setPlan] = useState<AISignIn>(given)
+  const [models, setModels] = useState<AIModel[]>([])
+  const [loadError, setLoadError] = useState('')
+  const [error, setError] = useState('')
+  const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null)
+  const [testing, setTesting] = useState(false)
+  useEffect(() => setPlan(given), [given])
+  const waiting = plan.flow.state === 'waiting'
+
+  // While the sign-in page is open in the browser, ask how it is going.
+  useEffect(() => {
+    if (!waiting) return
+    const timer = window.setInterval(() => {
+      api
+        .signIn(plan.id)
+        .then((next) => {
+          setPlan(next)
+          if (next.flow.state !== 'waiting') {
+            void run(() => api.ai(), next.signed_in ? `${t('Signed in to your')} ${next.label}.` : '')
+          }
+        })
+        .catch(() => {
+          /* the next tick tries again */
+        })
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [waiting, plan.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!plan.signed_in) return
+    setLoadError('')
+    api
+      .signInModels(plan.id)
+      .then((got) => setModels(got.models))
+      .catch((e) => setLoadError(errorText(e)))
+  }, [plan.id, plan.signed_in])
+
+  const start = async (device: boolean): Promise<void> => {
+    setError('')
+    try {
+      const got = await api.startSignIn(plan.id, device)
+      if (got.auth_url && !(await window.studio.openExternal(got.auth_url))) {
+        setError(t("Couldn't open your browser. Use a code instead."))
+      }
+      setPlan(await api.signIn(plan.id))
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
+
+  const cancel = (): void => {
+    void api
+      .cancelSignIn(plan.id)
+      .then(setPlan)
+      .catch((e) => setError(errorText(e)))
+  }
+
+  const setAutomation = (allowed: boolean): void => {
+    void api
+      .setPlanAutomation(plan.id, allowed)
+      .then((next) => {
+        setPlan(next)
+        forgetAIStatus()
+      })
+      .catch((e) => setError(errorText(e)))
+  }
+
+  const link = (url: string, label: string): JSX.Element => (
+    <button className="text-accent hover:underline" onClick={() => void window.studio.openExternal(url)}>
+      {label} ↗
+    </button>
+  )
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted">{plan.tagline}</p>
+      {plan.experimental && (
+        <p className="text-[11px] text-amber-400">
+          {t('Experimental: not yet tested on a paid plan with a full clip job.')}
+        </p>
+      )}
+
+      {!plan.signed_in && !waiting && (
+        <div className="flex gap-2 flex-wrap items-center">
+          <button className="btn-accent !py-1 text-sm" disabled={busy} onClick={() => void start(false)}>
+            {plan.signin_label}
+          </button>
+          <button className="btn-ghost !py-0.5 !px-2 text-xs" disabled={busy} onClick={() => void start(true)}>
+            {t('Use a code instead')}
+          </button>
+        </div>
+      )}
+
+      {waiting && (
+        <div className="space-y-1.5 text-xs">
+          {plan.flow.device && plan.flow.verification_url ? (
+            <p>
+              {link(plan.flow.verification_url, t('Open the sign-in page'))} {t('and enter')}{' '}
+              <span className="font-mono text-sm text-ink select-all">{plan.flow.user_code}</span>
+            </p>
+          ) : (
+            <p className="text-muted">{t('Finish signing in in your browser…')}</p>
+          )}
+          <button className="btn-ghost !py-0.5 !px-2 text-xs" onClick={cancel}>
+            {t('Cancel')}
+          </button>
+        </div>
+      )}
+
+      {plan.flow.state === 'error' && !waiting && <p className="text-xs text-red-400">{plan.flow.error}</p>}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {plan.signed_in && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            <span className="text-success">
+              ● {t('Signed in')}
+              {plan.plan && ` · ${plan.plan.charAt(0).toUpperCase()}${plan.plan.slice(1)}`}
+              {plan.email && <span className="text-muted"> · {plan.email}</span>}
+            </span>
+            <button
+              className="btn-ghost !py-0.5 !px-2 text-xs ml-auto"
+              disabled={busy}
+              onClick={() => void run(() => api.signOut(plan.id), t('Signed out.'))}
+            >
+              {t('Sign out')}
+            </button>
+          </div>
+
+          <p className="label !normal-case !tracking-normal text-[11px]">{t('Model')}</p>
+          {loadError ? (
+            <p className="text-xs text-red-400">{loadError}</p>
+          ) : (
+            <select
+              className="input !py-1 text-sm"
+              value={inUse}
+              disabled={busy || models.length === 0}
+              onChange={(e) =>
+                e.target.value &&
+                void run(
+                  () => api.activateAI(plan.id, e.target.value),
+                  `${t('Now using')} ${plan.label} · ${e.target.value}.`
+                )
+              }
+              aria-label={t('Model')}
+            >
+              <option value="" disabled>
+                {models.length ? t('Choose a model…') : t('Loading…')}
+              </option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                  {m.verified ? ` · ${t('default')}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <p className={`text-xs ${inUse ? 'text-success' : 'text-muted'}`}>
+            {inUse ? `● ${t('In use')}: ${inUse}` : t('Not in use yet: choose a model.')}{' '}
+            <span className="text-muted">{t("Uses your plan's limits, not per-token prices.")}</span>
+          </p>
+
+          <div className="space-y-1">
+            {plan.limits.known ? (
+              plan.limits.windows.map((w) => (
+                <div key={`${w.label}-${w.minutes}`} className="text-[11px] text-muted">
+                  <div className="flex justify-between gap-2">
+                    <span>
+                      {w.label}: {Math.round(w.used_percent)}% {t('used')}
+                    </span>
+                    {w.resets_at && (
+                      <span>
+                        {t('resets')}{' '}
+                        {new Date(w.resets_at * 1000).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-1.5 rounded bg-raised overflow-hidden">
+                    <div
+                      className={`h-full ${
+                        w.used_percent >= 100 ? 'bg-red-400' : w.used_percent >= 80 ? 'bg-amber-400' : 'bg-accent'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, w.used_percent))}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-[11px] text-muted">{t('Usage: managed by the provider.')}</p>
+            )}
+            <p className="text-[11px] text-muted">
+              {plan.limit_note} {link(plan.usage_url, t('View usage'))}
+            </p>
+          </div>
+
+          <label className="flex items-start gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={plan.automation_allowed}
+              disabled={busy}
+              onChange={(e) => setAutomation(e.target.checked)}
+            />
+            <span>
+              {t('Let Watched channels use this plan')}
+              <span className="block text-[11px] text-muted">{plan.automation_note}</span>
+            </span>
+          </label>
+
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <button
+              className="btn-ghost !py-0.5 !px-2 text-xs"
+              disabled={busy || testing}
+              onClick={() => {
+                setTesting(true)
+                setTest(null)
+                void api
+                  .testSignIn(plan.id, inUse)
+                  .then(setTest)
+                  .catch((e) => setTest({ ok: false, message: errorText(e) }))
+                  .finally(() => setTesting(false))
+              }}
+            >
+              {testing ? t('Testing…') : t('Test (uses a little of your plan)')}
+            </button>
+          </div>
+          {test && (
+            <p className={`text-[11px] ${test.ok ? 'text-success' : 'text-red-400'}`}>
+              {test.ok ? '✓ ' : ''}
+              {test.message}
+            </p>
+          )}
+          <p className="text-[11px] text-muted">{plan.sign_out_note}</p>
+        </div>
+      )}
+
+      <p className="text-[11px] text-muted leading-snug">
+        {plan.privacy} {link(plan.terms_url, t('What the plan includes'))}
+        <br />
+        {plan.disclaimer}
       </p>
     </div>
   )

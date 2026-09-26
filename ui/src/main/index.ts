@@ -471,6 +471,14 @@ const EXTERNAL_ALLOWED = [
   /^https:\/\/dev\.meta\.ai\//,
   /^https:\/\/(platform|api-docs)\.deepseek\.com\//,
   /^https:\/\/www\.alibabacloud\.com\/help\/en\/model-studio\//,
+  // Plans signed in to instead of a key (llm/signin/). The ChatGPT sign-in
+  // page Codex hands back is on auth.openai.com, and has to open in the
+  // system browser; the plan's usage and what it includes are OpenAI pages.
+  // Anthropic's page saying why Claude plans can't be used here.
+  /^https:\/\/auth\.openai\.com\//,
+  /^https:\/\/chatgpt\.com\/codex\/settings\/usage$/,
+  /^https:\/\/learn\.chatgpt\.com\/docs\//,
+  /^https:\/\/code\.claude\.com\/docs\//,
   /^https:\/\/github\.com\/ColinGPT9\/clips-studio(\/|$)/,
   // YouTube publishing: the setup wizard sends people to Cloud Console and
   // the audit form, and a published clip links to its own watch/Studio page.

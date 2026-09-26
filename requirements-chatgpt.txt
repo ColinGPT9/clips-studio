@@ -1,0 +1,12 @@
+# Optional: the ChatGPT plan sign-in (Settings → AI → OpenAI / ChatGPT plan).
+#
+# OpenAI's Codex SDK, which pins its own runtime (openai-codex-cli-bin, about
+# 400 MB installed). Kept out of requirements.txt on purpose: it isn't in the
+# installer or the Microsoft Store build yet, and without it the option simply
+# doesn't appear. Running from source:
+#
+#     pip install -r requirements-chatgpt.txt
+#
+# The SDK is 0.x and moves fast, so the ceiling is the next minor: raise it on
+# purpose, after signing in and clipping a video with it.
+openai-codex>=0.157.0,<0.158

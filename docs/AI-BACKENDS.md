@@ -12,6 +12,8 @@ three places, chosen in **Settings → AI**:
 2. **OpenRouter** (recommended cloud AI), on your own OpenRouter key.
 3. **A direct provider API** (advanced): OpenAI, Anthropic Claude, Google
    Gemini, xAI Grok, Meta, DeepSeek or Qwen, on your own key with that provider.
+   Experimental: a paid ChatGPT plan instead of an OpenAI key (see
+   [Use a plan you already pay for](#use-a-plan-you-already-pay-for-experimental)).
 
 Every cloud option is **bring your own key**. The key is yours and so is the
 bill: the provider charges your account for what you use. Clips Kitty has no key
@@ -178,6 +180,71 @@ something only their API offers.
   editor's word tools. That is why OpenAI transcription uses whisper-1 and not
   the newer transcribe models, and why Meta and Anthropic are not offered for it.
 
+## Use a plan you already pay for (experimental)
+
+People ask whether a Claude, ChatGPT or Google AI subscription can run Clips
+Kitty instead of an API key. Only where the provider officially lets another app
+use the plan, through the provider's own software, with the sign-in held by that
+software and never seen by Clips Kitty. As of September 2026:
+
+| Plan | Can Clips Kitty use it? | Why |
+|---|---|---|
+| **ChatGPT** (Plus, Pro, Business…) | **Yes, experimental** | OpenAI documents its Codex SDK for building Codex into other apps, with "Sign in with ChatGPT" run by Codex itself. |
+| **Claude** Pro or Max | No, use a Claude API key | Anthropic: it does not permit third-party developers to offer Claude.ai login or to route requests through Free, Pro or Max plans ([legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)). |
+| **Google AI** Pro or Ultra | No, use a Gemini API key | Google's Antigravity terms make using the service from other products a breach, and plan benefits apply only in Google AI Studio's own interface. The plans do include monthly Google Cloud credits that can pay for Gemini API use on your key ([Google AI plans](https://ai.google.dev/gemini-api/docs/google-ai-plans)). |
+
+**The ChatGPT plan** is under Settings → AI → Direct provider API → **OpenAI /
+ChatGPT plan**:
+
+1. Choose **ChatGPT plan** and **Sign in with ChatGPT**. OpenAI's sign-in page
+   opens in your browser; if it doesn't come back, **Use a code instead** shows a
+   code to type on OpenAI's page.
+2. Pick a model. The list is the one your plan offers.
+3. Clip a video.
+
+- **Free accounts can't use it.** OpenAI offers Codex on free ChatGPT accounts
+  only in its own desktop app for now, and refuses requests from other apps. It
+  needs a paid plan.
+- **Usage comes from your plan's Codex limits** (a 5-hour and a weekly window on
+  most plans), shared with your own ChatGPT and Codex use. The card shows how
+  much is used, as OpenAI reports it. A two-hour video is a few dozen requests.
+- **It never spends ChatGPT credits.** Once a plan's included usage is used up,
+  OpenAI spends any credits you have bought, and it gives other apps no switch to
+  prevent that. So before every request Clips Kitty checks the plan's limits and
+  stops the job at 100%, saying when the limit resets. A request already running
+  when the limit is reached may be finished by OpenAI.
+- **Watched channels only use it if you allow it** ("Let Watched channels use
+  this plan", off by default). OpenAI calls an API key the right way to
+  authenticate automation. Videos you clip yourself, including **Clip this** on
+  the Watch page, don't need the switch.
+- **Not for the assistant or transcription.** The assistant needs tool calling,
+  which Codex only offers other apps experimentally; Codex doesn't transcribe.
+  Both stay on Ollama and Whisper, or an API key.
+- **Sign out** removes the sign-in from this PC and asks OpenAI to cancel it; if
+  that request fails, it is still removed here.
+
+How it is kept to what OpenAI documents:
+
+- It runs OpenAI's own Codex runtime, unmodified, which tells OpenAI it is Clips
+  Kitty. It never pretends to be Codex.
+- It keeps its own Codex folder (in the app's data folder) and never reads or
+  reuses a Codex login you already have. API-key environment variables are
+  blanked for it, so only the plan is used.
+- Codex stores the sign-in itself, encrypted, with its key in Windows Credential
+  Manager. Clips Kitty never handles a token, and nothing about it goes into the
+  settings file, logs, bug reports or the MCP server.
+- Codex can't run commands, search the web, load plugins, update itself or send
+  analytics here. Each request is a one-off, read-only task in an empty folder,
+  its answer held to the job's JSON format.
+- OpenAI's own error text is never shown or stored (it can quote part of an
+  internal key); the app says which case it was in its own words.
+
+**Not in the installer or the Microsoft Store build yet.** The runtime is about
+400 MB. Running from source, install it with
+`pip install -r requirements-chatgpt.txt`; without it the option doesn't appear.
+It stays experimental until someone with a paid plan has run a full clip job on
+it.
+
 ---
 
 ## For everyone: what leaves your PC
@@ -226,6 +293,26 @@ The rules any new provider has to keep, and which the tests check:
 - No key of ours, anywhere. With no key saved, nothing is sent.
 - A failure is reported, never retried against something else.
 - Local stays the default and is sent exactly what it always was.
+
+### Adding a plan sign-in
+
+Plans signed in to instead of a key live in `llm/signin/`: `base.py` is the
+`SignInProvider` interface (start a sign-in, status, limits, models, sign out,
+the backend a job uses, and the check before a job), `catalog.py` lists them, and
+`chatgpt.py` is the first. A new one is one class and one line in the catalogue;
+the `/ai/signin/{id}` routes and the settings card read it from there, and it sits
+under its provider's entry (`group`).
+
+It is only accepted if:
+
+- the provider's terms allow a third-party app to use the plan, and the pull
+  request links the page that says so;
+- it uses the provider's own documented, unmodified SDK or sign-in flow, which
+  holds the sign-in;
+- it takes no cookies, no tokens from another app, and calls no private
+  endpoint;
+- it never spends beyond the plan's included usage without the user's choice;
+- unattended jobs use it only when the user has allowed it.
 
 Known gaps, open for pull requests: Gemini online transcription (it needs
 Gemini's Files API upload), and Google's newer Interactions API for Gemini.

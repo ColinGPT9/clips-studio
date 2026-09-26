@@ -17,7 +17,9 @@ export default function ModelSwitcher(): JSX.Element {
   const refresh = async (): Promise<void> => {
     try {
       const status = await api.ai()
-      const label = status.providers.find((p) => p.id === status.active.provider)?.label
+      const label = [...status.providers, ...(status.signin ?? [])].find(
+        (p) => p.id === status.active.provider
+      )?.label
       setCloud(status.active.local ? '' : `${label ?? status.active.provider} · ${status.active.model}`)
     } catch {
       setCloud('')

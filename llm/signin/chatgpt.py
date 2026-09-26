@@ -151,14 +151,22 @@ class ChatGPTPlan(SignInProvider):
     id = "chatgpt"
     label = "ChatGPT plan"
     group = "openai"
-    tagline = "Sign in with ChatGPT and use your plan's Codex limits, not API credit."
-    privacy = ("Transcripts and prompts go to OpenAI through Codex, which is signed in to your "
-               "ChatGPT account. Clips Kitty never sees your password or sign-in.")
+    tagline = ("Use a paid ChatGPT plan's Codex limits instead of API credit. Free accounts can't "
+               "use it outside OpenAI's own app yet.")
+    privacy = ("Transcripts and prompts go to OpenAI through Codex, OpenAI's own software running on "
+               "this PC, signed in to your ChatGPT account. Clips Kitty never sees your password or "
+               "sign-in.")
     usage_url = USAGE_URL
     terms_url = TERMS_URL
     automation_note = ("OpenAI calls an API key the right way to automate; your plan's limits "
                        "are shared with your own ChatGPT and Codex use.")
     experimental = True
+    signin_label = "Sign in with ChatGPT"
+    limit_note = ("When your plan's limit is reached, jobs stop until it resets. Clips Kitty never "
+                  "uses ChatGPT credits.")
+    sign_out_note = ("Signs Clips Kitty out on this PC and asks OpenAI to cancel the sign-in; if that "
+                     "request fails, the sign-in is still removed here.")
+    disclaimer = "Clips Kitty isn't made by or affiliated with OpenAI."
 
     def __init__(self, data_dir, client_factory=None):
         self.home = Path(data_dir) / "codex"

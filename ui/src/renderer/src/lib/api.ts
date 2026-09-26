@@ -1,5 +1,6 @@
 import type {
   AIModelList,
+  AISignIn,
   AIStatus,
   AutomationActivity,
   AutomationStatus,
@@ -383,6 +384,28 @@ export const api = {
     }),
   testAI: (provider: string, model: string) =>
     request<{ ok: boolean; kind?: string; message: string }>(`/ai/providers/${provider}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
+  // A plan the user already pays for, signed in to instead of a key.
+  signIn: (provider: string) => request<AISignIn>(`/ai/signin/${provider}`),
+  startSignIn: (provider: string, device = false) =>
+    request<{ auth_url?: string; verification_url?: string; user_code?: string }>(
+      `/ai/signin/${provider}/start`,
+      { method: 'POST', body: JSON.stringify({ device }) }
+    ),
+  cancelSignIn: (provider: string) =>
+    request<AISignIn>(`/ai/signin/${provider}/cancel`, { method: 'POST' }),
+  signOut: (provider: string) =>
+    request<AIStatus & { message: string }>(`/ai/signin/${provider}/sign-out`, { method: 'POST' }),
+  signInModels: (provider: string) => request<AIModelList>(`/ai/signin/${provider}/models`),
+  setPlanAutomation: (provider: string, allowed: boolean) =>
+    request<AISignIn>(`/ai/signin/${provider}/automation`, {
+      method: 'POST',
+      body: JSON.stringify({ allowed })
+    }),
+  testSignIn: (provider: string, model: string) =>
+    request<{ ok: boolean; kind?: string; message: string }>(`/ai/signin/${provider}/test`, {
       method: 'POST',
       body: JSON.stringify({ model })
     }),

@@ -66,10 +66,10 @@
           <h2>The short version</h2>
           <ul>
             <li><strong>No telemetry.</strong> The app reports nothing back. There is no usage tracking, no crash reporting, and no analytics of any kind inside Clips Kitty.</li>
-            <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The optional sign-ins are to <em>your own</em> accounts: YouTube, which goes straight to Google, and a publishing service if you choose to use one.</li>
+            <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The optional sign-ins are to <em>your own</em> accounts: YouTube, which goes straight to Google, a publishing service if you choose to use one, and your ChatGPT plan, which goes straight to OpenAI.</li>
             <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware, by default. Both ways of publishing are off by default and described below.</li>
             <li><strong>The AI runs locally too, by default.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else, unless you choose one of them yourself, with your own API key, for a PC that cannot run the AI (described below).</li>
-            <li><strong>Five things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, publishing a clip through a social publishing service, and using a cloud AI provider with your own key. The last three only happen if you switch them on.</li>
+            <li><strong>Five things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, publishing a clip through a social publishing service, and using a cloud AI provider with your own key or your own ChatGPT plan. The last three only happen if you switch them on.</li>
           </ul>
         </div>
       </section>
@@ -199,6 +199,34 @@
               theirs before you switch this on.</li>
             <li><strong>Switching back is one click.</strong> Choosing "This PC" in Settings
               &rarr; AI returns everything to local, and removing the key deletes it.</li>
+          </ul>
+
+          <h3>Only if you sign in with your ChatGPT plan</h3>
+          <p>
+            Instead of an API key, Settings &rarr; AI can use a paid ChatGPT plan you already
+            have, through Codex, OpenAI's own software for other apps. This is
+            <strong>off by default</strong>, experimental, and for now only in Clips Kitty run
+            from source. Anthropic and Google don't allow their plans to be used by other
+            apps, so Claude and Gemini are API key only.
+          </p>
+          <ul>
+            <li><strong>You sign in on OpenAI's own page</strong>, in your browser. Codex keeps
+              the sign-in, encrypted, with its key in Windows Credential Manager. Clips Kitty
+              never sees your password or sign-in, and never uses a Codex login you already
+              have: it keeps its own, in its own folder.</li>
+            <li><strong>What is sent:</strong> the same transcript text and instructions as
+              any cloud AI, to OpenAI, through Codex. Codex here can't run commands, search
+              the web, load plugins, or send OpenAI its usage analytics.</li>
+            <li><strong>What Clips Kitty reads from OpenAI:</strong> which plan and email
+              you're signed in with, the models the plan offers, and how much of the plan's
+              limit is used, so a job stops at the limit instead of spending ChatGPT
+              credits.</li>
+            <li><strong>OpenAI is told it is Clips Kitty.</strong> Codex identifies the app to
+              OpenAI by name, not as Codex.</li>
+            <li><strong>OpenAI's policy applies</strong> to what you send, under your ChatGPT
+              plan's terms.</li>
+            <li><strong>Signing out</strong> removes the sign-in from this PC and asks OpenAI to
+              cancel it.</li>
           </ul>
 
           <h3>Only if you submit a report</h3>

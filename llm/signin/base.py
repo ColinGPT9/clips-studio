@@ -29,6 +29,10 @@ class SignInProvider(ABC):
     # says about unattended use of the plan.
     automation_note: str = ""
     experimental: bool = False
+    signin_label: str = "Sign in"   # the button: "Sign in with ChatGPT"
+    limit_note: str = ""            # what happens when the plan's limit is reached
+    sign_out_note: str = ""         # what signing out does, and doesn't, do
+    disclaimer: str = ""            # e.g. not made by or affiliated with the provider
 
     @abstractmethod
     def available(self) -> bool:
@@ -87,5 +91,9 @@ class SignInProvider(ABC):
             "terms_url": self.terms_url,
             "automation_note": self.automation_note,
             "experimental": self.experimental,
+            "signin_label": self.signin_label,
+            "limit_note": self.limit_note,
+            "sign_out_note": self.sign_out_note,
+            "disclaimer": self.disclaimer,
             "available": self.available(),
         }
