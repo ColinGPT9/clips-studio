@@ -36,4 +36,7 @@ SPEC = ProviderSpec(
     extra_headers=_headers,
     model_filter=model_info,
     tagline="Direct Anthropic API.",
+    plan_note="Claude Pro and Max plans can't be used here: Anthropic only allows them in its "
+              "own apps. This uses a Claude API key, billed separately.",
+    plan_note_url="https://code.claude.com/docs/en/legal-and-compliance",
 )

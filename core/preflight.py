@@ -153,6 +153,21 @@ def check_cloud_ai(provider: str, model: str, data_dir) -> Check:
     """
     from llm.providers.catalog import get
     from llm.providers.keys import has_key
+    from llm.signin import catalog as signin
+
+    if signin.is_signin(provider):
+        # A plan signed in to instead of a key: asks only what it already knows.
+        plan = signin.get(provider, data_dir)
+        if plan is None or not plan.available():
+            return Check(name="ai", ok=False, detail="ChatGPT plan: not installed in this version",
+                         fix="Choose another AI in Settings → AI.")
+        if not model:
+            return Check(name="ai", ok=False, detail=f"{plan.label}: no model chosen",
+                         fix=f"Choose a {plan.label} model in Settings → AI.")
+        if not plan.status().get("signed_in"):
+            return Check(name="ai", ok=False, detail=f"{plan.label}: not signed in",
+                         fix="Sign in with ChatGPT in Settings → AI.")
+        return Check(name="ai", ok=True, detail=f"{plan.label} · {model} (signed in)")
 
     spec = get(provider)
     if spec is None:

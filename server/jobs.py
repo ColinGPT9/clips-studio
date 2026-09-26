@@ -182,6 +182,7 @@ class Worker(threading.Thread):
                     # across future edits. Copying a settings dict costs
                     # microseconds against an hour of video work.
                     cfg = copy.deepcopy(self.config)
+                    self._check_plan(db, cfg, payload)
                     if payload.get("podcast"):
                         # Multi-cam podcast: letterbox every clip, no tracking.
                         cfg["clips"]["podcast"] = True
@@ -575,6 +576,22 @@ class Worker(threading.Thread):
             )
         except Exception as e:
             print(f"  Publish after processing failed: {e}")
+
+    @staticmethod
+    def _check_plan(db: StateDB, cfg: dict, payload: dict) -> None:
+        """A job on a signed-in AI plan (llm/signin/) is checked before
+        anything is downloaded: signed in, the plan's limit not used up, and,
+        for a video a watch or a stream queued by itself, the user's say-so
+        for unattended use. Raises LLMError in plain words otherwise."""
+        from llm.signin import catalog as signin
+
+        if payload.get("origin") in ("watch", "stream"):
+            cfg["llm"]["unattended"] = True
+        plan = signin.for_backend(cfg["llm"])
+        if plan is None:
+            return
+        cfg["llm"]["plan_automation"] = db.get_flag(signin.AUTOMATION_FLAG + plan.id) == "1"
+        plan.check_job(cfg["llm"])
 
     def _rerender_clip(self, db: StateDB, payload: dict) -> None:
         """Re-render one clip from the original source video, with optionally

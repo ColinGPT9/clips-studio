@@ -24,6 +24,7 @@ from llm.providers.adapters import adapter_for
 from llm.providers.base import LLMError
 from llm.providers.catalog import PROVIDERS, get
 from llm.providers.speech import list_stt_models
+from llm.signin import catalog as signin
 from llm.spec import LOCAL, is_local, parse_spec
 
 # The local entry the UI lists first. Not a ProviderSpec: nothing about it is
@@ -72,6 +73,14 @@ class SttCheckIn(BaseModel):
 class TranscriptionIn(BaseModel):
     backend: str = "local"
     model: str = ""
+
+
+class SignInStartIn(BaseModel):
+    device: bool = False  # the device-code flow, for when the browser page doesn't come back
+
+
+class AutomationIn(BaseModel):
+    allowed: bool
 
 
 _TRANSCRIPTION_BLOCK = re.compile(r"(?m)^transcription:[^\n]*\n(?:[ \t]+[^\n]*(?:\n|$))*")
@@ -151,6 +160,30 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
         write_transcription(settings_path, backend, model)
         config["transcription"] = {"backend": backend, "model": model}
 
+    def _plan(provider_id: str):
+        plan = signin.get(provider_id, data_path)
+        if plan is None:
+            raise HTTPException(404, f"Unknown plan sign-in '{provider_id}'.")
+        if not plan.available():
+            raise HTTPException(400, f"{plan.label} isn't installed in this version of Clips Kitty.")
+        return plan
+
+    def _automation_allowed(provider_id: str) -> bool:
+        d = db()
+        try:
+            return d.get_flag(signin.AUTOMATION_FLAG + provider_id) == "1"
+        finally:
+            d.close()
+
+    def _plan_view(plan) -> dict:
+        """What the card shows for a plan sign-in. Never a token."""
+        state = plan.status()
+        view = {**plan.public(), **state, "automation_allowed": _automation_allowed(plan.id),
+                "limits": {"windows": [], "reached": False, "resets_at": None, "known": False}}
+        if state.get("signed_in"):
+            view["limits"] = plan.limits()
+        return view
+
     def status() -> dict:
         provider, model = parse_spec(config["llm"].get("backend") or "")
         transcription = config.get("transcription") or {}
@@ -165,6 +198,9 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
                  "key_region": spec.region_label(keys.load_region(data_path, spec.id))}
                 for spec in PROVIDERS.values()
             ],
+            # Plans the user already pays for, signed in to instead of a key
+            # (llm/signin/). Only the ones whose runtime this build has.
+            "signin": [_plan_view(plan) for plan in signin.all_for(data_path) if plan.available()],
         }
 
     @app.get("/ai")
@@ -241,6 +277,15 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
                        or resolve_usable_model(config["llm"].get("ollama_host", "http://localhost:11434"), "")
                        or "gemma:7b")
                 spec_text = switch_model(settings_path, tag)
+            elif signin.is_signin(provider):
+                plan = _plan(provider)
+                if not model:
+                    raise HTTPException(400, f"Choose a {plan.label} model.")
+                if not plan.status().get("signed_in"):
+                    raise HTTPException(400, f"Sign in to your {plan.label} first.")
+                if is_local(current):
+                    d.set_flag(LAST_LOCAL_FLAG, parse_spec(current)[1])
+                spec_text = switch_model(settings_path, f"{plan.id}/{model}")
             else:
                 spec = _spec(provider)
                 if not model:
@@ -254,6 +299,78 @@ def install(app, *, config, db, data_dir, settings_path) -> None:
             d.close()
         config["llm"]["backend"] = spec_text  # live config follows the file
         return status()
+
+    # ---- a plan the user already pays for, signed in to (llm/signin/) --------
+
+    @app.get("/ai/signin/{provider_id}")
+    def plan_status(provider_id: str):
+        """Signed in or not, the plan, its usage, and how a sign-in is going
+        (the card polls this while the browser page is open)."""
+        return _plan_view(_plan(provider_id))
+
+    @app.post("/ai/signin/{provider_id}/start")
+    def plan_start(provider_id: str, body: SignInStartIn):
+        """Begin signing in: a page for the user's own browser, or a code to
+        type at the provider's address. Only ever run because they asked."""
+        plan = _plan(provider_id)
+        try:
+            return plan.start(device=body.device)
+        except LLMError as e:
+            raise _fail(e) from e
+
+    @app.post("/ai/signin/{provider_id}/cancel")
+    def plan_cancel(provider_id: str):
+        plan = _plan(provider_id)
+        plan.cancel()
+        return _plan_view(plan)
+
+    @app.post("/ai/signin/{provider_id}/sign-out")
+    def plan_sign_out(provider_id: str):
+        """Remove the sign-in from this PC. The provider's runtime also asks
+        the provider to revoke it; the local sign-in goes either way."""
+        plan = _plan(provider_id)
+        try:
+            plan.sign_out()
+        except LLMError as e:
+            raise _fail(e) from e
+        return {**status(), "message": f"Signed out of your {plan.label} on this PC."}
+
+    @app.get("/ai/signin/{provider_id}/models")
+    def plan_models(provider_id: str):
+        plan = _plan(provider_id)
+        if not plan.status().get("signed_in"):
+            raise HTTPException(400, f"Sign in to your {plan.label} first.")
+        try:
+            models = [m.as_dict() for m in plan.models()]
+        except LLMError as e:
+            raise _fail(e) from e
+        return {"models": models, "fetched_at": time.time(), "kind": "text"}
+
+    @app.post("/ai/signin/{provider_id}/automation")
+    def plan_automation(provider_id: str, body: AutomationIn):
+        """Whether Watched channels and stream VODs, which run with nobody
+        watching, may use the plan. Off until the user turns it on."""
+        plan = _plan(provider_id)
+        d = db()
+        try:
+            d.set_flag(signin.AUTOMATION_FLAG + plan.id, "1" if body.allowed else "0")
+        finally:
+            d.close()
+        return _plan_view(plan)
+
+    @app.post("/ai/signin/{provider_id}/test")
+    def plan_test(provider_id: str, body: TestIn):
+        """One tiny task on the plan: the only way to know it works for this
+        account (OpenAI refuses free accounts outside its own app). Uses a
+        little of the plan, which is why the card says so."""
+        plan = _plan(provider_id)
+        try:
+            plan.check_job({})
+            answer = plan.backend(body.model.strip(), {}).generate("Reply with the single word OK.")
+        except LLMError as e:
+            return {"ok": False, "kind": e.kind, "message": scrub_secrets(e.message)}
+        return {"ok": True, "message": f"Connected to your {plan.label}."
+                + (" It answered." if answer.strip() else "")}
 
     @app.post("/ai/transcription")
     def set_transcription(body: TranscriptionIn):

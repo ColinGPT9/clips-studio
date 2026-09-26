@@ -2,7 +2,8 @@
 
 Local Ollama is the default and is handled exactly as it always was. Any
 other provider is a cloud one on the user's own key, listed in
-llm/providers/catalog.py; adding one there is all it takes to make it
+llm/providers/catalog.py, or a plan the user signed in to, listed in
+llm/signin/catalog.py; adding one there is all it takes to make it
 selectable here.
 """
 
@@ -23,6 +24,17 @@ def create_backend(llm_config: dict) -> LLMBackend:
             temperature=llm_config.get("temperature", 0.4),
             num_ctx=llm_config.get("num_ctx", 8192),
         )
+
+    from llm.signin import catalog as signin
+
+    if signin.is_signin(provider):
+        # A plan the user signed in to (llm/signin/), instead of an API key.
+        if not model:
+            raise ValueError(f"No model in LLM backend spec '{spec}' (expected e.g. '{provider}/<model>')")
+        plan = signin.get(provider, llm_config.get("data_dir"))
+        if plan is None:
+            raise ValueError("No data directory for the plan sign-in (llm.data_dir)")
+        return plan.backend(model, llm_config)
 
     from llm.providers.catalog import get
 

@@ -341,7 +341,7 @@ WATCH_ITEM_COLUMNS = frozenset({
     "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
     "reason", "job_id", "next_check_at", "publish_state", "publish_error",
     "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
-    "source_freed",
+    "source_freed", "requested",
 })
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -507,6 +507,9 @@ class StateDB:
             # was none to delete. Either way the folder is not scanned for it
             # again on every tick.
             ("source_freed", "INTEGER NOT NULL DEFAULT 0"),
+            # 1: a person pressed Clip this, so the job is theirs, not the
+            # watch running unattended (a signed-in plan may treat them apart).
+            ("requested", "INTEGER NOT NULL DEFAULT 0"),
         ):
             if column not in item_cols:
                 self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")

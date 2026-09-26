@@ -2276,6 +2276,18 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             from llm.providers.keys import has_key
 
             provider, cloud_model = parse_spec(backend_spec)
+            from llm.signin import catalog as signin
+
+            if signin.is_signin(provider):
+                # Codex's tool calling for other apps is still experimental,
+                # so the assistant doesn't run on a signed-in plan yet.
+                return {
+                    "ready": False,
+                    "model": backend_spec,
+                    "configured": backend_spec,
+                    "reason": "The assistant can't use the ChatGPT plan yet. Choose Ollama or a "
+                              "provider with your own API key in Settings → AI to use it.",
+                }
             spec = get(provider)
             ready = bool(spec and cloud_model and has_key(config["llm"].get("data_dir") or data_dir, provider))
             return {

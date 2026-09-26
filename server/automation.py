@@ -169,14 +169,17 @@ def watch_options(watch) -> dict:
     return options if isinstance(options, dict) else {}
 
 
-def job_payload(watch, url: str) -> dict:
+def job_payload(watch, url: str, origin: str = "watch") -> dict:
     """What the queue is given for one of this watch's videos: the preset, then
-    the watch's own options on top, exactly as a pasted link would carry them."""
+    the watch's own options on top, exactly as a pasted link would carry them.
+    `origin` is "watch" for a video the watch queued by itself, "manual" for one
+    a person pressed Clip this on: a signed-in AI plan only runs unattended jobs
+    when the user has allowed it (llm/signin/)."""
     from server.integrations import PRESETS
 
     options = watch_options(watch)
     preset = PRESETS.get(options.pop("preset", "standard")) or PRESETS["standard"]
-    return {"url": url, **preset["options"], **options}
+    return {"url": url, **preset["options"], **options, "origin": origin}
 
 
 def render_footer(template: str, item, watch) -> str:
@@ -596,7 +599,9 @@ class ChannelWatcher(threading.Thread):
                 continue
             title = item["title"] or f"{watch['name'] or watch['channel_key']} video"
             outcome, job_id = queue.enqueue_once(
-                d, item["video_id"], job_payload(watch, item["url"]), title=title
+                d, item["video_id"],
+                job_payload(watch, item["url"], "manual" if item["requested"] else "watch"),
+                title=title,
             )
             if outcome == "done":
                 d.set_watch_item(item["id"], state="skipped",
@@ -1186,9 +1191,9 @@ def install(
                 return view_item(d, item, worker)
             found = feed.readiness(item["url"], 0)
             if found.state == "ready":
-                d.set_watch_item(item_id, state="waiting", reason="")
+                d.set_watch_item(item_id, state="waiting", reason="", requested=1)
             elif found.state == "not_yet":
-                d.set_watch_item(item_id, state="not_ready", reason=found.reason,
+                d.set_watch_item(item_id, state="not_ready", reason=found.reason, requested=1,
                                  detected_at=clock(), next_check_at=clock() + RECHECK_SECONDS)
             else:
                 raise HTTPException(409, found.reason or "That video can't be clipped.")

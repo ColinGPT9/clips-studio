@@ -115,6 +115,11 @@ class ProviderSpec:
     # they were made in. The first is the default; the region a key belongs to
     # is found when it is saved and kept with it (keys.resolve).
     regions: tuple[tuple[str, str, str], ...] = ()
+    # Why this provider's consumer plan can't be used instead of a key, when
+    # people will ask ("I already pay for Claude"), and the provider's own page
+    # that says so. See llm/signin/ for the plans that can.
+    plan_note: str = ""
+    plan_note_url: str = ""
 
     def in_region(self, region: str) -> "ProviderSpec":
         """This provider at the address of one of its regions. Unknown or
@@ -142,4 +147,6 @@ class ProviderSpec:
             "privacy": self.privacy,
             "stt": bool(self.stt),
             "stt_models": list(self.stt.get("models") or []),
+            "plan_note": self.plan_note,
+            "plan_note_url": self.plan_note_url,
         }

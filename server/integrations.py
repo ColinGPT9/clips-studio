@@ -136,7 +136,7 @@ def queue_vod(d: StateDB, row, url: str, worker, broadcaster) -> None:
         return
     preset = PRESETS.get(row["preset"]) or PRESETS["standard"]
     outcome, job_id = queue.enqueue_once(
-        d, vid, {"url": url, **preset["options"]},
+        d, vid, {"url": url, **preset["options"], "origin": "stream"},
         title=f"{row['channel'] or row['platform'].title()} stream",
     )
     if outcome == "done":

@@ -34,4 +34,8 @@ SPEC = ProviderSpec(
     auth="x-goog-api-key",
     model_filter=model_info,
     tagline="Direct Google Gemini API.",
+    plan_note="Google AI Pro and Ultra plans can't be used here: Google only allows them in its "
+              "own apps. They do include monthly Google Cloud credits, which can pay for Gemini "
+              "API use on your key.",
+    plan_note_url="https://ai.google.dev/gemini-api/docs/google-ai-plans",
 )
