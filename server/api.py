@@ -860,7 +860,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 from creator.identity import tag_video
 
                 tag_video(d, vid, body.channel.strip(), platform=platform)
-            payload = _process_options(body, {"url": f"local:{vid}"})
+            # force is part of the job, as for a pasted link: without it "Make clips
+            # again" on an uploaded file finished at once, with nothing made.
+            payload = _process_options(body, {"url": f"local:{vid}", "force": body.force})
             job_id = d.add_job("process", json.dumps(payload), video_id=vid, title=title)
         finally:
             d.close()
