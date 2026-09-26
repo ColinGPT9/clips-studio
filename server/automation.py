@@ -576,18 +576,28 @@ class ChannelWatcher(threading.Thread):
                 facts["title"] = found.title
             if found.published_at and not item["published_at"]:
                 facts["published_at"] = found.published_at
-            if found.state == "ready":
+            if getattr(found, "orientation", ""):
+                facts["orientation"] = found.orientation
+            state, reason = found.state, found.reason
+            if (state == "ready" and getattr(found, "orientation", "") == "horizontal"
+                    and watch_options(watch).get("vertical_live")):
+                # A Vertical Live watch clips vertical versions only. A video
+                # that only comes landscape (the horizontal twin of a
+                # Streamlabs "-vert" pair, say) is set aside, not clipped the
+                # wrong way. Clip this still offers it.
+                state, reason = "skip", "No vertical version (this channel is set to Vertical Live)."
+            if state == "ready":
                 d.set_watch_item(item["id"], state="waiting", reason="", **facts)
-            elif found.state == "not_yet":
+            elif state == "not_yet":
                 if item["state"] == "new":
                     self._say(f"{_quoted(item['title'] or found.title)} isn't ready yet. "
                               "Looking again in 15 minutes.", "waiting")
-                d.set_watch_item(item["id"], state="not_ready", reason=found.reason,
+                d.set_watch_item(item["id"], state="not_ready", reason=reason,
                                  next_check_at=now + RECHECK_SECONDS, **facts)
             else:
-                self._say(f"Skipped {_quoted(item['title'] or found.title)}: {found.reason}",
+                self._say(f"Skipped {_quoted(item['title'] or found.title)}: {reason}",
                           "info")
-                d.set_watch_item(item["id"], state="skipped", reason=found.reason, **facts)
+                d.set_watch_item(item["id"], state="skipped", reason=reason, **facts)
 
     # -- 3. queue it, once ------------------------------------------------------
 
@@ -598,9 +608,15 @@ class ChannelWatcher(threading.Thread):
             if watch is None or not watch["enabled"]:
                 continue
             title = item["title"] or f"{watch['name'] or watch['channel_key']} video"
+            payload = job_payload(watch, item["url"], "manual" if item["requested"] else "watch")
+            if item["orientation"] == "horizontal":
+                # Only reachable through Clip this (a Vertical Live watch skips
+                # these): the person asked for this landscape video, so it is
+                # clipped the standard way rather than refused.
+                payload.pop("vertical_live", None)
             outcome, job_id = queue.enqueue_once(
                 d, item["video_id"],
-                job_payload(watch, item["url"], "manual" if item["requested"] else "watch"),
+                payload,
                 title=title,
             )
             if outcome == "done":

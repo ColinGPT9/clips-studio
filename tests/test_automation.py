@@ -1016,3 +1016,56 @@ def test_a_video_that_taught_nothing_says_nothing(env):
     env.later(5)
     assert learned_lines(env) == []
 
+
+
+# ---- Vertical Live watches ---------------------------------------------------------
+
+
+def test_a_vertical_live_watch_skips_videos_with_no_vertical_version(env):
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}", json={"options": {"vertical_live": True}})
+    env.feed.listings[UC] = [yt("landscape01"), yt("portrait001")]
+    env.feed.ready["https://www.youtube.com/watch?v=landscape01"] = Readiness(
+        "ready", duration=3600, orientation="horizontal")
+    env.feed.ready["https://www.youtube.com/watch?v=portrait001"] = Readiness(
+        "ready", duration=3600, orientation="vertical")
+    env.later()
+    jobs = env.jobs()
+    assert [j["video_id"] for j in jobs] == ["portrait001"]
+    assert json.loads(jobs[0]["payload"])["vertical_live"] is True
+    skipped = env.item("landscape01")
+    assert skipped["status"] == "skipped" and "No vertical version" in skipped["reason"]
+
+
+def test_without_the_toggle_a_landscape_video_is_clipped_as_before(env):
+    watched(env)
+    env.feed.listings[UC] = [yt("landscape01")]
+    env.feed.ready["https://www.youtube.com/watch?v=landscape01"] = Readiness(
+        "ready", duration=3600, orientation="horizontal")
+    env.later()
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert "vertical_live" not in payload
+
+
+def test_clip_this_on_a_skipped_landscape_video_runs_it_the_standard_way(env):
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}", json={"options": {"vertical_live": True}})
+    env.feed.listings[UC] = [yt("landscape01")]
+    env.feed.ready["https://www.youtube.com/watch?v=landscape01"] = Readiness(
+        "ready", duration=3600, orientation="horizontal")
+    env.later()
+    item = env.item("landscape01")
+    assert item["status"] == "skipped"
+    assert env.client.post(f"/automation/items/{item['id']}/queue").status_code == 200
+    env.watcher.tick()
+    payload = json.loads(env.jobs()[0]["payload"])
+    assert payload["origin"] == "manual" and "vertical_live" not in payload
+
+
+def test_a_videos_shape_is_read_from_its_formats():
+    from sources.channel_feed import _orientation
+
+    assert _orientation({"formats": [{"width": 1920, "height": 1080}, {"width": 1080, "height": 1920}]}) == "vertical"
+    assert _orientation({"formats": [{"width": 1920, "height": 1080}, {"vcodec": "none"}]}) == "horizontal"
+    assert _orientation({"width": 720, "height": 1280}) == "vertical"
+    assert _orientation({}) == ""

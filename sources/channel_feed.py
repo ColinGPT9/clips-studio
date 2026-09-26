@@ -82,6 +82,11 @@ class Readiness:
     title: str = ""
     published_at: float = 0.0
     duration: float = 0.0
+    # "vertical" when the video has a portrait version to download (a
+    # vertical live, or a dual-format one), "horizontal" when it only comes
+    # landscape, "" when the listing doesn't say. Vertical Live watches skip
+    # "horizontal" videos rather than clip the wrong version.
+    orientation: str = ""
 
 
 # ---- adding a channel -------------------------------------------------------
@@ -270,7 +275,8 @@ def readiness(
     title = info.get("title") or ""
     published = float(info.get("release_timestamp") or info.get("timestamp") or 0)
     duration = float(info.get("duration") or 0)
-    facts = {"title": title, "published_at": published, "duration": duration}
+    facts = {"title": title, "published_at": published, "duration": duration,
+             "orientation": _orientation(info)}
     if info.get("is_live") or info.get("live_status") in _NOT_READY:
         return Readiness("not_yet", "Still live or about to go live. Waiting for it to finish.",
                          **facts)
@@ -278,6 +284,20 @@ def readiness(
         minutes = f"{min_seconds / 60:g}"
         return Readiness("skip", f"Shorter than {minutes} minutes.", **facts)
     return Readiness("ready", "", **facts)
+
+
+def _orientation(info: dict) -> str:
+    """Whether a video can be had in portrait, from the formats its metadata
+    lists (no download). Unprocessed metadata still carries them."""
+    shapes = [(f.get("width"), f.get("height")) for f in info.get("formats") or []
+              if isinstance(f, dict) and f.get("vcodec") != "none"]
+    shapes = [(w, h) for w, h in shapes if w and h]
+    if not shapes:
+        width, height = info.get("width"), info.get("height")
+        shapes = [(width, height)] if width and height else []
+    if not shapes:
+        return ""
+    return "vertical" if any(h > w for w, h in shapes) else "horizontal"
 
 
 # ---- plumbing ---------------------------------------------------------------

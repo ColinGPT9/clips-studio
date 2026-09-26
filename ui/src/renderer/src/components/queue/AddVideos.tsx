@@ -66,7 +66,7 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
   {
     key: 'vertical_live',
     label: 'Vertical Live',
-    hint: '(9:16 live)',
+    hint: '(9:16)',
     title:
       'For a livestream that was already vertical when it was streamed (a YouTube vertical live, the vertical feed of a Twitch or Streamlabs dual-format stream, or a downloaded Instagram/TikTok live). Keeps the stream’s own 9:16 layout: no face tracking or reframing. The moments are still picked the usual way.'
   },

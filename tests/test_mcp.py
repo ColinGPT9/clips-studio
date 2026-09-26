@@ -294,3 +294,16 @@ def test_a_caption_request_reaches_the_job(monkeypatch):
         "caption_style": {"position": "top", "highlight": True, "highlight_color": "gold"}}}))
     assert sent["body"]["caption_style"] == {
         "position": "top", "highlight": True, "highlight_color": "#FFD700"}
+
+
+def test_vertical_live_and_an_original_link_reach_the_engine(monkeypatch):
+    sent = []
+    monkeypatch.setattr(mcp, "_request", lambda m, p, b=None: sent.append((p, b)) or {"job_id": 7})
+    mcp.handle(_request(31, "tools/call", {"name": "queue_video", "arguments": {
+        "url": "https://youtu.be/x", "vertical_live": True}}))
+    mcp.handle(_request(32, "tools/call", {"name": "queue_local_file", "arguments": {
+        "path": "C:/lives/live.mp4", "vertical_live": True,
+        "source_url": "https://www.tiktok.com/@someone/live"}}))
+    assert sent[0] == ("/jobs", {"url": "https://youtu.be/x", "vertical_live": True})
+    assert sent[1] == ("/videos/local", {"path": "C:/lives/live.mp4", "vertical_live": True,
+                                         "source_url": "https://www.tiktok.com/@someone/live"})

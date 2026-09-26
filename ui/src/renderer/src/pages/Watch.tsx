@@ -365,10 +365,19 @@ export default function Watch({
                 ['captions', 'Captions', addClip.captions !== false],
                 ['long_clips', '60s+', Boolean(addClip.long_clips)],
                 ['podcast', 'Podcast', Boolean(addClip.podcast)],
+                ['vertical_live', 'Vertical Live', Boolean(addClip.vertical_live)],
                 ['longform', 'Longform', Boolean(addClip.longform)]
               ] as const
             ).map(([key, label, on]) => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer">
+              <label
+                key={key}
+                className="flex items-center gap-2 cursor-pointer"
+                title={
+                  key === 'vertical_live'
+                    ? t('This channel streams vertically: keep each live’s own 9:16 layout, no face tracking. Videos with no vertical version are skipped.')
+                    : undefined
+                }
+              >
                 <input
                   type="checkbox"
                   className="size-4 accent-[#38BDF8]"
@@ -379,6 +388,14 @@ export default function Watch({
                     else if (key === 'longform')
                       next.longform = e.target.checked ? { mode: 'short_clips' } : null
                     else next[key] = e.target.checked
+                    // Vertical Live keeps the live's own layout, so it can't go
+                    // with Podcast (reframes) or Longform (16:9).
+                    if (e.target.checked && key === 'vertical_live') {
+                      delete next.podcast
+                      next.longform = null
+                    } else if (e.target.checked && (key === 'podcast' || key === 'longform')) {
+                      delete next.vertical_live
+                    }
                     setAddClip(next)
                   }}
                 />

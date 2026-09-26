@@ -148,7 +148,7 @@ export default function QueueItemSettings({
         )}
         {toggle(
           'Vertical Live',
-          '(9:16 live)',
+          '(9:16)',
           verticalLive,
           (on) => {
             // Keeps the live's own 9:16 layout, so the options that reframe

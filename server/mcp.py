@@ -192,7 +192,7 @@ def _branding_id(name: str) -> int:
 
 def _queue_video(args: dict) -> str:
     body: dict = {"url": args["url"]}
-    for key in ("force", "min_score", "max_clips", "podcast", "long_clips", "captions"):
+    for key in ("force", "min_score", "max_clips", "podcast", "vertical_live", "long_clips", "captions"):
         if args.get(key) is not None:
             body[key] = args[key]
     if args.get("watermark"):
@@ -239,6 +239,11 @@ def _queue_local_file(args: dict) -> str:
     # catchphrase learning and preference history quietly skip this video.
     if args.get("channel"):
         body["channel"] = args["channel"]
+    if args.get("vertical_live"):
+        body["vertical_live"] = True
+    # Where the file came from (a downloaded live's page), only when known.
+    if args.get("source_url"):
+        body["source_url"] = args["source_url"]
     out = _request("POST", "/videos/local", body)
     if out.get("job_id") is None:
         return f"Not queued: {json.dumps(out)}"
@@ -861,6 +866,14 @@ TOOLS: list[dict] = [
                     "type": "boolean",
                     "description": "Multi-camera podcast footage: framing cuts per shot",
                 },
+                "vertical_live": {
+                    "type": "boolean",
+                    "description": (
+                        "The video is a livestream that was already vertical (9:16) when "
+                        "streamed: keep its own layout, no face tracking or reframing. "
+                        "Refused if the video is not 9:16. Not with podcast or longform."
+                    ),
+                },
                 "long_clips": {
                     "type": "boolean",
                     "description": (
@@ -963,6 +976,18 @@ TOOLS: list[dict] = [
                 "path": {"type": "string", "description": "Full path to the video file"},
                 "title": {"type": "string", "description": "Defaults to the filename"},
                 "channel": {"type": "string", "description": "Whose channel this is"},
+                "vertical_live": {
+                    "type": "boolean",
+                    "description": (
+                        "The video is a livestream that was already vertical (9:16) when "
+                        "streamed: keep its own layout, no face tracking or reframing. "
+                        "Refused if the video is not 9:16. Not with podcast or longform."
+                    ),
+                },
+                "source_url": {
+                    "type": "string",
+                    "description": "Where the video was originally streamed, if known (never guess)",
+                },
             },
             "required": ["path"],
         },

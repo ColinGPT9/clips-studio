@@ -341,7 +341,7 @@ WATCH_ITEM_COLUMNS = frozenset({
     "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
     "reason", "job_id", "next_check_at", "publish_state", "publish_error",
     "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
-    "source_freed", "requested",
+    "source_freed", "requested", "orientation",
 })
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -518,6 +518,9 @@ class StateDB:
             # 1: a person pressed Clip this, so the job is theirs, not the
             # watch running unattended (a signed-in plan may treat them apart).
             ("requested", "INTEGER NOT NULL DEFAULT 0"),
+            # vertical | horizontal | '' (not known): whether the video has a
+            # portrait version, read when it is checked for readiness.
+            ("orientation", "TEXT NOT NULL DEFAULT ''"),
         ):
             if column not in item_cols:
                 self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")
