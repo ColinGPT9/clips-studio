@@ -191,9 +191,14 @@ class Worker(threading.Thread):
                         # its layout, skip face tracking and reframing.
                         cfg["clips"]["vertical_live"] = True
                     if payload.get("gaming"):
-                        # Gaming / Split-Screen (gaming/): the streamer's
-                        # webcam over the game, or the game alone.
+                        # Gaming / Reaction (gaming/): the streamer's webcam
+                        # over the game, or the game alone; the split set up
+                        # before processing, when there was one.
                         cfg["clips"]["gaming"] = True
+                        if payload.get("gaming_layout"):
+                            cfg["clips"]["gaming_layout"] = payload["gaming_layout"]
+                        if payload.get("gaming_remember"):
+                            cfg["clips"]["gaming_remember"] = True
                     if "captions" in payload:
                         cfg["clips"]["captions"] = bool(payload["captions"])
                     if payload.get("min_score") is not None:
@@ -671,9 +676,15 @@ class Worker(threading.Thread):
         from transcription.transcriber import detected_language
 
         content_lang = detected_language(video_id, data_dir / "transcripts")
-        final_path, _ = _render_files(
+        final_path, rendered_opts = _render_files(
             source, candidate, segments, clip_dir, self.config, render_opts, content_lang
         )
+        if render_opts.get("gaming") and rendered_opts:
+            # Gaming / Reaction: keep what the render decided (the webcam it
+            # used, split or game-only), so the editor can show it next time.
+            kept = _json.loads(rendered_opts).get("gaming")
+            if kept:
+                render_opts["gaming"] = kept
         meta = ClipMetadata(
             title=clip["title"] or "",
             description=clip["description"] or "",

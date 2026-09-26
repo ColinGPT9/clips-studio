@@ -253,8 +253,8 @@ or less thinking than the feature list suggests, so nothing comes as a surprise:
 | Content | How it does |
 |---|---|
 | **IRL, just chatting, podcasts, vlogs, interviews** | What it's tuned for and what gets tested on real streams before release |
-| **Gaming and split-screen** | Not shipped yet. Framing did not reliably find the part of the screen where the action was, and subject tracking mistook characters *inside the game* for the streamer: to a person detector, a person on screen is a person on screen. The result was clips centred on the wrong human, so it is held back rather than shipped half-working |
-| **Reaction videos** | Not yet either, and for a related reason. Clips are chosen from what's *said*, and it can't see the video you're reacting to, so the moment that made the clip is invisible to it |
+| **Gaming and reactions** | With **Gaming / Reaction** switched on: the webcam in one half, the game or the reacted-to video in the other, checked on the video's own frames before processing ([docs/GAMING.md](docs/GAMING.md)). The streamer is whoever is talking, never the biggest face. Without the switch, framing can follow a character inside the game. People on camera only, no VTubers |
+| **What a reaction is reacting to** | Clips are still chosen from what's *said*, so a moment in the watched video that nobody comments on is invisible to it |
 
 Clip selection is transcript-and-signal driven. When the funny thing is *visual only*
 and nobody comments on it, expect to find it yourself in the editor.
@@ -780,18 +780,13 @@ calls is below, because "why not yet" is usually more useful than "not yet".
    just able to upload, which is why "Ask first" is the default. The old command-line
    monitor (`python main.py run`) still works, but it predates the queue and
    WoopSocial, so use the page instead.
-4. **Gaming and reaction layouts** *(possible future plan)*: a dedicated layout for
-   gameplay-with-facecam and for reaction videos, composing the creator's webcam and
-   what they're reacting to into one vertical frame.
-
-   Prototyped and **set aside on purpose**. Automatically telling which region is the
-   webcam, which is the game, and which is chat is not reliable enough on real footage
-   to ship: every creator's layout is different and many change it mid-stream. Marking
-   the regions by hand works, but that cost lands on the user for every single video.
-
-   The core pipeline (talking-head, IRL, gym, podcast) is what this app is for, and
-   it's kept free of that complexity. If there's real demand, this returns as a
-   self-contained mode that cannot affect the standard path.
+4. **Gaming and reaction layouts** *(done as Gaming / Reaction)*: the creator's
+   webcam and the game or reacted-to video in one vertical frame, as a self-contained
+   mode that cannot affect the standard path. It came back with the two fixes it
+   needed: TalkNet decides who the streamer is (never the biggest face), and the split
+   is checked on the video's own frames before processing, remembered per creator so
+   it's set once. Next: separate game and webcam recordings, and more than one layout
+   within a clip.
 5. **Voice cloning for dubbing** *(last on this list on purpose)*: dubbing today uses
    a preset local voice. Speaking translations in the creator's **own** voice needs a
    cloning model, and every credible local one pulls in its own PyTorch build: on a

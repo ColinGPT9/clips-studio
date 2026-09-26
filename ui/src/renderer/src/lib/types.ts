@@ -182,7 +182,31 @@ export interface RenderOpts {
   edit?: EditData | null
   profile?: string // longform rendering profile (16:9); absent = vertical Short
   vertical_live?: boolean // an already-composed 9:16 live: whole frame, no crop
+  /** Gaming / Reaction split (gaming/run.py). null turns it off for the clip. */
+  gaming?: GamingSettings | null
   watermark?: WatermarkConfig | null
+}
+
+/** Normalized [x, y, width, height] of a region of the SOURCE frame. */
+export type FrameBox = [number, number, number, number]
+
+/** A clip's Gaming / Reaction settings: the streamer's webcam in one half,
+ *  the game (or the video being reacted to) in the other. */
+export interface GamingSettings {
+  /** The webcam; null = no webcam (the game fills the screen). */
+  cam?: FrameBox | null
+  /** Who decided the webcam: drawn for this clip, remembered for the creator,
+   *  found across the video, or to be found in this clip alone. */
+  by?: 'user' | 'creator' | 'video' | 'clip'
+  cam_position?: 'top' | 'bottom'
+  game_align?: 'left' | 'center' | 'right'
+  /** The game drawn by hand; absent = found beside the webcam. */
+  game_box?: FrameBox | null
+  /** 'fit' (default): the game whole, on a blurred copy of itself; 'fill': zoomed to fill. */
+  game_fit?: 'fit' | 'fill'
+  /** Written by the render: what the clip actually got. */
+  layout?: 'split' | 'fill'
+  used_cam?: FrameBox | null
 }
 
 export interface Clip {
@@ -228,6 +252,13 @@ export interface JobOptions {
   /** An already-composed 9:16 live: keep its layout, skip face tracking
    *  (core/modes.py). Its own toggle; not combined with podcast or longform. */
   vertical_live?: boolean
+  /** Gaming / Reaction: the streamer's webcam over the game or the video being
+   *  reacted to (gaming/). Not combined with vertical_live, podcast or longform. */
+  gaming?: boolean
+  /** The split set up on the video's own frames before processing. */
+  gaming_layout?: GamingSettings
+  /** ...and kept for this creator's next videos. */
+  gaming_remember?: boolean
   longform?: { mode: string } | null
   watermark_profile_id?: number | null
   filter?: FilterName

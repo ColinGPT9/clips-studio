@@ -65,6 +65,49 @@ def is_gaming(config_or_opts: dict | None) -> bool:
     return bool(isinstance(clips, dict) and clips.get("gaming"))
 
 
+GAMING_BY = ("user", "creator", "video", "clip")
+
+
+def _unit_box(value) -> list | None:
+    """A normalized [x, y, w, h] inside the frame, or None."""
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        x, y, w, h = (float(v) for v in value)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= x < 1 and 0 <= y < 1 and 0.02 <= w <= 1 and 0.02 <= h <= 1):
+        return None
+    # Trimmed to the frame when it runs off it (past float noise: a box drawn
+    # to the edge adds up to 1.0000000000000002).
+    return [x, y, 1 - x if x + w > 1 + 1e-6 else w, 1 - y if y + h > 1 + 1e-6 else h]
+
+
+def clean_gaming(settings: dict | None) -> dict:
+    """A clip's Gaming / Reaction settings (gaming/run.py documents each key)
+    reduced to valid values, for anything that arrives from outside: the
+    editor, the API. Raises ValueError on a box that isn't one."""
+    if not isinstance(settings, dict):
+        raise ValueError("gaming settings must be an object")
+    out: dict = {"by": settings.get("by") if settings.get("by") in GAMING_BY else "user"}
+    for key in ("cam", "game_box"):
+        if settings.get(key) is None:
+            if key == "cam" and "cam" in settings:
+                out["cam"] = None          # "no webcam", said on purpose
+            continue
+        box = _unit_box(settings[key])
+        if box is None:
+            raise ValueError(f"{key} must be [x, y, width, height] within the frame")
+        out[key] = box
+    if settings.get("cam_position") in ("top", "bottom"):
+        out["cam_position"] = settings["cam_position"]
+    if settings.get("game_align") in ("left", "center", "right"):
+        out["game_align"] = settings["game_align"]
+    if settings.get("game_fit") in ("fit", "fill"):
+        out["game_fit"] = settings["game_fit"]
+    return out
+
+
 def needs_framing(config: dict) -> bool:
     """Whether a job's clips need framing decided (face tracking, TalkNet,
     layout). Only framing: importance analysis runs either way."""

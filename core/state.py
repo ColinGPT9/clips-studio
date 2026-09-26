@@ -488,6 +488,10 @@ class StateDB:
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
+        if "gaming_layout" not in creator_cols:
+            # Gaming / Reaction: the webcam and game area a person set for this
+            # creator in the editor, used for their next videos (gaming/run.py).
+            self.conn.execute("ALTER TABLE creators ADD COLUMN gaming_layout TEXT")
         knowledge_cols = {
             r["name"] for r in self.conn.execute("PRAGMA table_info(creator_knowledge)")
         }
@@ -751,6 +755,32 @@ class StateDB:
         return self.conn.execute(
             "SELECT * FROM clip_translations WHERE clip_id = ? ORDER BY language", (clip_id,)
         ).fetchall()
+
+    # ---- gaming / reaction layout remembered per creator ----------------
+
+    def creator_of_video(self, video_id: str) -> int | None:
+        row = self.conn.execute("SELECT creator_id FROM videos WHERE video_id = ?", (video_id,)).fetchone()
+        return row["creator_id"] if row and row["creator_id"] is not None else None
+
+    def creator_gaming_layout(self, creator_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT gaming_layout FROM creators WHERE creator_id = ?", (creator_id,)
+        ).fetchone()
+        if not row or not row["gaming_layout"]:
+            return None
+        try:
+            value = json.loads(row["gaming_layout"])
+        except ValueError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    def set_creator_gaming_layout(self, creator_id: int, layout: dict | None) -> None:
+        """None forgets it: their next videos find the webcam again."""
+        self.conn.execute(
+            "UPDATE creators SET gaming_layout = ? WHERE creator_id = ?",
+            (json.dumps(layout) if layout is not None else None, creator_id),
+        )
+        self.conn.commit()
 
     # ---- branding profiles --------------------------------------------
 

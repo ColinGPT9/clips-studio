@@ -5,12 +5,14 @@ import type {
   CaptionStyle,
   Clip,
   EditData,
+  GamingSettings,
   LiveOverlay,
   TranslationPreview,
   WatermarkConfig,
   Word
 } from '../lib/types'
 import FeatureBoundary from './FeatureBoundary'
+import GamingRegions from './GamingRegions'
 import MultilingualExport from './MultilingualExport'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import {
@@ -187,6 +189,21 @@ function removedRanges(keep: Range[], duration: number): Range[] {
   return out
 }
 
+/** One line saying what a split clip's webcam is and where it came from. */
+function describeSplit(g: GamingSettings, pending: boolean): string {
+  const camera = g.cam_position === 'bottom' ? 'camera below' : 'camera on top'
+  const shown = g.game_fit === 'fill' ? 'zoomed to fill' : 'shown whole on a blur'
+  const game = g.game_box ? `game area drawn by you, ${shown}` : `game ${shown}`
+  if (g.by === 'user') {
+    if (g.cam === null) return `No webcam: the game fills the screen (${game}).`
+    return `Webcam set by you, ${camera}, ${game}.`
+  }
+  if (g.by === 'creator') return `Using the split saved for this creator, ${camera}.`
+  if (pending || !g.layout) return 'The webcam is found when this clip renders.'
+  if (!g.used_cam) return 'No webcam found: the game fills the screen. Set it by hand if there is one.'
+  return `Webcam found automatically, ${camera}, ${game}.`
+}
+
 export default function TimelineEditor({
   clip,
   videoRef,
@@ -232,6 +249,12 @@ export default function TimelineEditor({
   // Vertical Live keeps the live's own 9:16 layout: there is no crop to
   // choose, so the Layout buttons would do nothing.
   const isVerticalLive = !!clip.render_opts?.vertical_live
+  // Gaming / Reaction split (gaming/run.py): the webcam in one half, the game
+  // or the video being reacted to in the other. null = not a split clip.
+  const storedGaming: GamingSettings | null = clip.render_opts?.gaming ?? null
+  const [gaming, setGaming] = useState<GamingSettings | null>(storedGaming)
+  const [gamingOpen, setGamingOpen] = useState(false)
+  const [rememberGaming, setRememberGaming] = useState(false)
   // Caption style (font/size/colour/position) for THIS clip.
   const storedStyle: Required<CaptionStyle> = {
     ...DEFAULT_CAPTION_STYLE,
@@ -301,6 +324,9 @@ export default function TimelineEditor({
     setNotice('')
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
+    setGaming(clip.render_opts?.gaming ?? null)
+    setGamingOpen(false)
+    setRememberGaming(false)
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
     setWordEdits([])
     setEditingWord(null)
@@ -652,16 +678,19 @@ export default function TimelineEditor({
   }, [duration])
 
   const layoutDirty = layout !== storedCrop
+  const gamingDirty = JSON.stringify(gaming) !== JSON.stringify(storedGaming)
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
   const wmDirty = JSON.stringify(watermark) !== JSON.stringify(storedWatermark)
   const dirty =
     layoutDirty ||
+    gamingDirty ||
+    (rememberGaming && !!gaming) ||
     styleDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const pendingJson = (): string =>
-    JSON.stringify({ e: edit, l: layout, s: captionStyle, w: wordEdits, m: watermark })
+    JSON.stringify({ e: edit, l: layout, g: gaming, s: captionStyle, w: wordEdits, m: watermark })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
@@ -778,7 +807,8 @@ export default function TimelineEditor({
         pendingCaptionLines(),
         layout,
         styleDirty ? captionStyle : null,
-        wmDirty ? (watermark ?? {}) : undefined
+        wmDirty ? (watermark ?? {}) : undefined,
+        gamingDirty ? gaming : undefined
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -874,6 +904,8 @@ export default function TimelineEditor({
       edit: isDefault(edit, duration) ? null : edit
     }
     if (layoutDirty) renderOpts.crop = layout
+    // null turns the split off for this clip; settings turn it on or change it.
+    if (gamingDirty) renderOpts.gaming = gaming
     if (styleDirty) renderOpts.caption_style = captionStyle
     if (wmDirty) renderOpts.watermark = watermark
     const lines = pendingCaptionLines()
@@ -887,8 +919,21 @@ export default function TimelineEditor({
     try {
       const cleared = isDefault(edit, duration)
       const renderOpts = buildRenderOpts()
+      // Before the re-render: it replaces the clip's row, and this id with it.
+      let remembered = ''
+      if (rememberGaming && gaming) {
+        try {
+          await api.saveCreatorGamingLayout(clip.id, gaming)
+          remembered = ' The split is remembered for this creator’s next videos.'
+          setRememberGaming(false)
+        } catch (e) {
+          remembered = ` (Couldn’t remember the split for this creator: ${e instanceof Error ? e.message : e})`
+        }
+      }
       await api.rerenderClip(clip.id, undefined, renderOpts)
-      setNotice(cleared ? 'Restoring original — re-rendering…' : 'Applying edits — re-rendering…')
+      setNotice(
+        (cleared ? 'Restoring original — re-rendering…' : 'Applying edits — re-rendering…') + remembered
+      )
       onChanged()
     } catch (e) {
       setNotice(String(e))
@@ -1090,6 +1135,8 @@ export default function TimelineEditor({
             onClick={() => {
               push(defaultEdit(duration))
               setLayout('track')
+              setGaming(storedGaming)
+              setRememberGaming(false)
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
               setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
@@ -1287,7 +1334,7 @@ export default function TimelineEditor({
             (t.id === 'captions' && (styleDirty || wordEdits.length > 0)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
-              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty))
+              ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || gamingDirty))
           return (
             <button
               key={t.id}
@@ -1537,14 +1584,27 @@ export default function TimelineEditor({
             [
               ['track', 'Auto (AI)', 'The AI picks: subject tracking or letterbox as needed'],
               ['letterbox', 'Letterbox', 'Force the FULL frame on a blurred backdrop — use when the crop cuts someone off'],
-              ['center', 'Center', 'Static center crop, no tracking']
+              ['center', 'Center', 'Static center crop, no tracking'],
+              [
+                'split',
+                'Split',
+                'Gaming / Reaction: the streamer’s webcam in one half, the game or the video they’re reacting to in the other'
+              ]
             ] as const
           ).map(([value, label, tip]) => (
             <button
               key={value}
-              onClick={() => setLayout(value)}
+              onClick={() => {
+                if (value === 'split') {
+                  // Back to what the clip had, else found in this clip alone.
+                  setGaming(gaming ?? storedGaming ?? { by: 'clip' })
+                } else {
+                  setLayout(value)
+                  setGaming(null)
+                }
+              }}
               className={`px-2.5 py-1 rounded-md ${
-                layout === value
+                (gaming ? 'split' : layout) === value
                   ? 'bg-accent/20 text-accent font-medium'
                   : 'bg-raised text-muted hover:text-ink'
               }`}
@@ -1553,10 +1613,32 @@ export default function TimelineEditor({
               {label}
             </button>
           ))}
-          {layoutDirty && (
+          {(layoutDirty || gamingDirty) && (
             <span className="text-muted">— shows in “Update preview”, saved on Apply</span>
           )}
         </div>
+      )}
+      {activeTab === 'motion' && !isLandscape && !isVerticalLive && gaming && (
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          <span className="text-muted">{describeSplit(gaming, gamingDirty)}</span>
+          <button className="btn-ghost !py-1" onClick={() => setGamingOpen(true)}>
+            Adjust webcam and game…
+          </button>
+          {rememberGaming && <span className="text-accent">Will be remembered for this creator</span>}
+        </div>
+      )}
+      {gamingOpen && gaming && (
+        <GamingRegions
+          frameAt={(at) => api.sourceFrameUrl(clip.id, at)}
+          context="clip"
+          settings={gaming}
+          remember={rememberGaming}
+          onClose={() => setGamingOpen(false)}
+          onDone={(next, remember) => {
+            setGaming(next)
+            setRememberGaming(remember)
+          }}
+        />
       )}
 
       {/* speed / hook title / music — the Effects tab */}

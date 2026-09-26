@@ -80,34 +80,35 @@ The installer is not code-signed, because a certificate costs money this
 project does not have yet. The warning is about the **absence of a signature**,
 not about anything Windows found in the file. Signing is on the roadmap.
 
-## Gaming, split-screen and reaction videos are not supported
+## Game streams and reactions need Gaming / Reaction switched on
 
-The app will still run on them and produce clips, but the framing will be poor.
+Processed the standard way, a game stream is framed poorly: to a person
+detector a character inside the game is a person on screen, and the crop can
+follow it instead of the streamer. **Turn on Gaming / Reaction** for game
+streams and reaction videos ([docs/GAMING.md](docs/GAMING.md)): the webcam goes
+in one half and the game in the other, the streamer is whoever is talking in
+sync with the audio, and the split can be checked on the video's own frames
+before processing.
 
-Two things were not good enough in testing. The framing did not reliably find
-the part of the screen where the action was, and subject tracking mistook
-characters *inside the game* for the streamer, to a person detector, a person
-on screen is a person on screen. The result was clips centred on the wrong
-human, so it is held back rather than shipped half-working.
+Its own limits:
 
-Reaction videos sit out for a related reason: clips are chosen from what is
-**said**, and the app cannot see the video you are reacting to.
+- **VTubers aren't supported.** The detection is for people on camera; a
+  VTuber stream gets the game on its own.
+- **A streamer who barely speaks** (listening through a reaction, face half
+  hidden) may not be found automatically. Draw the webcam in the setup; ticking
+  "Remember for this creator" means it's done once.
+- **One layout per clip.**
 
-**Top-down games get nothing at all, not just bad framing.** MOBAs, strategy
-and tower-defence games (Dota 2, League, and anything viewed from above) have
-no person-shaped subject on screen. Part of a clip's score measures whether a
-human is visible and being emphasised, and with nothing detected that part is
-zero rather than merely low. Scored gameplay therefore lands under the
-threshold and the run finishes normally. **The app now tells you this where
-the clips would have been**, with the numbers behind it: how many moments were
-considered, the best score any of them reached, and how many had nobody on
-screen, so a run that produces nothing explains itself rather than looking
-broken. Lowering
-**Minimum score** in Settings will start producing clips, but they are chosen
-without the visual half of the signal, so expect them to be arbitrary.
+**Top-down games without the switch.** MOBAs, strategy and tower-defence games
+(Dota 2, League, anything viewed from above) have no person-shaped subject on
+screen. Part of a clip's standard score measures whether a human is visible and
+being emphasised, and with nothing detected that part is zero, so scored
+gameplay can land under the threshold. **Gaming / Reaction leaves that part
+neutral**, which is the fix. Without it, the app says so where the clips would
+have been, with the numbers behind it.
 
-**What works well:** IRL, just chatting, podcasts, vlogs and interviews. That
-is what it is tuned for and tested on.
+**What works best without it:** IRL, just chatting, podcasts, vlogs and
+interviews.
 
 ## A download can break when a site changes, until the next release
 

@@ -41,6 +41,7 @@ export default function QueueItemSettings({
   const [longClips, setLongClips] = useState(Boolean(s.long_clips))
   const [podcast, setPodcast] = useState(Boolean(s.podcast))
   const [verticalLive, setVerticalLive] = useState(Boolean(s.vertical_live))
+  const [gaming, setGaming] = useState(Boolean(s.gaming))
   const [longform, setLongform] = useState(Boolean(s.longform))
   const [longformMode, setLongformMode] = useState(s.longform?.mode ?? 'short_clips')
   const [watermark, setWatermark] = useState(Boolean(s.watermark_profile_id))
@@ -70,6 +71,8 @@ export default function QueueItemSettings({
       else clear.push('podcast')
       if (verticalLive) patch.vertical_live = true
       else clear.push('vertical_live')
+      if (gaming) patch.gaming = true
+      else clear.push('gaming', 'gaming_layout', 'gaming_remember')
       if (longform) patch.longform = { mode: longformMode }
       else clear.push('longform')
       if (watermark) {
@@ -94,7 +97,17 @@ export default function QueueItemSettings({
 
   // Saves a moment after the last change, so a burst of clicks is one save,
   // and only when something actually differs from what was last saved.
-  const current = JSON.stringify([captions, longClips, podcast, verticalLive, longform, longformMode, watermark, style])
+  const current = JSON.stringify([
+    captions,
+    longClips,
+    podcast,
+    verticalLive,
+    gaming,
+    longform,
+    longformMode,
+    watermark,
+    style
+  ])
   const lastSaved = useRef(current)
   useEffect(() => {
     if (!autoSave || current === lastSaved.current) return
@@ -137,14 +150,17 @@ export default function QueueItemSettings({
           'TikTok monetization requires videos over 1 minute. On: clips run 61-180s.'
         )}
         {toggle(
-          'Podcast',
-          '(multi-cam)',
-          podcast,
+          'Longform',
+          '(16:9)',
+          longform,
           (on) => {
-            setPodcast(on)
-            if (on) setVerticalLive(false)
+            setLongform(on)
+            if (on) {
+              setVerticalLive(false)
+              setGaming(false)
+            }
           },
-          'For multi-camera podcasts: each shot gets one steady crop on whoever is talking.'
+          'Horizontal 1920x1080 outputs using the same AI.'
         )}
         {toggle(
           'Vertical Live',
@@ -157,19 +173,38 @@ export default function QueueItemSettings({
             if (on) {
               setPodcast(false)
               setLongform(false)
+              setGaming(false)
             }
           },
           'A livestream that was already vertical when it was streamed: keeps its own 9:16 layout, no face tracking or reframing. For a watched channel, videos with no vertical version are skipped.'
         )}
         {toggle(
-          'Longform',
-          '(16:9)',
-          longform,
+          'Podcast',
+          '(multi-cam)',
+          podcast,
           (on) => {
-            setLongform(on)
-            if (on) setVerticalLive(false)
+            setPodcast(on)
+            if (on) {
+              setVerticalLive(false)
+              setGaming(false)
+            }
           },
-          'Horizontal 1920x1080 outputs using the same AI.'
+          'For multi-camera podcasts: each shot gets one steady crop on whoever is talking.'
+        )}
+        {toggle(
+          'Gaming / Reaction',
+          '(split-screen)',
+          gaming,
+          (on) => {
+            // Splits the webcam from the game: the other layout modes go off.
+            setGaming(on)
+            if (on) {
+              setPodcast(false)
+              setLongform(false)
+              setVerticalLive(false)
+            }
+          },
+          'Game streams and reaction videos: the streamer’s webcam in the top half, the game or the video they’re reacting to in the bottom half. With no webcam, the game fills the screen.'
         )}
         {toggle(
           'Watermark',

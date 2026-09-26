@@ -242,6 +242,17 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                         config = {**config, "clips": {**config["clips"],
                                   "watermark": _json.loads(brow["config"])}}
                         print(f"      Applying {creator_ctx.creator_name if creator_ctx else 'creator'}'s default branding")
+            # Gaming / Reaction: the webcam and game area set for this creator
+            # in the editor, so their next videos need no setup (gaming/run.py).
+            if (modes.is_gaming(config) and config["clips"].get("gaming_remember")
+                    and config["clips"].get("gaming_layout")):
+                # Set up before processing with "remember for this creator".
+                db.set_creator_gaming_layout(
+                    creator_id, {k: v for k, v in config["clips"]["gaming_layout"].items() if k != "by"})
+            if modes.is_gaming(config) and "gaming_layout" not in config["clips"]:
+                saved = db.creator_gaming_layout(creator_id)
+                if saved:
+                    config = {**config, "clips": {**config["clips"], "gaming_layout": saved}}
     except Exception as e:
         print(f"      (creator tagging failed: {e})")
     if db.video_status(video.video_id) == "done" and not force:
@@ -978,7 +989,15 @@ def _register_clip(
             (video_id, round(candidate.start, 2), round(candidate.end, 2)),
         ).fetchone()
         if row:
-            db.set_clip(row["id"], path=str(final_path), scores=json.dumps(candidate.subscores or {}))
+            fresh = {"path": str(final_path), "scores": json.dumps(candidate.subscores or {})}
+            rendered = json.loads(render_opts_json) if render_opts_json else {}
+            if rendered.get("gaming"):
+                # Gaming / Reaction: the row's split must be the one this file
+                # was rendered with, or the editor starts from a stale one.
+                existing = db.get_clip(row["id"])
+                kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
+                fresh["render_opts"] = json.dumps({**kept, "gaming": rendered["gaming"]})
+            db.set_clip(row["id"], **fresh)
         print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None
 

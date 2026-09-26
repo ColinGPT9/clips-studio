@@ -12,6 +12,7 @@ import type {
   CreatorSuggestion,
   CreatorSummary,
   FilterName,
+  GamingSettings,
   Job,
   JobOptions,
   ModelsInfo,
@@ -91,6 +92,7 @@ export const api = {
       watermarkProfileId?: number | null
       podcast?: boolean
       verticalLive?: boolean
+      gaming?: boolean
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -105,7 +107,8 @@ export const api = {
         longform: opts?.longform ?? null,
         watermark_profile_id: opts?.watermarkProfileId ?? null,
         podcast: opts?.podcast ?? null,
-        vertical_live: opts?.verticalLive ?? null
+        vertical_live: opts?.verticalLive ?? null,
+        gaming: opts?.gaming ?? null
       })
     }),
   /** Import a file from this computer and queue it. Takes the same options as
@@ -125,6 +128,9 @@ export const api = {
         long_clips: opts.long_clips ?? null,
         podcast: opts.podcast ?? null,
         vertical_live: opts.vertical_live ?? null,
+        gaming: opts.gaming ?? null,
+        gaming_layout: opts.gaming_layout ?? null,
+        gaming_remember: opts.gaming_remember ?? null,
         source_url: opts.source_url ?? '',
         longform: opts.longform ?? null,
         watermark_profile_id: opts.watermark_profile_id ?? null,
@@ -303,7 +309,8 @@ export const api = {
     captionLines?: unknown,
     crop?: string | null,
     captionStyle?: CaptionStyle | null,
-    watermark?: WatermarkConfig | Record<string, never>
+    watermark?: WatermarkConfig | Record<string, never>,
+    gaming?: GamingSettings | null
   ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
@@ -312,9 +319,30 @@ export const api = {
         caption_lines: captionLines ?? null,
         crop: crop ?? null,
         caption_style: captionStyle ?? null,
-        watermark: watermark === undefined ? null : watermark
+        watermark: watermark === undefined ? null : watermark,
+        // undefined = unchanged, null = preview without the split
+        gaming: gaming ?? null,
+        gaming_off: gaming === null
       })
     }),
+  /** A frame of the clip's SOURCE video, `at` (0-1) of the way through, to
+   *  draw the Gaming / Reaction webcam and game area on. */
+  sourceFrameUrl: (clipId: number, at = 0.5) => `${API_BASE}/clips/${clipId}/source-frame?at=${at}`,
+  /** A frame of a video that hasn't been processed yet (a link or a file on
+   *  this computer), for setting up a Gaming / Reaction split before processing. */
+  videoFrameUrl: (source: { url?: string; path?: string }, at = 0.5) =>
+    `${API_BASE}/sources/frame?at=${at}` +
+    (source.path ? `&path=${encodeURIComponent(source.path)}` : `&url=${encodeURIComponent(source.url ?? '')}`),
+  creatorGamingLayout: (clipId: number) =>
+    request<{ creator_id: number | null; layout: GamingSettings | null }>(
+      `/clips/${clipId}/creator-gaming-layout`
+    ),
+  /** Remember a layout for this clip's creator (null forgets it). */
+  saveCreatorGamingLayout: (clipId: number, layout: GamingSettings | null) =>
+    request<{ creator_id: number; layout: GamingSettings | null }>(
+      `/clips/${clipId}/creator-gaming-layout`,
+      { method: 'PUT', body: JSON.stringify({ layout }) }
+    ),
 
   languages: () =>
     request<{

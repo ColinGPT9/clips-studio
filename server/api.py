@@ -50,6 +50,8 @@ class JobIn(BaseModel):
     podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
     vertical_live: bool | None = None  # an already-composed 9:16 live: keep its layout, no face tracking
     gaming: bool | None = None  # Gaming / Split-Screen: webcam over the game, or the game alone
+    gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
+    gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None  # POST once when this job reaches a terminal state
     webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
     hashtags: list[str] | None = None  # tags every clip of this job must carry
@@ -78,6 +80,8 @@ class JobPatch(BaseModel):
     podcast: bool | None = None
     vertical_live: bool | None = None
     gaming: bool | None = None
+    gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
+    gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None
     webhook_secret: str | None = None
     # Options to drop back to the app-wide default. Needed because null means
@@ -106,6 +110,8 @@ class BatchItemIn(BaseModel):
     podcast: bool | None = None
     vertical_live: bool | None = None
     gaming: bool | None = None
+    gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
+    gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None
     webhook_secret: str | None = None
 
@@ -147,6 +153,14 @@ class PreviewIn(BaseModel):
     caption_style: dict | None = None   # pending caption font/size/etc.
     watermark: dict | None = None       # pending branding config (or {} to clear)
     normalize_audio: bool | None = None  # pending loudness-matching toggle
+    # pending Gaming / Reaction split (gaming/run.py keys), or gaming_off to
+    # preview the clip without it
+    gaming: dict | None = None
+    gaming_off: bool = False
+
+
+class CreatorGamingLayoutIn(BaseModel):
+    layout: dict | None = None   # the clip's gaming settings to remember, or null to forget
 
 
 class BrandingIn(BaseModel):
@@ -181,6 +195,8 @@ class LocalVideoIn(BaseModel):
     podcast: bool | None = None  # multi-cam podcast: letterbox, no subject tracking
     vertical_live: bool | None = None  # an already-composed 9:16 live: keep its layout, no face tracking
     gaming: bool | None = None  # Gaming / Split-Screen: webcam over the game, or the game alone
+    gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
+    gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     # Where the file came from, when the user knows (a downloaded live's
     # original link). Optional: never invented. Kept with the video so the
     # clips' publishing footers can point back to it.
@@ -424,6 +440,17 @@ def _process_options(body, into: dict | None = None) -> dict:
         payload["vertical_live"] = True
     if getattr(body, "gaming", None):
         payload["gaming"] = True
+    if getattr(body, "gaming_layout", None):
+        # Set up on the video's own frames before processing: it is the user's
+        # choice, so no detection second-guesses the parts they set.
+        from core.modes import clean_gaming
+
+        try:
+            payload["gaming_layout"] = {**clean_gaming(body.gaming_layout), "by": "user"}
+        except ValueError as e:
+            raise HTTPException(400, f"gaming_layout: {e}") from e
+    if getattr(body, "gaming_remember", None):
+        payload["gaming_remember"] = True
     if getattr(body, "longform", None):
         payload["longform"] = body.longform
     if getattr(body, "watermark_profile_id", None):
@@ -468,6 +495,19 @@ def _process_options(body, into: dict | None = None) -> dict:
                                  "Podcast or Longform: each lays out the video its own way. "
                                  "Turn one of them off.")
     return payload
+
+
+def _clean_render_gaming(render_opts: dict) -> dict:
+    """render_opts from the editor, with its "gaming" settings made valid.
+    None stays None: it turns the split off for the clip."""
+    from core.modes import clean_gaming
+
+    if render_opts.get("gaming") is not None:
+        try:
+            render_opts["gaming"] = clean_gaming(render_opts["gaming"])
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+    return render_opts
 
 
 def create_app(config: dict, settings_path: Path) -> FastAPI:
@@ -1571,7 +1611,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if body.end is not None:
                 payload["end"] = body.end
             if body.render_opts:
-                payload["render_opts"] = body.render_opts
+                payload["render_opts"] = _clean_render_gaming(dict(body.render_opts))
             job_id = d.add_job("render", json.dumps(payload))
             _log_feedback(
                 d, row,
@@ -1626,6 +1666,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["watermark"] = body.watermark or None
         if body.normalize_audio is not None:
             opts["normalize_audio"] = body.normalize_audio
+        if body.gaming_off:
+            opts["gaming"] = None
+        elif body.gaming is not None:
+            opts["gaming"] = _clean_render_gaming({"gaming": body.gaming})["gaming"]
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],
@@ -1648,6 +1692,106 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         import time as _time
 
         return {"url": f"/media/preview/{clip_id}?v={int(_time.time())}"}
+
+    @app.get("/sources/frame")
+    def source_frame(at: float = 0.5, url: str = "", path: str = ""):
+        """A frame of a video that hasn't been processed yet, `at` (0-1) of the
+        way through: a YouTube/Twitch/Kick link (nothing is downloaded) or a
+        file on this computer. For setting up a Gaming / Reaction split on the
+        real picture before processing."""
+        from sources import preview_frames
+
+        cache = data_dir / "previews" / "source_frames"
+        try:
+            if path:
+                picked = picked_file(path, _VIDEO_SUFFIXES)
+                if picked is None:
+                    raise HTTPException(400, "not a video file on this computer")
+                out = preview_frames.frame(cache, at, path=picked[0])
+            elif url:
+                out = preview_frames.frame(cache, at, url=url.strip())
+            else:
+                raise HTTPException(400, "give a url or a path")
+        except preview_frames.NotFrameable as e:
+            raise HTTPException(422, str(e)) from e
+        return FileResponse(out, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/clips/{clip_id}/source-frame")
+    def clip_source_frame(clip_id: int, at: float = 0.5):
+        """A frame of the SOURCE video (not the rendered clip), `at` of the
+        way through the clip, to draw the Gaming / Reaction webcam and game
+        area on: the boxes are in the source's own layout."""
+        import subprocess as sp
+
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such clip")
+        source = data_dir / "downloads" / f"{row['video_id']}.mp4"
+        if not source.exists():
+            raise HTTPException(404, "the source video is no longer on disk")
+        start, end = float(row["start_s"]), float(row["end_s"])
+        when = start + min(max(at, 0.0), 1.0) * max(0.0, end - start)
+        # One file per moment, written aside and swapped in: the editor asks
+        # for several frames at once, and one shared file was overwritten
+        # while it was being served (a truncated image).
+        out = data_dir / "previews" / f"frame_{clip_id}_{round(when * 10)}.jpg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if not out.exists():
+            part = out.with_name(f"{out.stem}.{threading.get_ident()}.part.jpg")
+            r = sp.run(
+                [ffmpeg(), "-y", "-v", "error", "-ss", f"{when:.2f}", "-i", str(source),
+                 "-frames:v", "1", "-q:v", "3", str(part)],
+                capture_output=True, text=True,
+            )
+            if r.returncode != 0 or not part.exists():
+                discard(part)
+                raise HTTPException(500, "could not read a frame from the source video")
+            part.replace(out)
+        return FileResponse(out, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/clips/{clip_id}/creator-gaming-layout")
+    def get_creator_gaming_layout(clip_id: int):
+        """The Gaming / Reaction layout remembered for this clip's creator."""
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+            creator_id = d.creator_of_video(row["video_id"])
+            layout = d.creator_gaming_layout(creator_id) if creator_id is not None else None
+        finally:
+            d.close()
+        return {"creator_id": creator_id, "layout": layout}
+
+    @app.put("/clips/{clip_id}/creator-gaming-layout")
+    def put_creator_gaming_layout(clip_id: int, body: CreatorGamingLayoutIn):
+        """Remember this layout for the clip's creator, so their next videos
+        with Gaming / Reaction on start from it (null forgets it)."""
+        from core.modes import clean_gaming
+
+        layout = None
+        if body.layout is not None:
+            try:
+                layout = {k: v for k, v in clean_gaming(body.layout).items() if k != "by"}
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+            if row is None:
+                raise HTTPException(404, "no such clip")
+            creator_id = d.creator_of_video(row["video_id"])
+            if creator_id is None:
+                raise HTTPException(409, "This video isn't linked to a creator, so there is "
+                                         "nobody to remember the layout for.")
+            d.set_creator_gaming_layout(creator_id, layout)
+        finally:
+            d.close()
+        return {"creator_id": creator_id, "layout": layout}
 
     @app.get("/media/preview/{clip_id}")
     def media_preview(clip_id: int):

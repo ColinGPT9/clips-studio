@@ -364,9 +364,10 @@ export default function Watch({
               [
                 ['captions', 'Captions', addClip.captions !== false],
                 ['long_clips', '60s+', Boolean(addClip.long_clips)],
-                ['podcast', 'Podcast', Boolean(addClip.podcast)],
+                ['longform', 'Longform', Boolean(addClip.longform)],
                 ['vertical_live', 'Vertical Live', Boolean(addClip.vertical_live)],
-                ['longform', 'Longform', Boolean(addClip.longform)]
+                ['podcast', 'Podcast', Boolean(addClip.podcast)],
+                ['gaming', 'Gaming / Reaction', Boolean(addClip.gaming)]
               ] as const
             ).map(([key, label, on]) => (
               <label
@@ -375,7 +376,9 @@ export default function Watch({
                 title={
                   key === 'vertical_live'
                     ? t('This channel streams vertically: keep each live’s own 9:16 layout, no face tracking. Videos with no vertical version are skipped.')
-                    : undefined
+                    : key === 'gaming'
+                      ? t('Game streams or reactions: the streamer’s webcam in the top half, the game or the video they’re reacting to in the bottom half.')
+                      : undefined
                 }
               >
                 <input
@@ -388,13 +391,16 @@ export default function Watch({
                     else if (key === 'longform')
                       next.longform = e.target.checked ? { mode: 'short_clips' } : null
                     else next[key] = e.target.checked
-                    // Vertical Live keeps the live's own layout, so it can't go
-                    // with Podcast (reframes) or Longform (16:9).
-                    if (e.target.checked && key === 'vertical_live') {
+                    // Vertical Live keeps the live's own layout and Gaming splits
+                    // webcam from game, so neither goes with the other, Podcast
+                    // (reframes) or Longform (16:9).
+                    if (e.target.checked && (key === 'vertical_live' || key === 'gaming')) {
                       delete next.podcast
                       next.longform = null
+                      delete next[key === 'gaming' ? 'vertical_live' : 'gaming']
                     } else if (e.target.checked && (key === 'podcast' || key === 'longform')) {
                       delete next.vertical_live
+                      delete next.gaming
                     }
                     setAddClip(next)
                   }}

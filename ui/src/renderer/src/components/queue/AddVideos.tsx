@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions } from '../../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../WatermarkCard'
+import GamingRegions from '../GamingRegions'
 import { Folder, Trash } from '../icons'
 import { t } from '../../lib/i18n'
 
@@ -36,7 +37,10 @@ interface Slot {
   sourceUrl?: string
 }
 
-type ToggleKey = 'captions' | 'long_clips' | 'podcast' | 'vertical_live' | 'longform' | 'watermark'
+type ToggleKey = 'captions' | 'long_clips' | 'podcast' | 'vertical_live' | 'gaming' | 'longform' | 'watermark'
+
+/** Each of these decides what the frame is, so only one can be on. */
+const LAYOUT_MODES = ['podcast', 'vertical_live', 'gaming', 'longform'] as const
 
 /** The switches after Captions. Captions is rendered on its own so the
  *  "Caption style" button can sit immediately beside it, where it belongs —
@@ -57,6 +61,13 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
       'Horizontal 1920x1080 outputs (YouTube, X/Twitter) using the same AI — the vertical Shorts workflow is unchanged.'
   },
   {
+    key: 'vertical_live',
+    label: 'Vertical Live',
+    hint: '(9:16)',
+    title:
+      'For a livestream that was already vertical when it was streamed (a YouTube vertical live, the vertical feed of a Twitch or Streamlabs dual-format stream, or a downloaded Instagram/TikTok live). Keeps the stream’s own 9:16 layout: no face tracking or reframing. The moments are still picked the usual way.'
+  },
+  {
     key: 'podcast',
     label: 'Podcast',
     hint: '(multi-cam)',
@@ -64,11 +75,11 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
       'For multi-camera podcasts (cuts between angles, several people). Frames shot by shot: each camera shot gets one steady crop centered on whoever is talking, and cuts land directly on the speaker’s face — no panning, no split screens. Leave OFF for normal one-camera streams.'
   },
   {
-    key: 'vertical_live',
-    label: 'Vertical Live',
-    hint: '(9:16)',
+    key: 'gaming',
+    label: 'Gaming / Reaction',
+    hint: '(split-screen)',
     title:
-      'For a livestream that was already vertical when it was streamed (a YouTube vertical live, the vertical feed of a Twitch or Streamlabs dual-format stream, or a downloaded Instagram/TikTok live). Keeps the stream’s own 9:16 layout: no face tracking or reframing. The moments are still picked the usual way.'
+      'For game streams and reaction videos: the streamer’s webcam in the top half, the game (or the video they’re reacting to) in the bottom half. With no webcam, the game fills the screen. The streamer is whoever is talking, never the biggest face. Fix a clip in the editor by drawing the webcam and game area.'
   },
   {
     key: 'watermark',
@@ -101,6 +112,7 @@ const PREF = {
   long_clips: 'generate-long-clips',
   podcast: 'generate-podcast',
   vertical_live: 'generate-vertical-live',
+  gaming: 'generate-gaming',
   longform: 'generate-longform',
   longform_mode: 'generate-longform-mode'
 } as const
@@ -111,6 +123,7 @@ function remember(key: ToggleKey, on: boolean, mode?: string): void {
     else if (key === 'long_clips') localStorage.setItem(PREF.long_clips, String(on))
     else if (key === 'podcast') localStorage.setItem(PREF.podcast, String(on))
     else if (key === 'vertical_live') localStorage.setItem(PREF.vertical_live, String(on))
+    else if (key === 'gaming') localStorage.setItem(PREF.gaming, String(on))
     else if (key === 'longform') {
       localStorage.setItem(PREF.longform, String(on))
       if (mode) localStorage.setItem(PREF.longform_mode, mode)
@@ -143,6 +156,10 @@ export function seedOptions(): JobOptions {
   if (localStorage.getItem(PREF.vertical_live) === 'true' && !o.podcast && !o.longform) {
     o.vertical_live = true
   }
+  // Gaming / Reaction likewise, and the older modes win over it.
+  if (localStorage.getItem(PREF.gaming) === 'true' && !o.podcast && !o.longform && !o.vertical_live) {
+    o.gaming = true
+  }
   if (wm.enabled && wm.profileId) o.watermark_profile_id = wm.profileId
   return o
 }
@@ -150,10 +167,17 @@ export function seedOptions(): JobOptions {
 let counter = 0
 const newKey = (): string => `s${Date.now()}-${counter++}`
 
+/** Settings to copy onto another video: everything but the split, which
+ *  was set up on this video's own frames. */
+function copyable(o: JobOptions): JobOptions {
+  const { gaming_layout: _layout, gaming_remember: _remember, ...rest } = o
+  return rest
+}
+
 function emptySlot(from?: JobOptions): Slot {
   // A new row copies the one above it: a batch usually shares most settings,
   // and every switch is still overridable per video. Copied, not shared.
-  return { key: newKey(), url: '', path: null, title: '', options: { ...(from ?? seedOptions()) } }
+  return { key: newKey(), url: '', path: null, title: '', options: copyable(from ?? seedOptions()) }
 }
 
 function loadDraft(): Slot[] {
@@ -183,6 +207,8 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   const [slots, setSlots] = useState<Slot[]>(loadDraft)
   const [channel, setChannel] = useState(localStorage.getItem('upload-channel') ?? '')
   const [openStyle, setOpenStyle] = useState<string | null>(null)
+  // The row whose Gaming / Reaction split is being set up, on its own frames.
+  const [splitFor, setSplitFor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [added, setAdded] = useState<number | null>(null)
@@ -255,15 +281,15 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       if (on) next.podcast = true
       else delete next.podcast
     } else if (key === 'vertical_live') {
-      // It keeps the live's own 9:16 layout, so the options that reframe
-      // (Podcast) or change the shape (Longform) go off with it.
-      if (on) {
-        next.vertical_live = true
-        delete next.podcast
-        delete next.longform
-        remember('podcast', false)
-        remember('longform', false)
-      } else delete next.vertical_live
+      if (on) next.vertical_live = true
+      else delete next.vertical_live
+    } else if (key === 'gaming') {
+      if (on) next.gaming = true
+      else {
+        delete next.gaming
+        delete next.gaming_layout
+        delete next.gaming_remember
+      }
     } else if (key === 'longform') {
       if (on) next.longform = { mode: next.longform?.mode ?? 'short_clips' }
       else delete next.longform
@@ -275,9 +301,19 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       // disabled in that case rather than silently refusing to stay ticked.
       setWatermarkEnabled(on && Boolean(profileId))
     }
-    if (on && (key === 'podcast' || key === 'longform') && next.vertical_live) {
-      delete next.vertical_live
-      remember('vertical_live', false)
+    // Vertical Live keeps the live's own layout, Gaming splits webcam and game,
+    // Podcast reframes a multi-camera set and Longform makes 16:9: each is a
+    // different answer to what the frame is, so turning one on turns the rest
+    // off. (Podcast and Longform have always been allowed together.)
+    if (on && (LAYOUT_MODES as readonly string[]).includes(key)) {
+      for (const other of LAYOUT_MODES) {
+        if (other === key || (key === 'podcast' && other === 'longform') || (key === 'longform' && other === 'podcast'))
+          continue
+        if (next[other]) {
+          delete next[other]
+          remember(other, false)
+        }
+      }
     }
     remember(key, on, next.longform?.mode)
     return next
@@ -288,6 +324,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     if (key === 'long_clips') return Boolean(o.long_clips)
     if (key === 'podcast') return Boolean(o.podcast)
     if (key === 'vertical_live') return Boolean(o.vertical_live)
+    if (key === 'gaming') return Boolean(o.gaming)
     if (key === 'longform') return Boolean(o.longform)
     return Boolean(o.watermark_profile_id)
   }
@@ -308,7 +345,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
           url: '',
           path: p,
           title: (p.split(/[\\/]/).pop() ?? p).replace(/\.[^.]+$/, ''),
-          options: { ...(base ?? seedOptions()) }
+          options: copyable(base ?? seedOptions())
         }))
       const kept = prev.filter((s) => s.url.trim() || s.path)
       return [...kept, ...fresh]
@@ -415,7 +452,12 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                   placeholder={t('Paste a YouTube, Twitch, or Kick URL…')}
                   aria-label={`Video URL ${n + 1}`}
                   value={slot.url}
-                  onChange={(e) => patch(slot.key, { url: e.target.value })}
+                  onChange={(e) =>
+                    patch(slot.key, {
+                      url: e.target.value,
+                      ...(slot.options.gaming_layout ? { options: copyable(slot.options) } : {})
+                    })
+                  }
                   onKeyDown={(e) => e.key === 'Enter' && generate()}
                 />
               )}
@@ -468,9 +510,11 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                       className="size-4 accent-[#38BDF8]"
                       checked={isOn(slot.options, tg.key)}
                       disabled={needsProfile}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         replaceOptions(slot.key, toggle(slot.options, tg.key, e.target.checked))
-                      }
+                        if (tg.key === 'gaming' && e.target.checked && (slot.path || slot.url.trim()))
+                          setSplitFor(slot.key)
+                      }}
                     />
                     {t(tg.label)} <span className="text-muted">{t(tg.hint)}</span>
                   </label>
@@ -537,6 +581,41 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
               </div>
             )}
 
+            {slot.options.gaming && (
+              <div className="flex items-center gap-3 flex-wrap mt-2 text-xs">
+                <span className="label shrink-0">{t('Split')}</span>
+                <span className="text-muted">
+                  {slot.options.gaming_layout
+                    ? `${t('Set up by you')}${slot.options.gaming_remember ? ` · ${t('remembered for the creator')}` : ''}`
+                    : t('Found automatically. Check it on the video’s own frames before processing.')}
+                </span>
+                <button
+                  className="btn-ghost !py-1 shrink-0"
+                  disabled={!slot.path && !slot.url.trim()}
+                  title={!slot.path && !slot.url.trim() ? t('Paste a link or add a file first') : undefined}
+                  onClick={() => setSplitFor(slot.key)}
+                >
+                  {slot.options.gaming_layout ? t('Change split…') : t('Set up split…')}
+                </button>
+              </div>
+            )}
+            {splitFor === slot.key && (
+              <GamingRegions
+                frameAt={(at) => api.videoFrameUrl(slot.path ? { path: slot.path } : { url: slot.url.trim() }, at)}
+                context="video"
+                settings={slot.options.gaming_layout ?? {}}
+                remember={Boolean(slot.options.gaming_remember)}
+                onClose={() => setSplitFor(null)}
+                onDone={(layout, remember) =>
+                  replaceOptions(slot.key, {
+                    ...slot.options,
+                    gaming_layout: layout,
+                    ...(remember ? { gaming_remember: true } : {}),
+                    ...(remember ? {} : { gaming_remember: undefined })
+                  })
+                }
+              />
+            )}
             {slot.path && (
               <VerticalHint
                 slot={slot}
@@ -675,7 +754,13 @@ function VerticalHint({ slot, onUse }: { slot: Slot; onUse: () => void }): JSX.E
       </p>
     )
   }
-  if (!slot.options.vertical_live && shape.orientation === 'vertical' && !slot.options.podcast && !slot.options.longform) {
+  if (
+    !slot.options.vertical_live &&
+    shape.orientation === 'vertical' &&
+    !slot.options.podcast &&
+    !slot.options.longform &&
+    !slot.options.gaming
+  ) {
     return (
       <p className="text-xs text-muted mt-1">
         {t('This video is 9:16. Is it a vertical live?')}{' '}

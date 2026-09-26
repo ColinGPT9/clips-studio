@@ -12,6 +12,23 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **Gaming / Reaction, for game streams and reaction videos.** The streamer's webcam in
+  one half of the Short, the game (or the video they're reacting to) in the other; with no
+  webcam, the game on its own. The game is shown whole on a blurred copy of itself rather
+  than black bars, or zoomed to fill. Tick **Gaming / Reaction** and **Set up the split**
+  opens on five frames of that video before anything is processed: draw the webcam and the
+  game area (or let Clips Kitty find the webcam), put the camera on top or at the bottom,
+  and see the 9:16 result live. Remembered per creator if you want.
+  - Found automatically, the streamer is whoever TalkNet says is talking in sync with the
+    audio, across several clips of the video: never the biggest face, so game characters,
+    portraits and the people in a watched video aren't taken for the streamer. Tested on
+    13 streams including World of Warcraft, Zelda, GTA V and League of Legends
+    (docs/GAMING.md has each result).
+  - The webcam box stops just inside the webcam's own border: no chat or panel beside it.
+  - The clip editor's Effects tab has the same controls (Layout → **Split**) to fix one clip.
+  - In gaming mode the "person on screen" part of the score is left neutral, so top-down
+    games like League and Dota are no longer scored as having nobody in them.
+  - For streamers on a real camera; VTubers aren't supported.
 - **Vertical Live, for streams that were vertical all along.** A YouTube vertical live,
   the vertical feed of a Twitch Dual Format or Streamlabs Dual Output stream, or a
   downloaded Instagram or TikTok live is already a finished 9:16 video. Tick **Vertical

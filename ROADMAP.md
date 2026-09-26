@@ -52,11 +52,10 @@ AI improvements and performance work. Start with
 
 None of this delays the alpha.
 
-- **Gaming and split-screen**, done properly. The framing has to reliably find
-  the action, and tracking has to tell a streamer from a character inside the
-  game
-- **Reaction videos**, which need the app to understand the video being reacted
-  to, not just the words spoken over it
+- **Gaming / Reaction, next steps**: separate game and webcam recordings (two
+  files, as some recorders make), and more than one layout within a clip
+- **Reaction videos that understand the video being reacted to**, not just the
+  words spoken over it (the split layout is done: Gaming / Reaction)
 - **Android companion app** for Twitch, Kick and local files, within Google
   Play's policies
 - Remote rendering management

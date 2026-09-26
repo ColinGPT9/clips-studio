@@ -82,17 +82,25 @@ OVERLAY_MAX_AREA = 0.35
 # ...and the streamer's head stays inside it: its spread over the clip is at
 # most this fraction of the box width. A camera filling the frame fails one.
 OVERLAY_SPREAD = 0.35
-# Webcam box margin around the head-and-shoulders region, as a fraction of it.
-BOX_PAD = 0.15
-# snap_to_frame: how far either side of a box edge (fraction of the frame) the
-# webcam's own border is looked for, and how much stronger than the typical
-# edge in that band it must be to count as one.
-SNAP_SEARCH = 0.05
+# snap_to_frame: how far out from the streamer's box (fraction of the frame)
+# the webcam's own border is looked for, and how much stronger than the
+# typical edge in that band it must be to count as one.
+SNAP_SEARCH = 0.08
 SNAP_STRENGTH = 3.0
 SNAP_FLOOR = 6.0              # grey levels: weaker than this is no border at all
+# A snapped side sits this far inside the border (fraction of the frame), so
+# neither the overlay's frame line nor what is beside it shows in the band.
+SNAP_INSET = 0.004
+# ...and how far back INTO the streamer's box: a person box can overshoot
+# the webcam's edge by a few pixels (measured 0.5% of the frame), while a
+# door frame behind a streamer sat 1.1% inside their box. Between the two.
+SNAP_BACK = 0.006
 STILLS_WIDTH = 960            # stills are compared at this width
 # video_cam: webcam boxes from different windows are one webcam at this IoU.
 SAME_CAM_IOU = 0.5
+# present_at / on_screen: the streamer is at the webcam when this much of
+# their box is inside it.
+INSIDE = 0.7
 
 
 @dataclass
@@ -335,13 +343,14 @@ def webcam_box(track: Track, w: int, h: int) -> tuple[tuple, bool]:
     """(normalized x, y, w, h box, is_overlay) for a person track.
 
     The box is the person's head-and-shoulders region: the median person box
-    over the clip (a webcam crops the streamer at the chest, so the person box
-    is roughly the webcam's content), padded and kept inside the frame."""
+    over the clip, kept inside the frame. No margin is added: a margin runs
+    past the webcam into whatever is beside it (measured: a strip of chat down
+    the side of a speedrunner's webcam). snap_to_frame grows it out to the
+    webcam's own border where there is one."""
     boxes = np.array(track.person, dtype=np.float64)
     x1, y1, x2, y2 = np.median(boxes, axis=0)
-    bw, bh = x2 - x1, y2 - y1
-    x1, x2 = max(0.0, x1 - BOX_PAD * bw), min(float(w), x2 + BOX_PAD * bw)
-    y1, y2 = max(0.0, y1 - BOX_PAD * bh), min(float(h), y2 + BOX_PAD * bh)
+    x1, x2 = max(0.0, x1), min(float(w), x2)
+    y1, y2 = max(0.0, y1), min(float(h), y2)
     box = (x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h)
     small = box[2] * box[3] <= OVERLAY_MAX_AREA
     contained = bool(track.head_cx) and float(np.std(track.head_cx)) <= OVERLAY_SPREAD * box[2]
@@ -434,31 +443,39 @@ def stills(clip_path: Path, n: int = 6) -> list:
     return out
 
 
-def _edge(profile: np.ndarray, lo: int, hi: int) -> int | None:
-    """The index in profile[lo:hi] of the strongest line, if it is a clear
-    border, else None."""
-    band = profile[lo:hi]
-    if band.size < 3:
+def _edge(profile: np.ndarray, lo: int, hi: int, near: int) -> int | None:
+    """The clear border in profile[lo:hi] nearest index `near`, else None.
+    Going out from the streamer, the first border crossed is the webcam's
+    own; a stronger one further out belongs to something beside it."""
+    if hi - lo < 3:
         return None
-    best = int(np.argmax(band))
-    if band[best] < max(SNAP_FLOOR, SNAP_STRENGTH * float(np.median(band))):
+    # A border stands out from what is on BOTH sides of it (the webcam's
+    # picture on one, whatever is beside it on the other), a few pixels away
+    # so a two-pixel line isn't compared with itself.
+    strong = []
+    for c in range(lo, hi):
+        left, right = profile[max(0, c - 7):max(0, c - 1)], profile[c + 2:c + 8]
+        around = max(float(np.median(left)) if left.size else 0.0,
+                     float(np.median(right)) if right.size else 0.0)
+        if profile[c] >= max(SNAP_FLOOR, SNAP_STRENGTH * around):
+            strong.append(c)
+    if not strong:
         return None
-    return lo + best
+    return min(strong, key=lambda c: abs(c - near))
 
 
 def snap_to_frame(box: tuple, frames: list) -> tuple:
-    """The webcam box with each side moved onto the overlay's own border, where
-    one is clearly there.
+    """The streamer's box grown out to the webcam overlay's own border, side by
+    side, where one is clearly there, and set just inside it.
 
-    The box from webcam_box is the streamer padded by a margin, which can fall
-    short of the webcam's edge (showing less of it) or run past it (showing a
-    strip of chat or the game beside it). A webcam overlay is a rectangle with
-    a hard straight border that stays put while the picture inside and around
-    it changes, so on the median of several frames each side shows up as a
-    line of strong contrast along the whole side. A side with no such line
-    (a webcam that blends into the scene, or one at the frame's edge) keeps
-    the padded edge. This looks only near a box TalkNet already chose; it
-    never goes looking for regions."""
+    A webcam overlay is a rectangle with a hard straight border that stays put
+    while the picture inside and around it changes, so on the median of
+    several frames each side shows up as a line of strong contrast along the
+    whole side. Sides move OUT from the streamer (a line well inside their
+    own box, like a door frame behind them, is the room; SNAP_BACK allows the
+    few pixels a person box overshoots by), to the nearest such line. A side with no clear border keeps the streamer's own edge: showing a
+    little less of the webcam beats showing chat beside it. This looks only
+    around a box TalkNet already chose; it never goes looking for regions."""
     if not frames:
         return box
     med = np.median(np.stack(frames).astype(np.float32), axis=0)
@@ -468,12 +485,9 @@ def snap_to_frame(box: tuple, frames: list) -> tuple:
     x, y, w, h = box
     x1, x2 = round(x * fw), round((x + w) * fw)
     y1, y2 = round(y * fh), round((y + h) * fh)
-    # Outward, up to SNAP_SEARCH of the frame. Inward, only as far as the
-    # padding: a line inside the streamer's own box (a door frame behind
-    # them) is the room, not the webcam's edge.
     out_x, out_y = max(2, round(SNAP_SEARCH * fw)), max(2, round(SNAP_SEARCH * fh))
-    in_x = max(1, round((x2 - x1) * BOX_PAD / (1 + 2 * BOX_PAD)))
-    in_y = max(1, round((y2 - y1) * BOX_PAD / (1 + 2 * BOX_PAD)))
+    ix, iy = round(SNAP_INSET * fw), round(SNAP_INSET * fh)
+    bx, by = round(SNAP_BACK * fw), round(SNAP_BACK * fh)
     # Along each side, the 25th percentile of the contrast: a border runs the
     # whole length of the side, a detail in the picture doesn't.
     rows = slice(max(0, y1), min(fh, y2))
@@ -481,25 +495,38 @@ def snap_to_frame(box: tuple, frames: list) -> tuple:
     col_line = np.percentile(gx[rows], 25, axis=0)     # boundary after column c
     row_line = np.percentile(gy[:, cols], 25, axis=1)  # boundary after row r
 
-    def side(profile, edge, lo, hi):
-        found = _edge(profile, max(0, lo - 1), min(len(profile), hi - 1))
-        return edge if found is None else found + 1   # the boundary sits after index `found`
+    def side(profile, edge, lo, hi, inset):
+        # profile index c is the boundary between c and c+1, so the edge
+        # coordinate is c + 1; `inset` moves a snapped side back inside the
+        # border. The nearest border in [lo, hi) wins.
+        found = _edge(profile, max(0, lo - 1), min(len(profile), hi), edge - 1)
+        return edge if found is None else found + 1 + inset
 
-    nx1 = x1 if x1 <= 0 else side(col_line, x1, x1 - out_x, x1 + in_x)
-    nx2 = x2 if x2 >= fw else side(col_line, x2, x2 - in_x, x2 + out_x)
-    ny1 = y1 if y1 <= 0 else side(row_line, y1, y1 - out_y, y1 + in_y)
-    ny2 = y2 if y2 >= fh else side(row_line, y2, y2 - in_y, y2 + out_y)
+    nx1 = x1 if x1 <= 0 else side(col_line, x1, x1 - out_x, x1 + bx, ix)
+    nx2 = x2 if x2 >= fw else side(col_line, x2, x2 - bx, x2 + out_x, -ix)
+    ny1 = y1 if y1 <= 0 else side(row_line, y1, y1 - out_y, y1 + by, iy)
+    ny2 = y2 if y2 >= fh else side(row_line, y2, y2 - by, y2 + out_y, -iy)
     if nx2 - nx1 < 0.5 * (x2 - x1) or ny2 - ny1 < 0.5 * (y2 - y1):
         return box                                 # a snap that halves the box is not a border
     return (nx1 / fw, ny1 / fh, (nx2 - nx1) / fw, (ny2 - ny1) / fh)
 
 
+def _inside(inner: tuple, outer: tuple) -> float:
+    """How much of box `inner` lies inside box `outer` (both x, y, w, h)."""
+    a, b = _xyxy(inner), _xyxy(outer)
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    area = inner[2] * inner[3]
+    return ix * iy / area if area > 0 else 0.0
+
+
 def on_screen(box: tuple, finding: ClipFinding) -> bool:
-    """Is somebody on screen at this webcam spot in the clip (for most of it)?"""
-    return any(_iou(_xyxy(face.box), _xyxy(box)) >= SAME_CAM_IOU for face in finding.faces.values())
+    """Is somebody in this webcam in the clip (for most of it)? Inside it, not
+    overlapping it: a streamer can sit small in a wide webcam."""
+    return any(_inside(face.box, box) >= INSIDE for face in finding.faces.values())
 
 
 def present_at(box: tuple, tracks: dict, ids: list, w: int, h: int) -> bool:
     """on_screen from the tracks alone, before (or instead of) TalkNet: the
     video's webcam is known, the question is only whether it is showing."""
-    return any(_iou(_xyxy(webcam_box(tracks[tid], w, h)[0]), _xyxy(box)) >= SAME_CAM_IOU for tid in ids)
+    return any(_inside(webcam_box(tracks[tid], w, h)[0], box) >= INSIDE for tid in ids)
