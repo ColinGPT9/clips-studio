@@ -61,6 +61,7 @@ export function describeOptions(o: JobOptions | undefined): string[] {
   if (o.captions === false) chips.push('No captions')
   if (o.long_clips) chips.push('60s+')
   if (o.podcast) chips.push('Podcast')
+  if (o.vertical_live) chips.push('Vertical Live')
   if (o.longform) chips.push(`Longform · ${String(o.longform.mode ?? '').replace(/_/g, ' ')}`)
   if (o.watermark_profile_id) chips.push('Watermark')
   if (o.filter && o.filter !== 'none') chips.push(`Filter · ${o.filter}`)

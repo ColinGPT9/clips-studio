@@ -40,6 +40,7 @@ export default function QueueItemSettings({
   const [captions, setCaptions] = useState(s.captions !== false)
   const [longClips, setLongClips] = useState(Boolean(s.long_clips))
   const [podcast, setPodcast] = useState(Boolean(s.podcast))
+  const [verticalLive, setVerticalLive] = useState(Boolean(s.vertical_live))
   const [longform, setLongform] = useState(Boolean(s.longform))
   const [longformMode, setLongformMode] = useState(s.longform?.mode ?? 'short_clips')
   const [watermark, setWatermark] = useState(Boolean(s.watermark_profile_id))
@@ -67,6 +68,8 @@ export default function QueueItemSettings({
       else clear.push('long_clips')
       if (podcast) patch.podcast = true
       else clear.push('podcast')
+      if (verticalLive) patch.vertical_live = true
+      else clear.push('vertical_live')
       if (longform) patch.longform = { mode: longformMode }
       else clear.push('longform')
       if (watermark) {
@@ -91,7 +94,7 @@ export default function QueueItemSettings({
 
   // Saves a moment after the last change, so a burst of clicks is one save,
   // and only when something actually differs from what was last saved.
-  const current = JSON.stringify([captions, longClips, podcast, longform, longformMode, watermark, style])
+  const current = JSON.stringify([captions, longClips, podcast, verticalLive, longform, longformMode, watermark, style])
   const lastSaved = useRef(current)
   useEffect(() => {
     if (!autoSave || current === lastSaved.current) return
@@ -137,14 +140,35 @@ export default function QueueItemSettings({
           'Podcast',
           '(multi-cam)',
           podcast,
-          setPodcast,
+          (on) => {
+            setPodcast(on)
+            if (on) setVerticalLive(false)
+          },
           'For multi-camera podcasts: each shot gets one steady crop on whoever is talking.'
+        )}
+        {toggle(
+          'Vertical Live',
+          '(9:16 live)',
+          verticalLive,
+          (on) => {
+            // Keeps the live's own 9:16 layout, so the options that reframe
+            // or change the shape go off with it.
+            setVerticalLive(on)
+            if (on) {
+              setPodcast(false)
+              setLongform(false)
+            }
+          },
+          'A livestream that was already vertical when it was streamed: keeps its own 9:16 layout, no face tracking or reframing. For a watched channel, videos with no vertical version are skipped.'
         )}
         {toggle(
           'Longform',
           '(16:9)',
           longform,
-          setLongform,
+          (on) => {
+            setLongform(on)
+            if (on) setVerticalLive(false)
+          },
           'Horizontal 1920x1080 outputs using the same AI.'
         )}
         {toggle(

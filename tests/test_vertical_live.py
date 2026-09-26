@@ -87,6 +87,17 @@ def test_an_uploaded_file_can_carry_its_original_link(api):
     assert body.source_url.startswith("https://") and api._process_options(body)["vertical_live"] is True
 
 
+def test_use_standard_processing_retries_without_it(db):
+    from core import queue
+
+    job_id = db.add_job("process", json.dumps({"url": "local:abc", "vertical_live": True, "captions": False}))
+    db.conn.execute("UPDATE jobs SET status = 'failed', error = ? WHERE id = ?", (modes.MISMATCH, job_id))
+    db.conn.commit()
+    assert queue.retry(db, job_id, drop=("vertical_live",)) == job_id
+    row = db.get_job(job_id)
+    assert row["status"] == "queued" and json.loads(row["payload"]) == {"url": "local:abc", "captions": False}
+
+
 # ---- rendering --------------------------------------------------------------------------
 
 

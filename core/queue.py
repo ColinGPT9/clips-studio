@@ -202,7 +202,7 @@ def remove(db, job_id: int) -> bool:
     return True
 
 
-def retry(db, job_id: int) -> int | None:
+def retry(db, job_id: int, drop: tuple[str, ...] = ()) -> int | None:
     """Send a failed or cancelled job back to the end of the queue.
 
     The row is reused rather than copied. The queue is a work list, not a
@@ -211,15 +211,27 @@ def retry(db, job_id: int) -> int | None:
     Its settings are already on the row, so the retry runs with exactly the
     configuration the user chose. `attempts` keeps the count, and the run's
     log file is keyed by job id, so this attempt appends to the same file and
-    the earlier failure stays readable."""
+    the earlier failure stays readable.
+
+    `drop` takes options off the retry in the same update, so the worker can
+    never pick it up with the old ones: "Use standard processing" on a video
+    Vertical Live refused drops vertical_live."""
     row = db.get_job(job_id)
     if row is None or row["status"] not in RETRYABLE:
         return None
+    payload = row["payload"]
+    if drop:
+        import json
+
+        settings = json.loads(payload or "{}")
+        for key in drop:
+            settings.pop(key, None)
+        payload = json.dumps(settings)
     end = db.conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM jobs").fetchone()[0]
     db.conn.execute(
         "UPDATE jobs SET status = 'queued', error = '', interrupted = 0, "
-        "started_at = '', finished_at = '', position = ? WHERE id = ?",
-        (end, job_id),
+        "started_at = '', finished_at = '', position = ?, payload = ? WHERE id = ?",
+        (end, payload, job_id),
     )
     db.conn.commit()
     return job_id

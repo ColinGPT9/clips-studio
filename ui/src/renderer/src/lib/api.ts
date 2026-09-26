@@ -90,6 +90,7 @@ export const api = {
       longform?: { mode: string } | null
       watermarkProfileId?: number | null
       podcast?: boolean
+      verticalLive?: boolean
     }
   ) =>
     request<{ job_id: number | null; already_processed?: boolean; video_id?: string }>('/jobs', {
@@ -103,12 +104,15 @@ export const api = {
         filter: opts?.filter && opts.filter !== 'none' ? opts.filter : null,
         longform: opts?.longform ?? null,
         watermark_profile_id: opts?.watermarkProfileId ?? null,
-        podcast: opts?.podcast ?? null
+        podcast: opts?.podcast ?? null,
+        vertical_live: opts?.verticalLive ?? null
       })
     }),
   /** Import a file from this computer and queue it. Takes the same options as
    *  a pasted link, so an upload can be set up exactly like a download. */
-  addLocalVideo: (opts: { path: string; title?: string; channel?: string; platform?: string } & JobOptions) =>
+  addLocalVideo: (
+    opts: { path: string; title?: string; channel?: string; platform?: string; source_url?: string } & JobOptions
+  ) =>
     request<{ job_id: number; video_id: string }>('/videos/local', {
       method: 'POST',
       body: JSON.stringify({
@@ -120,6 +124,8 @@ export const api = {
         caption_style: opts.caption_style ?? null,
         long_clips: opts.long_clips ?? null,
         podcast: opts.podcast ?? null,
+        vertical_live: opts.vertical_live ?? null,
+        source_url: opts.source_url ?? '',
         longform: opts.longform ?? null,
         watermark_profile_id: opts.watermark_profile_id ?? null,
         filter: opts.filter ?? null,
@@ -128,6 +134,12 @@ export const api = {
         force: opts.force ?? false
       })
     }),
+  /** A picked file's size and shape, before it is added (for the Vertical
+   *  Live suggestion). */
+  localVideoShape: (path: string) =>
+    request<{ width: number; height: number; orientation: 'vertical' | 'horizontal' | 'other' }>(
+      `/videos/local/shape?path=${encodeURIComponent(path)}`
+    ),
   jobs: () => request<Job[]>('/jobs'),
 
   // ---- processing queue ----
@@ -140,8 +152,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ delta: move.delta ?? 0, to: move.to ?? null })
     }),
-  retryJob: (jobId: number) =>
-    request<{ job_id: number }>(`/jobs/${jobId}/retry`, { method: 'POST' }),
+  /** `standard`: run it again without Vertical Live (for a video it refused
+   *  as not 9:16). */
+  retryJob: (jobId: number, standard = false) =>
+    request<{ job_id: number }>(`/jobs/${jobId}/retry${standard ? '?standard=true' : ''}`, {
+      method: 'POST'
+    }),
   deleteJob: (jobId: number) =>
     request<{ deleted: number }>(`/jobs/${jobId}`, { method: 'DELETE' }),
   clearQueue: (what: 'completed' | 'failed' | 'queued' | 'all') =>

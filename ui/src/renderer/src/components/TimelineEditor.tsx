@@ -229,6 +229,9 @@ export default function TimelineEditor({
   const storedCrop = clip.render_opts?.crop ?? 'track'
   const [layout, setLayout] = useState<string>(storedCrop)
   const isLandscape = !!clip.render_opts?.profile
+  // Vertical Live keeps the live's own 9:16 layout: there is no crop to
+  // choose, so the Layout buttons would do nothing.
+  const isVerticalLive = !!clip.render_opts?.vertical_live
   // Caption style (font/size/colour/position) for THIS clip.
   const storedStyle: Required<CaptionStyle> = {
     ...DEFAULT_CAPTION_STYLE,
@@ -1524,7 +1527,10 @@ export default function TimelineEditor({
       )}
 
       {/* layout override (vertical Shorts only) — in the Effects tab */}
-      {activeTab === 'motion' && !isLandscape && (
+      {activeTab === 'motion' && !isLandscape && isVerticalLive && (
+        <p className="text-xs text-muted">Layout: Vertical Live keeps the stream’s own 9:16 layout.</p>
+      )}
+      {activeTab === 'motion' && !isLandscape && !isVerticalLive && (
         <div className="flex items-center gap-2 text-xs flex-wrap">
           <span className="text-muted">Layout</span>
           {(

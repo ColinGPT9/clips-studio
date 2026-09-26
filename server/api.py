@@ -729,6 +729,19 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         broadcaster.publish({"type": "queue"})
         return {"job_id": job_id}
 
+    @app.get("/videos/local/shape")
+    def local_video_shape(path: str):
+        """A picked file's size and shape, before it is added: the Generate bar
+        suggests Vertical Live for a 9:16 file (only suggests; the toggle is
+        the user's) and warns when it is on for a file that isn't 9:16."""
+        from core import modes
+
+        picked = picked_file(path, _VIDEO_SUFFIXES)
+        if picked is None:
+            raise HTTPException(400, f"not a video file this app can open: {path}")
+        width, height = modes.probe_size(picked[0])
+        return {"width": width, "height": height, "orientation": modes.orientation(width, height)}
+
     @app.post("/videos/local")
     def add_local_video(body: LocalVideoIn):
         """Import a video FILE from this computer and run the normal clip
@@ -930,10 +943,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         return {"moved": moved}
 
     @app.post("/jobs/{job_id}/retry")
-    def retry_job(job_id: int):
+    def retry_job(job_id: int, standard: bool = False):
+        """Run a failed or cancelled job again. `standard` runs it without
+        Vertical Live: the answer to a video Vertical Live refused as not 9:16."""
         d = db()
         try:
-            new_id = queue.retry(d, job_id)
+            new_id = queue.retry(d, job_id, drop=("vertical_live",) if standard else ())
         finally:
             d.close()
         if new_id is None:

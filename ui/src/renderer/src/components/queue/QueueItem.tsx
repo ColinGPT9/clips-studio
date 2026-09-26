@@ -14,6 +14,9 @@ import OpenRouterPrompt from '../OpenRouterPrompt'
  *  alternative worth suggesting; a download or render failure is not this. */
 const LOCAL_AI_FAILURE = /\/api\/(generate|chat)|:1143[45]\b|ollama/i
 
+/** Vertical Live refused the source as not 9:16 (core/modes.py MISMATCH). */
+const NOT_VERTICAL = /is not a vertical 9:16 source/
+
 const ICON: Record<string, string> = {
   running: '▶',
   queued: '○',
@@ -134,6 +137,16 @@ export default function QueueItem({
 
           {job.error && (
             <p className="text-sm text-error mt-1 break-words">{job.error}</p>
+          )}
+          {job.error && NOT_VERTICAL.test(job.error) && (
+            <button
+              className="btn-ghost !py-0.5 !px-2 text-xs mt-1.5"
+              disabled={busy}
+              onClick={() => void run(() => api.retryJob(job.id, true))}
+              title={t('Clip it again with the normal framing, which follows faces and reframes for 9:16')}
+            >
+              {t('Use standard processing')}
+            </button>
           )}
           {job.error && localAI && LOCAL_AI_FAILURE.test(job.error) && (
             <OpenRouterPrompt

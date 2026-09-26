@@ -181,6 +181,7 @@ export interface RenderOpts {
   adjust?: Adjust
   edit?: EditData | null
   profile?: string // longform rendering profile (16:9); absent = vertical Short
+  vertical_live?: boolean // an already-composed 9:16 live: whole frame, no crop
   watermark?: WatermarkConfig | null
 }
 
@@ -224,6 +225,9 @@ export interface JobOptions {
   caption_style?: CaptionStyle
   long_clips?: boolean
   podcast?: boolean
+  /** An already-composed 9:16 live: keep its layout, skip face tracking
+   *  (core/modes.py). Its own toggle; not combined with podcast or longform. */
+  vertical_live?: boolean
   longform?: { mode: string } | null
   watermark_profile_id?: number | null
   filter?: FilterName

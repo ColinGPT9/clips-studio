@@ -29,9 +29,14 @@ interface Slot {
   options: JobOptions
   /** Why the server refused this one, kept so it can be fixed in place. */
   error?: string
+  /** A local file's size and shape, read when it is picked: drives the
+   *  Vertical Live suggestion and the "not 9:16" warning. */
+  shape?: { width: number; height: number; orientation: 'vertical' | 'horizontal' | 'other' }
+  /** A local file's original link (a downloaded live's page), when known. */
+  sourceUrl?: string
 }
 
-type ToggleKey = 'captions' | 'long_clips' | 'podcast' | 'longform' | 'watermark'
+type ToggleKey = 'captions' | 'long_clips' | 'podcast' | 'vertical_live' | 'longform' | 'watermark'
 
 /** The switches after Captions. Captions is rendered on its own so the
  *  "Caption style" button can sit immediately beside it, where it belongs —
@@ -57,6 +62,13 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
     hint: '(multi-cam)',
     title:
       'For multi-camera podcasts (cuts between angles, several people). Frames shot by shot: each camera shot gets one steady crop centered on whoever is talking, and cuts land directly on the speaker’s face — no panning, no split screens. Leave OFF for normal one-camera streams.'
+  },
+  {
+    key: 'vertical_live',
+    label: 'Vertical Live',
+    hint: '(9:16 live)',
+    title:
+      'For a livestream that was already vertical when it was streamed (a YouTube vertical live, the vertical feed of a Twitch or Streamlabs dual-format stream, or a downloaded Instagram/TikTok live). Keeps the stream’s own 9:16 layout: no face tracking or reframing. The moments are still picked the usual way.'
   },
   {
     key: 'watermark',
@@ -88,6 +100,7 @@ const PREF = {
   captions: 'generate-captions',
   long_clips: 'generate-long-clips',
   podcast: 'generate-podcast',
+  vertical_live: 'generate-vertical-live',
   longform: 'generate-longform',
   longform_mode: 'generate-longform-mode'
 } as const
@@ -97,6 +110,7 @@ function remember(key: ToggleKey, on: boolean, mode?: string): void {
     if (key === 'captions') localStorage.setItem(PREF.captions, String(on))
     else if (key === 'long_clips') localStorage.setItem(PREF.long_clips, String(on))
     else if (key === 'podcast') localStorage.setItem(PREF.podcast, String(on))
+    else if (key === 'vertical_live') localStorage.setItem(PREF.vertical_live, String(on))
     else if (key === 'longform') {
       localStorage.setItem(PREF.longform, String(on))
       if (mode) localStorage.setItem(PREF.longform_mode, mode)
@@ -123,6 +137,11 @@ export function seedOptions(): JobOptions {
   if (localStorage.getItem(PREF.podcast) === 'true') o.podcast = true
   if (localStorage.getItem(PREF.longform) === 'true') {
     o.longform = { mode: localStorage.getItem(PREF.longform_mode) ?? 'short_clips' }
+  }
+  // Vertical Live can't be combined with Podcast or Longform; if an older
+  // remembered pair says otherwise, those win and it stays off.
+  if (localStorage.getItem(PREF.vertical_live) === 'true' && !o.podcast && !o.longform) {
+    o.vertical_live = true
   }
   if (wm.enabled && wm.profileId) o.watermark_profile_id = wm.profileId
   return o
@@ -235,6 +254,16 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     } else if (key === 'podcast') {
       if (on) next.podcast = true
       else delete next.podcast
+    } else if (key === 'vertical_live') {
+      // It keeps the live's own 9:16 layout, so the options that reframe
+      // (Podcast) or change the shape (Longform) go off with it.
+      if (on) {
+        next.vertical_live = true
+        delete next.podcast
+        delete next.longform
+        remember('podcast', false)
+        remember('longform', false)
+      } else delete next.vertical_live
     } else if (key === 'longform') {
       if (on) next.longform = { mode: next.longform?.mode ?? 'short_clips' }
       else delete next.longform
@@ -246,6 +275,10 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       // disabled in that case rather than silently refusing to stay ticked.
       setWatermarkEnabled(on && Boolean(profileId))
     }
+    if (on && (key === 'podcast' || key === 'longform') && next.vertical_live) {
+      delete next.vertical_live
+      remember('vertical_live', false)
+    }
     remember(key, on, next.longform?.mode)
     return next
   }
@@ -254,6 +287,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     if (key === 'captions') return o.captions !== false
     if (key === 'long_clips') return Boolean(o.long_clips)
     if (key === 'podcast') return Boolean(o.podcast)
+    if (key === 'vertical_live') return Boolean(o.vertical_live)
     if (key === 'longform') return Boolean(o.longform)
     return Boolean(o.watermark_profile_id)
   }
@@ -279,6 +313,14 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       const kept = prev.filter((s) => s.url.trim() || s.path)
       return [...kept, ...fresh]
     })
+    // Each file's shape, for the Vertical Live suggestion. Best effort: a
+    // file that can't be read just gets no suggestion.
+    for (const path of picked) {
+      void api
+        .localVideoShape(path)
+        .then((shape) => setSlots((prev) => prev.map((s) => (s.path === path ? { ...s, shape } : s))))
+        .catch(() => undefined)
+    }
   }
 
   /** Queue everything, then — and only then — start processing.
@@ -319,6 +361,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
             path: slot.path as string,
             title: slot.title,
             channel: channel.trim(),
+            source_url: slot.sourceUrl?.trim() ?? '',
             ...slot.options,
             ...(force ? { force: true } : {})
           })
@@ -494,6 +537,24 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
               </div>
             )}
 
+            {slot.path && (
+              <VerticalHint
+                slot={slot}
+                onUse={() => replaceOptions(slot.key, toggle(slot.options, 'vertical_live', true))}
+              />
+            )}
+            {slot.path && slot.options.vertical_live && (
+              <div className="flex items-center gap-3 flex-wrap mt-2">
+                <span className="label shrink-0">{t('Original link')}</span>
+                <input
+                  className="input !w-80 max-w-full"
+                  placeholder={t('Where the live was streamed (optional)')}
+                  aria-label={`Original link for video ${n + 1}`}
+                  value={slot.sourceUrl ?? ''}
+                  onChange={(e) => patch(slot.key, { sourceUrl: e.target.value })}
+                />
+              </div>
+            )}
             {slot.error && <p className="text-sm text-error mt-1">{slot.error}</p>}
           </div>
         ))}
@@ -598,4 +659,31 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       {error && <div className="card border-error/40 text-error text-sm">{error}</div>}
     </div>
   )
+}
+
+/** Under a local file: suggests Vertical Live for a 9:16 file (a suggestion
+ *  only; the toggle decides), and warns when it is on for a file that isn't
+ *  9:16, which the engine would refuse. */
+function VerticalHint({ slot, onUse }: { slot: Slot; onUse: () => void }): JSX.Element | null {
+  const shape = slot.shape
+  if (!shape) return null
+  if (slot.options.vertical_live && shape.orientation !== 'vertical') {
+    return (
+      <p className="text-xs text-amber-400 mt-1">
+        ⚠ {t('This video is')} {shape.width}×{shape.height},{' '}
+        {t('not 9:16. Vertical Live expects a vertically composed video, so it would be refused.')}
+      </p>
+    )
+  }
+  if (!slot.options.vertical_live && shape.orientation === 'vertical' && !slot.options.podcast && !slot.options.longform) {
+    return (
+      <p className="text-xs text-muted mt-1">
+        {t('This video is 9:16. Is it a vertical live?')}{' '}
+        <button className="text-accent hover:underline" onClick={onUse}>
+          {t('Use Vertical Live')}
+        </button>
+      </p>
+    )
+  }
+  return null
 }
