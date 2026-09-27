@@ -12,6 +12,7 @@ import type {
   CreatorSuggestion,
   CreatorSummary,
   FilterName,
+  FrameBox,
   GamingSettings,
   Job,
   JobOptions,
@@ -43,6 +44,19 @@ import type {
 import type { Capabilities, FanOut, PlatformRow, UploadPostStatus } from './uploadpost'
 
 export const API_BASE = 'http://127.0.0.1:8765'
+
+/** What the Gaming / Reaction layout editor shows frames of. */
+export type LayoutSource = { clipId: number } | { url?: string; path?: string }
+
+/** Everyone on one frame (normalized): box [x, y, w, h], head [cx, top, chin]. */
+export interface FramePeople {
+  size: [number, number]
+  people: { box: FrameBox; head: [number, number, number] | null; confidence: number }[]
+}
+
+function layoutQuery(source: { url?: string; path?: string }): string {
+  return source.path ? `&path=${encodeURIComponent(source.path)}` : `&url=${encodeURIComponent(source.url ?? '')}`
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -333,6 +347,26 @@ export const api = {
   videoFrameUrl: (source: { url?: string; path?: string }, at = 0.5) =>
     `${API_BASE}/sources/frame?at=${at}` +
     (source.path ? `&path=${encodeURIComponent(source.path)}` : `&url=${encodeURIComponent(source.url ?? '')}`),
+  /** The layout editor's view of a video: its frames, who is on them, a
+   *  suggested webcam and border snapping, for a video not processed yet (a
+   *  link or file) or for one clip. */
+  layoutFrameUrl: (source: LayoutSource, at: number) =>
+    'clipId' in source
+      ? `${API_BASE}/clips/${source.clipId}/source-frame?at=${at}`
+      : `${API_BASE}/sources/frame?at=${at}${layoutQuery(source)}`,
+  layoutPeople: (source: LayoutSource, at: number) =>
+    request<FramePeople>(
+      'clipId' in source ? `/clips/${source.clipId}/people?at=${at}` : `/sources/people?at=${at}${layoutQuery(source)}`
+    ),
+  layoutSuggest: (source: { url?: string; path?: string }) =>
+    request<{ cam: FrameBox | null; panels?: FrameBox[] }>(`/sources/suggest?${layoutQuery(source).slice(1)}`),
+  layoutPanels: (clipId: number) => request<{ panels: FrameBox[] }>(`/clips/${clipId}/panels`),
+  layoutSnap: (source: LayoutSource, box: FrameBox) =>
+    request<{ box: FrameBox; bordered: boolean[] }>(
+      'clipId' in source
+        ? `/clips/${source.clipId}/snap?box=${box.join(',')}`
+        : `/sources/snap?box=${box.join(',')}${layoutQuery(source)}`
+    ),
   creatorGamingLayout: (clipId: number) =>
     request<{ creator_id: number | null; layout: GamingSettings | null }>(
       `/clips/${clipId}/creator-gaming-layout`

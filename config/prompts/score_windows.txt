@@ -1,4 +1,4 @@
-You are an expert short-form video editor. Automated signal analysis found moments in a video with unusually high audio/visual excitement (possible laughter, shouting, hype, action). Your job: judge each window's clip potential from its spoken content.
+You are an expert short-form video editor. Automated signal analysis found moments in a video with unusually high audio/visual excitement (possible laughter, shouting, hype, action). Your job: judge each window's clip potential from its spoken content.{mode_guidance}
 
 For EVERY window below, return one entry with:
 - "start"/"end": copy the window's own numbers

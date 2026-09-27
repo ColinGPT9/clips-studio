@@ -1,0 +1,293 @@
+# What a gaming / reaction highlight looks like, for scoring (analysis/gaming.py,
+# analysis/chat_moments.py). Used only when a job scores as a gaming stream:
+# Gaming / Reaction, or "Gaming stream" with Vertical Live.
+#
+# Sources for the choices here are in docs/GAMING.md ("How game moments are
+# found"): stream-highlight research, what gaming clip tools look for, and
+# what performs as a Short.
+
+# ---- chat ---------------------------------------------------------------------
+# Chat reacts after the moment: the stream's delay plus the time to type. A
+# spike is dated this many seconds earlier.
+chat_lag_seconds: 6
+
+# What chat says tells what kind of moment it was, in any language chat
+# types in.
+# - words: a whole word in a message, exactly as written (so "W" and "HOW" in
+#   capitals, not "how do I"); entries with a space, or emoji, anywhere in it,
+#   ignoring case.
+# - suffixes: the end of a channel's own emote, after its lowercase prefix
+#   (kittyPog, kittyLUL, kittySad).
+# - patterns: regular expressions tried on each word, ignoring case (laughter
+#   typed as ｗｗｗ, ㅋㅋㅋ, jajaja, kkkk, 哈哈).
+# - message_patterns: the same, on the whole message (a lone "あ" or "what?!").
+chat_classes:
+  hype:
+    label: hype
+    words: [POG, POGGERS, PogU, PogChamp, Pog, POGGIES, PagMan, PagChomp, POGSLIDE, LETSGO,
+            LETSGOOO, INSANE, insane, HOW, HOLY, CLUTCH, clutch, W, WW, GIGACHAD, EZ, Clap,
+            GG, gg, Kreygasm, SeemsGood, CurseLit, PopNemo, WOW, wow, OMG, omg, "no way",
+            "let's go", "lets go", "what a", "holy shit", "oh my god", "すご", "すげ", "神",
+            "대박", "牛逼", "太强", "brutal", "increible", "incrível", "🔥", "😱", "🤯", "🐐", "👏",
+            "💪", "🏆"]
+    suffixes: [Pog, POG, Hype, HYPE, Clap, GG, Win, WIN, W, Cheer, Fire, Goat, GOAT, Wow, WOW]
+    patterns: ["^6{3,}$", "^(gg)+$"]
+  funny:
+    label: laughing
+    words: [LUL, LULW, KEKW, OMEGALUL, ICANT, KEK, LOL, lol, LMAO, lmao, LMFAO, lmfao, xD, XD,
+            pepeLaugh, HAHAHA, hahaha, 4Head, Jebaited, EleGiggle, mdr, MDR, ptdr, "😂", "🤣",
+            "💀", "草"]
+    suffixes: [LUL, LOL, KEKW, KEK, Laugh, LAUGH, Lmao, LMAO, Lol, Haha, HAHA]
+    patterns: ["^[wｗ]{2,}$", "ㅋ{2,}", "^(ja){2,}j?a?$", "^(ha){2,}h?$", "^k{4,}$", "^x+d+$",
+               "哈哈", "^(lo)+l$", "^(ah){2,}$", "хаха", "^(he){3,}$"]
+  surprise:
+    label: surprised
+    words: [HUH, WHAT, wtf, WTF, "?!", "!?", "！？", "？！", "は？",
+            "やば", "やばい", "マジ", "헐", "뭐야", "什么", "😮", "😯", "🫢"]
+    suffixes: [Huh, HUH, What, WHAT, Shock, Omg, OMG]
+    message_patterns: ["^[?？!！]{2,}$", "^[あえぁぇ]+[!！?？ー～]*$", "^hu+h+[?!]*$", "^wha+t+[?!]*$"]
+  scare:
+    label: scared
+    words: [monkaS, monkaW, monkaGIGA, "D:", WutFace, AAAA, AAAAA, JUMPSCARE, "jump scare",
+            "怖", "무서", "😨", "😰", "😳"]
+    suffixes: [Scared, Fear, Monka, Spooky, Scream]
+    patterns: ["^a{4,}h*$"]
+  fail:
+    label: a fail
+    words: [F, L, LL, Sadge, BibleThump, NotLikeThis, BigSad, FeelsBadMan, RIP, rip, NOOO, THREW,
+            threw, copium, Copium, "；；", "T_T", "😭", "💔"]
+    suffixes: [Sad, SAD, Cry, CRY, Rip, RIP, F, L, Dead]
+    patterns: ["ㅠ{2,}", "ㅜ{2,}", "^no{3,}$"]
+  clip:
+    label: asking to clip it
+    words: [CLIP, clip, clipped, clipit, "+2", "clip it", "clip that", "someone clip", "clipping",
+            "クリップ", "클립"]
+
+# Messages that are only these (hellos, good lucks, goodbyes) aren't reactions
+# to anything: a stream's start, a raid arriving, or its end is full of them.
+chat_ignore: [hi, Hi, HI, hii, hiii, hello, Hello, hey, Hey, HEY, HEYY, HEYYY, yo, Yo, sup, gl, GL,
+              glgl, o7, gn, gm, wb, bye, cya, "good luck", "welcome", "hello chat", "hi chat"]
+
+# ---- genres -----------------------------------------------------------------
+# highlights: what a clip channel for this kind of game would post.
+# callouts: what a streamer says when it happens (shown to the model as
+# examples; phase 3 also looks for these words on screen).
+genres:
+  shooter:
+    label: shooter
+    highlights: kills and multi-kills, a clutch against several enemies, a flick, one-tap or
+      no-scope, wiping a squad, a round-winning play, and deaths that are funny or unfair
+    callouts: ["got him", "one tap", "headshot", "ace", "clutch", "one left", "one hp",
+               "he's one", "no scope", "double kill", "triple", "wiped", "let's go"]
+  battle_royale:
+    label: battle royale
+    highlights: winning the game, the final fight, wiping a squad, a clutch with teammates
+      down, a third-party ambush, and getting knocked or finished in a funny way
+    callouts: ["victory royale", "winner", "we won", "one left", "knocked", "cracked",
+               "squad wiped", "last circle", "third party", "got him", "let's go"]
+  moba:
+    label: MOBA
+    highlights: winning teamfights, multi-kills up to a pentakill, stealing a big objective,
+      an outplay or escape at low health, a game-winning push, and throws
+    callouts: ["penta", "quadra", "triple", "ace", "steal", "stole", "outplay", "baron",
+               "dragon", "roshan", "shutdown", "backdoor", "gg", "let's go"]
+  sports:
+    label: sports game
+    highlights: goals and winning goals, saves, last-minute equalisers, skill moves, dunks,
+      touchdowns and home runs, comebacks, and funny own goals
+    callouts: ["goal", "scored", "what a goal", "top bins", "save", "last minute",
+               "overtime", "penalty", "touchdown", "dunk", "home run", "buzzer beater"]
+  fighting:
+    label: fighting game
+    highlights: big combos, perfect rounds, comebacks from low health, parries and reads, and
+      the round-winning hit
+    callouts: ["combo", "perfect", "parry", "comeback", "one hit", "read", "let's go"]
+  racing:
+    label: racing game
+    highlights: last-lap overtakes, photo finishes, big crashes, and winning the race
+    callouts: ["overtake", "crash", "first place", "photo finish", "last lap", "wrecked"]
+  horror:
+    label: horror game
+    highlights: jump scares and the scream, being chased, a narrow escape, getting caught
+    callouts: ["what was that", "oh my god", "run", "it's behind", "nope", "get away",
+               "caught"]
+  soulslike:
+    label: action / soulslike
+    highlights: beating a boss (especially first try or at low health), a boss's new phase,
+      dying at the last moment, a clean parry or dodge, and rage
+    callouts: ["boss", "phase two", "you died", "first try", "one hit", "parry", "no way",
+               "let's go", "finally"]
+  adventure:
+    label: action-adventure
+    highlights: beating a boss or a hard section, discovering something, a clever solve, and
+      a funny death or glitch
+    callouts: ["boss", "finally", "let's go", "no way", "found it", "secret"]
+  sandbox:
+    label: sandbox / survival
+    highlights: a raid or fight, a betrayal, a rare find, a death (especially a funny one),
+      revealing a build, and chaos with friends
+    callouts: ["raid", "diamonds", "betrayed", "base", "run", "we're dead", "no way"]
+  speedrun:
+    label: speedrun
+    highlights: a personal best or world record, pulling off a hard skip or trick, and the
+      mistake that kills the run
+    callouts: ["pb", "world record", "wr", "skip", "trick", "reset", "gold", "split"]
+  party:
+    label: party game
+    highlights: an impostor reveal, a betrayal, a chaotic fail, a clutch win, and laughing with
+      friends
+    callouts: ["sus", "impostor", "vote", "betrayed", "crown", "let's go"]
+  strategy:
+    label: strategy / chess
+    highlights: a brilliant move, a blunder, a comeback, and checkmate
+    callouts: ["blunder", "brilliant", "checkmate", "mate in", "sacrifice", "gg"]
+  reaction:
+    label: reaction
+    highlights: the streamer's biggest reactions to what they're watching (shock, laughter, a
+      strong take), with the moment that caused it
+    callouts: ["no way", "what", "oh my god", "bro", "let's go"]
+  generic:
+    label: game
+    highlights: a big play or win, a funny or unlucky death, a surprise, and the streamer's
+      reaction to it
+    callouts: ["let's go", "no way", "oh my god", "got him", "what"]
+
+# ---- game sounds ------------------------------------------------------------
+# What the sound tagger listens for (analysis/game_audio.py): groups of
+# AudioSet classes (config/audioset_labels.txt, exactly as written there).
+# "game" sounds come from the game; "people" sounds are mostly the streamer
+# or friends (and a horror game's screams), which count like a shout.
+sound_groups:
+  gunfire: {label: gunfire, side: game,
+            classes: ["Gunshot, gunfire", "Machine gun", "Fusillade", "Artillery fire", "Cap gun"]}
+  explosion: {label: an explosion, side: game, classes: [Explosion, Boom]}
+  crash: {label: a crash, side: game,
+          classes: ["Smash, crash", Shatter, Breaking, Skidding, "Tire squeal"]}
+  crowd: {label: a crowd cheering, side: game, classes: [Cheering, Applause, Crowd]}
+  whistle: {label: a whistle, side: game, classes: [Whistle]}
+  scream: {label: a scream, side: people, classes: [Screaming, Shout, Yell, "Battle cry"]}
+  laughter: {label: laughter, side: people,
+             classes: [Laughter, "Belly laugh", Giggle, "Chuckle, chortle", Snicker]}
+
+# How much each sound means in each kind of game, 0-1 (a group left out: 0.5).
+# In a shooter the gunfire and explosions are the fight (and a shield
+# breaking is a crash); in a sports game the crowd roars at a goal, and
+# Rocket League's goals explode; in a racing game the crash is the moment;
+# in horror, the scream.
+genre_sounds:
+  shooter:       {gunfire: 1.0, explosion: 1.0, crash: 0.6, crowd: 0.2, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  battle_royale: {gunfire: 1.0, explosion: 1.0, crash: 0.7, crowd: 0.2, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  moba:          {gunfire: 0.3, explosion: 0.8, crash: 0.5, crowd: 0.4, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  sports:        {gunfire: 0.0, explosion: 0.9, crash: 0.3, crowd: 1.0, whistle: 0.6, scream: 0.8, laughter: 0.6}
+  fighting:      {gunfire: 0.2, explosion: 0.6, crash: 0.6, crowd: 0.8, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  racing:        {gunfire: 0.0, explosion: 0.8, crash: 1.0, crowd: 0.5, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  horror:        {gunfire: 0.5, explosion: 0.6, crash: 0.7, crowd: 0.0, whistle: 0.0, scream: 1.0, laughter: 0.6}
+  soulslike:     {gunfire: 0.2, explosion: 0.7, crash: 0.6, crowd: 0.2, whistle: 0.0, scream: 0.8, laughter: 0.5}
+  adventure:     {gunfire: 0.5, explosion: 0.8, crash: 0.6, crowd: 0.3, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  sandbox:       {gunfire: 0.7, explosion: 0.9, crash: 0.6, crowd: 0.3, whistle: 0.0, scream: 0.8, laughter: 0.7}
+  speedrun:      {gunfire: 0.2, explosion: 0.5, crash: 0.4, crowd: 0.6, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  party:         {gunfire: 0.3, explosion: 0.6, crash: 0.5, crowd: 0.5, whistle: 0.2, scream: 0.9, laughter: 1.0}
+  strategy:      {gunfire: 0.3, explosion: 0.6, crash: 0.3, crowd: 0.3, whistle: 0.0, scream: 0.8, laughter: 0.6}
+  reaction:      {gunfire: 0.2, explosion: 0.3, crash: 0.3, crowd: 0.3, whistle: 0.0, scream: 0.9, laughter: 1.0}
+  generic:       {gunfire: 0.6, explosion: 0.8, crash: 0.6, crowd: 0.5, whistle: 0.2, scream: 0.8, laughter: 0.6}
+
+# ---- on-screen text ---------------------------------------------------------
+# What the game writes on screen (analysis/game_text.py reads it with OCR in
+# the game-moment windows only). Matched ignoring case, accents and spaces
+# (a stylised banner often loses its spaces) and the OCR's usual misreads
+# (Q for O, 1 for I), as a whole word when 5 letters or fewer ("PLAY" is not
+# in "PLAYER"). Games are played in many languages; the common ones for
+# each word are listed, and kanji where the OCR reads them.
+screen_text:
+  # A banner: big text near the middle of the screen, where games announce a
+  # kill, a goal or a win (a stream's chat overlay is small and ignored).
+  events:
+    generic: [VICTORY, DEFEAT, WINNER, "YOU WIN", "YOU LOSE", "GAME OVER", "LEVEL UP",
+              "NEW RECORD", "ACHIEVEMENT UNLOCKED", "MISSION COMPLETE", "MISSION PASSED",
+              "MISSION FAILED", "YOU DIED", CHAMPION, VICTOIRE, "DÉFAITE", VICTORIA, DERROTA,
+              SIEG, NIEDERLAGE, "VITÓRIA", "勝利", "敗北"]
+    shooter: [ELIMINATED, ELIMINATION, HEADSHOT, "DOUBLE KILL", "TRIPLE KILL", "MULTI KILL",
+              "KILL STREAK", ACE, CLUTCH, FLAWLESS, "ROUND WON", "ROUND LOST", "TEAM ELIMINATED",
+              "SQUAD WIPED", "SPIKE PLANTED", "SPIKE DEFUSED", "BOMB PLANTED", "BOMB DEFUSED",
+              "ÉLIMINÉ", ELIMINADO, ELIMINIERT, "キル"]
+    battle_royale: [ELIMINATED, "KNOCKED DOWN", KNOCKED, "SQUAD ELIMINATED", "SQUAD WIPED",
+                    "VICTORY ROYALE", "WINNER WINNER", "CHICKEN DINNER", "YOU ARE THE CHAMPION",
+                    "KILL LEADER", "CHAMPION SQUAD", "ÉLIMINÉ", ELIMINADO, ELIMINIERT,
+                    "チャンピオン"]
+    moba: ["FIRST BLOOD", "DOUBLE KILL", "TRIPLE KILL", "QUADRA KILL", "PENTA KILL", PENTAKILL,
+           ACE, SHUTDOWN, LEGENDARY, GODLIKE, RAMPAGE, UNSTOPPABLE, DOMINATING, "KILLING SPREE",
+           "MEGA KILL", "ULTRA KILL", "BARON NASHOR", "DRAGON SLAIN", ROSHAN, "AEGIS",
+           "INHIBITOR DESTROYED", "TOWER DESTROYED", "ANCIENT"]
+    sports: [GOAL, GOL, "GOLAZO", TOR, BUT, SCORED, "A MARQUÉ", "MARQUÉ", "MARCÓ", ERZIELT, "HAT-TRICK", "HAT TRICK",
+             "OWN GOAL", PENALTY, "EPIC SAVE", SAVE, OVERTIME, "FULL TIME", TOUCHDOWN,
+             "HOME RUN", "BUZZER BEATER", DEMOLITION, "DÉMOLITION", MVP, "ゴール"]
+    fighting: ["K.O.", KO, PERFECT, FATALITY, "FLAWLESS VICTORY", "FINAL ROUND", "YOU WIN",
+               "CRITICAL ART", "SUPER ART", "COUNTER", "PUNISH COUNTER"]
+    racing: [FINISH, "1ST", WINNER, "FASTEST LAP", "NEW RECORD", "PERSONAL BEST", WRECKED,
+             TAKEDOWN, "FINAL LAP"]
+    horror: ["YOU DIED", "GAME OVER", CAUGHT, ESCAPED, "YOU ESCAPED", SACRIFICED, "YOU SURVIVED"]
+    soulslike: ["YOU DIED", "ENEMY FELLED", "GREAT ENEMY FELLED", "DEMIGOD FELLED",
+                "LEGEND FELLED", "GOD SLAIN", "VICTORY ACHIEVED", "HEIR OF FIRE DESTROYED",
+                "BOSS DEFEATED", "SHINOBI EXECUTION", "VOUS ÊTES MORT", "HAS MUERTO",
+                "DU BIST GESTORBEN", "YOU DEFEATED", "死"]
+    adventure: ["YOU DIED", "BOSS DEFEATED", "QUEST COMPLETE", "SHRINE COMPLETE",
+                "SPIRIT ORB", "HEART CONTAINER", "NEW RECORD", "GAME OVER"]
+    sandbox: [WASTED, BUSTED, "MISSION PASSED", "MISSION FAILED", "YOU DIED", "ADVANCEMENT MADE",
+              "CHALLENGE COMPLETE", "RAIDED", "YOU WERE KILLED"]
+    speedrun: ["PERSONAL BEST", "NEW RECORD", "WORLD RECORD", "PB", "WR"]
+    party: [IMPOSTOR, EJECTED, "WAS THE IMPOSTOR", "WAS NOT THE IMPOSTOR", CROWNED, QUALIFIED,
+            ELIMINATED, "YOU WIN"]
+    strategy: [CHECKMATE, BRILLIANT, BLUNDER, RESIGNED, "WINS BY", "ÉCHEC ET MAT", "JAQUE MATE"]
+    reaction: []
+  # A menu, a queue, a loading screen or a settings page: two of these on one
+  # screen and it isn't gameplay.
+  menu: [PLAY, READY, "READY UP", SEARCHING, MATCHMAKING, "FINDING MATCH", "FIND MATCH",
+         "IN QUEUE", QUEUE, LOBBY, LOADING, SETTINGS, OPTIONS, CONTROLS, "KEY BINDINGS",
+         GRAPHICS, AUDIO, VIDEO, GAMEPLAY, ACCESSIBILITY, "BATTLE PASS", STORE, SHOP, LOCKER,
+         INVENTORY, LOADOUT, CUSTOMIZE, CUSTOMISE, "SELECT", "CHARACTER SELECT", "CHOOSE",
+         "ACCEPT", "CANCEL", "BACK", "APPLY", "RESET TO DEFAULT", "ESTIMATED WAIT",
+         "PRESS ANY BUTTON", "CHALLENGES", "JOUER", "RECHERCHE", "ANNULER", "PARAMÈTRES",
+         "TEMPS D'ATTENTE", "BOUTIQUE", JUGAR, BUSCANDO, AJUSTES, "CONFIGURACIÓN", TIENDA,
+         SPIELEN, SUCHE, EINSTELLUNGEN, JOGAR, PROCURANDO, "CONFIGURAÇÕES", LOJA,
+         RANKED, CASUAL, COMPETITIVE, UNAVAILABLE, PLAYLIST, "GAME MODE", TOURNAMENTS,
+         SENSITIVITY, ENABLED, DISABLED, BRIGHTNESS, "FIELD OF VIEW", RESOLUTION, INDISPONIBLE,
+         "COMPÉTITIF", OCCASIONNEL, "CLASSÉ", TOURNOIS, "MODE DE JEU", "SENSIBILITÉ",
+         "設定", "マッチング", "ロード", "ショップ", "キャンセル", "準備完了", "設置", "有効", "無効",
+         "感度", "振動"]
+
+# ---- games ------------------------------------------------------------------
+# A game's name (from the platform's category, or the title) -> genre. Matched
+# case-insensitively as a phrase inside the name or title.
+games:
+  shooter: [valorant, counter-strike, cs2, "cs:go", csgo, overwatch, "marvel rivals",
+            "rainbow six", "siege", halo, destiny, "the finals", "call of duty", "black ops",
+            "modern warfare", battlefield, "escape from tarkov", tarkov, "team fortress",
+            deadlock, "splitgate", "helldivers"]
+  battle_royale: [fortnite, warzone, "apex legends", apex, pubg, "battlegrounds",
+                  "fall guys"]
+  moba: ["league of legends", "dota 2", dota, smite, "heroes of the storm", "mobile legends",
+         "honor of kings", predecessor]
+  sports: ["ea sports fc", "ea fc", fifa, "rocket league", "nba 2k", "2k2", madden,
+           "mlb the show", "nhl", efootball, "football manager", "tony hawk", "skate"]
+  fighting: ["street fighter", tekken, "mortal kombat", "smash bros", "super smash",
+             "guilty gear", "dragon ball fighterz", "2xko", multiversus]
+  racing: ["mario kart", forza, "gran turismo", "f1 2", "f1 24", "f1 25", "need for speed",
+           "the crew", trackmania, "assetto corsa", iracing]
+  horror: ["dead by daylight", phasmophobia, "resident evil", "five nights", fnaf, outlast,
+           "lethal company", "content warning", "silent hill", "amnesia", "poppy playtime",
+           "the forest", "sons of the forest", "r.e.p.o"]
+  soulslike: ["elden ring", "dark souls", sekiro, bloodborne, "lies of p", "wukong",
+              "monster hunter", "demon's souls", nioh, "hollow knight", "silksong",
+              "black myth"]
+  adventure: [zelda, "breath of the wild", "tears of the kingdom", "god of war", "spider-man",
+              "the last of us", "hogwarts legacy", "red dead", cyberpunk, "baldur's gate",
+              "final fantasy", pokemon, "hades", "metroid"]
+  sandbox: [minecraft, rust, "ark", terraria, valheim, "grand theft auto", "gta", "gta v",
+            "gta 5", roblox, "7 days to die", palworld, "sea of thieves", "no man's sky",
+            dayz, "enshrouded"]
+  party: ["among us", jackbox, "gartic", "golf with your friends", "pummel party",
+          "mario party", "chained together", "only up", "getting over it"]
+  strategy: [chess, "teamfight tactics", tft, "hearthstone", "age of empires", starcraft,
+             "civilization", "clash royale", "marvel snap", balatro]
+  speedrun: [speedrun, "any%", "100%", "world record attempt", "pb attempt"]
+  reaction: ["just chatting", "watch party", reacting, reaction, "react to", "reacts to"]

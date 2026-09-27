@@ -7,7 +7,6 @@ The two rules this pins down:
   or where the user put it. Nothing picks a region by how much it moves.
 """
 
-import re
 from pathlib import Path
 
 import pytest
@@ -15,10 +14,7 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("cv2")
 
-from gaming import detect, layout  # noqa: E402
-
-ROOT = Path(__file__).resolve().parent.parent
-
+from gaming import detect  # noqa: E402
 
 # ---- who the streamer is -------------------------------------------------------------
 
@@ -237,192 +233,6 @@ def test_a_camera_filling_the_frame_never_votes_for_a_split():
     assert detect.video_cam([full, full]) is None
 
 
-# ---- where the bands come from --------------------------------------------------------
-
-
-def test_by_default_the_game_is_shown_whole():
-    """Letterboxed on a blur, not cropped: with no webcam, the whole stream."""
-    p = layout.plan(1920, 1080, None)
-    assert p.kind == "fill" and p.game_fit == "fit" and p.game == (0, 0, 1920, 1080)
-
-
-def test_whole_means_the_biggest_picture_that_leaves_the_webcam_out():
-    """League, webcam bottom-right: the full-height strip left of it fills a
-    1080x960 band almost exactly; the strip above it would be a thin ribbon."""
-    p = layout.plan(1920, 1080, (0.646, 0.74, 0.177, 0.26))
-    gx, gy, gw, gh = p.game
-    assert (gx, gy, gh) == (0, 0, 1080) and gx + gw <= p.cam[0]
-    # A speedrun, webcam bottom-left: the strip to its right.
-    p = layout.plan(1920, 1080, (0.0, 0.69, 0.167, 0.31))
-    gx, _gy, _gw, gh = p.game
-    assert gx >= p.cam[0] + p.cam[2] and gh == 1080
-
-
-def test_no_webcam_zoomed_is_a_centre_crop():
-    p = layout.plan(1920, 1080, None, game_fit="fill")
-    x, y, w, h = p.game
-    assert p.kind == "fill" and (y, h) == (0, 1080)
-    assert w % 2 == 0 and abs(w / h - 9 / 16) < 0.01
-    assert abs((x + w / 2) - 960) <= 2
-
-
-def test_the_user_can_move_the_zoomed_crop():
-    assert layout.plan(1920, 1080, None, game_align="left", game_fit="fill").game[0] == 0
-    right = layout.plan(1920, 1080, None, game_align="right", game_fit="fill").game
-    assert right[0] + right[2] == 1920
-
-
-def test_a_zoomed_split_is_two_even_bands_and_the_game_slides_clear_of_the_webcam():
-    cam = (0.0, 0.0, 0.3, 0.3)                       # top-left webcam, 576 px wide
-    p = layout.plan(1920, 1080, cam, game_fit="fill")
-    gx, _gy, gw, gh = p.game
-    assert p.kind == "split" and p.cam_position == "top"
-    assert gh == 1080 and gw % 2 == 0 and abs(gw / gh - layout.SPLIT_ASPECT) < 0.01
-    assert gx >= p.cam[0] + p.cam[2]                  # no part of the webcam in the game band
-    assert all(v % 2 == 0 for v in p.cam)
-
-
-def test_zoomed_chat_at_the_edge_stays_out_of_the_game_band():
-    chat = (1600, 1920)                               # a chat panel down the right edge
-    for cam in (None, (0.0, 0.0, 0.25, 0.25)):
-        gx, _y, gw, _h = layout.plan(1920, 1080, cam, game_fit="fill").game
-        assert gx + gw <= chat[0] + 150                # at most a sliver of its edge
-
-
-def test_a_webcam_in_the_middle_leaves_the_game_centred_as_well_as_it_can():
-    for fit in ("fit", "fill"):
-        p = layout.plan(1920, 1080, (0.4, 0.7, 0.2, 0.3), game_fit=fit)  # bottom-centre webcam
-        assert p.kind == "split" and p.game[2] > 0
-
-
-def test_the_webcam_band_can_go_below():
-    assert layout.plan(1920, 1080, (0.0, 0.0, 0.3, 0.3), cam_position="bottom").cam_position == "bottom"
-    assert layout.plan(1920, 1080, (0.0, 0.0, 0.3, 0.3), cam_position="sideways").cam_position == "top"
-
-
-def test_a_drawn_game_area_leaves_out_the_chat_under_the_game():
-    """Measured on a speedrun: chat ran along the bottom, under the game, and
-    a full-height crop can't leave that out. Drawing the game area can:
-    shown whole, it is exactly what was drawn; zoomed, it stays inside it."""
-    game = (0.17, 0.0, 0.83, 0.83)                     # the game; chat below 0.83
-    for cam in (None, (0.0, 0.69, 0.17, 0.31)):
-        assert layout.plan(1920, 1080, cam, game_box=game).game == (326, 0, 1592, 896)
-        x, y, w, h = layout.plan(1920, 1080, cam, game_box=game, game_fit="fill").game
-        assert y + h <= 0.83 * 1080 + 2 and x >= 0.17 * 1920 - 2 and x + w <= 1920
-        want = layout.FILL_ASPECT if cam is None else layout.SPLIT_ASPECT
-        assert abs(w / h - want) < 0.01 and w % 2 == 0 and h % 2 == 0
-
-
-def test_nothing_in_the_layout_reads_motion_or_pixels():
-    """The old failure was choosing the region that moved most (chat). The
-    layout is geometry only; a change that starts reading frames here is the
-    old failure coming back."""
-    src = (ROOT / "gaming" / "layout.py").read_text(encoding="utf-8")
-    code = re.sub(r'""".*?"""|#.*', "", src, flags=re.S)
-    for banned in ("np.", "cv2", "diff(", "std(", "activity", "motion", "video_capture"):
-        assert banned not in code, banned
-
-
-# ---- the render -----------------------------------------------------------------------
-
-
-def test_the_split_graph_stacks_two_even_bands_in_the_chosen_order():
-    from gaming import compose
-
-    p = layout.plan(1920, 1080, (0.0, 0.0, 0.25, 1 / 3))
-    top = compose.filter_graph(p)
-    assert "[cam][game]vstack" in top and "scale=1080:960:force_original_aspect_ratio=increase" in top
-    assert "gblur" in top and "overlay=(W-w)/2:(H-h)/2[game]" in top      # letterboxed on a blur
-    bottom = compose.filter_graph(layout.plan(1920, 1080, (0.0, 0.0, 0.25, 1 / 3), cam_position="bottom"))
-    assert "[game][cam]vstack" in bottom
-    zoom = compose.filter_graph(layout.plan(1920, 1080, None, game_fit="fill"), vf_extra="eq=saturation=1.1",
-                                ass_name="c.ass")
-    assert zoom.startswith("[0:v]crop=") and "scale=1080:1920" in zoom and "gblur" not in zoom
-    assert zoom.endswith(";[v]eq=saturation=1.1[v];[v]subtitles=c.ass[v]")
-
-
-def _ffmpeg_or_skip() -> str:
-    import subprocess
-
-    from core.binaries import ffmpeg
-
-    binary = ffmpeg()
-    try:
-        subprocess.run([binary, "-version"], capture_output=True, check=True)
-    except (OSError, subprocess.CalledProcessError):
-        pytest.skip("FFmpeg isn't available")
-    return binary
-
-
-def _stream(tmp_path):
-    """A 1080p "stream": blue game, red webcam top-left, green chat down the right edge."""
-    import subprocess
-
-    source = tmp_path / "stream.mp4"
-    subprocess.run([_ffmpeg_or_skip(), "-v", "error",
-                    "-f", "lavfi", "-i", "color=c=blue:s=1920x1080:r=30:d=2,"
-                    "drawbox=x=0:y=0:w=480:h=360:color=red:t=fill,"
-                    "drawbox=x=1720:y=0:w=200:h=1080:color=green:t=fill",
-                    "-f", "lavfi", "-i", "sine=frequency=440:d=2",
-                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(source)],
-                   check=True)
-    return source
-
-
-def _frame(path):
-    import cv2
-
-    cap = cv2.VideoCapture(str(path))
-    cap.set(cv2.CAP_PROP_POS_MSEC, 1000)
-    ok, frame = cap.read()
-    cap.release()
-    assert ok
-    return frame
-
-
-def _share(region, channel):
-    """Share of pixels where one BGR channel clearly dominates."""
-    others = [c for c in range(3) if c != channel]
-    return float(np.mean((region[..., channel] > 150) & (region[..., others].max(axis=-1) < 90)))
-
-
-def _not_black(region) -> bool:
-    return float(region.max(axis=-1).mean()) > 40
-
-
-def test_a_real_split_shows_the_whole_game_on_a_blur_and_the_webcam_once(tmp_path):
-    from gaming import compose
-
-    out = compose.render(_stream(tmp_path), tmp_path / "split.mp4", layout.plan(1920, 1080, (0.0, 0.0, 0.25, 1 / 3)))
-    frame = _frame(out)
-    assert frame.shape[:2] == (1920, 1080)
-    assert _share(frame[:960], 2) > 0.9          # the webcam band is the red webcam
-    game = frame[960:]
-    assert _share(game, 2) < 0.01                # the webcam isn't shown twice
-    assert _share(game, 0) > 0.5                 # the game, whole
-    assert _not_black(game[:40]) and _not_black(game[-40:])    # blurred bars, not black ones
-
-
-def test_a_real_zoomed_split_leaves_chat_out(tmp_path):
-    from gaming import compose
-
-    plan = layout.plan(1920, 1080, (0.0, 0.0, 0.25, 1 / 3), game_fit="fill")
-    frame = _frame(compose.render(_stream(tmp_path), tmp_path / "zoom.mp4", plan))
-    game = frame[960:]
-    assert _share(game, 0) > 0.9 and _share(game, 1) < 0.01 and _share(game, 2) < 0.01
-
-
-def test_a_real_game_only_clip_is_the_whole_stream_on_a_blur(tmp_path):
-    from gaming import compose
-
-    frame = _frame(compose.render(_stream(tmp_path), tmp_path / "fill.mp4", layout.plan(1920, 1080, None)))
-    assert frame.shape[:2] == (1920, 1080)
-    middle = frame[656:1264]                     # 1080x608: the 16:9 stream, whole
-    chat = (middle[..., 1] > 100) & (middle[..., [0, 2]].max(axis=-1) < 60)
-    assert _share(middle, 0) > 0.6 and float(np.mean(chat)) > 0.05          # the game and its chat, whole
-    assert _not_black(frame[:200]) and _not_black(frame[-200:])
-
-
 # ---- one clip's layout (gaming/run.py) ------------------------------------------------
 
 
@@ -516,7 +326,7 @@ def test_the_video_is_searched_once_across_clips_spread_through_it(monkeypatch, 
     monkeypatch.setattr(detect, "find_cam", lambda *_a, **_k: detect.ClipFinding({"s": corner}, "s"))
     clips = [ClipCandidate(start=s, end=s + 90, score=80) for s in (900, 100, 500, 2000, 1500, 3000)]
     g = run_mod.prepare(tmp_path / "src.mp4", clips, CONFIG, tmp_path)
-    assert looked == [100, 900, 1500, 3000] and g == {"cam": list(CORNER), "by": "video"}
+    assert looked == [100, 900, 1500, 3000] and g == {"cam": list(CORNER), "by": "video", "panels": []}
 
 
 def test_a_webcam_saved_for_the_creator_skips_the_search(monkeypatch, tmp_path):
@@ -525,16 +335,16 @@ def test_a_webcam_saved_for_the_creator_skips_the_search(monkeypatch, tmp_path):
     monkeypatch.setattr(detect, "find_cam", lambda *_a, **_k: pytest.fail("searched"))
     saved = {"cam": [0.8, 0.0, 0.2, 0.3], "game_box": [0.0, 0.0, 0.8, 0.85], "cam_position": "bottom"}
     config = {**CONFIG, "clips": {"gaming_layout": saved}}
-    assert run_mod.prepare(tmp_path / "s.mp4", [], config, tmp_path) == {**saved, "by": "creator"}
+    assert run_mod.prepare(tmp_path / "s.mp4", [], config, tmp_path) == {**saved, "by": "creator", "panels": []}
 
 
 def test_a_split_set_up_before_processing_is_used_as_set_up(monkeypatch, tmp_path):
     from gaming import run as run_mod
 
     monkeypatch.setattr(detect, "find_cam", lambda *_a, **_k: pytest.fail("searched"))
-    given = {"cam": [0.0, 0.66, 0.25, 0.34], "game_fit": "fill", "by": "user"}
+    given = {"cam": [0.0, 0.66, 0.25, 0.34], "game_fit": "fill", "by": "user", "panels": [[0.2, 0.85, 0.8, 0.15]]}
     config = {**CONFIG, "clips": {"gaming_layout": given}}
-    assert run_mod.prepare(tmp_path / "s.mp4", [], config, tmp_path) == given
+    assert run_mod.prepare(tmp_path / "s.mp4", [], config, tmp_path) == given     # its panels too
 
 
 def test_find_it_automatically_still_keeps_the_rest_of_the_setup(monkeypatch, tmp_path):
@@ -558,7 +368,7 @@ def test_a_creator_layout_is_trusted_like_one_drawn_for_the_clip(run, monkeypatc
                    {"cam": [0.0, 0.66, 0.25, 0.34], "game_box": [0.17, 0.0, 0.83, 0.82], "by": "creator"}, CONFIG)
     p = plans[-1]
     assert p.kind == "split"
-    gx, gy, gw, gh = p.game
+    gx, gy, gw, gh = p.element("game").src
     assert gx >= 0.17 * 1920 - 2 and gy + gh <= 0.82 * 1080 + 2   # nothing below the drawn game area
 
 
@@ -677,3 +487,49 @@ def test_a_rerun_records_the_split_its_new_file_was_rendered_with(db, tmp_path):
     opts = json.loads(row["render_opts"])
     assert row["title"] == "Kept title"
     assert opts["gaming"] == new["gaming"] and opts["caption_style"] == {"font": "Arial"}
+
+
+# ---- the layout editor's starting webcam ------------------------------------------------
+
+
+def _suggest(tmp_path, monkeypatch, detections, framed=True):
+    """suggest_cam on five 960x540 frames, the person detector faked to see
+    `detections[i]` (pixel boxes) on frame i."""
+    import cv2
+
+    paths = []
+    for i in range(5):
+        f = np.random.default_rng(i).integers(40, 120, (540, 960, 3)).astype(np.uint8)   # the game, changing
+        if framed:
+            f[372:, :160] = 200                                  # a webcam overlay with its own edges
+            f[372:374, :162] = 255
+            f[372:, 160:162] = 255
+        path = tmp_path / f"f{i}.png"
+        cv2.imwrite(str(path), f)
+        paths.append(path)
+    calls = iter(detections)
+    monkeypatch.setattr(detect, "_get_model", lambda _name: None)
+    monkeypatch.setattr(detect, "_detect", lambda _m, _f, _c: [(*b, 0.9, None) for b in next(calls)])
+    return detect.suggest_cam(paths)
+
+
+def test_the_same_person_in_a_framed_webcam_across_the_video_is_suggested(tmp_path, monkeypatch):
+    got = _suggest(tmp_path, monkeypatch, [[(20, 390, 140, 540)]] * 5)
+    assert got is not None
+    x, y, w, _h = got
+    assert abs(y - 372 / 540) < 0.01 and abs((x + w) - 160 / 960) < 0.01    # its top and right borders
+
+
+def test_a_figure_with_no_frame_round_it_is_not_suggested(tmp_path, monkeypatch):
+    """Measured: VTuber avatars stand in one place too, but with no overlay
+    border round them. VTubers aren't supported, so nothing is suggested."""
+    assert _suggest(tmp_path, monkeypatch, [[(20, 390, 140, 540)]] * 5, framed=False) is None
+
+
+def test_someone_who_moves_between_frames_is_not_suggested(tmp_path, monkeypatch):
+    moving = [[(20 + 150 * i, 100, 140 + 150 * i, 300)] for i in range(5)]      # a game character
+    assert _suggest(tmp_path, monkeypatch, moving) is None
+
+
+def test_a_camera_filling_the_frame_is_not_suggested_as_a_webcam(tmp_path, monkeypatch):
+    assert _suggest(tmp_path, monkeypatch, [[(100, 0, 860, 540)]] * 5) is None

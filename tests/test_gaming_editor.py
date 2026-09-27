@@ -169,8 +169,62 @@ def test_frames_of_a_video_not_processed_yet(env):
     assert client.get("/sources/frame").status_code == 400
 
 
+def test_a_cached_frame_is_made_once_and_stays_in_its_folder(tmp_path):
+    from sources.preview_frames import made_once
+
+    made = []
+
+    def make(part):
+        made.append(part)
+        part.write_bytes(b"jpeg")
+
+    out = made_once(tmp_path, "f.jpg", make)
+    assert out == tmp_path / "f.jpg" and out.read_bytes() == b"jpeg"
+    assert made_once(tmp_path, "f.jpg", make) == out and len(made) == 1
+    for name in ("../f.jpg", "a/../../f.jpg", str(tmp_path.parent / "f.jpg")):
+        with pytest.raises(ValueError):
+            made_once(tmp_path, name, make)
+
+
 def test_only_links_to_the_platforms_it_clips_from_are_opened(env):
     client = env[0]
     for url in ("http://127.0.0.1:8765/health", "file:///C:/Windows/win.ini", "https://example.com/v.mp4"):
         r = client.get("/sources/frame", params={"url": url})
         assert r.status_code == 422, url
+
+
+def test_the_ipv4_relay_forwards_only_what_it_was_given():
+    """YouTube's media URLs are read through a loopback relay forced to IPv4
+    (sources/preview_frames.py): FFmpeg tries IPv6 first and hung on a broken
+    route. Only URLs the module registered are served."""
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    pytest.importorskip("requests")
+    from sources import preview_frames
+
+    class Origin(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = f"range={self.headers.get('Range')}".encode()
+            self.send_response(206)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_a):
+            pass
+
+    origin = ThreadingHTTPServer(("127.0.0.1", 0), Origin)
+    threading.Thread(target=origin.serve_forever, daemon=True).start()
+    try:
+        relayed = preview_frames._relayed(f"http://127.0.0.1:{origin.server_address[1]}/v", {})
+        req = urllib.request.Request(relayed, headers={"Range": "bytes=0-99"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            assert r.status == 206 and r.read() == b"range=bytes=0-99"
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(relayed.rsplit("/", 1)[0] + "/not-a-token", timeout=10)
+        assert e.value.code == 404
+    finally:
+        origin.shutdown()

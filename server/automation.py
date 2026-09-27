@@ -185,6 +185,8 @@ def job_payload(watch, url: str, origin: str = "watch") -> dict:
         # both anyway (made by hand, or by an older version) keeps the other
         # mode rather than being refused on every video it finds.
         payload.pop("gaming")
+    if payload.get("gaming_scoring") and any(payload.get(k) for k in ("podcast", "longform")):
+        payload.pop("gaming_scoring")  # the same, for gaming stream scoring
     return payload
 
 

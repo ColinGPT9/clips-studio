@@ -109,7 +109,14 @@ export default function ClipEditor({
             {ch} <span className="text-ink font-semibold">{clip.scores[ch] ?? '–'}</span>
           </span>
         ))}
+        {clip.scores.game != null && (
+          <span className="bg-raised px-2 py-1 rounded-md text-muted" title="Scored as a gaming stream">
+            game <span className="text-ink font-semibold">{clip.scores.game}</span>
+            {clip.scores.game_bonus ? <span className="text-accent"> +{clip.scores.game_bonus}</span> : null}
+          </span>
+        )}
       </div>
+      {clip.scores.game_why && <p className="text-xs text-muted -mt-2">{clip.scores.game_why}</p>}
 
       <div className="space-y-3">
         <div>

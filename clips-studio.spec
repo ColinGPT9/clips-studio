@@ -31,8 +31,12 @@ hiddenimports = []
 #   piper        — espeak-ng phoneme data (19 MB) resolved from its own
 #                  package directory at runtime, plus the espeak bridge
 #   onnxruntime  — native inference libs Piper loads by name
+#   rapidocr_onnxruntime — its OCR models (15 MB) and config.yaml, read from
+#                  its own package directory (on-screen text in a gaming stream)
+#   shapely / pyclipper — native libs RapidOCR's text detector needs
 for package in ("yt_dlp", "ultralytics", "faster_whisper", "ctranslate2",
-                "curl_cffi", "piper", "onnxruntime"):
+                "curl_cffi", "piper", "onnxruntime", "rapidocr_onnxruntime",
+                "shapely", "pyclipper"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
     datas += pkg_datas
     binaries += pkg_binaries
@@ -60,6 +64,20 @@ hiddenimports += [
     "google_auth_oauthlib",
     "googleapiclient",
     "googleapiclient.discovery",
+    # Gaming / Reaction: imported only when the switch is on (core/pipeline.py).
+    "gaming.run",
+    "gaming.detect",
+    "gaming.layout",
+    "gaming.framing",
+    "gaming.compose",
+    "gaming.panels",
+    # Scoring a gaming stream (imported only when it is asked for).
+    "analysis.gaming",
+    "analysis.chat_moments",
+    "analysis.game_audio",
+    "analysis.panns",
+    "analysis.game_text",
+    "sources.preview_frames",
 ]
 
 # Config the app reads from disk at runtime. Prompts especially: they are
@@ -68,6 +86,11 @@ hiddenimports += [
 datas += [
     (str(ROOT / "config" / "settings.yaml"), "config"),
     (str(ROOT / "config" / "prompts"), "config/prompts"),
+    # What a gaming highlight looks like per kind of game, and chat's emote
+    # classes (analysis/gaming.py), for scoring a gaming stream.
+    (str(ROOT / "config" / "gaming.yaml"), "config"),
+    # The sound tagger's 527 class names, in its output order (analysis/panns.py).
+    (str(ROOT / "config" / "audioset_labels.txt"), "config"),
     # The three-second clip a voice model is checked with before it is used
     # for online transcription (transcription/cloud.check_model).
     (str(ROOT / "transcription" / "assets"), "transcription/assets"),
@@ -84,6 +107,9 @@ datas += [
     # and video/mascot_art.py is imported rather than scripts/, which is not
     # packaged at all.
     (str(ROOT / "assets" / "outro"), "assets/outro"),
+    # Gaming / Reaction's layouts and platform safe zones, read beside
+    # gaming/framing.py at runtime (the editor has its own checked copy).
+    (str(ROOT / "gaming" / "layouts.json"), "gaming"),
 ]
 
 # OpenCV Haar cascades. cv2 is a hidden import above, which ships the MODULE
@@ -124,6 +150,13 @@ for weights in ("yolov8n-pose.pt", "yolov8n.pt"):
 _asd = ROOT / "models" / "pretrain_TalkSet.model"
 if _asd.exists():
     datas += [(str(_asd), ".")]
+
+# Game-sound weights (PANNs MobileNetV1, 24 MB), fetched by
+# scripts/fetch_panns.py. Without them a gaming stream is scored on chat and
+# the streamer's voice only.
+_panns = ROOT / "models" / "panns_mobilenetv1.pth"
+if _panns.exists():
+    datas += [(str(_panns), ".")]
 
 # FFmpeg, fetched by scripts/fetch_ffmpeg.py. core.binaries looks for an
 # ffmpeg/ folder next to the executable.

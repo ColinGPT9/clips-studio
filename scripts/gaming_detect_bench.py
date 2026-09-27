@@ -100,29 +100,23 @@ def measure(args):
 
 
 def preview(frame, p: layout.Plan):
-    """The 1080x1920 result, drawn with OpenCV (the real render is FFmpeg)."""
+    """The 1080x1920 result, roughly, drawn with OpenCV (the real render is
+    FFmpeg; blur fills are left dark here)."""
     out = np.zeros((layout.OUT_H, layout.OUT_W, 3), dtype=np.uint8)
-
-    def fit(box, w, h):
-        x, y, bw, bh = box
-        region = frame[y:y + bh, x:x + bw]
-        want = w / h
-        if bw / bh > want:
-            nw = int(bh * want)
-            region = region[:, (bw - nw) // 2:(bw - nw) // 2 + nw]
+    for e in p.elements:
+        sx, sy, sw, sh = e.src
+        dx, dy, dw, dh = e.dest
+        region = frame[sy:sy + sh, sx:sx + sw]
+        if e.fit == "contain":
+            scale = min(dw / sw, dh / sh)
+            fw, fh = max(2, int(sw * scale)), max(2, int(sh * scale))
+            top = {"top": 0, "bottom": dh - fh}.get(e.anchor, (dh - fh) // 2)
+            out[dy + top:dy + top + fh, dx + (dw - fw) // 2:dx + (dw - fw) // 2 + fw] = cv2.resize(region, (fw, fh))
         else:
-            nh = int(bw / want)
-            region = region[(bh - nh) // 2:(bh - nh) // 2 + nh]
-        return cv2.resize(region, (w, h))
-
-    if p.kind == "fill":
-        out[:] = fit(p.game, layout.OUT_W, layout.OUT_H)
-    else:
-        cam = fit(p.cam, layout.OUT_W, layout.BAND_H)
-        game = fit(p.game, layout.OUT_W, layout.BAND_H)
-        top, bottom = (cam, game) if p.cam_position == "top" else (game, cam)
-        out[:layout.BAND_H] = top
-        out[layout.BAND_H:] = bottom
+            tile = cv2.resize(region, (dw, dh))
+            if e.shift:
+                tile = np.vstack([np.zeros((e.shift, dw, 3), dtype=np.uint8), tile[:dh - e.shift]])
+            out[dy:dy + dh, dx:dx + dw] = tile
     return out
 
 
@@ -138,7 +132,7 @@ def annotate(frame, finding: detect.ClipFinding, cam, p: layout.Plan, kind: str)
     if cam:
         x, y, bw, bh = cam
         cv2.rectangle(img, (int(x * w), int(y * h)), (int((x + bw) * w), int((y + bh) * h)), (0, 255, 0), 5)
-    gx, gy, gw, gh = p.game
+    gx, gy, gw, gh = p.element("game").src
     cv2.rectangle(img, (gx, gy), (gx + gw - 1, gy + gh - 1), (255, 128, 0), 4)
     cv2.putText(img, kind, (20, h - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (255, 255, 255), 4)
     scale = layout.OUT_H / h / 2
@@ -180,7 +174,7 @@ def decide(args):
                 kind, box = "standard", None
             else:
                 kind, box = "fill", None
-            p = layout.plan(d["w"] or 1920, d["h"] or 1080, box)
+            p = layout.plan(d["w"] or 1920, d["h"] or 1080, {"preset": "split", "cam": list(box) if box else None})
             results[d["key"]] = {
                 "video": video, "kind": kind, "video_cam": [round(v, 3) for v in cam] if cam else None,
                 "streamer": finding.streamer, "reason": finding.reason,

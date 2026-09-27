@@ -133,3 +133,40 @@ def test_reattach_does_not_raise_when_a_row_cannot_be_restored(db):
 
     # 999 does not exist, so the foreign key cannot be satisfied.
     db.reattach_clip_rows(999, detached)
+
+
+def test_a_rerender_that_fails_leaves_the_clip_where_it_was(db, tmp_path, monkeypatch):
+    """The row used to be deleted BEFORE the render and put back after it, so
+    a render that failed (or an app closed halfway through one) lost the clip
+    and its translation for good. The job re-queued at the next start then
+    failed with "No clip with id ..." on a clip the person had only edited."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from types import SimpleNamespace
+
+    from core import pipeline
+    from server.jobs import Worker
+
+    _video(db)
+    clip_id = _clip(db)
+    db.conn.execute(
+        "INSERT INTO clip_translations (clip_id, language, updated_at) VALUES (?, 'es', '2026-01-01')",
+        (clip_id,),
+    )
+    db.conn.commit()
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "v1.mp4").write_bytes(b"source")
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / "v1.json").write_text('{"segments": []}', encoding="utf-8")
+
+    def broken(*_a, **_k):
+        raise RuntimeError("FFmpeg failed")
+
+    monkeypatch.setattr(pipeline, "_render_files", broken)
+    job = SimpleNamespace(config={"paths": {"data_dir": str(tmp_path)}})
+    with pytest.raises(RuntimeError):
+        Worker._rerender_clip(job, db, {"clip_id": clip_id, "start": 2.0})
+
+    assert db.get_clip(clip_id) is not None
+    assert db.conn.execute("SELECT COUNT(*) FROM clip_translations WHERE clip_id = ?",
+                           (clip_id,)).fetchone()[0] == 1

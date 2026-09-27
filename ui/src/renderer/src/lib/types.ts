@@ -33,6 +33,11 @@ export interface SubScores {
   visual?: number
   reaction?: number
   engagement?: number
+  /** The gaming profile: how strongly chat, the streamer and the game mark an
+   *  in-game moment here, what marked it, and the bonus when they agree. */
+  game?: number
+  game_why?: string
+  game_bonus?: number
   source?: string
   rerank_position?: number
 }
@@ -193,17 +198,38 @@ export type FrameBox = [number, number, number, number]
 /** A clip's Gaming / Reaction settings: the streamer's webcam in one half,
  *  the game (or the video being reacted to) in the other. */
 export interface GamingSettings {
+  /** The layout (gaming/layouts.json): split, basecam, half, fullscreen,
+   *  blurred, small_cam, circle_cam, game_ui, mosaic, dual_cam, duo_split. */
+  preset?: string
+  /** Which goes on top in a stacked layout. */
+  order?: 'cam_top' | 'game_top'
+  /** The webcam band's share of the height, within the layout's range. */
+  divider?: number
+  /** The platform whose UI the streamer's face is kept clear of. */
+  safe?: string
+  /** A piece of the game's UI (Game UI, Mosaic), drawn by hand. */
+  ui_box?: FrameBox | null
+  /** A second webcam (Dual facecam, Duo split), drawn by hand. */
+  cam2?: FrameBox | null
+  /** Written by the render: the layout it could draw, and the face check. */
+  used_preset?: string
+  face?: { top: boolean; bottom: boolean }
   /** The webcam; null = no webcam (the game fills the screen). */
   cam?: FrameBox | null
   /** Who decided the webcam: drawn for this clip, remembered for the creator,
    *  found across the video, or to be found in this clip alone. */
   by?: 'user' | 'creator' | 'video' | 'clip'
+  /** From before layouts: 'bottom' was the game on top. */
   cam_position?: 'top' | 'bottom'
   game_align?: 'left' | 'center' | 'right'
   /** The game drawn by hand; absent = found beside the webcam. */
   game_box?: FrameBox | null
-  /** 'fit' (default): the game whole, on a blurred copy of itself; 'fill': zoomed to fill. */
+  /** 'fit': the game whole, right against the webcam, blur above and below the two; 'fill': zoomed to fill. */
   game_fit?: 'fit' | 'fill'
+  /** The stream's solid panels (a black chat bar, a splits timer), kept out of the game. */
+  panels?: FrameBox[]
+  /** Where the facecams and the Game UI were put on the Short: fractions of its width and height. */
+  places?: Partial<Record<'cam' | 'cam2' | 'ui', FrameBox>>
   /** Written by the render: what the clip actually got. */
   layout?: 'split' | 'fill'
   used_cam?: FrameBox | null
@@ -255,6 +281,10 @@ export interface JobOptions {
   /** Gaming / Reaction: the streamer's webcam over the game or the video being
    *  reacted to (gaming/). Not combined with vertical_live, podcast or longform. */
   gaming?: boolean
+  /** Score as a gaming stream (analysis/gaming.py): in-game moments and the
+   *  reactions to them count, even with little said. Offered with Vertical
+   *  Live; Gaming / Reaction always scores this way. */
+  gaming_scoring?: boolean
   /** The split set up on the video's own frames before processing. */
   gaming_layout?: GamingSettings
   /** ...and kept for this creator's next videos. */

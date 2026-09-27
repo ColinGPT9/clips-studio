@@ -8,12 +8,29 @@ A clip's settings travel in render_opts["gaming"]:
                     "video"   found across the whole video (prepare)
                     "clip"    to be found in this clip alone (the editor's
                               Split layout on a clip made without the switch)
-    cam_position  "top" | "bottom": which half the webcam goes in
-    game_align    "left" | "center" | "right": where the fixed game crop sits
+    preset        the layout (gaming/layouts.json): split, basecam, half,
+                  fullscreen, blurred, small_cam, circle_cam, game_ui, mosaic,
+                  dual_cam, duo_split. Absent (clips from before layouts):
+                  half, with cam_position giving the order.
+    order         "cam_top" | "game_top": which goes on top in a stacked layout
+    divider       the webcam band's share of the height (each layout's range)
+    safe          the platform whose UI the face is kept clear of: tiktok,
+                  reels, shorts, all, none (gaming/framing.py)
+    game_align    "left" | "center" | "right": where a zoomed game crop sits
     game_box      normalized [x, y, w, h] of the game (or the video being
                   reacted to) drawn by the user, replacing the automatic region
-    game_fit      "fit" (default): the game whole, on a blurred copy of itself;
-                  "fill": zoomed to fill its space
+    game_fit      "fit": the game whole, right against the webcam, with blur
+                  above the two (clear of the platform's top bar) and below;
+                  "fill": zoomed to fill its region
+    ui_box        normalized box of a piece of the game's UI (Game UI, Mosaic)
+    cam2          a second webcam (Dual facecam, Duo split), drawn by the user
+    panels        normalized boxes of the stream's solid panels (a black chat
+                  bar, a splits timer) that the game crop keeps out
+                  (gaming/panels.py). Absent: looked for when the clip renders
+    places        where the user put layers on the Short: {"cam", "cam2", "ui"}
+                  -> normalized [x, y, w, h] of the canvas (a facecam keeps
+                  its shape; two facecams are always the same size)
+    cam_position  from before layouts: "bottom" meant order game_top
 
 prepare(): once per video, before its clips render. The layout remembered for
     the creator, else the streamer's webcam found from several of the video's
@@ -36,12 +53,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from core.paths import discard
-from gaming import compose, detect, layout
+from gaming import compose, detect, framing, layout, panels
 
 PROBE_CLIPS = 4       # clips of the video looked at to find its webcam
 PROBE_SECONDS = 40.0  # of each, from its start
 TRUSTED = ("user", "creator")     # decided by a person: no detection second-guesses it
-LAYOUT_KEYS = ("cam", "cam_position", "game_align", "game_box", "game_fit")
+LAYOUT_KEYS = ("cam", "cam_position", "game_align", "game_box", "game_fit", "preset", "order", "divider",
+               "safe", "ui_box", "cam2", "panels", "places")
 
 
 def _spread(candidates: list, n: int) -> list:
@@ -62,12 +80,25 @@ def saved_layout(layout_: dict | None) -> dict:
     return {k: layout_[k] for k in LAYOUT_KEYS if k in layout_}
 
 
+def _panels(video: Path) -> list:
+    """The video's solid panels; none when it can't be read."""
+    try:
+        return panels.panels_in_video(video)
+    except Exception as e:  # a crop without them is still a clip
+        print(f"      Gaming: couldn't look for chat panels ({e})")
+        return []
+
+
 def prepare(source: Path, candidates: list, config: dict, work_dir: Path) -> dict:
     """This video's gaming settings, which every clip starts from."""
     from video.cutter import cut_clip
 
     given = config["clips"].get("gaming_layout")
     saved = saved_layout(given)
+    if "panels" not in saved:
+        saved["panels"] = _panels(source)
+        if saved["panels"]:
+            print(f"      Gaming: {len(saved['panels'])} solid panel(s) (chat, splits) kept out of the game")
     if "cam" in saved:
         by = "user" if given.get("by") == "user" else "creator"
         print("      Gaming: using the split " + ("set up for this video" if by == "user"
@@ -124,9 +155,25 @@ def render(intermediate: Path, output: Path, g: dict, config: dict, ass_path: Pa
                 use = list(face.box)
 
     src_w, src_h = probe_size(intermediate)
-    game_box = g.get("game_box")
-    p = layout.plan(src_w, src_h, tuple(use) if use else None,
-                    cam_position=g.get("cam_position", "top"), game_align=g.get("game_align", "center"),
-                    game_box=tuple(game_box) if game_box else None, game_fit=g.get("game_fit", "fit"))
+    if "panels" not in g:
+        g = {**g, "panels": _panels(intermediate)}
+    settings = {**g, "cam": list(use) if use else None}
+    # The streamer's head in each webcam, so the crop keeps it on screen and
+    # clear of the platform's UI (gaming/framing.py).
+    detector = config["tracking"]["detector"]
+    heads = {}
+    for role in ("cam", "cam2"):
+        if settings.get(role):
+            head = detect.head_in_box(intermediate, tuple(settings[role]), detector)
+            if head is not None:
+                heads[role] = head
+    p = layout.plan(src_w, src_h, settings, heads)
     compose.render(intermediate, output, p, ass_path=ass_path, vf_extra=vf_extra, normalize=normalize)
-    return {**g, "layout": p.kind, "used_cam": [round(v, 4) for v in use] if use else None}
+    face = None
+    cam_el = p.element("cam")
+    if cam_el is not None and "cam" in heads:
+        face = framing.face_clear(heads["cam"], cam_el.src, cam_el.dest, cam_el.shift,
+                                  framing.safe_zone(p.safe))
+    return {**g, "layout": p.kind, "used_preset": p.preset,
+            "used_cam": [round(v, 4) for v in use] if use else None,
+            **({"face": face} if face is not None else {})}

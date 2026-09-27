@@ -20,7 +20,7 @@ from core.state import StateDB
 MIN_SIGNALS = 8      # positive feedback events required before any bias
 MAX_SHIFT = 0.20     # a weight may move at most this fraction of itself
 _ACTION_WEIGHT = {"exported": 2.0, "captions_edited": 1.0, "timestamps_adjusted": 1.0}
-_CHANNELS = ("text", "audio", "visual", "reaction", "engagement")
+_CHANNELS = ("text", "audio", "visual", "reaction", "engagement", "game")  # game: the gaming profile
 
 
 def preferences(db: StateDB, creator_id: int) -> dict | None:

@@ -57,7 +57,7 @@ const SCORE_PROMPT = `You are an expert short-form video editor. You find the mo
 Below is a transcript with timestamps in seconds, formatted as:
 [start - end] spoken text
 
-You may also see an AUDIO/VISUAL EVENTS list from automated signal analysis (loud reactions, laughter, scene cuts, high motion). A mild-sounding transcript line that coincides with a big audio spike is often a GREAT clip — weigh the events seriously.
+You may also see an AUDIO/VISUAL EVENTS list from automated signal analysis (loud reactions, laughter, scene cuts, high motion). A mild-sounding transcript line that coincides with a big audio spike is often a GREAT clip — weigh the events seriously.{mode_guidance}
 
 Find the best self-contained clip moments. Judge each candidate against this virality framework:
 - Hook moments and strong opening lines
@@ -159,7 +159,8 @@ function buildPrompt(chunk: Segment[], events: AudioEvent[]): string {
 		.join("\n");
 
 	return (
-		SCORE_PROMPT.replace("{min_duration}", String(MIN_DURATION))
+		SCORE_PROMPT.replace("{mode_guidance}", "")
+			.replace("{min_duration}", String(MIN_DURATION))
 			.replace("{max_duration}", String(MAX_DURATION))
 			// Only the events inside this chunk's window, exactly as
 			// `find_highlights` does it — an event list spanning the whole

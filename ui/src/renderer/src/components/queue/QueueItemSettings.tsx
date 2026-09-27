@@ -41,6 +41,7 @@ export default function QueueItemSettings({
   const [longClips, setLongClips] = useState(Boolean(s.long_clips))
   const [podcast, setPodcast] = useState(Boolean(s.podcast))
   const [verticalLive, setVerticalLive] = useState(Boolean(s.vertical_live))
+  const [gamingScoring, setGamingScoring] = useState(Boolean(s.gaming_scoring))
   const [gaming, setGaming] = useState(Boolean(s.gaming))
   const [longform, setLongform] = useState(Boolean(s.longform))
   const [longformMode, setLongformMode] = useState(s.longform?.mode ?? 'short_clips')
@@ -71,6 +72,8 @@ export default function QueueItemSettings({
       else clear.push('podcast')
       if (verticalLive) patch.vertical_live = true
       else clear.push('vertical_live')
+      if (verticalLive && gamingScoring) patch.gaming_scoring = true
+      else clear.push('gaming_scoring')
       if (gaming) patch.gaming = true
       else clear.push('gaming', 'gaming_layout', 'gaming_remember')
       if (longform) patch.longform = { mode: longformMode }
@@ -102,6 +105,7 @@ export default function QueueItemSettings({
     longClips,
     podcast,
     verticalLive,
+    gamingScoring,
     gaming,
     longform,
     longformMode,
@@ -178,6 +182,7 @@ export default function QueueItemSettings({
           },
           'A livestream that was already vertical when it was streamed: keeps its own 9:16 layout, no face tracking or reframing. For a watched channel, videos with no vertical version are skipped.'
         )}
+        {verticalLive && toggle('Gaming stream', '(game moments)', gamingScoring, setGamingScoring, 'Score this as a gaming stream: in-game moments (a kill streak, a boss going down, a goal) and the reactions to them count, from chat and your voice, even when you say little.')}
         {toggle(
           'Podcast',
           '(multi-cam)',

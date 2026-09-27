@@ -26,6 +26,11 @@ faster-whisper>=1.2.1,<2
 ultralytics>=8.4.116,<9
 # <5 matters. opencv-python 5.0 is out and pip takes it without this.
 opencv-python>=4.14.0.94,<5
+# On-screen text in a gaming stream (analysis/game_text.py): PaddleOCR's
+# models on the onnxruntime Piper already brings. 1.4 carries its models in
+# the wheel; the later "rapidocr" package downloads them at first use, which
+# an installed copy must never do.
+rapidocr-onnxruntime>=1.4.4,<1.5
 
 # ---- API server ------------------------------------------------------------
 fastapi>=0.141.1,<1

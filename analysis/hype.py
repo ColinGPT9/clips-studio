@@ -58,29 +58,37 @@ _RETENTION_EDGE_WEIGHT = 0.925
 def audience_curve(url: str, video_id: str, duration: float) -> np.ndarray | None:
     """Per-second 0..1 hype curve for this video, or None when the platform
     has no fetchable audience data. Never raises."""
+    return audience_signals(url, video_id, duration)[0]
+
+
+def audience_signals(url: str, video_id: str, duration: float) -> tuple[np.ndarray | None, list]:
+    """(the hype curve, the chat messages it came from). The messages are
+    [(offset seconds, author, text)] when the curve came from chat replay, for
+    the gaming profile's reading of what chat said (analysis/chat_moments.py);
+    empty for the other sources. Never raises."""
     try:
         if video_id.startswith("tw_"):
-            times = _twitch_chat(video_id[3:], duration)
-            return _chatters_to_curve(times, duration)
+            messages = _twitch_chat(video_id[3:], duration)
+            return _chatters_to_curve(messages, duration), messages
         if video_id.startswith("kick_"):
-            return None  # Kick retains no chat after the stream ends
+            return None, []  # Kick retains no chat after the stream ends
 
         # YouTube: private organic retention is the best signal when the user
         # has already authorized it. No token / wrong channel / no data is a
         # normal condition, so each case falls through to the public sources.
         organic = _youtube_organic_retention(video_id, duration)
         if organic is not None:
-            return organic
+            return organic, []
 
         heat = _youtube_heatmap(url, duration)
         if heat is not None:
-            return heat
+            return heat, []
 
-        times = _youtube_live_chat(url, video_id, duration)
-        return _chatters_to_curve(times, duration)
+        messages = _youtube_live_chat(url, video_id, duration)
+        return _chatters_to_curve(messages, duration), messages
     except Exception as e:
         print(f"      (audience signal unavailable: {e})")
-        return None
+        return None, []
 
 
 # ---- Twitch ----------------------------------------------------------------
@@ -99,22 +107,23 @@ _COMMENTS_QUERY = """
 query($videoID: ID!, $offset: Int) {
   video(id: $videoID) {
     comments(contentOffsetSeconds: $offset) {
-      edges { node { contentOffsetSeconds commenter { id } } }
+      edges { node { contentOffsetSeconds commenter { id } message { fragments { text } } } }
       pageInfo { hasNextPage }
     }
   }
 }"""
 
 
-def _twitch_chat(vod_id: str, duration: float) -> list[tuple[float, str]]:
-    """(offset_seconds, chatter_id) for the whole VOD's chat replay.
+def _twitch_chat(vod_id: str, duration: float) -> list[tuple[float, str, str]]:
+    """(offset_seconds, chatter_id, text) for the whole VOD's chat replay.
+    The text is the message's fragments joined, emotes by their names.
     Paged by contentOffsetSeconds, NOT cursors: cursor pagination trips
     Twitch's client-integrity check (2026), while offset queries — 'give me
     the chat page at second X' — pass. Each page spans until its last
     message; stepping to last+1 walks the whole VOD. Overlaps are deduped.
     """
     client_id = _scrape_client_id()
-    seen: set[tuple[float, str]] = set()
+    seen: set[tuple[float, str, str]] = set()
     offset = 0.0
     deadline = time.monotonic() + _TIME_BUDGET_S
     for _ in range(_MAX_PAGES):
@@ -145,7 +154,9 @@ def _twitch_chat(vod_id: str, duration: float) -> list[tuple[float, str]]:
             last = max(last, float(node["contentOffsetSeconds"]))
             # Skip deleted/anonymous accounts — also drops most bot noise.
             if commenter.get("id"):
-                seen.add((float(node["contentOffsetSeconds"]), commenter["id"]))
+                fragments = ((node.get("message") or {}).get("fragments") or [])
+                text = "".join(str(f.get("text") or "") for f in fragments)
+                seen.add((float(node["contentOffsetSeconds"]), commenter["id"], text))
         if last >= duration or last < offset + 1:  # done, or no forward progress
             break
         offset = last + 1
@@ -387,7 +398,7 @@ def _youtube_heatmap(url: str, duration: float) -> np.ndarray | None:
     return curve / peak
 
 
-def _youtube_live_chat(url: str, video_id: str, duration: float) -> list[tuple[float, str]]:
+def _youtube_live_chat(url: str, video_id: str, duration: float) -> list[tuple[float, str, str]]:
     """Chat replay of a finished YouTube live stream via yt-dlp's live_chat
     subtitle track. Regular uploads have no such track -> empty."""
     import tempfile
@@ -409,7 +420,7 @@ def _youtube_live_chat(url: str, video_id: str, duration: float) -> list[tuple[f
         files = list(Path(td).glob("*.live_chat.json"))
         if not files:
             return []
-        out: list[tuple[float, str]] = []
+        out: list[tuple[float, str, str]] = []
         with open(files[0], encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
@@ -422,16 +433,31 @@ def _youtube_live_chat(url: str, video_id: str, duration: float) -> list[tuple[f
                         continue  # membership/superchat/system events skipped
                     author = renderer.get("authorExternalChannelId", "")
                     if author:
-                        out.append((offset, author))
+                        out.append((offset, author, _yt_text(renderer)))
                 except (KeyError, IndexError, ValueError, json.JSONDecodeError):
                     continue
         return out
 
 
+def _yt_text(renderer: dict) -> str:
+    """A YouTube chat message as text: its text runs, and emoji as the emoji
+    itself (standard ones) or their first :shortcut: (channel emoji)."""
+    parts = []
+    for run in (renderer.get("message") or {}).get("runs") or []:
+        if "text" in run:
+            parts.append(str(run["text"]))
+        elif "emoji" in run:
+            emoji = run["emoji"] or {}
+            eid = str(emoji.get("emojiId") or "")
+            shortcuts = emoji.get("shortcuts") or []
+            parts.append(eid if len(eid) <= 4 else (shortcuts[0] if shortcuts else ""))
+    return "".join(parts)
+
+
 # ---- curve ------------------------------------------------------------------
 
 
-def _chatters_to_curve(times: list[tuple[float, str]], duration: float) -> np.ndarray | None:
+def _chatters_to_curve(times: list[tuple], duration: float) -> np.ndarray | None:
     """UNIQUE chatters per BIN_SECONDS window -> per-second percentile curve.
     Unique authors (not message counts) so gifted-sub message storms and
     emote spam from a handful of accounts can't fabricate a hype moment.
@@ -439,7 +465,7 @@ def _chatters_to_curve(times: list[tuple[float, str]], duration: float) -> np.nd
     """
     if not times or duration <= BIN_SECONDS:
         return None
-    covered = max(t for t, _ in times)
+    covered = max(m[0] for m in times)
     if covered < duration * 0.5:
         # Chat replay only covers part of the VOD (partial fetch / muted
         # sections) — a half-blind signal would falsely zero the uncovered
@@ -448,7 +474,8 @@ def _chatters_to_curve(times: list[tuple[float, str]], duration: float) -> np.nd
         return None
     n_bins = int(duration // BIN_SECONDS) + 1
     bins: list[set] = [set() for _ in range(n_bins)]
-    for t, who in times:
+    for m in times:
+        t, who = m[0], m[1]
         b = int(t // BIN_SECONDS)
         if 0 <= b < n_bins:
             bins[b].add(who)

@@ -12,23 +12,67 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
-- **Gaming / Reaction, for game streams and reaction videos.** The streamer's webcam in
-  one half of the Short, the game (or the video they're reacting to) in the other; with no
-  webcam, the game on its own. The game is shown whole on a blurred copy of itself rather
-  than black bars, or zoomed to fill. Tick **Gaming / Reaction** and **Set up the split**
-  opens on five frames of that video before anything is processed: draw the webcam and the
-  game area (or let Clips Kitty find the webcam), put the camera on top or at the bottom,
-  and see the 9:16 result live. Remembered per creator if you want.
-  - Found automatically, the streamer is whoever TalkNet says is talking in sync with the
-    audio, across several clips of the video: never the biggest face, so game characters,
-    portraits and the people in a watched video aren't taken for the streamer. Tested on
-    13 streams including World of Warcraft, Zelda, GTA V and League of Legends
-    (docs/GAMING.md has each result).
+- **Gaming / Reaction, for game streams and reaction videos.** The streamer's webcam and
+  the game (or the video they're reacting to) laid out together, in one of eleven layouts
+  like StreamLadder's: Split, Basecam (game on top), Half, Fullscreen, Blurred, Small or
+  Circle facecam, Game UI, Mosaic, Dual facecam and Duo split. With no webcam, the game on
+  its own. Tick **Gaming / Reaction** and **Choose a layout** opens on the video's own
+  frames before anything is processed: pick a layout from cards that show this video in
+  each, drag and resize the webcam and game boxes, choose Camera or Game on top, drag the
+  line between them, and see the 9:16 result live. Remembered per creator if you want.
+  - Faces stay clear of TikTok's, Reels' and Shorts' buttons and captions. The webcam is
+    placed from where the streamer's head is, and the preview shows the chosen platform's
+    UI with "✓ Face clear", or what to change. A webcam with no room above the head is
+    moved down on a blur, never cut off at the top.
+  - A whole game sits right against the webcam: never a band of blur between the
+    streamer and the game. The blur goes above the two (clear of the platform's top bar)
+    and below them. No black bars.
+  - A stream's solid panels (a black chat bar under the game, a speedrun's splits) are
+    found and kept out of the game, so the Short never ends in a useless bar. Chat drawn
+    see-through over the gameplay stays: it's part of the stream.
+  - The editor opens with the webcam and game boxes already on the frame to drag, as in
+    StreamLadder: **Draw it** is the default, and the webcam box moves onto the webcam
+    when Clips Kitty finds one.
+  - On the preview, as in StreamLadder: drag the small or round facecam to move it and any
+    of its eight handles to resize it, and the same for the Game UI layer. Dual facecam is
+    two round webcams, always the same size. The Game UI is cut to its space, with no blur
+    round it.
+  - Parts snap into line like a design editor: to the middle of the Short, its edges, the
+    platform's safe lines and each other, with a guide line showing it (Alt to place freely).
+    **Grid** shows thirds, the middle and the safe box. The boxes on the video frame snap
+    the same way, to each other and to the chat bar's edge.
+  - The layout editor has fullscreen (like a video player, Esc to leave, remembered) and
+    minimise to a bar in the corner.
+  - The preview draws TikTok's, Instagram Reels' or YouTube Shorts' own layout over the
+    Short, measured from each app's feed, with icons in each app's style. The safe areas
+    the face check uses come from the same measurements.
+  - When the editor opens, a webcam is suggested: the same person in the same framed spot
+    across the video. Found automatically when processing, the streamer is whoever TalkNet
+    says is talking in sync with the audio, across several clips of the video: never the
+    biggest face, so game characters, portraits and the people in a watched video aren't
+    taken for the streamer. Tested on 13 streams including World of Warcraft, Zelda, GTA V
+    and League of Legends (docs/GAMING.md has each result).
   - The webcam box stops just inside the webcam's own border: no chat or panel beside it.
-  - The clip editor's Effects tab has the same controls (Layout → **Split**) to fix one clip.
+  - The clip editor's Effects tab has the same editor (Layout → **Gaming / Reaction** →
+    **Change layout…**) to change one clip.
   - In gaming mode the "person on screen" part of the score is left neutral, so top-down
     games like League and Dota are no longer scored as having nobody in them.
   - For streamers on a real camera; VTubers aren't supported.
+- **Gaming streams are scored as gaming streams.** A kill streak, a boss going down or
+  a goal counts, even from a streamer who says little. Gaming / Reaction scores this
+  way, and **Gaming stream** (beside Vertical Live) does it for a live that was already
+  vertical. The AI is told which game it is (Twitch says per part of the stream; Kick
+  and YouTube give the category, title or tags) and what a highlight is in that kind
+  of game; chat's reactions mark moments and what kind (hype, laughing, surprised,
+  scared, a fail, "clip it", in any language and with a channel's own emotes); a
+  sudden shout or laugh from the streamer marks them too, and so does the game's own
+  sound (gunfire and explosions in a fight, a crowd or a goal explosion in a sports
+  game, a crash in a race, a scream in a horror game), heard by a small bundled sound
+  model even when chat and the streamer are quiet. The screen is read too: a banner
+  (ELIMINATED, VICTORY ROYALE, "X A MARQUÉ", YOU DIED) names the moment, and a menu,
+  queue or settings page that chat reacted to is marked down. Each moment becomes a
+  15-35 s candidate starting just before it, and the clip's score breakdown shows what
+  marked it. Standard scoring is unchanged.
 - **Vertical Live, for streams that were vertical all along.** A YouTube vertical live,
   the vertical feed of a Twitch Dual Format or Streamlabs Dual Output stream, or a
   downloaded Instagram or TikTok live is already a finished 9:16 video. Tick **Vertical
@@ -190,6 +234,16 @@ were often broken in a way that only showed up on somebody else's machine.
   the box you type into stays on screen.
 
 ### Fixed
+
+- **Esc in the Gaming / Reaction layout editor no longer closes the clip editor
+  behind it.** Opened from the clip editor, Esc closed both; it now leaves
+  fullscreen first and then closes only the layout editor.
+
+- **Editing a clip can no longer lose it.** Applying edits deleted the clip
+  before rendering the new version and put it back afterwards, so a render
+  that failed, or closing the app halfway through one, lost the clip and its
+  translations for good. The clip is now only replaced once the new version
+  has rendered.
 
 - **The Dashboard's Donate button lines up with Start posting everywhere
   again.** The posting card's text grew, and the Donate button beside it

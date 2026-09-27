@@ -7,20 +7,138 @@ download, a 720p-or-smaller video stream) and FFmpeg seeks straight to the
 moment wanted, reading only what that frame needs; a file on this computer is
 read in place. Only links to the platforms Clips Kitty clips from are
 accepted, so this can't be pointed at anything else on the network.
+
+YouTube's media URLs are tied to the IPv4 address that asked for them, and
+FFmpeg (which has no "IPv4 only" switch) tries IPv6 first: on a network with
+a broken IPv6 route that read hung for the full timeout, where the same byte
+range over IPv4 took half a second. So YouTube is read through _Relay, a
+loopback-only relay that forwards FFmpeg's range requests over IPv4.
 """
 
 import hashlib
+import os
+import secrets
 import subprocess
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import ClassVar
 
 from core.binaries import ffmpeg, ffprobe
+from core.paths import discard
 
 FRAME_WIDTH = 960
 _TTL = 1800.0                  # media URLs from YouTube expire in hours; keep ours short
 _probed: dict[str, tuple[float, str, float, dict]] = {}
 _lock = threading.Lock()
+
+
+class _Relay(BaseHTTPRequestHandler):
+    """Forwards GET/HEAD for a registered token to its media URL over IPv4,
+    passing the Range header through. Bound to 127.0.0.1; only tokens this
+    module registered (a random 128-bit name per URL) are served."""
+
+    targets: ClassVar[dict[str, tuple[str, dict]]] = {}
+    _session = None
+
+    @classmethod
+    def session(cls):
+        if cls._session is None:
+            import requests
+            from requests.adapters import HTTPAdapter
+
+            class IPv4(HTTPAdapter):
+                def init_poolmanager(self, *args, **kwargs):
+                    # Bound to an IPv4 address, an IPv6 connect fails at once
+                    # and urllib3 moves on to the IPv4 address.
+                    kwargs["source_address"] = ("0.0.0.0", 0)
+                    super().init_poolmanager(*args, **kwargs)
+
+            s = requests.Session()
+            s.mount("https://", IPv4())
+            cls._session = s
+        return cls._session
+
+    def _forward(self, body: bool) -> None:
+        target = self.targets.get(self.path.lstrip("/"))
+        if target is None:
+            self.send_error(404)
+            return
+        url, headers = target
+        send = dict(headers)
+        if self.headers.get("Range"):
+            send["Range"] = self.headers["Range"]
+        try:
+            with self.session().get(url, headers=send, stream=True, timeout=(10, 30)) as r:
+                self.send_response(r.status_code)
+                for key in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"):
+                    if key in r.headers:
+                        self.send_header(key, r.headers[key])
+                self.end_headers()
+                if body:
+                    for chunk in r.iter_content(64 * 1024):
+                        self.wfile.write(chunk)
+        except (ConnectionError, OSError):
+            pass                                    # FFmpeg closed the connection: it had enough
+
+    def do_GET(self):
+        self._forward(body=True)
+
+    def do_HEAD(self):
+        self._forward(body=False)
+
+    def log_message(self, *_args) -> None:
+        pass
+
+
+_relay_server: ThreadingHTTPServer | None = None
+
+
+def _relayed(url: str, headers: dict) -> str:
+    """A loopback URL that reads `url` over IPv4 (see _Relay)."""
+    global _relay_server
+    with _lock:
+        if _relay_server is None:
+            _relay_server = ThreadingHTTPServer(("127.0.0.1", 0), _Relay)
+            _relay_server.daemon_threads = True
+            threading.Thread(target=_relay_server.serve_forever, daemon=True, name="frame-relay").start()
+        token = secrets.token_hex(16)
+        _Relay.targets[token] = (url, headers)
+        port = _relay_server.server_address[1]
+    return f"http://127.0.0.1:{port}/{token}"
+
+
+_making: dict[str, threading.Lock] = {}
+
+
+def made_once(folder: Path, name: str, make) -> Path:
+    """`folder`/`name`, made by make(part_path) only once however many
+    requests ask for it at the same moment (the layout editor asks for a frame
+    and its thumbnail together). The others wait and get the same file, and a
+    file is never replaced while it is being served: on Windows that fails
+    outright.
+
+    The name comes from the request (a hash, a clip id, a moment), so it is
+    held to `folder`: nothing it could contain reaches outside it."""
+    base = os.path.normpath(folder)
+    target = os.path.normpath(os.path.join(base, name))
+    if not target.startswith(base + os.sep):
+        raise ValueError(f"{name!r} is not a file in {folder}")
+    out = Path(target)
+    with _lock:
+        lock = _making.setdefault(str(out), threading.Lock())
+    with lock:
+        if out.exists() and out.stat().st_size > 0:
+            return out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        part = out.with_name(f"{out.stem}.{threading.get_ident()}.part{out.suffix}")
+        try:
+            make(part)
+            part.replace(out)
+        finally:
+            discard(part)
+    return out
 
 
 class NotFrameable(ValueError):
@@ -69,6 +187,8 @@ def _probe_link(url: str) -> tuple[str, float, dict]:
         raise NotFrameable("Couldn't find a video stream for that link.")
     headers = chosen[0].get("http_headers") or info.get("http_headers") or {}
     duration = float(info.get("duration") or 0.0)
+    if source == "youtube":
+        media, headers = _relayed(media, headers), {}
     with _lock:
         _probed[url] = (time.monotonic() + _TTL, media, duration, headers)
     return media, duration, headers
@@ -91,31 +211,24 @@ def frame(cache_dir: Path, at: float, *, url: str | None = None, path: Path | No
     between the frames again is instant."""
     at = min(max(at, 0.0), 1.0)
     key = hashlib.sha1(f"{url or path}|{at:.3f}".encode()).hexdigest()[:20]
-    out = cache_dir / f"src_{key}.jpg"
-    if out.exists() and out.stat().st_size > 0:
-        return out
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    headers: dict = {}
-    if url is not None:
-        media, duration, headers = _probe_link(url)
-    else:
-        media, duration = str(path), _file_duration(path)
-    when = at * duration if duration > 0 else 0.0
-    cmd = [ffmpeg(), "-y", "-v", "error"]
-    if headers:
-        cmd += ["-headers", "".join(f"{k}: {v}\r\n" for k, v in headers.items())]
-    # Written aside and swapped in, so two requests for the same frame never
-    # serve a half-written file.
-    part = out.with_name(f"{out.stem}.{threading.get_ident()}.part.jpg")
-    cmd += ["-ss", f"{when:.2f}", "-i", media, "-frames:v", "1",
-            "-vf", f"scale={FRAME_WIDTH}:-2", "-q:v", "3", str(part)]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
-    except subprocess.TimeoutExpired as e:
-        part.unlink(missing_ok=True)
-        raise NotFrameable("The video took too long to answer. Try another frame.") from e
-    if r.returncode != 0 or not part.exists() or part.stat().st_size == 0:
-        part.unlink(missing_ok=True)
-        raise NotFrameable("Couldn't read a frame at that point of the video. Try another one.")
-    part.replace(out)
-    return out
+
+    def make(part: Path) -> None:
+        headers: dict = {}
+        if url is not None:
+            media, duration, headers = _probe_link(url)
+        else:
+            media, duration = str(path), _file_duration(path)
+        when = at * duration if duration > 0 else 0.0
+        cmd = [ffmpeg(), "-y", "-v", "error"]
+        if headers:
+            cmd += ["-headers", "".join(f"{k}: {v}\r\n" for k, v in headers.items())]
+        cmd += ["-ss", f"{when:.2f}", "-i", media, "-frames:v", "1",
+                "-vf", f"scale={FRAME_WIDTH}:-2", "-q:v", "3", str(part)]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        except subprocess.TimeoutExpired as e:
+            raise NotFrameable("The video took too long to answer. Try another frame.") from e
+        if r.returncode != 0 or not part.exists() or part.stat().st_size == 0:
+            raise NotFrameable("Couldn't read a frame at that point of the video. Try another one.")
+
+    return made_once(cache_dir, f"src_{key}.jpg", make)

@@ -465,7 +465,12 @@ def _edge(profile: np.ndarray, lo: int, hi: int, near: int) -> int | None:
 
 
 def snap_to_frame(box: tuple, frames: list) -> tuple:
-    """The streamer's box grown out to the webcam overlay's own border, side by
+    """snap_details' box."""
+    return snap_details(box, frames)[0]
+
+
+def snap_details(box: tuple, frames: list) -> tuple[tuple, list]:
+    """(box, bordered): the streamer's box grown out to the webcam overlay's own border, side by
     side, where one is clearly there, and set just inside it.
 
     A webcam overlay is a rectangle with a hard straight border that stays put
@@ -475,9 +480,13 @@ def snap_to_frame(box: tuple, frames: list) -> tuple:
     own box, like a door frame behind them, is the room; SNAP_BACK allows the
     few pixels a person box overshoots by), to the nearest such line. A side with no clear border keeps the streamer's own edge: showing a
     little less of the webcam beats showing chat beside it. This looks only
-    around a box TalkNet already chose; it never goes looking for regions."""
+    around a box TalkNet already chose; it never goes looking for regions.
+
+    bordered: for left, top, right, bottom, whether that side found a border
+    (a side without one keeps its exact value)."""
+    none = [False, False, False, False]
     if not frames:
-        return box
+        return box, none
     med = np.median(np.stack(frames).astype(np.float32), axis=0)
     fh, fw = med.shape
     gx = np.abs(np.diff(med, axis=1))          # contrast between columns c and c+1
@@ -498,17 +507,157 @@ def snap_to_frame(box: tuple, frames: list) -> tuple:
     def side(profile, edge, lo, hi, inset):
         # profile index c is the boundary between c and c+1, so the edge
         # coordinate is c + 1; `inset` moves a snapped side back inside the
-        # border. The nearest border in [lo, hi) wins.
+        # border. The nearest border in [lo, hi) wins. None: no border.
         found = _edge(profile, max(0, lo - 1), min(len(profile), hi), edge - 1)
-        return edge if found is None else found + 1 + inset
+        return None if found is None else found + 1 + inset
 
-    nx1 = x1 if x1 <= 0 else side(col_line, x1, x1 - out_x, x1 + bx, ix)
-    nx2 = x2 if x2 >= fw else side(col_line, x2, x2 - bx, x2 + out_x, -ix)
-    ny1 = y1 if y1 <= 0 else side(row_line, y1, y1 - out_y, y1 + by, iy)
-    ny2 = y2 if y2 >= fh else side(row_line, y2, y2 - by, y2 + out_y, -iy)
-    if nx2 - nx1 < 0.5 * (x2 - x1) or ny2 - ny1 < 0.5 * (y2 - y1):
-        return box                                 # a snap that halves the box is not a border
-    return (nx1 / fw, ny1 / fh, (nx2 - nx1) / fw, (ny2 - ny1) / fh)
+    sides = [
+        None if x1 <= 0 else side(col_line, x1, x1 - out_x, x1 + bx, ix),
+        None if y1 <= 0 else side(row_line, y1, y1 - out_y, y1 + by, iy),
+        None if x2 >= fw else side(col_line, x2, x2 - bx, x2 + out_x, -ix),
+        None if y2 >= fh else side(row_line, y2, y2 - by, y2 + out_y, -iy),
+    ]
+    size = (fw, fh, fw, fh)
+    exact = (x, y, x + w, y + h)
+    nx1, ny1, nx2, ny2 = (exact[i] if v is None else v / size[i] for i, v in enumerate(sides))
+    if nx2 - nx1 < 0.5 * w or ny2 - ny1 < 0.5 * h:
+        return box, none                           # a snap that halves the box is not a border
+    return (nx1, ny1, nx2 - nx1, ny2 - ny1), [v is not None for v in sides]
+
+
+def head_in_box(clip_path: Path, box: tuple, model_name: str = "yolov8n-pose.pt", n: int = 8) -> tuple | None:
+    """The streamer's head inside a webcam box over the clip, for framing
+    (gaming/framing.py): (centre x, top, chin) in source px, the median of n
+    frames, or None when nobody shows in it.
+
+    This is framing, not deciding who: the box is already the streamer's
+    (TalkNet's choice, or drawn by the user), so the person in it is them.
+    Only the box is looked at, a little larger to catch a head at its edge."""
+    import cv2
+
+    heads = []
+    with video_capture(clip_path, required=False) as cap:
+        if cap is None:
+            return None
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        model = _get_model(model_name)
+        for i in range(n):
+            if total:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int((i + 0.5) * total / n))
+            ok, frame = cap.read()
+            if not ok:
+                break
+            fh, fw = frame.shape[:2]
+            x, y, w, h = box
+            x0, y0 = max(0, int((x - 0.1 * w) * fw)), max(0, int((y - 0.1 * h) * fh))
+            x1, y1 = min(fw, int((x + 1.1 * w) * fw)), min(fh, int((y + 1.1 * h) * fh))
+            if x1 - x0 < 16 or y1 - y0 < 16:
+                break
+            people = [d for d in _detect(model, frame[y0:y1, x0:x1], MIN_CONFIDENCE) if d[5] is not None]
+            if not people:
+                continue
+            d = max(people, key=lambda d: d[4])            # the surest detection, never the biggest
+            cx, top, chin = _head_of(d)
+            heads.append((x0 + cx, y0 + top, y0 + chin))
+    if not heads:
+        return None
+    return tuple(float(v) for v in np.median(np.array(heads), axis=0))
+
+
+def _head_of(d: tuple) -> tuple:
+    """(centre x, top, chin) px from one pose detection. The top is the person
+    box's (hair), but not above a head's height over the eyes (a raised arm).
+    Keypoints sit at the eyes and nose; the chin is about half a head width
+    below them (measured on a rendered clip: 0.53)."""
+    hx, hy, hw = d[5]
+    return hx, max(d[1], hy - 1.0 * hw), hy + 0.55 * hw
+
+
+def people_on(image_path: Path, model_name: str = "yolov8n-pose.pt") -> dict:
+    """Everyone the person detector finds on one frame of a video, for the
+    layout editor's face check: {"size": [w, h], "people": [{"box": [x, y, w,
+    h], "head": [cx, top, chin] | None, "confidence"}]}, all normalized."""
+    import cv2
+
+    frame = cv2.imread(str(image_path))
+    if frame is None:
+        return {"size": [0, 0], "people": []}
+    fh, fw = frame.shape[:2]
+    people = []
+    for d in _detect(_get_model(model_name), frame, MIN_CONFIDENCE):
+        head = None
+        if d[5] is not None:
+            cx, top, chin = _head_of(d)
+            head = [round(cx / fw, 4), round(top / fh, 4), round(chin / fh, 4)]
+        people.append({"box": [round(d[0] / fw, 4), round(d[1] / fh, 4), round((d[2] - d[0]) / fw, 4),
+                               round((d[3] - d[1]) / fh, 4)],
+                       "head": head, "confidence": round(float(d[4]), 3)})
+    return {"size": [fw, fh], "people": people}
+
+
+# suggest_cam: a person counts as the same webcam across frames at this IoU,
+# and must be in all but one of the frames (they are spread over the video).
+SUGGEST_SAME_IOU = 0.4
+
+
+def suggest_cam(image_paths: list, model_name: str = "yolov8n-pose.pt") -> list | None:
+    """A starting point for the layout editor, before any processing: the
+    webcam, or None.
+
+    Only a few still frames are available here (no audio, so no TalkNet), so
+    this suggests rather than decides, and the user confirms it by looking.
+    What it looks for is what a webcam overlay is and a game character isn't:
+    a person in the SAME place in frames spread across the whole video, small
+    enough to be an overlay, inside a rectangle with its own border (the
+    border snap finds at least one side). Never the biggest person, never
+    anything that moves."""
+    import cv2
+
+    frames, boxes = [], []
+    for path in image_paths:
+        frame = cv2.imread(str(path))
+        if frame is None:
+            continue
+        fh, fw = frame.shape[:2]
+        frames.append(cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (STILLS_WIDTH, round(fh * STILLS_WIDTH / fw))))
+        boxes.append([((d[0] / fw, d[1] / fh, (d[2] - d[0]) / fw, (d[3] - d[1]) / fh), d[4])
+                      for d in _detect(_get_model(model_name), frame, MIN_CONFIDENCE)])
+    if len(frames) < 3:
+        return None
+    groups: list[list] = []
+    for i, found in enumerate(boxes):
+        for box, conf in found:
+            for g in groups:
+                if g[-1][0] != i and _iou(_xyxy(box), _xyxy(g[0][1])) >= SUGGEST_SAME_IOU:
+                    g.append((i, box, conf))
+                    break
+            else:
+                groups.append([(i, box, conf)])
+    need = max(3, len(frames) - 1)
+    steady = [g for g in groups if len({i for i, _b, _c in g}) >= need]
+    # Most frames first, then the surest detections: never the biggest.
+    steady.sort(key=lambda g: (-len(g), -float(np.mean([c for _i, _b, c in g]))))
+    for g in steady:
+        box = tuple(float(v) for v in np.median(np.array([b for _i, b, _c in g]), axis=0))
+        if box[2] * box[3] > OVERLAY_MAX_AREA:
+            continue                                    # a camera filling the frame: no split
+        snapped, bordered = snap_details(box, frames)
+        inner = _inner_sides(box)
+        # Measured on 13 streams: webcam overlays had a border on 2 or 3 of
+        # their inner sides (a rectangle with its own frame); VTuber avatars
+        # on at most 1 (a figure with no frame around it), and they are not
+        # suggested: VTubers aren't supported.
+        if sum(b and i for b, i in zip(bordered, inner, strict=True)) >= min(2, sum(inner)) > 0:
+            return [round(v, 4) for v in snapped]
+    return None
+
+
+def _inner_sides(box: tuple) -> list:
+    """For left, top, right, bottom: whether that side is inside the frame
+    rather than on its own edge."""
+    x, y, w, h = box
+    edge = 0.005
+    return [x > edge, y > edge, x + w < 1 - edge, y + h < 1 - edge]
 
 
 def _inside(inner: tuple, outer: tuple) -> float:

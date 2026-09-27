@@ -18,7 +18,7 @@ import yt_dlp
 from defusedxml import ElementTree as ET
 
 from core.models import DownloadedVideo
-from sources.ytdlp_common import progress_opts
+from sources.ytdlp_common import games_from_info, progress_opts
 
 RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 _ATOM_NS = {
@@ -228,4 +228,5 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
         path=path,
         duration=float(info.get("duration") or 0),
         channel=info.get("channel") or info.get("uploader") or "",
+        games=games_from_info(info, "youtube"),
     )

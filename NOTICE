@@ -54,6 +54,18 @@ significant ones, with their licences:
                                          third_party/talknet/ (c) 2021 Tao
                                          Ruijie, and its pretrained weights
                                          are fetched by scripts/fetch_asd_model.py
+  PANNs (Qiuqiang Kong)     MIT          game sounds; the MobileNetV1 network
+                                         is adapted in analysis/panns.py
+                                         (c) 2018-2020 Qiuqiang Kong, and its
+                                         pretrained weights (Zenodo 3987831)
+                                         are CC BY 4.0, fetched by
+                                         scripts/fetch_panns.py. AudioSet's
+                                         class names (config/
+                                         audioset_labels.txt) are CC BY 4.0,
+                                         Google
+  RapidOCR                  Apache-2.0   on-screen text in a gaming stream;
+                                         its bundled PaddleOCR models are
+                                         Apache-2.0 (PaddlePaddle)
   faster-whisper            MIT          transcription; its model weights are
                                          fetched by scripts/fetch_whisper.py
                                          and are MIT (Systran/faster-whisper,
@@ -68,6 +80,11 @@ significant ones, with their licences:
   FastAPI / Uvicorn         MIT          the local API the desktop app talks to
   Electron                  MIT          the desktop shell
   React                     MIT          the interface
+  Material Icons            Apache-2.0   a few icon shapes in the layout
+                                         editor's platform preview (Google)
+  Lucide                    ISC          a few icon shapes in the same preview;
+                                         both notices are in
+                                         third_party/icons/NOTICE.md
 
 FFmpeg is fetched at build time by scripts/fetch_ffmpeg.py rather than kept
 in this repository. The builds used are LGPL-2.1-or-later, or GPL-2.0-or-later

@@ -12,7 +12,8 @@ import type {
   Word
 } from '../lib/types'
 import FeatureBoundary from './FeatureBoundary'
-import GamingRegions from './GamingRegions'
+import GamingLayoutEditor from './GamingLayoutEditor'
+import { PRESETS } from '../lib/gamingLayout'
 import MultilingualExport from './MultilingualExport'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import {
@@ -189,9 +190,11 @@ function removedRanges(keep: Range[], duration: number): Range[] {
   return out
 }
 
-/** One line saying what a split clip's webcam is and where it came from. */
+/** One line saying what a split clip's layout and webcam are. */
 function describeSplit(g: GamingSettings, pending: boolean): string {
-  const camera = g.cam_position === 'bottom' ? 'camera below' : 'camera on top'
+  const name = PRESETS[g.used_preset ?? g.preset ?? 'half']?.label ?? 'Split'
+  const gameTop = g.order ? g.order === 'game_top' : g.cam_position === 'bottom'
+  const camera = `${name}, ${gameTop ? 'game on top' : 'camera on top'}`
   const shown = g.game_fit === 'fill' ? 'zoomed to fill' : 'shown whole on a blur'
   const game = g.game_box ? `game area drawn by you, ${shown}` : `game ${shown}`
   if (g.by === 'user') {
@@ -1587,8 +1590,8 @@ export default function TimelineEditor({
               ['center', 'Center', 'Static center crop, no tracking'],
               [
                 'split',
-                'Split',
-                'Gaming / Reaction: the streamer’s webcam in one half, the game or the video they’re reacting to in the other'
+                'Gaming / Reaction',
+                'A gaming or reaction layout: the streamer’s webcam with the game or the video they’re reacting to (Split, Half, Small facecam and more)'
               ]
             ] as const
           ).map(([value, label, tip]) => (
@@ -1597,7 +1600,7 @@ export default function TimelineEditor({
               onClick={() => {
                 if (value === 'split') {
                   // Back to what the clip had, else found in this clip alone.
-                  setGaming(gaming ?? storedGaming ?? { by: 'clip' })
+                  setGaming(gaming ?? storedGaming ?? { by: 'clip', preset: 'split' })
                 } else {
                   setLayout(value)
                   setGaming(null)
@@ -1622,14 +1625,14 @@ export default function TimelineEditor({
         <div className="flex items-center gap-2 text-xs flex-wrap">
           <span className="text-muted">{describeSplit(gaming, gamingDirty)}</span>
           <button className="btn-ghost !py-1" onClick={() => setGamingOpen(true)}>
-            Adjust webcam and game…
+            Change layout…
           </button>
           {rememberGaming && <span className="text-accent">Will be remembered for this creator</span>}
         </div>
       )}
       {gamingOpen && gaming && (
-        <GamingRegions
-          frameAt={(at) => api.sourceFrameUrl(clip.id, at)}
+        <GamingLayoutEditor
+          source={{ clipId: clip.id }}
           context="clip"
           settings={gaming}
           remember={rememberGaming}

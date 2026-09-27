@@ -45,10 +45,14 @@ def find_highlights(
     chunk_overlap_seconds: float = 60.0,
     long_video_threshold_seconds: float = 1800.0,
     events: list[tuple[float, str]] | None = None,
+    guidance="",  # str, or (start, end) -> str for the part of the video a chunk covers
+    events_title: str | None = None,
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     """Returns (selected clips, rejected candidates with reasons).
     `events` is an optional multimodal timeline [(second, description)] shown
-    to the model alongside each chunk's transcript."""
+    to the model alongside each chunk's transcript. `guidance` is extra
+    instruction for one kind of video (the gaming profile's, analysis/gaming.py);
+    empty, the prompt is exactly the standard one."""
     if not segments:
         return [], []
 
@@ -67,7 +71,11 @@ def find_highlights(
         progress.emit(stage="analyze", current=i, total=len(chunks))
         transcript_text = "\n".join(f"[{s.start:.1f} - {s.end:.1f}] {s.text}" for s in chunk)
         prompt = prompt_template.replace("{transcript}", transcript_text)
-        prompt = prompt.replace("{events}", _events_block(events, chunk[0].start, chunk[-1].end))
+        # Guidance can depend on where in the video the chunk is (a stream that
+        # changes game part way through).
+        chunk_guidance = guidance(chunk[0].start, chunk[-1].end) if callable(guidance) else guidance
+        prompt = prompt.replace("{mode_guidance}", _guidance_block(chunk_guidance))
+        prompt = prompt.replace("{events}", _events_block(events, chunk[0].start, chunk[-1].end, events_title))
         prompt = prompt.replace("{min_duration}", str(int(min_duration)))
         prompt = prompt.replace("{max_duration}", str(int(max_duration)))
         raw = _generate_with_retry(llm, prompt)
@@ -99,6 +107,9 @@ def score_windows(
     llm: LLMBackend,
     windows: list[tuple[float, float]],
     events: list[tuple[float, str]] | None = None,
+    guidance: str = "",
+    events_title: str | None = None,
+    labels: dict | None = None,  # window index -> a note shown with it (the game there)
 ) -> list[ClipCandidate]:
     """Score specific time windows (signal peaks fusion found) in one LLM
     call, so signal candidates get real text/engagement scores and grounded
@@ -114,9 +125,11 @@ def score_windows(
     blocks = []
     for i, (start, end) in enumerate(windows):
         text = " ".join(s.text for s in segments if s.end > start and s.start < end) or "(no speech)"
-        ev = _events_block(events, start, end)
-        blocks.append(f"WINDOW {i} [{start:.1f}s - {end:.1f}s]:\n{text}\n{ev}".strip())
+        ev = _events_block(events, start, end, events_title)
+        note = f" ({labels[i]})" if labels and labels.get(i) else ""
+        blocks.append(f"WINDOW {i} [{start:.1f}s - {end:.1f}s]{note}:\n{text}\n{ev}".strip())
     prompt = template.replace("{windows}", "\n\n".join(blocks))
+    prompt = prompt.replace("{mode_guidance}", _guidance_block(guidance))
 
     raw = _generate_with_retry(llm, prompt)
     parsed = _parse_clips_json(raw)
@@ -143,13 +156,20 @@ def score_windows(
     return results
 
 
-def _events_block(events: list[tuple[float, str]] | None, start: float, end: float) -> str:
+def _events_block(events: list[tuple[float, str]] | None, start: float, end: float,
+                  title: str | None = None) -> str:
     if not events:
         return ""
     lines = [f"[{sec:.0f}s] {desc}" for sec, desc in events if start <= sec <= end]
     if not lines:
         return ""
-    return "AUDIO/VISUAL EVENTS (from signal analysis):\n" + "\n".join(lines)
+    return (title or "AUDIO/VISUAL EVENTS (from signal analysis):") + "\n" + "\n".join(lines)
+
+
+def _guidance_block(guidance: str) -> str:
+    """The text a prompt's {mode_guidance} becomes: nothing for standard
+    scoring (so its prompt is unchanged), else a paragraph of its own."""
+    return f"\n\n{guidance.strip()}" if guidance and guidance.strip() else ""
 
 
 # ---- duplicate prevention ------------------------------------------------

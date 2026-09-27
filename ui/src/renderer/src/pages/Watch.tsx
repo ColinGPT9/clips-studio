@@ -408,6 +408,22 @@ export default function Watch({
                 {t(label)}
               </label>
             ))}
+            {addClip.vertical_live && (
+              <label className="flex items-center gap-2 cursor-pointer" title={t('Score this as a gaming stream: in-game moments (a kill streak, a boss going down, a goal) and the reactions to them count, from chat and your voice, even when you say little.')}>
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[#38BDF8]"
+                  checked={Boolean(addClip.gaming_scoring)}
+                  onChange={(e) => {
+                    const next = { ...addClip }
+                    if (e.target.checked) next.gaming_scoring = true
+                    else delete next.gaming_scoring
+                    setAddClip(next)
+                  }}
+                />
+                {t('Gaming stream')}
+              </label>
+            )}
             <span className="text-xs text-muted">
               {t('Starts from your Generate settings. Caption style and more are in Clip settings after you add it.')}
             </span>

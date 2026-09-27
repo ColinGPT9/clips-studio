@@ -190,6 +190,10 @@ class Worker(threading.Thread):
                         # An already-composed 9:16 live (core/modes.py): keep
                         # its layout, skip face tracking and reframing.
                         cfg["clips"]["vertical_live"] = True
+                    if payload.get("gaming_scoring"):
+                        # Scored as a gaming stream (analysis/gaming.py):
+                        # in-game moments count, even with little said.
+                        cfg["clips"]["gaming_scoring"] = True
                     if payload.get("gaming"):
                         # Gaming / Reaction (gaming/): the streamer's webcam
                         # over the game, or the game alone; the split set up
@@ -665,16 +669,13 @@ class Worker(threading.Thread):
             "status": clip["status"],
         }
         old_path = Path(clip["path"]) if clip["path"] else None
-        # Translations, uploads and feedback REFERENCE this clip, and
-        # foreign_keys is ON, so they have to be lifted out before the row can
-        # go — otherwise this DELETE raises "FOREIGN KEY constraint failed" and
-        # the render fails for anyone who had translated or published the clip.
-        detached = db.detach_clip_rows(clip["id"])
-        db.conn.execute("DELETE FROM clips WHERE id = ?", (clip["id"],))  # avoid UNIQUE clash
-        db.conn.commit()
 
         from transcription.transcriber import detected_language
 
+        # Rendered BEFORE the row is touched. A render that fails, or an app
+        # closed halfway through one, used to leave the clip deleted with
+        # nothing put back: the next start re-ran the job on a clip that was
+        # no longer there. The render itself never reads the database.
         content_lang = detected_language(video_id, data_dir / "transcripts")
         final_path, rendered_opts = _render_files(
             source, candidate, segments, clip_dir, self.config, render_opts, content_lang
@@ -685,6 +686,14 @@ class Worker(threading.Thread):
             kept = _json.loads(rendered_opts).get("gaming")
             if kept:
                 render_opts["gaming"] = kept
+
+        # Translations, uploads and feedback REFERENCE this clip, and
+        # foreign_keys is ON, so they have to be lifted out before the row can
+        # go — otherwise this DELETE raises "FOREIGN KEY constraint failed" and
+        # the render fails for anyone who had translated or published the clip.
+        detached = db.detach_clip_rows(clip["id"])
+        db.conn.execute("DELETE FROM clips WHERE id = ?", (clip["id"],))  # avoid UNIQUE clash
+        db.conn.commit()
         meta = ClipMetadata(
             title=clip["title"] or "",
             description=clip["description"] or "",

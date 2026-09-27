@@ -25,20 +25,30 @@ Each language has its own issue. Find yours here, or in
 
 | Complete, needs **checking** | Half-finished, needs **finishing** |
 |---|---|
-| [العربية (Arabic)](https://github.com/ColinGPT9/clips-studio/issues/52) | [বাংলা (Bengali)](https://github.com/ColinGPT9/clips-studio/issues/43) |
-| [Deutsch (German)](https://github.com/ColinGPT9/clips-studio/issues/53) | [Italiano (Italian)](https://github.com/ColinGPT9/clips-studio/issues/44) |
-| [Español (Spanish)](https://github.com/ColinGPT9/clips-studio/issues/54) | [한국어 (Korean)](https://github.com/ColinGPT9/clips-studio/issues/45) |
-| [Français (French)](https://github.com/ColinGPT9/clips-studio/issues/55) | [ไทย (Thai)](https://github.com/ColinGPT9/clips-studio/issues/46) |
-| [हिन्दी (Hindi)](https://github.com/ColinGPT9/clips-studio/issues/56) | [Tagalog (Filipino)](https://github.com/ColinGPT9/clips-studio/issues/47) |
-| [Bahasa Indonesia (Indonesian)](https://github.com/ColinGPT9/clips-studio/issues/57) | [Türkçe (Turkish)](https://github.com/ColinGPT9/clips-studio/issues/48) |
-| [日本語 (Japanese)](https://github.com/ColinGPT9/clips-studio/issues/58) | [اردو (Urdu)](https://github.com/ColinGPT9/clips-studio/issues/49) |
-| [Português (Portuguese)](https://github.com/ColinGPT9/clips-studio/issues/59) | [Tiếng Việt (Vietnamese)](https://github.com/ColinGPT9/clips-studio/issues/50) |
-| [Русский (Russian)](https://github.com/ColinGPT9/clips-studio/issues/60) | [中文 (Chinese)](https://github.com/ColinGPT9/clips-studio/issues/51) |
+| [العربية (Arabic)](https://github.com/ColinGPT9/clips-studio/issues/52) | [ไทย (Thai)](https://github.com/ColinGPT9/clips-studio/issues/46) |
+| [Deutsch (German)](https://github.com/ColinGPT9/clips-studio/issues/53) | [Tagalog (Filipino)](https://github.com/ColinGPT9/clips-studio/issues/47) |
+| [Español (Spanish)](https://github.com/ColinGPT9/clips-studio/issues/54) | [اردو (Urdu)](https://github.com/ColinGPT9/clips-studio/issues/49) |
+| [Français (French)](https://github.com/ColinGPT9/clips-studio/issues/55) | [Tiếng Việt (Vietnamese)](https://github.com/ColinGPT9/clips-studio/issues/50) |
+| [हिन्दी (Hindi)](https://github.com/ColinGPT9/clips-studio/issues/56) | |
+| [Bahasa Indonesia (Indonesian)](https://github.com/ColinGPT9/clips-studio/issues/57) | |
+| [日本語 (Japanese)](https://github.com/ColinGPT9/clips-studio/issues/58) | |
+| [Português (Portuguese)](https://github.com/ColinGPT9/clips-studio/issues/59) | |
+| [Русский (Russian)](https://github.com/ColinGPT9/clips-studio/issues/60) | |
 
-The complete ones have every string translated and need **checking**. The
-half-finished ones have 57 strings of 116 and need **finishing**. The missing
-ones were added to English and never backfilled, so you will see English text
-in the app. That is a known gap, not something to report.
+বাংলা (Bengali), Italiano (Italian), 한국어 (Korean), Türkçe (Turkish) and 中文
+(Chinese) were finished by contributors
+([#95](https://github.com/ColinGPT9/clips-studio/pull/95),
+[#90](https://github.com/ColinGPT9/clips-studio/pull/90),
+[#45](https://github.com/ColinGPT9/clips-studio/issues/45),
+[#96](https://github.com/ColinGPT9/clips-studio/pull/96),
+[#107](https://github.com/ColinGPT9/clips-studio/pull/107)); a check by
+another speaker is just as welcome for those.
+
+The complete ones need **checking**. The half-finished ones stopped at 57
+strings and need **finishing**: `ko.json` has the 125 strings the app has
+long had, so comparing your file with it shows what is missing. Strings added
+to the app since then show in English until someone translates them.
+That is a known gap, not something to report.
 
 Your language not listed? [Ask for it](https://github.com/ColinGPT9/clips-studio/issues/61).
 

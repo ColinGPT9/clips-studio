@@ -89,3 +89,42 @@ def progress_opts(video_id: str | None) -> dict:
         opts["ffmpeg_location"] = ffmpeg_dir
 
     return opts
+
+
+# YouTube's broad categories, which say nothing about which game it is.
+_NOT_A_GAME = {"gaming", "entertainment", "people & blogs", "comedy", "education",
+               "howto & style", "music", "news & politics", "science & technology",
+               "sports", "film & animation", "autos & vehicles", "travel & events",
+               "pets & animals", "nonprofits & activism"}
+
+
+def games_from_info(info: dict | None, platform: str) -> list[dict]:
+    """The game(s) a video shows, from yt-dlp's metadata, for the gaming
+    profile: [{"name", "start", "end"}], plus "hint" text when the platform
+    only says "Gaming" (a YouTube video's tags often name the game).
+
+    Twitch: its chapters are the stream's game changes, each a game's name
+    over a time range (or one game for the whole VOD). Kick: the category.
+    YouTube: chapters are the creator's own titles, not games, so only the
+    tags go in, and only when the video is in the Gaming category."""
+    if not info:
+        return []
+    duration = float(info.get("duration") or 0)
+    games: list[dict] = []
+    if platform == "twitch":
+        for ch in info.get("chapters") or []:
+            name = str(ch.get("title") or "").strip()
+            if name:
+                games.append({"name": name, "start": float(ch.get("start_time") or 0),
+                              "end": float(ch.get("end_time") or duration)})
+    if not games and platform in ("twitch", "kick"):
+        for cat in info.get("categories") or []:
+            name = str(cat or "").strip()
+            if name and name.lower() not in _NOT_A_GAME:
+                games.append({"name": name, "start": 0.0, "end": duration})
+    if not games and platform == "youtube":
+        cats = [str(x).lower() for x in info.get("categories") or []]
+        if "gaming" in cats:
+            tags = " ".join(str(t) for t in (info.get("tags") or [])[:25])
+            games.append({"name": "", "start": 0.0, "end": duration, "hint": tags})
+    return games

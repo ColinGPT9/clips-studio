@@ -50,6 +50,7 @@ class JobIn(BaseModel):
     podcast: bool | None = None   # multi-cam podcast: letterbox, no subject tracking
     vertical_live: bool | None = None  # an already-composed 9:16 live: keep its layout, no face tracking
     gaming: bool | None = None  # Gaming / Split-Screen: webcam over the game, or the game alone
+    gaming_scoring: bool | None = None  # score as a gaming stream (with Vertical Live etc.)
     gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
     gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None  # POST once when this job reaches a terminal state
@@ -80,6 +81,7 @@ class JobPatch(BaseModel):
     podcast: bool | None = None
     vertical_live: bool | None = None
     gaming: bool | None = None
+    gaming_scoring: bool | None = None  # score as a gaming stream (with Vertical Live etc.)
     gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
     gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None
@@ -110,6 +112,7 @@ class BatchItemIn(BaseModel):
     podcast: bool | None = None
     vertical_live: bool | None = None
     gaming: bool | None = None
+    gaming_scoring: bool | None = None  # score as a gaming stream (with Vertical Live etc.)
     gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
     gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None
@@ -195,6 +198,7 @@ class LocalVideoIn(BaseModel):
     podcast: bool | None = None  # multi-cam podcast: letterbox, no subject tracking
     vertical_live: bool | None = None  # an already-composed 9:16 live: keep its layout, no face tracking
     gaming: bool | None = None  # Gaming / Split-Screen: webcam over the game, or the game alone
+    gaming_scoring: bool | None = None  # score as a gaming stream (with Vertical Live etc.)
     gaming_layout: dict | None = None  # the split set up before processing (gaming/run.py keys)
     gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     # Where the file came from, when the user knows (a downloaded live's
@@ -440,6 +444,10 @@ def _process_options(body, into: dict | None = None) -> dict:
         payload["vertical_live"] = True
     if getattr(body, "gaming", None):
         payload["gaming"] = True
+    if getattr(body, "gaming_scoring", None):
+        # Score as a gaming stream (analysis/gaming.py) with whatever layout
+        # the video gets, e.g. an already-vertical live of a game.
+        payload["gaming_scoring"] = True
     if getattr(body, "gaming_layout", None):
         # Set up on the video's own frames before processing: it is the user's
         # choice, so no detection second-guesses the parts they set.
@@ -494,6 +502,9 @@ def _process_options(body, into: dict | None = None) -> dict:
         raise HTTPException(400, "Gaming / Split-Screen can't be combined with Vertical Live, "
                                  "Podcast or Longform: each lays out the video its own way. "
                                  "Turn one of them off.")
+    if payload.get("gaming_scoring") and (payload.get("podcast") or payload.get("longform")):
+        raise HTTPException(400, "Gaming stream scoring works with the standard layout, Vertical "
+                                 "Live and Gaming / Reaction, not with Podcast or Longform.")
     return payload
 
 
@@ -1693,12 +1704,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
         return {"url": f"/media/preview/{clip_id}?v={int(_time.time())}"}
 
-    @app.get("/sources/frame")
-    def source_frame(at: float = 0.5, url: str = "", path: str = ""):
-        """A frame of a video that hasn't been processed yet, `at` (0-1) of the
-        way through: a YouTube/Twitch/Kick link (nothing is downloaded) or a
-        file on this computer. For setting up a Gaming / Reaction split on the
-        real picture before processing."""
+    def _video_frame(at: float, url: str, path: str) -> Path:
+        """A frame of a video that hasn't been processed yet (a link or a file
+        on this computer), cached (sources/preview_frames.py)."""
         from sources import preview_frames
 
         cache = data_dir / "previews" / "source_frames"
@@ -1707,20 +1715,96 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 picked = picked_file(path, _VIDEO_SUFFIXES)
                 if picked is None:
                     raise HTTPException(400, "not a video file on this computer")
-                out = preview_frames.frame(cache, at, path=picked[0])
-            elif url:
-                out = preview_frames.frame(cache, at, url=url.strip())
-            else:
-                raise HTTPException(400, "give a url or a path")
+                return preview_frames.frame(cache, at, path=picked[0])
+            if url:
+                return preview_frames.frame(cache, at, url=url.strip())
+            raise HTTPException(400, "give a url or a path")
         except preview_frames.NotFrameable as e:
             raise HTTPException(422, str(e)) from e
+
+    def _people(image: Path) -> dict:
+        """Everyone on a frame, for the layout editor's face check. The person
+        detector runs here only when the editor asks."""
+        try:
+            from gaming import detect
+        except ImportError as e:              # a build without the vision stack
+            raise HTTPException(503, "person detection isn't available in this build") from e
+        return detect.people_on(image, config["tracking"]["detector"])
+
+    @app.get("/sources/frame")
+    def source_frame(at: float = 0.5, url: str = "", path: str = ""):
+        """A frame of a video that hasn't been processed yet, `at` (0-1) of the
+        way through: a YouTube/Twitch/Kick link (nothing is downloaded) or a
+        file on this computer. For setting up a Gaming / Reaction layout on the
+        real picture before processing."""
+        out = _video_frame(at, url, path)
         return FileResponse(out, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
-    @app.get("/clips/{clip_id}/source-frame")
-    def clip_source_frame(clip_id: int, at: float = 0.5):
-        """A frame of the SOURCE video (not the rendered clip), `at` of the
-        way through the clip, to draw the Gaming / Reaction webcam and game
-        area on: the boxes are in the source's own layout."""
+    @app.get("/sources/people")
+    def source_people(at: float = 0.5, url: str = "", path: str = ""):
+        """Who is on that frame, and where their heads are (normalized)."""
+        return _people(_video_frame(at, url, path))
+
+    def _panels(frames: list) -> list:
+        """The stream's solid panels (a black chat bar, a splits timer) on
+        these frames, which the game crop keeps out (gaming/panels.py)."""
+        try:
+            from gaming import panels
+        except ImportError:
+            return []
+        return panels.panels_in_images(frames)
+
+    @app.get("/sources/suggest")
+    def source_suggest(url: str = "", path: str = ""):
+        """A starting webcam box for the layout editor, from frames spread over
+        the video: the same person in the same place, inside an overlay's own
+        border (gaming/detect.suggest_cam). None when there isn't a clear one;
+        the webcam is then found by who is talking, when processing. With it,
+        the stream's solid panels."""
+        frames = [_video_frame(at, url, path) for at in (0.1, 0.3, 0.5, 0.7, 0.9)]
+        try:
+            from gaming import detect
+        except ImportError:
+            return {"cam": None, "panels": []}
+        return {"cam": detect.suggest_cam(frames, config["tracking"]["detector"]), "panels": _panels(frames)}
+
+    SETUP_FRAMES = (0.1, 0.3, 0.5, 0.7, 0.9)   # the editor's five frames, spread over the video
+
+    def _snap(frames: list, box: str) -> dict:
+        """A drawn webcam box snapped onto the overlay's own border, over the
+        editor's frames (gaming/detect.snap_details)."""
+        try:
+            parts = [float(v) for v in box.split(",")]
+        except ValueError as e:
+            raise HTTPException(400, "box must be x,y,w,h") from e
+        from core.modes import _unit_box
+
+        unit = _unit_box(parts)
+        if unit is None:
+            raise HTTPException(400, "box must be x,y,w,h within the frame")
+        try:
+            import cv2
+
+            from gaming import detect
+        except ImportError as e:
+            raise HTTPException(503, "border snapping isn't available in this build") from e
+        stills = []
+        for f in frames:
+            img = cv2.imread(str(f), cv2.IMREAD_GRAYSCALE)
+            if img is not None:
+                h, w = img.shape
+                stills.append(cv2.resize(img, (detect.STILLS_WIDTH, round(h * detect.STILLS_WIDTH / w))))
+        snapped, bordered = detect.snap_details(tuple(unit), stills)
+        return {"box": [round(v, 4) for v in snapped], "bordered": bordered}
+
+    @app.get("/sources/snap")
+    def source_snap(box: str, url: str = "", path: str = ""):
+        """A webcam box drawn in the layout editor, snapped to its border."""
+        return _snap([_video_frame(at, url, path) for at in SETUP_FRAMES], box)
+
+    def _clip_frame(clip_id: int, at: float) -> Path:
+        """A frame of a clip's SOURCE video, `at` (0-1) of the way through the
+        clip, cached."""
         import subprocess as sp
 
         d = db()
@@ -1738,20 +1822,41 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         # One file per moment, written aside and swapped in: the editor asks
         # for several frames at once, and one shared file was overwritten
         # while it was being served (a truncated image).
-        out = data_dir / "previews" / f"frame_{clip_id}_{round(when * 10)}.jpg"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        if not out.exists():
-            part = out.with_name(f"{out.stem}.{threading.get_ident()}.part.jpg")
+        from sources.preview_frames import made_once
+
+        def make(part: Path) -> None:
             r = sp.run(
                 [ffmpeg(), "-y", "-v", "error", "-ss", f"{when:.2f}", "-i", str(source),
                  "-frames:v", "1", "-q:v", "3", str(part)],
                 capture_output=True, text=True,
             )
             if r.returncode != 0 or not part.exists():
-                discard(part)
                 raise HTTPException(500, "could not read a frame from the source video")
-            part.replace(out)
-        return FileResponse(out, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+        return made_once(data_dir / "previews", f"frame_{clip_id}_{round(when * 10)}.jpg", make)
+
+    @app.get("/clips/{clip_id}/source-frame")
+    def clip_source_frame(clip_id: int, at: float = 0.5):
+        """A frame of the SOURCE video (not the rendered clip), `at` of the
+        way through the clip, to draw the Gaming / Reaction webcam and game
+        area on: the boxes are in the source's own layout."""
+        return FileResponse(_clip_frame(clip_id, at), media_type="image/jpeg",
+                            headers={"Cache-Control": "no-store"})
+
+    @app.get("/clips/{clip_id}/snap")
+    def clip_snap(clip_id: int, box: str):
+        """A webcam box drawn for this clip, snapped to its border."""
+        return _snap([_clip_frame(clip_id, at) for at in SETUP_FRAMES], box)
+
+    @app.get("/clips/{clip_id}/panels")
+    def clip_panels(clip_id: int):
+        """The solid panels on the clip's source, over the editor's frames."""
+        return {"panels": _panels([_clip_frame(clip_id, at) for at in SETUP_FRAMES])}
+
+    @app.get("/clips/{clip_id}/people")
+    def clip_people(clip_id: int, at: float = 0.5):
+        """Who is on that frame of the clip's source, and where their heads are."""
+        return _people(_clip_frame(clip_id, at))
 
     @app.get("/clips/{clip_id}/creator-gaming-layout")
     def get_creator_gaming_layout(clip_id: int):

@@ -4,7 +4,7 @@ Stages communicate only through these types (and files on disk), never by
 importing each other's internals.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -17,6 +17,9 @@ class DownloadedVideo:
     path: Path
     duration: float  # seconds
     channel: str = ""  # channel/uploader display name
+    # The game(s) played, when the platform says: [{"name", "start", "end"}]
+    # (Twitch's game chapters, Kick's category). For the gaming profile.
+    games: list = field(default_factory=list)
 
 
 @dataclass

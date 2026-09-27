@@ -125,6 +125,7 @@ def ensure_vendored() -> None:
         ("FFmpeg", ROOT / "vendor" / "ffmpeg" / "ffprobe.exe", "fetch_ffmpeg.py"),
         ("Ollama", ROOT / "vendor" / "ollama" / "ollama.exe", "fetch_ollama.py"),
         ("Whisper weights", ROOT / "vendor" / "whisper", "fetch_whisper.py"),
+        ("Game-sound model", ROOT / "models" / "panns_mobilenetv1.pth", "fetch_panns.py"),
     ]
     for label, marker, script in wanted:
         if marker.exists():

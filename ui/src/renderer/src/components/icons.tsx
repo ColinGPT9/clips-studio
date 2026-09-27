@@ -243,3 +243,14 @@ export const YouTube = (p: IconProps = {}): JSX.Element =>
       <path d="M10 9.2v5.6l4.8-2.8z" />
     </>
   )
+
+/** Fullscreen: four corners pulled out, as on a video player. */
+export const Maximize = (p: IconProps = {}): JSX.Element =>
+  base(p, <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />)
+
+/** Out of fullscreen: the corners pushed back in. */
+export const Restore = (p: IconProps = {}): JSX.Element =>
+  base(p, <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />)
+
+/** Minimise to a bar. */
+export const Minimize = (p: IconProps = {}): JSX.Element => base(p, <path d="M5 18h14" />)

@@ -65,6 +65,19 @@ def is_gaming(config_or_opts: dict | None) -> bool:
     return bool(isinstance(clips, dict) and clips.get("gaming"))
 
 
+def gaming_scoring(config_or_opts: dict | None) -> bool:
+    """Score this job as a gaming stream (analysis/gaming.py): in-game moments
+    and the reactions to them count, even when little is said. Gaming /
+    Reaction always does; "Gaming stream" asks for it with any other layout,
+    such as Vertical Live. Off unless asked for."""
+    if not config_or_opts:
+        return False
+    if is_gaming(config_or_opts) or config_or_opts.get("gaming_scoring"):
+        return True
+    clips = config_or_opts.get("clips")
+    return bool(isinstance(clips, dict) and clips.get("gaming_scoring"))
+
+
 GAMING_BY = ("user", "creator", "video", "clip")
 
 
@@ -89,8 +102,10 @@ def clean_gaming(settings: dict | None) -> dict:
     editor, the API. Raises ValueError on a box that isn't one."""
     if not isinstance(settings, dict):
         raise ValueError("gaming settings must be an object")
+    from gaming.framing import LAYOUTS  # the layout table only; nothing that renders
+
     out: dict = {"by": settings.get("by") if settings.get("by") in GAMING_BY else "user"}
-    for key in ("cam", "game_box"):
+    for key in ("cam", "game_box", "ui_box", "cam2"):
         if settings.get(key) is None:
             if key == "cam" and "cam" in settings:
                 out["cam"] = None          # "no webcam", said on purpose
@@ -99,12 +114,29 @@ def clean_gaming(settings: dict | None) -> dict:
         if box is None:
             raise ValueError(f"{key} must be [x, y, width, height] within the frame")
         out[key] = box
+    if settings.get("preset") in LAYOUTS["presets"]:
+        out["preset"] = settings["preset"]
+    if settings.get("safe") in LAYOUTS["safe_zones"]:
+        out["safe"] = settings["safe"]
+    if settings.get("order") in ("cam_top", "game_top"):
+        out["order"] = settings["order"]
+    if isinstance(settings.get("divider"), (int, float)) and not isinstance(settings["divider"], bool):
+        out["divider"] = min(max(float(settings["divider"]), 0.0), 1.0)
     if settings.get("cam_position") in ("top", "bottom"):
         out["cam_position"] = settings["cam_position"]
     if settings.get("game_align") in ("left", "center", "right"):
         out["game_align"] = settings["game_align"]
     if settings.get("game_fit") in ("fit", "fill"):
         out["game_fit"] = settings["game_fit"]
+    if isinstance(settings.get("panels"), list):
+        # The stream's solid panels, as found (gaming/panels.py): a few boxes.
+        panels = [_unit_box(b) for b in settings["panels"][:8]]
+        out["panels"] = [b for b in panels if b is not None]
+    if isinstance(settings.get("places"), dict):
+        # Where the facecams and the Game UI were put on the Short (fractions
+        # of its width and height).
+        places = {k: _unit_box(v) for k, v in settings["places"].items() if k in ("cam", "cam2", "ui")}
+        out["places"] = {k: v for k, v in places.items() if v is not None}
     return out
 
 

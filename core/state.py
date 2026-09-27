@@ -401,6 +401,11 @@ class StateDB:
             self.conn.execute("ALTER TABLE videos ADD COLUMN source_url TEXT DEFAULT ''")
         if "source_platform" not in video_cols:
             self.conn.execute("ALTER TABLE videos ADD COLUMN source_platform TEXT DEFAULT ''")
+        # The game(s) the platform says the video shows, as JSON
+        # [{"name", "start", "end"}], so a re-run from the cached file still
+        # knows them (analysis/gaming.py). Blank: not known.
+        if "games" not in video_cols:
+            self.conn.execute("ALTER TABLE videos ADD COLUMN games TEXT DEFAULT ''")
         job_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(jobs)")}
         for column, decl in (
             # User-defined queue order. Claiming orders by this, so reordering
@@ -839,6 +844,22 @@ class StateDB:
             (video_id, channel_id, title, channel_name, round(duration, 1), _now(), _now()),
         )
         self.conn.commit()
+
+    def set_video_games(self, video_id: str, games: list) -> None:
+        """What the platform says was played. Only a known list is written:
+        an empty one never overwrites what an earlier run recorded."""
+        if games:
+            self.conn.execute("UPDATE videos SET games = ? WHERE video_id = ?",
+                              (json.dumps(games), video_id))
+            self.conn.commit()
+
+    def video_games(self, video_id: str) -> list:
+        row = self.conn.execute("SELECT games FROM videos WHERE video_id = ?", (video_id,)).fetchone()
+        try:
+            games = json.loads(row["games"]) if row and row["games"] else []
+        except ValueError:
+            return []
+        return games if isinstance(games, list) else []
 
     def set_video_source(self, video_id: str, url: str = "", platform: str = "") -> None:
         """Record where a video came from. Only known values are written: a

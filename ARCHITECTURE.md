@@ -170,7 +170,7 @@ clips-studio/
 │   └── feedback.py             # in-app bug reports + diagnostics
 ├── publish/                    # YouTube Data API upload, metadata, scheduling
 ├── third_party/talknet/        # vendored TalkNet-ASD — do not edit
-├── models/                     # TalkNet weights (pretrain_TalkSet.model)
+├── models/                     # TalkNet weights (pretrain_TalkSet.model), PANNs game sounds
 ├── ui/                         # ── desktop app ──
 │   ├── src/main/               # Electron main process
 │   └── src/renderer/           # React + TypeScript + Tailwind
@@ -779,6 +779,7 @@ for offline installs.
 | FFmpeg | `scripts/fetch_ffmpeg.py` → `vendor/ffmpeg/` → `resources/backend/ffmpeg/` | Found by `core/binaries.py`; never depends on the user's PATH |
 | YOLO weights | Bundled as data | Otherwise the first video stalls on a silent download |
 | TalkNet weights | `models/pretrain_TalkSet.model` bundled as data | ~60 MB, and speaker detection degrades to motion-based framing without it: `asd.available()` gates every call, so a missing file is a quieter clip, not a crash |
+| Game-sound weights | `scripts/fetch_panns.py` → `models/panns_mobilenetv1.pth` bundled as data | 24 MB (PANNs MobileNetV1, CC BY 4.0); only a gaming stream uses it, and `panns.available()` gates it, so without it a gaming stream is scored on chat and voice alone |
 | PyTorch | CUDA build, bundled | Not just for tracking. The CUDA wheels carry the cuBLAS/cuDNN DLLs that CTranslate2 needs for GPU transcription. A CPU build makes *both* Whisper and tracking fall back to CPU |
 | Ollama + LLM | **Not bundled**. The setup wizard detects and installs | Separate product with its own installer, GPU handling and update cycle; models are gigabytes and the right one depends on the user's VRAM |
 

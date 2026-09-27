@@ -18,7 +18,7 @@ import yt_dlp
 
 from core.models import DownloadedVideo
 from sources.urlmatch import host_matches
-from sources.ytdlp_common import progress_opts
+from sources.ytdlp_common import games_from_info, progress_opts
 
 _VOD_RE = re.compile(r"twitch\.tv/videos?/(\d+)", re.IGNORECASE)
 
@@ -88,4 +88,5 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
         path=path,
         duration=float(info.get("duration") or 0),
         channel=info.get("uploader") or info.get("channel") or "",
+        games=games_from_info(info, "twitch"),
     )

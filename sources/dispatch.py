@@ -74,6 +74,26 @@ def _clear_stale_partials(output_dir: Path, video_id: str | None) -> None:
                 pass  # locked or already gone — never block the download
 
 
+def game_info(url: str) -> list[dict]:
+    """The game(s) a video shows, from the platform, without downloading it
+    (sources.ytdlp_common.games_from_info). For a cached file from before the
+    games were recorded; empty for a local upload or on any failure."""
+    source, _ = identify(url)
+    if source == "local":
+        return []
+    try:
+        import yt_dlp
+
+        from sources.ytdlp_common import games_from_info
+
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        return games_from_info(info, source)
+    except Exception as e:
+        print(f"      (could not ask the platform which game it is: {e})")
+        return []
+
+
 def metadata(url: str) -> tuple[str, str]:
     """(title, channel) for a URL, without downloading the video.
 
