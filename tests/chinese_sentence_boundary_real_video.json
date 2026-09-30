@@ -1,0 +1,177 @@
+{
+  "description": "Unpunctuated natural Mandarin video: Chinese-terminal support must leave the original boundary behavior unchanged.",
+  "source": {
+    "title": "三星堆为什么不可能是“外星文化”？中国考古学家释疑",
+    "creator": "中国新闻网",
+    "url": "https://www.youtube.com/watch?v=kH9f7cDCVAg",
+    "license_record": "https://commons.wikimedia.org/wiki/File:2021年3月31日_中国社会科学院考古研究所研究员施劲松讨论三星堆遗址.webm",
+    "license": "CC BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/",
+    "sha1": "d95093a5273c02bb7c486eb049dd5ae2c2a16436",
+    "sha256": "a7311cde64bf2fc148fc2e47b5fb4c22176d7506e924832056a875fbbe48a4a4",
+    "changes": "Unedited ASR-derived text/timing subset; no media bytes included. No endorsement implied."
+  },
+  "asr": {
+    "model": "Systran/faster-whisper-small",
+    "model_revision": "536b0662742c02347bc0e980a01041f333bce120",
+    "device": "cpu",
+    "compute_type": "int8",
+    "cpu_threads": 2,
+    "language": "zh",
+    "beam_size": 1,
+    "vad_filter": true,
+    "condition_on_previous_text": false,
+    "word_timestamps": true,
+    "manual_text_or_timing_edits": false
+  },
+  "time_basis": "Source-absolute seconds from decoded audio, source offset 0. Raw ASR segment indices 5–30 (0-based); original full run had 81 segments. Text/punctuation/timings are unedited.",
+  "candidate": {
+    "start": 24.14,
+    "end": 54.14,
+    "score": 80,
+    "min_duration": 10,
+    "max_duration": 60
+  },
+  "base_commit": "e21319f0a54b214bf8ef17e8940414671ba219e3",
+  "observed_before": [
+    24.14,
+    57.46
+  ],
+  "expected_after": [
+    24.14,
+    57.46
+  ],
+  "limitations": "No listening or full-app rendering review; this source has no terminal punctuation and no improvement is asserted.",
+  "segments": [
+    {
+      "start": 20.9,
+      "end": 23.5,
+      "text": "对这个问题做出明确解答"
+    },
+    {
+      "start": 24.14,
+      "end": 26.26,
+      "text": "三星堆初途非常奇特"
+    },
+    {
+      "start": 26.26,
+      "end": 28.48,
+      "text": "但是也不是那么的奇怪"
+    },
+    {
+      "start": 28.48,
+      "end": 30.66,
+      "text": "它更不可能是外星文明"
+    },
+    {
+      "start": 30.66,
+      "end": 32.62,
+      "text": "有人之所以这么说"
+    },
+    {
+      "start": 32.62,
+      "end": 34.78,
+      "text": "可能是有一个意识的前提"
+    },
+    {
+      "start": 34.78,
+      "end": 36.96,
+      "text": "那就是认为"
+    },
+    {
+      "start": 36.96,
+      "end": 39.56,
+      "text": "古代的文明都是已知的"
+    },
+    {
+      "start": 39.56,
+      "end": 40.52,
+      "text": "是单一的"
+    },
+    {
+      "start": 40.52,
+      "end": 42.84,
+      "text": "但事实上的这个古代文明"
+    },
+    {
+      "start": 42.84,
+      "end": 45.08,
+      "text": "它是丰富多彩的"
+    },
+    {
+      "start": 45.08,
+      "end": 46.78,
+      "text": "而且有很多文明"
+    },
+    {
+      "start": 46.78,
+      "end": 48.62,
+      "text": "还处于这个探索之中"
+    },
+    {
+      "start": 48.62,
+      "end": 50.5,
+      "text": "所以我们这个探索的过程"
+    },
+    {
+      "start": 50.5,
+      "end": 52.16,
+      "text": "也是一个长期的"
+    },
+    {
+      "start": 52.16,
+      "end": 53.62,
+      "text": "所以我们不能因为"
+    },
+    {
+      "start": 53.62,
+      "end": 57.46,
+      "text": "一种文明它是陌生的"
+    },
+    {
+      "start": 57.46,
+      "end": 58.56,
+      "text": "或者是未知的"
+    },
+    {
+      "start": 58.56,
+      "end": 61.42,
+      "text": "我们就认为它是外星文明"
+    },
+    {
+      "start": 61.42,
+      "end": 62.92,
+      "text": "是尽松介绍"
+    },
+    {
+      "start": 62.92,
+      "end": 66.84,
+      "text": "三星对文明有其自身产生发展的普及"
+    },
+    {
+      "start": 66.84,
+      "end": 69.96,
+      "text": "并且与其他文化还存在着交流"
+    },
+    {
+      "start": 69.96,
+      "end": 72.7,
+      "text": "具体来说它是从成都平安的"
+    },
+    {
+      "start": 72.7,
+      "end": 77.38,
+      "text": "新时期时代晚期的保顿文化发展而来的"
+    },
+    {
+      "start": 77.86,
+      "end": 82.06,
+      "text": "这期间吸收了其他区域的文化的一些因素"
+    },
+    {
+      "start": 82.7,
+      "end": 84.78,
+      "text": "往后发展为金沙文化"
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "description": "Natural continuous human Mandarin read speech; real ASR segments, no manual corrections; deterministic candidate probe, not selected by a highlight model.",
+  "source": {
+    "title": "Universal Declaration of Human Rights, Chinese",
+    "reader": "Christina Zhu",
+    "catalog_date": "2006-10-22",
+    "catalog_url": "https://librivox.org/the-universal-declaration-of-human-rights-by-the-united-nations/",
+    "download_url": "https://archive.org/download/universal_declaration_librivox/human_rights_un_chn_cz.mp3",
+    "license_evidence_url": "https://commons.wikimedia.org/wiki/File:Universal_Declaration_of_Human_Rights_-_chn_-_cz.ogg",
+    "license_statement": "Commons records an explicit Creative Commons Public Domain Dedication by the author; LibriVox identifies the recording as public domain in the USA. The Commons page notes jurisdictional limits of this retired dedication.",
+    "reference_text_url": "https://www.un.org/zh/about-us/universal-declaration-of-human-rights",
+    "source_sha256": "7663d0968a06b024fe65f1aa7424dfc2fb9d17f7feafb3cc82200cda724ca85d",
+    "excerpt_source_start": 300,
+    "excerpt_source_end": 480
+  },
+  "asr": {
+    "source_offset_seconds": 300,
+    "excerpt_duration_seconds": 180,
+    "model": "Systran/faster-whisper-small",
+    "model_revision": "536b0662742c02347bc0e980a01041f333bce120",
+    "device": "cpu",
+    "compute_type": "int8",
+    "cpu_threads": 2,
+    "language": "zh",
+    "beam_size": 1,
+    "vad_filter": true,
+    "condition_on_previous_text": false,
+    "word_timestamps": true,
+    "implementation": "unmodified transcription.transcriber._run from base e21319f0a54b214bf8ef17e8940414671ba219e3",
+    "elapsed_seconds": 25.731,
+    "manual_text_or_timing_edits": false
+  },
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 15.61,
+      "text": "區別,無論該領土是獨立領土、拖管領土、非自證領土或者處於其他任何主權受限制的情況之下"
+    },
+    {
+      "start": 16.59,
+      "end": 24.75,
+      "text": "第三條,人人有權享有生命、自由和人生安全"
+    },
+    {
+      "start": 26.17,
+      "end": 42.03,
+      "text": "第四条,任何人不得使为奴隶或奴役,一切形式的奴隶制度和奴隶买卖,均因予以禁止"
+    },
+    {
+      "start": 43.17,
+      "end": 57.43,
+      "text": "第五条,任何人不得加以酷刑或失以残忍的、不人道的或侮辱性的待遇或刑法"
+    },
+    {
+      "start": 58.15,
+      "end": 65.99,
+      "text": "第六条,人人在任何地方有权被承认在法律前的人格"
+    },
+    {
+      "start": 67.35,
+      "end": 77.25,
+      "text": "第七条,法律之前人人平等,并有权享受法律的平等保护,不受任何歧视。"
+    },
+    {
+      "start": 77.63,
+      "end": 90.61,
+      "text": "人人有权享受平等保护,以免受违反本宣言的任何歧视行为,以及煽动这种歧视的任何行为之害。"
+    },
+    {
+      "start": 90.61,
+      "end": 92.45,
+      "text": "第八條"
+    },
+    {
+      "start": 92.45,
+      "end": 99.61,
+      "text": "任何人當憲法或法律所發育他的基本權利"
+    },
+    {
+      "start": 100.13,
+      "end": 101.85,
+      "text": "遭受侵害時"
+    },
+    {
+      "start": 101.85,
+      "end": 104.99,
+      "text": "有權有合格的國家法庭"
+    },
+    {
+      "start": 104.99,
+      "end": 109.53,
+      "text": "對這種侵害行為做有效的補救"
+    },
+    {
+      "start": 109.53,
+      "end": 113.55,
+      "text": "第九條"
+    },
+    {
+      "start": 113.55,
+      "end": 120.35,
+      "text": "任何人不得加以任意逮捕拘警或放逐"
+    },
+    {
+      "start": 121.99,
+      "end": 134.63,
+      "text": "第十条,人人完全平等的有权有一个独立而无边移的法庭进行公正的和公开的审讯。"
+    },
+    {
+      "start": 135.21,
+      "end": 143.93,
+      "text": "以确定他的权利和义务并判定对他提出的任何形式指控。"
+    },
+    {
+      "start": 143.93,
+      "end": 147.44,
+      "text": "第十一條"
+    },
+    {
+      "start": 148.56,
+      "end": 153.2,
+      "text": "1. 凡受刑事控告者"
+    },
+    {
+      "start": 153.2,
+      "end": 157.38,
+      "text": "在為經獲得辯護上所需的"
+    },
+    {
+      "start": 157.38,
+      "end": 160.56,
+      "text": "一切保證的公開審訊"
+    },
+    {
+      "start": 160.56,
+      "end": 164.82,
+      "text": "而以法證使有罪以前"
+    },
+    {
+      "start": 165.34,
+      "end": 168.24,
+      "text": "有權被視為無罪"
+    },
+    {
+      "start": 169.06,
+      "end": 179.98,
+      "text": "二,任何人的任可行為或不行為,在其發生時依國家法"
+    }
+  ],
+  "candidate": {
+    "start": 67.35,
+    "end": 97.35,
+    "score": 80,
+    "min_duration": 10,
+    "max_duration": 60
+  },
+  "expected_before": {
+    "start": 67.35,
+    "end": 99.61
+  },
+  "expected_after": {
+    "start": 67.35,
+    "end": 90.61
+  },
+  "listening_review": false
+}
