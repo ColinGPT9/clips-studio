@@ -401,11 +401,12 @@ def _valid_range(c: ClipCandidate, video_end: float) -> bool:
 
 # A finished thought, as far as the transcript shows it. Closing quotes and
 # brackets count — Whisper writes 〈he said "stop."〉 with the stop inside.
-_SENTENCE_END = (".", "!", "?", "…")
+# Chinese transcripts use full-width punctuation and their own closing marks.
+_SENTENCE_END = (".", "!", "?", "…", "。", "！", "？")
 
 
 def _ends_sentence(seg) -> bool:
-    text = (getattr(seg, "text", "") or "").strip().rstrip("\"')]»”’")
+    text = (getattr(seg, "text", "") or "").strip().rstrip("\"')]»”’」』）】》〉")
     return text.endswith(_SENTENCE_END)
 
 
