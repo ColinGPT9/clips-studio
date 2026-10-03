@@ -50,6 +50,10 @@ themselves.
   (Vertical Live).
 - **Watches channels**: new videos on a YouTube, Twitch or Kick channel are
   spotted (YouTube's through its RSS feed) and clipped by themselves.
+- **Takes requests in a sentence**: the Ask Clips Kitty box at the bottom of the
+  app queues a video, takes what the clips should be about and how they should
+  look. It needs a Gemma 4 model (`gemma4:e4b`, or `gemma4:e2b` under 6 GB of
+  VRAM), installed from the app's Models page, or the cloud model the user chose.
 - **Posts, if asked**: clips go to nine platforms at once through a publishing
   service the user connects, now, on a schedule, or hands-off for a watched
   channel.

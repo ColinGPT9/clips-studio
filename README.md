@@ -226,6 +226,11 @@ through Ollama.
   position, words per line, casing, or off). Fix a transcription mistake line by line
   before export.
 - **AI edit chat**: describe what's wrong in plain language and it re-edits.
+- **Ask Clips Kitty**: the text box at the bottom of the dashboard. Say what you want in
+  a sentence, such as *"clip this stream, make sure you include when I died to the boss,
+  with big yellow captions"*, and it queues the video, tells the clip picker what to look
+  for and sets the options you named. **It needs a Gemma 4 model**: see
+  [The text box at the bottom needs Gemma 4](#the-text-box-at-the-bottom-needs-gemma-4).
 - **AI titles, descriptions, and hashtags**, all editable before export.
 - **Creator Profiles**: the app learns each creator over time to pick and title clips
   better. Everything stays on your computer, and you can inspect, correct, or wipe it.
@@ -402,6 +407,19 @@ better moments. Closing that gap is [#38](../../issues/38).
 
 Anything Ollama serves works, and switching is one click. Translation can use a
 *different* model than clipping. Set `llm.translation_model`.
+
+### The text box at the bottom needs Gemma 4
+
+**Ask Clips Kitty**, the text box at the bottom of the dashboard, only works with a model
+that can use the app's tools. Gemma 4 can. `gemma:7b` and the Gemma 3 models cannot, and
+setup installs one of those on a PC with no graphics card or with 8 GB or more of VRAM.
+There the box says *"No installed model can use tools"* until you add a Gemma 4 model.
+
+Whichever model picks your clips, install a Gemma 4 model beside it on the **Models**
+page: `gemma4:e4b` on a graphics card with 6 GB or more, `gemma4:e2b` on less. You don't
+have to switch to it. The box finds it by itself, and your clips are still picked by the
+model you chose. If you run the AI through OpenRouter instead, the box uses that model
+and needs nothing installed.
 
 ## Tested hardware and performance
 

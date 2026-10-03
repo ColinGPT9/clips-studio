@@ -1202,7 +1202,7 @@ AI on their own key, which the MCP client never sees.
 claude mcp add clips-kitty -- python main.py mcp
 ```
 
-Installed builds ship the engine as `api.exe` in the app's `resourcesackend` folder, so
+Installed builds ship the engine as `api.exe` in the app's `resources\backend` folder, so
 the command there is `api.exe mcp`. `CLIPS_STUDIO_API` overrides the address if the engine
 is on another port.
 
