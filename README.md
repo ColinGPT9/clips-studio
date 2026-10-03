@@ -28,11 +28,6 @@ options or an editor. It is a free Opus Clip, Vizard and Klap alternative that
 runs **Google Gemma** on your own PC: no server cost, no per-clip fee, no AI
 usage fee.
 
-**Follow for updates:**
-[![X (Twitter): @ClipsKitty2](https://img.shields.io/badge/X%20(Twitter)-%40ClipsKitty2-000000?logo=x&logoColor=white)](https://x.com/ClipsKitty2)
-[![Instagram: @ClipsKitty2](https://img.shields.io/badge/Instagram-%40ClipsKitty2-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/clipskitty2/)
-[![YouTube: @ClipsKitty2](https://img.shields.io/badge/YouTube-%40ClipsKitty2-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@ClipsKitty2)
-
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
 
@@ -791,6 +786,11 @@ Packaging and release documentation:
   the workarounds. Everything on it has actually been observed.
 - **[ROADMAP.md](ROADMAP.md)**: what is shipped, what is next, and the long-term
   direction.
+
+**Follow for updates:**
+[![X (Twitter): @ClipsKitty2](https://img.shields.io/badge/X%20(Twitter)-%40ClipsKitty2-000000?logo=x&logoColor=white)](https://x.com/ClipsKitty2)
+[![Instagram: @ClipsKitty2](https://img.shields.io/badge/Instagram-%40ClipsKitty2-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/clipskitty2/)
+[![YouTube: @ClipsKitty2](https://img.shields.io/badge/YouTube-%40ClipsKitty2-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@ClipsKitty2)
 
 ## Roadmap detail
 
