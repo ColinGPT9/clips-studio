@@ -30,9 +30,10 @@ export const metadata: Metadata = {
 	description: DESCRIPTION,
 	icons: { icon: "/mascot-head.png" },
 
-	// Indexing is off until `SITE_URL` names a real domain — see the note on
-	// that constant. Vercel already sends `X-Robots-Tag: noindex` on preview
-	// deployments, but production is exactly the case that needs the guard.
+	// Indexing follows `SITE_URL`: off while it is empty, on once it names the
+	// address the page lives at. See the note on that constant. Vercel already
+	// sends `X-Robots-Tag: noindex` on preview deployments, so only production
+	// is ever indexed.
 	metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
 	alternates: SITE_URL ? { canonical: SITE_URL } : undefined,
 	robots: SITE_URL

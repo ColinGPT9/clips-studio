@@ -234,14 +234,18 @@ nav.site a.donate:hover {
 
 /* The star ask. Deliberately a line of text under the buttons rather than a
    third button: starring is a favour, not a thing someone came here to do,
-   and a button competing with Download would cost more than it gained. */
-.star-note {
+   and a button competing with Download would cost more than it gained.
+   The line under it, offering the browser version to someone not ready to
+   install, is a line for the same reason. */
+.star-note,
+.try-note {
   margin: 16px 0 0;
   font-size: 0.88rem;
   color: var(--muted);
   max-width: 56ch;
 }
-.star-note a {
+.star-note a,
+.try-note a {
   font-weight: 600;
 }
 

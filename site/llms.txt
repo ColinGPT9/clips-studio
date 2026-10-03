@@ -82,6 +82,9 @@ or from a terminal: `winget install ColinGPT9.ClipsKitty`.
 - [Website](https://colingpt9.github.io/clips-studio/)
 - [Source on GitHub](https://github.com/ColinGPT9/clips-studio)
 - [Download](https://github.com/ColinGPT9/clips-studio/releases)
+- [Clips Kitty Web](https://clips-kitty-web.vercel.app/): the clip picking in a
+  browser, on a Twitch or Kick VOD or a local file, billed to the visitor's own
+  OpenRouter account. No vertical framing or captions; those are the desktop app.
 - [Architecture](https://github.com/ColinGPT9/clips-studio/blob/main/ARCHITECTURE.md)
 - [Changelog](https://colingpt9.github.io/clips-studio/changelog.html)
 - [Roadmap](https://colingpt9.github.io/clips-studio/roadmap.html)

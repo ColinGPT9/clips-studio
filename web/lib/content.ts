@@ -10,20 +10,21 @@
  *  hands every visitor a failed install.
  */
 
-export const VERSION = "1.1.3";
+export const VERSION = "2.0.0";
 
-/** The public address this tool is meant to live at — and the single switch
- *  that turns search-engine indexing on.
+/** The public address this tool lives at, and the single switch that turns
+ *  search-engine indexing on.
  *
- *  **Leave empty until a real domain is pointed at the deployment.** While it
- *  is empty the page asks not to be indexed, and that is deliberate rather
- *  than cautious: letting Google index the `*.vercel.app` URL first means
- *  that address accumulates the ranking, and moving to a proper domain later
- *  leaves a duplicate you cannot easily retire. Better to have no index entry
- *  for a week than the wrong one for a year.
+ *  Set to the `*.vercel.app` address on 2026-10-03, on the maintainer's
+ *  decision. It was left empty until then to wait for a real domain, because
+ *  an address that collects ranking has to be retired when the site moves.
+ *  No domain was coming, the marketing site lives on github.io for the same
+ *  reason, and a page nobody can find demonstrates nothing. If a domain is
+ *  ever pointed here, change this and have Vercel redirect the old address.
  *
- *  Setting it does three things at once — allows indexing, sets the canonical
- *  URL, and fills in the sitemap. No other file needs touching.
+ *  While it is empty the page asks not to be indexed. Setting it does three
+ *  things at once: allows indexing, sets the canonical URL, and fills in the
+ *  sitemap. No other file needs touching.
  *
  *  Prefer a subdomain or path of whatever domain the marketing site ends up
  *  on (`try.example.com`, or `example.com/try`) rather than a separate
@@ -34,7 +35,7 @@ export const VERSION = "1.1.3";
  *  literal type `""`, every `if (SITE_URL)` becomes provably false, and the
  *  branches that use it narrow to `never` — the compiler rejects code that is
  *  correct the moment a real value is filled in. */
-export const SITE_URL: string = "";
+export const SITE_URL: string = "https://clips-kitty-web.vercel.app";
 
 export const LINKS = {
 	download: `https://github.com/ColinGPT9/clips-studio/releases/download/v${VERSION}/ClipsKitty-Web-Setup-${VERSION}.exe`,
@@ -141,7 +142,7 @@ export const DESKTOP_ONLY: { title: string; body: string }[] = [
  *  call, and copy here should describe what is true now rather than commit
  *  them to anything. */
 export const DESKTOP_IS_FREE =
-	"Clips Kitty for Windows is completely free to run. It is open source, there is no subscription, no credits and no watermark, and because the AI runs on your own PC, clipping a hundred VODs costs exactly nothing. Only this browser version uses paid API credits, because a browser cannot run the model itself.";
+	"Clips Kitty for Windows is completely free to run. It is open source, there is no subscription, no credits and no watermark, and because the AI runs on your own PC, clipping a hundred VODs costs exactly nothing. Only this browser version needs paid API credits, because a browser cannot run the model itself.";
 
 /** The donate copy, taken VERBATIM from the desktop app and the website.
  *

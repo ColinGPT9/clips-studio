@@ -9,9 +9,7 @@ import { SITE_URL } from "@/lib/content";
  *  ends up half-indexed.
  *
  *  While `SITE_URL` is empty this disallows everything, deliberately. See the
- *  note on that constant: indexing the `*.vercel.app` address before a real
- *  domain exists means the ranking lands on a URL that has to be retired
- *  later.
+ *  note on that constant for why it was empty at first and when it was set.
  *
  *  `/callback` is always excluded. It exists for a few hundred milliseconds
  *  during an OAuth handshake, carries a single-use code in its query string,

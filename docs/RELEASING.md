@@ -139,6 +139,12 @@ have to be bumped with the version**. The CI website job checks that internal
 paths resolve; it cannot tell that an external GitHub URL now points at a
 release that does not exist.
 
+The two pages hosted on Vercel carry the version as well: `VERSION` in
+`whop-app/lib/content.ts` (the Whop page) and in `web/lib/content.ts` (Clips
+Kitty Web, the browser version). Each builds its download link from that value.
+**Bump both together, and only after the payload is on Hugging Face.** Nothing
+checks them: the browser version stayed on 1.1.3 through 1.1.4, 1.2.0 and 2.0.0.
+
 The version-free `releases/latest/download/...` form would avoid this, but
 GitHub's "latest" **skips pre-releases**, while the project ships alphas, that
 URL 404s. Switch to it when a release goes out without the pre-release flag.
@@ -149,6 +155,7 @@ Check after publishing:
       GitHub release
 - [ ] Nothing over 2 GiB was attached to the GitHub release
 - [ ] Tag matches `ui/package.json`
+- [ ] `VERSION` bumped in `whop-app/lib/content.ts` and `web/lib/content.ts`
 - [ ] Feed file uploaded **last**, after the payload finished
 - [ ] Named `alpha.yml` / `beta.yml` if stable users should not get it
 - [ ] Release notes mention the SmartScreen warning (see below)
