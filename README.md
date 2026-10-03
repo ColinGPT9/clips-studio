@@ -28,6 +28,10 @@ options or an editor. It is a free Opus Clip, Vizard and Klap alternative that
 runs **Google Gemma** on your own PC: no server cost, no per-clip fee, no AI
 usage fee.
 
+**Follow for updates:**
+[![X (Twitter): @ClipsKitty2](https://img.shields.io/badge/X%20(Twitter)-%40ClipsKitty2-000000?logo=x&logoColor=white)](https://x.com/ClipsKitty2)
+[![Instagram: @ClipsKitty2](https://img.shields.io/badge/Instagram-%40ClipsKitty2-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/clipskitty2/)
+
 > **Clips Kitty was called Clips Studio until version 1.1.3**, renamed to meet
 > Microsoft Store naming requirements. Same app, same repository, same data.
 
