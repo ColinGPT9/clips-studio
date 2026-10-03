@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import type { PublishPlanItem } from '../lib/types'
+import { useEvents } from '../lib/useEvents'
 import { seedOptions } from './queue/AddVideos'
 
 interface Turn {
@@ -43,17 +44,61 @@ export default function Assistant(): JSX.Element | null {
     hashtags: string[]
   } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // The Gemma 4 build to offer when nothing installed can run the box (#121).
+  const [install, setInstall] = useState<{ model: string; size_gb: number } | null>(null)
+  const [pulling, setPulling] = useState(false)
+  const [pullPct, setPullPct] = useState<number | null>(null)
+  const [pullError, setPullError] = useState('')
 
-  useEffect(() => {
+  const checkStatus = useCallback((): void => {
     api
       .agentStatus()
       .then((s) => {
         setReady(s.ready)
         setModel(s.model)
         setReason(s.reason)
+        setInstall(s.install ?? null)
       })
       .catch(() => setReady(false))
   }, [])
+
+  useEffect(() => {
+    checkStatus()
+  }, [checkStatus])
+
+  // A download runs in the engine and outlives this component, so its state is
+  // read from the events rather than remembered from the click: leave the
+  // dashboard mid-download and come back, and the next event puts the
+  // percentage back on the button.
+  useEvents((e) => {
+    if (e.type !== 'model_pull' || !install || e.tag !== install.model) return
+    if (e.status === 'done') {
+      setPulling(false)
+      setPullPct(null)
+      checkStatus()
+    } else if (e.status === 'error') {
+      setPulling(false)
+      setPullPct(null)
+      setPullError(e.error ?? 'unknown error')
+    } else {
+      setPulling(true)
+      setPullError('')
+      setPullPct(e.completed && e.total ? Math.round((e.completed / e.total) * 100) : null)
+    }
+  })
+
+  const startInstall = async (): Promise<void> => {
+    if (!install || pulling) return
+    setPulling(true)
+    setPullPct(null)
+    setPullError('')
+    try {
+      await api.pullModel(install.model)
+    } catch (e) {
+      setPulling(false)
+      setPullError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -160,9 +205,52 @@ export default function Assistant(): JSX.Element | null {
 
   if (ready === false) {
     return (
-      <section className="card" aria-label={t('Assistant')}>
+      <section className="card h-full overflow-y-auto" aria-label={t('Assistant')}>
         <p className="font-semibold">{t('Ask Clips Kitty')}</p>
-        <p className="text-xs text-muted mt-1">{reason || t('No model available.')}</p>
+        {install ? (
+          /* Nothing installed can run the box. Say what it needs and offer it,
+             rather than sending someone to another page to choose a build. */
+          <>
+            {/* One paragraph and one row, so it all fits the box at its
+                shortest (132 px) without the button sliding out of view. */}
+            <p className="text-sm mt-0.5">
+              {t('Install Gemma 4 to use this box.')}{' '}
+              <span className="text-xs text-muted">
+                {t(
+                  'It runs on a Gemma 4 model, and none is installed. Your clips are still picked by the model you chose.'
+                )}
+              </span>
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <button
+                className="btn-accent !px-3 !py-1 text-sm"
+                disabled={pulling}
+                onClick={startInstall}
+              >
+                {pulling
+                  ? `${t('Downloading')}${pullPct === null ? '…' : ` ${pullPct}%`}`
+                  : t('Install Gemma 4')}
+              </button>
+              <span className="text-xs text-muted">
+                <code>{install.model}</code> · {t('about')} {install.size_gb} GB,{' '}
+                {t('one time, stays on your PC')} ·{' '}
+                <button
+                  className="text-accent hover:underline"
+                  onClick={() => window.dispatchEvent(new Event('open-models'))}
+                >
+                  {t('Models page')}
+                </button>
+              </span>
+            </div>
+            {pullError && (
+              <p className="text-xs text-warn mt-1">
+                {t('Download failed')}: {pullError}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-muted mt-1">{reason || t('No model available.')}</p>
+        )}
       </section>
     )
   }

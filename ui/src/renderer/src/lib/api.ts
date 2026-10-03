@@ -274,11 +274,16 @@ export const api = {
       body: JSON.stringify({ silence: opts?.silence ?? true, fillers: opts?.fillers ?? true })
     }),
   /** Whether the assistant can run, and which model it would use. The app's
-   *  default scoring model cannot call tools, so this is a real question. */
+   *  default scoring model cannot call tools, so this is a real question.
+   *  `install` is the Gemma 4 build to offer when no installed model can. */
   agentStatus: () =>
-    request<{ ready: boolean; model: string; configured: string; reason: string }>(
-      '/agent/status'
-    ),
+    request<{
+      ready: boolean
+      model: string
+      configured: string
+      reason: string
+      install?: { model: string; size_gb: number } | null
+    }>('/agent/status'),
   /** One exchange with the assistant. `steps` is what it actually did, `plan`
    *  is a proposed batch of uploads that NOTHING has acted on yet. */
   agentChat: (

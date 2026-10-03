@@ -10,7 +10,22 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ## Unreleased
 
+### Changed
+
+- **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a
+  Gemma 4 model, and setup installs a different one on most PCs. The box used to say so
+  in a line of small grey text. It now says "Install Gemma 4 to use this box" and has an
+  **Install Gemma 4** button, with the build already chosen for your graphics card and
+  the size of the download beside it. The percentage shows on the button, and the box
+  starts working by itself when it finishes. The model that picks your clips stays as it
+  was (#121).
+
 ### Fixed
+
+- **A model download that failed no longer says it finished.** When Ollama could not
+  fetch a model (no connection, a name that does not exist, a full disk), the Models
+  page, setup and the box above all showed the download as done, with nothing installed.
+  They now say "Download failed" and why.
 
 - **Captions on the seconds you add to a clip.** A clip made longer, in AI Edit or the
   editor, came back with no captions on the added seconds, and neither re-rendering nor

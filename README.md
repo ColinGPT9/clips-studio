@@ -413,7 +413,8 @@ Anything Ollama serves works, and switching is one click. Translation can use a
 **Ask Clips Kitty**, the text box at the bottom of the dashboard, only works with a model
 that can use the app's tools. Gemma 4 can. `gemma:7b` and the Gemma 3 models cannot, and
 setup installs one of those on a PC with no graphics card or with 8 GB or more of VRAM.
-There the box says *"No installed model can use tools"* until you add a Gemma 4 model.
+There the box will not work until you add a Gemma 4 model: version 2.0 says *"No installed
+model can use tools"*, and later versions offer the download in the box itself.
 
 Whichever model picks your clips, install a Gemma 4 model beside it on the **Models**
 page: `gemma4:e4b` on a graphics card with 6 GB or more, `gemma4:e2b` on less. You don't

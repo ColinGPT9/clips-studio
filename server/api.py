@@ -2627,7 +2627,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         window instead of arriving as a confusing reply.
         """
         from llm.spec import is_local, parse_spec
-        from server.agent import usable_model
+        from server.agent import install_offer, usable_model
 
         backend_spec = config["llm"].get("backend") or ""
         if not is_local(backend_spec):
@@ -2648,6 +2648,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                     "configured": backend_spec,
                     "reason": "The assistant can't use the ChatGPT plan yet. Choose Ollama or a "
                               "provider with your own API key in Settings → AI to use it.",
+                    "install": None,
                 }
             spec = get(provider)
             ready = bool(spec and cloud_model and has_key(config["llm"].get("data_dir") or data_dir, provider))
@@ -2658,6 +2659,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "reason": "" if ready else (
                     f"Add your {spec.key_label if spec else 'API key'} in Settings → AI to use the assistant."
                 ),
+                "install": None,
             }
 
         configured = (config["llm"].get("backend") or "").split("/")[-1]
@@ -2671,6 +2673,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "gemma4:e4b for a 6 GB graphics card, gemma4:e2b for less. "
                 "Or use OpenRouter with your own key in Settings → AI."
             ),
+            # The build for this machine, so the box can offer the download
+            # itself and nobody has to work out which of the two they need.
+            "install": None if model else install_offer(_nvidia_vram_gb()),
         }
 
     @app.post("/agent/chat")
@@ -2814,16 +2819,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
         # Pick the model for THIS machine server-side, so the setup wizard and
         # the Models page can never give contradictory advice.
-        vram_gb = None
-        try:
-            import pynvml
-
-            pynvml.nvmlInit()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            vram_gb = pynvml.nvmlDeviceGetMemoryInfo(handle).total / 1e9
-            pynvml.nvmlShutdown()
-        except Exception:
-            pass  # no NVIDIA GPU, or the library isn't available — CPU advice
+        vram_gb = _nvidia_vram_gb()
 
         return {
             "active": config["llm"]["backend"],
@@ -2865,6 +2861,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                         if not line:
                             continue
                         info = json.loads(line)
+                        # Ollama reports a failed pull (no such model, no
+                        # network, disk full) as a line carrying "error", on a
+                        # stream that then simply ends. Unchecked, the download
+                        # was announced as done with nothing on disk.
+                        if info.get("error"):
+                            raise RuntimeError(info["error"])
                         broadcaster.publish(
                             {
                                 "type": "model_pull",
@@ -3054,3 +3056,21 @@ def _gpu_stats() -> dict | None:
         }
     except Exception:
         return None  # no NVIDIA GPU / driver — the UI shows CPU-only mode
+
+
+def _nvidia_vram_gb() -> float | None:
+    """The first NVIDIA card's memory in GB, or None with no card or driver.
+
+    Model advice is sized by this one figure, so the Models page, the setup
+    wizard and the assistant's install offer cannot disagree about the card.
+    """
+    try:
+        import pynvml
+
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        total = pynvml.nvmlDeviceGetMemoryInfo(handle).total
+        pynvml.nvmlShutdown()
+        return total / 1e9
+    except Exception:
+        return None  # no NVIDIA GPU, or the library isn't available — CPU advice

@@ -176,3 +176,29 @@ def test_the_model_gets_room_for_the_tool_list(monkeypatch):
 def test_an_empty_answer_says_so(monkeypatch):
     out, calls, _ = _run(monkeypatch, [{"role": "assistant", "content": ""}])
     assert calls == [] and "didn't answer" in out["reply"]
+
+
+def test_the_box_offers_the_gemma_4_build_that_fits_the_card():
+    # Setup installs a model that cannot call tools on most PCs, so the box
+    # offers Gemma 4 itself (#121). Which build is the card's to decide.
+    # No card, or one too small for e4b: the smallest build.
+    for vram_gb in (None, 0, 4.3):
+        assert agent.install_offer(vram_gb)["model"] == "gemma4:e2b"
+    # A 6 GB card reports a little over 6 (6144 MiB), and anything bigger is
+    # offered the same build: the box needs no more, whatever picks the clips.
+    for vram_gb in (6.4, 8.6, 12.9, 25.8):
+        assert agent.install_offer(vram_gb)["model"] == "gemma4:e4b"
+
+
+def test_the_offer_says_how_big_the_download_is():
+    for vram_gb in (None, 12.9):
+        offer = agent.install_offer(vram_gb)
+        assert offer["size_gb"] == agent.GEMMA4_DOWNLOAD_GB[offer["model"]] > 0
+
+
+def test_the_builds_offered_are_ones_the_models_page_lists():
+    # The box and the Models page must not name different Gemma 4 builds.
+    from llm.manager import RECOMMENDATIONS
+
+    listed = {model for _hardware, model, _note in RECOMMENDATIONS}
+    assert set(agent.GEMMA4_DOWNLOAD_GB) <= listed

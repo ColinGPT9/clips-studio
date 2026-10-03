@@ -137,6 +137,25 @@ def usable_model(host: str, preferred: str = "") -> str:
     return ""
 
 
+# What a fresh pull of each build downloads, in GB, rounded up. Read off
+# Ollama's registry on 2026-10-03 (6.6 and 4.6): a figure to put beside the
+# button so nobody starts it on a metered connection unawares, not a promise.
+GEMMA4_DOWNLOAD_GB = {"gemma4:e4b": 7, "gemma4:e2b": 5}
+
+
+def install_offer(vram_gb: float | None) -> dict:
+    """The Gemma 4 build the box offers when no installed model can call tools.
+
+    The same two edge builds and the same 6 GB line as RECOMMENDATIONS in
+    llm/manager.py: e4b where it fits the card, e2b on anything smaller, which
+    includes a PC with no graphics card at all. It is installed beside the
+    model that picks the clips, never in place of it, so a 12 GB card is
+    offered e4b too: the box needs nothing bigger.
+    """
+    model = "gemma4:e4b" if vram_gb and vram_gb >= 6 else "gemma4:e2b"
+    return {"model": model, "size_gb": GEMMA4_DOWNLOAD_GB[model]}
+
+
 def run(
     message: str,
     history: list[dict],
