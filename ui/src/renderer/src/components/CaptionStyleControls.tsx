@@ -269,6 +269,7 @@ export default function CaptionStyleControls({
   style,
   onChange,
   hideWordsPerCaption = false,
+  hidePosition = false,
   landscape = false
 }: {
   idPrefix: string
@@ -278,6 +279,10 @@ export default function CaptionStyleControls({
    *  replace, so regrouping does nothing there — hide it rather than offer
    *  a control that silently has no effect. */
   hideWordsPerCaption?: boolean
+  /** Translated subtitles on a vertical Highlights clip always go in the
+   *  middle, clear of its title card (multilingual/publish.py), so a
+   *  position chosen for them would change nothing. */
+  hidePosition?: boolean
   /** Some output is 16:9 (a 16:9 clip, or a job that makes 16:9 clips),
    *  where the post style draws nothing, so every caption control applies
    *  whatever the style says. */
@@ -338,7 +343,7 @@ export default function CaptionStyleControls({
             onChange={(e) => onChange('font_size', Number(e.target.value))}
           />
         </div>
-        {!highlights && (
+        {!highlights && !hidePosition && (
           <div>
             <label htmlFor={`${idPrefix}-pos`} className="label">
               Position

@@ -1543,6 +1543,9 @@ export default function TimelineEditor({
             clipId={clip.id}
             videoId={clip.video_id}
             onPreview={onTranslationPreview}
+            // The saved style, not a pending one: the export burns the clip
+            // as it was last applied.
+            middleOnly={isHighlights(storedStyle, isLandscape)}
           />
         </FeatureBoundary>
       )}

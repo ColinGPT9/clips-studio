@@ -43,12 +43,17 @@ const RECOMMENDED = 'qwen2.5:7b'
 export default function MultilingualExport({
   clipId,
   videoId,
-  onPreview
+  onPreview,
+  middleOnly = false
 }: {
   clipId: number
   videoId?: string
   /** Draw a language's captions over the editor video (editor only). */
   onPreview?: (p: TranslationPreview | null) => void
+  /** A vertical Highlights clip: its translated subtitles always burn in the
+   *  middle, clear of the title card (multilingual/publish.py), whatever
+   *  position is chosen for them. */
+  middleOnly?: boolean
 }): JSX.Element {
   const [langs, setLangs] = useState<
     { code: string; name: string; native: string; can_dub: boolean; caption_font: string | null }[]
@@ -138,6 +143,10 @@ export default function MultilingualExport({
       )
     }
   })
+
+  // The look as it burns on this clip, for the summary and the example: the
+  // chosen position is kept for other clips, but this one ignores it.
+  const shownStyle: Required<CaptionStyle> = middleOnly ? { ...style, position: 'middle' } : style
 
   const elapsed = run ? (now - run.startedAt) / 1000 : 0
   // Extrapolate from work done so far. Below ~6% the estimate is noise, so
@@ -502,16 +511,24 @@ export default function MultilingualExport({
             <summary className="px-3 py-2 text-xs cursor-pointer hover:bg-raised/40 rounded-lg">
               {t('Subtitle font & style')}
               <span className="text-muted ml-2">
-                {style.font} · {style.font_size} · {style.position}
+                {shownStyle.font} · {shownStyle.font_size} · {shownStyle.position}
               </span>
             </summary>
             <div className="p-3 pt-0">
               <CaptionStyleControls
                 idPrefix={`subs-${clipId}`}
-                style={style}
+                style={shownStyle}
                 onChange={setStyleField}
                 hideWordsPerCaption
+                hidePosition={middleOnly}
               />
+              {middleOnly && (
+                <p className="text-[11px] text-muted/70 mt-2">
+                  {t(
+                    'On this Highlights clip the subtitles go in the middle, clear of its title card.'
+                  )}
+                </p>
+              )}
               <p className="text-[11px] text-muted/70 mt-2">
                 {t(
                   'Applies to every language you export. Non-Latin scripts switch to a font that has the glyphs automatically.'
