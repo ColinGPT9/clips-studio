@@ -1,7 +1,8 @@
 """Who a reaction shot shows: the bench, courtside, the crowd, a coach.
 
-The cutaway is found from the picture's colours and the crowd's sound
-(sports/basketball/reactions.py); what it shows is told by the same local
+The cutaway is found from the people the detector sees, or the picture's
+colours without it, and the crowd's sound (sports/basketball/reactions.py);
+what it shows is told by the same local
 model the app already uses to look at a gaming stream's frames
 (analysis/game_vision.py): Gemma 3 or Gemma 4 through Ollama, with the
 pictures never leaving the PC. Only the kind of shot is asked, never who

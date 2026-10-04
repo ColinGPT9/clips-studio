@@ -364,12 +364,17 @@ another shows logos and two bare numbers. So the box is found around the game
 clock (with at least two numbers beside it), each keyframe's box is read piece by
 piece with the full OCR, and the two scores are told by where they sit: the two
 biggest numbers that keep their place and never go down (the shot clock runs
-down, the fouls and timeouts are smaller). A team's code is kept only when it is
-read the same at its place most of the time; sideways letters and logos give no
-code, never a guessed one. On 60 keyframes of three NBA broadcasts, every score
-on screen was read right. A score up by 1, 2 or 3 on one side,
-seen on two readings, is a free throw, a basket or a three, and which team
-scored. The commentary's name for it stands when the points agree (a dunk is 2,
+down, the fouls and timeouts are smaller). A score mid-roll or a "+3" drawn over
+it is read once, so only a score seen on two readings running counts, for the
+baskets and for the score before a moment alike. A team's code is the one
+written beside its score on the same row, or else one read the same at its
+place most of the time; sideways letters and logos give no code, never a
+guessed one, and a header ("RIVALS WEEK") or a record ("25-20") is no team or
+score. On 60 keyframes of three NBA broadcasts, every score on screen was read
+right. The full OCR costs most of a second a keyframe, so a box that hasn't
+changed since the last one read (the clock stopped) isn't read again. A score
+up by 1, 2 or 3 on one side, seen on two readings, is a free throw, a basket or
+a three, and which team scored. The commentary's name for it stands when the points agree (a dunk is 2,
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
 between readings) isn't called a basket.
 
@@ -398,7 +403,8 @@ more. That told 90 of 90 hand-labelled frames apart; the floor's colour couldn't
 (the lower half of a court shot is the front rows), so the colour and edge test
 only stands in when the detector can't load. A run of shots that aren't the
 court, between two that are and at most 25 seconds long, is a cutaway (an advert
-break runs longer).
+break runs longer). A frame with nobody in it (a stat card, a fade, a replay's
+wipe) neither starts a cutaway nor ends one.
 
 - **Tied to the play before it.** A cutaway starting within 18 seconds of a play
   is its reaction: the play's clip is grown to hold it when it fits, so a dunk,

@@ -16,7 +16,8 @@ already has:
   rows. Without the detector, the colour and edge test (`looks`) stands in.
   A run of shots that aren't the court, between two that are, is a
   cutaway (an advert break or a studio segment runs far longer and is left
-  out).
+  out). A frame with no one in it (a stat card, a fade, a replay's wipe)
+  is neither: it doesn't start a cutaway, or end one.
 - **The play before it**: a cutaway starting within `react_within` seconds
   of a play is that play's reaction. Dunk at 1:23:14, the crowd roars at
   1:23:15, the camera cuts courtside: one moment.
@@ -60,7 +61,7 @@ NAME = re.compile(r"^[A-Z][a-zA-Z'\-.]+(?:\s+[A-Z][a-zA-Z'\-.]+){1,2}$")
 class Cutaway:
     start: float
     end: float
-    crowd: bool = False      # the frame looked like many people (edges and colours)
+    crowd: bool = False      # a shot of people was seen: someone close (the detector), or edges (looks())
     name: str = ""           # the broadcast's own caption, when one was read
 
 
@@ -93,24 +94,28 @@ def looks(img, court_share: float, crowd_edges: float) -> str:
 
 
 def shot_kind(people: list, tall: float) -> str:
-    """"court", "people" or "other" for one frame, from the people the
+    """"court", "people" or "nobody" for one frame, from the people the
     detector found in it ((x, y, w, h) in frame fractions): "people" when
     the tallest is at least `tall` of the frame's height, "court" when there
-    are people and none that tall, "other" when there is no one (a graphic,
-    a fade, the arena from above)."""
+    are people and none that tall, "nobody" when there is no one (a stat
+    card, a fade, the arena from above)."""
     if not people:
-        return "other"
+        return "nobody"
     return "people" if max(p[3] for p in people) >= tall else "court"
 
 
 def cutaways(shots: list[tuple[float, str]], video_end: float) -> list[Cutaway]:
     """The cutaways in a game: each run of frames that aren't the court,
     between two that are, lasting at most MAX_CUTAWAY. `shots`: (time, what
-    looks() saw) for each keyframe, in order."""
+    shot_kind() or looks() saw) for each keyframe, in order. A frame with
+    nobody in it is passed over: a stat card after a dunk is no fan's
+    reaction."""
     out: list[Cutaway] = []
     seen_court = False
     run: list[tuple[float, str]] = []
     for t, kind in shots:
+        if kind == "nobody":
+            continue
         if kind == "court":
             if run and seen_court:
                 end = t

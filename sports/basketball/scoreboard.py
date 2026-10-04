@@ -51,8 +51,9 @@ REJOIN = re.compile(r"(?<![A-Z0-9])(?:(\d) (ST|ND|RD|TH|Q|OT)|(Q|H|OT) (\d))(?![
 # A team's code or school name on its own ("LAL", "GSW(25-20)": its record
 # beside it, "ATTLEBORO").
 CODE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0]{1,13})(?![A-Z0-9])")
-# A number on its own: a score, the shot clock, a foul or timeout count.
-NUMBER = re.compile(r"(?<![\d:.])(\d{1,3})(?![\d:.])")
+# A number on its own: a score, the shot clock, a foul or timeout count. Not
+# a "+3" drawn over a score after a three (the graphic stays up for seconds).
+NUMBER = re.compile(r"(?<![\d:.+])(?<!\+ )(\d{1,3})(?![\d:.])")
 # Words a bug writes beside the score that look like a team code.
 NOT_TEAMS = {"QTR", "OT", "ST", "ND", "RD", "TH", "BONUS", "FOUL", "FOULS", "TO", "TOL", "TOS", "HALF", "HLF",
              "FINAL", "PTS", "REB", "AST", "FG", "FT", "PF", "SHOT", "Q", "H"}
@@ -70,6 +71,7 @@ SLOT_HEIGHT = 0.7        # the two scores are about the same size, the box's big
 TEAM_SHARE = 0.5         # a team's code is read at its place in at least this share of the readings...
 TEAM_SAME = 0.6          # ...as the same code at least this often (a logo reads differently each time)
 TEAM_NEAR = 1.2          # ...on the scores' row, or within this many scores' heights of it
+SAME_BOX = 0.001         # a box with fewer of its pixels changed than this since the last one read reads the same
 
 
 @dataclass
@@ -112,11 +114,20 @@ class Scoreboard:
     changes: list = field(default_factory=list)
     halftime: float | None = None    # (soccer's; unused)
 
+    def seen_twice(self) -> list:
+        """The readings whose score the reading before or after it (of those
+        with a score) shows too. A score mid-roll or a misread is seen once:
+        changes() counts only scores seen twice already, and score_before()
+        and final() take only these (a "12-33" read mid-roll in a 40-33 game
+        is no 21-point game)."""
+        scored = [r for r in self.readings if r.score is not None]
+        return [r for i, r in enumerate(scored)
+                if (i > 0 and scored[i - 1].score == r.score)
+                or (i + 1 < len(scored) and scored[i + 1].score == r.score)]
+
     def final(self) -> tuple | None:
-        for r in reversed(self.readings):
-            if r.score is not None:
-                return r.score
-        return None
+        sure = self.seen_twice()
+        return sure[-1].score if sure else None
 
     def teams(self) -> tuple | None:
         pairs = Counter(r.teams for r in self.readings if r.teams)
@@ -172,7 +183,7 @@ class Scoreboard:
         return min(after, key=lambda r: r.t).clock
 
     def score_before(self, t: float) -> tuple | None:
-        prior = [r for r in self.readings if r.score is not None and r.t < t]
+        prior = [r for r in self.seen_twice() if r.t < t]
         return max(prior, key=lambda r: r.t).score if prior else None
 
     def when(self, t: float) -> str:
@@ -257,27 +268,58 @@ def _blank(text: str, pattern: re.Pattern) -> str:
     return pattern.sub(lambda m: " " * len(m.group(0)), text)
 
 
+def rows(pieces: list[tuple[tuple, str]]) -> list[list[tuple[tuple, str]]]:
+    """Pieces of text in rows from the top, each row left to right."""
+    found: list[dict] = []
+    for box, text in sorted(pieces, key=lambda x: (x[0][1] + x[0][3]) / 2):
+        mid = (box[1] + box[3]) / 2
+        row = next((r for r in found if r["top"] <= mid <= r["bottom"]), None)
+        if row is None:
+            found.append({"top": box[1], "bottom": box[3], "pieces": [(box, text)]})
+        else:
+            row["pieces"].append((box, text))
+    return [sorted(r["pieces"], key=lambda x: x[0][0]) for r in found]
+
+
 def reading_order(pieces: list[tuple[tuple, str]]) -> list[tuple[tuple, str]]:
     """Pieces of text in reading order: row by row from the top, each row
     left to right."""
-    rows: list[dict] = []
-    for box, text in sorted(pieces, key=lambda x: (x[0][1] + x[0][3]) / 2):
-        mid = (box[1] + box[3]) / 2
-        row = next((r for r in rows if r["top"] <= mid <= r["bottom"]), None)
-        if row is None:
-            rows.append({"top": box[1], "bottom": box[3], "pieces": [(box, text)]})
-        else:
-            row["pieces"].append((box, text))
-    return [p for r in rows for p in sorted(r["pieces"], key=lambda x: x[0][0])]
+    return [p for row in rows(pieces) for p in row]
+
+
+def row_pairs(lines: list[str]) -> tuple[tuple | None, tuple | None]:
+    """(teams, score) when the bug writes each team's code beside its score
+    on one row ("LAL 4  GS 5", or a row each): exactly two such pairs, the
+    same way round. (None, None) otherwise. A code and a number on
+    different rows are never paired: a header's "RIVALS WEEK" over the shot
+    clock is no team and its score."""
+    forward, flipped = [], []
+    for line in lines:
+        rest = _blank(_blank(line, PERIOD), CLOCK)
+        forward += [(m.group(1).replace("0", "O"), int(m.group(2))) for m in CODE_SCORE.finditer(rest)]
+        flipped += [(m.group(2).replace("0", "O"), int(m.group(1))) for m in SCORE_CODE.finditer(rest)]
+    forward = [x for x in forward if x[0] not in NOT_TEAMS]
+    flipped = [x for x in flipped if x[0] not in NOT_TEAMS]
+    if len(forward) == 2:
+        pairs = forward
+    elif len(flipped) == 2:
+        pairs = flipped
+    else:
+        return None, None
+    if pairs[0][0] == pairs[1][0] or any(x[1] > MAX_SCORE for x in pairs):
+        return None, None
+    return (pairs[0][0], pairs[1][0]), (pairs[0][1], pairs[1][1])
 
 
 def parse_pieces(pieces: list[tuple[tuple, str]]) -> Reading:
-    """What a bug says, from the pieces the full OCR found in its box: what
-    parse() reads in their text (the period, the clock, the teams, and the
-    score when team codes or a dash say which number is whose), and every
-    other number with its place, for from_readings to tell the scores by."""
-    ordered = [(box, unglue(str(text))) for box, text in reading_order(pieces)]
+    """What a bug says, from the pieces the full OCR found in its box: the
+    period and the clock parse() reads in their text, the teams and the
+    score when each code sits beside its score on a row (row_pairs), and
+    every number with its place, for from_readings to tell the scores by."""
+    lines = [[(box, unglue(str(text))) for box, text in row] for row in rows(pieces)]
+    ordered = [p for row in lines for p in row]
     out = parse([t for _, t in ordered])
+    out.teams, out.score = row_pairs([" ".join(t for _, t in row) for row in lines])
     for box, text in ordered:
         rest = _blank(_blank(text, PERIOD), CLOCK)
         for m in CODE.finditer(rest):
@@ -380,10 +422,16 @@ def score_places(readings: list[Reading]) -> tuple | None:
     for r in read:
         taken: set = set()
         for x, y, h, v in r.numbers:
-            near = [k for k, p in enumerate(places) if k not in taken
-                    and abs(x - p["x"]) <= SLOT_X and abs(y - p["y"]) <= 0.5 * max(h, p["h"])]
-            if near:
-                k = min(near, key=lambda k: abs(x - places[k]["x"]))
+            near = [k for k, p in enumerate(places)
+                    if abs(x - p["x"]) <= SLOT_X and abs(y - p["y"]) <= 0.5 * max(h, p["h"])]
+            free = [k for k in near if k not in taken]
+            if near and not free:
+                # A second number where this reading already has one: a
+                # score mid-roll ("40" over "42"). Not a place of its own,
+                # or a team's score would split across two.
+                continue
+            if free:
+                k = min(free, key=lambda k: abs(x - places[k]["x"]))
                 p = places[k]
                 p["seen"].append((r.t, v))
                 n = len(p["seen"])
@@ -412,7 +460,9 @@ def score_places(readings: list[Reading]) -> tuple | None:
     first = scores[0]
     # The other score: as big as the first (within SLOT_HEIGHT), and of
     # those the one that counts highest (a team's fouls are smaller numbers).
-    alike = [p for p in scores[1:] if p["h"] >= SLOT_HEIGHT * first["h"]]
+    alike = [p for p in scores[1:] if p["h"] >= SLOT_HEIGHT * first["h"]
+             and not (abs(p["x"] - first["x"]) <= 2 * SLOT_X
+                      and abs(p["y"] - first["y"]) <= 0.5 * max(p["h"], first["h"]))]
     if not alike:
         return None
     second = max(alike, key=lambda p: (p["top"], p["h"]))
@@ -422,12 +472,27 @@ def score_places(readings: list[Reading]) -> tuple | None:
 
 
 def team_codes(readings: list[Reading], places: tuple) -> tuple | None:
-    """The two teams' codes, in the scores' order, from where codes are read
-    in the box: a place where the same code is read most of the time (not a
-    network's logo, read differently each time) on the scores' row or the
-    one beside it. None unless exactly two such places are found: a code
-    is never guessed (sideways letters, logos instead of codes)."""
+    """The two teams' codes, in the scores' order. First the pair written
+    beside the scores (row_pairs) when most readings read it, its numbers
+    the ones at the scores' places: a network's logo on the same row
+    ("ESPN LAL 61 GS 54") is beside no score. Else from where codes are
+    read in the box: a place where the same code is read most of the time
+    (not a logo, read differently each time) on the scores' row or the one
+    beside it. None unless exactly two such places are found: a code is
+    never guessed (sideways letters, logos instead of codes)."""
     read = [r for r in readings if r.numbers]
+    beside: Counter = Counter()
+    for r in read:
+        if r.teams and r.score:
+            at = (_at(r, places[0]), _at(r, places[1]))
+            if at == r.score:
+                beside[r.teams] += 1
+            elif at == r.score[::-1]:
+                beside[r.teams[::-1]] += 1
+    if beside:
+        pair, n = beside.most_common(1)[0]
+        if n >= TEAM_SHARE * len(read):
+            return pair
     found: list[dict] = []
     for r in read:
         for x, y, h, code in r.codes:
@@ -557,10 +622,23 @@ def read_video(path, duration: float, cancel=None) -> Scoreboard:
         if box is None:
             return Scoreboard()
         found: dict[int, list] = {}
+        last: dict = {}
+
+        def on_frame(i: int, img) -> None:
+            # A full OCR is most of a second a keyframe: a box that hasn't
+            # changed since the last one read (the clock stopped for a foul,
+            # a timeout, free throws) reads as that one did.
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            before = last.get("gray")
+            if (before is not None and before.shape == gray.shape
+                    and float((cv2.absdiff(before, gray) > 40).mean()) < SAME_BOX):
+                found[i] = last["pieces"]
+                return
+            found[i] = last["pieces"] = scorebug.pieces(img, _ocr)
+            last["gray"] = gray
+
         try:
-            times = scorebug.keyframe_crops(path, box, probe_size(path),
-                                            lambda i, img: found.__setitem__(i, scorebug.pieces(img, _ocr)),
-                                            cancel)
+            times = scorebug.keyframe_crops(path, box, probe_size(path), on_frame, cancel)
         except OSError:
             times = []
         # A basket is a few seconds of play: keyframes further apart than

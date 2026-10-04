@@ -253,25 +253,46 @@ def test_the_box_is_found_around_the_clock_with_logos_between_its_scores():
     assert 0.38 < box[0] < 0.42 and 0.68 < box[2] < 0.72     # the bug, not the ad board
 
 
-def _real_bugs():
+def _bug_frames(game):
     """What the full OCR read in the score bug of three NBA broadcasts, 20
     keyframes each, with what a person read there (tests/fixtures)."""
+    import copy
     from pathlib import Path
 
     games = json.loads((Path(__file__).parent / "fixtures" / "basketball_bugs.json").read_text("utf-8"))
-    out = {}
-    for name in ("game1", "game2", "game3"):
-        readings, truths = [], []
-        for f in games[name]["frames"]:
-            w, h = f["w"], f["h"]
-            pieces = [((x0 / w, y0 / h, x1 / w, y1 / h), text) for x0, y0, x1, y1, text, conf in f["pieces"]
-                      if conf >= 0.5]                         # as scorebug.pieces keeps them
-            r = bb.parse_pieces(pieces)
-            r.t = f["t"]
-            readings.append(r)
-            truths.append(f["truth"])
-        out[name] = (bb.from_readings(readings, tuple(games[name]["box"])), truths)
-    return out
+    return copy.deepcopy(games[game]["frames"]), tuple(games[game]["box"])
+
+
+def _board_of(frames, box=None):
+    readings, truths = [], []
+    for f in frames:
+        w, h = f["w"], f["h"]
+        pieces = [((x0 / w, y0 / h, x1 / w, y1 / h), text) for x0, y0, x1, y1, text, conf in f["pieces"]
+                  if conf >= 0.5]                             # as scorebug.pieces keeps them
+        r = bb.parse_pieces(pieces)
+        r.t = f["t"]
+        readings.append(r)
+        truths.append(f["truth"])
+    return bb.from_readings(readings, box), truths
+
+
+def _real_bugs():
+    return {name: _board_of(*_bug_frames(name)) for name in ("game1", "game2", "game3")}
+
+
+def _dense(frames, times: dict | None = None, copies: int = 3):
+    """A game's keyframes as a whole game reads them: each seen on `copies`
+    keyframes running (1-3 s apart, between baskets), or on as many as
+    `times` says for its time."""
+    import copy
+
+    out = []
+    for f in frames:
+        for k in range((times or {}).get(f["t"], copies)):
+            g = copy.deepcopy(f)
+            g["t"] = round(f["t"] + 0.3 * k, 2)
+            out.append(g)
+    return sorted(out, key=lambda f: f["t"])
 
 
 def _clock(text):
@@ -296,11 +317,115 @@ def test_real_nba_bugs_are_read(game, teams):
 
 
 def test_a_score_rolling_over_is_not_a_basket():
-    # Mid-roll ("4U" over "12"), and a "+3" graphic over the score, are read
-    # once and never twice running: no basket is made of them.
-    board, _truths = _real_bugs()["game1"]
-    assert all(c.points in (1, 2, 3) for c in board.changes)
-    assert (12, 33) not in [c.after for c in board.changes] and (3, 65) not in [c.after for c in board.changes]
+    # Game 1 as a whole game reads it: each keyframe seen three times
+    # running; the score mid-roll at 307.54 ("4U" over "12") once, and one
+    # more mid-roll early on (8 rolling to 10, the same pieces). One read of
+    # two numbers at a score's place mustn't split that team's score in two.
+    frames, box = _bug_frames("game1")
+    roll = next(f for f in frames if f["t"] == 307.54)
+    early = json.loads(json.dumps(roll))
+    early["t"] = 67.0
+    for p in early["pieces"]:
+        p[4] = {"4U": "1U", "12": "8", "33": "4", "7:26": "9:15", "2ND": "1ST"}.get(p[4], p[4])
+    board, truths = _board_of(_dense([*frames, early], {307.54: 1, 67.0: 1}), box)
+    wrong = [r.t for r, truth in zip(board.readings, truths) if None not in truth["score"]
+             and r.score != tuple(truth["score"])]
+    assert wrong == []
+    made = [(c.before, c.after, c.points) for c in board.changes]
+    assert ((70, 65), (73, 65), 3) in made and ((92, 86), (95, 86), 3) in made
+    assert all(after not in ((12, 33), (3, 65)) and points in (1, 2, 3) for _before, after, points in made)
+    assert board.final() == (111, 103)
+
+
+def test_a_plus_three_over_the_score_is_no_score():
+    # After a three the bug shows "+3" over the scorer's score for a few
+    # seconds: read on two keyframes running, it mustn't take the three away.
+    frames, box = _bug_frames("game1")
+    board, _ = _board_of(_dense(frames, copies=2), box)
+    assert ((70, 65), (73, 65), 3) in [(c.before, c.after, c.points) for c in board.changes]
+
+
+def test_a_score_read_once_says_nothing_about_the_game():
+    # The score just before a moment is one seen twice running: not "12-33"
+    # read mid-roll in a 40-33 game, nor "3-65" read off the "+3".
+    frames, box = _bug_frames("game1")
+    board, _ = _board_of(_dense(frames, {307.54: 1, 555.12: 1}), box)
+    assert board.score_before(307.6) == (40, 33)
+    assert board.score_before(555.2) == (70, 65)
+
+
+def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
+    # A full OCR is most of a second a keyframe. While the clock is stopped
+    # the box doesn't change: those keyframes read as the last one did.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    import contextlib
+
+    from sports.core import scorebug
+
+    still = np.full((40, 200, 3), 30, dtype=np.uint8)
+    noisy = still.copy()
+    noisy[::3, ::3] += 20                                  # compression noise: no change
+    scored = still.copy()
+    scored[10:30, 150:170] = 250                           # a digit changes: 4% of the box
+    boxes = [still, still, noisy, still, still, scored, scored, scored, still, still, still]
+    pieces = {id(still): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.8, 0.8), "101")],
+              id(scored): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.8, 0.8), "103")]}
+    read = []
+
+    def crops(path, box, size, on_frame, cancel=None, scale_width=None):
+        for i, img in enumerate(boxes):
+            on_frame(i, img)
+        return [2.0 * i for i in range(len(boxes))]
+
+    def ocr_pieces(img, ocr):
+        read.append(img)
+        return pieces[id(img)]
+
+    @contextlib.contextmanager
+    def capture(path, required=True):
+        yield object()
+
+    monkeypatch.setattr("video.capture.video_capture", capture)
+    monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
+    monkeypatch.setattr(bb, "find_box", lambda grab, duration, ocr: (0.3, 0.8, 0.7, 0.9))
+    monkeypatch.setattr(scorebug, "keyframe_crops", crops)
+    monkeypatch.setattr(scorebug, "pieces", ocr_pieces)
+    board = bb.read_video("game.mp4", 22.0)
+    assert [id(img) for img in read] == [id(still), id(scored), id(still)]
+    assert len(board.readings) == len(boxes)
+
+
+def test_a_header_over_the_shot_clock_is_no_team():
+    # A short clip of game 2's bug: logos and bare scores, "RIVALS WEEK" over
+    # the shot clock, the records under the scores. Too few readings to tell
+    # the scores by their places: the header and the clock are no team and
+    # score, the records no score.
+    frames, box = _bug_frames("game2")
+    base = frames[0]                                     # 84.13: "1sT 8:32 :24  3  6  GSW(25-20) DAL(18-26)"
+    clip = []
+    for t, shot, left, right in ((0, ":21", "3", "6"), (4, ":21", "3", "6"), (8, ":24", "3", "6"),
+                                 (12, ":24", "3", "9"), (16, ":24", "3", "9")):
+        f = json.loads(json.dumps(base))
+        f["t"] = t
+        for p in f["pieces"]:
+            p[4] = {":24": shot, "3": left, "6": right}.get(p[4], p[4])
+        clip.append(f)
+    board, _ = _board_of(clip, box)
+    assert board.teams() is None and board.final() is None and board.changes == []
+
+
+def test_a_network_logo_beside_the_teams_is_no_team():
+    # Game 3's bug: "ESPN LAL 61 GS 54 3RD 9:47". The logo read as "ESPN"
+    # every time sits at a place of its own on the scores' row, but beside no
+    # score: the teams are still the codes beside the scores.
+    frames, box = _bug_frames("game3")
+    for f in frames:
+        for p in f["pieces"]:
+            if p[0] < 100:
+                p[4] = "ESPN"
+    board, _ = _board_of(frames, box)
+    assert board.teams() == ("LAL", "GS")
 
 
 # ---- events -----------------------------------------------------------------------------
@@ -444,7 +569,16 @@ def test_the_tallest_person_tells_a_court_shot_from_people():
     fans = [*court, (0.6, 0.6, 0.3, 0.55)]
     assert reactions.shot_kind(court, 0.36) == "court"
     assert reactions.shot_kind(fans, 0.36) == "people"
-    assert reactions.shot_kind([], 0.36) == "other"
+    assert reactions.shot_kind([], 0.36) == "nobody"
+
+
+def test_a_stat_card_after_a_play_is_no_cutaway():
+    # A full-screen stat card after a dunk has nobody in it: it is no
+    # reaction shot. A card inside a cutaway doesn't end it either.
+    card = [(296, "court"), (300, "court"), (306, "nobody"), (308, "nobody"), (310, "court")]
+    assert reactions.cutaways(card, 400) == []
+    bench = [(296, "court"), (300, "people"), (302, "nobody"), (304, "people"), (308, "court")]
+    assert [(c.start, c.end, c.crowd) for c in reactions.cutaways(bench, 400)] == [(300, 308, True)]
 
 
 def test_shots_are_read_by_the_detector_and_by_colour_without_it(monkeypatch):
