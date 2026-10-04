@@ -1359,7 +1359,13 @@ def _render_files(
     # with the clip (opts["headline"], opts["subline"]), so a re-render keeps
     # it and the editor can change it.
     if highlights and (opts.get("headline") or opts.get("subline")):
-        _title_card(render_path, opts, caption_style, clip_dir / f"{stem}.card.png", content_language)
+        # The editor's hook title is burned at the top in the pass above, and
+        # a card laid over it there would hide it. A clip with a hook keeps
+        # its card in the lower third instead.
+        position = _post_style.card_position(caption_style)
+        if position == "top" and edit is not None and edit.hook:
+            position = "lower"
+        _title_card(render_path, opts, position, clip_dir / f"{stem}.card.png", content_language)
 
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
@@ -1403,9 +1409,10 @@ def _render_files(
     return final_path, render_opts_json
 
 
-def _title_card(clip: Path, opts: dict, caption_style: dict | None, png: Path, language: str) -> None:
-    """Lay the highlights title card over a rendered clip. Never raises: a
-    card that cannot be drawn leaves the clip as it was rendered."""
+def _title_card(clip: Path, opts: dict, position: str, png: Path, language: str) -> None:
+    """Lay the highlights title card over a rendered clip, at `position`
+    ("lower" or "top"). Never raises: a card that cannot be drawn leaves the
+    clip as it was rendered."""
     from core import modes
     from video import post_style
 
@@ -1415,7 +1422,7 @@ def _title_card(clip: Path, opts: dict, caption_style: dict | None, png: Path, l
             size = (1080, 1920)
         card = post_style.render_card(
             str(opts.get("headline") or ""), str(opts.get("subline") or ""), size, png,
-            position=post_style.card_position(caption_style), language=language,
+            position=position, language=language,
         )
         if card is not None:
             post_style.apply_card(clip, card)
