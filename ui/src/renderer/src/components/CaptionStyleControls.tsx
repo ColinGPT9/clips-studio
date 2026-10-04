@@ -81,21 +81,26 @@ function HighlightsExample({ style }: { style: Required<CaptionStyle> }): JSX.El
   )
   const card = (
     <div className="flex flex-col items-center">
+      {/* One line each, as the real card draws these: a sample short
+          enough to stay inside the ~99px-wide mock even where the face
+          is not condensed, and nowrap so it never breaks into two boxes. */}
       <span
-        className="rounded-[3px] bg-black px-1.5 py-1 leading-none text-[#F5FA00]"
+        className="rounded-[3px] bg-black px-1.5 py-1 leading-none text-[#F5FA00] whitespace-nowrap"
         style={{
           fontFamily: "'Bahnschrift', 'Impact', sans-serif",
           fontWeight: 700,
+          fontStretch: 'condensed',
           fontSize: '9px'
         }}
       >
-        STEPBACK FROM THE LOGO!😤
+        LOGO THREE!😤
       </span>
       <span
-        className="rounded-[3px] bg-[#F5FA00] px-1 py-0.5 leading-none text-black"
+        className="rounded-[3px] bg-[#F5FA00] px-1 py-0.5 leading-none text-black whitespace-nowrap"
         style={{
           fontFamily: "'Bahnschrift', 'Impact', sans-serif",
           fontWeight: 700,
+          fontStretch: 'condensed',
           fontSize: '6.5px'
         }}
       >
