@@ -1,0 +1,244 @@
+"""Reactions: the crowd, the bench and courtside, as moments of their own.
+
+Basketball broadcasts cut away from the court after a big play: to the
+fans on their feet, the bench, a coach, someone famous courtside. WSC Sports
+uses crowd reaction to find the moments that matter; here the reaction is
+also something people clip on its own. How it is found, from what the app
+already has:
+
+- **The cutaway**: the keyframes of the whole game, read small. A court shot
+  is mostly one floor colour in its lower half with few edges; a shot of
+  people is many colours and edges. A run of shots that aren't the court,
+  between two that are, is a cutaway (an advert break or a studio segment
+  runs far longer and is left out).
+- **The play before it**: a cutaway starting within `react_within` seconds
+  of a play is that play's reaction. Dunk at 1:23:14, the crowd roars at
+  1:23:15, the camera cuts courtside: one moment.
+- **The crowd**: a roar over the cutaway (the sound model's crowd curve).
+- **A name**: only the broadcast's own caption over the cutaway (a
+  lower-third the app's OCR reads), never a face matched to a name. Without
+  one it is a "Courtside reaction" or a "Crowd reaction", nobody named.
+
+A cutaway alone isn't a reaction (the camera shows the crowd during free
+throws too): it needs the play before it, the roar or a caption.
+
+Who is shown (the bench, courtside, a coach) is told by the local model
+looking at the frames (sports/basketball/look.py), when it can take images.
+"""
+
+import re
+from dataclasses import dataclass
+
+from sports.core.events import SportEvent
+from sports.core.windows import window
+
+MAX_CUTAWAY = 25.0       # longer than this off the court is a break, an advert or the studio
+THUMB_WIDTH = 192        # keyframes are read this small: a colour and edge count needs no more
+NAMES_MAX = 60           # cutaways whose caption is read (a full OCR each)
+CROWD_AT = 0.4           # the crowd curve's bar for a roar (sports/core/detect.py's)
+AFTER_REACTION = 1.5     # seconds a merged clip runs past the end of the reaction shot
+
+# Words a lower-third writes that aren't a person's name.
+NOT_NAMES = {"live", "replay", "timeout", "time", "out", "quarter", "half", "halftime", "final", "overtime",
+             "bonus", "fouls", "foul", "free", "throw", "throws", "shot", "clock", "points", "rebounds",
+             "assists", "game", "tonight", "season", "playoffs", "presented", "by", "the", "and", "vs",
+             "at", "nba", "wnba", "ncaa", "espn", "tnt", "abc", "nbc", "fox", "cbs", "prime", "video",
+             "sports", "network", "arena", "center", "centre", "garden", "court", "home", "away", "fan",
+             "fans", "crowd", "kiss", "cam", "dance", "challenge", "review", "lead", "run", "record",
+             "streak", "leaders", "stats", "team", "player", "coach", "next", "up", "coming"}
+NAME = re.compile(r"^[A-Z][a-zA-Z'\-.]+(?:\s+[A-Z][a-zA-Z'\-.]+){1,2}$")
+
+
+@dataclass
+class Cutaway:
+    start: float
+    end: float
+    crowd: bool = False      # the frame looked like many people (edges and colours)
+    name: str = ""           # the broadcast's own caption, when one was read
+
+
+# ---- telling the court from people ------------------------------------------------
+
+
+def looks(img, court_share: float, crowd_edges: float) -> str:
+    """"court", "people" or "other" for one frame (BGR), from its lower half:
+    the share of its most common colour, and how much of it is edges."""
+    import cv2
+    import numpy as np
+
+    h = img.shape[0]
+    lower = img[h // 2:, :]
+    hsv = cv2.cvtColor(lower, cv2.COLOR_BGR2HSV)
+    lit = hsv[:, :, 2] > 40
+    if lit.sum() < lower.shape[0] * lower.shape[1] * 0.2:
+        return "other"                                   # a dark frame: a fade, a black cut
+    hue = (hsv[:, :, 0][lit] // 10).astype(np.int32)     # 18 hues
+    sat = (hsv[:, :, 1][lit] // 64).astype(np.int32)     # 4 saturations
+    counts = np.bincount(hue * 4 + sat, minlength=72)
+    share = float(counts.max()) / max(1, int(lit.sum()))
+    gray = cv2.cvtColor(lower, cv2.COLOR_BGR2GRAY)
+    edges = float((cv2.Canny(gray, 80, 160) > 0).mean())
+    if share >= court_share and edges < crowd_edges:
+        return "court"
+    if edges >= crowd_edges:
+        return "people"
+    return "other"
+
+
+def cutaways(shots: list[tuple[float, str]], video_end: float) -> list[Cutaway]:
+    """The cutaways in a game: each run of frames that aren't the court,
+    between two that are, lasting at most MAX_CUTAWAY. `shots`: (time, what
+    looks() saw) for each keyframe, in order."""
+    out: list[Cutaway] = []
+    seen_court = False
+    run: list[tuple[float, str]] = []
+    for t, kind in shots:
+        if kind == "court":
+            if run and seen_court:
+                end = t
+                if end - run[0][0] <= MAX_CUTAWAY:
+                    out.append(Cutaway(run[0][0], end, crowd=any(k == "people" for _, k in run)))
+            run = []
+            seen_court = True
+        else:
+            run.append((t, kind))
+    return out
+
+
+def read_shots(path, duration: float, court_share: float, crowd_edges: float, cancel=None) -> list:
+    """(time, looks()) for every keyframe of the video, read small in one pass."""
+    from core.modes import probe_size
+    from sports.core.scorebug import keyframe_crops
+
+    kinds: dict[int, str] = {}
+    times = keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path),
+                           lambda i, img: kinds.__setitem__(i, looks(img, court_share, crowd_edges)),
+                           cancel, scale_width=THUMB_WIDTH)
+    return [(t, kinds[i]) for i, t in enumerate(times) if i in kinds]
+
+
+# ---- a name, only from the broadcast's own caption --------------------------------
+
+
+def name_in(lines: list[str], exclude=()) -> str:
+    """A person's name in a caption's lines: two or three capitalised words,
+    none of them a broadcast word or a team code. "" when there is none."""
+    banned = {str(x).lower() for x in exclude}
+    for raw in lines:
+        text = " ".join(str(raw).split()).strip(" .:-|")
+        if text.isupper():
+            text = text.title()
+        if not NAME.match(text) or not 5 <= len(text) <= 32:
+            continue
+        words = [w.strip(".'-").lower() for w in text.split()]
+        if any(w in NOT_NAMES or w in banned for w in words):
+            continue
+        return text
+    return ""
+
+
+def read_names(path, found: list[Cutaway], exclude=(), grab=None, ocr=None) -> None:
+    """The caption over each cutaway, read from its middle frame's lower
+    part with the app's OCR (the first NAMES_MAX cutaways). `grab` and `ocr`
+    stand in for the video and the OCR in tests."""
+    if not found:
+        return
+    if ocr is None:
+        from analysis import game_text
+
+        if not game_text.available():
+            return
+        ocr = game_text._ocr
+    if grab is None:
+        import cv2
+
+        from video.capture import video_capture
+
+        with video_capture(path, required=False) as cap:
+            if cap is None:
+                return
+
+            def grab_frame(t: float):
+                cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
+                ok, img = cap.read()
+                return img if ok else None
+
+            read_names(path, found, exclude, grab_frame, ocr)
+        return
+    for c in found[:NAMES_MAX]:
+        img = grab((c.start + c.end) / 2)
+        if img is None:
+            continue
+        lower = img[int(img.shape[0] * 0.6):, :]
+        lines = [str(text) for _box, text, conf in (ocr(lower) or []) if float(conf) >= 0.6]
+        c.name = name_in(lines, exclude)
+
+
+# ---- reactions as moments ----------------------------------------------------------
+
+
+def _peak(curve, lo: float, hi: float) -> float:
+    if curve is None or len(curve) == 0:
+        return 0.0
+    a, b = int(max(0, lo)), int(min(len(curve), hi + 1))
+    return float(max(curve[a:b])) if b > a else 0.0
+
+
+def moments(profile, events: list[SportEvent], found: list[Cutaway], *, curves: dict, video_end: float,
+            min_len: float, max_len: float, react_within: float, focus: bool) -> list[SportEvent]:
+    """The reactions, as events, each tied to the play just before it, and
+    those plays' windows grown to hold their reaction when it fits.
+
+    `focus`: the job asked for reactions (Fan reactions...): a reaction is
+    then the clip's moment, the play its lead-in. Otherwise a reaction tied
+    to a play counts for less than the play, so a Dunks clip stays a dunk."""
+    reaction_types = set(profile.reaction_types)
+    plays = sorted((e for e in events if not e.is_replay and e.type not in reaction_types
+                    and e.type != "big_moment" and e.confidence >= 0.66), key=lambda e: e.t)
+    crowd = curves.get("crowd")
+    out: list[SportEvent] = []
+    for c in found:
+        play = None
+        for e in plays:
+            if e.t <= c.start + 1 and c.start - e.t <= react_within:
+                play = e
+        roar = _peak(crowd, c.start - 2, c.end) >= CROWD_AT
+        signals = ["cut away from the court"]
+        if play is not None:
+            signals.append(f"after the {profile.event_label(play.type).lower()}")
+        if roar:
+            signals.append("crowd roar")
+        if c.name:
+            signals.append(f"on screen: {c.name}")
+        if len(signals) < 2:
+            continue                                  # a crowd shot during free throws, not a reaction
+        if c.name:
+            kind = "celebrity_reaction"
+        elif c.crowd and roar:
+            kind = "crowd_reaction"
+        else:
+            kind = "fan_reaction"
+        e = SportEvent(kind, c.start, min(1.0, len(signals) / 3), profile.importance(kind), signals=signals,
+                       person=c.name)
+        if play is not None:
+            # From the play's lead-in to the end of the reaction shot.
+            start = max(0.0, play.t - min(profile.window_of(play.type)[0], 6.0))
+            end = min(video_end, c.end + AFTER_REACTION)
+            if end - start > max_len:
+                start = max(0.0, end - max_len)
+            if end - start < min_len:
+                end = min(video_end, start + min_len)
+            e.start, e.end = round(start, 2), round(end, 2)
+            if not focus:
+                e.importance = min(e.importance, max(0, play.importance - 1))
+            # The play's own clip holds its reaction, when it fits.
+            if c.end + AFTER_REACTION > play.end and c.end + AFTER_REACTION - play.start <= max_len:
+                play.end = round(min(video_end, c.end + AFTER_REACTION), 2)
+                play.signals.append(f"then {profile.event_label(kind).lower()}")
+        else:
+            e.start, e.end = window(*profile.window_of(kind), c.start, min_len=min_len, max_len=max_len,
+                                    video_end=video_end, post_extra=c.end - c.start)
+        if focus:
+            e.importance = 100
+        out.append(e)
+    return events + out

@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions, SportOption } from '../../lib/types'
 import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
 import SportFields from '../SportFields'
-import { startingSport, useSports } from '../../lib/sports'
+import { sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../../lib/sports'
 import { watermarkSelection } from '../WatermarkCard'
 import { t } from '../../lib/i18n'
 
@@ -235,7 +235,7 @@ export default function QueueItemSettings({
                 setGamingScoring(false)
               }
             },
-            'A match (Soccer for now): goals, saves, cards and big chances from the crowd, the commentary and the scoreboard, one clip per moment, and a 9:16 crop that follows the ball.'
+            'A match or a game (Soccer, Basketball): its moments from the crowd, the commentary and the scoreboard, one clip per moment, and a 9:16 crop that follows the play.'
           )}
         {toggle(
           'Watermark',
@@ -257,11 +257,11 @@ export default function QueueItemSettings({
           <p className="label shrink-0">{t('Vertical Live content')}</p>
           <select
             className="input !w-72"
-            value={sport ? 'sport' : gamingScoring ? 'gaming' : 'standard'}
+            value={verticalValue(sport) ?? (gamingScoring ? 'gaming' : 'standard')}
             onChange={(e) => {
-              if (e.target.value === 'sport') {
-                // Soccer is the Sports switch's match scoring, for a match streamed 9:16.
-                setSport(sport ?? startingSport(sports))
+              if (e.target.value.startsWith('sport:')) {
+                // A sport is the Sports switch's match scoring, for a match streamed 9:16.
+                setSport(sportForVertical(e.target.value, sport, sports))
                 setPodcast(false)
                 setGaming(false)
                 setGamingScoring(false)
@@ -275,7 +275,11 @@ export default function QueueItemSettings({
           >
             <option value="standard">{t('Talking / IRL')}</option>
             <option value="gaming">{t('Gaming / reaction')}</option>
-            {(sports.length > 0 || sport) && <option value="sport">⚽ {t('Soccer / Football')}</option>}
+            {verticalSports(sports).map((s) => (
+              <option key={s.value} value={s.value}>
+                {t(s.label)}
+              </option>
+            ))}
           </select>
         </div>
       )}

@@ -37,6 +37,6 @@ def select(events: list[SportEvent], spec: dict, highlights: str = "best",
         kept = [e for e in known if e.period == period] + unknown
         if unknown:
             label = (spec.get("periods") or {}).get(period, period)
-            notes.append(f"{len(unknown)} moment(s) kept for {label} without knowing their half: "
-                         "the match clock wasn't read there")
+            notes.append(f"{len(unknown)} moment(s) kept for {label} without knowing their "
+                         f"{spec.get('period_word') or 'half'}: the match clock wasn't read there")
     return kept, notes

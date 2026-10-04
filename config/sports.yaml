@@ -167,3 +167,334 @@ soccer:
     auto:      Automatic
     broadcast: TV broadcast
     sideline:  Club or phone
+
+# Basketball: the second sport, on the same framework. A basket the score bug
+# confirms is ground truth (the score goes up by 1, 2 or 3), the quarter and
+# the game clock say how much it mattered, and the broadcast's cutaways to the
+# crowd, the bench and courtside are reactions tied to the play before them.
+# Sources: WSC Sports (the NBA's automated highlights, crowd reaction as a
+# signal), BARD's multi-label action set (shot type and result, team, player),
+# basketball_event_tracking's split of player, ball and possession, and
+# LumenSport's separate segmenting, scoring and editing. Ideas only; nothing
+# copied, and no NBA tracking data is assumed.
+basketball:
+  label: Basketball
+
+  highlights: >-
+    dunks and alley-oops, threes, and-ones, blocks, steals that turn into a basket, game winners
+    and buzzer-beaters, clutch shots in a close game late in the fourth or in overtime, big runs and
+    lead changes, and the crowd, bench and courtside reactions to them
+
+  # The arena reacts within a second of the basket, a little faster than a
+  # stadium: the ball drops through and the noise is already there.
+  crowd_lag_seconds: 1.0
+  # Basketball replays come quickly, in the next dead ball.
+  replay_within_seconds: 40
+  # Play restarts within seconds of a basket, so a second scoring moment
+  # more than this after one is another basket, not its celebration.
+  celebration_seconds: 10
+  replay_words: [replay, replays, "look at this again", "watch it again", "see it again", "one more time",
+                 "another angle", "slow motion", "in slow-mo", "let's take another look", repetición]
+
+  # What a new score confirms. The scoreboard reads the points (1, 2 or 3)
+  # and the profile names the basket (sports/basketball/profile.py).
+  scoring_events: [made_2, made_3, free_throw, dunk, alley_oop, and_one, putback, tip_in, poster_dunk,
+                   fast_break_score, buzzer_beater, game_winner, game_tying, go_ahead, clutch_shot,
+                   corner_three, deep_three, step_back, fadeaway, pull_up, isolation_score,
+                   difficult_finish, euro_step, layup]
+
+  # The taxonomy: every kind of moment, its worth and its window. It is data:
+  # a new kind is a line here (and words under `callouts`), no code. The
+  # game's situation then lifts or lowers a moment's worth (the profile's
+  # context_weight): a game-winning three is not a first-quarter three.
+  events:
+    # Scoring
+    game_winner:      {label: Game winner,       importance: 100, pre: 14, post: 14}
+    buzzer_beater:    {label: Buzzer-beater,     importance: 98,  pre: 12, post: 12}
+    poster_dunk:      {label: Poster dunk,       importance: 95,  pre: 8,  post: 8}
+    alley_oop:        {label: Alley-oop,         importance: 92,  pre: 8,  post: 7}
+    game_tying:       {label: Game-tying shot,   importance: 92,  pre: 12, post: 10}
+    dunk:             {label: Dunk,              importance: 88,  pre: 8,  post: 7}
+    and_one:          {label: And-one,           importance: 85,  pre: 8,  post: 8}
+    clutch_shot:      {label: Clutch shot,       importance: 85,  pre: 10, post: 8}
+    go_ahead:         {label: Go-ahead basket,   importance: 82,  pre: 10, post: 8}
+    deep_three:       {label: Deep three,        importance: 80,  pre: 8,  post: 6}
+    fast_break_score: {label: Fast-break score,  importance: 72,  pre: 9,  post: 5}
+    made_3:           {label: Three,             importance: 68,  pre: 8,  post: 5}
+    corner_three:     {label: Corner three,      importance: 68,  pre: 8,  post: 5}
+    isolation_score:  {label: Isolation score,   importance: 66,  pre: 9,  post: 5}
+    difficult_finish: {label: Difficult finish,  importance: 66,  pre: 7,  post: 5}
+    made_2:           {label: Basket,            importance: 50,  pre: 7,  post: 4}
+    layup:            {label: Layup,             importance: 50,  pre: 7,  post: 4}
+    free_throw:       {label: Free throw,        importance: 20,  pre: 3,  post: 3}
+    # Shooting
+    step_back:        {label: Step-back,         importance: 70,  pre: 7,  post: 5}
+    fadeaway:         {label: Fadeaway,          importance: 66,  pre: 7,  post: 5}
+    pull_up:          {label: Pull-up,           importance: 58,  pre: 7,  post: 5}
+    contested_shot:   {label: Contested shot,    importance: 55,  pre: 6,  post: 5}
+    attempt_3:        {label: Three attempt,     importance: 30,  pre: 6,  post: 4}
+    attempt_2:        {label: Shot attempt,      importance: 25,  pre: 6,  post: 4}
+    miss:             {label: Miss,              importance: 25,  pre: 6,  post: 4}
+    # Defense
+    block:            {label: Block,             importance: 78,  pre: 6,  post: 8}
+    steal:            {label: Steal,             importance: 74,  pre: 5,  post: 10}
+    charge:           {label: Charge taken,      importance: 60,  pre: 6,  post: 6}
+    defensive_stop:   {label: Defensive stop,    importance: 55,  pre: 10, post: 5}
+    deflection:       {label: Deflection,        importance: 45,  pre: 5,  post: 6}
+    shot_contest:     {label: Shot contest,      importance: 40,  pre: 5,  post: 4}
+    transition_defense: {label: Transition defense, importance: 50, pre: 6, post: 5}
+    # Rebounding
+    putback:          {label: Putback,           importance: 70,  pre: 6,  post: 5}
+    tip_in:           {label: Tip-in,            importance: 62,  pre: 6,  post: 5}
+    offensive_rebound: {label: Offensive rebound, importance: 45, pre: 6,  post: 5}
+    defensive_rebound: {label: Rebound,          importance: 25,  pre: 6,  post: 4}
+    # Passing and creation
+    alley_oop_assist: {label: Alley-oop pass,    importance: 80,  pre: 8,  post: 6}
+    no_look_pass:     {label: No-look pass,      importance: 72,  pre: 7,  post: 5}
+    dime:             {label: Great pass,        importance: 65,  pre: 7,  post: 5}
+    cross_court_pass: {label: Cross-court pass,  importance: 50,  pre: 7,  post: 5}
+    assist:           {label: Assist,            importance: 50,  pre: 7,  post: 5}
+    pick_and_roll:    {label: Pick-and-roll,     importance: 45,  pre: 8,  post: 5}
+    # Ball handling and individual plays
+    ankle_breaker:    {label: Ankle breaker,     importance: 85,  pre: 7,  post: 6}
+    crossover:        {label: Crossover,         importance: 62,  pre: 6,  post: 5}
+    behind_the_back:  {label: Behind-the-back,   importance: 60,  pre: 6,  post: 5}
+    spin_move:        {label: Spin move,         importance: 58,  pre: 6,  post: 5}
+    euro_step:        {label: Euro step,         importance: 58,  pre: 6,  post: 5}
+    # Game events
+    ejection:         {label: Ejection,          importance: 80,  pre: 12, post: 12}
+    fight:            {label: Confrontation,     importance: 78,  pre: 10, post: 15}
+    flagrant_foul:    {label: Flagrant foul,     importance: 70,  pre: 8,  post: 12}
+    challenge:        {label: Coach's challenge, importance: 55,  pre: 6,  post: 12}
+    technical_foul:   {label: Technical foul,    importance: 55,  pre: 8,  post: 10}
+    controversial_call: {label: Controversial call, importance: 60, pre: 8, post: 12}
+    injury:           {label: Injury,            importance: 30,  pre: 6,  post: 8}
+    shot_clock:       {label: Shot-clock beater, importance: 50,  pre: 8,  post: 4}
+    shooting_foul:    {label: Shooting foul,     importance: 35,  pre: 6,  post: 5}
+    foul:             {label: Foul,              importance: 25,  pre: 6,  post: 4}
+    overtime:         {label: Overtime,          importance: 30,  pre: 6,  post: 6}
+    game_end:         {label: Game end,          importance: 40,  pre: 8,  post: 12}
+    quarter_end:      {label: End of quarter,    importance: 20,  pre: 8,  post: 5}
+    halftime:         {label: Halftime,          importance: 10,  pre: 6,  post: 4}
+    timeout:          {label: Timeout,           importance: 10,  pre: 4,  post: 4}
+    substitution:     {label: Substitution,      importance: 10,  pre: 3,  post: 4}
+    # Reactions (sports/basketball/reactions.py): a cutaway from the court
+    # after a play, tied to that play. Their windows run from the play just
+    # before to the end of the shot; these are for one with no play to tie to.
+    celebrity_reaction: {label: Celebrity reaction, importance: 75, pre: 3, post: 3}
+    courtside_reaction: {label: Courtside reaction, importance: 65, pre: 3, post: 3}
+    bench_reaction:   {label: Bench reaction,    importance: 62,  pre: 3,  post: 3}
+    coach_reaction:   {label: Coach reaction,    importance: 55,  pre: 3,  post: 3}
+    crowd_reaction:   {label: Crowd reaction,    importance: 58,  pre: 3,  post: 3}
+    fan_reaction:     {label: Fan reaction,      importance: 55,  pre: 3,  post: 3}
+    player_reaction:  {label: Player reaction,   importance: 50,  pre: 3,  post: 3}
+    big_moment:       {label: Big moment,        importance: 55,  pre: 8,  post: 6}
+
+  # The reaction types, which the Fan reaction choices keep and which a play
+  # absorbs when its reaction fits in the clip.
+  reaction_events: [celebrity_reaction, courtside_reaction, bench_reaction, coach_reaction, crowd_reaction,
+                    fan_reaction, player_reaction]
+
+  # What the commentary says, English first (most basketball broadcasts),
+  # with the common Spanish and French. Whole words, ignoring case. Plain
+  # "three" ("three seconds left") and "shot" are left out on purpose.
+  callouts:
+    game_winner: ["game winner", "game-winner", "game winning", "game-winning", "for the win", "wins it",
+                  "wins the game", "walk-off", "canasta ganadora", "panier de la gagne"]
+    buzzer_beater: ["buzzer beater", "buzzer-beater", "at the buzzer", "beats the buzzer", "beat the buzzer",
+                    "before the buzzer", "on the horn", "at the horn", "sobre la bocina", "au buzzer"]
+    game_tying: ["ties it", "ties the game", "tie game", "all tied up", "we're tied", "game is tied", "knots it"]
+    go_ahead: ["go-ahead", "go ahead bucket", "takes the lead", "gives them the lead", "lead change",
+               "back in front", "retakes the lead"]
+    clutch_shot: [clutch, "ice in his veins", "ice in her veins", "cold-blooded", "cold blooded", "dagger"]
+    poster_dunk: [poster, posterized, posterizes, "on his head", "on her head", "in his face", "over the top of"]
+    alley_oop: ["alley-oop", "alley oop", "lob city", "throws it up", "off the lob"]
+    dunk: [dunk, dunks, slam, "slams it", "throws it down", "throw down", jam, "jams it", "hammers it",
+           "tomahawk", "windmill", "flushes it", clavada]
+    and_one: ["and one", "and-one", "and 1", "plus the foul", "and the foul", "with the foul",
+              "chance for the three-point play", "three-point play", "más uno", "plus un"]
+    deep_three: ["from the logo", "logo three", "from way downtown", "way downtown", "from deep", "deep three",
+                 "from the parking lot", "from the volcano", "half court", "half-court", "from halfcourt"]
+    corner_three: ["corner three", "from the corner", "corner 3"]
+    made_3: ["from downtown", "for three", "for 3", "three-pointer", "three pointer", "from three",
+             "from beyond the arc", "splash", "nothing but net",
+             "triplazo", "de tres", "à trois points"]
+    made_2: ["he scores", "she scores", "bucket", "buckets", "lays it in", "layup", "lay-up", "finger roll",
+             "floater", "banks it in", "off the glass", "jumper", "canasta", "panier"]
+    fast_break_score: ["fast break", "in transition", "on the break", "coast to coast", "coast-to-coast",
+                       "leak out", "contraataque", "contre-attaque"]
+    free_throw: ["free throw", "free throws", "at the line", "to the line", "from the line", "tiro libre",
+                 "lancer franc"]
+    step_back: ["step back", "step-back", "stepback"]
+    fadeaway: [fadeaway, "fade away", "fall-away", "fallaway"]
+    pull_up: ["pull-up", "pull up", "pulls up"]
+    isolation_score: ["one on one", "one-on-one", "isolation", "iso", "takes him off the dribble"]
+    difficult_finish: ["what a finish", "acrobatic", "how did that go in", "circus shot", "double clutch",
+                       "reverse layup", "up and under", "and he finishes"]
+    euro_step: ["euro step", "euro-step", "eurostep"]
+    contested_shot: ["contested", "tough shot", "hand in his face", "hand in her face", "over the outstretched"]
+    miss: [misses, "no good", "off the rim", "rims out", "rimmed out", "in and out", "airball", "air ball",
+           "can't get it to fall", "falla"]
+    block: [block, blocked, blocks, rejected, rejection, "swatted", swat, "get that out of here",
+            "denied", "sends it back", "pinned", "chase-down", "chasedown", tapón]
+    steal: [steal, steals, stolen, "picked off", "picks his pocket", "picks her pocket", "pickpocket",
+            "takes it away", "intercepted", robo, interception]
+    deflection: [deflection, deflected, "gets a hand on it", "tipped away"]
+    charge: ["takes the charge", "taking the charge", "offensive foul", "charging", "charge"]
+    defensive_stop: ["big stop", "defensive stop", "get the stop", "gets the stop", "great defense",
+                     "shot clock violation", "turnover"]
+    putback: [putback, "put back", "put-back", "putback dunk", "cleans it up", "second chance"]
+    tip_in: ["tip in", "tip-in", "tips it in", "tip slam"]
+    offensive_rebound: ["offensive rebound", "offensive board", "crashes the glass", "keeps it alive"]
+    defensive_rebound: [rebound, "pulls down the board", "grabs the board", rebote, rebond]
+    alley_oop_assist: ["lob to", "throws the lob", "finds him for the lob"]
+    no_look_pass: ["no-look", "no look", "without looking"]
+    dime: [dime, dimes, "what a pass", "beautiful pass", "great pass", "threads the needle"]
+    cross_court_pass: ["cross-court", "cross court", "skip pass"]
+    assist: [assist, assists, "dishes", "finds him", "finds her", "kick out", "kicks it out", asistencia,
+             "passe décisive"]
+    pick_and_roll: ["pick and roll", "pick-and-roll", "screen and roll", "pick and pop"]
+    ankle_breaker: ["broke his ankles", "broke her ankles", "ankle breaker", "drops him",
+                    "sends him to the floor"]
+    crossover: [crossover, "cross over", "between the legs", "shake and bake", "hesitation"]
+    behind_the_back: ["behind the back", "behind-the-back"]
+    spin_move: ["spin move", spins, "spin cycle"]
+    ejection: [ejected, ejection, tossed, "thrown out", "sent to the locker room", expulsado, "expulsé"]
+    fight: [fight, scuffle, altercation, "words exchanged", "jawing", "get in each other's faces",
+            "separated", "shoving", "heated", pelea, bagarre]
+    flagrant_foul: [flagrant, "flagrant one", "flagrant two"]
+    technical_foul: [technical, "teed up"]
+    controversial_call: ["bad call", "terrible call", "missed call", "no call", "what a call",
+                         "can't believe that call", "controversial"]
+    challenge: [challenge, "coach's challenge", "under review", "going to the monitor", "replay review"]
+    injury: [injury, injured, "stays down", "helped off", "limping", lesión, blessure]
+    shot_clock: ["shot clock", "beats the shot clock", "as the shot clock expires"]
+    shooting_foul: ["shooting foul", "fouled on the shot"]
+    foul: [foul, fouled, falta, faute]
+    overtime: [overtime, "free basketball", "extra period", prórroga, prolongation]
+    game_end: ["final buzzer", "that's the game", "ball game", "ballgame", "it's over", "final score"]
+    quarter_end: ["end of the quarter", "end of the first", "end of the third", "end of three"]
+    halftime: [halftime, "half time", "end of the half", "into the break", descanso, "mi-temps"]
+    timeout: [timeout, "time out", "calls time", "tiempo muerto", "temps mort"]
+    substitution: ["checks in", "checking in", "comes off the bench", "subs in", "substitution"]
+    crowd_reaction: ["crowd goes wild", "the crowd erupts", "the place erupts", "listen to this crowd",
+                     "building is shaking", "on their feet", "pandemonium", "bedlam"]
+    bench_reaction: ["the bench", "bench goes crazy", "bench erupts", "bench is up"]
+    celebrity_reaction: ["courtside", "sitting courtside", "in the building tonight", "in attendance"]
+  patterns:
+    dunk: ['\bslam+\b', '\bda++nk\b']
+    made_3: ['\bbang+\b', '\bthre+e+!']
+    block: ['\breje+cted\b', '\bno+ no+\b']
+
+  read_screen: false
+  screen_text: ["FINAL", "OT", "OVERTIME", "TIMEOUT", "REPLAY", "CHALLENGE", "FLAGRANT", "TECHNICAL",
+                "EJECTED", "BONUS", "FOUL"]
+
+  # The buzzer, as a sound of basketball's own (sports.sound_groups adds it
+  # to the app's groups for a basketball match only, so it never changes how
+  # a game is scored).
+  sound_groups:
+    buzzer: {label: a buzzer, side: game, classes: [Buzzer, "Air horn, truck horn"]}
+  curves: [crowd, whistle, buzzer]
+  sounds: {gunfire: 0.0, explosion: 0.1, crash: 0.1, crowd: 1.0, whistle: 0.6, buzzer: 0.7, scream: 0.5,
+           laughter: 0.2}
+
+  # The 9:16 framing's detector (sports/basketball/action.py). A basketball
+  # fills more pixels than a football in a broadcast wide shot, so 960 px is
+  # the starting size; to be measured on real games, as soccer's was.
+  framing: {model: yolov8n.pt, imgsz: 960}
+
+  # Telling a cutaway (the crowd, the bench, courtside) from the court, on
+  # small keyframes (sports/basketball/reactions.py). A court shot is mostly
+  # one floor colour in its lower half with few edges; a crowd is many colours
+  # and edges. Starting values from synthetic frames: to be tuned on real games.
+  reactions:
+    court_share: 0.30      # a shot whose lower half is at least this much one colour is the court...
+    crowd_edges: 0.12      # ...and one with at least this share of edge pixels there is a crowd
+    react_within: 12       # a cutaway starting this many seconds after a play is its reaction
+    names_from_screen: true  # a name the broadcast captions over a cutaway is kept with it
+
+  # A typed line's words ("1:23:14 dunk LeBron"). Basketball's own, so "ft"
+  # is a free throw and "3" isn't a match minute; times are the video's.
+  match_minutes: false
+  listed_words:
+    - ["game winner", game_winner]
+    - ["game-winner", game_winner]
+    - ["buzzer beater", buzzer_beater]
+    - ["buzzer-beater", buzzer_beater]
+    - ["alley-oop", alley_oop]
+    - ["alley oop", alley_oop]
+    - ["and one", and_one]
+    - ["and-one", and_one]
+    - ["and 1", and_one]
+    - ["poster", poster_dunk]
+    - ["dunk", dunk]
+    - ["slam", dunk]
+    - ["3pt", made_3]
+    - ["3-pointer", made_3]
+    - ["three pointer", made_3]
+    - ["three-pointer", made_3]
+    - ["three", made_3]
+    - ["3pm", made_3]
+    - ["2pt", made_2]
+    - ["layup", layup]
+    - ["jumper", made_2]
+    - ["basket", made_2]
+    - ["bucket", made_2]
+    - ["free throw", free_throw]
+    - ["ft", free_throw]
+    - ["block", block]
+    - ["blk", block]
+    - ["steal", steal]
+    - ["stl", steal]
+    - ["assist", assist]
+    - ["ast", assist]
+    - ["rebound", defensive_rebound]
+    - ["reb", defensive_rebound]
+    - ["putback", putback]
+    - ["tip-in", tip_in]
+    - ["technical", technical_foul]
+    - ["flagrant", flagrant_foul]
+    - ["foul", foul]
+    - ["ejection", ejection]
+    - ["ejected", ejection]
+    - ["fight", fight]
+    - ["timeout", timeout]
+    - ["celebrity", celebrity_reaction]
+    - ["courtside", courtside_reaction]
+    - ["bench", bench_reaction]
+    - ["crowd", crowd_reaction]
+    - ["fans", fan_reaction]
+
+  highlights_choices:
+    best:                {label: Best moments,         events: all}
+    plays_reactions:     {label: Best plays + reactions, events: all, post_extra: 6}
+    scoring:             {label: All scoring,          events: [made_2, made_3, dunk, alley_oop, and_one, putback, tip_in, poster_dunk, fast_break_score, buzzer_beater, game_winner, game_tying, go_ahead, clutch_shot, corner_three, deep_three, step_back, fadeaway, pull_up, isolation_score, difficult_finish, euro_step, layup]}
+    dunks:               {label: Dunks,                events: [dunk, alley_oop, poster_dunk, putback]}
+    threes:              {label: Threes,               events: [made_3, corner_three, deep_three]}
+    blocks:              {label: Blocks,               events: [block]}
+    steals:              {label: Steals,               events: [steal, deflection]}
+    assists:             {label: Assists,              events: [assist, alley_oop_assist, no_look_pass, dime, cross_court_pass, alley_oop]}
+    clutch:              {label: Clutch moments,       events: [game_winner, buzzer_beater, game_tying, go_ahead, clutch_shot]}
+    fan_reactions:       {label: Fan reactions,        events: [celebrity_reaction, courtside_reaction, crowd_reaction, fan_reaction, bench_reaction, coach_reaction, player_reaction], focus: reactions, takes_request: true}
+    celebrity_reactions: {label: Celebrity reactions,  events: [celebrity_reaction, courtside_reaction], focus: reactions, takes_request: true}
+    crowd_reactions:     {label: Crowd reactions,      events: [crowd_reaction, fan_reaction], focus: reactions, takes_request: true}
+    bench_reactions:     {label: Bench reactions,      events: [bench_reaction, coach_reaction], focus: reactions, takes_request: true}
+    custom:              {label: Custom,               events: all}
+
+  periods:
+    full: Entire game
+    q1:   1st quarter
+    q2:   2nd quarter
+    q3:   3rd quarter
+    q4:   4th quarter
+    ot:   Overtime
+  # The app's Sport row offers the quarter (soccer's doesn't offer its halves).
+  period_menu: Quarter
+  period_word: quarter
+  listed_hint: Add the baskets' times in Ask Clips Kitty to clip each one
+
+  footage_choices:
+    auto:      Automatic
+    broadcast: TV broadcast
+    sideline:  Gym or phone

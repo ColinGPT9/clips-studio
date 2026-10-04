@@ -8,8 +8,9 @@ matter are over in two seconds, and a 9:16 crop that follows the biggest face
 frames the nearest player while the goal goes in off the side. Sports is a
 switch of its own that scores and frames a video as a match.
 
-Soccer (football) is the first sport. The design is modular so more can be
-added (see [Adding a sport](#adding-a-sport)).
+Soccer (football) is the first sport and [Basketball](#basketball) the second,
+on the same framework. The design is modular so more can be added (see
+[Adding a sport](#adding-a-sport)).
 
 It is off unless you turn it on. With it off, nothing about processing changes
 and none of its code runs.
@@ -18,7 +19,8 @@ and none of its code runs.
 
 - **A video or file**: tick **Sports** in the Generate bar. A row appears under
   the video:
-  - **Sport**: ⚽ Soccer / Football. Basketball and Cricket are listed under it as coming soon.
+  - **Sport**: ⚽ Soccer / Football or 🏀 Basketball. Cricket is listed under them as coming soon.
+  - **Quarter** (Basketball only): the entire game, one quarter, or overtime.
   - **Highlights**: which moments become clips (below). Hover a choice in the
     list to see what it keeps.
   - **Teams or players** (optional): clips where the commentary names them get
@@ -29,7 +31,7 @@ and none of its code runs.
   words, or to give the [match events](#match-events-the-goals-as-you-have-them),
   use Ask Clips Kitty, the box at the bottom.
 - **A match streamed 9:16**: tick **Vertical Live** and choose **⚽ Soccer /
-  Football** as its content, after Talking / IRL and Gaming / reaction.
+  Football** or **🏀 Basketball** as its content, after Talking / IRL and Gaming / reaction.
 - **A queued video**: the same, in its **Settings**.
 - **A watched channel**: the same, in the channel's clip settings, so every
   match a channel posts is clipped this way.
@@ -305,25 +307,141 @@ against a bar set beforehand. Neither cleared it, so neither is in the app.
   clearly better naming of saves and chances without missing a goal, so it isn't
   offered, even as an optional download.
 
+## Basketball
+
+**The play, the situation, the reaction: a dunk, the arena erupting, someone
+famous courtside on their feet, as one clip.**
+
+Basketball is built on everything above: the same scoring, windows, Highlights
+and Period choices, replays grouped, story reels, Longform, Vertical Live,
+watched channels and publishing, and the same Whisper and AI model. What it adds
+is in `sports/basketball/` and its entry in `config/sports.yaml`. The design takes
+its ideas from public descriptions of WSC Sports (the NBA's automated highlights,
+which use crowd reaction to find big moments), BARD's multi-label basketball
+actions, basketball_event_tracking's split of ball, players and possession, and
+LumenSport's separate finding, scoring and editing. Nothing is copied from them,
+and no NBA tracking data is assumed: it works on any game, from the NBA to a rec
+league.
+
+### Highlights
+
+| Choice | What becomes a clip |
+|---|---|
+| **Best moments** | Everything, best first, each play with its reaction when it fits |
+| **Best plays + reactions** | The same with 6 more seconds after each play |
+| **All scoring** | Every basket (dunks, threes, layups, putbacks...) |
+| **Dunks** | Dunks, alley-oops, posters and putback slams |
+| **Threes** | Made threes, corner and deep ones too |
+| **Blocks** / **Steals** / **Assists** | Those plays, with the action around them |
+| **Clutch moments** | Game winners, buzzer-beaters, tying and go-ahead baskets, late baskets in a close game |
+| **Fan reactions** | Every reaction: the crowd, the bench, courtside, a coach |
+| **Celebrity reactions** | Courtside reactions, named only when the broadcast captions them |
+| **Crowd reactions** / **Bench reactions** | Those reactions |
+
+**Teams or players** works as for soccer ("Lakers", "Curry"): clips where the
+commentary names them get extra points, and nobody is guessed. Ask Clips Kitty
+is told the choices, so "find Curry's best threes" can be asked as Threes with
+Curry, and a reactions choice also takes words ("fans reacting to the biggest
+dunks").
+
+### The moments
+
+The kinds of moment are data: about 70 of them in `config/sports.yaml`, in
+scoring, shooting, defense, rebounding, passing, ball handling, game events and
+reactions, each with its worth and its window. A new kind is a line there and its
+commentary words, no code. The same rule as soccer's holds: **a moment is named
+only when the evidence agrees.** The commentary ("throws it down", "for three",
+"rejected", "and one") names it, and the crowd, the whistle, the buzzer or the
+score bug has to agree. Fancy moves (a crossover, a euro step, a no-look pass)
+are in the taxonomy but named only when the commentary says so and another signal
+agrees; the picture isn't read for them.
+
+**The score bug is ground truth.** It is found and read the way soccer's is
+(`sports/core/scorebug.py`, shared): the teams, the scores, the quarter and the
+game clock ("LAL 98 BOS 101 4TH 0:32"). A score up by 1, 2 or 3 on one side,
+seen on two readings, is a free throw, a basket or a three, and which team
+scored. The commentary's name for it stands when the points agree (a dunk is 2,
+never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
+between readings) isn't called a basket.
+
+**The situation sets the worth.** The quarter, the clock and the score before the
+basket decide:
+
+- the last basket of the game that takes the lead in the last 10 seconds is a
+  **Game winner**; one at 0.0, or with the buzzer heard, a **Buzzer-beater**;
+- late in the 4th or overtime: a **Game-tying shot**, a **Go-ahead basket**, or a
+  **Clutch shot** in a one-possession game;
+- every moment's points are multiplied by the situation: up to ×1.8 late in a
+  close game or in overtime, and down to ×0.55 in a blowout. A game-winning three
+  gets the full bonus; a first-quarter three about two thirds of it.
+
+Without a score bug (a gym camera, a phone in the stands), every moment counts as
+its kind.
+
+### Reactions
+
+Broadcasts cut away from the court after a big play. Each **cutaway** is found
+from the keyframes of the whole game, read small: a court shot is mostly one
+floor colour in its lower half with few edges, a shot of people many colours and
+edges. A run of shots that aren't the court, between two that are and at most 25
+seconds long, is a cutaway (an advert break runs longer).
+
+- **Tied to the play before it.** A cutaway starting within 12 seconds of a play
+  is its reaction: the play's clip is grown to hold it when it fits, so a dunk,
+  the roar and the courtside shot are one clip.
+- **A reaction needs more than a crowd shot**: the play before it, a roar over it,
+  or a name on screen. A crowd shot during free throws isn't one.
+- **Standing on its own**: with a reactions choice, a reaction is the clip's
+  moment and the play its lead-in; a reaction with no play before it (the crowd
+  on its feet for a timeout comeback) is its own clip.
+- **Who is shown** (courtside, the crowd, the bench, a coach) is told by the local
+  model looking at two frames, as it looks at a gaming stream's (Gemma 3 or 4
+  through Ollama; skipped, and said so, with a model that can't take images). It
+  is asked only what kind of shot it is, never who anyone is.
+- **A name** comes only from the broadcast's own caption over the cutaway (a
+  lower third read with the app's OCR): "Celebrity reaction · Spike Lee". Faces
+  are never matched to names. Without a caption it is a courtside or crowd
+  reaction, nobody named.
+
+### Framing
+
+The 9:16 crop follows, in order: a reaction shot (the biggest person reacting,
+not where the court was), a close-up, the ball with the players around it (the
+ball handler and the defenders), leaning toward the rim as the ball heads for it
+near an edge, and the players when the ball is lost. Same detector as soccer
+(YOLOv8n), at 960 px since a basketball is bigger in a wide shot. Cuts snap, never
+pan. A game filmed 9:16 (1080×1920, 720×1280, 1440×2560) keeps its own picture.
+
+### What isn't measured yet
+
+The thresholds (the crowd, the cutaway's colour and edge shares, the framing's
+lean) start from soccer's measured values and synthetic frames. They are in
+`config/sports.yaml` to be tuned on real games.
+
 ## What it doesn't do yet
 
 - Goals in club and phone footage with no score box or commentary, unless
   their times are added as match events.
 - Tackles, dribbles, assists and key passes aren't named.
-- Other sports. Soccer is the first.
+- Basketball: shot trajectory, a hoop detector, player tracking and shirt numbers
+  aren't read; moves like a crossover are named only from the commentary.
 
 ## The API
 
 `POST /jobs`, `/jobs/batch`, `/videos/local`, `PATCH /jobs/{id}` and a watched
-channel's options take `sport`:
+channel's options take `sport` (`"name": "soccer"` or `"basketball"`):
 
 ```json
 {"sport": {"name": "soccer", "highlights": "goals", "period": "full", "teams": "Team A"}}
 ```
 
-- `highlights`: `best`, `goals`, `goals_celebrations`, `saves`, `chances`,
-  `attacking`, `cards`, `penalties`, `custom`.
-- `period`: `full`, `first_half`, `second_half`, `extra_time`.
+- `highlights`: soccer `best`, `goals`, `goals_celebrations`, `saves`, `chances`,
+  `attacking`, `cards`, `penalties`, `custom`; basketball `best`,
+  `plays_reactions`, `scoring`, `dunks`, `threes`, `blocks`, `steals`, `assists`,
+  `clutch`, `fan_reactions`, `celebrity_reactions`, `crowd_reactions`,
+  `bench_reactions`, `custom`.
+- `period`: soccer `full`, `first_half`, `second_half`, `extra_time`; basketball
+  `full`, `q1`, `q2`, `q3`, `q4`, `ot`.
 - `footage` (optional): `auto` (the default), `broadcast` or `sideline` (club
   or phone footage).
 - `events` (optional): the match's events as text, one per line, up to 4000
@@ -332,7 +450,8 @@ channel's options take `sport`:
 - `reels` (optional): the story reels to make, any of `recap`, `teams` and
   `players` (see [Story reels](#story-reels-the-match-in-one-video)).
 - `teams` (optional): up to 200 characters.
-- `request` (optional, with `custom` only): the moments wanted, in words.
+- `request` (optional, with `custom` or a basketball reactions choice): the
+  moments wanted, in words.
 
 `GET /sports` lists the sports and their choices. An unknown sport or choice is
 refused with a 400 that lists what is allowed, and so is Sports together with
@@ -342,7 +461,10 @@ A finished run's outcome carries `sport`: the moments found by type, the big
 moments, the replays grouped, and the score read. Each clip's scores carry the
 moment: `sport_event`, `sport_label`, `sport_minute` (from the clock), `sport_t`
 (seconds into the video), `sport_why` (the signals), `sport_team`,
-`sport_player` (from your match events), `sport_period` and `sport_bonus`. A
+`sport_player` (from your match events), `sport_period` and `sport_bonus`; for
+basketball also `sport_when` (the game clock, "Q4 0:32"), `sport_context` (the
+situation, "takes the lead, 0:02 left") and `sport_person` (a name the broadcast
+captioned). A
 story reel is a clip whose scores carry `sport_reel` (`recap`, `team` or
 `player`) and `sport_parts` (how many moments it joins); its render options
 carry `reel` and `of` (its team or player), and it can't be re-rendered on its
@@ -357,10 +479,13 @@ config/sports.yaml     the sport's entry: its moments (importance, window),
                        commentary words in each language, on-screen words,
                        sound weights, highlight choices, periods, framing
 sports/
-  __init__.py          the registry: SPORTS = {"soccer": "sports.soccer"}
+  __init__.py          the registry: SPORTS = {"soccer": ..., "basketball": ...}
   core/                shared by every sport
     profile.py         SportProfile: what the scoring asks a sport, and the
-                       rule for naming a moment (two signals agree)
+                       rule for naming a moment (two signals agree); the hooks a
+                       sport can change (scoring types, sound curves, the
+                       situation's weight, moments of its own)
+    scorebug.py        finding and reading a score bug (each sport parses it)
     events.py          a moment: type, time, confidence, window, signals,
                        replay, group
     detect.py          moments from the crowd, the voice, the commentary,
@@ -374,6 +499,13 @@ sports/
     profile.py         what soccer adds: own goals, penalty goals and misses
     scoreboard.py      reading the score box
     ball.py            following the ball, for the framing
+  basketball/
+    __init__.py        profile(), framing(), prepass() (the score bug, the cutaways)
+    profile.py         which basket, the situation's weight, plays named together
+    scoreboard.py      reading the score bug: points, quarter, game clock
+    reactions.py       cutaways from the court, tied to the play before them
+    look.py            who a reaction shot shows, by the local model
+    action.py          following the ball, the play and the rim, for the framing
 ```
 
 A new sport needs:

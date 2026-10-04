@@ -36,6 +36,8 @@ NEAR_WHISTLE = 10.0
 GOAL_ROAR = 0.1         # the crowd before a new score has to reach this to date the goal...
 ROAR_SPAN = 5           # ...judged over this many seconds, so a blip doesn't outweigh a roar...
 ROAR_START = 0.3        # ...and the roar starts where it first reaches this share of its peak
+# Soccer's, for reference: each sport's own are its profile's scoring_types
+# and celebration (config/sports.yaml).
 CELEBRATION = 45.0      # a roar this soon after a goal is its celebration: no kick-off comes sooner
 GOALS = ("goal", "penalty_goal", "own_goal")
 
@@ -101,6 +103,7 @@ def moments(profile, segments, *, curves: dict, voice=None, screen=(), board=Non
     `board`: the read scoreboard, or None. `extra_after` seconds are added
     after moments of `extra_types` (Goals + celebrations)."""
     crowd, whistle = curves.get("crowd"), curves.get("whistle")
+    goals = profile.scoring_types
     said_at: list[tuple[float, float, list]] = []          # (start, end, callouts) per segment
     for sg in segments:
         said = profile.callouts_in(sg.text)
@@ -173,17 +176,17 @@ def moments(profile, segments, *, curves: dict, voice=None, screen=(), board=Non
         moment = None if roar is None else max(0.0, roar - profile.crowd_lag)
         inside = [e for e in events if lo <= e.t <= change.hi
                   and (moment is None or abs(e.t - moment) <= CLUSTER)]
-        best = max(inside, key=lambda e: (e.type in GOALS, e.confidence, e.importance), default=None)
+        best = max(inside, key=lambda e: (e.type in goals, e.confidence, e.importance), default=None)
         if best is None:
-            best = SportEvent("goal", moment if moment is not None else max(0.0, change.hi - 30.0), 0.67,
-                              profile.importance("goal"), signals=[])
+            kind = profile.confirmed_type(change, None)
+            best = SportEvent(kind, moment if moment is not None else max(0.0, change.hi - 30.0), 0.67,
+                              profile.importance(kind), signals=[])
             events.append(best)
         if moment is not None:
             best.t = moment
             if not any(s.startswith("crowd roar") for s in best.signals):
                 best.signals.append("crowd roar")
-        if best.type not in GOALS:
-            best.type = "goal"
+        best.type = profile.confirmed_type(change, best)
         best.importance = profile.importance(best.type)
         best.confidence = 1.0
         best.confirmed = True
@@ -203,15 +206,15 @@ def moments(profile, segments, *, curves: dict, voice=None, screen=(), board=Non
 
     # A second goal-like moment soon after a goal, with no new score of its
     # own, is that goal again: the replay, or the celebration's second roar.
-    confirmed = {id(e) for e in events if e.confidence >= 1.0 and e.type in GOALS}
+    confirmed = {id(e) for e in events if e.confidence >= 1.0 and e.type in goals}
     goals_at = sorted(e.t for e in events if id(e) in confirmed)
     for e in events:
-        if id(e) in confirmed or e.type not in (*GOALS, "big_moment"):
+        if id(e) in confirmed or e.type not in (*goals, "big_moment"):
             continue
         since = [e.t - g for g in goals_at if 0 < e.t - g <= profile.replay_within]
         if not since:
             continue
-        if (board is None or not board.changes or e.type in GOALS or min(since) <= CELEBRATION
+        if (board is None or not board.changes or e.type in goals or min(since) <= profile.celebration
                 or board.hidden(e.t - 5, e.t + 10)):
             e.is_replay = True
 
@@ -219,13 +222,16 @@ def moments(profile, segments, *, curves: dict, voice=None, screen=(), board=Non
     # never confirmed, where it was read, was talk about one or one ruled
     # out. Where it wasn't read, the commentary and the crowd still decide.
     for e in events:
-        if (e.type in GOALS and e.confidence < 1.0 and not e.is_replay and board is not None
+        if (e.type in goals and e.confidence < 1.0 and not e.is_replay and board is not None
                 and _score_read(board, e.t)):
             e.type = "big_moment"
             e.importance = profile.importance("big_moment")
             # ...on the signals alone: what was said was what made it a goal.
             e.confidence = min(1.0, sum(not s.startswith("said") for s in e.signals) / 3)
             e.start, e.end = _window(profile, e, 0.0, video_end, min_len, max_len, extra_after, extra_types)
+    # Whatever the sport finds on its own (basketball: the reactions to a play).
+    events = profile.extra_moments(events, segments, curves=curves, video_end=video_end,
+                                   min_len=min_len, max_len=max_len)
     for e in events:
         if board is not None:
             e.period = board.period_at(e.t)
@@ -275,7 +281,7 @@ def _with_listed(profile, events: list, text: str, board, level, video_end: floa
             t = (lo + hi) / 2 if hi > lo else lo
         near = [e for e in events if not e.is_replay and abs(e.t - t) <= LISTED_NEAR
                 and (e.type == item.kind or e.type == "big_moment"
-                     or (item.kind in GOALS and e.type in GOALS))]
+                     or (item.kind in profile.scoring_types and e.type in profile.scoring_types))]
         e = min(near, key=lambda e: abs(e.t - t), default=None)
         if e is None:
             e = SportEvent(item.kind, t, 1.0, profile.importance(item.kind), signals=[])

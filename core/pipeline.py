@@ -862,13 +862,13 @@ class MatchReading:
 
     def _listen(self) -> None:
         try:
-            from analysis import game_audio, gaming, panns
+            import sports
+            from analysis import game_audio, panns
 
             if not panns.available():
                 print("      (match sounds: the sound model isn't installed, scoring without it)")
                 return
-            groups = gaming.knowledge().get("sound_groups") or {}
-            self._heard["heard"] = game_audio.listen(self.video.path, groups)
+            self._heard["heard"] = game_audio.listen(self.video.path, sports.sound_groups(self.name))
         except Exception as e:
             print(f"      (match sounds unavailable: {e})")
 
@@ -917,13 +917,14 @@ def _sport_inputs(config: dict, video, hype_out: dict, heard: dict | None, prepa
         try:
             from analysis.game_audio import sound_signal
 
-            groups = gaming.knowledge().get("sound_groups") or {}
+            groups = sports.sound_groups(profile.name)
             seconds = max(v.size for v in heard.values())
             track = profile.genre_track(seconds)
             sounds = sound_signal(heard, groups, track, profile.sound_weights())
-            # The crowd and the whistle each as a curve of their own: the
-            # moments are typed by which of them agree.
-            for name in ("crowd", "whistle"):
+            # The crowd and the whistle (and a sport's own, like basketball's
+            # buzzer) each as a curve of their own: the moments are typed by
+            # which of them agree.
+            for name in profile.sound_curves():
                 if name in heard:
                     one = sound_signal({name: heard[name]}, groups, track, {profile.name: {name: 1.0}})
                     if one is not None:

@@ -1,5 +1,5 @@
 """Sports (docs/SPORTS.md): sport-specific intelligence on top of the normal
-clipping pipeline, one sport per package. Soccer first.
+clipping pipeline, one sport per package. Soccer first, then basketball.
 
 A job with the Sports toggle on carries `sport`, for example
 {"name": "soccer", "highlights": "goals", "period": "full", "teams": "Team A"}
@@ -21,7 +21,7 @@ from pathlib import Path
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "sports.yaml"
 
 # Each sport and the package that knows it, imported only when a job asks.
-SPORTS = {"soccer": "sports.soccer"}
+SPORTS = {"soccer": "sports.soccer", "basketball": "sports.basketball"}
 
 TEAMS_MAX = 200
 
@@ -36,6 +36,15 @@ def knowledge() -> dict:
 def spec(name: str) -> dict:
     """A sport's entry in config/sports.yaml, or {}."""
     return knowledge().get(name) or {}
+
+
+def sound_groups(name: str) -> dict:
+    """The sounds a match is listened for: the app's own groups
+    (config/gaming.yaml) and the sport's (`sound_groups`, like basketball's
+    buzzer), so a sport's sound never changes how a game is scored."""
+    from analysis import gaming
+
+    return {**(gaming.knowledge().get("sound_groups") or {}), **(spec(name).get("sound_groups") or {})}
 
 
 def available() -> list[dict]:
@@ -53,6 +62,9 @@ def available() -> list[dict]:
                            for k, v in (s.get("highlights_choices") or {}).items()],
             "periods": [{"id": k, "label": v} for k, v in (s.get("periods") or {}).items()],
             "footage": [{"id": k, "label": v} for k, v in (s.get("footage_choices") or {}).items()],
+            # Whether the app's Sport row offers the period (basketball's
+            # quarters), and what it calls it. Soccer always clips the whole match.
+            **({"period_menu": str(s.get("period_menu"))} if s.get("period_menu") else {}),
         })
     return out
 
@@ -114,9 +126,10 @@ def clean(raw) -> dict:
                              "like \"18:16 Goal\" or \"45+2' yellow card\"")
         out["events"] = events
     # Custom highlights: the moments described in the person's own words,
-    # which become a clip direction (analysis/intent.py). Only with Custom.
+    # which become a clip direction (analysis/intent.py). Only with Custom,
+    # or a choice that narrows by it (basketball's "fans reacting to dunks").
     request = " ".join(str(raw.get("request") or "").split())[:TEAMS_MAX]
-    if request and highlights == "custom":
+    if request and (highlights == "custom" or choices[highlights].get("takes_request")):
         out["request"] = request
     return out
 

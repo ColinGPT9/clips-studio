@@ -20,10 +20,13 @@ with no readable score bug (sideline footage, a stream) is scored without it.
 """
 
 import re
-import subprocess
-import threading
 from collections import Counter
 from dataclasses import dataclass, field
+
+from sports.core import scorebug
+from sports.core.scorebug import FIND_FRAMES, rec_line
+from sports.core.scorebug import crop as _crop
+from sports.core.scorebug import keyframe_crops as _keyframe_crops
 
 # Team code, score, team code, as the recogniser reads a bug's line:
 #   "HOM 1-0 AWO", "(> HOM  1: 0 AW0  26:47", "(HOM1:1AW037:37", "(HOM4·2|AW069:17".
@@ -33,25 +36,13 @@ TEAMS_SCORE = re.compile(
     r"(?<![A-Z0-9])([A-Z][A-Z0]{1,3})[\s|:·.,>(]*?(\d{1,2})\s*[-–:·.|]?\s*(\d{1,2})[\s|:·.,)]*([A-Z0][A-Z0]{1,3})(?![A-Z])")
 # Without team codes, only a dash counts: "1 - 0". A clock's colon never does.
 DASH_SCORE = re.compile(r"(?<![\d:])(\d{1,2})\s*[-–]\s*(\d{1,2})(?![\d:])")
-# ffmpeg's showinfo line for each frame it passes on, with the frame's time.
-PTS_TIME = re.compile(r"pts_time:\s*(-?\d+(?:\.\d+)?)")
 O_AFTER = re.compile(r"(?<=\d)(\s*[:\-–·.|]\s*)[Oo](?![A-Za-z])")
 O_BEFORE = re.compile(r"(?<![A-Za-z])[Oo](\s*[:\-–·.|]\s*)(?=\d)")
 CLOCK = re.compile(r"(?<!\d)(\d{1,3})[:.'](\d{2})(?!\d)")
 
-FIND_FRAMES = 14         # most frames looked at, spread through the match, to find the box
-FOUND_AFTER = 5          # ...stopping once this many agree
-FOUND_IN = 3             # the fewest frames the box must be seen in
-BANDS = ((0.0, 0.0, 1.0, 0.22), (0.0, 0.78, 1.0, 1.0))   # (left, top, right, bottom): top, bottom
-READ_WIDTH = 480         # a band is resized to this width for the text search
-SAME_RUN = 0.04          # a gap this wide (share of the band's width) still joins text into one run
-CLOCK_GAP = 8.0          # ...and the clock joins the score from up to this many text heights away
-MIN_CONFIDENCE = 0.5
 EVERY = 10.0             # seconds between readings when frames have to be sought one by one
 GOAL_LOOKBACK = 180.0    # a bug updates after the celebration and replays: the
                          # goal itself can be this long before the new score shows
-
-_rec_engine = None
 
 
 @dataclass
@@ -173,134 +164,20 @@ def parse(texts: list[str]) -> Reading:
     return out
 
 
-# ---- finding the box ---------------------------------------------------------------
-
-
-def _texts(img, ocr) -> list[tuple[tuple, str]]:
-    """(box in the image's fractions, text) for each line the full OCR finds."""
-    import cv2
-
-    h, w = img.shape[:2]
-    scale = READ_WIDTH / max(w, 1)
-    img = cv2.resize(img, (READ_WIDTH, max(2, round(h * scale))), interpolation=cv2.INTER_LINEAR)
-    height, width = img.shape[:2]
-    out = []
-    for box, text, conf in ocr(img) or []:
-        if float(conf) < MIN_CONFIDENCE:
-            continue
-        xs, ys = [p[0] for p in box], [p[1] for p in box]
-        out.append(((min(xs) / width, min(ys) / height, max(xs) / width, max(ys) / height), str(text)))
-    return out
-
-
-def _crop(img, box):
-    h, w = img.shape[:2]
-    left, top, right, bottom = box
-    return img[int(h * top):max(int(h * top) + 2, int(h * bottom)),
-               int(w * left):max(int(w * left) + 2, int(w * right))]
+# ---- finding the box (sports/core/scorebug.py, with soccer's own parse) --------
 
 
 def _score_lines(lines: list[tuple[tuple, str]], aspect: float) -> list[tuple[tuple, str]]:
-    """The bug's own lines among everything read in a band: the run of text
-    on one row, with no wide gap in it, that reads as a score. A band holds
-    more than the bug (ad boards, a stadium's banners), and far more of it
-    in a portrait frame, where the same share of the height is a tall strip
-    of stadium. `aspect`: the band's height over its width, to measure a gap
-    against the text's height. [] when no run reads as a score."""
-    rows: list[dict] = []
-    for box, text in sorted(lines, key=lambda x: (x[0][1] + x[0][3]) / 2):
-        mid = (box[1] + box[3]) / 2
-        row = next((r for r in rows if r["top"] <= mid <= r["bottom"]), None)
-        if row is None:
-            rows.append({"top": box[1], "bottom": box[3], "lines": [(box, text)]})
-        else:
-            row["lines"].append((box, text))
-            row["top"], row["bottom"] = min(row["top"], box[1]), max(row["bottom"], box[3])
-    for row in rows:
-        # The row's height in the width's units.
-        height = max(row["bottom"] - row["top"], 1e-6) * aspect
-        runs: list[list] = []
-        for box, text in sorted(row["lines"], key=lambda x: x[0][0]):
-            # A gap wider than a few characters starts another run: the bug
-            # is one tight line, anything else on its row stands apart.
-            if runs and box[0] - runs[-1][-1][0][2] <= max(3 * height, SAME_RUN):
-                runs[-1].append((box, text))
-            else:
-                runs.append([(box, text)])
-        for i, run in enumerate(runs):
-            if parse([" ".join(t for _, t in run)]).score is not None:
-                # The match clock often stands a little apart in the box
-                # ("AWO     15:07"): the nearest run on the row that is a clock
-                # belongs to it.
-                clocks = [other for other in runs[:i] + runs[i + 1:]
-                          if CLOCK.search(" ".join(t for _, t in other))
-                          and _gap(run, other) <= CLOCK_GAP * height]
-                if clocks:
-                    run = sorted(run + min(clocks, key=lambda other: _gap(run, other)),
-                                 key=lambda x: x[0][0])
-                return run
-    return []
-
-
-def _gap(a: list, b: list) -> float:
-    """The horizontal space between two runs of text boxes."""
-    return max(0.0, max(min(x[0][0] for x in b) - max(x[0][2] for x in a),
-                        min(x[0][0] for x in a) - max(x[0][2] for x in b)))
+    """The bug's own lines among everything read in a band (scorebug.score_lines)."""
+    return scorebug.score_lines(lines, aspect, parse, CLOCK)
 
 
 def find_box(grab, duration: float, ocr, frames: int = FIND_FRAMES) -> tuple | None:
-    """Where the score bug is: the run of text in the top or bottom band
-    where a score shows up on the sampled frames. None when fewer than
-    FOUND_IN show one."""
-    seen: list[tuple] = []
-    for i in range(frames):
-        img = grab(duration * (i + 1) / (frames + 1))
-        if img is None:
-            continue
-        for band in BANDS:
-            strip = _crop(img, band)
-            lines = _score_lines(_texts(strip, ocr), strip.shape[0] / max(strip.shape[1], 1))
-            if not lines:
-                continue
-            # The bug, in whole-frame fractions.
-            bl, bt, br, bb = band
-            boxes = [(bl + x0 * (br - bl), bt + y0 * (bb - bt), bl + x1 * (br - bl), bt + y1 * (bb - bt))
-                     for (x0, y0, x1, y1), _ in lines]
-            seen.append((min(b[0] for b in boxes), min(b[1] for b in boxes),
-                         max(b[2] for b in boxes), max(b[3] for b in boxes)))
-            break
-        if len(seen) >= FOUND_AFTER:
-            break
-    if len(seen) < FOUND_IN:
-        return None
-    # The box most frames agree on: sorted by position, the middle one. A
-    # one-off graphic (a scorer's full-width caption) sorts to an end.
-    seen.sort(key=lambda b: ((b[1] + b[3]) / 2, (b[0] + b[2]) / 2))
-    left, top, right, bottom = seen[len(seen) // 2]
-    pad_x, pad_y = (right - left) * 0.08, (bottom - top) * 0.25
-    return (max(0.0, left - pad_x), max(0.0, top - pad_y), min(1.0, right + pad_x), min(1.0, bottom + pad_y))
+    """Where the score bug is (scorebug.find_box), read as a soccer score."""
+    return scorebug.find_box(grab, duration, ocr, parse, CLOCK, frames)
 
 
 # ---- reading it ---------------------------------------------------------------------
-
-
-def rec_line(img) -> str:
-    """The box read as one line by the recogniser alone (no text search)."""
-    global _rec_engine
-    import cv2
-
-    if _rec_engine is None:
-        from rapidocr_onnxruntime import RapidOCR
-
-        _rec_engine = RapidOCR()
-    h, w = img.shape[:2]
-    if h < 64:
-        img = cv2.resize(img, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
-    result, _elapsed = _rec_engine(img, use_det=False, use_cls=False, use_rec=True)
-    if not result:
-        return ""
-    first = result[0]
-    return str(first[0] if isinstance(first, (list, tuple)) else first)
 
 
 def from_readings(readings: list[Reading], box: tuple | None = None) -> Scoreboard:
@@ -432,49 +309,6 @@ def read(grab, duration: float, find_ocr=None, rec=None, every: float = EVERY, c
             readings.append(r)
         t += every
     return from_readings(readings, box)
-
-
-def _keyframe_crops(path, box: tuple, size: tuple[int, int], on_frame, cancel=None) -> list[float]:
-    """Decode only the keyframes, cropped to `box`, calling on_frame(index,
-    image) for each; returns each frame's time. One pass over the file."""
-    import numpy as np
-
-    from core.binaries import ffmpeg
-
-    width, height = size
-    x, y = int(width * box[0]) // 2 * 2, int(height * box[1]) // 2 * 2
-    w = max(2, int(width * (box[2] - box[0])) // 2 * 2)
-    h = max(2, int(height * (box[3] - box[1])) // 2 * 2)
-    cmd = [ffmpeg(), "-hide_banner", "-loglevel", "info", "-skip_frame", "nokey", "-i", str(path), "-an",
-           "-vf", f"crop={w}:{h}:{x}:{y},showinfo", "-fps_mode", "passthrough",
-           "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
-    times: list[float] = []
-
-    def drain(stream) -> None:
-        for raw in stream:
-            found = PTS_TIME.search(raw.decode("utf-8", "ignore"))
-            if found:
-                times.append(float(found.group(1)))
-
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    reader = threading.Thread(target=drain, args=(proc.stderr,), daemon=True)
-    reader.start()
-    frame_bytes = w * h * 3
-    index = 0
-    try:
-        while True:
-            if cancel is not None:
-                cancel()
-            buf = proc.stdout.read(frame_bytes)
-            if len(buf) < frame_bytes:
-                break
-            on_frame(index, np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3))
-            index += 1
-    finally:
-        proc.stdout.close()
-        proc.wait()
-        reader.join(timeout=10)
-    return times
 
 
 def read_video(path, duration: float, cancel=None) -> Scoreboard:

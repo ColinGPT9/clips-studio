@@ -62,9 +62,12 @@ class Listed:
 
 
 def event_words(spec: dict) -> list[tuple[str, str]]:
-    """What a line can call each kind of moment: the words above, then the
-    sport's own labels and commentary callouts (config/sports.yaml)."""
-    words = list(WORDS)
+    """What a line can call each kind of moment: the words above (or the
+    sport's own `listed_words`, for a sport whose words differ: "ft" is a free
+    throw in basketball, not full time), then the sport's own labels and
+    commentary callouts (config/sports.yaml)."""
+    own = spec.get("listed_words")
+    words = [(str(w).lower(), str(k)) for w, k in own] if own else list(WORDS)
     known = {w for w, _ in words}
     for kind, event in (spec.get("events") or {}).items():
         label = str((event or {}).get("label") or "").lower()
@@ -80,15 +83,16 @@ def event_words(spec: dict) -> list[tuple[str, str]]:
     return sorted(words, key=lambda x: -len(x[0]))
 
 
-def _time(line: str) -> tuple[float | None, int | None, int, str]:
+def _time(line: str, minutes: bool = True) -> tuple[float | None, int | None, int, str]:
     """(a time in the video, or a match minute and its added time, and the
-    line without the time)."""
+    line without the time). `minutes`: whether the sport has match minutes
+    to read at all (basketball's "3 pointer" isn't the 3rd minute)."""
     m = HMS.search(line)
     if m:
         h, mm, ss = (int(x) for x in m.groups())
         if mm < 60 and ss < 60:
             return float(h * 3600 + mm * 60 + ss), None, 0, line[:m.start()] + line[m.end():]
-    m = MINUTE.search(line)
+    m = MINUTE.search(line) if minutes else None
     if m:
         minute = int(m.group(1) or m.group(3))
         added = int(m.group(2) or m.group(4) or 0)
@@ -98,7 +102,7 @@ def _time(line: str) -> tuple[float | None, int | None, int, str]:
         mins, ss = int(m.group(1)), int(m.group(2))
         if ss < 60:
             return float(mins * 60 + ss), None, 0, line[:m.start()] + line[m.end():]
-    m = LEADING.match(line)
+    m = LEADING.match(line) if minutes else None
     if m:
         return None, int(m.group(1)), 0, line[m.end():]
     return None, None, 0, line
@@ -118,13 +122,14 @@ def parse(text: str, spec: dict) -> tuple[list[Listed], list[str]]:
     """(the events read, the lines that couldn't be read). CSV lines work as
     any other line: their fields are words and times too."""
     words = event_words(spec)
+    minutes = bool(spec.get("match_minutes", True))
     events: list[Listed] = []
     unread: list[str] = []
     for raw in str(text or "")[:MAX_TEXT].splitlines():
         line = " ".join(raw.replace(",", " ").replace(";", " ").replace("\t", " ").split())
         if not line:
             continue
-        video_t, minute, added, rest = _time(line)
+        video_t, minute, added, rest = _time(line, minutes)
         kind, rest = _kind(rest, words)
         if (video_t is None and minute is None) or not kind:
             # A header row ("minute, type, team") has no time: skipped quietly.

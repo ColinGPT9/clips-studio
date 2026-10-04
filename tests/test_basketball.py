@@ -1,0 +1,626 @@
+"""Basketball, the second sport on the Sports framework (sports/basketball/,
+docs/SPORTS.md): its moments, how much the game's situation makes them
+matter, the crowd, bench and courtside reactions, the framing, the way in,
+and that soccer is untouched. Synthetic signals only: no model runs and no
+footage is needed."""
+
+import json
+
+import pytest
+
+pytest.importorskip("yaml")
+
+import sports
+from core.models import ClipCandidate, Segment
+from sports.basketball import reactions
+from sports.basketball import scoreboard as bb
+from sports.core import clips, detect
+
+N = 900
+
+
+def _profile(highlights="best", period="full", **extra):
+    return sports.profile_for({"clips": {"sport": {"name": "basketball", "highlights": highlights,
+                                                   "period": period, **extra}}})
+
+
+def _segments(said: dict[int, str]):
+    return [Segment(start=float(s), end=float(s + 4), text=said.get(s, "bringing it up the floor"))
+            for s in range(0, N, 4)]
+
+
+def _curves(roars=(), buzzer=(), whistle=()):
+    np = pytest.importorskip("numpy")
+    crowd = np.zeros(N, dtype=np.float32)
+    for t, length in roars:
+        crowd[t:t + length] = 0.9
+    buzz = np.zeros(N, dtype=np.float32)
+    for t in buzzer:
+        buzz[t:t + 2] = 0.9
+    whis = np.zeros(N, dtype=np.float32)
+    for t in whistle:
+        whis[t:t + 2] = 0.9
+    return {"crowd": crowd, "crowd_heard": crowd, "buzzer": buzz, "whistle": whis}
+
+
+def _board(baskets, period=1, start_clock=600.0, teams=("LAL", "BOS"), start=(0, 0), every=4):
+    """A read score bug: the score every `every` seconds, the clock running
+    down from start_clock. `baskets`: (video second, side, points)."""
+    score = list(start)
+    readings = []
+    todo = sorted(baskets)
+    for t in range(0, N, every):
+        while todo and todo[0][0] <= t:
+            _at, side, points = todo.pop(0)
+            score[side] += points
+        readings.append(bb.Reading(t=float(t), score=tuple(score), teams=teams, period=period,
+                                   clock=max(0.0, start_clock - t), visible=True))
+    return bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1))
+
+
+def _moments(profile, said=None, curves=None, board=None, cutaways=()):
+    profile.board = board
+    profile.cutaways = list(cutaways)
+    profile.curves = curves or _curves()
+    return detect.moments(profile, _segments(said or {}), curves=profile.curves, board=board,
+                          video_end=float(N), min_len=10, max_len=60)
+
+
+def _named(moments):
+    return [(e.type, round(e.t)) for e in moments if not e.is_replay and e.type != "big_moment"]
+
+
+# ---- registration and the way in ------------------------------------------------------
+
+
+def test_basketball_is_offered_beside_soccer_with_its_quarters():
+    offered = {s["id"]: s for s in sports.available()}
+    assert list(offered) == ["soccer", "basketball"]
+    ball = offered["basketball"]
+    assert ball["period_menu"] == "Quarter" and "period_menu" not in offered["soccer"]
+    assert [p["id"] for p in ball["periods"]] == ["full", "q1", "q2", "q3", "q4", "ot"]
+    for choice in ("best", "scoring", "dunks", "threes", "blocks", "steals", "assists", "clutch",
+                   "fan_reactions", "celebrity_reactions", "crowd_reactions", "plays_reactions", "custom"):
+        assert choice in {h["id"] for h in ball["highlights"]}
+
+
+def test_the_taxonomy_is_data_and_every_choice_names_real_events():
+    spec = sports.spec("basketball")
+    kinds = set(spec["events"])
+    assert {"made_2", "made_3", "dunk", "alley_oop", "and_one", "buzzer_beater", "game_winner", "block",
+            "steal", "assist", "putback", "technical_foul", "ejection", "fight"} <= kinds
+    for word, kind in spec["listed_words"]:
+        assert kind in kinds, word
+    for kind in list(spec["callouts"]) + spec["scoring_events"] + spec["reaction_events"]:
+        assert kind in kinds
+    for choice in spec["highlights_choices"].values():
+        assert choice["events"] == "all" or set(choice["events"]) <= kinds
+
+
+def test_the_option_is_cleaned():
+    assert sports.clean({"name": "Basketball", "highlights": "threes", "period": "q4", "teams": " Curry "}) == {
+        "name": "basketball", "highlights": "threes", "period": "q4", "teams": "Curry"}
+    # A reactions choice takes words ("fans reacting to the dunks"); soccer's goals don't.
+    assert sports.clean({"name": "basketball", "highlights": "fan_reactions",
+                         "request": "the biggest dunks"})["request"] == "the biggest dunks"
+    assert "request" not in sports.clean({"name": "soccer", "highlights": "goals", "request": "x"})
+    with pytest.raises(ValueError):
+        sports.clean({"name": "basketball", "period": "second_half"})
+    with pytest.raises(ValueError):
+        sports.clean({"name": "basketball", "highlights": "goals"})
+
+
+def test_it_uses_the_same_ai_and_scoring_as_soccer():
+    """No AI of its own: the same profile interface, the same weights and the
+    same scoring path (analysis/fusion.py) as soccer, with its own words."""
+    ball, soccer = _profile(), sports.profile_for({"clips": {"sport": {"name": "soccer"}}})
+    assert ball.weights == soccer.weights and ball.games == [] and ball.genre == "basketball"
+    assert "BASKETBALL" in ball.guidance() and "pitch" not in ball.guidance()
+    assert ball.sound_curves() == ("crowd", "whistle", "buzzer")
+    assert "buzzer" in sports.sound_groups("basketball") and "buzzer" not in sports.sound_groups("soccer")
+
+
+def test_the_assistant_is_told_about_basketball():
+    pytest.importorskip("requests")
+    from server.mcp import SPORT_PARAM
+
+    text = str(SPORT_PARAM)
+    assert "basketball" in text and "fan_reactions" in text and "q4" in text
+
+
+# ---- the score bug ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("line, score, teams, period, clock", [
+    ("LAL 98  BOS 101  4TH  0:32  14", (98, 101), ("LAL", "BOS"), 4, 32),
+    ("LAL98 BOS101 4TH 2:05.4", (98, 101), ("LAL", "BOS"), 4, 125),
+    ("98 LAL 101 BOS Q3 11:42", (98, 101), ("LAL", "BOS"), 3, 702),
+    ("LAL 98 BOS 101 OT 24.3", (98, 101), ("LAL", "BOS"), 5, 24.3),
+    ("LAL 7 BOS 9 2OT 1:00", (7, 9), ("LAL", "BOS"), 6, 60),
+    ("BONUS LAL 98 BOS 101 4TH :32", (98, 101), ("LAL", "BOS"), 4, 32),
+    ("DUKE 45 UNC 44 2ND HALF 0:03", (45, 44), ("DUKE", "UNC"), 2, 3),
+    ("98 - 101", (98, 101), None, None, None),
+])
+def test_the_bug_is_read(line, score, teams, period, clock):
+    r = bb.parse([line])
+    assert (r.score, r.teams, r.period, r.clock) == (score, teams, period, clock)
+
+
+def test_a_basket_is_a_score_up_by_one_two_or_three():
+    board = _board([(100, 0, 2), (200, 1, 3), (300, 0, 1), (400, 1, 2)])
+    assert [(c.points, c.team) for c in board.changes] == [(2, "LAL"), (3, "BOS"), (1, "LAL"), (2, "BOS")]
+    assert board.changes[1].label() == "score 2-3 (BOS), +3"
+
+
+def test_a_misread_or_a_jump_of_two_baskets_is_not_a_basket():
+    readings = [bb.Reading(t=float(t), score=s, teams=("LAL", "BOS"), visible=True)
+                for t, s in [(0, (10, 10)), (4, (10, 10)), (8, (18, 10)), (12, (10, 10)), (16, (10, 10)),
+                             (20, (15, 10)), (24, (15, 10))]]
+    assert bb.from_readings(readings).changes == []
+
+
+def test_the_clock_and_quarter_are_read_for_each_moment():
+    board = _board([], period=4, start_clock=700.0)
+    assert board.period_at(100) == "q4" and board.when(100) == "Q4 10:00"
+    assert _board([], period=5).period_at(10) == "ot"
+    assert board.minute_at(100) is None
+
+
+# ---- events -----------------------------------------------------------------------------
+
+
+def test_made_two_and_three_come_from_the_score_bug():
+    m = _moments(_profile(), board=_board([(200, 0, 2), (500, 1, 3)]),
+                 curves=_curves(roars=[(199, 3), (499, 3)]))
+    named = _named(m)
+    assert ("made_2", 198) in named and ("made_3", 498) in named
+    assert all(e.confirmed and e.team for e in m if e.type in ("made_2", "made_3"))
+
+
+def test_a_free_throw_is_one_point():
+    m = _moments(_profile(), board=_board([(300, 0, 1)]))
+    assert [e.type for e in m if e.confirmed] == ["free_throw"]
+
+
+def test_the_commentary_names_a_dunk_and_the_bug_confirms_it():
+    m = _moments(_profile(), said={300: "he throws it down! what a dunk"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 4)]))
+    assert [e.type for e in m if e.confirmed] == ["dunk"]
+
+
+def test_a_three_called_on_a_two_point_basket_is_a_basket():
+    m = _moments(_profile(), said={300: "from downtown"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 4)]))
+    assert [e.type for e in m if e.confirmed] == ["made_2"]
+
+
+@pytest.mark.parametrize("said, kind", [
+    ("blocked! get that out of here", "block"),
+    ("steal! picks his pocket", "steal"),
+    ("what a pass, the dime", "dime"),
+    ("great assist", "assist"),
+    ("offensive rebound, keeps it alive", "offensive_rebound"),
+    ("and he misses, off the rim", "miss"),
+    ("he gets the foul call", "foul"),
+    ("technical foul on the coach", "technical_foul"),
+    ("and he's been ejected", "ejection"),
+    ("alley-oop! he slams it", "alley_oop"),
+    ("dunk and one! plus the foul", "and_one"),
+])
+def test_the_commentary_names_the_play_when_the_crowd_agrees(said, kind):
+    m = _moments(_profile(), said={400: said}, curves=_curves(roars=[(401, 4)]))
+    assert kind in [e.type for e in m]
+
+
+def test_the_commentary_alone_is_never_a_moment():
+    m = _moments(_profile(), said={400: "blocked! get that out of here"})
+    assert m == []
+
+
+def test_everyday_words_are_not_plays():
+    profile = _profile()
+    for said in ("three seconds in the lane", "he takes a shot at the referee", "the arena is full tonight"):
+        assert profile.callouts_in(said) == [], said
+
+
+# ---- the game's situation ------------------------------------------------------------
+
+
+def _weighted(baskets, *, period, start_clock, start=(0, 0), said=None, roars=(), buzzer=()):
+    profile = _profile()
+    board = _board(baskets, period=period, start_clock=start_clock, start=start)
+    m = _moments(profile, said=said, board=board, curves=_curves(roars=roars, buzzer=buzzer))
+    e = next(e for e in m if e.confirmed)
+    return e, clips.bonus(e, profile), profile.context_weight(e)
+
+
+def test_a_game_winner_is_worth_far_more_than_a_first_quarter_three():
+    winner, winner_bonus, _w = _weighted([(500, 0, 3)], period=4, start_clock=505.0, start=(99, 100),
+                                         roars=[(499, 4)])
+    routine, routine_bonus, _r = _weighted([(500, 0, 3)], period=1, start_clock=900.0, start=(10, 20),
+                                           roars=[(499, 4)])
+    assert winner.type == "game_winner" and routine.type == "made_3"
+    assert winner_bonus > routine_bonus + 5
+    assert "takes the lead" in winner.context and winner.when.startswith("Q4 0:0")
+
+
+def test_a_late_block_in_a_close_game_beats_one_in_a_blowout():
+    def block(start, period, clock):
+        profile = _profile()
+        board = _board([], period=period, start_clock=clock, start=start)
+        m = _moments(profile, said={400: "blocked! rejected"}, board=board, curves=_curves(roars=[(401, 4)]))
+        e = next(e for e in m if e.type == "block")
+        return clips.bonus(e, profile)
+
+    assert block((100, 101), 4, 450.0) > block((70, 101), 4, 450.0) + 5
+
+
+def test_overtime_lifts_a_moment():
+    _e, _b, ot = _weighted([(300, 0, 2)], period=5, start_clock=700.0, start=(100, 90))
+    _e, _b, q2 = _weighted([(300, 0, 2)], period=2, start_clock=700.0, start=(50, 40))
+    assert ot > q2
+
+
+def test_end_of_quarter_basket_with_the_buzzer_is_a_buzzer_beater():
+    e, _b, _w = _weighted([(500, 0, 3)], period=2, start_clock=500.5, start=(40, 50), roars=[(499, 4)],
+                          buzzer=[500])
+    assert e.type == "buzzer_beater"
+
+
+def test_a_tying_basket_late_and_a_go_ahead_one():
+    tie, _b, _w = _weighted([(500, 0, 2)], period=4, start_clock=540.0, start=(98, 100), roars=[(499, 4)])
+    assert tie.type == "game_tying" and "ties it" in tie.context
+    ahead, _b, _w = _weighted([(500, 0, 3), (520, 1, 2)], period=4, start_clock=590.0, start=(98, 100),
+                              roars=[(499, 4)])
+    assert ahead.type == "go_ahead"
+
+
+def test_a_late_possession_in_a_close_game_is_clutch():
+    e, _b, w = _weighted([(500, 0, 2)], period=4, start_clock=560.0, start=(90, 93), roars=[(499, 4)])
+    assert e.type == "clutch_shot" and w > 1.3
+
+
+def test_without_a_score_bug_every_moment_counts_as_it_is():
+    profile = _profile()
+    m = _moments(profile, said={400: "throws it down, what a dunk"}, curves=_curves(roars=[(401, 4)]))
+    assert profile.context_weight(m[0]) == 1.0
+
+
+# ---- reactions ------------------------------------------------------------------------
+
+
+def test_court_and_people_are_told_apart():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    court = np.zeros((108, 192, 3), dtype=np.uint8)
+    court[:, :] = (60, 120, 190)                       # one floor colour
+    rng = np.random.default_rng(0)
+    crowd = rng.integers(0, 255, (108, 192, 3), dtype=np.uint8)
+    assert reactions.looks(court, 0.3, 0.12) == "court"
+    assert reactions.looks(crowd, 0.3, 0.12) == "people"
+
+
+def test_cutaways_are_the_shots_between_court_shots():
+    shots = [(0, "court"), (4, "court"), (8, "people"), (10, "people"), (14, "court"),
+             (20, "court"), (24, "other"), (80, "other"), (84, "court")]
+    found = reactions.cutaways(shots, 100)
+    assert [(c.start, c.end, c.crowd) for c in found] == [(8, 14, True)]     # the 60 s one is a break
+
+
+def test_a_name_comes_only_from_the_broadcasts_caption():
+    assert reactions.name_in(["SPIKE LEE"]) == "Spike Lee"
+    assert reactions.name_in(["Jack Nicholson", "LIVE"]) == "Jack Nicholson"
+    for not_a_name in (["REPLAY"], ["4TH QTR 0:32"], ["Crypto.com Arena"], ["Kiss Cam"], ["LAL Bos"]):
+        assert reactions.name_in(not_a_name, exclude=("LAL", "BOS")) == "", not_a_name
+
+
+def test_a_crowd_reaction_after_a_dunk_is_one_moment_with_it():
+    profile = _profile()
+    cut = reactions.Cutaway(306.0, 312.0, crowd=True)
+    m = _moments(profile, said={300: "throws it down! what a dunk"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 8)]), cutaways=[cut])
+    dunk = next(e for e in m if e.type == "dunk")
+    reaction = next(e for e in m if e.type == "crowd_reaction")
+    assert dunk.end >= 312 and reaction.group == dunk.group           # the dunk's clip holds it
+    assert reaction.importance < dunk.importance and "after the dunk" in reaction.signals
+
+
+def test_a_celebrity_reaction_is_named_only_by_the_caption():
+    profile = _profile()
+    named = reactions.Cutaway(306.0, 311.0, crowd=True, name="Spike Lee")
+    unnamed = reactions.Cutaway(606.0, 611.0, crowd=True)
+    m = _moments(profile, said={300: "what a dunk", 600: "for three! from downtown"},
+                 board=_board([(304, 0, 2), (604, 1, 3)]), curves=_curves(roars=[(301, 8), (601, 8)]),
+                 cutaways=[named, unnamed])
+    celeb = next(e for e in m if e.type == "celebrity_reaction")
+    assert celeb.person == "Spike Lee" and "on screen: Spike Lee" in celeb.signals
+    other = next(e for e in m if e.t == 606.0)
+    assert other.type == "crowd_reaction" and other.person == ""
+
+
+def test_a_crowd_shot_with_nothing_happening_is_not_a_reaction():
+    m = _moments(_profile(), cutaways=[reactions.Cutaway(400.0, 405.0, crowd=True)])
+    assert m == []
+
+
+def test_a_strong_reaction_with_no_play_stands_on_its_own():
+    m = _moments(_profile(), curves=_curves(roars=[(400, 6)]),
+                 cutaways=[reactions.Cutaway(402.0, 408.0, crowd=True, name="Jack Nicholson")])
+    celeb = next(e for e in m if e.type == "celebrity_reaction")
+    assert celeb.start <= 402 and celeb.end >= 408
+
+
+def test_fan_reactions_make_the_reaction_the_clips_moment():
+    profile = _profile("fan_reactions")
+    m = _moments(profile, said={300: "throws it down! what a dunk"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 8)]), cutaways=[reactions.Cutaway(306.0, 312.0, crowd=True)])
+    reaction = next(e for e in m if e.type == "crowd_reaction")
+    assert reaction.importance == 100
+    assert reaction.start <= 300 and reaction.end >= 312              # the dunk, then the reaction
+    candidate = ClipCandidate(start=reaction.start, end=reaction.end, score=50)
+    attached = clips.attach(m, [candidate])
+    kept, _dropped, _notes = clips.choose(profile, [candidate], attached, min_score=40, max_len=60)
+    assert kept and attached[id(candidate)].type == "crowd_reaction"
+
+
+def test_dunks_keeps_the_dunk_with_its_reaction_inside():
+    profile = _profile("dunks")
+    m = _moments(profile, said={300: "throws it down! what a dunk"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 8)]), cutaways=[reactions.Cutaway(306.0, 312.0, crowd=True)])
+    dunk = next(e for e in m if e.type == "dunk")
+    candidate = ClipCandidate(start=dunk.start, end=dunk.end, score=50)
+    attached = clips.attach(m, [candidate])
+    kept, dropped, _notes = clips.choose(profile, [candidate], attached, min_score=40, max_len=60)
+    assert kept and not dropped and attached[id(candidate)].type == "dunk"
+
+
+class _Looks:
+    """A local model that takes images, answering what a shot shows."""
+
+    def __init__(self, shot):
+        self.shot = shot
+
+    def look(self, _prompt, images):
+        assert images
+        return json.dumps({"shot": self.shot})
+
+
+@pytest.mark.parametrize("shot, kind", [("bench", "bench_reaction"), ("courtside", "courtside_reaction"),
+                                        ("crowd", "crowd_reaction"), ("coach", "coach_reaction")])
+def test_the_local_model_tells_who_a_reaction_shot_shows(shot, kind):
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.basketball import look
+
+    profile = _profile()
+    clip = ClipCandidate(start=300.0, end=320.0, score=60,
+                         subscores={"sport_event": "fan_reaction", "sport_label": "Fan reaction", "sport_t": 306.0})
+    frame = np.zeros((90, 160, 3), dtype=np.uint8)
+    assert look.look(profile, [clip], "game.mp4", _Looks(shot), grab=lambda _t: frame) == 1
+    assert clip.subscores["sport_event"] == kind
+    assert clip.subscores["sport_label"] == profile.event_label(kind)
+
+
+def test_the_local_model_never_names_anyone():
+    from sports.basketball import look
+
+    assert "Do not say who" in look.PROMPT
+
+
+# ---- framing ----------------------------------------------------------------------------
+
+
+def _sample(t, balls=(), people=(), cut=False, reaction=False):
+    return {"t": t, "cut": cut, "balls": list(balls), "people": list(people), "reaction": reaction}
+
+
+def test_the_crop_follows_the_ball_and_the_players_around_it():
+    from sports.basketball import action
+
+    samples = [_sample(i / 5, balls=[(0.5 + i * 0.005, 0.6, 0.8)], people=[(0.52 + i * 0.005, 0.6, 0.05, 0.2)])
+               for i in range(30)]
+    path, led = action.plan(samples, 0.316)
+    assert led["ball"] > 20 and abs(path[-1][1] - 0.65) < 0.08
+
+
+def test_the_crop_leans_toward_the_rim_on_a_drive():
+    from sports.basketball import action
+
+    drive = [_sample(i / 5, balls=[(min(0.9, 0.3 + i * 0.03), 0.5, 0.8)]) for i in range(30)]
+    path, led = action.plan(drive, 0.316)
+    assert led["rim"] > 0 and path[-1][1] >= 0.8          # as far right as the crop goes, the rim in it
+
+
+def test_the_crop_moves_to_the_reaction_shot():
+    from sports.basketball import action
+
+    court = [_sample(i / 5, balls=[(0.3, 0.6, 0.8)]) for i in range(10)]
+    fans = [(0.1 + k * 0.05, 0.5, 0.05, 0.15) for k in range(7)] + [(0.8, 0.5, 0.2, 0.4)]
+    cutaway = [_sample(2 + i / 5, people=fans, cut=(i == 0), reaction=True) for i in range(10)]
+    path, led = action.plan(court + cutaway, 0.316)
+    assert led["reaction"] >= 9 and path[-1][1] > 0.7          # on the biggest reacting person
+
+
+def test_a_close_up_is_framed_on_the_player():
+    from sports.basketball import action
+
+    path, led = action.plan([_sample(i / 5, people=[(0.25, 0.5, 0.3, 0.8)]) for i in range(10)], 0.316)
+    assert led["close-up"] == 10 and path[-1][1] < 0.35
+
+
+def test_the_framing_hook_reaches_the_basketball_follower(monkeypatch):
+    from sports.basketball import action
+
+    monkeypatch.setattr(action, "compute", lambda path, model_name, imgsz: {
+        "mode": "track", "path": [(0.0, 0.4)], "led": {"ball": 1}})
+    assert sports.framing("basketball", "clip.mp4", {}) == {"mode": "track", "path": [(0.0, 0.4)]}
+
+
+# ---- the pipeline: vertical sources, Vertical Live, rendering --------------------------
+
+
+class _Stop(Exception):
+    pass
+
+
+def test_a_game_filmed_9x16_keeps_its_composition(monkeypatch, tmp_path, db):
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    import core.pipeline as pipeline
+    from core import modes
+    from core.models import DownloadedVideo
+
+    source = tmp_path / "phone.mp4"
+    source.write_bytes(b"not really a video")
+    monkeypatch.setattr(pipeline, "_cached_or_download", lambda *_a, **_k: DownloadedVideo(
+        video_id="local_phone", title="Phone", path=source, duration=600.0))
+    monkeypatch.setattr("video.encoding.source_codec", lambda _p: "h264")
+    monkeypatch.setattr("analysis.audio_features.extract_audio_features", lambda _p: {})
+    monkeypatch.setattr("analysis.visual_features.extract_visual_features", lambda _p: {})
+    monkeypatch.setattr("analysis.hype.audience_signals", lambda *_a, **_k: (None, None))
+    seen: dict = {}
+
+    class Reading:
+        def __init__(self, config, video):
+            seen["clips"] = config["clips"]
+            raise _Stop
+
+    monkeypatch.setattr(pipeline, "MatchReading", Reading)
+    config = {"clips": {"captions": False, "sport": {"name": "basketball"}}, "paths": {"data_dir": str(tmp_path)}}
+    for size, kept in (((1080, 1920), True), ((720, 1280), True), ((1440, 2560), True), ((1920, 1080), False)):
+        monkeypatch.setattr(modes, "probe_size", lambda _p, s=size: s)
+        with pytest.raises(_Stop):
+            pipeline.process_video("local:phone", config, db, force=True)
+        assert bool(seen["clips"].get("vertical_live")) is kept, size
+
+
+def test_vertical_live_basketball_is_scored_as_basketball():
+    from core import modes
+
+    config = {"clips": {"vertical_live": True, "sport": {"name": "basketball", "highlights": "dunks"}}}
+    assert modes.sport(config) == "basketball" and modes.is_vertical_live(config)
+    assert type(sports.profile_for(config)).__name__ == "BasketballProfile"
+
+
+def test_a_16x9_game_is_framed_by_the_play_not_a_face(monkeypatch, tmp_path):
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    import json
+    from pathlib import Path
+
+    import core.pipeline as pipeline
+    import video.cropper as cropper
+    import video.tracker as tracker
+    from core import modes
+
+    rendered: dict = {}
+
+    def render(_clip, tracking, output, *_a, **_k):
+        rendered["tracking"] = tracking
+        Path(output).write_bytes(b"clip")
+        return Path(output)
+
+    def no_faces(*_a, **_k):
+        raise AssertionError("face tracking ran")
+
+    monkeypatch.setattr(pipeline, "cut_clip", lambda _s, _c, output, **_k: Path(output).write_bytes(b"cut"))
+    monkeypatch.setattr(modes, "probe_size", lambda _p: (1920, 1080))
+    monkeypatch.setattr(sports, "framing", lambda name, path, config: {"mode": "track", "path": [(0.0, 0.7)]})
+    monkeypatch.setattr(cropper, "render_vertical", render)
+    monkeypatch.setattr(tracker, "compute_tracking", no_faces)
+    config = {"clips": {"captions": False, "outro": False, "vertical": True, "sport": {"name": "basketball"}},
+              "paths": {"data_dir": str(tmp_path)}, "tracking": {"detector": "yolov8n-pose.pt", "sample_fps": 8}}
+    final, opts_json = pipeline._render_files(tmp_path / "source.mp4", ClipCandidate(start=10.0, end=40.0, score=80),
+                                              [], tmp_path / "clips", config)
+    assert final.exists() and rendered["tracking"]["path"] == [(0.0, 0.7)]
+    assert json.loads(opts_json)["sport"] == "basketball"
+
+
+def test_a_basketball_clip_card_carries_the_clock_and_the_situation():
+    profile = _profile()
+    m = _moments(profile, said={500: "for the win! from downtown"},
+                 board=_board([(504, 0, 3)], period=4, start_clock=508.0, start=(99, 100)),
+                 curves=_curves(roars=[(501, 6)]))
+    e = next(e for e in m if e.confirmed)
+    c = ClipCandidate(start=e.start, end=e.end, score=70)
+    clips.mark(c, e, profile.event_label(e.type), clips.bonus(e, profile))
+    assert c.subscores["sport_event"] == "game_winner"
+    assert c.subscores["sport_when"].startswith("Q4") and c.subscores["sport_context"]
+
+
+def test_the_quarter_choice_keeps_its_quarter():
+    profile = _profile("best", "q4")
+    board = _board([(304, 0, 2)], period=3)
+    m = _moments(profile, said={300: "what a dunk"}, board=board, curves=_curves(roars=[(301, 6)]))
+    candidate = ClipCandidate(start=290.0, end=320.0, score=60)
+    attached = clips.attach(m, [candidate])
+    kept, dropped, _notes = clips.choose(profile, [candidate], attached, min_score=40, max_len=60)
+    assert not kept and dropped[0][1] == "other_period"
+
+
+def test_typed_events_use_basketballs_words():
+    from sports.core import events_import
+
+    read, unread = events_import.parse("1:23:14 dunk LeBron\n45:02 3pt Curry\n10:00 FT\n3 pointer",
+                                       sports.spec("basketball"))
+    assert [(e.kind, e.who, e.video_t) for e in read] == [
+        ("dunk", "LeBron", 5_000 - 6), ("made_3", "Curry", 2702.0), ("free_throw", "", 600.0)]
+    assert unread == ["3 pointer"]                      # "3" is no match minute in basketball
+
+
+# ---- soccer is unchanged -------------------------------------------------------------------
+
+
+def test_soccer_keeps_its_own_values():
+    soccer = sports.profile_for({"clips": {"sport": {"name": "soccer"}}})
+    assert soccer.scoring_types == detect.GOALS and soccer.celebration == detect.CELEBRATION
+    assert soccer.sound_curves() == ("crowd", "whistle")
+    assert type(soccer).__name__ == "SoccerProfile"
+    e = detect.SportEvent("goal", 100.0, 1.0, 100)
+    assert soccer.context_weight(e) == 1.0
+    assert clips.bonus(e, soccer) == clips.bonus(e) == clips.BONUS_MAX
+    assert soccer.extra_moments([e], [], curves={}, video_end=200, min_len=10, max_len=60) == [e]
+
+
+# ---- through the scorer (analysis/fusion.py), as a real job runs it ----------------------
+
+
+class _Says:
+    def generate(self, *_a, **_k):
+        return "{}"
+
+
+def test_a_dunk_and_its_reaction_become_one_marked_clip_through_the_scorer(monkeypatch):
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from analysis import fusion, highlights
+
+    def score_windows(_segments, _llm, windows, **_k):
+        return [ClipCandidate(start=a, end=b, score=55, hook="w", source="signal") for a, b in windows]
+
+    picks = [(0, 30, 62), (100, 130, 64), (200, 230, 61)]
+    monkeypatch.setattr(highlights, "find_highlights", lambda *_a, **_k: (
+        [ClipCandidate(start=a, end=b, score=s, hook="h", reason="r") for a, b, s in picks], []))
+    monkeypatch.setattr(highlights, "score_windows", score_windows)
+    monkeypatch.setattr(fusion, "reaction_for_window", lambda *_a, **_k: 0.5)
+    config = {
+        "clips": {"min_duration": 10, "max_duration": 60, "min_score": 40, "max_clips_per_video": 0,
+                  "sport": {"name": "basketball", "highlights": "best"}},
+        "analysis": {"chunk_seconds": 600, "chunk_overlap_seconds": 30, "long_video_threshold_seconds": 3600,
+                     "max_overlap": 0.3, "max_text_similarity": 0.8, "max_segment_reuse": 0.5},
+        "scoring": {"rerank_pool": 0, "read_screen": False},
+        "tracking": {"detector": "yolov8n.pt"},
+    }
+    profile = sports.profile_for(config)
+    profile.board = _board([(454, 0, 2)], period=4, start_clock=900.0, start=(80, 82))
+    profile.cutaways = [reactions.Cutaway(456.0, 462.0, crowd=True)]
+    profile.curves = _curves(roars=[(451, 8)])
+    segs = _segments({448: "he throws it down! what a dunk"})
+    kept, _rejected = fusion.find_clips("game.mp4", segs, _Says(), config,
+                                        signals=({"spike": np.zeros(N)}, {"motion": np.zeros(N)}),
+                                        measure_reaction=False, sport=profile)
+    dunk = [c for c in kept if (c.subscores or {}).get("sport_event") == "dunk"]
+    assert dunk and dunk[0].subscores["sport_bonus"] > 0
+    assert dunk[0].start <= 448 and dunk[0].end >= 462              # the build-up, the dunk, the reaction
+    assert dunk[0].subscores["sport_when"].startswith("Q4")
+    assert profile.report_data["sport"] == "Basketball" and profile.report_data["found"]["Dunk"] == 1

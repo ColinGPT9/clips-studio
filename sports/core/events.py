@@ -26,6 +26,9 @@ class SportEvent:
     is_replay: bool = False
     group: int = 0               # the moment it belongs to (0: not grouped yet)
     confirmed: bool = False      # the scoreboard confirmed it: the score changed for it
+    when: str = ""               # the game clock as the sport writes it ("Q4 0:32"), when read
+    context: str = ""            # the game's situation that changed its worth ("tied, 0:02 left")
+    person: str = ""             # someone on screen, only as the broadcast's own caption names them
 
     def overlaps(self, other: "SportEvent", min_ratio: float = 0.3) -> bool:
         """Whether the two windows share at least min_ratio of the shorter."""

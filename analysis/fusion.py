@@ -510,7 +510,7 @@ def find_clips(
         # goal most, a replay nothing.
         moment = sport_attached.get(id(c))
         if moment is not None:
-            b = sport_clips.bonus(moment)
+            b = sport_clips.bonus(moment, sport)
             sport_clips.mark(c, moment, sport.event_label(moment.type), b)
             if b:
                 fused = min(100, fused + b)
@@ -578,6 +578,16 @@ def find_clips(
         if under:
             finalists = [c for c in finalists if c.score >= clips_cfg["min_score"]]
             rejections += [Rejection(c, "below_min_score") for c in under]
+    # A match whose sport looks at its own clips (basketball: what a reaction
+    # shot shows, the bench or courtside), with the same local model.
+    look = getattr(sport, "look", None) if sport is not None else None
+    if look is not None and finalists and scoring_cfg.get("look_at_game", True):
+        try:
+            look(finalists, video_path, llm)
+        except cancel.CancelledError:
+            raise
+        except Exception as e:
+            print(f"  ({sport.label}: looking at the frames failed: {e})")
 
     # ---- 5. rerank: relative judgment beats absolute scoring --------------
     # Batched: head-to-head comparison is only reliable for small groups, so

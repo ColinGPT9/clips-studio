@@ -58,10 +58,15 @@ def attach(moments: list[SportEvent], candidates) -> dict:
     return out
 
 
-def bonus(e: SportEvent | None) -> int:
+def bonus(e: SportEvent | None, profile=None) -> int:
+    """Points for the moment a clip shows: its worth, times the game's
+    situation when the sport weighs it (profile.context_weight), within
+    BONUS_MAX."""
     if e is None or e.is_replay:
         return 0
-    return round(BONUS_MAX * e.importance / 100 * max(e.confidence, 0.34))
+    weight = profile.context_weight(e) if profile is not None else 1.0
+    worth = min(100.0, e.importance * weight)
+    return round(BONUS_MAX * worth / 100 * max(e.confidence, 0.34))
 
 
 def mark(c, e: SportEvent, label: str, points: int) -> None:
@@ -81,6 +86,12 @@ def mark(c, e: SportEvent, label: str, points: int) -> None:
         s["sport_period"] = e.period
     if e.minute is not None:
         s["sport_minute"] = e.minute
+    if e.when:
+        s["sport_when"] = e.when
+    if e.context:
+        s["sport_context"] = e.context
+    if e.person:
+        s["sport_person"] = e.person
     if e.is_replay:
         s["sport_replay"] = True
     if points:
@@ -105,8 +116,8 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
         choice = (spec.get("highlights_choices") or {}).get(highlights) or {}
         notes.append(f"Club or phone footage: nothing here could confirm "
                      f"{str(choice.get('label') or highlights).lower()} (no score box or commentary), "
-                     "so these are the match's best moments instead. Add the goal times under Match "
-                     "events to clip every goal")
+                     "so these are the match's best moments instead. "
+                     + str(spec.get("listed_hint") or "Add the goal times under Match events to clip every goal"))
         types = None
 
     # One clip per moment: the original over a replay, then the best scored.
@@ -140,8 +151,8 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
         or (board is not None and board.period_at((c.start + c.end) / 2)))]
     if unknown:
         label = (spec.get("periods") or {}).get(period, period)
-        notes.append(f"{len(unknown)} clip(s) kept for {label} without knowing their half: "
-                     "the match clock wasn't read there")
+        notes.append(f"{len(unknown)} clip(s) kept for {label} without knowing their "
+                     f"{spec.get('period_word') or 'half'}: the match clock wasn't read there")
 
     # A chosen kind of moment: every confirmed one is kept, with its build-up
     # and reaction, whatever the scorer made of its words.
