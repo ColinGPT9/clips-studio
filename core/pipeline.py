@@ -1486,17 +1486,52 @@ def _register_clip(
             (video_id, round(candidate.start, 2), round(candidate.end, 2)),
         ).fetchone()
         if row:
+            from video import post_style as _post_style
+
             fresh = {"path": str(final_path), "scores": json.dumps(candidate.subscores or {})}
             rendered = json.loads(render_opts_json) if render_opts_json else {}
+            existing = db.get_clip(row["id"])
+            kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
             if rendered.get("gaming"):
                 # Gaming / Reaction: the row's split must be the one this file
                 # was rendered with, or the editor starts from a stale one.
-                existing = db.get_clip(row["id"])
-                kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
-                fresh["render_opts"] = json.dumps({**kept, "gaming": rendered["gaming"]})
+                kept = {**kept, "gaming": rendered["gaming"]}
+                fresh["render_opts"] = json.dumps(kept)
+            if _post_style.HIGHLIGHTS in (_post_style.resolve(kept.get("caption_style")),
+                                          _post_style.resolve(rendered.get("caption_style"))):
+                # Highlights, in this render or the saved one: the row's title
+                # card must be the one this file was rendered with. The editor
+                # and its re-renders start from the row, so a stale one drops
+                # the new card on the next edit, or brings an old one back.
+                fresh["render_opts"] = json.dumps(_with_card_of(kept, rendered))
             db.set_clip(row["id"], **fresh)
         print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None
 
     print(f"      -> {final_path}  ({meta.title})")
     return RenderedClip(source_video_id=video_id, candidate=candidate, path=final_path)
+
+
+def _with_card_of(kept: dict, rendered: dict) -> dict:
+    """A clip's saved options with the highlights title card set to the one
+    a fresh render was made with: its post style and card position, and its
+    headline and subline (gone when that render drew no card). The rest of
+    the saved caption style stays the clip's, as on any re-run."""
+    out = dict(kept)
+    new_style = rendered.get("caption_style") or {}
+    style = dict(kept.get("caption_style") or new_style)
+    for key in ("post_style", "card_position"):
+        if key in new_style:
+            style[key] = new_style[key]
+        else:
+            style.pop(key, None)
+    if style:
+        out["caption_style"] = style
+    else:
+        out.pop("caption_style", None)
+    for key in ("headline", "subline"):
+        if key in rendered:
+            out[key] = rendered[key]
+        else:
+            out.pop(key, None)
+    return out
