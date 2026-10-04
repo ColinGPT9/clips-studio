@@ -4,7 +4,7 @@ import type { Clip, LiveOverlay, TranslationPreview, WatermarkConfig } from '../
 import { Scissors, YouTube } from './icons'
 import LiveTextOverlay from './LiveTextOverlay'
 import TimelineEditor from './TimelineEditor'
-import { DEFAULT_CAPTION_STYLE, burnedCaptionStyle } from './CaptionStyleControls'
+import { DEFAULT_CAPTION_STYLE, burnedCaptionStyle, isHighlights } from './CaptionStyleControls'
 import { youtubeEnabledSync } from '../lib/youtube'
 
 /** Live, draggable watermark preview over the editor video. Shows the
@@ -178,8 +178,14 @@ export default function EditorView({
         captions: {
           lines: translated.lines,
           // The subtitle's own style, except that a non-Latin script forces
-          // a font that has the glyphs — exactly what the burn does.
-          style: { ...translated.style, font: translated.font ?? translated.style.font }
+          // a font that has the glyphs, and a Highlights clip puts them in
+          // the middle, clear of its title card — exactly what the burn does
+          // (multilingual/publish.py).
+          style: {
+            ...translated.style,
+            font: translated.font ?? translated.style.font,
+            ...(isHighlights(captionStyle, isLandscape) ? { position: 'middle' as const } : {})
+          }
         },
         bakedKeep: liveOverlay?.bakedKeep,
         keep: liveOverlay?.keep ?? [],
