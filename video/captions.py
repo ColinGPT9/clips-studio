@@ -279,10 +279,6 @@ def _highlighted(text: str, start: float, end: float, spoken: list[dict], opts: 
 
 def _header(opts: dict, canvas: tuple[int, int] = (1080, 1920)) -> str:
     alignment, margin_v = _POSITIONS.get(opts["position"], _POSITIONS["bottom"])
-    if opts.get("margin_v") is not None:
-        # An exact spot from a post style (video/post_style.py), e.g. the
-        # band under the video; never set by the caption controls.
-        margin_v = int(opts["margin_v"])
     color = _ass_color(opts["color"])
     size = max(40, min(140, int(opts["font_size"])))
     font = opts.get("font") if opts.get("font") in FONTS else "Arial"

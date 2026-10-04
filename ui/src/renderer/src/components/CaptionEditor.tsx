@@ -22,6 +22,10 @@ export default function CaptionEditor({
     ...clip.render_opts?.caption_style
   })
   const [burn, setBurn] = useState<boolean>(clip.render_opts?.captions ?? true)
+  // The highlights title card's two lines (video/post_style.py). A clip
+  // switched to the style here starts from its title.
+  const [headline, setHeadline] = useState(clip.render_opts?.headline ?? '')
+  const [subline, setSubline] = useState(clip.render_opts?.subline ?? '')
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
@@ -33,6 +37,8 @@ export default function CaptionEditor({
     setOpen(false)
     setStyle({ ...DEFAULT_CAPTION_STYLE, ...clip.render_opts?.caption_style })
     setBurn(clip.render_opts?.captions ?? true)
+    setHeadline(clip.render_opts?.headline ?? '')
+    setSubline(clip.render_opts?.subline ?? '')
   }, [clip.id])
 
   const load = async (): Promise<void> => {
@@ -60,8 +66,17 @@ export default function CaptionEditor({
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
     setStyle((s) => ({ ...s, [key]: value }))
+    if (key === 'post_style' && value === 'highlights' && !headline && !subline) {
+      setHeadline(
+        clip.title
+          .replace(/(^|\s)#\w+/g, ' ')
+          .trim()
+          .toUpperCase()
+      )
+    }
     setDirty(true)
   }
+  const highlights = style.post_style === 'highlights'
 
   const apply = async (): Promise<void> => {
     setBusy(true)
@@ -69,6 +84,7 @@ export default function CaptionEditor({
       await api.rerenderClip(clip.id, undefined, {
         captions: burn,
         caption_style: style,
+        ...(highlights ? { headline, subline } : {}),
         ...(lines && linesDirty ? { caption_lines: lines } : {})
       })
       setLinesDirty(false)
@@ -107,7 +123,40 @@ export default function CaptionEditor({
             Burn captions into this clip
           </label>
 
-          <CaptionStyleControls idPrefix={`clip-${clip.id}`} style={style} onChange={setStyleField} />
+          <CaptionStyleControls
+            showPostStyle
+            idPrefix={`clip-${clip.id}`}
+            style={style}
+            onChange={setStyleField}
+          />
+
+          {highlights && (
+            <div className="space-y-2">
+              <p className="label">Title card</p>
+              <input
+                className="input !py-1 text-sm"
+                aria-label="Title card headline"
+                placeholder="BIG LINE ON BLACK"
+                maxLength={60}
+                value={headline}
+                onChange={(e) => {
+                  setHeadline(e.target.value)
+                  setDirty(true)
+                }}
+              />
+              <input
+                className="input !py-1 text-sm"
+                aria-label="Title card second line"
+                placeholder="Second line on yellow (optional)"
+                maxLength={70}
+                value={subline}
+                onChange={(e) => {
+                  setSubline(e.target.value)
+                  setDirty(true)
+                }}
+              />
+            </div>
+          )}
 
           <div>
             <p className="label mb-1">Caption text (fix any transcription mistakes)</p>

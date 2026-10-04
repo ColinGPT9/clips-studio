@@ -578,11 +578,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     gaming_opts = _gaming_prepare(video.path, candidates, clip_dir, config) if modes.is_gaming(config) else None
 
     def _clip_opts(meta) -> dict | None:
-        """One clip's render options: the job's, plus its headline when the
-        post style draws one (its title, written for that style above)."""
+        """One clip's render options: the job's, plus its title card when the
+        post style draws one (written for that style above)."""
         if post_style != _post_style.HIGHLIGHTS:
             return gaming_opts
-        return {**(gaming_opts or {}), "headline": _post_style.headline_text(meta.title)}
+        return {**(gaming_opts or {}),
+                "headline": meta.headline or _post_style.headline_from_title(meta.title),
+                "subline": meta.subline}
 
     def _finish(candidate, meta, get_result) -> None:
         nonlocal done_count, last_failure, repeated_failures
@@ -1142,16 +1144,7 @@ def _render_files(
     # Gaming / Split-Screen (gaming/): opt-in, per video or per clip. Tried
     # first inside the tracked branch; anything it declines or fails at goes
     # on to the standard layout below. Off -> never imported.
-    # Post style (video/post_style.py), chosen with the caption style. The
-    # highlights look shows the whole frame on black under a headline, so it
-    # is one straight encode like Vertical Live: no tracking, split or crop.
-    from video import post_style as _post_style
-
-    caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
-    highlights = (not landscape and not vertical_live
-                  and _post_style.resolve(caption_style) == _post_style.HIGHLIGHTS)
-    hl_layout = _post_style.highlights_layout(*modes.probe_size(source)) if highlights else None
-    gaming = (not landscape and not vertical_live and not podcast and not highlights
+    gaming = (not landscape and not vertical_live and not podcast
               and (modes.is_gaming(opts) or modes.is_gaming(config)))
     gaming_kept = None
     canvas = (1920, 1080) if landscape else (1080, 1920)
@@ -1172,10 +1165,6 @@ def _render_files(
         fit = modes.fit_filter(*modes.probe_size(source))
         if fit:
             vf_extra = f"{fit},{vf_extra}" if vf_extra else fit
-    elif highlights:
-        # Colour first, then the layout, so the bars stay pure black.
-        fit = hl_layout["filter"]
-        vf_extra = f"{vf_extra},{fit}" if vf_extra else fit
 
     # Manual edits from the Shorts editor (trim/cuts/mutes/volume/fades) —
     # non-destructive: stored in render_opts, applied fresh on every render.
@@ -1186,8 +1175,14 @@ def _render_files(
         edit = EditList.from_dict(opts["edit"], duration=candidate.duration)
 
     ass_path = None
-    # caption_style (above): per-clip style wins; otherwise the job/config
-    # default chosen at generate time.
+    # Per-clip style wins; otherwise the job/config default chosen at generate time.
+    caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
+    # Post style (video/post_style.py), chosen with the caption style. The
+    # highlights look keeps the clip's framing and adds its captions and
+    # title card on top; vertical clips only.
+    from video import post_style as _post_style
+
+    highlights = not landscape and _post_style.resolve(caption_style) == _post_style.HIGHLIGHTS
     if config["clips"].get("captions", True) and opts.get("captions", True):
         lines = opts.get("caption_lines")  # user-corrected caption text, if any
         if edit is not None and (edit.keep is not None or abs(edit.speed - 1) >= 0.01):
@@ -1202,8 +1197,7 @@ def _render_files(
             lines = remap_lines(lines, edit)
         ass_path = build_captions(
             segments, candidate, clip_dir / f"{stem}.ass",
-            style=(_post_style.caption_style_for(caption_style, hl_layout) if highlights
-                   else caption_style),
+            style=_post_style.caption_style_for(caption_style) if highlights else caption_style,
             lines=lines,
             canvas=canvas,
             language=content_language,
@@ -1218,18 +1212,6 @@ def _render_files(
         ass_path = ensure_hook(
             ass_path, clip_dir / f"{stem}.ass", edit.hook, canvas=canvas,
             font=caption_font_for(content_language, None) or "Arial Black",
-        )
-
-    # The highlights headline: the clip's title, in the black band above the
-    # video for the whole clip. Saved with the clip (opts["headline"]), so a
-    # re-render keeps it and the editor can change it.
-    if highlights and opts.get("headline"):
-        from video.captions import caption_font_for
-
-        ass_path = _post_style.ensure_headline(
-            ass_path, clip_dir / f"{stem}.ass", str(opts["headline"]), hl_layout,
-            duration=candidate.duration,
-            font=caption_font_for(content_language, None) or _post_style.HEADLINE_FONT,
         )
 
     # Watermark & branding (opts["watermark"], else the job/config default).
@@ -1262,8 +1244,7 @@ def _render_files(
         # Vertical Live takes the single-encode branch below, like longform:
         # the tracked path (intermediate cut, face tracking, TalkNet, layout
         # decisions, frames through Python) is never entered.
-        if (config["clips"].get("vertical", True) and not landscape and not vertical_live
-                and not highlights):
+        if config["clips"].get("vertical", True) and not landscape and not vertical_live:
             # Cut a horizontal intermediate, track the subject, render 9:16.
             intermediate = clip_dir / f"{stem}.source.mp4"
             scratch.append(intermediate)
@@ -1348,7 +1329,7 @@ def _render_files(
                 )
         else:
             if edit is not None:
-                # Horizontal (Vertical Live, highlights) output: cut plain first, then
+                # Horizontal (or Vertical Live) output: cut plain first, then
                 # apply edits and burn captions in the same pass (they land
                 # AFTER the cuts).
                 from video_editor.export import apply_edits
@@ -1372,6 +1353,13 @@ def _render_files(
 
     if ass_path is not None:
         discard(ass_path)
+
+    # Highlights title card: one overlay pass on the finished clip, like the
+    # image watermark below (which then sits on top of it). The text is saved
+    # with the clip (opts["headline"], opts["subline"]), so a re-render keeps
+    # it and the editor can change it.
+    if highlights and (opts.get("headline") or opts.get("subline")):
+        _title_card(render_path, opts, caption_style, clip_dir / f"{stem}.card.png", content_language)
 
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
@@ -1413,6 +1401,28 @@ def _render_files(
         }
     ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live or sport_name) else ""
     return final_path, render_opts_json
+
+
+def _title_card(clip: Path, opts: dict, caption_style: dict | None, png: Path, language: str) -> None:
+    """Lay the highlights title card over a rendered clip. Never raises: a
+    card that cannot be drawn leaves the clip as it was rendered."""
+    from core import modes
+    from video import post_style
+
+    try:
+        size = modes.probe_size(clip)
+        if not all(size):
+            size = (1080, 1920)
+        card = post_style.render_card(
+            str(opts.get("headline") or ""), str(opts.get("subline") or ""), size, png,
+            position=post_style.card_position(caption_style), language=language,
+        )
+        if card is not None:
+            post_style.apply_card(clip, card)
+    except Exception as e:
+        print(f"      (Title card skipped: {e})")
+    finally:
+        discard(png)
 
 
 def _sport_framing(clip_path: Path, config: dict, sport_name: str) -> dict | None:

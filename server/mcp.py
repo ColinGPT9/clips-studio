@@ -172,6 +172,15 @@ def _caption_style(raw: dict) -> dict:
         if name not in STYLES:
             raise ValueError(f"Post style {raw['post_style']!r} is not one of: {', '.join(STYLES)}.")
         style["post_style"] = name
+    if raw.get("card_position") is not None:
+        from video.post_style import CARD_POSITIONS
+
+        pos = str(raw["card_position"]).strip().casefold()
+        if pos not in CARD_POSITIONS:
+            raise ValueError(
+                f"Title card position {raw['card_position']!r} is not one of: {', '.join(CARD_POSITIONS)}."
+            )
+        style["card_position"] = pos
     return style
 
 
@@ -1045,9 +1054,15 @@ TOOLS: list[dict] = [
                             "enum": ["default", "highlights"],
                             "description": (
                                 "The clip's whole look. highlights = the sports highlight-page "
-                                "look: the whole frame on black, a headline above it, captions "
-                                "below. default = the usual tracked full-screen clip."
+                                "look (House of Highlights style): a stacked title card, a "
+                                "yellow-on-black headline over a black-on-yellow second line, "
+                                "and yellow ALL CAPS captions. default = captions only."
                             ),
+                        },
+                        "card_position": {
+                            "type": "string",
+                            "enum": ["lower", "top"],
+                            "description": "Where the highlights title card sits. lower is default.",
                         },
                         "highlight": {
                             "type": "boolean",

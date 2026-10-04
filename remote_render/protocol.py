@@ -41,11 +41,6 @@ def needs_framing(render_cfg: dict, render_opts: dict | None) -> bool:
     opts = render_opts or {}
     if opts.get("profile") or modes.is_vertical_live(opts) or modes.is_vertical_live(render_cfg.get("clips")):
         return False
-    from video import post_style
-
-    style = opts.get("caption_style") or (render_cfg.get("clips") or {}).get("caption_style")
-    if post_style.resolve(style) == post_style.HIGHLIGHTS:
-        return False  # the whole frame on black: a straight encode
     return bool((render_cfg.get("clips") or {}).get("vertical", True))
 
 
