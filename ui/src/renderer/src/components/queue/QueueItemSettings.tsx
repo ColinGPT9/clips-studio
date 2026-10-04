@@ -320,7 +320,7 @@ export default function QueueItemSettings({
         {t('Caption style')} {styleOpen ? '▾' : '▸'}
       </button>
       {styleOpen && captions && (
-        <CaptionStyleControls idPrefix={`q${job.id}`} style={style} onChange={setStyleField} />
+        <CaptionStyleControls showPostStyle idPrefix={`q${job.id}`} style={style} onChange={setStyleField} />
       )}
 
       <div className="flex items-center gap-3">

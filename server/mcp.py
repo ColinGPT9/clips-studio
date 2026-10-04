@@ -165,6 +165,13 @@ def _caption_style(raw: dict) -> dict:
     for flag in ("uppercase", "highlight"):
         if raw.get(flag) is not None:
             style[flag] = bool(raw[flag])
+    if raw.get("post_style") is not None:
+        from video.post_style import STYLES
+
+        name = str(raw["post_style"]).strip().casefold()
+        if name not in STYLES:
+            raise ValueError(f"Post style {raw['post_style']!r} is not one of: {', '.join(STYLES)}.")
+        style["post_style"] = name
     return style
 
 
@@ -1033,6 +1040,15 @@ TOOLS: list[dict] = [
                             "description": "1-6 words on screen at once. 3 is default.",
                         },
                         "uppercase": {"type": "boolean"},
+                        "post_style": {
+                            "type": "string",
+                            "enum": ["default", "highlights"],
+                            "description": (
+                                "The clip's whole look. highlights = the sports highlight-page "
+                                "look: the whole frame on black, a headline above it, captions "
+                                "below. default = the usual tracked full-screen clip."
+                            ),
+                        },
                         "highlight": {
                             "type": "boolean",
                             "description": "Light each word up as it is spoken",

@@ -9,7 +9,8 @@ export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
   words_per_caption: 3,
   uppercase: true,
   highlight: false,
-  highlight_color: '#FFE600'
+  highlight_color: '#FFE600',
+  post_style: 'default'
 }
 
 /** Fonts on every stock Windows install — matches video/captions.py FONTS. */
@@ -25,6 +26,38 @@ export const CAPTION_FONTS = [
   'Comic Sans MS',
   'Courier New'
 ]
+
+/** The highlights post style in miniature: the whole frame on black, the
+ *  clip's title above it, captions below (video/post_style.py). */
+function HighlightsExample({ style }: { style: Required<CaptionStyle> }): JSX.Element {
+  const words = ['what', 'a', 'shot', 'from', 'downtown', 'wow'].slice(
+    0,
+    Math.max(1, Math.min(6, style.words_per_caption))
+  )
+  const text = words.join(' ')
+  return (
+    <div
+      className="relative rounded-lg bg-black aspect-[9/16] max-h-44 mx-auto w-auto flex flex-col justify-center overflow-hidden"
+      aria-label="Highlights style example"
+    >
+      <p className="text-center text-white font-bold leading-tight px-2 pb-1" style={{ fontSize: '7px' }}>
+        Nobody expected that shot
+      </p>
+      <div className="w-full aspect-video bg-gradient-to-br from-emerald-700 via-emerald-800 to-slate-900" />
+      <p
+        className="text-center px-2 pt-1 leading-tight"
+        style={{
+          fontFamily: `'${style.font}', sans-serif`,
+          color: style.color,
+          fontSize: `${(style.font_size / 1920) * 176 * 1.6}px`,
+          fontWeight: 700
+        }}
+      >
+        {style.uppercase ? text.toUpperCase() : text}
+      </p>
+    </div>
+  )
+}
 
 /** Live example of how the burned-in captions will look (9:16 mock). */
 function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Element {
@@ -79,7 +112,8 @@ export default function CaptionStyleControls({
   idPrefix,
   style,
   onChange,
-  hideWordsPerCaption = false
+  hideWordsPerCaption = false,
+  showPostStyle = false
 }: {
   idPrefix: string
   style: Required<CaptionStyle>
@@ -88,9 +122,35 @@ export default function CaptionStyleControls({
    *  replace, so regrouping does nothing there — hide it rather than offer
    *  a control that silently has no effect. */
   hideWordsPerCaption?: boolean
+  /** Offer the post style. Only where new clips are set up: it changes the
+   *  whole layout and writes each clip's headline when the clip is made. */
+  showPostStyle?: boolean
 }): JSX.Element {
+  const highlights = showPostStyle && style.post_style === 'highlights'
   return (
     <>
+      {showPostStyle && (
+        <div>
+          <label htmlFor={`${idPrefix}-post`} className="label">
+            Post style
+          </label>
+          <select
+            id={`${idPrefix}-post`}
+            className="input mt-1"
+            value={style.post_style}
+            onChange={(e) => onChange('post_style', e.target.value as CaptionStyle['post_style'])}
+          >
+            <option value="default">Standard (full screen)</option>
+            <option value="highlights">Highlights (title above the whole frame)</option>
+          </select>
+          {highlights && (
+            <p className="text-xs text-muted mt-1">
+              The whole video sits on black with the clip&apos;s title above it, like the big highlight
+              pages. Add your own handle or logo with a watermark.
+            </p>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label htmlFor={`${idPrefix}-font`} className="label">
@@ -136,7 +196,7 @@ export default function CaptionStyleControls({
             onChange={(e) => onChange('font_size', Number(e.target.value))}
           />
         </div>
-        <div>
+        <div className={highlights ? 'hidden' : undefined}>
           <label htmlFor={`${idPrefix}-pos`} className="label">
             Position
           </label>
@@ -204,7 +264,7 @@ export default function CaptionStyleControls({
 
       <div>
         <p className="label mb-1">Example</p>
-        <CaptionExample style={style} />
+        {highlights ? <HighlightsExample style={style} /> : <CaptionExample style={style} />}
       </div>
     </>
   )

@@ -498,9 +498,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
     # (one call per clip made long streams crawl through analysis).
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
+    from video import post_style as _post_style
+
+    post_style = _post_style.resolve(config["clips"].get("caption_style"))
     metas = generate_metadata_batch(
         candidates, segments, video.title, llm,
         creator_context=(creator_ctx.summary if creator_ctx else ""),
+        style=post_style,
     )
 
     # Hashtags the request insisted on (chat: "put #creatorname on all of
@@ -573,6 +577,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # exactly the argument every render has always been given.
     gaming_opts = _gaming_prepare(video.path, candidates, clip_dir, config) if modes.is_gaming(config) else None
 
+    def _clip_opts(meta) -> dict | None:
+        """One clip's render options: the job's, plus its headline when the
+        post style draws one (its title, written for that style above)."""
+        if post_style != _post_style.HIGHLIGHTS:
+            return gaming_opts
+        return {**(gaming_opts or {}), "headline": _post_style.headline_text(meta.title)}
+
     def _finish(candidate, meta, get_result) -> None:
         nonlocal done_count, last_failure, repeated_failures
         done_count += 1
@@ -604,8 +615,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(
-                    _render_files, video.path, candidate, segments, clip_dir, config, gaming_opts,
-                    content_lang,
+                    _render_files, video.path, candidate, segments, clip_dir, config,
+                    _clip_opts(meta), content_lang,
                 ): (candidate, meta)
                 for candidate, meta in zip(candidates, metas)
             }
@@ -620,7 +631,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     else:
         for candidate, meta, get_result in remote.render_all(
             video.video_id, video.path, list(zip(candidates, metas)), segments, clip_dir, config,
-            gaming_opts, content_lang, workers,
+            gaming_opts, content_lang, workers, opts_for=_clip_opts,
         ):
             _finish(candidate, meta, get_result)
 
@@ -1131,7 +1142,16 @@ def _render_files(
     # Gaming / Split-Screen (gaming/): opt-in, per video or per clip. Tried
     # first inside the tracked branch; anything it declines or fails at goes
     # on to the standard layout below. Off -> never imported.
-    gaming = (not landscape and not vertical_live and not podcast
+    # Post style (video/post_style.py), chosen with the caption style. The
+    # highlights look shows the whole frame on black under a headline, so it
+    # is one straight encode like Vertical Live: no tracking, split or crop.
+    from video import post_style as _post_style
+
+    caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
+    highlights = (not landscape and not vertical_live
+                  and _post_style.resolve(caption_style) == _post_style.HIGHLIGHTS)
+    hl_layout = _post_style.highlights_layout(*modes.probe_size(source)) if highlights else None
+    gaming = (not landscape and not vertical_live and not podcast and not highlights
               and (modes.is_gaming(opts) or modes.is_gaming(config)))
     gaming_kept = None
     canvas = (1920, 1080) if landscape else (1080, 1920)
@@ -1152,6 +1172,10 @@ def _render_files(
         fit = modes.fit_filter(*modes.probe_size(source))
         if fit:
             vf_extra = f"{fit},{vf_extra}" if vf_extra else fit
+    elif highlights:
+        # Colour first, then the layout, so the bars stay pure black.
+        fit = hl_layout["filter"]
+        vf_extra = f"{vf_extra},{fit}" if vf_extra else fit
 
     # Manual edits from the Shorts editor (trim/cuts/mutes/volume/fades) —
     # non-destructive: stored in render_opts, applied fresh on every render.
@@ -1162,8 +1186,8 @@ def _render_files(
         edit = EditList.from_dict(opts["edit"], duration=candidate.duration)
 
     ass_path = None
-    # Per-clip style wins; otherwise the job/config default chosen at generate time.
-    caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
+    # caption_style (above): per-clip style wins; otherwise the job/config
+    # default chosen at generate time.
     if config["clips"].get("captions", True) and opts.get("captions", True):
         lines = opts.get("caption_lines")  # user-corrected caption text, if any
         if edit is not None and (edit.keep is not None or abs(edit.speed - 1) >= 0.01):
@@ -1178,7 +1202,8 @@ def _render_files(
             lines = remap_lines(lines, edit)
         ass_path = build_captions(
             segments, candidate, clip_dir / f"{stem}.ass",
-            style=caption_style,
+            style=(_post_style.caption_style_for(caption_style, hl_layout) if highlights
+                   else caption_style),
             lines=lines,
             canvas=canvas,
             language=content_language,
@@ -1193,6 +1218,18 @@ def _render_files(
         ass_path = ensure_hook(
             ass_path, clip_dir / f"{stem}.ass", edit.hook, canvas=canvas,
             font=caption_font_for(content_language, None) or "Arial Black",
+        )
+
+    # The highlights headline: the clip's title, in the black band above the
+    # video for the whole clip. Saved with the clip (opts["headline"]), so a
+    # re-render keeps it and the editor can change it.
+    if highlights and opts.get("headline"):
+        from video.captions import caption_font_for
+
+        ass_path = _post_style.ensure_headline(
+            ass_path, clip_dir / f"{stem}.ass", str(opts["headline"]), hl_layout,
+            duration=candidate.duration,
+            font=caption_font_for(content_language, None) or _post_style.HEADLINE_FONT,
         )
 
     # Watermark & branding (opts["watermark"], else the job/config default).
@@ -1225,7 +1262,8 @@ def _render_files(
         # Vertical Live takes the single-encode branch below, like longform:
         # the tracked path (intermediate cut, face tracking, TalkNet, layout
         # decisions, frames through Python) is never entered.
-        if config["clips"].get("vertical", True) and not landscape and not vertical_live:
+        if (config["clips"].get("vertical", True) and not landscape and not vertical_live
+                and not highlights):
             # Cut a horizontal intermediate, track the subject, render 9:16.
             intermediate = clip_dir / f"{stem}.source.mp4"
             scratch.append(intermediate)
@@ -1310,7 +1348,7 @@ def _render_files(
                 )
         else:
             if edit is not None:
-                # Horizontal (or Vertical Live) output: cut plain first, then
+                # Horizontal (Vertical Live, highlights) output: cut plain first, then
                 # apply edits and burn captions in the same pass (they land
                 # AFTER the cuts).
                 from video_editor.export import apply_edits

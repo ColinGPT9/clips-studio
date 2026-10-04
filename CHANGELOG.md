@@ -10,6 +10,17 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ## Unreleased
 
+### Added
+
+- **A Highlights post style.** Pick **Post style → Highlights** in the caption style
+  panel and clips come out like the big sports highlight pages post them: the whole
+  video in the middle of a black screen, the clip's title in bold white above it, and
+  captions underneath. Nothing gets cropped away, so the play, the scoreboard and the
+  crowd stay in shot. Titles, descriptions and hashtags are written in that voice too:
+  short, hyped and ending in an emoji. Names only appear when they are said in the clip
+  or the video title. Add your own handle or logo with a watermark. The standard look
+  stays the default.
+
 ### Changed
 
 - **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a

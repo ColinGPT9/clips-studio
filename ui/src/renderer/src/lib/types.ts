@@ -150,6 +150,9 @@ export interface CaptionStyle {
   /** Light up each word as it is spoken (the short-form caption look). */
   highlight?: boolean
   highlight_color?: string
+  /** The clip's whole look (video/post_style.py): 'highlights' puts the
+   *  whole frame on black with the clip's title above it. */
+  post_style?: 'default' | 'highlights'
 }
 
 export type FilterName =

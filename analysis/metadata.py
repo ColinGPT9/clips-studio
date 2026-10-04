@@ -82,6 +82,11 @@ def generate_metadata(
 
 
 BATCH_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "metadata_batch.txt"
+# Per post style (video/post_style.py): the words written to match the look.
+# A style not listed here writes the usual Shorts metadata.
+STYLE_PROMPT_PATHS = {
+    "highlights": BATCH_PROMPT_PATH.with_name("metadata_batch_highlights.txt"),
+}
 
 
 def generate_metadata_batch(
@@ -91,14 +96,16 @@ def generate_metadata_batch(
     llm: LLMBackend,
     batch_size: int = 8,
     creator_context: str = "",
+    style: str = "default",
 ) -> list[ClipMetadata]:
     """Metadata for ALL clips in a few LLM calls instead of one per clip —
     on a long stream this cuts dozens of model calls from the analysis time.
     Any clip the model skips or mangles falls back to hook-based metadata.
     creator_context (optional): learned facts about the creator — series
-    names, running jokes, collaborators — for more accurate titles/hashtags."""
+    names, running jokes, collaborators — for more accurate titles/hashtags.
+    style: the clip's post style; "highlights" writes highlight-page captions."""
     results: list[ClipMetadata] = [_fallback(c, video_title) for c in candidates]
-    template = BATCH_PROMPT_PATH.read_text(encoding="utf-8")
+    template = STYLE_PROMPT_PATHS.get(style, BATCH_PROMPT_PATH).read_text(encoding="utf-8")
     if creator_context:
         template = template.replace(
             "{clips}",

@@ -753,6 +753,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                   {t('Caption style for')} {slot.path ? slot.title || t('this file') : t('this video')}
                 </p>
                 <CaptionStyleControls
+                  showPostStyle
                   idPrefix={`slot-${slot.key}`}
                   style={{ ...DEFAULT_CAPTION_STYLE, ...(slot.options.caption_style ?? {}) }}
                   onChange={(k, v) =>
