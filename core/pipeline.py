@@ -1424,7 +1424,12 @@ def _title_card(clip: Path, opts: dict, position: str, png: Path, language: str)
             str(opts.get("headline") or ""), str(opts.get("subline") or ""), size, png,
             position=position, language=language,
         )
-        if card is not None:
+        if card is None:
+            # Its words were only hashtags, or nothing here can draw them: no
+            # face has their script, or right-to-left text has no layout
+            # engine to shape it. Said, so a missing card is not a mystery.
+            print("      (Title card skipped: nothing on it could be drawn)")
+        else:
             post_style.apply_card(clip, card)
     except Exception as e:
         print(f"      (Title card skipped: {e})")

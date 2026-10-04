@@ -166,6 +166,10 @@ class PreviewIn(BaseModel):
     # preview the clip without it
     gaming: dict | None = None
     gaming_off: bool = False
+    # pending Highlights title card words (video/post_style.py); None keeps
+    # the clip's saved ones
+    headline: str | None = None
+    subline: str | None = None
 
 
 class CreatorGamingLayoutIn(BaseModel):
@@ -1717,6 +1721,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["gaming"] = None
         elif body.gaming is not None:
             opts["gaming"] = _clean_render_gaming({"gaming": body.gaming})["gaming"]
+        if body.headline is not None:
+            opts["headline"] = body.headline
+        if body.subline is not None:
+            opts["subline"] = body.subline
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],

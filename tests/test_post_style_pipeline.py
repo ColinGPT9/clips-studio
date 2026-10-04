@@ -180,3 +180,56 @@ def test_a_standard_clip_burns_in_the_export_style_unchanged(monkeypatch, tmp_pa
 def test_a_landscape_render_has_no_card_and_keeps_the_export_style(monkeypatch, tmp_path):
     opts = {"caption_style": HIGHLIGHTS_TOP, "headline": "STEPBACK", "profile": "short_clips"}
     assert _burn_style(monkeypatch, tmp_path, opts, EXPORT_STYLE) == EXPORT_STYLE
+
+
+# ---- the editor's preview ---------------------------------------------------------------
+
+
+def test_the_editors_preview_shows_the_card_words_not_yet_applied(monkeypatch, tmp_path):
+    """Update preview sends the card's pending words; the preview must draw
+    them, or it shows a card that Apply will not produce."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    pipeline = pytest.importorskip("core.pipeline")
+    from fastapi.testclient import TestClient
+
+    from core.state import StateDB
+    from main import BUNDLED_CONFIG, load_config
+    from server.api import create_app
+
+    data_dir = tmp_path / "data"
+    config = load_config(BUNDLED_CONFIG)
+    config["paths"]["data_dir"] = str(data_dir)
+    app = create_app(config, tmp_path / "settings.yaml")
+    db = StateDB(data_dir / "state.db")
+    db.conn.execute("INSERT INTO videos (video_id, title, status, created_at, updated_at)"
+                    " VALUES ('vid1', 'Game 7', 'done', 'now', 'now')")
+    saved = {"caption_style": {"post_style": "highlights"}, "headline": "OLD WORDS", "subline": "KEPT"}
+    clip_id = db.conn.execute(
+        "INSERT INTO clips (video_id, start_s, end_s, score, hook, path, title, render_opts, created_at)"
+        " VALUES ('vid1', 0, 5, 80, 'pass', ?, 'Dime', ?, 'now')",
+        (str(tmp_path / "clip.mp4"), json.dumps(saved)),
+    ).lastrowid
+    db.conn.commit()
+    (data_dir / "downloads").mkdir(parents=True)
+    (data_dir / "downloads" / "vid1.mp4").write_bytes(b"source")
+
+    seen = []
+
+    def render(source, candidate, segments, out_dir, config, opts, lang):
+        seen.append(dict(opts))
+        out = Path(out_dir) / "rendered.mp4"
+        out.write_bytes(b"preview")
+        return out, ""
+
+    monkeypatch.setattr(pipeline, "_render_files", render)
+    client = TestClient(app, base_url="http://127.0.0.1")
+    try:
+        r = client.post(f"/clips/{clip_id}/preview", json={"edit": None, "headline": "NO LOOK DIME👀"})
+        assert r.status_code == 200, r.text
+        assert seen[-1]["headline"] == "NO LOOK DIME👀" and seen[-1]["subline"] == "KEPT"
+
+        client.post(f"/clips/{clip_id}/preview", json={"edit": None})
+        assert seen[-1]["headline"] == "OLD WORDS"  # nothing pending: the saved words
+    finally:
+        db.conn.close()
