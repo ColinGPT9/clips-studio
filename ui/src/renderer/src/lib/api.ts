@@ -334,7 +334,9 @@ export const api = {
     crop?: string | null,
     captionStyle?: CaptionStyle | null,
     watermark?: WatermarkConfig | Record<string, never>,
-    gaming?: GamingSettings | null
+    gaming?: GamingSettings | null,
+    /** Pending Highlights title card words; undefined = the clip's saved ones. */
+    card?: { headline: string; subline: string }
   ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
@@ -346,7 +348,8 @@ export const api = {
         watermark: watermark === undefined ? null : watermark,
         // undefined = unchanged, null = preview without the split
         gaming: gaming ?? null,
-        gaming_off: gaming === null
+        gaming_off: gaming === null,
+        ...(card ?? {})
       })
     }),
   /** A frame of the clip's SOURCE video, `at` (0-1) of the way through, to

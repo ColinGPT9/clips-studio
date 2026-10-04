@@ -35,7 +35,12 @@ import {
   YouTube as YouTubeIcon,
   Zap
 } from './icons'
-import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import CaptionStyleControls, {
+  DEFAULT_CAPTION_STYLE,
+  PostStyleControls,
+  headlineFromTitle,
+  isHighlights
+} from './CaptionStyleControls'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 import UploadPostPanel from './UploadPostPanel'
@@ -264,6 +269,21 @@ export default function TimelineEditor({
     ...(clip.render_opts?.caption_style ?? {})
   }
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
+  // The Highlights title card's two lines (video/post_style.py), saved with
+  // the clip; a 16:9 clip never draws one.
+  const highlights = isHighlights(captionStyle, isLandscape)
+  const storedHeadline = clip.render_opts?.headline ?? ''
+  const storedSubline = clip.render_opts?.subline ?? ''
+  const [headline, setHeadline] = useState(storedHeadline)
+  const [subline, setSubline] = useState(storedSubline)
+  const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
+    setCaptionStyle((s) => ({ ...s, [key]: value }))
+    // Switched to Highlights with no card words yet: start from the title,
+    // as the pipeline does when the model wrote none.
+    if (key === 'post_style' && value === 'highlights' && !headline && !subline) {
+      setHeadline(headlineFromTitle(clip.title ?? ''))
+    }
+  }
   // Which editing panel is open (CapCut-style tabs replace the old stack).
   const [activeTab, setActiveTab] = useState<Tab>('captions')
   // Read synchronously from the localStorage mirror so the FIRST paint is
@@ -331,6 +351,8 @@ export default function TimelineEditor({
     setGamingOpen(false)
     setRememberGaming(false)
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+    setHeadline(clip.render_opts?.headline ?? '')
+    setSubline(clip.render_opts?.subline ?? '')
     setWordEdits([])
     setEditingWord(null)
     setZoom(1)
@@ -683,17 +705,29 @@ export default function TimelineEditor({
   const layoutDirty = layout !== storedCrop
   const gamingDirty = JSON.stringify(gaming) !== JSON.stringify(storedGaming)
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
+  // Card words count only while a card is drawn: a clip switched back to
+  // Standard keeps its saved ones, unused.
+  const cardDirty = highlights && (headline !== storedHeadline || subline !== storedSubline)
   const wmDirty = JSON.stringify(watermark) !== JSON.stringify(storedWatermark)
   const dirty =
     layoutDirty ||
     gamingDirty ||
     (rememberGaming && !!gaming) ||
     styleDirty ||
+    cardDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const pendingJson = (): string =>
-    JSON.stringify({ e: edit, l: layout, g: gaming, s: captionStyle, w: wordEdits, m: watermark })
+    JSON.stringify({
+      e: edit,
+      l: layout,
+      g: gaming,
+      s: captionStyle,
+      c: highlights ? [headline, subline] : null,
+      w: wordEdits,
+      m: watermark
+    })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
   // Word mutes also CENSOR the word in the burned captions (f**k), so
@@ -811,7 +845,8 @@ export default function TimelineEditor({
         layout,
         styleDirty ? captionStyle : null,
         wmDirty ? (watermark ?? {}) : undefined,
-        gamingDirty ? gaming : undefined
+        gamingDirty ? gaming : undefined,
+        cardDirty ? { headline, subline } : undefined
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -910,6 +945,10 @@ export default function TimelineEditor({
     // null turns the split off for this clip; settings turn it on or change it.
     if (gamingDirty) renderOpts.gaming = gaming
     if (styleDirty) renderOpts.caption_style = captionStyle
+    if (cardDirty) {
+      renderOpts.headline = headline
+      renderOpts.subline = subline
+    }
     if (wmDirty) renderOpts.watermark = watermark
     const lines = pendingCaptionLines()
     if (lines) renderOpts.caption_lines = lines
@@ -1141,6 +1180,8 @@ export default function TimelineEditor({
               setGaming(storedGaming)
               setRememberGaming(false)
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+              setHeadline(storedHeadline)
+              setSubline(storedSubline)
               setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
               setEditingWord(null)
@@ -1334,7 +1375,7 @@ export default function TimelineEditor({
       <div className="flex gap-0.5 border-b border-raised/60 text-xs overflow-x-auto" role="tablist">
         {tabs.map((t) => {
           const changed =
-            (t.id === 'captions' && (styleDirty || wordEdits.length > 0)) ||
+            (t.id === 'captions' && (styleDirty || cardDirty || wordEdits.length > 0)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
               ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || gamingDirty))
@@ -1444,6 +1485,36 @@ export default function TimelineEditor({
         </div>
       )}
 
+      {/* this clip's post style, and the words on its Highlights title card
+          (vertical clips only: a 16:9 clip never draws a post style) */}
+      {activeTab === 'captions' && !isLandscape && (
+        <div className="border border-raised/60 rounded-lg p-3 space-y-3">
+          <PostStyleControls idPrefix={`clip-${clip.id}`} style={captionStyle} onChange={setStyleField} />
+          {highlights && (
+            <div className="space-y-2">
+              <p className="label">Title card words</p>
+              <input
+                className="input !py-1 text-sm"
+                aria-label="Title card headline"
+                placeholder="BIG LINE ON BLACK"
+                maxLength={60}
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value)}
+              />
+              <input
+                className="input !py-1 text-sm"
+                aria-label="Title card second line"
+                placeholder="Second line on yellow (optional)"
+                maxLength={70}
+                value={subline}
+                onChange={(e) => setSubline(e.target.value)}
+              />
+              <p className="text-[11px] text-muted/70">Leave both empty for no card.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* caption font & style for this clip */}
       {activeTab === 'captions' && (
         <div className="border border-raised/60 rounded-lg p-3">
@@ -1451,7 +1522,8 @@ export default function TimelineEditor({
           <CaptionStyleControls
             idPrefix={`clip-${clip.id}`}
             style={captionStyle}
-            onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
+            onChange={setStyleField}
+            landscape={isLandscape}
           />
         </div>
       )}

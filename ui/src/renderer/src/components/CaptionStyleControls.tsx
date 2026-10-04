@@ -34,6 +34,22 @@ export function isHighlights(style: CaptionStyle, landscape = false): boolean {
   return style.post_style === 'highlights' && !landscape
 }
 
+/** A hashtag as video/post_style.card_text drops it from a card line: a #
+ *  word with a letter in it, so a rank or a jersey number (#1, #23) stays.
+ *  Unicode classes because JavaScript's \w is ASCII only. */
+const HASHTAG = /(^|\s)#(?=[\p{L}\p{N}_]*\p{L})[\p{L}\p{N}_]+/gu
+
+/** A Highlights card headline from a clip's title, for a clip switched to
+ *  the style by hand: the fallback the pipeline uses when the model wrote
+ *  none (video/post_style.headline_from_title). */
+export function headlineFromTitle(title: string): string {
+  return title
+    .replace(HASHTAG, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[ \-|·]+|[ \-|·]+$/g, '')
+    .toUpperCase()
+}
+
 /** The highlights post style in miniature (video/post_style.py): the clip
  *  framed as usual, the stacked title card, yellow ALL CAPS captions. */
 function HighlightsExample({ style }: { style: Required<CaptionStyle> }): JSX.Element {
