@@ -186,7 +186,8 @@ export function PostStyleControls({
   idPrefix,
   style,
   onChange,
-  landscape = false
+  landscape = false,
+  alsoLandscape = false
 }: {
   idPrefix: string
   style: Required<CaptionStyle>
@@ -194,6 +195,10 @@ export function PostStyleControls({
   /** Every output is 16:9 (Longform with no 9:16 Shorts). The renderer
    *  draws a post style on vertical clips only, so none is offered. */
   landscape?: boolean
+  /** Some outputs are 16:9 as well (Longform that also makes 9:16 Shorts).
+   *  Those keep the standard look, so a Highlights pick says it is for the
+   *  Shorts only. */
+  alsoLandscape?: boolean
 }): JSX.Element {
   const highlights = isHighlights(style, landscape)
   return (
@@ -225,6 +230,12 @@ export function PostStyleControls({
             with a second line on yellow under it, and yellow captions. Add your own handle or
             logo with a watermark.
           </p>
+          {alsoLandscape && (
+            <p className="text-xs text-muted mt-1">
+              Only the 9:16 Shorts get this look. The 16:9 clips keep the standard one, and the
+              caption settings apply to them.
+            </p>
+          )}
           <label htmlFor={`${idPrefix}-card`} className="label mt-3 block">
             Title card
           </label>
@@ -267,8 +278,9 @@ export default function CaptionStyleControls({
    *  replace, so regrouping does nothing there — hide it rather than offer
    *  a control that silently has no effect. */
   hideWordsPerCaption?: boolean
-  /** The output is 16:9, where the post style draws nothing, so every
-   *  caption control applies whatever the style says. */
+  /** Some output is 16:9 (a 16:9 clip, or a job that makes 16:9 clips),
+   *  where the post style draws nothing, so every caption control applies
+   *  whatever the style says. */
   landscape?: boolean
 }): JSX.Element {
   // A Highlights clip burns its captions in the style's own look, wherever

@@ -778,13 +778,18 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                   style={slotStyle(slot)}
                   onChange={setSlotStyle(slot)}
                   landscape={longformOnly(slot)}
+                  alsoLandscape={Boolean(slot.options.longform?.shorts)}
                 />
+                {/* Every caption control while any output is 16:9: those
+                    clips keep the standard look whatever the post style, so
+                    a Highlights pick must not hide the font, colour and
+                    position they burn with. */}
                 {slot.options.captions !== false && (
                   <CaptionStyleControls
                     idPrefix={`slot-${slot.key}`}
                     style={slotStyle(slot)}
                     onChange={setSlotStyle(slot)}
-                    landscape={longformOnly(slot)}
+                    landscape={Boolean(slot.options.longform)}
                   />
                 )}
               </div>

@@ -331,14 +331,18 @@ export default function QueueItemSettings({
           style={style}
           onChange={setStyleField}
           landscape={longformOnly}
+          alsoLandscape={longform && longformShorts}
         />
       )}
+      {/* Every caption control while any output is 16:9: those clips keep
+          the standard look whatever the post style, so a Highlights pick
+          must not hide the font, colour and position they burn with. */}
       {styleOpen && captions && (
         <CaptionStyleControls
           idPrefix={`q${job.id}`}
           style={style}
           onChange={setStyleField}
-          landscape={longformOnly}
+          landscape={longform}
         />
       )}
 
