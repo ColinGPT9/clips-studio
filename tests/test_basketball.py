@@ -509,7 +509,6 @@ def test_vertical_live_basketball_is_scored_as_basketball():
 def test_a_16x9_game_is_framed_by_the_play_not_a_face(monkeypatch, tmp_path):
     pytest.importorskip("numpy")
     pytest.importorskip("cv2")
-    import json
     from pathlib import Path
 
     import core.pipeline as pipeline
