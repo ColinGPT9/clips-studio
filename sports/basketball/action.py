@@ -4,10 +4,10 @@ A 16:9 court cropped to 9:16 keeps about a third of it. Following the
 biggest face frames a player on the bench; following the ball alone loses
 the rim on a drive. So the crop follows, in order:
 
-- **A reaction shot** (a cutaway: no court, people filling the frame): the
-  biggest person in it, the crowd member or the coach reacting, rather than
-  staying where the court was.
-- **A close-up** (a player filling the frame): that player.
+- **A close-up or a reaction shot** (someone a third of the frame's height
+  or more: a player, a fan, the coach; on three NBA games the court's
+  players from the stands were 0.18-0.33 of it): the biggest of them,
+  rather than staying where the court was.
 - **The ball** (the app's YOLOv8n, COCO "sports ball", vetted the way
   soccer's is, sports/soccer/ball.py) with the players around it: the ball
   handler and the defenders near them, so a drive keeps both.
@@ -16,21 +16,68 @@ the rim on a drive. So the crop follows, in order:
   moving fast toward an edge, the crop leans that way to keep the rim in.
 - **When the ball is lost**, the players.
 
+A "ball" in the bottom fifth of the frame or at a player's feet is
+dropped: on three NBA games those were the front rows, the score bug and
+bright shoes far more often than the ball, and the detector's confidence
+didn't tell them apart.
+
 Moved by the shared HoldMove controller and snapped at camera cuts, as
-soccer's framing is. The detector and its input size come from
-config/sports.yaml (`framing`). The output is the crop path
-video/cropper.py renders for everything else.
+soccer's framing is. A cut is told by the picture's colours changing as
+well as its pixels: the shared test (video/framing.py's gray difference)
+fired on a third to three quarters of a broadcast's samples, the camera
+whipping across the court, and snapping on each made the crop jump. The
+detector and its input size come from config/sports.yaml (`framing`). The
+output is the crop path video/cropper.py renders for everything else.
 """
 
-BALL_MEMORY = 0.8        # seconds a ball position stays usable after it's lost
-MAX_JUMP = 0.35          # share of the frame width the ball can move between samples (not at a cut)
+# Measured on three NBA games (docs/SPORTS.md):
+BALL_MEMORY = 1.5        # seconds a ball position stays usable after it's lost (bridges 76-97% of gaps)
+MAX_JUMP = 0.25          # share of the frame width the ball can move between samples (not at a cut)
 BALL_NEW_CONF = 0.3
-NEAR_BALL = 0.2          # players this close to the ball are the play around it
+NEAR_BALL = 0.15         # players this close to the ball are the play around it (half the crop is 0.16)
 BALL_SHARE = 0.65        # the ball's share of the target; the players near it the rest
-CLOSE_UP = 0.45          # a person this tall makes a close-up
-CROWD_PEOPLE = 6         # this many people and no ball, with no one near the floor's middle: a reaction shot
-RIM_EDGE = 0.3           # a ball within this of an edge, heading to it, is going to that rim
+CLOSE_UP = 0.36          # a person this tall makes a close-up (court players are 0.18-0.33 of the height)
+RIM_EDGE = 0.4           # a ball within this of an edge, heading to it, is going to that rim
 RIM_LEAN = 0.25          # ...and the crop leans this share of its width toward it
+FLOOR_BAND = 0.8         # a "ball" below this share of the height is the front rows, the bug or a shoe
+FEET = 0.15              # ...as is one in the bottom this share of a player's box
+CUT_COLOURS = 0.31       # a cut changes the picture's colours this much too (Bhattacharyya distance)
+
+
+def real_balls(balls: list, people: list) -> list:
+    """The detections that can be the ball: none in the bottom FLOOR_BAND
+    of the frame, none at a player's feet."""
+    keep = []
+    for b in balls:
+        if b[1] > FLOOR_BAND:
+            continue
+        if any(abs(b[0] - p[0]) <= p[2] / 2 and p[1] + p[3] * (0.5 - FEET) <= b[1] <= p[1] + p[3] * 0.55
+               for p in people):
+            continue
+        keep.append(b)
+    return keep
+
+
+def colours(frame):
+    """The picture's hue and saturation histogram, for telling a cut from a pan."""
+    import cv2
+
+    hsv = cv2.cvtColor(cv2.resize(frame, (160, 90), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, [30, 32], [0, 180, 0, 256])
+    return cv2.normalize(hist, hist)
+
+
+def is_cut(prev_small, small, prev_colours, now_colours) -> bool:
+    """A camera cut: the shared gray-difference test, and the colours
+    changing too. A pan across the court changes the pixels but keeps the
+    floor, the crowd and the kits; a cut to another camera changes them."""
+    import cv2
+
+    from video.framing import is_cut as pixels_changed
+
+    if not pixels_changed(prev_small, small) or prev_colours is None:
+        return False
+    return float(cv2.compareHist(prev_colours, now_colours, cv2.HISTCMP_BHATTACHARYYA)) > CUT_COLOURS
 
 
 def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float]], dict]:
@@ -45,7 +92,7 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
     recent: list[float] = []
     ball: tuple[float, float, float] | None = None       # (x, y, when seen)
     trail: list[tuple[float, float]] = []                 # (t, x) of the ball, for its direction
-    led = {"reaction": 0, "close-up": 0, "ball": 0, "rim": 0, "players": 0, "held": 0}
+    led = {"close-up": 0, "ball": 0, "rim": 0, "players": 0, "held": 0}
     prev_t = None
     for s in samples:
         t = float(s["t"])
@@ -54,7 +101,7 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
             trail.clear()
             recent.clear()
         found = None
-        candidates = sorted(s.get("balls") or [], key=lambda b: -b[2])
+        candidates = sorted(real_balls(s.get("balls") or [], s.get("people") or []), key=lambda b: -b[2])
         if ball is not None and t - ball[2] <= BALL_MEMORY:
             near = [b for b in candidates if abs(b[0] - ball[0]) <= MAX_JUMP]
             found = min(near, key=lambda b: abs(b[0] - ball[0])) if near else None
@@ -69,8 +116,6 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
         have_ball = ball is not None and t - ball[2] <= BALL_MEMORY
         if close:
             target, source = max(close, key=lambda p: p[2] * p[3])[0], "close-up"
-        elif not have_ball and len(people) >= CROWD_PEOPLE and s.get("reaction", False):
-            target, source = max(people, key=lambda p: p[2] * p[3])[0], "reaction"
         elif have_ball:
             around = [p[0] for p in people if abs(p[0] - ball[0]) <= NEAR_BALL]
             target = ball[0]
@@ -101,19 +146,14 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
     return path, led
 
 
-def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 960, sample_fps: float = 5.0) -> dict:
+def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 1280, sample_fps: float = 5.0) -> dict:
     """The crop path for one clip, in the form video/cropper.render_vertical takes."""
     import cv2
 
-    import sports
-    from sports.basketball.reactions import looks
     from sports.soccer.ball import _model, detect
     from video.capture import video_capture
-    from video.framing import is_cut, small_gray
+    from video.framing import small_gray
 
-    settings = sports.spec("basketball").get("reactions") or {}
-    court_share = float(settings.get("court_share", 0.3))
-    crowd_edges = float(settings.get("crowd_edges", 0.12))
     model = _model(model_name)
     samples = []
     with video_capture(clip_path) as cap:
@@ -121,7 +161,7 @@ def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 960, sample_
         width = cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 16
         height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 9
         step = max(1, round(fps / sample_fps))
-        prev_small = None
+        prev_small = prev_colours = None
         index = 0
         while True:
             ok = cap.grab()
@@ -131,13 +171,11 @@ def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 960, sample_
                 ok, frame = cap.retrieve()
                 if not ok:
                     break
-                small = small_gray(frame)
+                small, now_colours = small_gray(frame), colours(frame)
                 balls, people = detect(model, frame, imgsz)
-                thumb = cv2.resize(frame, (192, max(2, round(frame.shape[0] * 192 / max(frame.shape[1], 1)))))
-                samples.append({"t": index / fps, "cut": is_cut(prev_small, small), "balls": balls,
-                                "people": people,
-                                "reaction": looks(thumb, court_share, crowd_edges) != "court"})
-                prev_small = small
+                samples.append({"t": index / fps, "cut": is_cut(prev_small, small, prev_colours, now_colours),
+                                "balls": balls, "people": people})
+                prev_small, prev_colours = small, now_colours
             index += 1
     crop_frac = min(1.0, (height * 9 / 16) / max(width, 1))
     path, led = plan(samples, crop_frac)

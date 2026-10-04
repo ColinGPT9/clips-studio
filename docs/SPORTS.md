@@ -356,9 +356,18 @@ score bug has to agree. Fancy moves (a crossover, a euro step, a no-look pass)
 are in the taxonomy but named only when the commentary says so and another signal
 agrees; the picture isn't read for them.
 
-**The score bug is ground truth.** It is found and read the way soccer's is
-(`sports/core/scorebug.py`, shared): the teams, the scores, the quarter and the
-game clock ("LAL 98 BOS 101 4TH 0:32"). A score up by 1, 2 or 3 on one side,
+**The score bug is ground truth.** It is found and read with the plumbing soccer
+uses (`sports/core/scorebug.py`, shared): the teams, the scores, the quarter and
+the game clock ("LAL 98 BOS 101 4TH 0:32"). NBA bugs aren't soccer's one tight
+line, though: one stacks the teams in two rows with their letters on their side,
+another shows logos and two bare numbers. So the box is found around the game
+clock (with at least two numbers beside it), each keyframe's box is read piece by
+piece with the full OCR, and the two scores are told by where they sit: the two
+biggest numbers that keep their place and never go down (the shot clock runs
+down, the fouls and timeouts are smaller). A team's code is kept only when it is
+read the same at its place most of the time; sideways letters and logos give no
+code, never a guessed one. On 60 keyframes of three NBA broadcasts, every score
+on screen was read right. A score up by 1, 2 or 3 on one side,
 seen on two readings, is a free throw, a basket or a three, and which team
 scored. The commentary's name for it stands when the points agree (a dunk is 2,
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
@@ -381,12 +390,17 @@ its kind.
 ### Reactions
 
 Broadcasts cut away from the court after a big play. Each **cutaway** is found
-from the keyframes of the whole game, read small: a court shot is mostly one
-floor colour in its lower half with few edges, a shot of people many colours and
-edges. A run of shots that aren't the court, between two that are and at most 25
-seconds long, is a cutaway (an advert break runs longer).
+from the keyframes of the whole game, with the people in each found by the
+detector (YOLOv8n at 640 px): on a court shot the tallest person is a player seen
+from the stands, 0.18-0.33 of the frame's height on three NBA games; on a shot
+of people (the crowd, the bench, a coach, courtside) the tallest is 0.4 of it and
+more. That told 90 of 90 hand-labelled frames apart; the floor's colour couldn't
+(the lower half of a court shot is the front rows), so the colour and edge test
+only stands in when the detector can't load. A run of shots that aren't the
+court, between two that are and at most 25 seconds long, is a cutaway (an advert
+break runs longer).
 
-- **Tied to the play before it.** A cutaway starting within 12 seconds of a play
+- **Tied to the play before it.** A cutaway starting within 18 seconds of a play
   is its reaction: the play's clip is grown to hold it when it fits, so a dunk,
   the roar and the courtside shot are one clip.
 - **A reaction needs more than a crowd shot**: the play before it, a roar over it,
@@ -405,18 +419,34 @@ seconds long, is a cutaway (an advert break runs longer).
 
 ### Framing
 
-The 9:16 crop follows, in order: a reaction shot (the biggest person reacting,
-not where the court was), a close-up, the ball with the players around it (the
-ball handler and the defenders), leaning toward the rim as the ball heads for it
-near an edge, and the players when the ball is lost. Same detector as soccer
-(YOLOv8n), at 960 px since a basketball is bigger in a wide shot. Cuts snap, never
-pan. A game filmed 9:16 (1080×1920, 720×1280, 1440×2560) keeps its own picture.
+The 9:16 crop follows, in order: a close-up or a reaction shot (someone a third
+of the frame's height or more: the biggest of them, not where the court was),
+the ball with the players around it (the ball handler and the defenders),
+leaning toward the rim as the ball heads for it, and the players when the ball
+is lost. Same detector as soccer (YOLOv8n at 1280 px). A "ball" in the bottom
+fifth of the frame or at a player's feet is dropped: on real broadcasts those
+were the front rows, the score bug and bright shoes. Cuts snap, never pan; a cut
+is the picture's colours changing as well as its pixels, since the camera
+whipping across the court changes the pixels too. A game filmed 9:16 (1080×1920,
+720×1280, 1440×2560) keeps its own picture.
 
-### What isn't measured yet
+### Measured on NBA games
 
-The thresholds (the crowd, the cutaway's colour and edge shares, the framing's
-lean) start from soccer's measured values and synthetic frames. They are in
-`config/sports.yaml` to be tuned on real games.
+The values were set on three NBA broadcasts from the league's own channel (two
+16-minute highlight packages and a 79-minute game): the score bug's samples are
+kept as a test fixture (`tests/fixtures/basketball_bugs.json`, text only).
+
+| What | Value | Measured |
+|---|---|---|
+| Court or people | tallest person 0.36 of the height | court 0.18-0.33, people 0.40-0.98; 90 of 90 frames |
+| A cut | gray difference over 25 and colour distance over 0.31 | 52 of 52 cuts, at most 3 false alarms in 108 pans and steady play |
+| A reaction's play | within 18 s | cutaways level off 15-20 s after the new score shows |
+| Detector size | 1280 px | the real ball in 14%, 40%, 33% of wide samples (960 px: 9%, 39%, 18%) |
+| Ball memory, jump | 1.5 s, 0.25 of the width | covers 76-97% of gaps; above the ball's 90th-percentile move |
+| Players around the ball | 0.15 of the width | half the crop is 0.16 |
+| Toward the rim | within 0.4 of an edge | the far rim sits up to 0.40 from the edge |
+
+College, gym and phone footage haven't been measured.
 
 ## What it doesn't do yet
 

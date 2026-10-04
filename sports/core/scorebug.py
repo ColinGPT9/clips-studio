@@ -11,6 +11,12 @@ Cost, measured on a 1 h 42 min 1080p soccer final:
   Each is read as a single line by the recogniser alone: about 16 ms, against
   a second for a full OCR.
 It uses the OCR the app already ships for games (RapidOCR, analysis/game_text.py).
+
+A bug that isn't one tight line (basketball's: two rows, logos between a code
+and its score) is found as a block of text around its clock (`cluster`) and
+read piece by piece with the full OCR (`pieces`): slower than the recogniser
+alone, but the recogniser runs a two-row box together into one string of
+digits.
 """
 
 import re
@@ -136,6 +142,58 @@ def find_box(grab, duration: float, ocr, parse, clock, frames: int = FIND_FRAMES
     left, top, right, bottom = seen[len(seen) // 2]
     pad_x, pad_y = (right - left) * 0.08, (bottom - top) * 0.25
     return (max(0.0, left - pad_x), max(0.0, top - pad_y), min(1.0, right + pad_x), min(1.0, bottom + pad_y))
+
+
+def cluster(lines: list[tuple[tuple, str]], seed: tuple, aspect: float, across: float = 4.0,
+            down: float = 1.2) -> list[tuple[tuple, str]]:
+    """The lines joined to `seed` (one of them) by a chain of near
+    neighbours: a gap of at most `across` text heights to the side, and
+    `down` heights above or below. A bug is one tight block of text, even
+    with two rows or a team's logo between a code and its score; ad boards
+    and banners stand further off. `aspect`: the image's height over its
+    width, to measure gaps in one unit."""
+    def height(box):
+        return max(box[3] - box[1], 1e-6) * aspect
+
+    def near(a, b) -> bool:
+        h = max(height(a), height(b))
+        dx = max(0.0, max(a[0], b[0]) - min(a[2], b[2]))
+        dy = max(0.0, max(a[1], b[1]) - min(a[3], b[3])) * aspect
+        return dx <= across * h and dy <= down * h
+
+    group = [seed]
+    rest = [x for x in lines if x is not seed]
+    grew = True
+    while grew:
+        grew = False
+        for x in list(rest):
+            if any(near(x[0], g[0]) for g in group):
+                group.append(x)
+                rest.remove(x)
+                grew = True
+    return group
+
+
+def pieces(img, ocr) -> list[tuple[tuple, str]]:
+    """(box in the image's fractions, text) for each piece of text the full
+    OCR finds in a small image (a bug's box): the text search and the
+    recogniser, so a two-row bug or a score set apart from its team's logo
+    comes back as separate pieces, not one run-together line. Enlarged first
+    when small, as rec_line does."""
+    import cv2
+
+    h, w = img.shape[:2]
+    if h < 64:
+        scale = 64 / max(h, 1)
+        img = cv2.resize(img, (max(2, round(w * scale)), 64), interpolation=cv2.INTER_CUBIC)
+    height, width = img.shape[:2]
+    out = []
+    for box, text, conf in ocr(img) or []:
+        if float(conf) < MIN_CONFIDENCE:
+            continue
+        xs, ys = [p[0] for p in box], [p[1] for p in box]
+        out.append(((min(xs) / width, min(ys) / height, max(xs) / width, max(ys) / height), str(text)))
+    return out
 
 
 def rec_line(img) -> str:

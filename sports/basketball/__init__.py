@@ -23,7 +23,7 @@ def framing(clip_path, config: dict) -> dict:
 
     settings = sports.spec("basketball").get("framing") or {}
     tracking = action.compute(clip_path, model_name=str(settings.get("model") or "yolov8n.pt"),
-                              imgsz=int(settings.get("imgsz") or 960))
+                              imgsz=int(settings.get("imgsz") or 1280))
     led = tracking.pop("led", {})
     print("      Basketball framing: " + ", ".join(f"{k} {v}" for k, v in led.items() if v) + " sample(s)")
     return tracking
@@ -55,8 +55,10 @@ def prepass(video_path, duration: float) -> dict:
     settings = sports.spec("basketball").get("reactions") or {}
     try:
         t0 = time.monotonic()
-        shots = reactions.read_shots(video_path, duration, float(settings.get("court_share", 0.3)),
-                                     float(settings.get("crowd_edges", 0.12)), cancel=cancel.check_active)
+        model = str((sports.spec("basketball").get("framing") or {}).get("model") or "yolov8n.pt")
+        shots = reactions.read_shots(video_path, duration, float(settings.get("court_share", 0.2)),
+                                     float(settings.get("crowd_edges", 0.255)), cancel=cancel.check_active,
+                                     tall=float(settings.get("people_tall", 0.36)), model_name=model)
         found = reactions.cutaways(shots, duration)
         if settings.get("names_from_screen", True) and found:
             teams = board.teams() if board is not None else None

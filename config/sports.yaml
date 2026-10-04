@@ -399,19 +399,23 @@ basketball:
   sounds: {gunfire: 0.0, explosion: 0.1, crash: 0.1, crowd: 1.0, whistle: 0.6, buzzer: 0.7, scream: 0.5,
            laughter: 0.2}
 
-  # The 9:16 framing's detector (sports/basketball/action.py). A basketball
-  # fills more pixels than a football in a broadcast wide shot, so 960 px is
-  # the starting size; to be measured on real games, as soccer's was.
-  framing: {model: yolov8n.pt, imgsz: 960}
+  # The 9:16 framing's detector (sports/basketball/action.py). Measured on
+  # three NBA games, 1280 px found the real ball in 14%, 40% and 33% of wide
+  # samples, against 9%, 39% and 18% at 960.
+  framing: {model: yolov8n.pt, imgsz: 1280}
 
-  # Telling a cutaway (the crowd, the bench, courtside) from the court, on
-  # small keyframes (sports/basketball/reactions.py). A court shot is mostly
-  # one floor colour in its lower half with few edges; a crowd is many colours
-  # and edges. Starting values from synthetic frames: to be tuned on real games.
+  # Telling a cutaway (the crowd, the bench, courtside) from the court
+  # (sports/basketball/reactions.py), measured on three NBA games: a shot
+  # whose tallest person is at least `people_tall` of the frame's height is
+  # people, the court's players being 0.18-0.33 of it from the stands. The
+  # colour and edge test only stands in when the detector can't load; it
+  # can't tell them apart well (the lower half of a court shot is the front
+  # rows), and these are its best values on those games.
   reactions:
-    court_share: 0.30      # a shot whose lower half is at least this much one colour is the court...
-    crowd_edges: 0.12      # ...and one with at least this share of edge pixels there is a crowd
-    react_within: 12       # a cutaway starting this many seconds after a play is its reaction
+    people_tall: 0.36      # a shot whose tallest person is this tall is people, not the court
+    court_share: 0.20      # without the detector: at least this much one colour in the lower half is the court...
+    crowd_edges: 0.255     # ...and at least this share of edge pixels there is a crowd
+    react_within: 18       # a cutaway starting this many seconds after a play is its reaction (they level off at 15-20)
     names_from_screen: true  # a name the broadcast captions over a cutaway is kept with it
 
   # A typed line's words ("1:23:14 dunk LeBron"). Basketball's own, so "ft"

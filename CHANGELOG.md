@@ -22,7 +22,10 @@ were often broken in a way that only showed up on somebody else's machine.
   A person is named only when the broadcast captions them. A **Quarter** menu picks part
   of the game, the 9:16 crop follows the ball, the play around it and the rim, and a game
   filmed 9:16 keeps its picture. It runs on the same Whisper and AI model as everything
-  else. See [docs/SPORTS.md](docs/SPORTS.md#basketball).
+  else. Measured on three NBA broadcasts: the score bug is read piece by piece (two-row
+  bugs, logos beside bare scores), court and crowd shots are told apart by how big the
+  people in them are, and the crop no longer snaps when the camera pans. See
+  [docs/SPORTS.md](docs/SPORTS.md#basketball).
 
 ### Changed
 

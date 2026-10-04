@@ -6,11 +6,17 @@ uses crowd reaction to find the moments that matter; here the reaction is
 also something people clip on its own. How it is found, from what the app
 already has:
 
-- **The cutaway**: the keyframes of the whole game, read small. A court shot
-  is mostly one floor colour in its lower half with few edges; a shot of
-  people is many colours and edges. A run of shots that aren't the court,
-  between two that are, is a cutaway (an advert break or a studio segment
-  runs far longer and is left out).
+- **The cutaway**: the keyframes of the whole game, with the people in each
+  found by the app's detector (YOLOv8n). On a broadcast's court shot the
+  tallest person is a player seen from the stands, at most about a third
+  of the frame's height; a shot of people (the crowd, the bench, a coach,
+  courtside) is closer, the tallest 0.4 of it and more. Measured on three
+  NBA games, that told 90 of 90 hand-labelled frames apart, where the
+  floor's colour couldn't: the lower half of a court shot is the front
+  rows. Without the detector, the colour and edge test (`looks`) stands in.
+  A run of shots that aren't the court, between two that are, is a
+  cutaway (an advert break or a studio segment runs far longer and is left
+  out).
 - **The play before it**: a cutaway starting within `react_within` seconds
   of a play is that play's reaction. Dunk at 1:23:14, the crowd roars at
   1:23:15, the camera cuts courtside: one moment.
@@ -34,6 +40,7 @@ from sports.core.windows import window
 
 MAX_CUTAWAY = 25.0       # longer than this off the court is a break, an advert or the studio
 THUMB_WIDTH = 192        # keyframes are read this small: a colour and edge count needs no more
+DETECT_WIDTH = 640       # ...and this small for the detector: a player from the stands is still 60 px
 NAMES_MAX = 60           # cutaways whose caption is read (a full OCR each)
 CROWD_AT = 0.4           # the crowd curve's bar for a roar (sports/core/detect.py's)
 AFTER_REACTION = 1.5     # seconds a merged clip runs past the end of the reaction shot
@@ -85,6 +92,17 @@ def looks(img, court_share: float, crowd_edges: float) -> str:
     return "other"
 
 
+def shot_kind(people: list, tall: float) -> str:
+    """"court", "people" or "other" for one frame, from the people the
+    detector found in it ((x, y, w, h) in frame fractions): "people" when
+    the tallest is at least `tall` of the frame's height, "court" when there
+    are people and none that tall, "other" when there is no one (a graphic,
+    a fade, the arena from above)."""
+    if not people:
+        return "other"
+    return "people" if max(p[3] for p in people) >= tall else "court"
+
+
 def cutaways(shots: list[tuple[float, str]], video_end: float) -> list[Cutaway]:
     """The cutaways in a game: each run of frames that aren't the court,
     between two that are, lasting at most MAX_CUTAWAY. `shots`: (time, what
@@ -105,15 +123,36 @@ def cutaways(shots: list[tuple[float, str]], video_end: float) -> list[Cutaway]:
     return out
 
 
-def read_shots(path, duration: float, court_share: float, crowd_edges: float, cancel=None) -> list:
-    """(time, looks()) for every keyframe of the video, read small in one pass."""
+def read_shots(path, duration: float, court_share: float, crowd_edges: float, cancel=None,
+               tall: float | None = None, model_name: str = "yolov8n.pt") -> list:
+    """(time, shot_kind() or looks()) for every keyframe of the video, in
+    one pass: the detector's people when `tall` is given and the detector
+    loads, else the colour and edges of a small thumbnail."""
     from core.modes import probe_size
     from sports.core.scorebug import keyframe_crops
 
+    model = None
+    if tall is not None:
+        try:
+            from sports.soccer.ball import _model
+
+            model = _model(model_name)
+        except Exception as e:                               # no ultralytics, no weights
+            print(f"      (cutaways: the detector isn't available ({e}), telling shots by colour)")
     kinds: dict[int, str] = {}
-    times = keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path),
-                           lambda i, img: kinds.__setitem__(i, looks(img, court_share, crowd_edges)),
-                           cancel, scale_width=THUMB_WIDTH)
+    if model is not None:
+        from sports.soccer.ball import detect
+
+        def on_frame(i, img):
+            _balls, people = detect(model, img, DETECT_WIDTH)
+            kinds[i] = shot_kind(people, tall)
+
+        times = keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path), on_frame, cancel,
+                               scale_width=DETECT_WIDTH)
+    else:
+        times = keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path),
+                               lambda i, img: kinds.__setitem__(i, looks(img, court_share, crowd_edges)),
+                               cancel, scale_width=THUMB_WIDTH)
     return [(t, kinds[i]) for i, t in enumerate(times) if i in kinds]
 
 

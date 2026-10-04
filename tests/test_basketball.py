@@ -166,6 +166,130 @@ def test_the_clock_and_quarter_are_read_for_each_moment():
     assert board.minute_at(100) is None
 
 
+# Real NBA bugs aren't one tight line (measured on three games): two rows
+# with the teams' letters on their side, or logos and two bare numbers, with
+# the shot clock and the fouls beside them. The full OCR returns them as
+# pieces, in the box's fractions.
+
+def _two_rows(first, second, clock, shot):
+    return [((0.10, 0.05, 0.25, 0.45), "LAL"), ((0.30, 0.05, 0.42, 0.45), str(first)),
+            ((0.10, 0.55, 0.25, 0.95), "BOS"), ((0.30, 0.55, 0.42, 0.95), str(second)),
+            ((0.55, 0.10, 0.70, 0.40), "2ND"), ((0.55, 0.55, 0.75, 0.90), clock),
+            ((0.85, 0.60, 0.92, 0.85), str(shot))]
+
+
+def _bare(first, second, clock, shot, fouls):
+    # [logo] 98 [logo] 101  4TH 0:32  14, the team fouls small under each score
+    return [((0.10, 0.15, 0.18, 0.75), str(first)), ((0.35, 0.15, 0.43, 0.75), str(second)),
+            ((0.11, 0.80, 0.14, 0.95), str(fouls[0])), ((0.36, 0.80, 0.39, 0.95), str(fouls[1])),
+            ((0.55, 0.25, 0.62, 0.65), "4TH"), ((0.65, 0.25, 0.75, 0.65), clock),
+            ((0.82, 0.30, 0.87, 0.60), str(shot))]
+
+
+def _read(pieces_at, scores):
+    readings = []
+    for i, (first, second) in enumerate(scores):
+        r = bb.parse_pieces(pieces_at(i, first, second))
+        r.t = i * 4.0
+        readings.append(r)
+    return bb.from_readings(readings, box=(0.0, 0.85, 0.4, 0.97))
+
+
+def test_a_two_row_bug_is_read_piece_by_piece():
+    scores = [(10, 8), (10, 8), (12, 8), (12, 8), (12, 8), (12, 11), (12, 11), (13, 11), (13, 11),
+              (15, 11), (15, 11), (15, 11)]
+    board = _read(lambda i, a, b: _two_rows(a, b, f"7:{47 - i:02d}", 24 - i), scores)
+    assert [(c.points, c.team) for c in board.changes] == [(2, "LAL"), (3, "BOS"), (1, "LAL"), (2, "LAL")]
+    assert board.final() == (15, 11) and board.readings[0].period == 2 and board.readings[0].clock == 467
+
+
+def test_bare_scores_beside_logos_are_told_from_the_shot_clock_and_the_fouls():
+    scores = [(98, 99), (98, 99), (98, 101), (98, 101), (101, 101), (101, 101), (101, 101), (102, 101),
+              (102, 101), (102, 101)]
+    fouls = [(2, 3), (2, 3), (2, 3), (3, 3), (3, 3), (3, 4), (3, 4), (3, 4), (4, 4), (4, 4)]
+    board = _read(lambda i, a, b: _bare(a, b, f"1:{50 - i * 3:02d}", (20 - 3 * i) % 25, fouls[i]), scores)
+    assert [(c.points, c.side) for c in board.changes] == [(2, 1), (3, 0), (1, 0)]
+    assert board.final() == (102, 101)
+
+
+def test_too_few_readings_say_nothing_about_bare_numbers():
+    board = _read(lambda i, a, b: _bare(a, b, "1:00", 14, (1, 1)), [(98, 99), (98, 99)])
+    assert board.changes == [] and board.final() is None
+
+
+def test_the_box_is_found_around_the_clock_with_logos_between_its_scores():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[860:] = 80                                         # the bottom band holds text; the top is dark
+
+    def ocr(img):
+        # The bottom band, read 480 px wide: an ad board far to the left,
+        # then the bug: 98 [logo] 101  4TH 0:32  14.
+        if not img.any():
+            return []
+        return [([[10, 10], [60, 10], [60, 22], [10, 22]], "SHOP NOW 50", 0.9),
+                ([[200, 8], [214, 8], [214, 24], [200, 24]], "98", 0.9),
+                ([[240, 8], [258, 8], [258, 24], [240, 24]], "101", 0.9),
+                ([[270, 10], [285, 10], [285, 22], [270, 22]], "4TH", 0.9),
+                ([[290, 10], [310, 10], [310, 22], [290, 22]], "0:32", 0.9),
+                ([[322, 10], [332, 10], [332, 22], [322, 22]], "14", 0.9)]
+
+    box = bb.find_box(lambda t: frame, 2880, ocr)
+    assert box is not None and box[1] > 0.78                # in the bottom band
+    assert 0.38 < box[0] < 0.42 and 0.68 < box[2] < 0.72     # the bug, not the ad board
+
+
+def _real_bugs():
+    """What the full OCR read in the score bug of three NBA broadcasts, 20
+    keyframes each, with what a person read there (tests/fixtures)."""
+    from pathlib import Path
+
+    games = json.loads((Path(__file__).parent / "fixtures" / "basketball_bugs.json").read_text("utf-8"))
+    out = {}
+    for name in ("game1", "game2", "game3"):
+        readings, truths = [], []
+        for f in games[name]["frames"]:
+            w, h = f["w"], f["h"]
+            pieces = [((x0 / w, y0 / h, x1 / w, y1 / h), text) for x0, y0, x1, y1, text, conf in f["pieces"]
+                      if conf >= 0.5]                         # as scorebug.pieces keeps them
+            r = bb.parse_pieces(pieces)
+            r.t = f["t"]
+            readings.append(r)
+            truths.append(f["truth"])
+        out[name] = (bb.from_readings(readings, tuple(games[name]["box"])), truths)
+    return out
+
+
+def _clock(text):
+    minutes, _, seconds = text.rpartition(":")
+    return int(minutes or 0) * 60 + float(seconds)
+
+
+@pytest.mark.parametrize("game, teams", [("game1", None), ("game2", ("GSW", "DAL")), ("game3", ("LAL", "GS"))])
+def test_real_nba_bugs_are_read(game, teams):
+    # Game 1: two rows of big scores, sideways team letters and seed numbers
+    # beside them. Game 2: logos and bare scores, the shot clock ":24", the
+    # teams' records under them. Game 3: one line, "4 TH" read with a space.
+    board, truths = _real_bugs()[game]
+    for r, truth in zip(board.readings, truths):
+        if None not in truth["score"]:                       # not mid-roll
+            assert r.score == tuple(truth["score"]), (r.t, r.text)
+        if r.period is not None:
+            assert r.period == truth["period"], (r.t, r.text)
+        assert r.clock == pytest.approx(_clock(truth["clock"]), abs=0.11), (r.t, r.text)
+    assert sum(r.period is not None for r in board.readings) >= 19
+    assert board.teams() == teams                            # sideways letters are no code: none is guessed
+
+
+def test_a_score_rolling_over_is_not_a_basket():
+    # Mid-roll ("4U" over "12"), and a "+3" graphic over the score, are read
+    # once and never twice running: no basket is made of them.
+    board, _truths = _real_bugs()["game1"]
+    assert all(c.points in (1, 2, 3) for c in board.changes)
+    assert (12, 33) not in [c.after for c in board.changes] and (3, 65) not in [c.after for c in board.changes]
+
+
 # ---- events -----------------------------------------------------------------------------
 
 
@@ -300,6 +424,46 @@ def test_court_and_people_are_told_apart():
     assert reactions.looks(crowd, 0.3, 0.12) == "people"
 
 
+def test_the_tallest_person_tells_a_court_shot_from_people():
+    # Court players from the stands are 0.18-0.33 of the frame's height; the
+    # crowd, the bench and courtside, 0.4 and more (three NBA games).
+    court = [(0.2, 0.5, 0.05, 0.22), (0.5, 0.55, 0.06, 0.31), (0.7, 0.8, 0.1, 0.33)]
+    fans = [*court, (0.6, 0.6, 0.3, 0.55)]
+    assert reactions.shot_kind(court, 0.36) == "court"
+    assert reactions.shot_kind(fans, 0.36) == "people"
+    assert reactions.shot_kind([], 0.36) == "other"
+
+
+def test_shots_are_read_by_the_detector_and_by_colour_without_it(monkeypatch):
+    np = pytest.importorskip("numpy")
+    from sports.core import scorebug
+    from sports.soccer import ball
+
+    people = {0: [(0.5, 0.5, 0.05, 0.25)], 1: [(0.5, 0.5, 0.3, 0.7)], 2: [(0.5, 0.5, 0.05, 0.25)]}
+    widths = []
+
+    def crops(path, box, size, on_frame, cancel=None, scale_width=None):
+        widths.append(scale_width)
+        for i in range(3):
+            on_frame(i, np.full((9, 16, 3), i, dtype=np.uint8))
+        return [0.0, 4.0, 8.0]
+
+    monkeypatch.setattr(scorebug, "keyframe_crops", crops)
+    monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
+    monkeypatch.setattr(ball, "_model", lambda name: "model")
+    monkeypatch.setattr(ball, "detect", lambda model, img, imgsz: ([], people[int(img[0, 0, 0])]))
+    shots = reactions.read_shots("game.mp4", 12.0, 0.2, 0.255, tall=0.36)
+    assert shots == [(0.0, "court"), (4.0, "people"), (8.0, "court")] and widths == [reactions.DETECT_WIDTH]
+
+    def no_model(name):
+        raise ImportError("no ultralytics")
+
+    monkeypatch.setattr(ball, "_model", no_model)
+    monkeypatch.setattr(reactions, "looks", lambda img, share, edges: "court")
+    assert [k for _t, k in reactions.read_shots("game.mp4", 12.0, 0.2, 0.255, tall=0.36)] == ["court"] * 3
+    assert widths[-1] == reactions.THUMB_WIDTH
+
+
 def test_cutaways_are_the_shots_between_court_shots():
     shots = [(0, "court"), (4, "court"), (8, "people"), (10, "people"), (14, "court"),
              (20, "court"), (24, "other"), (80, "other"), (84, "court")]
@@ -410,18 +574,19 @@ def test_the_local_model_never_names_anyone():
 # ---- framing ----------------------------------------------------------------------------
 
 
-def _sample(t, balls=(), people=(), cut=False, reaction=False):
-    return {"t": t, "cut": cut, "balls": list(balls), "people": list(people), "reaction": reaction}
+def _sample(t, balls=(), people=(), cut=False):
+    return {"t": t, "cut": cut, "balls": list(balls), "people": list(people)}
 
 
 def test_the_crop_follows_the_ball_and_the_players_around_it():
     pytest.importorskip("cv2")      # video/framing.py's HoldMove
     from sports.basketball import action
 
-    samples = [_sample(i / 5, balls=[(0.5 + i * 0.005, 0.6, 0.8)], people=[(0.52 + i * 0.005, 0.6, 0.05, 0.2)])
+    # Mid-court, away from either rim.
+    samples = [_sample(i / 5, balls=[(0.42 + i * 0.005, 0.6, 0.8)], people=[(0.44 + i * 0.005, 0.6, 0.05, 0.2)])
                for i in range(30)]
     path, led = action.plan(samples, 0.316)
-    assert led["ball"] > 20 and abs(path[-1][1] - 0.65) < 0.08
+    assert led["ball"] > 20 and abs(path[-1][1] - 0.57) < 0.08
 
 
 def test_the_crop_leans_toward_the_rim_on_a_drive():
@@ -439,9 +604,9 @@ def test_the_crop_moves_to_the_reaction_shot():
 
     court = [_sample(i / 5, balls=[(0.3, 0.6, 0.8)]) for i in range(10)]
     fans = [(0.1 + k * 0.05, 0.5, 0.05, 0.15) for k in range(7)] + [(0.8, 0.5, 0.2, 0.4)]
-    cutaway = [_sample(2 + i / 5, people=fans, cut=(i == 0), reaction=True) for i in range(10)]
+    cutaway = [_sample(2 + i / 5, people=fans, cut=(i == 0)) for i in range(10)]
     path, led = action.plan(court + cutaway, 0.316)
-    assert led["reaction"] >= 9 and path[-1][1] > 0.7          # on the biggest reacting person
+    assert led["close-up"] >= 9 and path[-1][1] > 0.7          # on the biggest reacting person
 
 
 def test_a_close_up_is_framed_on_the_player():
@@ -450,6 +615,45 @@ def test_a_close_up_is_framed_on_the_player():
 
     path, led = action.plan([_sample(i / 5, people=[(0.25, 0.5, 0.3, 0.8)]) for i in range(10)], 0.316)
     assert led["close-up"] == 10 and path[-1][1] < 0.35
+
+
+def test_a_ball_in_the_front_rows_or_at_a_players_feet_is_not_followed():
+    from sports.basketball import action
+
+    player = (0.5, 0.5, 0.06, 0.3)                           # from y 0.35 to 0.65
+    balls = [(0.3, 0.4, 0.9), (0.6, 0.9, 0.9), (0.51, 0.64, 0.9), (0.51, 0.45, 0.9)]
+    # Kept: the ball in the air and the one in the player's hands; dropped:
+    # the front rows' and the shoe's.
+    assert action.real_balls(balls, [player]) == [(0.3, 0.4, 0.9), (0.51, 0.45, 0.9)]
+
+
+def test_a_pan_across_the_court_is_no_cut_but_another_camera_is():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.basketball import action
+    from video.framing import is_cut as pixels_changed
+    from video.framing import small_gray
+
+    rng = np.random.default_rng(1)
+    # The court: the stands above a wood floor with players on it, the
+    # camera whipping across it between two samples.
+    court = np.zeros((360, 1920, 3), dtype=np.uint8)
+    court[:, :] = (60, 120, 190)
+    court[:150] = rng.integers(0, 255, (150, 1920, 3), dtype=np.uint8)
+    for x in range(0, 1920, 160):
+        court[180:330, x:x + 60] = (230, 230, 230) if (x // 160) % 2 else (20, 20, 120)
+    before, after = court[:, :640].copy(), court[:, 80:720].copy()
+    # Another camera: a fan in a dark top against a blue wall.
+    fan = np.zeros((360, 640, 3), dtype=np.uint8)
+    fan[:, :] = (150, 60, 20)
+    fan[60:360, 200:440] = (30, 30, 30)
+
+    def cut(a, b):
+        return action.is_cut(small_gray(a), small_gray(b), action.colours(a), action.colours(b))
+
+    assert pixels_changed(small_gray(before), small_gray(after))      # the shared test calls the pan a cut
+    assert not cut(before, after) and not cut(before, before)
+    assert cut(before, fan)
 
 
 def test_the_framing_hook_reaches_the_basketball_follower(monkeypatch):
