@@ -448,6 +448,99 @@ def test_a_network_logo_beside_the_teams_is_no_team():
     assert board.teams() == ("LAL", "GS")
 
 
+def test_scores_side_by_side_are_each_read():
+    # Game 3's bug in the other common order, "ESPN LAL 61 - 54 GS 3RD
+    # 9:47": its real pieces, the second score moved beside the first, a
+    # tenth of the box from it. Both are the box's biggest numbers: each
+    # keeps a place of its own.
+    frames, box = _bug_frames("game3")
+    for f in frames:
+        first = next(p for p in f["pieces"] if 330 < p[0] < 400 and p[4].strip().isdigit())
+        second = next(p for p in f["pieces"] if 590 < p[0] < 720 and p[4].strip().isdigit())
+        code = next(p for p in f["pieces"] if p[4] == "GS")
+        x, width, code_width = second[0], second[2] - second[0], code[2] - code[0]
+        second[0], second[2] = first[2] + 35, first[2] + 35 + width
+        code[0], code[2] = x + 20, x + 20 + code_width
+    board, truths = _board_of(_dense(frames), box)
+    assert [r.score for r in board.readings] == [tuple(t["score"]) for t in truths]
+    assert board.teams() == ("LAL", "GS") and board.final() == (97, 90)
+
+
+def test_a_one_digit_score_is_read_not_the_fouls_beside_it():
+    # "MIA 8 ²" over "NYK 11 ¹": each team's fouls small, right after its
+    # score. A score's place is where it sits over the whole game, three
+    # digits by the end, so a one-digit score early on is as far from it as
+    # the fouls beside it are. The fouls are smaller: the score is read.
+    def reading(t, a, b):
+        pieces = [((0.45, 0.4, 0.55, 0.6), "4TH"), ((0.62, 0.4, 0.78, 0.6), f"{t // 60 % 12}:{t % 60:02d}")]
+        for top, code, score, fouls in ((0.1, "MIA", a, 2), (0.55, "NYK", b, 1)):
+            right = 0.25 + 0.05 * len(str(score))
+            pieces += [((0.05, top, 0.17, top + 0.35), code), ((0.25, top, right, top + 0.35), str(score)),
+                       ((right + 0.005, top + 0.1, right + 0.025, top + 0.25), str(fouls))]
+        r = bb.parse_pieces(pieces)
+        r.t = float(t)
+        return r
+
+    scores = [(0, 0)]
+    while scores[-1] != (104, 104):
+        a, b = scores[-1]
+        scores.append((a + 2, b) if a == b else (a, b + 2))
+    board = bb.from_readings([reading(4 * i + k, a, b) for i, (a, b) in enumerate(scores) for k in (0, 2)])
+    assert [r.score for r in board.readings] == [s for s in scores for _ in (0, 2)]
+    assert len(board.changes) == len(scores) - 1
+
+
+def test_the_last_basket_read_once_still_makes_the_final_score():
+    # Highlights that stop at the buzzer: 111-103 is on the last keyframe
+    # only. A score read once is no misread when neither side of it is below
+    # the score before it; one with a digit missed is.
+    frames, box = _bug_frames("game1")
+    board, _ = _board_of(_dense(frames, {307.54: 1, 555.12: 1, 852.03: 1}), box)
+    assert board.final() == (111, 103)
+    misread = json.loads(json.dumps(next(f for f in frames if f["t"] == 852.03)))
+    misread["t"] = 860.0
+    for p in misread["pieces"]:
+        p[4] = {"?111": "?11"}.get(p[4], p[4])
+    board, _ = _board_of([*_dense(frames), misread], box)
+    assert board.readings[-1].score == (11, 103) and board.final() == (111, 103)
+
+
+@pytest.mark.parametrize("row, teams", [
+    ("HOME|{a}|-|{b}|AWAY", ("HOME", "AWAY")),       # "LAL 98 - 101 BOS"
+    ("HOME|{a} - {b}|AWAY", ("HOME", "AWAY")),       # the dash read with the scores
+    ("ESPN|{a}|-|{b}", None),                        # a network's logo, then bare scores
+    ("{a}|-|{b}", None),                             # the teams' logos, no text
+])
+def test_a_short_clip_reads_its_score_off_the_row(row, teams):
+    # 40 s in which one team scores once: too little to tell the scores'
+    # places by, so each reading keeps the score its row reads.
+    readings = []
+    for i in range(10):
+        pieces, x = [], 0.02
+        for text in row.format(a=45 if i < 5 else 47, b=44).split("|"):
+            width, tall = 0.022 * len(text), text[0].isdigit()
+            pieces.append(((x, 0.1 if tall else 0.25, x + width, 0.9 if tall else 0.75), text))
+            x += width + 0.03
+        r = bb.parse_pieces([*pieces, ((0.70, 0.25, 0.76, 0.75), "2ND"),
+                             ((0.78, 0.25, 0.87, 0.75), f"5:{40 - 4 * i:02d}")])
+        r.t = 4.0 * i
+        readings.append(r)
+    board = bb.from_readings(readings)
+    assert [(c.after, c.points) for c in board.changes] == [((47, 44), 2)]
+    assert board.final() == (47, 44) and board.teams() == teams
+
+
+def test_a_seed_beside_a_teams_letters_is_no_score():
+    # Game 1 at 192.71 (27-20): the left team's sideways letters read "SSS"
+    # beside its seed "2", on a row with "20 OKC". A seed is far smaller
+    # than a score: no teams and score are read from them.
+    frames, _ = _bug_frames("game1")
+    f = next(f for f in frames if f["t"] == 192.71)
+    r = bb.parse_pieces([((x0 / f["w"], y0 / f["h"], x1 / f["w"], y1 / f["h"]), text)
+                         for x0, y0, x1, y1, text, conf in f["pieces"] if conf >= 0.5])
+    assert (r.teams, r.score) == (None, None)
+
+
 # ---- events -----------------------------------------------------------------------------
 
 

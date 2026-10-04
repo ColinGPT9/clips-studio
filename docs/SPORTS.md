@@ -364,13 +364,18 @@ another shows logos and two bare numbers. So the box is found around the game
 clock (with at least two numbers beside it), each keyframe's box is read piece by
 piece with the full OCR, and the two scores are told by where they sit: the two
 biggest numbers that keep their place and never go down (the shot clock runs
-down, the fouls and timeouts are smaller). A score mid-roll or a "+3" drawn over
+down, the fouls and timeouts are smaller), side by side or a row each. Each
+reading takes the number of a score's size at each place, so a team's fouls
+beside a one-digit score aren't read as it. A score mid-roll or a "+3" drawn over
 it is read once, so only a score seen on two readings running counts, for the
-baskets and for the score before a moment alike. A team's code is the one
-written beside its score on the same row, or else one read the same at its
-place most of the time; sideways letters and logos give no code, never a
-guessed one, and a header ("RIVALS WEEK") or a record ("25-20") is no team or
-score. On 60 keyframes of three NBA broadcasts, every score on screen was read
+baskets and for the score before a moment alike; the final score is the last one
+read unless it is below the one before it (highlights often end a second after
+the last basket). A clip too short to tell the places by reads the score off its
+row: each code beside its score, or two numbers with a dash ("ESPN 98 - 101").
+A team's code is the one written beside its score on the same row, or else one
+read the same at its place most of the time; sideways letters and logos give no
+code, never a guessed one, and a header ("RIVALS WEEK"), a seed or a record
+("25-20") is no team or score. On 60 keyframes of three NBA broadcasts, every score on screen was read
 right. The full OCR costs most of a second a keyframe, so a box that hasn't
 changed since the last one read (the clock stopped) isn't read again. A score
 up by 1, 2 or 3 on one side, seen on two readings, is a free throw, a basket or

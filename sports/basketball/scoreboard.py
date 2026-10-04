@@ -41,6 +41,10 @@ CODE_SCORE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0]{1,13})\s*[|:·.\-]?\s*(\d{1,
 SCORE_CODE = re.compile(r"(?<![\d:.])(\d{1,3})\s*[|:·.\-]?\s*([A-Z][A-Z0]{1,3})(?![A-Z0-9])")
 # Without team codes, two scores with a dash between: "98 - 101".
 DASH_SCORE = re.compile(r"(?<![\d:.])(\d{1,3})\s*[-–]\s*(\d{1,3})(?![\d:.])")
+# ...and not a team's record in brackets beside its name: "GSW(25-20)".
+BARE_DASH = re.compile(r"(?<![\d:.(（])(\d{1,3})\s*[-–]\s*(\d{1,3})(?![\d:.)）])")
+# Only separators between a team's score and the other's: "LAL 98 - 101 BOS".
+BETWEEN = re.compile(r"[\s|·\-–]*")
 # The OCR can read a bug's boxes as one word ("TAUNTON37ATTLEBORO364TH", a
 # 2022 high-school broadcast): then a period glued to the score before it,
 # and letters glued to digits, are split apart, and the period's own
@@ -126,8 +130,16 @@ class Scoreboard:
                 or (i + 1 < len(scored) and scored[i + 1].score == r.score)]
 
     def final(self) -> tuple | None:
+        """The game's last score: the last one read, unless either side of
+        it is below the last score seen twice (a score mid-roll or a "+3"
+        over it reads lower; the last basket before the video ends may be
+        read once)."""
         sure = self.seen_twice()
-        return sure[-1].score if sure else None
+        if not sure:
+            return None
+        last = next(r.score for r in reversed(self.readings) if r.score is not None)
+        settled = sure[-1].score
+        return last if last[0] >= settled[0] and last[1] >= settled[1] else settled
 
     def teams(self) -> tuple | None:
         pairs = Counter(r.teams for r in self.readings if r.teams)
@@ -287,28 +299,52 @@ def reading_order(pieces: list[tuple[tuple, str]]) -> list[tuple[tuple, str]]:
     return [p for row in rows(pieces) for p in row]
 
 
-def row_pairs(lines: list[str]) -> tuple[tuple | None, tuple | None]:
+def _tall(starts: list[tuple[int, float]], i: int) -> float:
+    """The height of the piece that the character at i of a row's text is in,
+    from (where each piece starts in the text, its height)."""
+    return [h for start, h in starts if start <= i][-1]
+
+
+def row_pairs(rows: list[list[tuple[tuple, str]]]) -> tuple[tuple | None, tuple | None]:
     """(teams, score) when the bug writes each team's code beside its score
-    on one row ("LAL 4  GS 5", or a row each): exactly two such pairs, the
-    same way round. (None, None) otherwise. A code and a number on
-    different rows are never paired: a header's "RIVALS WEEK" over the shot
-    clock is no team and its score."""
-    forward, flipped = [], []
-    for line in lines:
-        rest = _blank(_blank(line, PERIOD), CLOCK)
-        forward += [(m.group(1).replace("0", "O"), int(m.group(2))) for m in CODE_SCORE.finditer(rest)]
-        flipped += [(m.group(2).replace("0", "O"), int(m.group(1))) for m in SCORE_CODE.finditer(rest)]
-    forward = [x for x in forward if x[0] not in NOT_TEAMS]
-    flipped = [x for x in flipped if x[0] not in NOT_TEAMS]
+    on one row ("LAL 4  GS 5", "LAL 98 - 101 BOS", or a row each), or else
+    two bare scores with a dash between ("98 - 101", "ESPN 98 - 101" after a
+    network's logo; no teams): exactly one such pair of scores, the two numbers about the same size (a team's timeouts
+    beside its code are smaller). (None, None) otherwise. A code and a number
+    on different rows are never paired: a header's "RIVALS WEEK" over the
+    shot clock is no team and its score. `rows`: the pieces of each row."""
+    forward, flipped, mixed, dashed = [], [], [], []
+    for row in rows:
+        text, starts = "", []
+        for box, piece in row:
+            starts.append((len(text), box[3] - box[1]))
+            text += piece + " "
+        rest = _blank(_blank(text, PERIOD), CLOCK)
+        ahead = [m for m in CODE_SCORE.finditer(rest) if m.group(1).replace("0", "O") not in NOT_TEAMS]
+        behind = [m for m in SCORE_CODE.finditer(rest) if m.group(2).replace("0", "O") not in NOT_TEAMS]
+        forward += [(m.group(1).replace("0", "O"), int(m.group(2)), _tall(starts, m.start(2))) for m in ahead]
+        flipped += [(m.group(2).replace("0", "O"), int(m.group(1)), _tall(starts, m.start(1))) for m in behind]
+        if (len(ahead) == 1 and len(behind) == 1 and ahead[0].end() <= behind[0].start()
+                and BETWEEN.fullmatch(rest[ahead[0].end():behind[0].start()])):
+            mixed.append([forward[-1], flipped[-1]])
+        dashed += [((None, int(m.group(1)), _tall(starts, m.start(1))),
+                    (None, int(m.group(2)), _tall(starts, m.start(2)))) for m in BARE_DASH.finditer(rest)]
     if len(forward) == 2:
         pairs = forward
     elif len(flipped) == 2:
         pairs = flipped
+    elif len(forward) == 1 and len(flipped) == 1 and len(mixed) == 1:
+        pairs = mixed[0]
+    elif len(dashed) == 1:
+        pairs = list(dashed[0])
     else:
         return None, None
-    if pairs[0][0] == pairs[1][0] or any(x[1] > MAX_SCORE for x in pairs):
+    (code_a, a, tall_a), (code_b, b, tall_b) = pairs
+    if (code_a is not None and code_a == code_b) or max(a, b) > MAX_SCORE:
         return None, None
-    return (pairs[0][0], pairs[1][0]), (pairs[0][1], pairs[1][1])
+    if min(tall_a, tall_b) < SLOT_HEIGHT * max(tall_a, tall_b):
+        return None, None
+    return ((code_a, code_b) if code_a is not None else None), (a, b)
 
 
 def parse_pieces(pieces: list[tuple[tuple, str]]) -> Reading:
@@ -319,7 +355,7 @@ def parse_pieces(pieces: list[tuple[tuple, str]]) -> Reading:
     lines = [[(box, unglue(str(text))) for box, text in row] for row in rows(pieces)]
     ordered = [p for row in lines for p in row]
     out = parse([t for _, t in ordered])
-    out.teams, out.score = row_pairs([" ".join(t for _, t in row) for row in lines])
+    out.teams, out.score = row_pairs(lines)
     for box, text in ordered:
         rest = _blank(_blank(text, PERIOD), CLOCK)
         for m in CODE.finditer(rest):
@@ -420,15 +456,19 @@ def score_places(readings: list[Reading]) -> tuple | None:
         return None
     places: list[dict] = []
     for r in read:
-        taken: dict = {}                       # place -> where this reading's number at it sits
-        for x, y, h, v in r.numbers:
+        taken: dict = {}                       # place -> (x, y, height) of this reading's number at it
+        # The biggest first: a score claims its place before a smaller
+        # number beside or over it can.
+        for x, y, h, v in sorted(r.numbers, key=lambda n: -n[2]):
             near = [k for k, p in enumerate(places)
                     if abs(x - p["x"]) <= SLOT_X and abs(y - p["y"]) <= 0.5 * max(h, p["h"])]
-            if any(abs(x - taken[k]) <= SLOT_X / 2 for k in near if k in taken):
-                # A second number on top of one this reading already
-                # placed: a score mid-roll ("40" over "42"). Not a place of
-                # its own, or a team's score would split across two. (A
-                # team's fouls beside its score stand apart, and keep theirs.)
+            if any(abs(x - taken[k][0]) <= SLOT_X and abs(y - taken[k][1]) >= 0.25 * max(h, taken[k][2])
+                   for k in near if k in taken):
+                # A number above or below one this reading already placed:
+                # a score mid-roll ("4" of the new score over "12" of the old).
+                # Not a place of its own, or a team's score would split
+                # across two. (A team's fouls beside its score, on its row,
+                # keep a place of their own.)
                 continue
             free = [k for k in near if k not in taken]
             if free:
@@ -442,7 +482,7 @@ def score_places(readings: list[Reading]) -> tuple | None:
             else:
                 places.append({"x": x, "y": y, "h": h, "seen": [(r.t, v)]})
                 k = len(places) - 1
-            taken[k] = x
+            taken[k] = (x, y, h)
     scores = []
     for p in places:
         if len(p["seen"]) < SLOT_SHARE * len(read):
@@ -461,9 +501,7 @@ def score_places(readings: list[Reading]) -> tuple | None:
     first = scores[0]
     # The other score: as big as the first (within SLOT_HEIGHT), and of
     # those the one that counts highest (a team's fouls are smaller numbers).
-    alike = [p for p in scores[1:] if p["h"] >= SLOT_HEIGHT * first["h"]
-             and not (abs(p["x"] - first["x"]) <= 2 * SLOT_X
-                      and abs(p["y"] - first["y"]) <= 0.5 * max(p["h"], first["h"]))]
+    alike = [p for p in scores[1:] if p["h"] >= SLOT_HEIGHT * first["h"]]
     if not alike:
         return None
     second = max(alike, key=lambda p: (p["top"], p["h"]))
@@ -516,9 +554,12 @@ def team_codes(readings: list[Reading], places: tuple) -> tuple | None:
 
 
 def _at(reading: Reading, place: tuple) -> int | None:
-    """The number a reading has at a score's place."""
+    """The number a reading has at a score's place: the nearest one the
+    score's size. A team's fouls beside its score are smaller, and a
+    one-digit score sits as far from the place as they do."""
     x, y, h = place
-    near = [n for n in reading.numbers if abs(n[0] - x) <= SLOT_X and abs(n[1] - y) <= 0.5 * max(h, n[2])]
+    near = [n for n in reading.numbers if abs(n[0] - x) <= SLOT_X and abs(n[1] - y) <= 0.5 * max(h, n[2])
+            and n[2] >= SLOT_HEIGHT * h]
     return min(near, key=lambda n: abs(n[0] - x))[3] if near else None
 
 
