@@ -5,6 +5,7 @@ written to match."""
 import json
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -152,3 +153,44 @@ def test_the_highlights_style_writes_titles_and_both_card_lines():
     plain = generate_metadata_batch(cand, seg, "Game 7", llm)
     assert "title card" not in llm.prompts[1]
     assert plain[0].headline == "" and plain[0].subline == ""
+
+
+def _fake_overlay(monkeypatch):
+    """apply_card with its encode faked: it writes a new clip where FFmpeg
+    would. Saves needing FFmpeg to test what happens around it."""
+    import core.binaries
+    import video.encoding
+
+    monkeypatch.setattr(core.binaries, "ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(video.encoding, "video_encoder_args", lambda config=None: list(video.encoding.CPU_ARGS))
+    monkeypatch.setattr(video.encoding, "using_hardware_encoder", lambda: False)
+
+    def run(cmd, **kwargs):
+        Path(cmd[-1]).write_bytes(b"with the card")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(post_style.subprocess, "run", run)
+
+
+def test_the_card_takes_the_clips_place_and_leaves_nothing_behind(tmp_path, monkeypatch):
+    pytest.importorskip("PIL", reason="video/outro.py, which places the clip, needs Pillow")
+    _fake_overlay(monkeypatch)
+    clip = tmp_path / "f7_clip.pre-card.mp4"
+    clip.write_bytes(b"as rendered")
+    post_style.apply_card(clip, tmp_path / "c.png")
+    assert clip.read_bytes() == b"with the card"
+    assert list(tmp_path.iterdir()) == [clip]
+
+
+def test_a_clip_that_cannot_be_written_says_so_and_leaves_nothing_behind(tmp_path, monkeypatch):
+    pytest.importorskip("PIL", reason="video/outro.py, which places the clip, needs Pillow")
+    import video.outro
+
+    _fake_overlay(monkeypatch)
+    monkeypatch.setattr(video.outro, "_replace_with_retry", lambda src, dst: False)
+    clip = tmp_path / "f7_clip.pre-card.mp4"
+    clip.write_bytes(b"as rendered")
+    with pytest.raises(RuntimeError, match="title card"):
+        post_style.apply_card(clip, tmp_path / "c.png")
+    assert clip.read_bytes() == b"as rendered"
+    assert list(tmp_path.iterdir()) == [clip]

@@ -30,7 +30,6 @@ bar, per-clip re-renders and the remote render workers all carry it.
 
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -425,12 +424,17 @@ def render_card(headline: str, subline: str, size: tuple[int, int], out_path: Pa
 
 def apply_card(video_path: Path, card_png: Path) -> None:
     """Lay the card over the whole clip, in place. One extra encode, like an
-    image watermark (video_editor/watermark.py). Written INTO the file rather
-    than replacing it: a clip open in the app's preview can be written but
-    not replaced on Windows (see video/outro.py)."""
+    image watermark (video_editor/watermark.py).
+
+    The new clip takes the old one's place the way the end card's does
+    (video/outro.py): a rename, retried while a scanner holds the file, then
+    a write into the file, which a clip open in the app's preview allows.
+    Raises when neither worked, so the caller says the card was skipped. The
+    full-size copy is never left behind in the clip folder."""
     from core.binaries import ffmpeg
     from core.paths import discard
     from video.encoding import CPU_ARGS, using_hardware_encoder, video_encoder_args
+    from video.outro import _replace_with_retry
 
     tmp = video_path.with_suffix(".card.mp4")
     cmd = [
@@ -444,13 +448,18 @@ def apply_card(video_path: Path, card_png: Path) -> None:
         "-movflags", "+faststart",
         str(tmp.resolve()),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0 and using_hardware_encoder():
-        enc = video_encoder_args()
-        i = cmd.index(enc[0])
-        result = subprocess.run(cmd[:i] + CPU_ARGS + cmd[i + len(enc):], capture_output=True, text=True)
-    if result.returncode != 0:
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 and using_hardware_encoder():
+            enc = video_encoder_args()
+            i = cmd.index(enc[0])
+            result = subprocess.run(cmd[:i] + CPU_ARGS + cmd[i + len(enc):], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"title card overlay failed:\n{result.stderr[-1500:]}")
+        if not _replace_with_retry(tmp, video_path):
+            raise RuntimeError(f"{video_path.name} is held open elsewhere and could not be "
+                               f"replaced or written, so it has no title card")
+    finally:
+        # discard(), not unlink(): it never raises, so it cannot replace the
+        # error above (core/paths.py has the story).
         discard(tmp)
-        raise RuntimeError(f"title card overlay failed:\n{result.stderr[-1500:]}")
-    shutil.copyfile(tmp, video_path)
-    discard(tmp)
