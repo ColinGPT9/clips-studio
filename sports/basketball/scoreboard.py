@@ -420,16 +420,17 @@ def score_places(readings: list[Reading]) -> tuple | None:
         return None
     places: list[dict] = []
     for r in read:
-        taken: set = set()
+        taken: dict = {}                       # place -> where this reading's number at it sits
         for x, y, h, v in r.numbers:
             near = [k for k, p in enumerate(places)
                     if abs(x - p["x"]) <= SLOT_X and abs(y - p["y"]) <= 0.5 * max(h, p["h"])]
-            free = [k for k in near if k not in taken]
-            if near and not free:
-                # A second number where this reading already has one: a
-                # score mid-roll ("40" over "42"). Not a place of its own,
-                # or a team's score would split across two.
+            if any(abs(x - taken[k]) <= SLOT_X / 2 for k in near if k in taken):
+                # A second number on top of one this reading already
+                # placed: a score mid-roll ("40" over "42"). Not a place of
+                # its own, or a team's score would split across two. (A
+                # team's fouls beside its score stand apart, and keep theirs.)
                 continue
+            free = [k for k in near if k not in taken]
             if free:
                 k = min(free, key=lambda k: abs(x - places[k]["x"]))
                 p = places[k]
@@ -441,7 +442,7 @@ def score_places(readings: list[Reading]) -> tuple | None:
             else:
                 places.append({"x": x, "y": y, "h": h, "seen": [(r.t, v)]})
                 k = len(places) - 1
-            taken.add(k)
+            taken[k] = x
     scores = []
     for p in places:
         if len(p["seen"]) < SLOT_SHARE * len(read):

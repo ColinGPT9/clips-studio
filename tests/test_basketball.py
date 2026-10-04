@@ -337,6 +337,26 @@ def test_a_score_rolling_over_is_not_a_basket():
     assert board.final() == (111, 103)
 
 
+def test_a_teams_fouls_beside_its_score_keep_a_place_of_their_own():
+    # "LAL 4 98   BOS 2 101   4TH 5:00": each team's fouls just left of its
+    # score, closer than SLOT_X. They aren't a score mid-roll: the scores
+    # keep their own places.
+    def reading(t, a, b, fa, fb):
+        r = bb.parse_pieces([((0.02, 0.3, 0.10, 0.7), "LAL"), ((0.22, 0.4, 0.25, 0.6), str(fa)),
+                             ((0.26, 0.1, 0.31, 0.9), str(a)), ((0.45, 0.3, 0.52, 0.7), "BOS"),
+                             ((0.64, 0.4, 0.67, 0.6), str(fb)), ((0.68, 0.1, 0.74, 0.9), str(b)),
+                             ((0.80, 0.3, 0.86, 0.7), "4TH"), ((0.88, 0.3, 0.97, 0.7), f"5:{59 - t:02d}")])
+        r.t = t
+        return r
+
+    seq = [(0, 90, 95, 1, 2), (2, 90, 95, 1, 2), (4, 92, 95, 2, 2), (6, 92, 95, 2, 2), (8, 92, 98, 2, 3),
+           (10, 92, 98, 2, 3), (12, 95, 98, 3, 3), (14, 95, 98, 3, 4), (16, 95, 100, 4, 4), (18, 95, 100, 4, 4)]
+    board = bb.from_readings([reading(*x) for x in seq])
+    assert [c.label() for c in board.changes] == ["score 92-95 (LAL), +2", "score 92-98 (BOS), +3",
+                                                  "score 95-98 (LAL), +3", "score 95-100 (BOS), +2"]
+    assert board.final() == (95, 100)
+
+
 def test_a_plus_three_over_the_score_is_no_score():
     # After a three the bug shows "+3" over the scorer's score for a few
     # seconds: read on two keyframes running, it mustn't take the three away.
