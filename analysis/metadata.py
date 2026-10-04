@@ -207,7 +207,9 @@ def _clean_card_line(text, limit: int) -> str:
     hashtags, and short. An overlong one is cut at a word; the card shrinks
     and wraps what is left (video/post_style.py)."""
     text = re.sub(r"\s+", " ", re.sub(r"[<>\"]", "", str(text or ""))).strip()
-    text = re.sub(r"(^|\s)#\w+", " ", text).strip()
+    # A hashtag has a letter in it: "#1 PICK" and "#23" are a draft rank and a
+    # jersey number, and stay (the card's own filter in video/post_style.py).
+    text = re.sub(r"(^|\s)#(?=\w*[^\W\d_])\w+", " ", text).strip()
     if len(text) > limit:
         text = text[:limit].rsplit(" ", 1)[0]
     return text

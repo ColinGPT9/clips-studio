@@ -155,6 +155,18 @@ def test_the_highlights_style_writes_titles_and_both_card_lines():
     assert plain[0].headline == "" and plain[0].subline == ""
 
 
+# ---- what the review found --------------------------------------------------
+
+
+def test_rank_and_jersey_numbers_are_not_hashtags():
+    from analysis.metadata import _clean_card_line
+
+    assert post_style.card_text("#1 pick cooked him😭") == "#1 PICK COOKED HIM😭"
+    assert post_style.card_text("#23 went off #nba #2k25 #ゴール") == "#23 WENT OFF"
+    assert _clean_card_line("#1 PICK COOKED HIM😭 #nba", 40) == "#1 PICK COOKED HIM😭"
+    assert _clean_card_line("GOAT #2k25 #ゴール", 40) == "GOAT"
+
+
 def _fake_overlay(monkeypatch):
     """apply_card with its encode faked: it writes a new clip where FFmpeg
     would. Saves needing FFmpeg to test what happens around it."""

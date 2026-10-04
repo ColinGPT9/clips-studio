@@ -80,7 +80,9 @@ _EMOJI_CHARS = (
     "\U00002190-\U000021FF\U00002300-\U000023FF\U00003030\U0000303D\U00003297\U00003299"
 )
 _EMOJI_RUN = re.compile(f"[{_EMOJI_CHARS}]+")
-_HASHTAG = re.compile(r"(^|\s)#\w+")
+# A hashtag has a letter in it: "#1 PICK" and "#23 WENT OFF" are a draft
+# rank and a jersey number, and stay; #nba, #2k25 and #ゴール go.
+_HASHTAG = re.compile(r"(^|\s)#(?=\w*[^\W\d_])\w+")
 
 
 def resolve(caption_style: dict | None) -> str:
