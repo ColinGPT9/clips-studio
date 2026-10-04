@@ -1,6 +1,6 @@
 """The highlights post style where it meets the rest of the app: the editor's
-hook title over the clip's title card, and a re-run over clips already
-saved."""
+hook title over the clip's title card, a re-run over clips already saved,
+and translated subtitles burned onto a clip that has the card."""
 
 import json
 from pathlib import Path
@@ -125,3 +125,58 @@ def test_a_gaming_rerun_in_highlights_keeps_both(pipeline, db, tmp_path):
     opts = _rerun(pipeline, db, tmp_path, before, after)
     assert opts["gaming"] == after["gaming"] and opts["headline"] == "STEPBACK"
     assert post_style.resolve(opts["caption_style"]) == post_style.HIGHLIGHTS
+
+
+# ---- translated subtitles over the card -------------------------------------------------
+
+EXPORT_STYLE = {"font": "Arial", "font_size": 84, "color": "#FFFFFF", "position": "bottom"}
+
+
+def _burn_style(monkeypatch, tmp_path, render_opts: dict, style: dict | None) -> dict | None:
+    """Publish one burned language for a clip with these saved options, the
+    re-render and the burn faked out, and return the style the burn got."""
+    from multilingual import burn
+    from multilingual.publish import publish
+
+    burned = []
+    base = tmp_path / "base.mp4"
+    base.write_bytes(b"base")
+    monkeypatch.setattr(burn, "clean_base", lambda *_a, **_k: base)
+
+    def fake_burn(base_video, lines, language, out_path, caption_style, config):
+        burned.append(caption_style)
+        return None
+
+    monkeypatch.setattr(burn, "burn", fake_burn)
+    lines = [{"start": 0.0, "end": 1.0, "text": "no way"}]
+    publish(
+        lines, ["es"], tmp_path / "out", "clip", llm=None, burn=True,
+        clip_row={"render_opts": json.dumps(render_opts)}, config={"clips": {}},
+        data_dir=tmp_path, pre_translated={"es": {"lines": [{**lines[0], "text": "no puede ser"}]}},
+        style=style,
+    )
+    assert len(burned) == 1
+    return burned[0]
+
+
+def test_translated_subtitles_on_a_highlights_clip_go_in_the_middle(monkeypatch, tmp_path):
+    opts = {"caption_style": {**HIGHLIGHTS_TOP, "card_position": "lower"}, "headline": "STEPBACK"}
+    # The card sits in the lower third, where the export's own bottom position would land.
+    assert _burn_style(monkeypatch, tmp_path, opts, EXPORT_STYLE) == {**EXPORT_STYLE, "position": "middle"}
+
+
+def test_with_no_look_chosen_they_take_the_clips_highlights_captions(monkeypatch, tmp_path):
+    opts = {"caption_style": HIGHLIGHTS_TOP, "headline": "STEPBACK"}
+    style = _burn_style(monkeypatch, tmp_path, opts, None)
+    assert style == post_style.caption_style_for(HIGHLIGHTS_TOP) and style["position"] == "middle"
+
+
+def test_a_standard_clip_burns_in_the_export_style_unchanged(monkeypatch, tmp_path):
+    opts = {"caption_style": {"font": "Georgia", "position": "bottom"}}
+    assert _burn_style(monkeypatch, tmp_path, opts, EXPORT_STYLE) == EXPORT_STYLE
+    assert _burn_style(monkeypatch, tmp_path, opts, None) == opts["caption_style"]
+
+
+def test_a_landscape_render_has_no_card_and_keeps_the_export_style(monkeypatch, tmp_path):
+    opts = {"caption_style": HIGHLIGHTS_TOP, "headline": "STEPBACK", "profile": "short_clips"}
+    assert _burn_style(monkeypatch, tmp_path, opts, EXPORT_STYLE) == EXPORT_STYLE

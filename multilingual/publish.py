@@ -142,6 +142,19 @@ def publish(
         # Subtitles get their own look when one was chosen in the editor;
         # otherwise they inherit the clip's caption style.
         caption_style = style or opts.get("caption_style")
+        # A vertical Highlights clip keeps its title card on every base below
+        # (clean_base draws it again; the clip itself already has it), and
+        # bottom subtitles land right on a card in the lower third. The
+        # clip's own captions sit in the middle, clear of the card wherever
+        # it is, so the translated ones go there too: in the look chosen for
+        # them, or else in the clip's own. Decided the way the renderer
+        # decides it.
+        from video import post_style
+
+        clip_style = opts.get("caption_style") or (config.get("clips") or {}).get("caption_style")
+        if not opts.get("profile") and post_style.resolve(clip_style) == post_style.HIGHLIGHTS:
+            caption_style = ({**style, "position": "middle"} if style
+                             else post_style.caption_style_for(clip_style))
         try:
             if opts.get("captions") is False and clip_path is not None and clip_path.exists():
                 # The clip has no captions burned into it, so it IS the clean
