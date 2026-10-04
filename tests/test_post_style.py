@@ -62,6 +62,7 @@ def _boxes(png):
 
 
 def test_the_card_stacks_a_black_headline_over_a_yellow_line(tmp_path):
+    pytest.importorskip("PIL", reason="the card is drawn with Pillow, which CI does not install")
     png = post_style.render_card("Maxey stepback!😤", "these 2 are going to be a problem",
                                  (1080, 1920), tmp_path / "c.png")
     assert png is not None
@@ -74,6 +75,7 @@ def test_the_card_stacks_a_black_headline_over_a_yellow_line(tmp_path):
 
 
 def test_the_card_can_sit_at_the_top_and_go_without_its_second_line(tmp_path):
+    pytest.importorskip("PIL", reason="the card is drawn with Pillow, which CI does not install")
     png = post_style.render_card("Stop the timer prank💀", "", (1080, 1920), tmp_path / "c.png",
                                  position="top")
     boxes = _boxes(png)
@@ -82,6 +84,7 @@ def test_the_card_can_sit_at_the_top_and_go_without_its_second_line(tmp_path):
 
 
 def test_a_long_headline_shrinks_then_wraps_inside_the_frame(tmp_path):
+    pytest.importorskip("PIL", reason="the card is drawn with Pillow, which CI does not install")
     from PIL import Image
 
     png = post_style.render_card(
@@ -94,12 +97,14 @@ def test_a_long_headline_shrinks_then_wraps_inside_the_frame(tmp_path):
 
 
 def test_nothing_to_say_draws_nothing(tmp_path):
+    pytest.importorskip("PIL", reason="the card is drawn with Pillow, which CI does not install")
     assert post_style.render_card("", "  #nba ", (1080, 1920), tmp_path / "c.png") is None
     assert not (tmp_path / "c.png").exists()
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 def test_the_card_is_laid_over_the_whole_clip(tmp_path):
+    pytest.importorskip("PIL", reason="the card is drawn with Pillow, which CI does not install")
     clip = tmp_path / "clip.mp4"
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
                     "color=c=blue:s=1080x1920:d=1", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
