@@ -938,7 +938,10 @@ def _sport_inputs(config: dict, video, hype_out: dict, heard: dict | None, prepa
     board = getattr(profile, "board", None)
     if board is not None and board.box:
         teams, final = board.teams(), board.final()
-        print(f"      Scoreboard: {len(board.changes)} goal(s) read"
+        # "goal(s)", "basket(s)": the sport's own word for a score.
+        scored = (profile.event_label(profile.scoring_types[0]).lower()
+                  if getattr(profile, "scoring_types", None) else "goal")
+        print(f"      Scoreboard: {len(board.changes)} {scored}(s) read"
               + (f", {teams[0]} v {teams[1]}" if teams else "")
               + (f", {final[0]}-{final[1]} at the end" if final else ""))
     resolve = getattr(profile, "resolve_footage", None)

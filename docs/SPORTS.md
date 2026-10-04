@@ -414,7 +414,8 @@ break runs longer).
   is asked only what kind of shot it is, never who anyone is.
 - **A name** comes only from the broadcast's own caption over the cutaway (a
   lower third read with the app's OCR): "Celebrity reaction · Spike Lee". Faces
-  are never matched to names. Without a caption it is a courtside or crowd
+  are never matched to names, and a caption made of the score bug's or the
+  video title's words is a team or a school, not a person. Without a caption it is a courtside or crowd
   reaction, nobody named.
 
 ### Framing
@@ -422,8 +423,8 @@ break runs longer).
 The 9:16 crop follows, in order: a close-up or a reaction shot (someone a third
 of the frame's height or more: the biggest of them, not where the court was),
 the ball with the players around it (the ball handler and the defenders),
-leaning toward the rim as the ball heads for it, and the players when the ball
-is lost. Same detector as soccer (YOLOv8n at 1280 px). A "ball" in the bottom
+leaning toward the rim as the ball heads for it, and the players on the floor
+when the ball is lost (not the stands: people under half the tallest one's height). Same detector as soccer (YOLOv8n at 1280 px). A "ball" in the bottom
 fifth of the frame or at a player's feet is dropped: on real broadcasts those
 were the front rows, the score bug and bright shoes. Cuts snap, never pan; a cut
 is the picture's colours changing as well as its pixels, since the camera
@@ -446,7 +447,12 @@ kept as a test fixture (`tests/fixtures/basketball_bugs.json`, text only).
 | Players around the ball | 0.15 of the width | half the crop is 0.16 |
 | Toward the rim | within 0.4 of an edge | the far rim sits up to 0.40 from the edge |
 
-College, gym and phone footage haven't been measured.
+Three full high-school games from the Internet Archive (local cable TV and a 1995
+VHS tape, freely licensed) checked the rest: a bug the OCR runs together into one
+word ("TAUNTON37ATTLEBORO364TH") is split back into its parts, a school's whole
+name counts as its code, and a school's name on screen is never taken for a
+person's. Their LED game clocks aren't read, and phone footage hasn't been
+measured.
 
 ## What it doesn't do yet
 

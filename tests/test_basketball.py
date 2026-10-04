@@ -140,6 +140,11 @@ def test_the_assistant_is_told_about_basketball():
     ("BONUS LAL 98 BOS 101 4TH :32", (98, 101), ("LAL", "BOS"), 4, 32),
     ("DUKE 45 UNC 44 2ND HALF 0:03", (45, 44), ("DUKE", "UNC"), 2, 3),
     ("98 - 101", (98, 101), None, None, None),
+    # A high-school bug, as the OCR read it off a 2022 broadcast: whole school
+    # names, and every box run together into one word.
+    ("TAUNTON49ATTLEBORO434TH", (49, 43), ("TAUNTON", "ATTLEBORO"), 4, None),
+    ("TAUNTON 49 ATTLEBORO 43 4TH", (49, 43), ("TAUNTON", "ATTLEBORO"), 4, None),
+    ("LAL98BOS101Q3", (98, 101), ("LAL", "BOS"), 3, None),
 ])
 def test_the_bug_is_read(line, score, teams, period, clock):
     r = bb.parse([line])
@@ -210,6 +215,14 @@ def test_bare_scores_beside_logos_are_told_from_the_shot_clock_and_the_fouls():
     board = _read(lambda i, a, b: _bare(a, b, f"1:{50 - i * 3:02d}", (20 - 3 * i) % 25, fouls[i]), scores)
     assert [(c.points, c.side) for c in board.changes] == [(2, 1), (3, 0), (1, 0)]
     assert board.final() == (102, 101)
+
+
+def test_a_bug_read_as_one_word_still_gives_its_baskets():
+    # A 2022 high-school broadcast: the OCR ran the whole bug together.
+    scores = [(37, 36), (37, 36), (39, 36), (39, 36), (39, 39), (39, 39), (40, 39), (40, 39)]
+    board = _read(lambda i, a, b: [((0.05, 0.2, 0.95, 0.8), f"TAUNTON{a}ATTLEBORO{b}4TH")], scores)
+    assert [(c.points, c.team) for c in board.changes] == [(2, "TAUNTON"), (3, "ATTLEBORO"), (1, "TAUNTON")]
+    assert board.readings[0].period == 4
 
 
 def test_too_few_readings_say_nothing_about_bare_numbers():
@@ -478,6 +491,15 @@ def test_a_name_comes_only_from_the_broadcasts_caption():
         assert reactions.name_in(not_a_name, exclude=("LAL", "BOS")) == "", not_a_name
 
 
+def test_a_school_on_screen_is_not_a_person():
+    # "King Philip", a school on a full-screen timeout graphic, passes as a
+    # name: the video's title and the score bug say it is a team.
+    title = "King Philip vs Attleboro girls basketball 2022"
+    assert reactions.name_in(["King Philip"]) == "King Philip"
+    assert reactions.name_in(["King Philip"], exclude=reactions.known_words(title)) == ""
+    assert reactions.name_in(["Spike Lee"], exclude=reactions.known_words(title, "KP 41 ATT 38 4TH")) == "Spike Lee"
+
+
 def test_a_crowd_reaction_after_a_dunk_is_one_moment_with_it():
     profile = _profile()
     cut = reactions.Cutaway(306.0, 312.0, crowd=True)
@@ -607,6 +629,16 @@ def test_the_crop_moves_to_the_reaction_shot():
     cutaway = [_sample(2 + i / 5, people=fans, cut=(i == 0)) for i in range(10)]
     path, led = action.plan(court + cutaway, 0.316)
     assert led["close-up"] >= 9 and path[-1][1] > 0.7          # on the biggest reacting person
+
+
+def test_without_the_ball_the_crop_follows_the_players_not_the_stands():
+    pytest.importorskip("cv2")      # video/framing.py's HoldMove
+    from sports.basketball import action
+
+    players = [(0.75, 0.6, 0.06, 0.28), (0.8, 0.62, 0.06, 0.3), (0.85, 0.6, 0.05, 0.26)]
+    stands = [(0.1 + k * 0.04, 0.2, 0.02, 0.08) for k in range(14)]
+    path, led = action.plan([_sample(i / 5, people=players + stands) for i in range(15)], 0.316)
+    assert led["players"] == 15 and path[-1][1] > 0.7       # at the free throw, not mid-court
 
 
 def test_a_close_up_is_framed_on_the_player():

@@ -61,8 +61,14 @@ def prepass(video_path, duration: float) -> dict:
                                      tall=float(settings.get("people_tall", 0.36)), model_name=model)
         found = reactions.cutaways(shots, duration)
         if settings.get("names_from_screen", True) and found:
+            # A caption of the teams' or schools' own words names no one:
+            # those on the bug and in the video's title.
+            from pathlib import Path
+
             teams = board.teams() if board is not None else None
-            reactions.read_names(video_path, found, exclude=teams or ())
+            seen = [r.text for r in board.readings] if board is not None else []
+            exclude = set(teams or ()) | reactions.known_words(Path(str(video_path)).stem, *seen)
+            reactions.read_names(video_path, found, exclude=exclude)
         named = sum(1 for c in found if c.name)
         print(f"      Cutaways from the court: {len(found)} in {time.monotonic() - t0:.0f}s"
               + (f", {named} with a name on screen" if named else ""))

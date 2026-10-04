@@ -159,6 +159,13 @@ def read_shots(path, duration: float, court_share: float, crowd_edges: float, ca
 # ---- a name, only from the broadcast's own caption --------------------------------
 
 
+def known_words(*texts) -> set:
+    """Every word in these texts (the video's title, the score bug), in
+    lower case: a caption made of them is a team or a school, not a person
+    ("King Philip" over a girls' game titled "King Philip vs Attleboro")."""
+    return {w.lower() for text in texts for w in re.findall(r"[A-Za-z][A-Za-z'\-.]+", str(text or ""))}
+
+
 def name_in(lines: list[str], exclude=()) -> str:
     """A person's name in a caption's lines: two or three capitalised words,
     none of them a broadcast word or a team code. "" when there is none."""

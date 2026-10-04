@@ -14,7 +14,8 @@ the rim on a drive. So the crop follows, in order:
 - **Toward the rim** as the ball heads for it: in a broadcast wide shot the
   baskets sit near the left and right edges, so when the ball is high or
   moving fast toward an edge, the crop leans that way to keep the rim in.
-- **When the ball is lost**, the players.
+- **When the ball is lost**, the players on the floor, not the stands (people
+  under half the tallest one's height are spectators).
 
 A "ball" in the bottom fifth of the frame or at a player's feet is
 dropped: on three NBA games those were the front rows, the score bug and
@@ -41,6 +42,7 @@ RIM_EDGE = 0.4           # a ball within this of an edge, heading to it, is goin
 RIM_LEAN = 0.25          # ...and the crop leans this share of its width toward it
 FLOOR_BAND = 0.8         # a "ball" below this share of the height is the front rows, the bug or a shoe
 FEET = 0.15              # ...as is one in the bottom this share of a player's box
+ON_FLOOR = 0.5           # people under this share of the tallest one's height are in the stands
 CUT_COLOURS = 0.31       # a cut changes the picture's colours this much too (Bhattacharyya distance)
 
 
@@ -113,6 +115,11 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
             trail[:] = [p for p in trail if t - p[0] <= 1.0]
         people = s.get("people") or []
         close = [p for p in people if p[3] >= CLOSE_UP]
+        # The players, not the stands: at 1280 px the detector finds a dozen
+        # spectators too (16-20 people a frame on high-school footage), far
+        # smaller than the players on the floor.
+        tallest = max((p[3] for p in people), default=0.0)
+        people = [p for p in people if p[3] >= ON_FLOOR * tallest]
         have_ball = ball is not None and t - ball[2] <= BALL_MEMORY
         if close:
             target, source = max(close, key=lambda p: p[2] * p[3])[0], "close-up"

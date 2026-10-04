@@ -35,13 +35,22 @@ PERIOD = re.compile(r"(?<![A-Z0-9])(?:([1-4])\s?(?:ST|ND|RD|TH)(?:\s*(QTR|QUARTE
 # The game clock: "11:42", "0:32", "2:05.4"; under a minute "24.3" or ":32".
 CLOCK = re.compile(r"(?<![\d:.])(\d{1,2}):(\d{2})(?:\.\d)?(?![\d:])|(?<![\d:.])(\d{1,2})\.(\d)(?![\d.:])"
                    r"|(?<![\d])[:](\d{2})(?![\d:])")
-# A team code and its score, either way round: "LAL 98", "98 LAL".
-CODE_SCORE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0]{1,3})\s*[|:·.\-]?\s*(\d{1,3})(?![\d:.])")
+# A team and its score, either way round: "LAL 98", "98 LAL", or a school's
+# whole name, as high-school and college bugs write it ("ATTLEBORO 43").
+CODE_SCORE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0]{1,13})\s*[|:·.\-]?\s*(\d{1,3})(?![\d:.])")
 SCORE_CODE = re.compile(r"(?<![\d:.])(\d{1,3})\s*[|:·.\-]?\s*([A-Z][A-Z0]{1,3})(?![A-Z0-9])")
 # Without team codes, two scores with a dash between: "98 - 101".
 DASH_SCORE = re.compile(r"(?<![\d:.])(\d{1,3})\s*[-–]\s*(\d{1,3})(?![\d:.])")
-# A team's code on its own ("LAL", "GSW(25-20)": its record beside it).
-CODE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0]{1,3})(?![A-Z0-9])")
+# The OCR can read a bug's boxes as one word ("TAUNTON37ATTLEBORO364TH", a
+# 2022 high-school broadcast): then a period glued to the score before it,
+# and letters glued to digits, are split apart, and the period's own
+# spellings ("4TH", "Q3", "2OT") put back together.
+GLUED_PERIOD = re.compile(r"(?<=\d)(?=[1-4](?:ST|ND|RD|TH)(?![A-Z]))")
+GLUED_WORD = re.compile(r"(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])")
+REJOIN = re.compile(r"(?<![A-Z0-9])(?:(\d) (ST|ND|RD|TH|Q|OT)|(Q|H|OT) (\d))(?![A-Z0-9])")
+# A team's code or school name on its own ("LAL", "GSW(25-20)": its record
+# beside it, "ATTLEBORO").
+CODE = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0]{1,13})(?![A-Z0-9])")
 # A number on its own: a score, the shot clock, a foul or timeout count.
 NUMBER = re.compile(r"(?<![\d:.])(\d{1,3})(?![\d:.])")
 # Words a bug writes beside the score that look like a team code.
@@ -198,6 +207,8 @@ def parse(texts: list[str]) -> Reading:
     line = " ".join(" ".join(str(t).split()) for t in texts)
     out = Reading(t=0.0, visible=bool(line.strip()), text=line)
     upper = line.upper()
+    if " " not in upper.strip():
+        upper = unglue(upper)
     rest = upper
     p = PERIOD.search(rest)
     if p:
@@ -232,6 +243,14 @@ def parse(texts: list[str]) -> Reading:
     return out
 
 
+def unglue(text: str) -> str:
+    """A bug read as one word, split where letters meet digits and before a
+    period glued to a score ("TAUNTON37ATTLEBORO364TH" ->
+    "TAUNTON 37 ATTLEBORO 36 4TH")."""
+    text = GLUED_WORD.sub(" ", GLUED_PERIOD.sub(" ", text.upper()))
+    return REJOIN.sub(lambda m: "".join(g for g in m.groups() if g), text)
+
+
 def _blank(text: str, pattern: re.Pattern) -> str:
     """`text` with every match of `pattern` turned to spaces, keeping each
     character's place."""
@@ -257,10 +276,10 @@ def parse_pieces(pieces: list[tuple[tuple, str]]) -> Reading:
     parse() reads in their text (the period, the clock, the teams, and the
     score when team codes or a dash say which number is whose), and every
     other number with its place, for from_readings to tell the scores by."""
-    ordered = reading_order(pieces)
+    ordered = [(box, unglue(str(text))) for box, text in reading_order(pieces)]
     out = parse([t for _, t in ordered])
     for box, text in ordered:
-        rest = _blank(_blank(str(text).upper(), PERIOD), CLOCK)
+        rest = _blank(_blank(text, PERIOD), CLOCK)
         for m in CODE.finditer(rest):
             code = m.group(1).replace("0", "O")
             if code not in NOT_TEAMS:
