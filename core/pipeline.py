@@ -172,6 +172,23 @@ def _with_usable_model(llm_config: dict) -> dict:
     return {**llm_config, "backend": f"ollama/{usable}"}
 
 
+def convert_slow_source(video, config: dict) -> None:
+    """One up-front H.264 conversion for a source that decodes slowly.
+
+    AV1, VP9 and H.265 (files added from the PC, old uploads, format
+    fallbacks) are converted once, in place, so every later decode pass runs
+    at hardware speed. It happens here, in the job, rather than while the file
+    is being added: it takes minutes for a long recording, and this is where
+    the window can show a stage for it (#122). Both paths call it, 9:16 and
+    16:9. Failure-safe: ensure_h264_source keeps the original if it fails.
+    """
+    from video.encoding import SLOW_SOURCE_CODECS, ensure_h264_source, source_codec
+
+    if source_codec(video.path) in SLOW_SOURCE_CODECS:
+        progress.emit(stage="converting source to H.264", video_id=video.video_id)
+        ensure_h264_source(video.path, config)
+
+
 def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> list[RenderedClip]:
     import time
 
@@ -190,14 +207,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     print(f"      {video.title} ({video.duration:.0f}s) -> {video.path}")
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
 
-    # Slow-decode sources (AV1/VP9/HEVC — old local uploads, format
-    # fallbacks) get ONE up-front H.264 conversion so every later decode
-    # pass runs at hardware speed. New uploads convert at import instead.
-    from video.encoding import SLOW_SOURCE_CODECS, ensure_h264_source, source_codec
-
-    if source_codec(video.path) in SLOW_SOURCE_CODECS:
-        progress.emit(stage="converting source to H.264", video_id=video.video_id)
-        ensure_h264_source(video.path, config)
+    convert_slow_source(video, config)
 
     # Vertical Live (core/modes.py): the source has to actually be a 9:16
     # video. Checked before any work, so a wrong toggle costs seconds and says
@@ -958,6 +968,21 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB, vertical: bool = 
     if cached is None:
         return dispatch.download(url, data_dir / "downloads", vertical=vertical)
 
+    if source == "local":
+        # A copy whose import was stopped part-way has no index and cannot be
+        # read. It used to pass as "already downloaded", and the job then died
+        # in transcription with PyAV's InvalidDataError, which reads like a
+        # codec problem and is not one (#122). New imports cannot leave one
+        # behind; this is for copies that older versions already did.
+        from video.encoding import readable_video
+
+        if not readable_video(cached):
+            discard(cached)
+            raise ValueError(
+                "This file did not finish importing, so its copy could not be read. "
+                "Remove it from the queue and add the file again."
+            )
+
     import subprocess
 
     # Cached files from before the H.264-only YouTube selector can be AV1 —
@@ -969,7 +994,7 @@ def _cached_or_download(url: str, data_dir: Path, db: StateDB, vertical: bool = 
          "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(cached)],
         capture_output=True, text=True,
     ).stdout.strip()
-    if codec in ("av1", "vp9"):
+    if codec in ("av1", "vp9") and source != "local":  # a file from the PC has nowhere to come from again
         print(f"      Cached source is {codec} (slow to decode) — re-downloading as H.264")
         try:
             fresh = dispatch.download(url, data_dir / "downloads", vertical=vertical)

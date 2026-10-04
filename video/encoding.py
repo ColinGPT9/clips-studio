@@ -17,6 +17,8 @@ Config: video.encoder in settings.yaml — "auto" (default) or force one of
 """
 
 import subprocess
+import threading
+import uuid
 
 from core.binaries import ffmpeg, ffprobe
 from core.paths import discard
@@ -278,3 +280,91 @@ def ensure_h264_source(path, config: dict | None = None) -> bool:
     discard(tmp)
     print("      (conversion failed — continuing with the original file)")
     return False
+
+
+def readable_video(path) -> bool:
+    """Whether FFprobe can open the file and find how long it is.
+
+    False for a half-written MP4. The index is written last, so a copy whose
+    FFmpeg was stopped part-way has media data and nothing to read it with:
+    every decoder answers "Invalid data found when processing input" (#122).
+    """
+    try:
+        r = subprocess.run(
+            [ffprobe(), "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
+# One lock per imported file, so a second request for the same file waits for
+# the first instead of starting a second FFmpeg beside it.
+_import_locks: dict[str, threading.Lock] = {}
+_import_locks_guard = threading.Lock()
+
+
+def import_local_source(src, dest, codec: str) -> bool:
+    """Bring a video file from the user's disk into downloads/ as `dest`.
+
+    Two rules, both from #122, where an H.265 recording failed at
+    transcription with InvalidDataError and the codec had nothing to do with it.
+
+    **Nothing is ever half there.** This used to write straight to `dest`, and
+    anything already at `dest` counted as imported. An import that was stopped
+    part-way (the app closed, Generate pressed again from another page) left a
+    half-written file that the next import skipped past and the job then
+    opened. So it is written under a temporary name and renamed only when
+    FFmpeg finished and the result can be read, and a `dest` that cannot be
+    read is redone rather than trusted.
+
+    **Nothing slow happens here.** This runs inside the request that adds the
+    file, where all the window can show is "Starting…". H.264 was always
+    stream-copied, which takes seconds. H.265, AV1 and VP9 used to be
+    re-encoded on the spot, which takes minutes for a long recording and is
+    what people gave up on. They are copied in too now: the job converts them
+    (convert_slow_source in core/pipeline.py), with a stage the window shows.
+    When the sound cannot go into an MP4 as it is (a DaVinci Resolve .mov
+    carries PCM), only the sound is re-encoded. Anything the job would not
+    convert (ProRes, old AVI codecs) is still re-encoded here.
+
+    Returns False when nothing could be made of the file.
+    """
+    from pathlib import Path
+
+    dest = Path(dest)
+    with _import_locks_guard:
+        lock = _import_locks.setdefault(str(dest), threading.Lock())
+    with lock:
+        if dest.exists():
+            if readable_video(dest):
+                return True
+            discard(dest)  # left half-written by an import that never finished
+        # Leftovers of imports that were stopped. One still being written by a
+        # process that outlived its engine is locked, and discard() leaves it.
+        for stale in dest.parent.glob(f"{dest.stem}.importing-*.mp4"):
+            discard(stale)
+
+        tmp = dest.with_name(f"{dest.stem}.importing-{uuid.uuid4().hex[:8]}.mp4")
+        copy = [ffmpeg(), "-y", "-v", "error", "-i", str(src)]
+        commands = []
+        if codec == "h264" or codec in SLOW_SOURCE_CODECS:
+            commands.append([*copy, "-c", "copy"])
+            commands.append([*copy, "-c:v", "copy", "-c:a", "aac", "-b:a", "160k"])
+        # -pix_fmt yuv420p: 10-bit sources (phone HDR, HEVC main10) aren't
+        # accepted by h264_nvenc, so normalize to 8-bit.
+        commands.append([ffmpeg(), "-y", "-v", "error", *hwaccel_input_args(), "-i", str(src),
+                         *video_encoder_args(), "-pix_fmt", "yuv420p",
+                         "-c:a", "aac", "-b:a", "160k"])
+        try:
+            for command in commands:
+                r = subprocess.run([*command, "-movflags", "+faststart", str(tmp)],
+                                   capture_output=True, text=True)
+                if r.returncode == 0 and readable_video(tmp):
+                    tmp.replace(dest)
+                    return True
+            return False
+        finally:
+            discard(tmp)

@@ -27,6 +27,16 @@ were often broken in a way that only showed up on somebody else's machine.
   page, setup and the box above all showed the download as done, with nothing installed.
   They now say "Download failed" and why.
 
+- **H.265 files no longer fail at transcription.** Adding a file that was not H.264 (an
+  H.265 export from DaVinci Resolve, a phone or GoPro recording) converted it on the spot,
+  which takes minutes for a long recording while the button only said "Starting…". If
+  that was stopped part-way, by closing the app or pressing Generate again, a half-written
+  copy was left behind and used anyway, and the job failed with "Invalid data found when
+  processing input". The file itself was never the problem. Now:
+  - adding an H.265, AV1 or VP9 file takes seconds, and the conversion happens when the
+    video is processed, where you can see it, for 16:9 clips as well as Shorts;
+  - a copy is only ever used once it is complete, and one left half-written by an earlier
+    version is redone when you add the file again (#122).
 - **Captions on the seconds you add to a clip.** A clip made longer, in AI Edit or the
   editor, came back with no captions on the added seconds, and neither re-rendering nor
   changing the font brought them. It happened to a clip whose captions had been saved

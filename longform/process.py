@@ -38,6 +38,7 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         _render_files,
         _safe_name,
         _with_usable_model,
+        convert_slow_source,
     )
     from llm.registry import create_backend
     from transcription.transcriber import transcribe
@@ -57,6 +58,9 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     video = _cached_or_download(url, data_dir, db)
     print(f"      {video.title} ({video.duration:.0f}s)")
     progress.emit(stage="downloaded", video_id=video.video_id, title=video.title, duration=video.duration)
+    # The same one-time H.264 conversion the 9:16 path does. It was missing
+    # here, which did not show while files were converted as they were added.
+    convert_slow_source(video, config)
 
     cancel.clear(video.video_id)
     db.upsert_video(video.video_id, title=video.title, channel_name=video.channel)

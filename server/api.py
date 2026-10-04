@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from core import queue
 from core.binaries import ffmpeg, ffprobe
-from core.paths import discard, picked_file, safe_name
+from core.paths import picked_file, safe_name
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
@@ -916,41 +916,18 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         dest = data_dir / "downloads" / f"{vid}.mp4"
         dest.parent.mkdir(parents=True, exist_ok=True)
 
-        codec = probe.stdout.strip()
-        if not dest.exists():
-            # H.264 sources are remuxed (no re-encode — fast, lossless) into
-            # the pipeline's mp4 layout. Anything else — phone/GoPro HEVC,
-            # AV1, VP9, ProRes, old AVI codecs — is converted to H.264 ONCE
-            # here: every later stage (tracking + one decode per clip render)
-            # reads this file, and non-H.264 codecs decode in software.
-            converted = False
-            if codec == "h264":
-                remux = sp.run(
-                    [ffmpeg(), "-y", "-i", str(src), "-c", "copy",
-                     "-movflags", "+faststart", str(dest)],
-                    capture_output=True, text=True,
-                )
-                converted = remux.returncode == 0
-                if not converted:
-                    discard(dest)  # e.g. PCM audio mp4 can't carry
-            if not converted:
-                from video.encoding import hwaccel_input_args, video_encoder_args
+        # H.264, H.265, AV1 and VP9 are stream-copied into the pipeline's mp4
+        # layout, which takes seconds; the job converts the slow three to
+        # H.264 where the window can show it. Anything else (ProRes, old AVI
+        # codecs) is converted here. Never left half-written: see
+        # import_local_source, and #122 for what a half-written copy cost.
+        from video.encoding import import_local_source
 
-                # -pix_fmt yuv420p: 10-bit sources (phone HDR, HEVC main10)
-                # aren't accepted by h264_nvenc — normalize to 8-bit.
-                reenc = sp.run(
-                    [ffmpeg(), "-y", *hwaccel_input_args(), "-i", str(src),
-                     *video_encoder_args(), "-pix_fmt", "yuv420p",
-                     "-c:a", "aac", "-b:a", "160k",
-                     "-movflags", "+faststart", str(dest)],
-                    capture_output=True, text=True,
-                )
-                if reenc.returncode != 0:
-                    discard(dest)
-                    raise HTTPException(
-                        400,
-                        "couldn't convert this file — export it as MP4 (H.264) and try again",
-                    )
+        if not import_local_source(src, dest, probe.stdout.strip()):
+            raise HTTPException(
+                400,
+                "couldn't convert this file — export it as MP4 (H.264) and try again",
+            )
 
         title = body.title.strip() or src.stem
         platform = body.platform if body.platform in ("youtube", "twitch", "kick") else "youtube"
