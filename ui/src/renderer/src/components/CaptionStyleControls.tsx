@@ -28,6 +28,12 @@ export const CAPTION_FONTS = [
   'Courier New'
 ]
 
+/** Whether a style draws the Highlights look. Never on a 16:9 clip: the
+ *  renderer applies the post style to vertical clips only. */
+export function isHighlights(style: CaptionStyle, landscape = false): boolean {
+  return style.post_style === 'highlights' && !landscape
+}
+
 /** The highlights post style in miniature (video/post_style.py): the clip
  *  framed as usual, the stacked title card, yellow ALL CAPS captions. */
 function HighlightsExample({ style }: { style: Required<CaptionStyle> }): JSX.Element {
@@ -127,6 +133,80 @@ function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Eleme
   )
 }
 
+/** The post style: the clip's whole look, not only its captions. Kept
+ *  apart from the caption controls because it applies with captions off
+ *  too (the Highlights title card, and the titles written for it), so the
+ *  queue screens keep it in reach while their caption controls are hidden.
+ *  Not offered where captions are only translated (MultilingualExport):
+ *  there it would change nothing. */
+export function PostStyleControls({
+  idPrefix,
+  style,
+  onChange,
+  landscape = false
+}: {
+  idPrefix: string
+  style: Required<CaptionStyle>
+  onChange: <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]) => void
+  /** Every output is 16:9 (Longform with no 9:16 Shorts). The renderer
+   *  draws a post style on vertical clips only, so none is offered. */
+  landscape?: boolean
+}): JSX.Element {
+  const highlights = isHighlights(style, landscape)
+  return (
+    <div>
+      <label htmlFor={`${idPrefix}-post`} className="label">
+        Post style
+      </label>
+      <select
+        id={`${idPrefix}-post`}
+        className="input mt-1"
+        // What the output gets: 16:9 is Standard whatever was picked.
+        value={landscape ? 'default' : style.post_style}
+        disabled={landscape}
+        onChange={(e) => onChange('post_style', e.target.value as CaptionStyle['post_style'])}
+      >
+        <option value="default">Standard</option>
+        <option value="highlights">Highlights (House of Highlights look)</option>
+      </select>
+      {landscape && (
+        <p className="text-xs text-muted mt-1">
+          Post styles are for 9:16 Shorts. This video makes only 16:9 output, which keeps the
+          standard look.
+        </p>
+      )}
+      {highlights && (
+        <>
+          <p className="text-xs text-muted mt-1">
+            Each clip gets a title card like the big highlight pages: a yellow headline on black
+            with a second line on yellow under it, and yellow captions. Add your own handle or
+            logo with a watermark.
+          </p>
+          <label htmlFor={`${idPrefix}-card`} className="label mt-3 block">
+            Title card
+          </label>
+          <select
+            id={`${idPrefix}-card`}
+            className="input mt-1"
+            value={style.card_position}
+            onChange={(e) =>
+              onChange('card_position', e.target.value as CaptionStyle['card_position'])
+            }
+          >
+            <option value="lower">Lower third</option>
+            <option value="top">Top</option>
+          </select>
+          {style.card_position === 'top' && (
+            <p className="text-xs text-muted mt-1">
+              A clip with a hook title keeps its card in the lower third, clear of the hook.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 /** The caption style controls (colour, size, position, words, casing),
  *  shared between the Generate bar (style for all new clips) and the
  *  per-clip caption editor. */
@@ -135,7 +215,7 @@ export default function CaptionStyleControls({
   style,
   onChange,
   hideWordsPerCaption = false,
-  showPostStyle = false
+  landscape = false
 }: {
   idPrefix: string
   style: Required<CaptionStyle>
@@ -144,52 +224,16 @@ export default function CaptionStyleControls({
    *  replace, so regrouping does nothing there — hide it rather than offer
    *  a control that silently has no effect. */
   hideWordsPerCaption?: boolean
-  /** Offer the post style. Not where captions are only translated
-   *  (MultilingualExport): there it would change nothing. */
-  showPostStyle?: boolean
+  /** The output is 16:9, where the post style draws nothing, so every
+   *  caption control applies whatever the style says. */
+  landscape?: boolean
 }): JSX.Element {
-  const highlights = showPostStyle && style.post_style === 'highlights'
+  // A Highlights clip burns its captions in the style's own look, wherever
+  // the post style was picked: the controls that look replaces would
+  // change nothing, so they go.
+  const highlights = isHighlights(style, landscape)
   return (
     <>
-      {showPostStyle && (
-        <div>
-          <label htmlFor={`${idPrefix}-post`} className="label">
-            Post style
-          </label>
-          <select
-            id={`${idPrefix}-post`}
-            className="input mt-1"
-            value={style.post_style}
-            onChange={(e) => onChange('post_style', e.target.value as CaptionStyle['post_style'])}
-          >
-            <option value="default">Standard</option>
-            <option value="highlights">Highlights (House of Highlights look)</option>
-          </select>
-          {highlights && (
-            <>
-              <p className="text-xs text-muted mt-1">
-                Each clip gets a title card like the big highlight pages: a yellow headline on black
-                with a second line on yellow under it, and yellow captions. Add your own handle or
-                logo with a watermark.
-              </p>
-              <label htmlFor={`${idPrefix}-card`} className="label mt-3 block">
-                Title card
-              </label>
-              <select
-                id={`${idPrefix}-card`}
-                className="input mt-1"
-                value={style.card_position}
-                onChange={(e) =>
-                  onChange('card_position', e.target.value as CaptionStyle['card_position'])
-                }
-              >
-                <option value="lower">Lower third</option>
-                <option value="top">Top</option>
-              </select>
-            </>
-          )}
-        </div>
-      )}
       <div className="grid grid-cols-2 gap-3">
         {!highlights && (
           <div className="col-span-2">
