@@ -52,7 +52,7 @@ class BasketballProfile(SportProfile):
         settings = sports.spec(self.name).get("reactions") or {}
         found = list(getattr(self, "cutaways", None) or [])
         events = reactions.moments(self, events, found, curves=curves, video_end=video_end, min_len=min_len,
-                                   max_len=max_len, react_within=float(settings.get("react_within", 12)),
+                                   max_len=max_len, react_within=float(settings.get("react_within", 18)),
                                    focus=self.focus_reactions)
         # The game clock, for the clip card ("Q4 0:32").
         board = getattr(self, "board", None)

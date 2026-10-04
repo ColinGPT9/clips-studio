@@ -376,8 +376,14 @@ A team's code is the one written beside its score on the same row, or else one
 read the same at its place most of the time; sideways letters and logos give no
 code, never a guessed one, and a header ("RIVALS WEEK"), a seed or a record
 ("25-20") is no team or score. On 60 keyframes of three NBA broadcasts, every score on screen was read
-right. The full OCR costs most of a second a keyframe, so a box that hasn't
-changed since the last one read (the clock stopped) isn't read again. A score
+right. The full OCR costs most of a second a keyframe, and between baskets only
+the clocks change: so after a full read, a keyframe reads again only the pieces
+that changed, by the recogniser alone where they sat, and the box is read whole
+again when anything else changes (a score grows a digit, a "+3", the bug hidden)
+or a piece reads unsurely (a score mid-roll). On three 15-minute test games laid
+out like the NBA bugs, that read every score the same 2 to 3 times faster, and
+the game clock more often (the full OCR sometimes runs it into the shot clock,
+"9:17:16"). A score
 up by 1, 2 or 3 on one side, seen on two readings, is a free throw, a basket or
 a three, and which team scored. The commentary's name for it stands when the points agree (a dunk is 2,
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
@@ -409,7 +415,7 @@ more. That told 90 of 90 hand-labelled frames apart; the floor's colour couldn't
 only stands in when the detector can't load. A run of shots that aren't the
 court, between two that are and at most 25 seconds long, is a cutaway (an advert
 break runs longer). A frame with nobody in it (a stat card, a fade, a replay's
-wipe) neither starts a cutaway nor ends one.
+wipe; without the detector, a dark frame) neither starts a cutaway nor ends one.
 
 - **Tied to the play before it.** A cutaway starting within 18 seconds of a play
   is its reaction: the play's clip is grown to hold it when it fits, so a dunk,

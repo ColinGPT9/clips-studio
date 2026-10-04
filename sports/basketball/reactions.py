@@ -69,8 +69,9 @@ class Cutaway:
 
 
 def looks(img, court_share: float, crowd_edges: float) -> str:
-    """"court", "people" or "other" for one frame (BGR), from its lower half:
-    the share of its most common colour, and how much of it is edges."""
+    """"court", "people", "other" or "nobody" (a dark frame: a fade, a black
+    cut) for one frame (BGR), from its lower half: the share of its most
+    common colour, and how much of it is edges."""
     import cv2
     import numpy as np
 
@@ -79,7 +80,7 @@ def looks(img, court_share: float, crowd_edges: float) -> str:
     hsv = cv2.cvtColor(lower, cv2.COLOR_BGR2HSV)
     lit = hsv[:, :, 2] > 40
     if lit.sum() < lower.shape[0] * lower.shape[1] * 0.2:
-        return "other"                                   # a dark frame: a fade, a black cut
+        return "nobody"                                  # a dark frame: a fade, a black cut
     hue = (hsv[:, :, 0][lit] // 10).astype(np.int32)     # 18 hues
     sat = (hsv[:, :, 1][lit] // 64).astype(np.int32)     # 4 saturations
     counts = np.bincount(hue * 4 + sat, minlength=72)

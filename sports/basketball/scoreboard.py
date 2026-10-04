@@ -14,9 +14,10 @@ stacks the teams in two rows with their letters on their side, one shows
 logos and two bare numbers, and read as one line by the recogniser alone
 each came back as run-together digits. So the box is found around the game
 clock (the one thing every bug has), each keyframe's box is read piece by
-piece with the full OCR, and the two scores are told by where they sit: the
-two biggest numbers that keep their place and never go down (the shot
-clock runs down, the fouls and timeouts are smaller).
+piece with the full OCR (between full reads, only the pieces that changed:
+BoxReader), and the two scores are told by where they sit: the two biggest
+numbers that keep their place and never go down (the shot clock runs down,
+the fouls and timeouts are smaller).
 
 Nothing is guessed: a jump of more than 3 at once (two baskets between
 readings) is followed without being called a basket, and a video with no
@@ -75,7 +76,10 @@ SLOT_HEIGHT = 0.7        # the two scores are about the same size, the box's big
 TEAM_SHARE = 0.5         # a team's code is read at its place in at least this share of the readings...
 TEAM_SAME = 0.6          # ...as the same code at least this often (a logo reads differently each time)
 TEAM_NEAR = 1.2          # ...on the scores' row, or within this many scores' heights of it
-SAME_BOX = 0.001         # a box with fewer of its pixels changed than this since the last one read reads the same
+CHANGED = 40             # gray levels a pixel of the box must change by to count (keyframes' noise is less)
+OUTSIDE = 0.0003         # more of the box's pixels than this changed outside its pieces: the box is read whole
+PIECE_PAD = 3            # pixels around a piece that count as its own (at the size the OCR reads the box)
+REREAD_SURE = 0.9        # a piece read again alone stands when the recogniser is this sure of it
 
 
 @dataclass
@@ -617,6 +621,78 @@ def from_readings(readings: list[Reading], box: tuple | None = None) -> Scoreboa
     return board
 
 
+class BoxReader:
+    """The pieces of text in each keyframe's box, as scorebug.pieces reads
+    them, at a fraction of the cost. The full OCR (the text search, then the
+    recogniser on each piece) is most of a second a keyframe, and between
+    baskets only the clocks change. So while every pixel that changed since
+    the last full read lies in a piece that read found, only the pieces that
+    changed are read again, by the recogniser alone where they sat
+    (milliseconds each). A change anywhere else (a score grows a digit, a
+    "+3", a caption, the bug hidden), or a piece read again unsurely or with
+    a character more or less (a score mid-roll: real ones read "4U" over
+    "12", or "业"), reads the box whole again, as the full OCR would have.
+    `ocr`: the full OCR, as pieces() takes it; `rec`: the recogniser alone,
+    an image to (text, confidence)."""
+
+    def __init__(self, ocr, rec):
+        self.ocr, self.rec = ocr, rec
+        self.gray = None                    # the box at the last full read
+        self.pieces: list = []              # [(box, text)] that read found
+        self.rects: list = []               # each piece's pixels, (x0, y0, x1, y1)
+
+    def read(self, img) -> list[tuple[tuple, str]]:
+        import cv2
+        import numpy as np
+
+        h, w = img.shape[:2]
+        if h < 64:                          # as pieces() enlarges a small box, so both read the same pixels
+            img = cv2.resize(img, (max(2, round(w * 64 / max(h, 1))), 64), interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if self.gray is not None and gray.shape == self.gray.shape:
+            changed = cv2.absdiff(gray, self.gray) > CHANGED
+            around = [(max(0, y0 - PIECE_PAD), y1 + PIECE_PAD, max(0, x0 - PIECE_PAD), x1 + PIECE_PAD)
+                      for x0, y0, x1, y1 in self.rects]
+            mine = np.zeros_like(changed)
+            for y0, y1, x0, x1 in around:
+                mine[y0:y1, x0:x1] = True
+            if float((changed & ~mine).mean()) <= OUTSIDE:
+                out = []
+                for (box, text), (x0, y0, x1, y1), (ay0, ay1, ax0, ax1) in zip(self.pieces, self.rects, around):
+                    if changed[ay0:ay1, ax0:ax1].any():
+                        try:
+                            again, conf = self.rec(img[y0:y1, x0:x1])
+                        except Exception:
+                            break                   # the full read below stands in
+                        if conf < REREAD_SURE or len(again.replace(" ", "")) != len(text.replace(" ", "")):
+                            break
+                        text = again
+                    out.append((box, text))
+                else:
+                    return out
+        self.pieces = scorebug.pieces(img, self.ocr)
+        h, w = gray.shape
+        self.rects = []
+        for b, _text in self.pieces:
+            x0, y0 = min(max(0, int(b[0] * w)), w - 1), min(max(0, int(b[1] * h)), h - 1)
+            self.rects.append((x0, y0, min(w, max(x0 + 1, round(b[2] * w))), min(h, max(y0 + 1, round(b[3] * h)))))
+        self.gray = gray
+        return list(self.pieces)
+
+
+def recognise(img) -> tuple[str, float]:
+    """One piece of the box read by the recogniser alone (no text search),
+    with the engine the full OCR uses: (text, confidence)."""
+    from analysis import game_text
+
+    if game_text._engine is None:
+        game_text._ocr(img)                 # makes the engine
+    result, _elapsed = game_text._engine(img, use_det=False, use_cls=False, use_rec=True)
+    if not result:
+        return "", 0.0
+    return str(result[0][0]), float(result[0][1])
+
+
 def read(grab, duration: float, find_ocr=None, every: float = EVERY, cancel=None) -> Scoreboard:
     """The game's scoreboard, seeking a frame every `every` seconds. `grab`
     (seconds -> frame) and `find_ocr` stand in for the video and the OCR in
@@ -664,20 +740,10 @@ def read_video(path, duration: float, cancel=None) -> Scoreboard:
         if box is None:
             return Scoreboard()
         found: dict[int, list] = {}
-        last: dict = {}
+        reader = BoxReader(_ocr, recognise)
 
         def on_frame(i: int, img) -> None:
-            # A full OCR is most of a second a keyframe: a box that hasn't
-            # changed since the last one read (the clock stopped for a foul,
-            # a timeout, free throws) reads as that one did.
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            before = last.get("gray")
-            if (before is not None and before.shape == gray.shape
-                    and float((cv2.absdiff(before, gray) > 40).mean()) < SAME_BOX):
-                found[i] = last["pieces"]
-                return
-            found[i] = last["pieces"] = scorebug.pieces(img, _ocr)
-            last["gray"] = gray
+            found[i] = reader.read(img)
 
         try:
             times = scorebug.keyframe_crops(path, box, probe_size(path), on_frame, cancel)

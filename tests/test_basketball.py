@@ -383,14 +383,14 @@ def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
 
     from sports.core import scorebug
 
-    still = np.full((40, 200, 3), 30, dtype=np.uint8)
+    still = np.full((64, 200, 3), 30, dtype=np.uint8)
     noisy = still.copy()
     noisy[::3, ::3] += 20                                  # compression noise: no change
     scored = still.copy()
-    scored[10:30, 150:170] = 250                           # a digit changes: 4% of the box
-    boxes = [still, still, noisy, still, still, scored, scored, scored, still, still, still]
+    scored[10:30, 150:170] = 250                           # a digit changes, past its piece
+    boxes = [still, still, noisy, still, still, scored, scored, scored, scored, scored, scored]
     pieces = {id(still): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.8, 0.8), "101")],
-              id(scored): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.8, 0.8), "103")]}
+              id(scored): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.85, 0.8), "103")]}
     read = []
 
     def crops(path, box, size, on_frame, cancel=None, scale_width=None):
@@ -409,11 +409,49 @@ def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
     monkeypatch.setattr("video.capture.video_capture", capture)
     monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
     monkeypatch.setattr(bb, "find_box", lambda grab, duration, ocr: (0.3, 0.8, 0.7, 0.9))
+    monkeypatch.setattr(bb, "recognise", lambda img: pytest.fail("nothing changed inside a piece"))
     monkeypatch.setattr(scorebug, "keyframe_crops", crops)
     monkeypatch.setattr(scorebug, "pieces", ocr_pieces)
     board = bb.read_video("game.mp4", 22.0)
-    assert [id(img) for img in read] == [id(still), id(scored), id(still)]
+    assert [id(img) for img in read] == [id(still), id(scored)]
     assert len(board.readings) == len(boxes)
+
+
+def test_only_the_pieces_that_changed_are_read_again(monkeypatch):
+    # Between baskets only the clocks change. A change inside a piece the
+    # last full read found is read again by the recogniser alone, where the
+    # piece sat (milliseconds, against most of a second). A change anywhere
+    # else (a score growing a digit), or a piece the recogniser isn't sure
+    # of (a score mid-roll), reads the box whole again.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.core import scorebug
+
+    still = np.full((64, 400, 3), 30, dtype=np.uint8)
+    still[16:48, 20:60] = 250                              # "98"
+    still[16:48, 300:360] = 250                            # "7:46"
+    ticked = still.copy()
+    ticked[20:44, 340:356] = 90                            # the clock's last digit, inside its piece
+    blurred = still.copy()
+    blurred[20:44, 330:356] = 120                          # ...and again, read unsurely
+    grew = still.copy()
+    grew[16:48, 60:80] = 250                               # "101": the score past its piece
+    full = {id(still): [((0.05, 0.25, 0.15, 0.75), "98"), ((0.75, 0.25, 0.9, 0.75), "7:46")],
+            id(blurred): [((0.05, 0.25, 0.15, 0.75), "98"), ((0.75, 0.25, 0.9, 0.75), "7:44")],
+            id(grew): [((0.05, 0.25, 0.2, 0.75), "101"), ((0.75, 0.25, 0.9, 0.75), "7:46")]}
+    read, recognised = [], []
+    monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or full[id(img)])
+
+    def rec(img):
+        recognised.append(img.shape[:2])
+        return ("7:45", 0.95) if len(recognised) == 1 else ("7:4", 0.6)
+
+    reader = bb.BoxReader(ocr=None, rec=rec)
+    texts = [[text for _box, text in reader.read(img)] for img in (still, still, ticked, blurred, grew, grew)]
+    assert texts == [["98", "7:46"], ["98", "7:46"], ["98", "7:45"], ["98", "7:44"], ["101", "7:46"],
+                     ["101", "7:46"]]
+    assert [id(img) for img in read] == [id(still), id(blurred), id(grew)]
+    assert recognised == [(32, 60), (32, 60)]              # the clock's piece alone
 
 
 def test_a_header_over_the_shot_clock_is_no_team():
@@ -673,6 +711,8 @@ def test_court_and_people_are_told_apart():
     crowd = rng.integers(0, 255, (108, 192, 3), dtype=np.uint8)
     assert reactions.looks(court, 0.3, 0.12) == "court"
     assert reactions.looks(crowd, 0.3, 0.12) == "people"
+    # A fade to black between shots is no one's reaction, as with the detector.
+    assert reactions.looks(np.zeros((108, 192, 3), dtype=np.uint8), 0.3, 0.12) == "nobody"
 
 
 def test_the_tallest_person_tells_a_court_shot_from_people():
