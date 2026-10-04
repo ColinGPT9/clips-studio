@@ -59,9 +59,10 @@ CAPTION_LOOK = {
 # shrinks to fit, and a line that still does not fit wraps into a second
 # box of the same kind.
 _MAX_TEXT_W = 0.86       # widest a line of text may be
+_HEAD_TEXT_W = 0.74      # how wide they let a headline get before its type shrinks
 _HEAD_SIZE = 0.093       # headline type size, before fitting
 _HEAD_MIN = 0.056        # smallest it shrinks to before wrapping
-_SUB_RATIO = 0.72        # second line's size against the headline's
+_SUB_RATIO = 0.80        # second line's size against the headline's
 _PAD_X = 0.36            # box padding, in ems of that line's size
 _PAD_Y_HEAD = 0.44       # the headline box is roomier than the second line's
 _PAD_Y_SUB = 0.34
@@ -331,14 +332,16 @@ def _draw_line(face: _Face, text: str, color):
     return strip.crop((0, 0, max(1, x), height)), asc - face.cap, asc
 
 
-def _fit(language: str, text: str, size: int, minimum: int, max_w: int) -> tuple[_Face | None, list[str]]:
-    """The face and the line(s) for one tier: shrink to fit, then wrap into
-    as few lines as fit, each its own box. A single word too wide for the
-    frame shrinks the type further rather than run off the edge."""
+def _fit(language: str, text: str, size: int, minimum: int, target_w: int,
+         max_w: int) -> tuple[_Face | None, list[str]]:
+    """The face and the line(s) for one tier: shrink until the line is no
+    wider than target_w, then wrap what still passes max_w into as few lines
+    as fit, each its own box. A single word too wide for the frame shrinks
+    the type further rather than run off the edge."""
     face = _face(language, size)
     if face is None:
         return None, []
-    while _line_width(face, text) > max_w and face.size > minimum:
+    while _line_width(face, text) > target_w and face.size > minimum:
         face = _face(language, max(minimum, round(face.size * 0.94)))
     if _line_width(face, text) <= max_w:
         return face, [text]
@@ -386,13 +389,14 @@ def render_card(headline: str, subline: str, size: tuple[int, int], out_path: Pa
     tiers = []  # (face, line, text colour, box colour, vertical padding)
     head_face = None
     if head:
-        head_face, lines = _fit(language, head, round(base * _HEAD_SIZE), round(base * _HEAD_MIN), max_w)
+        head_face, lines = _fit(language, head, round(base * _HEAD_SIZE), round(base * _HEAD_MIN),
+                                round(base * _HEAD_TEXT_W), max_w)
         if head_face is None:
             return None
         tiers += [(head_face, line, YELLOW, BLACK, _PAD_Y_HEAD) for line in lines]
     if sub:
         sub_size = round((head_face.size if head_face else base * _HEAD_SIZE) * _SUB_RATIO)
-        sub_face, lines = _fit(language, sub, sub_size, round(sub_size * 0.75), max_w)
+        sub_face, lines = _fit(language, sub, sub_size, round(sub_size * 0.75), max_w, max_w)
         if sub_face is not None:
             tiers += [(sub_face, line, BLACK, YELLOW, _PAD_Y_SUB) for line in lines]
     if not tiers:
