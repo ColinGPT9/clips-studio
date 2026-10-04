@@ -377,14 +377,66 @@ def test_the_card_takes_the_clips_place_and_leaves_nothing_behind(tmp_path, monk
     assert list(tmp_path.iterdir()) == [clip]
 
 
+def _held(monkeypatch, clip, refusals=None):
+    """Hold `clip` open the way Windows does: its rename is refused, every
+    time or the first `refusals` times. Returns the renames tried on it."""
+    real = Path.replace
+    tries = []
+
+    def replace(self, target):
+        if Path(target) == clip:
+            tries.append(self)
+            if refusals is None or len(tries) <= refusals:
+                raise PermissionError(13, "Access is denied", str(target))
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "replace", replace)
+    return tries
+
+
+def test_a_clip_open_in_the_preview_is_written_into_at_once(tmp_path, monkeypatch):
+    """The preview's handle refuses the rename for as long as it is open, so
+    waiting on the rename first only stalls every such clip."""
+    pytest.importorskip("PIL", reason="video/outro.py, which places the clip, needs Pillow")
+    import video.outro
+
+    _fake_overlay(monkeypatch)
+    clip = tmp_path / "f7_clip.mp4"
+    clip.write_bytes(b"as rendered, which was longer")
+    _held(monkeypatch, clip)
+    monkeypatch.setattr(video.outro, "_replace_with_retry",
+                        lambda src, dst: pytest.fail("waited on the rename"))
+    post_style.apply_card(clip, tmp_path / "c.png")
+    assert clip.read_bytes() == b"with the card"
+    assert list(tmp_path.iterdir()) == [clip]
+
+
+def test_a_clip_a_scanner_holds_is_waited_for(tmp_path, monkeypatch):
+    pytest.importorskip("PIL", reason="video/outro.py, which places the clip, needs Pillow")
+    import video.outro
+
+    _fake_overlay(monkeypatch)
+    clip = tmp_path / "f7_clip.mp4"
+    clip.write_bytes(b"as rendered")
+    tries = _held(monkeypatch, clip, refusals=3)
+    monkeypatch.setattr(post_style, "_write_into", lambda new, clip: False)  # a scanner blocks writes too
+    monkeypatch.setattr(video.outro.time, "sleep", lambda seconds: None)
+    post_style.apply_card(clip, tmp_path / "c.png")
+    assert clip.read_bytes() == b"with the card"
+    assert len(tries) == 4
+    assert list(tmp_path.iterdir()) == [clip]
+
+
 def test_a_clip_that_cannot_be_written_says_so_and_leaves_nothing_behind(tmp_path, monkeypatch):
     pytest.importorskip("PIL", reason="video/outro.py, which places the clip, needs Pillow")
     import video.outro
 
     _fake_overlay(monkeypatch)
-    monkeypatch.setattr(video.outro, "_replace_with_retry", lambda src, dst: False)
     clip = tmp_path / "f7_clip.pre-card.mp4"
     clip.write_bytes(b"as rendered")
+    _held(monkeypatch, clip)
+    monkeypatch.setattr(post_style, "_write_into", lambda new, clip: False)
+    monkeypatch.setattr(video.outro, "_replace_with_retry", lambda src, dst: False)
     with pytest.raises(RuntimeError, match="title card"):
         post_style.apply_card(clip, tmp_path / "c.png")
     assert clip.read_bytes() == b"as rendered"

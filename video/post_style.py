@@ -31,6 +31,7 @@ bar, per-clip re-renders and the remote render workers all carry it.
 import functools
 import os
 import re
+import shutil
 import subprocess
 import unicodedata
 from pathlib import Path
@@ -737,15 +738,12 @@ def apply_card(video_path: Path, card_png: Path) -> None:
     """Lay the card over the whole clip, in place. One extra encode, like an
     image watermark (video_editor/watermark.py).
 
-    The new clip takes the old one's place the way the end card's does
-    (video/outro.py): a rename, retried while a scanner holds the file, then
-    a write into the file, which a clip open in the app's preview allows.
-    Raises when neither worked, so the caller says the card was skipped. The
-    full-size copy is never left behind in the clip folder."""
+    Raises when the new clip could not take the old one's place
+    (_into_place), so the caller says the card was skipped. The full-size
+    copy is never left behind in the clip folder."""
     from core.binaries import ffmpeg
     from core.paths import discard
     from video.encoding import CPU_ARGS, using_hardware_encoder, video_encoder_args
-    from video.outro import _replace_with_retry
 
     tmp = video_path.with_suffix(".card.mp4")
     cmd = [
@@ -767,10 +765,49 @@ def apply_card(video_path: Path, card_png: Path) -> None:
             result = subprocess.run(cmd[:i] + CPU_ARGS + cmd[i + len(enc):], capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"title card overlay failed:\n{result.stderr[-1500:]}")
-        if not _replace_with_retry(tmp, video_path):
+        if not _into_place(tmp, video_path):
             raise RuntimeError(f"{video_path.name} is held open elsewhere and could not be "
                                f"replaced or written, so it has no title card")
     finally:
         # discard(), not unlink(): it never raises, so it cannot replace the
         # error above (core/paths.py has the story).
         discard(tmp)
+
+
+def _into_place(new: Path, clip: Path) -> bool:
+    """Put `new` in `clip`'s place, against whatever is holding the clip.
+
+    A rename first: it is atomic, and nothing holds a freshly rendered clip as
+    a rule. When it is refused the likeliest holder is the app's own preview,
+    since with the end card off the card goes on the finished clip, which the
+    user may be watching while they re-render it. On Windows that handle
+    forbids a rename but allows a write, and holds for as long as the preview
+    is open, so write into the file at once rather than wait on the rename
+    (video/outro.py measured both). Only when the write is refused too is it
+    a scanner, which blocks both and clears in seconds: then wait on the
+    rename as the end card does, which writes in place once more at the end.
+    """
+    try:
+        new.replace(clip)
+        return True
+    except PermissionError:
+        pass
+    if _write_into(new, clip):
+        return True
+    from video.outro import _replace_with_retry
+
+    return _replace_with_retry(new, clip)
+
+
+def _write_into(new: Path, clip: Path) -> bool:
+    """Copy `new`'s bytes into `clip`, keeping the file itself. Quiet on
+    failure, which only means the next try in _into_place is the one that
+    counts. `new` stays on disk, so a write cut short is put right by the
+    tries that follow."""
+    try:
+        with open(new, "rb") as src, open(clip, "r+b") as dst:
+            shutil.copyfileobj(src, dst)
+            dst.truncate()
+        return clip.stat().st_size == new.stat().st_size
+    except OSError:
+        return False
