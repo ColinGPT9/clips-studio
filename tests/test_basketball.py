@@ -415,6 +415,7 @@ def _sample(t, balls=(), people=(), cut=False, reaction=False):
 
 
 def test_the_crop_follows_the_ball_and_the_players_around_it():
+    pytest.importorskip("cv2")      # video/framing.py's HoldMove
     from sports.basketball import action
 
     samples = [_sample(i / 5, balls=[(0.5 + i * 0.005, 0.6, 0.8)], people=[(0.52 + i * 0.005, 0.6, 0.05, 0.2)])
@@ -424,6 +425,7 @@ def test_the_crop_follows_the_ball_and_the_players_around_it():
 
 
 def test_the_crop_leans_toward_the_rim_on_a_drive():
+    pytest.importorskip("cv2")      # video/framing.py's HoldMove
     from sports.basketball import action
 
     drive = [_sample(i / 5, balls=[(min(0.9, 0.3 + i * 0.03), 0.5, 0.8)]) for i in range(30)]
@@ -432,6 +434,7 @@ def test_the_crop_leans_toward_the_rim_on_a_drive():
 
 
 def test_the_crop_moves_to_the_reaction_shot():
+    pytest.importorskip("cv2")      # video/framing.py's HoldMove
     from sports.basketball import action
 
     court = [_sample(i / 5, balls=[(0.3, 0.6, 0.8)]) for i in range(10)]
@@ -442,6 +445,7 @@ def test_the_crop_moves_to_the_reaction_shot():
 
 
 def test_a_close_up_is_framed_on_the_player():
+    pytest.importorskip("cv2")      # video/framing.py's HoldMove
     from sports.basketball import action
 
     path, led = action.plan([_sample(i / 5, people=[(0.25, 0.5, 0.3, 0.8)]) for i in range(10)], 0.316)
