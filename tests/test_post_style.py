@@ -157,6 +157,39 @@ def test_the_highlights_style_writes_titles_and_both_card_lines():
 
 # ---- what the review found --------------------------------------------------
 
+_FONTS = Path("/usr/share/fonts")
+_LIBERATION = _FONTS / "truetype/liberation/LiberationSans-Bold.ttf"
+_DEJAVU_BOLD = _FONTS / "truetype/dejavu/DejaVuSans-Bold.ttf"
+_DEJAVU = _FONTS / "truetype/dejavu/DejaVuSans.ttf"
+_NOTO_EMOJI = _FONTS / "truetype/noto/NotoColorEmoji.ttf"
+_CJK = _FONTS / "truetype/wqy/wqy-zenhei.ttc"
+_LATIN_ONLY = _FONTS / "opentype/tlwg/Loma-Bold.otf"  # Latin and Thai, no Hebrew
+
+
+def _need(*fonts):
+    pytest.importorskip("PIL", reason="the card is drawn with Pillow, which CI does not install")
+    for font in fonts:
+        if not font.exists():
+            pytest.skip(f"needs {font.name}")
+
+
+@pytest.fixture
+def windows_fonts(tmp_path, monkeypatch):
+    """A Windows fonts folder whose files are fonts this machine has, so the
+    face lists' Windows names can be tried here."""
+    fonts = tmp_path / "Windows" / "Fonts"
+    fonts.mkdir(parents=True)
+    monkeypatch.setenv("WINDIR", str(fonts.parent))
+
+    def add(name, real):
+        _need(real)
+        try:
+            (fonts / name).symlink_to(real)
+        except OSError:
+            shutil.copyfile(real, fonts / name)
+
+    return add
+
 
 def test_rank_and_jersey_numbers_are_not_hashtags():
     from analysis.metadata import _clean_card_line
@@ -165,6 +198,156 @@ def test_rank_and_jersey_numbers_are_not_hashtags():
     assert post_style.card_text("#23 went off #nba #2k25 #ゴール") == "#23 WENT OFF"
     assert _clean_card_line("#1 PICK COOKED HIM😭 #nba", 40) == "#1 PICK COOKED HIM😭"
     assert _clean_card_line("GOAT #2k25 #ゴール", 40) == "GOAT"
+
+
+def test_symbols_are_emoji_only_where_a_phone_draws_them_as_emoji():
+    runs = post_style._runs
+    assert runs("WHAT WAS THAT⁉\ufe0f") == [("WHAT WAS THAT", False), ("⁉\ufe0f", True)]
+    assert runs("WHAT‼") == [("WHAT", False), ("‼", True)]
+    assert runs("BIG MOVE▪\ufe0f") == [("BIG MOVE", False), ("▪\ufe0f", True)]
+    assert runs("TOP 1\ufe0f\u20e3 PLAY") == [("TOP ", False), ("1\ufe0f\u20e3", True), (" PLAY", False)]
+    # Arrows, stars and the wavy dash are typography unless U+FE0F asks.
+    assert runs("LEBRON → LAKERS ★") == [("LEBRON → LAKERS ★", False)]
+    assert runs("NEXT ➡\ufe0f") == [("NEXT ", False), ("➡\ufe0f", True)]
+    assert runs("すごい〰") == [("すごい〰", False)]
+    # A sequence is one emoji: a family, a skin tone, a flag.
+    family, thumb, flag = "\U0001F468\u200d\U0001F469\u200d\U0001F467", "\U0001F44D\U0001F3FD", "\U0001F1FA\U0001F1F8"
+    assert post_style._EMOJI_CLUSTER.findall(family + thumb + flag) == [family, thumb, flag]
+
+
+def test_a_line_breaks_only_between_whole_characters():
+    assert post_style._clusters("E\u0301A1\ufe0f\u20e3\U0001F44D\U0001F3FD") == [
+        "E\u0301", "A", "1\ufe0f\u20e3", "\U0001F44D\U0001F3FD"]
+    may = post_style._may_break
+    assert may("試", "合") and may("A", "試")
+    assert not may("A", "B")                       # a Latin word stays whole
+    assert not may("合", "。") and not may("「", "試") and not may("合", "ー")  # kinsoku
+    assert not may("合", "\U0001F525")              # an emoji stays with what it follows
+    assert not may("경", "기")                      # Korean breaks at its spaces
+
+
+def test_right_to_left_is_decided_by_the_language_and_the_letters():
+    assert post_style._is_rtl("هدف رائع", "ar")
+    assert post_style._is_rtl("שער מטורף", "en")     # starts in Hebrew, whatever the language
+    assert not post_style._is_rtl("GOAL\U0001F525", "ar")  # nothing right to left in it
+    assert not post_style._is_rtl("GOAL BY محمد", "en")
+
+
+def test_every_language_ends_on_broad_fallback_faces():
+    fallbacks = [name for name, _, _ in post_style._FALLBACK_FACES]
+    for language in ("en", "he", "ja", "hi", "ar", "th", "ko"):
+        names = [name for name, _, _ in post_style._faces_for(language)]
+        assert set(fallbacks) <= set(names) and len(names) == len(set(names))
+    japanese = [name for name, _, _ in post_style._faces_for("ja")]
+    assert japanese[0] == "YuGothB.ttc" and japanese[-len(fallbacks):] == fallbacks
+
+
+def test_a_cjk_headline_wraps_between_characters_inside_the_frame(tmp_path, windows_fonts):
+    windows_fonts("YuGothB.ttc", _CJK)
+    from PIL import Image
+
+    headline = "今日の試合で彼が見せたプレーは本当に信じられないほど素晴らしかったし観客も総立ち"
+    png = post_style.render_card(headline, "", (1080, 1920), tmp_path / "c.png", language="ja")
+    box = Image.open(png).getbbox()
+    assert box[0] > 0 and box[2] < 1080
+    assert _boxes(png)[0][1] - _boxes(png)[0][0] > 150  # more than one line
+    # 95 characters, the most a title can be: still inside the frame, in a
+    # few lines, smaller.
+    face, lines = post_style._fit("ja", "あ" * 95, 100, 60, 799, 929)
+    assert 1 < len(lines) <= post_style._MAX_LINES
+    assert all(post_style._line_width(face, line) <= 929 for line in lines)
+    assert "".join(lines) == "あ" * 95
+
+
+def test_no_line_is_ever_wider_than_the_frame():
+    _need()
+    if post_style._face("en", 60)[0] is None:
+        pytest.skip("needs a Latin face")
+    face, lines = post_style._fit("en", "A" * 400, 100, 60, 799, 929)
+    assert 1 < len(lines) <= post_style._MAX_LINES
+    assert all(post_style._line_width(face, line) <= 929 for line in lines)
+    assert lines[-1].endswith("…")
+
+
+def _emoji_columns(strip):
+    """The x of every column with an emoji's ink: opaque, and not the yellow text."""
+    w, h = strip.size
+    px = strip.load()
+    return [x for x in range(w) if any(
+        px[x, y][3] > 200 and abs(px[x, y][0] - 245) + abs(px[x, y][1] - 250) + px[x, y][2] > 90
+        for y in range(h))]
+
+
+def test_a_right_to_left_line_is_laid_out_from_the_right():
+    _need(_DEJAVU_BOLD, _NOTO_EMOJI)
+    if not post_style._raqm():
+        pytest.skip("needs Pillow with raqm")
+    face, _ = post_style._face("ar", 100, "هدف رائع")
+    assert face is not None
+    strip, _, _ = post_style._draw_line(face, "هدف رائع\U0001F525", post_style.YELLOW, rtl=True)
+    assert max(_emoji_columns(strip)) < strip.width * 0.3  # the end of the sentence is its left
+
+    # Split by an emoji: the first word is the right one.
+    strip, _, _ = post_style._draw_line(face, "هدف\U0001F525رائع", post_style.YELLOW, rtl=True)
+    first, second = (round(face.font.getlength(word) * face.squeeze) for word in ("هدف", "رائع"))
+    emoji_left = min(_emoji_columns(strip))
+    assert abs(emoji_left - second) < abs(emoji_left - first)
+
+
+def test_without_raqm_a_right_to_left_card_is_not_drawn(tmp_path, monkeypatch):
+    _need()
+    monkeypatch.setattr(post_style, "_raqm", lambda: False)
+    monkeypatch.setattr(post_style, "_emoji_cache", {})
+    assert post_style.render_card("هدف رائع\U0001F525", "", (1080, 1920), tmp_path / "c.png",
+                                  language="ar") is None
+    assert post_style.render_card("שער מטורף", "", (1080, 1920), tmp_path / "c.png", language="he") is None
+    if post_style._face("en", 60)[0] is not None:
+        assert post_style.render_card("GOAL\U0001F525", "", (1080, 1920), tmp_path / "c.png") is not None
+
+
+def test_an_emoji_the_emoji_font_lacks_is_never_a_box(tmp_path, monkeypatch):
+    # DejaVu Sans as the emoji font: an outline font whose .notdef is a drawn
+    # box, as Segoe UI Emoji's is. It has no 🫡.
+    _need(_DEJAVU, _NOTO_EMOJI)
+    monkeypatch.setattr(post_style, "_emoji_cache", {"font": post_style._Emoji(_DEJAVU, 64)})
+    assert post_style._emoji_font().cell("\U0001FAE1") is None
+    png = post_style.render_card("SALUTE\U0001FAE1", "", (1080, 1920), tmp_path / "c.png")
+    from PIL import Image, ImageChops
+
+    im = Image.open(png).convert("RGBA")
+    blue, alpha = (im.getchannel(c).point(lambda v: 255 if v > 128 else 0) for c in "BA")
+    assert ImageChops.multiply(blue, alpha).getbbox() is None  # nothing white: yellow on black only
+
+    # With the real emoji font: a symbol it lacks is drawn as text when the face has it.
+    monkeypatch.setattr(post_style, "_emoji_cache", {})
+    face = post_style._Face(_DEJAVU_BOLD, None, 1.0, 60)
+    assert [kind for kind, _, _ in post_style._parts(face, "★\ufe0f")] == ["text"]
+
+
+def test_emoji_keep_their_designed_size():
+    _need(_LIBERATION, _NOTO_EMOJI)
+    face = post_style._Face(_LIBERATION, None, 0.82, 100)
+    widths = {value: w for kind, value, w in post_style._parts(face, "3➖0\U0001F440\U0001F62D")
+              if kind == "emoji"}
+    # A flat minus is one emoji wide, not a slab three and a half wide.
+    assert widths["➖"] == widths["\U0001F62D"]
+    emoji, height = post_style._emoji_font(), post_style._emoji_height(face)
+    smiley = emoji.image("\U0001F600", height).getbbox()
+    assert abs((smiley[3] - smiley[1]) - height) <= 2  # a smiley's ink is the height asked for
+    assert emoji.image("➖", height).height == emoji.image("\U0001F525", height).height
+    # A keycap is drawn as one emoji, not a plain digit.
+    if post_style._raqm():
+        assert [kind for kind, _, _ in post_style._parts(face, "1\ufe0f\u20e3")] == ["emoji"]
+
+
+def test_a_face_without_the_scripts_letters_is_passed_over(windows_fonts):
+    windows_fonts("impact.ttf", _LATIN_ONLY)
+    _need(_LIBERATION)
+    face, text = post_style._face("he", 60, "שער מטורף")
+    assert face is not None and face.path.name != "impact.ttf"
+    assert all(post_style._has_glyph(face.path, ch) for ch in "שערמטורף")
+    face, _ = post_style._face("en", 60, "GOAL")
+    assert face.path.name == "impact.ttf"  # a Latin card still gets the first face
 
 
 def _fake_overlay(monkeypatch):
