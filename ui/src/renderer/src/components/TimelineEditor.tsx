@@ -38,6 +38,7 @@ import {
 import CaptionStyleControls, {
   DEFAULT_CAPTION_STYLE,
   PostStyleControls,
+  burnedCaptionStyle,
   headlineFromTitle,
   isHighlights
 } from './CaptionStyleControls'
@@ -805,7 +806,12 @@ export default function TimelineEditor({
             })
           }
         }
-        captions = { lines: applyTextEdits(base), style: captionStyle }
+        // Drawn as it will burn in: on a Highlights clip, in that style's
+        // own font, colour and place, not the ones in its caption style.
+        captions = {
+          lines: applyTextEdits(base),
+          style: burnedCaptionStyle(captionStyle, isLandscape)
+        }
       }
       if (hookPending || captions) {
         // Old text already burned into the preview file — the overlay blurs
@@ -819,7 +825,7 @@ export default function TimelineEditor({
           keep,
           burned:
             captions && captionsBurned && captionBase
-              ? { lines: captionBase, style: storedStyle }
+              ? { lines: captionBase, style: burnedCaptionStyle(storedStyle, isLandscape) }
               : null,
           burnedHook: hookPending && baked?.hook?.text ? { seconds: baked.hook.seconds } : null
         }

@@ -4,7 +4,7 @@ import type { Clip, LiveOverlay, TranslationPreview, WatermarkConfig } from '../
 import { Scissors, YouTube } from './icons'
 import LiveTextOverlay from './LiveTextOverlay'
 import TimelineEditor from './TimelineEditor'
-import { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
+import { DEFAULT_CAPTION_STYLE, burnedCaptionStyle } from './CaptionStyleControls'
 import { youtubeEnabledSync } from '../lib/youtube'
 
 /** Live, draggable watermark preview over the editor video. Shows the
@@ -161,11 +161,17 @@ export default function EditorView({
     setTranslated(null)
   }, [clip.id])
 
+  // The captions as burned into the clip file: a Highlights clip's are in
+  // that style's own look and place, whatever its saved style says, and
+  // that is where the mask below has to go.
+  const captionStyle = burnedCaptionStyle(
+    { ...DEFAULT_CAPTION_STYLE, ...clip.render_opts?.caption_style },
+    isLandscape
+  )
   /** What LiveTextOverlay draws. A translated language being previewed wins
    *  over the pending-edit overlay: it is what the creator asked to look at,
    *  and it reuses the same masking so the English already burned into the
    *  clip file is blurred out underneath instead of ghosting through. */
-  const captionStyle = { ...DEFAULT_CAPTION_STYLE, ...clip.render_opts?.caption_style }
   const overlay: LiveOverlay | null = translated
     ? {
         hook: null,

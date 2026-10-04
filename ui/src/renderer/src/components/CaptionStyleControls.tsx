@@ -28,10 +28,32 @@ export const CAPTION_FONTS = [
   'Courier New'
 ]
 
+/** The look a Highlights clip's captions burn in, whatever its own style
+ *  says (video/post_style.py CAPTION_LOOK). Size and words per caption stay
+ *  the user's. */
+const HIGHLIGHTS_CAPTION_LOOK = {
+  font: 'Impact',
+  color: '#F5FA00',
+  uppercase: true,
+  position: 'middle',
+  highlight: false
+} as const
+
 /** Whether a style draws the Highlights look. Never on a 16:9 clip: the
  *  renderer applies the post style to vertical clips only. */
 export function isHighlights(style: CaptionStyle, landscape = false): boolean {
   return style.post_style === 'highlights' && !landscape
+}
+
+/** The caption style a clip really burns with, as
+ *  video/post_style.caption_style_for decides it. The editor's live preview
+ *  draws pending captions, and masks the ones already burned, with this, so
+ *  a Highlights clip's are drawn where and how they actually are. */
+export function burnedCaptionStyle(
+  style: Required<CaptionStyle>,
+  landscape = false
+): Required<CaptionStyle> {
+  return isHighlights(style, landscape) ? { ...style, ...HIGHLIGHTS_CAPTION_LOOK } : style
 }
 
 /** A hashtag as video/post_style.card_text drops it from a card line: a #
