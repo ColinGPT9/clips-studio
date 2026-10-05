@@ -401,6 +401,15 @@ a three, and which team scored. The commentary's name for it stands when the poi
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
 between readings) isn't called a basket.
 
+**Each keyframe at its own time.** Decoding only the keyframes, ffmpeg dates a
+picture by the next keyframe's packet once one comes out of the decoder out of
+order (B-frames, an open GOP): on an NBA game, 9 of 10 keyframes were dated
+1.5-5 s late and two came out swapped, so a score was dated a keyframe after it
+showed and an older one could follow it. ffprobe, decoding the same keyframes
+alongside, lists each picture's own time beside the one ffmpeg gave it; when the
+two lists match, the reader (and the cutaways) take the own times
+(`sports/basketball/keyframes.py`; soccer's reader is unchanged).
+
 **Dated just before the new score.** A bug changes seconds after a basket, so
 the crowd is searched from 10 s before the old score was last read up to the
 new one, not the 25 s before the new score it used to be: in a highlights

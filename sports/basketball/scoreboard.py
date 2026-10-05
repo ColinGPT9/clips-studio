@@ -28,6 +28,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 
+from sports.basketball import keyframes
 from sports.core import scorebug
 
 # The period: "1ST", "2ND QTR", "Q3", "4TH", "OT", "2OT", "OT2", "1ST HALF", "H2".
@@ -849,7 +850,8 @@ def read_video(path, duration: float, cancel=None) -> Scoreboard:
             found[i] = reader.read(img)
 
         try:
-            times = scorebug.keyframe_crops(path, box, probe_size(path), on_frame, cancel)
+            with keyframes.listing(path) as own:
+                times = own(scorebug.keyframe_crops(path, box, probe_size(path), on_frame, cancel))
         except OSError:
             times = []
         # A basket is a few seconds of play: keyframes further apart than

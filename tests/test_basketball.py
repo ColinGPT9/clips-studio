@@ -1273,6 +1273,31 @@ def test_the_scoreboard_s_graphic_is_found_past_its_text():
     assert action.bug_edge(_looks(np, moving=False), box) == pytest.approx(box[1] - 0.5 * (box[3] - box[1]))
 
 
+def test_each_keyframe_is_dated_by_its_own_time_not_the_next_ones():
+    """ffprobe's listing of an open-GOP video's keyframes, decoded as the
+    reader decodes them: once one came out of order, ffmpeg dated each
+    picture by the next keyframe's packet (and the first came out third)."""
+    from sports.basketball import keyframes
+
+    listing = "\n".join([
+        "pts_time=2.585917|best_effort_timestamp_time=2.585917",
+        "pts_time=16.232883|best_effort_timestamp_time=16.232883",
+        "pts_time=0.000000|best_effort_timestamp_time=17.667650",
+        "pts_time=22.439083|best_effort_timestamp_time=22.422400",
+        "pts_time=17.684333|best_effort_timestamp_time=25.475450",
+        "pts_time=N/A|best_effort_timestamp_time=31.598233",
+    ])
+    ffmpeg = [2.58592, 16.2329, 17.6677, 22.4224, 25.4755, 31.5982]       # showinfo's 6 digits
+    assert keyframes.own_times(ffmpeg, listing) == [2.586, 16.233, 0.0, 22.439, 17.684, 31.5982]
+    # ffmpeg counts from the file's start time (here 1.5 s); ffprobe doesn't.
+    later = "\n".join(f"pts_time={own + 1.5}|best_effort_timestamp_time={best + 1.5}"
+                       for own, best in [(0.5, 0.5), (4.0, 2.0), (2.0, 4.0)])
+    assert keyframes.own_times([0.5, 2.0, 4.0], later) == [0.5, 4.0, 2.0]
+    # A listing that isn't the same pictures leaves ffmpeg's times as they were.
+    assert keyframes.own_times(ffmpeg, listing.replace("25.475450", "27.0")) is ffmpeg
+    assert keyframes.own_times(ffmpeg, "") is ffmpeg
+
+
 def _court_looks(np, see_through=0.0, n=14):
     """Gray 480x270 looks at a wide shot: moving players over rows 0-160, a
     floor that hardly moves below them with a sideline across it (about rows

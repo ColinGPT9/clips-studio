@@ -135,6 +135,7 @@ def read_shots(path, duration: float, court_share: float, crowd_edges: float, ca
     one pass: the detector's people when `tall` is given and the detector
     loads, else the colour and edges of a small thumbnail."""
     from core.modes import probe_size
+    from sports.basketball import keyframes
     from sports.core.scorebug import keyframe_crops
 
     model = None
@@ -153,13 +154,15 @@ def read_shots(path, duration: float, court_share: float, crowd_edges: float, ca
             _balls, people = detect(model, img, DETECT_WIDTH)
             kinds[i] = shot_kind(people, tall)
 
-        times = keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path), on_frame, cancel,
-                               scale_width=DETECT_WIDTH)
     else:
-        times = keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path),
-                               lambda i, img: kinds.__setitem__(i, looks(img, court_share, crowd_edges)),
-                               cancel, scale_width=THUMB_WIDTH)
-    return [(t, kinds[i]) for i, t in enumerate(times) if i in kinds]
+        def on_frame(i, img):
+            kinds[i] = looks(img, court_share, crowd_edges)
+
+    with keyframes.listing(path) as own:
+        times = own(keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path), on_frame, cancel,
+                                   scale_width=DETECT_WIDTH if model is not None else THUMB_WIDTH))
+    # By their own times, two keyframes can swap places.
+    return sorted(((t, kinds[i]) for i, t in enumerate(times) if i in kinds), key=lambda shot: shot[0])
 
 
 # ---- a name, only from the broadcast's own caption --------------------------------
