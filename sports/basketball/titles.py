@@ -27,21 +27,36 @@ LEAD = r"(?:leads?|leading|ahead|in\s+front|on\s+top)"
 # Words between a team and "lead" that make it the other side's: "the Thunder cut the lead".
 CUT = set("cut cuts cutting trim trims trimming narrow narrows narrowing shrink shrinks shrinking chip chips "
           "chipping slice slices eat eats into reduce reduces reducing whittle whittles erase erases erasing "
-          "end ends ending snap snaps wipe wipes overturn overturns stop stops halt halts flip flips".split())
+          "end ends ending snap snaps wipe wipes overturn overturns stop stops halt halts flip flips "
+          "lose loses losing lost blow blows blowing blew give gives giving gave surrender surrenders "
+          "surrendered relinquish relinquishes relinquished squander squanders squandered".split())
+# Words between a team and "lead" that start another clause ("the Warriors answer but the Mavericks lead").
+JOINS = set("but and as while yet though although after before until when since because or nor than".split())
+# "Mavericks Up 2!": a lead, as a headline gives it.
+UP = r"up\s+(?:by\s+)?(?:\d{1,2}|" + "|".join(NUMBERS) + r"|big|double[- ](?:digits?|figures))"
 TRAIL = r"(?:trails?|trailing|behind|down\s+(?:by\s+)?" + _N + r")"
 TIE = re.compile(r"\b(?:ties?|tied|tying|knots?|knotted|evens?\s+(?:it|the\s+score|things)|all\s+square"
                  r"|levels?\s+(?:it|the\s+score)|squares?\s+(?:it|things)|squared)\b", re.I)
 UNTIE = re.compile(r"\b(?:break(?:s|ing)?\s+(?:the|a)\s+tie|tie[- ]?break(?:er|ing)?|untie)", re.I)
-GO_AHEAD = re.compile(r"\b(?:take[sn]?\s+(?:the\s+|a\s+)?lead|took\s+(?:the\s+|a\s+)?lead|taking\s+(?:the\s+|a\s+)?lead"
+GO_AHEAD = re.compile(r"\b(?:(?:take[sn]?|took|taking|grab(?:s|bed|bing)?|seiz(?:e|es|ed|ing)|snatch(?:es|ed|ing)?"
+                      r"|claim(?:s|ed|ing)?)\s+(?:the\s+|a\s+|an\s+)?(?:(?:early|narrow|slim|first|late|brief)\s+)?lead"
                       r"|go(?:es)?[- ]ahead|went\s+ahead|(?:move[sd]?|pull(?:s|ed)?|surge[sd]?|jump(?:s|ed)?"
-                      r"|edge[sd]?|nose[sd]?|inch(?:es|ed)?)\s+ahead|lead\s+change|(?:retake[sn]?|regain(?:s|ed)?)\s+"
-                      r"the\s+lead)\b", re.I)
+                      r"|edge[sd]?|nose[sd]?|inch(?:es|ed)?)\s+(?:ahead|in\s+front)|lead\s+change"
+                      r"|(?:retake[sn]?|regain(?:s|ed)?)\s+the\s+lead)\b", re.I)
 # The game won by this basket: only a game winner, or the last basket of a game the scorers won...
-WIN = re.compile(r"\b(?:game[- ]winn(?:er|ing)|winn(?:er|ing)\s+(?:shot|basket|bucket|three|dunk|layup)"
-                 r"|wins?\s+(?:it|the\s+game|game)|won\s+(?:it|the\s+game))\b", re.I)
+WIN = re.compile(r"\b(?:game[- ]winn(?:er|ing)|winn(?:er|ing)\s+(?:shot|basket|bucket|three|dunk|layup|free\s+throws?)"
+                 r"|wins?\s+(?:it|the\s+game|game)|won\s+(?:it|the\s+game)|for\s+the\s+(?:win|victory)"
+                 r"|(?:gets?|getting|got|grabs?|grabbed|earns?|earned|claims?|claimed)\s+(?:the|a|an|their|its)\s+"
+                 r"(?:[\w'’-]+\s+){0,2}?(?:win|victory|w))\b", re.I)
 # ...and put away: also a basket in the last two minutes by the team that went on to win.
 SEAL = re.compile(r"\b(?:seal(?:s|ed|ing)?\s+(?:it|the\s+(?:win|game|deal|victory)|game)|clinch(?:es|ed|ing)?"
-                  r"|ices?\s+(?:it|the\s+game)|iced|puts?\s+(?:it|the\s+game)\s+away|dagger)\b", re.I)
+                  r"|ices?\s+(?:it|the\s+game)|iced|puts?\s+(?:it|the\s+game)\s+away|dagger"
+                  r"|(?:secur|lock|nail|wrap|seal|ic)\w*\s+(?:up\s+|down\s+)?(?:(?:the|a|an|their|its)\s+)?"
+                  r"(?:[\w'’-]+\s+){0,2}?(?:win|victory|w)"
+                  r"|clos(?:e|es|ed|ing)\s+(?:it|the\s+game|things|the\s+win|the\s+victory)\s+out"
+                  r"|clos(?:e|es|ed|ing)\s+out\s+(?:the\s+)?(?:game|win|victory|contest|it)"
+                  r"|out\s+of\s+reach|on\s+ice|lock(?:s|ed|ing)?\s+(?:it|the\s+game)\s+up"
+                  r"|finish(?:es|ed|ing)?\s+(?:them|it|the\s+(?:job|game))\s+off|victor(?:y|ies|ious))\b", re.I)
 # Words that put the scorers behind after the basket ("Harper's Three Keeps
 # Hope Alive" on an NBA game, for a team 12 up), coming back from behind,
 # or pulling away from a lead they didn't have.
@@ -87,6 +102,41 @@ MARGINS = [re.compile(p, re.I) for p in (
     r"\bwithin\s+" + _N + r"\b",
 )]
 SCORE_LINE = re.compile(r"\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b")
+# A lead grown or cut "by" so many points: by the basket's own points ("increasing
+# their lead by four points" for a three that took it from 1 to 4).
+BY_CHANGE = re.compile(r"\b(?:extend|stretch|pad|widen|increas|build|grow|push|bump|boost|cut|trim|narrow|shrink"
+                       r"|reduc|slash|chop)\w*\s+(?:it|(?:the|their|its|his|her|a|an)\s+(?:[\w'’-]+\s+)?"
+                       r"(?:lead|advantage|cushion|margin|deficit|gap|edge|hole))\s+by\s+" + _N + r"\b", re.I)
+# The start of a game, which the 3rd quarter on isn't ("Mavericks Take the Early
+# Lead!", "start strong", with 5:19 left in the 3rd).
+EARLY = re.compile(r"\b(?:early\s+(?:lead|advantage|edge|cushion|run|statement|momentum|tone|spark|surge|burst|push"
+                   r"|stages|going|minutes)|(?:start(?:s|ing|ed)?|get(?:s|ting)?\s+off)\s+(?:strong|fast|hot|quick(?:ly)?)"
+                   r"|(?:strong|fast|hot|quick|flying)\s+start|set(?:s|ting)?\s+the\s+tone|out\s+of\s+the\s+gate"
+                   r"|opening\s+(?:minutes|basket|bucket|score|points|salvo|stretch))\b", re.I)
+# The quarter, the half, overtime and the time left, as a title or description gives them.
+ORDINALS = {"1st": 1, "first": 1, "2nd": 2, "second": 2, "3rd": 3, "third": 3, "4th": 4, "fourth": 4,
+            "final": 4, "last": 4}
+QUARTER = re.compile(r"\b(1st|first|2nd|second|3rd|third|4th|fourth|final|last)\s+(?:quarter|qtr|frame)\b", re.I)
+HALF = re.compile(r"\b(1st|first|2nd|second)\s+half\b", re.I)
+HALFTIME = re.compile(r"\b(?:(?:before|at|end\s+of|heading\s+into|going\s+into)\s+(?:the\s+)?(?:half|halftime|half-time)"
+                      r"|halftime\s+(?:buzzer|horn|lead))\b", re.I)
+OVERTIME = re.compile(r"\b(?:[Oo]vertime|OVERTIME|[Ee]xtra\s+(?:period|session)|OT)\b")
+SHOT_CLOCK = r"(?!\s+(?:on|of|in)\s+the\s+shot[- ]?clock)"       # time on the shot clock is another clock
+SECONDS_LEFT = re.compile(r"\b(\d{1,2}(?:\.\d)?|" + "|".join(NUMBERS) + r")\s+(?:seconds?|secs?|ticks?)\s+"
+                          r"(?:left|remaining|to\s+go|to\s+play|on\s+the\s+clock)\b" + SHOT_CLOCK, re.I)
+MINUTES_LEFT = re.compile(r"\b(\d{1,2}|" + "|".join(NUMBERS) + r"|a)\s+minutes?\s+(?:left|remaining|to\s+go|to\s+play"
+                          r"|on\s+the\s+clock)\b", re.I)
+SECONDS_TO_GO = re.compile(r"\b(?:(?:just|only|mere|a\s+few|few|final|closing|dying|last|waning)\s+seconds"
+                           r"|seconds\s+(?:left|remaining|to\s+go|to\s+play))\b" + SHOT_CLOCK, re.I)
+MINUTES_TO_GO = re.compile(r"\b(?:(?:just|only|mere|a\s+few|few)\s+)?minutes\s+(?:left|remaining|to\s+go|to\s+play)\b",
+                           re.I)
+LAST_MINUTE = re.compile(r"\b(?:final|last|closing)\s+minute\b", re.I)
+BUZZER = re.compile(r"\b(?:buzzer[- ]?beat(?:er|ing)|beats?\s+the\s+(?:buzzer|horn)|at\s+the\s+(?:buzzer|horn)"
+                    r"|as\s+time\s+(?:expires|runs\s+out)|no\s+time\s+left)\b", re.I)
+# Words before a name that are no first name ("guard Schroder", "Lakers star Reaves").
+ROLES = set("""guard forward center centre big star superstar veteran rookie sharpshooter shooter captain legend
+reserve sixth man sub coach then now later again also still even just only finally meanwhile
+""".split())
 # Clips written again in one call: the title writer's own batch (analysis/metadata.py),
 # which numbers its clips from 0, so each "CLIP k" rule meets its own clip.
 AT_ONCE = 8
@@ -109,6 +159,7 @@ class Play:
     late_win: bool = False  # in the last minutes, by the team that won, ahead after it
     aliases: tuple = ()     # every name the scorers go by ("Spurs", "San Antonio Spurs", "San Antonio")
     other_aliases: tuple = ()
+    overtime: bool = False  # the game went to overtime (the bug read a period past the last)
 
     @property
     def after(self) -> int:
@@ -148,6 +199,10 @@ def problems(play: Play, meta, names=None) -> list[str]:
     if names is not None and _wrong_names(play, (title, card), description, names):
         out.append(f"The commentary says {play.scorer} scored it: name only {play.scorer}, or no one."
                    if play.scorer else "The commentary doesn't say who scored it: name no player.")
+    elif names is not None and _added_name(play, (title, card), description, names):
+        out.append(f"The commentary calls the scorer {play.scorer}: name the scorer only that way, "
+                   "with no first name it doesn't give.")
+    out += _time(play, text)
     if names is not None and not (play.team and play.other) and _team_named(text, names):
         out.append("The scoreboard doesn't say which team scored it: name no team.")
     return list(dict.fromkeys(out))
@@ -164,6 +219,8 @@ def _state(play: Play, text: str) -> list[str]:
     """Who leads after the basket, and by how much, as the text says it."""
     us, them = play.aliases or (play.team,), play.other_aliases or (play.other,)
     after = play.after
+    by = list(BY_CHANGE.finditer(text))
+    changed = any(_number(m.group(1)) != play.points for m in by)
     wrong = (
         (after <= 0 and _leads(text, us, erased=False))
         or (after >= 0 and _leads(text, them, erased=play.took_lead))
@@ -173,12 +230,27 @@ def _state(play: Play, text: str) -> list[str]:
         or (after > 0 and BEHIND.search(text) is not None)
         or (play.before > 0 and CAME_BACK.search(text) is not None)
         or (play.before <= 0 and EXTEND.search(text) is not None)
-        or _wrong_margin(text, abs(after))
+        or _wrong_margin(text, abs(after), skip=[m.span() for m in by])
         or _wrong_score(text, play)
+        or changed
     )
     if not wrong:
         return []
-    return [f"After it {_score_words(play)}."]
+    out = [f"After it {_score_words(play)}."]
+    if changed:
+        out.append(f"{_cap(_the(play.team))} were {_margin_words(play.before)} before it and "
+                   f"{_margin_words(after)} after it: it was worth {play.points}.")
+    return out
+
+
+def _margin_words(margin: int) -> str:
+    """ "up 4", "down 2", "level"."""
+    return f"up {margin}" if margin > 0 else f"down {-margin}" if margin < 0 else "level"
+
+
+def _number(word: str) -> int:
+    word = word.lower()
+    return int(float(word)) if word[:1].isdigit() else NUMBERS.get(word, 1 if word == "a" else -1)
 
 
 def _score_words(play: Play) -> str:
@@ -201,9 +273,9 @@ def _leads(text: str, team: tuple, *, erased: bool) -> bool:
     names = "|".join(re.escape(t) for t in team if t)
     if not names:
         return False
-    for m in re.finditer(rf"\b(?:{names})(?:['’]s?)?((?:\s+[\w'’-]+){{0,2}}?)\s+{LEAD}\b", text, re.I):
+    for m in re.finditer(rf"\b(?:{names})(?:['’]s?)?((?:\s+[\w'’-]+){{0,3}}?)\s+(?:{LEAD}|{UP})\b", text, re.I):
         between = {w.lower() for w in m.group(1).split()}
-        if between & CUT:
+        if between & (CUT | JOINS):
             continue
         if m.group(0).lower().rstrip().endswith(("lead", "leads", "leading")) and re.search(r"['’]s?\s", m.group(0)):
             # "the Spurs' lead": the lead is theirs, unless it was just ended.
@@ -219,10 +291,13 @@ def _trails(text: str, team: tuple) -> bool:
     return bool(names) and re.search(rf"\b(?:{names})(?:\s+(?:still|now))?\s+{TRAIL}\b", text, re.I) is not None
 
 
-def _wrong_margin(text: str, margin: int) -> bool:
-    """A lead or deficit given as other than `margin` points ("a Spurs three-point lead" when it's 5)."""
+def _wrong_margin(text: str, margin: int, skip=()) -> bool:
+    """A lead or deficit given as other than `margin` points ("a Spurs three-point lead" when it's 5),
+    leaving out the spans in `skip` (a lead grown "by" so many points: the basket's)."""
     for pattern in MARGINS:
         for m in pattern.finditer(text):
+            if any(a <= m.start() < b for a, b in skip):
+                continue
             n = m.group(1).lower()
             if (int(n) if n.isdigit() else NUMBERS[n]) != margin:
                 return True
@@ -299,6 +374,85 @@ def _same(word: str, scorer: str) -> bool:
         if word == part or (min(len(word), len(part)) >= 4 and word[:4] == part[:4]):
             return True
     return False
+
+
+def _added_name(play: Play, titles: tuple, description: str, names) -> bool:
+    """A first name before the scorer's that the commentary doesn't say with
+    it and the video's own text doesn't spell with it: one the title writer
+    made up ("Dennis Schroder" for the commentary's "Schroeder") or another
+    player's ("Vincent Raves": the passer's name on the shooter's)."""
+    if not play.scorer:
+        return False
+    own = {w.lower() for w in _WORD.findall(play.scorer)}
+    for text, sentences in [*((t, False) for t in titles), (description, True)]:
+        found = list(_WORD.finditer(text or ""))
+        for prev, cur in zip(found, found[1:]):
+            first, name = prev.group(0), cur.group(0)
+            low = first.lower()
+            if (not _same(name, play.scorer) or not first[:1].isupper() or bare(first) != first or low in own
+                    or text[prev.end():cur.start()].strip() or low in NOT_NAMES or low in names.teams or low in ROLES
+                    or (low, bare(name).lower()) in names.pairs):
+                continue
+            if names.is_name(first):
+                return True             # another player's name, or one the commentary never says with this one
+            if sentences and not names.lower[low] and not (first.isupper() and len(first) <= 4):
+                return True             # in a description, a capitalised word the commentary never says
+    return False
+
+
+def _clock(play: Play) -> tuple[str, float | None]:
+    """("Q4", 6.0) for a basket at "Q4 0:06"; ("Q4", None) without the clock; ("", None) unknown."""
+    period, _, left = (play.when or "").partition(" ")
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", left.strip())
+    return period, (int(m.group(1)) * 60 + int(m.group(2)) if m else None)
+
+
+def _time(play: Play, text: str) -> list[str]:
+    """The quarter, the half, overtime and the time left as the text gives
+    them, against the clock where the basket went in; and an early lead or a
+    strong start from the 3rd quarter on ("Mavericks Take the Early Lead!",
+    5:19 into the 3rd), or "just minutes remaining" with 6 seconds left."""
+    period, left = _clock(play)
+    if period not in PERIODS:
+        return []
+    halves = period.startswith("H")
+    n = 5 if period == "OT" else int(period[1])
+    last = 2 if halves else 4
+    wrong = any(halves or ORDINALS[m.group(1).lower()] != n for m in QUARTER.finditer(text))
+    half = n if halves else (1 if n <= 2 else 2 if n <= 4 else 0)
+    wrong |= any(ORDINALS[m.group(1).lower()] != half for m in HALF.finditer(text))
+    wrong |= HALFTIME.search(text) is not None and half != 1
+    extra = (OVERTIME.search(text) is not None and period != "OT"
+             and not (play.overtime and play.after == 0 and n == last))
+    if left is not None:
+        wrong |= any(left >= 60 or abs(_number(m.group(1)) - left) > 2 for m in SECONDS_LEFT.finditer(text))
+        wrong |= any(left < max(30, (_number(m.group(1)) - 1) * 60) or left > (_number(m.group(1)) + 1) * 60
+                     for m in MINUTES_LEFT.finditer(text))
+        wrong |= SECONDS_TO_GO.search(text) is not None and left >= 60
+        wrong |= MINUTES_TO_GO.search(text) is not None and left < 60
+        wrong |= LAST_MINUTE.search(text) is not None and left > 61
+        wrong |= play.kind != "buzzer_beater" and left > 3 and any(
+            "shot clock" not in text[max(0, m.start() - 12):m.start()].lower().replace("-", " ")
+            for m in BUZZER.finditer(text))
+    out = []
+    if wrong or extra:
+        when = (f"with {_left_words(left)} left in the {PERIODS[period]}" if left is not None
+                else f"in the {PERIODS[period]}")
+        out.append(f"It came {when}" + (" and the game didn't go to overtime" if extra and not play.overtime else "")
+                   + ": say that, or nothing about the time.")
+    second = 2 if halves else 3                 # the period after halftime: its first minutes start a half
+    if EARLY.search(text) and n >= second and not (n == second and left is not None
+                                                    and left >= (1020 if halves else 540)):
+        out.append(f"It came in the {PERIODS[period]}, not early in the game: "
+                   "don't call it an early lead or a strong start.")
+    return out
+
+
+def _left_words(left: float) -> str:
+    """ "6 seconds", "5:19"."""
+    if left < 60:
+        return "1 second" if int(left) == 1 else f"{int(left)} seconds"
+    return f"{int(left) // 60}:{int(left) % 60:02d}"
 
 
 # ---- written from the play itself --------------------------------------

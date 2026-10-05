@@ -57,6 +57,8 @@ SAID_AFTER = 5.0
 POINTS_KINDS = {"made_2", "made_3", "free_throw"}
 # Kinds the scoreboard's situation names, never the commentary alone.
 SITUATIONS = {"game_winner", "buzzer_beater", "game_tying", "go_ahead", "clutch_shot"}
+# The Highlights choices of a game's best moments, which a plain free throw isn't.
+BEST = {"best", "plays_reactions"}
 
 
 @dataclass
@@ -157,6 +159,12 @@ class BasketballProfile(SportProfile):
         # with the commentator's sentence when it is that close.
         for e in events:
             e.start, e.end = speech_edges(segments, e.start, e.end, video_end)
+        # A plain free throw is none of a game's best moments: one that ties
+        # the game, puts a team ahead or wins it late is typed so, and one the
+        # person listed stays. On a 79-minute NBA game two of the ten clips
+        # were single free throws ("Lakers Still Trail by Three").
+        if (self.option or {}).get("highlights", "best") in BEST:
+            events = [e for e in events if e.type != "free_throw" or "from your match events" in e.signals]
         return events
 
     def _celebration(self, e, change, board) -> float | None:
@@ -465,11 +473,13 @@ class BasketballProfile(SportProfile):
             more = [*row[3], *(c for c in row[2] if c in self._letters)] if row is not None else []
             return tuple(dict.fromkeys([team, *full, *(c for c in cities if c), *more]))
 
+        overtime = board is not None and any(r.period is not None and r.period > board.last_period()
+                                             for r in board.readings)
         return titles.Play(points=points, kind=e.type, shot=titles.shot_words(e.type, points),
                            team=change.team or "", other=change.other or "", mine=mine, theirs=theirs,
                            before=change.before[side] - change.before[1 - side], when=e.when or "",
                            scorer=e.player or "", sealed=sealed, late_win=late_win, aliases=aliases(change.team or ""),
-                           other_aliases=aliases(change.other or ""))
+                           other_aliases=aliases(change.other or ""), overtime=overtime)
 
     def check_titles(self, candidates: list, metas: list, rewrite) -> list:
         """Each basket clip's title and description held to its play, and

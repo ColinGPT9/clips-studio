@@ -557,6 +557,16 @@ def find_clips(
     # squeeze it out. Without a direction the order is the score, as always.
     first = ((lambda c: (clip_intent.is_required(c), c.score))
              if intent is not None or sport is not None else None)
+    # A sport that clips one play at a time (basketball): two clips of two
+    # confirmed plays are never one for the commentary they share. On an NBA
+    # game the winning basket, 20 s after the tying three, shared its
+    # commentator's sentence and was left out as a repeat of it.
+    two_plays = None
+    if sport is not None and getattr(sport, "one_play_per_clip", False):
+        def two_plays(c, k) -> bool:
+            a, b = sport_attached.get(id(c)), sport_attached.get(id(k))
+            return (a is not None and b is not None and a.confirmed and b.confirmed
+                    and not a.is_replay and not b.is_replay and a.group != b.group)
     finalists, rejections = highlights._select_unique(
         candidates, segments,
         min_score=clips_cfg["min_score"],
@@ -565,6 +575,7 @@ def find_clips(
         max_text_similarity=analysis_cfg["max_text_similarity"],
         max_segment_reuse=analysis_cfg["max_segment_reuse"],
         **({"priority": first} if first is not None else {}),
+        **({"distinct": two_plays} if two_plays is not None else {}),
     )
     rejections += [Rejection(c, reason) for c, reason in sport_dropped]
 

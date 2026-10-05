@@ -217,7 +217,12 @@ def _select_unique(
     max_text_similarity: float,
     max_segment_reuse: float,
     priority=None,  # order to choose in, best first; the score when not given
+    distinct=None,  # (candidate, kept) -> True when they show two different moments
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
+    """`distinct`: two candidates it says show two different moments are
+    never one for the words they share, only for overlapping in time
+    (basketball: one play a clip, and a game winner 20 s after the tying
+    three shares its commentator's sentence). Without it, as always."""
     kept: list[ClipCandidate] = []
     rejections: list[Rejection] = []
     claimed_segments: set[int] = set()
@@ -232,7 +237,7 @@ def _select_unique(
 
         rejection = _check_against_kept(
             c, kept, segments, claimed_segments,
-            max_overlap, max_text_similarity, max_segment_reuse,
+            max_overlap, max_text_similarity, max_segment_reuse, distinct,
         )
         if rejection:
             rejections.append(rejection)
@@ -252,15 +257,20 @@ def _check_against_kept(
     max_overlap: float,
     max_text_similarity: float,
     max_segment_reuse: float,
+    distinct=None,
 ) -> Rejection | None:
     for k in kept:
         if c.overlap_ratio(k) > max_overlap:
             return Rejection(c, "timestamp_overlap", kept=k)
+        if distinct is not None and distinct(c, k):
+            continue
         if _text_similarity(c, k, segments) > max_text_similarity:
             return Rejection(c, "transcript_similarity", kept=k)
 
     covered = _covered_segments(c, segments)
     if covered:
+        if distinct is not None:
+            claimed_segments = set().union(*(_covered_segments(k, segments) for k in kept if not distinct(c, k)))
         reuse = len(covered & claimed_segments) / len(covered)
         if reuse > max_segment_reuse:
             return Rejection(c, "segment_reuse")

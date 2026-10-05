@@ -840,8 +840,18 @@ def test_made_two_and_three_come_from_the_score_bug():
 
 
 def test_a_free_throw_is_one_point():
-    m = _moments(_profile(), board=_board([(300, 0, 1)]))
+    m = _moments(_profile("custom"), board=_board([(300, 0, 1)]))
     assert [e.type for e in m if e.confirmed] == ["free_throw"]
+
+
+def test_a_plain_free_throw_is_none_of_a_games_best_moments():
+    """On a 79-minute NBA game two of the ten clips were single free throws
+    ("Lakers Still Trail by Three"). A game's best moments leave a plain one
+    out; one that ties the game late is a game-tying moment, and stays."""
+    for choice in ("best", "plays_reactions"):
+        assert not [e for e in _moments(_profile(choice), board=_board([(300, 0, 1)])) if e.confirmed]
+    late = _moments(_profile(), board=_board([(300, 0, 1)], period=4, start_clock=330.0, start=(99, 100)))
+    assert [e.type for e in late if e.confirmed] == ["game_tying"]
 
 
 def test_the_commentary_names_a_dunk_and_the_bug_confirms_it():
@@ -1836,6 +1846,31 @@ def _names():
      "they already led"),
     ({"mine": 107, "theirs": 95, "before": 9}, "The Spurs Rally!", "Marsh buries the three.", "they already led"),
     ({}, "Marsh Extends the Lead", "Marsh hits the three.", "still trail 52-53"),
+    # ...and a 79-minute game's and a 16-minute one's, after the first round of fixes.
+    ({"mine": 61, "theirs": 63, "before": -5}, "Spurs Up 2!", "The Spurs take a two-point lead.", "still trail 61-63"),
+    ({"team": "Thunder", "other": "Spurs", "mine": 63, "theirs": 61, "before": -1, "scorer": "", "points": 2,
+      "shot": "bucket", "aliases": ("Thunder",), "other_aliases": ("Spurs",)},
+     "Spurs Up 2!", "A bucket.", "they took the lead"),
+    ({"mine": 72, "theirs": 69, "before": 1, "points": 2, "shot": "bucket", "scorer": "", "when": "Q3 5:19"},
+     "Spurs Take the Early Lead!", "The Spurs start strong.", "they already led"),
+    ({"mine": 72, "theirs": 69, "before": 1, "points": 2, "shot": "bucket", "scorer": "", "when": "Q3 5:19"},
+     "Spurs Take the Early Lead!", "The Spurs start strong, establishing an early advantage.",
+     "not early in the game"),
+    ({"mine": 102, "theirs": 98, "before": 1}, "Marsh From Deep!",
+     "Marsh hits a three, increasing their lead by four points.", "up 1 before it and up 4 after it"),
+    ({"mine": 90, "theirs": 97, "before": -8, "points": 1, "shot": "free throw", "kind": "free_throw", "scorer": "",
+      "when": "Q4 6:52"}, "Spurs Secure Free Throw Win", "The Spurs close out the game at the line.",
+     "didn't win or seal"),
+    ({"mine": 90, "theirs": 97, "before": -8, "points": 1, "shot": "free throw", "kind": "free_throw", "scorer": "",
+      "when": "Q4 6:52"}, "Spurs at the Line", "A free throw, securing the victory.", "didn't win or seal"),
+    ({"mine": 113, "theirs": 113, "before": -3, "kind": "game_tying", "when": "Q4 0:06"},
+     "Game-Tying Shot by Marsh!", "Marsh ties it at 113 with just minutes remaining.",
+     "6 seconds left in the 4th quarter"),
+    ({"mine": 113, "theirs": 113, "before": -3, "kind": "game_tying", "when": "Q4 0:06"},
+     "Marsh Forces Overtime!", "Marsh ties it at 113.", "didn't go to overtime"),
+    ({"when": "Q3 5:19"}, "Marsh Cuts It to 1", "Marsh hits a three in the fourth quarter.", "in the 3rd quarter"),
+    ({"when": "Q2 3:40"}, "Marsh Cuts It to 1", "Marsh's three with 50 seconds left.", "3:40 left"),
+    ({"when": "Q2 3:40"}, "Marsh Beats the Buzzer!", "Marsh's three.", "3:40 left"),
 ])
 def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wrong):
     from sports.basketball import titles
@@ -1856,11 +1891,52 @@ def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wr
     ({}, "Marsh Keeps Hope Alive", "Marsh hits the three to cut into the lead. The Thunder still lead 53-52."),
     ({"mine": 55, "theirs": 53, "before": -1}, "The Spurs Complete the Comeback!",
      "Marsh's three gives the Spurs the lead."),
+    ({"mine": 123, "theirs": 111, "before": 9, "when": "Q4 1:30"}, "Marsh's Three Puts the Spurs Up 12",
+     "Marsh hits a three with 1:30 left. The Spurs lead, 123-111."),
+    ({"mine": 102, "theirs": 98, "before": 1}, "Marsh From Deep!", "Marsh hits a three, extending the Spurs' lead by 3."),
+    ({"mine": 113, "theirs": 113, "before": -3, "kind": "game_tying", "when": "Q4 0:06"},
+     "Game-Tying Shot by Marsh!", "Marsh ties it at 113 with 6 seconds left in the fourth quarter."),
+    ({"mine": 113, "theirs": 113, "before": -3, "kind": "game_tying", "when": "Q4 0:06", "overtime": True},
+     "Marsh Forces Overtime!", "Marsh ties it at 113 in the final seconds."),
+    ({"mine": 30, "theirs": 24, "before": 3, "when": "Q1 4:00"}, "Marsh From Deep",
+     "Marsh drills a three, pushing the Spurs' early lead to 6."),
+    ({"when": "Q2 0:53"}, "Marsh Cuts It to 1 Before the Half",
+     "Ruiz finds Marsh, who hits the three in the 2nd quarter. The Thunder still lead 53-52."),
+    ({"mine": 72, "theirs": 69, "before": 1, "points": 2, "shot": "bucket", "scorer": "", "when": "Q3 5:19"},
+     "Spurs Stay in Front", "The Spurs hold the lead in the third quarter, a shot-clock buzzer-beater."),
+    ({"when": "Q2 3:40"}, "Marsh Cuts It to 1", "Marsh hits a three with 5 seconds left on the shot clock."),
+    ({"mine": 72, "theirs": 69, "before": 1, "points": 2, "shot": "bucket", "scorer": "", "when": "Q3 10:30"},
+     "Spurs Out of the Gate", "The Spurs come out of the gate strong after halftime."),
 ])
 def test_a_title_true_to_its_play_stays(play, title, description):
     from sports.basketball import titles
 
     assert titles.problems(_play(**play), _meta(title, description), _names()) == []
+
+
+def test_a_first_name_the_commentary_doesnt_give_the_scorer_is_caught():
+    """On a 79-minute NBA game a description gave a scorer the commentary
+    calls "Schroeder" a first name it never says, and another joined the
+    passer's name to the shooter's ("Vincent Raves"). A first name stays
+    only as the commentary says it with the name, or as the video's own
+    description spells it; a passer named apart, or a word like "guard",
+    is no first name."""
+    from sports.basketball import commentary, titles
+
+    talk = [_said_at(10, "over to Okafor, out to Marsh, Marsh the three! Kai Ruiz with the rebound, Ruiz again")]
+    names = commentary.Names(talk, known="Jay Marsh", teams=("Spurs", "Thunder"))
+
+    def found(scorer, description, title="From Deep!"):
+        return titles.problems(_play(scorer=scorer), _meta(title, description), names)
+
+    added = "with no first name it doesn't give"
+    assert any(added in p for p in found("Marsh", "Okafor Marsh hits the three."))
+    assert any(added in p for p in found("Ruiz", "Leo Ruiz hits the three."))
+    assert any("name only Ruiz" in p for p in found("Ruiz", "Ruiz hits the three.", title="Okafor Ruiz From Deep!"))
+    for scorer, description in (("Marsh", "Jay Marsh hits the three."), ("Marsh", "Okafor finds Marsh for three."),
+                                ("Ruiz", "Kai Ruiz hits the three."), ("Ruiz", "Spurs guard Ruiz hits the three."),
+                                ("Ruiz", "The Spurs' Ruiz hits the three.")):
+        assert found(scorer, description) == [], description
 
 
 def test_a_title_written_from_the_play_says_only_what_it_holds():
@@ -2542,6 +2618,48 @@ def test_the_final_dunk_after_a_layup_gets_a_clip_of_its_own_through_the_scorer(
     assert "dunk" in shown
     dunk = shown["dunk"]
     assert dunk.start <= 841 - 7 and dunk.end >= 841 + 18                # the play, then the celebration
+
+
+def test_the_winning_basket_after_the_tying_three_keeps_its_clip_through_the_scorer(monkeypatch):
+    """A 79-minute NBA game's ending: a three tied it with 6 seconds left and
+    the winning basket came at 0:00, 20 s later in the video, one sentence
+    of commentary running over both. The tying three's clip was kept first,
+    and the winner's was left out as a repeat of it for sharing that
+    sentence. Two plays are two clips, however much they share."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from analysis import fusion, highlights
+
+    tying = _said_at(812.0, "Curry for three to tie it, got it! Tie game, six seconds left, Lakers ball, Reaves "
+                            "drives, lays it in and the Lakers win it", 1.56)
+    after = _said_at(851.0, "Austin Reaves at the buzzer, what a finish on Christmas Day", 1.9)
+    segs = sorted([tying, after] + [s for s in _segments({}) if s.end <= 812 or s.start >= 870],
+                  key=lambda s: s.start)
+
+    def score_windows(_segments, _llm, windows, **_k):
+        return [ClipCandidate(start=a, end=b, score=55, hook="w", source="signal") for a, b in windows]
+
+    monkeypatch.setattr(highlights, "find_highlights", lambda *_a, **_k: (
+        [ClipCandidate(start=806.0, end=828.0, score=95, hook="h", reason="r")], []))
+    monkeypatch.setattr(highlights, "score_windows", score_windows)
+    monkeypatch.setattr(fusion, "reaction_for_window", lambda *_a, **_k: 0.5)
+    config = {
+        "clips": {"min_duration": 10, "max_duration": 60, "min_score": 40, "max_clips_per_video": 0,
+                  "sport": {"name": "basketball", "highlights": "best"}},
+        "analysis": {"chunk_seconds": 600, "chunk_overlap_seconds": 30, "long_video_threshold_seconds": 3600,
+                     "max_overlap": 0.4, "max_text_similarity": 0.7, "max_segment_reuse": 0.4},
+        "scoring": {"rerank_pool": 0, "read_screen": False},
+        "tracking": {"detector": "yolov8n.pt"},
+    }
+    profile = sports.profile_for(config)
+    profile.board = _board([(824, 1, 3), (844, 0, 2)], period=4, start_clock=830.0, teams=("LAL", "GS"),
+                           start=(113, 110))
+    profile.cutaways, profile.curves = [], _curves()
+    kept, rejected = fusion.find_clips("game.mp4", segs, _Says(), config,
+                                       signals=({"spike": np.zeros(N)}, {"motion": np.zeros(N)}),
+                                       measure_reaction=False, sport=profile)
+    shown = {c.subscores.get("sport_event") for c in kept if (c.subscores or {}).get("sport_t")}
+    assert {"game_tying", "game_winner"} <= shown, [(r.candidate.start, r.reason) for r in rejected]
 
 
 # ---- names: what Whisper listens for ------------------------------------------------

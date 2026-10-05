@@ -133,15 +133,23 @@ class Names:
     def __init__(self, segments, known: str = "", teams=()):
         self.upper: Counter = Counter()
         self.lower: Counter = Counter()
+        # Two names said or spelled one after the other, in lower case: a
+        # first name and the name after it ("keldon", "johnson").
+        self.pairs: set[tuple[str, str]] = set()
+        prev = None
         for w in words(segments):
             word = bare(w.text)
             if not word[:1].isalpha():
+                prev = None
                 continue
             if word[0].isupper():
                 if not w.start:
                     self.upper[word.lower()] += 1
+                if prev is not None and prev.text[:1].isupper() and not prev.pause:
+                    self.pairs.add((bare(prev.text).lower(), word.lower()))
             else:
                 self.lower[word.lower()] += 1
+            prev = w
         self.teams = {p.lower() for team in teams for p in _WORD.findall(str(team or ""))}
         self.known: dict[str, str] = {}           # lower case -> as the description spells it
         for phrase in str(known or "").split(","):
@@ -149,6 +157,7 @@ class Names:
             if parts and not any(p.lower() in self.teams for p in parts):
                 for p in parts:
                     self.known[p.lower()] = p
+                self.pairs |= {(a.lower(), b.lower()) for a, b in zip(parts, parts[1:])}
 
     def is_name(self, word: str) -> bool:
         """Whether `word` names a player (in any case: a title's "PARKER'S" too)."""
