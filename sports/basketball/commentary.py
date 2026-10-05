@@ -62,7 +62,14 @@ PASSED = re.compile(r"\b(?:kicks? (?:it )?out(?:side)?|kicked (?:it )?out(?:side
 # take it. Caruso will for the lead, got it" is Caruso's three).
 TAKEN_BACK_BEFORE = re.compile(r"\b(?:(?:thought|thinks?|thinking) about|pass(?:es|ed|ing)? (?:up|on)"
                                r"|turn(?:s|ed|ing)? down|eye[sd]|eyeing|(?:pump[- ]?)?fak(?:e|es|ed|ing)"
-                               r"|instead of|rather than|contest(?:s|ed|ing)?|block(?:s|ed|ing)?|den(?:y|ies|ied))$")
+                               r"|instead of|rather than|contest(?:s|ed|ing)?|block(?:s|ed|ing)?|den(?:y|ies|ied)"
+                               r"|miss(?:es|ed)?)$")
+# ...or say it didn't happen, a few words before: "Stephon can't finish, but
+# Keldon Johnson does!" isn't Stephon's basket.
+NOT_BEFORE = re.compile(r"\b(?:can['’]?t|cannot|couldn['’]?t|could not|didn['’]?t|did not|doesn['’]?t|does not"
+                        r"|won['’]?t|wouldn['’]?t|unable|fail(?:s|ed)?)\b")
+# A miss said to be no miss: "doesn't miss", "can't miss", "never misses".
+NO_MISS = re.compile(r"\b(?:can['’]?t|doesn['’]?t|didn['’]?t|does not|did not|won['’]?t|never) miss(?:es|ed)?\b")
 TAKEN_BACK_AFTER = re.compile(r"\b(?:(?:didn['’]?t|doesn['’]?t|did not|does not|won['’]?t|wouldn['’]?t)"
                               r" (?:take|shoot|go|fall|drop|let|pull)|no good|nope"
                               r"|(?<!['’]t )(?<!nt )(?<!not )(?<!never )miss(?:es|ed)?|short(?! corner)"
@@ -240,12 +247,14 @@ def _unknown(w: Word, names: Names) -> bool:
 
 def _taken_back(said: list[Word], named: list[int], first: int, last: int) -> bool:
     """Whether the words just before or after the call take it back: "thought
-    about the three, didn't take it", "for three, no good". Never past the
-    sentence, or past the next player named (who may be the one who missed)."""
+    about the three, didn't take it", "can't finish", "for three, no good".
+    Never past the sentence, or past the next player named (who may be the
+    one who missed)."""
     i = first
     while i > max(0, first - 3) and not said[i].start:
         i -= 1
-    if TAKEN_BACK_BEFORE.search(" ".join(w.text.lower() for w in said[i:first])):
+    prior = " ".join(NO_MISS.sub(" ", " ".join(w.text.lower() for w in said[i:first])).split())
+    if TAKEN_BACK_BEFORE.search(prior) or NOT_BEFORE.search(prior):
         return True
     after = []
     for k in range(last + 1, min(len(said), last + 1 + TAKEN_BACK)):

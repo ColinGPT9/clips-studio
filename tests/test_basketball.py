@@ -1573,7 +1573,11 @@ def test_a_shot_the_commentary_takes_back_is_no_ones_basket():
     talk = [_said_at(10, "a board for Holgren, and Holgren again, to Caruso"),
             _said_at(30, "Caruso the pitch. Holgren thought about the three, didn't take it. Caruso will for the lead, got it,"),
             _said_at(60, "Holgren for three, no good. Caruso with the board"),
-            _said_at(90, "Holgren for three, didn't miss, Caruso can't believe it")]
+            _said_at(90, "Holgren for three, didn't miss, Caruso can't believe it"),
+            _said_at(120, "Holgren can't finish, but Caruso does!"),
+            _said_at(150, "Holgren misses the three, Caruso for three, got it"),
+            _said_at(180, "he can't miss tonight, Holgren for three"),
+            _said_at(210, "Holgren doesn't miss the three")]
     names = commentary.Names(talk, teams=("Thunder",))
 
     def who(t, points):
@@ -1583,6 +1587,10 @@ def test_a_shot_the_commentary_takes_back_is_no_ones_basket():
     assert who(35, 3) == "Caruso"
     assert who(62, 3) == ""                    # no good
     assert who(91, 3) == "Holgren"             # "didn't miss" says it went in
+    assert who(121, 2) == ""                   # an NBA game named the player who couldn't finish
+    assert who(153, 3) == "Caruso"
+    assert who(182, 3) == "Holgren"
+    assert who(211, 3) == "Holgren"
 
 
 def test_a_name_whisper_didnt_know_before_the_call_names_no_one():
