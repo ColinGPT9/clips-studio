@@ -389,7 +389,7 @@ hidden), when a number that changed shows another digit read wider (99 to 100),
 every eight keyframes, and after a full read that caught the bug moving (its
 pieces not where the read before found them, a score half rolled in). On five
 test games laid out like the NBA bugs, four of them see-through over a moving
-picture, that read 70% of keyframes quickly, 2 to 3 times faster, with every
+picture, that read 70% of keyframes quickly, about twice as fast, with every
 score the same as the full OCR's but one, in the first seconds of one game, that
 the full OCR itself only just caught; and the game clock more often (the full
 OCR sometimes runs it into the shot clock, "9:17:16"). On nine more, checked
