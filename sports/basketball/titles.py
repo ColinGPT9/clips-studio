@@ -67,6 +67,13 @@ BEHIND = re.compile(r"\b(?:(?:keeps?|keeping|kept)\s+(?:them|it|things|the\s+[\w
                     r"|(?:clos(?:e|es|ing|ed)|narrow(?:s|ing|ed)?)\s+the\s+gap"
                     r"|(?:pull(?:s|ing|ed)?|inch(?:es|ing|ed)?|creep(?:s|ing)?|crept|gets?|getting|edg(?:e|es|ing|ed)"
                     r"|mov(?:e|es|ing|ed))\s+closer|mak(?:e|es|ing)\s+it\s+(?:a\s+game|interesting))\b", re.I)
+# Words that have the scorers come off worse on their own basket: on a
+# 79-minute NBA game "Warriors Struggle!" and "the Warriors continue to fall
+# behind", for a Warriors basket that cut the Lakers' lead from 6 to 4.
+SLUMP = (r"(?:struggl(?:e|es|ed|ing)|falter(?:s|ed|ing)?|stumbl(?:e|es|ed|ing)|sputter(?:s|ed|ing)?"
+         r"|slump(?:s|ed|ing)?|collaps(?:e|es|ed|ing)|crumbl(?:e|es|ed|ing)"
+         r"|(?:fall(?:s|ing)?|fell|drop(?:s|ped|ping)?|slip(?:s|ped|ping)?)\s+(?:further\s+|farther\s+)?behind"
+         r"|(?:los(?:e|es|ing)|lost)\s+(?:ground|touch|steam))")
 CAME_BACK = re.compile(r"\b(?:come[- ]?backs?|rall(?:y|ies|ying|ied)"
                        r"|(?:fight(?:s|ing)?|fought|claw(?:s|ing|ed)?|battl(?:e|es|ing|ed)|storm(?:s|ing|ed)?"
                        r"|roar(?:s|ing|ed)?)\s+back)\b", re.I)
@@ -221,6 +228,7 @@ def _state(play: Play, text: str) -> list[str]:
     after = play.after
     by = list(BY_CHANGE.finditer(text))
     changed = any(_number(m.group(1)) != play.points for m in by)
+    slumped = _slumps(text, us, them)
     wrong = (
         (after <= 0 and _leads(text, us, erased=False))
         or (after >= 0 and _leads(text, them, erased=play.took_lead))
@@ -233,6 +241,7 @@ def _state(play: Play, text: str) -> list[str]:
         or _wrong_margin(text, abs(after), skip=[m.span() for m in by])
         or _wrong_score(text, play)
         or changed
+        or slumped
     )
     if not wrong:
         return []
@@ -240,6 +249,8 @@ def _state(play: Play, text: str) -> list[str]:
     if changed:
         out.append(f"{_cap(_the(play.team))} were {_margin_words(play.before)} before it and "
                    f"{_margin_words(after)} after it: it was worth {play.points}.")
+    if slumped:
+        out.append(f"{_cap(_the(play.team))} scored it: don't say they struggle or fall behind.")
     return out
 
 
@@ -282,6 +293,28 @@ def _leads(text: str, team: tuple, *, erased: bool) -> bool:
             before = text[max(0, m.start() - 30):m.start()].lower().split()[-3:]
             if erased and set(before) & CUT:
                 continue
+        return True
+    return False
+
+
+def _slumps(text: str, team: tuple, other: tuple) -> bool:
+    """Whether `text` has `team` struggling or falling behind ("Warriors
+    Struggle!", "the Warriors continue to fall behind"), which a basket of
+    theirs never shows. Not when the words between start another clause or
+    name the other side ("the Warriors stun the struggling Lakers"), or end
+    it ("the Warriors snap their slump", "Curry ends the Warriors' slump")."""
+    names = "|".join(re.escape(t) for t in team if t)
+    theirs = "|".join(re.escape(t) for t in other if t)
+    if not names:
+        return False
+    for m in re.finditer(rf"\b(?:{names})(?:['’]s?)?((?:\s+[\w'’-]+){{0,3}}?)\s+{SLUMP}\b", text, re.I):
+        between = {w.lower() for w in m.group(1).split()}
+        if between & (CUT | JOINS) or (theirs and re.search(rf"\b(?:{theirs})\b", m.group(1), re.I)):
+            continue
+        if theirs and re.match(rf"\s+(?:the\s+)?(?:{theirs})\b", text[m.end():], re.I):
+            continue
+        if set(text[max(0, m.start() - 30):m.start()].lower().split()[-3:]) & CUT:
+            continue
         return True
     return False
 

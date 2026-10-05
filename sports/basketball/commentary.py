@@ -9,12 +9,13 @@ player named last before the words that say the ball went in ("hit for
 Johnson": the one named after them). No one is named when a pass nobody
 is named for comes between ("kicks it out, bang"), when two players are,
 or when the name is one Whisper heard only once and the video's own
-description doesn't spell ("Fussell", for the last dunk): no name rather
-than a wrong one, and never from who is on screen. Words said well before
-the basket belong to the play before it, words the commentary takes back
-("thought about the three, didn't take it") say nothing, and a name
-Whisper didn't know between them and the name before ("Williams, pitched
-it outside. Swarer's hit the 3!") stops the search there."""
+description doesn't spell ("Fussell", for the last dunk), or one a letter
+off a name it does spell ("Reeves" and "Raves", for its "Reaves"): no
+name rather than a wrong one, and never from who is on screen. Words said
+well before the basket belong to the play before it, words the commentary
+takes back ("thought about the three, didn't take it") say nothing, and a
+name Whisper didn't know between them and the name before ("Williams,
+pitched it outside. Swarer's hit the 3!") stops the search there."""
 
 import re
 from collections import Counter
@@ -173,14 +174,36 @@ class Names:
 
     def sure(self, word: str) -> bool:
         """A name to print: spelled by the video's own description, or said
-        at least twice. "Fussell" (Vassell, heard once) is not."""
+        at least twice and not a letter off a name the description spells.
+        "Fussell" (Vassell, heard once) is not, nor "Reeves" or "Raves" (63
+        and 3 times in a 79-minute game's commentary, for its "Reaves")."""
         low = bare(word).lower()
-        return low in self.known or self.upper[low] >= 2
+        if low in self.known:
+            return True
+        return self.upper[low] >= 2 and not any(_near(low, k) for k in self.known)
 
     def spelled(self, word: str) -> str:
         """`word` as the description spells it, else as Whisper wrote it."""
         word = bare(word)
         return self.known.get(word.lower(), word)
+
+
+def _near(a: str, b: str) -> bool:
+    """Whether two names are a letter apart (two, from 7 letters): Whisper's
+    "Reeves" or "Raves" for "Reaves", "Holgren" for "Holmgren"."""
+    if a == b or min(len(a), len(b)) < 4 or abs(len(a) - len(b)) > 2:
+        return False
+    return _distance(a, b) <= (2 if min(len(a), len(b)) >= 7 else 1)
+
+
+def _distance(a: str, b: str) -> int:
+    """The letters to add, drop or change to make `a` into `b`."""
+    row = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        prev, row[0] = row[0], i
+        for j, y in enumerate(b, 1):
+            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (x != y))
+    return row[-1]
 
 
 def scorer(segments, t: float, points: int, names: Names, lo: float | None = None,

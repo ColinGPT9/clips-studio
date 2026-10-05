@@ -1669,6 +1669,33 @@ def test_a_name_whisper_didnt_know_before_the_call_names_no_one():
     assert who(121, 2) == "Williams"
 
 
+def test_a_name_a_letter_off_the_descriptions_names_no_one():
+    """On a 79-minute NBA game the commentary wrote the player the video's
+    description spells "Reaves" as "Reeves" 63 times and "Raves" 3 times, and
+    a title went out naming "Raves". A name a letter off one the description
+    spells is Whisper mishearing it: no name rather than a wrong one, and not
+    the description's spelling put in its place, since it may be another
+    player's ("Jovic" beside a description's "Jokic")."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "over to Reeves, Reeves the three!"),
+            _said_at(40, "a lob to Raves, Raves lays it in"),
+            _said_at(70, "and Reaves for three, got it"),
+            _said_at(100, "over to Marsh, Marsh the three!")]
+    names = commentary.Names(talk, known="Austin Reaves, Los Angeles Lakers", teams=("Lakers", "Los Angeles Lakers"))
+
+    def who(t, points):
+        return commentary.scorer(talk, t, points, names, lo=t - 20, hi=t + 20)
+
+    assert names.is_name("Reeves") and names.is_name("Raves")
+    assert not names.sure("Reeves") and not names.sure("Raves") and names.sure("Reaves") and names.sure("Marsh")
+    assert who(13, 3) == "" and who(43, 2) == ""
+    assert who(72, 3) == "Reaves"
+    assert who(103, 3) == "Marsh"
+    assert commentary._near("fussell", "vassell") and not commentary._near("brown", "braun")
+    assert not commentary._near("fox", "box") and not commentary._near("curry", "murray")
+
+
 def _basket_game(said, baskets, description="", title="Spurs at Thunder", teams=("Spurs", "Thunder"), start=(0, 0),
                  **profile_extra):
     """A profile run over `said` (segments with word timings) and a board of
@@ -1871,6 +1898,13 @@ def _names():
     ({"when": "Q3 5:19"}, "Marsh Cuts It to 1", "Marsh hits a three in the fourth quarter.", "in the 3rd quarter"),
     ({"when": "Q2 3:40"}, "Marsh Cuts It to 1", "Marsh's three with 50 seconds left.", "3:40 left"),
     ({"when": "Q2 3:40"}, "Marsh Beats the Buzzer!", "Marsh's three.", "3:40 left"),
+    # ...and the same 79-minute game's, after the second.
+    ({"mine": 42, "theirs": 46, "before": -6, "points": 2, "shot": "bucket", "scorer": ""}, "Spurs Struggle!",
+     "The Spurs continue to fall behind, struggling to contain the Thunder's offense.", "don't say they struggle"),
+    ({"mine": 42, "theirs": 46, "before": -6, "points": 2, "shot": "bucket", "scorer": ""}, "Spurs Struggle!",
+     "A bucket for the Spurs.", "don't say they struggle"),
+    ({"mine": 42, "theirs": 46, "before": -6, "points": 2, "shot": "bucket", "scorer": ""}, "A Bucket for the Spurs",
+     "The San Antonio Spurs fall further behind.", "still trail 42-46"),
 ])
 def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wrong):
     from sports.basketball import titles
@@ -1907,6 +1941,10 @@ def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wr
     ({"when": "Q2 3:40"}, "Marsh Cuts It to 1", "Marsh hits a three with 5 seconds left on the shot clock."),
     ({"mine": 72, "theirs": 69, "before": 1, "points": 2, "shot": "bucket", "scorer": "", "when": "Q3 10:30"},
      "Spurs Out of the Gate", "The Spurs come out of the gate strong after halftime."),
+    ({"mine": 42, "theirs": 46, "before": -6, "points": 2, "shot": "bucket", "scorer": ""}, "Spurs Snap Their Slump",
+     "A bucket ends the Spurs' slump. The Thunder still lead 46-42."),
+    ({"mine": 60, "theirs": 52, "before": 5}, "Spurs Stun the Struggling Thunder",
+     "Marsh's three puts the Spurs up 8, and the Spurs score while Thunder struggle."),
 ])
 def test_a_title_true_to_its_play_stays(play, title, description):
     from sports.basketball import titles
