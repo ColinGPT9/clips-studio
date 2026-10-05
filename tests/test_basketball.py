@@ -2031,6 +2031,7 @@ def test_whisper_listens_for_the_names_the_videos_own_title_and_description_spel
 def test_a_reused_download_still_gives_whisper_the_names_in_its_description(monkeypatch):
     """On the PC the game was already on disk, and the job listened for "Spurs,
     Thunder" alone: a reused download comes back without its description."""
+    pytest.importorskip("numpy")    # core/pipeline.py imports analysis/fusion.py
     from core import pipeline
     from core.models import DownloadedVideo
     from sources import dispatch
