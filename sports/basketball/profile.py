@@ -263,14 +263,14 @@ class BasketballProfile(SportProfile):
         rebound, a step-back two was called a three, and a sideline report
         titled a clip whose play it never mentioned."""
         return "\n".join([
-            "- Each clip is one play: its note says what the scoreboard read (the play, its points, the quarter "
-            "and the clock, and the score with whose is whose when the scoreboard names the teams). Title the "
-            "clip for that play, not for what else is said around it.",
-            "- Name a player only as the one the commentary says scored this play (in \"X knocks down the "
-            "three\", X scored). A player named for a pass, a rebound, a block or the defense didn't score. "
-            "When the commentary doesn't say who scored, name no one.",
-            "- Say a team leads, trails, wins or loses only as the note says it, and a basket is worth the "
-            "points the note gives it.",
+            ("- Each clip is one play: its note says what the scoreboard read (the play, its points, the quarter "
+             "and the clock, and the score with whose is whose when the scoreboard names the teams). Title the "
+             "clip for that play, not for what else is said around it."),
+            ("- Name a player only as the one the commentary says scored this play (in \"X knocks down the "
+             "three\", X scored). A player named for a pass, a rebound, a block or the defense didn't score. "
+             "When the commentary doesn't say who scored, name no one."),
+            ("- Say a team leads, trails, wins or loses only as the note says it, and a basket is worth the "
+             "points the note gives it."),
         ])
 
     def _situation(self, board, change, event, at: float) -> str:
