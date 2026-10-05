@@ -34,12 +34,15 @@ _THINK_TO_ANSWER = {"gpt-oss": "medium", "nemotron": True}
 # finds it in plain text.
 _ANSWER_WITHOUT_FORMAT = ("gemma4",)
 
-# A generation Ollama answers with a server error is sent again before the error
-# ends the job. On an NBA game (Ollama 0.35, gemma3:4b), three runs ended on a 500
-# that came a few seconds after the model had finished writing its answer, with
-# memory to spare, each six or seven minutes into the job.
+# gemma3:4b held to `format` sometimes does the same: on an NBA game (Ollama
+# 0.35.1) that 500 ended six runs in a day, the last five in a row, six to eight
+# minutes in, reading the transcript's chunks or scoring windows. A request
+# Ollama answers with a server error is asked again, without `format` from the
+# second try, and an answer Ollama still cuts off comes back empty, as an
+# answer that can't be read, which every caller already gets past.
 _TRIES = 3
 _PAUSE = 2.0        # seconds before the second try, twice that before the third
+_CUT_OFF = "prediction aborted"     # Ollama's 500 for an answer that repeats itself
 
 
 class OllamaBackend(LLMBackend):
@@ -99,13 +102,23 @@ class OllamaBackend(LLMBackend):
 
     def _answer(self, payload: dict) -> str:
         """The model's answer to `payload`. A request Ollama answers with a
-        server error is sent again, _TRIES times in all, before the error ends
-        the job; any other error ends it at once, as it always has."""
+        server error is asked again, _TRIES times in all and without `format`
+        from the second (the prompts ask for JSON themselves). An answer Ollama
+        still cuts off for repeating itself is "": one the caller can't read.
+        Any other error ends the job, as it always has."""
         for attempt in range(1, _TRIES + 1):
             response = requests.post(f"{self.host}/api/generate", json=payload, timeout=self.timeout)
-            if response.status_code < 500 or attempt == _TRIES:
+            if response.status_code < 500:
                 break
-            print(f"      (Ollama answered {response.status_code}: {_error(response)}; asking again)")
+            said = _error(response)
+            if attempt == _TRIES:
+                if _CUT_OFF in said:
+                    print(f"      (Ollama cut the answer off {_TRIES} times ({said}); going on without it)")
+                    return ""
+                break
+            print(f"      (Ollama answered {response.status_code}: {said}; asking again"
+                  + (" without JSON mode)" if "format" in payload else ")"))
+            payload = {k: v for k, v in payload.items() if k != "format"}
             time.sleep(_PAUSE * attempt)
         response.raise_for_status()
         return response.json()["response"]

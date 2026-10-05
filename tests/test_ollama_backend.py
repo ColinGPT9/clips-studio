@@ -160,6 +160,9 @@ class _Failed(_Response):
         raise requests.HTTPError(f"{self.status_code} Server Error")
 
 
+CUT_OFF = "prediction aborted, token repeat limit reached"
+
+
 def _answers(monkeypatch, *replies):
     """Ollama answers each /api/generate with the next of `replies`."""
     sent, left = [], list(replies)
@@ -169,17 +172,29 @@ def _answers(monkeypatch, *replies):
     return sent
 
 
-def test_a_generation_ollama_fails_with_a_server_error_is_asked_again(monkeypatch, capsys):
-    """On an NBA game gemma3:4b's answer came back as a 500 after the model had
-    written it, and the job ended there: three runs, six or seven minutes in."""
-    sent = _answers(monkeypatch, _Failed(500, "prediction aborted"), _Response({"response": '{"clips": []}'}))
+def test_an_answer_ollama_cuts_off_is_asked_again_without_json_mode(monkeypatch, capsys):
+    """On an NBA game gemma3:4b, held to JSON mode, repeated itself until Ollama
+    cut it off with a 500, and the job ended there: five runs in a row, six to
+    eight minutes in. Without `format` (gemma4's cure), the prompt still asks
+    for the JSON."""
+    sent = _answers(monkeypatch, _Failed(500, CUT_OFF), _Response({"response": '{"clips": []}'}))
     assert OllamaBackend("gemma3:4b").generate("p", json_mode=True) == '{"clips": []}'
-    assert len(sent) == 2 and sent[0] == sent[1]
-    assert "Ollama answered 500: prediction aborted; asking again" in capsys.readouterr().out
+    assert sent[0] == _todays_request("gemma3:4b", True)
+    assert sent[1] == _todays_request("gemma3:4b", False)
+    assert f"Ollama answered 500: {CUT_OFF}; asking again without JSON mode" in capsys.readouterr().out
 
 
-def test_a_server_error_every_time_still_ends_the_job(monkeypatch):
-    sent = _answers(monkeypatch, *[_Failed(500, "boom")] * 3)
+def test_an_answer_cut_off_every_time_is_one_the_caller_cant_read(monkeypatch, capsys):
+    """Every caller gets past an answer it can't read (a chunk skipped, a batch
+    of windows left at a neutral score); the job goes on."""
+    sent = _answers(monkeypatch, *[_Failed(500, CUT_OFF)] * 3)
+    assert OllamaBackend("gemma3:4b").generate("p", json_mode=True) == ""
+    assert len(sent) == 3
+    assert "going on without it" in capsys.readouterr().out
+
+
+def test_another_server_error_every_time_still_ends_the_job(monkeypatch):
+    sent = _answers(monkeypatch, *[_Failed(500, "llama runner process has terminated")] * 3)
     with pytest.raises(requests.HTTPError):
         OllamaBackend("gemma3:4b").generate("p", json_mode=True)
     assert len(sent) == 3
@@ -191,3 +206,9 @@ def test_any_other_error_ends_the_job_at_once(monkeypatch):
     with pytest.raises(requests.HTTPError):
         OllamaBackend("gemma9").generate("p")
     assert len(sent) == 1
+
+
+def test_a_look_at_frames_ollama_cuts_off_is_asked_again_too(monkeypatch):
+    sent = _answers(monkeypatch, _Failed(500, CUT_OFF), _Response({"response": '{"shot": "crowd"}'}))
+    assert OllamaBackend("gemma3:4b").look("p", [b"x"]) == '{"shot": "crowd"}'
+    assert sent[0]["format"] == "json" and "format" not in sent[1] and sent[1]["images"] == sent[0]["images"]
