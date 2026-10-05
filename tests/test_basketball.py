@@ -1273,6 +1273,40 @@ def test_the_scoreboard_s_graphic_is_found_past_its_text():
     assert action.bug_edge(_looks(np, moving=False), box) == pytest.approx(box[1] - 0.5 * (box[3] - box[1]))
 
 
+def _court_looks(np, see_through=0.0, n=14):
+    """Gray 480x270 looks at a wide shot: moving players over rows 0-160, a
+    floor that hardly moves below them with a sideline across it (about rows
+    212-217, as the camera tilts), and a score bug's graphic (rows 225-258,
+    its text 232-252)."""
+    rng = np.random.default_rng(5)
+    out = []
+    for i in range(n):
+        img = rng.integers(0, 255, (270, 480)).astype(np.float32)
+        img[160:225] = 140.0 + rng.uniform(-4, 4, (65, 480))
+        line = 212 + i % 5
+        img[line:line + 2] = 220.0
+        bug = np.full((33, 192), 30.0)
+        bug[7:27, 20:170] = 230.0 if i % 3 else 200.0
+        img[225:258, 144:336] = see_through * img[225:258, 144:336] + (1 - see_through) * bug
+        out.append(img.astype(np.uint8))
+    return out
+
+
+def test_the_scoreboard_is_left_out_as_far_as_its_edge_not_the_still_floor_above_it(monkeypatch):
+    """On an NBA game everything still past the bug's text was left out,
+    the floor too: 19-27% of the height where the bug was 17%, and the
+    nearest players cut at the knees."""
+    np = pytest.importorskip("numpy")
+    from sports.basketball import action
+
+    box = (0.32, 232 / 270, 0.68, 252 / 270)
+    for see_through in (0.0, 0.4):
+        assert abs(action.bug_edge(_court_looks(np, see_through), box) - 225 / 270) <= 1 / 270
+    looks = _hide(monkeypatch, np, box, _court_looks(np))
+    top, bottom = action.hidden_rows(looks, 30.0, [(t / 5, 0.5) for t in range(50)], 0.316)
+    assert top == 0.0 and abs(bottom - (225 / 270 - action.BUG_SLACK)) <= 1 / 270
+
+
 def _hide(monkeypatch, np, box, frames=None):
     pytest.importorskip("cv2")
     from analysis import game_text
@@ -1304,8 +1338,8 @@ def test_a_scoreboard_too_tall_to_leave_out_is_left_in(monkeypatch):
     np = pytest.importorskip("numpy")
     from sports.basketball import action
 
-    box = (0.32, 220 / 270, 0.68, 250 / 270)
-    looks = _hide(monkeypatch, np, box, _looks(np, panel=(150, 262)))      # 0.44 of the height
+    box = (0.32, 196 / 270, 0.68, 250 / 270)
+    looks = _hide(monkeypatch, np, box, _looks(np, panel=(180, 262), text=(196, 250)))   # a third of the height
     assert action.hidden_rows(looks, 30.0, [(t / 5, 0.5) for t in range(50)], 0.316) is None
 
 

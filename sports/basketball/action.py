@@ -27,8 +27,11 @@ bug is wider than a 9:16 crop, so half of it showed along the bottom of
 nearly every clip. The rows from the bug's top edge down (or from the top
 down to its bottom edge) are left out of the crop, which zooms in that much.
 The bug is found as the score reader finds it (its text, scoreboard.find_box)
-and its graphic's edge as the rows beside that text that hold still while
-the picture beyond them moves.
+and its graphic's edge as a step in brightness at the same row in every
+look, with the rows on the graphic's side holding stiller than those just
+beyond. Only as far as that edge: on an NBA game, leaving out everything
+that looked still past the text (the floor holds still too) took 19-27% of
+the height out where the bug was 17%, and cut players at the knees.
 
 Moved by the shared HoldMove controller and snapped at camera cuts, as
 soccer's framing is. A cut is told by the picture's colours changing as
@@ -61,11 +64,13 @@ CUT_COLOURS = 0.31       # a cut changes the picture's colours this much too (Bh
 # The scoreboard left out. On copies of the three NBA games' bugs over a
 # moving picture, the graphic reached 0.03-0.06 of the height past its text.
 BUG_WIDTH = 480          # frames are looked at this wide, in gray, for the graphic's edge
-BUG_REACH = 0.12         # the graphic reaches at most this share of the height past its text
-BUG_STILL = 0.5          # ...its rows moving less than half as much as the picture beyond it
-BUG_GAP = 0.012          # ...across gaps this thin (a tab over the bar)
-BUG_BEYOND = 0.1         # the picture beyond: this much of the height past the reach
-BUG_MOVING = 6.0         # gray levels the picture must move by for the stillness to tell anything...
+BUG_REACH = 0.08         # the graphic reaches at most this share of the height past its text
+BUG_EDGE = 4.0           # its edge: a step of this many gray levels between the same two rows...
+BUG_SAME = 0.75          # ...the same way in this share of the looks (a line on the floor moves between them)
+BUG_BAND = 0.03          # ...with this much of the height on the graphic's side moving less than
+BUG_STILL = 0.8          # this share of what as much beyond does (a see-through graphic shows some
+                         # of the picture), when the picture there moves enough to tell
+BUG_MOVING = 6.0         # gray levels the picture must move by for any of that to tell anything...
 BUG_TEXT = 0.5           # ...else the graphic is taken to reach this many of its text's heights past it
 BUG_SLACK = 0.008        # ...plus this much more, so not a row of its border shows (2 rows at BUG_WIDTH)
 BUG_MOST = 0.27          # a bug that would take more of the height than this out is left in
@@ -182,46 +187,46 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
 def bug_edge(grays: list, box: tuple) -> float:
     """Where the score bug's graphic ends past its text (box, in the frame's
     fractions): its top edge for a bug along the bottom, its bottom edge for
-    one along the top, as a fraction of the height. The graphic is the rows
-    beside the text that move less than half as much, over the looks, as the
-    picture beyond them. When the picture hardly moves, BUG_TEXT of the
-    text's height; when the rows beyond the reach hold as still as a graphic,
-    the reach (a bug that tall is then left in). grays: the looks, in gray,
+    one along the top, as a fraction of the height. The edge is the furthest
+    row within BUG_REACH of the text where most looks step in brightness the
+    same way, the rows on the text's side moving less than the picture beyond
+    when that moves enough to tell. Without one, or when the picture hardly
+    moves, BUG_TEXT of the text's height past it. grays: the looks, in gray,
     all the same size."""
     import numpy as np
 
     stack = np.stack([g.astype(np.float32) for g in grays])
-    still = np.median(np.abs(stack - np.median(stack, axis=0)), axis=0)
-    height, width = still.shape
-    rows = np.median(still[:, int(box[0] * width):max(int(box[0] * width) + 1, int(np.ceil(box[2] * width)))], axis=1)
+    height, width = stack.shape[1:]
+    part = stack[:, :, int(box[0] * width):max(int(box[0] * width) + 1, int(np.ceil(box[2] * width)))]
+    # How much each row moves over the looks, and each look's step in
+    # brightness from one row to the next (steps[:, r] is row r + 1 less row r).
+    rows = np.median(np.median(np.abs(part - np.median(part, axis=0)), axis=0), axis=1)
+    means = part.mean(axis=2)
+    steps = means[:, 1:] - means[:, :-1]
     bottom = (box[1] + box[3]) / 2 > 0.5
-    reach, beyond, gap = round(BUG_REACH * height), round(BUG_BEYOND * height), max(1, round(BUG_GAP * height))
     text = BUG_TEXT * (box[3] - box[1])
+    fallback = max(0.0, box[1] - text) if bottom else min(1.0, box[3] + text)
+    if float(np.median(rows[int(0.3 * height):int(0.6 * height)])) < BUG_MOVING:
+        return fallback
+    reach, band = round(BUG_REACH * height), max(2, round(BUG_BAND * height))
     if bottom:
+        # r: the graphic's first row, furthest from the text first.
         start = int(box[1] * height)
-        order = range(start - 1, max(-1, start - 1 - reach), -1)
-        far = rows[max(0, start - reach - beyond):max(0, start - reach)]
+        tried = range(max(band, start - reach), start + 1)
     else:
+        # r: one past the graphic's last row.
         start = min(height, int(np.ceil(box[3] * height)))
-        order = range(start, min(height, start + reach))
-        far = rows[min(height, start + reach):min(height, start + reach + beyond)]
-    picture = float(np.median(rows[int(0.3 * height):int(0.6 * height)]))
-    if picture < BUG_MOVING:
-        return max(0.0, box[1] - text) if bottom else min(1.0, box[3] + text)
-    moving = float(np.median(far)) if len(far) else picture
-    if moving < BUG_STILL * picture:
-        return max(0, start - reach) / height if bottom else min(height, start + reach) / height
-    last, misses = None, 0
-    for r in order:
-        if rows[r] < BUG_STILL * moving:
-            last, misses = r, 0
-        else:
-            misses += 1
-            if misses > gap:
-                break
-    if last is None:
-        return box[1] if bottom else box[3]
-    return last / height if bottom else (last + 1) / height
+        tried = range(min(height - band, start + reach), start - 1, -1)
+    for r in tried:
+        step = steps[:, r - 1]
+        way = np.sign(np.median(step))
+        if not way or np.mean((np.abs(step) >= BUG_EDGE) & (np.sign(step) == way)) < BUG_SAME:
+            continue
+        inside, beyond = (rows[r:r + band], rows[r - band:r]) if bottom else (rows[r - band:r], rows[r:r + band])
+        moving = float(np.median(beyond))
+        if moving < BUG_MOVING or float(np.median(inside)) < BUG_STILL * moving:
+            return r / height
+    return fallback
 
 
 def hidden_rows(looks: dict, duration: float, path: list, crop_frac: float) -> tuple[float, float] | None:
