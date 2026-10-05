@@ -377,13 +377,22 @@ read the same at its place most of the time; sideways letters and logos give no
 code, never a guessed one, and a header ("RIVALS WEEK"), a seed or a record
 ("25-20") is no team or score. On 60 keyframes of three NBA broadcasts, every score on screen was read
 right. The full OCR costs most of a second a keyframe, and between baskets only
-the clocks change: so after a full read, a keyframe reads again only the pieces
-that changed, by the recogniser alone where they sat, and the box is read whole
-again when anything else changes (a score grows a digit, a "+3", the bug hidden)
-or a piece reads unsurely (a score mid-roll). On three 15-minute test games laid
-out like the NBA bugs, that read every score the same 2 to 3 times faster, and
-the game clock more often (the full OCR sometimes runs it into the shot clock,
-"9:17:16"). A score
+the clocks change: so after a full read that found a bug, the next keyframes read
+again only the pieces whose pixels changed, by the recogniser alone where they
+sat (sideways letters turned, as the full OCR turns them). Real bugs are
+see-through over the moving picture, so nothing around the pieces can be watched
+for a change, and small pieces never read surely: a piece that reads as it did
+stands, and letters (a team, a header) stand as the full read read them. The box
+is read whole again when a piece with digits reads differently and unsurely, or
+as characters of another kind (a score mid-roll, a "+3" drawn over it, the bug
+hidden), when a number that changed shows another digit read wider (99 to 100),
+every eight keyframes, and after a full read that caught the bug moving (its
+pieces not where the read before found them, a score half rolled in). On five
+test games laid out like the NBA bugs, four of them see-through over a moving
+picture, that read 70% of keyframes quickly, 2 to 3 times faster, with every
+score the same as the full OCR's but one, in the first seconds of one game, that
+the full OCR itself only just caught; and the game clock more often (the full
+OCR sometimes runs it into the shot clock, "9:17:16"). A score
 up by 1, 2 or 3 on one side, seen on two readings, is a free throw, a basket or
 a three, and which team scored. The commentary's name for it stands when the points agree (a dunk is 2,
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets

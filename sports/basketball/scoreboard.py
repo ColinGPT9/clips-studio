@@ -77,9 +77,11 @@ TEAM_SHARE = 0.5         # a team's code is read at its place in at least this s
 TEAM_SAME = 0.6          # ...as the same code at least this often (a logo reads differently each time)
 TEAM_NEAR = 1.2          # ...on the scores' row, or within this many scores' heights of it
 CHANGED = 40             # gray levels a pixel of the box must change by to count (keyframes' noise is less)
-OUTSIDE = 0.0003         # more of the box's pixels than this changed outside its pieces: the box is read whole
 PIECE_PAD = 3            # pixels around a piece that count as its own (at the size the OCR reads the box)
 REREAD_SURE = 0.9        # a piece read again alone stands when the recogniser is this sure of it
+FULL_EVERY = 8           # ...and the box is read whole at least every this many keyframes
+WIDEN = 0.6              # a piece whose digits changed is read again this many of its heights wider each side
+SAME_ROW = 0.7           # a piece sits where one sat before: over its columns, sharing this much of their rows
 
 
 @dataclass
@@ -625,13 +627,28 @@ class BoxReader:
     """The pieces of text in each keyframe's box, as scorebug.pieces reads
     them, at a fraction of the cost. The full OCR (the text search, then the
     recogniser on each piece) is most of a second a keyframe, and between
-    baskets only the clocks change. So while every pixel that changed since
-    the last full read lies in a piece that read found, only the pieces that
-    changed are read again, by the recogniser alone where they sat
-    (milliseconds each). A change anywhere else (a score grows a digit, a
-    "+3", a caption, the bug hidden), or a piece read again unsurely or with
-    a character more or less (a score mid-roll: real ones read "4U" over
-    "12", or "业"), reads the box whole again, as the full OCR would have.
+    baskets only the clocks change. So after a full read that found a bug,
+    the next keyframes read only the pieces whose pixels changed, by the
+    recogniser alone where they sat (milliseconds each). Real bugs are
+    see-through over a moving picture, so every piece's pixels change and
+    nothing outside the pieces can be watched; instead a keyframe is read
+    whole again, as the full OCR would read it, when:
+
+    - a piece with digits reads differently, and unsurely or as characters
+      of other kinds or another number of them (a score mid-roll: real ones
+      read "4U" over "12", or "业"; a "+3" drawn over a score; the bug hidden
+      or covered); a piece that reads as it did stands however unsure (small
+      ones over a moving picture are never sure), and letters alone stand as
+      they were read unless a number or a "+" shows over them,
+    - a piece whose digits changed shows more digits when read again wider
+      (a score grown from 99 to 100 past its old place),
+    - the last full read found no bug (two numbers or more), or found
+      fewer pieces, or any piece elsewhere, than the full read before it or
+      the last one trusted (the first read; a score mid-roll, half out of
+      its place or missed: read again alone where that read found it, the
+      keyframes after it would have no score), or
+    - FULL_EVERY keyframes have passed (a piece that has come since).
+
     `ocr`: the full OCR, as pieces() takes it; `rec`: the recogniser alone,
     an image to (text, confidence)."""
 
@@ -640,53 +657,119 @@ class BoxReader:
         self.gray = None                    # the box at the last full read
         self.pieces: list = []              # [(box, text)] that read found
         self.rects: list = []               # each piece's pixels, (x0, y0, x1, y1)
+        self.wides: list = []               # ...and stretched sideways into the free space beside it
+        self.bug = False                    # that read found a bug, its pieces where they were before
+        self.settled: list = []             # the pieces of the last full read so trusted
+        self.since = 0                      # keyframes read since
 
     def read(self, img) -> list[tuple[tuple, str]]:
         import cv2
-        import numpy as np
 
         h, w = img.shape[:2]
         if h < 64:                          # as pieces() enlarges a small box, so both read the same pixels
             img = cv2.resize(img, (max(2, round(w * 64 / max(h, 1))), 64), interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        if self.gray is not None and gray.shape == self.gray.shape:
-            changed = cv2.absdiff(gray, self.gray) > CHANGED
-            around = [(max(0, y0 - PIECE_PAD), y1 + PIECE_PAD, max(0, x0 - PIECE_PAD), x1 + PIECE_PAD)
-                      for x0, y0, x1, y1 in self.rects]
-            mine = np.zeros_like(changed)
-            for y0, y1, x0, x1 in around:
-                mine[y0:y1, x0:x1] = True
-            if float((changed & ~mine).mean()) <= OUTSIDE:
-                out = []
-                for (box, text), (x0, y0, x1, y1), (ay0, ay1, ax0, ax1) in zip(self.pieces, self.rects, around):
-                    if changed[ay0:ay1, ax0:ax1].any():
-                        try:
-                            again, conf = self.rec(img[y0:y1, x0:x1])
-                        except Exception:
-                            break                   # the full read below stands in
-                        if conf < REREAD_SURE or len(again.replace(" ", "")) != len(text.replace(" ", "")):
-                            break
-                        text = again
-                    out.append((box, text))
-                else:
-                    return out
+        if self.bug and self.since < FULL_EVERY and gray.shape == self.gray.shape:
+            out = self._again(img, cv2.absdiff(gray, self.gray) > CHANGED)
+            if out is not None:
+                self.since += 1
+                return out
+        before = self.pieces
         self.pieces = scorebug.pieces(img, self.ocr)
         h, w = gray.shape
         self.rects = []
         for b, _text in self.pieces:
             x0, y0 = min(max(0, int(b[0] * w)), w - 1), min(max(0, int(b[1] * h)), h - 1)
             self.rects.append((x0, y0, min(w, max(x0 + 1, round(b[2] * w))), min(h, max(y0 + 1, round(b[3] * h)))))
-        self.gray = gray
+        self.wides = _widened(self.rects, w)
+        self.bug = len(parse_pieces(self.pieces).numbers) >= BUG_NUMBERS and (
+            _same_places(self.pieces, before) or _same_places(self.pieces, self.settled))
+        if self.bug:
+            self.settled = list(self.pieces)
+        self.gray, self.since = gray, 0
         return list(self.pieces)
+
+    def _again(self, img, changed) -> list | None:
+        """The pieces read again where they changed, or None for a full read."""
+        out = []
+        for (box, text), (x0, y0, x1, y1), (wx0, _, wx1, _) in zip(self.pieces, self.rects, self.wides):
+            if changed[max(0, y0 - PIECE_PAD):y1 + PIECE_PAD, max(0, wx0 - PIECE_PAD):wx1 + PIECE_PAD].any():
+                try:
+                    again, conf = self.rec(img[y0:y1, x0:x1])
+                    if again.replace(" ", "") == text.replace(" ", ""):
+                        again = text                # as it read whole: it stands, however unsure
+                    elif not re.search(r"\d", text):
+                        # Letters alone (a team, a header) don't change in a
+                        # game, and over a moving picture they read a little
+                        # differently each time: they stand as the full read
+                        # read them, unless a number or a "+3" shows over them.
+                        if re.search(r"[\d+]", again):
+                            return None
+                        again = text
+                    elif conf < REREAD_SURE or _shape(again) != _shape(text):
+                        return None
+                    else:
+                        digits = re.sub(r"\D", "", again)
+                        if digits != re.sub(r"\D", "", text) and wx1 - wx0 > x1 - x0:
+                            wider, _conf = self.rec(img[y0:y1, wx0:wx1])
+                            if len(re.sub(r"\D", "", wider)) > len(digits):
+                                return None
+                except Exception:
+                    return None                 # the full read stands in
+                text = again
+            out.append((box, text))
+        return out
+
+
+def _same_places(pieces: list, before: list) -> bool:
+    """Whether a full read found its pieces where `before` had them: no
+    fewer, and each over the columns of one of them, sharing SAME_ROW of
+    their rows (a score rolling in is above or below its place)."""
+    if not before or len(pieces) < len(before):
+        return False
+    return all(any(min(b[2], a[2]) > max(b[0], a[0])
+                   and min(b[3], a[3]) - max(b[1], a[1]) >= SAME_ROW * (max(b[3], a[3]) - min(b[1], a[1]))
+                   for a, _ in before)
+               for b, _ in pieces)
+
+
+def _shape(text: str) -> str:
+    """A piece's text as the kinds of its characters: a digit, a letter, or
+    the character itself ("7:46" and "7:45" are "0:00"; "+3" isn't "80")."""
+    return re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "0", text.replace(" ", "")))
+
+
+def _widened(rects: list, width: int) -> list:
+    """Each piece's rect stretched sideways by WIDEN of its height, into the
+    free space only: it stops short of a piece on the same row."""
+    out = []
+    for i, (x0, y0, x1, y1) in enumerate(rects):
+        tall = y1 - y0
+        left, right = max(0, x0 - round(WIDEN * tall)), min(width, x1 + round(WIDEN * tall))
+        for j, (a0, b0, a1, b1) in enumerate(rects):
+            if j == i or min(y1, b1) - max(y0, b0) <= 0.5 * min(tall, b1 - b0):
+                continue                        # itself, or another row
+            if a1 <= x0:
+                left = max(left, a1 + 2)
+            elif a0 >= x1:
+                right = min(right, a0 - 2)
+        out.append((min(left, x0), y0, max(right, x1), y1))
+    return out
 
 
 def recognise(img) -> tuple[str, float]:
     """One piece of the box read by the recogniser alone (no text search),
-    with the engine the full OCR uses: (text, confidence)."""
+    with the engine the full OCR uses: (text, confidence). A piece half again
+    as tall as it is wide is turned on its side first, as the full OCR turns
+    it (sideways team letters)."""
+    import numpy as np
+
     from analysis import game_text
 
     if game_text._engine is None:
         game_text._ocr(img)                 # makes the engine
+    if img.shape[0] >= 1.5 * img.shape[1]:
+        img = np.ascontiguousarray(np.rot90(img))
     result, _elapsed = game_text._engine(img, use_det=False, use_cls=False, use_rec=True)
     if not result:
         return "", 0.0

@@ -376,7 +376,9 @@ def test_a_score_read_once_says_nothing_about_the_game():
 
 def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
     # A full OCR is most of a second a keyframe. While the clock is stopped
-    # the box doesn't change: those keyframes read as the last one did.
+    # the box doesn't change: those keyframes read as the last full read
+    # did, until FULL_EVERY of them have passed. (The first full read is
+    # trusted once a second finds its pieces in the same places.)
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     import contextlib
@@ -386,11 +388,7 @@ def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
     still = np.full((64, 200, 3), 30, dtype=np.uint8)
     noisy = still.copy()
     noisy[::3, ::3] += 20                                  # compression noise: no change
-    scored = still.copy()
-    scored[10:30, 150:170] = 250                           # a digit changes, past its piece
-    boxes = [still, still, noisy, still, still, scored, scored, scored, scored, scored, scored]
-    pieces = {id(still): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.8, 0.8), "101")],
-              id(scored): [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.85, 0.8), "103")]}
+    boxes = [still.copy(), still.copy(), noisy] + [still.copy() for _ in range(bb.FULL_EVERY + 1)]
     read = []
 
     def crops(path, box, size, on_frame, cancel=None, scale_width=None):
@@ -399,8 +397,8 @@ def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
         return [2.0 * i for i in range(len(boxes))]
 
     def ocr_pieces(img, ocr):
-        read.append(img)
-        return pieces[id(img)]
+        read.append(next(i for i, b in enumerate(boxes) if b is img))
+        return [((0.1, 0.2, 0.2, 0.8), "98"), ((0.7, 0.2, 0.8, 0.8), "101")]
 
     @contextlib.contextmanager
     def capture(path, required=True):
@@ -409,49 +407,174 @@ def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
     monkeypatch.setattr("video.capture.video_capture", capture)
     monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
     monkeypatch.setattr(bb, "find_box", lambda grab, duration, ocr: (0.3, 0.8, 0.7, 0.9))
-    monkeypatch.setattr(bb, "recognise", lambda img: pytest.fail("nothing changed inside a piece"))
+    monkeypatch.setattr(bb, "recognise", lambda img: pytest.fail("nothing changed"))
     monkeypatch.setattr(scorebug, "keyframe_crops", crops)
     monkeypatch.setattr(scorebug, "pieces", ocr_pieces)
     board = bb.read_video("game.mp4", 22.0)
-    assert [id(img) for img in read] == [id(still), id(scored)]
+    assert read == [0, 1, bb.FULL_EVERY + 2]
     assert len(board.readings) == len(boxes)
 
 
 def test_only_the_pieces_that_changed_are_read_again(monkeypatch):
-    # Between baskets only the clocks change. A change inside a piece the
-    # last full read found is read again by the recogniser alone, where the
-    # piece sat (milliseconds, against most of a second). A change anywhere
-    # else (a score growing a digit), or a piece the recogniser isn't sure
-    # of (a score mid-roll), reads the box whole again.
+    # Between baskets only the clocks change. A piece whose pixels changed is
+    # read again by the recogniser alone, where it sat (milliseconds, against
+    # most of a second). The box is read whole again when a piece read again
+    # is unsure (a score mid-roll, the bug hidden), when a piece whose digits
+    # changed shows more of them read wider (a score grown past its place),
+    # and after a full read that found no bug or isn't yet trusted.
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     from sports.core import scorebug
 
     still = np.full((64, 400, 3), 30, dtype=np.uint8)
     still[16:48, 20:60] = 250                              # "98"
+    still[16:48, 100:140] = 250                            # "95"
     still[16:48, 300:360] = 250                            # "7:46"
     ticked = still.copy()
-    ticked[20:44, 340:356] = 90                            # the clock's last digit, inside its piece
+    ticked[20:44, 340:356] = 90                            # the clock's last digit
     blurred = still.copy()
     blurred[20:44, 330:356] = 120                          # ...and again, read unsurely
     grew = still.copy()
     grew[16:48, 60:80] = 250                               # "101": the score past its piece
-    full = {id(still): [((0.05, 0.25, 0.15, 0.75), "98"), ((0.75, 0.25, 0.9, 0.75), "7:46")],
-            id(blurred): [((0.05, 0.25, 0.15, 0.75), "98"), ((0.75, 0.25, 0.9, 0.75), "7:44")],
-            id(grew): [((0.05, 0.25, 0.2, 0.75), "101"), ((0.75, 0.25, 0.9, 0.75), "7:46")]}
+    gone = np.full((64, 400, 3), 30, dtype=np.uint8)       # the bug hidden
+    again = still.copy()
+    score, other, clock = (0.05, 0.25, 0.15, 0.75), (0.25, 0.25, 0.35, 0.75), (0.75, 0.25, 0.9, 0.75)
+    full = {id(still): [(score, "98"), (other, "95"), (clock, "7:46")],
+            id(blurred): [(score, "98"), (other, "95"), (clock, "7:44")],
+            id(grew): [((0.05, 0.25, 0.2, 0.75), "101"), (other, "95"), (clock, "7:46")],
+            id(gone): [],
+            id(again): [(score, "98"), (other, "95"), (clock, "7:46")]}
     read, recognised = [], []
     monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or full[id(img)])
+    answers = iter([("7:45", 0.95), ("7:45", 0.93),        # the clock ticked; no more digits read wider
+                    ("7:4", 0.6),                          # unsure
+                    ("10", 0.95), ("101", 0.95),           # the score's place reads two digits, wider three
+                    ("", 0.0)])                            # the bug hidden
 
     def rec(img):
         recognised.append(img.shape[:2])
-        return ("7:45", 0.95) if len(recognised) == 1 else ("7:4", 0.6)
+        return next(answers)
 
     reader = bb.BoxReader(ocr=None, rec=rec)
-    texts = [[text for _box, text in reader.read(img)] for img in (still, still, ticked, blurred, grew, grew)]
-    assert texts == [["98", "7:46"], ["98", "7:46"], ["98", "7:45"], ["98", "7:44"], ["101", "7:46"],
-                     ["101", "7:46"]]
-    assert [id(img) for img in read] == [id(still), id(blurred), id(grew)]
-    assert recognised == [(32, 60), (32, 60)]              # the clock's piece alone
+    texts = [[text for _box, text in reader.read(img)] for img in (still, still, ticked, blurred, grew, grew, gone,
+                                                                    again)]
+    assert texts == [["98", "95", "7:46"], ["98", "95", "7:46"], ["98", "95", "7:45"], ["98", "95", "7:44"],
+                     ["101", "95", "7:46"], ["101", "95", "7:46"], [], ["98", "95", "7:46"]]
+    assert [id(img) for img in read] == [id(still), id(still), id(blurred), id(grew), id(gone), id(again)]
+    assert recognised == [(32, 60), (32, 98), (32, 60), (32, 40), (32, 78), (32, 60)]
+
+
+def test_a_plus_three_over_a_score_reads_the_box_whole(monkeypatch):
+    # A "+3" drawn over a score is as many characters as the score. Read
+    # again alone, the "+3" would stand where the score was, and then the
+    # score where the "+3" was, at the graphic's place and size, where it is
+    # no score. A piece read again as characters of another kind reads the
+    # box whole, as the full OCR reads it.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.core import scorebug
+
+    still = np.full((64, 400, 3), 30, dtype=np.uint8)
+    still[19:45, 0:16] = 250                               # a team's fouls, "2"
+    still[16:48, 20:60] = 250                              # "80"
+    still[16:48, 100:140] = 250                            # "66"
+    plus = still.copy()
+    plus[16:48, 100:140] = 120                             # "+3" over it
+    after = still.copy()
+    after[16:48, 120:140] = 200                            # "69"
+    fouls, first, second = (0.0, 0.3, 0.04, 0.7), (0.05, 0.25, 0.15, 0.75), (0.25, 0.25, 0.35, 0.75)
+    full = {id(still): [(fouls, "2"), (first, "80"), (second, "66")],
+            id(plus): [(fouls, "2"), (first, "80"), ((0.27, 0.3, 0.33, 0.7), "+3")],
+            id(after): [(fouls, "2"), (first, "80"), (second, "69")]}
+    read = []
+    monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or full[id(img)])
+    answers = iter([("+3", 0.97), ("69", 0.98)])
+    reader = bb.BoxReader(ocr=None, rec=lambda img: next(answers))
+    texts = [[text for _box, text in reader.read(img)] for img in (still, still, plus, after)]
+    assert texts == [["2", "80", "66"], ["2", "80", "66"], ["2", "80", "+3"], ["2", "80", "69"]]
+    assert [id(img) for img in read] == [id(still), id(still), id(plus), id(after)]
+
+
+def test_a_full_read_of_a_score_mid_roll_is_read_again(monkeypatch):
+    # A full read can catch a score rolling in, half out of its place. Read
+    # again alone there, the keyframes after it would have the new score at
+    # that place and size, where it is no score; so a full read whose pieces
+    # aren't where the one before found them is followed by another.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.core import scorebug
+
+    still = np.full((64, 400, 3), 30, dtype=np.uint8)
+    still[16:48, 20:60] = 250                              # "98"
+    still[16:48, 100:140] = 250                            # "95"
+    still[16:48, 300:360] = 250                            # "7:46"
+    rolling = still.copy()
+    rolling[16:48, 100:140] = 30
+    rolling[3:29, 100:140] = 250                           # "95" on its way out, upwards
+    after = still.copy()
+    after[16:48, 120:140] = 200                            # "97" in its place
+    score, other, clock = (0.05, 0.25, 0.15, 0.75), (0.25, 0.25, 0.35, 0.75), (0.75, 0.25, 0.9, 0.75)
+    full = {id(still): [(score, "98"), (other, "95"), (clock, "7:46")],
+            id(rolling): [(score, "98"), ((0.25, 0.05, 0.35, 0.45), "95"), (clock, "7:46")],
+            id(after): [(score, "98"), (other, "97"), (clock, "7:46")]}
+    read = []
+    monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or full[id(img)])
+    answers = iter([("97", 0.5)])                          # mid-roll: unsure
+    reader = bb.BoxReader(ocr=None, rec=lambda img: next(answers, ("97", 0.95)))
+    got = [reader.read(img) for img in (still, still, rolling, after, after)]
+    assert [[text for _box, text in pieces] for pieces in got] == [["98", "95", "7:46"]] * 3 + [["98", "97", "7:46"]] * 2
+    assert [id(img) for img in read] == [id(still), id(still), id(rolling), id(after)]
+    assert got[-1][1] == (other, "97")
+
+
+def test_a_piece_read_again_as_it_was_stands_however_unsure(monkeypatch):
+    # Over a moving picture small pieces never read surely, and letters read
+    # a little differently each time ("OKC", "OKO"). A piece read again as it
+    # was stands however unsure, and letters stand as the full read read
+    # them; but a number or a "+" over letters reads the box whole.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.core import scorebug
+
+    still = np.full((64, 400, 3), 30, dtype=np.uint8)
+    moved = still + 60                                     # the picture behind the bug moved: every piece changed
+    covered = still + 120
+    pieces = [((0.0, 0.25, 0.04, 0.75), "8"), ((0.05, 0.25, 0.15, 0.75), "98"), ((0.2, 0.25, 0.31, 0.75), "95"),
+              ((0.4, 0.25, 0.53, 0.75), "OKC"), ((0.75, 0.25, 0.9, 0.75), "7:46")]
+    read = []
+    monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or list(pieces))
+    same = {16: ("8", 0.45), 40: ("98", 0.5), 44: ("95", 0.97)}          # each piece by its width
+    answers = {id(moved): {**same, 52: ("OKO", 0.8), 60: ("7:45", 0.95), 98: ("7:45", 0.95)},
+               id(covered): {**same, 52: ("+3", 0.95)}}
+    frame = {}
+    reader = bb.BoxReader(ocr=None, rec=lambda img: answers[frame["id"]][img.shape[1]])
+    texts = []
+    for img in (still, still, moved, covered):
+        frame["id"] = id(img)
+        texts.append([text for _box, text in reader.read(img)])
+    assert texts == [["8", "98", "95", "OKC", "7:46"]] * 2 + [["8", "98", "95", "OKC", "7:45"],
+                                                              ["8", "98", "95", "OKC", "7:46"]]
+    assert [id(img) for img in read] == [id(still), id(still), id(covered)]
+
+
+def test_a_piece_is_read_again_as_the_full_ocr_reads_it(monkeypatch):
+    # The recogniser alone, with the engine the full OCR uses; it answers
+    # ([[text, confidence]], times), or nothing. A piece half again as tall
+    # as it is wide is turned on its side first, as the full OCR turns
+    # sideways team letters.
+    np = pytest.importorskip("numpy")
+    from analysis import game_text
+
+    seen = []
+
+    def engine(img, use_det=True, use_cls=True, use_rec=True):
+        seen.append((img.shape[:2], use_det, use_cls, use_rec))
+        return ([["OKC", 0.97]], [0.01]) if img.shape[1] > 30 else (None, None)
+
+    monkeypatch.setattr(game_text, "_engine", engine)
+    assert bb.recognise(np.zeros((90, 30, 3), dtype=np.uint8)) == ("OKC", 0.97)
+    assert bb.recognise(np.zeros((20, 20, 3), dtype=np.uint8)) == ("", 0.0)
+    assert seen == [((30, 90), False, False, True), ((20, 20), False, False, True)]
 
 
 def test_a_header_over_the_shot_clock_is_no_team():
