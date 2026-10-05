@@ -901,9 +901,17 @@ class MatchReading:
     def finish(self, hype_out: dict | None = None):
         """(the sport's profile, what chat's reactions mark, what the match's
         sound marks), once both passes are done: long before Whisper, bar a
-        stuck decode."""
-        for thread in self._threads:
-            cancel.wait(thread, 900, self.video.video_id)
+        stuck decode, or a sport whose own pass takes longer on a long video
+        (sports.prepass_wait: basketball's scoreboard took 25 minutes on a
+        79-minute game)."""
+        import sports
+
+        waits = (900, sports.prepass_wait(self.config, float(getattr(self.video, "duration", 0) or 0)))
+        for thread, wait in zip(self._threads, waits):
+            cancel.wait(thread, wait, self.video.video_id)
+            if thread.is_alive():
+                what = "the match's sound" if thread is self._threads[0] else "its reading of the video"
+                print(f"      ({self.name}: {what} still running after {wait:.0f}s; going on without it)")
         return _sport_inputs(self.config, self.video, hype_out or {}, self._heard.get("heard"), self._read)
 
 

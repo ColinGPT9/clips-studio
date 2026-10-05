@@ -192,6 +192,18 @@ def prepass(config: dict, video_path, duration: float) -> dict:
     return read(video_path, duration) if read is not None else {}
 
 
+def prepass_wait(config: dict, duration: float) -> float:
+    """How long a job waits for its sport's prepass after its other passes:
+    900 s, or what the sport says its pass needs on a video this long
+    (basketball's scoreboard, read keyframe by keyframe, took 25 minutes on
+    a 79-minute game). 900 for every sport without the hook, Soccer too."""
+    opt = option(config)
+    if opt is None:
+        return 900.0
+    wait = getattr(importlib.import_module(SPORTS[opt["name"]]), "prepass_wait", None)
+    return float(wait(duration)) if wait is not None else 900.0
+
+
 def reads_description(config: dict) -> bool:
     """Whether this job's sport reads the video's own description
     (basketball: its players' names for Whisper, and who won for which team

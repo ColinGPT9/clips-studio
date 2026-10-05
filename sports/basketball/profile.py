@@ -48,6 +48,13 @@ CALL_AFTER = 3.0
 # threes") was called an and-one for a foul said 10 s from it.
 FOUL_AFTER = 5.0
 FOUL_WORDS = {"and_one", "foul", "shooting_foul"}
+# Any other kind the commentary names (a dunk, an alley-oop, a deep three) is
+# said as the ball goes in, or just after, too: on an NBA game a layup ("a
+# scoop to the hoop") was called a dunk for a "jam" said 12 s after it, about
+# the next play.
+SAID_AFTER = 5.0
+# A basket by its points alone, as the scoreboard reads it.
+POINTS_KINDS = {"made_2", "made_3", "free_throw"}
 # Kinds the scoreboard's situation names, never the commentary alone.
 SITUATIONS = {"game_winner", "buzzer_beater", "game_tying", "go_ahead", "clutch_shot"}
 
@@ -59,6 +66,8 @@ class BasketballProfile(SportProfile):
     # The video's own title and description: who won, for which team is which (names.sides).
     video_text: tuple = ("", "")
     _sided: bool = False
+    # The bug's own team letters, as read ("GSW", "DAL"), before they were named.
+    _letters: tuple = ()
     # The confirmed baskets, in time order, once dated; and the players the
     # commentary names (commentary.Names), for who scored each.
     _baskets: list = field(default_factory=list)
@@ -180,7 +189,7 @@ class BasketballProfile(SportProfile):
             change = self._changes[id(e)]
             lo = self._baskets[i - 1].t + 1 if i else None
             hi = self._baskets[i + 1].t - 1 if i + 1 < len(self._baskets) else None
-            self._fouled(e, change, segments, lo, hi, video_end=video_end, max_len=max_len)
+            self._unsaid(e, change, segments, lo, hi, video_end=video_end, max_len=max_len)
             self._called(e, change, segments, lo, hi, video_end=video_end, max_len=max_len)
             e.player = commentary.scorer(segments, e.t, int(change.points or 0), self.names, lo, hi) or e.player
 
@@ -204,18 +213,23 @@ class BasketballProfile(SportProfile):
         if f'said "{word}"' not in e.signals:
             e.signals.append(f'said "{word}"')
 
-    def _fouled(self, e, change, segments, lo, hi, *, video_end: float, max_len: float) -> None:
-        """An and-one only when a foul is called as it went in (FOUL_AFTER);
-        else the basket its points make it, as the scoreboard read it (a
-        three, a basket), or the game's situation when that is worth more."""
-        if e.type != "and_one":
+    def _unsaid(self, e, change, segments, lo, hi, *, video_end: float, max_len: float) -> None:
+        """A basket the commentary typed keeps its type only when the words
+        for it were said as it went in: an and-one's foul (FOUL_AFTER), any
+        other kind's own words, a dunk's "throws it down" (SAID_AFTER). Else
+        it is the basket its points make it, as the scoreboard read it (a
+        three, a basket), or the game's situation when that is worth more.
+        A kind the person listed (sports/core/detect.py) stands as listed."""
+        if e.type in POINTS_KINDS or e.type in SITUATIONS or "from your match events" in e.signals:
             return
         from sports.basketball import commentary
 
+        foul = e.type == "and_one"
+        after = FOUL_AFTER if foul else SAID_AFTER
         a = e.t - CALL_BEFORE if lo is None else max(e.t - CALL_BEFORE, lo)
-        b = e.t + FOUL_AFTER if hi is None else min(e.t + FOUL_AFTER, hi)
-        said = self.callouts_in(" ".join(w.text for w in commentary.words(segments, a, b)))
-        if any(k in FOUL_WORDS for k, _w in said):
+        b = e.t + after if hi is None else min(e.t + after, hi)
+        said = {k for k, _w in self.callouts_in(" ".join(w.text for w in commentary.words(segments, a, b)))}
+        if said & (FOUL_WORDS if foul else {e.type}):
             return
         points = int(getattr(change, "points", 0) or 0)
         kind = {3: "made_3", 2: "made_2", 1: "free_throw"}.get(points, "made_2")
@@ -243,7 +257,8 @@ class BasketballProfile(SportProfile):
 
     def _team_names(self) -> tuple:
         """Every name the two teams go by here: the scoreboard's, the
-        description's result line's ("San Antonio Spurs") and the job's."""
+        description's result line's ("San Antonio Spurs"), the title's
+        ("SPURS at THUNDER") and the job's."""
         from sports.basketball import names
 
         board = getattr(self, "board", None)
@@ -253,6 +268,14 @@ class BasketballProfile(SportProfile):
         said = names.result(self.video_text[1])
         if said is not None:
             teams |= {said[0], said[1]}
+        # The teams the title and description name, for a bug with logos:
+        # without them "Warriors" read as a player's name, and every title
+        # naming a team as one naming a player who didn't score. An NBA
+        # team's city and short name too ("Golden State", "Dubs"), and the
+        # letters the bug gave it.
+        teams |= set(names.teams(*self.video_text))
+        for city, nick, codes, short in names.nba(*self.video_text, self._letters):
+            teams |= {f"{city} {nick}", nick, *short, *(c for c in codes if c in self._letters)}
         teams |= {t.strip() for t in re.split(r",|\bvs?\b\.?|\bversus\b|/", str((self.option or {}).get("teams") or ""))
                   if t.strip()}
         return tuple(sorted(t for t in teams if t))
@@ -355,26 +378,34 @@ class BasketballProfile(SportProfile):
         return kind
 
     def _name_sides(self) -> None:
-        """The teams by name, once, when the bug's own letters weren't read
-        (a logo, letters on their side): from the video's description of the
-        result and the bug's last score (names.sides). On an NBA game titles
-        given "the scorers 97, the other side 86" put the wrong team ahead,
-        from a "timeout OKC" in the commentary. Nothing when either doesn't
-        say: the titles then say no team leads."""
+        """The teams by name, once: the bug's own letters as the NBA teams the
+        video names ("GSW" as the Warriors, names.nba_letters), else, and
+        when the letters weren't read (a logo, letters on their side), from
+        the video's description of the result and the bug's last score
+        (names.sides). On an NBA game titles given "the scorers 97, the other
+        side 86" put the wrong team ahead, from a "timeout OKC" in the
+        commentary, and on another "GSW" and "DAL" made titles like "GSW Tie
+        It Up!". Nothing when neither says: the titles then say no team
+        leads, or name the teams by the bug's letters."""
         board = getattr(self, "board", None)
         if self._sided or board is None:
             return
         self._sided = True
-        if board.teams() is not None:
-            return
         from sports.basketball import names
 
         title, description = self.video_text
-        named = names.sides(title, description, board.final())
+        letters = board.teams()
+        self._letters = tuple(letters or ())
+        named = names.nba_letters(letters, title, description) if letters is not None else None
+        if named is None:
+            named = names.sides(title, description, board.final())
         if named is None:
             return
-        for r in board.readings:
-            r.teams = named
+        if letters is None:
+            for r in board.readings:
+                r.teams = named
+        # A bug's readings keep the letters it shows, which a listed event's
+        # team is matched against ("dunk LAL"); its baskets get the names.
         for c in board.changes:
             c.team, c.other = named[c.side], named[1 - c.side]
 
@@ -419,14 +450,20 @@ class BasketballProfile(SportProfile):
             late_win = period is not None and period >= board.last_period() and left is not None and left <= LATE
             sealed = late_win and change is board.changes[-1]
         team_names = self._team_names()
+        from sports.basketball import names
+
+        nba = names.nba(*self.video_text, self._letters)
 
         def aliases(team: str) -> tuple:
-            """ "Spurs", and the names that end with it ("San Antonio Spurs") and their city."""
+            """ "Spurs", and the names that end with it ("San Antonio Spurs") and their
+            city; an NBA team's short names and the letters the bug gave it too."""
             if not team:
                 return ()
             full = [t for t in team_names if t != team and t.lower().endswith(team.lower())]
             cities = [t[:-len(team)].strip() for t in full]
-            return tuple(dict.fromkeys([team, *full, *(c for c in cities if c)]))
+            row = next((r for r in nba if r[1] == team), None)
+            more = [*row[3], *(c for c in row[2] if c in self._letters)] if row is not None else []
+            return tuple(dict.fromkeys([team, *full, *(c for c in cities if c), *more]))
 
         return titles.Play(points=points, kind=e.type, shot=titles.shot_words(e.type, points),
                            team=change.team or "", other=change.other or "", mine=mine, theirs=theirs,

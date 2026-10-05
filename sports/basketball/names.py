@@ -116,6 +116,137 @@ def sides(title: str, description: str, final: tuple | None) -> tuple[str, str] 
     return named(pair[0]), named(pair[1])
 
 
+# What sets two teams against each other in a title: "SPURS at THUNDER",
+# "Warriors vs. Lakers", "Celtics @ Knicks".
+_VERSUS = re.compile(r"\s(?:at|vs\.?|v\.?|versus|@)\s", re.I)
+# The result as a description says it, with or without the score: "the
+# Warriors beat the Lakers".
+_NAMED = r"((?:[A-Z0-9][\w'’&-]*[ \t]+){0,3}[A-Z0-9][\w'’&-]*)"
+WON = re.compile(r"\b[Tt]he\s+" + _NAMED + r"\s+(?:defeated|beat|topped|edged|outlasted|downed|held\s+off)\b"
+                 r"[^.]*?\b[Tt]he\s+" + _NAMED + r"\b")
+
+
+def teams(title: str, description: str = "") -> tuple[str, ...]:
+    """The teams the video names, to tell a team from a player when the
+    score bug shows logos: the two its title sets against each other
+    ("SPURS at THUNDER", "Warriors vs. Lakers") when its title or description
+    calls each "the ..." (no one says that of a player, so "Curry vs LeBron"
+    names no team), and the two its description's result names, with or
+    without the score. Which side of the bug each is on is sides()'s to say."""
+    title, description = title or "", description or ""
+    out: list[str] = []
+    for m in _VERSUS.finditer(title):
+        pair = (_side(title[:m.start()], end=True), _side(title[m.end():], end=False))
+        if all(pair) and all(_called_the(team, f"{title}\n{description}") for team in pair):
+            out += pair
+    won = WON.search(description)
+    if won is not None:
+        out += [t for t in (_named_run(won.group(1)), _named_run(won.group(2))) if t]
+    return tuple(dict.fromkeys(out))
+
+
+def _named_run(text: str) -> str:
+    """`text` up to its last word that can be part of a name ("Los Angeles
+    Lakers Tuesday" -> "Los Angeles Lakers")."""
+    words = text.split()
+    while words and not _named(words[-1]):
+        words.pop()
+    return " ".join(words)
+
+
+def _side(text: str, *, end: bool) -> str:
+    """The run of name words that ends `text` (end=True) or starts it, a
+    shouted one as a name ("THUNDER" as "Thunder")."""
+    found = list(_WORD.finditer(text))
+    run: list[str] = []
+    edge = len(text) if end else 0
+    for m in (reversed(found) if end else found):
+        gap = text[m.end():edge] if end else text[edge:m.start()]
+        if gap.strip() or not _named(m.group(0)):
+            break
+        run.append(m.group(0))
+        edge = m.start() if end else m.end()
+    if end:
+        run.reverse()
+    return " ".join(w.title() if w.isupper() else w for w in run)
+
+
+def _called_the(team: str, text: str) -> bool:
+    """Whether `text` says "the <team>", or "the" and a name ending with it
+    ("the Golden State Warriors" for "Warriors")."""
+    last = team.split()[-1]
+    return re.search(rf"\bthe\s+(?:[\w.'’&-]+\s+){{0,3}}{re.escape(last)}\b", text, re.I) is not None
+
+
+# The NBA's teams: city, nickname, the letters score bugs give them, and the
+# short names commentators and titles use. On an NBA game the bug read "GSW"
+# and "DAL": titles came out as "GSW Tie It Up!", a title saying "the
+# Warriors' lead" for a Mavericks three wasn't caught, and "Dallas" and
+# "Golden State" read as players' names.
+NBA = (
+    ("Atlanta", "Hawks", ("ATL",), ()),
+    ("Boston", "Celtics", ("BOS",), ()),
+    ("Brooklyn", "Nets", ("BKN", "BRK"), ()),
+    ("Charlotte", "Hornets", ("CHA", "CHO"), ()),
+    ("Chicago", "Bulls", ("CHI",), ()),
+    ("Cleveland", "Cavaliers", ("CLE",), ("Cavs",)),
+    ("Dallas", "Mavericks", ("DAL",), ("Mavs",)),
+    ("Denver", "Nuggets", ("DEN",), ()),
+    ("Detroit", "Pistons", ("DET",), ()),
+    ("Golden State", "Warriors", ("GSW", "GS"), ("Dubs",)),
+    ("Houston", "Rockets", ("HOU",), ()),
+    ("Indiana", "Pacers", ("IND",), ()),
+    ("Los Angeles", "Clippers", ("LAC",), ()),
+    ("Los Angeles", "Lakers", ("LAL",), ()),
+    ("Memphis", "Grizzlies", ("MEM",), ("Grizz",)),
+    ("Miami", "Heat", ("MIA",), ()),
+    ("Milwaukee", "Bucks", ("MIL",), ()),
+    ("Minnesota", "Timberwolves", ("MIN",), ("Wolves",)),
+    ("New Orleans", "Pelicans", ("NOP", "NO"), ("Pels",)),
+    ("New York", "Knicks", ("NYK", "NY"), ()),
+    ("Oklahoma City", "Thunder", ("OKC",), ()),
+    ("Orlando", "Magic", ("ORL",), ()),
+    ("Philadelphia", "76ers", ("PHI",), ("Sixers",)),
+    ("Phoenix", "Suns", ("PHX", "PHO"), ()),
+    ("Portland", "Trail Blazers", ("POR",), ("Blazers",)),
+    ("Sacramento", "Kings", ("SAC",), ()),
+    ("San Antonio", "Spurs", ("SAS", "SA"), ()),
+    ("Toronto", "Raptors", ("TOR",), ()),
+    ("Utah", "Jazz", ("UTA", "UTAH"), ()),
+    ("Washington", "Wizards", ("WAS", "WSH"), ()),
+)
+
+
+def nba(title: str, description: str = "", letters=()) -> list[tuple]:
+    """The NBA teams the video names: by nickname ("WARRIORS", "Lakers"), with
+    "the" before it, its city, or its letters on the score bug beside it, so
+    a nickname that is also a word or a name ("Magic Johnson", "Heat Check")
+    names no team alone. Each as its NBA row."""
+    text = f"{title or ''}\n{description or ''}"
+    letters = {str(code).upper() for code in letters or () if code}
+    out = []
+    for city, nick, codes, short in NBA:
+        if not re.search(rf"\b(?:{re.escape(nick)}|{re.escape(nick.upper())})\b", text):
+            continue
+        if (_called_the(nick, text) or re.search(rf"\b{re.escape(city)}\b", text, re.I)
+                or letters & set(codes)):
+            out.append((city, nick, codes, short))
+    return out
+
+
+def nba_letters(letters: tuple, title: str, description: str = "") -> tuple[str, str] | None:
+    """The score bug's two teams' letters as the NBA teams the video names
+    ("GSW", "DAL" -> "Warriors", "Mavericks"), or None unless both are."""
+    named = nba(title, description, letters)
+    out = []
+    for code in letters or ():
+        row = next((r for r in named if str(code).upper() in r[2]), None)
+        if row is None:
+            return None
+        out.append(row[1])
+    return tuple(out) if len(out) == 2 and out[0] != out[1] else None
+
+
 def for_video(title: str, description: str = "", teams: str = "") -> str | None:
     """The hint for one job: its title, its description, and the teams the
     job names (Highlights' team choice). None when they name no one."""

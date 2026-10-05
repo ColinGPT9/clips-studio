@@ -84,6 +84,36 @@ def test_basketball_is_offered_beside_soccer_with_its_quarters():
         assert choice in {h["id"] for h in ball["highlights"]}
 
 
+def test_a_long_games_scoreboard_is_waited_for():
+    """A 79-minute NBA game's scoreboard took 25 minutes to read on a test
+    PC. The job waited 900 s for it, went on without it, and its clips came
+    out as plain clips that missed the game's ending. A basketball job now
+    waits as long as the video runs; every other sport, Soccer too, still
+    waits 900 s."""
+    basketball = {"clips": {"sport": {"name": "basketball"}}}
+    assert sports.prepass_wait(basketball, 4740.0) == 4740.0
+    assert sports.prepass_wait(basketball, 600.0) == 900.0
+    assert sports.prepass_wait({"clips": {"sport": {"name": "soccer"}}}, 4740.0) == 900.0
+    assert sports.prepass_wait({"clips": {}}, 4740.0) == 900.0
+
+
+def test_a_job_waits_for_its_sports_reading_as_long_as_the_sport_says(monkeypatch):
+    pytest.importorskip("numpy")
+    import core.pipeline as pipeline
+    from core import cancel
+    from core.models import DownloadedVideo
+
+    basketball = {"clips": {"sport": {"name": "basketball"}}}
+    waited = []
+    monkeypatch.setattr(pipeline.MatchReading, "_listen", lambda self: None)
+    monkeypatch.setattr(pipeline.MatchReading, "_prepass", lambda self: None)
+    monkeypatch.setattr(cancel, "wait", lambda thread, timeout=None, video_id=None: waited.append(timeout))
+    monkeypatch.setattr(pipeline, "_sport_inputs", lambda *_a: ("profile", None, None))
+    video = DownloadedVideo(video_id="g3", title="Game", path=None, duration=4740.0)
+    assert pipeline.MatchReading(basketball, video).finish() == ("profile", None, None)
+    assert waited == [900, 4740.0]
+
+
 def test_the_taxonomy_is_data_and_every_choice_names_real_events():
     spec = sports.spec("basketball")
     kinds = set(spec["events"])
@@ -1143,6 +1173,18 @@ def test_an_and_one_is_one_only_when_the_foul_is_called_as_it_goes_in():
     assert next(e for e in m if e.confirmed).type == "and_one"
 
 
+def test_a_dunk_is_one_only_when_it_is_called_as_it_goes_in():
+    """On an NBA game a layup ("a scoop to the hoop") was called a dunk for a
+    "jam" said 12 s after it, about the next play, and its title said dunk."""
+    m = _moments(_profile(), said={500: "a scoop to the hoop", 504: "and the follow jam"},
+                 board=_board([(502, 0, 2)]), curves=_curves(roars=[(501, 6)]))
+    basket = next(e for e in m if e.confirmed)
+    assert (basket.type, basket.t) == ("made_2", 501.0)
+    for said in ({500: "drives and throws it down!"}, {496: "he goes up for the slam", 500: "what a play"}):
+        m = _moments(_profile(), said=said, board=_board([(502, 0, 2)]), curves=_curves(roars=[(501, 6)]))
+        assert next(e for e in m if e.confirmed).type == "dunk"
+
+
 def test_a_basket_between_keyframes_far_apart_is_dated_in_the_middle():
     """With the new score not found between keyframes 8.4 s apart, a basket
     dated just after the old score was 2.5 s early on an NBA game, and its
@@ -1617,14 +1659,15 @@ def test_a_name_whisper_didnt_know_before_the_call_names_no_one():
     assert who(121, 2) == "Williams"
 
 
-def _basket_game(said, baskets, description="", **profile_extra):
+def _basket_game(said, baskets, description="", title="Spurs at Thunder", teams=("Spurs", "Thunder"), start=(0, 0),
+                 **profile_extra):
     """A profile run over `said` (segments with word timings) and a board of
     `baskets` (video second, side, points) between the Spurs and the Thunder."""
     from core.models import DownloadedVideo
 
-    video = DownloadedVideo(video_id="g", title="Spurs at Thunder", path=None, duration=N, description=description)
+    video = DownloadedVideo(video_id="g", title=title, path=None, duration=N, description=description)
     profile = sports.profile_for({"clips": {"sport": {"name": "basketball", **profile_extra}}}, video)
-    board = _board(baskets, period=4, teams=("Spurs", "Thunder"), start_clock=900.0)
+    board = _board(baskets, period=4, teams=teams, start_clock=900.0, start=start)
     profile.board, profile.cutaways, profile.curves = board, [], _curves()
     filler = [Segment(start=float(s), end=float(s + 4), text="bringing it up the floor") for s in range(0, N, 4)
               if not any(s < seg.end and seg.start < s + 4 for seg in said)]
@@ -1632,6 +1675,70 @@ def _basket_game(said, baskets, description="", **profile_extra):
     moments = detect.moments(profile, segments, curves=profile.curves, board=board, video_end=float(N),
                              min_len=10, max_len=60)
     return profile, moments, segments
+
+
+def test_a_bugs_team_letters_are_the_nba_teams_the_video_names():
+    """On an NBA game the bug read "GSW" and "DAL": the titles written from the
+    scoreboard said "GSW Tie It Up!", a title saying "the Warriors' lead" for a
+    Mavericks three went through, and "Dallas" read as a player's name. The
+    letters are the NBA teams the video names, each by its nickname."""
+    from sports.basketball import names, titles
+
+    title = "WARRIORS at MAVERICKS | FULL GAME HIGHLIGHTS | January 22, 2026"
+    description = ("The Mavericks defeated the Warriors, 123-115 tonight in Dallas. Cooper Flagg scored 30 and "
+                   "P.J. Washington added 20.")
+    assert names.nba_letters(("GSW", "DAL"), title, description) == ("Warriors", "Mavericks")
+    assert names.nba_letters(("LAL", "GS"), "Lakers vs Warriors WILD Christmas Day Ending",
+                             "...to lift the Lakers over Golden State, 115-113.") == ("Lakers", "Warriors")
+    # A nickname that is also a word or a name names no team on its own.
+    assert names.nba_letters(("LAL", "BOS"), "Magic Johnson's Best Plays") is None
+    assert names.nba("Heat Check: Curry Goes Off") == []
+
+    said = [_said_at(596.0, "Washington, Washington from the corner, got it!", 0.5)]
+    profile, moments, _segments = _basket_game(said, [(603, 1, 3)], description=description, title=title,
+                                               teams=("GSW", "DAL"), start=(106, 118))
+    basket = next(e for e in moments if e.confirmed)
+    assert basket.team == "Mavericks" and basket.context.startswith("Mavericks 121, Warriors 106")
+    assert profile.board.teams() == ("GSW", "DAL")                 # as the bug shows them
+    assert not profile.names.is_name("Dallas") and profile.names.is_name("Washington")
+    c = ClipCandidate(start=basket.start, end=basket.end, score=80)
+    clips.mark(c, basket, profile.event_label(basket.type), 10)
+    play = profile.play_of(c)
+    assert (play.team, play.other, play.scorer) == ("Mavericks", "Warriors", "Washington")
+    assert {"Dallas", "Mavs", "DAL"} <= set(play.aliases) and "Golden State" in play.other_aliases
+    wrong = _meta("Washington's Three!", "P.J. Washington scores a three-pointer, extending the Warriors' lead.")
+    assert any("Mavericks lead 121-106" in p for p in titles.problems(play, wrong, profile.names))
+    assert titles.problems(play, _meta("Washington From the Corner!", "Dallas pulls away."), profile.names) == []
+    assert titles.written(play, wrong).title == "Washington's Three Puts the Mavericks Up 15"
+
+
+def test_with_neither_side_known_a_title_names_no_team():
+    """A game whose bug shows logos, and whose description gives the result
+    in no shape the sides can be told from ("to lift the Lakers over Golden
+    State"), had "Lakers", "Warriors" and "Golden State" read as players'
+    names: every title naming a team was told to name no player, and came
+    back naming the team again. The teams the video names are teams, and
+    since nothing says which one scored, a title naming one is told so."""
+    from sports.basketball import names, titles
+
+    title = "Lakers vs Warriors WILD Christmas Day Ending | NBA Classic Game"
+    description = ("Austin Reaves sealed the win with a running layup with 1 second left to lift the Lakers over "
+                   "Golden State, 115-113.")
+    assert names.teams("SPURS at THUNDER | FULL GAME HIGHLIGHTS", "the Spurs beat the Thunder") == ("Spurs", "Thunder")
+    assert names.teams("Curry vs LeBron: The Duel", "Stephen Curry and LeBron James go at it.") == ()
+    said = [_said_at(596.0, "Reaves, Reaves running floater, good!", 0.5)]
+    profile, moments, _segments = _basket_game(said, [(603, 0, 2)], description=description, title=title,
+                                               teams=None, start=(111, 113))
+    basket = next(e for e in moments if e.confirmed)
+    c = ClipCandidate(start=basket.start, end=basket.end, score=80)
+    clips.mark(c, basket, profile.event_label(basket.type), 10)
+    play = profile.play_of(c)
+    assert (play.team, play.other, play.scorer) == ("", "", "Reaves")
+    assert not any(profile.names.is_name(w) for w in ("Lakers", "Warriors", "Golden", "State"))
+    named = _meta("Reaves Ties It for the Lakers!", "Austin Reaves ties it for Los Angeles.")
+    assert titles.problems(play, named, profile.names) == [
+        "The scoreboard doesn't say which team scored it: name no team."]
+    assert titles.problems(play, _meta("Reaves Ties It!", "Austin Reaves ties it."), profile.names) == []
 
 
 def test_a_basket_is_typed_and_credited_by_the_words_said_as_it_went_in():

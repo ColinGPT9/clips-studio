@@ -148,7 +148,16 @@ def problems(play: Play, meta, names=None) -> list[str]:
     if names is not None and _wrong_names(play, (title, card), description, names):
         out.append(f"The commentary says {play.scorer} scored it: name only {play.scorer}, or no one."
                    if play.scorer else "The commentary doesn't say who scored it: name no player.")
+    if names is not None and not (play.team and play.other) and _team_named(text, names):
+        out.append("The scoreboard doesn't say which team scored it: name no team.")
     return list(dict.fromkeys(out))
+
+
+def _team_named(text: str, names) -> bool:
+    """Whether `text` names one of the teams ("Warriors", "Golden State"):
+    with the bug's logos and no result to tell its sides apart, nothing says
+    which team scored or leads."""
+    return any(bare(w).lower() in names.teams and bare(w).lower() not in NOT_NAMES for w in _WORD.findall(text))
 
 
 def _state(play: Play, text: str) -> list[str]:
