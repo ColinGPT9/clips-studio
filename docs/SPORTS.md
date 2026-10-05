@@ -392,7 +392,10 @@ test games laid out like the NBA bugs, four of them see-through over a moving
 picture, that read 70% of keyframes quickly, 2 to 3 times faster, with every
 score the same as the full OCR's but one, in the first seconds of one game, that
 the full OCR itself only just caught; and the game clock more often (the full
-OCR sometimes runs it into the shot clock, "9:17:16"). A score
+OCR sometimes runs it into the shot clock, "9:17:16"). On nine more, checked
+against what they showed (scores growing past 100, lower thirds, cuts, a "+3"
+beside or over the score), it read as many scores and clocks right as the full
+OCR on each, and more on two. A score
 up by 1, 2 or 3 on one side, seen on two readings, is a free throw, a basket or
 a three, and which team scored. The commentary's name for it stands when the points agree (a dunk is 2,
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets

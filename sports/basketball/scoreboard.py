@@ -635,18 +635,20 @@ class BoxReader:
     whole again, as the full OCR would read it, when:
 
     - a piece with digits reads differently, and unsurely or as characters
-      of other kinds or another number of them (a score mid-roll: real ones
-      read "4U" over "12", or "业"; a "+3" drawn over a score; the bug hidden
-      or covered); a piece that reads as it did stands however unsure (small
+      of other kinds or another number of them, or spaced otherwise (a score
+      mid-roll: real ones read "4U" over "12", or "业"; a "+3" drawn over a
+      score; the bug hidden or covered; "112" where the full read read
+      "1 12", or "8:281.6" for "8:28 1.6": which is right, the full read
+      decides); a piece that reads as it did stands however unsure (small
       ones over a moving picture are never sure), and letters alone stand as
       they were read unless a number or a "+" shows over them,
     - a piece whose digits changed shows more digits when read again wider
       (a score grown from 99 to 100 past its old place),
     - the last full read found no bug (two numbers or more), or found
-      fewer pieces, or any piece elsewhere, than the full read before it or
-      the last one trusted (the first read; a score mid-roll, half out of
-      its place or missed: read again alone where that read found it, the
-      keyframes after it would have no score), or
+      fewer pieces, or any piece elsewhere, or none where one was, than the
+      full read before it or the last one trusted (the first read; a score
+      mid-roll, half out of its place or missed: read again alone where that
+      read found it, the keyframes after it would have no score), or
     - FULL_EVERY keyframes have passed (a piece that has come since).
 
     `ocr`: the full OCR, as pieces() takes it; `rec`: the recogniser alone,
@@ -696,7 +698,7 @@ class BoxReader:
             if changed[max(0, y0 - PIECE_PAD):y1 + PIECE_PAD, max(0, wx0 - PIECE_PAD):wx1 + PIECE_PAD].any():
                 try:
                     again, conf = self.rec(img[y0:y1, x0:x1])
-                    if again.replace(" ", "") == text.replace(" ", ""):
+                    if _spaced(again) == _spaced(text):
                         again = text                # as it read whole: it stands, however unsure
                     elif not re.search(r"\d", text):
                         # Letters alone (a team, a header) don't change in a
@@ -723,20 +725,31 @@ class BoxReader:
 
 def _same_places(pieces: list, before: list) -> bool:
     """Whether a full read found its pieces where `before` had them: no
-    fewer, and each over the columns of one of them, sharing SAME_ROW of
-    their rows (a score rolling in is above or below its place)."""
+    fewer, each over the columns of one of them and sharing SAME_ROW of
+    their rows (a score rolling in is above or below its place), and one
+    over each of theirs (none dropped while another split in two)."""
+
+    def over(a, b) -> bool:
+        return (min(a[2], b[2]) > max(a[0], b[0])
+                and min(a[3], b[3]) - max(a[1], b[1]) >= SAME_ROW * (max(a[3], b[3]) - min(a[1], b[1])))
+
     if not before or len(pieces) < len(before):
         return False
-    return all(any(min(b[2], a[2]) > max(b[0], a[0])
-                   and min(b[3], a[3]) - max(b[1], a[1]) >= SAME_ROW * (max(b[3], a[3]) - min(b[1], a[1]))
-                   for a, _ in before)
-               for b, _ in pieces)
+    return (all(any(over(b, a) for a, _ in before) for b, _ in pieces)
+            and all(any(over(a, b) for b, _ in pieces) for a, _ in before))
+
+
+def _spaced(text: str) -> str:
+    """A piece's text with its spaces as the parse reads them: none at the
+    ends, one between words ("1 12" is two numbers, "112" one)."""
+    return " ".join(text.split())
 
 
 def _shape(text: str) -> str:
     """A piece's text as the kinds of its characters: a digit, a letter, or
-    the character itself ("7:46" and "7:45" are "0:00"; "+3" isn't "80")."""
-    return re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "0", text.replace(" ", "")))
+    the character itself ("7:46" and "7:45" are "0:00"; "+3" isn't "80";
+    "8:28 1.6", a clock and a shot clock, isn't "8:281.6")."""
+    return re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "0", _spaced(text)))
 
 
 def _widened(rects: list, width: int) -> list:

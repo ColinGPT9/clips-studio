@@ -557,6 +557,66 @@ def test_a_piece_read_again_as_it_was_stands_however_unsure(monkeypatch):
     assert [id(img) for img in read] == [id(still), id(still), id(covered)]
 
 
+def test_a_piece_read_again_spaced_otherwise_reads_the_box_whole(monkeypatch):
+    # A space parts two numbers: the full OCR can read "112" as "1 12", and
+    # the recogniser alone "8:28 1.6" (a clock and a shot clock) as
+    # "8:281.6". Whichever is right, a piece read again spaced otherwise
+    # than the full read read it goes to a full read.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.core import scorebug
+
+    still = np.full((64, 400, 3), 30, dtype=np.uint8)
+    still[16:48, 20:60] = 250                              # "111"
+    still[16:48, 100:140] = 250                            # "112"
+    still[16:48, 300:360] = 250                            # "8:28 1.6"
+    scored = still.copy()
+    scored[20:44, 110:130] = 120
+    ticked = scored.copy()
+    ticked[20:44, 340:356] = 120
+    first, second, clock = (0.05, 0.25, 0.15, 0.75), (0.25, 0.25, 0.35, 0.75), (0.75, 0.25, 0.9, 0.75)
+    full = {id(still): [(first, "111"), (second, "1 12"), (clock, "8:28 1.6")],
+            id(scored): [(first, "111"), (second, "112"), (clock, "8:28 1.6")],
+            id(ticked): [(first, "111"), (second, "112"), (clock, "8:27 1.5")]}
+    read = []
+    monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or full[id(img)])
+    answers = iter([("112", 1.0), ("8:271.5", 1.0)])
+    reader = bb.BoxReader(ocr=None, rec=lambda img: next(answers))
+    texts = [[text for _box, text in reader.read(img)] for img in (still, still, scored, ticked)]
+    assert texts == [["111", "1 12", "8:28 1.6"]] * 2 + [["111", "112", "8:28 1.6"], ["111", "112", "8:27 1.5"]]
+    assert [id(img) for img in read] == [id(still), id(still), id(scored), id(ticked)]
+
+
+def test_a_full_read_that_dropped_a_score_is_read_again(monkeypatch):
+    # A full read mid-roll can miss a score while another piece splits in
+    # two ("7:46 24" read as "7:46" and "24"), as many pieces as before,
+    # each where one was. With no piece where the score was, the keyframes
+    # after it would have no score: it is followed by another full read.
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from sports.core import scorebug
+
+    still = np.full((64, 400, 3), 30, dtype=np.uint8)
+    still[16:48, 20:60] = 250                              # "98"
+    still[16:48, 100:140] = 250                            # "95"
+    still[16:48, 300:380] = 250                            # "7:46 24"
+    rolling = still.copy()
+    rolling[16:48, 100:140] = 30                           # the score between two numbers
+    after = rolling.copy()
+    after[16:48, 100:140] = 200                            # "97"
+    first, second, strip = (0.05, 0.25, 0.15, 0.75), (0.25, 0.25, 0.35, 0.75), (0.75, 0.25, 0.95, 0.75)
+    full = {id(still): [(first, "98"), (second, "95"), (strip, "7:46 24")],
+            id(rolling): [(first, "98"), ((0.75, 0.25, 0.85, 0.75), "7:46"), ((0.88, 0.25, 0.95, 0.75), "24")],
+            id(after): [(first, "98"), (second, "97"), (strip, "7:46 24")]}
+    read = []
+    monkeypatch.setattr(scorebug, "pieces", lambda img, ocr: read.append(img) or full[id(img)])
+    answers = iter([("9", 0.4)])                           # the score mid-roll: unsure
+    reader = bb.BoxReader(ocr=None, rec=lambda img: next(answers))
+    texts = [[text for _box, text in reader.read(img)] for img in (still, still, rolling, after)]
+    assert texts == [["98", "95", "7:46 24"]] * 2 + [["98", "7:46", "24"], ["98", "97", "7:46 24"]]
+    assert [id(img) for img in read] == [id(still), id(still), id(rolling), id(after)]
+
+
 def test_a_piece_is_read_again_as_the_full_ocr_reads_it(monkeypatch):
     # The recogniser alone, with the engine the full OCR uses; it answers
     # ([[text, confidence]], times), or nothing. A piece half again as tall
