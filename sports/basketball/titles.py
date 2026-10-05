@@ -70,6 +70,9 @@ MARGINS = [re.compile(p, re.I) for p in (
     r"\bwithin\s+" + _N + r"\b",
 )]
 SCORE_LINE = re.compile(r"\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b")
+# Clips written again in one call: the title writer's own batch (analysis/metadata.py),
+# which numbers its clips from 0, so each "CLIP k" rule meets its own clip.
+AT_ONCE = 8
 
 
 @dataclass
@@ -398,26 +401,32 @@ def check(profile, candidates: list, metas: list, rewrite) -> list:
     and one that still does is written from the play. Any other clip as it is."""
     plays = [profile.play_of(c) for c in candidates]
     names = getattr(profile, "names", None)
+    checked = sum(p is not None for p in plays)
     wrong = {i: problems(p, m, names) for i, (p, m) in enumerate(zip(plays, metas)) if p is not None}
     wrong = {i: w for i, w in wrong.items() if w}
     if not wrong:
+        if checked:
+            print(f"      Titles: all {checked} true to their play")
         return metas
     redo = sorted(wrong)
-    rules = "\n".join([profile.title_rules(), *(f"- CLIP {k}: " + " ".join(wrong[i]) for k, i in enumerate(redo))])
-    try:
-        again = rewrite([candidates[i] for i in redo], rules) or []
-    except Exception as e:
-        print(f"      (titles: writing them again failed: {e})")
-        again = []
+    again: list = []
+    for at in range(0, len(redo), AT_ONCE):
+        part = redo[at:at + AT_ONCE]
+        rules = "\n".join([profile.title_rules(), *(f"- CLIP {k}: " + " ".join(wrong[i]) for k, i in enumerate(part))])
+        try:
+            got = list(rewrite([candidates[i] for i in part], rules) or [])
+        except Exception as e:
+            print(f"      (titles: writing them again failed: {e})")
+            got = []
+        again += (got + [None] * len(part))[:len(part)]
     out = list(metas)
     fixed = 0
-    for k, i in enumerate(redo):
-        meta = again[k] if k < len(again) else None
+    for i, meta in zip(redo, again):
         if meta is not None and not problems(plays[i], meta, names):
             out[i] = meta
             fixed += 1
         else:
             out[i] = written(plays[i], metas[i], i)
-    print(f"      Titles: {len(redo)} of {len(plays)} got their play wrong; "
+    print(f"      Titles: {len(redo)} of {checked} got their play wrong; "
           f"{fixed} written again, {len(redo) - fixed} written from the scoreboard")
     return out

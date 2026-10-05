@@ -1681,6 +1681,32 @@ def test_a_wrong_title_is_written_again_and_then_from_the_scoreboard():
     assert count == 2 and "- CLIP 1: " in rules and "name only Ruiz" in rules
 
 
+def test_more_wrong_titles_than_one_batch_are_written_again_batch_by_batch(capsys):
+    """The title writer numbers each batch of 8 clips from 0: a ninth wrong
+    title is written again in a call of its own, its rule numbered as its
+    clip is, and the log says how many were wrong (or that none were)."""
+    from sports.basketball import titles
+
+    said = [_said_at(394.0, "back out to Okafor, Okafor to Ruiz, Ruiz knocks down the three", 0.5)]
+    profile, moments, _segments = _basket_game(said, [(403, 0, 3)], description="Kai Ruiz.")
+    e = next(e for e in moments if e.confirmed)
+    c = ClipCandidate(start=e.start, end=e.end, score=80)
+    clips.mark(c, e, profile.event_label(e.type), 10)
+    asked = []
+
+    def rewrite(subset, rules):
+        asked.append((len(subset), rules))
+        return [_meta("Ruiz Knocks It Down!", "Ruiz hits a three.") for _ in subset]
+
+    out = titles.check(profile, [c] * 9, [_meta("Okafor's Dime!", "Okafor finds Ruiz.")] * 9, rewrite)
+    assert [n for n, _rules in asked] == [8, 1]
+    assert "- CLIP 0: " in asked[1][1] and "- CLIP 1: " not in asked[1][1]
+    assert [m.title for m in out] == ["Ruiz Knocks It Down!"] * 9
+    assert "Titles: 9 of 9 got their play wrong; 9 written again, 0 written from the scoreboard" in capsys.readouterr().out
+    assert titles.check(profile, [c], out[:1], rewrite) == out[:1]
+    assert "Titles: all 1 true to their play" in capsys.readouterr().out
+
+
 def test_a_baskets_quarter_and_clock_are_read_where_the_bug_changed():
     # A highlights package cuts from the end of the 2nd quarter to the 3rd:
     # the crowd's roar from the last play of the half is still in the search.
