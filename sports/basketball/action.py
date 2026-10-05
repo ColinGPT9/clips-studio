@@ -26,12 +26,13 @@ didn't tell them apart.
 bug is wider than a 9:16 crop, so half of it showed along the bottom of
 nearly every clip. The rows from the bug's top edge down (or from the top
 down to its bottom edge) are left out of the crop, which zooms in that much.
-The bug is found as the score reader finds it (its text, scoreboard.find_box)
-and its graphic's edge as a step in brightness at the same row in every
-look, with the rows on the graphic's side holding stiller than those just
-beyond. Only as far as that edge: on an NBA game, leaving out everything
-that looked still past the text (the floor holds still too) took 19-27% of
-the height out where the bug was 17%, and cut players at the knees.
+The bug's text is found as the score reader finds the bug, taken where
+most looks show it (scoreboard.find_text), and its graphic's edge as a
+step in brightness at the same row in most looks, with the rows on the
+graphic's side holding stiller than those just beyond. Only as far as
+that edge: on an NBA game, leaving out everything from the top of the
+reader's box (grown to a caption over the bug on one look) took 18-27% of
+the height out where the bug was 15%, and cut players at the knees.
 
 Moved by the shared HoldMove controller and snapped at camera cuts, as
 soccer's framing is. A cut is told by the picture's colours changing as
@@ -234,7 +235,7 @@ def hidden_rows(looks: dict, duration: float, path: list, crop_frac: float) -> t
     it, (top, bottom) as fractions of the height; None to keep them all: no
     bug found (gym or phone footage, or no OCR), the crop never near it, or
     a bug so tall that leaving it out would zoom in too far. looks: frames
-    at the times scoreboard.find_box looks at, by time."""
+    at the times scoreboard.find_text looks at, by time."""
     import cv2
 
     from analysis import game_text
@@ -250,9 +251,10 @@ def hidden_rows(looks: dict, duration: float, path: list, crop_frac: float) -> t
         return looks[min(times, key=lambda x: abs(x - t))]
 
     with _OCR:
-        box = scoreboard.find_box(grab, duration, _ocr)
-    if box is None:
+        found = scoreboard.find_text(grab, duration, _ocr)
+    if found is None:
         return None
+    box, text = found
     half = crop_frac / 2
     if not any(x - half < box[2] + BUG_NEAR and x + half > box[0] - BUG_NEAR for _, x in path):
         return None
@@ -262,8 +264,8 @@ def hidden_rows(looks: dict, duration: float, path: list, crop_frac: float) -> t
         h, w = img.shape[:2]
         grays.append(cv2.cvtColor(cv2.resize(img, (BUG_WIDTH, max(2, round(h * BUG_WIDTH / w))),
                                              interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY))
-    edge = bug_edge(grays, box)
-    rows = (0.0, max(0.0, edge - BUG_SLACK)) if (box[1] + box[3]) / 2 > 0.5 else (min(1.0, edge + BUG_SLACK), 1.0)
+    edge = bug_edge(grays, text)
+    rows = (0.0, max(0.0, edge - BUG_SLACK)) if (text[1] + text[3]) / 2 > 0.5 else (min(1.0, edge + BUG_SLACK), 1.0)
     if rows[1] - rows[0] < 1 - BUG_MOST:
         print(f"      Basketball framing: the scoreboard is {1 - (rows[1] - rows[0]):.0%} of the height, "
               "too tall to leave out")

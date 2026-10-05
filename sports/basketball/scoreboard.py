@@ -398,11 +398,9 @@ def _bug_in(lines: list[tuple[tuple, str]], aspect: float) -> list[tuple[tuple, 
     return scorebug.score_lines(lines, aspect, parse, CLOCK)
 
 
-def find_box(grab, duration: float, ocr, frames: int = scorebug.FIND_FRAMES) -> tuple | None:
-    """Where the score bug is: the block of text in the top or bottom band
-    that _bug_in finds on the sampled frames, as the largest box most of them
-    agree on (the bug grows for BONUS or a timeout count). None when fewer
-    than FOUND_IN frames show one."""
+def _seen(grab, duration: float, ocr, frames: int) -> list[tuple]:
+    """The block of text _bug_in finds in the top or bottom band of each
+    sampled frame, as a box in the frame's fractions, until FOUND_AFTER."""
     seen: list[tuple] = []
     for i in range(frames):
         img = grab(duration * (i + 1) / (frames + 1))
@@ -421,17 +419,50 @@ def find_box(grab, duration: float, ocr, frames: int = scorebug.FIND_FRAMES) -> 
             break
         if len(seen) >= scorebug.FOUND_AFTER:
             break
-    if len(seen) < scorebug.FOUND_IN:
-        return None
-    # The box most frames agree on: sorted by position, the middle one (a
-    # one-off graphic sorts to an end), grown to every box that overlaps it.
-    seen.sort(key=lambda b: ((b[1] + b[3]) / 2, (b[0] + b[2]) / 2))
+    return seen
+
+
+def _agreed(seen: list[tuple]) -> list[tuple]:
+    """The boxes most frames agree on: sorted by position, the middle one (a
+    one-off graphic sorts to an end) and every box that overlaps it."""
+    seen = sorted(seen, key=lambda b: ((b[1] + b[3]) / 2, (b[0] + b[2]) / 2))
     middle = seen[len(seen) // 2]
-    agree = [b for b in seen if _overlap(b, middle) >= 0.3]
+    return [b for b in seen if _overlap(b, middle) >= 0.3]
+
+
+def _grown(agree: list[tuple]) -> tuple:
+    """The box grown to every agreeing frame's (the bug grows for BONUS or a
+    timeout count), padded."""
     left, top = min(b[0] for b in agree), min(b[1] for b in agree)
     right, bottom = max(b[2] for b in agree), max(b[3] for b in agree)
     pad_x, pad_y = (right - left) * 0.05, (bottom - top) * 0.2
     return (max(0.0, left - pad_x), max(0.0, top - pad_y), min(1.0, right + pad_x), min(1.0, bottom + pad_y))
+
+
+def find_box(grab, duration: float, ocr, frames: int = scorebug.FIND_FRAMES) -> tuple | None:
+    """Where the score bug is: the block of text in the top or bottom band
+    that _bug_in finds on the sampled frames, as the largest box most of them
+    agree on (the bug grows for BONUS or a timeout count). None when fewer
+    than FOUND_IN frames show one."""
+    seen = _seen(grab, duration, ocr, frames)
+    if len(seen) < scorebug.FOUND_IN:
+        return None
+    return _grown(_agreed(seen))
+
+
+def find_text(grab, duration: float, ocr, frames: int = scorebug.FIND_FRAMES) -> tuple[tuple, tuple] | None:
+    """find_box's box, and the bug's text as most frames show it: each side
+    the median over the frames that agree, unpadded. The box grows to every
+    frame's block, so a caption joined to the bug on one frame takes it far
+    past the bug (on an NBA game its top sat 0.74-0.83 of the height, the
+    bug's at 0.85); the framing needs where the bug's own text is."""
+    from statistics import median
+
+    seen = _seen(grab, duration, ocr, frames)
+    if len(seen) < scorebug.FOUND_IN:
+        return None
+    agree = _agreed(seen)
+    return _grown(agree), tuple(float(median(b[k] for b in agree)) for k in range(4))
 
 
 def _overlap(a: tuple, b: tuple) -> float:

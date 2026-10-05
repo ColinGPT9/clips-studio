@@ -253,6 +253,42 @@ def test_the_box_is_found_around_the_clock_with_logos_between_its_scores():
     assert 0.38 < box[0] < 0.42 and 0.68 < box[2] < 0.72     # the bug, not the ad board
 
 
+def test_the_bugs_text_is_where_most_frames_show_it_not_a_caption_joined_to_it_once():
+    """find_box grows to every frame's block of text, a caption over the bug
+    on one frame included: on an NBA game its top sat 10 points of the
+    height above the bug's. The framing takes the bug's text where most
+    frames show it."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    plain = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    plain[860:] = 80                                         # the bottom band holds text; the top is dark
+    captioned = plain.copy()
+    captioned[860:] = 120
+
+    def ocr(img):
+        # The bottom band, read 480 px wide: the bug, two rows; on one frame
+        # a scorer's caption right over it.
+        if img.mean() < 1:
+            return []
+        bug = [([[200, 30], [214, 30], [214, 46], [200, 46]], "98", 0.9),
+               ([[240, 30], [258, 30], [258, 46], [240, 46]], "101", 0.9),
+               ([[270, 32], [285, 32], [285, 44], [270, 44]], "4TH", 0.9),
+               ([[290, 32], [310, 32], [310, 44], [290, 44]], "0:32", 0.9)]
+        caption = [([[200, 14], [300, 14], [300, 26], [200, 26]], "JONES 31 PTS", 0.9)]
+        return bug + (caption if img.mean() > 100 else [])
+
+    looks = [plain, captioned, plain, plain, plain, plain]
+
+    def grab(t):
+        return looks[round(t / (2880 / 15)) - 1]
+
+    box, text = bb.find_text(grab, 2880, ocr)
+    assert box == bb.find_box(grab, 2880, ocr)
+    bug_top = 0.78 + 0.22 * 30 / 59
+    assert box[1] < 0.78 + 0.22 * 14 / 59 < bug_top                    # grown to the caption, and padded
+    assert abs(text[1] - bug_top) < 0.005 and abs(text[3] - (0.78 + 0.22 * 46 / 59)) < 0.005
+
+
 def _bug_frames(game):
     """What the full OCR read in the score bug of three NBA broadcasts, 20
     keyframes each, with what a person read there (tests/fixtures)."""
@@ -1338,7 +1374,7 @@ def _hide(monkeypatch, np, box, frames=None):
     from sports.basketball import scoreboard
 
     monkeypatch.setattr(game_text, "available", lambda: True)
-    monkeypatch.setattr(scoreboard, "find_box", lambda grab, duration, ocr: box)
+    monkeypatch.setattr(scoreboard, "find_text", lambda grab, duration, ocr: box and (box, box))
     grays = frames or _looks(np)
     return {i * 2.0: np.repeat(g[:, :, None], 3, axis=2) for i, g in enumerate(grays)}
 

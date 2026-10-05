@@ -496,14 +496,16 @@ The TV scoreboard is left out rather than cut in half: a bug is wider than a
 9:16 crop, so half of it showed along the bottom of nearly every clip. When the
 crop comes near the bug, the rows from the bug's top edge down are left out and
 the crop zooms in that much (on copies of the three NBA games' bugs, 15-25% of
-the height). The bug is found as the score reader finds it, and its graphic's
-edge as the furthest row within 8% of the height past its text where the
-brightness steps the same way in most looks, the rows on the text's side moving
-less than the picture beyond when that moves; else half the text's height past
-it. Only that far: leaving out every row that held still past the text took the
-floor too on an NBA game (19-27% of the height where the bug was 17%) and cut
-the nearest players at the knees. A bug that would take more than 27% of the
-height stays in; `hide_scoreboard: false` under `framing` keeps every bug.
+the height). The bug is found as the score reader finds it, its text taken
+where most looks show it: the reader's box grows to every look's block of text,
+a caption joined to the bug on one look included, and on an NBA game cutting
+from its top took 18-27% of the height where the bug was 15%, cutting the
+nearest players at the knees. The graphic's edge is the furthest row within 8%
+of the height past that text where the brightness steps the same way in most
+looks, the rows on the text's side moving less than the picture beyond when
+that moves; else half the text's height past it. A bug that would take more
+than 27% of the height stays in; `hide_scoreboard: false` under `framing`
+keeps every bug.
 
 ### Measured on NBA games
 
