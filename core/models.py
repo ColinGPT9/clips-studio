@@ -20,6 +20,9 @@ class DownloadedVideo:
     # The game(s) played, when the platform says: [{"name", "start", "end"}]
     # (Twitch's game chapters, Kick's category). For the gaming profile.
     games: list = field(default_factory=list)
+    # The video's own description, when the platform gives one (YouTube): the
+    # names a sport tells Whisper to listen for (sports.hotwords).
+    description: str = ""
 
 
 @dataclass

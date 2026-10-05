@@ -873,7 +873,7 @@ def test_a_game_winner_is_worth_far_more_than_a_first_quarter_three():
                                            roars=[(499, 4)])
     assert winner.type == "game_winner" and routine.type == "made_3"
     assert winner_bonus > routine_bonus + 5
-    assert "takes the lead" in winner.context and winner.when.startswith("Q4 0:0")
+    assert winner.context == "LAL 102, BOS 100: LAL take the lead" and winner.when.startswith("Q4 0:0")
 
 
 def test_a_late_block_in_a_close_game_beats_one_in_a_blowout():
@@ -901,7 +901,7 @@ def test_end_of_quarter_basket_with_the_buzzer_is_a_buzzer_beater():
 
 def test_a_tying_basket_late_and_a_go_ahead_one():
     tie, _b, _w = _weighted([(500, 0, 2)], period=4, start_clock=540.0, start=(98, 100), roars=[(499, 4)])
-    assert tie.type == "game_tying" and "ties it" in tie.context
+    assert tie.type == "game_tying" and tie.context == "LAL 100, BOS 100: LAL tie it"
     ahead, _b, _w = _weighted([(500, 0, 3), (520, 1, 2)], period=4, start_clock=590.0, start=(98, 100),
                               roars=[(499, 4)])
     assert ahead.type == "go_ahead"
@@ -1128,14 +1128,87 @@ def test_a_basketball_clips_title_is_written_knowing_the_quarter_the_clock_and_t
         "sport_why": "score 60-55 (SAS), +3; crowd roar"})
     winner = ClipCandidate(start=200, end=228, score=90, subscores={
         "sport_label": "Game winner", "sport_team": "OKC", "sport_when": "Q4 0:03",
-        "sport_why": "score 111-110 (OKC), +2", "sport_context": "takes the lead"})
+        "sport_why": "score 110-111 (OKC), +2", "sport_context": "OKC 111, SAS 110: OKC take the lead"})
     goal = ClipCandidate(start=300, end=320, score=80, subscores={"sport_label": "Goal", "sport_minute": 67})
     metadata.generate_metadata_batch([three, winner, goal], _segments({}), "Spurs at Thunder", Model())
     assert ("CLIP 0 (the scoreboard: Three by SAS, making it 60-55; 3rd quarter with 5:12 left; "
-            "not crunch time):") in prompts[0]
-    assert ("CLIP 1 (the scoreboard: Game winner by OKC, making it 111-110; 4th quarter with 0:03 left; "
-            "takes the lead):") in prompts[0]
+            "not crunch time, so not clutch):") in prompts[0]
+    assert ("CLIP 1 (the scoreboard: Game winner by OKC; OKC 111, SAS 110: OKC take the lead; "
+            "4th quarter with 0:03 left):") in prompts[0]
     assert "CLIP 2:\n" in prompts[0]                    # a soccer clip's block, as it always was
+
+
+def test_a_basketball_clips_title_is_written_from_what_is_said_in_the_clip_only():
+    from analysis import metadata
+
+    prompts = []
+
+    class Model:
+        def generate(self, prompt, json_mode=False):
+            prompts.append(prompt)
+            return '{"items": []}'
+
+    def words(start, text):
+        return [{"start": start + i, "end": start + i + 0.8, "word": w} for i, w in enumerate(text.split())]
+
+    # One long sentence runs over three plays, as commentary does.
+    said = "Fox drives and kicks Wembanyama for three and he hits it Holmgren answers"
+    segments = [Segment(start=90.0, end=104.0, text=said, words=words(90.0, said))]
+    three = ClipCandidate(start=94.0, end=100.0, score=70, subscores={
+        "sport_label": "Three", "sport_team": "SAS", "sport_when": "Q3 5:12"})
+    goal = ClipCandidate(start=94.0, end=100.0, score=70, subscores={"sport_label": "Goal", "sport_minute": 67})
+    metadata.generate_metadata_batch([three, goal], segments, "Spurs at Thunder", Model())
+    assert "not clutch):\nWembanyama for three and he hits\n" in prompts[0]
+    assert f"CLIP 1:\n{said}" in prompts[0]             # a soccer clip: the sentences, as always
+
+
+def test_a_title_never_calls_a_basket_clutch_when_the_scoreboard_says_it_was_not():
+    from analysis import metadata
+
+    class Model:
+        def generate(self, prompt, json_mode=False):
+            return json.dumps({"items": [
+                {"index": i, "title": "CLUTCH three from Wemby!", "description": "A clutch three.",
+                 "hashtags": ["nba"]} for i in range(3)]})
+
+    def clip(when):
+        return ClipCandidate(start=100, end=113, score=70, hook="Wemby from deep",
+                             subscores={"sport_label": "Three", "sport_when": when} if when else
+                             {"sport_label": "Goal", "sport_minute": 67})
+
+    second, late, soccer = metadata.generate_metadata_batch(
+        [clip("Q2 2:52"), clip("Q4 0:40"), clip("")], _segments({}), "Spurs at Thunder", Model())
+    assert (second.title, second.description) == ("three from Wemby!", "A three.")
+    assert late.title == soccer.title == "CLUTCH three from Wemby!"
+
+
+def test_the_score_line_says_whose_score_is_whose_and_who_leads():
+    from sports.basketball.profile import score_line
+
+    def change(before, after, side, team="SAS", other="OKC"):
+        return bb.ScoreChange(lo=0, hi=1, before=before, after=after, team=team, other=other,
+                              points=after[side] - before[side], side=side)
+
+    assert score_line(change((49, 50), (52, 50), 0)) == "SAS 52, OKC 50: SAS take the lead"
+    assert score_line(change((55, 50), (58, 50), 0)) == "SAS 58, OKC 50: SAS lead by 8"
+    assert score_line(change((50, 49), (50, 52), 1, "OKC", "SAS")) == "OKC 52, SAS 50: OKC take the lead"
+    assert score_line(change((49, 53), (52, 53), 0)) == "SAS 52, OKC 53: OKC still lead by 1"
+    assert score_line(change((50, 53), (53, 53), 0)) == "SAS 53, OKC 53: SAS tie it"
+    assert score_line(change((1, 0), (3, 0), 0, "", "")) == "the scorers 3, the other side 0: the scorers lead by 3"
+
+
+def test_a_baskets_quarter_and_clock_are_read_where_the_bug_changed():
+    # A highlights package cuts from the end of the 2nd quarter to the 3rd:
+    # the crowd's roar from the last play of the half is still in the search.
+    readings = [bb.Reading(t=float(t), score=(58, 55), teams=("SAS", "OKC"), period=2, clock=45.0 - (t - 400),
+                           visible=True) for t in range(400, 444, 4)]
+    readings += [bb.Reading(t=float(t), score=(58, 55) if t < 452 else (60, 55), teams=("SAS", "OKC"), period=3,
+                            clock=606.0 - (t - 444), visible=True) for t in range(444, 480, 4)]
+    board = bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1))
+    profile = _profile()
+    m = _moments(profile, board=board, curves=_curves(roars=[(439, 3)]))
+    e = next(e for e in m if e.confirmed)
+    assert e.when.startswith("Q3 10:0"), e.when
 
 
 class _Looks:
@@ -1629,3 +1702,53 @@ def test_a_dunk_and_its_reaction_become_one_marked_clip_through_the_scorer(monke
     assert dunk[0].start <= 448 and dunk[0].end >= 462              # the build-up, the dunk, the reaction
     assert dunk[0].subscores["sport_when"].startswith("Q4")
     assert profile.report_data["sport"] == "Basketball" and profile.report_data["found"]["Dunk"] == 1
+
+
+# ---- names: what Whisper listens for ------------------------------------------------
+
+
+NBA_DESCRIPTION = """Victor Wembanyama (35 PTS, 12 REB) and the San Antonio Spurs defeated Shai Gilgeous-Alexander
+(31 PTS) and the Oklahoma City Thunder, 111-103, in Game 7 of the Western Conference Finals. Julian Champagnie
+added 18 PTS.
+
+Subscribe to the NBA: https://www.youtube.com/nba?sub_confirmation=1
+For news, stories, highlights and more, go to our official website at https://www.nba.com
+Get NBA League Pass: https://www.nba.com/watch/league-pass-stream"""
+
+
+def test_whisper_listens_for_the_names_the_videos_own_title_and_description_spell():
+    from core.models import DownloadedVideo
+    from sports.basketball import names
+
+    video = DownloadedVideo(video_id="x", title="SPURS at THUNDER | FULL GAME 7 HIGHLIGHTS | May 28, 2026",
+                            path=None, duration=900.0, description=NBA_DESCRIPTION)
+    hint = ("Spurs, Thunder, Victor Wembanyama, San Antonio Spurs, Shai Gilgeous-Alexander, Oklahoma City Thunder, "
+            "Julian Champagnie")
+    assert sports.hotwords({"clips": {"sport": {"name": "basketball"}}}, video) == hint
+    # The teams the job names count too, once; soccer, and a job with no sport, keep Whisper as it was.
+    assert names.for_video("Highlights", "", "Spurs, De'Aaron Fox") == "Spurs, De'Aaron Fox"
+    assert names.for_video("FULL GAME HIGHLIGHTS", "Subscribe to the NBA") is None
+    assert sports.hotwords({"clips": {"sport": {"name": "soccer"}}}, video) is None
+    assert sports.hotwords({"clips": {}}, video) is None
+
+
+def test_whisper_is_given_the_names_only_when_there_are_some(tmp_path):
+    from unittest.mock import patch
+
+    from transcription import transcriber
+
+    calls = []
+
+    class Model:
+        def transcribe(self, *a, **k):
+            calls.append(k)
+
+            class Info:
+                duration, language = 10.0, "en"
+            return iter(()), Info()
+
+    with patch.object(transcriber, "_load_model", return_value=Model()):
+        transcriber.transcribe(tmp_path / "v.mp4", "a", tmp_path, model_size="small", device="cpu",
+                               hotwords="Victor Wembanyama")
+        transcriber.transcribe(tmp_path / "v.mp4", "b", tmp_path, model_size="small", device="cpu")
+    assert calls[0]["hotwords"] == "Victor Wembanyama" and "hotwords" not in calls[1]

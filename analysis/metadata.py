@@ -110,9 +110,7 @@ def generate_metadata_batch(
         batch = candidates[base : base + batch_size]
         blocks = []
         for i, c in enumerate(batch):
-            text = " ".join(
-                s.text for s in segments if s.end > c.start and s.start < c.end
-            )[:900]
+            text = _clip_text(c, segments)[:900]
             blocks.append(f"CLIP {i}{_scoreboard_note(c)}:\n{text or '(no speech)'}")
         prompt = (
             template.replace("{video_title}", video_title)
@@ -138,6 +136,8 @@ def generate_metadata_batch(
                 description=str(item.get("description", "")).strip() or fallback.description,
                 hashtags=_clean_hashtags(item.get("hashtags", [])) or fallback.hashtags,
             )
+    for c, m in zip(candidates, results):
+        _earned(c, m)
     return results
 
 
@@ -147,36 +147,81 @@ _SCORE = re.compile(r"\bscore (\d+-\d+)")
 _CRUNCH = 120  # seconds left in the last quarter (or overtime) that make crunch time
 
 
-def _scoreboard_note(c: ClipCandidate) -> str:
-    """What the game's own scoreboard says about a clip's moment, for its
-    title: the play, the team, the score it made, the quarter and the clock,
-    and when it was not crunch time. On an NBA game the titles called a 3rd
-    quarter put-back "Late-Game" and a shot with 11:30 left "Clutch".
-    Only a sport that reads the game's clock (basketball) sets one; "" for
-    every other clip, whose prompt is unchanged."""
-    s = c.subscores or {}
-    when = str(s.get("sport_when") or "")
+def _crunch(c: ClipCandidate) -> bool | None:
+    """Whether the scoreboard says a clip's moment came in crunch time: the
+    last two minutes of the 4th quarter (or 2nd half) or overtime. None for
+    a clip with no game clock read (every sport but basketball)."""
+    when = str((c.subscores or {}).get("sport_when") or "")
     if not when:
-        return ""
+        return None
     period, _, left = when.partition(" ")
-    play = str(s.get("sport_label") or "a play")
-    team = str(s.get("sport_team") or "")
-    score = _SCORE.search(str(s.get("sport_why") or ""))
-    words = [f"{play} by {team}" if team else play]
-    if score:
-        words[0] += f", making it {score.group(1)}"
-    words.append(_PERIODS.get(period, period) + (f" with {left} left" if left else ""))
     try:
         minutes, seconds = (int(x) for x in left.split(":"))
-        crunch = period in ("Q4", "H2", "OT") and minutes * 60 + seconds <= _CRUNCH
+        return period in ("Q4", "H2", "OT") and minutes * 60 + seconds <= _CRUNCH
     except ValueError:
-        crunch = period in ("Q4", "H2", "OT")
+        return period in ("Q4", "H2", "OT")
+
+
+def _scoreboard_note(c: ClipCandidate) -> str:
+    """What the game's own scoreboard says about a clip's moment, for its
+    title: the play, the team, the score in words (whose is whose and who
+    leads), the quarter and the clock, and when it was not crunch time. On
+    an NBA game the titles called a 3rd quarter put-back "Late-Game" and a
+    shot with 11:30 left "Clutch". Only a sport that reads the game's clock
+    (basketball) sets one; "" for every other clip, whose prompt is
+    unchanged."""
+    crunch = _crunch(c)
+    if crunch is None:
+        return ""
+    s = c.subscores or {}
+    period, _, left = str(s["sport_when"]).partition(" ")
+    play = str(s.get("sport_label") or "a play")
+    team = str(s.get("sport_team") or "")
     context = str(s.get("sport_context") or "")
+    score = _SCORE.search(str(s.get("sport_why") or ""))
+    words = [f"{play} by {team}" if team else play]
+    if score and not context:
+        words[0] += f", making it {score.group(1)}"
     if context:
         words.append(context)
+    words.append(_PERIODS.get(period, period) + (f" with {left} left" if left else ""))
     if not crunch:
-        words.append("not crunch time")
+        words.append("not crunch time, so not clutch")
     return " (the scoreboard: " + "; ".join(words) + ")"
+
+
+def _clip_text(c: ClipCandidate, segments: list[Segment]) -> str:
+    """What is said in a clip, for its title: the sentences it overlaps. A
+    clip with a game clock read (basketball) gets only the words said inside
+    it: a highlights package's commentary runs on from play to play, and on
+    an NBA game the sentences around 12 s clips had the titles name players
+    from the plays before and after them."""
+    if _crunch(c) is None:
+        return " ".join(s.text for s in segments if s.end > c.start and s.start < c.end)
+    words = []
+    for s in segments:
+        if s.end <= c.start or s.start >= c.end:
+            continue
+        if not s.words:
+            words.append(s.text)
+            continue
+        words += [w["word"] for w in s.words if c.start <= (w["start"] + w["end"]) / 2 <= c.end]
+    return " ".join(words)
+
+
+_CLUTCH = re.compile(r"\bclutch\b[ \t]*", re.IGNORECASE)
+
+
+def _earned(c: ClipCandidate, metadata: ClipMetadata) -> None:
+    """A title and description that don't call a clip clutch when the
+    scoreboard says it wasn't crunch time: the note says so, and an NBA
+    game's 2nd-quarter basket was still titled "Clutch". Every other clip
+    as written."""
+    if _crunch(c) is not False:
+        return
+    title = re.sub(r"\s{2,}", " ", _CLUTCH.sub("", metadata.title)).strip()
+    metadata.title = title if re.search(r"\w", title) else (_clean_title(c.hook) or metadata.title)
+    metadata.description = re.sub(r"[ \t]{2,}", " ", _CLUTCH.sub("", metadata.description)).strip()
 
 
 def _fallback(candidate: ClipCandidate, video_title: str) -> ClipMetadata:

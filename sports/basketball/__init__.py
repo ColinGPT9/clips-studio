@@ -15,6 +15,15 @@ def profile(config: dict, option: dict, video=None) -> BasketballProfile:
     return BasketballProfile(name="basketball", option=dict(option), weights=weights_for(config))
 
 
+def hotwords(option: dict, video) -> str | None:
+    """The players and teams the video's own title and description spell,
+    and the teams the job names, for Whisper to listen for (names.py)."""
+    from sports.basketball import names
+
+    return names.for_video(str(getattr(video, "title", "") or ""), str(getattr(video, "description", "") or ""),
+                           str((option or {}).get("teams") or ""))
+
+
 def framing(clip_path, config: dict) -> dict:
     """The ball, the players around it and the rim, or the reaction, for a
     9:16 crop (sports/basketball/action.py)."""

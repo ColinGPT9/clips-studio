@@ -426,12 +426,30 @@ starts and ends with the commentator's sentence when one starts or ends within
 1.5 s of its edge, else between words.
 
 **Titles know the situation.** The model writing a clip's title is told what
-the scoreboard says about it, "Three by SAS, making it 60-55; 3rd quarter with
-5:12 left; not crunch time", next to the clip's commentary. Without it, titles
-on an NBA game called a 3rd-quarter put-back "Late-Game" and a shot with 11:30
-left "Clutch". Crunch time is the last 2 minutes of the 4th quarter, the 2nd
-half or overtime. A clip without a game clock (every soccer clip) gets the prompt it
-always did.
+the scoreboard says about it, "Three by SAS; SAS 60, OKC 55: SAS lead by 5; 3rd
+quarter with 5:12 left; not crunch time, so not clutch", and only the words said
+inside the clip. On an NBA game, titles written without the note called a
+3rd-quarter put-back "Late-Game" and a shot with 11:30 left "Clutch"; told only
+"making it 52-53", they called a three that left the Spurs a point behind a tie
+and gave a run to the wrong team; and given the whole sentences around a 12 s
+clip, they named players from the plays before and after it. The quarter and
+the clock are read where the bug changed, so a basket dated a few seconds early
+doesn't take the quarter of the play before (a 3rd-quarter dunk was labelled
+"Q2 0:35"). A title or description that still says "clutch" outside crunch time
+loses the word. Crunch time is the last 2 minutes of the 4th quarter, the 2nd
+half or overtime. A clip without a game clock (every soccer clip) gets the prompt
+it always did.
+
+**Names as the video spells them.** Whisper is told the names the video's own
+title and description spell (runs of capitalised words, without a channel's
+sign-offs or a highlights video's own words) and the teams the job names, so a
+name it hears comes out spelled that way. On an NBA game the captions spelled
+Wembanyama five wrong ways ("weapon Yama", "Wimbanyama"...), Champagnie
+"Champagne" and Gilgeous-Alexander "Davis Alexander", and the description spelled
+all three right. Whisper still writes only what it hears, and no one is named
+from who is on screen (`sports/basketball/names.py`). A YouTube download keeps
+its description for this; a file from the PC has its title only. Every other
+job is transcribed as it always was.
 
 **The situation sets the worth.** The quarter, the clock and the score before the
 basket decide:

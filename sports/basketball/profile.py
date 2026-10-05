@@ -167,18 +167,21 @@ class BasketballProfile(SportProfile):
         board = getattr(self, "board", None)
         if event is not None and board is not None and points:
             self._changes[id(event)] = change
-            event.when = board.when(event.t)
-            situation, why = self._situation(board, change, event)
+            # The quarter and the clock where the bug changed: a basket dated
+            # a few seconds early by the crowd sat in the play before, and on
+            # an NBA game a 3rd-quarter dunk was labelled "Q2 0:35".
+            at = shown_at(change, event.t)
+            event.when = board.when(at)
+            situation = self._situation(board, change, event, at)
             if situation and self.importance(situation) > self.importance(kind):
                 kind = situation
-            if why:
-                event.context = why
+            event.context = score_line(change)
         return kind
 
-    def _situation(self, board, change, event) -> tuple[str, str]:
-        """(a situational kind for this basket or "", the situation in words)."""
-        period = board.period_number(event.t)
-        left = board.clock_at(event.t)
+    def _situation(self, board, change, event, at: float) -> str:
+        """A situational kind for this basket, or ""."""
+        period = board.period_number(at)
+        left = board.clock_at(at)
         last = board.last_period()
         side = change.side
         before = change.before[side] - change.before[1 - side]
@@ -186,13 +189,6 @@ class BasketballProfile(SportProfile):
         late = period is not None and period >= last and left is not None and left <= LATE
         is_last_basket = change is board.changes[-1] if board.changes else False
         buzzer = reactions_peak((getattr(self, "curves", None) or {}).get("buzzer"), event.t - 1, event.t + 3) >= BUZZER_AT
-        words = []
-        if after == 0:
-            words.append("ties it")
-        elif before <= 0 < after:
-            words.append("takes the lead")
-        if left is not None and period is not None:
-            words.append(f"{int(left) // 60}:{int(left) % 60:02d} left")
         kind = ""
         if late and is_last_basket and before <= 0 < after and left <= 10:
             kind = "game_winner"
@@ -206,7 +202,7 @@ class BasketballProfile(SportProfile):
             kind = "go_ahead"
         elif late and abs(before) <= CLOSE and change.points >= 2:
             kind = "clutch_shot"
-        return kind, ", ".join(words)
+        return kind
 
     def context_weight(self, event) -> float:
         """How much the game's situation lifts or lowers this moment: the
@@ -215,9 +211,10 @@ class BasketballProfile(SportProfile):
         board = getattr(self, "board", None)
         if board is None or not getattr(board, "readings", None):
             return 1.0
-        period = board.period_number(event.t)
-        left = board.clock_at(event.t)
         change = self._changes.get(id(event))
+        at = shown_at(change, event.t) if change is not None else event.t
+        period = board.period_number(at)
+        left = board.clock_at(at)
         score = change.before if change is not None else board.score_before(event.t)
         margin = abs(score[0] - score[1]) if score else None
         last = board.last_period()
@@ -249,6 +246,31 @@ class BasketballProfile(SportProfile):
         if notes and not event.context:
             event.context = ", ".join(notes)
         return max(0.5, min(1.8, weight))
+
+
+def shown_at(change, t: float) -> float:
+    """When the scoreboard shows a basket's quarter and clock: its time t,
+    kept between the last reading of the old score and the first of the new
+    one, which the basket went in between."""
+    lo = change.last_old if change.last_old is not None else change.lo
+    return min(max(t, lo), change.hi)
+
+
+def score_line(change) -> str:
+    """The new score in words, whose is whose and who leads, for the clip's
+    title: "SAS 52, OKC 53: OKC still lead by 1". The bug's "52-53" doesn't
+    say whose 52 it is, and on an NBA game the titles called a three that
+    made it 52-53 a tie and gave a run to the wrong team."""
+    side = change.side
+    mine, theirs = change.after[side], change.after[1 - side]
+    us, them = change.team or "the scorers", change.other or "the other side"
+    before = change.before[side] - change.before[1 - side]
+    line = f"{us} {mine}, {them} {theirs}: "
+    if mine == theirs:
+        return line + f"{us} tie it"
+    if mine > theirs:
+        return line + (f"{us} take the lead" if before <= 0 else f"{us} lead by {mine - theirs}")
+    return line + f"{them} still lead by {theirs - mine}"
 
 
 def speech_edges(segments, start: float, end: float, video_end: float) -> tuple[float, float]:

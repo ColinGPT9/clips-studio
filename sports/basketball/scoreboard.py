@@ -111,6 +111,7 @@ class ScoreChange:
     before: tuple
     after: tuple
     team: str = ""                   # the side that scored, when the bug names it
+    other: str = ""                  # ...and the other side
     points: int = 0
     side: int = 0                    # 0 or 1: which number went up
     last_old: float | None = None    # when the score before it was last read
@@ -631,8 +632,9 @@ def changes(readings: list[Reading]) -> list[ScoreChange]:
             # instead, the crowd's loudest moment there was often the play
             # before: a highlights package puts a basket every 10-15 s.)
             out.append(ScoreChange(lo=max(0.0, last_old_t - SHOWN_WITHIN), hi=r.t, before=current,
-                                   after=r.score, team=teams[side] if teams else "", points=up[side],
-                                   side=side, last_old=last_old_t))
+                                   after=r.score, team=teams[side] if teams else "",
+                                   other=teams[1 - side] if teams else "", points=up[side], side=side,
+                                   last_old=last_old_t))
         # Anything else (two baskets between readings, a correction) is
         # followed without being called a basket.
         current, last_old_t = r.score, r.t

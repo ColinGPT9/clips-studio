@@ -392,6 +392,15 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # bilingual streams (e.g. Hindi speech over English game audio) where
     # detection picks the wrong language and every caption burns wrong.
     forced_lang = (config.get("content_language") or "auto").lower()
+    hint = None
+    if sport_name:
+        # The names a sport's video spells (basketball: its players, from its
+        # title and description), for Whisper to listen for.
+        import sports
+
+        hint = sports.hotwords(config, video)
+        if hint:
+            print(f"      Listening for: {hint[:120]}{'…' if len(hint) > 120 else ''}")
     segments = transcribe(
         video.path,
         video.video_id,
@@ -400,6 +409,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         device=config["whisper"]["device"],
         language=None if forced_lang == "auto" else forced_lang,
         online=online_transcription(config),
+        **({"hotwords": hint} if hint else {}),
     )
     from transcription.transcriber import detected_language
 

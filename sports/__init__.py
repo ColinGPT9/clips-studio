@@ -190,3 +190,16 @@ def prepass(config: dict, video_path, duration: float) -> dict:
     module = importlib.import_module(SPORTS[opt["name"]])
     read = getattr(module, "prepass", None)
     return read(video_path, duration) if read is not None else {}
+
+
+def hotwords(config: dict, video) -> str | None:
+    """Names for Whisper to listen for in this job's video (basketball: the
+    players and teams its title and description spell), or None: a sport
+    without the hook, and every job that isn't a sport, is transcribed as
+    always."""
+    opt = option(config)
+    if opt is None:
+        return None
+    module = importlib.import_module(SPORTS[opt["name"]])
+    names = getattr(module, "hotwords", None)
+    return names(opt, video) if names is not None else None
