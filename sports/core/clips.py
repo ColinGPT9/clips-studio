@@ -20,15 +20,21 @@ WINDOWS_MAX = 40        # moments given a window of their own, most important fi
 TYPED = 0.66            # confidence at which a moment is called by its type (two signals: 2/3)
 
 
-def windows_to_add(moments: list[SportEvent], candidates) -> list[SportEvent]:
+def windows_to_add(moments: list[SportEvent], candidates, shown_only: bool = False) -> list[SportEvent]:
     """The moments whose own window no candidate already matches, most
     important first. A candidate that already covers the moment isn't
-    enough: its window may start as the ball goes in."""
+    enough: its window may start as the ball goes in.
+
+    `shown_only`: a candidate matches only the moment it shows (attach). On
+    an NBA game one sentence's candidate covered the last layup and the
+    final dunk, showed the layup, and the dunk had no clip."""
+    shown = attach(moments, candidates) if shown_only else {}
     out = []
     for e in sorted(moments, key=lambda e: -(e.importance * max(e.confidence, 0.34))):
         if e.is_replay or len(out) >= WINDOWS_MAX:
             continue
-        if any(_overlap(c.start, c.end, e.start, e.end) >= 0.8 for c in candidates):
+        if any(_overlap(c.start, c.end, e.start, e.end) >= 0.8 and (not shown_only or shown.get(id(c)) is e)
+               for c in candidates):
             continue
         out.append(e)
     return out

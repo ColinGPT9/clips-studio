@@ -238,7 +238,7 @@ def moments(profile, segments, *, curves: dict, voice=None, screen=(), board=Non
             e.minute = board.minute_at(e.t)
         if starts and not e.period and e.minute is None:
             e.period, e.minute = _from_kickoffs(e.t, starts)
-    return group_moments(events, profile.replay_within)
+    return group_moments(events, profile.replay_within, getattr(profile, "one_play_per_clip", False))
 
 
 LISTED_NEAR = 60.0      # a found moment this close to a listed one is that moment

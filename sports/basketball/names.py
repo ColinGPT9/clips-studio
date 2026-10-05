@@ -24,7 +24,7 @@ join download stream streaming live official channel video videos app pass leagu
 postseason finals final conference western eastern round series regular preseason quarter half overtime
 points rebounds assists steals blocks pts reb ast stl blk record career night tonight today best top plays play
 moments news stories more go see check out here there now new all every one two three four five six seven
-win wins won loss lose lost beat beats defeat defeated victory home away team teams
+win wins won loss lose lost beat beats defeat defeated victory home away team teams never miss moment don't
 january february march april may june july august september october november december
 monday tuesday wednesday thursday friday saturday sunday
 """.split())
@@ -57,10 +57,16 @@ def hint(*texts: str) -> str:
     return ", ".join(phrases)
 
 
+# An abbreviation run into a word: a link's or an app's name ("NBAApp-YTDes",
+# from "...on the NBA App: https://app.link/NBAApp-YTDes"), never a person's.
+_GLUED = re.compile(r"[A-Z]{3,}[a-z]")
+
+
 def _named(word: str) -> bool:
-    """A word that can be part of a name: capitalised, not a common word, and
-    not a short code in capitals ("NBA", "OKC"), which Whisper writes well."""
-    if not word or not word[0].isupper() or word.lower() in COMMON:
+    """A word that can be part of a name: capitalised, not a common word, not
+    a short code in capitals ("NBA", "OKC"), which Whisper writes well, and
+    not an abbreviation run into a word ("NBAApp")."""
+    if not word or not word[0].isupper() or word.lower() in COMMON or _GLUED.search(word):
         return False
     return not (word.isupper() and len(word) <= 4)
 

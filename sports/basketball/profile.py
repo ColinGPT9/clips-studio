@@ -2,6 +2,7 @@
 basket a new score is, how much the game's situation makes it matter, the
 plays the commentary names together, and the reactions."""
 
+import re
 from dataclasses import dataclass, field
 
 import sports
@@ -35,6 +36,14 @@ BUG_GAP = 10.0           # ...when the two readings are at most this far apart (
 # the dunk, once the clock ran out), and this long into it.
 CELEBRATION = 4.0
 CELEBRATION_WITHIN = 20.0
+# The words said as a basket went in name what it was ("who goes in for the
+# dunk"): the shared reading types it from the sentences around it, and on an
+# NBA game one 23-second sentence held the last three plays, so its final dunk
+# was typed by its points, a basket, and its clip went to the layup before it.
+CALL_BEFORE = 3.0
+CALL_AFTER = 3.0
+# Kinds the scoreboard's situation names, never the commentary alone.
+SITUATIONS = {"game_winner", "buzzer_beater", "game_tying", "go_ahead", "clutch_shot"}
 
 
 @dataclass
@@ -44,6 +53,16 @@ class BasketballProfile(SportProfile):
     # The video's own title and description: who won, for which team is which (names.sides).
     video_text: tuple = ("", "")
     _sided: bool = False
+    # The confirmed baskets, in time order, once dated; and the players the
+    # commentary names (commentary.Names), for who scored each.
+    _baskets: list = field(default_factory=list)
+    names: object = None
+
+    @property
+    def one_play_per_clip(self) -> bool:
+        """Each clip is one play: a highlights package puts a basket every
+        10-15 s, and two baskets are two clips however close they come."""
+        return True
 
     # ---- the reactions -----------------------------------------------------
 
@@ -89,6 +108,9 @@ class BasketballProfile(SportProfile):
             e.end = round(min(max(video_end, e.end), e.end + moved), 2)
             if board is not None:
                 e.when = board.when(shown_at(change, t))
+        self._baskets = sorted((e for e in events if id(e) in self._changes), key=lambda e: e.t)
+        if self._baskets:
+            self._said(segments, video_end=video_end, max_len=max_len)
         # The buzzer marks the end of a period: a basket just before it.
         buzzer = curves.get("buzzer")
         for e in events:
@@ -131,7 +153,70 @@ class BasketballProfile(SportProfile):
         out = next((r.t for r in board.readings if r.t >= at and r.clock is not None and r.clock < 1), e.t)
         people = next((t for t, kind in (getattr(self, "shots", None) or [])
                        if max(out, e.t) < t <= e.t + CELEBRATION_WITHIN and kind == "people"), None)
-        return None if people is None else people + CELEBRATION
+        # No such shot seen (the players celebrating on the court read as a
+        # court shot): the game is over, and what follows is the celebration.
+        return e.t + CELEBRATION_WITHIN if people is None else people + CELEBRATION
+
+    def _said(self, segments, *, video_end: float, max_len: float) -> None:
+        """What the commentary says at each confirmed basket: what kind it was
+        (_called) and who scored it (commentary.scorer), each from the words
+        said between the baskets either side of it."""
+        from sports.basketball import commentary
+
+        self.names = commentary.Names(segments, self._known_names(), teams=self._team_names())
+        for i, e in enumerate(self._baskets):
+            change = self._changes[id(e)]
+            lo = self._baskets[i - 1].t + 1 if i else None
+            hi = self._baskets[i + 1].t - 1 if i + 1 < len(self._baskets) else None
+            self._called(e, change, segments, lo, hi, video_end=video_end, max_len=max_len)
+            e.player = commentary.scorer(segments, e.t, int(change.points or 0), self.names, lo, hi) or e.player
+
+    def _called(self, e, change, segments, lo, hi, *, video_end: float, max_len: float) -> None:
+        """A basket typed by the words said as it went in, when they name a
+        kind its points fit that is worth more than its type ("for the dunk":
+        a dunk), its window grown or shrunk to that kind's."""
+        from sports.basketball import commentary
+
+        a = e.t - CALL_BEFORE if lo is None else max(e.t - CALL_BEFORE, lo)
+        b = e.t + CALL_AFTER if hi is None else min(e.t + CALL_AFTER, hi)
+        points = int(getattr(change, "points", 0) or 0)
+        said = [(k, w) for k, w in self.callouts_in(" ".join(w.text for w in commentary.words(segments, a, b)))
+                if _fits(k, points) and k not in SITUATIONS]
+        if not said:
+            return
+        kind, word = max(said, key=lambda kw: self.importance(kw[0]))
+        if self.importance(kind) <= e.importance:
+            return
+        (pre, post), (new_pre, new_post) = self.window_of(e.type), self.window_of(kind)
+        e.type, e.importance = kind, self.importance(kind)
+        e.start = round(max(0.0, e.start - (new_pre - pre)), 2)
+        e.end = round(min(max(video_end, e.end), e.end + (new_post - post)), 2)
+        if e.end - e.start > max_len:
+            e.start = round(e.end - max_len, 2)
+        if f'said "{word}"' not in e.signals:
+            e.signals.append(f'said "{word}"')
+
+    def _known_names(self) -> str:
+        """The names the video's own title and description spell (names.hint)."""
+        from sports.basketball import names
+
+        return names.hint(*self.video_text)
+
+    def _team_names(self) -> tuple:
+        """Every name the two teams go by here: the scoreboard's, the
+        description's result line's ("San Antonio Spurs") and the job's."""
+        from sports.basketball import names
+
+        board = getattr(self, "board", None)
+        teams = set(board.teams() or ()) if board is not None else set()
+        for c in board.changes if board is not None else []:
+            teams |= {c.team, c.other} - {""}
+        said = names.result(self.video_text[1])
+        if said is not None:
+            teams |= {said[0], said[1]}
+        teams |= {t.strip() for t in re.split(r",|\bvs?\b\.?|\bversus\b|/", str((self.option or {}).get("teams") or ""))
+                  if t.strip()}
+        return tuple(sorted(t for t in teams if t))
 
     def clip_span(self, candidate, event) -> tuple[float, float]:
         """A basket's clip is its own window: the possession, the basket and
@@ -214,9 +299,7 @@ class BasketballProfile(SportProfile):
         self._name_sides()
         points = int(getattr(change, "points", 0) or 0)
         kind = event.type if event is not None else ""
-        fits = (kind in ANY_DISTANCE or (kind in THREES and points == 3) or (kind in TWOS and points == 2)
-                or (kind == "free_throw" and points == 1))
-        if not fits:
+        if not _fits(kind, points):
             kind = {3: "made_3", 2: "made_2", 1: "free_throw"}.get(points, "made_2")
         board = getattr(self, "board", None)
         if event is not None and board is not None and points:
@@ -266,12 +349,58 @@ class BasketballProfile(SportProfile):
             ("- Each clip is one play: its note says what the scoreboard read (the play, its points, the quarter "
              "and the clock, and the score with whose is whose when the scoreboard names the teams). Title the "
              "clip for that play, not for what else is said around it."),
-            ("- Name a player only as the one the commentary says scored this play (in \"X knocks down the "
-             "three\", X scored). A player named for a pass, a rebound, a block or the defense didn't score. "
-             "When the commentary doesn't say who scored, name no one."),
+            ("- Name a player only as the note's scorer, the one the commentary says scored this play. A player "
+             "named for a pass, a rebound, a block or the defense didn't score. When the note names no scorer, "
+             "name no one."),
             ("- Say a team leads, trails, wins or loses only as the note says it, and a basket is worth the "
-             "points the note gives it."),
+             "points the note gives it. The shot went in: never call it a miss."),
         ])
+
+    def play_of(self, candidate):
+        """The basket a clip shows, as titles.Play (its points, who scored it
+        and who leads after it), or None for a clip of anything else."""
+        from sports.basketball import titles
+
+        t = (candidate.subscores or {}).get("sport_t")
+        e = next((e for e in self._baskets if round(e.t, 1) == t), None) if t is not None else None
+        change = self._changes.get(id(e)) if e is not None else None
+        points = int(getattr(change, "points", 0) or 0)
+        if change is None or not points:
+            return None
+        board = getattr(self, "board", None)
+        side = change.side
+        mine, theirs = change.after[side], change.after[1 - side]
+        # In the game's last minutes, by the team that went on to win: it put
+        # the game away; the game's last basket sealed it.
+        late_win = sealed = False
+        final = board.final() if board is not None else None
+        if final and mine > theirs and final[side] > final[1 - side]:
+            at = shown_at(change, e.t)
+            period, left = board.period_number(at), board.clock_at(at)
+            late_win = period is not None and period >= board.last_period() and left is not None and left <= LATE
+            sealed = late_win and change is board.changes[-1]
+        team_names = self._team_names()
+
+        def aliases(team: str) -> tuple:
+            """ "Spurs", and the names that end with it ("San Antonio Spurs") and their city."""
+            if not team:
+                return ()
+            full = [t for t in team_names if t != team and t.lower().endswith(team.lower())]
+            cities = [t[:-len(team)].strip() for t in full]
+            return tuple(dict.fromkeys([team, *full, *(c for c in cities if c)]))
+
+        return titles.Play(points=points, kind=e.type, shot=titles.shot_words(e.type, points),
+                           team=change.team or "", other=change.other or "", mine=mine, theirs=theirs,
+                           before=change.before[side] - change.before[1 - side], when=e.when or "",
+                           scorer=e.player or "", sealed=sealed, late_win=late_win, aliases=aliases(change.team or ""),
+                           other_aliases=aliases(change.other or ""))
+
+    def check_titles(self, candidates: list, metas: list, rewrite) -> list:
+        """Each basket clip's title and description held to its play, and
+        written again when they get it wrong (sports/basketball/titles.py)."""
+        from sports.basketball import titles
+
+        return titles.check(self, candidates, metas, rewrite)
 
     def _situation(self, board, change, event, at: float) -> str:
         """A situational kind for this basket, or ""."""
@@ -343,6 +472,12 @@ class BasketballProfile(SportProfile):
         return max(0.5, min(1.8, weight))
 
 
+def _fits(kind: str, points: int) -> bool:
+    """Whether a kind of basket is worth `points`: a dunk is 2, never 3."""
+    return (kind in ANY_DISTANCE or (kind in THREES and points == 3) or (kind in TWOS and points == 2)
+            or (kind == "free_throw" and points == 1))
+
+
 def shown_at(change, t: float) -> float:
     """When the scoreboard shows a basket's quarter and clock: its time t,
     kept between the last reading of the old score and the first of the new
@@ -353,7 +488,7 @@ def shown_at(change, t: float) -> float:
 
 def score_line(change) -> str:
     """The new score in words, whose is whose and who leads, for the clip's
-    title: "SAS 52, OKC 53: OKC still lead by 1". The bug's "52-53" doesn't
+    title: "SAS 52, OKC 53: SAS still trail by 1". The bug's "52-53" doesn't
     say whose 52 it is, and on an NBA game the titles called a three that
     made it 52-53 a tie and gave a run to the wrong team. "" when the teams
     aren't known: "the scorers 97, the other side 86" had the titles put the
@@ -369,7 +504,9 @@ def score_line(change) -> str:
         return line + f"{us} tie it"
     if mine > theirs:
         return line + (f"{us} take the lead" if before <= 0 else f"{us} lead by {mine - theirs}")
-    return line + f"{them} still lead by {theirs - mine}"
+    # From the scorers' side: told "OKC 103, SAS 109: SAS still lead by 6" of
+    # OKC's basket, the titles said the Thunder surged ahead and tied it.
+    return line + f"{us} still trail by {theirs - mine}"
 
 
 def speech_edges(segments, start: float, end: float, video_end: float) -> tuple[float, float]:

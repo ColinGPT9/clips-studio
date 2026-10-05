@@ -49,11 +49,15 @@ def valid(event: SportEvent, duration: float) -> bool:
             and event.end > event.start)
 
 
-def group_moments(events: list[SportEvent], within: float) -> list[SportEvent]:
+def group_moments(events: list[SportEvent], within: float, plays_apart: bool = False) -> list[SportEvent]:
     """Give every event a group: a replay within `within` seconds after a
     moment (and not itself a new, stronger moment) joins that moment's group;
     events whose windows overlap are one moment too. Returns the events, in
-    time order, with `group` set."""
+    time order, with `group` set.
+
+    `plays_apart`: two confirmed moments are never one, however close
+    (basketball: on an NBA game a Thunder three 6 s after a Spurs three was
+    "the same moment", and had no clip)."""
     ordered = sorted(events, key=lambda e: e.t)
     group = 0
     anchors: list[SportEvent] = []
@@ -62,6 +66,8 @@ def group_moments(events: list[SportEvent], within: float) -> list[SportEvent]:
         for a in reversed(anchors):
             if e.t - a.t > within:
                 break
+            if plays_apart and e.confirmed and a.confirmed:
+                continue
             if e.is_replay or e.overlaps(a):
                 home = a
                 break

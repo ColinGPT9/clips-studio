@@ -195,6 +195,12 @@ def _scoreboard_note(c: ClipCandidate) -> str:
         words[0] += f", making it {score.group(1)}"
     if context:
         words.append(context)
+    if points:
+        # Who scored, as the commentary says it (sports/basketball/commentary.py):
+        # left to the model, a three went to the player who passed for it.
+        player = str(s.get("sport_player") or "")
+        words.append(f"the commentary says {player} scored it" if player
+                     else "the commentary doesn't say who scored it")
     words.append(_PERIODS.get(period, period) + (f" with {left} left" if left else ""))
     if not crunch:
         words.append("not crunch time, so not clutch or late-game")

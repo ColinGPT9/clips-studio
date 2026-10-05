@@ -513,6 +513,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         creator_context=(creator_ctx.summary if creator_ctx else ""),
         **({"rules": title_rules()} if title_rules is not None else {}),
     )
+    # ...and its check of them against the game (basketball: who scored, who
+    # leads): the ones that get it wrong are written again with these rules.
+    check_titles = getattr(sport_profile, "check_titles", None) if sport_profile is not None else None
+    if check_titles is not None:
+        metas = check_titles(candidates, metas, lambda clips, rules: generate_metadata_batch(
+            clips, segments, video.title, llm,
+            creator_context=(creator_ctx.summary if creator_ctx else ""), rules=rules))
 
     # Hashtags the request insisted on (chat: "put #creatorname on all of
     # them"). Appended after generation rather than asked of the model: a

@@ -1310,7 +1310,7 @@ def test_a_basketball_clips_title_is_written_knowing_the_quarter_the_clock_and_t
             return '{"items": []}'
 
     three = ClipCandidate(start=100, end=113, score=70, subscores={
-        "sport_label": "Three", "sport_team": "SAS", "sport_when": "Q3 5:12",
+        "sport_label": "Three", "sport_team": "SAS", "sport_when": "Q3 5:12", "sport_player": "Fox",
         "sport_why": "score 60-55 (SAS), +3; crowd roar"})
     winner = ClipCandidate(start=200, end=228, score=90, subscores={
         "sport_label": "Game winner", "sport_team": "OKC", "sport_when": "Q4 0:03",
@@ -1320,13 +1320,14 @@ def test_a_basketball_clips_title_is_written_knowing_the_quarter_the_clock_and_t
     step_back = ClipCandidate(start=400, end=414, score=70, subscores={
         "sport_label": "Step-back", "sport_when": "Q4 11:28", "sport_why": "score 81-79, +2; crowd roar"})
     metadata.generate_metadata_batch([three, winner, goal, step_back], _segments({}), "Spurs at Thunder", Model())
-    assert ("CLIP 0 (the scoreboard: Three (3 points) by SAS, making it 60-55; 3rd quarter with 5:12 left; "
-            "not crunch time, so not clutch or late-game):") in prompts[0]
+    # Who scored, as the commentary says it, or that it doesn't say.
+    assert ("CLIP 0 (the scoreboard: Three (3 points) by SAS, making it 60-55; the commentary says Fox scored it; "
+            "3rd quarter with 5:12 left; not crunch time, so not clutch or late-game):") in prompts[0]
     assert ("CLIP 1 (the scoreboard: Game winner (2 points) by OKC; OKC 111, SAS 110: OKC take the lead; "
-            "4th quarter with 0:03 left):") in prompts[0]
+            "the commentary doesn't say who scored it; 4th quarter with 0:03 left):") in prompts[0]
     assert "CLIP 2:\n" in prompts[0]                    # a soccer clip's block, as it always was
-    assert ("CLIP 3 (the scoreboard: Step-back (2 points); 4th quarter with 11:28 left; "
-            "not crunch time, so not clutch or late-game):") in prompts[0]
+    assert ("CLIP 3 (the scoreboard: Step-back (2 points); the commentary doesn't say who scored it; "
+            "4th quarter with 11:28 left; not crunch time, so not clutch or late-game):") in prompts[0]
     assert "RULES FOR THESE CLIPS" not in prompts[0]     # none given: the prompt as it always was
 
 
@@ -1347,7 +1348,7 @@ def test_a_basketball_games_titles_are_told_which_player_to_name():
     metadata.generate_metadata_batch([three], _segments({}), "Spurs at Thunder", Model(), rules=rules)
     head, _, clips = prompts[0].partition("CLIPS:\n")
     assert clips.startswith("RULES FOR THESE CLIPS:\n- Each clip is one play")
-    assert "knocks down the three" in clips and clips.index("RULES") < clips.index("CLIP 0 (the scoreboard")
+    assert "the note's scorer" in clips and clips.index("RULES") < clips.index("CLIP 0 (the scoreboard")
     assert "Champagnie" not in rules                     # no real player's name to copy into another game's titles
 
 
@@ -1419,7 +1420,7 @@ def test_the_score_line_says_whose_score_is_whose_and_who_leads():
     assert score_line(change((49, 50), (52, 50), 0)) == "SAS 52, OKC 50: SAS take the lead"
     assert score_line(change((55, 50), (58, 50), 0)) == "SAS 58, OKC 50: SAS lead by 8"
     assert score_line(change((50, 49), (50, 52), 1, "OKC", "SAS")) == "OKC 52, SAS 50: OKC take the lead"
-    assert score_line(change((49, 53), (52, 53), 0)) == "SAS 52, OKC 53: OKC still lead by 1"
+    assert score_line(change((49, 53), (52, 53), 0)) == "SAS 52, OKC 53: SAS still trail by 1"
     assert score_line(change((50, 53), (53, 53), 0)) == "SAS 53, OKC 53: SAS tie it"
     # Without the teams, nothing: "the scorers 97, the other side 86" put the wrong team ahead.
     assert score_line(change((1, 0), (3, 0), 0, "", "")) == ""
@@ -1450,6 +1451,234 @@ def test_the_teams_are_named_from_the_videos_result_when_the_bug_has_no_letters(
     board = _board([(690, 0, 2), (800, 0, 14), (800, 1, 17)], period=4, teams=None, start=(95, 86))
     basket = next(e for e in _moments(_profile(), board=board) if e.confirmed)
     assert basket.team == "" and "lead" not in basket.context
+
+
+def _said_at(start, text, step=0.4):
+    """One commentary sentence from `start`, a word every `step` seconds."""
+    words = text.split()
+    return Segment(start=start, end=start + step * len(words), text=text,
+                   words=[{"start": start + i * step, "end": start + (i + 1) * step, "word": " " + w}
+                          for i, w in enumerate(words)])
+
+
+def test_the_scorer_is_the_player_the_commentary_names_as_the_ball_goes_in():
+    """On an NBA game the titles gave a three to the passer, another to a
+    name heard once, and a third to a shot-blocker. The scorer is the player
+    named last before the words that say the ball went in: not the passer,
+    not one a pass to someone unnamed came after, not a name heard once."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "Marsh brings it up and Ruiz sets the screen"),
+            _said_at(30, "Ruiz on the roll, spins to Okafor, Okafor knocks down the three!"),
+            _said_at(60, "over to Marsh, Marsh the three"),
+            _said_at(90, "Okafor drives, kicks it out, bang!"),
+            _said_at(120, "Marsh has it, ahead to Fennimore, who goes in for the dunk"),
+            _said_at(150, "Ruiz scores! And then Okafor gets a three"),
+            _said_at(180, "a deep hit for Ruiz tonight")]
+    names = commentary.Names(talk, known="Tobias Okafor, Atlanta Hawks", teams=("Hawks", "Atlanta Hawks"))
+
+    def who(t, points):
+        return commentary.scorer(talk, t, points, names, lo=t - 20, hi=t + 20)
+
+    assert who(35, 3) == "Okafor"              # the one who spun to him passed
+    assert who(62, 3) == "Marsh"
+    assert who(92, 3) == ""                    # kicked out to someone nobody named
+    assert who(124, 2) == ""                   # "Fennimore", heard once and in no description
+    assert who(154, 3) == "Okafor"             # a three: the words that say a three
+    assert who(181, 3) == "Ruiz"               # named after the words
+    assert names.is_name("Okafor") and names.is_name("MARSH'S") and not names.is_name("Hawks")
+    assert not names.is_name("Bang")
+
+
+def _basket_game(said, baskets, description="", **profile_extra):
+    """A profile run over `said` (segments with word timings) and a board of
+    `baskets` (video second, side, points) between the Spurs and the Thunder."""
+    from core.models import DownloadedVideo
+
+    video = DownloadedVideo(video_id="g", title="Spurs at Thunder", path=None, duration=N, description=description)
+    profile = sports.profile_for({"clips": {"sport": {"name": "basketball", **profile_extra}}}, video)
+    board = _board(baskets, period=4, teams=("Spurs", "Thunder"), start_clock=900.0)
+    profile.board, profile.cutaways, profile.curves = board, [], _curves()
+    filler = [Segment(start=float(s), end=float(s + 4), text="bringing it up the floor") for s in range(0, N, 4)
+              if not any(s < seg.end and seg.start < s + 4 for seg in said)]
+    segments = sorted(said + filler, key=lambda s: s.start)
+    moments = detect.moments(profile, segments, curves=profile.curves, board=board, video_end=float(N),
+                             min_len=10, max_len=60)
+    return profile, moments, segments
+
+
+def test_a_basket_is_typed_and_credited_by_the_words_said_as_it_went_in():
+    """Game 7's last sentence ran 23 s over three plays, so its final dunk was
+    typed by its points, a basket, and its one clip went to the layup before
+    it. The words said as each basket went in type it and name its scorer."""
+    said = [_said_at(496.0, "Okafor has it, ahead to Ruiz, who goes in for the dunk and the crowd goes wild", 0.5)]
+    profile, moments, _segments = _basket_game(said, [(503, 0, 2)], description="Kai Ruiz scored 30.")
+    dunk = next(e for e in moments if e.confirmed)
+    assert dunk.type == "dunk" and dunk.player == "Ruiz"
+    assert dunk.end - dunk.t >= 6.5                                    # a dunk's reaction, not a layup's
+    assert 'said "dunk"' in dunk.signals
+    # A word for another kind of basket doesn't retype it: a three isn't a dunk.
+    said = [_said_at(496.0, "Okafor has it, ahead to Ruiz, who goes in for the dunk and the crowd goes wild", 0.5)]
+    _profile3, moments, _segments = _basket_game(said, [(503, 0, 3)], description="Kai Ruiz scored 30.")
+    assert next(e for e in moments if e.confirmed).type == "made_3"
+
+
+def test_two_baskets_are_two_clips_however_close():
+    """On an NBA game a Thunder three 6 s after a Spurs three was "the same
+    moment" and had no clip, and a sentence's clip over the last layup and the
+    final dunk showed the layup, so the dunk had no window of its own."""
+    _profile_, moments, _segments = _basket_game([], [(500, 0, 3), (506, 1, 3)])
+    first, second = sorted((e for e in moments if e.confirmed), key=lambda e: e.t)
+    assert first.overlaps(second) and first.group != second.group
+    candidate = ClipCandidate(start=first.start - 1, end=second.end, score=70)      # over both
+    shown = clips.attach(moments, [candidate])[id(candidate)]
+    other = second if shown is first else first
+    assert other in clips.windows_to_add(moments, [candidate], shown_only=True)
+    assert other not in clips.windows_to_add(moments, [candidate])                  # Soccer's, as it was
+
+
+def test_soccer_keeps_overlapping_moments_as_one():
+    soccer = sports.profile_for({"clips": {"sport": {"name": "soccer"}}})
+    assert soccer.one_play_per_clip is False and _profile().one_play_per_clip is True
+    from sports.core.events import SportEvent, group_moments
+
+    goals = [SportEvent("goal", 100.0, 1.0, 100, 90.0, 120.0, confirmed=True),
+             SportEvent("goal", 106.0, 1.0, 100, 96.0, 126.0, confirmed=True)]
+    assert [e.group for e in group_moments(goals, soccer.replay_within)] == [1, 1]
+    assert [e.group for e in group_moments(goals, soccer.replay_within, True)] == [1, 2]
+
+
+def test_the_games_last_basket_runs_on_without_a_shot_of_people():
+    """The players celebrating on the court read as a court shot: the game is
+    over, so the final basket's clip still runs on into the celebration."""
+    times = (831.8, 836.8, 841.9, 847.0, 852.1, 857.1, 862.2, 867.3)
+    readings = [bb.Reading(t=t, score=(109, 103) if t < 844 else (111, 103), teams=("SAS", "OKC"), period=4,
+                           clock=max(0.0, 4.1 - max(0.0, t - 846)), visible=True) for t in times]
+    profile = _profile()
+    profile.shots = [(t, "court") for t in times]
+    dunk = next(e for e in _moments(profile, board=bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1)))
+                if e.confirmed)
+    assert dunk.t + 18.5 <= dunk.end <= dunk.t + 21.5                  # (ending with the sentence under way)
+
+
+def _play(**kw):
+    from sports.basketball import titles
+
+    base = {"points": 3, "kind": "made_3", "shot": "three", "team": "Spurs", "other": "Thunder", "mine": 52,
+            "theirs": 53, "before": -4, "when": "Q2 0:53", "scorer": "Marsh",
+            "aliases": ("Spurs", "San Antonio Spurs", "San Antonio"),
+            "other_aliases": ("Thunder", "Oklahoma City Thunder", "Oklahoma City")}
+    return titles.Play(**{**base, **kw})
+
+
+def _meta(title, description="A three for the Spurs."):
+    from analysis.metadata import ClipMetadata
+
+    return ClipMetadata(title=title, description=description, hashtags=["#nba"])
+
+
+def _names():
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "over to Marsh, Marsh the three, Ruiz with the rebound, Ruiz again, Okafor and Okafor")]
+    return commentary.Names(talk, teams=("Spurs", "Thunder", "San Antonio Spurs", "Oklahoma City Thunder"))
+
+
+@pytest.mark.parametrize("play, title, description, wrong", [
+    # The kinds of wrong an NBA game's titles got, each on a made-up play.
+    ({}, "Marsh Finds the Range!", "Marsh hits the three, extending the Spurs' lead.", "still trail 52-53"),
+    ({"team": "Thunder", "other": "Spurs", "mine": 103, "theirs": 109, "before": -8, "scorer": "",
+      "aliases": ("Thunder",), "other_aliases": ("Spurs",), "points": 2, "shot": "bucket"},
+     "Thunder Surge Ahead!", "The Thunder tie the game with a layup.", "still trail 103-109"),
+    ({"mine": 68, "theirs": 63, "before": 2}, "Marsh Pulls Away!", "Marsh's three gives the Spurs a three-point lead.",
+     "lead 68-63, by 5"),
+    ({"points": 2, "shot": "bucket", "scorer": ""}, "Late Shot Clock Drama!",
+     "A heave at the shot clock, but it misses.", "don't call it a miss"),
+    ({}, "Ruiz's Rookie Spin!", "Ruiz spins and finds Marsh, who nails the three.", "name only Marsh"),
+    ({"scorer": ""}, "Okafor Blocks It!", "Okafor with the block.", "name no player"),
+    ({"points": 2, "shot": "bucket"}, "Marsh's Step-Back Three!", "Marsh scores.", "not a three"),
+    ({}, "Marsh From Deep!", "", "Write a title and a description"),
+])
+def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wrong):
+    from sports.basketball import titles
+
+    found = titles.problems(_play(**play), _meta(title, description), _names())
+    assert any(wrong in p for p in found), found
+
+
+@pytest.mark.parametrize("play, title, description", [
+    ({}, "Marsh Cuts It to 1!", "Marsh hits the three. The Thunder still lead 53-52."),
+    ({"mine": 95, "theirs": 86, "before": 6}, "Marsh Drops the Heat!", "Marsh doesn't miss: Spurs up 9."),
+    ({"mine": 73, "theirs": 65, "before": 5}, "Spurs Pull Away", "Ruiz finds Marsh, who nails the three."),
+    ({"team": "Thunder", "other": "Spurs", "mine": 103, "theirs": 109, "before": -8, "scorer": "", "points": 2,
+      "shot": "bucket", "aliases": ("Thunder",), "other_aliases": ("Spurs",)},
+     "Thunder Cut It to 6", "The Thunder cut the Spurs' lead to 6 with 52 seconds left."),
+    ({"mine": 111, "theirs": 103, "before": 6, "sealed": True, "points": 2, "shot": "dunk"},
+     "Marsh Seals It!", "Marsh throws it down and the Spurs win it, 111-103."),
+])
+def test_a_title_true_to_its_play_stays(play, title, description):
+    from sports.basketball import titles
+
+    assert titles.problems(_play(**play), _meta(title, description), _names()) == []
+
+
+def test_a_title_written_from_the_play_says_only_what_it_holds():
+    from sports.basketball import titles
+
+    meta = _meta("wrong", "")
+    w = titles.written(_play(), meta, 0)
+    assert (w.title, w.description) == ("Marsh's Three Cuts It to 1",
+                                        "Marsh hits a three for the Spurs with 0:53 left in the 2nd quarter. "
+                                        "The Thunder still lead, 53-52.")
+    w = titles.written(_play(scorer="", team="Thunder", other="Spurs", mine=103, theirs=109, before=-8, points=2,
+                             shot="bucket", kind="made_2", when="Q4 0:52"), meta, 1)
+    assert (w.title, w.description) == ("The Thunder Cut It to 6",
+                                        "The Thunder score with 0:52 left in the 4th quarter. "
+                                        "The Spurs still lead, 109-103.")
+    w = titles.written(_play(mine=111, theirs=103, before=6, points=2, shot="dunk", kind="dunk", sealed=True,
+                             when="Q4 0:03"), meta, 0)
+    assert w.title == "Marsh Seals It for the Spurs!" and w.description.endswith("The Spurs win it, 111-103.")
+    w = titles.written(_play(team="", other="", scorer="", when=""), meta, 0)
+    assert (w.title, w.description) == ("What a Three!", "A three.")
+    for i, play in enumerate((_play(), _play(mine=68, theirs=63, before=2), _play(mine=53, theirs=53))):
+        w = titles.written(play, meta, i)
+        assert titles.problems(play, w, _names()) == [], (w.title, w.description)
+
+
+def test_a_wrong_title_is_written_again_and_then_from_the_scoreboard():
+    """The NBA game's titles, checked: a clip whose title gets its play wrong
+    is written again, told what it got wrong; one still wrong, or skipped,
+    is written from the scoreboard; a right one is left alone."""
+    from sports.basketball import titles
+
+    said = [_said_at(196.0, "Marsh on the wing, Marsh the three!", 0.5),
+            _said_at(296.0, "over to Vance, Vance lets it fly, got it!", 0.5),
+            _said_at(394.0, "back out to Okafor, Okafor to Ruiz, Ruiz knocks down the three", 0.5)]
+    profile, moments, segments = _basket_game(said, [(203, 0, 3), (303, 1, 3), (403, 0, 3)],
+                                              description="Jay Marsh, Leo Vance and Kai Ruiz.")
+    shown = sorted((e for e in moments if e.confirmed), key=lambda e: e.t)
+    assert [e.player for e in shown] == ["Marsh", "Vance", "Ruiz"]
+    candidates = []
+    for e in shown:
+        c = ClipCandidate(start=e.start, end=e.end, score=80)
+        clips.mark(c, e, profile.event_label(e.type), 10)
+        candidates.append(c)
+    metas = [_meta("Marsh Drills It!", "Marsh hits the three. Spurs lead."),          # right
+             _meta("Spurs Take the Lead!", "The Spurs lead."),                         # wrong: the Thunder tied it
+             _meta("Okafor's Dime!", "Okafor finds Ruiz.")]                            # wrong: Ruiz scored
+    asked = []
+
+    def rewrite(subset, rules):
+        asked.append((len(subset), rules))
+        return [_meta("Vance Ties It for the Thunder!", "Vance hits a three for the Thunder."),
+                _meta("Okafor Again!", "Okafor.")]                                     # still wrong
+
+    out = titles.check(profile, candidates, metas, rewrite)
+    assert out[0] is metas[0]
+    assert out[1].title == "Vance Ties It for the Thunder!"
+    assert "Ruiz" in out[2].title and "Okafor" not in out[2].title + out[2].description
+    count, rules = asked[0]
+    assert count == 2 and "- CLIP 1: " in rules and "name only Ruiz" in rules
 
 
 def test_a_baskets_quarter_and_clock_are_read_where_the_bug_changed():
@@ -1998,6 +2227,52 @@ def test_a_dunk_and_its_reaction_become_one_marked_clip_through_the_scorer(monke
     assert dunk[0].start <= 448 and dunk[0].end >= 456 + reactions.REACTION_MOST
     assert dunk[0].subscores["sport_when"].startswith("Q4")
     assert profile.report_data["sport"] == "Basketball" and profile.report_data["found"]["Dunk"] == 1
+
+
+def test_the_final_dunk_after_a_layup_gets_a_clip_of_its_own_through_the_scorer(monkeypatch):
+    """Game 7's ending: one 23-second sentence over the Thunder's layup and the
+    Spurs' final dunk 8 s later. Its candidate showed the layup, the dunk was
+    typed a basket with no window of its own, and the game's best moment had
+    no clip. Now the dunk is typed by its call, gets its own window, and runs
+    on into the celebration."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from analysis import fusion, highlights
+
+    words = ("and remember no timeouts for the Thunder eight point Spurs lead Wallace attacking to the basket "
+             "laid it in six point game Champagnie the rebound eight seconds left Fox has it ahead to Vassell "
+             "who goes in for the dunk and the Spurs have done it").split()
+    sentence = _said_at(827.2, " ".join(words), 0.35)                   # "laid" at 833, "dunk" at 841
+    assert [round(sentence.words[words.index(w)]["start"]) for w in ("laid", "dunk")] == [833, 841]
+    segs = sorted([sentence] + [s for s in _segments({}) if s.end <= sentence.start or s.start >= sentence.end],
+                  key=lambda s: s.start)
+
+    def score_windows(_segments, _llm, windows, **_k):
+        return [ClipCandidate(start=a, end=b, score=55, hook="w", source="signal") for a, b in windows]
+
+    monkeypatch.setattr(highlights, "find_highlights", lambda *_a, **_k: (
+        [ClipCandidate(start=827.2, end=847.0, score=80, hook="h", reason="r")], []))
+    monkeypatch.setattr(highlights, "score_windows", score_windows)
+    monkeypatch.setattr(fusion, "reaction_for_window", lambda *_a, **_k: 0.5)
+    config = {
+        "clips": {"min_duration": 10, "max_duration": 60, "min_score": 40, "max_clips_per_video": 0,
+                  "sport": {"name": "basketball", "highlights": "best"}},
+        "analysis": {"chunk_seconds": 600, "chunk_overlap_seconds": 30, "long_video_threshold_seconds": 3600,
+                     "max_overlap": 0.3, "max_text_similarity": 0.8, "max_segment_reuse": 0.5},
+        "scoring": {"rerank_pool": 0, "read_screen": False},
+        "tracking": {"detector": "yolov8n.pt"},
+    }
+    profile = sports.profile_for(config)
+    profile.board = _board([(834, 1, 2), (844, 0, 2)], period=4, start_clock=850.0, teams=("SAS", "OKC"),
+                           start=(109, 101))
+    profile.cutaways, profile.curves = [], _curves()
+    kept, _rejected = fusion.find_clips("game.mp4", segs, _Says(), config,
+                                        signals=({"spike": np.zeros(N)}, {"motion": np.zeros(N)}),
+                                        measure_reaction=False, sport=profile)
+    shown = {c.subscores.get("sport_event"): c for c in kept if (c.subscores or {}).get("sport_t")}
+    assert "dunk" in shown
+    dunk = shown["dunk"]
+    assert dunk.start <= 841 - 7 and dunk.end >= 841 + 18                # the play, then the celebration
 
 
 # ---- names: what Whisper listens for ------------------------------------------------

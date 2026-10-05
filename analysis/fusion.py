@@ -283,7 +283,8 @@ def find_clips(
             extra_after=sport_select.post_extra(sport.spec, highlights_choice),
             extra_types=sport_select.event_types(sport.spec, highlights_choice) or (),
         )
-        wanted = sport_clips.windows_to_add(sport_moments, candidates)
+        wanted = sport_clips.windows_to_add(sport_moments, candidates,
+                                            getattr(sport, "one_play_per_clip", False))
         typed = sum(1 for e in sport_moments if e.confidence >= sport_clips.TYPED and e.type != "big_moment")
         print(f"  {sport.label}: {len(sport_moments)} moment(s), {typed} typed, "
               f"{sum(e.is_replay for e in sport_moments)} replay(s); scoring {len(wanted)} window(s)")

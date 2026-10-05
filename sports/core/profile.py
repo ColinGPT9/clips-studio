@@ -155,6 +155,14 @@ class SportProfile:
         (basketball: the crowd and bench reactions). Unchanged by default."""
         return events
 
+    @property
+    def one_play_per_clip(self) -> bool:
+        """Whether two confirmed moments are two clips however close they come
+        (basketball), each a window of its own. False: moments whose windows
+        overlap are one, and a candidate covering a moment's window covers it
+        (sports/core/events.py, clips.py)."""
+        return False
+
     def clip_span(self, candidate, event) -> tuple[float, float]:
         """(start, end) of a Best moments clip that holds a confirmed moment:
         by default the scorer's window and the moment's own together, so the
