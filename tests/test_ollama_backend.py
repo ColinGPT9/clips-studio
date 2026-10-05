@@ -15,6 +15,8 @@ from llm.ollama_backend import OllamaBackend
 
 
 class _Response:
+    status_code = 200
+
     def __init__(self, body):
         self._body = body
 
@@ -144,3 +146,48 @@ def test_a_text_model_cannot_look_and_a_plain_vision_model_is_sent_no_think(monk
     calls = _fake_ollama(monkeypatch, capabilities=("completion", "vision"))
     OllamaBackend("gemma3:4b").look("p", [b"x"])
     assert "think" not in _sent(calls)
+
+
+# ---- a request Ollama fails ------------------------------------------------------------
+
+
+class _Failed(_Response):
+    def __init__(self, status, error):
+        super().__init__({"error": error})
+        self.status_code = status
+
+    def raise_for_status(self):
+        raise requests.HTTPError(f"{self.status_code} Server Error")
+
+
+def _answers(monkeypatch, *replies):
+    """Ollama answers each /api/generate with the next of `replies`."""
+    sent, left = [], list(replies)
+    monkeypatch.setattr(requests, "post", lambda url, json=None, timeout=None: (
+        sent.append(json) or left.pop(0)) if url.endswith("/api/generate") else _Response({"capabilities": []}))
+    monkeypatch.setattr("llm.ollama_backend.time.sleep", lambda _s: None)
+    return sent
+
+
+def test_a_generation_ollama_fails_with_a_server_error_is_asked_again(monkeypatch, capsys):
+    """On an NBA game gemma3:4b's answer came back as a 500 after the model had
+    written it, and the job ended there: three runs, six or seven minutes in."""
+    sent = _answers(monkeypatch, _Failed(500, "prediction aborted"), _Response({"response": '{"clips": []}'}))
+    assert OllamaBackend("gemma3:4b").generate("p", json_mode=True) == '{"clips": []}'
+    assert len(sent) == 2 and sent[0] == sent[1]
+    assert "Ollama answered 500: prediction aborted; asking again" in capsys.readouterr().out
+
+
+def test_a_server_error_every_time_still_ends_the_job(monkeypatch):
+    sent = _answers(monkeypatch, *[_Failed(500, "boom")] * 3)
+    with pytest.raises(requests.HTTPError):
+        OllamaBackend("gemma3:4b").generate("p", json_mode=True)
+    assert len(sent) == 3
+
+
+def test_any_other_error_ends_the_job_at_once(monkeypatch):
+    """A model Ollama doesn't have (404) won't appear on a second try."""
+    sent = _answers(monkeypatch, _Failed(404, "model 'gemma9' not found"))
+    with pytest.raises(requests.HTTPError):
+        OllamaBackend("gemma9").generate("p")
+    assert len(sent) == 1

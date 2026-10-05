@@ -1,6 +1,7 @@
 """Ollama backend — serves Gemma, Llama, and any other model Ollama hosts."""
 
 import base64
+import time
 
 import requests
 
@@ -32,6 +33,13 @@ _THINK_TO_ANSWER = {"gpt-oss": "medium", "nemotron": True}
 # about 50 s every time. The prompts already ask for the JSON, and every caller
 # finds it in plain text.
 _ANSWER_WITHOUT_FORMAT = ("gemma4",)
+
+# A generation Ollama answers with a server error is sent again before the error
+# ends the job. On an NBA game (Ollama 0.35, gemma3:4b), three runs ended on a 500
+# that came a few seconds after the model had finished writing its answer, with
+# memory to spare, each six or seven minutes into the job.
+_TRIES = 3
+_PAUSE = 2.0        # seconds before the second try, twice that before the third
 
 
 class OllamaBackend(LLMBackend):
@@ -66,12 +74,7 @@ class OllamaBackend(LLMBackend):
         if json_mode:
             payload["format"] = "json"
         self._limit_reasoning(payload)
-
-        response = requests.post(
-            f"{self.host}/api/generate", json=payload, timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()["response"]
+        return self._answer(payload)
 
     def sees_images(self) -> bool:
         """Gemma 3 and Gemma 4 can (Ollama says "vision"); gemma:7b can't."""
@@ -92,7 +95,18 @@ class OllamaBackend(LLMBackend):
         # nothing at all (see _limit_reasoning); this question doesn't need it.
         if "thinking" in self._capabilities():
             payload["think"] = False
-        response = requests.post(f"{self.host}/api/generate", json=payload, timeout=self.timeout)
+        return self._answer(payload)
+
+    def _answer(self, payload: dict) -> str:
+        """The model's answer to `payload`. A request Ollama answers with a
+        server error is sent again, _TRIES times in all, before the error ends
+        the job; any other error ends it at once, as it always has."""
+        for attempt in range(1, _TRIES + 1):
+            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=self.timeout)
+            if response.status_code < 500 or attempt == _TRIES:
+                break
+            print(f"      (Ollama answered {response.status_code}: {_error(response)}; asking again)")
+            time.sleep(_PAUSE * attempt)
         response.raise_for_status()
         return response.json()["response"]
 
@@ -148,3 +162,12 @@ class OllamaBackend(LLMBackend):
     @property
     def name(self) -> str:
         return f"ollama/{self.model}"
+
+
+def _error(response) -> str:
+    """What Ollama said went wrong ({"error": "..."}), or the start of its reply."""
+    try:
+        said = response.json().get("error")
+    except Exception:
+        said = None
+    return str(said or getattr(response, "text", "") or "no reason given")[:200]
