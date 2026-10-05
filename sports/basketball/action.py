@@ -66,6 +66,8 @@ CUT_COLOURS = 0.31       # a cut changes the picture's colours this much too (Bh
 # moving picture, the graphic reached 0.03-0.06 of the height past its text.
 BUG_WIDTH = 480          # frames are looked at this wide, in gray, for the graphic's edge
 BUG_REACH = 0.08         # the graphic reaches at most this share of the height past its text
+BUG_INSIDE = 0.025       # ...and its edge can sit this far inside the text's box (on an NBA game the box's top,
+                         # from looks that box the text differently, came out up to 0.014 above the edge)
 BUG_EDGE = 4.0           # its edge: a step of this many gray levels between the same two rows...
 BUG_SAME = 0.75          # ...the same way in this share of the looks (a line on the floor moves between them)
 BUG_BAND = 0.03          # ...with this much of the height on the graphic's side moving less than
@@ -191,9 +193,11 @@ def bug_edge(grays: list, box: tuple) -> float:
     one along the top, as a fraction of the height. The edge is the furthest
     row within BUG_REACH of the text where most looks step in brightness the
     same way, the rows on the text's side moving less than the picture beyond
-    when that moves enough to tell. Without one, or when the picture hardly
-    moves, BUG_TEXT of the text's height past it. grays: the looks, in gray,
-    all the same size."""
+    when that moves enough to tell; then past the rows beside it that move
+    less than the picture too, which the graphic's border partly covers.
+    Inside the text's box, only with a moving picture beyond. Without one, or
+    when the picture hardly moves, BUG_TEXT of the text's height past it.
+    grays: the looks, in gray, all the same size."""
     import numpy as np
 
     stack = np.stack([g.astype(np.float32) for g in grays])
@@ -209,15 +213,15 @@ def bug_edge(grays: list, box: tuple) -> float:
     fallback = max(0.0, box[1] - text) if bottom else min(1.0, box[3] + text)
     if float(np.median(rows[int(0.3 * height):int(0.6 * height)])) < BUG_MOVING:
         return fallback
-    reach, band = round(BUG_REACH * height), max(2, round(BUG_BAND * height))
+    reach, band, within = round(BUG_REACH * height), max(2, round(BUG_BAND * height)), round(BUG_INSIDE * height)
     if bottom:
         # r: the graphic's first row, furthest from the text first.
         start = int(box[1] * height)
-        tried = range(max(band, start - reach), start + 1)
+        tried = range(max(band, start - reach), min(height - band, start + within) + 1)
     else:
         # r: one past the graphic's last row.
         start = min(height, int(np.ceil(box[3] * height)))
-        tried = range(min(height - band, start + reach), start - 1, -1)
+        tried = range(min(height - band, start + reach), max(band, start - within) - 1, -1)
     for r in tried:
         step = steps[:, r - 1]
         way = np.sign(np.median(step))
@@ -225,7 +229,19 @@ def bug_edge(grays: list, box: tuple) -> float:
             continue
         inside, beyond = (rows[r:r + band], rows[r - band:r]) if bottom else (rows[r - band:r], rows[r:r + band])
         moving = float(np.median(beyond))
-        if moving < BUG_MOVING or float(np.median(inside)) < BUG_STILL * moving:
+        if moving < BUG_MOVING:
+            # A still picture beyond (the floor): the step alone tells, outside the text.
+            if (r <= start) if bottom else (r >= start):
+                return r / height
+            continue
+        if float(np.median(inside)) < BUG_STILL * moving:
+            # On an NBA game the bar's top row was half picture, and in one window
+            # only the step below its border agreed across the looks.
+            for _ in range(band):
+                past = r - 1 if bottom else r
+                if not 0 <= past < height or rows[past] >= BUG_STILL * moving:
+                    break
+                r += -1 if bottom else 1
             return r / height
     return fallback
 

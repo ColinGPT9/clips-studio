@@ -410,14 +410,17 @@ alongside, lists each picture's own time beside the one ffmpeg gave it; when the
 two lists match, the reader (and the cutaways) take the own times
 (`sports/basketball/keyframes.py`; soccer's reader is unchanged).
 
-**Dated just before the new score.** A bug changes seconds after a basket, so
-the crowd is searched from 10 s before the old score was last read up to the
-new one, not the 25 s before the new score it used to be: in a highlights
-package, with a basket every 10-15 s, the loudest crowd in that longer stretch
-was often the play before (three of ten clips from an NBA game showed the play
-before their basket). A basket neither the crowd nor the commentary dated is
-put where the old score was last read, not half a minute before (a soccer
-score shows minutes after its goal).
+**Dated by the score bug.** A basket is put a second after the old score was
+last read, and at least 1.3 s before the new one was first read: on an NBA game the
+bug showed the new score 1.3-2.6 s after the ball went in, all ten times, while
+the crowd's loudest moment put four of five baskets 4-12 s early (a playoff
+crowd roars through the possession), so one clip ended 5.6 s before its shot
+and another as the ball went in. The crowd and the commentary are still looked
+for from 10 s before the old score was last read, and say what the basket was;
+they no longer date it. Where the bug was hidden for more than 10 s between the
+two readings, a basket neither of them dated is put where the old score was
+last read, not half a minute before (a soccer score shows minutes after its
+goal).
 
 **One play a clip.** A basket's clip is its own window, the possession, the
 basket and the reaction, not that window joined to the scorer's longer one
@@ -479,9 +482,12 @@ court, between two that are and at most 25 seconds long, is a cutaway (an advert
 break runs longer). A frame with nobody in it (a stat card, a fade, a replay's
 wipe; without the detector, a dark frame) neither starts a cutaway nor ends one.
 
-- **Tied to the play before it.** A cutaway starting within 18 seconds of a play
+- **Tied to the play before it.** A cutaway starting within 10 seconds of a play
   is its reaction: the play's clip is grown to hold it when it fits, so a dunk,
-  the roar and the courtside shot are one clip.
+  the roar and the courtside shot are one clip. Later than that the next
+  possession is under way: on an NBA game, cutaways 13-16 s after a basket came after
+  the next play (a drive and a block; another three), and the clips that held
+  them held two plays.
 - **A reaction needs more than a crowd shot**: the play before it, a roar over it,
   or a name on screen. A crowd shot during free throws isn't one.
 - **Standing on its own**: with a reactions choice, a reaction is the clip's
@@ -521,9 +527,13 @@ from its top took 18-27% of the height where the bug was 15%, cutting the
 nearest players at the knees. The graphic's edge is the furthest row within 8%
 of the height past that text where the brightness steps the same way in most
 looks, the rows on the text's side moving less than the picture beyond when
-that moves; else half the text's height past it. A bug that would take more
-than 27% of the height stays in; `hide_scoreboard: false` under `framing`
-keeps every bug.
+that moves, then past any row beside it that moves less than the picture too
+(its border's row, half picture); else half the text's height past it. The
+search runs 2.5% of the height into the text's box as well, there only with a
+moving picture beyond: on an NBA game the text's top came out at or above the bar's
+edge in four windows of ten, and the margin cut 20-24% of the height where 16%
+leaves the bar out. A bug that would take more than 27% of the height stays in;
+`hide_scoreboard: false` under `framing` keeps every bug.
 
 ### Measured on NBA games
 
@@ -535,7 +545,7 @@ kept as a test fixture (`tests/fixtures/basketball_bugs.json`, text only).
 |---|---|---|
 | Court or people | tallest person 0.36 of the height | court 0.18-0.33, people 0.40-0.98; 90 of 90 frames |
 | A cut | gray difference over 25 and colour distance over 0.31 | 52 of 52 cuts, at most 3 false alarms in 108 pans and steady play |
-| A reaction's play | within 18 s | cutaways level off 15-20 s after the new score shows |
+| A reaction's play | within 10 s | a playoff game: the scorer's close-ups 2-5 s after a basket, the next play's cutaways 13-16 s after |
 | Detector size | 1280 px | the real ball in 14%, 40%, 33% of wide samples (960 px: 9%, 39%, 18%) |
 | Ball memory, jump | 1.5 s, 0.25 of the width | covers 76-97% of gaps; above the ball's 90th-percentile move |
 | Players around the ball | 0.15 of the width | half the crop is 0.16 |

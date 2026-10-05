@@ -22,6 +22,13 @@ BLOWOUT = 20             # ...this big, a blowout
 GARBAGE = 13             # ...and this big, late on, the game is decided
 BUZZER_AT = 0.6          # the buzzer curve's bar
 EDGE_SENTENCE = 1.5      # a clip starts at its sentence's start, and ends at its end, this close to them
+# A basket by its score bug. On an NBA game the bug showed the new score 1.3-2.6 s
+# after the ball went in, all ten times, and the ball went in 1.0 s before to
+# 2.3 s after the old score was last read; the crowd's loudest moment put four
+# of five baskets 4-12 s early (a playoff crowd roars through the possession).
+AFTER_OLD = 1.0          # a basket is dated this long after the old score was last read...
+BUG_LAG = 1.3            # ...and at least this long before the new one was first read
+BUG_GAP = 10.0           # ...when the two readings are at most this far apart (else the bug was hidden)
 
 
 @dataclass
@@ -45,19 +52,29 @@ class BasketballProfile(SportProfile):
     def extra_moments(self, events, segments, *, curves, video_end, min_len, max_len):
         from sports.basketball import reactions
 
-        # A basket neither the crowd nor the commentary dated: the shared
-        # reading puts it half a minute before its new score shows (a soccer
-        # score shows minutes after the goal). A basketball score shows
-        # seconds after the basket, so it is dated to when the old score was
-        # last read, its window moved with it.
+        # A basket the scoreboard confirmed is dated by it, its window moved
+        # with it: the shared reading dates it by the crowd, or half a minute
+        # before its new score shows when nothing else does (a soccer score
+        # shows minutes after the goal; a basketball score seconds after).
+        # With the bug hidden between the two readings, a basket neither the
+        # crowd nor the commentary dated is put where the old score was last read.
+        board = getattr(self, "board", None)
         for e in events:
             change = self._changes.get(id(e))
-            if (change is not None and change.last_old is not None and e.signals
-                    and all(s.startswith("score ") for s in e.signals)):
-                moved = change.last_old - e.t
-                e.t = change.last_old
-                e.start = round(max(0.0, e.start + moved), 2)
-                e.end = round(min(max(video_end, e.end), e.end + moved), 2)
+            if change is None or change.last_old is None:
+                continue
+            if change.hi - change.last_old <= BUG_GAP:
+                t = round(min(change.last_old + AFTER_OLD, change.hi - BUG_LAG), 2)
+            elif e.signals and all(s.startswith("score ") for s in e.signals):
+                t = change.last_old
+            else:
+                continue
+            moved = t - e.t
+            e.t = t
+            e.start = round(max(0.0, e.start + moved), 2)
+            e.end = round(min(max(video_end, e.end), e.end + moved), 2)
+            if board is not None:
+                e.when = board.when(shown_at(change, t))
         # The buzzer marks the end of a period: a basket just before it.
         buzzer = curves.get("buzzer")
         for e in events:
@@ -66,10 +83,9 @@ class BasketballProfile(SportProfile):
         settings = sports.spec(self.name).get("reactions") or {}
         found = list(getattr(self, "cutaways", None) or [])
         events = reactions.moments(self, events, found, curves=curves, video_end=video_end, min_len=min_len,
-                                   max_len=max_len, react_within=float(settings.get("react_within", 18)),
+                                   max_len=max_len, react_within=float(settings.get("react_within", 10)),
                                    focus=self.focus_reactions)
         # The game clock, for the clip card ("Q4 0:32").
-        board = getattr(self, "board", None)
         if board is not None:
             for e in events:
                 e.when = e.when or board.when(e.t)

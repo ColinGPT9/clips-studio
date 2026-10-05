@@ -416,7 +416,9 @@ basketball:
     people_tall: 0.36      # a shot whose tallest person is this tall is people, not the court
     court_share: 0.20      # without the detector: at least this much one colour in the lower half is the court...
     crowd_edges: 0.255     # ...and at least this share of edge pixels there is a crowd
-    react_within: 18       # a cutaway starting this many seconds after a play is its reaction (they level off at 15-20)
+    react_within: 10       # a cutaway starting this many seconds after a play is its reaction; later, the next
+                           # possession is under way (8 s to cross half court): on an NBA game, cutaways 13-16 s
+                           # after a basket came after the next play
     names_from_screen: true  # a name the broadcast captions over a cutaway is kept with it
 
   # A typed line's words ("1:23:14 dunk LeBron"). Basketball's own, so "ft"

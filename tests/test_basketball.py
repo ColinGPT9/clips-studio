@@ -805,7 +805,7 @@ def test_made_two_and_three_come_from_the_score_bug():
     m = _moments(_profile(), board=_board([(200, 0, 2), (500, 1, 3)]),
                  curves=_curves(roars=[(199, 3), (499, 3)]))
     named = _named(m)
-    assert ("made_2", 198) in named and ("made_3", 498) in named
+    assert ("made_2", 197) in named and ("made_3", 497) in named        # a second after the old score
     assert all(e.confirmed and e.team for e in m if e.type in ("made_2", "made_3"))
 
 
@@ -1066,7 +1066,7 @@ def test_dunks_keeps_the_dunk_with_its_reaction_inside():
     assert kept and not dropped and attached[id(candidate)].type == "dunk"
 
 
-def test_a_basket_is_dated_by_the_roar_just_before_its_score_not_an_earlier_play():
+def test_a_basket_is_dated_by_its_score_not_an_earlier_plays_roar():
     # A highlights package: a big play's roar at 478, then a three at 502
     # whose crowd is quieter. The score shows at the 504 reading, the old one
     # last read at 500. Searching 25 s back took the earlier play's roar.
@@ -1076,11 +1076,47 @@ def test_a_basket_is_dated_by_the_roar_just_before_its_score_not_an_earlier_play
     assert 496 <= three.t <= 503 and three.start <= 502 <= three.end
 
 
-def test_a_basket_nothing_heard_is_dated_when_the_old_score_was_last_read():
+def test_a_basket_nothing_heard_is_dated_just_after_the_old_score_was_last_read():
     profile = _profile()
     m = _moments(profile, board=_board([(702, 1, 2)]))                 # no crowd, no commentary
     basket = next(e for e in m if e.confirmed)
-    assert basket.t == 700.0 and basket.start <= 700 <= basket.end    # not half a minute before
+    assert basket.t == 701.0 and basket.start <= 702 <= basket.end    # not half a minute before
+
+
+def _playoff_three(roars):
+    """An NBA game's 81-79 to 84-79 three, its bug read at keyframes about 5 s
+    apart: the ball went in at 615.6, the old score last read at 613.7 and
+    the new one first at 618.8."""
+    times = (598.4, 603.5, 608.6, 613.7, 618.8, 623.9)
+    readings = [bb.Reading(t=t, score=(81, 79) if t < 615 else (84, 79), teams=("SAS", "OKC"), period=4,
+                           clock=675.0 - (t - 600), visible=True) for t in times]
+    profile = _profile()
+    m = _moments(profile, board=bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1)), curves=_curves(roars=roars))
+    return next(e for e in m if e.confirmed)
+
+
+def test_a_basket_is_dated_by_its_score_bug_not_the_crowd_roaring_through_the_possession():
+    """On an NBA game the bug showed each new score 1.3-2.6 s after the ball went
+    in, while the crowd's loudest moment put four of five baskets 4-12 s
+    early: this three's own window ended 3.6 s before the ball went in."""
+    for roars in ([(610, 6)], [(605, 12)], []):
+        three = _playoff_three(roars)
+        assert three.t == pytest.approx(614.7), roars
+        assert three.start <= 615.6 - 5 and three.end >= 615.6 + 3, roars      # the shot, then the landing
+        assert three.when == "Q4 11:00", roars
+
+
+def test_a_cutaway_after_the_next_possession_is_not_the_baskets_reaction():
+    """On an NBA game a dunk's clip ran on through the next possession (a drive and
+    a block) to a crowd shot 14 s after the dunk, and a three's through the
+    next three to the shooter's close-ups: a clip is one play."""
+    profile = _profile()
+    close_ups = reactions.Cutaway(306.0, 309.0)
+    stands = reactions.Cutaway(316.0, 319.0, crowd=True)
+    m = _moments(profile, said={300: "throws it down! what a dunk"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 8), (316, 4)]), cutaways=[close_ups, stands])
+    dunk = next(e for e in m if e.type == "dunk")
+    assert 309 <= dunk.end < 316 and "after the dunk" not in next(e for e in m if e.t == 316.0).signals
 
 
 def test_a_clip_starts_and_ends_with_the_commentators_sentence():
@@ -1380,6 +1416,46 @@ def test_the_scoreboard_s_graphic_is_found_past_its_text():
     assert abs(action.bug_edge(_looks(np, top=True), top) - 70 / 270) <= 1 / 270
     # A picture that doesn't move tells nothing: half the text's height past it.
     assert action.bug_edge(_looks(np, moving=False), box) == pytest.approx(box[1] - 0.5 * (box[3] - box[1]))
+
+
+def _bar_looks(np, agree=True, n=14):
+    """Gray 480x270 looks at an NBA bar as a playoff game showed it: the picture
+    (crowd and court, dark in some looks, bright in others) over rows 0-227,
+    the bar's top row (228) half picture, a light border (229) and the dark
+    bar with its text (rows 236-256) below. `agree`: the border is lighter
+    than the picture above it in every look; else only in the dark ones, so
+    only the step from the border to the bar agrees across them."""
+    rng = np.random.default_rng(7)
+    border = 230.0 if agree else 150.0
+    out = []
+    for i in range(n):
+        level = 60.0 if i % 2 else (90.0 if agree else 200.0)
+        img = level + rng.uniform(-40, 40, (270, 480))
+        picture = img[228].copy()
+        bar = np.full((42, 480), 30.0)
+        bar[:2] = border
+        bar[8:28, 160:320] = 230.0 if i % 3 else 200.0       # the digits change
+        img[228:270] = bar
+        img[228] = 0.5 * picture + 0.5 * border
+        out.append(np.clip(img, 0, 255).astype(np.uint8))
+    return out
+
+
+def test_the_scoreboard_s_edge_is_found_where_its_text_s_box_starts_below_it():
+    """On an NBA game the bar's top was at 0.844 of the height in every window, but
+    in four of ten the bug's text came out with its top at 0.830 or 0.844, at
+    or above the edge, and the search, which looked only above the text, cut
+    22-24% where the bar is 16%."""
+    np = pytest.importorskip("numpy")
+    from sports.basketball import action
+
+    edge = 228 / 270
+    for top in (224 / 270, 0.844, 236 / 270):
+        box = (0.33, top, 0.67, 256 / 270)
+        assert abs(action.bug_edge(_bar_looks(np), box) - edge) <= 1 / 270, top
+        # Only the step under the border agrees: the half-covered row and the
+        # border above it still go.
+        assert abs(action.bug_edge(_bar_looks(np, agree=False), box) - edge) <= 1 / 270, top
 
 
 def test_each_keyframe_is_dated_by_its_own_time_not_the_next_ones():
