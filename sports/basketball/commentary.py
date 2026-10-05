@@ -10,7 +10,11 @@ Johnson": the one named after them). No one is named when a pass nobody
 is named for comes between ("kicks it out, bang"), when two players are,
 or when the name is one Whisper heard only once and the video's own
 description doesn't spell ("Fussell", for the last dunk): no name rather
-than a wrong one, and never from who is on screen."""
+than a wrong one, and never from who is on screen. Words said well before
+the basket belong to the play before it, words the commentary takes back
+("thought about the three, didn't take it") say nothing, and a name
+Whisper didn't know between them and the name before ("Williams, pitched
+it outside. Swarer's hit the 3!") stops the search there."""
 
 import re
 from collections import Counter
@@ -22,7 +26,8 @@ from sports.basketball.names import COMMON
 # and the game's own words.
 NOT_NAMES = COMMON | set("""
 oh wow yes yeah no not and but what how look again first second third fourth last next half court free throw
-throws shot shots clock time timeout bang boom big huge man good great nice all-star rookie
+throws shot shots clock time timeout bang boom big huge man good great nice all-star rookie nba mvp
+i'm i've i'll i'd ok okay god
 """.split())
 _WORD = re.compile(r"[^\W\d_]+(?:['’-][^\W\d_]+)*|\d+(?:[.:]\d+)?")
 _POSSESSIVE = re.compile(r"['’][sS]?$")
@@ -49,12 +54,25 @@ SCORED = (
 )
 # A pass that hands the ball on to someone the commentary doesn't name:
 # whoever was named before it didn't score.
-PASSED = re.compile(r"\b(?:kicks? (?:it )?out|kicked (?:it )?out|dish(?:es|ed)?|swings? it|swung it"
-                    r"|pitch(?:es|ed)? (?:it )?(?:out|ahead|back)|lobs?|lobbed|feeds?|drops? it off"
+PASSED = re.compile(r"\b(?:kicks? (?:it )?out(?:side)?|kicked (?:it )?out(?:side)?|dish(?:es|ed)?|swings? it|swung it"
+                    r"|pitch(?:es|ed)? (?:it )?(?:out(?:side)?|ahead|back)|lobs?|lobbed|feeds?|drops? it off"
                     r"|hands? it off|outlet|finds|found)\b")
+# Words that take the call back: the player named only thought about the
+# shot, passed it up or missed it ("Holmgren thought about the three, didn't
+# take it. Caruso will for the lead, got it" is Caruso's three).
+TAKEN_BACK_BEFORE = re.compile(r"\b(?:(?:thought|thinks?|thinking) about|pass(?:es|ed|ing)? (?:up|on)"
+                               r"|turn(?:s|ed|ing)? down|eye[sd]|eyeing|(?:pump[- ]?)?fak(?:e|es|ed|ing)"
+                               r"|instead of|rather than|contest(?:s|ed|ing)?|block(?:s|ed|ing)?|den(?:y|ies|ied))$")
+TAKEN_BACK_AFTER = re.compile(r"\b(?:(?:didn['’]?t|doesn['’]?t|did not|does not|won['’]?t|wouldn['’]?t)"
+                              r" (?:take|shoot|go|fall|drop|let|pull)|no good|nope"
+                              r"|(?<!['’]t )(?<!nt )(?<!not )(?<!never )miss(?:es|ed)?|short(?! corner)"
+                              r"|off the (?:rim|iron|front|back)|rims? out|rimmed out|in and out|air ?ball|blocked)\b")
 NEAR = 16           # the scorer is named at most this many words before the words that say it went in
 BEFORE = 9.0        # a basket's words: from this long before it...
 AFTER = 6.0         # ...to this long after (the call "hit for Johnson" comes after the ball)
+SAID_BEFORE = 4.0   # the words that say it went in: said at most this long before it ("got it" earlier is
+                    # the play before's)
+TAKEN_BACK = 4      # words after the call that can take it back ("the three, didn't take it")
 
 
 @dataclass
@@ -174,7 +192,9 @@ def scorer(segments, t: float, points: int, names: Names, lo: float | None = Non
             continue
         for m in pattern.finditer(text):
             first, last = at[m.start()], at[m.end() - 1]
-            who = _named_after(said, named, last) or _named_before(said, named, first, text, at)
+            if said[first].t < t - SAID_BEFORE or _taken_back(said, named, first, last):
+                continue
+            who = _named_after(said, named, last) or _named_before(said, named, first, names)
             if who is not None:
                 run = _run(said, named, who)
                 sure = [i for i in run if names.sure(said[i].text)]
@@ -194,15 +214,45 @@ def _named_after(said: list[Word], named: list[int], last: int) -> int | None:
     return None
 
 
-def _named_before(said: list[Word], named: list[int], first: int, text: str, at: list[int]) -> int | None:
+def _named_before(said: list[Word], named: list[int], first: int, names: Names) -> int | None:
     """The player named last before word `first`, at most NEAR words before,
-    unless a pass to someone unnamed comes between."""
+    unless a pass to someone unnamed comes between, or a name Whisper didn't
+    know does ("Williams, pitched it outside. Swarer's hit the 3!")."""
     before = [i for i in named if i < first and first - i <= NEAR]
     if not before:
         return None
     who = before[-1]
     between = " ".join(w.text.lower() for w in said[who + 1:first])
-    return None if PASSED.search(between) else who
+    if PASSED.search(between):
+        return None
+    return None if any(_unknown(w, names) for w in said[who + 1:first]) else who
+
+
+def _unknown(w: Word, names: Names) -> bool:
+    """A name Whisper didn't know: a word with a capital the commentary never
+    says without one ("Swarer's" at a sentence start, "SBA"), and no common
+    word or team. A word said in lower case anywhere is just a word."""
+    word = bare(w.text)
+    low = word.lower()
+    return (word[:1].isupper() and not names.lower[low] and low not in NOT_NAMES
+            and low not in names.teams)
+
+
+def _taken_back(said: list[Word], named: list[int], first: int, last: int) -> bool:
+    """Whether the words just before or after the call take it back: "thought
+    about the three, didn't take it", "for three, no good". Never past the
+    sentence, or past the next player named (who may be the one who missed)."""
+    i = first
+    while i > max(0, first - 3) and not said[i].start:
+        i -= 1
+    if TAKEN_BACK_BEFORE.search(" ".join(w.text.lower() for w in said[i:first])):
+        return True
+    after = []
+    for k in range(last + 1, min(len(said), last + 1 + TAKEN_BACK)):
+        if said[k].start or k in named:
+            break
+        after.append(said[k].text.lower())
+    return TAKEN_BACK_AFTER.search(" ".join(after)) is not None
 
 
 def _run(said: list[Word], named: list[int], i: int) -> list[int]:

@@ -1550,6 +1550,65 @@ def test_a_player_who_cant_get_the_board_is_not_the_scorer():
     assert who(91, 3) == "Okafor"
 
 
+def test_words_said_well_before_a_basket_are_the_play_befores():
+    """On an NBA game "Carter Bryant secures it, Fox advances it, Bryant, got
+    it!", six seconds before a Thunder three nobody called, gave the three to
+    Bryant: the words that say the ball went in are said with it."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(300.6, "Carter Bryant secures it, Fox advances it, Bryant, got it!", step=0.6),
+            _said_at(307.0, "We open the season here with a double overtime thriller")]
+    names = commentary.Names(talk, teams=("Spurs", "Thunder"))
+
+    assert names.sure("Bryant")
+    assert commentary.scorer(talk, 312.9, 3, names, lo=300, hi=320) == ""
+    assert commentary.scorer(talk, 307.5, 2, names, lo=300, hi=320) == "Bryant"
+
+
+def test_a_shot_the_commentary_takes_back_is_no_ones_basket():
+    """On an NBA game "Holgren thought about the three, didn't take it. Caruso
+    will for the lead, got it" gave the three to the player who passed it up."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "a board for Holgren, and Holgren again, to Caruso"),
+            _said_at(30, "Caruso the pitch. Holgren thought about the three, didn't take it. Caruso will for the lead, got it,"),
+            _said_at(60, "Holgren for three, no good. Caruso with the board"),
+            _said_at(90, "Holgren for three, didn't miss, Caruso can't believe it")]
+    names = commentary.Names(talk, teams=("Thunder",))
+
+    def who(t, points):
+        return commentary.scorer(talk, t, points, names, lo=t - 20, hi=t + 20)
+
+    assert names.sure("Holgren") and names.sure("Caruso")
+    assert who(35, 3) == "Caruso"
+    assert who(62, 3) == ""                    # no good
+    assert who(91, 3) == "Holgren"             # "didn't miss" says it went in
+
+
+def test_a_name_whisper_didnt_know_before_the_call_names_no_one():
+    """On an NBA game "Williams, pitched it outside. Swarer's hit the 3!" gave
+    the three to Williams, who passed it. A word with a capital the
+    commentary never says without one is a name Whisper didn't know, and it
+    may be the scorer's; one said in lower case elsewhere is just a word."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "up top Williams, Williams again, a wide look for Fox"),
+            _said_at(30, "Williams, pitched it outside. Swarer's hit the three!"),
+            _said_at(60, "Williams drives. Swarer's hit the three!"),
+            _said_at(90, "Williams drives. He hits the three!"),
+            _said_at(120, "Williams. Wide open, knocks it down!")]
+    names = commentary.Names(talk, teams=("Thunder",))
+
+    def who(t, points):
+        return commentary.scorer(talk, t, points, names, lo=t - 20, hi=t + 20)
+
+    assert names.sure("Williams") and not names.is_name("Swarer's")
+    assert who(32, 3) == ""                    # passed outside, to someone the commentary didn't name
+    assert who(61, 3) == ""                    # a name Whisper didn't know hit it
+    assert who(91, 3) == "Williams"
+    assert who(121, 2) == "Williams"
+
+
 def _basket_game(said, baskets, description="", **profile_extra):
     """A profile run over `said` (segments with word timings) and a board of
     `baskets` (video second, side, points) between the Spurs and the Thunder."""
