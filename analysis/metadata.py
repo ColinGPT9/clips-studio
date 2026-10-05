@@ -113,7 +113,7 @@ def generate_metadata_batch(
             text = " ".join(
                 s.text for s in segments if s.end > c.start and s.start < c.end
             )[:900]
-            blocks.append(f"CLIP {i}:\n{text or '(no speech)'}")
+            blocks.append(f"CLIP {i}{_scoreboard_note(c)}:\n{text or '(no speech)'}")
         prompt = (
             template.replace("{video_title}", video_title)
             .replace("{count}", str(len(batch)))
@@ -139,6 +139,44 @@ def generate_metadata_batch(
                 hashtags=_clean_hashtags(item.get("hashtags", [])) or fallback.hashtags,
             )
     return results
+
+
+_PERIODS = {"Q1": "1st quarter", "Q2": "2nd quarter", "Q3": "3rd quarter", "Q4": "4th quarter",
+            "H1": "1st half", "H2": "2nd half", "OT": "overtime"}
+_SCORE = re.compile(r"\bscore (\d+-\d+)")
+_CRUNCH = 120  # seconds left in the last quarter (or overtime) that make crunch time
+
+
+def _scoreboard_note(c: ClipCandidate) -> str:
+    """What the game's own scoreboard says about a clip's moment, for its
+    title: the play, the team, the score it made, the quarter and the clock,
+    and when it was not crunch time. On an NBA game the titles called a 3rd
+    quarter put-back "Late-Game" and a shot with 11:30 left "Clutch".
+    Only a sport that reads the game's clock (basketball) sets one; "" for
+    every other clip, whose prompt is unchanged."""
+    s = c.subscores or {}
+    when = str(s.get("sport_when") or "")
+    if not when:
+        return ""
+    period, _, left = when.partition(" ")
+    play = str(s.get("sport_label") or "a play")
+    team = str(s.get("sport_team") or "")
+    score = _SCORE.search(str(s.get("sport_why") or ""))
+    words = [f"{play} by {team}" if team else play]
+    if score:
+        words[0] += f", making it {score.group(1)}"
+    words.append(_PERIODS.get(period, period) + (f" with {left} left" if left else ""))
+    try:
+        minutes, seconds = (int(x) for x in left.split(":"))
+        crunch = period in ("Q4", "H2", "OT") and minutes * 60 + seconds <= _CRUNCH
+    except ValueError:
+        crunch = period in ("Q4", "H2", "OT")
+    context = str(s.get("sport_context") or "")
+    if context:
+        words.append(context)
+    if not crunch:
+        words.append("not crunch time")
+    return " (the scoreboard: " + "; ".join(words) + ")"
 
 
 def _fallback(candidate: ClipCandidate, video_title: str) -> ClipMetadata:

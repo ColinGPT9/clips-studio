@@ -1077,6 +1077,31 @@ def test_a_best_moments_basket_clip_is_the_one_play_not_the_scorers_longer_windo
     assert kept and (candidate.start, candidate.end) == (three.start, three.end)
 
 
+def test_a_basketball_clips_title_is_written_knowing_the_quarter_the_clock_and_the_score():
+    from analysis import metadata
+
+    prompts = []
+
+    class Model:
+        def generate(self, prompt, json_mode=False):
+            prompts.append(prompt)
+            return '{"items": []}'
+
+    three = ClipCandidate(start=100, end=113, score=70, subscores={
+        "sport_label": "Three", "sport_team": "SAS", "sport_when": "Q3 5:12",
+        "sport_why": "score 60-55 (SAS), +3; crowd roar"})
+    winner = ClipCandidate(start=200, end=228, score=90, subscores={
+        "sport_label": "Game winner", "sport_team": "OKC", "sport_when": "Q4 0:03",
+        "sport_why": "score 111-110 (OKC), +2", "sport_context": "takes the lead"})
+    goal = ClipCandidate(start=300, end=320, score=80, subscores={"sport_label": "Goal", "sport_minute": 67})
+    metadata.generate_metadata_batch([three, winner, goal], _segments({}), "Spurs at Thunder", Model())
+    assert ("CLIP 0 (the scoreboard: Three by SAS, making it 60-55; 3rd quarter with 5:12 left; "
+            "not crunch time):") in prompts[0]
+    assert ("CLIP 1 (the scoreboard: Game winner by OKC, making it 111-110; 4th quarter with 0:03 left; "
+            "takes the lead):") in prompts[0]
+    assert "CLIP 2:\n" in prompts[0]                    # a soccer clip's block, as it always was
+
+
 class _Looks:
     """A local model that takes images, answering what a shot shows."""
 

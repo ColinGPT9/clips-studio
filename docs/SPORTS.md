@@ -416,6 +416,14 @@ around it, which held two to four plays in a highlights package. A clip
 starts and ends with the commentator's sentence when one starts or ends within
 1.5 s of its edge, else between words.
 
+**Titles know the situation.** The model writing a clip's title is told what
+the scoreboard says about it, "Three by SAS, making it 60-55; 3rd quarter with
+5:12 left; not crunch time", next to the clip's commentary. Without it, titles
+on an NBA game called a 3rd-quarter put-back "Late-Game" and a shot with 11:30
+left "Clutch". Crunch time is the last 2 minutes of the 4th quarter, the 2nd
+half or overtime. A clip without a game clock (every soccer clip) gets the prompt it
+always did.
+
 **The situation sets the worth.** The quarter, the clock and the score before the
 basket decide:
 
