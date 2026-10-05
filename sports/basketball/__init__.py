@@ -8,11 +8,17 @@ would shadow the framing() hook below). See docs/SPORTS.md."""
 
 from sports.basketball.profile import BasketballProfile
 
+# The video's own description names the players (hotwords) and says who won
+# (names.sides): a job whose download was reused asks for it (core/pipeline.py).
+READS_DESCRIPTION = True
+
 
 def profile(config: dict, option: dict, video=None) -> BasketballProfile:
     from sports.core.profile import weights_for
 
-    return BasketballProfile(name="basketball", option=dict(option), weights=weights_for(config))
+    return BasketballProfile(name="basketball", option=dict(option), weights=weights_for(config),
+                             video_text=(str(getattr(video, "title", "") or ""),
+                                         str(getattr(video, "description", "") or "")))
 
 
 def hotwords(option: dict, video) -> str | None:
@@ -59,8 +65,9 @@ def prepass(video_path, duration: float) -> dict:
         if board.box is None:
             print("      Scoreboard: none found on screen (gym or phone footage, or no score shown)")
         else:
+            timed = sum(c.shown is not None for c in board.changes)
             print(f"      Scoreboard: read {len(board.readings)} time(s) in {time.monotonic() - t0:.0f}s, "
-                  f"{len(board.changes)} basket(s)")
+                  f"{len(board.changes)} basket(s)" + (f", {timed} timed between keyframes" if timed else ""))
         out["board"] = board
     else:
         print("      (scoreboard: the OCR isn't installed, scoring the game without it)")
@@ -72,6 +79,7 @@ def prepass(video_path, duration: float) -> dict:
                                      float(settings.get("crowd_edges", 0.255)), cancel=cancel.check_active,
                                      tall=float(settings.get("people_tall", 0.36)), model_name=model)
         found = reactions.cutaways(shots, duration)
+        out["shots"] = shots                       # (the celebration after the game's last basket: profile.py)
         if settings.get("names_from_screen", True) and found:
             # A caption of the teams' or schools' own words names no one:
             # those on the bug and in the video's title.

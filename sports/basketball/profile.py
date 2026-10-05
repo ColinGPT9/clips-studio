@@ -26,15 +26,24 @@ EDGE_SENTENCE = 1.5      # a clip starts at its sentence's start, and ends at it
 # after the ball went in, all ten times, and the ball went in 1.0 s before to
 # 2.3 s after the old score was last read; the crowd's loudest moment put four
 # of five baskets 4-12 s early (a playoff crowd roars through the possession).
-AFTER_OLD = 1.0          # a basket is dated this long after the old score was last read...
-BUG_LAG = 1.3            # ...and at least this long before the new one was first read
+BUG_LAG = 1.3            # the ball went in at least this long before the new score showed...
+BUG_LAG_MOST = 2.6       # ...and at most this long
+AFTER_OLD = 1.0          # with only the keyframes' readings: this long after the old score was last read,
 BUG_GAP = 10.0           # ...when the two readings are at most this far apart (else the bug was hidden)
+# The game's last basket in its last seconds: its clip runs on to the
+# celebration, the first shot of people after it (on an NBA game 13 s after
+# the dunk, once the clock ran out), and this long into it.
+CELEBRATION = 4.0
+CELEBRATION_WITHIN = 20.0
 
 
 @dataclass
 class BasketballProfile(SportProfile):
     # Each confirmed basket's score change, by the event it confirmed.
     _changes: dict = field(default_factory=dict)
+    # The video's own title and description: who won, for which team is which (names.sides).
+    video_text: tuple = ("", "")
+    _sided: bool = False
 
     # ---- the reactions -----------------------------------------------------
 
@@ -63,7 +72,12 @@ class BasketballProfile(SportProfile):
             change = self._changes.get(id(e))
             if change is None or change.last_old is None:
                 continue
-            if change.hi - change.last_old <= BUG_GAP:
+            if change.shown is not None and change.shown - change.last_old <= BUG_GAP:
+                # Pinpointed between its keyframes (scoreboard.pinpoint): the
+                # bug changed between the old score's last reading and the
+                # new one's first, BUG_LAG to BUG_LAG_MOST after the ball.
+                t = round((change.last_old + change.shown) / 2 - (BUG_LAG + BUG_LAG_MOST) / 2, 2)
+            elif change.hi - change.last_old <= BUG_GAP:
                 t = round(min(change.last_old + AFTER_OLD, change.hi - BUG_LAG), 2)
             elif e.signals and all(s.startswith("score ") for s in e.signals):
                 t = change.last_old
@@ -89,12 +103,35 @@ class BasketballProfile(SportProfile):
         if board is not None:
             for e in events:
                 e.when = e.when or board.when(e.t)
+            # The game's last basket in its last seconds: on to the celebration.
+            for e in events:
+                change = self._changes.get(id(e))
+                end = self._celebration(e, change, board) if change is not None else None
+                if end is not None and end > e.end and end - e.start <= max_len:
+                    e.end = round(min(max(video_end, e.end), end), 2)
         # Between words: a clip that started or ended mid-sentence on the
         # PC's NBA game (7 of 10, mostly by under a second) starts and ends
         # with the commentator's sentence when it is that close.
         for e in events:
             e.start, e.end = speech_edges(segments, e.start, e.end, video_end)
         return events
+
+    def _celebration(self, e, change, board) -> float | None:
+        """Where the clip of the game's last basket ends when it came in the
+        last seconds of the game: CELEBRATION into the first shot of people
+        after the clock ran out (after the basket, when that wasn't read), at
+        most CELEBRATION_WITHIN after the basket. None for any other basket,
+        and when no such shot was seen."""
+        if not board.changes or change is not board.changes[-1]:
+            return None
+        at = shown_at(change, e.t)
+        period, left = board.period_number(at), board.clock_at(at)
+        if period is None or period < board.last_period() or left is None or left > FINAL_SECONDS:
+            return None
+        out = next((r.t for r in board.readings if r.t >= at and r.clock is not None and r.clock < 1), e.t)
+        people = next((t for t, kind in (getattr(self, "shots", None) or [])
+                       if max(out, e.t) < t <= e.t + CELEBRATION_WITHIN and kind == "people"), None)
+        return None if people is None else people + CELEBRATION
 
     def clip_span(self, candidate, event) -> tuple[float, float]:
         """A basket's clip is its own window: the possession, the basket and
@@ -174,6 +211,7 @@ class BasketballProfile(SportProfile):
         a basket, a free throw); then, from the game's situation, a game
         winner, buzzer-beater, tying or go-ahead basket, or a clutch shot,
         when that is worth more."""
+        self._name_sides()
         points = int(getattr(change, "points", 0) or 0)
         kind = event.type if event is not None else ""
         fits = (kind in ANY_DISTANCE or (kind in THREES and points == 3) or (kind in TWOS and points == 2)
@@ -193,6 +231,47 @@ class BasketballProfile(SportProfile):
                 kind = situation
             event.context = score_line(change)
         return kind
+
+    def _name_sides(self) -> None:
+        """The teams by name, once, when the bug's own letters weren't read
+        (a logo, letters on their side): from the video's description of the
+        result and the bug's last score (names.sides). On an NBA game titles
+        given "the scorers 97, the other side 86" put the wrong team ahead,
+        from a "timeout OKC" in the commentary. Nothing when either doesn't
+        say: the titles then say no team leads."""
+        board = getattr(self, "board", None)
+        if self._sided or board is None:
+            return
+        self._sided = True
+        if board.teams() is not None:
+            return
+        from sports.basketball import names
+
+        title, description = self.video_text
+        named = names.sides(title, description, board.final())
+        if named is None:
+            return
+        for r in board.readings:
+            r.teams = named
+        for c in board.changes:
+            c.team, c.other = named[c.side], named[1 - c.side]
+
+    def title_rules(self) -> str:
+        """What the title model is told about a basketball game's clips, on
+        top of each clip's scoreboard note. On an NBA game a three was
+        credited to the star the commentator named for the pass and the
+        rebound, a step-back two was called a three, and a sideline report
+        titled a clip whose play it never mentioned."""
+        return "\n".join([
+            "- Each clip is one play: its note says what the scoreboard read (the play, its points, the quarter "
+            "and the clock, and the score with whose is whose when the scoreboard names the teams). Title the "
+            "clip for that play, not for what else is said around it.",
+            "- Name a player only as the one the commentary says scored this play (in \"X knocks down the "
+            "three\", X scored). A player named for a pass, a rebound, a block or the defense didn't score. "
+            "When the commentary doesn't say who scored, name no one.",
+            "- Say a team leads, trails, wins or loses only as the note says it, and a basket is worth the "
+            "points the note gives it.",
+        ])
 
     def _situation(self, board, change, event, at: float) -> str:
         """A situational kind for this basket, or ""."""
@@ -276,10 +355,14 @@ def score_line(change) -> str:
     """The new score in words, whose is whose and who leads, for the clip's
     title: "SAS 52, OKC 53: OKC still lead by 1". The bug's "52-53" doesn't
     say whose 52 it is, and on an NBA game the titles called a three that
-    made it 52-53 a tie and gave a run to the wrong team."""
+    made it 52-53 a tie and gave a run to the wrong team. "" when the teams
+    aren't known: "the scorers 97, the other side 86" had the titles put the
+    team the commentary named ahead, the wrong one."""
+    if not change.team or not change.other:
+        return ""
     side = change.side
     mine, theirs = change.after[side], change.after[1 - side]
-    us, them = change.team or "the scorers", change.other or "the other side"
+    us, them = change.team, change.other
     before = change.before[side] - change.before[1 - side]
     line = f"{us} {mine}, {them} {theirs}: "
     if mine == theirs:

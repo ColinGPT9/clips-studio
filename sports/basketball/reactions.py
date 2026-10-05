@@ -45,6 +45,8 @@ DETECT_WIDTH = 640       # ...and this small for the detector: a player from the
 NAMES_MAX = 60           # cutaways whose caption is read (a full OCR each)
 CROWD_AT = 0.4           # the crowd curve's bar for a roar (sports/core/detect.py's)
 AFTER_REACTION = 1.5     # seconds a merged clip runs past the end of the reaction shot
+REACTION_GAP = 1.0       # a play's clip holds a reaction shot starting at most this long after the clip's end...
+REACTION_MOST = 4.0      # ...and at most this much of it
 
 # Words a lower-third writes that aren't a person's name.
 NOT_NAMES = {"live", "replay", "timeout", "time", "out", "quarter", "half", "halftime", "final", "overtime",
@@ -286,9 +288,14 @@ def moments(profile, events: list[SportEvent], found: list[Cutaway], *, curves: 
             e.start, e.end = round(start, 2), round(end, 2)
             if not focus:
                 e.importance = min(e.importance, max(0, play.importance - 1))
-            # The play's own clip holds its reaction, when it fits.
-            if c.end + AFTER_REACTION > play.end and c.end + AFTER_REACTION - play.start <= max_len:
-                play.end = round(min(video_end, c.end + AFTER_REACTION), 2)
+            # The play's own clip holds its reaction when the reaction follows
+            # on from it, and the first seconds of it. A shot of people
+            # starting later had the next possession between: on an NBA game
+            # a player near the camera in the next fast break read as one, 7 s
+            # after a three, and the three's clip ran on through two more plays.
+            end = min(c.end, c.start + REACTION_MOST) + AFTER_REACTION
+            if c.start <= play.end + REACTION_GAP and end > play.end and end - play.start <= max_len:
+                play.end = round(min(video_end, end), 2)
                 play.signals.append(f"then {profile.event_label(kind).lower()}")
         else:
             e.start, e.end = window(*profile.window_of(kind), c.start, min_len=min_len, max_len=max_len,

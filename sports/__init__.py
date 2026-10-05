@@ -192,6 +192,17 @@ def prepass(config: dict, video_path, duration: float) -> dict:
     return read(video_path, duration) if read is not None else {}
 
 
+def reads_description(config: dict) -> bool:
+    """Whether this job's sport reads the video's own description
+    (basketball: its players' names for Whisper, and who won for which team
+    is which), so a job whose download was reused asks for it. False for
+    every other job."""
+    opt = option(config)
+    if opt is None:
+        return False
+    return bool(getattr(importlib.import_module(SPORTS[opt["name"]]), "READS_DESCRIPTION", False))
+
+
 def hotwords(config: dict, video) -> str | None:
     """Names for Whisper to listen for in this job's video (basketball: the
     players and teams its title and description spell), or None: a sport

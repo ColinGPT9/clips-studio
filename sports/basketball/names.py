@@ -65,6 +65,51 @@ def _named(word: str) -> bool:
     return not (word.isupper() and len(word) <= 4)
 
 
+# The result as the NBA's own descriptions write it: "...and the San Antonio
+# Spurs defeated Shai Gilgeous-Alexander (31 PTS) and the Oklahoma City
+# Thunder, 111-103, in Game 7". The winner, the loser and the score.
+_TEAM = r"((?:[A-Z0-9][\w.'’&-]*\s+){0,3}[A-Z0-9][\w.'’&-]*)"
+RESULT = re.compile(r"\b[Tt]he\s+" + _TEAM + r"\s+(?:defeated|beat|topped|edged|outlasted|downed|held\s+off)\b"
+                    r"[^.]*?\b[Tt]he\s+" + _TEAM + r",?\s+(\d{2,3})\s*[-–]\s*(\d{2,3})\b")
+
+
+def result(description: str) -> tuple[str, str, int, int] | None:
+    """(winner, loser, the winner's points, the loser's) as the video's
+    description says them, or None when it doesn't say."""
+    m = RESULT.search(description or "")
+    if m is None:
+        return None
+    won, lost = int(m.group(3)), int(m.group(4))
+    if won <= lost:
+        return None
+    return " ".join(m.group(1).split()), " ".join(m.group(2).split()), won, lost
+
+
+def sides(title: str, description: str, final: tuple | None) -> tuple[str, str] | None:
+    """Which team is which on the score bug, in its order, when its own
+    letters weren't read (a logo, letters on their side): the description
+    says who won and by what score, and the bug's last score says which side
+    has the winner's points. Each team as the title names it ("Spurs") when
+    it does, else as the description does. None when either doesn't say, or
+    they disagree: a side is never guessed."""
+    said = result(description)
+    if said is None or not final or len(final) != 2:
+        return None
+    winner, loser, won, lost = said
+    if tuple(final) == (won, lost):
+        pair = (winner, loser)
+    elif tuple(final) == (lost, won):
+        pair = (loser, winner)
+    else:
+        return None
+    short = [p for p in hint(title).split(", ") if p]
+
+    def named(team: str) -> str:
+        return next((p for p in short if team.lower().endswith(p.lower())), team)
+
+    return named(pair[0]), named(pair[1])
+
+
 def for_video(title: str, description: str = "", teams: str = "") -> str | None:
     """The hint for one job: its title, its description, and the teams the
     job names (Highlights' team choice). None when they name no one."""

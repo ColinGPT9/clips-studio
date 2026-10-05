@@ -396,9 +396,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     if sport_name:
         # The names a sport's video spells (basketball: its players, from its
         # title and description), for Whisper to listen for.
-        import sports
-
-        hint = sports.hotwords(config, video)
+        hint = _listening_for(config, video, url)
         if hint:
             print(f"      Listening for: {hint[:120]}{'…' if len(hint) > 120 else ''}")
     segments = transcribe(
@@ -508,9 +506,12 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
     # (one call per clip made long streams crawl through analysis).
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
+    # A sport's own rules for its clips' titles (basketball: which player to name).
+    title_rules = getattr(sport_profile, "title_rules", None) if sport_profile is not None else None
     metas = generate_metadata_batch(
         candidates, segments, video.title, llm,
         creator_context=(creator_ctx.summary if creator_ctx else ""),
+        **({"rules": title_rules()} if title_rules is not None else {}),
     )
 
     # Hashtags the request insisted on (chat: "put #creatorname on all of
@@ -959,6 +960,21 @@ def _sport_inputs(config: dict, video, hype_out: dict, heard: dict | None, prepa
         chosen = (profile.option or {}).get("footage") == "sideline"
         print("      Footage: club or phone" + ("" if chosen else " (no score box on screen)"))
     return profile, chat, sounds
+
+
+def _listening_for(config: dict, video, url: str) -> str | None:
+    """The names Whisper listens for in a sport's video (sports.hotwords). A
+    sport that reads the video's description (basketball: its players, and
+    who won) gets it asked for when the download was reused: a file already
+    on disk comes back without one (_cached_or_download), and on an NBA game
+    Whisper then listened for the two teams alone."""
+    import sports
+
+    if not getattr(video, "description", "") and sports.reads_description(config):
+        from sources.dispatch import description
+
+        video.description = description(url)
+    return sports.hotwords(config, video)
 
 
 def _cached_or_download(url: str, data_dir: Path, db: StateDB, vertical: bool = False):

@@ -84,6 +84,8 @@ REREAD_SURE = 0.9        # a piece read again alone stands when the recogniser i
 FULL_EVERY = 8           # ...and the box is read whole at least every this many keyframes
 WIDEN = 0.6              # a piece whose digits changed is read again this many of its heights wider each side
 SAME_ROW = 0.7           # a piece sits where one sat before: over its columns, sharing this much of their rows
+PINPOINT_RATE = 5        # a basket's new score is looked for this many times a second between its two keyframes...
+PINPOINT_WITHIN = 10.0   # ...when they are at most this far apart (further, the bug was hidden: a replay, a break)
 
 
 @dataclass
@@ -102,6 +104,7 @@ class Reading:
     # by their places over the whole game (from_readings).
     numbers: list = field(default_factory=list)
     codes: list = field(default_factory=list)        # (x, y, height, code) for each team-like code
+    pieces: list = field(default_factory=list)       # the pieces it was read from, (box, text)
 
 
 @dataclass
@@ -115,6 +118,7 @@ class ScoreChange:
     points: int = 0
     side: int = 0                    # 0 or 1: which number went up
     last_old: float | None = None    # when the score before it was last read
+    shown: float | None = None       # when the new score was first read, between the keyframes (pinpoint)
 
     def label(self) -> str:
         who = f" ({self.team})" if self.team else ""
@@ -127,6 +131,7 @@ class Scoreboard:
     readings: list = field(default_factory=list)
     changes: list = field(default_factory=list)
     halftime: float | None = None    # (soccer's; unused)
+    places: tuple | None = None      # where the two scores sit in the box (score_places)
 
     def seen_twice(self) -> list:
         """The readings whose score the reading before or after it (of those
@@ -365,6 +370,7 @@ def parse_pieces(pieces: list[tuple[tuple, str]]) -> Reading:
     lines = [[(box, unglue(str(text))) for box, text in row] for row in rows(pieces)]
     ordered = [p for row in lines for p in row]
     out = parse([t for _, t in ordered])
+    out.pieces = list(pieces)
     out.teams, out.score = row_pairs(lines)
     for box, text in ordered:
         rest = _blank(_blank(text, PERIOD), CLOCK)
@@ -654,7 +660,7 @@ def from_readings(readings: list[Reading], box: tuple | None = None) -> Scoreboa
                 a, b = _at(r, places[0]), _at(r, places[1])
                 r.score = (a, b) if a is not None and b is not None else None
                 r.teams = teams
-    board = Scoreboard(box=box, readings=readings)
+    board = Scoreboard(box=box, readings=readings, places=places)
     teams = board.teams()
     if teams is not None:
         for r in readings:
@@ -662,6 +668,139 @@ def from_readings(readings: list[Reading], box: tuple | None = None) -> Scoreboa
                 r.teams = None                    # a misread code: the pair most readings agree on stands
     board.changes = changes(board.readings)
     return board
+
+
+def pinpoint(change: ScoreChange, samples, read) -> bool:
+    """When the bug changed to a basket's new score, to a fraction of a
+    second, from `samples` ((time, the box) between its two keyframes, in
+    order) and `read` (the box -> the numbers read at the scorer's place).
+    change.shown is the first sample that reads the new score (and not the
+    old) with no later one reading the old before another reads the new
+    again (a misread is seen once; the keyframe after the samples read the
+    new score already), change.last_old the last sample before it that
+    reads the old score. False, and the change as it was, when no sample
+    reads the new score: the keyframes' times stand. On an NBA game the
+    keyframes were up to 8 s apart, and a basket dated from them 4 s early
+    ended its clip as the ball went in."""
+    old, new = change.before[change.side], change.after[change.side]
+    last_old = first_new = None
+    for t, img in samples:
+        values = read(img)
+        if new in values and old not in values:
+            if first_new is not None:
+                break                               # read new twice: it is the new score
+            first_new = t
+        elif old in values and new not in values:
+            last_old, first_new = t, None           # still the old score: that "new" was a misread
+    if first_new is None:
+        return False
+    change.shown = first_new
+    if last_old is not None and (change.last_old is None or last_old > change.last_old):
+        change.last_old = last_old
+    return True
+
+
+def _score_reader(new: Reading | None, old: Reading | None, place: tuple, rec):
+    """box image -> the numbers the recogniser reads at a score's place: in
+    the piece there on the keyframe that read the new score, joined with the
+    one that read the old (the new can be a digit wider, 99 to 100) and
+    stretched sideways into the free space beside it, as BoxReader reads a
+    piece again. None when no piece sits at the place."""
+    x, y, _h = place
+
+    def at(r: Reading | None) -> int | None:
+        return next((i for i, (b, _t) in enumerate(r.pieces if r is not None else [])
+                     if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
+
+    i, j = at(new), at(old)
+    if i is None:
+        return None
+    rect: list = []
+
+    def read(img) -> set:
+        import cv2
+
+        h, w = img.shape[:2]
+        if h < 64:                          # as BoxReader enlarges a small box, so both read the same pixels
+            img = cv2.resize(img, (max(2, round(w * 64 / max(h, 1))), 64), interpolation=cv2.INTER_CUBIC)
+            h, w = img.shape[:2]
+        if not rect:
+            x0, y0, x1, y1 = _widened([_pixels(b, w, h) for b, _t in new.pieces], w)[i]
+            if j is not None:
+                a0, b0, a1, b1 = _pixels(old.pieces[j][0], w, h)
+                x0, y0, x1, y1 = min(x0, a0), min(y0, b0), max(x1, a1), max(y1, b1)
+            rect.extend((x0, y0, x1, y1))
+        x0, y0, x1, y1 = rect
+        try:
+            text, _conf = rec(img[y0:y1, x0:x1])
+        except Exception:
+            return set()                        # unread: the sample says nothing
+        return {int(m.group(1)) for m in NUMBER.finditer(_spaced(str(text)))}
+
+    return read
+
+
+def pinpoint_all(board: Scoreboard, frames, rec, cancel=None) -> int:
+    """Every basket's new score pinpointed between its two keyframes
+    (pinpoint), from `frames(lo, hi)` ((time, the box) PINPOINT_RATE times a
+    second) read by `rec` (the recogniser). Free throws are left as read
+    (no clip is one), and a change whose keyframes are more than
+    PINPOINT_WITHIN apart (the bug hidden). The number pinpointed."""
+    if board.places is None:
+        return 0
+    at = {r.t: r for r in board.readings}
+    done = 0
+    for change in board.changes:
+        if cancel is not None:
+            cancel()
+        if (change.points < 2 or change.last_old is None
+                or not 0 < change.hi - change.last_old <= PINPOINT_WITHIN):
+            continue
+        read = _score_reader(at.get(change.hi), at.get(change.last_old), board.places[change.side], rec)
+        if read is None:
+            continue
+        samples = frames(change.last_old, change.hi)
+        try:
+            done += pinpoint(change, samples, read)
+        except Exception as e:
+            # The keyframes' times stand: the board is read either way.
+            print(f"      (scoreboard: a basket couldn't be timed between keyframes: {e})")
+        finally:
+            close = getattr(samples, "close", None)
+            if close is not None:
+                close()
+    return done
+
+
+def _box_frames(path, box: tuple, size: tuple[int, int], lo: float, hi: float, rate: int = PINPOINT_RATE):
+    """(time, the box) `rate` times a second from lo to hi, cropped as
+    scorebug.keyframe_crops crops the keyframes, so a piece's box reads the
+    same pixels in both."""
+    import subprocess
+
+    import numpy as np
+
+    from core.binaries import ffmpeg
+
+    width, height = size
+    x, y = int(width * box[0]) // 2 * 2, int(height * box[1]) // 2 * 2
+    w = max(2, int(width * (box[2] - box[0])) // 2 * 2)
+    h = max(2, int(height * (box[3] - box[1])) // 2 * 2)
+    cmd = [ffmpeg(), "-v", "error", "-ss", f"{lo:.3f}", "-i", str(path), "-t", f"{hi - lo + 1 / rate:.3f}",
+           "-an", "-vf", f"crop={w}:{h}:{x}:{y},fps={rate}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        i = 0
+        while True:
+            buf = proc.stdout.read(w * h * 3)
+            if len(buf) < w * h * 3:
+                return
+            yield round(lo + i / rate, 2), np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)
+            i += 1
+    finally:
+        proc.kill()
+        proc.stdout.close()
+        proc.wait()
 
 
 class BoxReader:
@@ -720,10 +859,7 @@ class BoxReader:
         before = self.pieces
         self.pieces = scorebug.pieces(img, self.ocr)
         h, w = gray.shape
-        self.rects = []
-        for b, _text in self.pieces:
-            x0, y0 = min(max(0, int(b[0] * w)), w - 1), min(max(0, int(b[1] * h)), h - 1)
-            self.rects.append((x0, y0, min(w, max(x0 + 1, round(b[2] * w))), min(h, max(y0 + 1, round(b[3] * h)))))
+        self.rects = [_pixels(b, w, h) for b, _text in self.pieces]
         self.wides = _widened(self.rects, w)
         self.bug = len(parse_pieces(self.pieces).numbers) >= BUG_NUMBERS and (
             _same_places(self.pieces, before) or _same_places(self.pieces, self.settled))
@@ -762,6 +898,12 @@ class BoxReader:
                 text = again
             out.append((box, text))
         return out
+
+
+def _pixels(box: tuple, w: int, h: int) -> tuple:
+    """A piece's box (fractions) as pixels of a box image w by h: (x0, y0, x1, y1)."""
+    x0, y0 = min(max(0, int(box[0] * w)), w - 1), min(max(0, int(box[1] * h)), h - 1)
+    return x0, y0, min(w, max(x0 + 1, round(box[2] * w))), min(h, max(y0 + 1, round(box[3] * h)))
 
 
 def _same_places(pieces: list, before: list) -> bool:
@@ -882,9 +1024,10 @@ def read_video(path, duration: float, cancel=None) -> Scoreboard:
         def on_frame(i: int, img) -> None:
             found[i] = reader.read(img)
 
+        size = probe_size(path)
         try:
             with keyframes.listing(path) as own:
-                times = own(scorebug.keyframe_crops(path, box, probe_size(path), on_frame, cancel))
+                times = own(scorebug.keyframe_crops(path, box, size, on_frame, cancel))
         except OSError:
             times = []
         # A basket is a few seconds of play: keyframes further apart than
@@ -896,5 +1039,8 @@ def read_video(path, duration: float, cancel=None) -> Scoreboard:
                     r = parse_pieces(found[i])
                     r.t = t
                     readings.append(r)
-            return from_readings(readings, box)
+            board = from_readings(readings, box)
+            # ...and each basket's new score found between its two keyframes.
+            pinpoint_all(board, lambda lo, hi: _box_frames(path, box, size, lo, hi), recognise, cancel)
+            return board
         return read(grab, duration, find_ocr=_ocr, cancel=cancel)

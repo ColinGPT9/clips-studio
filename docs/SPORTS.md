@@ -410,38 +410,64 @@ alongside, lists each picture's own time beside the one ffmpeg gave it; when the
 two lists match, the reader (and the cutaways) take the own times
 (`sports/basketball/keyframes.py`; soccer's reader is unchanged).
 
-**Dated by the score bug.** A basket is put a second after the old score was
-last read, and at least 1.3 s before the new one was first read: on an NBA game the
-bug showed the new score 1.3-2.6 s after the ball went in, all ten times, while
-the crowd's loudest moment put four of five baskets 4-12 s early (a playoff
-crowd roars through the possession), so one clip ended 5.6 s before its shot
-and another as the ball went in. The crowd and the commentary are still looked
-for from 10 s before the old score was last read, and say what the basket was;
-they no longer date it. Where the bug was hidden for more than 10 s between the
-two readings, a basket neither of them dated is put where the old score was
-last read, not half a minute before (a soccer score shows minutes after its
-goal).
+**Dated by the score bug.** On an NBA game the bug showed the new score 1.3-2.6 s
+after the ball went in, all ten times, while the crowd's loudest moment put four
+of five baskets 4-12 s early (a playoff crowd roars through the possession), so
+one clip ended 5.6 s before its shot and another as the ball went in. The
+keyframes the bug is read at were 2-8 s apart, so between the two around a
+basket the scorer's number is read again five times a second, where its piece
+sat (the recogniser alone, milliseconds each), for when it changed: the basket
+is put halfway between the last reading of the old score and the first of the
+new, less 1.95 s. Keyframes 8 s apart had dated a three 4 s early, and its clip
+ended 0.2 s after the bug changed. On a made-up game with keyframes 2 s apart
+every change was found within 0.2 s. A new score read only once, with the old
+one read after it, is a misread. Where the new score isn't read between them
+(free throws aren't looked for), a basket is put a second after the old score
+was last read, and at least 1.3 s before the new one was first read. The crowd
+and the commentary are still looked for from 10 s before the old score was
+last read, and say what the basket was; they no longer date it. Where the bug
+was hidden for more than 10 s between the two readings, a basket neither of
+them dated is put where the old score was last read, not half a minute before
+(a soccer score shows minutes after its goal).
 
 **One play a clip.** A basket's clip is its own window, the possession, the
 basket and the reaction, not that window joined to the scorer's longer one
 around it, which held two to four plays in a highlights package. A clip
 starts and ends with the commentator's sentence when one starts or ends within
-1.5 s of its edge, else between words.
+1.5 s of its edge, else between words. The game's last basket, in the last 24
+seconds of the 4th quarter or overtime, runs on to the celebration: 4 s into the
+first shot of people after the clock ran out, at most 20 s after the basket
+(game 7's final dunk ended its clip before the clock ran out; the bench
+celebrated 13 s after it).
 
 **Titles know the situation.** The model writing a clip's title is told what
-the scoreboard says about it, "Three by SAS; SAS 60, OKC 55: SAS lead by 5; 3rd
-quarter with 5:12 left; not crunch time, so not clutch", and only the words said
-inside the clip. On an NBA game, titles written without the note called a
-3rd-quarter put-back "Late-Game" and a shot with 11:30 left "Clutch"; told only
-"making it 52-53", they called a three that left the Spurs a point behind a tie
-and gave a run to the wrong team; and given the whole sentences around a 12 s
-clip, they named players from the plays before and after it. The quarter and
-the clock are read where the bug changed, so a basket dated a few seconds early
-doesn't take the quarter of the play before (a 3rd-quarter dunk was labelled
-"Q2 0:35"). A title or description that still says "clutch" outside crunch time
+the scoreboard says about it, "Three (3 points) by SAS; SAS 60, OKC 55: SAS lead
+by 5; 3rd quarter with 5:12 left; not crunch time, so not clutch or late-game",
+and only the words said inside the clip. On an NBA game, titles written without
+the note called a 3rd-quarter put-back "Late-Game" and a shot with 11:30 left
+"Clutch"; told only "making it 52-53", they called a three that left the Spurs a
+point behind a tie and gave a run to the wrong team; and given the whole
+sentences around a 12 s clip, they named players from the plays before and
+after it. The quarter and the clock are read where the bug changed, so a basket
+dated a few seconds early doesn't take the quarter of the play before (a
+3rd-quarter dunk was labelled "Q2 0:35"). The model is also told, for every
+clip of the game, to title the play the note names, to name a player only as the
+one the commentary says scored it (a three had been credited to the star named
+for the pass and the rebound), and to give a basket the note's points (a
+step-back two was described as a three). A title or description that still
+says "clutch", "late-game", "crunch-time" or "game-changing" outside crunch time
 loses the word. Crunch time is the last 2 minutes of the 4th quarter, the 2nd
 half or overtime. A clip without a game clock (every soccer clip) gets the prompt
 it always did.
+
+**Which team is which.** The bug's letters say whose score is whose. Where they
+aren't read (game 7's bug shows a logo, and letters on their side), the video's
+description, as the NBA writes it ("the San Antonio Spurs defeated ... the
+Oklahoma City Thunder, 111-103"), says who won and by what, and the bug's last
+score says which side that is: "Spurs 97, Thunder 86: Spurs lead by 11", each
+team as the video's title names it. Where neither says, the note leaves the
+score's sides out: told "the scorers 97, the other side 86", three of ten titles
+put the wrong team ahead, from a "timeout OKC" in the commentary.
 
 **Names as the video spells them.** Whisper is told the names the video's own
 title and description spell (runs of capitalised words, without a channel's
@@ -451,8 +477,10 @@ Wembanyama five wrong ways ("weapon Yama", "Wimbanyama"...), Champagnie
 "Champagne" and Gilgeous-Alexander "Davis Alexander", and the description spelled
 all three right. Whisper still writes only what it hears, and no one is named
 from who is on screen (`sports/basketball/names.py`). A YouTube download keeps
-its description for this; a file from the PC has its title only. Every other
-job is transcribed as it always was.
+its description for this; a game whose download was reused asks YouTube for it
+again (one request, and without it the title's names), as on the PC's test,
+where Whisper listened for the two teams alone. A file from the PC has its title
+only. Every other job is transcribed as it always was.
 
 **The situation sets the worth.** The quarter, the clock and the score before the
 basket decide:
@@ -483,11 +511,15 @@ break runs longer). A frame with nobody in it (a stat card, a fade, a replay's
 wipe; without the detector, a dark frame) neither starts a cutaway nor ends one.
 
 - **Tied to the play before it.** A cutaway starting within 10 seconds of a play
-  is its reaction: the play's clip is grown to hold it when it fits, so a dunk,
-  the roar and the courtside shot are one clip. Later than that the next
-  possession is under way: on an NBA game, cutaways 13-16 s after a basket came after
-  the next play (a drive and a block; another three), and the clips that held
-  them held two plays.
+  is its reaction. Later than that the next possession is under way: on an NBA
+  game, cutaways 13-16 s after a basket came after the next play (a drive and a
+  block; another three), and the clips that held them held two plays. The play's
+  own clip holds the reaction when it follows on from it (starting at most 1 s
+  after the clip's end), and its first 4 s, so a dunk, the roar and the
+  courtside shot are one clip: in a highlights package the reaction was a 1-2 s
+  close-up as the bug changed, and a player near the camera in the next fast
+  break, 7 s after a three, read as a shot of people and had taken the three's
+  clip through two more possessions.
 - **A reaction needs more than a crowd shot**: the play before it, a roar over it,
   or a name on screen. A crowd shot during free throws isn't one.
 - **Standing on its own**: with a reactions choice, a reaction is the clip's
@@ -546,6 +578,7 @@ kept as a test fixture (`tests/fixtures/basketball_bugs.json`, text only).
 | Court or people | tallest person 0.36 of the height | court 0.18-0.33, people 0.40-0.98; 90 of 90 frames |
 | A cut | gray difference over 25 and colour distance over 0.31 | 52 of 52 cuts, at most 3 false alarms in 108 pans and steady play |
 | A reaction's play | within 10 s | a playoff game: the scorer's close-ups 2-5 s after a basket, the next play's cutaways 13-16 s after |
+| A basket's time | the bug read 5 times a second between keyframes | keyframes 2-8 s apart; the bug showed the new score 1.3-2.6 s after the ball |
 | Detector size | 1280 px | the real ball in 14%, 40%, 33% of wide samples (960 px: 9%, 39%, 18%) |
 | Ball memory, jump | 1.5 s, 0.25 of the width | covers 76-97% of gaps; above the ball's 90th-percentile move |
 | Players around the ball | 0.15 of the width | half the crop is 0.16 |

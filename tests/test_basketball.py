@@ -1119,6 +1119,156 @@ def test_a_cutaway_after_the_next_possession_is_not_the_baskets_reaction():
     assert 309 <= dunk.end < 316 and "after the dunk" not in next(e for e in m if e.t == 316.0).signals
 
 
+def _three_samples(misread=None):
+    """(time, the numbers read at the scorer's place) five times a second between
+    keyframes 8.4 s apart, as on an NBA game: the old score until 790.3, the bug
+    mid-roll, then the new score from 791.9."""
+    out = []
+    for i in range(43):
+        t = round(786.1 + i * 0.2, 2)
+        values = {104} if t < 790.4 else set() if t < 791.85 else {107}
+        out.append((t, {107} if misread is not None and abs(t - misread) < 0.01 else values))
+    return out
+
+
+def test_a_baskets_new_score_is_pinpointed_between_its_keyframes():
+    """On an NBA game keyframes 8 s apart dated a three 4 s early, and its clip
+    ended as the ball went in: the bug is read five times a second between
+    them for when it changed."""
+    def change():
+        return bb.ScoreChange(lo=776.1, hi=794.5, before=(104, 95), after=(107, 95), points=3, side=0,
+                              last_old=786.1)
+
+    c = change()
+    assert bb.pinpoint(c, _three_samples(), lambda values: values)
+    assert (c.last_old, c.shown) == (790.3, 791.9)
+    # A "107" read once while the old score still shows is a misread.
+    c = change()
+    assert bb.pinpoint(c, _three_samples(misread=788.1), lambda values: values)
+    assert (c.last_old, c.shown) == (790.3, 791.9)
+    # The new score never read between them: the keyframes' times stand.
+    c = change()
+    assert not bb.pinpoint(c, [(t, v) for t, v in _three_samples() if 107 not in v], lambda values: values)
+    assert (c.last_old, c.shown) == (786.1, None)
+
+
+def test_a_score_is_read_again_where_its_piece_sat_widened_into_the_free_space():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    # A two-row bug 400 x 64: "SAS 104 | 3RD" over "OKC 95 | 8:41".
+    pieces = [((0.02, 0.05, 0.18, 0.45), "SAS"), ((0.22, 0.05, 0.38, 0.45), "104"),
+              ((0.60, 0.05, 0.75, 0.45), "3RD"), ((0.02, 0.55, 0.18, 0.95), "OKC"),
+              ((0.22, 0.55, 0.34, 0.95), "95"), ((0.60, 0.55, 0.75, 0.95), "8:41")]
+    new = bb.Reading(t=794.5, pieces=pieces)
+    old = bb.Reading(t=786.1, pieces=[(b, "101" if text == "104" else text) for b, text in pieces])
+    seen = []
+
+    def rec(crop):
+        seen.append((int(crop[0, 0, 0]) * 256 + int(crop[0, 0, 1]), int(crop[0, -1, 0]) * 256 + int(crop[0, -1, 1]),
+                     int(crop[0, 0, 2]), int(crop[-1, 0, 2])))
+        return "+3 107", 0.6
+
+    read = bb._score_reader(new, old, (0.30, 0.25, 0.4), rec)
+    img = np.zeros((64, 400, 3), np.uint8)
+    img[..., 0], img[..., 1] = np.arange(400)[None, :] // 256, np.arange(400)[None, :] % 256
+    img[..., 2] = np.arange(64)[:, None]
+    assert read(img) == {107}                         # the "+3" drawn over it is no number of its own
+    x0, x1, y0, y1 = seen[0]
+    # Its own piece (88-152) grown by WIDEN of its height each side, but not into "SAS" (to 72).
+    assert 74 <= x0 < 88 and 152 < x1 <= 152 + round(bb.WIDEN * 26) and (y0, y1) == (3, 28)
+    assert bb._score_reader(new, old, (0.5, 0.25, 0.4), rec) is None    # nothing sits there
+
+
+def test_a_synthetic_games_baskets_are_pinpointed_to_a_fifth_of_a_second(tmp_path):
+    """The whole way, on a see-through bug over a moving picture: the
+    keyframes are 2 s apart, the new score is found within 0.2 s."""
+    import shutil
+    import subprocess
+
+    np = pytest.importorskip("numpy")
+    cv2 = pytest.importorskip("cv2")
+    pytest.importorskip("rapidocr_onnxruntime")
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("no ffmpeg")
+    width, height, fps, seconds, changes = 640, 360, 25, 26, [(9.3, 0, 3), (16.7, 1, 2)]
+    path = tmp_path / "game.mp4"
+    proc = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s",
+                             f"{width}x{height}", "-r", str(fps), "-i", "-", "-c:v", "libx264", "-preset", "ultrafast",
+                             "-g", "50", "-keyint_min", "50", "-sc_threshold", "0", "-pix_fmt", "yuv420p", str(path)],
+                            stdin=subprocess.PIPE)
+    x = np.linspace(0, 6.28, width)
+    for i in range(fps * seconds):
+        t = i / fps
+        img = np.zeros((height, width, 3), np.uint8)
+        img[:, :, 1] = (90 + 60 * np.sin(x + t))[None, :].astype(np.uint8)
+        img[:, :, 2] = (60 + 40 * np.cos(x * 0.5 - t))[None, :].astype(np.uint8)
+        score = [60, 55]
+        for at, side, points in changes:
+            score[side] += points if t >= at else 0
+        img[300:350, 30:250] = (img[300:350, 30:250] * 0.35).astype(np.uint8)
+        for row, (code, value) in enumerate((("SAS", score[0]), ("OKC", score[1]))):
+            cv2.putText(img, code, (38, 320 + row * 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(img, str(value), (95, 320 + row * 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+        left = 700 - int(t)
+        cv2.putText(img, "3RD", (160, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+        cv2.putText(img, f"{left // 60}:{left % 60:02d}", (160, 344), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                    (255, 255, 255), 2)
+        proc.stdin.write(img.tobytes())
+    proc.stdin.close()
+    proc.wait()
+    board = bb.read_video(path, float(seconds))
+    found = [(c.after, c.last_old, c.shown) for c in board.changes]
+    assert [a for a, _old, _new in found] == [(63, 55), (63, 57)]
+    for (at, _side, _points), (_after, last_old, shown) in zip(changes, found):
+        assert last_old < at <= shown <= at + 0.25
+
+
+def test_a_pinpointed_basket_is_dated_from_when_the_bug_changed():
+    """The NBA game's three again, its new score found between keyframes 8.4 s
+    apart: dated from the bug's change, its clip runs on past it."""
+    times = (775.9, 781.0, 786.1, 794.5, 799.6)
+    readings = [bb.Reading(t=t, score=(104, 95) if t < 790 else (107, 95), teams=("SAS", "OKC"), period=4,
+                           clock=227.0 - (t - 787), visible=True) for t in times]
+    board = bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1))
+    change = board.changes[0]
+    assert bb.pinpoint(change, _three_samples(), lambda values: values)
+    three = next(e for e in _moments(_profile(), board=board) if e.confirmed)
+    assert three.t == pytest.approx((790.3 + 791.9) / 2 - 1.95)       # was 787.1 from the keyframes
+    assert three.end >= 794.0                                          # 2 s past the bug's change, not 0.2 s
+
+
+def test_a_shot_of_people_after_the_next_possession_doesnt_hold_the_basket():
+    """On an NBA game a three's only reaction was a 1 s close-up as the bug
+    changed; a player near the camera in the next fast break, 7 s after the
+    three, read as a shot of people, and the three's clip ran on through two
+    more possessions to its end."""
+    times = (141.2, 142.0, 143.8, 147.1, 153.1, 157.2, 162.3, 167.4)
+    readings = [bb.Reading(t=t, score=(21, 13) if t < 152 else (24, 13), teams=("SAS", "OKC"), period=1,
+                           clock=331.0 - (t - 147), visible=True) for t in times]
+    board = bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1))
+    board.changes[0].last_old, board.changes[0].shown = 151.88, 153.08
+    m = _moments(_profile(), board=board, cutaways=[reactions.Cutaway(157.2, 162.3, crowd=True)])
+    three = next(e for e in m if e.confirmed)
+    assert three.start <= 145 and 153.08 + 2 <= three.end < 157.2
+
+
+def test_the_games_last_basket_runs_on_to_the_celebration():
+    """On an NBA game the final dunk's clip stopped 2 s after it: the clock then
+    ran out, and the bench celebrated 13 s after the dunk."""
+    def ending(clock_left):
+        times = (831.8, 836.8, 841.9, 847.0, 852.1, 857.1, 862.2, 867.3)
+        readings = [bb.Reading(t=t, score=(109, 103) if t < 844 else (111, 103), teams=("SAS", "OKC"), period=4,
+                               clock=max(0.0, clock_left - max(0.0, t - 846)), visible=True) for t in times]
+        profile = _profile()
+        profile.shots = [(t, "court") for t in times[:5]] + [(t, "people") for t in times[5:]]
+        m = _moments(profile, board=bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1)))
+        return next(e for e in m if e.confirmed)
+
+    dunk = ending(4.1)
+    assert dunk.end == pytest.approx(857.1 + 4.0)                      # into the first shot of the celebration
+    assert ending(300.0).end < 852                                     # a game still on: one play
+
+
 def test_a_clip_starts_and_ends_with_the_commentators_sentence():
     from sports.basketball.profile import speech_edges
 
@@ -1166,12 +1316,39 @@ def test_a_basketball_clips_title_is_written_knowing_the_quarter_the_clock_and_t
         "sport_label": "Game winner", "sport_team": "OKC", "sport_when": "Q4 0:03",
         "sport_why": "score 110-111 (OKC), +2", "sport_context": "OKC 111, SAS 110: OKC take the lead"})
     goal = ClipCandidate(start=300, end=320, score=80, subscores={"sport_label": "Goal", "sport_minute": 67})
-    metadata.generate_metadata_batch([three, winner, goal], _segments({}), "Spurs at Thunder", Model())
-    assert ("CLIP 0 (the scoreboard: Three by SAS, making it 60-55; 3rd quarter with 5:12 left; "
-            "not crunch time, so not clutch):") in prompts[0]
-    assert ("CLIP 1 (the scoreboard: Game winner by OKC; OKC 111, SAS 110: OKC take the lead; "
+    # The teams not known: the score, whose is whose unsaid, is left out.
+    step_back = ClipCandidate(start=400, end=414, score=70, subscores={
+        "sport_label": "Step-back", "sport_when": "Q4 11:28", "sport_why": "score 81-79, +2; crowd roar"})
+    metadata.generate_metadata_batch([three, winner, goal, step_back], _segments({}), "Spurs at Thunder", Model())
+    assert ("CLIP 0 (the scoreboard: Three (3 points) by SAS, making it 60-55; 3rd quarter with 5:12 left; "
+            "not crunch time, so not clutch or late-game):") in prompts[0]
+    assert ("CLIP 1 (the scoreboard: Game winner (2 points) by OKC; OKC 111, SAS 110: OKC take the lead; "
             "4th quarter with 0:03 left):") in prompts[0]
     assert "CLIP 2:\n" in prompts[0]                    # a soccer clip's block, as it always was
+    assert ("CLIP 3 (the scoreboard: Step-back (2 points); 4th quarter with 11:28 left; "
+            "not crunch time, so not clutch or late-game):") in prompts[0]
+    assert "RULES FOR THESE CLIPS" not in prompts[0]     # none given: the prompt as it always was
+
+
+def test_a_basketball_games_titles_are_told_which_player_to_name():
+    from analysis import metadata
+    from sports.basketball.profile import BasketballProfile
+
+    prompts = []
+
+    class Model:
+        def generate(self, prompt, json_mode=False):
+            prompts.append(prompt)
+            return '{"items": []}'
+
+    three = ClipCandidate(start=100, end=113, score=70, subscores={
+        "sport_label": "Three", "sport_team": "SAS", "sport_when": "Q3 5:12", "sport_why": "score 60-55 (SAS), +3"})
+    rules = BasketballProfile(name="basketball", option={}).title_rules()
+    metadata.generate_metadata_batch([three], _segments({}), "Spurs at Thunder", Model(), rules=rules)
+    head, _, clips = prompts[0].partition("CLIPS:\n")
+    assert clips.startswith("RULES FOR THESE CLIPS:\n- Each clip is one play")
+    assert "knocks down the three" in clips and clips.index("RULES") < clips.index("CLIP 0 (the scoreboard")
+    assert "Champagnie" not in rules                     # no real player's name to copy into another game's titles
 
 
 def test_a_basketball_clips_title_is_written_from_what_is_said_in_the_clip_only():
@@ -1194,7 +1371,7 @@ def test_a_basketball_clips_title_is_written_from_what_is_said_in_the_clip_only(
         "sport_label": "Three", "sport_team": "SAS", "sport_when": "Q3 5:12"})
     goal = ClipCandidate(start=94.0, end=100.0, score=70, subscores={"sport_label": "Goal", "sport_minute": 67})
     metadata.generate_metadata_batch([three, goal], segments, "Spurs at Thunder", Model())
-    assert "not clutch):\nWembanyama for three and he hits\n" in prompts[0]
+    assert "not clutch or late-game):\nWembanyama for three and he hits\n" in prompts[0]
     assert f"CLIP 1:\n{said}" in prompts[0]             # a soccer clip: the sentences, as always
 
 
@@ -1217,6 +1394,20 @@ def test_a_title_never_calls_a_basket_clutch_when_the_scoreboard_says_it_was_not
     assert (second.title, second.description) == ("three from Wemby!", "A three.")
     assert late.title == soccer.title == "CLUTCH three from Wemby!"
 
+    # ...nor late-game, nor game-changing (an NBA game: 7:49 left, and a three at +12 with 3:47 left).
+    class Oversold:
+        def generate(self, prompt, json_mode=False):
+            return json.dumps({"items": [
+                {"index": 0, "title": "Hartenstein's Late-Game Score!", "description": "A late game dunk.",
+                 "hashtags": ["nba"]},
+                {"index": 1, "title": "Harper's Game-Changing Three!", "description": "A game-changing three.",
+                 "hashtags": ["nba"]}]})
+
+    dunk, three = metadata.generate_metadata_batch([clip("Q4 7:49"), clip("Q4 3:47")], _segments({}),
+                                                   "Spurs at Thunder", Oversold())
+    assert (dunk.title, dunk.description) == ("Hartenstein's Score!", "A dunk.")
+    assert (three.title, three.description) == ("Harper's Three!", "A three.")
+
 
 def test_the_score_line_says_whose_score_is_whose_and_who_leads():
     from sports.basketball.profile import score_line
@@ -1230,7 +1421,35 @@ def test_the_score_line_says_whose_score_is_whose_and_who_leads():
     assert score_line(change((50, 49), (50, 52), 1, "OKC", "SAS")) == "OKC 52, SAS 50: OKC take the lead"
     assert score_line(change((49, 53), (52, 53), 0)) == "SAS 52, OKC 53: OKC still lead by 1"
     assert score_line(change((50, 53), (53, 53), 0)) == "SAS 53, OKC 53: SAS tie it"
-    assert score_line(change((1, 0), (3, 0), 0, "", "")) == "the scorers 3, the other side 0: the scorers lead by 3"
+    # Without the teams, nothing: "the scorers 97, the other side 86" put the wrong team ahead.
+    assert score_line(change((1, 0), (3, 0), 0, "", "")) == ""
+
+
+def test_the_teams_are_named_from_the_videos_result_when_the_bug_has_no_letters():
+    """Game 7's bug shows a logo and letters on their side, so the titles were
+    told "the scorers 97, the other side 86", and one put OKC ahead from a
+    "timeout OKC" in the commentary. The video's description says the Spurs
+    won 111-103, and the bug's last score says which side that is."""
+    from core.models import DownloadedVideo
+    from sports.basketball import names
+
+    title = "SPURS at THUNDER | FULL GAME 7 HIGHLIGHTS | May 28, 2026"
+    assert names.sides(title, NBA_DESCRIPTION, (111, 103)) == ("Spurs", "Thunder")
+    assert names.sides(title, NBA_DESCRIPTION, (103, 111)) == ("Thunder", "Spurs")
+    assert names.sides("Game 7", NBA_DESCRIPTION, (111, 103)) == ("San Antonio Spurs", "Oklahoma City Thunder")
+    # The bug's last score isn't the result, or the description doesn't say: no side guessed.
+    assert names.sides(title, NBA_DESCRIPTION, (109, 103)) is None
+    assert names.sides(title, "Game 7 of the Western Conference Finals.", (111, 103)) is None
+
+    video = DownloadedVideo(video_id="g7", title=title, path=None, duration=955.4, description=NBA_DESCRIPTION)
+    profile = sports.profile_for({"clips": {"sport": {"name": "basketball"}}}, video)
+    board = _board([(690, 0, 2), (800, 0, 14), (800, 1, 17)], period=4, teams=None, start=(95, 86))
+    basket = next(e for e in _moments(profile, board=board) if e.confirmed)
+    assert basket.team == "Spurs" and basket.context == "Spurs 97, Thunder 86: Spurs lead by 11"
+    # Without the description the score's sides stay unsaid.
+    board = _board([(690, 0, 2), (800, 0, 14), (800, 1, 17)], period=4, teams=None, start=(95, 86))
+    basket = next(e for e in _moments(_profile(), board=board) if e.confirmed)
+    assert basket.team == "" and "lead" not in basket.context
 
 
 def test_a_baskets_quarter_and_clock_are_read_where_the_bug_changed():
@@ -1775,7 +1994,8 @@ def test_a_dunk_and_its_reaction_become_one_marked_clip_through_the_scorer(monke
                                         measure_reaction=False, sport=profile)
     dunk = [c for c in kept if (c.subscores or {}).get("sport_event") == "dunk"]
     assert dunk and dunk[0].subscores["sport_bonus"] > 0
-    assert dunk[0].start <= 448 and dunk[0].end >= 462              # the build-up, the dunk, the reaction
+    # The build-up, the dunk, and the reaction's first seconds (reactions.REACTION_MOST).
+    assert dunk[0].start <= 448 and dunk[0].end >= 456 + reactions.REACTION_MOST
     assert dunk[0].subscores["sport_when"].startswith("Q4")
     assert profile.report_data["sport"] == "Basketball" and profile.report_data["found"]["Dunk"] == 1
 
@@ -1806,6 +2026,31 @@ def test_whisper_listens_for_the_names_the_videos_own_title_and_description_spel
     assert names.for_video("FULL GAME HIGHLIGHTS", "Subscribe to the NBA") is None
     assert sports.hotwords({"clips": {"sport": {"name": "soccer"}}}, video) is None
     assert sports.hotwords({"clips": {}}, video) is None
+
+
+def test_a_reused_download_still_gives_whisper_the_names_in_its_description(monkeypatch):
+    """On the PC the game was already on disk, and the job listened for "Spurs,
+    Thunder" alone: a reused download comes back without its description."""
+    from core import pipeline
+    from core.models import DownloadedVideo
+    from sources import dispatch
+
+    asked = []
+    monkeypatch.setattr(dispatch, "description", lambda url: asked.append(url) or NBA_DESCRIPTION)
+    url = "https://www.youtube.com/watch?v=1bOMYQFgK4I"
+
+    def video(description=""):
+        return DownloadedVideo(video_id="1bOMYQFgK4I", title="SPURS at THUNDER | FULL GAME 7 HIGHLIGHTS",
+                               path=None, duration=955.4, description=description)
+
+    basketball = {"clips": {"sport": {"name": "basketball"}}}
+    reused = video()
+    assert "Victor Wembanyama" in pipeline._listening_for(basketball, reused, url)
+    assert reused.description == NBA_DESCRIPTION and asked == [url]
+    # Downloaded just now, it has its own; soccer reads none, and asks nothing.
+    assert "Victor Wembanyama" in pipeline._listening_for(basketball, video(NBA_DESCRIPTION), url)
+    assert pipeline._listening_for({"clips": {"sport": {"name": "soccer"}}}, video(), url) is None
+    assert asked == [url]
 
 
 def test_whisper_is_given_the_names_only_when_there_are_some(tmp_path):

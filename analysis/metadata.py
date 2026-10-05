@@ -91,14 +91,19 @@ def generate_metadata_batch(
     llm: LLMBackend,
     batch_size: int = 8,
     creator_context: str = "",
+    rules: str = "",
 ) -> list[ClipMetadata]:
     """Metadata for ALL clips in a few LLM calls instead of one per clip —
     on a long stream this cuts dozens of model calls from the analysis time.
     Any clip the model skips or mangles falls back to hook-based metadata.
     creator_context (optional): learned facts about the creator — series
-    names, running jokes, collaborators — for more accurate titles/hashtags."""
+    names, running jokes, collaborators — for more accurate titles/hashtags.
+    rules (optional): a sport's own rules for its clips' titles (basketball:
+    which player to name); "" for every other job, whose prompt is unchanged."""
     results: list[ClipMetadata] = [_fallback(c, video_title) for c in candidates]
     template = BATCH_PROMPT_PATH.read_text(encoding="utf-8")
+    if rules:
+        template = template.replace("{clips}", "RULES FOR THESE CLIPS:\n" + rules + "\n\n{clips}")
     if creator_context:
         template = template.replace(
             "{clips}",
@@ -144,6 +149,8 @@ def generate_metadata_batch(
 _PERIODS = {"Q1": "1st quarter", "Q2": "2nd quarter", "Q3": "3rd quarter", "Q4": "4th quarter",
             "H1": "1st half", "H2": "2nd half", "OT": "overtime"}
 _SCORE = re.compile(r"\bscore (\d+-\d+)")
+# The points a score change was worth, as ScoreChange.label() writes it ("score 81-79 (SAS), +2").
+_POINTS = re.compile(r"\bscore \d+-\d+(?: \([^)]*\))?, \+(\d)\b")
 _CRUNCH = 120  # seconds left in the last quarter (or overtime) that make crunch time
 
 
@@ -178,15 +185,19 @@ def _scoreboard_note(c: ClipCandidate) -> str:
     play = str(s.get("sport_label") or "a play")
     team = str(s.get("sport_team") or "")
     context = str(s.get("sport_context") or "")
-    score = _SCORE.search(str(s.get("sport_why") or ""))
-    words = [f"{play} by {team}" if team else play]
-    if score and not context:
+    why = str(s.get("sport_why") or "")
+    score, points = _SCORE.search(why), _POINTS.search(why)
+    # Its points: on an NBA game a "Step-back" two was described as a three.
+    words = [play + (f" ({points.group(1)} points)" if points else "") + (f" by {team}" if team else "")]
+    # The score only with whose is whose: "making it 97-86" alone had the
+    # titles put the team the commentary named ahead, the wrong one.
+    if score and not context and team:
         words[0] += f", making it {score.group(1)}"
     if context:
         words.append(context)
     words.append(_PERIODS.get(period, period) + (f" with {left} left" if left else ""))
     if not crunch:
-        words.append("not crunch time, so not clutch")
+        words.append("not crunch time, so not clutch or late-game")
     return " (the scoreboard: " + "; ".join(words) + ")"
 
 
@@ -209,14 +220,16 @@ def _clip_text(c: ClipCandidate, segments: list[Segment]) -> str:
     return " ".join(words)
 
 
-_CLUTCH = re.compile(r"\bclutch\b[ \t]*", re.IGNORECASE)
+# What only crunch time earns. On an NBA game, with the note saying it wasn't
+# crunch time, a 2nd-quarter basket was still titled "Clutch", one with 7:49
+# left "Late-Game" and a three at +12 "Game-Changing".
+_CLUTCH = re.compile(r"\b(?:clutch|late[- ]game|crunch[- ]time|game[- ]changing)\b[ \t]*", re.IGNORECASE)
 
 
 def _earned(c: ClipCandidate, metadata: ClipMetadata) -> None:
-    """A title and description that don't call a clip clutch when the
-    scoreboard says it wasn't crunch time: the note says so, and an NBA
-    game's 2nd-quarter basket was still titled "Clutch". Every other clip
-    as written."""
+    """A title and description that don't call a clip clutch (or
+    late-game, crunch-time, game-changing) when the scoreboard says it
+    wasn't crunch time. Every other clip as written."""
     if _crunch(c) is not False:
         return
     title = re.sub(r"\s{2,}", " ", _CLUTCH.sub("", metadata.title)).strip()
