@@ -23,9 +23,12 @@ def framing(clip_path, config: dict) -> dict:
 
     settings = sports.spec("basketball").get("framing") or {}
     tracking = action.compute(clip_path, model_name=str(settings.get("model") or "yolov8n.pt"),
-                              imgsz=int(settings.get("imgsz") or 1280))
+                              imgsz=int(settings.get("imgsz") or 1280),
+                              hide_scoreboard=bool(settings.get("hide_scoreboard", True)))
     led = tracking.pop("led", {})
-    print("      Basketball framing: " + ", ".join(f"{k} {v}" for k, v in led.items() if v) + " sample(s)")
+    print("      Basketball framing: " + ", ".join(f"{k} {v}" for k, v in led.items() if v) + " sample(s)"
+          + (f"; the scoreboard left out ({1 - (tracking['rows'][1] - tracking['rows'][0]):.0%} of the height)"
+             if tracking.get("rows") else ""))
     return tracking
 
 

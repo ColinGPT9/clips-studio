@@ -460,6 +460,15 @@ is the picture's colours changing as well as its pixels, since the camera
 whipping across the court changes the pixels too. A game filmed 9:16 (1080×1920,
 720×1280, 1440×2560) keeps its own picture.
 
+The TV scoreboard is left out rather than cut in half: a bug is wider than a
+9:16 crop, so half of it showed along the bottom of nearly every clip. When the
+crop comes near the bug, the rows from the bug's top edge down are left out and
+the crop zooms in that much (on copies of the three NBA games' bugs, 15-25% of
+the height). The bug is found as the score reader finds it, and its graphic's
+edge as the rows beside its text that hold still while the picture beyond them
+moves. A bug that would take more than 27% of the height stays in;
+`hide_scoreboard: false` under `framing` keeps every bug.
+
 ### Measured on NBA games
 
 The values were set on three NBA broadcasts from the league's own channel (two

@@ -401,8 +401,9 @@ basketball:
 
   # The 9:16 framing's detector (sports/basketball/action.py). Measured on
   # three NBA games, 1280 px found the real ball in 14%, 40% and 33% of wide
-  # samples, against 9%, 39% and 18% at 960.
-  framing: {model: yolov8n.pt, imgsz: 1280}
+  # samples, against 9%, 39% and 18% at 960. hide_scoreboard leaves the TV
+  # scoreboard out of the crop (zooming in a little) rather than cut it in half.
+  framing: {model: yolov8n.pt, imgsz: 1280, hide_scoreboard: true}
 
   # Telling a cutaway (the crowd, the bench, courtside) from the court
   # (sports/basketball/reactions.py), measured on three NBA games: a shot

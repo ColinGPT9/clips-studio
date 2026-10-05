@@ -1161,9 +1161,138 @@ def test_a_pan_across_the_court_is_no_cut_but_another_camera_is():
 def test_the_framing_hook_reaches_the_basketball_follower(monkeypatch):
     from sports.basketball import action
 
-    monkeypatch.setattr(action, "compute", lambda path, model_name, imgsz: {
+    monkeypatch.setattr(action, "compute", lambda path, model_name, imgsz, hide_scoreboard: {
         "mode": "track", "path": [(0.0, 0.4)], "led": {"ball": 1}})
     assert sports.framing("basketball", "clip.mp4", {}) == {"mode": "track", "path": [(0.0, 0.4)]}
+
+
+# ---- the TV scoreboard, left out of the crop --------------------------------------------
+
+
+def _looks(np, panel=(200, 262), text=(220, 250), see_through=0.0, moving=True, top=False, n=14):
+    """Gray 480x270 looks at a broadcast: a picture that moves between looks
+    (or doesn't), and a score bug's graphic, rows `panel`, over it (along the
+    top when `top`), with its text in rows `text`."""
+    rng = np.random.default_rng(3)
+    still = rng.integers(0, 255, (270, 480)).astype(np.float32)
+    out = []
+    for i in range(n):
+        img = rng.integers(0, 255, (270, 480)).astype(np.float32) if moving else still.copy()
+        bug = np.full((panel[1] - panel[0], 192), 30.0)
+        bug[text[0] - panel[0]:text[1] - panel[0], 20:170] = 230.0 if i % 3 else 200.0     # the digits change
+        rows = slice(270 - panel[1], 270 - panel[0]) if top else slice(*panel)
+        img[rows, 144:336] = see_through * img[rows, 144:336] + (1 - see_through) * (bug[::-1] if top else bug)
+        out.append(img.astype(np.uint8))
+    return out
+
+
+def test_the_scoreboard_s_graphic_is_found_past_its_text():
+    np = pytest.importorskip("numpy")
+    from sports.basketball import action
+
+    box = (0.32, 220 / 270, 0.68, 250 / 270)
+    # Its top edge, opaque or see-through, not its text's (which is 20 rows lower).
+    assert abs(action.bug_edge(_looks(np), box) - 200 / 270) <= 1 / 270
+    assert abs(action.bug_edge(_looks(np, see_through=0.4), box) - 200 / 270) <= 1 / 270
+    # Along the top: its bottom edge.
+    top = (0.32, 20 / 270, 0.68, 50 / 270)
+    assert abs(action.bug_edge(_looks(np, top=True), top) - 70 / 270) <= 1 / 270
+    # A picture that doesn't move tells nothing: half the text's height past it.
+    assert action.bug_edge(_looks(np, moving=False), box) == pytest.approx(box[1] - 0.5 * (box[3] - box[1]))
+
+
+def _hide(monkeypatch, np, box, frames=None):
+    pytest.importorskip("cv2")
+    from analysis import game_text
+    from sports.basketball import scoreboard
+
+    monkeypatch.setattr(game_text, "available", lambda: True)
+    monkeypatch.setattr(scoreboard, "find_box", lambda grab, duration, ocr: box)
+    grays = frames or _looks(np)
+    return {i * 2.0: np.repeat(g[:, :, None], 3, axis=2) for i, g in enumerate(grays)}
+
+
+def test_the_crop_leaves_the_scoreboard_out_when_it_would_cut_it(monkeypatch):
+    np = pytest.importorskip("numpy")
+    from sports.basketball import action
+
+    box = (0.32, 220 / 270, 0.68, 250 / 270)
+    looks = _hide(monkeypatch, np, box)
+    middle = [(t / 5, 0.5) for t in range(50)]
+    top, bottom = action.hidden_rows(looks, 30.0, middle, 0.316)
+    assert top == 0.0 and 200 / 270 - action.BUG_SLACK - 1 / 270 <= bottom <= 200 / 270 - action.BUG_SLACK + 1 / 270
+    # A crop that stays far from it shows none of it, so nothing is left out...
+    assert action.hidden_rows(looks, 30.0, [(t / 5, 0.12) for t in range(50)], 0.2) is None
+    # ...nor when no scoreboard is found (gym or phone footage).
+    _hide(monkeypatch, np, None)
+    assert action.hidden_rows(looks, 30.0, middle, 0.316) is None
+
+
+def test_a_scoreboard_too_tall_to_leave_out_is_left_in(monkeypatch):
+    np = pytest.importorskip("numpy")
+    from sports.basketball import action
+
+    box = (0.32, 220 / 270, 0.68, 250 / 270)
+    looks = _hide(monkeypatch, np, box, _looks(np, panel=(150, 262)))      # 0.44 of the height
+    assert action.hidden_rows(looks, 30.0, [(t / 5, 0.5) for t in range(50)], 0.316) is None
+
+
+def test_with_the_scoreboard_left_out_the_crop_is_narrower_and_says_so(monkeypatch, tmp_path):
+    np = pytest.importorskip("numpy")
+    cv2 = pytest.importorskip("cv2")
+    import sports.soccer.ball as ball
+    from sports.basketball import action
+
+    clip = tmp_path / "clip.mp4"
+    out = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (480, 270))
+    for frame in _looks(np, n=40):
+        out.write(np.repeat(frame[:, :, None], 3, axis=2))
+    out.release()
+    monkeypatch.setattr(ball, "_model", lambda name: None)
+    monkeypatch.setattr(ball, "detect", lambda model, frame, imgsz: ([], []))
+    seen = {}
+
+    def rows(looks, duration, path, crop_frac):
+        seen.update(looks=len(looks), duration=duration, crop_frac=crop_frac)
+        return (0.0, 0.75)
+
+    monkeypatch.setattr(action, "hidden_rows", rows)
+    tracking = action.compute(clip)
+    assert tracking["rows"] == (0.0, 0.75) and seen["looks"] == 14 and seen["duration"] == pytest.approx(4.0)
+    # 9:16 of three quarters of the height: the crop's path keeps inside a narrower crop.
+    assert seen["crop_frac"] == pytest.approx(270 * 9 / 16 / 480)
+    assert all(0.75 * seen["crop_frac"] / 2 - 1e-6 <= x for _, x in tracking["path"])
+    assert "rows" not in action.compute(clip, hide_scoreboard=False)
+
+
+def test_the_vertical_crop_keeps_only_the_rows_it_is_given(monkeypatch, tmp_path):
+    np = pytest.importorskip("numpy")
+    cv2 = pytest.importorskip("cv2")
+    import video.cropper as cropper
+
+    clip = tmp_path / "clip.mp4"
+    frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    frame[:, :] = (np.arange(360) // 2).astype(np.uint8)[:, None, None]      # each row its own shade
+    out = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (640, 360))
+    for _ in range(3):
+        out.write(frame)
+    out.release()
+    piped: dict = {}
+
+    def run(cmd, ass_path, produce):
+        chunks = []
+        produce(chunks.append)
+        piped.update(cmd=cmd, frames=chunks)
+
+    monkeypatch.setattr(cropper, "_run_ffmpeg_piped", run)
+    path = [(0.0, 0.5)]
+    cropper.render_vertical(clip, {"mode": "track", "path": path}, tmp_path / "all.mp4")
+    assert piped["cmd"][piped["cmd"].index("-s") + 1] == "202x360"           # every row, as always
+    assert len(piped["frames"][0]) == 202 * 360 * 3
+    cropper.render_vertical(clip, {"mode": "track", "path": path, "rows": (0.0, 0.75)}, tmp_path / "top.mp4")
+    assert piped["cmd"][piped["cmd"].index("-s") + 1] == "150x270"            # the top three quarters, 9:16
+    kept = np.frombuffer(piped["frames"][0], np.uint8).reshape(270, 150, 3)
+    assert abs(int(kept[-1, 75, 0]) - 269 // 2) <= 6                          # down to row 269, no further
 
 
 # ---- the pipeline: vertical sources, Vertical Live, rendering --------------------------

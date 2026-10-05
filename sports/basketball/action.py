@@ -22,6 +22,14 @@ dropped: on three NBA games those were the front rows, the score bug and
 bright shoes far more often than the ball, and the detector's confidence
 didn't tell them apart.
 
+**The TV scoreboard is left out** when the crop would cut through it: a
+bug is wider than a 9:16 crop, so half of it showed along the bottom of
+nearly every clip. The rows from the bug's top edge down (or from the top
+down to its bottom edge) are left out of the crop, which zooms in that much.
+The bug is found as the score reader finds it (its text, scoreboard.find_box)
+and its graphic's edge as the rows beside that text that hold still while
+the picture beyond them moves.
+
 Moved by the shared HoldMove controller and snapped at camera cuts, as
 soccer's framing is. A cut is told by the picture's colours changing as
 well as its pixels: the shared test (video/framing.py's gray difference)
@@ -30,6 +38,11 @@ whipping across the court, and snapping on each made the crop jump. The
 detector and its input size come from config/sports.yaml (`framing`). The
 output is the crop path video/cropper.py renders for everything else.
 """
+
+import threading
+
+# Clips render a few at a time; the OCR reads one frame at a time.
+_OCR = threading.Lock()
 
 # Measured on three NBA games (docs/SPORTS.md):
 BALL_MEMORY = 1.5        # seconds a ball position stays usable after it's lost (bridges 76-97% of gaps)
@@ -44,6 +57,19 @@ FLOOR_BAND = 0.8         # a "ball" below this share of the height is the front 
 FEET = 0.15              # ...as is one in the bottom this share of a player's box
 ON_FLOOR = 0.5           # people under this share of the tallest one's height are in the stands
 CUT_COLOURS = 0.31       # a cut changes the picture's colours this much too (Bhattacharyya distance)
+
+# The scoreboard left out. On copies of the three NBA games' bugs over a
+# moving picture, the graphic reached 0.03-0.06 of the height past its text.
+BUG_WIDTH = 480          # frames are looked at this wide, in gray, for the graphic's edge
+BUG_REACH = 0.12         # the graphic reaches at most this share of the height past its text
+BUG_STILL = 0.5          # ...its rows moving less than half as much as the picture beyond it
+BUG_GAP = 0.012          # ...across gaps this thin (a tab over the bar)
+BUG_BEYOND = 0.1         # the picture beyond: this much of the height past the reach
+BUG_MOVING = 6.0         # gray levels the picture must move by for the stillness to tell anything...
+BUG_TEXT = 0.5           # ...else the graphic is taken to reach this many of its text's heights past it
+BUG_SLACK = 0.008        # ...plus this much more, so not a row of its border shows (2 rows at BUG_WIDTH)
+BUG_MOST = 0.27          # a bug that would take more of the height than this out is left in
+BUG_NEAR = 0.1           # a crop this close to the bug's text (share of the width) shows part of it
 
 
 def real_balls(balls: list, people: list) -> list:
@@ -153,20 +179,115 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
     return path, led
 
 
-def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 1280, sample_fps: float = 5.0) -> dict:
-    """The crop path for one clip, in the form video/cropper.render_vertical takes."""
+def bug_edge(grays: list, box: tuple) -> float:
+    """Where the score bug's graphic ends past its text (box, in the frame's
+    fractions): its top edge for a bug along the bottom, its bottom edge for
+    one along the top, as a fraction of the height. The graphic is the rows
+    beside the text that move less than half as much, over the looks, as the
+    picture beyond them. When the picture hardly moves, BUG_TEXT of the
+    text's height; when the rows beyond the reach hold as still as a graphic,
+    the reach (a bug that tall is then left in). grays: the looks, in gray,
+    all the same size."""
+    import numpy as np
+
+    stack = np.stack([g.astype(np.float32) for g in grays])
+    still = np.median(np.abs(stack - np.median(stack, axis=0)), axis=0)
+    height, width = still.shape
+    rows = np.median(still[:, int(box[0] * width):max(int(box[0] * width) + 1, int(np.ceil(box[2] * width)))], axis=1)
+    bottom = (box[1] + box[3]) / 2 > 0.5
+    reach, beyond, gap = round(BUG_REACH * height), round(BUG_BEYOND * height), max(1, round(BUG_GAP * height))
+    text = BUG_TEXT * (box[3] - box[1])
+    if bottom:
+        start = int(box[1] * height)
+        order = range(start - 1, max(-1, start - 1 - reach), -1)
+        far = rows[max(0, start - reach - beyond):max(0, start - reach)]
+    else:
+        start = min(height, int(np.ceil(box[3] * height)))
+        order = range(start, min(height, start + reach))
+        far = rows[min(height, start + reach):min(height, start + reach + beyond)]
+    picture = float(np.median(rows[int(0.3 * height):int(0.6 * height)]))
+    if picture < BUG_MOVING:
+        return max(0.0, box[1] - text) if bottom else min(1.0, box[3] + text)
+    moving = float(np.median(far)) if len(far) else picture
+    if moving < BUG_STILL * picture:
+        return max(0, start - reach) / height if bottom else min(height, start + reach) / height
+    last, misses = None, 0
+    for r in order:
+        if rows[r] < BUG_STILL * moving:
+            last, misses = r, 0
+        else:
+            misses += 1
+            if misses > gap:
+                break
+    if last is None:
+        return box[1] if bottom else box[3]
+    return last / height if bottom else (last + 1) / height
+
+
+def hidden_rows(looks: dict, duration: float, path: list, crop_frac: float) -> tuple[float, float] | None:
+    """The rows of the frame the crop keeps so the TV scoreboard is out of
+    it, (top, bottom) as fractions of the height; None to keep them all: no
+    bug found (gym or phone footage, or no OCR), the crop never near it, or
+    a bug so tall that leaving it out would zoom in too far. looks: frames
+    at the times scoreboard.find_box looks at, by time."""
     import cv2
 
+    from analysis import game_text
+
+    if not looks or not game_text.available():
+        return None
+    from analysis.game_text import _ocr
+    from sports.basketball import scoreboard
+
+    times = sorted(looks)
+
+    def grab(t: float):
+        return looks[min(times, key=lambda x: abs(x - t))]
+
+    with _OCR:
+        box = scoreboard.find_box(grab, duration, _ocr)
+    if box is None:
+        return None
+    half = crop_frac / 2
+    if not any(x - half < box[2] + BUG_NEAR and x + half > box[0] - BUG_NEAR for _, x in path):
+        return None
+    grays = []
+    for t in times:
+        img = looks[t]
+        h, w = img.shape[:2]
+        grays.append(cv2.cvtColor(cv2.resize(img, (BUG_WIDTH, max(2, round(h * BUG_WIDTH / w))),
+                                             interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY))
+    edge = bug_edge(grays, box)
+    rows = (0.0, max(0.0, edge - BUG_SLACK)) if (box[1] + box[3]) / 2 > 0.5 else (min(1.0, edge + BUG_SLACK), 1.0)
+    if rows[1] - rows[0] < 1 - BUG_MOST:
+        print(f"      Basketball framing: the scoreboard is {1 - (rows[1] - rows[0]):.0%} of the height, "
+              "too tall to leave out")
+        return None
+    return round(rows[0], 4), round(rows[1], 4)
+
+
+def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 1280, sample_fps: float = 5.0,
+            hide_scoreboard: bool = True) -> dict:
+    """The crop path for one clip, in the form video/cropper.render_vertical
+    takes, with "rows" when the TV scoreboard is left out."""
+    import cv2
+
+    from sports.core import scorebug
     from sports.soccer.ball import _model, detect
     from video.capture import video_capture
     from video.framing import small_gray
 
     model = _model(model_name)
     samples = []
+    looks: dict = {}
     with video_capture(clip_path) as cap:
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         width = cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 16
         height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 9
+        duration = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / fps
+        # The frames the scoreboard's finder looks at, kept as they go by.
+        wanted = ([duration * (i + 1) / (scorebug.FIND_FRAMES + 1) for i in range(scorebug.FIND_FRAMES)]
+                  if hide_scoreboard and duration > 0 else [])
         step = max(1, round(fps / sample_fps))
         prev_small = prev_colours = None
         index = 0
@@ -182,8 +303,19 @@ def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 1280, sample
                 balls, people = detect(model, frame, imgsz)
                 samples.append({"t": index / fps, "cut": is_cut(prev_small, small, prev_colours, now_colours),
                                 "balls": balls, "people": people})
+                while wanted and index / fps >= wanted[0]:
+                    # At most 1080p's width: 14 frames of a 4K clip would be 350 MB.
+                    looks[wanted.pop(0)] = frame if frame.shape[1] <= 1920 else cv2.resize(
+                        frame, (1920, round(frame.shape[0] * 1920 / frame.shape[1])), interpolation=cv2.INTER_AREA)
                 prev_small, prev_colours = small, now_colours
             index += 1
     crop_frac = min(1.0, (height * 9 / 16) / max(width, 1))
     path, led = plan(samples, crop_frac)
-    return {"mode": "track", "path": path or [(0.0, 0.5)], "led": led}
+    rows = hidden_rows(looks, duration, path, crop_frac) if looks else None
+    if rows is not None:
+        crop_frac = min(1.0, (height * (rows[1] - rows[0]) * 9 / 16) / max(width, 1))
+        path, led = plan(samples, crop_frac)
+    out = {"mode": "track", "path": path or [(0.0, 0.5)], "led": led}
+    if rows is not None:
+        out["rows"] = rows
+    return out
