@@ -155,6 +155,12 @@ class SportProfile:
         (basketball: the crowd and bench reactions). Unchanged by default."""
         return events
 
+    def clip_span(self, candidate, event) -> tuple[float, float]:
+        """(start, end) of a Best moments clip that holds a confirmed moment:
+        by default the scorer's window and the moment's own together, so the
+        clip keeps the moment's build-up (sports/core/clips.py)."""
+        return min(candidate.start, event.start), max(candidate.end, event.end)
+
     # ---- the sport's moments ------------------------------------------------
 
     def events_spec(self) -> dict:

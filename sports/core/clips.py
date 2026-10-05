@@ -173,7 +173,7 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
         for c in kept:
             e = attached.get(id(c))
             if e is not None and e.confidence >= TYPED and e.type != "big_moment" and not e.is_replay:
-                c.start, c.end = min(c.start, e.start), max(c.end, e.end)
+                c.start, c.end = profile.clip_span(c, e)
                 if c.end - c.start > max_len:
                     c.start, c.end = e.start, min(e.end, e.start + max_len)
             # A goal the scoreboard confirmed is one of the match's best

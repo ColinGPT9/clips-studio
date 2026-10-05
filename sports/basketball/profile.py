@@ -21,6 +21,7 @@ CLOSE = 5                # a margin this small is a close game
 BLOWOUT = 20             # ...this big, a blowout
 GARBAGE = 13             # ...and this big, late on, the game is decided
 BUZZER_AT = 0.6          # the buzzer curve's bar
+EDGE_SENTENCE = 1.5      # a clip starts at its sentence's start, and ends at its end, this close to them
 
 
 @dataclass
@@ -44,6 +45,19 @@ class BasketballProfile(SportProfile):
     def extra_moments(self, events, segments, *, curves, video_end, min_len, max_len):
         from sports.basketball import reactions
 
+        # A basket neither the crowd nor the commentary dated: the shared
+        # reading puts it half a minute before its new score shows (a soccer
+        # score shows minutes after the goal). A basketball score shows
+        # seconds after the basket, so it is dated to when the old score was
+        # last read, its window moved with it.
+        for e in events:
+            change = self._changes.get(id(e))
+            if (change is not None and change.last_old is not None and e.signals
+                    and all(s.startswith("score ") for s in e.signals)):
+                moved = change.last_old - e.t
+                e.t = change.last_old
+                e.start = round(max(0.0, e.start + moved), 2)
+                e.end = round(min(max(video_end, e.end), e.end + moved), 2)
         # The buzzer marks the end of a period: a basket just before it.
         buzzer = curves.get("buzzer")
         for e in events:
@@ -59,7 +73,21 @@ class BasketballProfile(SportProfile):
         if board is not None:
             for e in events:
                 e.when = e.when or board.when(e.t)
+        # Between words: a clip that started or ended mid-sentence on the
+        # PC's NBA game (7 of 10, mostly by under a second) starts and ends
+        # with the commentator's sentence when it is that close.
+        for e in events:
+            e.start, e.end = speech_edges(segments, e.start, e.end, video_end)
         return events
+
+    def clip_span(self, candidate, event) -> tuple[float, float]:
+        """A basket's clip is its own window: the possession, the basket and
+        the reaction. The scorer's window around it can hold two to four
+        plays (a highlights package puts a basket every 10-15 s), and a clip
+        posted on its own is one play."""
+        if getattr(event, "confirmed", False):
+            return event.start, event.end
+        return super().clip_span(candidate, event)
 
     def guidance(self, kind: str = "clips", start: float | None = None, end: float | None = None) -> str:
         """What the scoring prompts are told a basketball game is (the
@@ -221,3 +249,26 @@ class BasketballProfile(SportProfile):
         if notes and not event.context:
             event.context = ", ".join(notes)
         return max(0.5, min(1.8, weight))
+
+
+def speech_edges(segments, start: float, end: float, video_end: float) -> tuple[float, float]:
+    """(start, end) moved off the middle of what the commentator is saying:
+    back to the start of the sentence under way at `start` when it began at
+    most EDGE_SENTENCE before it, else to the start of the word under way;
+    the end on to its sentence's end, or its word's, likewise. Never shorter."""
+    def under_way(t: float):
+        return next((sg for sg in segments if sg.start < t < sg.end), None)
+
+    def word_at(sg, t: float):
+        return next((w for w in (sg.words or []) if w["start"] < t < w["end"]), None) if sg is not None else None
+
+    first, last, until = under_way(start), under_way(end), max(video_end, end)
+    if first is not None and start - first.start <= EDGE_SENTENCE:
+        start = first.start
+    elif (w := word_at(first, start)) is not None:
+        start = w["start"]
+    if last is not None and last.end - end <= EDGE_SENTENCE:
+        end = last.end
+    elif (w := word_at(last, end)) is not None:
+        end = w["end"]
+    return round(max(0.0, start), 2), round(min(until, end), 2)

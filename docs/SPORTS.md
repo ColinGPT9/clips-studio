@@ -401,6 +401,21 @@ a three, and which team scored. The commentary's name for it stands when the poi
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
 between readings) isn't called a basket.
 
+**Dated just before the new score.** A bug changes seconds after a basket, so
+the crowd is searched from 10 s before the old score was last read up to the
+new one, not the 25 s before the new score it used to be: in a highlights
+package, with a basket every 10-15 s, the loudest crowd in that longer stretch
+was often the play before (three of ten clips from an NBA game showed the play
+before their basket). A basket neither the crowd nor the commentary dated is
+put where the old score was last read, not half a minute before (a soccer
+score shows minutes after its goal).
+
+**One play a clip.** A basket's clip is its own window, the possession, the
+basket and the reaction, not that window joined to the scorer's longer one
+around it, which held two to four plays in a highlights package. A clip
+starts and ends with the commentator's sentence when one starts or ends within
+1.5 s of its edge, else between words.
+
 **The situation sets the worth.** The quarter, the clock and the score before the
 basket decide:
 

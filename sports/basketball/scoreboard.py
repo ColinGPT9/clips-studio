@@ -64,7 +64,8 @@ NOT_TEAMS = {"QTR", "OT", "ST", "ND", "RD", "TH", "BONUS", "FOUL", "FOULS", "TO"
              "FINAL", "PTS", "REB", "AST", "FG", "FT", "PF", "SHOT", "Q", "H"}
 
 EVERY = 5.0              # seconds between readings when frames have to be sought one by one
-LOOKBACK = 25.0          # a basket can be this long before its new score shows (the bug updates in seconds)
+SHOWN_WITHIN = 10.0      # a basket goes in at most this long before the old score was last read: the bug
+                         # updates seconds after it (allowing a keyframe's misdating, sports/core/scorebug.py)
 MAX_POINTS = 3           # one basket's worth; more at once is two baskets between readings
 MAX_SCORE = 199          # a number above this is no score
 BUG_NUMBERS = 2          # the fewest numbers beside the clock that make a block of text a bug
@@ -111,6 +112,7 @@ class ScoreChange:
     team: str = ""                   # the side that scored, when the bug names it
     points: int = 0
     side: int = 0                    # 0 or 1: which number went up
+    last_old: float | None = None    # when the score before it was last read
 
     def label(self) -> str:
         who = f" ({self.team})" if self.team else ""
@@ -591,9 +593,14 @@ def changes(readings: list[Reading]) -> list[ScoreChange]:
         up = (r.score[0] - current[0], r.score[1] - current[1])
         side = 0 if up[0] else 1
         if up[1 - side] == 0 and 1 <= up[side] <= MAX_POINTS:
-            out.append(ScoreChange(lo=max(0.0, min(last_old_t, r.t - LOOKBACK)), hi=r.t, before=current,
+            # The bug was still showing the old score at last_old_t, and it
+            # changes seconds after a basket: the basket is no earlier than
+            # SHOWN_WITHIN before that. (Searching 25 s back from the new score
+            # instead, the crowd's loudest moment there was often the play
+            # before: a highlights package puts a basket every 10-15 s.)
+            out.append(ScoreChange(lo=max(0.0, last_old_t - SHOWN_WITHIN), hi=r.t, before=current,
                                    after=r.score, team=teams[side] if teams else "", points=up[side],
-                                   side=side))
+                                   side=side, last_old=last_old_t))
         # Anything else (two baskets between readings, a correction) is
         # followed without being called a basket.
         current, last_old_t = r.score, r.t

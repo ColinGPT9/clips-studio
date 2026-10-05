@@ -1030,6 +1030,53 @@ def test_dunks_keeps_the_dunk_with_its_reaction_inside():
     assert kept and not dropped and attached[id(candidate)].type == "dunk"
 
 
+def test_a_basket_is_dated_by_the_roar_just_before_its_score_not_an_earlier_play():
+    # A highlights package: a big play's roar at 478, then a three at 502
+    # whose crowd is quieter. The score shows at the 504 reading, the old one
+    # last read at 500. Searching 25 s back took the earlier play's roar.
+    profile = _profile()
+    m = _moments(profile, board=_board([(502, 0, 3)]), curves=_curves(roars=[(478, 8), (503, 3)]))
+    three = next(e for e in m if e.confirmed)
+    assert 496 <= three.t <= 503 and three.start <= 502 <= three.end
+
+
+def test_a_basket_nothing_heard_is_dated_when_the_old_score_was_last_read():
+    profile = _profile()
+    m = _moments(profile, board=_board([(702, 1, 2)]))                 # no crowd, no commentary
+    basket = next(e for e in m if e.confirmed)
+    assert basket.t == 700.0 and basket.start <= 700 <= basket.end    # not half a minute before
+
+
+def test_a_clip_starts_and_ends_with_the_commentators_sentence():
+    from sports.basketball.profile import speech_edges
+
+    def seg(start, end, *words):
+        step = (end - start) / len(words)
+        return Segment(start=start, end=end, text=" ".join(words),
+                       words=[{"start": start + i * step, "end": start + (i + 1) * step, "word": w}
+                              for i, w in enumerate(words)])
+
+    segments = [seg(10.0, 14.0, "he", "brings", "it", "up"), seg(14.0, 22.0, "fires", "from", "deep", "and",
+                                                                     "it's", "good", "what", "a shot")]
+    # Under a second into a sentence, or a second from its end: its edges.
+    assert speech_edges(segments, 10.8, 21.0, 900.0) == (10.0, 22.0)
+    # Deep inside one: the edges of the word under way, never shorter.
+    assert speech_edges(segments, 16.5, 17.5, 900.0) == (16.0, 18.0)
+    # Between sentences, nothing to move; and never past the video's end.
+    assert speech_edges(segments, 14.0, 21.0, 21.5) == (14.0, 21.5)
+
+
+def test_a_best_moments_basket_clip_is_the_one_play_not_the_scorers_longer_window():
+    profile = _profile()
+    m = _moments(profile, said={500: "for three! got it"}, board=_board([(502, 0, 3)]),
+                 curves=_curves(roars=[(503, 3)]))
+    three = next(e for e in m if e.confirmed)
+    candidate = ClipCandidate(start=three.start - 14, end=three.end + 12, score=70)   # two more plays
+    attached = clips.attach(m, [candidate])
+    kept, _dropped, _notes = clips.choose(profile, [candidate], attached, min_score=40, max_len=60)
+    assert kept and (candidate.start, candidate.end) == (three.start, three.end)
+
+
 class _Looks:
     """A local model that takes images, answering what a shot shows."""
 
