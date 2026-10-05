@@ -42,6 +42,12 @@ CELEBRATION_WITHIN = 20.0
 # was typed by its points, a basket, and its clip went to the layup before it.
 CALL_BEFORE = 3.0
 CALL_AFTER = 3.0
+# An and-one is called as the ball goes in ("and the foul!", "and one"), or
+# just after: the shared reading makes a basket an and-one for a foul said
+# anywhere in the sentences around it, and on an NBA game a three ("two big
+# threes") was called an and-one for a foul said 10 s from it.
+FOUL_AFTER = 5.0
+FOUL_WORDS = {"and_one", "foul", "shooting_foul"}
 # Kinds the scoreboard's situation names, never the commentary alone.
 SITUATIONS = {"game_winner", "buzzer_beater", "game_tying", "go_ahead", "clutch_shot"}
 
@@ -97,7 +103,13 @@ class BasketballProfile(SportProfile):
                 # new one's first, BUG_LAG to BUG_LAG_MOST after the ball.
                 t = round((change.last_old + change.shown) / 2 - (BUG_LAG + BUG_LAG_MOST) / 2, 2)
             elif change.hi - change.last_old <= BUG_GAP:
-                t = round(min(change.last_old + AFTER_OLD, change.hi - BUG_LAG), 2)
+                # Not found between them: just after the old score, or, with
+                # the keyframes far apart, the middle of where the ball could
+                # have gone in, as a pinpointed basket is dated. On an NBA game
+                # keyframes 8.4 s apart put a three 2.5 s early, and its clip
+                # ended as the bug showed the new score.
+                middle = (change.last_old + change.hi) / 2 - (BUG_LAG + BUG_LAG_MOST) / 2
+                t = round(min(max(change.last_old + AFTER_OLD, middle), change.hi - BUG_LAG), 2)
             elif e.signals and all(s.startswith("score ") for s in e.signals):
                 t = change.last_old
             else:
@@ -168,6 +180,7 @@ class BasketballProfile(SportProfile):
             change = self._changes[id(e)]
             lo = self._baskets[i - 1].t + 1 if i else None
             hi = self._baskets[i + 1].t - 1 if i + 1 < len(self._baskets) else None
+            self._fouled(e, change, segments, lo, hi, video_end=video_end, max_len=max_len)
             self._called(e, change, segments, lo, hi, video_end=video_end, max_len=max_len)
             e.player = commentary.scorer(segments, e.t, int(change.points or 0), self.names, lo, hi) or e.player
 
@@ -187,14 +200,40 @@ class BasketballProfile(SportProfile):
         kind, word = max(said, key=lambda kw: self.importance(kw[0]))
         if self.importance(kind) <= e.importance:
             return
+        self._typed(e, kind, video_end=video_end, max_len=max_len)
+        if f'said "{word}"' not in e.signals:
+            e.signals.append(f'said "{word}"')
+
+    def _fouled(self, e, change, segments, lo, hi, *, video_end: float, max_len: float) -> None:
+        """An and-one only when a foul is called as it went in (FOUL_AFTER);
+        else the basket its points make it, as the scoreboard read it (a
+        three, a basket), or the game's situation when that is worth more."""
+        if e.type != "and_one":
+            return
+        from sports.basketball import commentary
+
+        a = e.t - CALL_BEFORE if lo is None else max(e.t - CALL_BEFORE, lo)
+        b = e.t + FOUL_AFTER if hi is None else min(e.t + FOUL_AFTER, hi)
+        said = self.callouts_in(" ".join(w.text for w in commentary.words(segments, a, b)))
+        if any(k in FOUL_WORDS for k, _w in said):
+            return
+        points = int(getattr(change, "points", 0) or 0)
+        kind = {3: "made_3", 2: "made_2", 1: "free_throw"}.get(points, "made_2")
+        board = getattr(self, "board", None)
+        if board is not None:
+            situation = self._situation(board, change, e, shown_at(change, e.t))
+            if situation and self.importance(situation) > self.importance(kind):
+                kind = situation
+        self._typed(e, kind, video_end=video_end, max_len=max_len)
+
+    def _typed(self, e, kind: str, *, video_end: float, max_len: float) -> None:
+        """`e` typed `kind`, its window grown or shrunk to that kind's."""
         (pre, post), (new_pre, new_post) = self.window_of(e.type), self.window_of(kind)
         e.type, e.importance = kind, self.importance(kind)
         e.start = round(max(0.0, e.start - (new_pre - pre)), 2)
         e.end = round(min(max(video_end, e.end), e.end + (new_post - post)), 2)
         if e.end - e.start > max_len:
             e.start = round(e.end - max_len, 2)
-        if f'said "{word}"' not in e.signals:
-            e.signals.append(f'said "{word}"')
 
     def _known_names(self) -> str:
         """The names the video's own title and description spell (names.hint)."""

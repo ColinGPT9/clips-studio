@@ -29,18 +29,23 @@ _POSSESSIVE = re.compile(r"['’][sS]?$")
 
 # Words that say the ball went in, by the points they fit (None: any basket).
 SCORED = (
+    # ("a three on two" is a fast break, three players on two)
     (3, re.compile(r"\b(?:(?:the|a|that|another|his|her|for|from|with|corner|deep|step[- ]?back|pull[- ]?up) "
                    r"three\b(?![- ](?:point|seconds?|minutes?|fouls?|straight|times|of)\b)"
+                   r"(?![- ]on[- ](?:one|two|three|1|2|3)\b)"
                    r"|three[- ]?pointers?\b|triples?\b|treys?\b|downtown\b"
                    r"|from (?:deep|way downtown|the logo|beyond the arc)\b)")),
     (2, re.compile(r"\b(?:dunks?|dunked|slams?|slammed|throws? it down|threw it down|jams?|jammed|flush(?:es|ed)?"
                    r"|lays? it (?:in|up)|laid it (?:in|up)|lay[- ]?ups?|finger roll|floater|puts? it back"
-                   r"|tips? it in|tipped in|finish(?:es|ed)?|alley[- ]oop)\b")),
-    (None, re.compile(r"\b(?:scores?|scored|knocks? (?:it )?down|knocked (?:it )?down|drills?|drilled|buries|buried"
-                      r"|nails?|nailed|drains?|drained|sinks?|sank|cans?|canned|splash(?:es)?|banks? it in"
+                   r"|tips? it in|tipped in|finish(?:es|ed)?|alley[- ]oop)\b(?!['’-])")),
+    # Not "score" (the score is tied) or "can" (he can shoot), and never the
+    # start of a longer word ("can't", "score's"): on an NBA game "Holmgren
+    # can't get the board" gave a basket to the player who missed the rebound.
+    (None, re.compile(r"\b(?:scores|scored|knocks? (?:it )?down|knocked (?:it )?down|drills?|drilled|buries|buried"
+                      r"|nails?|nailed|drains?|drained|sinks?|sank|cans|canned|splash(?:es)?|banks? it in"
                       r"|hits? (?:the|a|that|it|another|his|her)\b|gets? (?:the )?(?:bucket|basket)\b|bang\b"
                       r"|bingo\b|got it\b|count it\b|there it is\b"
-                      r"|(?:hit|bucket|basket|hoop)(?= (?:for|by) ))")),        # "a deep hit for Ruiz"
+                      r"|(?:hit|bucket|basket|hoop)(?= (?:for|by) ))(?![\w'’-])")),     # "a deep hit for Ruiz"
 )
 # A pass that hands the ball on to someone the commentary doesn't name:
 # whoever was named before it didn't score.

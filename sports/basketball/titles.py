@@ -42,6 +42,23 @@ WIN = re.compile(r"\b(?:game[- ]winn(?:er|ing)|winn(?:er|ing)\s+(?:shot|basket|b
 # ...and put away: also a basket in the last two minutes by the team that went on to win.
 SEAL = re.compile(r"\b(?:seal(?:s|ed|ing)?\s+(?:it|the\s+(?:win|game|deal|victory)|game)|clinch(?:es|ed|ing)?"
                   r"|ices?\s+(?:it|the\s+game)|iced|puts?\s+(?:it|the\s+game)\s+away|dagger)\b", re.I)
+# Words that put the scorers behind after the basket ("Harper's Three Keeps
+# Hope Alive" on an NBA game, for a team 12 up), coming back from behind,
+# or pulling away from a lead they didn't have.
+BEHIND = re.compile(r"\b(?:(?:keeps?|keeping|kept)\s+(?:them|it|things|the\s+[\w'’-]+)\s+alive|hopes?\s+alive"
+                    r"|stays?\s+alive|staying\s+alive|signs?\s+of\s+life|won['’]?t\s+go\s+away"
+                    r"|within\s+(?:striking\s+distance|reach)|chip(?:s|ping|ped)?\s+away"
+                    r"|cut(?:s|ting)?\s+into\s+(?:the|their|its|a)\s+(?:lead|deficit|gap|margin)"
+                    r"|(?:clos(?:e|es|ing|ed)|narrow(?:s|ing|ed)?)\s+the\s+gap"
+                    r"|(?:pull(?:s|ing|ed)?|inch(?:es|ing|ed)?|creep(?:s|ing)?|crept|gets?|getting|edg(?:e|es|ing|ed)"
+                    r"|mov(?:e|es|ing|ed))\s+closer|mak(?:e|es|ing)\s+it\s+(?:a\s+game|interesting))\b", re.I)
+CAME_BACK = re.compile(r"\b(?:come[- ]?backs?|rall(?:y|ies|ying|ied)"
+                       r"|(?:fight(?:s|ing)?|fought|claw(?:s|ing|ed)?|battl(?:e|es|ing|ed)|storm(?:s|ing|ed)?"
+                       r"|roar(?:s|ing|ed)?)\s+back)\b", re.I)
+EXTEND = re.compile(r"\b(?:(?:extend(?:s|ing|ed)?|stretch(?:es|ing|ed)?|pad(?:s|ding|ded)?|widen(?:s|ing|ed)?"
+                    r"|increas(?:e|es|ing|ed)|build(?:s|ing)?\s+on|built\s+on|add(?:s|ing|ed)?\s+to|grow(?:s|ing)?)"
+                    r"\s+(?:the|their|its|his|a)\s+(?:[\w'’-]+\s+)?(?:lead|advantage|cushion|margin)"
+                    r"|pull(?:s|ing|ed)?\s+away|lead\s+(?:grows|grew|swells|balloons))\b", re.I)
 MISS = re.compile(r"\b(?:miss(?:es|ed)?|bricks?|bricked|air\s?balls?|airballed|no\s+good|rims?\s+out|rimmed\s+out"
                   r"|(?:falls?|fell|comes?|came)\s+(?:up\s+)?short|off\s+the\s+(?:rim|mark))\b", re.I)
 NOT = re.compile(r"\b(?:doesn't|don't|didn't|never|can't|cannot|won't|not|no)\s+(?:\w+\s+)?$", re.I)
@@ -144,6 +161,9 @@ def _state(play: Play, text: str) -> list[str]:
         or (after > 0 and _trails(text, us)) or (after < 0 and _trails(text, them))
         or (after != 0 and TIE.search(text) is not None and not UNTIE.search(text))
         or (not play.took_lead and GO_AHEAD.search(text) is not None)
+        or (after > 0 and BEHIND.search(text) is not None)
+        or (play.before > 0 and CAME_BACK.search(text) is not None)
+        or (play.before <= 0 and EXTEND.search(text) is not None)
         or _wrong_margin(text, abs(after))
         or _wrong_score(text, play)
     )
@@ -420,13 +440,22 @@ def check(profile, candidates: list, metas: list, rewrite) -> list:
             got = []
         again += (got + [None] * len(part))[:len(part)]
     out = list(metas)
-    fixed = 0
+    fixed: list[int] = []
     for i, meta in zip(redo, again):
         if meta is not None and not problems(plays[i], meta, names):
             out[i] = meta
-            fixed += 1
+            fixed.append(i)
         else:
             out[i] = written(plays[i], metas[i], i)
     print(f"      Titles: {len(redo)} of {checked} got their play wrong; "
-          f"{fixed} written again, {len(redo) - fixed} written from the scoreboard")
+          f"{len(fixed)} written again, {len(redo) - len(fixed)} written from the scoreboard")
+    # Which ones, by where they are in the video.
+    for what, which in (("written again", fixed), ("from the scoreboard", [i for i in redo if i not in fixed])):
+        if which:
+            print(f"        {what}: " + ", ".join(_span(candidates[i]) for i in which))
     return out
+
+
+def _span(candidate) -> str:
+    """ "142-163 s": a clip by where it is in the video."""
+    return f"{float(getattr(candidate, 'start', 0) or 0):.0f}-{float(getattr(candidate, 'end', 0) or 0):.0f} s"

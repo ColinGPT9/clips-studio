@@ -1119,6 +1119,44 @@ def test_a_cutaway_after_the_next_possession_is_not_the_baskets_reaction():
     assert 309 <= dunk.end < 316 and "after the dunk" not in next(e for e in m if e.t == 316.0).signals
 
 
+def test_a_close_shot_well_after_a_basket_is_not_its_reaction():
+    """On an NBA game an and-one's clip ran on through a turnover and a drive
+    to a close shot of players 6.5 s after the basket: a play's clip holds a
+    reaction only when it starts within REACTION_START of the play."""
+    late = reactions.Cutaway(307.5, 311.0)
+    m = _moments(_profile(), said={300: "throws it down! what a dunk"}, board=_board([(304, 0, 2)]),
+                 curves=_curves(roars=[(301, 8)]), cutaways=[late])
+    dunk = next(e for e in m if e.type == "dunk")
+    assert dunk.t + reactions.REACTION_START < late.start and dunk.end < late.start + 1
+
+
+def test_an_and_one_is_one_only_when_the_foul_is_called_as_it_goes_in():
+    """On an NBA game a three ("two big threes") was called an and-one for a
+    foul said 10 s from it, and its title said and-one."""
+    foul_before = "a foul called on the other end"
+    m = _moments(_profile(), said={488: foul_before, 500: "for three! from downtown"},
+                 board=_board([(502, 0, 3)]), curves=_curves(roars=[(501, 6)]))
+    three = next(e for e in m if e.confirmed)
+    assert three.type == "made_3" and three.end - three.t == pytest.approx(5.0)       # a three's window
+    m = _moments(_profile(), said={488: foul_before, 500: "drives, scores, and the foul!"},
+                 board=_board([(502, 0, 3)]), curves=_curves(roars=[(501, 6)]))
+    assert next(e for e in m if e.confirmed).type == "and_one"
+
+
+def test_a_basket_between_keyframes_far_apart_is_dated_in_the_middle():
+    """With the new score not found between keyframes 8.4 s apart, a basket
+    dated just after the old score was 2.5 s early on an NBA game, and its
+    clip ended as the bug changed: it is dated in the middle of where the
+    ball could have gone in, as a pinpointed one is."""
+    times = (781.0, 786.1, 794.5, 799.6)
+    readings = [bb.Reading(t=t, score=(104, 95) if t < 790 else (107, 95), teams=("SAS", "OKC"), period=4,
+                           clock=300.0 - (t - 781), visible=True) for t in times]
+    m = _moments(_profile(), board=bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1)))
+    three = next(e for e in m if e.confirmed)
+    assert three.t == pytest.approx((786.1 + 794.5) / 2 - (1.3 + 2.6) / 2)
+    assert three.end >= 793
+
+
 def _three_samples(misread=None):
     """(time, the numbers read at the scorer's place) five times a second between
     keyframes 8.4 s apart, as on an NBA game: the old score until 790.3, the bug
@@ -1490,6 +1528,28 @@ def test_the_scorer_is_the_player_the_commentary_names_as_the_ball_goes_in():
     assert not names.is_name("Bang")
 
 
+def test_a_player_who_cant_get_the_board_is_not_the_scorer():
+    """On an NBA game "Holmgren can't get the board ... you got a three on two
+    here. Champagnie, Keldon Johnson off the wing" gave the basket to the
+    player who missed the rebound before it: "can't" isn't "cans it", "the
+    score" and "can score" say no basket, and a three on two is a fast break."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "a lob to Okafor, Okafor again, to Ruiz, Ruiz"),
+            _said_at(30, "Okafor can't get the board. Gotta play fast. You got a three on two here. Ruiz off the wing."),
+            _said_at(60, "Okafor can score from anywhere, the score is tied"),
+            _said_at(90, "Okafor cans it from the corner")]
+    names = commentary.Names(talk, teams=("Hawks",))
+
+    def who(t, points):
+        return commentary.scorer(talk, t, points, names, lo=t - 20, hi=t + 20)
+
+    assert names.sure("Okafor") and names.sure("Ruiz")
+    assert who(36, 2) == "" and who(36, 3) == ""
+    assert who(64, 2) == ""
+    assert who(91, 3) == "Okafor"
+
+
 def _basket_game(said, baskets, description="", **profile_extra):
     """A profile run over `said` (segments with word timings) and a board of
     `baskets` (video second, side, points) between the Spurs and the Thunder."""
@@ -1598,6 +1658,10 @@ def _names():
     ({"scorer": ""}, "Okafor Blocks It!", "Okafor with the block.", "name no player"),
     ({"points": 2, "shot": "bucket"}, "Marsh's Step-Back Three!", "Marsh scores.", "not a three"),
     ({}, "Marsh From Deep!", "", "Write a title and a description"),
+    ({"mine": 107, "theirs": 95, "before": 9}, "Marsh's Three Keeps Hope Alive", "Marsh buries the three.",
+     "they already led"),
+    ({"mine": 107, "theirs": 95, "before": 9}, "The Spurs Rally!", "Marsh buries the three.", "they already led"),
+    ({}, "Marsh Extends the Lead", "Marsh hits the three.", "still trail 52-53"),
 ])
 def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wrong):
     from sports.basketball import titles
@@ -1615,6 +1679,9 @@ def test_a_title_that_gets_its_play_wrong_is_caught(play, title, description, wr
      "Thunder Cut It to 6", "The Thunder cut the Spurs' lead to 6 with 52 seconds left."),
     ({"mine": 111, "theirs": 103, "before": 6, "sealed": True, "points": 2, "shot": "dunk"},
      "Marsh Seals It!", "Marsh throws it down and the Spurs win it, 111-103."),
+    ({}, "Marsh Keeps Hope Alive", "Marsh hits the three to cut into the lead. The Thunder still lead 53-52."),
+    ({"mine": 55, "theirs": 53, "before": -1}, "The Spurs Complete the Comeback!",
+     "Marsh's three gives the Spurs the lead."),
 ])
 def test_a_title_true_to_its_play_stays(play, title, description):
     from sports.basketball import titles
@@ -1702,7 +1769,9 @@ def test_more_wrong_titles_than_one_batch_are_written_again_batch_by_batch(capsy
     assert [n for n, _rules in asked] == [8, 1]
     assert "- CLIP 0: " in asked[1][1] and "- CLIP 1: " not in asked[1][1]
     assert [m.title for m in out] == ["Ruiz Knocks It Down!"] * 9
-    assert "Titles: 9 of 9 got their play wrong; 9 written again, 0 written from the scoreboard" in capsys.readouterr().out
+    log = capsys.readouterr().out
+    assert "Titles: 9 of 9 got their play wrong; 9 written again, 0 written from the scoreboard" in log
+    assert f"written again: {c.start:.0f}-{c.end:.0f} s, " in log and "from the scoreboard:" not in log
     assert titles.check(profile, [c], out[:1], rewrite) == out[:1]
     assert "Titles: all 1 true to their play" in capsys.readouterr().out
 
