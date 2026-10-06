@@ -1669,6 +1669,31 @@ def test_a_name_whisper_didnt_know_before_the_call_names_no_one():
     assert who(121, 2) == "Williams"
 
 
+def test_a_defender_or_a_passer_named_before_the_call_is_not_the_scorer():
+    """On a Warriors-Mavericks game "drives into Washington, and scores" gave
+    a Warriors three to the Mavericks' Washington, the defender. A name just
+    after "into", "by", "over" or "from" is the defender's or the passer's:
+    no one is named then. One the ball is passed to still scores ("ahead to
+    Ruiz, Ruiz knocks down the three"), and "hands it over," names no one."""
+    from sports.basketball import commentary
+
+    talk = [_said_at(10, "Marsh with it, Marsh drives into Okafor, and scores!"),
+            _said_at(40, "the lob from Okafor, throws it down!"),
+            _said_at(70, "Marsh blows by Okafor, lays it in"),
+            _said_at(100, "Marsh rises over Kai Ruiz, slams it home"),
+            _said_at(130, "Okafor has it, ahead to Ruiz, Ruiz knocks down the three"),
+            _said_at(160, "Okafor hands it over, Marsh knocks down the three")]
+    names = commentary.Names(talk, known="Kai Ruiz", teams=("Hawks",))
+
+    def who(t, points):
+        return commentary.scorer(talk, t, points, names, lo=t - 20, hi=t + 20)
+
+    assert names.sure("Marsh") and names.sure("Okafor")
+    assert who(14, 2) == "" and who(43, 2) == "" and who(73, 2) == "" and who(103, 2) == ""
+    assert who(135, 3) == "Ruiz"
+    assert who(165, 3) == "Marsh"
+
+
 def test_a_name_a_letter_off_the_descriptions_names_no_one():
     """On a 79-minute NBA game the commentary wrote the player the video's
     description spells "Reaves" as "Reeves" 63 times and "Raves" 3 times, and

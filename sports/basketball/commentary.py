@@ -75,6 +75,11 @@ TAKEN_BACK_AFTER = re.compile(r"\b(?:(?:didn['’]?t|doesn['’]?t|did not|does 
                               r" (?:take|shoot|go|fall|drop|let|pull)|no good|nope"
                               r"|(?<!['’]t )(?<!nt )(?<!not )(?<!never )miss(?:es|ed)?|short(?! corner)"
                               r"|off the (?:rim|iron|front|back)|rims? out|rimmed out|in and out|air ?ball|blocked)\b")
+# Words before a name that make it the defender or the passer, not the
+# scorer: on a Warriors-Mavericks game "drives into Washington, and scores"
+# gave a Warriors three to the Mavericks' Washington ("the lob from Doncic,
+# throws it down" would give a dunk to the passer).
+NOT_SCORER = set("into past around against through over by on from".split())
 NEAR = 16           # the scorer is named at most this many words before the words that say it went in
 BEFORE = 9.0        # a basket's words: from this long before it...
 AFTER = 6.0         # ...to this long after (the call "hit for Johnson" comes after the ball)
@@ -256,11 +261,16 @@ def _named_after(said: list[Word], named: list[int], last: int) -> int | None:
 def _named_before(said: list[Word], named: list[int], first: int, names: Names) -> int | None:
     """The player named last before word `first`, at most NEAR words before,
     unless a pass to someone unnamed comes between, or a name Whisper didn't
-    know does ("Williams, pitched it outside. Swarer's hit the 3!")."""
+    know does ("Williams, pitched it outside. Swarer's hit the 3!"), or the
+    name is the defender's or the passer's ("drives into Washington")."""
     before = [i for i in named if i < first and first - i <= NEAR]
     if not before:
         return None
     who = before[-1]
+    lead = _run(said, named, who)[0]
+    if (lead > 0 and not said[lead].start and not said[lead - 1].pause
+            and said[lead - 1].text.lower() in NOT_SCORER):
+        return None
     between = " ".join(w.text.lower() for w in said[who + 1:first])
     if PASSED.search(between):
         return None
