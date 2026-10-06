@@ -31,6 +31,8 @@ The 14 failures are environment limits, not code regressions, and every one of t
 
 Running the suite rewrites `docs/brand/mascot.png`, `docs/brand/mascot-head.png` and `ui/build/icon.ico` (the mascot test regenerates them and the sandbox font differs). They are reverted with `git checkout --` before every commit.
 
+**Second baseline, with httpx (2026-10-06, before Phase 1).** The API tests use FastAPI's `TestClient`, which needs `httpx`; without it they skip. With `httpx` 0.28.1 added to the sandbox (D6): **1879 passed, 14 failed, 23 skipped**, the same 14 failures as above (list in `scratchpad/baseline-failures.txt`). This is the baseline the build phases are compared with.
+
 Rule for the night: every test that passed at this baseline must still pass after each phase.
 
 ## Phases
@@ -39,7 +41,7 @@ Rule for the night: every test that passed at this baseline must still pass afte
 - [x] 0A · Repository map → `docs/platform/repo-map.md` (5fc30c7)
 - [x] 0B · Research notes → `docs/platform/research-notes/*.md` (22 notes, all read 2026-10-06)
 - [x] 0C · `docs/platform-research.md` (summary, two matrices with no empty cell, borrow sections, hypotheses H1–H10, all 46 questions answered)
-- [ ] 1 · `docs/platform-architecture.md`
+- [x] 1 · `docs/platform-architecture.md` (types, SDK, manifest, execution, models, permissions with enforced or declared labels, trust, versioning, registry and Marketplace, dogfooding, designed-later, two worked examples, build plan, the four success tests)
 - [ ] Review of both documents against BRIEF.md sections 3 and 4
 - [ ] 2 · Public API boundary: reference with stability labels, API version, contract tests
 - [ ] 3 · Plugin/pipeline contract (minimum SDK) with a first-party adapter
@@ -53,4 +55,4 @@ Rule for the night: every test that passed at this baseline must still pass afte
 
 ## Next action
 
-Write `docs/platform-architecture.md` (brief §8) from the research decisions, then run the skeptical review (brief §9) with a separate reviewer.
+Run the skeptical review (brief §9) with a separate reviewer that has not seen the drafting, fix what it finds, record the result here, then start Phase 2.

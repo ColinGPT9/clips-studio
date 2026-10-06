@@ -36,3 +36,17 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** (1) `plugin.yaml` (too generic to grep for) or a `[tool.clipskitty]` table in `pyproject.toml` (ties the manifest to Python); (2) a "Verified" badge with no process behind it, which the brief forbids; (3) a token on every route, which breaks the OBS plugin, the MCP server and scripts; (4) a new repository, which the brief forbids tonight; (5) relicensing, which is the owner's legal call.
 **Why:** each default is reversible and keeps existing clients working; the reasoning is in `docs/platform-research.md` §7.6 and §7.7.
 **Undo:** each is a single choice in the architecture document and the code that follows it.
+
+## D6 · httpx added to the sandbox and a second baseline recorded
+
+**Decided:** install `httpx` 0.28.1 into the sandbox interpreter (not into the repository's requirements) and record a second baseline: 1879 passed, 14 failed, 23 skipped, with the same 14 failures as the first.
+**Alternatives:** keep the first baseline, in which every `TestClient` test skips; Phase 2's contract tests would then skip here too and prove nothing.
+**Why:** the brief asks for contract tests that pin current behaviour, which needs the API tests to run.
+**Undo:** nothing in the repository changed; CI still installs only pyyaml, ruff, pytest and requests, so the new API tests keep the repository's `pytest.importorskip` guards and skip there.
+
+## D7 · Architecture choices that shape the build (docs/platform-architecture.md)
+
+**Decided:** (1) plugins run only as a child process with a job folder; nothing third-party is imported into the engine; (2) a plugin replaces only the detection step (`clip_direction` and `find_clips` in `process_video`), and Clips Kitty keeps titles, rendering, captions and the library; (3) a job names its plugin in one optional field, `pipeline: {id, version, settings}`, exclusive with Sports, Gaming scoring and Longform; (4) plugin progress is reported as the existing `analyze` stage with a `fraction`, so the UI's stage list is untouched; (5) a plugin's own Python packages are wheels only, hash-pinned, in its own environment, and a separate line the user agrees to at install; (6) a blocked plugin is refused at run time and flagged, never deleted by Clips Kitty; (7) the registry client's default index is the copy bundled with the app until the owner publishes one, so no URL is invented; (8) one previous version of each plugin is kept for rollback.
+**Alternatives:** (1) in-process plugins as in ComfyUI or Blender, which give plugin code the engine's full access and cannot load in the frozen build; (2) plugins that own the whole pipeline, which would make every plugin re-implement rendering and captions; (3) separate `pipeline` and `pipeline_settings` fields; (4) a new `plugin` stage, which needs the UI's mirrored stage list changed; (5) letting pip build source packages at install, which runs their code before the user has used the plugin; (6) automatic removal, as VS Code's block list does; (7) a guessed GitHub URL; (8) keeping every version, which Colin's disk cannot afford.
+**Why:** each keeps the existing API, engine and runtime as they are and follows a research finding (`docs/platform-research.md` §7.4, §7.6).
+**Undo:** each is one section of the architecture document and, once built, one module.
