@@ -22,3 +22,17 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** read the whole engine in the main thread. Too slow for 55 000 lines of Python plus the UI.
 **Why:** the brief allows parallel workers for research and the map is the same kind of work; synthesis stays in the main thread.
 **Undo:** none needed.
+
+## D4 · Research stopped at the brief's rule
+
+**Decided:** stop Phase 0B once every matrix cell was filled or marked "not confirmed" and every Appendix B question could be answered: 24 extension ecosystems and 16 gaming and video products. Framedrop's site could not be reached, so its row is marked "not confirmed" rather than researched further.
+**Alternatives:** keep reading tier-3 products and incidents.
+**Why:** brief §6.1: "Do not let it grow past that. The build phases need the rest of the night."
+**Undo:** add notes under `docs/platform/research-notes/` and rows to the matrices.
+
+## D5 · Five design defaults chosen in the research document, each listed for the owner in §7.7
+
+**Decided:** (1) the manifest file is `clipskitty.yaml` at the plugin repository's root; (2) no "Verified" tier: tiers are Official, Listed (automated checks only), Installed from a link, Blocked; (3) the existing local API stays unauthenticated, and only the new plugin-manager routes (install, update, enable, remove) require the desktop app's per-session secret; (4) the registry lives in a `registry/` folder in this repository until a separate repository exists; (5) the SDK keeps the repository's AGPL-3.0 licence until the owner decides.
+**Alternatives:** (1) `plugin.yaml` (too generic to grep for) or a `[tool.clipskitty]` table in `pyproject.toml` (ties the manifest to Python); (2) a "Verified" badge with no process behind it, which the brief forbids; (3) a token on every route, which breaks the OBS plugin, the MCP server and scripts; (4) a new repository, which the brief forbids tonight; (5) relicensing, which is the owner's legal call.
+**Why:** each default is reversible and keeps existing clients working; the reasoning is in `docs/platform-research.md` §7.6 and §7.7.
+**Undo:** each is a single choice in the architecture document and the code that follows it.

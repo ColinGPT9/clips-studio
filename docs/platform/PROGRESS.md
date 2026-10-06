@@ -14,7 +14,7 @@ Overnight run started 2026-10-06 10:55 UTC. Brief: [BRIEF.md](BRIEF.md). Decisio
 | Ollama | not installed, nothing on 127.0.0.1:11434 |
 | Whisper | faster-whisper not installed; no CTranslate2 weights present |
 | YOLO weights | none (`*.pt` is gitignored; ultralytics not installed) |
-| Python packages added for the baseline (not repo dependencies) | pytest 9.1.1, ruff 0.16.10, opencv-python-headless 5.0.0, yt-dlp (CI installs only pyyaml, ruff, pytest, requests) |
+| Python packages added for the baseline (not repo dependencies) | pytest 9.1.1, ruff 0.16.10, opencv-python-headless 5.0.0, yt-dlp, and later fastapi 0.142.2 for the live API probe in Phase 0A (CI installs only pyyaml, ruff, pytest, requests) |
 | Project installs and builds | Python engine imports (`core.pipeline`) once OpenCV is present; the desktop UI was not built here (no node_modules) |
 
 ## Test baseline (before any change, 2026-10-06 12:40 UTC)
@@ -36,9 +36,9 @@ Rule for the night: every test that passed at this baseline must still pass afte
 ## Phases
 
 - [x] 0 · Setup: branch `claude/open-platform-w4eh9g`, BRIEF.md saved unchanged, baseline recorded
-- [ ] 0A · Repository map → `docs/platform/repo-map.md`
-- [ ] 0B · Research notes → `docs/platform/research-notes/*.md`
-- [ ] 0C · `docs/platform-research.md` (summary, two matrices, borrow sections, hypotheses H1–H10, the 46 questions)
+- [x] 0A · Repository map → `docs/platform/repo-map.md` (5fc30c7)
+- [x] 0B · Research notes → `docs/platform/research-notes/*.md` (22 notes, all read 2026-10-06)
+- [x] 0C · `docs/platform-research.md` (summary, two matrices with no empty cell, borrow sections, hypotheses H1–H10, all 46 questions answered)
 - [ ] 1 · `docs/platform-architecture.md`
 - [ ] Review of both documents against BRIEF.md sections 3 and 4
 - [ ] 2 · Public API boundary: reference with stability labels, API version, contract tests
@@ -53,4 +53,4 @@ Rule for the night: every test that passed at this baseline must still pass afte
 
 ## Next action
 
-Phase 0A readers are running (one per subsystem); Phase 0B research agents start next. Assemble `repo-map.md` from the per-area notes when the readers finish.
+Write `docs/platform-architecture.md` (brief §8) from the research decisions, then run the skeptical review (brief §9) with a separate reviewer.
