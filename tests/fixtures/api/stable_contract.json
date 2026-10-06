@@ -1,0 +1,937 @@
+{
+ "DELETE /ai/providers/{provider_id}/key": {
+  "body": null,
+  "params": {
+   "provider_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ },
+ "DELETE /automation/watches/{watch_id}": {
+  "body": null,
+  "params": {
+   "watch_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "DELETE /integrations/streams/{session_id}": {
+  "body": null,
+  "params": {
+   "session_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ },
+ "DELETE /jobs/{job_id}": {
+  "body": null,
+  "params": {
+   "job_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /ai": {
+  "body": null,
+  "params": {}
+ },
+ "GET /ai/providers/{provider_id}/models": {
+  "body": null,
+  "params": {
+   "kind": {
+    "in": "query",
+    "required": false,
+    "type": "string"
+   },
+   "provider_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   },
+   "refresh": {
+    "in": "query",
+    "required": false,
+    "type": "boolean"
+   }
+  }
+ },
+ "GET /automation": {
+  "body": null,
+  "params": {}
+ },
+ "GET /automation/activity": {
+  "body": null,
+  "params": {}
+ },
+ "GET /automation/items": {
+  "body": null,
+  "params": {
+   "limit": {
+    "in": "query",
+    "required": false,
+    "type": "integer"
+   },
+   "watch_id": {
+    "in": "query",
+    "required": false,
+    "type": "integer|null"
+   }
+  }
+ },
+ "GET /automation/slots": {
+  "body": null,
+  "params": {
+   "count": {
+    "in": "query",
+    "required": false,
+    "type": "integer"
+   },
+   "day_start": {
+    "in": "query",
+    "required": false,
+    "type": "string"
+   },
+   "gap_hours": {
+    "in": "query",
+    "required": false,
+    "type": "number"
+   },
+   "per_day": {
+    "in": "query",
+    "required": false,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /automation/watches": {
+  "body": null,
+  "params": {}
+ },
+ "GET /clips/{clip_id}/captions": {
+  "body": null,
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /clips/{clip_id}/publish": {
+  "body": null,
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /clips/{clip_id}/thumbnail/generated/{index}": {
+  "body": null,
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   },
+   "index": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /health": {
+  "body": null,
+  "params": {}
+ },
+ "GET /health/preflight": {
+  "body": null,
+  "params": {}
+ },
+ "GET /integrations/presets": {
+  "body": null,
+  "params": {}
+ },
+ "GET /integrations/streams/{session_id}": {
+  "body": null,
+  "params": {
+   "session_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ },
+ "GET /jobs": {
+  "body": null,
+  "params": {}
+ },
+ "GET /jobs/{job_id}": {
+  "body": null,
+  "params": {
+   "job_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /jobs/{job_id}/log": {
+  "body": null,
+  "params": {
+   "job_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   },
+   "tail": {
+    "in": "query",
+    "required": false,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /languages": {
+  "body": null,
+  "params": {}
+ },
+ "GET /media/{clip_id}": {
+  "body": null,
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "GET /models": {
+  "body": null,
+  "params": {}
+ },
+ "GET /queue": {
+  "body": null,
+  "params": {}
+ },
+ "GET /sports": {
+  "body": null,
+  "params": {}
+ },
+ "GET /system/stats": {
+  "body": null,
+  "params": {}
+ },
+ "GET /videos": {
+  "body": null,
+  "params": {}
+ },
+ "GET /videos/{video_id}/clips": {
+  "body": null,
+  "params": {
+   "video_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ },
+ "GET /youtube/status": {
+  "body": null,
+  "params": {}
+ },
+ "PATCH /automation": {
+  "body": {
+   "delete_sources": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "enabled": {
+    "required": false,
+    "type": "boolean|null"
+   }
+  },
+  "params": {}
+ },
+ "PATCH /automation/watches/{watch_id}": {
+  "body": {
+   "backlog": {
+    "required": false,
+    "type": "enum[all,day,newest,none]|null"
+   },
+   "enabled": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "min_minutes": {
+    "required": false,
+    "type": "null|number"
+   },
+   "name": {
+    "required": false,
+    "type": "null|string"
+   },
+   "options": {
+    "required": false,
+    "type": "null|object"
+   },
+   "preset": {
+    "required": false,
+    "type": "null|string"
+   },
+   "publish": {
+    "required": false,
+    "type": "null|{ai_hashtags?:boolean,day_start?:string,footer?:string,gap_hours?:number,hashtags?:array<string>,max_posts?:integer,mode?:enum[ask,auto,off],overrides?:object,per_day?:integer,platforms?:array<string>,spread?:boolean}"
+   }
+  },
+  "params": {
+   "watch_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /ai/activate": {
+  "body": {
+   "model": {
+    "required": false,
+    "type": "string"
+   },
+   "provider": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {}
+ },
+ "POST /ai/providers/{provider_id}/test": {
+  "body": {
+   "model": {
+    "required": false,
+    "type": "string"
+   }
+  },
+  "params": {
+   "provider_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ },
+ "POST /ai/transcription": {
+  "body": {
+   "backend": {
+    "required": false,
+    "type": "string"
+   },
+   "model": {
+    "required": false,
+    "type": "string"
+   }
+  },
+  "params": {}
+ },
+ "POST /automation/items/{item_id}/publish": {
+  "body": null,
+  "params": {
+   "item_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /automation/items/{item_id}/queue": {
+  "body": null,
+  "params": {
+   "item_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /automation/items/{item_id}/skip": {
+  "body": null,
+  "params": {
+   "item_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /automation/watches": {
+  "body": {
+   "channel": {
+    "required": true,
+    "type": "string"
+   },
+   "options": {
+    "required": false,
+    "type": "null|object"
+   },
+   "platform": {
+    "required": true,
+    "type": "enum[kick,twitch,youtube]"
+   },
+   "preset": {
+    "required": false,
+    "type": "null|string"
+   },
+   "publish": {
+    "required": false,
+    "type": "null|{ai_hashtags?:boolean,day_start?:string,footer?:string,gap_hours?:number,hashtags?:array<string>,max_posts?:integer,mode?:enum[ask,auto,off],overrides?:object,per_day?:integer,platforms?:array<string>,spread?:boolean}"
+   }
+  },
+  "params": {}
+ },
+ "POST /automation/watches/{watch_id}/check": {
+  "body": null,
+  "params": {
+   "watch_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /cancel": {
+  "body": {
+   "url": {
+    "required": false,
+    "type": "null|string"
+   },
+   "video_id": {
+    "required": false,
+    "type": "null|string"
+   }
+  },
+  "params": {}
+ },
+ "POST /clips/{clip_id}/export": {
+  "body": {
+   "folder": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /clips/{clip_id}/publish": {
+  "body": {
+   "category_id": {
+    "required": false,
+    "type": "string"
+   },
+   "channel_id": {
+    "required": false,
+    "type": "null|string"
+   },
+   "contains_synthetic_media": {
+    "required": false,
+    "type": "boolean"
+   },
+   "default_language": {
+    "required": false,
+    "type": "null|string"
+   },
+   "description": {
+    "required": false,
+    "type": "string"
+   },
+   "embeddable": {
+    "required": false,
+    "type": "boolean"
+   },
+   "license": {
+    "required": false,
+    "type": "string"
+   },
+   "made_for_kids": {
+    "required": false,
+    "type": "boolean"
+   },
+   "notify_subscribers": {
+    "required": false,
+    "type": "boolean"
+   },
+   "playlist_id": {
+    "required": false,
+    "type": "null|string"
+   },
+   "privacy": {
+    "required": false,
+    "type": "string"
+   },
+   "public_stats_viewable": {
+    "required": false,
+    "type": "boolean"
+   },
+   "publish_at": {
+    "required": false,
+    "type": "null|string"
+   },
+   "render_first": {
+    "required": false,
+    "type": "null|{end?:null|number,render_opts?:null|object,start?:null|number}"
+   },
+   "tags": {
+    "required": false,
+    "type": "array<string>"
+   },
+   "thumbnail": {
+    "required": false,
+    "type": "boolean"
+   },
+   "title": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /clips/{clip_id}/thumbnail/generate": {
+  "body": null,
+  "params": {
+   "clip_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   },
+   "count": {
+    "in": "query",
+    "required": false,
+    "type": "integer"
+   }
+  }
+ },
+ "POST /export/batch": {
+  "body": {
+   "clip_ids": {
+    "required": true,
+    "type": "array<integer>"
+   },
+   "folder": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {}
+ },
+ "POST /integrations/streams": {
+  "body": {
+   "channel": {
+    "required": false,
+    "type": "string"
+   },
+   "ended_at": {
+    "required": true,
+    "type": "number"
+   },
+   "platform": {
+    "required": true,
+    "type": "string"
+   },
+   "preset": {
+    "required": false,
+    "type": "string"
+   },
+   "session_id": {
+    "required": true,
+    "type": "string"
+   },
+   "source": {
+    "required": false,
+    "type": "string"
+   },
+   "started_at": {
+    "required": true,
+    "type": "number"
+   }
+  },
+  "params": {}
+ },
+ "POST /integrations/streams/{session_id}/link": {
+  "body": {
+   "url": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {
+   "session_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ },
+ "POST /jobs": {
+  "body": {
+   "caption_style": {
+    "required": false,
+    "type": "null|object"
+   },
+   "captions": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "filter": {
+    "required": false,
+    "type": "null|string"
+   },
+   "focus": {
+    "required": false,
+    "type": "null|string"
+   },
+   "force": {
+    "required": false,
+    "type": "boolean"
+   },
+   "gaming": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "gaming_layout": {
+    "required": false,
+    "type": "null|object"
+   },
+   "gaming_remember": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "gaming_scoring": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "hashtags": {
+    "required": false,
+    "type": "array<string>|null"
+   },
+   "long_clips": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "longform": {
+    "required": false,
+    "type": "null|object"
+   },
+   "max_clips": {
+    "required": false,
+    "type": "integer|null"
+   },
+   "min_score": {
+    "required": false,
+    "type": "integer|null"
+   },
+   "podcast": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "sport": {
+    "required": false,
+    "type": "null|object|string"
+   },
+   "then": {
+    "required": false,
+    "type": "null|object"
+   },
+   "url": {
+    "required": true,
+    "type": "string"
+   },
+   "vertical_live": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "watermark_profile_id": {
+    "required": false,
+    "type": "integer|null"
+   },
+   "webhook_secret": {
+    "required": false,
+    "type": "null|string"
+   },
+   "webhook_url": {
+    "required": false,
+    "type": "null|string"
+   }
+  },
+  "params": {
+   "status_code": {
+    "in": "query",
+    "required": false,
+    "type": "any"
+   }
+  }
+ },
+ "POST /jobs/batch": {
+  "body": {
+   "items": {
+    "required": false,
+    "type": "array<{caption_style?:null|object,captions?:boolean|null,filter?:null|string,focus?:null|string,force?:boolean,gaming?:boolean|null,gaming_layout?:null|object,gaming_remember?:boolean|null,gaming_scoring?:boolean|null,long_clips?:boolean|null,longform?:null|object,max_clips?:integer|null,min_score?:integer|null,podcast?:boolean|null,sport?:null|object|string,url:string,vertical_live?:boolean|null,watermark_profile_id?:integer|null,webhook_secret?:null|string,webhook_url?:null|string}>"
+   }
+  },
+  "params": {}
+ },
+ "POST /jobs/{job_id}/retry": {
+  "body": null,
+  "params": {
+   "job_id": {
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   },
+   "standard": {
+    "in": "query",
+    "required": false,
+    "type": "boolean"
+   }
+  }
+ },
+ "POST /models/activate": {
+  "body": {
+   "tag": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {}
+ },
+ "POST /models/pull": {
+  "body": {
+   "tag": {
+    "required": true,
+    "type": "string"
+   }
+  },
+  "params": {}
+ },
+ "POST /publish/plan": {
+  "body": {
+   "clip_ids": {
+    "required": false,
+    "type": "array<integer>"
+   },
+   "every_hours": {
+    "required": false,
+    "type": "null|number"
+   },
+   "privacy": {
+    "required": false,
+    "type": "string"
+   },
+   "start_at": {
+    "required": false,
+    "type": "null|string"
+   }
+  },
+  "params": {}
+ },
+ "POST /publish/plan/execute": {
+  "body": {
+   "items": {
+    "required": false,
+    "type": "array<{clip_id:integer,privacy?:null|string,publish_at?:null|string,title?:null|string}>"
+   }
+  },
+  "params": {}
+ },
+ "POST /queue/pause": {
+  "body": null,
+  "params": {}
+ },
+ "POST /queue/resume": {
+  "body": null,
+  "params": {}
+ },
+ "POST /translate": {
+  "body": {
+   "burn": {
+    "required": false,
+    "type": "boolean"
+   },
+   "clip_ids": {
+    "required": true,
+    "type": "array<integer>"
+   },
+   "dub": {
+    "required": false,
+    "type": "boolean"
+   },
+   "folder": {
+    "required": false,
+    "type": "string"
+   },
+   "include_video": {
+    "required": false,
+    "type": "boolean"
+   },
+   "languages": {
+    "required": true,
+    "type": "array<string>"
+   },
+   "post_text": {
+    "required": false,
+    "type": "boolean"
+   },
+   "stage": {
+    "required": false,
+    "type": "string"
+   },
+   "style": {
+    "required": false,
+    "type": "null|object"
+   },
+   "subtitles": {
+    "required": false,
+    "type": "boolean"
+   },
+   "voices": {
+    "required": false,
+    "type": "null|object"
+   }
+  },
+  "params": {}
+ },
+ "POST /videos/local": {
+  "body": {
+   "caption_style": {
+    "required": false,
+    "type": "null|object"
+   },
+   "captions": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "channel": {
+    "required": false,
+    "type": "string"
+   },
+   "filter": {
+    "required": false,
+    "type": "null|string"
+   },
+   "focus": {
+    "required": false,
+    "type": "null|string"
+   },
+   "force": {
+    "required": false,
+    "type": "boolean"
+   },
+   "gaming": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "gaming_layout": {
+    "required": false,
+    "type": "null|object"
+   },
+   "gaming_remember": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "gaming_scoring": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "long_clips": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "longform": {
+    "required": false,
+    "type": "null|object"
+   },
+   "max_clips": {
+    "required": false,
+    "type": "integer|null"
+   },
+   "min_score": {
+    "required": false,
+    "type": "integer|null"
+   },
+   "path": {
+    "required": true,
+    "type": "string"
+   },
+   "platform": {
+    "required": false,
+    "type": "string"
+   },
+   "podcast": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "source_url": {
+    "required": false,
+    "type": "string"
+   },
+   "sport": {
+    "required": false,
+    "type": "null|object|string"
+   },
+   "title": {
+    "required": false,
+    "type": "string"
+   },
+   "vertical_live": {
+    "required": false,
+    "type": "boolean|null"
+   },
+   "watermark_profile_id": {
+    "required": false,
+    "type": "integer|null"
+   },
+   "webhook_secret": {
+    "required": false,
+    "type": "null|string"
+   },
+   "webhook_url": {
+    "required": false,
+    "type": "null|string"
+   }
+  },
+  "params": {}
+ },
+ "PUT /ai/providers/{provider_id}/key": {
+  "body": {
+   "api_key": {
+    "required": false,
+    "type": "string"
+   }
+  },
+  "params": {
+   "provider_id": {
+    "in": "path",
+    "required": true,
+    "type": "string"
+   }
+  }
+ }
+}
