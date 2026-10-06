@@ -7,6 +7,7 @@ import type {
   EditData,
   GamingSettings,
   LiveOverlay,
+  SpeakerTurn,
   TranslationPreview,
   WatermarkConfig,
   Word
@@ -14,11 +15,13 @@ import type {
 import FeatureBoundary from './FeatureBoundary'
 import GamingLayoutEditor from './GamingLayoutEditor'
 import { PRESETS } from '../lib/gamingLayout'
+import { compactEdits, fixSpeakers, groupWords, paintTurns, tagLines } from '../lib/speakerTurns'
 import MultilingualExport from './MultilingualExport'
 import WatermarkControls, { DEFAULT_WATERMARK } from './WatermarkControls'
 import {
   Badge,
   Ban,
+  Chat,
   Film,
   Folder,
   Keyboard,
@@ -91,6 +94,10 @@ const UPLOADPOST_TAB: { id: Tab; label: string; icon: JSX.Element } = {
   label: 'Publish',
   icon: <span className="font-bold text-[11px] leading-none">↗</span>
 }
+
+/** One step Undo can take back: the edit list as it was, or the speaker
+ *  fixes as they were (null = as the clip was saved). */
+type Past = { edit: EditData } | { speakers: SpeakerTurn[] | null }
 
 /** A user text correction for one transcript word (misheard by Whisper). */
 interface WordEdit {
@@ -244,7 +251,10 @@ export default function TimelineEditor({
     ...defaultEdit(duration),
     ...(clip.render_opts?.edit ?? {})
   }))
-  const [history, setHistory] = useState<EditData[]>([])
+  // What Undo steps back through, in the order it was done: the edit list
+  // (cuts, mutes, volume...) and the speaker fixes share it, so Ctrl+Z
+  // always takes back the last thing, whichever kind it was.
+  const [history, setHistory] = useState<Past[]>([])
   const [words, setWords] = useState<Word[]>([])
   const [captionBase, setCaptionBase] = useState<CaptionLine[] | null>(null)
   const [playhead, setPlayhead] = useState(0) // original-timeline seconds
@@ -321,11 +331,17 @@ export default function TimelineEditor({
   // Watermark / branding for THIS clip — state lifted to EditorModal so the
   // live draggable overlay on the preview and these controls stay in sync.
   const storedWatermark = clip.render_opts?.watermark ?? null
-  // Caption text corrections: with "Edit caption text" ON, clicking a
-  // transcript word opens a text box instead of muting it.
-  const [textMode, setTextMode] = useState(false)
+  // What a click on a transcript word does: mute it; with "Edit caption text"
+  // ON, open a text box to retype it; with "Fix speakers" ON, switch who says
+  // it. One value, so only one of the two can be on.
+  const [wordMode, setWordMode] = useState<'mute' | 'text' | 'speaker'>('mute')
   const [wordEdits, setWordEdits] = useState<WordEdit[]>([])
   const [editingWord, setEditingWord] = useState<{ i: number; value: string } | null>(null)
+  // Fix speakers: what a person has said about who is talking, as the list
+  // of statements the render lays over what it heard (speaker_edits).
+  // null = as the clip was saved.
+  const [speakerEdits, setSpeakerEdits] = useState<SpeakerTurn[] | null>(null)
+  const lastSpeakerWord = useRef<number | null>(null)
   // Draft preview: when set, the video element shows a low-res render with
   // ALL edits baked in — live simulation must be off (it would double-apply).
   const [draftEditJson, setDraftEditJson] = useState<string | null>(null)
@@ -356,6 +372,8 @@ export default function TimelineEditor({
     setSubline(clip.render_opts?.subline ?? '')
     setWordEdits([])
     setEditingWord(null)
+    setSpeakerEdits(null)
+    lastSpeakerWord.current = null
     setZoom(1)
     onPreview(null)
     api
@@ -434,13 +452,15 @@ export default function TimelineEditor({
   }, [baked, duration, videoRef, draftActive])
 
   const push = (next: EditData): void => {
-    setHistory((h) => [...h.slice(-30), edit])
+    setHistory((h) => [...h.slice(-30), { edit }])
     setEdit(next)
   }
   const undo = (): void => {
     setHistory((h) => {
       if (h.length === 0) return h
-      setEdit(h[h.length - 1])
+      const last = h[h.length - 1]
+      if ('edit' in last) setEdit(last.edit)
+      else setSpeakerEdits(last.speakers)
       return h.slice(0, -1)
     })
   }
@@ -690,7 +710,7 @@ export default function TimelineEditor({
         dragging.current = null
         if (dragStartEdit.current) {
           const before = dragStartEdit.current
-          setHistory((h) => [...h.slice(-30), before]) // undo restores pre-drag
+          setHistory((h) => [...h.slice(-30), { edit: before }]) // undo restores pre-drag
           dragStartEdit.current = null
         }
       }
@@ -702,6 +722,104 @@ export default function TimelineEditor({
       window.removeEventListener('pointerup', up)
     }
   }, [duration])
+
+  // ---- fixing who is talking, by hand (the second speaker's caption colour) ----
+  // What the render heard is saved with the clip (speaker_turns). Where it
+  // heard wrong, a person says who is talking: each click is a statement
+  // about a stretch of the clip, kept in a list (speaker_edits) that the
+  // render lays over what it hears. Everything drawn here comes out of the
+  // same calculation the render makes (lib/speakerTurns.ts) on that list, so
+  // what is shown is what will burn.
+  //
+  // Offered only on a clip rendered with the option on that still has it on:
+  // until a render has listened there is nothing to put right.
+  const speakerOn =
+    burnedCaptionStyle(captionStyle, isLandscape).second_speaker && clip.render_opts?.captions !== false
+  const speakerWas = burnedCaptionStyle(storedStyle, isLandscape).second_speaker
+  // A clip whose caption text was saved keeps those lines, and the render
+  // colours each of them whole: there a click switches a whole caption.
+  const savedLines = (clip.render_opts?.caption_lines?.length ?? 0) > 0
+  const heardTurns: SpeakerTurn[] = clip.render_opts?.speaker_turns ?? []
+  const savedSpeakerEdits: SpeakerTurn[] = clip.render_opts?.speaker_edits ?? []
+  const currentEdits = speakerEdits ?? savedSpeakerEdits
+  // A word muted or retyped makes Apply send the clip's lines (they hold the
+  // changed text), and lines the render is given it does not regroup.
+  const willSendLines =
+    captionBase !== null &&
+    (wordEdits.length > 0 || edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0)
+  // What this mode shows and what each click says, worked out in
+  // lib/speakerTurns.ts: which words can be switched (one by one, or a whole
+  // caption where the render is given the clip's lines), who says each as it
+  // will burn, and the statement a click, a shift-click or Swap adds.
+  const fixing = useMemo(
+    () =>
+      fixSpeakers({
+        words,
+        heard: heardTurns,
+        lines: captionBase,
+        saved: savedLines,
+        sending: willSendLines && speakerOn,
+        perCaption: captionStyle.words_per_caption,
+        storedPerCaption: storedStyle.words_per_caption,
+        duration
+      }),
+    [
+      words,
+      captionBase,
+      clip.id,
+      savedLines,
+      willSendLines,
+      speakerOn,
+      captionStyle.words_per_caption,
+      storedStyle.words_per_caption,
+      duration
+    ]
+  )
+  // Who says each word in the list: now, as the clip was saved, and going
+  // only by what was heard.
+  const whoSays = useMemo(() => fixing.speakers(currentEdits), [fixing, speakerEdits, clip.id])
+  const loadedWhoSays = useMemo(() => fixing.speakers(savedSpeakerEdits), [fixing, clip.id])
+  const heardWhoSays = useMemo(() => fixing.speakers([]), [fixing])
+  // Something to go back from: a fix that shows in this clip. (One kept from
+  // a part trimmed off shows nowhere, and is left alone.)
+  const fixedByHand = whoSays.some((who, i) => who !== heardWhoSays[i])
+  const canFixSpeakers = speakerOn && speakerWas && words.length > 0 && (!fixing.whole || captionBase !== null)
+  // "Changed" is what a person would see as changed: a clip nobody touched,
+  // or one put back as it was, sends nothing.
+  const speakerDirty =
+    canFixSpeakers && speakerEdits !== null && whoSays.some((who, i) => who !== loadedWhoSays[i])
+  // With the feature not offered the mode falls back to muting, so it can
+  // never go on running behind a button that is no longer there.
+  const mode = wordMode === 'speaker' && !canFixSpeakers ? 'mute' : wordMode
+  // The list as it is sent: whole (a fix lying outside a trimmed clip stays
+  // in it, and is back in place if the clip grows again), less what a later
+  // statement has overruled.
+  const pendingSpeakerEdits = (): SpeakerTurn[] => compactEdits(currentEdits)
+  // The turns captions are coloured by, as the next render will have them.
+  const saidTurns: SpeakerTurn[] = speakerOn ? paintTurns(heardTurns, currentEdits) : []
+  const saySpeakers = (next: SpeakerTurn[]): void => {
+    setHistory((h) => [...h.slice(-30), { speakers: speakerEdits }])
+    setSpeakerEdits(next)
+  }
+  const clickSpeaker = (i: number, upTo: boolean): void => {
+    if (!fixing.stretch(i)) return
+    // Shift-click: every word from the last one clicked up to this one.
+    const from = upTo ? lastSpeakerWord.current : null
+    const next = from !== null ? fixing.upTo(currentEdits, from, i) : fixing.click(currentEdits, i)
+    lastSpeakerWord.current = i
+    // The same list back means there was nothing to say: no step to undo.
+    if (next.length !== currentEdits.length || next.some((said, k) => said !== currentEdits[k])) saySpeakers(next)
+    // To the word itself: it can be heard, and its caption is on screen.
+    seekOrig((words[i].start + words[i].end) / 2)
+  }
+  const swapSpeakers = (): void => {
+    lastSpeakerWord.current = null
+    saySpeakers(fixing.swap(currentEdits))
+  }
+  const speakersAsHeard = (): void => {
+    lastSpeakerWord.current = null
+    saySpeakers([])
+  }
 
   const layoutDirty = layout !== storedCrop
   const gamingDirty = JSON.stringify(gaming) !== JSON.stringify(storedGaming)
@@ -718,6 +836,7 @@ export default function TimelineEditor({
     cardDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
+    speakerDirty ||
     JSON.stringify(edit) !== JSON.stringify({ ...defaultEdit(duration), ...(baked ?? {}) })
   const pendingJson = (): string =>
     JSON.stringify({
@@ -727,7 +846,8 @@ export default function TimelineEditor({
       s: captionStyle,
       c: highlights ? [headline, subline] : null,
       w: wordEdits,
-      m: watermark
+      m: watermark,
+      k: speakerDirty ? currentEdits : null
     })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
@@ -768,7 +888,12 @@ export default function TimelineEditor({
   const pendingCaptionLines = (): CaptionLine[] | null => {
     const hasMutes = edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0
     if (!captionBase || (!hasMutes && wordEdits.length === 0)) return null
-    return applyTextEdits(captionBase)
+    // With the second speaker's colour on, a clip whose lines still come
+    // from the transcript is sent them as they stand now, ending where the
+    // speaker changes; the render then colours each line whole.
+    const base = (speakerOn && fixing.given(saidTurns)) || captionBase
+    // Who says a line is worked out afresh at every render, never saved on it.
+    return applyTextEdits(base).map(({ speaker: _speaker, ...line }) => line)
   }
 
   // ---- live text overlay ---------------------------------------------------
@@ -788,30 +913,36 @@ export default function TimelineEditor({
       const capsDirty =
         styleDirty ||
         wordEdits.length > 0 ||
+        speakerDirty ||
         edit.muted_words.length > (baked?.muted_words?.length ?? 0)
       let captions: LiveOverlay['captions'] = null
       if (capsDirty && captionBase && captionBase.length > 0) {
         let base = captionBase
         const n = Math.max(1, captionStyle.words_per_caption)
-        // Regroup from the transcript when words-per-caption changed, the
-        // same way the render does (captionBase kept the old grouping).
-        if (words.length > 0 && n !== storedStyle.words_per_caption) {
-          base = []
-          for (let i = 0; i < words.length; i += n) {
-            const g = words.slice(i, i + n)
-            base.push({
-              start: g[0].start,
-              end: g[g.length - 1].end,
-              text: g.map((w) => w.word).join(' ')
-            })
-          }
-        }
         // Drawn as it will burn in: on a Highlights clip, in that style's
         // own font, colour and place, not the ones in its caption style.
-        captions = {
-          lines: applyTextEdits(base),
-          style: burnedCaptionStyle(captionStyle, isLandscape)
+        const burnStyle = burnedCaptionStyle(captionStyle, isLandscape)
+        if (speakerOn) {
+          // The second speaker's colour goes by what the last render heard,
+          // with any hand fix laid over it (a clip never rendered with the
+          // option has neither yet: the colour shows after Update preview).
+          // As the render will do it: lines the user saved keep their
+          // grouping and are coloured whole; otherwise a line ends where
+          // the speaker changes.
+          // Made from the word list only where it holds every caption (a
+          // stretch of the transcript without word timings is in none of it).
+          const given = fixing.given(saidTurns)
+          base = given
+            ? tagLines(given, saidTurns, words)
+            : words.length > 0 && fixing.covered
+              ? groupWords(words, n, saidTurns)
+              : tagLines(base, saidTurns, words)
+        } else if (words.length > 0 && n !== storedStyle.words_per_caption) {
+          // Regroup from the transcript when words-per-caption changed, the
+          // same way the render does (captionBase kept the old grouping).
+          base = groupWords(words, n)
         }
+        captions = { lines: applyTextEdits(base), style: burnStyle }
       }
       if (hookPending || captions) {
         // Old text already burned into the preview file — the overlay blurs
@@ -852,7 +983,8 @@ export default function TimelineEditor({
         styleDirty ? captionStyle : null,
         wmDirty ? (watermark ?? {}) : undefined,
         gamingDirty ? gaming : undefined,
-        cardDirty ? { headline, subline } : undefined
+        cardDirty ? { headline, subline } : undefined,
+        speakerDirty ? pendingSpeakerEdits() : undefined
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -958,6 +1090,8 @@ export default function TimelineEditor({
     if (wmDirty) renderOpts.watermark = watermark
     const lines = pendingCaptionLines()
     if (lines) renderOpts.caption_lines = lines
+    // The whole list, always: an empty one means no fix is left.
+    if (speakerDirty) renderOpts.speaker_edits = pendingSpeakerEdits()
     return renderOpts
   }
 
@@ -1191,6 +1325,12 @@ export default function TimelineEditor({
               setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
               setEditingWord(null)
+              setSpeakerEdits(null)
+              lastSpeakerWord.current = null
+              // Like the caption style, speaker fixes are not brought back
+              // by undoing Reset: their steps go, or Undo would restore some
+              // of them beside an edit list they were never made with.
+              setHistory((h) => h.filter((step) => 'edit' in step))
             }}
           >
             Reset
@@ -1381,7 +1521,7 @@ export default function TimelineEditor({
       <div className="flex gap-0.5 border-b border-raised/60 text-xs overflow-x-auto" role="tablist">
         {tabs.map((t) => {
           const changed =
-            (t.id === 'captions' && (styleDirty || cardDirty || wordEdits.length > 0)) ||
+            (t.id === 'captions' && (styleDirty || cardDirty || wordEdits.length > 0 || speakerDirty)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
               ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || gamingDirty))
@@ -1407,27 +1547,79 @@ export default function TimelineEditor({
       {/* transcript — click a word to mute it, or turn on text-editing mode */}
       {activeTab === 'captions' && words.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => {
-                setTextMode(!textMode)
+                setWordMode(mode === 'text' ? 'mute' : 'text')
                 setEditingWord(null)
               }}
               className={`text-xs px-2.5 py-1 rounded-md ${
-                textMode ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
+                mode === 'text' ? 'bg-accent/20 text-accent font-medium' : 'bg-raised text-muted hover:text-ink'
               }`}
               title="Fix words the transcription got wrong — the burned caption text updates on Apply"
             >
               <Pencil className="mr-1.5" />
-              Edit caption text{textMode ? ' — ON' : ''}
+              Edit caption text{mode === 'text' ? ' — ON' : ''}
             </button>
+            {/* Only with "Second speaker in another colour" on for this clip. */}
+            {speakerOn && words.length > 0 && (
+              <button
+                disabled={!canFixSpeakers}
+                onClick={() => {
+                  setWordMode(mode === 'speaker' ? 'mute' : 'speaker')
+                  setEditingWord(null)
+                  lastSpeakerWord.current = null
+                }}
+                className={`text-xs px-2.5 py-1 rounded-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                  mode === 'speaker'
+                    ? 'bg-accent/20 text-accent font-medium'
+                    : 'bg-raised text-muted hover:text-ink'
+                }`}
+                title={
+                  canFixSpeakers
+                    ? 'Put right who is talking: switch words to the other speaker’s colour, or back'
+                    : 'Apply once with “Second speaker in another colour” ticked, so the second voice is found. Then fix it here.'
+                }
+              >
+                <Chat className="mr-1.5" />
+                Fix speakers{mode === 'speaker' ? ' — ON' : ''}
+              </button>
+            )}
+            {mode === 'speaker' && (
+              <>
+                <button
+                  onClick={swapSpeakers}
+                  className="text-xs px-2.5 py-1 rounded-md bg-raised text-muted hover:text-ink"
+                  title="Switch every caption of this clip: for when the wrong person was taken as the main speaker, or the whole clip is the other one"
+                >
+                  Swap speakers
+                </button>
+                {fixedByHand && (
+                  <button
+                    onClick={speakersAsHeard}
+                    className="text-xs px-2.5 py-1 rounded-md bg-raised text-muted hover:text-ink"
+                    title="Drop every fix made by hand on this clip and go by what was heard"
+                  >
+                    Back to automatic
+                  </button>
+                )}
+              </>
+            )}
             <span className="text-[11px] text-muted">
-              {textMode
-                ? 'Click a word below to retype it. Click the button again when done.'
-                : 'Click a word to mute it (audio silent, caption censored).'}
+              {mode === 'speaker'
+                ? fixing.whole
+                  ? 'Click a word to switch who says its caption.'
+                  : 'Click a word to switch who says it. Shift-click switches every word up to it.'
+                : mode === 'text'
+                  ? 'Click a word below to retype it. Click the button again when done.'
+                  : 'Click a word to mute it (audio silent, caption censored).'}
             </span>
           </div>
-          <div className="max-h-28 overflow-y-auto bg-base rounded-md p-2 leading-6">
+          <div
+            className={`max-h-28 overflow-y-auto bg-base rounded-md p-2 leading-6 ${
+              mode === 'speaker' ? 'select-none' : ''
+            }`}
+          >
             {words.map((w, i) => {
               if (editingWord?.i === i) {
                 return (
@@ -1456,13 +1648,19 @@ export default function TimelineEditor({
               const inRemoved = removed.some(([a, b]) => w.start >= a && w.end <= b)
               const muted = wordMuted(w)
               const corrected = wordEdits.find((x) => x.start === w.start)
+              // Fix speakers: whether a click on this word switches anything
+              // (a word, or its whole saved caption), and who says it now.
+              const fixable = mode === 'speaker' && fixing.stretch(i) !== null
+              const theirs = fixable && whoSays[i] === 1
               return (
                 <button
                   key={i}
-                  onClick={() =>
-                    textMode
-                      ? setEditingWord({ i, value: corrected?.to ?? w.word })
-                      : toggleWord(w)
+                  onClick={(e) =>
+                    mode === 'speaker'
+                      ? clickSpeaker(i, e.shiftKey)
+                      : mode === 'text'
+                        ? setEditingWord({ i, value: corrected?.to ?? w.word })
+                        : toggleWord(w)
                   }
                   className={`text-xs mr-1 rounded px-0.5 ${
                     muted
@@ -1473,14 +1671,28 @@ export default function TimelineEditor({
                           ? 'text-muted/40 line-through'
                           : 'text-muted hover:text-ink hover:bg-raised'
                   }`}
+                  // A bar under the other speaker's words, in their caption
+                  // colour. Not an underline: muted and cut words are struck
+                  // through, and the two are one CSS property.
+                  style={
+                    theirs && !inRemoved
+                      ? { borderBottom: `2px solid ${captionStyle.second_speaker_color}`, borderRadius: 0 }
+                      : undefined
+                  }
                   title={
-                    textMode
-                      ? corrected
-                        ? `Caption says “${corrected.to}” — click to change`
-                        : 'Click to retype this word'
-                      : muted
-                        ? 'Un-mute this word (audio and caption come back)'
-                        : 'Mute this word — audio goes silent and the caption shows it censored (f**k)'
+                    mode === 'speaker'
+                      ? !fixable
+                        ? 'No caption holds this word'
+                        : theirs
+                          ? 'The other speaker says this — click to make it the main speaker’s'
+                          : 'The main speaker says this — click to make it the other speaker’s'
+                      : mode === 'text'
+                        ? corrected
+                          ? `Caption says “${corrected.to}” — click to change`
+                          : 'Click to retype this word'
+                        : muted
+                          ? 'Un-mute this word (audio and caption come back)'
+                          : 'Mute this word — audio goes silent and the caption shows it censored (f**k)'
                   }
                 >
                   {corrected?.to ?? w.word}
@@ -1635,7 +1847,7 @@ export default function TimelineEditor({
             disabled={edit.mute_all}
             className="w-24 accent-[#38BDF8]"
             onChange={(e) => setEdit({ ...edit, volume: Number(e.target.value) / 100 })}
-            onMouseUp={() => setHistory((h) => [...h.slice(-30), edit])}
+            onMouseUp={() => setHistory((h) => [...h.slice(-30), { edit }])}
           />
           <span className="tabular-nums w-8">{Math.round(edit.volume * 100)}%</span>
         </label>
@@ -1757,7 +1969,7 @@ export default function TimelineEditor({
                     : null
                 })
               }
-              onBlur={() => setHistory((h) => [...h.slice(-30), edit])}
+              onBlur={() => setHistory((h) => [...h.slice(-30), { edit }])}
             />
           </label>
           {edit.hook && (
@@ -1794,7 +2006,7 @@ export default function TimelineEditor({
                     : null
                 })
               }
-              onBlur={() => setHistory((h) => [...h.slice(-30), edit])}
+              onBlur={() => setHistory((h) => [...h.slice(-30), { edit }])}
             />
           </label>
           <button

@@ -1230,8 +1230,28 @@ def _render_files(
     from video import post_style as _post_style
 
     highlights = not landscape and _post_style.resolve(caption_style) == _post_style.HIGHLIGHTS
+    # Where someone other than the main speaker talks, when the caption style
+    # asks for them in a second colour (#126). Empty for every other clip.
+    turns: list = []
     if config["clips"].get("captions", True) and opts.get("captions", True):
         lines = opts.get("caption_lines")  # user-corrected caption text, if any
+        if _wants_second_speaker(config, opts):
+            from video.captions import DEFAULT_STYLE, build_caption_lines, paint_turns, tag_lines, words_of
+
+            turns = _speaker_turns(source, candidate, segments, config, opts)
+            # What was heard, with what a person said in the editor laid over
+            # it (speaker_edits): theirs is the last word on any stretch.
+            said = paint_turns(turns, opts.get("speaker_edits"))
+            # Lines end where the speaker changes; saved ones keep the user's
+            # grouping and are marked with who says them. Before the cuts
+            # below: the turns are timed on the clip as it was heard.
+            if lines is not None:
+                # Also with nobody else talking: a mark an earlier render left
+                # on a saved line must not colour it now.
+                lines = tag_lines(lines, said, words_of(segments, candidate))
+            elif said:
+                wpc = {**DEFAULT_STYLE, **(caption_style or {})}["words_per_caption"]
+                lines = build_caption_lines(segments, candidate, wpc, said)
         if edit is not None and (edit.keep is not None or abs(edit.speed - 1) >= 0.01):
             # Sections were cut out and/or the clip was sped up: every
             # surviving caption shifts to its new time on the edited timeline.
@@ -1430,9 +1450,15 @@ def _render_files(
     # a re-render frames it the same way.
     if gaming and gaming_kept is None:
         opts = {k: v for k, v in opts.items() if k != "gaming"}
+    # The other speaker's turns are the ones this file was burned with, or
+    # none: never ones left over from an earlier render.
+    opts = {k: v for k, v in opts.items() if k != "speaker_turns"}
     render_opts_json = json.dumps(
         {
             **opts,
+            # For the editor: its caption preview colours from these, and its
+            # lines break where they do.
+            **({"speaker_turns": turns} if turns else {}),
             **({"caption_style": caption_style} if caption_style else {}),
             **({"filter": filter_name} if filter_name != "none" else {}),
             # Persist podcast (a video-level job flag) per clip, so an editor
@@ -1454,6 +1480,43 @@ def _render_files(
         }
     ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live or sport_name) else ""
     return final_path, render_opts_json
+
+
+def _wants_second_speaker(config: dict, opts: dict) -> bool:
+    """Whether a clip's captions burn the other speaker in a second colour:
+    captions on, the option ticked in its caption style, and not the
+    Highlights look, which has a colour of its own."""
+    if not (config["clips"].get("captions", True) and opts.get("captions", True)):
+        return False
+    from video import post_style as _post_style
+
+    style = opts.get("caption_style") or config["clips"].get("caption_style")
+    if not opts.get("profile") and _post_style.resolve(style) == _post_style.HIGHLIGHTS:
+        style = _post_style.caption_style_for(style)
+    return bool((style or {}).get("second_speaker"))
+
+
+def _speaker_turns(
+    source: Path, candidate: ClipCandidate, segments: list[Segment], config: dict, opts: dict
+) -> list:
+    """Where in the clip someone other than the main speaker talks
+    (analysis/voice_turns.py). Empty when it can't be told, whatever the
+    reason: a clip never fails to render over the colour of its captions.
+
+    Only imported here, so a clip without the option never loads the models.
+    A piece of a video sent by another PC to render (remote_render/) can't be
+    listened to for who its main speaker is: its turns came with the job."""
+    from analysis import voice_turns
+
+    if not voice_turns.in_library(source, Path(config["paths"]["data_dir"])):
+        return list(opts.get("speaker_turns") or [])
+    try:
+        return voice_turns.turns_for(source, candidate, segments, config)
+    except cancel.CancelledError:
+        raise
+    except Exception as e:
+        print(f"      (second speaker's caption colour skipped: {e})")
+        return []
 
 
 def _title_card(clip: Path, opts: dict, position: str, png: Path, language: str) -> None:
@@ -1544,6 +1607,14 @@ def _register_clip(
             rendered = json.loads(render_opts_json) if render_opts_json else {}
             existing = db.get_clip(row["id"])
             kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
+            if rendered.get("speaker_turns") != kept.get("speaker_turns"):
+                # The other speaker's turns: the row's must be the ones this
+                # file was burned with, or the editor colours its preview by
+                # a render that is gone.
+                kept = {k: v for k, v in kept.items() if k != "speaker_turns"}
+                if rendered.get("speaker_turns"):
+                    kept["speaker_turns"] = rendered["speaker_turns"]
+                fresh["render_opts"] = json.dumps(kept)
             if rendered.get("gaming"):
                 # Gaming / Reaction: the row's split must be the one this file
                 # was rendered with, or the editor starts from a stale one.

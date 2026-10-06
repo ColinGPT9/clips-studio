@@ -224,7 +224,8 @@ through Ollama.
   [docs/SPORTS.md](docs/SPORTS.md).
 - **Editable burned-in captions**: word-synced, and styled how you like (colour, size,
   position, words per line, casing, or off). Fix a transcription mistake line by line
-  before export.
+  before export. With two people talking, the second speaker's captions can take
+  another colour, and one it gets wrong can be switched by hand.
 - **AI edit chat**: describe what's wrong in plain language and it re-edits.
 - **Ask Clips Kitty**: the text box at the bottom of the dashboard. Say what you want in
   a sentence, such as *"clip this stream, make sure you include when I died to the boss,

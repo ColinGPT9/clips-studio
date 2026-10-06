@@ -120,6 +120,17 @@ class RemoteRenderer:
         for candidate, meta in items:
             cancel.check_active()
             ropts = opts_of(candidate)
+            style = (ropts or {}).get("caption_style") or (config.get("clips") or {}).get("caption_style") or {}
+            if style.get("second_speaker"):
+                # Who is talking when is heard here, with the whole video to
+                # know its main speaker by: the worker gets a piece of it.
+                # Imported only for a clip with the option ticked, so a run
+                # without it loads none of the pipeline.
+                from core.pipeline import _speaker_turns, _wants_second_speaker
+
+                if _wants_second_speaker(config, ropts or {}):
+                    ropts = {**(ropts or {}),
+                             "speaker_turns": _speaker_turns(source, candidate, segments, config, ropts or {})}
             jid = protocol.job_id(video_id, candidate.start, candidate.end, ropts, config)
             known_job = self.queue.job(jid)
             if known_job and known_job["state"] == "completed" and Path(known_job["result_path"]).exists():

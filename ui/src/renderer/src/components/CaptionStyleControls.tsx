@@ -10,6 +10,8 @@ export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
   uppercase: true,
   highlight: false,
   highlight_color: '#FFE600',
+  second_speaker: false,
+  second_speaker_color: '#5CE1FF',
   post_style: 'default',
   card_position: 'lower'
 }
@@ -36,7 +38,8 @@ const HIGHLIGHTS_CAPTION_LOOK = {
   color: '#F5FA00',
   uppercase: true,
   position: 'middle',
-  highlight: false
+  highlight: false,
+  second_speaker: false
 } as const
 
 /** Whether a style draws the Highlights look. Never on a 16:9 clip: the
@@ -171,6 +174,13 @@ function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Eleme
               </span>
             ))
           : text}
+        {/* The other speaker's caption, as it follows the main speaker's:
+            the two colours side by side are what is being chosen. */}
+        {style.second_speaker && (
+          <span className="block" style={{ color: style.second_speaker_color }}>
+            {style.uppercase ? 'SECOND SPEAKER' : 'second speaker'}
+          </span>
+        )}
       </p>
     </div>
   )
@@ -270,6 +280,7 @@ export default function CaptionStyleControls({
   onChange,
   hideWordsPerCaption = false,
   hidePosition = false,
+  hideSecondSpeaker = false,
   landscape = false
 }: {
   idPrefix: string
@@ -283,6 +294,8 @@ export default function CaptionStyleControls({
    *  middle, clear of its title card (multilingual/publish.py), so a
    *  position chosen for them would change nothing. */
   hidePosition?: boolean
+  /** Translated subtitles are burned in one colour, whoever is talking. */
+  hideSecondSpeaker?: boolean
   /** Some output is 16:9 (a 16:9 clip, or a job that makes 16:9 clips),
    *  where the post style draws nothing, so every caption control applies
    *  whatever the style says. */
@@ -410,6 +423,32 @@ export default function CaptionStyleControls({
               className="h-7 w-10 rounded-md bg-raised cursor-pointer shrink-0"
               value={style.highlight_color}
               onChange={(e) => onChange('highlight_color', e.target.value.toUpperCase())}
+            />
+          )}
+        </div>
+      )}
+
+      {!highlights && !hideSecondSpeaker && (
+        <div className="flex items-center gap-3">
+          <label
+            className="flex items-center gap-2 cursor-pointer text-sm"
+            title="When two people talk in a clip, the main speaker keeps the text colour and the other person's captions take this one. A clip with one voice looks the same as always."
+          >
+            <input
+              type="checkbox"
+              className="size-4 accent-[#38BDF8]"
+              checked={style.second_speaker}
+              onChange={(e) => onChange('second_speaker', e.target.checked)}
+            />
+            Second speaker in another colour
+          </label>
+          {style.second_speaker && (
+            <input
+              type="color"
+              aria-label="Second speaker's colour"
+              className="h-7 w-10 rounded-md bg-raised cursor-pointer shrink-0"
+              value={style.second_speaker_color}
+              onChange={(e) => onChange('second_speaker_color', e.target.value.toUpperCase())}
             />
           )}
         </div>

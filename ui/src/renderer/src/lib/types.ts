@@ -105,7 +105,15 @@ export interface CaptionLine {
   start: number
   end: number
   text: string
+  /** Set on a line someone other than the main speaker says, when the
+   *  caption style colours them (lib/speakerTurns.ts). */
+  speaker?: number
 }
+
+/** Where in a clip someone other than the main speaker talks, as the render
+ *  heard it (analysis/voice_turns.py): [start, end, speaker] in clip
+ *  seconds, before any editor cuts. */
+export type SpeakerTurn = [number, number, number]
 
 /** One clip's captions translated into one language, held for review before
  *  anything is written to disk. `edited` means a human corrected the text,
@@ -156,6 +164,9 @@ export interface CaptionStyle {
   /** Light up each word as it is spoken (the short-form caption look). */
   highlight?: boolean
   highlight_color?: string
+  /** Another colour for whoever isn't the main speaker (#126). */
+  second_speaker?: boolean
+  second_speaker_color?: string
   /** The clip's whole look (video/post_style.py): 'highlights' is the
    *  sports highlight-page look, a stacked title card and yellow captions. */
   post_style?: 'default' | 'highlights'
@@ -246,6 +257,12 @@ export interface RenderOpts {
   captions?: boolean
   caption_style?: CaptionStyle
   caption_lines?: CaptionLine[]
+  /** Saved by a render whose caption style has second_speaker on. */
+  speaker_turns?: SpeakerTurn[]
+  /** What a person said about who is talking, in the editor's Fix speakers:
+   *  [start, end, 0 main | 1 other], laid over speaker_turns by the render
+   *  (video/captions.py paint_turns). Sent whole; an empty list means none. */
+  speaker_edits?: SpeakerTurn[]
   filter?: FilterName
   adjust?: Adjust
   edit?: EditData | null

@@ -64,6 +64,14 @@ def survey(db, data_dir: Path) -> dict:
             f for f in transcripts.glob("*.json") if f.stem not in known_videos
         ]
 
+    # A video's voices (analysis/voice_turns.py), a few KB kept beside its
+    # transcript and counted with it.
+    voice_profiles = data_dir / "voice_profiles"
+    if voice_profiles.is_dir():
+        groups["orphan_transcripts"] += [
+            f for f in voice_profiles.glob("*.json") if f.stem not in known_videos
+        ]
+
     clips = data_dir / "clips"
     if clips.is_dir():
         for f in clips.rglob("*.mp4"):

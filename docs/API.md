@@ -238,7 +238,7 @@ values in `config/settings.yaml`:
 | `max_clips` | int | cap clips from this video |
 | `min_score` | int | quality bar, 0–100 |
 | `captions` | bool | burn captions in (default true) |
-| `caption_style` | object | font, size, colour, position, `words_per_caption` |
+| `caption_style` | object | font, size, colour, position, `words_per_caption`; `second_speaker` (bool) with `second_speaker_color` burns anyone but the main speaker in another colour |
 | `long_clips` | bool | 61–180s clips, for TikTok monetisation |
 | `podcast` | bool | multi-camera: letterbox, no subject tracking |
 | `longform` | object | `{"mode": ...}`: `short_clips`, `clips_140`, `highlights` or `edited_stream`; add `"shorts": true` to make the 9:16 Shorts in the same job |

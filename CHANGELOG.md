@@ -12,6 +12,36 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **A second colour for the second speaker.** Tick **Second speaker in another colour**
+  in the caption settings, for a whole run or for one clip in the editor, and pick the
+  colour. When two people talk in a clip, the main speaker keeps the text colour and
+  everyone else's captions take the second one, and a caption never mixes two people's
+  words. The main speaker is the voice heard all through the video, so the same person
+  keeps the same colour in every clip of it. It goes by the sound of the voice, so a
+  caller or a friend on voice chat counts with nobody on screen, and so does a video
+  being reacted to or a text-to-speech donation. A clip with one voice, or one where it
+  isn't clear there are two, looks the same as always, and so does every clip with the
+  option off. Works best with clear audio and voices that differ: two people who sound
+  alike talking over each other outdoors are often left one colour. In a video where
+  the streamer says less than what they are watching, the colours can be the other way
+  round. Not for the Highlights post style, which has its own colour, or for translated
+  subtitles. Runs on this PC (two small voice models, about 20 seconds once per video
+  and a couple per clip). (#126)
+
+  **Where it gets a caption wrong, fix it by hand.** In the clip editor's Captions tab,
+  **Fix speakers** marks the other speaker's words. Click a word to switch who says it
+  (the video jumps to it, so you can hear who it is), shift-click to switch every word
+  up to it, **Swap speakers** to flip the whole clip, **Back to automatic** to drop your
+  fixes. Undo (Ctrl+Z) takes a fix back like any other edit. The fix is saved with the
+  clip and stays on later renders, whatever is heard there next time; captions you
+  didn't touch go on following what is heard. It is offered once a clip has been
+  rendered with the option on, so a clip you only just ticked it for needs one Apply
+  first. On a clip whose caption text you already edited (a muted, censored or retyped
+  word) a click switches the whole caption, and where two people talk over each other
+  in such a clip a word said inside another may not switch on its own. Processing the
+  video again leaves the fixes saved but not burned until you re-render the clip, as
+  with every other edit.
+
 - **Basketball, the second sport.** Tick **Sports** and choose 🏀 Basketball: dunks,
   threes, blocks, steals and game winners each become a clip with the possession before
   them and the reaction after. The score bug confirms every basket and its points, and
