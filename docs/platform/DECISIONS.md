@@ -50,3 +50,10 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** (1) in-process plugins as in ComfyUI or Blender, which give plugin code the engine's full access and cannot load in the frozen build; (2) plugins that own the whole pipeline, which would make every plugin re-implement rendering and captions; (3) separate `pipeline` and `pipeline_settings` fields; (4) a new `plugin` stage, which needs the UI's mirrored stage list changed; (5) letting pip build source packages at install, which runs their code before the user has used the plugin; (6) automatic removal, as VS Code's block list does; (7) a guessed GitHub URL; (8) keeping every version, which Colin's disk cannot afford.
 **Why:** each keeps the existing API, engine and runtime as they are and follows a research finding (`docs/platform-research.md` §7.4, §7.6).
 **Undo:** each is one section of the architecture document and, once built, one module.
+
+## D8 · "Stable" means what docs/API.md already called supported
+
+**Decided:** the 59 HTTP routes and the WebSocket that `docs/API.md` documents as supported are labelled stable; five routes it only mentions in passing (clip words, editing a clip, editing a queued job, storage clean-up, choosing a thumbnail) are experimental; every other route is internal by default. The architecture's build plan had suggested starting from a smaller stable set.
+**Alternatives:** a small stable core (health, jobs, queue, library), with the rest experimental. That would quietly withdraw a promise `docs/API.md` has made since 1.1, which says supported routes change only with a CHANGELOG note.
+**Why:** Phase 2 formalises the existing API; it does not redraw it. Internal-by-default means a new route needs a deliberate decision before it is promised.
+**Undo:** move entries between labels in `server/api_stability.py`, then run `python scripts/gen_api_reference.py --update-contract`.

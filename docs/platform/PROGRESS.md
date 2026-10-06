@@ -43,7 +43,7 @@ Rule for the night: every test that passed at this baseline must still pass afte
 - [x] 0C · `docs/platform-research.md` (summary, two matrices with no empty cell, borrow sections, hypotheses H1–H10, all 46 questions answered)
 - [x] 1 · `docs/platform-architecture.md` (types, SDK, manifest, execution, models, permissions with enforced or declared labels, trust, versioning, registry and Marketplace, dogfooding, designed-later, two worked examples, build plan, the four success tests)
 - [ ] Review of both documents against BRIEF.md sections 3 and 4
-- [ ] 2 · Public API boundary: reference with stability labels, API version, contract tests
+- [x] 2 · Public API boundary: `server/api_stability.py` (60 stable, 5 experimental, 111 internal), generated `docs/developers/api-reference.md`, `tests/test_api_contract.py` (20 pass, 1 skips without psutil) (dc64ebd, 96929d6). Full suite after: 1899 passed, 14 failed (the baseline 14), 24 skipped.
 - [ ] 3 · Plugin/pipeline contract (minimum SDK) with a first-party adapter
 - [ ] 4 · Manifest schema and validator
 - [ ] 5 · Example external pipeline
