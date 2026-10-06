@@ -165,6 +165,22 @@ def _caption_style(raw: dict) -> dict:
     for flag in ("uppercase", "highlight"):
         if raw.get(flag) is not None:
             style[flag] = bool(raw[flag])
+    if raw.get("post_style") is not None:
+        from video.post_style import STYLES
+
+        name = str(raw["post_style"]).strip().casefold()
+        if name not in STYLES:
+            raise ValueError(f"Post style {raw['post_style']!r} is not one of: {', '.join(STYLES)}.")
+        style["post_style"] = name
+    if raw.get("card_position") is not None:
+        from video.post_style import CARD_POSITIONS
+
+        pos = str(raw["card_position"]).strip().casefold()
+        if pos not in CARD_POSITIONS:
+            raise ValueError(
+                f"Title card position {raw['card_position']!r} is not one of: {', '.join(CARD_POSITIONS)}."
+            )
+        style["card_position"] = pos
     return style
 
 
@@ -1048,6 +1064,21 @@ TOOLS: list[dict] = [
                             "description": "1-6 words on screen at once. 3 is default.",
                         },
                         "uppercase": {"type": "boolean"},
+                        "post_style": {
+                            "type": "string",
+                            "enum": ["default", "highlights"],
+                            "description": (
+                                "The clip's whole look. highlights = the sports highlight-page "
+                                "look (House of Highlights style): a stacked title card, a "
+                                "yellow-on-black headline over a black-on-yellow second line, "
+                                "and yellow ALL CAPS captions. default = captions only."
+                            ),
+                        },
+                        "card_position": {
+                            "type": "string",
+                            "enum": ["lower", "top"],
+                            "description": "Where the highlights title card sits. lower is default.",
+                        },
                         "highlight": {
                             "type": "boolean",
                             "description": "Light each word up as it is spoken",

@@ -156,6 +156,11 @@ export interface CaptionStyle {
   /** Light up each word as it is spoken (the short-form caption look). */
   highlight?: boolean
   highlight_color?: string
+  /** The clip's whole look (video/post_style.py): 'highlights' is the
+   *  sports highlight-page look, a stacked title card and yellow captions. */
+  post_style?: 'default' | 'highlights'
+  /** Where the highlights title card sits. */
+  card_position?: 'lower' | 'top'
 }
 
 export type FilterName =
@@ -251,6 +256,10 @@ export interface RenderOpts {
   watermark?: WatermarkConfig | null
   /** A Sports job's clip: its sport, so a re-render frames the ball again. */
   sport?: string
+  /** The highlights post style's title card: its big line and the smaller
+   *  one under it (video/post_style.py). */
+  headline?: string
+  subline?: string
 }
 
 /** Normalized [x, y, width, height] of a region of the SOURCE frame. */

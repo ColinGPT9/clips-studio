@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions, SportOption } from '../../lib/types'
-import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
+import CaptionStyleControls, {
+  DEFAULT_CAPTION_STYLE,
+  PostStyleControls
+} from '../CaptionStyleControls'
 import SportFields from '../SportFields'
 import { sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../../lib/sports'
 import { watermarkSelection } from '../WatermarkCard'
@@ -62,6 +65,8 @@ export default function QueueItemSettings({
 
   const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void =>
     setStyle((prev) => ({ ...prev, [key]: value }))
+  // Every output 16:9: the post style draws nothing on those.
+  const longformOnly = longform && !longformShorts
 
   const save = async (): Promise<void> => {
     setBusy(true)
@@ -315,16 +320,34 @@ export default function QueueItemSettings({
         </div>
       )}
 
+      {/* Open with captions off too: the post style still applies then (a
+          Highlights card goes on every clip), so it must stay in reach. */}
       <button
         className="btn-ghost"
         onClick={() => setStyleOpen(!styleOpen)}
         aria-expanded={styleOpen}
-        disabled={!captions}
       >
-        {t('Caption style')} {styleOpen ? '▾' : '▸'}
+        {captions ? t('Caption style') : t('Post style')} {styleOpen ? '▾' : '▸'}
       </button>
+      {styleOpen && (
+        <PostStyleControls
+          idPrefix={`q${job.id}`}
+          style={style}
+          onChange={setStyleField}
+          landscape={longformOnly}
+          alsoLandscape={longform && longformShorts}
+        />
+      )}
+      {/* Every caption control while any output is 16:9: those clips keep
+          the standard look whatever the post style, so a Highlights pick
+          must not hide the font, colour and position they burn with. */}
       {styleOpen && captions && (
-        <CaptionStyleControls idPrefix={`q${job.id}`} style={style} onChange={setStyleField} />
+        <CaptionStyleControls
+          idPrefix={`q${job.id}`}
+          style={style}
+          onChange={setStyleField}
+          landscape={longform}
+        />
       )}
 
       <div className="flex items-center gap-3">

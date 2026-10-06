@@ -29,6 +29,20 @@ METADATA_SCHEMA = {
     "required": ["title", "description", "hashtags"],
     "additionalProperties": False,
 }
+# The highlights post style (video/post_style.py) also asks for the two
+# lines of its title card.
+_CARD_FIELDS = {"headline": {"type": "string"}, "subline": {"type": "string"}}
+BATCH_SCHEMA_HIGHLIGHTS = {
+    "type": "object",
+    "properties": {"items": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"index": {"type": "integer"}, **_METADATA_FIELDS, **_CARD_FIELDS},
+        "required": ["index", "title", "description", "hashtags", "headline", "subline"],
+        "additionalProperties": False,
+    }}},
+    "required": ["items"],
+    "additionalProperties": False,
+}
 BATCH_SCHEMA = {
     "type": "object",
     "properties": {"items": {"type": "array", "items": {
@@ -47,6 +61,10 @@ class ClipMetadata:
     title: str
     description: str
     hashtags: list[str] = field(default_factory=list)
+    # The highlights post style's title card (video/post_style.py). Empty
+    # for every other style; never stored as metadata, only as render options.
+    headline: str = ""
+    subline: str = ""
 
 
 def generate_metadata(
@@ -82,6 +100,11 @@ def generate_metadata(
 
 
 BATCH_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "metadata_batch.txt"
+# Per post style (video/post_style.py): the words written to match the look.
+# A style not listed here writes the usual Shorts metadata.
+STYLE_PROMPT_PATHS = {
+    "highlights": BATCH_PROMPT_PATH.with_name("metadata_batch_highlights.txt"),
+}
 
 
 def generate_metadata_batch(
@@ -92,6 +115,7 @@ def generate_metadata_batch(
     batch_size: int = 8,
     creator_context: str = "",
     rules: str = "",
+    style: str = "default",
 ) -> list[ClipMetadata]:
     """Metadata for ALL clips in a few LLM calls instead of one per clip —
     on a long stream this cuts dozens of model calls from the analysis time.
@@ -99,9 +123,12 @@ def generate_metadata_batch(
     creator_context (optional): learned facts about the creator — series
     names, running jokes, collaborators — for more accurate titles/hashtags.
     rules (optional): a sport's own rules for its clips' titles (basketball:
-    which player to name); "" for every other job, whose prompt is unchanged."""
+    which player to name); "" for every other job, whose prompt is unchanged.
+    style: the clip's post style; "highlights" writes highlight-page captions."""
     results: list[ClipMetadata] = [_fallback(c, video_title) for c in candidates]
-    template = BATCH_PROMPT_PATH.read_text(encoding="utf-8")
+    template = STYLE_PROMPT_PATHS.get(style, BATCH_PROMPT_PATH).read_text(encoding="utf-8")
+    card = style == "highlights"
+    schema = BATCH_SCHEMA_HIGHLIGHTS if card else BATCH_SCHEMA
     if rules:
         template = template.replace("{clips}", "RULES FOR THESE CLIPS:\n" + rules + "\n\n{clips}")
     if creator_context:
@@ -123,7 +150,7 @@ def generate_metadata_batch(
             .replace("{clips}", "\n\n".join(blocks))
         )
         try:
-            data = _parse(generate_json(llm, prompt, BATCH_SCHEMA))
+            data = _parse(generate_json(llm, prompt, schema))
         except Exception:
             data = None
         if not data or not isinstance(data.get("items"), list):
@@ -140,6 +167,8 @@ def generate_metadata_batch(
                 title=_clean_title(item.get("title", "")) or fallback.title,
                 description=str(item.get("description", "")).strip() or fallback.description,
                 hashtags=_clean_hashtags(item.get("hashtags", [])) or fallback.hashtags,
+                headline=_clean_card_line(item.get("headline", ""), 40) if card else "",
+                subline=_clean_card_line(item.get("subline", ""), 48) if card else "",
             )
     for c, m in zip(candidates, results):
         _earned(c, m)
@@ -273,6 +302,19 @@ def _parse(raw: str) -> dict | None:
 def _clean_title(title: str) -> str:
     title = re.sub(r"[<>]", "", str(title)).strip().strip('"')
     return title[:MAX_TITLE_LEN].strip()
+
+
+def _clean_card_line(text, limit: int) -> str:
+    """One line of the highlights title card: one line, no quotes, no
+    hashtags, and short. An overlong one is cut at a word; the card shrinks
+    and wraps what is left (video/post_style.py)."""
+    text = re.sub(r"\s+", " ", re.sub(r"[<>\"]", "", str(text or ""))).strip()
+    # A hashtag has a letter in it: "#1 PICK" and "#23" are a draft rank and a
+    # jersey number, and stay (the card's own filter in video/post_style.py).
+    text = re.sub(r"(^|\s)#(?=\w*[^\W\d_])\w+", " ", text).strip()
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0]
+    return text
 
 
 def _clean_hashtags(tags) -> list[str]:

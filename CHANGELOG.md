@@ -27,6 +27,18 @@ were often broken in a way that only showed up on somebody else's machine.
   people in them are, and the crop no longer snaps when the camera pans. See
   [docs/SPORTS.md](docs/SPORTS.md#basketball).
 
+- **A Highlights post style.** Pick **Post style → Highlights** with the caption
+  settings (it stays there with captions off) and Shorts come out looking like the big
+  sports highlight pages' reels. The clip is framed full screen as usual. Over it goes
+  their stacked title card: a big yellow headline on a black box and a smaller line on a
+  yellow box under it, with the emoji in colour. Captions turn yellow and ALL CAPS in
+  the middle of the frame. Titles, card lines and hashtags are written in that voice
+  too, and names only appear when they are said in the clip or in the video title. The
+  card can sit in the lower third or at the top (a clip with a hook title keeps it in
+  the lower third), and you can change its words, or switch a clip's style, in the clip
+  editor. 16:9 videos keep the standard look. Add your own handle or logo with a
+  watermark. The standard look stays the default.
+
 ### Changed
 
 - **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a

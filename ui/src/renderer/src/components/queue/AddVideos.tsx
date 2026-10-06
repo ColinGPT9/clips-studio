@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { CaptionStyle, JobOptions } from '../../lib/types'
-import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from '../CaptionStyleControls'
+import CaptionStyleControls, {
+  DEFAULT_CAPTION_STYLE,
+  PostStyleControls
+} from '../CaptionStyleControls'
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../WatermarkCard'
 import GamingLayoutEditor from '../GamingLayoutEditor'
 import SportFields from '../SportFields'
@@ -339,6 +342,21 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       )
     )
 
+  /** This video's caption style, whole, and a change to one field of it: the
+   *  post style and the caption controls edit the same object. */
+  const slotStyle = (slot: Slot): Required<CaptionStyle> => ({
+    ...DEFAULT_CAPTION_STYLE,
+    ...(slot.options.caption_style ?? {})
+  })
+  const setSlotStyle =
+    (slot: Slot) =>
+    <K extends keyof CaptionStyle>(k: K, v: CaptionStyle[K]): void =>
+      patchOptions(slot.key, { caption_style: { ...slotStyle(slot), [k]: v } })
+  /** Every output of this video is 16:9 (Longform with no 9:16 Shorts),
+   *  where a post style draws nothing. */
+  const longformOnly = (slot: Slot): boolean =>
+    Boolean(slot.options.longform && !slot.options.longform.shorts)
+
   /** REPLACE this video's options wholesale.
    *
    *  Switching an option off deletes its key (an absent key is what the
@@ -629,14 +647,16 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 {t('Captions')}
               </label>
 
-              {/* Immediately beside Captions: it configures that switch. */}
+              {/* Immediately beside Captions: it configures that switch. It
+                  opens with captions off too, for the post style, which still
+                  applies then (a Highlights card goes on every clip). */}
               <button
                 className="btn-ghost shrink-0"
                 onClick={() => setOpenStyle(openStyle === slot.key ? null : slot.key)}
                 aria-expanded={openStyle === slot.key}
-                disabled={slot.options.captions === false}
               >
-                {t('Caption style')} {openStyle === slot.key ? '▾' : '▸'}
+                {slot.options.captions === false ? t('Post style') : t('Caption style')}{' '}
+                {openStyle === slot.key ? '▾' : '▸'}
               </button>
 
               {TOGGLES.map((tg) => {
@@ -766,24 +786,31 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
               </div>
             )}
 
-            {openStyle === slot.key && slot.options.captions !== false && (
+            {openStyle === slot.key && (
               <div className="w-full space-y-3 border-t border-raised/60 pt-3 mt-2">
                 <p className="label">
-                  {t('Caption style for')} {slot.path ? slot.title || t('this file') : t('this video')}
+                  {slot.options.captions === false ? t('Post style for') : t('Caption style for')}{' '}
+                  {slot.path ? slot.title || t('this file') : t('this video')}
                 </p>
-                <CaptionStyleControls
+                <PostStyleControls
                   idPrefix={`slot-${slot.key}`}
-                  style={{ ...DEFAULT_CAPTION_STYLE, ...(slot.options.caption_style ?? {}) }}
-                  onChange={(k, v) =>
-                    patchOptions(slot.key, {
-                      caption_style: {
-                        ...DEFAULT_CAPTION_STYLE,
-                        ...(slot.options.caption_style ?? {}),
-                        [k]: v
-                      }
-                    })
-                  }
+                  style={slotStyle(slot)}
+                  onChange={setSlotStyle(slot)}
+                  landscape={longformOnly(slot)}
+                  alsoLandscape={Boolean(slot.options.longform?.shorts)}
                 />
+                {/* Every caption control while any output is 16:9: those
+                    clips keep the standard look whatever the post style, so
+                    a Highlights pick must not hide the font, colour and
+                    position they burn with. */}
+                {slot.options.captions !== false && (
+                  <CaptionStyleControls
+                    idPrefix={`slot-${slot.key}`}
+                    style={slotStyle(slot)}
+                    onChange={setSlotStyle(slot)}
+                    landscape={Boolean(slot.options.longform)}
+                  />
+                )}
               </div>
             )}
 

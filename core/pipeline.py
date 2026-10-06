@@ -506,20 +506,26 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
     # (one call per clip made long streams crawl through analysis).
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
+    from video import post_style as _post_style
+
+    post_style = _post_style.resolve(config["clips"].get("caption_style"))
     # A sport's own rules for its clips' titles (basketball: which player to name).
     title_rules = getattr(sport_profile, "title_rules", None) if sport_profile is not None else None
     metas = generate_metadata_batch(
         candidates, segments, video.title, llm,
         creator_context=(creator_ctx.summary if creator_ctx else ""),
+        style=post_style,
         **({"rules": title_rules()} if title_rules is not None else {}),
     )
     # ...and its check of them against the game (basketball: who scored, who
     # leads): the ones that get it wrong are written again with these rules.
     check_titles = getattr(sport_profile, "check_titles", None) if sport_profile is not None else None
     if check_titles is not None:
+        # The same post style, so a rewritten Highlights clip keeps its card lines.
         metas = check_titles(candidates, metas, lambda clips, rules: generate_metadata_batch(
             clips, segments, video.title, llm,
-            creator_context=(creator_ctx.summary if creator_ctx else ""), rules=rules))
+            creator_context=(creator_ctx.summary if creator_ctx else ""), rules=rules,
+            style=post_style))
 
     # Hashtags the request insisted on (chat: "put #creatorname on all of
     # them"). Appended after generation rather than asked of the model: a
@@ -591,6 +597,15 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # exactly the argument every render has always been given.
     gaming_opts = _gaming_prepare(video.path, candidates, clip_dir, config) if modes.is_gaming(config) else None
 
+    def _clip_opts(meta) -> dict | None:
+        """One clip's render options: the job's, plus its title card when the
+        post style draws one (written for that style above)."""
+        if post_style != _post_style.HIGHLIGHTS:
+            return gaming_opts
+        return {**(gaming_opts or {}),
+                "headline": meta.headline or _post_style.headline_from_title(meta.title),
+                "subline": meta.subline}
+
     def _finish(candidate, meta, get_result) -> None:
         nonlocal done_count, last_failure, repeated_failures
         done_count += 1
@@ -622,8 +637,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(
-                    _render_files, video.path, candidate, segments, clip_dir, config, gaming_opts,
-                    content_lang,
+                    _render_files, video.path, candidate, segments, clip_dir, config,
+                    _clip_opts(meta), content_lang,
                 ): (candidate, meta)
                 for candidate, meta in zip(candidates, metas)
             }
@@ -638,7 +653,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     else:
         for candidate, meta, get_result in remote.render_all(
             video.video_id, video.path, list(zip(candidates, metas)), segments, clip_dir, config,
-            gaming_opts, content_lang, workers,
+            gaming_opts, content_lang, workers, opts_for=_clip_opts,
         ):
             _finish(candidate, meta, get_result)
 
@@ -1209,6 +1224,12 @@ def _render_files(
     ass_path = None
     # Per-clip style wins; otherwise the job/config default chosen at generate time.
     caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
+    # Post style (video/post_style.py), chosen with the caption style. The
+    # highlights look keeps the clip's framing and adds its captions and
+    # title card on top; vertical clips only.
+    from video import post_style as _post_style
+
+    highlights = not landscape and _post_style.resolve(caption_style) == _post_style.HIGHLIGHTS
     if config["clips"].get("captions", True) and opts.get("captions", True):
         lines = opts.get("caption_lines")  # user-corrected caption text, if any
         if edit is not None and (edit.keep is not None or abs(edit.speed - 1) >= 0.01):
@@ -1223,7 +1244,7 @@ def _render_files(
             lines = remap_lines(lines, edit)
         ass_path = build_captions(
             segments, candidate, clip_dir / f"{stem}.ass",
-            style=caption_style,
+            style=_post_style.caption_style_for(caption_style) if highlights else caption_style,
             lines=lines,
             canvas=canvas,
             language=content_language,
@@ -1380,6 +1401,19 @@ def _render_files(
     if ass_path is not None:
         discard(ass_path)
 
+    # Highlights title card: one overlay pass on the finished clip, like the
+    # image watermark below (which then sits on top of it). The text is saved
+    # with the clip (opts["headline"], opts["subline"]), so a re-render keeps
+    # it and the editor can change it.
+    if highlights and (opts.get("headline") or opts.get("subline")):
+        # The editor's hook title is burned at the top in the pass above, and
+        # a card laid over it there would hide it. A clip with a hook keeps
+        # its card in the lower third instead.
+        position = _post_style.card_position(caption_style)
+        if position == "top" and edit is not None and edit.hook:
+            position = "lower"
+        _title_card(render_path, opts, position, clip_dir / f"{stem}.card.png", content_language)
+
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
         _wm.apply_image(render_path, wm_cfg, canvas, wm_assets)
@@ -1420,6 +1454,34 @@ def _render_files(
         }
     ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live or sport_name) else ""
     return final_path, render_opts_json
+
+
+def _title_card(clip: Path, opts: dict, position: str, png: Path, language: str) -> None:
+    """Lay the highlights title card over a rendered clip, at `position`
+    ("lower" or "top"). Never raises: a card that cannot be drawn leaves the
+    clip as it was rendered."""
+    from core import modes
+    from video import post_style
+
+    try:
+        size = modes.probe_size(clip)
+        if not all(size):
+            size = (1080, 1920)
+        card = post_style.render_card(
+            str(opts.get("headline") or ""), str(opts.get("subline") or ""), size, png,
+            position=position, language=language,
+        )
+        if card is None:
+            # Its words were only hashtags, or nothing here can draw them: no
+            # face has their script, or right-to-left text has no layout
+            # engine to shape it. Said, so a missing card is not a mystery.
+            print("      (Title card skipped: nothing on it could be drawn)")
+        else:
+            post_style.apply_card(clip, card)
+    except Exception as e:
+        print(f"      (Title card skipped: {e})")
+    finally:
+        discard(png)
 
 
 def _sport_framing(clip_path: Path, config: dict, sport_name: str) -> dict | None:
@@ -1476,17 +1538,52 @@ def _register_clip(
             (video_id, round(candidate.start, 2), round(candidate.end, 2)),
         ).fetchone()
         if row:
+            from video import post_style as _post_style
+
             fresh = {"path": str(final_path), "scores": json.dumps(candidate.subscores or {})}
             rendered = json.loads(render_opts_json) if render_opts_json else {}
+            existing = db.get_clip(row["id"])
+            kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
             if rendered.get("gaming"):
                 # Gaming / Reaction: the row's split must be the one this file
                 # was rendered with, or the editor starts from a stale one.
-                existing = db.get_clip(row["id"])
-                kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
-                fresh["render_opts"] = json.dumps({**kept, "gaming": rendered["gaming"]})
+                kept = {**kept, "gaming": rendered["gaming"]}
+                fresh["render_opts"] = json.dumps(kept)
+            if _post_style.HIGHLIGHTS in (_post_style.resolve(kept.get("caption_style")),
+                                          _post_style.resolve(rendered.get("caption_style"))):
+                # Highlights, in this render or the saved one: the row's title
+                # card must be the one this file was rendered with. The editor
+                # and its re-renders start from the row, so a stale one drops
+                # the new card on the next edit, or brings an old one back.
+                fresh["render_opts"] = json.dumps(_with_card_of(kept, rendered))
             db.set_clip(row["id"], **fresh)
         print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None
 
     print(f"      -> {final_path}  ({meta.title})")
     return RenderedClip(source_video_id=video_id, candidate=candidate, path=final_path)
+
+
+def _with_card_of(kept: dict, rendered: dict) -> dict:
+    """A clip's saved options with the highlights title card set to the one
+    a fresh render was made with: its post style and card position, and its
+    headline and subline (gone when that render drew no card). The rest of
+    the saved caption style stays the clip's, as on any re-run."""
+    out = dict(kept)
+    new_style = rendered.get("caption_style") or {}
+    style = dict(kept.get("caption_style") or new_style)
+    for key in ("post_style", "card_position"):
+        if key in new_style:
+            style[key] = new_style[key]
+        else:
+            style.pop(key, None)
+    if style:
+        out["caption_style"] = style
+    else:
+        out.pop("caption_style", None)
+    for key in ("headline", "subline"):
+        if key in rendered:
+            out[key] = rendered[key]
+        else:
+            out.pop(key, None)
+    return out

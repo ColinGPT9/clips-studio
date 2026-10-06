@@ -88,12 +88,20 @@ class RemoteRenderer:
         return "the render PC"
 
     def render_all(self, video_id: str, source: Path, items: list, segments: list, clip_dir: Path,
-                   config: dict, render_opts: dict | None, language: str, workers: int, local=None):
+                   config: dict, render_opts: dict | None, language: str, workers: int, local=None,
+                   opts_for=None):
+        """opts_for(meta), when given, is each clip's own render options
+        (e.g. its headline, video/post_style.py) in place of render_opts."""
+        per_clip = {id(c): opts_for(m) for c, m in items} if opts_for else {}
+
+        def opts_of(c):
+            return per_clip.get(id(c), render_opts)
+
         if local is None:
             from core.pipeline import _render_files
 
             def local(c):
-                return _render_files(source, c, segments, clip_dir, config, render_opts, language)
+                return _render_files(source, c, segments, clip_dir, config, opts_of(c), language)
         rcfg = protocol.render_config(config)
         framing = protocol.needs_framing(rcfg, render_opts)
         known = {w["id"] for w in self.queue.workers()}
@@ -111,7 +119,8 @@ class RemoteRenderer:
         pending: dict[str, tuple] = {}
         for candidate, meta in items:
             cancel.check_active()
-            jid = protocol.job_id(video_id, candidate.start, candidate.end, render_opts, config)
+            ropts = opts_of(candidate)
+            jid = protocol.job_id(video_id, candidate.start, candidate.end, ropts, config)
             known_job = self.queue.job(jid)
             if known_job and known_job["state"] == "completed" and Path(known_job["result_path"]).exists():
                 pending[jid] = (candidate, meta)
@@ -123,11 +132,11 @@ class RemoteRenderer:
                     "start": candidate.start, "end": candidate.end, "offset": offset,
                     "candidate": _candidate_dict(candidate),
                     "segments": _segments_for(segments, candidate.start, candidate.end),
-                    "render_opts": render_opts, "language": language, "config": rcfg}
+                    "render_opts": ropts, "language": language, "config": rcfg}
             self.queue.submit({"id": jid, "video_id": video_id, "label": spec["label"], "target": self.target,
                                "needs_framing": framing, "spec": spec, "piece_path": str(path),
                                "piece_sha": piece.sha256(path), "piece_size": path.stat().st_size,
-                               "assets": _assets(render_opts, config)})
+                               "assets": _assets(ropts, config)})
             pending[jid] = (candidate, meta)
 
         done = 0
