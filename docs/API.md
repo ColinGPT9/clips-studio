@@ -8,9 +8,11 @@ a script that queues last night's VOD every morning.
 Nothing needs to be added to the app for that to work. The service is already
 running whenever Clips Kitty is open, on `127.0.0.1:8765`.
 
-The service has 86 HTTP endpoints and a WebSocket. This document covers the
+The service has about 175 HTTP routes and a WebSocket. This document covers the
 subset meant to be built against. Most of the rest are the desktop UI talking
-to itself, and are listed as internal below.
+to itself, and are listed as internal below. Every route, with its stability
+label (stable, experimental or internal), is in the generated
+[API reference](developers/api-reference.md).
 
 > **Every example here was run against a live instance**, and the responses are
 > real (with the video titles swapped for made-up ones). If something in this
@@ -128,6 +130,13 @@ Two consequences worth knowing before you debug something confusing:
 
 The endpoints in this document are the ones intended to be built on. They will
 not change shape without a note in [CHANGELOG.md](../CHANGELOG.md).
+
+These are the routes labelled **stable** in
+[`server/api_stability.py`](../server/api_stability.py), and
+`tests/test_api_contract.py` fails if one stops accepting what it accepted.
+A few routes this document only mentions in passing are **experimental**: meant
+for outside use, but not yet promised. The [API reference](developers/api-reference.md)
+lists every route with its label.
 
 **Everything else is internal**: branding assets, creator memory, caption
 editing, the AI edit endpoints, feedback submission. They exist to serve one
