@@ -17,6 +17,7 @@ queued and never run.
 """
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -210,6 +211,31 @@ def test_every_stable_http_route_is_pinned(app):
         f"Stable routes with no pinned shape: {missing}. Pin them with "
         "python scripts/gen_api_reference.py --update-contract"
     )
+
+
+def _routes_named_in(text: str) -> set[tuple[str, str]]:
+    """(METHOD, path) pairs a guide names, path parameters folded to {}."""
+    def norm(path):
+        return re.sub(r"\{[^}]+\}", "{}", path)
+
+    methods = "GET|POST|PATCH|DELETE|PUT"
+    found = {(m, norm(p)) for m, p in re.findall(rf"`({methods}) (/[^`\s?]*)", text)}
+    for first, second, path in re.findall(rf"`({methods})` / `({methods}) (/[^`\s?]*)", text):
+        found |= {(first, norm(path)), (second, norm(path))}  # "`PATCH` / `DELETE /x/{id}`"
+    found |= {("WS", norm(p)) for p in re.findall(r"ws://[^/\s]+(/[^\s`]*)", text)}
+    return found
+
+
+def test_every_stable_route_is_in_the_guide():
+    """docs/API.md is the guide users read; the stability labels are kept by
+    server/api_stability.py. A stable route the guide never names would be a
+    promise nobody can find."""
+    from server import api_stability as st
+
+    named = _routes_named_in((ROOT / "docs" / "API.md").read_text(encoding="utf-8"))
+    missing = sorted(f"{m} {p}" for (m, p), (label, *_rest) in st.ROUTES.items()
+                     if label == st.STABLE and (m, re.sub(r"\{[^}]+\}", "{}", p)) not in named)
+    assert not missing, f"Stable routes docs/API.md never names: {missing}. Document them there, or label them experimental."
 
 
 def test_the_breakage_check_tells_additive_from_breaking():

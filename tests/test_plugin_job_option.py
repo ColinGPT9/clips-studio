@@ -130,6 +130,7 @@ def test_a_queued_job_can_gain_and_drop_a_pipeline(api):
 
 def test_a_watch_with_a_pipeline_beside_longform_keeps_longform():
     pytest.importorskip("yaml")
+    pytest.importorskip("fastapi")  # server.automation mounts routes
     from server import automation
 
     watch = {"options": json.dumps({"pipeline": {"id": "fixture-dev/echo"}, "preset": "highlights"})}
@@ -153,6 +154,7 @@ def pipeline_run(monkeypatch, tmp_path, db):
     recording which detector it called and with what."""
     pytest.importorskip("numpy")
     pytest.importorskip("cv2")
+    pytest.importorskip("PIL")  # the end card (video/outro.py)
     import core.pipeline as pipeline
     from core.models import DownloadedVideo, Segment
     from main import BUNDLED_CONFIG, load_config

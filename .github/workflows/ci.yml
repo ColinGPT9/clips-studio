@@ -97,6 +97,29 @@ jobs:
           fi
           echo "no credential files tracked"
 
+  platform:
+    name: Plugin platform
+    runs-on: ubuntu-latest
+    # The plugin platform's tests import the engine's web layer and OpenCV (the
+    # API contract, the pipeline job option, the process_video branch), which
+    # the Python job above does not install, so they skip there. This job
+    # installs just those, within requirements.txt's ranges, and runs only them.
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install what these tests need
+        run: >-
+          pip install --quiet pytest requests httpx numpy pillow
+          "PyYAML>=6.0.3,<7" "fastapi>=0.141.1,<1" "opencv-python-headless>=4.14.0.94,<5"
+          "yt-dlp>=2026.8.19" "defusedxml>=0.7.1,<1"
+
+      - name: Platform tests
+        run: python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py
+
   ui:
     name: Desktop app
     runs-on: ubuntu-latest
