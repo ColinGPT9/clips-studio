@@ -36,6 +36,10 @@ opencv-python>=4.14.0.94,<5
 # the wheel; the later "rapidocr" package downloads them at first use, which
 # an installed copy must never do.
 rapidocr-onnxruntime>=1.4.4,<1.5
+# Runs the two voice models behind the second speaker's caption colour
+# (analysis/voice_turns.py). Already installed as a dependency of
+# faster-whisper and Piper; pinned now that it is used directly.
+onnxruntime>=1.26,<2
 
 # ---- API server ------------------------------------------------------------
 fastapi>=0.141.1,<1

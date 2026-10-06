@@ -84,6 +84,8 @@ hiddenimports += [
     "analysis.panns",
     "analysis.game_text",
     "analysis.game_vision",
+    # The second speaker's caption colour (imported only when it is ticked).
+    "analysis.voice_turns",
     # Remote rendering (imported only when it is switched on).
     "remote_render",
     "remote_render.protocol",
@@ -180,6 +182,13 @@ if _asd.exists():
 _panns = ROOT / "models" / "panns_mobilenetv1.pth"
 if _panns.exists():
     datas += [(str(_panns), ".")]
+
+# Voice models (pyannote segmentation 6 MB, WeSpeaker ResNet34-LM 27 MB),
+# fetched by scripts/fetch_voice_model.py, for analysis/voice_turns.py. Without
+# both, captions stay one colour whoever is talking.
+for _voice in ("pyannote_segmentation_3.onnx", "wespeaker_resnet34_lm.onnx"):
+    if (ROOT / "models" / _voice).exists():
+        datas += [(str(ROOT / "models" / _voice), ".")]
 
 # FFmpeg, fetched by scripts/fetch_ffmpeg.py. core.binaries looks for an
 # ffmpeg/ folder next to the executable.

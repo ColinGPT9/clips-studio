@@ -54,6 +54,7 @@ CAPTION_LOOK = {
     "uppercase": True,
     "position": "middle",
     "highlight": False,
+    "second_speaker": False,
 }
 
 # Card geometry, as fractions of the frame WIDTH unless noted, measured off

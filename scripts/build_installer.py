@@ -126,6 +126,8 @@ def ensure_vendored() -> None:
         ("Ollama", ROOT / "vendor" / "ollama" / "ollama.exe", "fetch_ollama.py"),
         ("Whisper weights", ROOT / "vendor" / "whisper", "fetch_whisper.py"),
         ("Game-sound model", ROOT / "models" / "panns_mobilenetv1.pth", "fetch_panns.py"),
+        # The marker is the second of the two it fetches: there when both are.
+        ("Voice models", ROOT / "models" / "pyannote_segmentation_3.onnx", "fetch_voice_model.py"),
     ]
     for label, marker, script in wanted:
         if marker.exists():

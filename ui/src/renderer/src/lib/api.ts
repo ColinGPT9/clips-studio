@@ -22,6 +22,7 @@ import type {
   QueueSnapshot,
   RenderOpts,
   Settings,
+  SpeakerTurn,
   SportChoice,
   SystemStats,
   Translation,
@@ -336,7 +337,10 @@ export const api = {
     watermark?: WatermarkConfig | Record<string, never>,
     gaming?: GamingSettings | null,
     /** Pending Highlights title card words; undefined = the clip's saved ones. */
-    card?: { headline: string; subline: string }
+    card?: { headline: string; subline: string },
+    /** Pending hand fixes of who is talking; undefined = the clip's saved
+     *  ones, an empty list = none. */
+    speakerEdits?: SpeakerTurn[]
   ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
@@ -349,7 +353,8 @@ export const api = {
         // undefined = unchanged, null = preview without the split
         gaming: gaming ?? null,
         gaming_off: gaming === null,
-        ...(card ?? {})
+        ...(card ?? {}),
+        speaker_edits: speakerEdits ?? null
       })
     }),
   /** A frame of the clip's SOURCE video, `at` (0-1) of the way through, to

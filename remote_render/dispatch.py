@@ -117,9 +117,16 @@ class RemoteRenderer:
         where = self._worker_name(self.target) if self.target else "a render worker"
         print(f"      Remote rendering: sending {len(items)} clip(s) to {where}")
         pending: dict[str, tuple] = {}
+        from core.pipeline import _speaker_turns, _wants_second_speaker
+
         for candidate, meta in items:
             cancel.check_active()
             ropts = opts_of(candidate)
+            if _wants_second_speaker(config, ropts or {}):
+                # Who is talking when is heard here, with the whole video to
+                # know its main speaker by: the worker gets a piece of it.
+                ropts = {**(ropts or {}),
+                         "speaker_turns": _speaker_turns(source, candidate, segments, config, ropts or {})}
             jid = protocol.job_id(video_id, candidate.start, candidate.end, ropts, config)
             known_job = self.queue.job(jid)
             if known_job and known_job["state"] == "completed" and Path(known_job["result_path"]).exists():

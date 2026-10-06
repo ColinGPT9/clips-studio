@@ -112,6 +112,7 @@ flowchart TD
 | Person/pose detection | YOLOv8 (`yolov8n-pose.pt`) + OpenCV | local, CUDA or CPU |
 | Text on screen (score box, game banners) | RapidOCR | local |
 | Sound events (crowd, whistle, game sounds) | PANNs (an AudioSet tagger) | local |
+| Who is talking (the second speaker's caption colour) | pyannote segmentation + WeSpeaker speaker model, on onnxruntime | local, CPU, one core |
 | Ball detection (Sports) | YOLOv8n, "sports ball" | local |
 | Rendering | FFmpeg with hardware encoding (NVENC / AMF / QSV) | local |
 | Dubbing voices | local TTS | local |
@@ -192,6 +193,7 @@ clips-studio/
 │   ├── game_vision.py          # the AI looks at a gaming stream's best candidates
 │   ├── chat_moments.py         # what chat's reactions say happened
 │   ├── panns.py                # PANNs sound tagger: game sounds, crowd, whistle
+│   ├── voice_turns.py          # whose voice it is: the turns of anyone but the main speaker
 │   ├── intent.py               # clip direction: what the clips should be about
 │   ├── fusion.py               # candidate generation, weighted scoring, rerank
 │   ├── highlights.py           # LLM transcript scoring + duplicate prevention
@@ -264,7 +266,7 @@ clips-studio/
 ├── publish/                    # YouTube Data API, WoopSocial, Upload-Post; metadata, scheduling, quota
 ├── remote_render/              # a second PC renders clips: service, TLS gateway, worker, protocol
 ├── third_party/talknet/        # vendored TalkNet-ASD — do not edit
-├── models/                     # TalkNet weights (pretrain_TalkSet.model), PANNs game sounds
+├── models/                     # TalkNet weights (pretrain_TalkSet.model), PANNs game sounds, the two voice models
 ├── ui/                         # ── desktop app ──
 │   ├── src/main/               # Electron main process
 │   └── src/renderer/           # React + TypeScript + Tailwind
@@ -537,6 +539,29 @@ impossible by construction.
 
 Captions are generated as ASS subtitles from word-level Whisper timestamps and burned
 in during the same FFmpeg pass as the crop. One encode, not two.
+
+With **Second speaker in another colour** ticked in the caption style, the render first
+asks `analysis/voice_turns.py` where in the clip someone other than the video's main
+speaker talks. A segmentation model marks who is talking when, ten seconds at a time; a
+speaker model says whose voice each of those is. The main speaker is the voice heard
+throughout the video, found once per video and kept in `data/voice_profiles/`, so the
+same person keeps the same colour in every clip. Lines end where the speaker changes,
+the other speaker's take the second colour, and the turns are saved with the clip
+(`speaker_turns`) for the editor's preview. A clip with one voice, or one where it is
+not clear there are two, is captioned exactly as without the option.
+
+What it hears wrong is put right in the editor (**Fix speakers**, Captions tab). A fix
+is a statement, saved beside what was heard as `speaker_edits`: `[[start, end, 0 or 1],
+...]` in clip seconds, 0 for the main speaker. `video/captions.py` `paint_turns` lays the
+statements over the heard turns at every render, later ones winning, and the result is
+captioned like any other turns; `speaker_turns` stays what was heard, so the editor can
+always go back to it. A clip whose caption text was saved keeps its lines, and
+`tag_lines` colours each one whole by who says the words in it, so there a fix switches
+a whole caption. The editor works out the same thing for its instant preview in
+`ui/src/renderer/src/lib/speakerTurns.ts`, on the same numbers (`clip_words`, which is
+also what `GET /clips/{id}/words` returns). What a click, a shift-click and Swap add to
+the list is worked out there too (`fixSpeakers`), and `tests/test_ui_speaker_turns_sync.py`
+runs that file under Node: against the Python, and clicked through word after word.
 
 ### 5.2 Gaming / Reaction layouts
 
@@ -946,6 +971,7 @@ for offline installs.
 | YOLO weights | Bundled as data | Otherwise the first video stalls on a silent download |
 | TalkNet weights | `models/pretrain_TalkSet.model` bundled as data | ~60 MB, and speaker detection degrades to motion-based framing without it: `asd.available()` gates every call, so a missing file is a quieter clip, not a crash |
 | Game-sound weights | `scripts/fetch_panns.py` → `models/panns_mobilenetv1.pth` bundled as data | 24 MB (PANNs MobileNetV1, CC BY 4.0); only a gaming stream uses it, and `panns.available()` gates it, so without it a gaming stream is scored on chat and voice alone |
+| Voice models | `scripts/fetch_voice_model.py` → `models/pyannote_segmentation_3.onnx` and `models/wespeaker_resnet34_lm.onnx` bundled as data | 33 MB (pyannote segmentation-3.0, MIT; WeSpeaker ResNet34-LM, CC BY 4.0); only a clip with the second speaker's colour ticked uses them, and `voice_turns.available()` gates it, so without them captions stay one colour |
 | PyTorch | CUDA build, bundled | Not just for tracking. The CUDA wheels carry the cuDNN DLLs that CTranslate2 needs for GPU transcription. A CPU build makes *both* Whisper and tracking fall back to CPU |
 | cuBLAS 12 | `nvidia-cublas-cu12`, bundled | CTranslate2 (Whisper) loads cuBLAS 12 by name, and current PyTorch CUDA builds carry only cuBLAS 13. If it can't be loaded, transcription carries on on the CPU instead of failing |
 | Ollama + LLM | **Not bundled**. The setup wizard detects and installs | Separate product with its own installer, GPU handling and update cycle; models are gigabytes and the right one depends on the user's VRAM |

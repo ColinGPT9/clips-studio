@@ -69,3 +69,24 @@ def test_the_spec_bundles_the_sports():
     text = SPEC.read_text(encoding="utf-8")
     assert 'collect_submodules("sports")' in text, "the spec no longer bundles the sports packages"
     assert '"sports.yaml"' in text, "the spec no longer bundles config/sports.yaml"
+
+
+def test_the_voice_models_ship_with_the_module_that_reads_them():
+    """The second speaker's caption colour (analysis/voice_turns.py) is only
+    imported when a clip asks for it, where the analyser can't see it, and
+    without both models an installed copy quietly burns one colour."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert '"analysis.voice_turns"' in text, "the spec no longer names analysis.voice_turns"
+    for model in ("pyannote_segmentation_3.onnx", "wespeaker_resnet34_lm.onnx"):
+        assert model in text, f"the spec no longer bundles models/{model}"
+
+
+def test_voice_turns_needs_nothing_the_bundle_leaves_out():
+    """scipy.cluster is not in the frozen build and sklearn is excluded from
+    it; torchaudio and librosa were never there. Any of them imports fine on
+    a development machine and fails in an installed copy."""
+    source = (SPEC.parent / "analysis" / "voice_turns.py").read_text(encoding="utf-8")
+    for package in ("scipy", "sklearn", "torchaudio", "librosa", "torch"):
+        assert not re.search(rf"^\s*(?:import|from)\s+{package}\b", source, re.M), (
+            f"analysis/voice_turns.py imports {package}, which an installed copy may not have"
+        )

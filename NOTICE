@@ -63,6 +63,17 @@ significant ones, with their licences:
                                          class names (config/
                                          audioset_labels.txt) are CC BY 4.0,
                                          Google
+  pyannote segmentation-3.0 MIT          who is talking when, for the second
+                                         speaker's caption colour (analysis/
+                                         voice_turns.py); (c) 2022 CNRS, the
+                                         ONNX export is sherpa-onnx's (k2-fsa),
+                                         fetched by scripts/fetch_voice_model.py
+  WeSpeaker ResNet34-LM     CC BY 4.0    whose voice a turn is, for the same;
+                                         pretrained on VoxCeleb by the
+                                         WeSpeaker team (huggingface.co/
+                                         Wespeaker/wespeaker-voxceleb-
+                                         resnet34-LM), unmodified, fetched by
+                                         scripts/fetch_voice_model.py
   RapidOCR                  Apache-2.0   on-screen text in a gaming stream;
                                          its bundled PaddleOCR models are
                                          Apache-2.0 (PaddlePaddle)

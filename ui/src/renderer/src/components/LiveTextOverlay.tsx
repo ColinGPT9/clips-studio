@@ -56,6 +56,8 @@ export default function LiveTextOverlay({
 
   const line = overlay.captions?.lines.find((l) => t >= l.start && t <= l.end)
   const st = overlay.captions?.style
+  // The other speaker's line, in their colour (lib/speakerTurns.ts marks it).
+  const lineColor = st && line?.speaker && st.second_speaker ? st.second_speaker_color : st?.color
   const capSize = st ? Math.max(40, Math.min(140, st.font_size)) * s : 0
   const capPos: React.CSSProperties =
     st?.position === 'top'
@@ -130,7 +132,7 @@ export default function LiveTextOverlay({
             fontFamily: st.font,
             fontSize: `${capSize}px`,
             fontWeight: 700,
-            color: st.color,
+            color: lineColor,
             padding: `0 ${60 * s}px`,
             ...outline(3.5 * s)
           }}
@@ -156,7 +158,7 @@ export default function LiveTextOverlay({
                 if (t >= b) hot = i
               })
               return words.map((w, i) => (
-                <span key={i} style={{ color: i === hot ? st.highlight_color : st.color }}>
+                <span key={i} style={{ color: i === hot ? st.highlight_color : lineColor }}>
                   {(st.uppercase ? w.toUpperCase() : w) + (i < words.length - 1 ? ' ' : '')}
                 </span>
               ))

@@ -274,9 +274,10 @@ _test_*.py
 # Anchored: an unanchored *.mp4 would also swallow assets we do want.
 /tests/assets/sample_video.mp4
 
-# Model weights: speaker detection (scripts/fetch_asd_model.py, 63 MB) and
-# game sounds (scripts/fetch_panns.py, 24 MB), bundled into the installer,
-# not committed.
+# Model weights: speaker detection (scripts/fetch_asd_model.py, 63 MB), game
+# sounds (scripts/fetch_panns.py, 24 MB) and voices
+# (scripts/fetch_voice_model.py, 33 MB), bundled into the installer, not
+# committed.
 /models/
 
 # Scratch files from probing the Twitch proxy by hand. m3u8 dumps and .ts

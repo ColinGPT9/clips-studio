@@ -170,6 +170,9 @@ class PreviewIn(BaseModel):
     # the clip's saved ones
     headline: str | None = None
     subline: str | None = None
+    # pending hand fixes of who is talking (video/captions.py paint_turns);
+    # None keeps the clip's saved ones, an empty list previews it with none
+    speaker_edits: list | None = None
 
 
 class CreatorGamingLayoutIn(BaseModel):
@@ -1376,6 +1379,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 if f.is_file() and f.name == f"{video_id}.json":
                     _unlink_best_effort(f, data_dir)
 
+        # Whose voice is whose in it (analysis/voice_turns.py).
+        voice_profiles = data_dir / "voice_profiles"
+        if voice_profiles.is_dir():
+            for f in voice_profiles.iterdir():
+                if f.is_file() and f.name == f"{video_id}.json":
+                    _unlink_best_effort(f, data_dir)
+
         clips_root = data_dir / "clips"
         if clips_root.is_dir():
             for creator_dir in clips_root.iterdir():
@@ -1494,9 +1504,15 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         finally:
             d.close()
 
-    def _clip_captions(row) -> list[dict]:
+    def _clip_captions(row, as_burned: bool = False) -> list[dict]:
         """Current caption lines for a clip: the user-corrected override when
-        one exists, otherwise regenerated from the transcript."""
+        one exists, otherwise regenerated from the transcript.
+
+        `as_burned` is for a caller that will SAVE the lines it is given (the
+        AI edit). On a clip with the second speaker's colour on, the render
+        ends a line where the speaker changes; saved lines keep their
+        grouping and are coloured whole, so saving the plain grouping would
+        put two people's words in one caption and one colour."""
         opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
         if opts.get("caption_lines"):
             return opts["caption_lines"]
@@ -1513,6 +1529,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         words = opts.get("caption_style", {}).get(
             "words_per_caption", DEFAULT_STYLE["words_per_caption"]
         )
+        if as_burned:
+            from core.pipeline import _wants_second_speaker
+            from video.captions import paint_turns
+
+            if _wants_second_speaker(config, opts):
+                said = paint_turns(opts.get("speaker_turns"), opts.get("speaker_edits"))
+                # Who says a line is worked out afresh at every render.
+                return [
+                    {k: v for k, v in line.items() if k != "speaker"}
+                    for line in build_caption_lines(segments, candidate, words, said)
+                ]
         return build_caption_lines(segments, candidate, words)
 
     @app.get("/clips/{clip_id}/captions")
@@ -1601,7 +1628,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 raise HTTPException(404, "no such clip")
 
             opts = json.loads(row["render_opts"]) if row["render_opts"] else {}
-            caption_lines = _clip_captions(row)
+            caption_lines = _clip_captions(row, as_burned=True)
             transcript_path = data_dir / "transcripts" / f"{row['video_id']}.json"
             source_duration = 0.0
             if transcript_path.exists():
@@ -1725,6 +1752,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["headline"] = body.headline
         if body.subline is not None:
             opts["subline"] = body.subline
+        if body.speaker_edits is not None:
+            opts["speaker_edits"] = body.speaker_edits
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],
@@ -1963,20 +1992,11 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         tpath = data_dir / "transcripts" / f"{row['video_id']}.json"
         if not tpath.exists():
             return {"words": []}
+        from video.captions import clip_words as words_in_clip
+
         data = json.loads(tpath.read_text(encoding="utf-8"))
-        start, end = row["start_s"], row["end_s"]
-        words = []
-        for seg in data.get("segments", []):
-            for w in seg.get("words") or []:
-                if w["end"] > start and w["start"] < end:
-                    words.append(
-                        {
-                            "start": round(max(0.0, w["start"] - start), 2),
-                            "end": round(min(end - start, w["end"] - start), 2),
-                            "word": w["word"],
-                        }
-                    )
-        return {"words": words}
+        every = (w for seg in data.get("segments", []) for w in seg.get("words") or [])
+        return {"words": words_in_clip(every, row["start_s"], row["end_s"])}
 
     @app.get("/media/{clip_id}")
     def media(clip_id: int):

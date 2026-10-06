@@ -722,6 +722,18 @@ class Worker(threading.Thread):
                 render_opts["caption_lines"], segments, float(clip["start_s"]), start, end,
                 {**DEFAULT_STYLE, **(style or {})}["words_per_caption"],
             )
+        if render_opts.get("speaker_edits"):
+            # Who a person said is talking where (the editor's Fix speakers) is
+            # timed from the clip's start too: carried to wherever it is now,
+            # with the caption option on or off. Never cut to the clip, so a
+            # fix beyond the new end is back when the clip grows again.
+            from video.captions import shift_edits
+
+            render_opts["speaker_edits"] = shift_edits(
+                render_opts["speaker_edits"], float(clip["start_s"]), round(start, 2)
+            )
+        if not render_opts.get("speaker_edits"):
+            render_opts.pop("speaker_edits", None)     # an empty list is "none"
         if render_opts.get("reel"):
             # A match's story reel is joined from its clips (sports/core/reels.py),
             # not cut from one stretch of the video: rendering it from the
@@ -767,6 +779,13 @@ class Worker(threading.Thread):
             kept = _json.loads(rendered_opts).get("gaming")
             if kept:
                 render_opts["gaming"] = kept
+        # The other speaker's turns (analysis/voice_turns.py) are heard at
+        # render: the clip keeps the ones this file was burned with, or none.
+        heard = _json.loads(rendered_opts).get("speaker_turns") if rendered_opts else None
+        if heard:
+            render_opts["speaker_turns"] = heard
+        else:
+            render_opts.pop("speaker_turns", None)
 
         # Translations, uploads and feedback REFERENCE this clip, and
         # foreign_keys is ON, so they have to be lifted out before the row can

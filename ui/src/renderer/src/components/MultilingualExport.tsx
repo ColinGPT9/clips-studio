@@ -521,6 +521,7 @@ export default function MultilingualExport({
                 onChange={setStyleField}
                 hideWordsPerCaption
                 hidePosition={middleOnly}
+                hideSecondSpeaker
               />
               {middleOnly && (
                 <p className="text-[11px] text-muted/70 mt-2">
