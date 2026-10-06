@@ -91,6 +91,12 @@ export interface SubScores {
   sport_period?: string
   sport_replay?: boolean
   sport_bonus?: number
+  /** The game clock as the sport writes it ("Q4 0:32"), when the score bug was read. */
+  sport_when?: string
+  /** The game's situation that changed the moment's worth ("ties it, 0:02 left"). */
+  sport_context?: string
+  /** Someone on screen, only as the broadcast's own caption named them. */
+  sport_person?: string
   source?: string
   rerank_position?: number
 }
@@ -390,6 +396,8 @@ export interface SportChoice {
   periods: { id: string; label: string }[]
   /** Automatic, TV broadcast, Club or phone; absent from an engine that predates it. */
   footage?: { id: string; label: string }[]
+  /** What the Sport row calls the period when it offers it (basketball: "Quarter"). */
+  period_menu?: string
 }
 
 /** A queue row: the job, plus the video it is about. `display_title` comes

@@ -4,7 +4,8 @@ import type { SportChoice, SportOption } from '../lib/types'
 import ExplainedSelect from './ExplainedSelect'
 
 /** The Sports toggle's choices, under a video or a watched channel: which
- *  sport, which moments to keep, who to favour and the story reels to make.
+ *  sport, which moments to keep, the period when the sport offers it
+ *  (basketball's quarters), who to favour and the story reels to make.
  *  Each explains itself in a tooltip. The match's own events are typed in Ask
  *  Clips Kitty. The whole match is always clipped, and a club recording is
  *  told apart from a TV broadcast by itself. Rendered into the caller's row,
@@ -41,7 +42,7 @@ export default function SportFields({
       <select
         className="input !w-48"
         value={value.name}
-        onChange={(e) => set({ name: e.target.value, highlights: undefined })}
+        onChange={(e) => set({ name: e.target.value, highlights: undefined, period: undefined })}
         aria-label={`${t('Sport')}${suffix}`}
       >
         {sports.map((s) => (
@@ -64,6 +65,24 @@ export default function SportFields({
         onChange={(id) => set({ highlights: id })}
         label={`${t('Highlights')}${suffix}`}
       />
+      {sport?.period_menu && (
+        <>
+          <span className="label shrink-0">{t(sport.period_menu)}</span>
+          <select
+            className="input !w-40"
+            value={value.period ?? 'full'}
+            onChange={(e) => set({ period: e.target.value })}
+            aria-label={`${t(sport.period_menu)}${suffix}`}
+            title={t('Only the moments of this part of the game. A moment whose part couldn’t be read off the score bug is kept, and the clip page says so.')}
+          >
+            {sport.periods.map((p) => (
+              <option key={p.id} value={p.id}>
+                {t(p.label)}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
       <input
         className="input !w-56 max-w-full"
         placeholder={t('Teams or players (optional)')}

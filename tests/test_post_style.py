@@ -155,6 +155,23 @@ def test_the_highlights_style_writes_titles_and_both_card_lines():
     assert plain[0].headline == "" and plain[0].subline == ""
 
 
+def test_a_sports_title_rules_go_into_the_highlights_prompt_too():
+    """Basketball's rules (which player to name) and its rewrite of wrong
+    titles go through the same call, so a Highlights clip keeps its card
+    lines when its title is written again."""
+    from analysis.metadata import generate_metadata_batch
+
+    llm = _Echo({"index": 0, "title": "He did NOT miss😤", "description": "", "hashtags": [],
+                 "headline": "FROM THE LOGO😤", "subline": ""})
+    cand = [ClipCandidate(start=0, end=5, score=80, hook="three")]
+    seg = [Segment(start=0, end=5, text="bang")]
+    meta = generate_metadata_batch(cand, seg, "Game 7", llm, rules="- Name the scorer.", style="highlights")
+    _, _, clips = llm.prompts[0].partition("CLIPS:\n")
+    assert clips.startswith("RULES FOR THESE CLIPS:\n- Name the scorer.")
+    assert "Never guess who someone is" in llm.prompts[0]
+    assert meta[0].headline == "FROM THE LOGO😤"
+
+
 # ---- what the review found --------------------------------------------------
 
 _FONTS = Path("/usr/share/fonts")

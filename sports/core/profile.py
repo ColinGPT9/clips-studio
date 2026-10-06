@@ -114,6 +114,61 @@ class SportProfile:
                                 "a goal, then a great save, a penalty or a red card, then a big chance.")]
         return "\n".join(lines)
 
+    # ---- what a sport can change (soccer's values are the defaults) ---------
+
+    @property
+    def scoring_types(self) -> tuple:
+        """The moments a new score on the scoreboard confirms, the first being
+        what a score change with nothing else to go on is called:
+        `scoring_events` in config/sports.yaml (soccer: its goals)."""
+        return tuple(sports.spec(self.name).get("scoring_events") or ("goal", "penalty_goal", "own_goal"))
+
+    @property
+    def celebration(self) -> float:
+        """A scoring-like moment this soon after a confirmed score, with no new
+        score of its own, is that score's celebration or replay:
+        `celebration_seconds` (soccer: 45, no kick-off comes sooner)."""
+        return float(sports.spec(self.name).get("celebration_seconds", 45) or 45)
+
+    def sound_curves(self) -> tuple:
+        """The sound groups the moments are found from, each as a curve of its
+        own: `curves` (soccer: the crowd and the whistle)."""
+        return tuple(sports.spec(self.name).get("curves") or ("crowd", "whistle"))
+
+    def confirmed_type(self, change, event) -> str:
+        """What a score change confirms `event` (the moment found there, or
+        None) to be: its own type when that is a scoring one, else the
+        sport's first scoring type."""
+        if event is not None and event.type in self.scoring_types:
+            return event.type
+        return self.scoring_types[0]
+
+    def context_weight(self, event) -> float:
+        """How much the game's situation lifts or lowers a moment's worth
+        (a basket in the last seconds of a close game, against one in a
+        blowout). 1.0: a sport without it scores every moment by its type."""
+        return 1.0
+
+    def extra_moments(self, events: list, segments, *, curves: dict, video_end: float, min_len: float,
+                      max_len: float) -> list:
+        """The moments, with whatever else the sport finds on its own added
+        (basketball: the crowd and bench reactions). Unchanged by default."""
+        return events
+
+    @property
+    def one_play_per_clip(self) -> bool:
+        """Whether two confirmed moments are two clips however close they come
+        (basketball), each a window of its own. False: moments whose windows
+        overlap are one, and a candidate covering a moment's window covers it
+        (sports/core/events.py, clips.py)."""
+        return False
+
+    def clip_span(self, candidate, event) -> tuple[float, float]:
+        """(start, end) of a Best moments clip that holds a confirmed moment:
+        by default the scorer's window and the moment's own together, so the
+        clip keeps the moment's build-up (sports/core/clips.py)."""
+        return min(candidate.start, event.start), max(candidate.end, event.end)
+
     # ---- the sport's moments ------------------------------------------------
 
     def events_spec(self) -> dict:

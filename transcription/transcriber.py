@@ -131,8 +131,9 @@ def _load_model(model_size: str, device: str):
     return load(model_size, device="cpu", compute_type="auto")
 
 
-def _run(model, video_path: Path, language: str | None):
-    """(segments, info) for one pass of Whisper over the video."""
+def _run(model, video_path: Path, language: str | None, hotwords: str | None = None):
+    """(segments, info) for one pass of Whisper over the video. hotwords:
+    names to listen for (sports.hotwords), else Whisper as always."""
     raw_segments, info = model.transcribe(
         str(video_path),
         # None = auto-detect; a forced code fixes bilingual streams where
@@ -149,6 +150,9 @@ def _run(model, video_path: Path, language: str | None):
         # loops, and dropping it is a little faster too.
         condition_on_previous_text=False,
         word_timestamps=True,  # word-level timing powers the synced captions
+        # Unlike an initial prompt, which the line above drops after the
+        # first 30 s, hotwords go with every window.
+        **({"hotwords": hotwords} if hotwords else {}),
     )
 
     segments = []
@@ -189,6 +193,7 @@ def transcribe(
     device: str = "auto",
     language: str | None = None,
     online: dict | None = None,
+    hotwords: str | None = None,
 ) -> list[Segment]:
     """language: force a transcription language (ISO code like 'es');
     None = Whisper auto-detects. The detected/forced language is cached in
@@ -196,7 +201,11 @@ def transcribe(
 
     online: the `transcription` settings. Local Whisper unless its backend
     names a provider, in which case the audio goes to that provider on the
-    user's own key (transcription/cloud.py) and comes back in the same shape."""
+    user's own key (transcription/cloud.py) and comes back in the same shape.
+
+    hotwords: names local Whisper is told to listen for, so it spells them as
+    given when it hears them (a basketball video's players, sports.hotwords).
+    None for every other job, which is transcribed as always."""
     transcript_dir.mkdir(parents=True, exist_ok=True)
     cache_path = transcript_dir / f"{video_id}.json"
 
@@ -221,7 +230,7 @@ def transcribe(
     model = _load_model(model_size, device)
 
     try:
-        segments, info = _run(model, video_path, language)
+        segments, info = _run(model, video_path, language, hotwords)
     except RuntimeError as e:
         # The GPU's libraries are only loaded at the first encode, after the
         # model has loaded, so a GPU that loads can still fail here. The job
@@ -230,7 +239,7 @@ def transcribe(
         if device == "cuda" or not _on_gpu(model) or not _GPU_LIBRARY_ERROR.search(str(e)):
             raise
         print(f"\n  Whisper: the GPU failed ({str(e)[:120]}); transcribing again on the CPU")
-        segments, info = _run(_load_model(model_size, "cpu"), video_path, language)
+        segments, info = _run(_load_model(model_size, "cpu"), video_path, language, hotwords)
 
     looped = _collapse_repetition_loops(segments)
     if looped:

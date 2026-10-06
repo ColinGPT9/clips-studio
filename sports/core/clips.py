@@ -20,15 +20,21 @@ WINDOWS_MAX = 40        # moments given a window of their own, most important fi
 TYPED = 0.66            # confidence at which a moment is called by its type (two signals: 2/3)
 
 
-def windows_to_add(moments: list[SportEvent], candidates) -> list[SportEvent]:
+def windows_to_add(moments: list[SportEvent], candidates, shown_only: bool = False) -> list[SportEvent]:
     """The moments whose own window no candidate already matches, most
     important first. A candidate that already covers the moment isn't
-    enough: its window may start as the ball goes in."""
+    enough: its window may start as the ball goes in.
+
+    `shown_only`: a candidate matches only the moment it shows (attach). On
+    an NBA game one sentence's candidate covered the last layup and the
+    final dunk, showed the layup, and the dunk had no clip."""
+    shown = attach(moments, candidates) if shown_only else {}
     out = []
     for e in sorted(moments, key=lambda e: -(e.importance * max(e.confidence, 0.34))):
         if e.is_replay or len(out) >= WINDOWS_MAX:
             continue
-        if any(_overlap(c.start, c.end, e.start, e.end) >= 0.8 for c in candidates):
+        if any(_overlap(c.start, c.end, e.start, e.end) >= 0.8 and (not shown_only or shown.get(id(c)) is e)
+               for c in candidates):
             continue
         out.append(e)
     return out
@@ -58,10 +64,15 @@ def attach(moments: list[SportEvent], candidates) -> dict:
     return out
 
 
-def bonus(e: SportEvent | None) -> int:
+def bonus(e: SportEvent | None, profile=None) -> int:
+    """Points for the moment a clip shows: its worth, times the game's
+    situation when the sport weighs it (profile.context_weight), within
+    BONUS_MAX."""
     if e is None or e.is_replay:
         return 0
-    return round(BONUS_MAX * e.importance / 100 * max(e.confidence, 0.34))
+    weight = profile.context_weight(e) if profile is not None else 1.0
+    worth = min(100.0, e.importance * weight)
+    return round(BONUS_MAX * worth / 100 * max(e.confidence, 0.34))
 
 
 def mark(c, e: SportEvent, label: str, points: int) -> None:
@@ -81,6 +92,12 @@ def mark(c, e: SportEvent, label: str, points: int) -> None:
         s["sport_period"] = e.period
     if e.minute is not None:
         s["sport_minute"] = e.minute
+    if e.when:
+        s["sport_when"] = e.when
+    if e.context:
+        s["sport_context"] = e.context
+    if e.person:
+        s["sport_person"] = e.person
     if e.is_replay:
         s["sport_replay"] = True
     if points:
@@ -105,8 +122,8 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
         choice = (spec.get("highlights_choices") or {}).get(highlights) or {}
         notes.append(f"Club or phone footage: nothing here could confirm "
                      f"{str(choice.get('label') or highlights).lower()} (no score box or commentary), "
-                     "so these are the match's best moments instead. Add the goal times under Match "
-                     "events to clip every goal")
+                     "so these are the match's best moments instead. "
+                     + str(spec.get("listed_hint") or "Add the goal times under Match events to clip every goal"))
         types = None
 
     # One clip per moment: the original over a replay, then the best scored.
@@ -140,8 +157,8 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
         or (board is not None and board.period_at((c.start + c.end) / 2)))]
     if unknown:
         label = (spec.get("periods") or {}).get(period, period)
-        notes.append(f"{len(unknown)} clip(s) kept for {label} without knowing their half: "
-                     "the match clock wasn't read there")
+        notes.append(f"{len(unknown)} clip(s) kept for {label} without knowing their "
+                     f"{spec.get('period_word') or 'half'}: the match clock wasn't read there")
 
     # A chosen kind of moment: every confirmed one is kept, with its build-up
     # and reaction, whatever the scorer made of its words.
@@ -162,7 +179,7 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
         for c in kept:
             e = attached.get(id(c))
             if e is not None and e.confidence >= TYPED and e.type != "big_moment" and not e.is_replay:
-                c.start, c.end = min(c.start, e.start), max(c.end, e.end)
+                c.start, c.end = profile.clip_span(c, e)
                 if c.end - c.start > max_len:
                     c.start, c.end = e.start, min(e.end, e.start + max_len)
             # A goal the scoreboard confirmed is one of the match's best

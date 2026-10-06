@@ -229,4 +229,5 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
         duration=float(info.get("duration") or 0),
         channel=info.get("channel") or info.get("uploader") or "",
         games=games_from_info(info, "youtube"),
+        description=str(info.get("description") or ""),
     )

@@ -26,6 +26,9 @@ class SportEvent:
     is_replay: bool = False
     group: int = 0               # the moment it belongs to (0: not grouped yet)
     confirmed: bool = False      # the scoreboard confirmed it: the score changed for it
+    when: str = ""               # the game clock as the sport writes it ("Q4 0:32"), when read
+    context: str = ""            # the game's situation that changed its worth ("tied, 0:02 left")
+    person: str = ""             # someone on screen, only as the broadcast's own caption names them
 
     def overlaps(self, other: "SportEvent", min_ratio: float = 0.3) -> bool:
         """Whether the two windows share at least min_ratio of the shorter."""
@@ -46,11 +49,15 @@ def valid(event: SportEvent, duration: float) -> bool:
             and event.end > event.start)
 
 
-def group_moments(events: list[SportEvent], within: float) -> list[SportEvent]:
+def group_moments(events: list[SportEvent], within: float, plays_apart: bool = False) -> list[SportEvent]:
     """Give every event a group: a replay within `within` seconds after a
     moment (and not itself a new, stronger moment) joins that moment's group;
     events whose windows overlap are one moment too. Returns the events, in
-    time order, with `group` set."""
+    time order, with `group` set.
+
+    `plays_apart`: two confirmed moments are never one, however close
+    (basketball: on an NBA game a Thunder three 6 s after a Spurs three was
+    "the same moment", and had no clip)."""
     ordered = sorted(events, key=lambda e: e.t)
     group = 0
     anchors: list[SportEvent] = []
@@ -59,6 +66,8 @@ def group_moments(events: list[SportEvent], within: float) -> list[SportEvent]:
         for a in reversed(anchors):
             if e.t - a.t > within:
                 break
+            if plays_apart and e.confirmed and a.confirmed:
+                continue
             if e.is_replay or e.overlaps(a):
                 home = a
                 break

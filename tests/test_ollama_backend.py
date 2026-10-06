@@ -15,6 +15,8 @@ from llm.ollama_backend import OllamaBackend
 
 
 class _Response:
+    status_code = 200
+
     def __init__(self, body):
         self._body = body
 
@@ -144,3 +146,69 @@ def test_a_text_model_cannot_look_and_a_plain_vision_model_is_sent_no_think(monk
     calls = _fake_ollama(monkeypatch, capabilities=("completion", "vision"))
     OllamaBackend("gemma3:4b").look("p", [b"x"])
     assert "think" not in _sent(calls)
+
+
+# ---- a request Ollama fails ------------------------------------------------------------
+
+
+class _Failed(_Response):
+    def __init__(self, status, error):
+        super().__init__({"error": error})
+        self.status_code = status
+
+    def raise_for_status(self):
+        raise requests.HTTPError(f"{self.status_code} Server Error")
+
+
+CUT_OFF = "prediction aborted, token repeat limit reached"
+
+
+def _answers(monkeypatch, *replies):
+    """Ollama answers each /api/generate with the next of `replies`."""
+    sent, left = [], list(replies)
+    monkeypatch.setattr(requests, "post", lambda url, json=None, timeout=None: (
+        sent.append(json) or left.pop(0)) if url.endswith("/api/generate") else _Response({"capabilities": []}))
+    monkeypatch.setattr("llm.ollama_backend.time.sleep", lambda _s: None)
+    return sent
+
+
+def test_an_answer_ollama_cuts_off_is_asked_again_without_json_mode(monkeypatch, capsys):
+    """On an NBA game gemma3:4b, held to JSON mode, repeated itself until Ollama
+    cut it off with a 500, and the job ended there: five runs in a row, six to
+    eight minutes in. Without `format` (gemma4's cure), the prompt still asks
+    for the JSON."""
+    sent = _answers(monkeypatch, _Failed(500, CUT_OFF), _Response({"response": '{"clips": []}'}))
+    assert OllamaBackend("gemma3:4b").generate("p", json_mode=True) == '{"clips": []}'
+    assert sent[0] == _todays_request("gemma3:4b", True)
+    assert sent[1] == _todays_request("gemma3:4b", False)
+    assert f"Ollama answered 500: {CUT_OFF}; asking again without JSON mode" in capsys.readouterr().out
+
+
+def test_an_answer_cut_off_every_time_is_one_the_caller_cant_read(monkeypatch, capsys):
+    """Every caller gets past an answer it can't read (a chunk skipped, a batch
+    of windows left at a neutral score); the job goes on."""
+    sent = _answers(monkeypatch, *[_Failed(500, CUT_OFF)] * 3)
+    assert OllamaBackend("gemma3:4b").generate("p", json_mode=True) == ""
+    assert len(sent) == 3
+    assert "going on without it" in capsys.readouterr().out
+
+
+def test_another_server_error_every_time_still_ends_the_job(monkeypatch):
+    sent = _answers(monkeypatch, *[_Failed(500, "llama runner process has terminated")] * 3)
+    with pytest.raises(requests.HTTPError):
+        OllamaBackend("gemma3:4b").generate("p", json_mode=True)
+    assert len(sent) == 3
+
+
+def test_any_other_error_ends_the_job_at_once(monkeypatch):
+    """A model Ollama doesn't have (404) won't appear on a second try."""
+    sent = _answers(monkeypatch, _Failed(404, "model 'gemma9' not found"))
+    with pytest.raises(requests.HTTPError):
+        OllamaBackend("gemma9").generate("p")
+    assert len(sent) == 1
+
+
+def test_a_look_at_frames_ollama_cuts_off_is_asked_again_too(monkeypatch):
+    sent = _answers(monkeypatch, _Failed(500, CUT_OFF), _Response({"response": '{"shot": "crowd"}'}))
+    assert OllamaBackend("gemma3:4b").look("p", [b"x"]) == '{"shot": "crowd"}'
+    assert sent[0]["format"] == "json" and "format" not in sent[1] and sent[1]["images"] == sent[0]["images"]
