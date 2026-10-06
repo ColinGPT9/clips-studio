@@ -21,7 +21,11 @@ CONFIG_SECTIONS = ("clips", "tracking", "video")
 
 def render_config(config: dict) -> dict:
     """The allowlisted part of the config a worker renders with."""
-    return {k: json.loads(json.dumps(config.get(k) or {})) for k in CONFIG_SECTIONS}
+    out = {k: json.loads(json.dumps(config.get(k) or {})) for k in CONFIG_SECTIONS}
+    # A plugin pipeline (plugins/) picks moments on the main PC; its choice and
+    # settings play no part in rendering, so they don't travel.
+    out["clips"].pop("pipeline", None)
+    return out
 
 
 def job_id(video_id: str, start: float, end: float, render_opts: dict | None, config: dict) -> str:

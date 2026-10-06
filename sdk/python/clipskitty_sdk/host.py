@@ -1,0 +1,265 @@
+"""Running a plugin: the job folder, the process and the result.
+
+Clips Kitty's engine and `python -m clipskitty_sdk run` both run plugins
+through these functions, so a plugin that works under the SDK's runner works
+in the app. Standard library only.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .contract import PLUGIN_API_VERSION, ContractError, check_result, parse_line
+from .job import JOB_FILE, RESULT_FILE, SECRET_PREFIX
+
+SDK_DIR = Path(__file__).resolve().parent.parent  # the folder holding clipskitty_sdk/
+
+# Variables a plugin never inherits from Clips Kitty: its own configuration,
+# and anything that looks like a credential. The plugin still runs as the
+# user, so this keeps Clips Kitty from handing secrets over; it is not a wall.
+_CREDENTIAL_WORDS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "COOKIE", "AUTH")
+
+
+def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk_dir: Path = SDK_DIR) -> dict:
+    """The environment a plugin process starts with."""
+    env = {}
+    for name, value in base.items():
+        upper = name.upper()
+        if upper.startswith(("CLIPS_", "CLIPSKITTY_")):
+            continue
+        if any(word in upper for word in _CREDENTIAL_WORDS):
+            continue
+        env[name] = value
+    env["CLIPSKITTY_JOB"] = str(job_folder)
+    env["PYTHONPATH"] = str(sdk_dir)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONUNBUFFERED"] = "1"
+    for name, value in (secrets or {}).items():
+        if value:
+            env[SECRET_PREFIX + name.upper().replace("-", "_")] = str(value)
+    return env
+
+
+def job_settings(manifest: dict, chosen: dict | None) -> dict:
+    """The job's settings for a plugin: its manifest's defaults, then the user's.
+
+    A setting the manifest does not declare is refused rather than passed on,
+    and `secret` settings never travel this way: they reach the plugin in its
+    environment (plugin_env), never in job.json. Raises ValueError.
+    """
+    declared = manifest.get("settings") or {}
+    out = {}
+    for name, spec in declared.items():
+        if isinstance(spec, dict) and spec.get("type") != "secret" and "default" in spec:
+            out[name] = spec["default"]
+    for name, value in (chosen or {}).items():
+        spec = declared.get(name)
+        if not isinstance(spec, dict):
+            raise ValueError(f"this pipeline has no setting called '{name}'")
+        if spec.get("type") == "secret":
+            raise ValueError(f"'{name}' is a secret: set it in the plugin's settings, not in a job")
+        out[name] = value
+    return out
+
+
+def build_job(manifest: dict, *, settings: dict | None = None, video: dict | None = None,
+              transcript: dict | None = None, limits: dict | None = None, focus: str | None = None,
+              ffmpeg: str | None = None, ffprobe: str | None = None, ollama: dict | None = None,
+              output_dir: Path) -> tuple[dict, dict | None]:
+    """job.json's content, and the transcript to write beside it (or None).
+
+    Only what the manifest's permissions cover goes in: the video with
+    `video.read`, the transcript with `transcript.read`, FFmpeg's paths with
+    `ffmpeg`, the local model's address with `ollama`. Everything else is left
+    out, so a plugin cannot read it from the job folder.
+    """
+    perms = set(manifest.get("permissions") or [])
+    job: dict = {
+        "plugin_api": PLUGIN_API_VERSION,
+        "plugin": {"id": manifest.get("id", ""), "version": str(manifest.get("version", ""))},
+        "settings": job_settings(manifest, settings),
+        "limits": {"max_clips": None, "min_duration": None, "max_duration": None, **(limits or {})},
+        "focus": focus or None,
+        "models": {},
+        "tools": {},
+        "output_dir": str(output_dir),
+    }
+    if "video.read" in perms and video:
+        job["video"] = dict(video)
+    if "ffmpeg" in perms:
+        job["tools"]["ffmpeg"] = ffmpeg
+        job["tools"]["ffprobe"] = ffprobe
+    if "ollama" in perms and ollama is not None:
+        job["tools"]["ollama"] = dict(ollama)
+    return job, (transcript if "transcript.read" in perms else None)
+
+
+def write_job(folder: Path, job: dict, transcript: dict | None = None) -> Path:
+    """Write job.json (and transcript.json when given) into a fresh job folder."""
+    folder.mkdir(parents=True, exist_ok=True)
+    data = dict(job)
+    data.setdefault("plugin_api", PLUGIN_API_VERSION)
+    data.setdefault("output_dir", str(folder / "out"))
+    Path(data["output_dir"]).mkdir(parents=True, exist_ok=True)
+    if transcript is not None:
+        path = folder / "transcript.json"
+        path.write_text(json.dumps(transcript, ensure_ascii=False), encoding="utf-8")
+        data["transcript"] = {**(data.get("transcript") or {}), "path": str(path),
+                              "language": transcript.get("language", "")}
+    (folder / JOB_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return folder / JOB_FILE
+
+
+def resolve_command(command: list[str], python: str) -> list[str]:
+    """The manifest's run.command with {python} replaced."""
+    return [python if part == "{python}" else part for part in command]
+
+
+def find_python(setting: str | None = None) -> str | None:
+    """The Python a plugin runs with when it has no environment of its own:
+    the configured one, else this interpreter when it is a real one (not a
+    frozen app), else python or py on PATH."""
+    if setting:
+        return setting
+    if not getattr(sys, "frozen", False) and sys.executable:
+        return sys.executable
+    return shutil.which("python") or shutil.which("py") or shutil.which("python3")
+
+
+@dataclass
+class RunOutcome:
+    exit_code: int | None
+    error: str = ""
+    cancelled: bool = False
+    timed_out: bool = False
+    lines: list = field(default_factory=list)  # the last lines, for the log
+
+    @property
+    def ok(self) -> bool:
+        return self.exit_code == 0 and not self.cancelled and not self.timed_out
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=30)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except Exception:
+        proc.kill()
+
+
+def run_plugin(command: list[str], *, cwd: Path, job_folder: Path, env: dict, timeout: float | None = None,
+               on_event=None, should_cancel=None, keep_lines: int = 50) -> RunOutcome:
+    """Start the plugin and follow it until it exits, is cancelled or times out.
+
+    `on_event(event)` gets every progress, log and error line as parsed by
+    contract.parse_line, standard error included (as log lines).
+    `should_cancel()` is asked twice a second; True stops the process tree.
+    """
+    kwargs = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    else:
+        kwargs["start_new_session"] = True
+    try:
+        proc = subprocess.Popen(
+            [*command, str(job_folder)], cwd=str(cwd), env=env, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+            **kwargs,
+        )
+    except OSError as e:
+        return RunOutcome(None, error=f"could not start the plugin ({command[0]}): {e}")
+
+    outcome = RunOutcome(None)
+    last_error = []
+    lock = threading.Lock()
+
+    def follow(stream, is_err: bool):
+        for line in stream:
+            event = parse_line(line) if not is_err else {"type": "log", "message": line.rstrip("\r\n")}
+            with lock:
+                outcome.lines.append(event["message"])
+                del outcome.lines[:-keep_lines]
+                if event["type"] == "error":
+                    last_error.append(event["message"])
+            if on_event is not None:
+                try:
+                    on_event(event)
+                except Exception:
+                    pass
+
+    readers = [threading.Thread(target=follow, args=(proc.stdout, False), daemon=True),
+               threading.Thread(target=follow, args=(proc.stderr, True), daemon=True)]
+    for t in readers:
+        t.start()
+    started = time.monotonic()
+    while proc.poll() is None:
+        if should_cancel is not None and should_cancel():
+            outcome.cancelled = True
+            _kill_tree(proc)
+            break
+        if timeout and time.monotonic() - started > timeout:
+            outcome.timed_out = True
+            _kill_tree(proc)
+            break
+        time.sleep(0.5)
+    proc.wait()
+    for t in readers:
+        t.join(timeout=5)
+    outcome.exit_code = proc.returncode
+    if outcome.cancelled:
+        outcome.error = "cancelled"
+    elif outcome.timed_out:
+        outcome.error = f"the plugin took longer than its {round((timeout or 0) / 60)} minute limit"
+    elif proc.returncode != 0:
+        with lock:
+            tail = last_error[-1] if last_error else (outcome.lines[-1] if outcome.lines else "")
+        outcome.error = tail or f"the plugin stopped with exit code {proc.returncode}"
+    return outcome
+
+
+def read_result(job_folder: Path, *, duration: float | None = None, max_clips: int | None = None) -> dict:
+    """The plugin's result.json, checked, with its ranges fitted to the video.
+
+    Ranges are clamped to [0, duration], those left shorter than a second are
+    dropped, scored ranges are kept best first (unscored ones keep the
+    plugin's order after them) and the list is cut to `max_clips`.
+    """
+    path = job_folder / RESULT_FILE
+    if not path.exists():
+        raise ContractError("result", ["the plugin exited without writing result.json"])
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        raise ContractError("result", [f"result.json is not valid JSON ({e})"]) from e
+    problems = check_result(data)
+    if problems:
+        raise ContractError("result", problems)
+    fitted = []
+    for r in data.get("ranges", []):
+        start, end = max(0.0, float(r["start"])), float(r["end"])
+        if duration is not None and math.isfinite(duration) and duration > 0:
+            end = min(end, float(duration))
+        if end - start < 1.0:
+            continue
+        fitted.append({**r, "start": start, "end": end})
+    scored = sorted((r for r in fitted if r.get("score") is not None), key=lambda r: -r["score"])
+    unscored = [r for r in fitted if r.get("score") is None]
+    ranges = scored + unscored
+    if max_clips:
+        ranges = ranges[: int(max_clips)]
+    return {**data, "ranges": ranges}

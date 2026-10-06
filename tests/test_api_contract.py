@@ -109,6 +109,56 @@ def test_the_reference_is_up_to_date(app):
 # ---- stable routes keep accepting what they accepted -------------------------
 
 
+def _split(text: str, sep: str) -> list[str]:
+    """`text` cut at `sep` where it is not inside <>, {} or []."""
+    parts, depth, start = [], 0, 0
+    for i, ch in enumerate(text):
+        if ch in "<{[":
+            depth += 1
+        elif ch in ">}]":
+            depth -= 1
+        elif ch == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _fields(obj: str) -> dict[str, tuple[bool, str]]:
+    """`{a:string,b?:integer}` as {name: (required, type)}."""
+    out = {}
+    for part in _split(obj[1:-1], ","):
+        if part:
+            name, _, kind = part.partition(":")
+            out[name.rstrip("?")] = (not name.endswith("?"), kind)
+    return out
+
+
+def _accepts(old: str, new: str) -> bool:
+    """Whether everything a client could send as type `old` is still accepted as `new`
+    (both in api_stability._shape's notation)."""
+    new_alts = _split(new, "|")
+    if "any" in new_alts:
+        return True
+    return all(any(_accepts_one(o, n) for n in new_alts) for o in _split(old, "|"))
+
+
+def _accepts_one(old: str, new: str) -> bool:
+    if old == new or (old == "integer" and new == "number"):
+        return True
+    for wrapper in ("array<", "map<"):
+        if old.startswith(wrapper) and new.startswith(wrapper):
+            return _accepts(old[len(wrapper):-1], new[len(wrapper):-1])
+    if old.startswith("enum[") and new.startswith("enum["):
+        return set(old[5:-1].split(",")) <= set(new[5:-1].split(","))
+    if old.startswith("{") and new.startswith("{"):
+        was, now = _fields(old), _fields(new)
+        return (all(name in now and _accepts(kind, now[name][1]) and (req or not now[name][0])
+                    for name, (req, kind) in was.items())
+                and not any(req for name, (req, _) in now.items() if name not in was))
+    return False
+
+
 def _breaks(pinned: dict, now: dict) -> list[str]:
     """What in `now` would break a client written against `pinned`."""
     problems = []
@@ -127,7 +177,7 @@ def _breaks(pinned: dict, now: dict) -> list[str]:
                 if cur is None:
                     problems.append(f"{route}: {kind[:-1] if kind == 'params' else 'body'} field '{name}' removed")
                     continue
-                if cur.get("type") != spec.get("type"):
+                if not _accepts(spec.get("type", "any"), cur.get("type", "any")):
                     problems.append(f"{route}: '{name}' changed from {spec.get('type')} to {cur.get('type')}")
                 if cur.get("in") != spec.get("in"):
                     problems.append(f"{route}: '{name}' moved from {spec.get('in')} to {cur.get('in')}")
@@ -180,6 +230,24 @@ def test_the_breakage_check_tells_additive_from_breaking():
     new_required["POST /x"]["body"]["extra"]["required"] = True
     assert _breaks(pinned, new_required)
     assert _breaks(pinned, {}) == ["POST /x: removed"]
+
+
+@pytest.mark.parametrize("old, new, ok", [
+    ("string", "string|null", True),
+    ("string|null", "string", False),
+    ("integer", "number", True),
+    ("array<{url:string}>", "array<{pipeline?:object,url:string}>", True),
+    ("array<{url:string}>", "array<{pipeline:object,url:string}>", False),
+    ("array<{url:string,x?:integer}>", "array<{url:string}>", False),
+    ("{a?:string}", "{a:string}", False),
+    ("map<string>", "map<string|integer>", True),
+    ("enum[a,b]", "enum[a,b,c]", True),
+    ("enum[a,b]", "enum[a]", False),
+    ("null|object|string", "null|object|string", True),
+    ("object", "any", True),
+])
+def test_nested_shapes_are_compared_field_by_field(old, new, ok):
+    assert _accepts(old, new) is ok
 
 
 # ---- what the stable calls do ------------------------------------------------

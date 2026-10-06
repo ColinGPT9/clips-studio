@@ -189,6 +189,8 @@ def job_payload(watch, url: str, origin: str = "watch") -> dict:
         payload.pop("gaming_scoring")  # the same, for gaming stream scoring
     if payload.get("sport") and any(payload.get(k) for k in ("gaming", "gaming_scoring", "podcast")):
         payload.pop("sport")  # and a sport set beside a mode it can't share
+    if payload.get("pipeline") and any(payload.get(k) for k in ("sport", "gaming_scoring", "longform")):
+        payload.pop("pipeline")  # and a plugin pipeline beside a mode that picks moments its own way
     return payload
 
 

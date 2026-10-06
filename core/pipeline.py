@@ -334,7 +334,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # the background too — pure network wait, free during transcription.
     # Optional signal: any failure just means no bonus.
     hype_out: dict = {}
-    gaming_scoring = modes.gaming_scoring(config)
+    # A plugin pipeline picks the moments itself, so a gaming layout beside one
+    # gets none of gaming scoring's inputs (they would be read and thrown away).
+    gaming_scoring = modes.gaming_scoring(config) and not config["clips"].get("pipeline")
     # A match (the Sports toggle, sports/): scored for its moments with the
     # same evidence a gaming stream gets, plus the sport's own.
     sport_name = modes.sport(config)
@@ -435,20 +437,31 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     elif gaming_scoring:
         gaming_profile, chat, sounds = _gaming_scoring_inputs(
             config, video, db, known_games, hype_out, sounds_out.get("heard"))
-    intent = clip_direction(config, llm, video.duration)
-    candidates, rejections = find_clips(
-        video.path, segments, llm, config,
-        signals=signals_out.get("signals"),
-        creator_context=creator_ctx,
-        weight_bias=(creator_prefs or {}).get("weight_bias"),
-        audience=hype_out.get("curve"),
-        **({"measure_reaction": False} if not modes.measures_reaction(config) else {}),
-        **({"gaming": gaming_profile, "chat": chat, "sounds": sounds}
-           if gaming_profile is not None else {}),
-        **({"sport": sport_profile, "chat": chat, "sounds": sounds}
-           if sport_profile is not None else {}),
-        **({"intent": intent} if intent is not None else {}),
-    )
+    if config["clips"].get("pipeline"):
+        # A plugin pipeline (plugins/) picks the moments in its own process;
+        # titles, rendering and the library below are made as for any job.
+        from plugins import runner as plugin_runner
+
+        intent, rejections = None, []
+        candidates = plugin_runner.find_clips(
+            config["clips"]["pipeline"], video=video, segments=segments, language=content_lang,
+            config=config, data_dir=data_dir,
+        )
+    else:
+        intent = clip_direction(config, llm, video.duration)
+        candidates, rejections = find_clips(
+            video.path, segments, llm, config,
+            signals=signals_out.get("signals"),
+            creator_context=creator_ctx,
+            weight_bias=(creator_prefs or {}).get("weight_bias"),
+            audience=hype_out.get("curve"),
+            **({"measure_reaction": False} if not modes.measures_reaction(config) else {}),
+            **({"gaming": gaming_profile, "chat": chat, "sounds": sounds}
+               if gaming_profile is not None else {}),
+            **({"sport": sport_profile, "chat": chat, "sounds": sounds}
+               if sport_profile is not None else {}),
+            **({"intent": intent} if intent is not None else {}),
+        )
     for r in rejections:
         db.log_rejection(
             video.video_id,

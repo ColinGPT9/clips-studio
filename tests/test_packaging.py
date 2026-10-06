@@ -71,6 +71,16 @@ def test_the_spec_bundles_the_sports():
     assert '"sports.yaml"' in text, "the spec no longer bundles config/sports.yaml"
 
 
+def test_the_spec_bundles_the_plugin_runner_and_the_sdk():
+    """process_video imports plugins/ only when a job names a pipeline, and a
+    plugin process imports the SDK from files, so both must ship explicitly."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert 'collect_submodules("plugins")' in text, "the spec no longer bundles the plugins package"
+    assert '"sdk" / "python" / "clipskitty_sdk"' in text and '"sdk/python/clipskitty_sdk"' in text, (
+        "the spec no longer ships sdk/python/clipskitty_sdk where plugins/_sdk.py looks for it"
+    )
+
+
 def test_the_voice_models_ship_with_the_module_that_reads_them():
     """The second speaker's caption colour (analysis/voice_turns.py) is only
     imported when a clip asks for it, where the analyser can't see it, and

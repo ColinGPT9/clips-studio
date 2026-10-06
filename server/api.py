@@ -58,6 +58,7 @@ class JobIn(BaseModel):
     webhook_url: str | None = None  # POST once when this job reaches a terminal state
     webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
     hashtags: list[str] | None = None  # tags every clip of this job must carry
+    pipeline: dict | str | None = None  # a plugin pipeline picks the moments: {id, version, settings} (plugins/)
     then: dict | None = None  # what to do once this job finishes, e.g.
     #     {"action": "publish", "platforms": ["youtube"]}
     # Queueing returns in a second and the clips appear an hour later, so a
@@ -90,6 +91,7 @@ class JobPatch(BaseModel):
     gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None
     webhook_secret: str | None = None
+    pipeline: dict | str | None = None
     # Options to drop back to the app-wide default. Needed because null means
     # "unchanged" above, so there would otherwise be no way to turn one off.
     clear: list[str] = []
@@ -123,6 +125,7 @@ class BatchItemIn(BaseModel):
     gaming_remember: bool | None = None  # ...also kept for this creator's next videos
     webhook_url: str | None = None
     webhook_secret: str | None = None
+    pipeline: dict | str | None = None
 
 
 class BatchJobIn(BaseModel):
@@ -233,6 +236,7 @@ class LocalVideoIn(BaseModel):
     force: bool = False
     webhook_url: str | None = None
     webhook_secret: str | None = None
+    pipeline: dict | str | None = None
 
 
 class RenderIn(BaseModel):
@@ -438,13 +442,14 @@ def _unlink_best_effort(path: Path, root: Path) -> bool:
         return False
 
 
-def _process_options(body, into: dict | None = None) -> dict:
+def _process_options(body, into: dict | None = None, data_dir: Path | None = None) -> dict:
     """Turn job options into the payload the worker reads.
 
     Shared by POST /jobs, POST /jobs/batch and PATCH /jobs/{id}: three doors
     onto the same settings, and a limit enforced at only two of them is not a
     limit. `into` lets a patch merge onto an existing snapshot instead of
-    replacing it, since an unset field there means "leave this alone"."""
+    replacing it, since an unset field there means "leave this alone".
+    `data_dir`, when given, is where a named plugin pipeline must be installed."""
     payload: dict = dict(into or {})
     if getattr(body, "max_clips", None) is not None:
         payload["max_clips"] = max(1, min(10, body.max_clips))
@@ -493,6 +498,18 @@ def _process_options(body, into: dict | None = None) -> dict:
         from analysis.intent import MAX_CHARS
 
         payload["focus"] = focus[:MAX_CHARS]
+    if getattr(body, "pipeline", None):
+        # A plugin pipeline (plugins/): it picks the moments, and everything
+        # after that is made as usual. Checked against what is installed, so a
+        # job can't be queued for a pipeline that isn't there.
+        from plugins import store
+
+        try:
+            payload["pipeline"] = store.clean_choice(body.pipeline)
+            if data_dir is not None:
+                store.installed_choice(data_dir, payload["pipeline"])
+        except ValueError as e:
+            raise HTTPException(400, f"pipeline: {e}") from e
     if getattr(body, "watermark_profile_id", None):
         payload["watermark_profile_id"] = body.watermark_profile_id
     if getattr(body, "filter", None):
@@ -534,6 +551,12 @@ def _process_options(body, into: dict | None = None) -> dict:
         raise HTTPException(400, "Gaming / Split-Screen can't be combined with Vertical Live, "
                                  "Podcast or Longform: each lays out the video its own way. "
                                  "Turn one of them off.")
+    # A plugin pipeline picks the moments its own way, as Sports and Gaming
+    # scoring do theirs; Longform is a different system altogether.
+    if payload.get("pipeline") and (payload.get("sport") or payload.get("gaming_scoring")
+                                    or payload.get("longform")):
+        raise HTTPException(400, "A plugin pipeline can't be combined with Sports, Gaming scoring or "
+                                 "Longform: each picks the moments its own way. Turn one of them off.")
     if payload.get("gaming_scoring") and (payload.get("podcast") or payload.get("longform")):
         raise HTTPException(400, "Gaming / reaction scoring works with the standard layout, Vertical "
                                  "Live and Gaming / Reaction, not with Podcast or Longform.")
@@ -694,7 +717,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             patch = JobPatch(**raw)
         except Exception as e:
             raise HTTPException(400, f"invalid options: {e}") from e
-        return _process_options(patch)
+        return _process_options(patch, data_dir=data_dir)
 
     channel_watcher = automation.install(
         app,
@@ -825,7 +848,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         elif not body.longform:
             _, vid = identify(body.url)
 
-        payload = _process_options(body, {"url": body.url, "force": body.force})
+        payload = _process_options(body, {"url": body.url, "force": body.force}, data_dir=data_dir)
         d = db()
         try:
             if queue.capacity(d) <= 0:
@@ -966,7 +989,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 tag_video(d, vid, body.channel.strip(), platform=platform)
             # force is part of the job, as for a pasted link: without it "Make clips
             # again" on an uploaded file finished at once, with nothing made.
-            payload = _process_options(body, {"url": f"local:{vid}", "force": body.force})
+            payload = _process_options(body, {"url": f"local:{vid}", "force": body.force}, data_dir=data_dir)
             job_id = d.add_job("process", json.dumps(payload), video_id=vid, title=title)
         finally:
             d.close()
@@ -1077,7 +1100,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 raise HTTPException(409, "only video jobs have these settings")
             current = json.loads(row["payload"]) if row["payload"] else {}
             keep = {k: current[k] for k in ("url", "force") if k in current}
-            payload = _process_options(body, {**current, **keep})
+            payload = _process_options(body, {**current, **keep}, data_dir=data_dir)
             queue.update_settings(d, job_id, payload)
         finally:
             d.close()
@@ -1165,7 +1188,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 # Same builder as POST /jobs and PATCH, so this row's options
                 # get the identical clamps and filter validation.
                 try:
-                    payload = _process_options(item, {"url": url, "force": item.force})
+                    payload = _process_options(item, {"url": url, "force": item.force}, data_dir=data_dir)
                 except HTTPException as e:
                     skipped.append({"url": url, "reason": "bad_option", "detail": str(e.detail)[:200]})
                     continue

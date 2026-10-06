@@ -85,3 +85,32 @@ def segments():
         Segment(start=4.5, end=7.0, text="man I only said this once, believe me"),
         Segment(start=7.0, end=9.0, text="alright let's get it, run it back"),
     ]
+
+
+@pytest.fixture
+def install_plugin():
+    """Record a plugin folder as installed in a data folder, in place.
+
+    What the plugin manager does after copying a plugin, minus the copy: the
+    store points at the folder as it is, which is also how a developer's own
+    checkout is run. Returns the plugin's id and version.
+    """
+    import json
+
+    def install(data_dir, folder, *, enabled=True, tier="link"):
+        from plugins import store
+
+        manifest = store.read_manifest(Path(folder))
+        root = store.root(data_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        state = store.load(data_dir)
+        state["plugins"][manifest["id"]] = {
+            "active": manifest["version"], "enabled": enabled, "pinned": False,
+            "versions": {manifest["version"]: {"folder": str(Path(folder).resolve()), "tier": tier,
+                                               "source": {"kind": "folder", "path": str(folder)}}},
+        }
+        (root / store.STATE_FILE).write_text(json.dumps(state), encoding="utf-8")
+        return manifest["id"], manifest["version"]
+
+    return install
+

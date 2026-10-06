@@ -648,6 +648,10 @@
     "required": false,
     "type": "integer|null"
    },
+   "pipeline": {
+    "required": false,
+    "type": "null|object|string"
+   },
    "podcast": {
     "required": false,
     "type": "boolean|null"
@@ -693,7 +697,7 @@
   "body": {
    "items": {
     "required": false,
-    "type": "array<{caption_style?:null|object,captions?:boolean|null,filter?:null|string,focus?:null|string,force?:boolean,gaming?:boolean|null,gaming_layout?:null|object,gaming_remember?:boolean|null,gaming_scoring?:boolean|null,long_clips?:boolean|null,longform?:null|object,max_clips?:integer|null,min_score?:integer|null,podcast?:boolean|null,sport?:null|object|string,url:string,vertical_live?:boolean|null,watermark_profile_id?:integer|null,webhook_secret?:null|string,webhook_url?:null|string}>"
+    "type": "array<{caption_style?:null|object,captions?:boolean|null,filter?:null|string,focus?:null|string,force?:boolean,gaming?:boolean|null,gaming_layout?:null|object,gaming_remember?:boolean|null,gaming_scoring?:boolean|null,long_clips?:boolean|null,longform?:null|object,max_clips?:integer|null,min_score?:integer|null,pipeline?:null|object|string,podcast?:boolean|null,sport?:null|object|string,url:string,vertical_live?:boolean|null,watermark_profile_id?:integer|null,webhook_secret?:null|string,webhook_url?:null|string}>"
    }
   },
   "params": {}
@@ -879,6 +883,10 @@
    "path": {
     "required": true,
     "type": "string"
+   },
+   "pipeline": {
+    "required": false,
+    "type": "null|object|string"
    },
    "platform": {
     "required": false,
