@@ -42,7 +42,7 @@ Rule for the night: every test that passed at this baseline must still pass afte
 - [x] 0B · Research notes → `docs/platform/research-notes/*.md` (22 notes, all read 2026-10-06)
 - [x] 0C · `docs/platform-research.md` (summary, two matrices with no empty cell, borrow sections, hypotheses H1–H10, all 46 questions answered)
 - [x] 1 · `docs/platform-architecture.md` (types, SDK, manifest, execution, models, permissions with enforced or declared labels, trust, versioning, registry and Marketplace, dogfooding, designed-later, two worked examples, build plan, the four success tests)
-- [ ] Review of both documents against BRIEF.md sections 3 and 4
+- [x] Review of both documents against BRIEF.md sections 3 and 4: an agent that had not seen the drafting checked about 45 code references and 9 external links. Verdict: one API, one engine, one queue kept; all four success tests pass with gaps. 26 findings (1 blocking: Open Shorts under-declared data leaving the PC; 12 should-fix; 13 minor). All fixed: the architecture's new "Review" section lists each finding and what changed; the research document has a "superseded by the architecture" table; two findings were fixed in code (Gaming scoring beside a pipeline, Phase 3; the pipeline choice no longer travels to a paired render PC). A CI job now runs the platform tests, which skipped in the existing Python job.
 - [x] 2 · Public API boundary: `server/api_stability.py` (60 stable, 5 experimental, 111 internal), generated `docs/developers/api-reference.md`, `tests/test_api_contract.py` (20 pass, 1 skips without psutil) (dc64ebd, 96929d6). Full suite after: 1899 passed, 14 failed (the baseline 14), 24 skipped.
 - [x] 3 · Plugin/pipeline contract: `sdk/python/clipskitty_sdk/` (contract, Job, host runner shared with the engine, `python -m clipskitty_sdk run`, local API client), `plugins/` (store lookup, runner), the `pipeline` job option on every entry point, one branch in `process_video`, the first-party adapter `examples/pipelines/transcript-highlights/` (run in tests, same moments as calling the scorer directly), packaging and CI lines (4cab905). `tests/test_plugin_sdk.py`, `test_plugin_runner.py`, `test_plugin_job_option.py`: 80 tests, all real plugin processes. Full suite after: 1987 passed, the baseline 14 failed, 24 skipped.
 - [ ] 4 · Manifest schema and validator
@@ -55,4 +55,4 @@ Rule for the night: every test that passed at this baseline must still pass afte
 
 ## Next action
 
-Run the skeptical review (brief §9) with a separate reviewer that has not seen the drafting, fix what it finds, record the result here, then start Phase 2.
+Phase 4: manifest validator and generated JSON Schema, with valid and invalid fixtures; `python -m clipskitty_sdk validate`.
