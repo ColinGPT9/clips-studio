@@ -44,7 +44,7 @@ Rule for the night: every test that passed at this baseline must still pass afte
 - [x] 1 · `docs/platform-architecture.md` (types, SDK, manifest, execution, models, permissions with enforced or declared labels, trust, versioning, registry and Marketplace, dogfooding, designed-later, two worked examples, build plan, the four success tests)
 - [ ] Review of both documents against BRIEF.md sections 3 and 4
 - [x] 2 · Public API boundary: `server/api_stability.py` (60 stable, 5 experimental, 111 internal), generated `docs/developers/api-reference.md`, `tests/test_api_contract.py` (20 pass, 1 skips without psutil) (dc64ebd, 96929d6). Full suite after: 1899 passed, 14 failed (the baseline 14), 24 skipped.
-- [ ] 3 · Plugin/pipeline contract (minimum SDK) with a first-party adapter
+- [x] 3 · Plugin/pipeline contract: `sdk/python/clipskitty_sdk/` (contract, Job, host runner shared with the engine, `python -m clipskitty_sdk run`, local API client), `plugins/` (store lookup, runner), the `pipeline` job option on every entry point, one branch in `process_video`, the first-party adapter `examples/pipelines/transcript-highlights/` (run in tests, same moments as calling the scorer directly), packaging and CI lines (4cab905). `tests/test_plugin_sdk.py`, `test_plugin_runner.py`, `test_plugin_job_option.py`: 80 tests, all real plugin processes. Full suite after: 1987 passed, the baseline 14 failed, 24 skipped.
 - [ ] 4 · Manifest schema and validator
 - [ ] 5 · Example external pipeline
 - [ ] 6 · Plugin manager

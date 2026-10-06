@@ -57,3 +57,24 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** a small stable core (health, jobs, queue, library), with the rest experimental. That would quietly withdraw a promise `docs/API.md` has made since 1.1, which says supported routes change only with a CHANGELOG note.
 **Why:** Phase 2 formalises the existing API; it does not redraw it. Internal-by-default means a new route needs a deliberate decision before it is promised.
 **Undo:** move entries between labels in `server/api_stability.py`, then run `python scripts/gen_api_reference.py --update-contract`.
+
+## D9 · A plugin process inherits the user's environment minus credentials, not an allow-list
+
+**Decided:** the plugin process gets the parent environment minus Clips Kitty's own variables (`CLIPS_*`, `CLIPSKITTY_*`) and any variable whose name contains KEY, TOKEN, SECRET, PASSWORD, PASSWD, CREDENTIAL, COOKIE or AUTH (`clipskitty_sdk/host.py plugin_env`). The architecture's first design was an allow-list (`PATH`, `SYSTEMROOT`, `TEMP`, locale).
+**Alternatives:** the allow-list. It breaks ordinary plugins: model and GPU libraries read `HOME`/`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `CUDA_*` and proxy settings, and a list that grows plugin by plugin is a list nobody keeps right.
+**Why:** the point is that Clips Kitty never hands a credential over by accident; the deny-list does that. Neither version is a wall, since the plugin runs as the user and can read the user's files, and the docs say so.
+**Undo:** replace the loop in `plugin_env` with an allow-list; `tests/test_plugin_runner.py::test_the_process_gets_no_clips_kitty_settings_or_credentials` keeps checking the credentials stay out.
+
+## D10 · The job's minimum score is not applied to a plugin's moments
+
+**Decided:** a plugin's ranges go straight to rendering, cut to the job's clip limit; `min_score` is not applied.
+**Alternatives:** filter by `min_score` as `find_clips` does. Plugins' scores are optional and on their own scale, and an unscored plugin's moments get rank-based scores from 90 down to 50, so a minimum of 55 (the default) would silently drop a plugin's 8th moment onwards.
+**Why:** a plugin returns the moments it stands behind; the clip limit is the user's control over how many.
+**Undo:** filter `candidates` by `config["clips"]["min_score"]` at the end of `plugins/runner.find_clips`.
+
+## D11 · Python plugins use a Python the user has; per-plugin environments come later
+
+**Decided:** `{python}` in a plugin's command resolves to the `plugins.python` setting, else the engine's own interpreter in a source checkout, else `python`, `py` or `python3` on `PATH`. The installed app does not ship a Python for plugins, so a Python plugin needs one on the PC, and the runner says so in words when none is found. A plugin's own packages in an environment of its own (`run.python_requirements`, wheels only, hash-pinned) are designed, not built in Phase 3.
+**Alternatives:** bundle a Python in the installer (packaging work that cannot be tested here), or build per-plugin environments tonight before the manager exists.
+**Why:** the contract and runner had to come first; plugins that need no third-party packages (the Phase 5 example) or ship their own executable as `run.command` work today.
+**Undo:** none needed; both pieces are additive when built.

@@ -32,7 +32,7 @@ Anything not explicitly labelled is internal, so a new route promises nothing un
 
 ## Calling it from a plugin
 
-A pipeline plugin does not need the HTTP API to do its job: the engine hands it the video, transcript and tools in a job folder and takes back moments or clips (see [Pipeline development](pipeline-development.md)). Plugins that want more, such as reading the library, use the same stable routes as any other client. The SDK's small client is described in [SDK](sdk.md).
+A pipeline plugin does not need the HTTP API to do its job: the engine hands it the video, transcript and tools in a job folder and takes back moments (see [Pipeline development](pipeline-development.md)). Plugins that want more, such as reading the library, use the same stable routes as any other client. The SDK's small client is described in [SDK](sdk.md).
 
 ## Changing a stable route (for Clips Kitty contributors)
 
