@@ -283,7 +283,8 @@ def find_clips(
             extra_after=sport_select.post_extra(sport.spec, highlights_choice),
             extra_types=sport_select.event_types(sport.spec, highlights_choice) or (),
         )
-        wanted = sport_clips.windows_to_add(sport_moments, candidates)
+        wanted = sport_clips.windows_to_add(sport_moments, candidates,
+                                            getattr(sport, "one_play_per_clip", False))
         typed = sum(1 for e in sport_moments if e.confidence >= sport_clips.TYPED and e.type != "big_moment")
         print(f"  {sport.label}: {len(sport_moments)} moment(s), {typed} typed, "
               f"{sum(e.is_replay for e in sport_moments)} replay(s); scoring {len(wanted)} window(s)")
@@ -510,7 +511,7 @@ def find_clips(
         # goal most, a replay nothing.
         moment = sport_attached.get(id(c))
         if moment is not None:
-            b = sport_clips.bonus(moment)
+            b = sport_clips.bonus(moment, sport)
             sport_clips.mark(c, moment, sport.event_label(moment.type), b)
             if b:
                 fused = min(100, fused + b)
@@ -556,6 +557,16 @@ def find_clips(
     # squeeze it out. Without a direction the order is the score, as always.
     first = ((lambda c: (clip_intent.is_required(c), c.score))
              if intent is not None or sport is not None else None)
+    # A sport that clips one play at a time (basketball): two clips of two
+    # confirmed plays are never one for the commentary they share. On an NBA
+    # game the winning basket, 20 s after the tying three, shared its
+    # commentator's sentence and was left out as a repeat of it.
+    two_plays = None
+    if sport is not None and getattr(sport, "one_play_per_clip", False):
+        def two_plays(c, k) -> bool:
+            a, b = sport_attached.get(id(c)), sport_attached.get(id(k))
+            return (a is not None and b is not None and a.confirmed and b.confirmed
+                    and not a.is_replay and not b.is_replay and a.group != b.group)
     finalists, rejections = highlights._select_unique(
         candidates, segments,
         min_score=clips_cfg["min_score"],
@@ -564,6 +575,7 @@ def find_clips(
         max_text_similarity=analysis_cfg["max_text_similarity"],
         max_segment_reuse=analysis_cfg["max_segment_reuse"],
         **({"priority": first} if first is not None else {}),
+        **({"distinct": two_plays} if two_plays is not None else {}),
     )
     rejections += [Rejection(c, reason) for c, reason in sport_dropped]
 
@@ -578,6 +590,16 @@ def find_clips(
         if under:
             finalists = [c for c in finalists if c.score >= clips_cfg["min_score"]]
             rejections += [Rejection(c, "below_min_score") for c in under]
+    # A match whose sport looks at its own clips (basketball: what a reaction
+    # shot shows, the bench or courtside), with the same local model.
+    look = getattr(sport, "look", None) if sport is not None else None
+    if look is not None and finalists and scoring_cfg.get("look_at_game", True):
+        try:
+            look(finalists, video_path, llm)
+        except cancel.CancelledError:
+            raise
+        except Exception as e:
+            print(f"  ({sport.label}: looking at the frames failed: {e})")
 
     # ---- 5. rerank: relative judgment beats absolute scoring --------------
     # Batched: head-to-head comparison is only reliable for small groups, so

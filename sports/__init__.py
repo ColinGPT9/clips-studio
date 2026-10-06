@@ -1,5 +1,5 @@
 """Sports (docs/SPORTS.md): sport-specific intelligence on top of the normal
-clipping pipeline, one sport per package. Soccer first.
+clipping pipeline, one sport per package. Soccer first, then basketball.
 
 A job with the Sports toggle on carries `sport`, for example
 {"name": "soccer", "highlights": "goals", "period": "full", "teams": "Team A"}
@@ -21,7 +21,7 @@ from pathlib import Path
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "sports.yaml"
 
 # Each sport and the package that knows it, imported only when a job asks.
-SPORTS = {"soccer": "sports.soccer"}
+SPORTS = {"soccer": "sports.soccer", "basketball": "sports.basketball"}
 
 TEAMS_MAX = 200
 
@@ -36,6 +36,15 @@ def knowledge() -> dict:
 def spec(name: str) -> dict:
     """A sport's entry in config/sports.yaml, or {}."""
     return knowledge().get(name) or {}
+
+
+def sound_groups(name: str) -> dict:
+    """The sounds a match is listened for: the app's own groups
+    (config/gaming.yaml) and the sport's (`sound_groups`, like basketball's
+    buzzer), so a sport's sound never changes how a game is scored."""
+    from analysis import gaming
+
+    return {**(gaming.knowledge().get("sound_groups") or {}), **(spec(name).get("sound_groups") or {})}
 
 
 def available() -> list[dict]:
@@ -53,6 +62,9 @@ def available() -> list[dict]:
                            for k, v in (s.get("highlights_choices") or {}).items()],
             "periods": [{"id": k, "label": v} for k, v in (s.get("periods") or {}).items()],
             "footage": [{"id": k, "label": v} for k, v in (s.get("footage_choices") or {}).items()],
+            # Whether the app's Sport row offers the period (basketball's
+            # quarters), and what it calls it. Soccer always clips the whole match.
+            **({"period_menu": str(s.get("period_menu"))} if s.get("period_menu") else {}),
         })
     return out
 
@@ -114,9 +126,10 @@ def clean(raw) -> dict:
                              "like \"18:16 Goal\" or \"45+2' yellow card\"")
         out["events"] = events
     # Custom highlights: the moments described in the person's own words,
-    # which become a clip direction (analysis/intent.py). Only with Custom.
+    # which become a clip direction (analysis/intent.py). Only with Custom,
+    # or a choice that narrows by it (basketball's "fans reacting to dunks").
     request = " ".join(str(raw.get("request") or "").split())[:TEAMS_MAX]
-    if request and highlights == "custom":
+    if request and (highlights == "custom" or choices[highlights].get("takes_request")):
         out["request"] = request
     return out
 
@@ -177,3 +190,39 @@ def prepass(config: dict, video_path, duration: float) -> dict:
     module = importlib.import_module(SPORTS[opt["name"]])
     read = getattr(module, "prepass", None)
     return read(video_path, duration) if read is not None else {}
+
+
+def prepass_wait(config: dict, duration: float) -> float:
+    """How long a job waits for its sport's prepass after its other passes:
+    900 s, or what the sport says its pass needs on a video this long
+    (basketball's scoreboard, read keyframe by keyframe, took 25 minutes on
+    a 79-minute game). 900 for every sport without the hook, Soccer too."""
+    opt = option(config)
+    if opt is None:
+        return 900.0
+    wait = getattr(importlib.import_module(SPORTS[opt["name"]]), "prepass_wait", None)
+    return float(wait(duration)) if wait is not None else 900.0
+
+
+def reads_description(config: dict) -> bool:
+    """Whether this job's sport reads the video's own description
+    (basketball: its players' names for Whisper, and who won for which team
+    is which), so a job whose download was reused asks for it. False for
+    every other job."""
+    opt = option(config)
+    if opt is None:
+        return False
+    return bool(getattr(importlib.import_module(SPORTS[opt["name"]]), "READS_DESCRIPTION", False))
+
+
+def hotwords(config: dict, video) -> str | None:
+    """Names for Whisper to listen for in this job's video (basketball: the
+    players and teams its title and description spell), or None: a sport
+    without the hook, and every job that isn't a sport, is transcribed as
+    always."""
+    opt = option(config)
+    if opt is None:
+        return None
+    module = importlib.import_module(SPORTS[opt["name"]])
+    names = getattr(module, "hotwords", None)
+    return names(opt, video) if names is not None else None

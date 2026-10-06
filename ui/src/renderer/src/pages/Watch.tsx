@@ -13,7 +13,7 @@ import { t } from '../lib/i18n'
 import { useAIStatus } from '../lib/useAIStatus'
 import OpenRouterPrompt from '../components/OpenRouterPrompt'
 import SportFields from '../components/SportFields'
-import { fitSport, startingSport, useSports } from '../lib/sports'
+import { fitSport, sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../lib/sports'
 
 type AddMode = 'auto' | 'ask' | 'off'
 
@@ -462,12 +462,12 @@ export default function Watch({
               <span className="label shrink-0">{t('Vertical Live content')}</span>
               <select
                 className="input !w-72"
-                value={addClip.sport ? 'sport' : addClip.gaming_scoring ? 'gaming' : 'standard'}
+                value={verticalValue(addClip.sport) ?? (addClip.gaming_scoring ? 'gaming' : 'standard')}
                 onChange={(e) => {
                   const next = { ...addClip }
-                  if (e.target.value === 'sport') {
-                    // Soccer is the Sports switch's match scoring, for a match streamed 9:16.
-                    const start = next.sport ?? startingSport(offeredSports)
+                  if (e.target.value.startsWith('sport:')) {
+                    // A sport is the Sports switch's match scoring, for a match streamed 9:16.
+                    const start = sportForVertical(e.target.value, next.sport, offeredSports)
                     if (start) next.sport = start
                     delete next.podcast
                     delete next.gaming
@@ -484,9 +484,11 @@ export default function Watch({
               >
                 <option value="standard">{t('Talking / IRL')}</option>
                 <option value="gaming">{t('Gaming / reaction')}</option>
-                {(offeredSports.length > 0 || addClip.sport) && (
-                  <option value="sport">⚽ {t('Soccer / Football')}</option>
-                )}
+                {verticalSports(offeredSports).map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {t(s.label)}
+                  </option>
+                ))}
               </select>
             </div>
           )}

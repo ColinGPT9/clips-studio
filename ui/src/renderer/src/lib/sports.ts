@@ -46,20 +46,25 @@ export function useSports(): SportChoice[] | null {
 
 /** An option made valid against what the engine offers: a highlights
  *  choice it doesn't have falls back to its first. Null when the sport itself
- *  isn't offered. The whole match is always clipped and the footage is told
- *  apart by itself, so neither is sent; Custom isn't offered either (the box
- *  at the bottom says what the clips should be about, in words). Text is kept
- *  as typed (trimmed on the engine), so a space between two words survives
- *  the keystroke. */
+ *  isn't offered. The footage is told apart by itself, so it isn't sent, and
+ *  the whole match is clipped unless the sport offers its periods (basketball's
+ *  quarters); Custom isn't offered either (the box at the bottom says what the
+ *  clips should be about, in words). Text is kept as typed (trimmed on the
+ *  engine), so a space between two words survives the keystroke. */
 export function fitSport(o: SportOption, list: SportChoice[]): SportOption | null {
   const sport = list.find((s) => s.id === o.name)
   if (!sport) return null
   const offered = sport.highlights.filter((h) => h.id !== 'custom')
   const highlights = offered.some((h) => h.id === o.highlights) ? o.highlights : offered[0]?.id
   const reels = REELS.map((r) => r.id).filter((id) => (o.reels ?? []).includes(id))
+  const period =
+    sport.period_menu && o.period && o.period !== 'full' && sport.periods.some((p) => p.id === o.period)
+      ? o.period
+      : undefined
   return {
     name: sport.id,
     ...(highlights ? { highlights } : {}),
+    ...(period ? { period } : {}),
     ...(o.teams ? { teams: o.teams } : {}),
     ...(o.events && o.events.trim() ? { events: o.events } : {}),
     ...(reels.length ? { reels } : {})
@@ -75,11 +80,23 @@ export const HIGHLIGHT_HINTS: Record<string, string> = {
   chances: 'Near misses, big chances and shots',
   attacking: 'Goals, chances, shots and set pieces',
   cards: 'Yellow and red cards, and VAR checks',
-  penalties: 'Every penalty, scored or missed'
+  penalties: 'Every penalty, scored or missed',
+  plays_reactions: 'The biggest plays, each with the crowd, bench or courtside reaction after it',
+  scoring: 'Every basket the scoreboard or the commentary confirms, best first',
+  dunks: 'Dunks, alley-oops and putback slams',
+  threes: 'Made threes, from the corner to the logo',
+  blocks: 'Blocked shots, with the play around them',
+  steals: 'Steals and deflections, and the break that follows',
+  assists: 'Assists, lobs and the best passes',
+  clutch: 'Game winners, buzzer-beaters and late baskets in a close game',
+  fan_reactions: 'The crowd, the bench and courtside reacting, with the play before it',
+  celebrity_reactions: 'Courtside reactions, named only when the broadcast captions them',
+  crowd_reactions: 'The arena erupting after a big play',
+  bench_reactions: 'The bench and the coaches reacting'
 }
 
 /** Each sport's icon in the Sport menu. */
-export const SPORT_ICONS: Record<string, string> = { soccer: '⚽' }
+export const SPORT_ICONS: Record<string, string> = { soccer: '⚽', basketball: '🏀' }
 
 /** A sport's name as the app shows it, where it differs from the engine's
  *  (which also goes into the scoring prompt, so it stays as it is). */
@@ -91,22 +108,19 @@ export function sportName(s: { id: string; label: string }): string {
 
 /** Sports on the way: listed under the ones on offer, greyed out, to hint at
  *  what's next. UI only, so one can never be sent in a job. */
-export const COMING_SOON: { label: string; icon: string }[] = [
-  { label: 'Basketball', icon: '🏀' },
-  { label: 'Cricket', icon: '🏏' }
-]
+export const COMING_SOON: { label: string; icon: string }[] = [{ label: 'Cricket', icon: '🏏' }]
 
 /** The story reels a match can have joined from its clips, in their order. */
 export const REELS: { id: string; label: string; title: string }[] = [
   {
     id: 'recap',
     label: 'Match recap',
-    title: 'Every goal, card and save of the match in one video, in match order.'
+    title: 'Every named moment of the match in one video, in match order: the goals and saves, or the baskets and blocks.'
   },
   {
     id: 'teams',
     label: 'Team reels',
-    title: 'A video per team of its moments: the goals the score box or your match events give it.'
+    title: 'A video per team of its moments: the ones the score box or your match events give it.'
   },
   {
     id: 'players',
@@ -153,6 +167,26 @@ export function startingSport(list: SportChoice[]): SportOption | null {
 
 const titled = (id: string): string => id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 
+/** Each offered sport as a Vertical Live content choice ("sport:basketball"),
+ *  after Talking / IRL and Gaming / reaction. */
+export function verticalSports(list: SportChoice[]): { value: string; label: string }[] {
+  return list.map((s) => ({ value: `sport:${s.id}`, label: `${SPORT_ICONS[s.id] ?? ''} ${sportName(s)}`.trim() }))
+}
+
+/** The Vertical Live content choice a sport option is ("sport:soccer"). */
+export function verticalValue(o: SportOption | null | undefined): string | null {
+  return o ? `sport:${o.name}` : null
+}
+
+/** The sport option for a Vertical Live content choice: the current one
+ *  when it is that sport, else that sport's starting choice. */
+export function sportForVertical(value: string, current: SportOption | null | undefined, list: SportChoice[]): SportOption | null {
+  const id = value.slice('sport:'.length)
+  if (current?.name === id) return current
+  const last = lastSport()
+  return fitSport(last?.name === id ? last : { name: id }, list)
+}
+
 /** "Sports · Soccer / Football · All goals · 2nd half · Team A", for the queue's chip. */
 export function describeSport(o: SportOption): string {
   const sport = offered?.find((s) => s.id === o.name)
@@ -175,7 +209,8 @@ export function sportMoment(s: SubScores | undefined): string | null {
   // A story reel: what it is and how many moments it joins.
   if (s.sport_reel) return `${s.sport_label}${s.sport_parts ? ` · ${s.sport_parts} moments` : ''}`
   let when = ''
-  if (s.sport_minute != null) when = `${s.sport_minute}'`
+  if (s.sport_when) when = s.sport_when
+  else if (s.sport_minute != null) when = `${s.sport_minute}'`
   else if (s.sport_t != null) {
     const t = Math.round(s.sport_t)
     const h = Math.floor(t / 3600)
@@ -183,6 +218,6 @@ export function sportMoment(s: SubScores | undefined): string | null {
     const sec = String(t % 60).padStart(2, '0')
     when = h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
   }
-  const parts = [s.sport_label, when, s.sport_team ?? s.sport_player ?? ''].filter(Boolean)
+  const parts = [s.sport_label, when, s.sport_person ?? s.sport_team ?? s.sport_player ?? ''].filter(Boolean)
   return `${parts.join(' · ')}${s.sport_replay ? ' (replay)' : ''}`
 }

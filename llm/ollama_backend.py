@@ -1,6 +1,7 @@
 """Ollama backend — serves Gemma, Llama, and any other model Ollama hosts."""
 
 import base64
+import time
 
 import requests
 
@@ -32,6 +33,16 @@ _THINK_TO_ANSWER = {"gpt-oss": "medium", "nemotron": True}
 # about 50 s every time. The prompts already ask for the JSON, and every caller
 # finds it in plain text.
 _ANSWER_WITHOUT_FORMAT = ("gemma4",)
+
+# gemma3:4b held to `format` sometimes does the same: on an NBA game (Ollama
+# 0.35.1) that 500 ended six runs in a day, the last five in a row, six to eight
+# minutes in, reading the transcript's chunks or scoring windows. A request
+# Ollama answers with a server error is asked again, without `format` from the
+# second try, and an answer Ollama still cuts off comes back empty, as an
+# answer that can't be read, which every caller already gets past.
+_TRIES = 3
+_PAUSE = 2.0        # seconds before the second try, twice that before the third
+_CUT_OFF = "prediction aborted"     # Ollama's 500 for an answer that repeats itself
 
 
 class OllamaBackend(LLMBackend):
@@ -66,12 +77,7 @@ class OllamaBackend(LLMBackend):
         if json_mode:
             payload["format"] = "json"
         self._limit_reasoning(payload)
-
-        response = requests.post(
-            f"{self.host}/api/generate", json=payload, timeout=self.timeout
-        )
-        response.raise_for_status()
-        return response.json()["response"]
+        return self._answer(payload)
 
     def sees_images(self) -> bool:
         """Gemma 3 and Gemma 4 can (Ollama says "vision"); gemma:7b can't."""
@@ -92,7 +98,28 @@ class OllamaBackend(LLMBackend):
         # nothing at all (see _limit_reasoning); this question doesn't need it.
         if "thinking" in self._capabilities():
             payload["think"] = False
-        response = requests.post(f"{self.host}/api/generate", json=payload, timeout=self.timeout)
+        return self._answer(payload)
+
+    def _answer(self, payload: dict) -> str:
+        """The model's answer to `payload`. A request Ollama answers with a
+        server error is asked again, _TRIES times in all and without `format`
+        from the second (the prompts ask for JSON themselves). An answer Ollama
+        still cuts off for repeating itself is "": one the caller can't read.
+        Any other error ends the job, as it always has."""
+        for attempt in range(1, _TRIES + 1):
+            response = requests.post(f"{self.host}/api/generate", json=payload, timeout=self.timeout)
+            if response.status_code < 500:
+                break
+            said = _error(response)
+            if attempt == _TRIES:
+                if _CUT_OFF in said:
+                    print(f"      (Ollama cut the answer off {_TRIES} times ({said}); going on without it)")
+                    return ""
+                break
+            print(f"      (Ollama answered {response.status_code}: {said}; asking again"
+                  + (" without JSON mode)" if "format" in payload else ")"))
+            payload = {k: v for k, v in payload.items() if k != "format"}
+            time.sleep(_PAUSE * attempt)
         response.raise_for_status()
         return response.json()["response"]
 
@@ -148,3 +175,12 @@ class OllamaBackend(LLMBackend):
     @property
     def name(self) -> str:
         return f"ollama/{self.model}"
+
+
+def _error(response) -> str:
+    """What Ollama said went wrong ({"error": "..."}), or the start of its reply."""
+    try:
+        said = response.json().get("error")
+    except Exception:
+        said = None
+    return str(said or getattr(response, "text", "") or "no reason given")[:200]

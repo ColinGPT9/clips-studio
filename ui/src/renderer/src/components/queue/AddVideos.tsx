@@ -6,7 +6,16 @@ import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../Wate
 import GamingLayoutEditor from '../GamingLayoutEditor'
 import SportFields from '../SportFields'
 import { PRESETS } from '../../lib/gamingLayout'
-import { fitSport, lastSport, rememberSport, startingSport, useSports } from '../../lib/sports'
+import {
+  fitSport,
+  lastSport,
+  rememberSport,
+  sportForVertical,
+  startingSport,
+  useSports,
+  verticalSports,
+  verticalValue
+} from '../../lib/sports'
 import { Folder, Trash } from '../icons'
 import { t } from '../../lib/i18n'
 
@@ -97,7 +106,7 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
     label: 'Sports',
     hint: '(match)',
     title:
-      'For a match (Soccer for now): goals, saves, cards and big chances are found from the crowd, the commentary and the scoreboard, one clip per moment with its build-up, and the 9:16 crop follows the ball. Choose the sport and which moments to keep below.'
+      'For a match or a game (Soccer, Basketball): its moments (goals and saves, or dunks, threes, blocks and the reactions to them) are found from the crowd, the commentary and the scoreboard, one clip per moment with its build-up, and the 9:16 crop follows the play. Choose the sport and which moments to keep below.'
   },
   {
     key: 'watermark',
@@ -433,9 +442,15 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
    *  reaction scores it as a gaming stream (gaming_scoring). */
   /** What a Vertical Live is, which decides how it's scored. Soccer is the
    *  Sports switch's match scoring, picked here for a match streamed 9:16. */
-  const setVerticalContent = (slot: Slot, content: 'standard' | 'gaming' | 'sport'): void => {
-    if (content === 'sport') {
-      replaceOptions(slot.key, toggle(slot.options, 'sport', true))
+  const setVerticalContent = (slot: Slot, content: string): void => {
+    if (content.startsWith('sport:')) {
+      const next = toggle(slot.options, 'sport', true)
+      const sport = sportForVertical(content, next.sport, offered)
+      if (sport) {
+        next.sport = sport
+        rememberSport(sport)
+      }
+      replaceOptions(slot.key, next)
       return
     }
     const next = slot.options.sport ? toggle(slot.options, 'sport', false) : { ...slot.options }
@@ -702,14 +717,18 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 <span className="label shrink-0">{t('Vertical Live content')}</span>
                 <select
                   className="input !w-72"
-                  value={slot.options.sport ? 'sport' : slot.options.gaming_scoring ? 'gaming' : 'standard'}
-                  onChange={(e) => setVerticalContent(slot, e.target.value as 'standard' | 'gaming' | 'sport')}
+                  value={verticalValue(slot.options.sport) ?? (slot.options.gaming_scoring ? 'gaming' : 'standard')}
+                  onChange={(e) => setVerticalContent(slot, e.target.value)}
                   aria-label={`${t('Vertical Live content')} ${n + 1}`}
                   title={t('Gaming / reaction: what you say counts as on any stream, and in-game moments (a kill streak, a boss going down, a goal) and the reactions to them add to it, from chat and your voice, even when you say little. Game characters and people in a video you watch aren’t taken for you.')}
                 >
                   <option value="standard">{t('Talking / IRL')}</option>
                   <option value="gaming">{t('Gaming / reaction')}</option>
-                  {offered.length > 0 && <option value="sport">⚽ {t('Soccer / Football')}</option>}
+                  {verticalSports(offered).map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {t(s.label)}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}

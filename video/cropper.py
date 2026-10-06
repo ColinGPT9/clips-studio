@@ -55,7 +55,7 @@ def render_vertical(
         )
     return _render_tracked(
         clip_path, tracking["path"], output_path, ass_path, vf_extra,
-        face_y=tracking.get("face_y"), normalize=normalize,
+        face_y=tracking.get("face_y"), normalize=normalize, rows=tracking.get("rows"),
     )
 
 
@@ -129,12 +129,23 @@ def _render_tracked(
     vf_extra: str = "",
     face_y: float | None = None,
     normalize: bool = True,
+    rows: tuple[float, float] | None = None,
 ) -> Path:
+    """rows: the band of the frame's height the crop keeps, (top, bottom) in
+    fractions of it; all of it when None. A sport's framing leaves its TV
+    scoreboard out this way (sports/basketball/action.py): the crop is then
+    that much shorter, and as much narrower, so it stays 9:16."""
     with video_capture(clip_path) as cap:
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        y0, y1 = 0, src_h
+        if rows is not None:
+            y0 = max(0, min(src_h - 2, int(round(rows[0] * src_h))))
+            y1 = max(y0 + 2, min(src_h, int(round(rows[1] * src_h))))
+            y1 -= (y1 - y0) % 2  # even height required by H.264
+        crop_h = y1 - y0
 
         # Face in the top quarter of a full-height crop would sit under the
         # TikTok/Instagram tab bar. For those clips, crop a WIDER 4:5 window
@@ -142,7 +153,7 @@ def _render_tracked(
         # can start below the tab area — blurred bands land on top/bottom ONLY
         # (never at the sides), and the wider view shows more of the scene.
         top_safe = face_y is not None and face_y < 0.25
-        crop_w = int(src_h * (4 / 5 if top_safe else 9 / 16))
+        crop_w = int(crop_h * (4 / 5 if top_safe else 9 / 16))
         crop_w -= crop_w % 2  # even width required by H.264
         crop_w = min(crop_w, src_w)
 
@@ -173,7 +184,7 @@ def _render_tracked(
                 x0 = int(round(center_x - crop_w / 2))
                 x0 = max(0, min(src_w - crop_w, x0))  # clamp inside the frame
                 # Column slices are non-contiguous views; the pipe needs bytes.
-                write(np.ascontiguousarray(frame[:, x0 : x0 + crop_w]).tobytes())
+                write(np.ascontiguousarray(frame[y0:y1, x0 : x0 + crop_w]).tobytes())
 
             try:
                 for frame_idx, frame in sampled_frames(clip_path, 1, src_w, src_h):
@@ -196,7 +207,7 @@ def _render_tracked(
         # clip, which is still where the audio comes from.
         pipe_in = [
             "-f", "rawvideo", "-pix_fmt", "bgr24",   # OpenCV hands us BGR
-            "-s", f"{crop_w}x{src_h}", "-r", f"{fps}",
+            "-s", f"{crop_w}x{crop_h}", "-r", f"{fps}",
             "-i", "pipe:0",
         ]
 

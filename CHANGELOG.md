@@ -10,6 +10,23 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ## Unreleased
 
+### Added
+
+- **Basketball, the second sport.** Tick **Sports** and choose 🏀 Basketball: dunks,
+  threes, blocks, steals and game winners each become a clip with the possession before
+  them and the reaction after. The score bug confirms every basket and its points, and
+  the quarter and game clock make a game-winning three in overtime count for far more
+  than a first-quarter one. The broadcast's cutaways to the crowd, the bench and
+  courtside are found too: merged into the play's clip, or clipped on their own with
+  **Fan reactions**, **Celebrity reactions**, **Crowd reactions** or **Bench reactions**.
+  A person is named only when the broadcast captions them. A **Quarter** menu picks part
+  of the game, the 9:16 crop follows the ball, the play around it and the rim, and a game
+  filmed 9:16 keeps its picture. It runs on the same Whisper and AI model as everything
+  else. Measured on three NBA broadcasts: the score bug is read piece by piece (two-row
+  bugs, logos beside bare scores), court and crowd shots are told apart by how big the
+  people in them are, and the crop no longer snaps when the camera pans. See
+  [docs/SPORTS.md](docs/SPORTS.md#basketball).
+
 ### Changed
 
 - **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a

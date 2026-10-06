@@ -392,6 +392,13 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # bilingual streams (e.g. Hindi speech over English game audio) where
     # detection picks the wrong language and every caption burns wrong.
     forced_lang = (config.get("content_language") or "auto").lower()
+    hint = None
+    if sport_name:
+        # The names a sport's video spells (basketball: its players, from its
+        # title and description), for Whisper to listen for.
+        hint = _listening_for(config, video, url)
+        if hint:
+            print(f"      Listening for: {hint[:120]}{'…' if len(hint) > 120 else ''}")
     segments = transcribe(
         video.path,
         video.video_id,
@@ -400,6 +407,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         device=config["whisper"]["device"],
         language=None if forced_lang == "auto" else forced_lang,
         online=online_transcription(config),
+        **({"hotwords": hint} if hint else {}),
     )
     from transcription.transcriber import detected_language
 
@@ -498,10 +506,20 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
     # (one call per clip made long streams crawl through analysis).
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
+    # A sport's own rules for its clips' titles (basketball: which player to name).
+    title_rules = getattr(sport_profile, "title_rules", None) if sport_profile is not None else None
     metas = generate_metadata_batch(
         candidates, segments, video.title, llm,
         creator_context=(creator_ctx.summary if creator_ctx else ""),
+        **({"rules": title_rules()} if title_rules is not None else {}),
     )
+    # ...and its check of them against the game (basketball: who scored, who
+    # leads): the ones that get it wrong are written again with these rules.
+    check_titles = getattr(sport_profile, "check_titles", None) if sport_profile is not None else None
+    if check_titles is not None:
+        metas = check_titles(candidates, metas, lambda clips, rules: generate_metadata_batch(
+            clips, segments, video.title, llm,
+            creator_context=(creator_ctx.summary if creator_ctx else ""), rules=rules))
 
     # Hashtags the request insisted on (chat: "put #creatorname on all of
     # them"). Appended after generation rather than asked of the model: a
@@ -862,13 +880,13 @@ class MatchReading:
 
     def _listen(self) -> None:
         try:
-            from analysis import game_audio, gaming, panns
+            import sports
+            from analysis import game_audio, panns
 
             if not panns.available():
                 print("      (match sounds: the sound model isn't installed, scoring without it)")
                 return
-            groups = gaming.knowledge().get("sound_groups") or {}
-            self._heard["heard"] = game_audio.listen(self.video.path, groups)
+            self._heard["heard"] = game_audio.listen(self.video.path, sports.sound_groups(self.name))
         except Exception as e:
             print(f"      (match sounds unavailable: {e})")
 
@@ -883,9 +901,17 @@ class MatchReading:
     def finish(self, hype_out: dict | None = None):
         """(the sport's profile, what chat's reactions mark, what the match's
         sound marks), once both passes are done: long before Whisper, bar a
-        stuck decode."""
-        for thread in self._threads:
-            cancel.wait(thread, 900, self.video.video_id)
+        stuck decode, or a sport whose own pass takes longer on a long video
+        (sports.prepass_wait: basketball's scoreboard took 25 minutes on a
+        79-minute game)."""
+        import sports
+
+        waits = (900, sports.prepass_wait(self.config, float(getattr(self.video, "duration", 0) or 0)))
+        for thread, wait in zip(self._threads, waits):
+            cancel.wait(thread, wait, self.video.video_id)
+            if thread.is_alive():
+                what = "the match's sound" if thread is self._threads[0] else "its reading of the video"
+                print(f"      ({self.name}: {what} still running after {wait:.0f}s; going on without it)")
         return _sport_inputs(self.config, self.video, hype_out or {}, self._heard.get("heard"), self._read)
 
 
@@ -917,13 +943,14 @@ def _sport_inputs(config: dict, video, hype_out: dict, heard: dict | None, prepa
         try:
             from analysis.game_audio import sound_signal
 
-            groups = gaming.knowledge().get("sound_groups") or {}
+            groups = sports.sound_groups(profile.name)
             seconds = max(v.size for v in heard.values())
             track = profile.genre_track(seconds)
             sounds = sound_signal(heard, groups, track, profile.sound_weights())
-            # The crowd and the whistle each as a curve of their own: the
-            # moments are typed by which of them agree.
-            for name in ("crowd", "whistle"):
+            # The crowd and the whistle (and a sport's own, like basketball's
+            # buzzer) each as a curve of their own: the moments are typed by
+            # which of them agree.
+            for name in profile.sound_curves():
                 if name in heard:
                     one = sound_signal({name: heard[name]}, groups, track, {profile.name: {name: 1.0}})
                     if one is not None:
@@ -937,7 +964,10 @@ def _sport_inputs(config: dict, video, hype_out: dict, heard: dict | None, prepa
     board = getattr(profile, "board", None)
     if board is not None and board.box:
         teams, final = board.teams(), board.final()
-        print(f"      Scoreboard: {len(board.changes)} goal(s) read"
+        # "goal(s)", "basket(s)": the sport's own word for a score.
+        scored = (profile.event_label(profile.scoring_types[0]).lower()
+                  if getattr(profile, "scoring_types", None) else "goal")
+        print(f"      Scoreboard: {len(board.changes)} {scored}(s) read"
               + (f", {teams[0]} v {teams[1]}" if teams else "")
               + (f", {final[0]}-{final[1]} at the end" if final else ""))
     resolve = getattr(profile, "resolve_footage", None)
@@ -945,6 +975,21 @@ def _sport_inputs(config: dict, video, hype_out: dict, heard: dict | None, prepa
         chosen = (profile.option or {}).get("footage") == "sideline"
         print("      Footage: club or phone" + ("" if chosen else " (no score box on screen)"))
     return profile, chat, sounds
+
+
+def _listening_for(config: dict, video, url: str) -> str | None:
+    """The names Whisper listens for in a sport's video (sports.hotwords). A
+    sport that reads the video's description (basketball: its players, and
+    who won) gets it asked for when the download was reused: a file already
+    on disk comes back without one (_cached_or_download), and on an NBA game
+    Whisper then listened for the two teams alone."""
+    import sports
+
+    if not getattr(video, "description", "") and sports.reads_description(config):
+        from sources.dispatch import description
+
+        video.description = description(url)
+    return sports.hotwords(config, video)
 
 
 def _cached_or_download(url: str, data_dir: Path, db: StateDB, vertical: bool = False):

@@ -209,30 +209,45 @@ FOCUS_PARAM = {
 SPORT_PARAM = {
     "type": "object",
     "description": (
-        "The video is a match: its goals, saves, cards and chances are found from the "
-        "crowd, the commentary and the scoreboard, one clip per moment with its build-up, "
-        "framed to follow the ball. Not with gaming or podcast."
+        "The video is a match or a game: its moments (soccer: goals, saves, cards; basketball: "
+        "dunks, threes, blocks, game winners, and the crowd, bench and courtside reactions) are "
+        "found from the crowd, the commentary and the scoreboard, one clip per moment with its "
+        "build-up and reaction, framed to follow the play. Not with gaming or podcast."
     ),
     "properties": {
-        "name": {"type": "string", "description": "The sport: soccer"},
+        "name": {"type": "string", "description": "The sport: soccer or basketball"},
         "highlights": {
             "type": "string",
             "description": (
-                "Which moments become clips: best (default), goals, goals_celebrations, saves, "
-                "chances, attacking, cards, penalties, or custom (with request)"
+                "Which moments become clips. Soccer: best (default), goals, goals_celebrations, saves, "
+                "chances, attacking, cards, penalties, or custom (with request). Basketball: best "
+                "(default), plays_reactions (the plays with the reactions after them), scoring, dunks, "
+                "threes, blocks, steals, assists, clutch, fan_reactions, celebrity_reactions, "
+                "crowd_reactions, bench_reactions (any reactions choice can take a request: \"fans "
+                "reacting to the dunks\" is fan_reactions with request \"the dunks\"), or custom "
+                "(with request)"
             ),
         },
         "period": {
             "type": "string",
-            "description": "full (default), first_half, second_half or extra_time",
+            "description": (
+                "Soccer: full (default), first_half, second_half or extra_time. Basketball: full "
+                "(default), q1, q2, q3, q4 or ot"
+            ),
         },
         "teams": {
             "type": "string",
-            "description": "Teams or players to favour, as the person named them (never guess)",
+            "description": (
+                "Teams or players to favour, as the person named them (\"Lakers\", \"Curry\"; never "
+                "guess or complete a name)"
+            ),
         },
         "request": {
             "type": "string",
-            "description": "With highlights=custom: the moments wanted, in the person's words",
+            "description": (
+                "With highlights=custom or a basketball reactions choice: the moments wanted, in the "
+                "person's words"
+            ),
         },
         # The app's Sport row has no box for these: they're said here instead.
         "events": {

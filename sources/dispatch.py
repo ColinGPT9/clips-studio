@@ -94,6 +94,26 @@ def game_info(url: str) -> list[dict]:
         return []
 
 
+def description(url: str) -> str:
+    """The video's own description, without downloading it, or "" (a local
+    upload, offline, rate-limited). Only a download brings it
+    (sources/youtube.py), so a job whose file was already on disk asks for it
+    here when its sport reads it (basketball: the players' names, and who
+    won)."""
+    source, _ = identify(url)
+    if source == "local":
+        return ""
+    try:
+        import yt_dlp
+
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        return str(info.get("description") or "")
+    except Exception as e:
+        print(f"      (could not fetch the video's description: {e})")
+        return ""
+
+
 def metadata(url: str) -> tuple[str, str]:
     """(title, channel) for a URL, without downloading the video.
 
