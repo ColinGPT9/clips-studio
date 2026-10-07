@@ -234,13 +234,15 @@ def test_the_script_writes_and_checks_the_readme(cat, capsys):
 
 
 @pytest.mark.parametrize("value, ok", [
-    ("https://github.com/example-org/awesome/releases/download/installs/{asset}", True),
+    ("https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}", True),
     (None, True),
-    ("http://example.com/{asset}", False),
-    ("https://example.com/no-placeholder", False),
-    ("https://example.com/{asset}/{asset}", False),
+    ("https://github.com/example-org/awesome/releases/download/installs/{asset}", False),  # not the project's
+    ("https://tracker.example.net/c/{asset}", False),
+    ("https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}?who=me", False),
+    ("http://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}", False),
+    ("https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/no-placeholder", False),
 ])
-def test_the_counter_address_must_be_https_with_one_asset_name(cat, value, ok):
+def test_the_counter_address_must_be_a_release_in_the_projects_own_repository(cat, value, ok):
     cat.write("catalog.yaml", {"counter": {"install": value}})
     index, problems = cat.build()
     assert (problems == []) is ok, problems
@@ -251,15 +253,47 @@ def test_the_counter_name_holds_no_slash():
     assert catalog.counter_asset("example-dev/example-plugin") == "example-dev__example-plugin.count"
 
 
-def test_an_index_from_elsewhere_cant_claim_official_or_compatible_entries():
-    entry = {"id": "apps/x", "kind": "app", "name": "X", "license": "MIT",
+OWN_COUNTER = "https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}"
+
+
+def _remote_index():
+    entry = {"id": "apps/x", "kind": "app", "name": "X", "license": "MIT", "featured": {"reason": "Ours", "date": TODAY},
              "source": {"github": "https://github.com/example-org/x"}, "badges": ["official", "compatible", "featured"]}
     own = {**entry, "id": "tools/sdk", "kind": "tool", "source": {"github": "https://github.com/ColinGPT9/clips-studio"},
            "badges": ["community"]}
-    data = registry.check_index({"format": 1, "plugins": [], "blocklist": [], "catalog": [entry, own],
-                                 "counter": {"install": "javascript:alert(1)"}})
+    del own["featured"]
+    return {"format": 1, "plugins": [], "blocklist": [], "catalog": [entry, own], "counter": {"install": OWN_COUNTER}}
+
+
+def test_only_the_bundled_index_gives_labels_or_counts_installs():
+    # Any other index is someone else's list: everything in it is Community, and it can't count.
+    data = registry.check_index(_remote_index())
+    assert [e["badges"] for e in data["catalog"]] == [["community"], ["community"]]
+    assert "featured" not in data["catalog"][0] and "counter" not in data
+    # The bundled index was built by this project: its Featured counts, Official follows the
+    # repository whatever it claims, and a directory entry is never Compatible.
+    data = registry.check_index(_remote_index(), trusted=True)
     assert [e["badges"] for e in data["catalog"]] == [["community", "featured"], ["official"]]
-    assert "counter" not in data
+    assert data["counter"] == {"install": OWN_COUNTER}
+    assert "counter" not in registry.check_index({**_remote_index(), "counter": {"install": "javascript:alert(1)"}},
+                                                 trusted=True)
+
+
+def test_an_entry_from_an_index_keeps_only_well_formed_fields():
+    bad = {"id": "apps/odd", "kind": "app", "name": "Odd", "license": "MIT", "source": {"github": "https://github.com/a/b"},
+           "adapter": ["not", "an", "id"], "games": "Valorant", "platforms": [1, "windows"], "unknown": "x",
+           "discussions_url": "javascript:alert(1)",
+           "metrics": {"github": {"stars": "lots", "pushed_at": 5}, "models": {"a/b": None, "c/d": {"downloads": 3}},
+                       "installs": -1}}
+    (entry,) = registry.check_index({"format": 1, "plugins": [], "catalog": [bad]})["catalog"]
+    assert "adapter" not in entry and "games" not in entry and "unknown" not in entry
+    assert "discussions_url" not in entry and entry["platforms"] == ["windows"]
+    assert entry["metrics"] == {"github": {}, "models": {"c/d": {"downloads": 3}}}
+    # A listing too: odd checks or word lists are dropped, not a reason to fail.
+    listing = {"id": "example-dev/odd", "repository": "https://github.com/ColinGPT9/clips-studio", "checks": ["x"],
+               "games": 5, "tags": ["ok"], "versions": [{"version": "1.0.0", "commit": "a" * 40}]}
+    (got,) = registry.check_index({"format": 1, "plugins": [listing]}, trusted=True)["plugins"]
+    assert got["checks"] == {} and "games" not in got and got["tags"] == ["ok"]
 
 
 # ---- the metrics job --------------------------------------------------------------------------
@@ -425,4 +459,4 @@ def test_installs_arent_counted_while_the_privacy_policy_says_no_telemetry():
         return
     for rel in ("site/privacy.html", "docs/msstore-submission-sheet.md"):
         text = (ROOT / rel).read_text(encoding="utf-8")
-        assert "No telemetry" not in text, f"{rel} still says No telemetry: say that installs are counted first"
+        assert "no telemetry" not in text.lower(), f"{rel} still says no telemetry: say that installs are counted first"

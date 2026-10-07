@@ -22,6 +22,7 @@ import {
   indexName,
   listingLinks,
   needLines,
+  safeLink,
   slugLabel,
   tierBadge,
   updateLines,
@@ -184,7 +185,8 @@ function Numbers({
   at?: string | null
 }): JSX.Element | null {
   const lines = metricLines(metrics)
-  if (lines.length === 0 && !discussions) return null
+  const comments = safeLink(discussions)
+  if (lines.length === 0 && !comments) return null
   return (
     <div className="text-sm">
       <p className="label mb-1">{t('Numbers')}</p>
@@ -194,9 +196,9 @@ function Numbers({
             {t(l.text)}
           </li>
         ))}
-        {discussions && (
+        {comments && (
           <li>
-            <OutLink url={discussions}>{t('Comments and ideas: GitHub Discussions')}</OutLink>
+            <OutLink url={comments}>{t('Comments and ideas: GitHub Discussions')}</OutLink>
           </li>
         )}
       </ul>
@@ -697,13 +699,18 @@ function EntryCard({
               {t('Runs in Clips Kitty through')} {entry.adapter}
             </span>
           ))}
-        {entry.discussions_url && (
+        {safeLink(entry.discussions_url) && (
           <span className="text-xs">
-            <OutLink url={entry.discussions_url}>{t('Discussions')}</OutLink>
+            <OutLink url={safeLink(entry.discussions_url)}>{t('Discussions')}</OutLink>
           </span>
         )}
-        {(entry.platforms ?? []).length > 0 && (
-          <span className="text-xs text-muted">{(entry.platforms ?? []).map(slugLabel).join(', ')}</span>
+        {Array.isArray(entry.platforms) && entry.platforms.length > 0 && (
+          <span className="text-xs text-muted">{entry.platforms.map(slugLabel).join(', ')}</span>
+        )}
+        {entry.index && entry.index !== 'bundled' && (
+          <span className="text-xs text-muted">
+            {t('From')} {indexName(entry.index)}
+          </span>
         )}
       </div>
     </div>
@@ -723,6 +730,8 @@ function CatalogBrowse({
 }): JSX.Element {
   const [data, setData] = useState<CatalogResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Another kind's entries would land under this kind's sections until the new answer comes.
+  useEffect(() => setData(null), [kind])
   useEffect(() => {
     let live = true
     const timer = setTimeout(
@@ -769,7 +778,7 @@ function CatalogBrowse({
         </section>
       ))}
       <p className="text-xs text-muted border-t border-raised/50 pt-3">
-        {t('From Awesome Clips Kitty, a curated list. Built with Clips Kitty: a separate app or tool that uses Clips Kitty. Related: relevant, not connected to Clips Kitty yet. Each project keeps its own licence.')}
+        {t('From Awesome Clips Kitty, a curated list; an entry from another list you added says where it came from. Built with Clips Kitty: a separate app or tool that uses Clips Kitty. Related: relevant, not connected to Clips Kitty yet. Each project keeps its own licence.')}
         {data.metrics_at ? ` ${t('Numbers read on')} ${data.metrics_at}.` : ''}
       </p>
     </div>
@@ -1710,8 +1719,9 @@ function InstallDialog({
     plugins.counting().then(setCounting).catch(() => setCounting(null))
   }, [])
   const needs = plan ? confirmations(plan) : []
+  // Only the bundled index can count installs (plugins/registry.py), and only a first install.
   const counted =
-    Boolean(counting?.enabled && counting.active && plan?.source.listed_in && !plan.update) &&
+    Boolean(counting?.enabled && counting.active && plan?.source.listed_in === 'bundled' && !plan.update) &&
     (plan?.details.tier === 'listed' || plan?.details.tier === 'listed-official')
   const ready = Boolean(plan?.ok && plan.plan_id) && needs.every((c) => ticked[c]) && !busy
   const install = (): void => {
@@ -1785,7 +1795,7 @@ function InstallDialog({
             <Links links={listingLinks(plan.plugin)} />
             {plan.ok && counted && (
               <p className="text-xs text-muted">
-                {t('Installing adds one to this plugin’s public install count, kept by GitHub. Nothing about you or your videos is sent. You can switch counting off at the bottom of Browse.')}
+                {t('Installing adds one to this plugin’s public install count, kept by GitHub. Clips Kitty sends no account, ID or details about your videos. You can switch counting off at the bottom of Browse.')}
               </p>
             )}
             {plan.ok && needs.length > 0 && (

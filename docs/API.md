@@ -1263,8 +1263,8 @@ label means (`badges`) and `metrics_at`, the date the numbers were read.
 Marketplace are counted:
 `{"enabled": true, "locked_off": false, "active": false, "text": "..."}`.
 `locked_off` is true when settings say `plugins.count_installs: false`;
-`active` is false while no index has an install counter address, which is the
-case today, so nothing is counted. `PUT /marketplace/counting`
+`active` is false while the bundled index has no install counter address (no
+other index can count installs), which is the case today, so nothing is counted. `PUT /marketplace/counting`
 `{"enabled": false}` switches counting off for this PC (or on again), needs the
 session header, and answers the same way. `POST /plugins/install` answers with
 `counted`: whether that install was counted, which only a first install from a

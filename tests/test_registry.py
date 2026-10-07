@@ -10,6 +10,7 @@ Every id and address is a placeholder.
 import io
 import json
 import re
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -103,10 +104,10 @@ class Registry:
     def block(self, entries):
         (self.dir / "blocklist.yaml").write_text(yaml.safe_dump(entries))
 
-    def build(self):
+    def build(self, **kw):
         from scripts.build_registry_index import fixture_reader
 
-        return registry.build_index(self.root, fetch=fixture_reader(self.sources))
+        return registry.build_index(self.root, fetch=fixture_reader(self.sources), **kw)
 
 
 @pytest.fixture
@@ -126,6 +127,39 @@ def catalogue(reg, tmp_path):
 
 
 # ---- the build ------------------------------------------------------------------------------
+
+
+def test_a_commit_must_be_on_a_branch_of_the_listed_repository(reg):
+    # GitHub serves a fork's commits under the parent's address too, so a hash alone
+    # doesn't say whose code it is: the build asks where each commit is.
+    row = CATALOGUE[0]
+    (entry,) = reg.listing(row[0], [("1.0.0", _manifest(*row))])
+    asked = []
+
+    def on_branch(owner, repo, commit):
+        asked.append((owner, repo, commit))
+        return False
+
+    index, problems = reg.build(on_branch=on_branch)
+    assert index["plugins"] == [] and asked == [(OWNER, row[0], entry["commit"])]
+    assert problems == [f"pipelines/{OWNER}/{row[0]}.yaml: 1.0.0: commit {entry['commit'][:7]} is not on a branch "
+                        f"or tag of {OWNER}/{row[0]} (it may be from a fork)"]
+
+    def offline(owner, repo, commit):
+        raise OSError("no network")
+
+    index, problems = reg.build(on_branch=offline)
+    assert index["plugins"] == [] and "couldn't check where commit" in problems[0] and "no network" in problems[0]
+    index, problems = reg.build(on_branch=lambda *a: True)
+    assert problems == [] and index["plugins"][0]["checks"]["commit_on_branch"] is True
+    assert "commit_on_branch" not in reg.build()[0]["plugins"][0]["checks"]  # not checked, not claimed
+
+
+def test_only_the_bundled_index_installs_as_official():
+    official = {"repository": "https://github.com/ColinGPT9/clips-studio"}
+    assert registry.listing_tier({**official, "index": "bundled"}) == "listed-official"
+    assert registry.listing_tier({**official, "index": "https://example.org/index.json"}) == "listed"
+    assert registry.listing_tier({"repository": "https://github.com/example-dev/x", "index": "bundled"}) == "listed"
 
 
 def test_the_build_lists_each_plugin_with_what_the_marketplace_shows(reg):
@@ -240,20 +274,35 @@ def test_the_script_writes_and_checks_the_index(reg, tmp_path, capsys):
 
 def _this_repository(url):
     """The project's own listings point at commits of this repository. Read
-    their manifests from the working tree, so the test needs no network: a
-    listed manifest that has changed since fails here until the change is
-    listed as a new version. (CI's build step fetches the real commits.)"""
-    m = re.match(r"https://raw\.githubusercontent\.com/ColinGPT9/clips-studio/[0-9a-f]{40}/(.+)$", url)
+    each manifest at its own commit with git, so the test needs no network.
+    A shallow clone without that commit skips: CI's build step
+    (build_registry_index.py --check) reads the real commits from GitHub."""
+    m = re.match(r"https://raw\.githubusercontent\.com/ColinGPT9/clips-studio/([0-9a-f]{40})/(.+)$", url)
     if not m:
         raise AssertionError(f"the committed catalog should need no fetch: {url}")
-    return (ROOT / m.group(1)).read_text(encoding="utf-8")
+    commit, path = m.groups()
+    shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{commit}:{path}"], capture_output=True,
+                           text=True, encoding="utf-8")
+    if shown.returncode != 0:
+        pytest.skip(f"commit {commit[:7]} is not in this clone; CI's --check step reads it from GitHub")
+    return shown.stdout
+
+
+def _in_this_repository(owner, repo, commit):
+    """The branch check, for the same commits: this clone has them (the
+    --check step makes the real check, against GitHub's branches)."""
+    assert (owner, repo) == ("ColinGPT9", "clips-studio"), f"the committed catalog lists {owner}/{repo}"
+    if subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"],
+                      capture_output=True).returncode != 0:
+        pytest.skip(f"commit {commit[:7]} is not in this clone; CI's --check step checks it on GitHub")
+    return True
 
 
 def test_the_committed_catalog_is_up_to_date():
     from scripts.build_registry_index import readme_for
 
     folder = ROOT / "awesome-clips-kitty"
-    index, problems = registry.build_index(folder, fetch=_this_repository)
+    index, problems = registry.build_index(folder, fetch=_this_repository, on_branch=_in_this_repository)
     assert problems == []
     hint = "run python scripts/build_registry_index.py"
     assert (folder / "index.json").read_text(encoding="utf-8") == registry.index_text(index), hint

@@ -376,7 +376,7 @@ versions:
 
 **Ratings, counts, examples, cost** (research Q34-Q36, Q43): no in-app ratings (they need accounts and are gamed); GitHub stars shown as GitHub stars; no telemetry and no install counts, only "release downloads" if a plugin ships release assets; examples are the developer's own links. The Marketplace stays free because it runs nothing: a Git repository, a CI job, a JSON file. Clips Kitty takes no cut and processes no payments; `links.funding` and `service` are outbound links only.
 
-**Superseded on 2026-10-07** (`DECISIONS.md` D20): the owner decided to count installs from the catalog. After a first install from a listing the app requests one small file named after it, with no account, identifier or anything about videos, and users can switch it off (`plugins/counter.py`). Clips Kitty installs, GitHub stars and Hugging Face downloads are each shown as their own figure, read on a schedule rather than at build time (`scripts/update_registry_metrics.py`). The counter has no address yet, so nothing is counted until the privacy policy says it is.
+**Superseded on 2026-10-07** (`DECISIONS.md` D20): the owner decided to count installs from the catalog. After a first install from a listing the app requests one small file named after it, with no account, identifier or anything about videos, and users can switch it off (`plugins/counter.py`). It is on by default until the owner answers whether it should be (D23). Clips Kitty installs, GitHub stars and Hugging Face downloads are each shown as their own figure, read on a schedule rather than at build time (`scripts/update_registry_metrics.py`). The counter has no address yet, so nothing is counted until the privacy policy says it is.
 
 ## New routes
 
@@ -418,7 +418,7 @@ The existing modes stay exactly where they are. Two things make them part of the
 | Per-plugin Python environments (`run.python_requirements`) | needs the manager first; then built if time allows (Phase 6) | plugins can depend on wheels such as onnxruntime |
 | Routing by game, then genre, then generic | needs several pipelines per capability to exist first | a job can ask for a capability instead of one plugin |
 | Block list fetched at engine start and before each plugin job | needs a published index URL | blocking reaches installed copies without an app release |
-| Opt-in usage counts | owner's call | a counter, never on by default (superseded 2026-10-07, D20: an install counter, on unless switched off, built and not yet given an address; §8.10) |
+| Opt-in usage counts | owner's call | a counter, never on by default (superseded 2026-10-07: D20, install counts wanted; D23, a counter built on unless switched off, pending the owner's answer on that default, with no address yet, so nothing is counted; §8.10) |
 ## 8.13 Worked examples
 
 Both are on paper. Publisher names, repositories, model ids and commits are placeholders.

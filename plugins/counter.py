@@ -34,7 +34,8 @@ PREFS_FILE = "counting.json"
 DEFAULT_ON = True
 TIMEOUT = 10
 EXPLAIN = ("Each install from the Marketplace adds one to a public count for that plugin, kept by GitHub. "
-           "Clips Kitty sends no account, no ID and nothing about your videos.")
+           "Clips Kitty sends no account, no ID and nothing about your videos; GitHub sees the request as it "
+           "sees any download.")
 
 
 def _prefs_path(data_dir) -> Path:

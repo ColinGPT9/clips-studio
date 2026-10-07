@@ -34,10 +34,10 @@ It does **not** prove the code is safe or does what it says. Nobody reads plugin
 
 | Label | Means | Set by |
 |---|---|---|
-| ✓ Official | The listing's repository belongs to the Clips Kitty project (GitHub owner `ColinGPT9`). It installs with the tier "✓ Official · made by the Clips Kitty project". | The build, from the repository. The app works it out again from the repository whatever an index claims, so an index at another address can't make its plugins look official. |
+| ✓ Official | The listing's repository belongs to the Clips Kitty project (GitHub owner `ColinGPT9`), and every listed commit is on one of that repository's own branches or tags (GitHub serves a fork's commits under the parent's address too, so the build checks). It installs with the tier "✓ Official · made by the Clips Kitty project". | The build, from the repository and its history. The app works it out again from the repository, and only for the index bundled with it. |
 | ✓ Compatible | The latest listed version, at its commit, passed the automated compatibility check on one Clips Kitty version: the manifest is valid, it installs, its requirements are met, and it runs on a sample video and gives an answer Clips Kitty accepts. **A technical label, not a trust or security guarantee.** | `scripts/check_compatibility.py`, which writes `stats/compatibility.json`; the build turns a passed record for that exact version and commit into the label. |
 | ★ Featured | A notable project, picked by hand. | A maintainer, with `featured: {reason: ..., date: ...}` in the listing. |
-| Community | Everything not official. The default. | The build. |
+| Community | Everything not official. The default. | The build. Everything in an index other than the bundled one is Community, whatever it claims: Official, Compatible and Featured come only from the list this project builds and ships with the app. |
 
 The official example pipeline, [`clips-kitty-examples/scene-cut-highlights`](../../awesome-clips-kitty/registry/pipelines/clips-kitty-examples/scene-cut-highlights.yaml), is listed with ✓ Official and ✓ Compatible.
 
@@ -71,7 +71,7 @@ Each number is its own figure, from its own source, and is never added to anothe
 
 ### The install counter
 
-`plugins/counter.py`. After a **first** install from a listing, the app requests one small file named after the listing at the index's `counter.install` address, with `{asset}` replaced by the id with `/` turned into `__` plus `.count` (`example-dev__example-plugin.count`). An update, a rollback or a version switch is not counted; installing again after removing is. The plan is a GitHub release in the catalog's own repository with one such file per listing, so the count is GitHub's public download count for it, which `update_registry_metrics.py` reads back.
+`plugins/counter.py`. After a **first** install from a listing in the bundled index, the app requests one small file named after the listing at that index's `counter.install` address, with `{asset}` replaced by the id with `/` turned into `__` plus `.count` (`example-dev__example-plugin.count`). An update, a rollback or a version switch is not counted; installing again after removing is. The address must be a release download in one of the project's own GitHub repositories (`https://github.com/ColinGPT9/<repo>/releases/download/<tag>/{asset}`), so the count is GitHub's public download count for that file, which `update_registry_metrics.py` reads back. Other indexes can't count installs.
 
 The request carries no account, no identifier, no cookie, no app version and nothing about anyone's videos; GitHub sees the address it comes from, as it does for any download. Users switch it off in the Marketplace ("Count my installs", stored in `<data_dir>/plugins/counting.json`), and `plugins.count_installs: false` in `settings.yaml` switches it off for everyone on that PC.
 

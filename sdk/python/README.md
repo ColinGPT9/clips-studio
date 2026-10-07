@@ -7,7 +7,7 @@ A small Python package for writing [Clips Kitty](https://github.com/ColinGPT9/cl
 ```text
 pip install "clipskitty-sdk[yaml] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
 python -m clipskitty_sdk validate path/to/your-plugin
-python -m clipskitty_sdk run path/to/your-plugin video.mp4
+python -m clipskitty_sdk run path/to/your-plugin --video video.mp4
 ```
 
 Inside the app you never install it: Clips Kitty puts its own copy on your plugin's `PYTHONPATH`.

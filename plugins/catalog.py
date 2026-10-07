@@ -298,12 +298,21 @@ def read_settings(catalog_dir: Path) -> tuple[dict, list[str]]:
     if not isinstance(counter, dict) or set(counter) - {"install"}:
         problems.append("catalog.yaml: counter.install only")
     elif counter.get("install") is not None and not counter_template_ok(counter["install"]):
-        problems.append("catalog.yaml: counter.install must be an https address containing {asset}")
+        problems.append("catalog.yaml: counter.install must be a release download address in one of the "
+                        "project's own GitHub repositories, ending in /{asset}")
     return ({"counter": {"install": counter["install"]}} if not problems and counter.get("install") else {}), problems
 
 
+COUNTER_RE = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/[A-Za-z0-9._-]+/releases/download/[A-Za-z0-9._-]+/"
+                        r"\{asset\}$")
+
+
 def counter_template_ok(template) -> bool:
-    return _https(template) and template.count("{asset}") == 1
+    """A counter address must be a release download in one of the project's
+    own GitHub repositories: then the count really is GitHub's public
+    download count, and no index can send installs anywhere else."""
+    m = COUNTER_RE.match(template) if isinstance(template, str) else None
+    return bool(m) and m.group(1).lower() in OFFICIAL_OWNERS
 
 
 def counter_asset(listing_id: str) -> str:

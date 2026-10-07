@@ -7,9 +7,12 @@
 The catalog is awesome-clips-kitty/ (CONTRIBUTING.md there says what an entry
 must pass). Each listed version's manifest is fetched at its commit as plain
 text from GitHub (raw.githubusercontent.com) and checked with the validator
-the app uses; nothing is cloned, installed or run. With --sources, a manifest
-is read from DIR/<owner>/<repo>/<commit>/<path>/clipskitty.yaml instead, which
-is how the tests run it without the network. The numbers (stars, downloads,
+the app uses. Each commit must also be on a branch or tag of the listed
+repository, because GitHub serves a fork's commits under the parent's address
+too: the build fetches each repository's commit history (no files) to check.
+Nothing is installed or run. With --sources, a manifest is read from
+DIR/<owner>/<repo>/<commit>/<path>/clipskitty.yaml instead and the branch
+check is skipped, which is how the tests run it without the network. The numbers (stars, downloads,
 installs) come from stats/metrics.json, which scripts/update_registry_metrics.py
 writes; this build never asks GitHub or Hugging Face for them.
 """
@@ -58,7 +61,8 @@ def main(argv=None) -> int:
     out = args.out or args.catalog / "index.json"
     readme_path = args.catalog / "README.md"
     fetch = fixture_reader(args.sources) if args.sources else registry.fetch_raw
-    index, problems = registry.build_index(args.catalog, fetch=fetch)
+    index, problems = registry.build_index(args.catalog, fetch=fetch,
+                                           on_branch=None if args.sources else registry.commit_on_branch)
     for problem in problems:
         print(f"refused: {problem}")
     text = registry.index_text(index)

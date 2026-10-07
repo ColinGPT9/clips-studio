@@ -183,7 +183,7 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
                **{k: manifest[k] for k in registry.SHOWN if k in manifest}}
     bundled = tmp_path / "index.json"
     bundled.write_text(json.dumps({"format": 1, "plugins": [listing], "blocklist": [],
-                                   "counter": {"install": "https://example.com/counts/{asset}"}}))
+                                   "counter": {"install": "https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}"}}))
 
     def fetcher(url, path):
         assert url == f"https://github.com/example-dev/nhl-goals/archive/{commit}.tar.gz"
@@ -228,7 +228,7 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     assert client.get("/marketplace", params={"q": "NHL"}).json()["plugins"][0]["installed"] == "1.0.0"
     # One anonymous count for a first install from a listing, named after the listing and nothing else.
     _wait_for(lambda: counted)
-    assert view["counted"] is True and counted == ["https://example.com/counts/example-dev__nhl-goals.count"]
+    assert view["counted"] is True and counted == ["https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/example-dev__nhl-goals.count"]
     r = client.post("/plugins/plan", json={"source": {"kind": "index", "id": "example-dev/missing"}}, headers=HEADERS)
     assert r.status_code == 404 and "not listed" in r.json()["detail"]
     assert client.post("/marketplace/refresh").json() == {"indexes": []}  # no address in settings
@@ -305,18 +305,18 @@ def test_install_counting_can_be_switched_off_and_skips_updates(tmp_path, monkey
     assert state["enabled"] is True and state["active"] is False and "no ID" in state["text"]
     assert install("1.0.0")["counted"] is False
     client.delete("/plugins/example-dev/counted", headers=HEADERS)
-    publish("https://example.com/counts/{asset}")
+    publish("https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}")
     assert install("1.0.0")["counted"] is True
     assert install("1.1.0")["counted"] is False  # an update isn't an install
     _wait_for(lambda: counted)
-    assert counted == ["https://example.com/counts/example-dev__counted.count"]
+    assert counted == ["https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/example-dev__counted.count"]
     # Switched off: a session-guarded change, kept in the data folder.
     assert client.put("/marketplace/counting", json={"enabled": False}).status_code == 403
     state = client.put("/marketplace/counting", json={"enabled": False}, headers=HEADERS).json()
     assert state["enabled"] is False and state["active"] is True and counter.chosen(data_dir) is False
     client.delete("/plugins/example-dev/counted", headers=HEADERS)
     assert install("1.1.0")["counted"] is False
-    assert counted == ["https://example.com/counts/example-dev__counted.count"]
+    assert counted == ["https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/example-dev__counted.count"]
     # Settings can switch it off for everyone on the PC, whatever was chosen.
     counter.set_enabled(data_dir, True)
     assert counter.enabled(data_dir, {"plugins": {"count_installs": False}}) is False

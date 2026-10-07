@@ -26,7 +26,15 @@ bundled with the app (awesome-clips-kitty/index.json) and the indexes at the
 addresses in settings (`plugins.registry_urls`, none by default: no address
 has been published), caches the last good copy of each under
 <data_dir>/plugins/cache/, works offline from that cache, and searches
-locally. Nothing here runs plugin code or clones a repository.
+locally. Nothing here runs plugin code; the index build clones only the
+history of listed repositories (no files), to check where each commit is.
+
+Only the bundled index is trusted: its listings were checked when this
+project built it (every commit on a branch of its repository), and it ships
+with the app. Labels (✓ Official, ✓ Compatible, ★ Featured), compatibility
+records and the install counter come from it alone. Any other index is a
+list someone else keeps, so its listings and entries show as Community and
+are never counted.
 """
 
 from __future__ import annotations
@@ -224,11 +232,14 @@ def _settings_shown(settings) -> dict:
     return out
 
 
-def build_index(catalog_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]]:
+def build_index(catalog_dir: Path, *, fetch=fetch_raw, on_branch=None) -> tuple[dict, list[str]]:
     """Build an index from a catalog folder (one with a registry/ folder in
     it). Returns (index, problems); a listing or entry with any problem is
     left out. `fetch(url) -> text` reads a manifest at a commit (fetch_raw,
-    or a fixture reader in tests)."""
+    or a fixture reader in tests). `on_branch(owner, repo, commit) -> bool`
+    says whether a commit is on one of the repository's own branches or tags
+    (commit_on_branch; scripts/build_registry_index.py always passes it). When
+    it isn't given, that check is not made and listings don't claim it."""
     import yaml
 
     catalog_dir = Path(catalog_dir)
@@ -267,8 +278,8 @@ def build_index(catalog_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]]
             if found:
                 problems += [f"{label}: {p}" for p in found]
                 continue
-            item, found = _build_listing(listing, label, kind, fetch=fetch, blocklist=blocklist,
-                                         metrics=metrics, compatibility=compatibility)
+            item, found = _build_listing(listing, label, kind, fetch=fetch, on_branch=on_branch,
+                                         blocklist=blocklist, metrics=metrics, compatibility=compatibility)
             problems += found
             if item:
                 plugins.append(item)
@@ -297,7 +308,7 @@ def build_index(catalog_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]]
 
 
 def _build_listing(listing: dict, label: str, kind: str, *, fetch, blocklist: list, metrics: dict,
-                   compatibility: dict) -> tuple[dict | None, list[str]]:
+                   compatibility: dict, on_branch=None) -> tuple[dict | None, list[str]]:
     """One listing as the index carries it, with the manifest of every
     version fetched at its commit and checked."""
     problems: list[str] = []
@@ -305,6 +316,21 @@ def _build_listing(listing: dict, label: str, kind: str, *, fetch, blocklist: li
     folder = listing.get("path", ".")
     versions, bad = [], False
     for v in listing["versions"]:
+        # GitHub serves a fork's commits under the parent repository's address
+        # too, so a hash alone doesn't say whose code it is.
+        if on_branch is not None:
+            try:
+                ours = on_branch(owner, repo, v["commit"])
+            except Exception as e:  # reported, like a manifest that can't be read
+                problems.append(f"{label}: {v['version']}: couldn't check where commit {v['commit'][:7]} comes "
+                                f"from ({e})")
+                bad = True
+                continue
+            if not ours:
+                problems.append(f"{label}: {v['version']}: commit {v['commit'][:7]} is not on a branch or tag of "
+                                f"{owner}/{repo} (it may be from a fork)")
+                bad = True
+                continue
         url = raw_manifest_url(owner, repo, v["commit"], folder)
         try:
             data = yaml_load(fetch(url))
@@ -351,7 +377,8 @@ def _build_listing(listing: dict, label: str, kind: str, *, fetch, blocklist: li
             "checks": {"manifest_valid": True,
                        ("publisher_is_repository_owner" if owner.lower() == listing["id"].split("/")[0].lower()
                         else "official_repository"): True,
-                       "commit_pinned": True, "public_at_commit": True}}
+                       "commit_pinned": True, "public_at_commit": True,
+                       **({"commit_on_branch": True} if on_branch is not None else {})}}
     item.update({k: latest_manifest[k] for k in SHOWN if k in latest_manifest})
     for key in ("section", "added", "checked"):
         if key in listing:
@@ -399,9 +426,10 @@ def bundled_path() -> Path:
     return catalog_path() / "index.json"
 
 
-def _clean_entry(e) -> dict | None:
-    """A catalog entry read from an index, or None when it isn't one. Links
-    are kept only when they are what they claim to be."""
+def _clean_entry(e, *, trusted: bool) -> dict | None:
+    """A catalog entry read from an index, or None when it isn't one. Only
+    the fields the Marketplace shows are kept, each only when it has the
+    right shape, and links only when they are what they claim to be."""
     if not isinstance(e, dict) or e.get("kind") not in catalog.DIRECTORY_KINDS.values():
         return None
     entry_id = e.get("id")
@@ -423,25 +451,81 @@ def _clean_entry(e) -> dict | None:
         clean["url"] = source["url"]
     if not clean:
         return None
-    out = {**e, "source": clean}
-    if e.get("discussions_url") and not str(e["discussions_url"]).startswith("https://github.com/"):
-        out.pop("discussions_url")
-    out["badges"] = _trusted_badges(e.get("badges"), clean.get("github"), installable=False)
+    out = {"id": entry_id, "kind": e["kind"], "slug": entry_id[len(folder) + 1:], "name": e["name"][:80],
+           "license": e["license"][:100], "source": clean}
+    for key in ("description", "section", "relationship", "uses", "license_note", "runs", "warning", "added",
+                "checked", "adapter"):
+        if isinstance(e.get(key), str):
+            out[key] = e[key][:300]
+    if out.get("adapter") and not store.ID_RE.match(out["adapter"]):
+        out.pop("adapter")
+    for key in ("platforms", "tags", "games", "sports"):
+        if isinstance(e.get(key), list):
+            out[key] = [str(x)[:40] for x in e[key][:10] if isinstance(x, str)]
+    models = e.get("models") if isinstance(e.get("models"), list) else []
+    out["models"] = [{"huggingface": m["huggingface"]} for m in models[:10] if isinstance(m, dict)
+                     and isinstance(m.get("huggingface"), str) and catalog.HF_ID_RE.match(m["huggingface"])]
+    out["metrics"] = _clean_metrics(e.get("metrics"))
+    if _github_link(e.get("discussions_url")):
+        out["discussions_url"] = e["discussions_url"]
+    if trusted and isinstance(e.get("featured"), dict):
+        out["featured"] = {k: str(e["featured"][k])[:200] for k in ("reason", "date") if k in e["featured"]}
+    out["badges"] = _trusted_badges(e.get("badges"), clean.get("github"), trusted=trusted, installable=False)
     return out
 
 
-def _trusted_badges(claimed, repository, *, installable: bool) -> list[str]:
-    """Badges as an index claims them, except Official, which follows from
-    the repository whatever an index says (so an index at another address
-    can't make its plugins look like the project's own). Compatible belongs
-    to installable versions only."""
+def _github_link(url) -> bool:
+    return isinstance(url, str) and url.startswith("https://github.com/") and catalog._https(url)
+
+
+def _clean_metrics(m) -> dict:
+    """The numbers an index shows for a listing or entry, each only when it
+    is a number or a date (the Marketplace prints them as they are)."""
+    m = m if isinstance(m, dict) else {}
+    out: dict = {}
+    gh = m.get("github") if isinstance(m.get("github"), dict) else None
+    if gh:
+        out["github"] = {k: gh[k] for k in ("stars", "discussions") if _count(gh.get(k))}
+        out["github"].update({k: gh[k] for k in ("archived", "has_discussions") if isinstance(gh.get(k), bool)})
+        if isinstance(gh.get("pushed_at"), str):
+            out["github"]["pushed_at"] = gh["pushed_at"][:10]
+    models = m.get("models") if isinstance(m.get("models"), dict) else {}
+    clean_models = {}
+    for model_id, numbers in list(models.items())[:10]:
+        if isinstance(model_id, str) and catalog.HF_ID_RE.match(model_id) and isinstance(numbers, dict):
+            clean_models[model_id] = {k: numbers[k] for k in ("downloads", "likes") if _count(numbers.get(k))}
+            if isinstance(numbers.get("last_modified"), str):
+                clean_models[model_id]["last_modified"] = numbers["last_modified"][:10]
+    if clean_models:
+        out["models"] = clean_models
+    if _count(m.get("installs")):
+        out["installs"] = m["installs"]
+    if isinstance(m.get("stale"), str):
+        out["stale"] = m["stale"][:100]
+    return out
+
+
+def _count(n) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and n >= 0
+
+
+def _trusted_badges(claimed, repository, *, trusted: bool, installable: bool) -> list[str]:
+    """The labels a listing or entry shows. Only the bundled index's count:
+    it was built by this project, so its Compatible and Featured come from
+    real records and its Official repositories had every commit checked.
+    Official also needs the repository to be the project's own, whatever an
+    index says, and Compatible belongs to installable versions only. Any
+    other index's listings are Community, whatever they claim."""
+    if not trusted:
+        return catalog.badges(official=False)
     claimed = claimed if isinstance(claimed, list) else []
     return catalog.badges(official=catalog.is_official(repository),
                           compatible=installable and "compatible" in claimed, featured="featured" in claimed)
 
 
-def check_index(data) -> dict:
-    """An index read from anywhere, checked enough to use. Raises RegistryError."""
+def check_index(data, *, trusted: bool = False) -> dict:
+    """An index read from anywhere, checked enough to use. Raises RegistryError.
+    `trusted` is for the bundled index only (see the module docstring)."""
     if not isinstance(data, dict) or data.get("format") != FORMAT:
         raise RegistryError(f"not a Clips Kitty registry index (format {FORMAT})")
     plugins = data.get("plugins")
@@ -453,21 +537,32 @@ def check_index(data) -> dict:
                 and _owner_repo(p.get("repository")) and isinstance(p.get("versions"), list) and p["versions"]
                 and all(isinstance(v, dict) and sources.COMMIT_RE.match(str(v.get("commit", "")))
                         and manifest.VERSION_RE.match(str(v.get("version", ""))) for v in p["versions"])):
-            checks = {k: v for k, v in (p.get("checks") or {}).items() if k != "official_repository"} \
-                if isinstance(p.get("checks"), dict) else {}
-            if catalog.is_official(p["repository"]) and (p.get("checks") or {}).get("official_repository") is True:
+            claimed = p["checks"] if isinstance(p.get("checks"), dict) else {}
+            checks = {k: v for k, v in claimed.items()
+                      if isinstance(k, str) and v is True and k != "official_repository"}
+            if trusted and catalog.is_official(p["repository"]) and claimed.get("official_repository") is True:
                 checks["official_repository"] = True
-            good.append({**p, "checks": checks,
-                         "badges": _trusted_badges(p.get("badges"), p["repository"], installable=True)})
+            item = {**p, "checks": checks, "metrics": _clean_metrics(p.get("metrics")),
+                    "badges": _trusted_badges(p.get("badges"), p["repository"], trusted=trusted, installable=True)}
+            for key in ("aliases", "tags", "games", "sports", "events"):  # search reads these as word lists
+                if key in item and not (isinstance(item[key], list) and all(isinstance(x, str) for x in item[key])):
+                    item.pop(key)
+            if not _github_link(item.get("discussions_url")):
+                item.pop("discussions_url", None)
+            if not trusted:
+                item.pop("featured", None)
+                item["versions"] = [{k: v for k, v in version.items() if k != "compatibility"}
+                                    for version in p["versions"]]
+            good.append(item)
     blocklist = data.get("blocklist") if isinstance(data.get("blocklist"), list) else []
     out = {"format": FORMAT, "plugins": good, "blocklist": [b for b in blocklist if isinstance(b, dict)]}
     entries = data.get("catalog") if isinstance(data.get("catalog"), list) else []
-    out["catalog"] = [c for c in (_clean_entry(e) for e in entries) if c]
+    out["catalog"] = [c for c in (_clean_entry(e, trusted=trusted) for e in entries) if c]
     out["sections"] = data.get("sections") if isinstance(data.get("sections"), dict) else {}
     if isinstance(data.get("metrics_at"), str):
         out["metrics_at"] = data["metrics_at"][:10]
     counter = data.get("counter") if isinstance(data.get("counter"), dict) else {}
-    if catalog.counter_template_ok(counter.get("install")):
+    if trusted and catalog.counter_template_ok(counter.get("install")):
         out["counter"] = {"install": counter["install"]}
     return out
 
@@ -525,7 +620,7 @@ def indexes(data_dir, urls: list[str], *, bundled: Path | None = None) -> list[d
     path = bundled or bundled_path()
     try:
         out.append({"url": "bundled", "fetched_at": None,
-                    "index": check_index(json.loads(path.read_text(encoding="utf-8")))})
+                    "index": check_index(json.loads(path.read_text(encoding="utf-8")), trusted=True)})
     except (OSError, ValueError):
         pass
     for url in urls:
@@ -607,9 +702,40 @@ def find(data_dir, urls: list[str], plugin_id: str, version: str | None = None, 
 
 
 def listing_tier(listing: dict) -> str:
-    """The install tier of a listing: official when its repository is one of
-    the Clips Kitty project's own (that is where the files come from)."""
-    return "listed-official" if catalog.is_official(listing.get("repository")) else "listed"
+    """The install tier of a listing: official when the bundled index lists it
+    in one of the Clips Kitty project's own repositories (the build checked
+    each commit is on that repository's branches, so the code is the project's)."""
+    return "listed-official" if listing.get("index") == "bundled" and catalog.is_official(
+        listing.get("repository")) else "listed"
+
+
+_HISTORY: dict[str, set[str]] = {}
+
+
+def commit_on_branch(owner: str, repo: str, commit: str, *, git: str | None = None) -> bool:
+    """Whether a commit is in the history of the repository's own branches or
+    tags. Fetches the commit history only (no files) into a temporary
+    folder, once per repository per run."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    key = f"{owner}/{repo}".lower()
+    if key not in _HISTORY:
+        git = git or shutil.which("git")
+        if not git:
+            raise RegistryError("git is needed to check where listed commits come from")
+        with tempfile.TemporaryDirectory(prefix="clipskitty-history-") as tmp:
+            subprocess.run([git, "init", "-q", "--bare", tmp], check=True, capture_output=True)
+            subprocess.run([git, "-C", tmp, "fetch", "-q", "--filter=tree:0", "--no-tags",
+                            f"https://github.com/{owner}/{repo}.git",
+                            "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"],
+                           check=True, capture_output=True, timeout=600)
+            # rev-list reads commits only, so it never asks GitHub for a missing object.
+            listed = subprocess.run([git, "-C", tmp, "rev-list", "--all"], check=True, capture_output=True,
+                                    text=True).stdout.split()
+        _HISTORY[key] = set(listed)
+    return commit.lower() in _HISTORY[key]
 
 
 def source_for(listing: dict, version: dict) -> dict:

@@ -7,7 +7,7 @@
     "official"
    ],
    "checked": "2026-10-07",
-   "description": "Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Ships with Clips Kitty.",
+   "description": "Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the YouTube, Upload-Post or WoopSocial accounts connected in Clips Kitty. Ships with Clips Kitty.",
    "id": "integrations/clips-kitty-mcp-server",
    "kind": "integration",
    "license": "AGPL-3.0-or-later",
@@ -40,7 +40,7 @@
     "official"
    ],
    "checked": "2026-10-07",
-   "description": "An OBS Studio dock that hands your stream to Clips Kitty once it really ends and shows the progress. Nothing runs while you are live. Pre-release; needs the next Clips Kitty release.",
+   "description": "An OBS Studio dock that hands your stream to Clips Kitty once it really ends and shows the progress. Nothing runs while you are live. Pre-release. Needs Clips Kitty 1.2.0 or newer.",
    "id": "integrations/clips-kitty-obs-plugin",
    "kind": "integration",
    "license": "GPL-2.0-or-later",
@@ -115,6 +115,7 @@
    "category": "utilities",
    "checked": "2026-10-07",
    "checks": {
+    "commit_on_branch": true,
     "commit_pinned": true,
     "manifest_valid": true,
     "official_repository": true,

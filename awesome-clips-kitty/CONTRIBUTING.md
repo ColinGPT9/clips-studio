@@ -157,7 +157,7 @@ Each number is its own figure, from its own source, never added to another:
 
 ### The install counter
 
-Clips Kitty counts installs from this catalog without a server of its own: `registry/catalog.yaml` names an address with `{asset}` in it, and after the first install of a listing (not an update or a version switch) the app requests that one small file, named after the listing. The plan is a GitHub release in this catalog's repository with one such file per listing, so the count is GitHub's public download count for it. The request carries no account, no identifier and nothing about your videos; users can switch counting off at the bottom of the Marketplace, or for a whole PC with `plugins.count_installs: false` in `settings.yaml`. The address is empty until the catalog has its own public repository, so nothing is counted yet.
+Clips Kitty counts installs from this catalog without a server of its own: `registry/catalog.yaml` names a release download address in one of the project's own GitHub repositories, ending in `{asset}`, and after the first install of a listing (not an update or a version switch) the app requests that one small file, named after the listing. The plan is a GitHub release in this catalog's repository with one such file per listing, so the count is GitHub's public download count for it. The request carries no account, no identifier and nothing about your videos; users can switch counting off at the bottom of the Marketplace, or for a whole PC with `plugins.count_installs: false` in `settings.yaml`. The address is empty until the catalog has its own public repository, so nothing is counted yet.
 
 ## Blocking
 
@@ -181,7 +181,7 @@ From a Clips Kitty checkout:
 ```text
 python scripts/build_registry_index.py           # write index.json and README.md
 python scripts/build_registry_index.py --check   # fail if either is out of date or an entry is refused
-python scripts/update_registry_metrics.py        # refresh stats/metrics.json (needs a GitHub token for stars)
+python scripts/update_registry_metrics.py        # refresh stats/metrics.json (a GitHub token, GITHUB_TOKEN or GH_TOKEN, is needed only for the number of discussions)
 python scripts/check_compatibility.py <id>       # run the compatibility checks for one listing
 ```
 

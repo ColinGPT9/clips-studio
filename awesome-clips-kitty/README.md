@@ -2,7 +2,7 @@
 
 Apps, pipelines, plugins, models, workflows, integrations and tools for [Clips Kitty](https://github.com/ColinGPT9/clips-studio), the free app that turns long videos into short clips on your own PC.
 
-This is a curated directory, not a list of everything: each entry is checked against the [inclusion criteria](CONTRIBUTING.md#what-gets-in) before it appears here. The same data, in [`registry/`](registry/), is what the Clips Kitty Marketplace shows, so adding a project here also makes it discoverable inside the app.
+This is a curated directory, not a list of everything: a maintainer checks each entry against the [inclusion criteria](CONTRIBUTING.md#what-gets-in) before it is listed in its section. Entries added by their authors and not checked yet are shown separately, under "Not yet checked". The same data, in [`registry/`](registry/), is what the Clips Kitty Marketplace shows, so adding a project here also makes it discoverable inside the app.
 
 **How a project relates to Clips Kitty**
 
@@ -44,11 +44,11 @@ _Pipelines for any kind of video._
 
 ### Streaming
 
-- [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin) - An OBS Studio dock that hands your stream to Clips Kitty once it really ends and shows the progress. Nothing runs while you are live. Pre-release; needs the next Clips Kitty release. `GPL-2.0-or-later` · ✓ Official · runs locally
+- [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin) - An OBS Studio dock that hands your stream to Clips Kitty once it really ends and shows the progress. Nothing runs while you are live. Pre-release. Needs Clips Kitty 1.2.0 or newer. `GPL-2.0-or-later` · ✓ Official · runs locally
 
 ### AI assistants
 
-- [Clips Kitty MCP server and agent skill](https://github.com/ColinGPT9/clips-studio#ask-an-ai-agent-to-do-it) - Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Ships with Clips Kitty. `AGPL-3.0-or-later` · ✓ Official · runs locally
+- [Clips Kitty MCP server and agent skill](https://github.com/ColinGPT9/clips-studio#ask-an-ai-agent-to-do-it) - Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the YouTube, Upload-Post or WoopSocial accounts connected in Clips Kitty. Ships with Clips Kitty. `AGPL-3.0-or-later` · ✓ Official · runs locally
 
 ## Tools
 

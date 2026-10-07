@@ -802,6 +802,7 @@ export const CHECK_LABELS: Record<string, string> = {
   publisher_is_repository_owner: 'The publisher owns the GitHub repository',
   official_repository: 'The repository is the Clips Kitty project’s own',
   commit_pinned: 'Each version is pinned to one commit',
+  commit_on_branch: 'Each commit is on the repository’s own branches, not a fork’s',
   public_at_commit: 'The files were public at that commit'
 }
 
@@ -878,6 +879,7 @@ export function metricLines(metrics: Metrics | undefined): { text: string; tone:
   if (gh && typeof gh.discussions === 'number' && gh.discussions > 0)
     out.push({ text: `${gh.discussions} ${gh.discussions === 1 ? 'discussion' : 'discussions'} on GitHub`, tone: 'info' })
   for (const [id, m] of Object.entries(metrics.models ?? {})) {
+    if (!m || typeof m !== 'object') continue
     const bits = []
     if (typeof m.downloads === 'number') bits.push(`${shortCount(m.downloads)} downloads a month`)
     if (typeof m.likes === 'number') bits.push(`${shortCount(m.likes)} likes`)
