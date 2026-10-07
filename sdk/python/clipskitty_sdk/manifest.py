@@ -27,7 +27,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from .contract import SUPPORTED_PLUGIN_APIS
+from .contract import STEPS, SUPPORTED_PLUGIN_APIS
 
 MANIFEST_FILE = "clipskitty.yaml"
 MANIFEST_VERSIONS = (1,)
@@ -58,8 +58,8 @@ KINDS = ("pipeline",)
 PLANNED_KINDS = ("caption-style", "publisher", "source", "integration", "provider", "component")
 CAPABILITIES = ("highlight_detection",)
 EXECUTIONS = ("local", "remote", "hybrid")
-INPUTS = ("video", "transcript")
-OUTPUTS = ("ranges",)
+INPUTS = ("video", "transcript", "moments")
+OUTPUTS = ("ranges", "ratings", "context")
 PLANNED_OUTPUTS = ("clips",)
 PERMISSIONS = ("video.read", "transcript.read", "ffmpeg", "ollama", "gpu", "network",
                "filesystem.read", "filesystem.write", "project.read", "project.write")
@@ -83,7 +83,9 @@ OPTIONAL = ("author", "repository", "events", "games", "settings", "models", "ne
 # How a plugin builds on someone else's project (based_on[].how).
 BASED_ON_HOW = ("runs", "includes-code", "port")
 MAX_BASED_ON = 10
-INPUT_NEEDS = {"video": "video.read", "transcript": "transcript.read"}
+# The permission each input needs. Moments need none: what was said in them
+# (their title, reason and notes) comes only with transcript.read.
+INPUT_NEEDS = {"video": "video.read", "transcript": "transcript.read", "moments": None}
 
 
 class ManifestError(ValueError):
@@ -424,6 +426,29 @@ def _check_requirements(c: _Check, value) -> None:
             c.text(f"requirements.software[{i}]", name, limit=80)
 
 
+def _words(data, key: str) -> list:
+    """A manifest's list field (inputs, outputs), or [] when it isn't a list."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, list) else []
+
+
+def _check_steps(c: _Check, data: dict) -> None:
+    """The rules that tie the moment words together. Each needs one of the
+    words `moments`, `ratings` or `context`, and no two can fire on one
+    manifest, so a manifest gets at most one of these errors."""
+    inputs, outputs = _words(data, "inputs"), _words(data, "outputs")
+    if "ratings" in outputs and "moments" not in inputs:
+        c.error(f"outputs[{outputs.index('ratings')}]", "ratings score moments found before this plugin runs: "
+                "add moments to inputs (a pipeline's own ranges carry their score already)")
+    if "moments" in inputs and "ratings" not in outputs and "context" not in outputs:
+        c.error(f"inputs[{inputs.index('moments')}]", "a plugin given moments answers about them: "
+                "add ratings or context to outputs")
+    if ("context" in outputs and "ranges" not in outputs and "moments" not in inputs
+            and "ratings" not in outputs):  # with ratings it is the first rule's, and its fix fixes both
+        c.error(f"outputs[{outputs.index('context')}]", "context describes moments: add ranges to outputs, "
+                "or moments to inputs")
+
+
 def validate(data, *, builtin: bool = False) -> Report:
     """Every problem with a manifest mapping. `builtin` is for the manifests
     that ship inside Clips Kitty (plugins/builtin/), the only ones that may use
@@ -476,11 +501,13 @@ def validate(data, *, builtin: bool = False) -> Report:
                 permissions.add(perm)
     if "inputs" in data:
         for i, item in enumerate(c.items("inputs", data["inputs"])):
-            if c.choice(f"inputs[{i}]", item, INPUTS, what="input") and INPUT_NEEDS[item] not in permissions:
+            if (c.choice(f"inputs[{i}]", item, INPUTS, what="input") and INPUT_NEEDS[item]
+                    and INPUT_NEEDS[item] not in permissions):
                 c.error(f"inputs[{i}]", f"the {item} input needs the {INPUT_NEEDS[item]} permission")
     if "outputs" in data:
         for i, item in enumerate(c.items("outputs", data["outputs"], allow_empty=False)):
             c.choice(f"outputs[{i}]", item, OUTPUTS, planned=PLANNED_OUTPUTS, what="output")
+    _check_steps(c, data)
 
     network = c.items("network", data.get("network", []))
     for i, host in enumerate(network):
@@ -598,6 +625,61 @@ def validate_folder(folder: str | Path, *, builtin: bool = False) -> tuple[dict 
     return data, report
 
 
+# ---- what a plugin does: find, understand, rate ------------------------------------
+#
+# A plugin's role follows from its inputs and outputs; there is no field for it.
+# These functions decide what a plugin does and what a job may ask of it. Read
+# a plugin's role through them, not from its inputs and outputs directly, so
+# every place that asks gets the same answer.
+
+# The output that does each step.
+STEP_OUTPUTS = {"find": "ranges", "understand": "context", "rate": "ratings"}
+
+
+def steps_of(manifest) -> tuple[str, ...]:
+    """What a plugin does, in run order: find for `ranges`, understand for
+    `context`, rate for `ratings`. A finder that declares `context` describes
+    its own ranges: it does find and understand, but is offered only find."""
+    outputs = _words(manifest, "outputs")
+    return tuple(step for step in STEPS if STEP_OUTPUTS[step] in outputs)
+
+
+def offers(manifest) -> tuple[str, ...]:
+    """The steps a job may name a plugin for: find for `ranges`; understand
+    and rate for `context` and `ratings` when it also takes `moments` in."""
+    given = "moments" in _words(manifest, "inputs")
+    return tuple(step for step in steps_of(manifest) if step == "find" or given)
+
+
+def find_steps(manifest) -> tuple[str, ...]:
+    """What a find run asks the plugin for: find, and understand too when it
+    describes the ranges it finds (outputs `ranges` and `context`)."""
+    outputs = _words(manifest, "outputs")
+    return ("find", "understand") if "ranges" in outputs and "context" in outputs else ("find",)
+
+
+def uses_steps(manifest) -> bool:
+    """Whether a manifest uses any of the words `moments`, `ratings` or
+    `context`. Only then does a find run's job.json carry `steps`, so a plain
+    finder's job is exactly what it always was."""
+    words = _words(manifest, "inputs") + _words(manifest, "outputs")
+    return any(w in words for w in ("moments", "ratings", "context"))
+
+
+def step_problem(manifest, step: str) -> str | None:
+    """Why a job can't name this plugin for `step`, or None when it can. The
+    text follows "the pipeline {name} " in the app's messages."""
+    if step not in STEPS:
+        raise ValueError(f"unknown step {step!r}; expected one of: {', '.join(STEPS)}")
+    if step in offers(manifest):
+        return None
+    if step == "find":
+        return ("doesn't find moments: it rates or understands moments others found. "
+                "Choose it under Rate & understand instead")
+    return (f"can't {step} moments others found: its manifest needs moments in inputs "
+            f"and {STEP_OUTPUTS[step]} in outputs")
+
+
 # ---- version ranges ----------------------------------------------------------------
 
 
@@ -648,7 +730,8 @@ def version_satisfies(version: str, spec: str) -> bool:
 def json_schema() -> dict:
     """A JSON Schema (draft 2020-12) for editors, made from this module's tables.
     It checks shapes, names and vocabularies; rules that span fields (an input
-    needs its permission, remote needs sends) are only in validate()."""
+    needs its permission, remote needs sends, ratings need moments) are only
+    in validate()."""
     text = {"type": "string", "minLength": 1}
     https = {"type": "string", "pattern": r"^https://"}
 

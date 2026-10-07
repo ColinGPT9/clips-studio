@@ -60,7 +60,8 @@ def test_every_rule_has_a_fixture():
     names = {p.stem for p in INVALID}
     for needed in ("planned-kind", "input-without-permission", "remote-without-sends", "local-that-sends",
                    "network-without-permission", "model-on-a-branch", "reserved-publisher", "shell-command",
-                   "script-outside-folder", "default-above-maximum", "secret-with-default", "newer-plugin-api"):
+                   "script-outside-folder", "default-above-maximum", "secret-with-default", "newer-plugin-api",
+                   "ratings-without-moments", "moments-without-answers", "context-without-moments"):
         assert needed in names
 
 
@@ -98,6 +99,115 @@ def test_pickle_model_files_are_flagged():
 def test_json_works_as_well_as_yaml():
     data = yaml.safe_load((FIXTURES / "valid" / "every-setting-type.yaml").read_text(encoding="utf-8"))
     assert mf.validate(json.loads(json.dumps(data))).ok
+
+
+# ---- finding, understanding and rating ----------------------------------------------
+
+
+def _fixture(name: str, **changes) -> dict:
+    data = yaml.safe_load((FIXTURES / "valid" / f"{name}.yaml").read_text(encoding="utf-8"))
+    data.update(changes)
+    return data
+
+
+STEP_RULES = ("ratings score moments found before this plugin runs",
+              "a plugin given moments answers about them",
+              "context describes moments")
+
+
+def test_a_moments_input_needs_no_permission():
+    report = mf.validate(_fixture("quarkbloom-rater", inputs=["moments"], permissions=[]))
+    assert report.ok, report.errors
+    assert not report.warnings
+    assert mf.INPUT_NEEDS["moments"] is None
+    # The inputs that need one still do.
+    report = mf.validate(_fixture("quarkbloom-rater", permissions=[]))
+    assert report.errors == ["inputs[1]: the transcript input needs the transcript.read permission"]
+
+
+def test_r1_and_r3_never_fire_together():
+    report = mf.validate(_fixture("quarkbloom-rater", inputs=["video", "transcript"], outputs=["ratings", "context"],
+                                  permissions=["video.read", "transcript.read"]))
+    assert report.errors == ["outputs[0]: ratings score moments found before this plugin runs: add moments to "
+                             "inputs (a pipeline's own ranges carry their score already)"]
+    # By construction no two of the three rules fire on one manifest, whatever it lists.
+    words_in, words_out = ("video", "transcript", "moments"), ("ranges", "ratings", "context")
+    for i in range(1 << 3):
+        for o in range(1, 1 << 3):
+            inputs = [w for k, w in enumerate(words_in) if i >> k & 1]
+            outputs = [w for k, w in enumerate(words_out) if o >> k & 1]
+            errors = mf.validate(_fixture("finds-understands-rates", inputs=inputs, outputs=outputs)).errors
+            fired = [rule for rule in STEP_RULES if any(rule in e for e in errors)]
+            assert len(fired) <= 1, (inputs, outputs, fired)
+
+
+@pytest.mark.parametrize("inputs, outputs, does, offered, find_run, uses", [
+    (["video", "transcript"], ["ranges"], ("find",), ("find",), ("find",), False),
+    (["video", "transcript"], ["ranges", "context"], ("find", "understand"), ("find",), ("find", "understand"), True),
+    (["moments", "transcript"], ["context"], ("understand",), ("understand",), ("find",), True),
+    (["moments", "transcript"], ["ratings"], ("rate",), ("rate",), ("find",), True),
+    (["video", "transcript", "moments"], ["ranges", "context", "ratings"], ("find", "understand", "rate"),
+     ("find", "understand", "rate"), ("find", "understand"), True),
+    (["transcript", "moments"], ["ratings", "context"], ("understand", "rate"), ("understand", "rate"), ("find",), True),
+    (["video", "moments"], ["ranges", "ratings"], ("find", "rate"), ("find", "rate"), ("find",), True),
+])
+def test_steps_of_offers_and_find_steps_follow_inputs_and_outputs(inputs, outputs, does, offered, find_run, uses):
+    data = {"inputs": inputs, "outputs": outputs}
+    assert mf.steps_of(data) == does
+    assert mf.offers(data) == offered
+    assert mf.find_steps(data) == find_run
+    assert mf.uses_steps(data) is uses
+    for step in mf.STEP_OUTPUTS:
+        assert (mf.step_problem(data, step) is None) is (step in offered)
+
+
+def test_the_step_helpers_read_the_fixtures_and_survive_odd_manifests():
+    assert mf.offers(_fixture("minimal")) == ("find",) and not mf.uses_steps(_fixture("minimal"))
+    assert mf.offers(_fixture("quarkbloom-rater")) == ("rate",)
+    assert mf.offers(_fixture("quarkbloom-notes")) == ("understand",)
+    assert mf.offers(_fixture("finds-understands-rates")) == ("find", "understand", "rate")
+    for odd in ({}, {"inputs": "moments", "outputs": None}, {"outputs": [{"ranges": 1}]}, ["not", "a", "mapping"]):
+        assert mf.steps_of(odd) == mf.offers(odd) == ()
+        assert mf.find_steps(odd) == ("find",) and mf.uses_steps(odd) is False
+
+
+def test_step_problem_names_what_the_manifest_needs():
+    rater, notes, finder = _fixture("quarkbloom-rater"), _fixture("quarkbloom-notes"), _fixture("minimal")
+    assert mf.step_problem(rater, "rate") is None and mf.step_problem(notes, "understand") is None
+    assert mf.step_problem(finder, "find") is None
+    assert mf.step_problem(notes, "rate") == (
+        "can't rate moments others found: its manifest needs moments in inputs and ratings in outputs")
+    assert mf.step_problem(rater, "understand") == (
+        "can't understand moments others found: its manifest needs moments in inputs and context in outputs")
+    assert mf.step_problem(finder, "rate") == mf.step_problem(notes, "rate")
+    for plugin in (rater, notes):
+        assert mf.step_problem(plugin, "find") == (
+            "doesn't find moments: it rates or understands moments others found. "
+            "Choose it under Rate & understand instead")
+    # A finder that describes its own ranges still isn't offered to understand others' moments.
+    context_finder = _fixture("minimal", outputs=["ranges", "context"])
+    assert mf.step_problem(context_finder, "find") is None
+    assert mf.step_problem(context_finder, "understand").startswith("can't understand moments others found")
+    with pytest.raises(ValueError, match="unknown step 'edit'"):
+        mf.step_problem(rater, "edit")
+
+
+@pytest.mark.parametrize("name", ["quarkbloom-rater", "quarkbloom-notes", "finds-understands-rates"])
+def test_a_manifest_using_the_new_words_has_no_warnings(name):
+    report = mf.validate(_fixture(name))
+    assert report.ok, report.errors
+    assert report.warnings == []
+    context_finder = mf.validate(_fixture("minimal", outputs=["ranges", "context"]))
+    assert context_finder.ok and context_finder.warnings == []
+
+
+def test_every_manifest_valid_before_the_new_words_still_finds():
+    """Every manifest that could be valid before had `ranges` in its outputs,
+    so it is still offered to find, and the new rules leave it alone."""
+    for path in VALID:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not mf.uses_steps(data):
+            assert mf.offers(data) == ("find",) and mf.find_steps(data) == ("find",)
 
 
 # ---- the manifests in this repository -----------------------------------------------

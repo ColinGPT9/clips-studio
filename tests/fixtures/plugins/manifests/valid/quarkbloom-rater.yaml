@@ -1,0 +1,15 @@
+# A rater: it gives a new score to each moment found by Clips Kitty or a pipeline.
+manifest_version: 1
+id: example-dev/quarkbloom-rater
+name: Quarkbloom Rater
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Rates moments of Quarkbloom Arena (a made-up game) by what the caster calls out.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run: {command: ['{python}', src/main.py], timeout_minutes: 5}
+execution: local
+inputs: [moments, transcript]
+outputs: [ratings]
+permissions: [transcript.read]

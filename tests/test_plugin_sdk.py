@@ -87,6 +87,103 @@ def test_a_good_result_passes():
         {"start": 20, "end": 30}], "notes": "fine"}) == []
 
 
+# ---- finding, understanding and rating: the files ------------------------------------
+
+
+def _a_job(**extra) -> dict:
+    return {"plugin_api": 1, "plugin": {"id": "example-dev/quarkbloom-rater", "version": "1.0.0"},
+            "settings": {}, "limits": {"max_clips": 3, "min_score": 55}, "output_dir": "out", **extra}
+
+
+def test_check_result_without_steps_ignores_new_keys_as_before():
+    """A finder written before the moment steps may already write keys that now
+    mean something. Checked as a find run, they are ignored as they always were."""
+    stray = {"plugin_api": 1, "ranges": [{"start": 1, "end": 5, "context": "junk"}],
+             "moments": [{"id": 7, "score": 999}, "junk"]}
+    assert check_result(stray) == []
+    assert check_result(stray, steps=None) == []
+    assert check_result(stray, steps=("find",)) == []
+    assert check_result({**stray, "moments": "junk"}, steps=["find"]) == []
+    # The same keys from a run that was asked for them are refused.
+    assert check_result(stray, steps=("find", "understand")) == [
+        "ranges[0]: context must be a list of at most 5 notes of 1 to 160 characters",
+        "moments[0]: id must be text of 1 to 32 characters",
+        "moments[0]: score must be a number from 0 to 100, or left out",
+        "moments[1] must be an object"]
+
+
+def test_check_result_with_steps_checks_moments_and_context():
+    steps = ("understand", "rate")
+    good = {"plugin_api": 1, "ranges": [], "notes": "fine", "moments": [
+        {"id": "m1", "score": 85, "reason": "the caster called a big play",
+         "context": ["The team that was behind is catching up here"]},
+        {"id": "m2", "score": 0}, {"id": "m3", "context": ["x" * 160] * 5}, {"id": "m4"}]}
+    assert check_result(good, steps=steps) == []
+    assert check_result({"plugin_api": 1, "ranges": []}, steps=["rate"]) == []
+    bad = {"plugin_api": 1, "ranges": [], "moments": [
+        {"id": "m1", "score": 70},
+        {"id": "m1", "score": 101},
+        {"id": "m2", "context": ["x" * 161]},
+        {"id": "m3", "context": ["a note"] * 6},
+        {"id": "m4", "reason": "r" * 501},
+        {"id": "m5", "context": "one note, not a list"},
+        {"id": "m6", "context": [""]},
+        {"id": "", "score": True},
+        {"id": "m" * 33},
+        "m7"]}
+    assert check_result(bad, steps=steps) == [
+        "moments[1]: moment m1 is answered twice",
+        "moments[1]: score must be a number from 0 to 100, or left out",
+        "moments[2]: context must be a list of at most 5 notes of 1 to 160 characters",
+        "moments[3]: context must be a list of at most 5 notes of 1 to 160 characters",
+        "moments[4]: reason must be text of at most 500 characters",
+        "moments[5]: context must be a list of at most 5 notes of 1 to 160 characters",
+        "moments[6]: context must be a list of at most 5 notes of 1 to 160 characters",
+        "moments[7]: id must be text of 1 to 32 characters",
+        "moments[7]: score must be a number from 0 to 100, or left out",
+        "moments[8]: id must be text of 1 to 32 characters",
+        "moments[9] must be an object",
+    ]
+    # Either step alone checks the answers; a find run's own ranges are checked
+    # for notes only when it was asked to understand them.
+    assert check_result(bad, steps=["understand"]) == check_result(bad, steps=["rate"]) == check_result(bad, steps=steps)
+    too_many = [{"id": f"m{i}"} for i in range(1, 202)]
+    for moments in (too_many, "all of them", {"m1": {}}):
+        assert check_result({"plugin_api": 1, "ranges": [], "moments": moments}, steps=["rate"]) == [
+            "moments must be a list of at most 200 answers"]
+    notes = {"plugin_api": 1, "ranges": [
+        {"start": 1, "end": 5, "context": ["First quark burst of the match"]},
+        {"start": 6, "end": 9, "context": ["x" * 161]},
+        {"start": 10, "end": 19, "context": ["a"] * 6}]}
+    assert check_result(notes, steps=["find", "understand"]) == [
+        "ranges[1]: context must be a list of at most 5 notes of 1 to 160 characters",
+        "ranges[2]: context must be a list of at most 5 notes of 1 to 160 characters"]
+    assert check_result(notes, steps=["understand", "rate"]) == []  # a moment run's ranges carry no notes to check
+    assert (contract.MAX_CONTEXT, contract.MAX_CONTEXT_ITEMS, contract.MAX_MOMENT_ID) == (160, 5, 32)
+    assert contract.STEPS == ("find", "understand", "rate")
+
+
+def test_check_job_accepts_unknown_step_names_and_moment_keys():
+    assert check_job(_a_job()) == []
+    assert check_job(_a_job(steps=["find"])) == []
+    assert check_job(_a_job(steps=["understand", "rate", "edit", "export"], moments=[
+        {"id": "m1", "start": 812.0, "end": 841.5, "score": 72, "found_score": 72, "found_by": "clipskitty",
+         "label": "", "signals": {"text": 61}, "title": "", "reason": "", "context": [],
+         "mood": "a key a later SDK may add"},
+        {"id": "m2", "start": 900, "end": 920}])) == []
+    assert check_job(_a_job(steps=[], moments=[])) == []
+
+
+def test_check_job_refuses_a_moment_without_id_start_or_end():
+    problems = check_job(_a_job(steps=["rate"], moments=[
+        {"start": 1, "end": 2}, {"id": "m2", "end": 3}, {"id": "m3", "start": 1}, {"id": 4, "start": 1, "end": 2},
+        {"id": "m5", "start": "1", "end": 2}, "m6", {"id": "m7", "start": 1, "end": 2}]))
+    assert problems == [f"moments[{i}] needs an id, a start and an end" for i in range(6)]
+    assert check_job(_a_job(moments={"m1": {"start": 1, "end": 2}})) == ["moments must be a list"]
+    assert check_job(_a_job(steps="rate")) == ["steps must be a list of step names"]
+    assert check_job(_a_job(steps=["rate", 2])) == ["steps must be a list of step names"]
+
+
 # ---- the lines ------------------------------------------------------------------
 
 

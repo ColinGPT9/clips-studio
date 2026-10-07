@@ -130,7 +130,8 @@
       "items": {
         "enum": [
           "video",
-          "transcript"
+          "transcript",
+          "moments"
         ]
       }
     },
@@ -138,7 +139,9 @@
       "type": "array",
       "items": {
         "enum": [
-          "ranges"
+          "ranges",
+          "ratings",
+          "context"
         ]
       },
       "minItems": 1
