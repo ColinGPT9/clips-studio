@@ -60,6 +60,6 @@ A plugin's own Python packages are not installed by Clips Kitty yet (planned). U
 
 ## The Marketplace
 
-- **"No community plugins are listed yet."** The list that ships with this version is empty until plugins are listed, and no other index is set up. Install from a folder or a link meanwhile.
-- **A listing is missing.** Listings reach users with the next app release, or sooner when an index address is set in `plugins.registry_urls` and refreshed. A blocked version is never shown.
+- **"No pipelines are listed yet."** Neither the list that came with this version nor Clips Kitty's online list has a pipeline yet (or the online list hasn't been fetched: press **Check for new pipelines**). Install from a folder or a link meanwhile.
+- **A listing is missing.** A listing reaches the Marketplace once its pull request is merged, the next time the Marketplace checks Clips Kitty's online list (when it opens, at most once a day, unless that is switched off at the bottom of Browse), or at once with **Check for new pipelines**. Until the next release bundles it, it shows as Community. A blocked version is never shown.
 - **Links don't open.** Each opens only after a dialog showing the address; outside the desktop app the address is shown as text to copy.

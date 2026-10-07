@@ -60,7 +60,7 @@
             service you have connected. This page explains exactly what is stored, what can
             leave your machine, and what triggers it.
           </p>
-          <p><strong>Last updated:</strong> 27 September 2026</p>
+          <p><strong>Last updated:</strong> 7 October 2026</p>
         </div>
       </div>
 
@@ -106,6 +106,7 @@
             <li><strong>Downloading a video.</strong> Pasting a YouTube, Twitch or Kick link fetches that video from that platform. Your request goes to them, subject to their own privacy policies, exactly as if you had opened the page in a browser.</li>
             <li><strong>Downloading an AI model.</strong> Choosing a model fetches it from the Ollama library. That is a file download; nothing about you is sent with it.</li>
             <li><strong>Checking for updates.</strong> The desktop app asks a static file on Hugging Face whether a newer version exists. This is a plain file fetch with no identifier attached, and it can be turned off in Settings. Copies installed from the Microsoft Store do not do this at all, because the Store handles updates.</li>
+            <li><strong>Checking for new pipelines.</strong> When you open the Marketplace and its list of pipelines is more than a day old, the app downloads Clips Kitty's current list: one file from raw.githubusercontent.com, where GitHub serves the files of Clips Kitty's public code. This is a plain file fetch with no identifier attached; nothing about what you browse or search is sent. It can be switched off at the bottom of the Marketplace's Browse tab, and the Check for new pipelines button there fetches the list when you press it.</li>
           </ul>
 
           <h3>Only if you turn on YouTube publishing</h3>

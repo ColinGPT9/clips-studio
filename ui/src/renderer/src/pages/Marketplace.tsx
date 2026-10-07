@@ -20,8 +20,11 @@ import {
   fitSummary,
   formatBytes,
   indexName,
+  isOurList,
   listingLinks,
   needLines,
+  ONLINE_LIST,
+  onlineText,
   safeLink,
   slugLabel,
   tierBadge,
@@ -42,6 +45,7 @@ import {
   type ModelStatus,
   type ModelsOverview,
   type Metrics,
+  type OnlineList,
   type PluginDetails,
   type PluginPlan,
   type PluginsResponse,
@@ -569,8 +573,8 @@ function ListingPage({
           {checks.length > 0 && (
             <ul className="text-xs text-muted mt-1">
               <li>
-                {listing.index === 'bundled'
-                  ? t('Checks run when the list was built:')
+                {isOurList(listing.index)
+                  ? t('Checks run when Clips Kitty’s list was built:')
                   : `${t('Checks this list reports')} (${indexName(listing.index)}):`}
               </li>
               {checks.map((c) => (
@@ -821,6 +825,39 @@ function CountingNote({ manage }: { manage: boolean }): JSX.Element | null {
   )
 }
 
+/** Whether the Marketplace checks Clips Kitty's online list by itself, and the switch. */
+function OnlineListNote({ manage, online }: { manage: boolean; online: OnlineList | undefined }): JSX.Element | null {
+  const [state, setState] = useState<OnlineList | undefined>(online)
+  const [problem, setProblem] = useState<string | null>(null)
+  useEffect(() => setState(online), [online])
+  if (!state) return null
+  const toggle = (on: boolean): void => {
+    setProblem(null)
+    plugins
+      .setOnline(on)
+      .then(setState)
+      .catch((e: Error) => setProblem(e.message))
+  }
+  return (
+    <div className="space-y-1">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          className="size-4 mt-0.5 accent-[#38BDF8]"
+          checked={state.automatic}
+          disabled={!manage}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        <span>
+          {t('Check Clips Kitty’s online list for new pipelines once a day, when the Marketplace opens.')}{' '}
+          {t('It is one file from GitHub; nothing about you or what you browse is sent.')}
+        </span>
+      </label>
+      {problem && <p className="text-error">{problem}</p>}
+    </div>
+  )
+}
+
 /** Search and browse the registry indexes. */
 function Browse({
   hardware,
@@ -874,6 +911,21 @@ function Browse({
     return () => window.removeEventListener(PLUGINS_CHANGED, again)
   }, [])
 
+  // Opening the Marketplace checks Clips Kitty's online list when its copy is
+  // a day old and the switch is on (the engine decides); new pipelines then
+  // appear without waiting for an app update. Quiet: the footer says how it went.
+  useEffect(() => {
+    if (!manage) return
+    let live = true
+    plugins
+      .refresh(true)
+      .then((r) => live && r.checked && setStamp((n) => n + 1))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [manage])
+
   const refresh = (): void => {
     setRefreshing(true)
     setRefreshNote(null)
@@ -883,7 +935,13 @@ function Browse({
         const failed = r.indexes.filter((i) => !i.ok)
         setRefreshNote(
           failed.length
-            ? failed.map((i) => `${indexName(i.url)}: ${i.error ?? t('could not be fetched')}`).join(' · ')
+            ? failed
+                .map((i) =>
+                  i.url === ONLINE_LIST
+                    ? t('Couldn’t reach Clips Kitty’s online list. Check your internet connection and try again.')
+                    : `${indexName(i.url)}: ${i.error ?? t('could not be fetched')}`
+                )
+                .join(' · ')
             : t('Up to date.')
         )
         setStamp((n) => n + 1)
@@ -917,7 +975,8 @@ function Browse({
       />
     )
 
-  const remote = (data?.indexes ?? []).filter((i) => i.url !== 'bundled')
+  const others = (data?.indexes ?? []).filter((i) => i.kind === 'other')
+  const onlineNever = !(data?.online?.fetched_at ?? null)
   const filtered = Boolean(q.trim() || category || tag)
   return (
     <div className="space-y-4">
@@ -1008,13 +1067,13 @@ function Browse({
             <p>{t('Nothing listed matches that. Try fewer words, or another category.')}</p>
           ) : (
             <>
-              <p>{t('No community plugins are listed yet.')}</p>
+              <p>{t('No pipelines are listed yet.')}</p>
               <p className="text-muted">
-                {remote.some((i) => !i.cached)
-                  ? t('Some of the lists set up in your settings haven’t been fetched yet: press Check for new listings below.')
-                  : remote.length > 0
-                    ? t('Neither the list that came with Clips Kitty nor the lists set up in your settings has a pipeline yet.')
-                    : t('The list that came with this version of Clips Kitty is empty, and no other list is set up.')}{' '}
+                {onlineNever
+                  ? t('Clips Kitty hasn’t got its online list yet: press Check for new pipelines below.')
+                  : others.some((i) => !i.cached)
+                    ? t('Some of the lists set up in your settings haven’t been fetched yet: press Check for new pipelines below.')
+                    : t('None of Clips Kitty’s lists has a pipeline yet.')}{' '}
                 {t('You can still install a plugin from a folder or a GitHub link.')}
               </p>
             </>
@@ -1038,15 +1097,16 @@ function Browse({
 
       {data && (
         <div className="text-xs text-muted space-y-1 border-t border-raised/50 pt-3">
-          {data.indexes.map((i) => (
+          <p>{t(onlineText(data.online, Date.now()))}</p>
+          {others.map((i) => (
             <p key={i.url}>
               {indexName(i.url)}: {i.plugins ?? 0} {i.plugins === 1 ? t('plugin') : t('plugins')}
-              {i.url !== 'bundled' && ` · ${t(fetchedText(i.fetched_at, Date.now()))}`}
+              {` · ${t(fetchedText(i.fetched_at, Date.now()))}`}
             </p>
           ))}
-          {remote.length > 0 && (
+          {manage && (
             <button className="btn-ghost !py-1 !px-2 text-xs" onClick={refresh} disabled={refreshing}>
-              {refreshing ? t('Checking…') : t('Check for new listings')}
+              {refreshing ? t('Checking…') : t('Check for new pipelines')}
             </button>
           )}
           {refreshNote && <p>{refreshNote}</p>}
@@ -1055,6 +1115,7 @@ function Browse({
               'Community means the catalog’s automatic checks passed. It does not mean anyone reviewed the code. ✓ Compatible means a version passed automated technical checks, not a security review. Clips Kitty sends nothing about what you browse.'
             )}
           </p>
+          <OnlineListNote manage={manage} online={data.online} />
           <CountingNote manage={manage} />
         </div>
       )}

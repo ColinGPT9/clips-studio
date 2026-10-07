@@ -8,6 +8,7 @@ import type {
   ModelPlan,
   ModelStatus,
   ModelsOverview,
+  OnlineList,
   PluginPlan,
   PluginsResponse
 } from './marketplace'
@@ -105,8 +106,18 @@ export const plugins = {
     const qs = params.toString()
     return call<CatalogResponse>(`/marketplace/catalog${qs ? `?${qs}` : ''}`)
   },
-  refresh: () =>
-    call<{ indexes: { url: string; ok: boolean; error?: string }[] }>('/marketplace/refresh', { method: 'POST' }),
+  /** Check for new listings. `automatic`: the Marketplace opening, which
+   *  checks Clips Kitty's online list only when it is due (once a day). */
+  refresh: (automatic = false) =>
+    call<{ checked: boolean; indexes: { url: string; ok: boolean; error?: string | null }[] }>(
+      '/marketplace/refresh',
+      { method: 'POST', body: JSON.stringify({ automatic }) },
+      true
+    ),
+  /** Whether the Marketplace checks Clips Kitty's online list by itself, and switching it. */
+  online: () => call<OnlineList>('/marketplace/online'),
+  setOnline: (enabled: boolean) =>
+    call<OnlineList>('/marketplace/online', { method: 'PUT', body: JSON.stringify({ enabled }) }, true),
   /** Whether installs from the Marketplace are counted (anonymously), and switching it. */
   counting: () => call<Counting>('/marketplace/counting'),
   setCounting: (enabled: boolean) =>

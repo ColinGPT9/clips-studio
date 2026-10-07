@@ -331,12 +331,33 @@ def test_index_ages_sizes_and_slugs_read_as_words(tmp_path):
                          "data.map((t) => m.fetchedText(t, 1_000_000_000_000)),"
                          "[2.5e9, 340e6, 2048, undefined].map((n) => m.formatBytes(n)),"
                          "['team_wipe', 'big-play'].map(m.slugLabel),"
-                         "['bundled', 'https://example.com/index.json'].map(m.indexName)]", stamps)
+                         "['bundled', m.ONLINE_LIST, 'https://example.com/index.json'].map(m.indexName)]", stamps)
     assert got[0] == ["not fetched yet", "not fetched yet", "updated just now", "updated 10 minutes ago",
                       "updated 3 hours ago", "updated 3 days ago"]
     assert got[1] == ["2.5 GB", "340 MB", "2 KB", ""]
     assert got[2] == ["Team wipe", "Big play"]
-    assert got[3] == ["The list that came with Clips Kitty", "example.com"]
+    assert got[3] == ["The list that came with Clips Kitty", "Clips Kitty’s online list",
+                      "A list from example.com (not Clips Kitty’s)"]
+
+
+def test_clips_kittys_online_list_is_named_and_described_plainly(tmp_path):
+    from plugins import registry
+
+    now = 1_000_000_000
+    hours_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 3 * 3600))
+    states = [None, {"fetched_at": None, "error": None}, {"fetched_at": hours_ago, "error": None},
+              {"fetched_at": hours_ago, "error": "the download failed"}, {"fetched_at": None, "error": "offline"}]
+    got = _run(tmp_path, "return [m.ONLINE_LIST, ['bundled', m.ONLINE_LIST, 'https://example.com/x.json', undefined]"
+                         ".map(m.isOurList), data.map((o) => m.onlineText(o ?? undefined, 1_000_000_000_000))]",
+               states)
+    assert got[0] == registry.ONLINE_URL
+    assert got[1] == [True, True, False, False]
+    assert got[2] == [
+        "This shows the list that came with Clips Kitty. Check for new pipelines to get the online list.",
+        "This shows the list that came with Clips Kitty. Check for new pipelines to get the online list.",
+        "Clips Kitty’s online list, updated 3 hours ago.",
+        "Couldn’t reach Clips Kitty’s online list just now, so this shows the copy from 3 hours ago.",
+        "Couldn’t reach Clips Kitty’s online list yet, so this shows the list that came with Clips Kitty."]
 
 
 # ---- Awesome Clips Kitty: labels, numbers and credits ---------------------------------------

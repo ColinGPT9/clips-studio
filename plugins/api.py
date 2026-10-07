@@ -15,7 +15,10 @@ does not.
     GET    /marketplace?q=&category=&tag=&kind=&section=   listed plugins, searched (no header)
     GET    /marketplace/catalog?q=&kind=&section=      the catalog's apps, models, workflows, integrations
                                                        and tools, searched (no header)
-    POST   /marketplace/refresh                        fetch the index addresses in settings (no header)
+    POST   /marketplace/refresh  {"automatic": false}  check Clips Kitty's online list and the index addresses
+                                                       in settings ("automatic": the online list, if it's due)
+    GET    /marketplace/online                         whether the online list is checked by itself, and when
+    PUT    /marketplace/online    {"enabled": false}   switch those automatic checks off (or on)
     GET    /marketplace/counting                       whether installs are counted, and what that sends
     PUT    /marketplace/counting  {"enabled": false}   switch counting off (or on)
     GET    /plugin-models                              every model installed plugins list, and where it is
@@ -54,6 +57,14 @@ class ModelIn(BaseModel):
 
 class CountingIn(BaseModel):
     enabled: bool
+
+
+class SwitchIn(BaseModel):
+    enabled: bool
+
+
+class RefreshIn(BaseModel):
+    automatic: bool = False
 
 
 def _game_name(slug: str) -> str:
@@ -204,13 +215,14 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
                         "update_available": newer and not entry.get("pinned"),
                         "pinned": bool(entry.get("pinned"))})
         known = registry.indexes(data_dir, urls(), bundled=bundled_index)
-        sections = next((i["index"]["sections"] for i in known if (i["index"] or {}).get("sections")), {})
+        sections = registry.sections_of(known)
         return {
             "plugins": out,
             "sections": {k: v for k, v in sections.items() if k in catalog.INSTALLABLE_KINDS.values()},
-            "indexes": [{"url": i["url"], "fetched_at": i["fetched_at"], "cached": i["index"] is not None,
-                         "plugins": len((i["index"] or {}).get("plugins") or [])}
+            "indexes": [{"url": i["url"], "kind": i["kind"], "fetched_at": i["fetched_at"],
+                         "cached": i["index"] is not None, "plugins": len((i["index"] or {}).get("plugins") or [])}
                         for i in known],
+            "online": registry.online_status(data_dir),
             "categories": list(manifest_vocabulary()["categories"]),
             "kinds": manifest_vocabulary()["kinds"],
         }
@@ -236,9 +248,27 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
                 data_dir, urls(), bundled=bundled_index) if (i["index"] or {}).get("metrics_at")), None),
         }
 
-    @app.post("/marketplace/refresh")
-    def marketplace_refresh():
-        return {"indexes": registry.refresh(data_dir, urls(), fetcher=fetcher)}
+    @app.post("/marketplace/refresh", dependencies=guarded)
+    def marketplace_refresh(body: RefreshIn | None = None):
+        """Check for new listings. Pressing Check for new pipelines fetches
+        Clips Kitty's online list and every address in settings; the
+        Marketplace opening (`automatic`) fetches only the online list, and
+        only when registry.online_due says so. `checked` is whether anything was fetched."""
+        if body is not None and body.automatic:
+            if not registry.online_due(data_dir):
+                return {"checked": False, "indexes": []}
+            return {"checked": True, "indexes": [registry.refresh_online(data_dir, fetcher=fetcher)]}
+        return {"checked": True, "indexes": [registry.refresh_online(data_dir, fetcher=fetcher),
+                                             *registry.refresh(data_dir, urls(), fetcher=fetcher)]}
+
+    @app.get("/marketplace/online")
+    def marketplace_online():
+        return registry.online_status(data_dir)
+
+    @app.put("/marketplace/online", dependencies=guarded)
+    def marketplace_set_online(body: SwitchIn):
+        registry.set_online_checks(data_dir, body.enabled)
+        return registry.online_status(data_dir)
 
     def counting_view() -> dict:
         known = registry.indexes(data_dir, urls(), bundled=bundled_index)

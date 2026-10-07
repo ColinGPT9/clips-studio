@@ -110,7 +110,7 @@ export interface Listing extends PluginInfo {
   publisher: string
   latest: string
   versions: ListedVersion[]
-  /** The index it came from: "bundled" or an address from settings. */
+  /** The index it came from: "bundled", Clips Kitty's online list (ONLINE_LIST) or an address from settings. */
   index: string
   path?: string
   aliases?: string[]
@@ -230,15 +230,30 @@ export interface Counting {
 
 export interface MarketplaceIndex {
   url: string
+  /** The copy bundled with the app, Clips Kitty's online list, or one from settings. */
+  kind?: 'bundled' | 'online' | 'other'
   /** When the engine last fetched it, as an ISO 8601 UTC time; null when never. */
   fetched_at: string | null
   cached: boolean
   plugins?: number
 }
 
+/** GET /marketplace/online: Clips Kitty's online list (plugins/registry.py online_status). */
+export interface OnlineList {
+  url: string
+  /** Whether the Marketplace checks it by itself, once a day, when it opens. */
+  automatic: boolean
+  /** When the copy in use was fetched; null when never. */
+  fetched_at: string | null
+  /** When a check was last tried, and why it failed (null when it worked). */
+  tried_at: string | null
+  error: string | null
+}
+
 export interface MarketplaceResponse {
   plugins: Listing[]
   indexes: MarketplaceIndex[]
+  online?: OnlineList
   categories: string[]
   kinds: Record<string, 'built' | 'planned'>
   sections?: CatalogResponse['sections']
@@ -757,16 +772,32 @@ export function gitSource(
 }
 
 /** "Updated 3 hours ago", for an index's last fetch (the engine's ISO 8601 time). */
-export function fetchedText(fetchedAt: string | null, nowMs: number): string {
-  const at = fetchedAt ? Date.parse(fetchedAt) : NaN
-  if (!Number.isFinite(at)) return 'not fetched yet'
+/** How long ago an ISO 8601 time was, in words ("3 hours ago"), or null when it isn't one. */
+export function agoText(stamp: string | null, nowMs: number): string | null {
+  const at = stamp ? Date.parse(stamp) : NaN
+  if (!Number.isFinite(at)) return null
   const s = Math.max(0, Math.round((nowMs - at) / 1000))
-  if (s < 90) return 'updated just now'
+  if (s < 90) return 'just now'
   const m = Math.round(s / 60)
-  if (m < 90) return `updated ${m} minutes ago`
+  if (m < 90) return `${m} minutes ago`
   const h = Math.round(m / 60)
-  if (h < 36) return `updated ${h} hours ago`
-  return `updated ${Math.round(h / 24)} days ago`
+  if (h < 36) return `${h} hours ago`
+  return `${Math.round(h / 24)} days ago`
+}
+
+export function fetchedText(fetchedAt: string | null, nowMs: number): string {
+  const ago = agoText(fetchedAt, nowMs)
+  return ago ? `updated ${ago}` : 'not fetched yet'
+}
+
+/** What the Marketplace says about Clips Kitty's online list. */
+export function onlineText(online: OnlineList | undefined, nowMs: number): string {
+  const ago = agoText(online?.fetched_at ?? null, nowMs)
+  if (online?.error && ago)
+    return `Couldn’t reach Clips Kitty’s online list just now, so this shows the copy from ${ago}.`
+  if (online?.error) return 'Couldn’t reach Clips Kitty’s online list yet, so this shows the list that came with Clips Kitty.'
+  if (ago) return `Clips Kitty’s online list, updated ${ago}.`
+  return 'This shows the list that came with Clips Kitty. Check for new pipelines to get the online list.'
 }
 
 export function formatBytes(n: number | undefined): string {
@@ -776,11 +807,22 @@ export function formatBytes(n: number | undefined): string {
   return `${Math.max(1, Math.round(n / 1e3))} KB`
 }
 
-/** How the screen names an index: the bundled one, or its address. */
+/** Clips Kitty's own list online: the catalog's index on the project's main
+ *  branch (plugins/registry.py ONLINE_URL; a test keeps the two the same). */
+export const ONLINE_LIST =
+  'https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/awesome-clips-kitty/index.json'
+
+/** Whether a listing came from one of Clips Kitty's own lists (bundled or online). */
+export function isOurList(url: string | undefined): boolean {
+  return url === 'bundled' || url === ONLINE_LIST
+}
+
+/** How the screen names an index: one of Clips Kitty's own, or someone else's by its address. */
 export function indexName(url: string): string {
   if (url === 'bundled') return 'The list that came with Clips Kitty'
+  if (url === ONLINE_LIST) return 'Clips Kitty’s online list'
   try {
-    return new URL(url).host
+    return `A list from ${new URL(url).host} (not Clips Kitty’s)`
   } catch {
     return url
   }

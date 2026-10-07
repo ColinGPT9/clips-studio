@@ -18,7 +18,7 @@ What Clips Kitty does and does not protect when someone installs a plugin. Writt
 | **No credentials by accident** | A plugin's process does not inherit Clips Kitty's settings, the session secret, or any variable whose name looks like a key, token, password or cookie. | built, tested |
 | **It stops when told** | Cancel and the time limit stop the plugin and every process it started. | built; the Windows path is untested |
 | **Turn off, roll back, remove** | One click each; removal deletes the plugin's files and stored keys. | built (routes and the Marketplace's Installed tab) |
-| **Block list** | A maintainer can block a version for everyone; a blocked plugin is refused at install and at run, and flagged where it is installed. | built: `awesome-clips-kitty/registry/blocklist.yaml` and every cached index's list, applied at install, at run and in the plugin list; no public catalog repository yet, so a new block reaches installed copies with the next app release |
+| **Block list** | A maintainer can block a version for everyone; a blocked plugin is refused at install and at run, and flagged where it is installed. | built: `awesome-clips-kitty/registry/blocklist.yaml` and every cached index's list, applied at install, at run and in the plugin list; a new block reaches installed copies within a day of being merged, through Clips Kitty's online list (DECISIONS D29), or with the next app release where the online checks are switched off |
 
 ## What it does not do, and says so
 

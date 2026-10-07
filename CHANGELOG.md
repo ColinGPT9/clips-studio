@@ -30,6 +30,16 @@ were often broken in a way that only showed up on somebody else's machine.
   (Experimental routes: `/plugins`, `/marketplace`, `/marketplace/catalog`,
   `/marketplace/counting`, `/plugin-models`.) (#129)
 
+- **New pipelines without waiting for an update, and nothing else to install.** The
+  Marketplace checks Clips Kitty's online list when it opens, at most once a day, so a
+  newly listed pipeline shows up without a new version of the app; **Check for new
+  pipelines** checks at once. Until a release includes it, a new pipeline shows as
+  Community. The check fetches one file from GitHub and sends nothing about you or what
+  you browse; a switch at the bottom of Browse turns it off. Pipelines also run on the
+  Python inside Clips Kitty now, so a creator never installs Python for one.
+  (Experimental routes: `/marketplace/online`; `/marketplace/refresh` now needs the
+  desktop app.)
+
 - **A second colour for the second speaker.** Tick **Second speaker in another colour**
   in the caption settings, for a whole run or for one clip in the editor, and pick the
   colour. When two people talk in a clip, the main speaker keeps the text colour and

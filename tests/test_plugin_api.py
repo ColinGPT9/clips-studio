@@ -44,7 +44,7 @@ def test_every_plugin_route_is_labelled_experimental(api):
     client, _ = api
     routes = [(m, p) for m, p, _mod in st.app_routes(client.app)
               if p.startswith(("/plugins", "/marketplace", "/plugin-models"))]
-    assert len(routes) == 18
+    assert len(routes) == 20
     assert all(st.label(m, p) == st.EXPERIMENTAL for m, p in routes)
 
 
@@ -209,7 +209,9 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     assert item["details"]["tier_text"] == "Community · not reviewed by a person"
     assert item["badges"] == ["community"]
     assert item["unofficial"] == "Unofficial · not made or endorsed by the makers of NHL"
-    assert found["indexes"] == [{"url": "bundled", "fetched_at": None, "cached": True, "plugins": 1}]
+    assert found["indexes"] == [
+        {"url": "bundled", "kind": "bundled", "fetched_at": None, "cached": True, "plugins": 1},
+        {"url": registry.ONLINE_URL, "kind": "online", "fetched_at": None, "cached": False, "plugins": 0}]
     # what would stop it running here, said before installing
     assert item["problems_here"] == [] and item["versions"][0]["problem_here"] is None
     assert item["details"]["needs_python"] and not any("Python" in r for r in item["details"]["requirements"])
@@ -231,7 +233,7 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     assert view["counted"] is True and counted == ["https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/example-dev__nhl-goals.count"]
     r = client.post("/plugins/plan", json={"source": {"kind": "index", "id": "example-dev/missing"}}, headers=HEADERS)
     assert r.status_code == 404 and "not listed" in r.json()["detail"]
-    assert client.post("/marketplace/refresh").json() == {"indexes": []}  # no address in settings
+    assert client.post("/marketplace/refresh").status_code == 403  # it reaches the internet: the app's own only
 
 
 def _wait_for(condition, seconds: float = 5.0) -> None:
@@ -326,6 +328,78 @@ def test_install_counting_can_be_switched_off_and_skips_updates(tmp_path, monkey
     assert counter.count_url("http://example.com/{asset}", "a/b") is None
     assert counter.count_url("https://example.com/x", "a/b") is None
     assert counter.count_url("https://example.com/{asset}", "../x") is None
+
+
+def test_the_marketplace_checks_clips_kittys_online_list_once_a_day(tmp_path, monkeypatch):
+    """Opening the Marketplace checks Clips Kitty's online list when its copy
+    is a day old, unless switched off; Check for new pipelines checks it, and
+    the addresses in settings, at once. Both need the session header. What
+    the online list adds is Community and installs as a plain listing. A fake
+    fetcher stands in for the network."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from plugins import api as plugins_api
+    from plugins import registry, sources
+
+    monkeypatch.setenv("CLIPS_KITTY_SESSION_SECRET", HEADERS["X-Clips-Kitty-Session"])
+
+    def listing(name, commit):
+        return {"id": f"example-dev/{name}", "name": name, "publisher": "example-dev", "path": ".",
+                "repository": f"https://github.com/example-dev/{name}", "settings": {}, "checks": {},
+                "versions": [{"version": "1.0.0", "commit": commit}], "badges": ["community", "featured"]}
+
+    bundled = tmp_path / "index.json"
+    bundled.write_text(json.dumps({"format": 1, "plugins": [listing("shipped", "ab" * 20)], "blocklist": []}))
+    online = {"format": 1, "plugins": [listing("shipped", "ab" * 20), listing("brand-new", "cd" * 20)],
+              "blocklist": []}
+    fetched, reachable = [], [False]
+
+    def fetcher(url, path):
+        fetched.append(url)
+        if not reachable[0]:
+            raise sources.SourceError("could not reach it")
+        Path(path).write_text(json.dumps(online))
+
+    other = "https://example.com/other.json"
+    app = FastAPI()
+    plugins_api.install(app, data_dir=tmp_path / "data", app_version="2.0.0", fetcher=fetcher, bundled_index=bundled,
+                        config={"plugins": {"registry_urls": [other]}})
+    client = TestClient(app, base_url="http://127.0.0.1")
+
+    def opened():
+        return client.post("/marketplace/refresh", json={"automatic": True}, headers=HEADERS).json()
+
+    assert client.post("/marketplace/refresh", json={"automatic": True}).status_code == 403
+    first = opened()  # never fetched: due, and offline
+    assert first["checked"] is True and first["indexes"][0]["ok"] is False and fetched == [registry.ONLINE_URL]
+    view = client.get("/marketplace").json()
+    assert view["online"]["fetched_at"] is None and "could not reach it" in view["online"]["error"]
+    assert [p["id"] for p in view["plugins"]] == ["example-dev/shipped"]
+    assert opened() == {"checked": False, "indexes": []} and len(fetched) == 1  # not on every open while offline
+
+    reachable[0] = True
+    pressed = client.post("/marketplace/refresh", headers=HEADERS).json()  # the button: at once, every list
+    assert [(i["url"], i["ok"]) for i in pressed["indexes"]] == [(registry.ONLINE_URL, True), (other, True)]
+    view = client.get("/marketplace").json()
+    assert view["online"]["error"] is None and view["online"]["fetched_at"]
+    found = {p["id"]: p for p in view["plugins"]}
+    assert set(found) == {"example-dev/shipped", "example-dev/brand-new"}
+    assert found["example-dev/shipped"]["index"] == "bundled" and found["example-dev/shipped"]["badges"] == [
+        "community", "featured"]
+    assert found["example-dev/brand-new"]["index"] == registry.ONLINE_URL
+    assert found["example-dev/brand-new"]["badges"] == ["community"]
+    assert found["example-dev/brand-new"]["details"]["tier"] == "listed"
+    assert [i["kind"] for i in view["indexes"]] == ["bundled", "online", "other"]
+    assert opened() == {"checked": False, "indexes": []}  # fetched just now
+
+    assert client.put("/marketplace/online", json={"enabled": False}).status_code == 403
+    assert client.put("/marketplace/online", json={"enabled": False}, headers=HEADERS).json()["automatic"] is False
+    assert client.get("/marketplace/online").json()["automatic"] is False
+    assert registry.online_due(tmp_path / "data", now=10 ** 10) is False  # off: never by itself
+    assert client.post("/marketplace/refresh", headers=HEADERS).json()["checked"] is True  # the button still works
 
 
 def test_the_catalog_route_lists_the_directory_with_honest_labels(tmp_path, monkeypatch):

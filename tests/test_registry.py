@@ -18,7 +18,7 @@ import pytest
 
 yaml = pytest.importorskip("yaml")
 
-from plugins import manager, registry, sources, store  # noqa: E402
+from plugins import catalog, manager, registry, sources, store  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = "2.0.0"
@@ -384,7 +384,7 @@ def test_refresh_caches_the_last_good_copy_and_works_offline(catalogue, tmp_path
         assert len(registry.listings(data, [url], bundled=empty)) == len(CATALOGUE)  # last good copy
     kinds = [(i["url"], i["index"] is not None) for i in registry.indexes(data, [url, "https://example.com/never"],
                                                                          bundled=empty)]
-    assert kinds == [("bundled", True), (url, True), ("https://example.com/never", False)]
+    assert kinds == [("bundled", True), (registry.ONLINE_URL, False), (url, True), ("https://example.com/never", False)]
 
 
 def test_a_plugin_in_two_indexes_comes_from_the_first(catalogue, tmp_path):
@@ -395,6 +395,164 @@ def test_a_plugin_in_two_indexes_comes_from_the_first(catalogue, tmp_path):
     registry.refresh(data, [url], fetcher=lambda u, p: Path(p).write_text(json.dumps(other)))
     found = {p["id"]: p for p in registry.listings(data, [url], bundled=catalogue)}
     assert found[other["plugins"][0]["id"]]["name"] != "Imposter" and found[other["plugins"][0]["id"]]["index"] == "bundled"
+
+
+# ---- Clips Kitty's online list ---------------------------------------------------------------------
+
+
+def _listing(name, *versions, owner=OWNER, **extra):
+    """An index's listing: versions as (version, commit number), newest first."""
+    return {"id": f"{owner.lower()}/{name}", "name": name.replace("-", " ").title(), "publisher": owner.lower(),
+            "repository": f"https://github.com/{owner}/{name}", "path": ".",
+            "versions": [{"version": v, "commit": _commit(n)} for v, n in versions], **extra}
+
+
+def _index(plugins=(), *, catalog=(), blocklist=(), metrics_at="2026-10-05", **extra):
+    return {"format": 1, "plugins": list(plugins), "catalog": list(catalog), "blocklist": list(blocklist),
+            "metrics_at": metrics_at, **extra}
+
+
+def _online(data, index):
+    """Put `index` in the cache as Clips Kitty's online list, the way the app fetches it."""
+    status = registry.refresh_online(data, fetcher=lambda u, p: Path(p).write_text(json.dumps(index)))
+    assert status == {"url": registry.ONLINE_URL, "ok": True, "error": None}
+
+
+LABELLED = {"badges": ["community", "compatible", "featured"], "featured": {"reason": "notable"},
+            "metrics": {"installs": 120, "github": {"stars": 5}}}
+
+
+def test_the_online_list_brings_new_pipelines_as_community_and_never_counts_them(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    bundled.write_text(json.dumps(_index([_listing("kept", ("1.0.0", 1), **LABELLED)], counter={
+        "install": "https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}"})))
+    _online(data, _index([
+        _listing("kept", ("1.0.0", 1)),  # the same version: the bundled listing stays, labels and all
+        _listing("brand-new", ("0.1.0", 2), **LABELLED, checks={"manifest_valid": True, "official_repository": True}),
+        _listing("clips-studio", ("9.0.0", 3), owner="ColinGPT9"),  # the project's own: only with the app
+    ], counter={"install": "https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/x/{asset}"}))
+
+    found = {p["id"]: p for p in registry.listings(data, [], bundled=bundled)}
+    assert list(found) == [f"{OWNER}/kept", f"{OWNER}/brand-new"]
+    kept, new = found[f"{OWNER}/kept"], found[f"{OWNER}/brand-new"]
+    assert kept["index"] == "bundled" and kept["badges"] == ["community", "compatible", "featured"]
+    assert kept["metrics"]["installs"] == 120
+    assert new["index"] == registry.ONLINE_URL and new["badges"] == ["community"]
+    assert "featured" not in new and "installs" not in new["metrics"] and new["metrics"]["github"] == {"stars": 5}
+    assert new["checks"] == {"manifest_valid": True}
+    assert registry.listing_tier(new) == "listed"
+    assert registry.counter_for(data, [], registry.ONLINE_URL, bundled=bundled) is None
+    assert registry.counter_for(data, [], "bundled", bundled=bundled)
+    # what the Marketplace lists, in the order the lists count
+    kinds = [(i["kind"], i["url"], i["index"] is not None) for i in registry.indexes(data, [], bundled=bundled)]
+    assert kinds == [("bundled", "bundled", True), ("online", registry.ONLINE_URL, True)]
+
+
+@pytest.mark.parametrize("online_version, from_online", [("1.1.0", True), ("1.0.0", False), ("0.9.0", False)])
+def test_a_newer_version_online_wins_and_shows_as_community_until_a_release(tmp_path, online_version, from_online):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    bundled.write_text(json.dumps(_index([_listing("tool", ("1.0.0", 1), **LABELLED)])))
+    _online(data, _index([_listing("tool", (online_version, 2), ("1.0.0", 1))]))
+    (listing,) = registry.listings(data, [], bundled=bundled)
+    assert listing["index"] == (registry.ONLINE_URL if from_online else "bundled")
+    assert listing["latest"] == (online_version if from_online else "1.0.0")
+    assert listing["badges"] == (["community"] if from_online else ["community", "compatible", "featured"])
+    assert registry.find(data, [], f"{OWNER}/tool", bundled=bundled)[1]["version"] == listing["latest"]
+
+
+def test_an_online_block_applies_and_cant_lift_a_bundled_one(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    block = {"id": f"{OWNER}/a", "versions": ["1.0.0"], "severity": "blocked", "reason": "steals keys", "date": "2026-10-07"}
+    bundled.write_text(json.dumps(_index([_listing("a", ("1.0.0", 1)), _listing("b", ("1.0.0", 2))], blocklist=[block])))
+    _online(data, _index([_listing("a", ("1.0.0", 1)), _listing("b", ("1.0.0", 2))],
+                         blocklist=[{**block, "id": f"{OWNER}/b"}]))
+    assert registry.listings(data, [], bundled=bundled) == []
+    assert registry.blocked_check(data, bundled=bundled)(f"{OWNER}/b", "1.0.0")["reason"] == "steals keys"
+
+
+def test_an_online_copy_older_than_this_release_adds_nothing_but_its_blocks(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    bundled.write_text(json.dumps(_index([_listing("a", ("2.0.0", 1))], metrics_at="2026-10-12")))
+    block = {"id": f"{OWNER}/a", "versions": "*", "severity": "delisted", "reason": "gone", "date": "2026-10-01"}
+    _online(data, _index([_listing("a", ("3.0.0", 2)), _listing("removed-since", ("1.0.0", 3))],
+                         blocklist=[{**block, "id": f"{OWNER}/old"}], metrics_at="2026-10-05"))
+    assert [p["id"] for p in registry.listings(data, [], bundled=bundled)] == [f"{OWNER}/a"]
+    assert registry.listings(data, [], bundled=bundled)[0]["latest"] == "2.0.0"
+    online = registry.indexes(data, [], bundled=bundled)[1]
+    assert online["kind"] == "online" and online["index"] is None
+    assert registry.blocked_check(data, bundled=bundled)(f"{OWNER}/old", "1.0.0")  # blocks are never set aside
+
+
+def _entry(slug, *, owner="someone", kind="app", **extra):
+    return {"id": f"{catalog.FOLDER_OF_KIND[kind]}/{slug}", "kind": kind, "name": slug.title(), "license": "MIT",
+            "source": {"github": f"https://github.com/{owner}/{slug}"}, **extra}
+
+
+def test_the_online_list_adds_directory_entries_and_sections_but_not_the_projects_own(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    sections = {"app": {"sections": [{"id": "editors", "title": "Editors"}], "wanted": []}}
+    bundled.write_text(json.dumps(_index(catalog=[_entry("cutter", featured={"reason": "x"}, badges=["featured"],
+                                                         metrics={"installs": 3})], sections=sections)))
+    _online(data, _index(catalog=[_entry("cutter", name="Changed"), _entry("newcomer", section="games",
+                                                                         badges=["official", "featured"],
+                                                                         metrics={"installs": 9}),
+                                  _entry("clips-studio", owner="ColinGPT9")],
+                         sections={"app": {"sections": [{"id": "editors", "title": "Renamed"},
+                                                        {"id": "games", "title": "Games"}]},
+                                   "tool": {"sections": [{"id": "cli", "title": "Command line"}]}}))
+    entries, merged = registry.catalog_entries(data, [], bundled=bundled)
+    by_id = {e["id"]: e for e in entries}
+    assert list(by_id) == ["apps/cutter", "apps/newcomer"]
+    assert by_id["apps/cutter"]["name"] == "Cutter" and by_id["apps/cutter"]["badges"] == ["community", "featured"]
+    newcomer = by_id["apps/newcomer"]
+    assert newcomer["index"] == registry.ONLINE_URL and newcomer["badges"] == ["community"]
+    assert "featured" not in newcomer and "installs" not in newcomer["metrics"]
+    assert merged["app"]["sections"] == [{"id": "editors", "title": "Editors"}, {"id": "games", "title": "Games"}]
+    assert merged["tool"] == {"sections": [{"id": "cli", "title": "Command line"}]}
+
+
+def test_the_online_list_is_checked_once_a_day_retried_hourly_and_can_be_switched_off(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    bundled.write_text(json.dumps(_index()))
+    now = 1_800_000_000.0
+    assert registry.online_checks_on(data) and registry.online_due(data, now=now)  # never fetched
+
+    def offline(u, p):
+        raise sources.SourceError("the download failed (no network)")
+
+    status = registry.refresh_online(data, fetcher=offline, now=now)
+    assert status["ok"] is False
+    view = registry.online_status(data)
+    assert view["fetched_at"] is None and "no network" in view["error"] and view["automatic"] is True
+    assert not registry.online_due(data, now=now + 30 * 60)  # offline: not again on every open
+    assert registry.online_due(data, now=now + 2 * 3600)
+
+    _online(data, _index())  # fetched now (the real clock)
+    assert registry.online_status(data)["error"] is None and registry.online_status(data)["fetched_at"]
+    real = registry._seconds(registry.online_status(data)["fetched_at"])
+    assert not registry.online_due(data, now=real + 23 * 3600)
+    assert registry.online_due(data, now=real + 25 * 3600)
+    assert registry.online_due(data, now=real - 3600)  # a clock set back doesn't stop the checks
+
+    registry.set_online_checks(data, False)
+    assert not registry.online_checks_on(data) and not registry.online_due(data, now=real + 30 * 86400)
+    assert registry.online_status(data)["automatic"] is False
+    registry.set_online_checks(data, True)
+    assert registry.online_due(data, now=real + 30 * 86400)
+
+
+def test_the_online_list_is_the_catalogs_index_on_the_main_branch():
+    """The address is the committed index's own place on the project's main
+    branch, so what it serves is exactly what was merged (D29)."""
+    assert registry.ONLINE_URL == ("https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/"
+                                   + registry.CATALOG_FOLDER + "/index.json")
+    assert registry.bundled_path().relative_to(ROOT).as_posix() == registry.CATALOG_FOLDER + "/index.json"
+    assert registry.index_urls({"plugins": {"registry_urls": [registry.ONLINE_URL]}}) == []
+
+
+def test_the_privacy_policy_tells_people_about_the_list_check():
+    text = (ROOT / "site" / "privacy.html").read_text(encoding="utf-8")
+    assert "Checking for new pipelines" in text and "raw.githubusercontent.com" in text
 
 
 # ---- installing from a listing, and the block list reaching installed copies --------------------------

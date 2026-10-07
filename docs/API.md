@@ -1245,8 +1245,22 @@ apply), its numbers (`metrics`, each from its own source) and, on each of its
 range, no Python for a plugin that runs with one), and each of its `versions`
 has its own `problem_here`. `GET /plugins` gives installed plugins the same
 `problems_here`.
-`POST /marketplace/refresh` (no header: it fetches only addresses the user set) fetches the indexes in
-`plugins.registry_urls` again. See
+The answer's `indexes` names each list with its `kind`: `bundled` (the copy
+that came with the app), `online` (Clips Kitty's online list, the catalog's
+index on the project's main branch) or `other` (an address in
+`plugins.registry_urls`); `online` says whether the Marketplace checks that
+list by itself, when its copy was fetched (`fetched_at`) and how the last try
+went (`tried_at`, `error`). What the online list adds shows as Community and is
+never counted; only the bundled list labels (DECISIONS D29).
+`POST /marketplace/refresh` (session header) fetches Clips Kitty's online list
+and the indexes in `plugins.registry_urls` again and answers
+`{"checked": true, "indexes": [{"url", "ok", "error"}]}`; with
+`{"automatic": true}`, as the Marketplace sends when it opens, it fetches only
+the online list, and only when its copy is a day old and no check was tried in
+the last hour (`{"checked": false, "indexes": []}` otherwise).
+`GET /marketplace/online` (no header) answers like `online` above, and
+`PUT /marketplace/online` `{"enabled": false}` (session header) switches the
+automatic checks off for this PC (or on again). See
 [Marketplace publishing](developers/marketplace-publishing.md).
 
 `GET /marketplace/catalog` (`?q=`, `kind`, `section`; no header) lists the rest
