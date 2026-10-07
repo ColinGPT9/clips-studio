@@ -71,4 +71,4 @@ Colin's message of 10:35 UTC answered the five open questions and widened the re
 
 ## Next action
 
-Colin's answers on the two open cards (when to create the public catalog repository; counting on by default or off), then a look at the Marketplace on Windows.
+Colin's review of the catalog and a look at the Marketplace on Windows. Both cards are answered (16:55 and 16:56 UTC on 2026-10-07): the public catalog repository is created after that review, and installs are counted unless a user switches counting off. Counting starts only once that repository exists and the privacy policy and Store answers no longer say "No telemetry".
