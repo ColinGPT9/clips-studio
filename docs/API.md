@@ -1233,7 +1233,12 @@ curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" 
 
 `GET /marketplace` lists and searches the registry indexes the app knows
 (`?q=`, `category`, `tag`, `kind`), each listing with the same details a plan
-shows and whether it is installed; it reads only cached copies.
+shows and whether it is installed; it reads only cached copies. Each listing's
+`problems_here` says what the engine can tell would stop it running on this PC
+(`{"need": "app" | "python", "text": ...}`: a Clips Kitty version outside its
+range, no Python for a plugin that runs with one), and each of its `versions`
+has its own `problem_here`. `GET /plugins` gives installed plugins the same
+`problems_here`.
 `POST /marketplace/refresh` (no header: it fetches only addresses the user set) fetches the indexes in
 `plugins.registry_urls` again. See
 [Marketplace publishing](developers/marketplace-publishing.md).

@@ -2,7 +2,7 @@
 
 How a plugin gets into the Marketplace, how people find it, and what "listed" does and does not mean.
 
-Status: the listing format, the index build (`scripts/build_registry_index.py`), the app's client and search (`plugins/registry.py`) and installing from a listing are **built**. **Not yet:** a public registry repository and index address (until then the only index an installed app has is the copy bundled with it, so a listing reaches users with the next app release), and the Marketplace screen (Phase 8).
+Status: the listing format, the index build (`scripts/build_registry_index.py`), the app's client and search (`plugins/registry.py`) and installing from a listing are **built**, and so is the Marketplace screen in the desktop app (Phase 8; built and type-checked, not yet looked at on a real PC). **Not yet:** a public registry repository and index address (until then the only index an installed app has is the copy bundled with it, so a listing reaches users with the next app release).
 
 ## Getting listed
 
@@ -38,7 +38,7 @@ From your manifest at the latest listed version: name, description, publisher, v
 
 A listing about a game, league or product you don't own shows **"Unofficial · not made or endorsed by the makers of …"**, built from your `games`. Whether a rights holder's own plugin can drop it is the owner's call.
 
-Links are shown as text; opening one in the browser goes through a confirmation (planned with the Marketplace screen). There are no ratings, install counts or telemetry.
+Links are shown with their full address; opening one in the browser goes through a dialog that shows the address and says it comes from you, not from Clips Kitty. There are no ratings, install counts or telemetry.
 
 ## Being blocked or delisted
 

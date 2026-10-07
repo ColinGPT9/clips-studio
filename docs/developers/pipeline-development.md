@@ -2,7 +2,7 @@
 
 A **pipeline plugin** decides which moments of a video become clips. Clips Kitty does everything around that decision exactly as it does for its own modes: downloading, transcribing, writing titles and hashtags with the user's AI model, cropping to vertical, captions, rendering with FFmpeg, the library, publishing and the automation that watches channels. You write the part that knows your niche (a game's kill feed, a sport's scoreboard, a podcast's best exchanges) and nothing else.
 
-Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option, the manifest validator and the plugin manager (install from a folder or a Git commit, through experimental API routes). **Planned**: the Marketplace screen and returning finished clip files.
+Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option, the manifest validator and the plugin manager (install from a folder or a Git commit, through experimental API routes). The Marketplace screen in the desktop app (Phase 8) installs and manages plugins, and the Generate bar's **Pipeline** switch picks one for a video. **Planned**: returning finished clip files.
 
 ## How a run works
 

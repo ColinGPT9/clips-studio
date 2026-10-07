@@ -2,7 +2,7 @@
 
 How a plugin gets from your folder or repository onto a user's PC, and what happens to it there. To write one, start with [Getting started](getting-started.md); the contract is in [Pipeline development](pipeline-development.md).
 
-Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `plugins/sources.py`) with experimental API routes. Installing from a registry listing is **built** (Phase 7). **Planned**: the Marketplace screen in the app and per-plugin Python packages.
+Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `plugins/sources.py`) with experimental API routes. Installing from a registry listing is **built** (Phase 7), and so is the Marketplace screen in the desktop app (Phase 8), which does all of the below with buttons. **Planned**: per-plugin Python packages.
 
 ## The life of a plugin
 
@@ -14,7 +14,7 @@ Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `pl
 | **Update** | A new version is planned and installed the same way, beside the old one, and becomes active once it validates. The old version is kept. | plan, install |
 | **Roll back** | The previous version becomes active again (and the newer one previous, so you can go forward again). | `POST /plugins/{publisher}/{name}/rollback` |
 | **Turn off / on** | A plugin that is off can't be chosen for a job. | `.../disable`, `.../enable` |
-| **Pin** | The Marketplace stops offering this plugin's updates (planned with the Marketplace). Installing a version by hand still works. | `.../pin`, `.../unpin` |
+| **Pin** | The Marketplace stops offering this plugin's updates. Installing a version by hand still works. | `.../pin`, `.../unpin` |
 | **Keys** | `secret` settings are stored in Clips Kitty's secrets store and handed only to this plugin's process. | `PUT .../secrets` |
 | **Remove** | Every version Clips Kitty installed and the plugin's stored keys are deleted. | `DELETE /plugins/{publisher}/{name}` |
 
@@ -74,7 +74,7 @@ if plan["ok"]:
     print(requests.post(f"{api}/plugins/install", headers=headers, json={"plan_id": plan["plan_id"]}).json())
 ```
 
-`GET /plugins` lists what is installed (no header): each plugin's versions, whether it is on and pinned, its source, the install screen's `details`, the names of keys that are set (never their values) and a `problem` when it can't run; and the modes that ship with the app, marked Official.
+`GET /plugins` lists what is installed (no header): each plugin's versions, whether it is on and pinned, its source, the install screen's `details`, the names of keys that are set (never their values) a `problem` when it can't run, and `problems_here` for what this PC lacks (a Python to run it with); and the modes that ship with the app, marked Official.
 
 ## Tiers
 

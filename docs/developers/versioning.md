@@ -24,6 +24,6 @@ Pick the lowest version you tested with, and an upper bound only when you know a
 
 - An update installs **beside** the version in use and becomes active only once it validates. The plan shows the new version and what changes: new permissions, hosts and data warnings, and whether it now runs on a remote service.
 - **Roll back** makes the previous version active; only the active and previous versions are kept.
-- **Pin** stops the Marketplace offering a plugin's updates (the Marketplace is planned).
+- **Pin** stops the Marketplace offering a plugin's updates.
 - There are **no automatic updates**. A harmful version is handled by the block list (built), never by forcing an update.
 - In the registry (built; no public registry repository yet), a listed version maps to one commit, and versions are never deleted, only blocked or delisted.

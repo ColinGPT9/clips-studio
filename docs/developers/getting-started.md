@@ -51,7 +51,7 @@ python -m clipskitty_sdk run . --video sample.mp4 --set min_kills=4
 
 ## 5. Install it in Clips Kitty
 
-With the app running, plan an install from your folder, read what it would do, then install it; the [Plugin development](plugin-development.md) page has a short script for this, and [`docs/API.md` › Plugins](../API.md#plugins) has the calls. Pick it for a job with `"pipeline": "<your id>"`. Change your code, plan and install again; the same version is replaced. (A Marketplace screen for this is planned.)
+With the app running, plan an install from your folder, read what it would do, then install it; the [Plugin development](plugin-development.md) page has a short script for this, and [`docs/API.md` › Plugins](../API.md#plugins) has the calls. Pick it for a job with `"pipeline": "<your id>"`. Change your code, plan and install again; the same version is replaced. In the desktop app the same is **Marketplace → Add from a folder or link**, and then the **Pipeline** switch on a video in the Generate bar.
 
 ## 6. Publish it
 
