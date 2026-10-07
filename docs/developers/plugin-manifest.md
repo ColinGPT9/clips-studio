@@ -61,7 +61,7 @@ Required fields are in bold.
 | Field | What it is | Rules |
 |---|---|---|
 | **`manifest_version`** | The manifest format | `1` |
-| **`id`** | `publisher/name` | lower case letters, digits and hyphens; publisher up to 39 characters, name up to 64. The publisher `clipskitty` is reserved for the modes that ship with the app. For a listed plugin the publisher must be the repository's GitHub owner (checked by the registry, planned). |
+| **`id`** | `publisher/name` | lower case letters, digits and hyphens; publisher up to 39 characters, name up to 64. The publisher `clipskitty` is reserved for the modes that ship with the app. For a listed plugin the publisher must be the repository's GitHub owner (checked by the registry's index build). |
 | **`name`** | What users see | up to 60 characters |
 | **`version`** | This release | SemVer, `1.2.0` or `1.2.0-beta.1` |
 | **`kind`** | What sort of plugin | `pipeline`. `caption-style`, `publisher`, `source`, `integration`, `provider` and `component` are planned and refused with a message saying so. |

@@ -1227,7 +1227,16 @@ curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" 
 `POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,
 `/unpin`, `DELETE /plugins/{publisher}/{name}` and
 `PUT /plugins/{publisher}/{name}/secrets` change one plugin. A source is
-`{"kind": "folder", "path": ...}` or `{"kind": "git", "url": ..., "commit": ...}`.
+`{"kind": "folder", "path": ...}`, `{"kind": "git", "url": ..., "commit": ...}`
+(with `"path"` for a plugin in a subfolder), or a registry listing,
+`{"kind": "index", "id": "publisher/name", "version": "1.2.0"}`.
+
+`GET /marketplace` lists and searches the registry indexes the app knows
+(`?q=`, `category`, `tag`, `kind`), each listing with the same details a plan
+shows and whether it is installed; it reads only cached copies.
+`POST /marketplace/refresh` (header needed) fetches the indexes set in
+`plugins.registry_urls` again. See
+[Marketplace publishing](developers/marketplace-publishing.md).
 
 ## MCP: let an AI agent drive it
 

@@ -2,7 +2,7 @@
 
 How a plugin gets from your folder or repository onto a user's PC, and what happens to it there. To write one, start with [Getting started](getting-started.md); the contract is in [Pipeline development](pipeline-development.md).
 
-Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `plugins/sources.py`) with experimental API routes. **Planned**: the Marketplace screen in the app, installing from a registry listing, and per-plugin Python packages.
+Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `plugins/sources.py`) with experimental API routes. Installing from a registry listing is **built** (Phase 7). **Planned**: the Marketplace screen in the app and per-plugin Python packages.
 
 ## The life of a plugin
 
@@ -81,7 +81,7 @@ if plan["ok"]:
 | Tier | Means |
 |---|---|
 | Official | Ships inside Clips Kitty (Shorts, Gaming, Sports, described by `plugins/builtin/`) |
-| Listed · not reviewed by a person | In a registry index the user has enabled; the index's automated checks passed (planned with the registry) |
+| Listed · not reviewed by a person | In a registry index the user has enabled; the index's automated checks passed (built; no public index is published yet) |
 | Not listed · Clips Kitty has not checked this | Installed from a folder or a Git address. Everything installed today is this. |
 
 There is no "Verified" tier: nobody reviews plugin code, and Clips Kitty does not say otherwise. See [Security](security.md).
