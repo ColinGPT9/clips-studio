@@ -1,0 +1,26 @@
+# One setting of each type.
+manifest_version: 1
+id: example-dev/loud-moments
+name: Loud moments
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Picks the loudest stretches of a video.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: ['{python}', src/main.py]
+execution: local
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read, ffmpeg]
+settings:
+  label: {type: string, default: loud, max_length: 20, title: Label}
+  clips: {type: integer, default: 3, minimum: 1, maximum: 10}
+  threshold: {type: number, default: 0.8, minimum: 0, maximum: 1}
+  captions: {type: boolean, default: true}
+  speed:
+    type: choice
+    options: [fast, careful]
+    default: careful
+  api_key: {type: secret, title: Example Cloud key}

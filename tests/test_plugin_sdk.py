@@ -357,3 +357,8 @@ def test_the_client_says_when_the_app_is_not_running():
     with pytest.raises(APIError) as e:
         LocalAPI(f"http://127.0.0.1:{port}", timeout=2).health()
     assert e.value.status == 0 and "not answering" in str(e.value)
+
+
+def test_a_program_command_is_resolved_inside_the_plugin(tmp_path):
+    assert host.resolve_command(["bin/detect", "--fast"], "py", tmp_path) == [str(tmp_path / "bin/detect"), "--fast"]
+    assert host.resolve_command(["{python}", "src/main.py"], "py", tmp_path) == ["py", "src/main.py"]

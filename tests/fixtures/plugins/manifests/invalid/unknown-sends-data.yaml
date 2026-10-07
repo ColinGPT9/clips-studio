@@ -1,0 +1,19 @@
+# expect: sends[0].data: unknown kind of data 'everything'
+manifest_version: 1
+id: example-dev/loud-moments
+name: Loud moments
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Picks the loudest stretches of a video.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: ['{python}', src/main.py]
+execution: hybrid
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read, network]
+network: [api.example.com]
+sends:
+- {data: everything, to: Example Cloud}

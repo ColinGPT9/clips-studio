@@ -1,0 +1,32 @@
+# The worked example in docs/platform-architecture.md §8.13, copied as written there.
+# Names and ids are placeholders.
+manifest_version: 1
+id: example-dev/open-shorts
+name: Open Shorts for Clips Kitty
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Lets Open Shorts pick the moments, then Clips Kitty titles, crops, captions and files them.
+author: {name: Example Developer, url: https://github.com/example-dev}
+repository: https://github.com/example-dev/clips-kitty-open-shorts
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run: {command: ["{python}", "src/main.py"], timeout_minutes: 120}
+execution: hybrid
+inputs: [video]
+outputs: [ranges]
+settings:
+  instance: {type: choice, options: [this-pc, hosted], default: this-pc, title: Where Open Shorts runs}
+  url: {type: string, default: "http://127.0.0.1:8000", title: Open Shorts address on this PC}
+  api_key: {type: secret, title: Open Shorts API key (hosted only)}
+permissions: [video.read, network]
+network: ["127.0.0.1:8000", api.openshorts.app]
+sends:
+  - {data: video_link, to: api.openshorts.app, when: "instance = hosted"}
+  - {data: transcript, to: "Google Gemini, through Open Shorts", when: "Open Shorts is not set to a local model"}
+  - {data: frames, to: "Google Gemini, through Open Shorts", when: "Open Shorts has a Gemini key (its layout, screencast and hook stages)"}
+  - {data: video, to: "Google Gemini, through Open Shorts", when: "the video has no speech (Open Shorts' silent-video path)"}
+requirements: {gpu: optional, ram_gb: 8, disk_gb: 10, os: [windows, macos, linux], software: [docker]}
+category: creators
+tags: [open-shorts, podcast, highlights]
+service: {name: Open Shorts hosted, url: "https://github.com/mutonby/openshorts#readme", required: false}

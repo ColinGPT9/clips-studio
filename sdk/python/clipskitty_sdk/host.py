@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .contract import PLUGIN_API_VERSION, ContractError, check_result, parse_line
 from .job import JOB_FILE, RESULT_FILE, SECRET_PREFIX
+from .manifest import setting_value_problem
 
 SDK_DIR = Path(__file__).resolve().parent.parent  # the folder holding clipskitty_sdk/
 
@@ -54,9 +55,10 @@ def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk
 def job_settings(manifest: dict, chosen: dict | None) -> dict:
     """The job's settings for a plugin: its manifest's defaults, then the user's.
 
-    A setting the manifest does not declare is refused rather than passed on,
-    and `secret` settings never travel this way: they reach the plugin in its
-    environment (plugin_env), never in job.json. Raises ValueError.
+    A setting the manifest does not declare, or a value that doesn't fit its
+    declared type, is refused rather than passed on, and `secret` settings
+    never travel this way: they reach the plugin in its environment
+    (plugin_env), never in job.json. Raises ValueError.
     """
     declared = manifest.get("settings") or {}
     out = {}
@@ -69,6 +71,9 @@ def job_settings(manifest: dict, chosen: dict | None) -> dict:
             raise ValueError(f"this pipeline has no setting called '{name}'")
         if spec.get("type") == "secret":
             raise ValueError(f"'{name}' is a secret: set it in the plugin's settings, not in a job")
+        problem = setting_value_problem(spec, value)
+        if problem:
+            raise ValueError(f"setting '{name}': {problem}")
         out[name] = value
     return out
 
@@ -121,9 +126,14 @@ def write_job(folder: Path, job: dict, transcript: dict | None = None) -> Path:
     return folder / JOB_FILE
 
 
-def resolve_command(command: list[str], python: str) -> list[str]:
-    """The manifest's run.command with {python} replaced."""
-    return [python if part == "{python}" else part for part in command]
+def resolve_command(command: list[str], python: str, folder: Path | None = None) -> list[str]:
+    """The manifest's run.command with {python} replaced and, when `folder` is
+    given, a program path made absolute inside the plugin's folder, so it is
+    never looked up on PATH."""
+    out = [python if part == "{python}" else part for part in command]
+    if folder is not None and command and command[0] != "{python}":
+        out[0] = str(Path(folder) / command[0])
+    return out
 
 
 def find_python(setting: str | None = None) -> str | None:

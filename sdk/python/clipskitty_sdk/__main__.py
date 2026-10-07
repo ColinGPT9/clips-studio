@@ -1,12 +1,15 @@
-"""Developer tools: run a plugin on a video the way Clips Kitty would.
+"""Developer tools: check a plugin, and run it on a video the way Clips Kitty would.
 
+    python -m clipskitty_sdk validate <plugin folder>
     python -m clipskitty_sdk run <plugin folder> --video clip.mp4 [--transcript t.json]
                                  [--set name=value ...] [--secret name=value ...]
+    python -m clipskitty_sdk schema [--write]
 
-`run` builds the same job folder the app builds (clipskitty_sdk.host), starts
-the plugin's command from its manifest, shows its progress, and checks its
-result.json with the same checks the app uses. Exit code 0 means the app would
-accept the answer.
+`validate` runs the manifest checks the app, the plugin manager and the
+registry run. `run` builds the same job folder the app builds
+(clipskitty_sdk.host), starts the plugin's command from its manifest, shows its
+progress, and checks its result.json with the same checks the app uses. Exit
+code 0 means the app would accept the plugin, or its answer.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from pathlib import Path
 
 from . import host
 from .contract import ContractError
-from .manifest import ManifestError, load
+from .manifest import SCHEMA_FILE, schema_text, validate_folder
 
 # The app's own defaults for a job's clip lengths (config/settings.yaml).
 DEFAULT_MIN_DURATION = 10.0
@@ -67,17 +70,43 @@ def _transcript(path: str | None) -> dict:
     return {"language": data.get("language", ""), "segments": list(data.get("segments") or [])}
 
 
+def _print_report(report, out=sys.stdout) -> None:
+    for line in report.errors:
+        print(f"error: {line}", file=out)
+    for line in report.warnings:
+        print(f"warning: {line}", file=out)
+
+
+def cmd_validate(args) -> int:
+    folder = Path(args.plugin).resolve()
+    manifest, report = validate_folder(folder)
+    _print_report(report)
+    if report.ok:
+        print(f"{manifest['id']} {manifest['version']}: valid"
+              + (f", {len(report.warnings)} warning(s)" if report.warnings else ""))
+        return 0
+    print(f"{len(report.errors)} problem(s): Clips Kitty would refuse to install this plugin")
+    return 1
+
+
+def cmd_schema(args) -> int:
+    if args.write:
+        SCHEMA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SCHEMA_FILE.write_text(schema_text(), encoding="utf-8")
+        print(f"wrote {SCHEMA_FILE}")
+    else:
+        sys.stdout.write(schema_text())
+    return 0
+
+
 def cmd_run(args) -> int:
     folder = Path(args.plugin).resolve()
-    try:
-        manifest = load(folder)
-    except ManifestError as e:
-        print(f"error: {e}", file=sys.stderr)
+    manifest, report = validate_folder(folder)
+    if not report.ok:
+        _print_report(report, sys.stderr)
+        print("error: fix the manifest first; Clips Kitty would refuse to install this plugin", file=sys.stderr)
         return 2
-    command = (manifest.get("run") or {}).get("command")
-    if not isinstance(command, list) or not command:
-        print("error: the manifest has no run.command", file=sys.stderr)
-        return 2
+    command = manifest["run"]["command"]
     video = Path(args.video).resolve()
     if not video.is_file():
         print(f"error: no such video: {video}", file=sys.stderr)
@@ -117,7 +146,7 @@ def cmd_run(args) -> int:
     secrets = _pairs(args.secret, "--secret")
     env = host.plugin_env(os.environ, job_folder=job_folder, secrets=secrets)
     python = args.python or host.find_python()
-    outcome = host.run_plugin(host.resolve_command(command, python or "python"), cwd=folder,
+    outcome = host.run_plugin(host.resolve_command(command, python or "python", folder), cwd=folder,
                               job_folder=job_folder, env=env, timeout=args.timeout, on_event=on_event)
     if outcome.timed_out:
         print(f"failed: the plugin ran past {args.timeout:g}s", file=sys.stderr)
@@ -142,6 +171,10 @@ def cmd_run(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m clipskitty_sdk", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
+    check = sub.add_parser("validate", help="check a plugin's manifest the way Clips Kitty and the registry do")
+    check.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml)")
+    schema = sub.add_parser("schema", help="print the manifest's JSON Schema, for editors")
+    schema.add_argument("--write", action="store_true", help="write it to the SDK's schema/ folder (contributors)")
     run = sub.add_parser("run", help="run a plugin on a video the way Clips Kitty would")
     run.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml)")
     run.add_argument("--video", required=True, help="a video file to run it on")
@@ -160,9 +193,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--timeout", type=float, default=600.0, help="seconds (default 600)")
     run.add_argument("--job-dir", help="where to build the job folder (default: a new temporary folder)")
     args = parser.parse_args(argv)
-    if args.command == "run":
-        return cmd_run(args)
-    return 2  # pragma: no cover - argparse refuses unknown commands
+    return {"validate": cmd_validate, "schema": cmd_schema, "run": cmd_run}[args.command](args)
 
 
 if __name__ == "__main__":

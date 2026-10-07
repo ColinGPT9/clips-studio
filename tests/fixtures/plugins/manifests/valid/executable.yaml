@@ -1,0 +1,24 @@
+# A program shipped in the plugin instead of a Python script.
+manifest_version: 1
+id: example-dev/loud-moments
+name: Loud moments
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Picks the loudest stretches of a video.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: [bin/detect.exe, --fast]
+  timeout_minutes: 30
+execution: local
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read, ffmpeg]
+requirements:
+  gpu: required
+  vram_gb: 4
+  os: [windows]
+models:
+- {name: weights, source: url, id: 'https://example.com/weights.onnx', sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+  license: MIT, size_bytes: 1048576}

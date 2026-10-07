@@ -23,6 +23,6 @@ if str(sdk_dir()) not in sys.path:
     sys.path.insert(0, str(sdk_dir()))
 
 import clipskitty_sdk  # noqa: E402
-from clipskitty_sdk import contract, host  # noqa: E402
+from clipskitty_sdk import contract, host, manifest  # noqa: E402
 
-__all__ = ["clipskitty_sdk", "contract", "host", "sdk_dir"]
+__all__ = ["clipskitty_sdk", "contract", "host", "manifest", "sdk_dir"]

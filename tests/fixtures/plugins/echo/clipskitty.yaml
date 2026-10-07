@@ -19,7 +19,7 @@ inputs: [video, transcript]
 outputs: [ranges]
 settings:
   mode: {type: choice, options: [ok, fail, crash, bad, silent, sleep, noisy], default: ok, title: What to do}
-  ranges: {type: string, default: "", title: Ranges as start-end:score, comma separated}
+  ranges: {type: string, default: "", title: "Ranges as start-end:score, comma separated"}
   api_key: {type: secret, title: An API key}
 permissions: [video.read, transcript.read, ffmpeg]
 network: []

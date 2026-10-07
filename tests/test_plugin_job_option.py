@@ -74,6 +74,16 @@ def test_a_pipeline_that_is_not_installed_or_is_off_is_refused_at_once(api):
     assert r.status_code == 400 and "fixture-dev/echo 9.9.9 isn't installed" in r.json()["detail"]
 
 
+def test_settings_that_do_not_fit_the_manifest_are_refused_at_once(api):
+    client, data_dir, install = api
+    install(data_dir, ECHO)
+    for settings, fragment in (({"mode": "explode"}, "setting 'mode': 'explode' is not one of"),
+                               ({"colour": "red"}, "no setting called 'colour'"),
+                               ({"api_key": "abc"}, "'api_key' is a secret")):
+        r = client.post("/jobs", json={"url": URL, "pipeline": {"id": "fixture-dev/echo", "settings": settings}})
+        assert r.status_code == 400 and fragment in r.json()["detail"], r.text
+
+
 @pytest.mark.parametrize("pipeline, fragment", [
     ({"id": "Not An Id"}, "publisher/name"),
     ({"id": "a/b", "colour": "red"}, "unknown fields: colour"),

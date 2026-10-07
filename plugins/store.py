@@ -22,14 +22,15 @@ manager's (plugins/manager.py), which writes the file atomically.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from plugins._sdk import host, manifest
+
 STATE_FILE = "installed.json"
-MANIFEST = "clipskitty.yaml"
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}/[a-z0-9][a-z0-9-]{0,63}$")
-VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+MANIFEST = manifest.MANIFEST_FILE
+ID_RE = manifest.ID_RE
+VERSION_RE = manifest.VERSION_RE
 
 
 def root(data_dir) -> Path:
@@ -48,12 +49,8 @@ def load(data_dir) -> dict:
 
 
 def read_manifest(folder: Path) -> dict:
-    import yaml
-
-    data = yaml.safe_load((Path(folder) / MANIFEST).read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"{MANIFEST} is not a mapping")
-    return data
+    """An installed version's manifest (validated when it was installed)."""
+    return manifest.load(folder)
 
 
 @dataclass
@@ -135,4 +132,5 @@ def installed_choice(data_dir, choice: dict) -> Installed:
         raise ValueError(f"the pipeline {wanted} isn't installed")
     if not plugin.enabled:
         raise ValueError(f"the pipeline {plugin.name} is turned off; turn it on in Plugins first")
+    host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
     return plugin

@@ -197,7 +197,7 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
 
     env = host.plugin_env(os.environ, job_folder=folder, secrets=secrets_for(plugin, data_dir), sdk_dir=sdk_dir())
     outcome = host.run_plugin(
-        host.resolve_command(command, python or ""), cwd=plugin.folder, job_folder=folder, env=env,
+        host.resolve_command(command, python or "", plugin.folder), cwd=plugin.folder, job_folder=folder, env=env,
         timeout=timeout_seconds(plugin.manifest), on_event=on_event,
         should_cancel=lambda: cancel.is_cancelled(video.video_id),
     )

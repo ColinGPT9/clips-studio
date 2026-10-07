@@ -7,6 +7,7 @@ says, and the first-party adapter in examples/pipelines/transcript-highlights.
 """
 
 import json
+import os
 import shutil
 import threading
 from pathlib import Path
@@ -283,3 +284,24 @@ def test_the_first_party_adapter_satisfies_the_contract(tmp_path, install_plugin
     assert found and [(c.start, c.end, c.score, c.hook) for c in found] == \
         [(c.start, c.end, c.score, c.hook) for c in direct]
     assert all(c.source == "plugin:clips-kitty-examples/transcript-highlights@1.0.0" for c in found)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a shell script stands in for a program; Windows runs .exe files")
+def test_a_plugin_can_be_a_program_rather_than_a_python_script(tmp_path, install_plugin, video):
+    """run.command can start a program shipped in the plugin's folder; it is
+    started from that folder by its full path, never looked up on PATH."""
+    import yaml
+
+    folder = tmp_path / "program-plugin"
+    (folder / "bin").mkdir(parents=True)
+    script = folder / "bin" / "answer"
+    script.write_text('#!/bin/sh\nprintf \'{"plugin_api": 1, "ranges": [{"start": 4, "end": 19, "score": 77}]}\' '
+                      '> "$1/result.json"\n', encoding="utf-8")
+    script.chmod(0o755)
+    manifest = yaml.safe_load((ECHO / "clipskitty.yaml").read_text(encoding="utf-8"))
+    manifest.update(id="fixture-dev/program", name="Program", run={"command": ["bin/answer"]}, settings={})
+    (folder / "clipskitty.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, folder)
+    clips = _run(data_dir, video, plugin="fixture-dev/program")
+    assert [(c.start, c.end, c.score) for c in clips] == [(4.0, 19.0, 77)]

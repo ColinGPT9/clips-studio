@@ -79,6 +79,9 @@ def test_the_spec_bundles_the_plugin_runner_and_the_sdk():
     assert '"sdk" / "python" / "clipskitty_sdk"' in text and '"sdk/python/clipskitty_sdk"' in text, (
         "the spec no longer ships sdk/python/clipskitty_sdk where plugins/_sdk.py looks for it"
     )
+    assert '"plugins" / "builtin"' in text and '"plugins/builtin"' in text, (
+        "the spec no longer ships the official modes' manifests (plugins/builtin)"
+    )
 
 
 def test_the_voice_models_ship_with_the_module_that_reads_them():
