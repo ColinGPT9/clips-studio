@@ -25,12 +25,16 @@ from pathlib import Path
 from plugins import models as plugin_models
 from plugins import store
 from plugins._sdk import contract, host
+from plugins._sdk import manifest as plugin_manifest
 
 log = logging.getLogger(__name__)
 
 # Job folders of earlier runs kept for a look when something went wrong.
 KEEP_RUNS = 5
 DEFAULT_TIMEOUT_MINUTES = 60
+# A run that rates or understands the moments others found, without a
+# run.timeout_minutes of its own. Several can follow one find run.
+MOMENT_TIMEOUT_MINUTES = 10
 MAX_TIMEOUT_MINUTES = 24 * 60
 # After a run that ended without the plugin's own error line. The engine's log
 # (the plugin's output and the exit code) goes with a bug report.
@@ -91,11 +95,20 @@ def transcript_of(segments, language: str) -> dict:
 
 
 def build_job(plugin: store.Installed, choice: dict, *, video, segments, language: str, config: dict,
-              output_dir: Path, models: dict | None = None) -> tuple[dict, dict | None]:
+              output_dir: Path, models: dict | None = None, steps=None, moments: list | None = None,
+              min_score=None) -> tuple[dict, dict | None]:
     """job.json's content, and the transcript to write beside it (or None).
-    host.build_job decides what the plugin's permissions let in."""
+    host.build_job decides what the plugin's permissions let in.
+
+    `steps` and `moments` go in only when given, and `limits.min_score` only
+    when `min_score` is, so a plain finder's job is what it always was."""
     perms = set(plugin.manifest.get("permissions") or [])
     clips_cfg = config.get("clips") or {}
+    limits = {"max_clips": int(clips_cfg.get("max_clips_per_video") or 0) or None,
+              "min_duration": clips_cfg.get("min_duration"),
+              "max_duration": clips_cfg.get("max_duration")}
+    if min_score is not None:
+        limits["min_score"] = min_score
     tools: dict = {}
     if "ffmpeg" in perms:
         from core.binaries import ffmpeg, ffprobe
@@ -114,11 +127,9 @@ def build_job(plugin: store.Installed, choice: dict, *, video, segments, languag
             video={"path": str(video.path), "id": video.video_id, "title": video.title,
                    "duration": float(video.duration or 0) or None, "games": list(video.games or [])},
             transcript=transcript_of(segments, language),
-            limits={"max_clips": int(clips_cfg.get("max_clips_per_video") or 0) or None,
-                    "min_duration": clips_cfg.get("min_duration"),
-                    "max_duration": clips_cfg.get("max_duration")},
+            limits=limits,
             focus=clips_cfg.get("focus") or None,
-            ollama=ollama, models=models, output_dir=output_dir, **tools,
+            ollama=ollama, models=models, output_dir=output_dir, steps=steps, moments=moments, **tools,
         )
     except ValueError as e:
         raise PluginError(str(e)) from e
@@ -134,28 +145,41 @@ def _score_for(rank: int, score) -> int:
     return max(50, 90 - 5 * rank)
 
 
-def to_candidates(plugin: store.Installed, ranges: list[dict]) -> list:
+def to_candidates(plugin: store.Installed, ranges: list[dict], *, notes: bool = False) -> list:
+    """The ranges of a find run as ClipCandidates.
+
+    With `notes` (a run asked to find and understand, whose notes
+    host.read_result has checked and cleaned), a range's `context` is kept as
+    the clip's `plugin_notes`, with who said it. Every other clip gets the same
+    four plugin subscores as always."""
     from core.models import ClipCandidate
 
     out = []
     for rank, r in enumerate(ranges):
         label = r.get("label") or ""
+        subscores = {"plugin": plugin.id, "plugin_version": plugin.version,
+                     "plugin_label": label, "plugin_why": r.get("reason") or ""}
+        if notes and r.get("context"):
+            subscores["plugin_notes"] = [{"plugin": plugin.id, "version": plugin.version, "name": plugin.name,
+                                          "text": text} for text in r["context"]]
         out.append(ClipCandidate(
             start=float(r["start"]), end=float(r["end"]), score=_score_for(rank, r.get("score")),
             hook=r.get("title") or label, reason=r.get("reason") or "",
             source=f"plugin:{plugin.id}@{plugin.version}",
-            subscores={"plugin": plugin.id, "plugin_version": plugin.version,
-                       "plugin_label": label, "plugin_why": r.get("reason") or ""},
+            subscores=subscores,
         ))
     return out
 
 
-def timeout_seconds(manifest: dict) -> float:
-    minutes = (manifest.get("run") or {}).get("timeout_minutes") or DEFAULT_TIMEOUT_MINUTES
+def timeout_seconds(manifest: dict, default: float = DEFAULT_TIMEOUT_MINUTES) -> float:
+    """How long a run may take: the manifest's run.timeout_minutes, else
+    `default` minutes (MOMENT_TIMEOUT_MINUTES for a run that rates or
+    understands moments), never over MAX_TIMEOUT_MINUTES."""
+    minutes = (manifest.get("run") or {}).get("timeout_minutes") or default
     try:
         minutes = float(minutes)
     except (TypeError, ValueError):
-        minutes = DEFAULT_TIMEOUT_MINUTES
+        minutes = default
     return max(1.0, min(float(MAX_TIMEOUT_MINUTES), minutes)) * 60
 
 
@@ -195,17 +219,13 @@ def _failure(plugin, outcome, reported: list[str]) -> str:
     return f"{plugin.name} stopped before it finished. {TRY_AGAIN}"
 
 
-def find_clips(choice: dict, *, video, segments, language: str, config: dict, data_dir) -> list:
-    """Ask the job's plugin for the video's moments, as ClipCandidates.
-
-    Raises PluginError with a message for the user when the plugin can't run
-    or gives no valid answer, and core.cancel.CancelledError when the job is
-    cancelled while it runs.
-    """
-    from core import cancel, progress
-
+def _prepare(choice: dict, *, data_dir, config: dict, step: str):
+    """The plugin a job's choice names, checked before anything runs: installed,
+    turned on, able to do `step`, a command to run, a Python for it, and every
+    model it lists on this PC. Returns (plugin, command, python, model paths).
+    Raises PluginError with a message for the user."""
     try:
-        plugin = store.installed_choice(data_dir, store.clean_choice(choice))
+        plugin = store.installed_choice(data_dir, store.clean_choice(choice), step=step)
     except ValueError as e:
         raise PluginError(str(e)[:1].upper() + str(e)[1:]) from e
     run = plugin.manifest.get("run") or {}
@@ -227,28 +247,43 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
         raise PluginError(f"{plugin.name} can't run: {e}") from e
     if missing:
         raise PluginError(f"{plugin.name} can't run. " + " ".join(missing))
+    return plugin, command, python, model_paths
 
+
+def _new_folder(data_dir, video_id: str, tag: str = "") -> Path:
+    """A new job folder under runs/: <video id>-<date and time>, then
+    -<tag> when given (a moment run's steps, such as understand-rate), and
+    ~2, ~3 and so on when that name is taken. Not created yet."""
     runs = store.root(data_dir) / "runs"
-    folder = runs / f"{_safe(video.video_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
+    folder = runs / f"{_safe(video_id)}-{time.strftime('%Y%m%d-%H%M%S')}{'-' + tag if tag else ''}"
     n = 1
     while folder.exists():
         n += 1
         folder = folder.with_name(f"{folder.name.rsplit('~', 1)[0]}~{n}")
-    job, transcript = build_job(plugin, choice, video=video, segments=segments, language=language,
-                                config=config, output_dir=folder / "out", models=model_paths)
-    host.write_job(folder, job, transcript)
+    return folder
 
-    print(f"      Pipeline: {plugin.name} {plugin.version} ({plugin.id})")
-    progress.emit(stage="analyze", video_id=video.video_id, fraction=0.0, message=f"Running {plugin.name}")
+
+def _execute(plugin: store.Installed, command: list, python: str | None, folder: Path, *, video, data_dir,
+             stage: str, timeout: float, label_name: str | None = None) -> None:
+    """Run the plugin on its written job folder until it exits, is cancelled
+    or runs out of time (`timeout`, in seconds).
+
+    Its progress lines become `stage` events for the video, each with
+    `plugin=label_name` when that is given, and its messages go to the job
+    log. Afterwards only the newest KEEP_RUNS job folders are kept. Raises
+    core.cancel.CancelledError when the job is cancelled, and PluginError
+    when the run didn't end well."""
+    from core import cancel, progress
 
     reported: list[str] = []
+    named = {"plugin": label_name} if label_name else {}
 
     def on_event(event: dict) -> None:
         if event["type"] == "error" and event.get("message"):
             reported.append(event["message"])
         if event["type"] == "progress" and event.get("fraction") is not None:
-            progress.emit(stage="analyze", video_id=video.video_id, fraction=event["fraction"],
-                          message=event.get("message", ""))
+            progress.emit(stage=stage, video_id=video.video_id, fraction=event["fraction"],
+                          message=event.get("message", ""), **named)
         if event.get("message"):
             print(f"      [{plugin.id}] {event['message']}")
 
@@ -257,21 +292,50 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
     env = host.plugin_env(os.environ, job_folder=folder, secrets=secrets_for(plugin, data_dir), sdk_dir=sdk_dir())
     outcome = host.run_plugin(
         host.resolve_command(command, python or "", plugin.folder), cwd=plugin.folder, job_folder=folder, env=env,
-        timeout=timeout_seconds(plugin.manifest), on_event=on_event,
+        timeout=timeout, on_event=on_event,
         should_cancel=lambda: cancel.is_cancelled(video.video_id),
     )
-    _prune_runs(runs)
+    _prune_runs(store.root(data_dir) / "runs")
     if outcome.cancelled:
         raise cancel.CancelledError(video.video_id)
     if not outcome.ok:
         raise PluginError(_failure(plugin, outcome, reported))
+
+
+def find_clips(choice: dict, *, video, segments, language: str, config: dict, data_dir) -> list:
+    """Ask the job's plugin for the video's moments, as ClipCandidates.
+
+    A plugin that also says what happens in the moments it finds (outputs
+    `ranges` and `context`) is asked to find and understand: its notes are
+    checked and cleaned as they are read, and each clip keeps them as
+    `plugin_notes`.
+
+    Raises PluginError with a message for the user when the plugin can't run
+    or gives no valid answer, and core.cancel.CancelledError when the job is
+    cancelled while it runs.
+    """
+    from core import progress
+
+    plugin, command, python, model_paths = _prepare(choice, data_dir=data_dir, config=config, step="find")
+    # job.json says which steps the run is asked for only when the manifest
+    # uses the step words, so a plain finder's job is what it always was.
+    steps = plugin_manifest.find_steps(plugin.manifest) if plugin_manifest.uses_steps(plugin.manifest) else None
+    folder = _new_folder(data_dir, video.video_id)
+    job, transcript = build_job(plugin, choice, video=video, segments=segments, language=language,
+                                config=config, output_dir=folder / "out", models=model_paths, steps=steps)
+    host.write_job(folder, job, transcript)
+
+    print(f"      Pipeline: {plugin.name} {plugin.version} ({plugin.id})")
+    progress.emit(stage="analyze", video_id=video.video_id, fraction=0.0, message=f"Running {plugin.name}")
+    _execute(plugin, command, python, folder, video=video, data_dir=data_dir, stage="analyze",
+             timeout=timeout_seconds(plugin.manifest))
     try:
         result = host.read_result(folder, duration=video.duration,
-                                  max_clips=job["limits"]["max_clips"])
+                                  max_clips=job["limits"]["max_clips"], steps=steps)
     except contract.ContractError as e:
         raise PluginError(f"{plugin.name} gave an answer Clips Kitty can't use: {e}") from e
     if result.get("notes"):
         print(f"      [{plugin.id}] {result['notes']}")
     progress.emit(stage="analyze", video_id=video.video_id, fraction=1.0,
                   message=f"{plugin.name} found {len(result['ranges'])} moment(s)")
-    return to_candidates(plugin, result["ranges"])
+    return to_candidates(plugin, result["ranges"], notes="understand" in (steps or ()))

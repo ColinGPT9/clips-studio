@@ -1,0 +1,26 @@
+# A test plugin: a pipeline that finds moments and says what happens in them
+# (outputs ranges and context), so the runner's handling of its notes can be
+# checked (tests/test_plugin_runner.py). It knows Quarkbloom Arena, a made-up game.
+manifest_version: 1
+id: fixture-dev/notes-finder
+name: Notes Finder
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Finds two moments of a Quarkbloom Arena (a made-up game) match and says what happens in the first.
+author: {name: Fixture Developer}
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+  timeout_minutes: 5
+execution: local
+inputs: [video, transcript]
+outputs: [ranges, context]
+settings:
+  mode: {type: choice, options: [sdk, raw], default: sdk, title: Answer through the SDK or write result.json by hand}
+permissions: [video.read, transcript.read]
+network: []
+sends: []
+category: utilities
+tags: [test]
