@@ -494,9 +494,10 @@ export function hardwareFit(req: Requirements | undefined, hw: Hardware | null):
 }
 
 /** Everything a plugin needs, against this PC: its declared requirements
- *  (hardwareFit), a Python to run it with, and anything else the engine says
- *  stops it running here. `problems` null: the engine wasn't asked, so
- *  whether Python is here is unknown. */
+ *  (hardwareFit) and anything the engine says stops it running here. The
+ *  installed app runs Python plugins on its own Python, so a missing Python
+ *  only ever shows up as a problem the engine reports (a source checkout
+ *  without one). */
 export function needLines(
   req: Requirements | undefined,
   hw: Hardware | null,
@@ -505,12 +506,7 @@ export function needLines(
 ): FitLine[] {
   const out = hardwareFit(req, hw)
   const python = problems?.find((p) => p.need === 'python')
-  if (details.needs_python)
-    out.push(
-      python
-        ? { text: python.text, fit: 'no' }
-        : { text: 'Python 3 installed on this PC', fit: problems ? 'yes' : 'unknown' }
-    )
+  if (details.needs_python && python) out.push({ text: python.text, fit: 'no' })
   for (const p of problems ?? []) if (p.need !== 'python') out.push({ text: p.text, fit: 'no' })
   return out
 }

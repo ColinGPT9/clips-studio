@@ -222,6 +222,10 @@ function startBackend(): void {
     PYTHONUTF8: '1',
     CLIPS_KITTY_SESSION_SECRET: SESSION_SECRET
   }
+  // The engine runs a pipeline's Python script when this is set
+  // (_clipskitty_script_host.py). Only pipeline processes get it; the engine
+  // itself must never start with it.
+  delete backendEnv.CLIPSKITTY_SCRIPT_HOST
 
   // Packaged builds run their own Ollama on a private port, so the engine has
   // to be told where it is — settings.yaml's default 11434 would send it to a

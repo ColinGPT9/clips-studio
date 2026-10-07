@@ -88,8 +88,9 @@ def data_warnings(manifest: dict) -> list[str]:
 
 
 def needs_python(manifest: dict) -> bool:
-    """Whether it runs with a Python from this PC (`{python}` in run.command):
-    the installed app doesn't include one for plugins."""
+    """Whether it runs with Python (`{python}` in run.command). The installed
+    app runs it on its own Python, so only a source checkout without one can
+    lack it (plugins/runner.py python_for)."""
     run = manifest.get("run") if isinstance(manifest.get("run"), dict) else {}
     command = run.get("command")
     return isinstance(command, list) and "{python}" in command
@@ -112,8 +113,6 @@ def requirement_lines(manifest: dict) -> list[str]:
         out.append("Works on " + ", ".join(names.get(o, o) for o in req["os"]))
     if req.get("software"):
         out.append("Needs " + ", ".join(map(str, req["software"])))
-    if needs_python(manifest):
-        out.append("Python 3 installed on this PC")
     return out
 
 

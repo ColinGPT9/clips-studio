@@ -43,4 +43,4 @@ python -m clipskitty_sdk run . --video some-video.mp4
 
 ## Requirements
 
-Python 3.10 or newer on the PC (Clips Kitty does not ship one for plugins yet), and FFmpeg, which Clips Kitty provides.
+Nothing for creators: in the installed app it runs on Clips Kitty's own Python, and uses the FFmpeg Clips Kitty provides. To develop it you need Python 3.10 or newer and FFmpeg.

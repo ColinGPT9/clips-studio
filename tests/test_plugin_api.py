@@ -212,12 +212,12 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     assert found["indexes"] == [{"url": "bundled", "fetched_at": None, "cached": True, "plugins": 1}]
     # what would stop it running here, said before installing
     assert item["problems_here"] == [] and item["versions"][0]["problem_here"] is None
-    assert item["details"]["needs_python"] and "Python 3 installed on this PC" in item["details"]["requirements"]
+    assert item["details"]["needs_python"] and not any("Python" in r for r in item["details"]["requirements"])
     assert item["versions"][1]["problem_here"] == "it needs Clips Kitty >=9.0, and this is 2.0.0"
     with monkeypatch.context() as m:
-        m.setattr(plugins_api.host, "find_python", lambda setting=None: None)
+        m.setattr(plugins_api.runner, "python_for", lambda plugin, config: None)
         assert client.get("/marketplace", params={"q": "NHL"}).json()["plugins"][0]["problems_here"] == [
-            {"need": "python", "text": "It needs Python, and none was found on this PC"}]
+            {"need": "python", "text": "It needs Python 3.10 or newer, and none was found on this PC"}]
     assert "sports" in found["categories"] and found["kinds"]["pipeline"] == "built"
     assert client.get("/marketplace", params={"q": "soccer"}).json()["plugins"] == []
 

@@ -109,3 +109,25 @@ def test_voice_turns_needs_nothing_the_bundle_leaves_out():
         assert not re.search(rf"^\s*(?:import|from)\s+{package}\b", source, re.M), (
             f"analysis/voice_turns.py imports {package}, which an installed copy may not have"
         )
+
+
+def test_pipelines_get_the_whole_standard_library():
+    """Pipelines run on the engine's own Python (_clipskitty_script_host.py),
+    and PyInstaller packs only the modules the engine imports. Without the
+    stdlib loop, `import csv` in a pipeline works in a checkout and fails in
+    the installed app alone."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert "sys.stdlib_module_names - STDLIB_SKIP" in text
+    skip = re.search(r"^STDLIB_SKIP = \{(.*?)^\}", text, re.S | re.M)
+    assert skip, "clips-studio.spec no longer has STDLIB_SKIP"
+    skipped = set(re.findall(r'"([^"]+)"', skip.group(1)))
+    assert {"tkinter", "_tkinter", "test"} <= skipped
+    assert not {"csv", "statistics", "sqlite3", "email", "json", "multiprocessing", "zoneinfo"} & skipped
+    assert '"_clipskitty_script_host"' in text
+
+
+def test_script_mode_is_decided_before_the_engine_loads():
+    """main.py hands a pipeline's command line to the script host before its
+    heavy imports, so a pipeline starts quickly and loads none of the engine."""
+    main = (SPEC.parent / "main.py").read_text(encoding="utf-8")
+    assert main.index("CLIPSKITTY_SCRIPT_HOST") < main.index("\nimport yaml")

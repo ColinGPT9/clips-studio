@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -152,6 +153,25 @@ def timeout_seconds(manifest: dict) -> float:
     return max(1.0, min(float(MAX_TIMEOUT_MINUTES), minutes)) * 60
 
 
+def python_for(plugin, config: dict | None) -> str | None:
+    """The Python a plugin's {python} runs with.
+
+    The plugin's own (none yet), else the plugins.python setting (a
+    developer's choice), else, in the installed app, the app's own Python:
+    the engine itself, which runs the script when started with the plugin's
+    environment (main.py, _clipskitty_script_host.py). Only a source checkout
+    falls back to this interpreter or one on PATH, so the installed app never
+    needs a Python of the creator's and never picks Windows' "python" shortcut
+    to the Store."""
+    own = getattr(plugin, "python", None) if plugin is not None else None
+    setting = ((config or {}).get("plugins") or {}).get("python")
+    if own or setting:
+        return own or setting
+    if getattr(sys, "frozen", False) and sys.executable:
+        return sys.executable
+    return host.find_python(None)
+
+
 def find_clips(choice: dict, *, video, segments, language: str, config: dict, data_dir) -> list:
     """Ask the job's plugin for the video's moments, as ClipCandidates.
 
@@ -169,9 +189,9 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
     command = run.get("command")
     if not isinstance(command, list) or not command or not all(isinstance(p, str) for p in command):
         raise PluginError(f"{plugin.name} has no command to run in its manifest")
-    python = plugin.python or host.find_python((config.get("plugins") or {}).get("python"))
+    python = python_for(plugin, config)
     if "{python}" in command and not python:
-        raise PluginError(f"{plugin.name} needs Python, and none was found on this PC. "
+        raise PluginError(f"{plugin.name} needs Python 3.10 or newer, and none was found on this PC. "
                           "Install Python, or set plugins.python in settings.yaml.")
 
     # Every model it lists must be here before it starts (an Ollama model

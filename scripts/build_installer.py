@@ -166,6 +166,54 @@ def smoke_test_backend() -> None:
         print(output[-2000:])
         sys.exit("\nThe frozen engine failed to run. Fix the spec before packaging.")
     print(f"    engine runs (exit 0, {len(output)} bytes of output)")
+    smoke_test_script_mode(exe)
+
+
+# Run by the frozen engine in script mode: the standard library, the SDK and
+# a process pool, then a deliberate exit code. Heavy engine packages must not
+# be loaded just to run a pipeline.
+SCRIPT_MODE_CHECK = """
+import concurrent.futures, csv, email.mime.text, json, sqlite3, statistics, sys, xml.etree.ElementTree
+from multiprocessing import Pool
+import clipskitty_sdk
+
+def square(n):
+    return n * n
+
+if __name__ == "__main__":
+    with Pool(2) as pool:
+        assert pool.map(square, [1, 2, 3]) == [1, 4, 9]
+    heavy = sorted(m for m in ("numpy", "torch", "yaml", "cv2", "core") if m in sys.modules)
+    assert not heavy, heavy
+    print("script mode ok", sys.version.split()[0])
+    sys.exit(3)
+"""
+
+
+def smoke_test_script_mode(exe: Path) -> None:
+    """Pipelines run on this same frozen Python (_clipskitty_script_host.py).
+    Prove it before packaging: a script runs with the whole standard library
+    and the SDK, a multiprocessing pool works, its exit code survives, and
+    it starts without loading the engine."""
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="clipskitty-script-mode-") as tmp:
+        script = Path(tmp) / "check.py"
+        script.write_text(SCRIPT_MODE_CHECK, encoding="utf-8")
+        # What plugin_env (sdk/python/clipskitty_sdk/host.py) gives a pipeline.
+        env = {**os.environ, "CLIPSKITTY_SCRIPT_HOST": "1",
+               "PYTHONPATH": str(BACKEND_OUT / "_internal" / "sdk" / "python")}
+        started = time.monotonic()
+        result = subprocess.run([str(exe), str(script)], capture_output=True, text=True, timeout=300,
+                                cwd=tmp, env=env)
+        took = time.monotonic() - started
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 3 or "script mode ok" not in output:
+        print(output[-2000:])
+        sys.exit(f"\nThe frozen engine couldn't run a pipeline script (exit {result.returncode}). "
+                 "Fix the spec or _clipskitty_script_host.py before packaging.")
+    print(f"    pipelines run on the bundled Python ({took:.1f} s to run the check)")
 
 
 def build_ui() -> None:

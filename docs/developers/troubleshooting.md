@@ -35,7 +35,10 @@ What goes wrong with plugins most often, what the message means, and what to do.
 
 | Message in the job | Why | Fix |
 |---|---|---|
-| "… needs Python, and none was found on this PC" | The installed app doesn't ship a Python for plugins. | Install Python, or set `plugins.python` in `settings.yaml` to one. |
+| "… needs Python 3.10 or newer, and none was found on this PC" | Only in a source checkout: the installed app runs plugins on its own Python. | Install Python, or set `plugins.python` in `settings.yaml` to one. |
+| "This pipeline needs X, which this version of Clips Kitty doesn't include" | Your plugin imports a package the app's own Python doesn't have. | Use the standard library, ship pure-Python code in your plugin's folder, or call your own executable as `run.command`. |
+| "This pipeline tried to use Clips Kitty's own code (…)" | Plugins can't import the engine's packages (`core`, `plugins`, `video`…); they change with every release. | Use the SDK and the job folder instead. |
+| `UnicodeDecodeError` or garbled text reading a file | The app's Python never runs in UTF-8 mode. | Pass `encoding="utf-8"` to `open()`, `read_text()` and `write_text()`. |
 | "… failed: …" | Your plugin exited with an error; the text is its last error line (`job.fail(...)`) or its last output. | Read the job log; reproduce with `python -m clipskitty_sdk run`. |
 | "… gave an answer Clips Kitty can't use: …" | `result.json` broke the contract: a range outside the video, end before start, a score outside 0-100, too many ranges. | The message names the field. `Job.add_range` and `Job.finish` check the same rules as you go, except the video's length, which Clips Kitty checks when it reads the result. |
 | "the plugin took longer than its … minute limit" | `run.timeout_minutes` (default 60, at most 24 hours). | Raise it in your manifest if your pipeline is slow on long videos. |

@@ -31,10 +31,21 @@ SDK_DIR = Path(__file__).resolve().parent.parent  # the folder holding clipskitt
 # and anything that looks like a credential. The plugin still runs as the
 # user, so this keeps Clips Kitty from handing secrets over; it is not a wall.
 _CREDENTIAL_WORDS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "COOKIE", "AUTH")
+# Python start-up settings from the developer's own machine that would make a
+# plugin behave differently here than on the Python inside the installed app,
+# which ignores them all.
+_PYTHON_STARTUP = frozenset({"PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT", "PYTHONUTF8"})
 
 
-def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk_dir: Path = SDK_DIR) -> dict:
-    """The environment a plugin process starts with."""
+def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk_dir: Path = SDK_DIR,
+               python_path: list | None = None) -> dict:
+    """The environment a plugin process starts with.
+
+    CLIPSKITTY_SCRIPT_HOST=1 lets the installed app's engine run a {python}
+    command itself (main.py, _clipskitty_script_host.py); an ordinary Python
+    ignores it. UTF-8 mode is deliberately not switched on: the app's Python
+    can't have it, so a plugin that opens text files must pass encoding=, and
+    a developer's run here behaves the same way."""
     env = {}
     for name, value in base.items():
         upper = name.upper()
@@ -42,11 +53,13 @@ def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk
             continue
         if any(word in upper for word in _CREDENTIAL_WORDS):
             continue
+        if upper in _PYTHON_STARTUP:
+            continue
         env[name] = value
     env["CLIPSKITTY_JOB"] = str(job_folder)
-    env["PYTHONPATH"] = str(sdk_dir)
+    env["CLIPSKITTY_SCRIPT_HOST"] = "1"
+    env["PYTHONPATH"] = os.pathsep.join([str(sdk_dir), *(str(p) for p in python_path or [])])
     env["PYTHONIOENCODING"] = "utf-8"
-    env["PYTHONUTF8"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
     for name, value in (secrets or {}).items():
         if value:

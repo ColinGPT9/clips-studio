@@ -30,9 +30,8 @@ from pathlib import Path
 from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from plugins import catalog, counter, manager, permissions, registry, session, store
+from plugins import catalog, counter, manager, permissions, registry, runner, session, store
 from plugins import models as plugin_models
-from plugins._sdk import host
 
 
 class PlanIn(BaseModel):
@@ -92,10 +91,11 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
 
     def problems_here(details: dict, app_problem: str | None = None) -> list[dict]:
         """Why a plugin can't run on this PC, as far as the engine can tell
-        before installing: the app version, and a Python to run it with."""
+        before installing: the app version, and (in a source checkout only; the
+        installed app runs plugins on its own Python) a Python to run it with."""
         out = [{"need": "app", "text": app_problem[:1].upper() + app_problem[1:]}] if app_problem else []
-        if details.get("needs_python") and not host.find_python(((config or {}).get("plugins") or {}).get("python")):
-            out.append({"need": "python", "text": "It needs Python, and none was found on this PC"})
+        if details.get("needs_python") and not runner.python_for(None, config):
+            out.append({"need": "python", "text": "It needs Python 3.10 or newer, and none was found on this PC"})
         return out
 
     def require_session(x_clips_kitty_session: str | None = Header(default=None)) -> None:

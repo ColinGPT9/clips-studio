@@ -7,6 +7,7 @@ plugin's: as a folder, not an installed package.
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -213,6 +214,19 @@ def test_the_plugin_environment_leaves_out_settings_and_credentials(tmp_path):
     assert "CLIPSKITTY_SECRET_OLD" not in env and env["CLIPSKITTY_SECRET_API_KEY"] == "k"
     assert "CLIPSKITTY_SECRET_EMPTY" not in env
     assert env["CLIPSKITTY_JOB"] == str(tmp_path) and env["PYTHONPATH"] == str(SDK)
+
+
+def test_the_plugin_environment_runs_like_the_apps_own_python(tmp_path):
+    """The marker lets the installed app's engine run the script itself
+    (_clipskitty_script_host.py); start-up settings that Python ignores there
+    are dropped here too, so a developer's run behaves like a creator's."""
+    env = host.plugin_env({"PATH": "/bin", "CLIPSKITTY_SCRIPT_HOST": "0", "PYTHONUTF8": "1", "PYTHONHOME": "/x",
+                           "PYTHONSTARTUP": "s.py", "PYTHONINSPECT": "1"},
+                          job_folder=tmp_path, python_path=[tmp_path / "lib", "extra"])
+    assert env["CLIPSKITTY_SCRIPT_HOST"] == "1"
+    assert not {"PYTHONUTF8", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT"} & set(env)
+    assert env["PYTHONPATH"].split(os.pathsep) == [str(SDK), str(tmp_path / "lib"), "extra"]
+    assert env["PYTHONIOENCODING"] == "utf-8" and env["PYTHONUNBUFFERED"] == "1"
 
 
 def test_the_python_placeholder_is_replaced():

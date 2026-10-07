@@ -149,14 +149,16 @@ def test_hardware_fit(tmp_path, req, hw, expected):
 
 
 def test_python_and_the_engines_problems_join_the_needs(tmp_path):
+    """The installed app runs Python plugins on its own Python, so a creator
+    never sees a Python requirement; only the engine's own report of a missing
+    one (a source checkout) shows up."""
     details = permissions.describe(_manifest(run={"command": ["{python}", "main.py"]}))
-    assert details["needs_python"] and "Python 3 installed on this PC" in details["requirements"]
-    missing = [{"need": "python", "text": "It needs Python, and none was found on this PC"},
+    assert details["needs_python"] and not any("Python" in line for line in details["requirements"])
+    missing = [{"need": "python", "text": "It needs Python 3.10 or newer, and none was found on this PC"},
                {"need": "app", "text": "It needs Clips Kitty >=9.0, and this is 2.0.0"}]
     got = _run(tmp_path, "return [null, [], data[1]].map((p) => m.needLines(undefined, null, data[0], p))",
                [details, missing])
-    assert got[0] == [{"text": "Python 3 installed on this PC", "fit": "unknown"}]
-    assert got[1] == [{"text": "Python 3 installed on this PC", "fit": "yes"}]
+    assert got[0] == [] and got[1] == []
     assert got[2] == [{"text": m["text"], "fit": "no"} for m in missing]
     no_python = permissions.describe(_manifest(run={"command": ["bin/tool.exe"]}))
     assert _run(tmp_path, "return m.needLines(undefined, null, data, [])", no_python) == []
