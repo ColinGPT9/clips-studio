@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('studio', {
   // The session secret the engine's plugin-manager routes ask for, in an
   // X-Clips-Kitty-Session header. Given only to this app's own pages.
   pluginSession: (): Promise<string> => ipcRenderer.invoke('plugin-session'),
+  // A plugin's own links (its repository, docs, developer). The main process
+  // shows the full address and opens it only if the user agrees.
+  openPluginLink: (url: string): Promise<boolean> => ipcRenderer.invoke('open-plugin-link', url),
+  pickPluginFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-plugin-folder'),
   // Whether closing the window keeps Clips Kitty running in the tray, for
   // watched channels. Off unless turned on; the main process remembers it.
   tray: {

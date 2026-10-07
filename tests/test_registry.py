@@ -418,7 +418,7 @@ def test_a_block_reaches_an_installed_copy_without_deleting_it(tmp_path, plugin_
     publish("blocked")
     view = manager.view(data, pid, app_version=APP, blocked=registry.blocked_check(data))
     assert view["flag"]["severity"] == "blocked"
-    with pytest.raises(ValueError, match=r"is blocked: Sends videos it does not declare\. Remove it in Plugins\."):
+    with pytest.raises(ValueError, match=r"is blocked: Sends videos it does not declare\. Remove it in Marketplace › Installed\."):
         store.installed_choice(data, {"id": pid})
     assert store.get(data, pid).folder.is_dir()  # flagged and refused, never deleted
     # The block keeps applying after the address is removed from settings.

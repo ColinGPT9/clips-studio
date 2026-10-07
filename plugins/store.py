@@ -166,7 +166,7 @@ def installed_choice(data_dir, choice: dict) -> Installed:
         wanted = choice["id"] + (f" {choice['version']}" if choice.get("version") else "")
         raise ValueError(f"the pipeline {wanted} isn't installed")
     if not plugin.enabled:
-        raise ValueError(f"the pipeline {plugin.name} is turned off; turn it on in Plugins first")
+        raise ValueError(f"the pipeline {plugin.name} is turned off; turn it on in Marketplace › Installed first")
     problem = compatibility_problem(plugin.manifest)
     if problem:
         raise ValueError(f"the pipeline {plugin.name} can't run here: {problem}")
@@ -174,6 +174,6 @@ def installed_choice(data_dir, choice: dict) -> Installed:
 
     hit = registry.blocked_check(data_dir)(plugin.id, plugin.version)
     if hit and hit.get("severity") == "blocked":
-        raise ValueError(f"the pipeline {plugin.name} {plugin.version} is blocked: {hit.get('reason')}. Remove it in Plugins.")
+        raise ValueError(f"the pipeline {plugin.name} {plugin.version} is blocked: {hit.get('reason')}. Remove it in Marketplace › Installed.")
     host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
     return plugin

@@ -53,6 +53,12 @@ interface Window {
      *  X-Clips-Kitty-Session header). Absent in the browser shim and in a
      *  preload older than the renderer. */
     pluginSession?: () => Promise<string>
+    /** Opens a plugin's link (from its developer) in the browser after a
+     *  native dialog showing the full address. Resolves false if refused or
+     *  cancelled. Absent in the browser shim and in an older preload. */
+    openPluginLink?: (url: string) => Promise<boolean>
+    /** Folder picker for installing a plugin from a folder on this PC. */
+    pickPluginFolder?: () => Promise<string | null>
     /** Absent in the browser shim and in a preload older than the renderer. */
     tray?: {
       get: () => Promise<{ keepInTray: boolean }>

@@ -134,6 +134,13 @@ export default function ClipEditor({
           {clip.scores.sport_why}
         </p>
       )}
+      {clip.scores.plugin && (
+        <p className="text-xs text-muted -mt-2" title="The Marketplace pipeline that found this moment, in its own words">
+          Found by {clip.scores.plugin} {clip.scores.plugin_version}
+          {clip.scores.plugin_label ? `: ${clip.scores.plugin_label}` : ''}
+          {clip.scores.plugin_why ? ` · ${clip.scores.plugin_why}` : ''}
+        </p>
+      )}
       {clip.scores.intent_why && (
         <p className="text-xs text-muted -mt-2" title="Points from the clip direction given with this video">
           Direction +{clip.scores.intent}: {clip.scores.intent_why}

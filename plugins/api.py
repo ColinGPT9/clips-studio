@@ -24,6 +24,7 @@ from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from plugins import manager, permissions, registry, session, store
+from plugins._sdk import host
 
 
 class PlanIn(BaseModel):
@@ -66,6 +67,14 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
     def urls() -> list[str]:
         return registry.index_urls(config or {})
 
+    def problems_here(details: dict, app_problem: str | None = None) -> list[dict]:
+        """Why a plugin can't run on this PC, as far as the engine can tell
+        before installing: the app version, and a Python to run it with."""
+        out = [{"need": "app", "text": app_problem[:1].upper() + app_problem[1:]}] if app_problem else []
+        if details.get("needs_python") and not host.find_python(((config or {}).get("plugins") or {}).get("python")):
+            out.append({"need": "python", "text": "It needs Python, and none was found on this PC"})
+        return out
+
     def require_session(x_clips_kitty_session: str | None = Header(default=None)) -> None:
         if not session.matches(secret, x_clips_kitty_session):
             raise HTTPException(403, f"This needs the {session.HEADER} header. The desktop app sends it; a script "
@@ -87,7 +96,10 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
 
     @app.get("/plugins")
     def list_plugins():
-        return manager.listing(data_dir, app_version=version, blocked=blocked)
+        out = manager.listing(data_dir, app_version=version, blocked=blocked)
+        for plugin in out["plugins"]:
+            plugin["problems_here"] = problems_here(plugin.get("details") or {})
+        return out
 
     @app.post("/plugins/plan", dependencies=guarded)
     def plan_plugin(body: PlanIn):
@@ -146,8 +158,13 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
             entry = installed.get(listing["id"]) or {}
             have = entry.get("active")
             newer = bool(have and manager._version_order(listing["latest"], have) > 0)
+            versions = [{**v, "problem_here": store.compatibility_problem(v, version)} for v in listing["versions"]]
+            latest = next((v for v in versions if v["version"] == listing["latest"]), versions[0])
+            details = permissions.describe(listing, tier="listed")
             out.append({**listing,
-                        "details": permissions.describe(listing, tier="listed"),
+                        "versions": versions,
+                        "problems_here": problems_here(details, latest["problem_here"]),
+                        "details": details,
                         "unofficial": _unofficial(listing),
                         "installed": have,
                         "update_available": newer and not entry.get("pinned"),

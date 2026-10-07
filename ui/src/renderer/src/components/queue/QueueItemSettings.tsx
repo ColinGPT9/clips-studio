@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
-import type { CaptionStyle, JobOptions, SportOption } from '../../lib/types'
+import type { CaptionStyle, JobOptions, PipelineChoice, SportOption } from '../../lib/types'
 import CaptionStyleControls, {
   DEFAULT_CAPTION_STYLE,
   PostStyleControls
@@ -8,6 +8,7 @@ import CaptionStyleControls, {
 import SportFields from '../SportFields'
 import { sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../../lib/sports'
 import { watermarkSelection } from '../WatermarkCard'
+import { usePipelines } from '../../lib/plugins'
 import { t } from '../../lib/i18n'
 
 /** Settings for ONE queued video, or for every video a watched channel posts.
@@ -54,6 +55,11 @@ export default function QueueItemSettings({
   const [longformMode, setLongformMode] = useState(s.longform?.mode ?? 'short_clips')
   const [longformShorts, setLongformShorts] = useState(Boolean(s.longform?.shorts))
   const [watermark, setWatermark] = useState(Boolean(s.watermark_profile_id))
+  // A Marketplace pipeline is chosen when the video is added; here it can only
+  // be kept or turned off, which the modes that pick moments their own way need.
+  const [pipeline, setPipeline] = useState<PipelineChoice | null>(s.pipeline ?? null)
+  const pipelineId = s.pipeline?.id
+  const pipelineName = usePipelines()?.find((p) => p.id === pipelineId)?.name ?? pipelineId
   const [style, setStyle] = useState<Required<CaptionStyle>>({
     ...DEFAULT_CAPTION_STYLE,
     ...(s.caption_style ?? {})
@@ -90,6 +96,8 @@ export default function QueueItemSettings({
       else clear.push('sport')
       if (longform) patch.longform = { mode: longformMode, ...(longformShorts ? { shorts: true } : {}) }
       else clear.push('longform')
+      // Left as it is when kept: the job already carries the checked choice.
+      if (!pipeline) clear.push('pipeline')
       if (watermark) {
         // Which branding profile is a single app-wide choice (Generate bar /
         // Creators tab); this toggle only decides whether THIS video uses it.
@@ -124,6 +132,7 @@ export default function QueueItemSettings({
     longformMode,
     longformShorts,
     watermark,
+    pipeline,
     style
   ])
   const lastSaved = useRef(current)
@@ -176,6 +185,7 @@ export default function QueueItemSettings({
             if (on) {
               setVerticalLive(false)
               setGaming(false)
+              setPipeline(null)
             }
           },
           'Horizontal 1920x1080 outputs using the same AI.'
@@ -238,9 +248,25 @@ export default function QueueItemSettings({
                 setPodcast(false)
                 setGaming(false)
                 setGamingScoring(false)
+                setPipeline(null)
               }
             },
             'A match or a game (Soccer, Basketball): its moments from the crowd, the commentary and the scoreboard, one clip per moment, and a 9:16 crop that follows the play.'
+          )}
+        {s.pipeline &&
+          toggle(
+            'Pipeline',
+            `(${pipelineName})`,
+            Boolean(pipeline),
+            (on) => {
+              setPipeline(on ? (s.pipeline ?? null) : null)
+              if (on) {
+                setSport(null)
+                setLongform(false)
+                setGamingScoring(false)
+              }
+            },
+            'A pipeline from the Marketplace picks this video’s moments. Sports, Gaming scoring and Longform pick them their own way, so turning one of them on turns the pipeline off.'
           )}
         {toggle(
           'Watermark',
@@ -270,9 +296,11 @@ export default function QueueItemSettings({
                 setPodcast(false)
                 setGaming(false)
                 setGamingScoring(false)
+                setPipeline(null)
               } else {
                 setSport(null)
                 setGamingScoring(e.target.value === 'gaming')
+                if (e.target.value === 'gaming') setPipeline(null)
               }
             }}
             aria-label={t('Vertical Live content')}

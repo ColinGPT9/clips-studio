@@ -82,6 +82,14 @@ def data_warnings(manifest: dict) -> list[str]:
     return out
 
 
+def needs_python(manifest: dict) -> bool:
+    """Whether it runs with a Python from this PC (`{python}` in run.command):
+    the installed app doesn't include one for plugins."""
+    run = manifest.get("run") if isinstance(manifest.get("run"), dict) else {}
+    command = run.get("command")
+    return isinstance(command, list) and "{python}" in command
+
+
 def requirement_lines(manifest: dict) -> list[str]:
     req = manifest.get("requirements") or {}
     out = []
@@ -99,6 +107,8 @@ def requirement_lines(manifest: dict) -> list[str]:
         out.append("Works on " + ", ".join(names.get(o, o) for o in req["os"]))
     if req.get("software"):
         out.append("Needs " + ", ".join(map(str, req["software"])))
+    if needs_python(manifest):
+        out.append("Python 3 installed on this PC")
     return out
 
 
@@ -129,6 +139,7 @@ def describe(manifest: dict, *, tier: str = "link") -> dict:
         "network": list(manifest.get("network") or []),
         "data_warnings": data_warnings(manifest),
         "requirements": requirement_lines(manifest),
+        "needs_python": needs_python(manifest),
         "models": model_lines(manifest),
         "service": ({"name": service.get("name"), "url": service.get("url"), "pricing": service.get("pricing"),
                      "required": bool(service.get("required"))} if service else None),

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import ClipStudio from './pages/ClipStudio'
 import Creators from './pages/Creators'
+import Marketplace from './pages/Marketplace'
 import Models from './pages/Models'
 import Queue from './pages/Queue'
 import Settings from './pages/Settings'
@@ -15,9 +16,10 @@ import { api } from './lib/api'
 import type { StudioEvent } from './lib/types'
 import { useEvents } from './lib/useEvents'
 import { useQueueNotifications } from './lib/queueNotifications'
+import { OPEN_MARKETPLACE } from './lib/plugins'
 import mascot from './assets/mascot.png'
 
-type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'creators' | 'models' | 'settings'
+type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'creators' | 'marketplace' | 'models' | 'settings'
 
 const GITHUB_URL = 'https://github.com/ColinGPT9/clips-studio'
 
@@ -30,6 +32,8 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   // "Clip Editor" is also just what the page is.
   { id: 'studio', label: 'Clip Editor', icon: '✂' },
   { id: 'creators', label: 'Creators', icon: '◉' },
+  // Community pipelines: browse the registry, install, manage (plugins/).
+  { id: 'marketplace', label: 'Marketplace', icon: '⊞' },
   { id: 'models', label: 'Models', icon: '⬢' },
   { id: 'settings', label: 'Settings', icon: '⚙' }
 ]
@@ -72,6 +76,12 @@ export default function App(): JSX.Element {
     const open = (): void => setPage('models')
     window.addEventListener('open-models', open)
     return () => window.removeEventListener('open-models', open)
+  }, [])
+  // And the Marketplace: the Generate bar's Pipeline switch links here.
+  useEffect(() => {
+    const open = (): void => setPage('marketplace')
+    window.addEventListener(OPEN_MARKETPLACE, open)
+    return () => window.removeEventListener(OPEN_MARKETPLACE, open)
   }, [])
   // Whether any AI runs in the cloud on the user's own key, so the sidebar's
   // "100% local" line is only ever shown when it is true.
@@ -226,6 +236,7 @@ export default function App(): JSX.Element {
         {page === 'creators' && (
           <Creators initialSelected={creatorTarget} onTargetConsumed={() => setCreatorTarget(null)} />
         )}
+        {page === 'marketplace' && <Marketplace />}
         {page === 'models' && <Models />}
         {page === 'settings' && <Settings />}
       </main>

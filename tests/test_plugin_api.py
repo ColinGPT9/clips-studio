@@ -177,7 +177,8 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
                                       category="sports", repository="https://github.com/example-dev/nhl-goals")
     listing = {"id": "example-dev/nhl-goals", "publisher": "example-dev", "repository": manifest["repository"],
                "path": ".", "aliases": [], "latest": "1.0.0", "settings": {}, "checks": {},
-               "versions": [{"version": "1.0.0", "commit": commit, "requires": manifest["requires"]}],
+               "versions": [{"version": "1.0.0", "commit": commit, "requires": manifest["requires"]},
+                            {"version": "0.9.0", "commit": "cd" * 20, "requires": {"clips_kitty": ">=9.0"}}],
                **{k: manifest[k] for k in registry.SHOWN if k in manifest}}
     bundled = tmp_path / "index.json"
     bundled.write_text(json.dumps({"format": 1, "plugins": [listing], "blocklist": []}))
@@ -204,6 +205,14 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     assert item["details"]["tier_text"] == "Listed · not reviewed by a person"
     assert item["unofficial"] == "Unofficial · not made or endorsed by the makers of NHL"
     assert found["indexes"] == [{"url": "bundled", "fetched_at": None, "cached": True, "plugins": 1}]
+    # what would stop it running here, said before installing
+    assert item["problems_here"] == [] and item["versions"][0]["problem_here"] is None
+    assert item["details"]["needs_python"] and "Python 3 installed on this PC" in item["details"]["requirements"]
+    assert item["versions"][1]["problem_here"] == "it needs Clips Kitty >=9.0, and this is 2.0.0"
+    with monkeypatch.context() as m:
+        m.setattr(plugins_api.host, "find_python", lambda setting=None: None)
+        assert client.get("/marketplace", params={"q": "NHL"}).json()["plugins"][0]["problems_here"] == [
+            {"need": "python", "text": "It needs Python, and none was found on this PC"}]
     assert "sports" in found["categories"] and found["kinds"]["pipeline"] == "built"
     assert client.get("/marketplace", params={"q": "soccer"}).json()["plugins"] == []
 

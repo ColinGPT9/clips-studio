@@ -42,7 +42,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Manifest fields copied into the index for the Marketplace.
 SHOWN = ("name", "description", "kind", "capability", "license", "category", "tags", "games", "events",
          "execution", "inputs", "outputs", "permissions", "network", "sends", "requirements", "models", "service",
-         "links", "examples", "author")
+         "links", "examples", "author", "run")
 
 # Words people search for and the words listings use. A query word matches
 # either side. Grown by pull request; each entry must be true for everyone.
