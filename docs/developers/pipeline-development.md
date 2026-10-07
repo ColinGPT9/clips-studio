@@ -2,7 +2,7 @@
 
 A **pipeline plugin** decides which moments of a video become clips. Clips Kitty does everything around that decision exactly as it does for its own modes: downloading, transcribing, writing titles and hashtags with the user's AI model, cropping to vertical, captions, rendering with FFmpeg, the library, publishing and the automation that watches channels. You write the part that knows your niche (a game's kill feed, a sport's scoreboard, a podcast's best exchanges) and nothing else.
 
-Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option and the manifest validator. **Planned**: installing plugins from the app (the plugin manager) and returning finished clip files.
+Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option, the manifest validator and the plugin manager (install from a folder or a Git commit, through experimental API routes). **Planned**: the Marketplace screen and returning finished clip files.
 
 ## How a run works
 
@@ -165,7 +165,7 @@ Clips Kitty still runs its own audio and visual signal pass before the plugin st
 - `python -m clipskitty_sdk validate .` checks your manifest the way the app and the registry do ([Plugin manifest](plugin-manifest.md)).
 - `python -m clipskitty_sdk run . --video sample.mp4` runs your plugin the way the app does ([SDK](sdk.md)); it refuses a plugin whose manifest the app would refuse.
 - Use the SDK's `check_result` in your own tests.
-- Installing into the app from your folder or from a Git commit comes with the plugin manager (**planned**; see [Plugin development](plugin-development.md)).
+- Install it into the app from your folder (plan, then install) to try it on real jobs; see [Plugin development](plugin-development.md).
 
 ## The first-party adapter
 

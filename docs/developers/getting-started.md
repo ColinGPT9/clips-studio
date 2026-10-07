@@ -49,7 +49,11 @@ python -m clipskitty_sdk run . --video sample.mp4 --set min_kills=4
 
 `validate` runs the checks Clips Kitty and the registry run. `run` builds the job folder exactly as the app does, runs your plugin, and prints the moments the app would take. When both pass, the app would accept your plugin and its answer.
 
-## 5. Publish it
+## 5. Install it in Clips Kitty
+
+With the app running, plan an install from your folder, read what it would do, then install it; the [Plugin development](plugin-development.md) page has a short script for this, and [`docs/API.md` › Plugins](../API.md#plugins) has the calls. Pick it for a job with `"pipeline": "<your id>"`. Change your code, plan and install again; the same version is replaced. (A Marketplace screen for this is planned.)
+
+## 6. Publish it
 
 Push the folder to a public GitHub repository and tag a release (`git tag v0.1.0 && git push --tags`). How users install it, and how to get it listed in the Marketplace, is in [Marketplace publishing](marketplace-publishing.md).
 

@@ -92,3 +92,24 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** AGPL-3.0 like the rest of the repository. Developers are told to copy the example as the start of their own plugin; under the AGPL their plugins would inherit it, which the brief's aim (anyone can build and share pipelines without forking) does not want decided by accident.
 **Why:** the example was written tonight and contains no code from the rest of the repository; it is the owner's to license, and a permissive default is the one that matches how it is meant to be used.
 **Undo:** replace the LICENSE file and the manifest's `license` field. This sits beside D5 (the SDK's own licence), which is still the owner's call.
+
+## D14 · A Git install reads the commit's files out of Git; GitHub's archive is the fallback
+
+**Decided:** with Git on the PC, the plugin manager fetches the one commit into an empty bare repository and writes each file from Git's object store (`git cat-file --batch`), with hooks pointed at an empty folder, credential helpers off and only `https` and `file` transports allowed. GitHub's archive of the commit is used only when Git is not installed.
+**Alternatives:** the design review's suggestion to prefer the archive download; or `git clone` and a checkout with hooks disabled.
+**Why:** reading objects never checks anything out, so no hook, no filter (Git LFS included) and no symbolic link is ever involved, and Git checks every file against the commit hash. The archive is GitHub's word for what the commit holds and is not checked against the hash. Most Windows PCs have no Git, so the archive path stays for them.
+**Undo:** swap the two branches in `plugins/sources.fetch`.
+
+## D15 · Planning an install needs the session header too
+
+**Decided:** `POST /plugins/plan` requires `X-Clips-Kitty-Session`, like the routes that change what is installed. The architecture's table had it open.
+**Alternatives:** leave it open because it installs nothing.
+**Why:** a plan fetches from an address the caller chooses and writes files into the data folder. FastAPI 0.142 (the version tested) already refuses a body that is not sent as JSON, and a web page cannot send JSON to the engine without a CORS preflight the engine refuses, so this is a second lock rather than the only one. The app and scripts have the secret anyway.
+**Undo:** drop `dependencies=guarded` from the plan route in `plugins/api.py` and the plan line in `tests/test_plugin_api.py`.
+
+## D16 · Smaller plugin-manager choices
+
+**Decided:** (1) the engine writes the current session secret to `<data_dir>/plugins/session.secret` at every start, including when the desktop app supplied it (the architecture had only an engine started on its own write it), so a script always finds the one in use; the file is readable only by the user, who can already read the engine's environment. (2) Installed versions live under `plugins/installed/<publisher>/<name>/<version>/` rather than directly under `plugins/`, so a publisher called `runs` or `staging` cannot collide with the manager's own folders. (3) Installing the same version again replaces its files (in a new folder, `1.0.0~2`), which is the developer's loop when installing from a folder. (4) Removing a plugin also deletes its stored keys. (5) `GET /plugins` also lists the three built-in modes, marked Official. (6) A Git source must be the full 40-character commit; no branch or tag names. (7) A plugin is refused over 5000 files or 1 GB.
+**Alternatives:** the architecture's wording for (1) and (2); refusing a same-version install; keeping keys after removal (a reinstall would not ask again); a separate route for built-ins; resolving a tag at install time (the user would no longer be approving a fixed set of files).
+**Why:** each keeps the user's view and the files on disk in step, and none changes existing behaviour.
+**Undo:** each is a few lines in `plugins/session.py`, `plugins/manager.py` or `plugins/sources.py`.

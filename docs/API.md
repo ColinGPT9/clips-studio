@@ -1198,6 +1198,37 @@ Returns 409 until the clips exist.
 
 Set aside a video that hasn't been queued yet, or decline an `ask`.
 
+## Plugins
+
+**Experimental.** Community pipelines: plugins that find a video's moments
+while Clips Kitty does the rest. Installing one never runs anything from it;
+a job runs it when its options say `pipeline: {"id": "publisher/name"}`.
+Developer guide: [Getting started](developers/getting-started.md).
+
+Routes that fetch, install, change or remove plugins need the
+`X-Clips-Kitty-Session` header. The desktop app sends it; a script reads it from
+`<data folder>/plugins/session.secret`. It keeps web pages and stray calls out;
+it is not a password against software already running as you.
+
+```bash
+# Installed app: %LOCALAPPDATA%\Clips Studio\data. A checkout: data/ in the repository.
+SECRET=$(cat data/plugins/session.secret)
+curl -X POST localhost:8765/plugins/plan -H "X-Clips-Kitty-Session: $SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"source": {"kind": "git", "url": "https://github.com/example-dev/example-plugin",
+                  "commit": "<40-character commit hash>"}}'
+# → {"plan_id": "...", "ok": true, "plugin": {...}, "details": {"permissions": [...],
+#    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "update": null}
+curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" \
+  -H 'Content-Type: application/json' -d '{"plan_id": "..."}'
+```
+
+`GET /plugins` lists what is installed (no header needed);
+`POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,
+`/unpin`, `DELETE /plugins/{publisher}/{name}` and
+`PUT /plugins/{publisher}/{name}/secrets` change one plugin. A source is
+`{"kind": "folder", "path": ...}` or `{"kind": "git", "url": ..., "commit": ...}`.
+
 ## MCP: let an AI agent drive it
 
 Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use the
