@@ -117,8 +117,11 @@ jobs:
           "PyYAML>=6.0.3,<7" "fastapi>=0.141.1,<1" "opencv-python-headless>=4.14.0.94,<5"
           "yt-dlp>=2026.8.19" "defusedxml>=0.7.1,<1"
 
+      - name: FFmpeg, for the example pipeline's end-to-end test
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
       - name: Platform tests
-        run: python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py
+        run: python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py tests/test_example_pipeline.py
 
   ui:
     name: Desktop app
