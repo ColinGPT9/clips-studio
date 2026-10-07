@@ -87,6 +87,12 @@ jobs:
               print('\n'.join(bad)); sys.exit(1)
           PY
 
+      - name: Plugin registry index is current
+        # registry/index.json is generated from registry/plugins/ and the block
+        # list; a listing that fails its checks fails here. With no listings
+        # it needs no network.
+        run: python scripts/build_registry_index.py --check
+
       - name: No accidental secrets in config
         # config/client_secret.json and token files are gitignored; this fails
         # loudly if one is ever committed anyway.

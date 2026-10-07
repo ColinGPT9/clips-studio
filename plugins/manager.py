@@ -154,7 +154,7 @@ def _block_problems(blocked, plugin_id: str, version: str) -> tuple[list, list]:
 
 
 def plan(data_dir, source, *, app_version: str | None = None, tier: str = "link", git: str | None = None,
-         fetcher=None, blocked=None, expect: dict | None = None) -> dict:
+         fetcher=None, blocked=None, expect: dict | None = None, listed_in: str | None = None) -> dict:
     """Fetch a source into a staging folder and say what installing it would do.
 
     The answer has everything the install screen shows (`details`, from
@@ -162,11 +162,14 @@ def plan(data_dir, source, *, app_version: str | None = None, tier: str = "link"
     plugin is already installed, what the change would be (`update`). With no
     errors it carries a `plan_id` for install(). `expect` ({id, version}) is
     what a registry listing says the files are; a mismatch is an error.
+    `listed_in` names the index a listed plugin came from (recorded with it).
     """
     try:
         source = sources.clean_source(source)
     except sources.SourceError as e:
         raise ManagerError(str(e)) from e
+    if listed_in:
+        source["listed_in"] = listed_in
     _clean_staging(data_dir)
     plan_id = secrets.token_hex(8)
     stage = store.root(data_dir) / STAGING / plan_id

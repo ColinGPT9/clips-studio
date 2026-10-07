@@ -82,6 +82,9 @@ def test_the_spec_bundles_the_plugin_runner_and_the_sdk():
     assert '"plugins" / "builtin"' in text and '"plugins/builtin"' in text, (
         "the spec no longer ships the official modes' manifests (plugins/builtin)"
     )
+    assert '(str(ROOT / "registry" / "index.json"), "registry")' in text, (
+        "the spec no longer ships registry/index.json where plugins/registry.py looks for it"
+    )
 
 
 def test_the_voice_models_ship_with_the_module_that_reads_them():

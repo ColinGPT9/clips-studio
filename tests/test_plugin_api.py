@@ -42,8 +42,8 @@ def test_every_plugin_route_is_labelled_experimental(api):
     from server import api_stability as st
 
     client, _ = api
-    routes = [(m, p) for m, p, _mod in st.app_routes(client.app) if p.startswith("/plugins")]
-    assert len(routes) == 10
+    routes = [(m, p) for m, p, _mod in st.app_routes(client.app) if p.startswith(("/plugins", "/marketplace"))]
+    assert len(routes) == 12
     assert all(st.label(m, p) == st.EXPERIMENTAL for m, p in routes)
 
 
@@ -155,3 +155,63 @@ def test_a_web_page_cannot_send_the_header(api):
     r = client.post("/plugins/install", content=json.dumps({"plan_id": "0" * 16}),
                     headers={"Origin": "https://attacker.example"})
     assert r.status_code == 403
+
+
+def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_path, monkeypatch, plugin_source):
+    """GET /marketplace over an index, then plan an install from one of its
+    listings. The listing's repository is reached through GitHub's archive,
+    handed over by a fake fetcher: nothing touches the network."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    import io
+    import tarfile
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from plugins import api as plugins_api
+    from plugins import registry, sources
+
+    commit = "ab" * 20
+    manifest = plugin_source.manifest(id="example-dev/nhl-goals", name="NHL Goals", games=["nhl"], tags=["hockey"],
+                                      category="sports", repository="https://github.com/example-dev/nhl-goals")
+    listing = {"id": "example-dev/nhl-goals", "publisher": "example-dev", "repository": manifest["repository"],
+               "path": ".", "aliases": [], "latest": "1.0.0", "settings": {}, "checks": {},
+               "versions": [{"version": "1.0.0", "commit": commit, "requires": manifest["requires"]}],
+               **{k: manifest[k] for k in registry.SHOWN if k in manifest}}
+    bundled = tmp_path / "index.json"
+    bundled.write_text(json.dumps({"format": 1, "plugins": [listing], "blocklist": []}))
+
+    def fetcher(url, path):
+        assert url == f"https://github.com/example-dev/nhl-goals/archive/{commit}.tar.gz"
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, text in (("clipskitty.yaml", json.dumps(manifest)), ("src/main.py", "print()\n")):
+                info = tarfile.TarInfo(f"nhl-goals-{commit}/{name}")
+                info.size = len(text.encode())
+                tar.addfile(info, io.BytesIO(text.encode()))
+        Path(path).write_bytes(buf.getvalue())
+
+    monkeypatch.setattr(sources, "find_git", lambda: None)
+    monkeypatch.setenv("CLIPS_KITTY_SESSION_SECRET", HEADERS["X-Clips-Kitty-Session"])
+    app = FastAPI()
+    plugins_api.install(app, data_dir=tmp_path / "data", app_version="2.0.0", fetcher=fetcher, bundled_index=bundled)
+    client = TestClient(app, base_url="http://127.0.0.1")
+
+    found = client.get("/marketplace", params={"q": "NHL"}).json()
+    (item,) = found["plugins"]
+    assert item["id"] == "example-dev/nhl-goals" and item["installed"] is None
+    assert item["details"]["tier_text"] == "Listed · not reviewed by a person"
+    assert item["unofficial"] == "Unofficial · not made or endorsed by the makers of NHL"
+    assert found["indexes"] == [{"url": "bundled", "fetched_at": None, "cached": True}]
+    assert "sports" in found["categories"] and found["kinds"]["pipeline"] == "built"
+    assert client.get("/marketplace", params={"q": "soccer"}).json()["plugins"] == []
+
+    r = client.post("/plugins/plan", json={"source": {"kind": "index", "id": "example-dev/nhl-goals"}}, headers=HEADERS)
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    assert r.json()["source"] == {"kind": "git", "url": manifest["repository"], "commit": commit, "listed_in": "bundled"}
+    client.post("/plugins/install", json={"plan_id": r.json()["plan_id"]}, headers=HEADERS)
+    assert client.get("/marketplace", params={"q": "NHL"}).json()["plugins"][0]["installed"] == "1.0.0"
+    r = client.post("/plugins/plan", json={"source": {"kind": "index", "id": "example-dev/missing"}}, headers=HEADERS)
+    assert r.status_code == 404 and "not listed" in r.json()["detail"]
+    assert client.post("/marketplace/refresh").json() == {"indexes": []}  # no address in settings

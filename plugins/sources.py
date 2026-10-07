@@ -7,8 +7,9 @@ Two kinds of source:
         a folder on this PC, copied (a developer's own checkout, or a download)
 
     {"kind": "git", "url": "https://github.com/example-dev/example-plugin",
-     "commit": "<the full 40-character commit hash>"}
-        one commit of a Git repository
+     "commit": "<the full 40-character commit hash>", "path": "optional/folder"}
+        one commit of a Git repository (with `path`, the folder in it that
+        holds clipskitty.yaml)
 
 A Git source is fetched with `git` when it is installed: the one commit is
 fetched into an empty bare repository and its files are written out from Git's
@@ -73,7 +74,13 @@ def clean_source(spec) -> dict:
         if not isinstance(commit, str) or not COMMIT_RE.match(commit.strip().lower()):
             raise SourceError("a Git source needs the full 40-character commit hash: a branch or tag can change "
                               "after you looked at it, a commit can't")
-        return {"kind": "git", "url": url.strip().rstrip("/"), "commit": commit.strip().lower()}
+        out = {"kind": "git", "url": url.strip().rstrip("/"), "commit": commit.strip().lower()}
+        path = spec.get("path")
+        if path not in (None, "", "."):
+            if not isinstance(path, str):
+                raise SourceError("a Git source's path is the folder holding clipskitty.yaml")
+            out["path"] = _safe_relative(path.strip().strip("/"))
+        return out
     raise SourceError(f"unknown kind of source {kind!r}; expected folder or git")
 
 
@@ -81,11 +88,10 @@ def describe(source: dict) -> str:
     """A source in a line, as the install screen shows it."""
     if source.get("kind") == "git":
         place = re.sub(r"^https://", "", source["url"]).removesuffix(".git")
-        return f"{place} · commit {source['commit'][:7]}"
+        inside = f" · {source['path']}" if source.get("path") else ""
+        return f"{place}{inside} · commit {source['commit'][:7]}"
     if source.get("kind") == "folder":
         return f"the folder {source['path']}"
-    if source.get("kind") == "index":
-        return f"{source.get('index', 'a registry index')}"
     return "unknown source"
 
 
@@ -239,9 +245,18 @@ def _read_batch(raw: bytes, count: int) -> list[bytes]:
     return out
 
 
-def fetch_git(url: str, commit: str, dest: Path, *, git: str) -> list[str]:
-    """Write the files of one commit into `dest` (which must not exist).
-    Returns warnings."""
+def _under(rel: str, folder: str | None) -> str | None:
+    """`rel` relative to `folder` (the plugin's folder in a repository), or
+    None when it is outside it."""
+    if not folder:
+        return rel
+    prefix = folder.rstrip("/") + "/"
+    return rel[len(prefix):] if rel.startswith(prefix) else None
+
+
+def fetch_git(url: str, commit: str, dest: Path, *, git: str, folder: str | None = None) -> list[str]:
+    """Write the files of one commit into `dest` (which must not exist); with
+    `folder`, only that folder's files, as the plugin's root. Returns warnings."""
     with tempfile.TemporaryDirectory(prefix="clipskitty-git-") as tmp:
         tmp = Path(tmp)
         hooks = tmp / "no-hooks"
@@ -268,20 +283,24 @@ def fetch_git(url: str, commit: str, dest: Path, *, git: str) -> list[str]:
             meta, _, name_raw = line.partition(b"\t")
             mode, kind, sha, size = meta.split()
             name = name_raw.decode("utf-8", "surrogateescape")
+            if folder and _under(name, folder) is None:
+                continue
             if mode == b"120000":
                 raise SourceError(f"{name}: symbolic links are not allowed in a plugin")
             if mode == b"160000" or kind == b"commit":
                 raise SourceError(f"{name}: the plugin uses a Git submodule, which Clips Kitty does not fetch")
             if kind != b"blob":
                 continue
-            rel = _safe_relative(name)
-            if PurePosixPath(rel).name.endswith(".pyc") or "__pycache__" in PurePosixPath(rel).parts:
+            rel = _under(_safe_relative(name), folder)
+            if rel is None or PurePosixPath(rel).name.endswith(".pyc") or "__pycache__" in PurePosixPath(rel).parts:
                 continue
             budget.add(rel, int(size))
             entries.append((rel, sha.decode(), mode == b"100755"))
         raw = _git(git, ["cat-file", "--batch"], cwd=repo, hooks=hooks,
                    input=b"".join(sha.encode() + b"\n" for _, sha, _ in entries))
         contents = _read_batch(raw, len(entries))
+    if folder and not entries:
+        raise SourceError(f"the commit has no folder {folder}")
     warnings: list[str] = []
     dest.mkdir(parents=True)
     for (rel, _sha, executable), data in zip(entries, contents):
@@ -318,9 +337,10 @@ def download(url: str, path: Path, *, limit: int = MAX_BYTES) -> None:
         raise SourceError(f"the download failed ({e})") from e
 
 
-def unpack_archive(archive: Path, commit: str, dest: Path) -> list[str]:
+def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None = None) -> list[str]:
     """Unpack GitHub's .tar.gz of one commit into `dest` (which must not exist),
-    without the archive's top folder. Returns warnings."""
+    without the archive's top folder; with `folder`, only that folder's files.
+    Returns warnings."""
     budget, entries, warnings = _Budget(), [], []
     try:
         with tarfile.open(archive, "r:gz") as tar:
@@ -337,8 +357,8 @@ def unpack_archive(archive: Path, commit: str, dest: Path) -> list[str]:
                     raise SourceError("the archive is not one repository folder")
                 if len(parts) == 1 and member.isdir():
                     continue
-                rel = _safe_relative("/".join(parts[1:]))
-                if member.isdir():
+                rel = _under(_safe_relative("/".join(parts[1:])), folder)
+                if rel is None or member.isdir():
                     continue
                 if member.issym() or member.islnk():
                     raise SourceError(f"{rel}: symbolic links are not allowed in a plugin")
@@ -351,6 +371,8 @@ def unpack_archive(archive: Path, commit: str, dest: Path) -> list[str]:
                 entries.append((rel, handle.read() if handle else b"", bool(member.mode & 0o111)))
     except (tarfile.TarError, OSError, EOFError) as e:
         raise SourceError(f"the archive could not be read ({e})") from e
+    if folder and not entries:
+        raise SourceError(f"the commit has no folder {folder}")
     dest.mkdir(parents=True)
     for rel, data, executable in entries:
         _write(dest, rel, data, executable, warnings)
@@ -375,7 +397,7 @@ def fetch(source: dict, dest: Path, *, git: str | None = None, fetcher=None) -> 
         if source["kind"] == "git":
             git = git or find_git()
             if git:
-                return fetch_git(source["url"], source["commit"], dest, git=git)
+                return fetch_git(source["url"], source["commit"], dest, git=git, folder=source.get("path"))
             archive_url = github_archive_url(source["url"], source["commit"])
             if not archive_url:
                 raise SourceError("installing from this address needs Git, which isn't installed on this PC. "
@@ -383,7 +405,7 @@ def fetch(source: dict, dest: Path, *, git: str | None = None, fetcher=None) -> 
             with tempfile.TemporaryDirectory(prefix="clipskitty-archive-") as tmp:
                 path = Path(tmp) / "plugin.tar.gz"
                 (fetcher or download)(archive_url, path)
-                return unpack_archive(path, source["commit"], dest)
+                return unpack_archive(path, source["commit"], dest, folder=source.get("path"))
     except SourceError:
         shutil.rmtree(dest, ignore_errors=True)
         raise

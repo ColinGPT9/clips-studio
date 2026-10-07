@@ -122,6 +122,9 @@ datas += [
     (str(ROOT / "sdk" / "python" / "clipskitty_sdk"), "sdk/python/clipskitty_sdk"),
     # The official modes' manifests (plugins/builtin/), listed beside plugins.
     (str(ROOT / "plugins" / "builtin"), "plugins/builtin"),
+    # The registry index as of this build (plugins/registry.py): the
+    # Marketplace's listings and the block list, until an index address exists.
+    (str(ROOT / "registry" / "index.json"), "registry"),
     # The sound tagger's 527 class names, in its output order (analysis/panns.py).
     (str(ROOT / "config" / "audioset_labels.txt"), "config"),
     # The three-second clip a voice model is checked with before it is used

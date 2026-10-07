@@ -13,6 +13,7 @@ sdk/python/clipskitty_sdk/contract.py, the same files a plugin developer uses).
     sources.py      a plugin's files from a folder or a Git commit, never run
     permissions.py  what a manifest asks for, in the install screen's words
     session.py      the session secret the manager's routes ask for
-    api.py          the manager's routes (experimental)
+    registry.py     the registry's index: its build, the offline client, search, the block list
+    api.py          the manager's and the Marketplace's routes (experimental)
     _sdk.py         makes the SDK importable here, from the checkout or the bundle
 """

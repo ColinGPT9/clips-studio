@@ -134,6 +134,8 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     ("POST", "/plugins/{publisher}/{name}/unpin"): (EXPERIMENTAL, "plugins", "Offer a plugin's updates again. Session header."),
     ("DELETE", "/plugins/{publisher}/{name}"): (EXPERIMENTAL, "plugins", "Remove a plugin, its files and its stored keys. Session header."),
     ("PUT", "/plugins/{publisher}/{name}/secrets"): (EXPERIMENTAL, "plugins", "Store a plugin's secret settings. Session header."),
+    ("GET", "/marketplace"): (EXPERIMENTAL, "plugins", "Listed plugins from the registry indexes, searched and filtered, with what is installed."),
+    ("POST", "/marketplace/refresh"): (EXPERIMENTAL, "plugins", "Fetch the registry index addresses set in settings into the cache."),
 }
 
 

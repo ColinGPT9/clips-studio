@@ -6,6 +6,7 @@
         envs/<publisher>/<name>/<version>/           a version's own Python packages (planned)
         staging/                                     files fetched for an install plan, until installed
         runs/                                        the job folders of recent runs
+        cache/                                       the last good copy of each registry index
         session.secret                               the plugin-manager routes' session secret
 
 installed.json:
@@ -25,7 +26,9 @@ This module only reads. Installing, updating and removing are the plugin
 manager's (plugins/manager.py), which writes the file atomically.
 
 `requires.clips_kitty` is checked here as well as at install, so a plugin an
-app update leaves behind is refused with a reason instead of failing oddly.
+app update leaves behind is refused with a reason instead of failing oddly;
+so is the registry's block list (plugins/registry.py), so a blocked version
+is refused when a job names it and when it runs.
 """
 
 from __future__ import annotations
@@ -167,5 +170,10 @@ def installed_choice(data_dir, choice: dict) -> Installed:
     problem = compatibility_problem(plugin.manifest)
     if problem:
         raise ValueError(f"the pipeline {plugin.name} can't run here: {problem}")
+    from plugins import registry
+
+    hit = registry.blocked_check(data_dir)(plugin.id, plugin.version)
+    if hit and hit.get("severity") == "blocked":
+        raise ValueError(f"the pipeline {plugin.name} {plugin.version} is blocked: {hit.get('reason')}. Remove it in Plugins.")
     host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
     return plugin
