@@ -53,6 +53,10 @@ class SourceError(ValueError):
     """A source that can't be fetched, or files Clips Kitty won't install. The message is for the user."""
 
 
+class TooLarge(SourceError):
+    """A download stopped because it passed its size limit."""
+
+
 # ---- what a source is --------------------------------------------------------------
 
 
@@ -331,7 +335,7 @@ def download(url: str, path: Path, *, limit: int = MAX_BYTES) -> None:
             while chunk := response.read(1024 * 1024):
                 total += len(chunk)
                 if total > limit:
-                    raise SourceError(f"the download is larger than {limit // (1024 * 1024)} MB")
+                    raise TooLarge(f"the download is larger than {limit // (1024 * 1024)} MB")
                 out.write(chunk)
     except OSError as e:
         raise SourceError(f"the download failed ({e})") from e

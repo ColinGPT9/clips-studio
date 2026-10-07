@@ -360,7 +360,7 @@ def test_the_marketplace_checks_clips_kittys_online_list_once_a_day(tmp_path, mo
     def fetcher(url, path):
         fetched.append(url)
         if not reachable[0]:
-            raise sources.SourceError("could not reach it")
+            raise sources.SourceError("could not reach it") from OSError("offline")
         Path(path).write_text(json.dumps(online))
 
     other = "https://example.com/other.json"
@@ -376,7 +376,7 @@ def test_the_marketplace_checks_clips_kittys_online_list_once_a_day(tmp_path, mo
     first = opened()  # never fetched: due, and offline
     assert first["checked"] is True and first["indexes"][0]["ok"] is False and fetched == [registry.ONLINE_URL]
     view = client.get("/marketplace").json()
-    assert view["online"]["fetched_at"] is None and "could not reach it" in view["online"]["error"]
+    assert view["online"]["fetched_at"] is None and view["online"]["error"] == registry.WHY_OFFLINE
     assert [p["id"] for p in view["plugins"]] == ["example-dev/shipped"]
     assert opened() == {"checked": False, "indexes": []} and len(fetched) == 1  # not on every open while offline
 

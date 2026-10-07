@@ -13,6 +13,7 @@ import re
 import subprocess
 import tarfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -373,14 +374,14 @@ def test_refresh_caches_the_last_good_copy_and_works_offline(catalogue, tmp_path
     assert len(registry.listings(data, [url], bundled=empty)) == len(CATALOGUE)
 
     def offline(u, path):
-        raise sources.SourceError("the download failed (no network)")
+        raise sources.SourceError("the download failed (no network)") from OSError("no network")
 
     def broken(u, path):
         Path(path).write_text('{"format": 99}')
 
-    for fetcher, fragment in ((offline, "no network"), (broken, "not a Clips Kitty registry index")):
+    for fetcher, why in ((offline, registry.WHY_OFFLINE), (broken, registry.WHY_UNREADABLE)):
         (status,) = registry.refresh(data, [url], fetcher=fetcher)
-        assert status["ok"] is False and fragment in status["error"]
+        assert status == {"url": url, "ok": False, "error": why}
         assert len(registry.listings(data, [url], bundled=empty)) == len(CATALOGUE)  # last good copy
     kinds = [(i["url"], i["index"] is not None) for i in registry.indexes(data, [url, "https://example.com/never"],
                                                                          bundled=empty)]
@@ -518,12 +519,12 @@ def test_the_online_list_is_checked_once_a_day_retried_hourly_and_can_be_switche
     assert registry.online_checks_on(data) and registry.online_due(data, now=now)  # never fetched
 
     def offline(u, p):
-        raise sources.SourceError("the download failed (no network)")
+        raise sources.SourceError("the download failed (no network)") from OSError("no network")
 
     status = registry.refresh_online(data, fetcher=offline, now=now)
     assert status["ok"] is False
     view = registry.online_status(data)
-    assert view["fetched_at"] is None and "no network" in view["error"] and view["automatic"] is True
+    assert view["fetched_at"] is None and view["error"] == registry.WHY_OFFLINE and view["automatic"] is True
     assert not registry.online_due(data, now=now + 30 * 60)  # offline: not again on every open
     assert registry.online_due(data, now=now + 2 * 3600)
 
@@ -552,7 +553,43 @@ def test_the_online_list_is_the_catalogs_index_on_the_main_branch():
 
 def test_the_privacy_policy_tells_people_about_the_list_check():
     text = (ROOT / "site" / "privacy.html").read_text(encoding="utf-8")
-    assert "Checking for new pipelines" in text and "raw.githubusercontent.com" in text
+    host = urlsplit(registry.ONLINE_URL).hostname  # the website the app actually contacts
+    assert "Checking for new pipelines" in text and text.count(host) >= 1
+
+
+def test_a_failed_check_says_why_in_plain_words_and_keeps_details_out(tmp_path):
+    """The Marketplace shows a fixed sentence; the error's own text (paths,
+    library internals) goes to the engine's log only."""
+    import urllib.error
+
+    def raising(error):
+        def fetch(u, p):
+            raise error
+        return fetch
+
+    def huge(u, p):
+        raise sources.TooLarge("the download is larger than 20 MB")
+
+    def missing(u, p):  # as sources.download reports it
+        raise sources.SourceError("the download failed (HTTP Error 404)") from urllib.error.HTTPError(
+            u, 404, "Not Found", {}, None)
+
+    def not_json(u, p):
+        Path(p).write_text("<html>secret C:/Users/someone/path</html>")
+
+    url = "https://example.com/list.json"
+    cases = [
+        (missing, registry.WHY_NOT_FOUND),
+        (raising(urllib.error.HTTPError(url, 500, "Server Error", {}, None)), registry.WHY_SERVER),
+        (raising(TimeoutError("timed out")), registry.WHY_OFFLINE),
+        (huge, registry.WHY_TOO_LARGE),
+        (not_json, registry.WHY_UNREADABLE),
+    ]
+    for fetcher, why in cases:
+        (status,) = registry.refresh(tmp_path / "data", [url], fetcher=fetcher)
+        assert status == {"url": url, "ok": False, "error": why}
+    (status,) = registry.refresh(tmp_path / "data", ["http://example.com/list.json"], fetcher=pytest.fail)
+    assert status["error"] == registry.WHY_NOT_HTTPS
 
 
 # ---- installing from a listing, and the block list reaching installed copies --------------------------

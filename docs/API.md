@@ -1257,7 +1257,10 @@ and the indexes in `plugins.registry_urls` again and answers
 `{"checked": true, "indexes": [{"url", "ok", "error"}]}`; with
 `{"automatic": true}`, as the Marketplace sends when it opens, it fetches only
 the online list, and only when its copy is a day old and no check was tried in
-the last hour (`{"checked": false, "indexes": []}` otherwise).
+the last hour (`{"checked": false, "indexes": []}` otherwise). `error` is one
+of a few fixed sentences (no connection, nothing at the address, the website's
+error, too large, not a list Clips Kitty can read, not https://, couldn't be
+saved); the details of what went wrong go to the engine's log.
 `GET /marketplace/online` (no header) answers like `online` above, and
 `PUT /marketplace/online` `{"enabled": false}` (session header) switches the
 automatic checks off for this PC (or on again). See

@@ -54,6 +54,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import json
+import logging
 import re
 import sys
 import time
@@ -68,6 +69,19 @@ SEVERITIES = ("blocked", "delisted")
 LISTING_FIELDS = ("id", "repository", "path", "aliases", "versions", "section", "featured", "added", "checked")
 VERSION_FIELDS = ("version", "commit", "tag", "tested_with", "date")
 MAX_INDEX_BYTES = 20 * 1024 * 1024
+
+log = logging.getLogger(__name__)
+
+# Why a list couldn't be fetched, as the Marketplace says it. A fixed sentence,
+# never the error's own text: that can carry file paths and library internals,
+# so the details go to the engine's log instead.
+WHY_OFFLINE = "Couldn't connect. Check this PC's internet connection."
+WHY_NOT_FOUND = "Nothing is at that address yet."
+WHY_SERVER = "The website that holds the list didn't answer properly."
+WHY_TOO_LARGE = "The list is larger than Clips Kitty accepts."
+WHY_UNREADABLE = "That address doesn't hold a list Clips Kitty can read."
+WHY_NOT_HTTPS = "Only https:// addresses can be checked."
+WHY_NOT_SAVED = "The list couldn't be saved on this PC."
 
 # Clips Kitty's online list: the catalog's index on the project's main branch
 # (D29). It answers once the catalog is merged there.
@@ -613,22 +627,47 @@ def refresh(data_dir, urls: list[str], *, fetcher=None) -> list[dict]:
     out = []
     for url in urls:
         status = {"url": url, "ok": False, "error": None}
+        if not url.startswith("https://"):
+            status["error"] = WHY_NOT_HTTPS
+            out.append(status)
+            continue
         try:
             with tempfile.TemporaryDirectory(prefix="clipskitty-index-") as tmp:
                 path = Path(tmp) / "index.json"
                 (fetcher or (lambda u, p: sources.download(u, p, limit=MAX_INDEX_BYTES)))(url, path)
                 index = check_index(json.loads(path.read_text(encoding="utf-8")))
-            target = _cache_file(data_dir, url)
+        except (OSError, ValueError) as e:  # SourceError is a ValueError
+            log.warning("Couldn't fetch the plugin list %s: %s", url, e)
+            status["error"] = _why(e)
+            out.append(status)
+            continue
+        target = _cache_file(data_dir, url)
+        try:
             target.parent.mkdir(parents=True, exist_ok=True)
             part = target.with_suffix(".part")  # replaced whole, so a reader never sees half a list
             part.write_text(json.dumps({"url": url, "fetched_at": _stamp(time.time()), "index": index}),
                             encoding="utf-8")
             part.replace(target)
             status["ok"] = True
-        except (OSError, ValueError, sources.SourceError) as e:
-            status["error"] = str(e) or e.__class__.__name__
+        except OSError as e:
+            log.warning("Couldn't save the plugin list %s to %s: %s", url, target, e)
+            status["error"] = WHY_NOT_SAVED
         out.append(status)
     return out
+
+
+def _why(error: Exception) -> str:
+    """The fixed sentence for a failed fetch (the WHY_ constants)."""
+    import urllib.error
+
+    cause = error.__cause__ if isinstance(error.__cause__, OSError) else error
+    if isinstance(cause, urllib.error.HTTPError):
+        return WHY_NOT_FOUND if cause.code in (404, 410) else WHY_SERVER
+    if isinstance(cause, OSError):  # no connection, a timeout, a refused or dropped connection
+        return WHY_OFFLINE
+    if isinstance(error, sources.TooLarge):
+        return WHY_TOO_LARGE
+    return WHY_UNREADABLE  # not JSON, or not a Clips Kitty index (check_index says why, in the log)
 
 
 def _stamp(t: float) -> str:
