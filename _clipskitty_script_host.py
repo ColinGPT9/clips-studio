@@ -185,7 +185,7 @@ def _setup_output() -> None:
         try:
             stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
         except (AttributeError, ValueError, OSError):
-            pass
+            pass  # not a text stream that can change (replaced, or a pipe that's gone): leave it as it is
 
 
 def _say_error(message: str) -> None:
@@ -194,7 +194,7 @@ def _say_error(message: str) -> None:
     try:
         print(json.dumps({"type": "error", "message": message}, ensure_ascii=False), flush=True)
     except Exception:
-        pass
+        pass  # nowhere to report it: the exit code still says the run failed
 
 
 def missing_module_message(error: ModuleNotFoundError) -> str:
@@ -249,13 +249,13 @@ def main(argv: list[str]) -> int:
         return 2
 
     own = _python_path()
+    script = os.path.abspath(target) if mode == "script" else ""
     if mode == "script":
-        script = os.path.abspath(target)
         own = [os.path.dirname(script), *own]
         os.environ[SCRIPT] = script
     elif mode == "fork":
-        script = os.environ.get(SCRIPT)
-        own = ([os.path.dirname(script)] if script else []) + own
+        parent = os.environ.get(SCRIPT)
+        own = ([os.path.dirname(parent)] if parent else []) + own
     else:
         os.environ.pop(SCRIPT, None)  # a -c or -m child must not reload some other script
         own = [os.getcwd(), *own]
@@ -285,7 +285,7 @@ def main(argv: list[str]) -> int:
         traceback.print_exc()
         _say_error(missing_module_message(e))
         return 1
-    except BaseException:  # a crash in the script is exit code 1, as in python
+    except Exception:  # a crash in the script is exit code 1, as in python; Ctrl+C passes through
         traceback.print_exc()
         return 1
     return 0
