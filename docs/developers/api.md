@@ -17,7 +17,7 @@ Clips Kitty's engine is a local HTTP service on `http://127.0.0.1:8765`, running
 | Label | Promise | Today |
 |---|---|---|
 | **stable** | Documented as supported in `docs/API.md`. Changes only by adding: a new optional field, a new route, a new event type. Removing, renaming, retyping or making something required is an incompatible change and raises `api_version`. | 59 HTTP routes and the `/ws` event stream: health, jobs, queue, library reads and media, captions, models and where the AI runs, languages and export, YouTube publishing status and publish, streamer integrations, batch publishing plans, thumbnails, watched channels |
-| **experimental** | Meant for outside use, but may still change in a release. Every change is noted in `CHANGELOG.md`. | 5 routes mentioned in `docs/API.md` without a full contract (clip words, editing a clip or a queued job, storage clean-up, choosing a thumbnail), and the plugin manager's 10 routes (`/plugins`, [Plugin development](plugin-development.md)) |
+| **experimental** | Meant for outside use, but may still change in a release. Every change is noted in `CHANGELOG.md`. | 5 routes mentioned in `docs/API.md` without a full contract (clip words, editing a clip or a queued job, storage clean-up, choosing a thumbnail), and the plugin platform's 15 routes (`/plugins`, `/marketplace`, `/plugin-models`; [Plugin development](plugin-development.md), [Model references](model-references.md)) |
 | **internal** | Serves one screen of the desktop app and changes with it. It works, and `/docs` on a running engine shows it, but depending on it is at your own risk. | Everything else, about 110 routes |
 
 Anything not explicitly labelled is internal, so a new route promises nothing until someone decides it should.

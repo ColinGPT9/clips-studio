@@ -1,0 +1,66 @@
+# Local APIs
+
+What a plugin can use on the user's own PC: Clips Kitty's tools handed over in the job, the local AI model through Ollama, Clips Kitty's own API, and other programs the user runs. Everything on this page keeps the user's media on their PC.
+
+Status: **built** in plugin contract 1, except where a line says planned.
+
+## Handed over in the job
+
+The cheapest way to use what Clips Kitty has is to ask for it in your manifest's `permissions`; Clips Kitty then puts it in `job.json`, and leaves it out otherwise ([Permissions](permissions.md)).
+
+| Permission | Your code gets | Use it for |
+|---|---|---|
+| `video.read` | `job.video.path` (the downloaded or local video), its id, title, duration and the games the source named | anything that reads the picture or sound |
+| `transcript.read` | `job.transcript.segments()`: Whisper's transcript, with word timings when Clips Kitty has them | language: what is said, when |
+| `ffmpeg` | `job.tools.ffmpeg`, `job.tools.ffprobe`: the paths of the FFmpeg Clips Kitty ships | decoding frames, extracting audio, scene changes, loudness |
+| `ollama` | `job.tools.ollama`: `{"host": "http://localhost:11434", "model": "<the user's local model>"}` | asking the user's local language model about the transcript |
+
+`job.tools.ollama.model` is the model the user chose in Clips Kitty (Gemma by default) when their AI runs locally, and empty when they chose a cloud provider: Clips Kitty never hands a plugin a cloud provider's key, so in that case your plugin either asks for its own model or does without. A plugin that needs a specific Ollama model lists it under `models:` with `source: ollama` ([Model references](model-references.md)); the user pulls it on the Models page, and the run stops with a message saying so if they haven't.
+
+Calling Ollama, with the standard library only:
+
+```python
+import json, urllib.request
+
+ollama = job.tools.ollama
+if not ollama or not ollama.get("model"):
+    job.fail("This pipeline needs a local AI model. Choose one in Clips Kitty's Models page.")
+body = {"model": ollama["model"], "prompt": prompt, "stream": False, "format": "json"}
+req = urllib.request.Request(ollama["host"].rstrip("/") + "/api/generate",
+                             data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+answer = json.loads(urllib.request.urlopen(req, timeout=300).read())["response"]
+```
+
+Ollama has no password, so any program on the PC can use it; the `ollama` permission decides only whether Clips Kitty hands you the address and the user's model.
+
+## Clips Kitty's own API
+
+The engine's HTTP API on `http://127.0.0.1:8765` is the same one the desktop window uses ([API](api.md)). A pipeline doesn't need it to do its job: the job folder has what it needs, and its answer goes back in `result.json`. A plugin that does more (reads the library, queues another video) can call it with the SDK's client:
+
+```python
+from clipskitty_sdk.client import LocalAPI
+
+api = LocalAPI()
+api.health()                                   # {"ok": True, "app_version": ..., "api_version": 1}
+recent = api.videos()                          # the library
+```
+
+Say so in your manifest: `project.read` to read the library, `project.write` to change it. These are **declared**, not enforced: the API has no authentication, so any program on the PC can call it. Stick to routes labelled stable ([API reference](api-reference.md)); others can change in any release. The plugin manager's routes need a session secret that plugins are not given, so a plugin can't install or remove plugins.
+
+## Other programs on the PC
+
+A plugin can talk to another local service the user runs (a local inference server, a game's own API, a ComfyUI install). Declare it like any connection, with `network` and the host and port, so the user sees it:
+
+```yaml
+permissions: [video.read, network]
+network: [localhost:8188]
+execution: local
+```
+
+Data sent to a program on the same PC hasn't left it, so a `local` pipeline needs no `sends` for this. If that program sends things on to the internet, your pipeline is `hybrid` and says what goes where ([Remote APIs](remote-apis.md)).
+
+## Languages other than Python
+
+The contract is files and standard output, so a plugin can be any executable: set `run.command` to it (`["bin/my-pipeline.exe"]`), read `job.json` from the job folder (the last argument on its command line, and `CLIPSKITTY_JOB` in its environment), print progress lines, write `result.json`. The Python SDK is a convenience, not a requirement ([Pipeline development](pipeline-development.md)). A TypeScript SDK is planned.
+
+See also: [SDK](sdk.md), [Model references](model-references.md).

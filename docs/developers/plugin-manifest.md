@@ -82,7 +82,7 @@ Required fields are in bold.
 | `events` | Labels its moments may carry | lower case, digits, `_` and `-` |
 | `games` | Games it covers, for search | slugs such as `marvel-rivals` |
 | `settings` | Options the user can set | below |
-| `models` | Models it uses | below; resolution and download are **planned** ([Model references](model-references.md)) |
+| `models` | Models it uses | below; found on the PC, downloaded into one shared folder and handed to the plugin ([Model references](model-references.md)) |
 | `requirements` | What the PC needs | `gpu` (`none`, `optional`, `recommended`, `required`), `vram_gb`, `ram_gb`, `disk_gb`, `os` (`windows`, `macos`, `linux`), `software` (names, such as `docker`) |
 | `category` | One of ten | `gaming`, `sports`, `creators`, `streaming`, `podcasting`, `captions`, `detection`, `analytics`, `audio`, `utilities` |
 | `tags` | Search words | at most 10; lower case, digits and hyphens |
@@ -124,7 +124,7 @@ models:
   - {name: speech, source: bundled, id: example-bundled-model}
 ```
 
-A Hugging Face model must be pinned to a full commit hash, because a branch or tag can change under the user; a `url` model needs its SHA-256. Pickle-format files (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`) can run code when loaded and produce a warning; the app will ask before downloading them. The validator checks these shapes today; finding, sharing and downloading the files is **planned** ([Model references](model-references.md)).
+A Hugging Face model must be pinned to a full commit hash, because a branch or tag can change under the user; a `url` model needs its SHA-256. Pickle-format files (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`) can run code when loaded and produce a warning; the app will ask before downloading them. Clips Kitty finds each one on the PC, downloads Hugging Face and `url` models into one folder every plugin shares when the user presses Download, and stops a run whose models aren't there yet ([Model references](model-references.md)).
 
 ## The official modes
 

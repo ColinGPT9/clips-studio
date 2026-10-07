@@ -1243,6 +1243,14 @@ has its own `problem_here`. `GET /plugins` gives installed plugins the same
 `plugins.registry_urls` again. See
 [Marketplace publishing](developers/marketplace-publishing.md).
 
+`GET /plugin-models` lists every model the installed plugins name, once, with
+where it is, its licence and size, and which plugins use it (no header).
+`POST /plugin-models/plan` `{"plugin": "publisher/name", "model": "<name>"}` says what
+downloading one would fetch, from Hugging Face's metadata, and
+`POST /plugin-models/download` (add `"allow_pickle": true` to accept a
+pickle-format file) downloads it into the shared model folder; both need
+the session header. See [Model references](developers/model-references.md).
+
 ## MCP: let an AI agent drive it
 
 Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use the

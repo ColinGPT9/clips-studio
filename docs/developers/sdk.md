@@ -62,7 +62,7 @@ job.finish()                # writes result.json; then exit with status 0
 | `job.limits` | `max_clips` (`None` means no limit), `min_duration`, `max_duration` in seconds, from the user's settings. Advisory: `add_range` logs a warning when a range is outside them, and Clips Kitty cuts the list to `max_clips`. |
 | `job.focus` | What the user asked the clips to be about, or `None` |
 | `job.tools` | `ffmpeg`, `ffprobe` (paths, with the `ffmpeg` permission) and `ollama` (`{"host", "model"}`, with the `ollama` permission; `model` is empty when the user's AI runs at a cloud provider) |
-| `job.models` | Models your manifest references, by name. Empty in plugin contract 1; model references are [planned](model-references.md). |
+| `job.models` | Models your manifest references, by name: each with `path`, `files` (each listed file's full path), `revision`, `source` and `id` ([Model references](model-references.md)). A run doesn't start until every one is on the PC, so each is there when your code runs; `path` is `None` only for an Ollama model when Ollama wasn't answering. Empty when you run with `python -m clipskitty_sdk run`. |
 | `job.output_dir` | A folder of your own inside the job folder |
 | `job.progress(fraction, message)` | How far along you are, 0 to 1. Shown on the job's "Finding the best moments" step. |
 | `job.log(message)` | A line for the job's log |

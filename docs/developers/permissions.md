@@ -15,7 +15,7 @@ A plugin lists what it needs in its manifest's `permissions`, `network` and `sen
 | `sends` | ⚠ Sends your video / audio / frames / transcript to … | Declared, and shown as a warning wherever the plugin is listed or installed | built (validated; shown with the plugin manager and Marketplace) |
 | `filesystem.read`, `filesystem.write` | Reads / writes files outside its own folder | Declared | built (validated) |
 | `project.read`, `project.write` | Reads / changes your clip library | Declared: the local API has no authentication, so any program on the PC can call it | built (validated) |
-| `models` (the manifest's `models:` list) | Downloads these models: … | Enforced for downloads Clips Kitty makes; declared beyond | planned ([Model references](model-references.md)) |
+| `models` (the manifest's `models:` list) | Uses these models: … | Enforced for downloads Clips Kitty makes (only the listed files, checked against their size and SHA-256, and only when the user presses Download); declared beyond, since the plugin's own code can fetch anything | built ([Model references](model-references.md)) |
 | `clips.write` | Returns finished clips | Refused in plugin contract 1 | planned |
 
 The manifest validator also ties them together: an `inputs` entry needs its permission (`video` needs `video.read`), hosts in `network` need the `network` permission and the other way round, and a `remote` or `hybrid` pipeline must list both `network` and `sends`. A `local` pipeline may not list `sends`.

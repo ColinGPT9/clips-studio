@@ -94,7 +94,8 @@ A plugin does not have to be Python: `run.command` can start a program shipped i
  "settings": {"threshold": 0.8},
  "limits": {"max_clips": null, "min_duration": 10, "max_duration": 60},
  "focus": null,
- "models": {},
+ "models": {"detector": {"source": "huggingface", "id": "example-org/example-model", "path": "...",
+                         "revision": "...", "files": {"model.onnx": "..."}}},
  "tools": {"ffmpeg": "...", "ffprobe": "..."},
  "output_dir": "..."}
 ```
