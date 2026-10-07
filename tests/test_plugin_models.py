@@ -381,10 +381,10 @@ def test_a_gated_model_that_isnt_here_is_not_sent_to_a_download_button_it_doesnt
         {"name": "weights", "source": "url", "id": "https://example.com/w.onnx", "sha256": "c" * 64, "gated": True}]}
     handed, missing = models.for_job(tmp_path, data)
     assert handed == {}
-    assert missing == ["Its AI model 'faces' is shared only with people its makers give access to on Hugging Face, "
-                       "so Clips Kitty can't download it for you yet.",
-                       "Its AI model 'weights' is shared only with people its makers give access to, so Clips Kitty "
-                       "can't download it for you yet."]
+    assert missing == [("Its AI model 'faces' is shared only with people its makers give access to on Hugging Face, "
+                        "so Clips Kitty can't download it for you yet."),
+                       ("Its AI model 'weights' is shared only with people its makers give access to, so Clips Kitty "
+                        "can't download it for you yet.")]
     assert not any("Download" in line for line in missing)
 
 

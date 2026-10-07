@@ -143,8 +143,8 @@ def test_a_commit_must_be_on_a_branch_of_the_listed_repository(reg):
 
     index, problems = reg.build(on_branch=on_branch)
     assert index["plugins"] == [] and asked == [(OWNER, row[0], entry["commit"])]
-    assert problems == [f"pipelines/{OWNER}/{row[0]}.yaml: 1.0.0: commit {entry['commit'][:7]} is not on a branch "
-                        f"or tag of {OWNER}/{row[0]} (it may be from a fork)"]
+    assert problems == [(f"pipelines/{OWNER}/{row[0]}.yaml: 1.0.0: commit {entry['commit'][:7]} is not on a branch "
+                         f"or tag of {OWNER}/{row[0]} (it may be from a fork)")]
 
     def offline(owner, repo, commit):
         raise OSError("no network")

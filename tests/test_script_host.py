@@ -93,8 +93,8 @@ def test_the_engines_own_code_is_refused_with_a_plain_message(tmp_path):
     done = _run([tmp_path / "s.py"], tmp_path)
     assert done.returncode == 1
     assert _error_lines(done.stdout) == [
-        "This pipeline tried to use Clips Kitty's own code (core), which pipelines can't use. "
-        "Ask its developer to update it."]
+        ("This pipeline tried to use Clips Kitty's own code (core), which pipelines can't use. "
+         "Ask its developer to update it.")]
 
 
 def test_a_pipelines_own_package_with_an_engine_name_still_wins(tmp_path):
@@ -110,8 +110,8 @@ def test_a_module_the_app_lacks_gives_a_plain_error_line(tmp_path):
     done = _run([tmp_path / "s.py"], tmp_path)
     assert done.returncode == 1
     assert _error_lines(done.stdout) == [
-        "This pipeline needs not_a_real_package_xyz, which this version of Clips Kitty doesn't include. "
-        "Ask its developer to update it."]
+        ("This pipeline needs not_a_real_package_xyz, which this version of Clips Kitty doesn't include. "
+         "Ask its developer to update it.")]
 
 
 def test_a_multiprocessing_child_loads_the_parents_script_first(tmp_path):

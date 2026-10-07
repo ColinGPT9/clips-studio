@@ -216,8 +216,8 @@ def test_a_source_must_be_well_formed(data):
     ("plugins/x.", "('plugins/x.') that Windows can't create"),
     ("plugins\\x", "('plugins\\\\x') with \\ or : in its name, which Windows doesn't allow"),
     ("../elsewhere", "('../elsewhere') outside its own files"),
-    ("plugins/.git/x", "('plugins/.git/x') inside a .git folder of version history, which Clips Kitty doesn't "
-                       "install"),
+    ("plugins/.git/x", ("('plugins/.git/x') inside a .git folder of version history, which Clips Kitty doesn't "
+                        "install")),
 ])
 def test_a_listed_folder_that_cant_be_installed_says_why_and_who_fixes_it(data, path, said):
     """A Marketplace listing's folder reaches clean_source as `path`; its
@@ -333,8 +333,8 @@ def test_a_git_lfs_pointer_is_said_plainly_and_named_in_the_details(data, plugin
     commit = plugin_source.commit(repo, files={"model.onnx": pointer})
     plan = _plan(data, _git_source(repo, commit))
     assert plan["ok"]
-    assert plan["warnings"] == ["Some of this pipeline's files couldn't be downloaded, so it may not work. "
-                                "Ask its developer."]
+    assert plan["warnings"] == [("Some of this pipeline's files couldn't be downloaded, so it may not work. "
+                                 "Ask its developer.")]
     assert any(line.startswith("model.onnx is stored with Git LFS") for line in plan["technical"])
 
 

@@ -100,8 +100,8 @@ def test_install_asks_for_what_the_plugin_is_and_does(tmp_path):
     got = _run(tmp_path, "return data.map((p) => m.confirmations(p))", plans)
     assert got[0] == []
     assert len(got[1]) == 1 and "has not checked it" in got[1][0]
-    assert got[2] == ["I understand nobody at Clips Kitty has read this pipeline’s code, "
-                      "and it can do anything I can do on this PC."]
+    assert got[2] == [("I understand nobody at Clips Kitty has read this pipeline’s code, "
+                       "and it can do anything I can do on this PC.")]
     assert len(got[3]) == 3 and "sends data off this PC" in got[3][1] and "account" in got[3][2]
 
 
@@ -375,11 +375,11 @@ def test_clips_kittys_online_list_is_named_and_described_plainly(tmp_path):
         "This shows the list that came with Clips Kitty. The Clips Kitty desktop app gets the online list.",
         "Clips Kitty’s online list, updated 3 hours ago.",
         f"The check for new pipelines 20 minutes ago didn’t work. {offline} This shows its copy from 3 hours ago.",
-        f"The check for new pipelines 20 minutes ago didn’t work. {registry.WHY_NOT_FOUND} "
-        "This shows the list that came with Clips Kitty.",
+        (f"The check for new pipelines 20 minutes ago didn’t work. {registry.WHY_NOT_FOUND} "
+         "This shows the list that came with Clips Kitty."),
         "This shows the list that came with Clips Kitty, which is newer than its online copy.",
-        f"The check for new pipelines 20 minutes ago didn’t work. {offline} "
-        "This shows the list that came with Clips Kitty."]
+        (f"The check for new pipelines 20 minutes ago didn’t work. {offline} "
+         "This shows the list that came with Clips Kitty.")]
 
 
 # ---- Awesome Clips Kitty: labels, numbers and credits ---------------------------------------
@@ -678,7 +678,6 @@ def test_the_engines_words_a_creator_reads_say_pipeline():
     import importlib
     import pkgutil
 
-    import plugins
     from plugins import counter, models
     assert PLUGIN_WORD.search("a public count for that plugin") and not PLUGIN_WORD.search("Clips Kitty’s “plugins” folder")
     keys = set()
@@ -686,7 +685,7 @@ def test_the_engines_words_a_creator_reads_say_pipeline():
         keys |= set(json.loads(path.read_text(encoding="utf-8")))
     shown = {counter.EXPLAIN, models.GATED, models.OLLAMA_MODELS, permissions.NOTICE, permissions.ENFORCED,
              permissions.DECLARED, permissions.ENFORCEMENT_NOTE}
-    for info in pkgutil.iter_modules(plugins.__path__):
+    for info in pkgutil.iter_modules([str(Path(counter.__file__).parent)]):
         try:
             module = importlib.import_module(f"plugins.{info.name}")
         except ImportError:  # an optional dependency this test run doesn't have
