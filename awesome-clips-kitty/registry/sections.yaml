@@ -34,6 +34,10 @@ app:
       title: Sports
       description: Open-source apps for sports highlights and match analysis.
       relationship: related
+    - id: automation
+      title: Automation
+      description: Apps that run steps on their own, such as posting a clip once it is ready.
+      relationship: related
 
 pipeline:
   sections:
@@ -76,6 +80,8 @@ pipeline:
     - id: podcasts
       title: Podcasts and talk
   wanted:
+    - section: gaming/generic
+      idea: Game events for genres the big clipping apps barely cover, such as fighting games, racing, strategy, card games, MMOs, and retro or emulated games.
     - section: gaming/world-of-warcraft
       idea: PvP, Mythic+ and raid highlights, each knowing what a great moment looks like in that mode.
     - section: gaming/marvel-rivals
@@ -118,6 +124,10 @@ model:
       title: Moment and highlight detection
     - id: ocr
       title: Reading text on screen
+    - id: vision-language
+      title: Describing images and video
+    - id: speakers
+      title: Speakers and voice activity
     - id: language
       title: Language models
 
@@ -138,18 +148,37 @@ integration:
       title: Publishing
     - id: community
       title: Chat and community
+    - id: games
+      title: Games
+      description: Live data from a game, such as kills and rounds, as they happen.
 
 tool:
   sections:
     - id: developer
       title: For developers
+    - id: clipping
+      title: Finding moments
+      description: Libraries and command-line tools that pick the best moments in a video.
     - id: transcription
       title: Transcription
+    - id: captions
+      title: Captions and subtitles
+    - id: translation
+      title: Translation and dubbing
     - id: media
       title: Audio and video processing
     - id: scenes
       title: Scene detection
+    - id: vision
+      title: Detection and tracking
     - id: editing
       title: Automatic editing
+    - id: games
+      title: Game replays and events
+      description: Read what happened in a game, with exact times, from its replay or demo files.
+    - id: sports
+      title: Sports analysis
+    - id: streams
+      title: Stream recording and downloads
     - id: local-ai
       title: Running AI locally

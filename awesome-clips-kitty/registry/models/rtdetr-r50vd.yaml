@@ -1,0 +1,11 @@
+name: RT-DETR
+description: A real-time object detector that runs directly in Hugging Face Transformers, a permissively licensed way to find people in frames for framing or activity scoring.
+section: vision
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: PekingU/rtdetr_r50vd
+runs: local
+tags: [object detection, person detection, reframing]
+added: 2026-10-07
+checked: 2026-10-07

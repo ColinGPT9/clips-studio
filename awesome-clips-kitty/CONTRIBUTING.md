@@ -121,7 +121,8 @@ Add a version by adding an entry; never change or remove one. The name, descript
 - the publisher (the id before `/`) is the repository's GitHub owner, and is not `clipskitty` (the Clips Kitty project's own repositories may list its examples under their own names);
 - every commit is a full 40-character hash, and every version is listed once;
 - the manifest passes the same validator the app uses, with the listing's id and version, and its kind matches the folder;
-- the commit is reachable on GitHub without signing in (the fetch proves it).
+- the commit is reachable on GitHub without signing in (the fetch proves it);
+- the commit is on a branch or tag of the listed repository itself. GitHub also serves a fork's commits under the parent repository's address, so without this check anyone could list code from their own fork under someone else's name. The build fetches the repository's commit history (no files) to check.
 
 That is all a listing means: **the automated checks passed. Nobody has read the code.** The Marketplace shows such a listing as "Community · not reviewed by a person".
 

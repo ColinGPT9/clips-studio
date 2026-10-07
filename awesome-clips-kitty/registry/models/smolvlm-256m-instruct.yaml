@@ -1,0 +1,11 @@
+name: SmolVLM-256M
+description: A tiny image-and-text model that captions frames and answers questions about them, small enough for CPU-only PCs and shipped with ONNX weights. Its captions are rough, so treat them as hints.
+section: vision-language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: HuggingFaceTB/SmolVLM-256M-Instruct
+runs: local
+tags: [captioning, cpu, onnx]
+added: 2026-10-07
+checked: 2026-10-07

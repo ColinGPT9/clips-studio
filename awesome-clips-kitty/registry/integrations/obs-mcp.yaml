@@ -1,0 +1,11 @@
+name: OBS MCP Server
+description: MCP server that lets AI agents control a running OBS Studio, including scenes, recording, streaming and saving the replay buffer.
+section: ai-assistants
+relationship: related
+license: GPL-2.0-only
+source:
+  github: https://github.com/royshil/obs-mcp
+runs: local
+tags: [mcp, obs, replay buffer, agents]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,12 @@
+name: Stream Clipper Factory
+description: Local web app that finds highlights in livestream recordings from chat density, chat emotion and how closely speech matches chat. It has a clip review flow and can learn a ranker from your ratings.
+section: video-clipping
+relationship: related
+license: MIT
+source:
+  github: https://github.com/Cbhhhh211/Stream-Clipper-Factory
+runs: both
+tags: [livestream, danmaku, bilibili, chat, highlights]
+warning: Downloads videos from Bilibili, YouTube and Douyin and records Bilibili live rooms; their terms may not allow it for videos you don't own.
+added: 2026-10-07
+checked: 2026-10-07

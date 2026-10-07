@@ -1,0 +1,11 @@
+name: MMAction2
+description: PyTorch toolbox for action recognition, temporal action localization and spatio-temporal action detection, for training models that spot plays or events in sports and game footage.
+section: vision
+relationship: related
+license: Apache-2.0
+source:
+  github: https://github.com/open-mmlab/mmaction2
+runs: local
+tags: [action detection, action recognition, pytorch, sports]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,11 @@
+name: PaddleOCR-VL-1.6
+description: 'A compact vision-language model built for document parsing: OCR, text spotting, and reading tables, charts and formulas. Its text-spotting mode can pick up on-screen text, but it is heavier than plain OCR models.'
+section: ocr
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: PaddlePaddle/PaddleOCR-VL-1.6
+runs: local
+tags: [ocr, text spotting, document parsing, paddleocr, gguf]
+added: 2026-10-07
+checked: 2026-10-07

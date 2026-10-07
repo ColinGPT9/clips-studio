@@ -65,9 +65,10 @@ Colin's message of 10:35 UTC answered the five open questions and widened the re
 - [x] Manifest `based_on` (D26), shown as "Built on"
 - [x] Marketplace: Apps, Models, Workflows, Integrations and Tools beside Pipelines, by section; labels, licence, numbers, credits and compatibility on every card and page
 - [x] Official entries: the example pipeline (listed, ✓ Official, ✓ Compatible), the OBS plugin, the MCP server and agent skill, the SDK
-- [ ] Research of open-source clipping and video-AI projects, and the entries it supports
-- [ ] Draft PR
+- [x] Draft PR #130
+- [x] A full review of the change: 30 problems confirmed and fixed; only the bundled index can label, count or say Official, every listed commit must be on the repository's own branches or tags, the counter address must be one of the project's GitHub releases (D22, D23)
+- [x] Research of open-source clipping and video-AI projects: 308 checked, 178 entries listed, six adapter plans, Eklipse and the gaming market, how other lists and install counters work (`docs/platform/research-notes/ecosystem-projects.md`, D27)
 
 ## Next action
 
-Finish the ecosystem research, add the projects it verifies, then open the draft pull request.
+Colin's answers on the two open cards (when to create the public catalog repository; counting on by default or off), then a look at the Marketplace on Windows.

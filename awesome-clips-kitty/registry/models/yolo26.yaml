@@ -1,0 +1,13 @@
+name: Ultralytics YOLO26
+description: Ultralytics' newest YOLO models for detecting people and objects, segmenting them and estimating poses, useful for tracking speakers or players when reframing.
+section: vision
+relationship: related
+license: AGPL-3.0
+license_note: Closed-source commercial use needs a paid Ultralytics Enterprise Licence. The Hub tag says agpl-3.0 while the ultralytics package declares AGPLv3 or later.
+source:
+  huggingface: Ultralytics/YOLO26
+runs: local
+tags: [object detection, pose, tracking, reframing]
+warning: The ultralytics package it runs through sends anonymous usage analytics to Google Analytics by default; turn off with yolo settings sync=False.
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,11 @@
+name: supervision
+description: Python toolkit that puts any detector's results into one format and adds helpers for drawing boxes, smoothing detections and reading or writing video frames. Object tracking now lives in Roboflow's separate trackers package.
+section: vision
+relationship: related
+license: MIT
+source:
+  github: https://github.com/roboflow/supervision
+runs: local
+tags: [computer vision, detection, tracking, annotation]
+added: 2026-10-07
+checked: 2026-10-07

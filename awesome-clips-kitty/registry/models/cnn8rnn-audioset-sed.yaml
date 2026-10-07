@@ -1,0 +1,11 @@
+name: cnn8rnn-audioset-sed
+description: A small sound event detector that marks 447 kinds of sounds, such as laughter, applause or gunshots, every 40 ms, so events come with start and end times.
+section: audio-events
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: wsntxxn/cnn8rnn-audioset-sed
+runs: local
+tags: [sound events, timestamps, laughter, audioset]
+added: 2026-10-07
+checked: 2026-10-07

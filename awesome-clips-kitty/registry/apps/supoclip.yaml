@@ -1,0 +1,14 @@
+name: SupoClip
+description: Self-hosted web app that picks clip-worthy segments with an LLM, crops them to vertical around faces and burns word-synced subtitles. It also has a clip editor, a REST API and an MCP server.
+section: video-clipping
+relationship: related
+license: AGPL-3.0
+license_note: The README and LICENSE say AGPL-3.0 without "or later"; only the mcp/ folder declares AGPL-3.0-or-later.
+source:
+  github: https://github.com/FujiwaraChoki/supoclip
+platforms: [web]
+runs: both
+tags: [opusclip, subtitles, self-hosted, mcp, shorts]
+warning: Uses the AssemblyAI cloud service for transcription by default. Downloads YouTube videos through Apify or yt-dlp; YouTube's terms may not allow it for videos you don't own.
+added: 2026-10-07
+checked: 2026-10-07

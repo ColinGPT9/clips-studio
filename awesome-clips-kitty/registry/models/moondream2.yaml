@@ -1,0 +1,11 @@
+name: Moondream 2
+description: A compact vision-language model that captions images, answers questions about them, and can detect or point at things such as faces and people. Its detection and pointing could guide vertical reframing.
+section: vision-language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: vikhyatk/moondream2
+runs: local
+tags: [captioning, face detection, reframing, vqa]
+added: 2026-10-07
+checked: 2026-10-07

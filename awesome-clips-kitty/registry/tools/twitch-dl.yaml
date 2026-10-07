@@ -1,0 +1,12 @@
+name: twitch-dl
+description: Command-line tool that lists a Twitch channel's videos and clips and downloads them over several connections at once. It can also export chat as JSON, as a chat video or as subtitles.
+section: streams
+relationship: related
+license: GPL-3.0
+source:
+  github: https://github.com/ihabunek/twitch-dl
+runs: local
+tags: [twitch, vod, clips, chat, downloader]
+warning: Downloads VODs and clips from Twitch with a built-in client ID; Twitch's terms do not allow automated downloading. Use it only for videos you have the right to download.
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,12 @@
+name: GLM-OCR
+description: A small OCR model from Z.ai that reads text, tables and formulas and can fill a JSON schema from an image, such as score and clock fields. It runs locally through Ollama or Transformers; a hosted API is optional.
+section: ocr
+relationship: related
+license: MIT
+license_note: The model is MIT, but the full SDK pipeline also uses PP-DocLayoutV3 (Apache-2.0) and the card asks users to follow both licences. The SDK code in github.com/zai-org/GLM-OCR is Apache-2.0.
+source:
+  huggingface: zai-org/GLM-OCR
+runs: both
+tags: [ocr, ollama, scoreboard, json]
+added: 2026-10-07
+checked: 2026-10-07

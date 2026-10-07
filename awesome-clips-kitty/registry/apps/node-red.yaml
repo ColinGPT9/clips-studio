@@ -1,0 +1,11 @@
+name: Node-RED
+description: Low-code tool for wiring event-driven flows in a browser editor, such as watching a folder for new recordings and calling a local API to start clipping.
+section: automation
+relationship: related
+license: Apache-2.0
+source:
+  github: https://github.com/node-red/node-red
+runs: local
+tags: [automation, low-code, flows, webhooks]
+added: 2026-10-07
+checked: 2026-10-07

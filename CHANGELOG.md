@@ -23,6 +23,10 @@ were often broken in a way that only showed up on somebody else's machine.
   automated checks; not a security review), ★ Featured and Community. Installs from the
   Marketplace can be counted anonymously, with a switch to turn it off; nothing is counted
   yet. The developer kit is now MIT-licensed; the app stays AGPL-3.0-or-later.
+  The list starts with 178 open-source projects (clippers, editors, transcription,
+  models, OBS and streaming tools, game replay readers), each checked for its licence
+  and activity, with a warning where one sends your videos or transcripts online or
+  downloads from sites whose terms may not allow it.
   (Experimental routes: `/plugins`, `/marketplace`, `/marketplace/catalog`,
   `/marketplace/counting`, `/plugin-models`.) (#129)
 

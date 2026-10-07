@@ -1,0 +1,12 @@
+name: SenseVoiceSmall
+description: Fast speech recognition model for Mandarin, Cantonese, English, Japanese and Korean that also tags laughter, applause, music and emotion, handy signals for spotting clip moments.
+section: speech
+relationship: related
+license: LicenseRef-FunASR-Model-License
+license_note: 'The SenseVoice code on GitHub is MIT, but the weights use the FunASR Model License: free use, changes and sharing with attribution; it ends for anyone who maliciously or baselessly attacks the model, and Alibaba may revise it.'
+source:
+  huggingface: FunAudioLLM/SenseVoiceSmall
+runs: local
+tags: [transcription, laughter, applause, emotion, audio events]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,14 @@
+name: danser-go
+description: Plays back osu! beatmaps and replays from osu! stable and lazer and records them to video files through FFmpeg, from a GUI or the command line.
+section: games
+relationship: related
+license: GPL-3.0
+license_note: 'It bundles the proprietary BASS audio library, which is free only for non-commercial use: selling danser-go or a derivative needs a paid BASS licence. Some assets listed in CREDITS.md, such as the logo, have their own terms.'
+source:
+  github: https://github.com/Wieku/danser-go
+platforms: [windows, linux]
+runs: local
+tags: [osu, replay, rendering, ffmpeg]
+games: [osu]
+added: 2026-10-07
+checked: 2026-10-07

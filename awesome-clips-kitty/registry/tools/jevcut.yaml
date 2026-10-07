@@ -1,0 +1,13 @@
+name: jevcut
+description: Cuts long talk videos into ranked clips by listing every possible cut point from sentence ends, pauses and speaker changes, then having a hosted model judge each clip. Outputs MP4s, an edit list and an FCPXML timeline.
+section: clipping
+relationship: related
+license: MIT
+license_note: Judging clips needs an API key for TypeSafe's hosted Jev model (through OpenRouter or the TypeSafe SDK), a paid service under its own terms.
+source:
+  github: https://github.com/VBS2004/jevcut
+runs: both
+tags: [boundaries, transcript, podcast, fcpxml]
+warning: Sends transcript text to TypeSafe's hosted Jev model, through OpenRouter by default, to judge every clip.
+added: 2026-10-07
+checked: 2026-10-07

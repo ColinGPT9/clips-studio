@@ -1,0 +1,12 @@
+name: whisper-small
+description: A lighter multilingual Whisper model for transcribing speech on machines with little GPU memory or only a CPU, at some cost in accuracy.
+section: speech
+relationship: related
+license: Apache-2.0
+license_note: Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.
+source:
+  huggingface: openai/whisper-small
+runs: local
+tags: [transcription, subtitles, multilingual, cpu]
+added: 2026-10-07
+checked: 2026-10-07

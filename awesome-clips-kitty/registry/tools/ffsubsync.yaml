@@ -1,0 +1,12 @@
+name: FFsubsync
+description: Automatically fixes out-of-sync subtitles by shifting and stretching them to match the speech in a video or a correctly timed reference subtitle file.
+section: captions
+relationship: related
+license: MIT
+source:
+  github: https://github.com/smacke/ffsubsync
+platforms: [windows, macos, web]
+runs: local
+tags: [subtitles, sync, srt, alignment]
+added: 2026-10-07
+checked: 2026-10-07

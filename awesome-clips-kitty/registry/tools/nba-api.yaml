@@ -1,0 +1,12 @@
+name: nba_api
+description: Python client for NBA.com's stats and live data endpoints, including play-by-play and scoreboards, for lining up basketball highlights with game events.
+section: sports
+relationship: related
+license: MIT
+source:
+  github: https://github.com/swar/nba_api
+runs: both
+tags: [nba, play-by-play, python, stats]
+sports: [basketball]
+added: 2026-10-07
+checked: 2026-10-07

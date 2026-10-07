@@ -1,0 +1,12 @@
+name: whisper-medium
+description: The middle-sized multilingual Whisper model, between small and large, for transcribing and translating speech.
+section: speech
+relationship: related
+license: Apache-2.0
+license_note: Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.
+source:
+  huggingface: openai/whisper-medium
+runs: local
+tags: [transcription, subtitles, multilingual]
+added: 2026-10-07
+checked: 2026-10-07

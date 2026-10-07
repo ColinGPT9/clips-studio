@@ -1,0 +1,14 @@
+name: MoneyPrinterTurbo
+description: 'Makes a short video from a topic or keywords: writes the script, gathers stock or AI footage, adds voiceover, subtitles and music, and exports 9:16, 16:9 or 1:1.'
+section: video-ai
+relationship: related
+license: MIT
+license_note: The README says the bundled background music comes from YouTube videos and asks you to delete it if there are copyright issues.
+source:
+  github: https://github.com/harry0703/MoneyPrinterTurbo
+platforms: [windows, macos, linux]
+runs: both
+tags: [shorts, faceless, stock footage, tts, subtitles]
+warning: Sends your topic and script to a cloud LLM (Moonshot by default) and to Microsoft Edge TTS, and fetches stock footage from Pexels.
+added: 2026-10-07
+checked: 2026-10-07

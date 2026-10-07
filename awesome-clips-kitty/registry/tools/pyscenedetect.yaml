@@ -1,0 +1,11 @@
+name: PySceneDetect
+description: Finds scene cuts and transitions in a video and lists them as timecodes or CSV, or splits the video at each cut. Useful for snapping clip starts and ends to shot changes.
+section: scenes
+relationship: related
+license: BSD-3-Clause
+source:
+  github: https://github.com/Breakthrough/PySceneDetect
+runs: local
+tags: [scene detection, shot boundaries, cuts, split video]
+added: 2026-10-07
+checked: 2026-10-07

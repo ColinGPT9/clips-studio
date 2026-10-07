@@ -1,0 +1,11 @@
+name: SmolVLM2-500M-Video
+description: A small Hugging Face model that describes and answers questions about short videos and images in English, using under 2 GB of GPU memory. Useful for rating how visually interesting a candidate clip is.
+section: vision-language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+runs: local
+tags: [video understanding, captioning, onnx, highlights]
+added: 2026-10-07
+checked: 2026-10-07

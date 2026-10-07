@@ -1,0 +1,13 @@
+name: NarratoAI
+description: Writes a commentary script for a film or short drama, cuts the matching scenes, and adds AI voiceover and subtitles, with export to Jianying drafts.
+section: video-ai
+relationship: related
+license: MIT
+source:
+  github: https://github.com/linyqh/NarratoAI
+platforms: [windows, macos]
+runs: both
+tags: [narration, commentary, voiceover, subtitles]
+warning: Sends video frames and subtitles to a cloud LLM (SiliconFlow by default, or another OpenAI-compatible service) to write the narration.
+added: 2026-10-07
+checked: 2026-10-07

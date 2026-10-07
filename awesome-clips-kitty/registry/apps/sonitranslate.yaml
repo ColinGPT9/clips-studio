@@ -1,0 +1,18 @@
+name: SoniTranslate
+description: Browser app that translates and dubs videos with synced audio, using Whisper transcription, speaker labels, machine or LLM translation and several text-to-speech and voice-imitation engines.
+section: video-ai
+relationship: related
+license: Apache-2.0
+license_note: 'Speaker labels use gated pyannote models: sign in to Hugging Face and accept their terms first. Optional XTTS voices are under the Coqui Public Model License.'
+source:
+  github: https://github.com/R3gm/SoniTranslate
+models:
+  - huggingface: pyannote/speaker-diarization
+  - huggingface: pyannote/segmentation
+  - huggingface: coqui/XTTS-v2
+platforms: [windows]
+runs: both
+tags: [dubbing, translation, tts, voice cloning, gradio]
+warning: Sends transcripts to Google Translate and dub text to Microsoft's Edge TTS by default. Downloads YouTube videos, which YouTube's terms may not allow. Copy voices only with consent.
+added: 2026-10-07
+checked: 2026-10-07

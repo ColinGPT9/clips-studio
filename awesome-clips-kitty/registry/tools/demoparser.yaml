@@ -1,0 +1,12 @@
+name: Demoparser
+description: Fast Counter-Strike 2 demo parser written in Rust and used from Python or JavaScript. Query a demo for events such as kills with their tick numbers to find highlight moments.
+section: games
+relationship: related
+license: MIT
+source:
+  github: https://github.com/LaihoE/demoparser
+runs: local
+tags: [cs2, demo parser, kills, replays]
+games: [counter-strike-2]
+added: 2026-10-07
+checked: 2026-10-07

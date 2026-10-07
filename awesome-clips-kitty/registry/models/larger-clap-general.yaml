@@ -1,0 +1,12 @@
+name: larger_clap_general
+description: A larger CLAP model trained on general audio, music and speech that matches sounds against text labels you choose, suited to music streams and podcasts.
+section: audio-events
+relationship: related
+license: Apache-2.0
+license_note: The card does not name its training data; LAION's related LAION-Audio-630K dataset marks its audio as research-only, a term not stated for these weights.
+source:
+  huggingface: laion/larger_clap_general
+runs: local
+tags: [audio events, zero-shot, music, podcast]
+added: 2026-10-07
+checked: 2026-10-07

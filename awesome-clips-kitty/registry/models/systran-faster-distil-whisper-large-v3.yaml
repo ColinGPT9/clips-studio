@@ -1,0 +1,11 @@
+name: Whisper distil-large-v3 model for CTranslate2
+description: The English-only distil-large-v3 converted for faster-whisper, which loads it by that name. Fast, accurate transcription for English videos; not suited to other languages.
+section: speech
+relationship: related
+license: MIT
+source:
+  huggingface: Systran/faster-distil-whisper-large-v3
+runs: local
+tags: [transcription, english, faster-whisper, ctranslate2]
+added: 2026-10-07
+checked: 2026-10-07

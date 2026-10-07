@@ -1,0 +1,12 @@
+name: OBS Hadowplay
+description: OBS plugin for Windows that turns the replay buffer on when a game is captured and files saved replays, recordings and screenshots into folders named after each game.
+section: streaming
+relationship: related
+license: GPL-2.0-or-later
+source:
+  github: https://github.com/EZ64cool/obs-hadowplay
+platforms: [windows]
+runs: local
+tags: [obs, replay buffer, game capture, shadowplay]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,18 @@
+name: Open Dubbing
+description: 'Dubs a video into another language from the command line: it separates the voice, identifies speakers, transcribes, translates and generates new speech. It saves an editable file so you can fix lines and re-render.'
+section: translation
+relationship: related
+license: Apache-2.0
+license_note: 'Its default NLLB translation and MMS speech models are CC-BY-NC-4.0 (non-commercial only), and its pyannote models are gated: accept their terms on Hugging Face and supply a token.'
+source:
+  github: https://github.com/Softcatala/open-dubbing
+models:
+  - huggingface: facebook/nllb-200-1.3B
+  - huggingface: facebook/nllb-200-3.3B
+  - huggingface: facebook/mms-tts-cat
+  - huggingface: pyannote/speaker-diarization-3.1
+  - huggingface: pyannote/segmentation-3.0
+runs: both
+tags: [dubbing, translation, text to speech, voice]
+added: 2026-10-07
+checked: 2026-10-07

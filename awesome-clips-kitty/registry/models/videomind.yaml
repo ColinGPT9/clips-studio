@@ -1,0 +1,16 @@
+name: VideoMind
+description: A video agent built on Qwen2-VL that answers a question by finding, then double-checking, the moments in a video that match it. Needs a GPU and Linux-oriented dependencies.
+section: moments
+relationship: related
+license: BSD-3-Clause
+license_note: Its LoRA weights are BSD-3-Clause but need the Qwen2-VL base model, which is Apache-2.0; keep both notices.
+source:
+  huggingface: yeliudev/VideoMind-2B
+models:
+  - huggingface: yeliudev/VideoMind-7B
+  - huggingface: yeliudev/VideoMind-2B-FT-QVHighlights
+  - huggingface: Qwen/Qwen2-VL-2B-Instruct
+runs: local
+tags: [video llm, moment retrieval, qwen2-vl, grounding, gpu]
+added: 2026-10-07
+checked: 2026-10-07

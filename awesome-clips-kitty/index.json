@@ -4,6 +4,3520 @@
   {
    "added": "2026-10-07",
    "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Local-first app with a web UI and CLI that turns a long video into ranked vertical, square or wide clips with burned-in captions and speaker-tracked reframing, using faster-whisper, Ollama and MediaPipe.",
+   "id": "apps/artbyjazi-autoclip",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "Optional speaker diarization uses gated pyannote models: sign in to Hugging Face and accept their terms first.",
+   "metrics": {},
+   "name": "AutoClip",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "artbyjazi-autoclip",
+   "source": {
+    "github": "https://github.com/artbyjazi/autoclip"
+   },
+   "tags": [
+    "shorts",
+    "ollama",
+    "reframing",
+    "captions",
+    "whisper"
+   ],
+   "warning": "Downloads YouTube videos with yt-dlp and suggests browser cookies to get past bot checks; YouTube's terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop and web app that turns podcasts, interviews and courses into shorts with captions, covers and post text. It can transcribe with local Whisper or SenseVoice and pick moments with Ollama or LM Studio.",
+   "id": "apps/autoclip",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "AutoClip",
+   "platforms": [
+    "windows",
+    "macos",
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "autoclip",
+   "source": {
+    "github": "https://github.com/zhouxiaoka/autoclip"
+   },
+   "tags": [
+    "podcast",
+    "shorts",
+    "captions",
+    "ollama",
+    "desktop"
+   ],
+   "warning": "Sends usage analytics (PostHog) and crash reports (Sentry) by default; turn off in Settings. Downloads videos from YouTube and other sites, which their terms may not allow."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python tool that scores long gameplay recordings by audio and motion, optionally with AI analysis, and renders vertical shorts with captions and an optional voiceover.",
+   "id": "apps/autoshorts",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "It credits Binary-Bytes/Auto-YouTube-Shorts-Maker as a base, and that project has no licence file.",
+   "metrics": {
+    "models": {
+     "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign": {
+      "downloads": 340981,
+      "last_modified": "2026-01-29",
+      "likes": 433
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+    }
+   ],
+   "name": "AutoShorts",
+   "relationship": "related",
+   "runs": "both",
+   "section": "gaming",
+   "slug": "autoshorts",
+   "source": {
+    "github": "https://github.com/divyaprakash0426/autoshorts"
+   },
+   "tags": [
+    "gaming",
+    "highlights",
+    "captions",
+    "gpu",
+    "voiceover"
+   ],
+   "warning": "Its example settings upload the whole video to Google Gemini for analysis; set AI_PROVIDER=local to keep everything on your PC."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "On-device subtitle generator that transcribes with Whisper, Parakeet and other local models, labels speakers and sends styled subtitles to DaVinci Resolve, Premiere Pro or After Effects, or exports SRT.",
+   "id": "apps/autosubs",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "Models download separately under their own licences; the optional MMS word-alignment weights are CC BY-NC 4.0 (non-commercial).",
+   "metrics": {},
+   "name": "AutoSubs",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "video-ai",
+   "slug": "autosubs",
+   "source": {
+    "github": "https://github.com/tmoroney/auto-subs"
+   },
+   "tags": [
+    "subtitles",
+    "davinci resolve",
+    "premiere",
+    "captions",
+    "cli"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Offline desktop app that transcribes and translates audio and video with Whisper models and exports TXT, SRT or VTT subtitles. It also has live transcription, speaker labels and a CLI.",
+   "id": "apps/buzz",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Buzz",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "buzz",
+   "source": {
+    "github": "https://github.com/chidiwilliams/buzz"
+   },
+   "tags": [
+    "transcription",
+    "subtitles",
+    "whisper",
+    "srt",
+    "offline"
+   ],
+   "warning": "Can download YouTube links to transcribe them; YouTube's terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app that transcribes podcasts, vlogs and stream VODs locally, ranks moments with a cloud LLM and renders vertical clips with captions and a webcam-over-gameplay layout.",
+   "id": "apps/clipmint",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "ClipMint",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "clipmint",
+   "source": {
+    "github": "https://github.com/kleZ799/clipmint"
+   },
+   "tags": [
+    "gaming",
+    "vod",
+    "podcast",
+    "webcam",
+    "youtube"
+   ],
+   "warning": "Sends transcripts to Gemini, Groq or OpenAI to rank moments. Downloads YouTube videos, optionally with your browser cookies; YouTube's terms may not allow it."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app and CLI for Counter-Strike demos that analyses matches and records videos of chosen rounds or of a player's kills and deaths from the game, ready to clip.",
+   "games": [
+    "counter-strike-2",
+    "counter-strike-go"
+   ],
+   "id": "apps/cs-demo-manager",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "CS Demo Manager",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "gaming",
+   "slug": "cs-demo-manager",
+   "source": {
+    "github": "https://github.com/akiver/cs-demo-manager"
+   },
+   "tags": [
+    "demos",
+    "kills",
+    "hlae",
+    "stats",
+    "cs2"
+   ],
+   "warning": "Can download match demos from Valve, FACEIT, Renown and 5EPLAY accounts; check those platforms' terms."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Self-hosted web app for sharing game clips and other videos through unique links. It scans a video folder, such as your clip exports, and can send Discord or webhook notices for new videos.",
+   "id": "apps/fireshare",
+   "kind": "app",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "Fireshare",
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "fireshare",
+   "source": {
+    "github": "https://github.com/fireshare-app/fireshare"
+   },
+   "tags": [
+    "sharing",
+    "self-hosted",
+    "discord",
+    "webhooks",
+    "game clips"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Local app that transcribes video with FunASR speech models and lets you cut clips by picking transcript text or a speaker, with SRT subtitles for each clip. Well suited to Chinese-language videos.",
+   "id": "apps/funclip",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "The MIT licence covers the code only. Speech models download separately under their own licences: the README says the default Paraformer and CAM++ models list Apache-2.0, while SenseVoice uses the FunASR Model License, which requires attribution.",
+   "metrics": {},
+   "name": "FunClip",
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "funclip",
+   "source": {
+    "github": "https://github.com/modelscope/FunClip"
+   },
+   "tags": [
+    "chinese",
+    "speaker",
+    "subtitles",
+    "asr",
+    "gradio"
+   ],
+   "warning": "Optional LLM clipping sends transcripts to cloud APIs. Its keyless g4f option routes text through third-party providers, some via browser automation; check their terms."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app that transcribes gameplay, podcast or sports commentary locally, cuts one clip per spoken segment and lets you or a local LLM pick the best. It stitches the picks into a highlight reel.",
+   "id": "apps/hi-lite",
+   "kind": "app",
+   "license": "GPL-3.0-or-later",
+   "metrics": {},
+   "name": "Hi-Lite",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "hi-lite",
+   "source": {
+    "github": "https://github.com/seanng-1/hi-lite"
+   },
+   "tags": [
+    "highlight reel",
+    "ollama",
+    "gameplay",
+    "podcast",
+    "whisper"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Records Counter-Strike 2 and CS:GO demos as high-quality video with camera control and effects, and exports camera motion to After Effects or Blender. Gives you clean game footage to cut into clips.",
+   "games": [
+    "counter-strike-2",
+    "counter-strike-go"
+   ],
+   "id": "apps/hlae",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "MIT covers only the project's own code; the README says the licence does not apply to submodules (such as Detours, rapidxml and a fork of Valve's Half-Life SDK), which have their own terms.",
+   "metrics": {},
+   "name": "Half-Life Advanced Effects",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "gaming",
+   "slug": "hlae",
+   "source": {
+    "github": "https://github.com/advancedfx/advancedfx"
+   },
+   "tags": [
+    "demos",
+    "recording",
+    "movie making",
+    "camera",
+    "hlae"
+   ],
+   "warning": "Hooks into the game; its README says it is technically a hack and joining VAC-protected servers with it will probably get you VAC banned. Use it only offline on demos."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app that finds highlights in long videos and livestream VODs from the transcript, loudness, shots, faces and chat, then exports captioned vertical clips. Transcribes locally and can use Ollama.",
+   "id": "apps/hotclip",
+   "kind": "app",
+   "license": "AGPL-3.0-only",
+   "metrics": {},
+   "name": "HotClip",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "hotclip",
+   "source": {
+    "github": "https://github.com/xixihhhh/hotclip"
+   },
+   "tags": [
+    "livestream",
+    "vod",
+    "chat",
+    "bilibili",
+    "mcp"
+   ],
+   "warning": "Sends transcripts to Atlas Cloud by default unless set to Ollama. Downloads Bilibili and YouTube videos, which their terms may not allow. Its anti-fingerprint feature dodges repost checks."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "KDE's free timeline video editor for finishing clips. Its project files and command-line rendering let other tools hand over a ready-made timeline.",
+   "id": "apps/kdenlive",
+   "kind": "app",
+   "license": "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL",
+   "license_note": "The KDE-Accepted-GPL option allows later GPL versions approved by KDE e.V.",
+   "metrics": {},
+   "name": "Kdenlive",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "kdenlive",
+   "source": {
+    "github": "https://github.com/KDE/kdenlive"
+   },
+   "tags": [
+    "editor",
+    "timeline",
+    "kde",
+    "render"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Riot Games' Windows tool for staging and recording League of Legends replays, with camera control, a keyframe sequencer and video capture. Record the footage here, then clip it.",
+   "games": [
+    "league-of-legends"
+   ],
+   "id": "apps/league-director",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "license_note": "Riot assets bundled with the installer, such as skybox textures, fall under Riot's legal terms, not Apache-2.0.",
+   "metrics": {},
+   "name": "League Director",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "gaming",
+   "slug": "league-director",
+   "source": {
+    "github": "https://github.com/RiotGames/leaguedirector"
+   },
+   "tags": [
+    "replay",
+    "recording",
+    "camera",
+    "league"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Windows tray app that records League of Legends games automatically and saves kills, objectives and your hotkey highlight markers in a JSON file next to each recording, ready for event-based clipping.",
+   "games": [
+    "league-of-legends"
+   ],
+   "id": "apps/leaguerecord",
+   "kind": "app",
+   "license": "GPL-3.0-or-later",
+   "metrics": {},
+   "name": "LeagueRecord",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "gaming",
+   "slug": "leaguerecord",
+   "source": {
+    "github": "https://github.com/FFFFFFFXXXXXXX/league_record"
+   },
+   "tags": [
+    "recording",
+    "events",
+    "markers",
+    "league",
+    "highlights"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app for fast lossless trimming and cutting of video and audio without re-encoding. It can import segment lists such as CSV, so a list of clip timings can be cut in one go.",
+   "id": "apps/losslesscut",
+   "kind": "app",
+   "license": "GPL-2.0-only",
+   "metrics": {},
+   "name": "LosslessCut",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "losslesscut",
+   "source": {
+    "github": "https://github.com/mifi/lossless-cut"
+   },
+   "tags": [
+    "trimming",
+    "lossless",
+    "ffmpeg",
+    "cutting",
+    "editor"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Makes a short video from a topic or keywords: writes the script, gathers stock or AI footage, adds voiceover, subtitles and music, and exports 9:16, 16:9 or 1:1.",
+   "id": "apps/moneyprinterturbo",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "The README says the bundled background music comes from YouTube videos and asks you to delete it if there are copyright issues.",
+   "metrics": {},
+   "name": "MoneyPrinterTurbo",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "moneyprinterturbo",
+   "source": {
+    "github": "https://github.com/harry0703/MoneyPrinterTurbo"
+   },
+   "tags": [
+    "shorts",
+    "faceless",
+    "stock footage",
+    "tts",
+    "subtitles"
+   ],
+   "warning": "Sends your topic and script to a cloud LLM (Moonshot by default) and to Microsoft Edge TTS, and fetches stock footage from Pexels."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Writes a commentary script for a film or short drama, cuts the matching scenes, and adds AI voiceover and subtitles, with export to Jianying drafts.",
+   "id": "apps/narratoai",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "NarratoAI",
+   "platforms": [
+    "windows",
+    "macos"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "narratoai",
+   "source": {
+    "github": "https://github.com/linyqh/NarratoAI"
+   },
+   "tags": [
+    "narration",
+    "commentary",
+    "voiceover",
+    "subtitles"
+   ],
+   "warning": "Sends video frames and subtitles to a cloud LLM (SiliconFlow by default, or another OpenAI-compatible service) to write the narration."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Low-code tool for wiring event-driven flows in a browser editor, such as watching a folder for new recordings and calling a local API to start clipping.",
+   "id": "apps/node-red",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "Node-RED",
+   "relationship": "related",
+   "runs": "local",
+   "section": "automation",
+   "slug": "node-red",
+   "source": {
+    "github": "https://github.com/node-red/node-red"
+   },
+   "tags": [
+    "automation",
+    "low-code",
+    "flows",
+    "webhooks"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop software for recording and live streaming, with a replay buffer that saves the last moments on a hotkey. Its recordings are the usual starting point for clips.",
+   "id": "apps/obs-studio",
+   "kind": "app",
+   "license": "GPL-2.0-or-later",
+   "metrics": {},
+   "name": "OBS Studio",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "obs-studio",
+   "source": {
+    "github": "https://github.com/obsproject/obs-studio"
+   },
+   "tags": [
+    "recording",
+    "streaming",
+    "replay buffer",
+    "obs"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Windows desktop app that transcribes long videos locally, reframes them to vertical with GPU face and subject tracking, styles captions and batch-exports. Clip picking is done by an outside AI agent over MCP.",
+   "id": "apps/open-clipper",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "The bundled InsightFace SCRFD face weights are for non-commercial research only; commercial distribution needs other weights. The YOLOX-S and MoveNet weights are Apache-2.0.",
+   "metrics": {},
+   "name": "Open Clipper",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "open-clipper",
+   "source": {
+    "github": "https://github.com/GrepCut/OpenClipper"
+   },
+   "tags": [
+    "reframing",
+    "captions",
+    "mcp",
+    "face tracking",
+    "whisper"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python tool with a web UI and CLI that transcribes long videos, asks an LLM to rank the most engaging moments and cuts clips with subtitles, titles and covers.",
+   "id": "apps/openclip",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "Optional speaker identification uses the gated pyannote/speaker-diarization-community-1 model; sign in to Hugging Face and accept its terms first. Whisper and Paraformer weights come under their own licences.",
+   "metrics": {
+    "models": {
+     "pyannote/speaker-diarization-community-1": {
+      "downloads": 5554891,
+      "last_modified": "2025-09-29",
+      "likes": 2595
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "pyannote/speaker-diarization-community-1"
+    }
+   ],
+   "name": "OpenClip",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "openclip",
+   "source": {
+    "github": "https://github.com/linzzzzzz/openclip"
+   },
+   "tags": [
+    "llm",
+    "subtitles",
+    "highlights",
+    "livestream",
+    "bilibili"
+   ],
+   "warning": "Sends transcripts to Alibaba's Qwen API by default to pick moments. Downloads from YouTube and Bilibili, whose terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Creator workspace, formerly KrillinAI, that transcribes, translates and dubs videos and renders bilingual subtitles in landscape or portrait, plus AI writing, image and video tools.",
+   "id": "apps/opencreator",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "OpenCreator",
+   "platforms": [
+    "windows",
+    "macos",
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "opencreator",
+   "source": {
+    "github": "https://github.com/krillinai/OpenCreator"
+   },
+   "tags": [
+    "translation",
+    "dubbing",
+    "subtitles",
+    "portrait",
+    "whisper"
+   ],
+   "warning": "Desktop app sends usage stats by default (off in Settings); sends prompts and subtitles to your AI service; downloads videos from YouTube and other sites, whose terms may not allow it."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Free, open video editor in the spirit of CapCut for trimming and assembling clips. This repository holds a ground-up rewrite that is still in progress.",
+   "id": "apps/opencut",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "OpenCut",
+   "platforms": [
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "opencut",
+   "source": {
+    "github": "https://github.com/OpenCut-app/OpenCut"
+   },
+   "tags": [
+    "editor",
+    "capcut alternative",
+    "video editing"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Self-hosted web app that turns long videos into vertical shorts with Whisper transcription, LLM moment picking, face-tracked reframing and subtitles. It can use a local LLM through Ollama.",
+   "id": "apps/openshorts",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "Everything in the cloud/ folder is under the source-available OpenShorts Commercial License. Its Remotion render service is free only for individuals, non-profits and companies with up to 3 employees.",
+   "metrics": {},
+   "name": "OpenShorts",
+   "platforms": [
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "openshorts",
+   "source": {
+    "github": "https://github.com/mutonby/openshorts"
+   },
+   "tags": [
+    "shorts",
+    "reframing",
+    "subtitles",
+    "self-hosted",
+    "mcp"
+   ],
+   "warning": "Sends transcripts to Google Gemini by default to pick moments, and video frames to pick layouts. Downloads videos from YouTube; its terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Beginner-friendly video editor for finishing clips, with titles, keyframe animation, unlimited tracks and EDL or XML timeline import.",
+   "id": "apps/openshot",
+   "kind": "app",
+   "license": "GPL-3.0-or-later",
+   "metrics": {},
+   "name": "OpenShot Video Editor",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "openshot",
+   "source": {
+    "github": "https://github.com/OpenShot/openshot-qt"
+   },
+   "tags": [
+    "editor",
+    "beginner",
+    "timeline"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Podcast clipper that transcribes episodes locally, suggests clips, crops to the active speaker and burns in captions. Use it from a CLI, a web studio or an AI agent over MCP.",
+   "id": "apps/podcli",
+   "kind": "app",
+   "license": "AGPL-3.0-only",
+   "license_note": "Open core: podcli Pro adds a cloud multicam editor, and a commercial licence is offered. Speaker diarization needs an HF_TOKEN because the pyannote models are gated; accept their terms on Hugging Face first.",
+   "metrics": {},
+   "name": "podcli",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "podcli",
+   "source": {
+    "github": "https://github.com/nmbrthirteen/podcli"
+   },
+   "tags": [
+    "podcast",
+    "captions",
+    "face tracking",
+    "mcp",
+    "whisper"
+   ],
+   "warning": "Clip scoring sends transcripts to Anthropic or OpenAI through the Claude Code or Codex CLI if installed. It can pull episodes from URLs with yt-dlp, which sites' terms may not allow."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app that translates videos end to end: it transcribes speech, translates subtitles, creates dubbed voices and puts them back into the video. It can run locally with faster-whisper and Ollama.",
+   "id": "apps/pyvideotrans",
+   "kind": "app",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "pyVideoTrans",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "pyvideotrans",
+   "source": {
+    "github": "https://github.com/jianchang512/pyvideotrans"
+   },
+   "tags": [
+    "dubbing",
+    "translation",
+    "tts",
+    "subtitles",
+    "voice cloning"
+   ],
+   "warning": "By default it sends subtitle text to Google for translation and to Microsoft's online Edge-TTS voice service for dubbing."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Mac app that transcribes with Parakeet, picks highlights through its own self-hosted service backed by any OpenAI-compatible LLM, then trims, reframes to vertical and burns in captions.",
+   "id": "apps/ripeclips",
+   "kind": "app",
+   "license": "MIT",
+   "license_note": "Parakeet speech model files download at runtime under NVIDIA's model licence, not MIT.",
+   "metrics": {},
+   "name": "RipeClips",
+   "platforms": [
+    "macos"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "ripeclips",
+   "source": {
+    "github": "https://github.com/joonfjp/ripeclips"
+   },
+   "tags": [
+    "macos",
+    "parakeet",
+    "llm",
+    "captions",
+    "highlights"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Game recorder that starts with your game, keeps a replay buffer and builds highlights from kills and deaths in supported games. Includes a clip editor with a timeline and optional upload to Segra.tv.",
+   "games": [
+    "counter-strike-2",
+    "league-of-legends",
+    "dota-2",
+    "rocket-league",
+    "minecraft"
+   ],
+   "id": "apps/segra",
+   "kind": "app",
+   "license": "GPL-2.0-only",
+   "metrics": {},
+   "name": "Segra",
+   "platforms": [
+    "windows",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "gaming",
+   "slug": "segra",
+   "source": {
+    "github": "https://github.com/Segergren/Segra"
+   },
+   "tags": [
+    "game recording",
+    "replay buffer",
+    "highlights",
+    "clip editor"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Mac app for Apple Silicon that transcribes a long video on device, has a local LLM pick moments and write TikTok, Instagram and YouTube post text, and reframes clips to vertical with face tracking.",
+   "id": "apps/shortcast",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "license_note": "The default Gemma 4 model downloads at runtime under Google's Gemma Terms of Use, not Apache-2.0.",
+   "metrics": {},
+   "name": "Shortcast",
+   "platforms": [
+    "macos"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "shortcast",
+   "source": {
+    "github": "https://github.com/mutonby/shortcast"
+   },
+   "tags": [
+    "macos",
+    "gemma",
+    "mlx",
+    "on-device",
+    "shorts"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Free cross-platform timeline video editor for finishing clips. It opens MLT project files, so a list of moments can be handed over as a ready-made timeline.",
+   "id": "apps/shotcut",
+   "kind": "app",
+   "license": "GPL-3.0-or-later",
+   "metrics": {},
+   "name": "Shotcut",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "companion",
+   "slug": "shotcut",
+   "source": {
+    "github": "https://github.com/mltframework/shotcut"
+   },
+   "tags": [
+    "editor",
+    "timeline",
+    "mlt"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Browser app that translates and dubs videos with synced audio, using Whisper transcription, speaker labels, machine or LLM translation and several text-to-speech and voice-imitation engines.",
+   "id": "apps/sonitranslate",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "license_note": "Speaker labels use gated pyannote models: sign in to Hugging Face and accept their terms first. Optional XTTS voices are under the Coqui Public Model License.",
+   "metrics": {
+    "models": {
+     "coqui/XTTS-v2": {
+      "downloads": 6699062,
+      "last_modified": "2023-12-11",
+      "likes": 3857
+     },
+     "pyannote/segmentation": {
+      "downloads": 657482,
+      "last_modified": "2024-05-10",
+      "likes": 701
+     },
+     "pyannote/speaker-diarization": {
+      "downloads": 303462,
+      "last_modified": "2024-05-10",
+      "likes": 1343
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "pyannote/speaker-diarization"
+    },
+    {
+     "huggingface": "pyannote/segmentation"
+    },
+    {
+     "huggingface": "coqui/XTTS-v2"
+    }
+   ],
+   "name": "SoniTranslate",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "sonitranslate",
+   "source": {
+    "github": "https://github.com/R3gm/SoniTranslate"
+   },
+   "tags": [
+    "dubbing",
+    "translation",
+    "tts",
+    "voice cloning",
+    "gradio"
+   ],
+   "warning": "Sends transcripts to Google Translate and dub text to Microsoft's Edge TTS by default. Downloads YouTube videos, which YouTube's terms may not allow. Copy voices only with consent."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Local web app that finds highlights in livestream recordings from chat density, chat emotion and how closely speech matches chat. It has a clip review flow and can learn a ranker from your ratings.",
+   "id": "apps/stream-clipper-factory",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Stream Clipper Factory",
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "stream-clipper-factory",
+   "source": {
+    "github": "https://github.com/Cbhhhh211/Stream-Clipper-Factory"
+   },
+   "tags": [
+    "livestream",
+    "danmaku",
+    "bilibili",
+    "chat",
+    "highlights"
+   ],
+   "warning": "Downloads videos from Bilibili, YouTube and Douyin and records Bilibili live rooms; their terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop subtitle editor for fixing caption timing and text against the video and waveform, converting between hundreds of formats, and running speech-to-text, OCR and translation.",
+   "id": "apps/subtitle-edit",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Subtitle Edit",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "companion",
+   "slug": "subtitle-edit",
+   "source": {
+    "github": "https://github.com/SubtitleEdit/subtitleedit"
+   },
+   "tags": [
+    "subtitles",
+    "srt",
+    "editor",
+    "ocr",
+    "whisper"
+   ],
+   "warning": "Its optional yt-dlp add-on downloads videos from online sites; their terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Self-hosted web app that picks clip-worthy segments with an LLM, crops them to vertical around faces and burns word-synced subtitles. It also has a clip editor, a REST API and an MCP server.",
+   "id": "apps/supoclip",
+   "kind": "app",
+   "license": "AGPL-3.0",
+   "license_note": "The README and LICENSE say AGPL-3.0 without \"or later\"; only the mcp/ folder declares AGPL-3.0-or-later.",
+   "metrics": {},
+   "name": "SupoClip",
+   "platforms": [
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-clipping",
+   "slug": "supoclip",
+   "source": {
+    "github": "https://github.com/FujiwaraChoki/supoclip"
+   },
+   "tags": [
+    "opusclip",
+    "subtitles",
+    "self-hosted",
+    "mcp",
+    "shorts"
+   ],
+   "warning": "Uses the AssemblyAI cloud service for transcription by default. Downloads YouTube videos through Apify or yt-dlp; YouTube's terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop app that transcribes audio and video offline with Whisper, Parakeet or Nemotron models and exports SRT or VTT, with caption lengths suited to reels.",
+   "id": "apps/vibe",
+   "kind": "app",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Vibe",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "vibe",
+   "source": {
+    "github": "https://github.com/thewh1teagle/vibe"
+   },
+   "tags": [
+    "transcription",
+    "subtitles",
+    "whisper",
+    "offline"
+   ],
+   "warning": "Sends anonymous usage analytics to Aptabase by default (can be turned off in Settings); can fetch audio from YouTube and other sites, whose terms may not allow it."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Local desktop app that scores moments in long footage from scenes, motion, audio, objects, actions and the transcript, explains each pick in a report and exports highlight reels and clips.",
+   "id": "apps/videohighlighter",
+   "kind": "app",
+   "license": "AGPL-3.0-or-later",
+   "metrics": {},
+   "name": "VideoHighlighter",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "video-clipping",
+   "slug": "videohighlighter",
+   "source": {
+    "github": "https://github.com/Aseiel/VideoHighlighter"
+   },
+   "tags": [
+    "highlights",
+    "ollama",
+    "object detection",
+    "whisper",
+    "report"
+   ],
+   "warning": "Can download videos from YouTube and other sites; their terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "App that transcribes, splits, translates and dubs videos into subtitles and voice-overs, using local speech recognition and an LLM you choose. It has a local HTTP API for scripted runs.",
+   "id": "apps/videolingo",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "VideoLingo",
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "videolingo",
+   "source": {
+    "github": "https://github.com/Huanshere/VideoLingo"
+   },
+   "tags": [
+    "dubbing",
+    "translation",
+    "subtitles",
+    "tts",
+    "streamlit"
+   ],
+   "warning": "By default sends subtitle text to the paid OpenLux LLM relay and, for dubbing, to Microsoft's Edge TTS. Downloads YouTube videos; YouTube's terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Browser app for making SRT, WebVTT or text subtitles with faster-whisper, with voice detection, background-music removal, speaker labels and translation. It has an optional REST API.",
+   "id": "apps/whisper-webui",
+   "kind": "app",
+   "license": "Apache-2.0",
+   "license_note": "The default NLLB translation model is CC-BY-NC-4.0 (non-commercial). Speaker labels use the gated pyannote model: sign in to Hugging Face and accept its terms first.",
+   "metrics": {
+    "models": {
+     "facebook/nllb-200-1.3B": {
+      "downloads": 87040,
+      "last_modified": "2023-02-11",
+      "likes": 75
+     },
+     "pyannote/speaker-diarization-3.1": {
+      "downloads": 7152207,
+      "last_modified": "2024-05-10",
+      "likes": 4187
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "facebook/nllb-200-1.3B"
+    },
+    {
+     "huggingface": "pyannote/speaker-diarization-3.1"
+    }
+   ],
+   "name": "Whisper-WebUI",
+   "relationship": "related",
+   "runs": "both",
+   "section": "video-ai",
+   "slug": "whisper-webui",
+   "source": {
+    "github": "https://github.com/jhj0517/Whisper-WebUI"
+   },
+   "tags": [
+    "subtitles",
+    "whisper",
+    "diarization",
+    "translation",
+    "gradio"
+   ],
+   "warning": "Can download YouTube videos to transcribe them; YouTube's terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Scores audio against the 527 AudioSet sound classes, including laughter, cheering, applause, crowd and screaming, to help find lively moments in a long video.",
+   "id": "models/ast-finetuned-audioset-10-10-0-4593",
+   "kind": "model",
+   "license": "BSD-3-Clause",
+   "metrics": {
+    "models": {
+     "MIT/ast-finetuned-audioset-10-10-0.4593": {
+      "downloads": 1077338,
+      "last_modified": "2023-09-06",
+      "likes": 372
+     }
+    }
+   },
+   "name": "Audio Spectrogram Transformer",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "ast-finetuned-audioset-10-10-0-4593",
+   "source": {
+    "huggingface": "MIT/ast-finetuned-audioset-10-10-0.4593"
+   },
+   "tags": [
+    "audio events",
+    "laughter",
+    "cheering",
+    "audioset"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "NVIDIA's model for transcribing speech in 25 European languages and translating to and from English, with word timestamps. Its card lists only Linux and recent NVIDIA GPUs.",
+   "id": "models/canary-1b-v2",
+   "kind": "model",
+   "license": "CC-BY-4.0",
+   "metrics": {
+    "models": {
+     "nvidia/canary-1b-v2": {
+      "downloads": 99688,
+      "last_modified": "2026-08-31",
+      "likes": 430
+     }
+    }
+   },
+   "name": "Canary 1B v2",
+   "platforms": [
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "canary-1b-v2",
+   "source": {
+    "huggingface": "nvidia/canary-1b-v2"
+   },
+   "tags": [
+    "transcription",
+    "translation",
+    "european languages",
+    "nemo"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Xiaomi's audio tagger that scores the 527 AudioSet sound classes, such as laughter, cheering and applause, on variable-length audio, with an ONNX export.",
+   "id": "models/ced-base",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "The weights and Hugging Face model code are Apache-2.0, but the separate training code at RicherMans/CED is GPL-3.0.",
+   "metrics": {
+    "models": {
+     "mispeech/ced-base": {
+      "downloads": 20285,
+      "last_modified": "2026-03-30",
+      "likes": 16
+     }
+    }
+   },
+   "name": "CED-Base",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "ced-base",
+   "source": {
+    "huggingface": "mispeech/ced-base"
+   },
+   "tags": [
+    "audio events",
+    "audioset",
+    "laughter",
+    "onnx"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Matches audio against any text labels you type, such as crowd cheering or explosion, so you can search a long recording for sounds without training a model.",
+   "id": "models/clap-htsat-fused",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "Its LAION-Audio-630K training audio is marked research-only by the dataset; the model card does not apply that term to the weights.",
+   "metrics": {
+    "models": {
+     "laion/clap-htsat-fused": {
+      "downloads": 8191421,
+      "last_modified": "2026-01-12",
+      "likes": 151
+     }
+    }
+   },
+   "name": "clap-htsat-fused",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "clap-htsat-fused",
+   "source": {
+    "huggingface": "laion/clap-htsat-fused"
+   },
+   "tags": [
+    "audio events",
+    "zero-shot",
+    "sound search",
+    "embeddings"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small sound event detector that marks 447 kinds of sounds, such as laughter, applause or gunshots, every 40 ms, so events come with start and end times.",
+   "id": "models/cnn8rnn-audioset-sed",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "wsntxxn/cnn8rnn-audioset-sed": {
+      "downloads": 692,
+      "last_modified": "2024-12-30",
+      "likes": 6
+     }
+    }
+   },
+   "name": "cnn8rnn-audioset-sed",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "cnn8rnn-audioset-sed",
+   "source": {
+    "huggingface": "wsntxxn/cnn8rnn-audioset-sed"
+   },
+   "tags": [
+    "sound events",
+    "timestamps",
+    "laughter",
+    "audioset"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A distilled, English-only Whisper model for transcribing speech. Its card reports it about 1.5 times faster than large-v3-turbo, slightly more accurate on short audio and about 1% behind on long audio.",
+   "id": "models/distil-large-v3-5",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "distil-whisper/distil-large-v3.5": {
+      "downloads": 5300,
+      "last_modified": "2026-04-13",
+      "likes": 95
+     }
+    }
+   },
+   "name": "distil-large-v3.5",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "distil-large-v3-5",
+   "source": {
+    "huggingface": "distil-whisper/distil-large-v3.5"
+   },
+   "tags": [
+    "transcription",
+    "english",
+    "subtitles",
+    "fast"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A distilled, English-only version of Whisper large-v3 for transcribing speech. Its card reports it 6.3 times faster than large-v3 and within 1% word error rate of it on long recordings.",
+   "id": "models/distil-large-v3",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "distil-whisper/distil-large-v3": {
+      "downloads": 551158,
+      "last_modified": "2026-04-21",
+      "likes": 383
+     }
+    }
+   },
+   "name": "distil-large-v3",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "distil-large-v3",
+   "source": {
+    "huggingface": "distil-whisper/distil-large-v3"
+   },
+   "tags": [
+    "transcription",
+    "english",
+    "subtitles",
+    "fast"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The smallest English-only distilled Whisper model, for transcription on machines with very little memory; its own card points most users to larger distil models.",
+   "id": "models/distil-small-en",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "distil-whisper/distil-small.en": {
+      "downloads": 9828,
+      "last_modified": "2026-04-21",
+      "likes": 119
+     }
+    }
+   },
+   "name": "distil-small.en",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "distil-small-en",
+   "source": {
+    "huggingface": "distil-whisper/distil-small.en"
+   },
+   "tags": [
+    "transcription",
+    "english",
+    "low memory"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google's small text-embedding model for semantic search in over 100 languages. A pipeline can embed transcript chunks and query phrases to find matching moments or group similar ones.",
+   "id": "models/embeddinggemma-300m",
+   "kind": "model",
+   "license": "LicenseRef-Gemma-Terms-of-Use",
+   "license_note": "Gated: sign in to Hugging Face and accept Google's Gemma Terms of Use first. The terms add a Prohibited Use Policy, and anyone redistributing the weights or a fine-tune must pass those limits on with a Notice file.",
+   "metrics": {
+    "models": {
+     "google/embeddinggemma-300m": {
+      "downloads": 3625204,
+      "last_modified": "2025-09-25",
+      "likes": 1997
+     }
+    }
+   },
+   "name": "EmbeddingGemma",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "embeddinggemma-300m",
+   "source": {
+    "huggingface": "google/embeddinggemma-300m"
+   },
+   "tags": [
+    "embeddings",
+    "semantic search",
+    "transcripts",
+    "sentence-transformers"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A tiny face detector that runs on CPU with OpenCV alone, useful for keeping faces in frame when cropping a video to vertical.",
+   "id": "models/face-detection-yunet",
+   "kind": "model",
+   "license": "MIT",
+   "license_note": "Trained on WIDER Face, whose dataset card lists CC BY-NC-ND 4.0; whether that limits commercial use of the weights is legally unsettled.",
+   "metrics": {
+    "models": {
+     "opencv/face_detection_yunet": {
+      "downloads": 0,
+      "last_modified": "2025-06-20",
+      "likes": 28
+     }
+    }
+   },
+   "name": "YuNet",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "face-detection-yunet",
+   "source": {
+    "huggingface": "opencv/face_detection_yunet"
+   },
+   "tags": [
+    "face detection",
+    "face tracking",
+    "reframing",
+    "opencv"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Whisper large-v3-turbo converted to CTranslate2 for faster-whisper, a good balance of speed and quality for long videos. Formerly mobiuslabsgmbh/faster-whisper-large-v3-turbo, the id faster-whisper's 'turbo' alias still uses.",
+   "id": "models/faster-whisper-large-v3-turbo",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "dropbox-dash/faster-whisper-large-v3-turbo": {
+      "downloads": 2210808,
+      "last_modified": "2025-11-05",
+      "likes": 71
+     }
+    }
+   },
+   "name": "faster-whisper-large-v3-turbo",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "faster-whisper-large-v3-turbo",
+   "source": {
+    "huggingface": "dropbox-dash/faster-whisper-large-v3-turbo"
+   },
+   "tags": [
+    "whisper",
+    "faster-whisper",
+    "ctranslate2",
+    "turbo",
+    "speech to text"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small Microsoft vision model that captions frames, reads on-screen text with its position and detects objects, picking the task from a short prompt. Useful for reading scores or labelling moments.",
+   "id": "models/florence-2-base",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "microsoft/Florence-2-base": {
+      "downloads": 3079630,
+      "last_modified": "2025-08-04",
+      "likes": 404
+     }
+    }
+   },
+   "name": "Florence-2-base",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "florence-2-base",
+   "source": {
+    "huggingface": "microsoft/Florence-2-base"
+   },
+   "tags": [
+    "ocr",
+    "captioning",
+    "object detection"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The larger Florence-2 model, which captions images, detects objects and reads on-screen text with boxes, chosen by task prompt. Its card warns this checkpoint may not be fully trained.",
+   "id": "models/florence-2-large",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "microsoft/Florence-2-large": {
+      "downloads": 388968,
+      "last_modified": "2025-08-04",
+      "likes": 1870
+     }
+    }
+   },
+   "name": "Florence-2-large",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "florence-2-large",
+   "source": {
+    "huggingface": "microsoft/Florence-2-large"
+   },
+   "tags": [
+    "ocr",
+    "captioning",
+    "object detection"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The previous-generation Gemma model with 4B parameters, reading text and images. Clips Kitty recommends it through Ollama for PCs without a graphics card, though it cannot drive the Ask box.",
+   "id": "models/gemma-3-4b-it",
+   "kind": "model",
+   "license": "LicenseRef-Gemma-Terms-of-Use",
+   "license_note": "Gated: sign in to Hugging Face and accept Google's Gemma Terms of Use first. The terms add a Prohibited Use Policy, and anyone redistributing the weights must pass those limits on with a Notice file.",
+   "metrics": {
+    "models": {
+     "google/gemma-3-4b-it": {
+      "downloads": 1240056,
+      "last_modified": "2025-03-21",
+      "likes": 1561
+     }
+    }
+   },
+   "name": "Gemma 3 4B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-3-4b-it",
+   "source": {
+    "huggingface": "google/gemma-3-4b-it"
+   },
+   "tags": [
+    "llm",
+    "ollama",
+    "cpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google's own 4-bit GGUF of Gemma 4 12B Unified, trained to hold its quality at a much smaller memory size. Suits llama.cpp-based tools on mid-range GPUs.",
+   "id": "models/gemma-4-12b-it-qat-q4-0-gguf",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/gemma-4-12B-it-qat-q4_0-gguf": {
+      "downloads": 783503,
+      "last_modified": "2026-07-17",
+      "likes": 326
+     }
+    }
+   },
+   "name": "Gemma 4 12B QAT Q4_0 GGUF",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-4-12b-it-qat-q4-0-gguf",
+   "source": {
+    "huggingface": "google/gemma-4-12B-it-qat-q4_0-gguf"
+   },
+   "tags": [
+    "gguf",
+    "llama.cpp",
+    "quantized",
+    "llm"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A mid-size Gemma 4 model with a long context window and text, image and short-audio input. A step up for ranking moments on mid-range GPUs, and available in Ollama.",
+   "id": "models/gemma-4-12b-it",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/gemma-4-12B-it": {
+      "downloads": 1737547,
+      "last_modified": "2026-07-20",
+      "likes": 1644
+     }
+    }
+   },
+   "name": "Gemma 4 12B Unified",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-4-12b-it",
+   "source": {
+    "huggingface": "google/gemma-4-12B-it"
+   },
+   "tags": [
+    "llm",
+    "ollama",
+    "multimodal",
+    "long context"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A mixture-of-experts Gemma 4 model that runs about as fast as a 4B model but needs memory for all its weights. Its long context could let a pipeline score a whole stream transcript in one pass.",
+   "id": "models/gemma-4-26b-a4b-it",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/gemma-4-26B-A4B-it": {
+      "downloads": 12473185,
+      "last_modified": "2026-07-20",
+      "likes": 1606
+     }
+    }
+   },
+   "name": "Gemma 4 26B A4B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-4-26b-a4b-it",
+   "source": {
+    "huggingface": "google/gemma-4-26B-A4B-it"
+   },
+   "tags": [
+    "llm",
+    "ollama",
+    "moe",
+    "long context"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The smallest Gemma 4 model, reading text and images and writing text, aimed at laptops and low-end PCs. Clips Kitty suggests it through Ollama for machines with under 6 GB of VRAM.",
+   "id": "models/gemma-4-e2b-it",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/gemma-4-E2B-it": {
+      "downloads": 3005978,
+      "last_modified": "2026-07-20",
+      "likes": 1011
+     }
+    }
+   },
+   "name": "Gemma 4 E2B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-4-e2b-it",
+   "source": {
+    "huggingface": "google/gemma-4-E2B-it"
+   },
+   "tags": [
+    "llm",
+    "ollama",
+    "multimodal",
+    "low vram"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google's own 4-bit GGUF of Gemma 4 E4B, trained to keep quality close to full precision while using far less memory. For llama.cpp-style runtimes; the projector file is only needed for image or audio input.",
+   "id": "models/gemma-4-e4b-it-qat-q4-0-gguf",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/gemma-4-E4B-it-qat-q4_0-gguf": {
+      "downloads": 734268,
+      "last_modified": "2026-07-17",
+      "likes": 145
+     }
+    }
+   },
+   "name": "Gemma 4 E4B QAT Q4_0 GGUF",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-4-e4b-it-qat-q4-0-gguf",
+   "source": {
+    "huggingface": "google/gemma-4-E4B-it-qat-q4_0-gguf"
+   },
+   "tags": [
+    "gguf",
+    "llama.cpp",
+    "quantized",
+    "llm"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google DeepMind's small Gemma 4 model that reads text and images and writes text, sized for ordinary PCs. Clips Kitty recommends it through Ollama for 6 GB of VRAM and for its Ask box.",
+   "id": "models/gemma-4-e4b-it",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/gemma-4-E4B-it": {
+      "downloads": 4419673,
+      "last_modified": "2026-07-20",
+      "likes": 1655
+     }
+    }
+   },
+   "name": "Gemma 4 E4B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "gemma-4-e4b-it",
+   "source": {
+    "huggingface": "google/gemma-4-E4B-it"
+   },
+   "tags": [
+    "llm",
+    "ollama",
+    "multimodal"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OpenAI Whisper models from tiny to large-v3-turbo, including quantized versions, converted to ggml format for whisper.cpp. Lets you transcribe on CPU or GPU without Python; whisper.cpp's download script fetches them here.",
+   "id": "models/ggerganov-whisper-cpp",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "ggerganov/whisper.cpp": {
+      "downloads": 0,
+      "last_modified": "2024-10-29",
+      "likes": 1632
+     }
+    }
+   },
+   "name": "whisper.cpp ggml models",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "ggerganov-whisper-cpp",
+   "source": {
+    "huggingface": "ggerganov/whisper.cpp"
+   },
+   "tags": [
+    "whisper",
+    "whisper.cpp",
+    "ggml",
+    "quantized",
+    "cpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small OCR model from Z.ai that reads text, tables and formulas and can fill a JSON schema from an image, such as score and clock fields. It runs locally through Ollama or Transformers; a hosted API is optional.",
+   "id": "models/glm-ocr",
+   "kind": "model",
+   "license": "MIT",
+   "license_note": "The model is MIT, but the full SDK pipeline also uses PP-DocLayoutV3 (Apache-2.0) and the card asks users to follow both licences. The SDK code in github.com/zai-org/GLM-OCR is Apache-2.0.",
+   "metrics": {
+    "models": {
+     "zai-org/GLM-OCR": {
+      "downloads": 1844832,
+      "last_modified": "2026-09-11",
+      "likes": 2128
+     }
+    }
+   },
+   "name": "GLM-OCR",
+   "relationship": "related",
+   "runs": "both",
+   "section": "ocr",
+   "slug": "glm-ocr",
+   "source": {
+    "huggingface": "zai-org/GLM-OCR"
+   },
+   "tags": [
+    "ocr",
+    "ollama",
+    "scoreboard",
+    "json"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds objects you name in plain text, such as a ball or a scoreboard, and draws boxes around them without any training. Handy for locating on-screen elements in sampled game or sports frames.",
+   "id": "models/grounding-dino-tiny",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "IDEA-Research/grounding-dino-tiny": {
+      "downloads": 835212,
+      "last_modified": "2024-05-12",
+      "likes": 117
+     }
+    }
+   },
+   "name": "Grounding DINO tiny",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "grounding-dino-tiny",
+   "source": {
+    "huggingface": "IDEA-Research/grounding-dino-tiny"
+   },
+   "tags": [
+    "object detection",
+    "zero-shot",
+    "scoreboard",
+    "transformers"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A larger CLAP model trained on general audio, music and speech that matches sounds against text labels you choose, suited to music streams and podcasts.",
+   "id": "models/larger-clap-general",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "The card does not name its training data; LAION's related LAION-Audio-630K dataset marks its audio as research-only, a term not stated for these weights.",
+   "metrics": {
+    "models": {
+     "laion/larger_clap_general": {
+      "downloads": 315999,
+      "last_modified": "2023-10-31",
+      "likes": 56
+     }
+    }
+   },
+   "name": "larger_clap_general",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "larger-clap-general",
+   "source": {
+    "huggingface": "laion/larger_clap_general"
+   },
+   "tags": [
+    "audio events",
+    "zero-shot",
+    "music",
+    "podcast"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "An 8B vision-language model that compresses video frames so it can follow long or high-frame-rate video, as well as images and OCR. It can judge whole candidate clips but needs a strong GPU or quantised weights.",
+   "id": "models/minicpm-v-4-5",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "openbmb/MiniCPM-V-4_5": {
+      "downloads": 92943,
+      "last_modified": "2026-08-18",
+      "likes": 1100
+     }
+    }
+   },
+   "name": "MiniCPM-V 4.5",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "minicpm-v-4-5",
+   "source": {
+    "huggingface": "openbmb/MiniCPM-V-4_5"
+   },
+   "tags": [
+    "video understanding",
+    "ocr",
+    "gguf"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A compact vision-language model that captions images, answers questions about them, and can detect or point at things such as faces and people. Its detection and pointing could guide vertical reframing.",
+   "id": "models/moondream2",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "vikhyatk/moondream2": {
+      "downloads": 2179970,
+      "last_modified": "2026-09-23",
+      "likes": 1437
+     }
+    }
+   },
+   "name": "Moondream 2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "moondream2",
+   "source": {
+    "huggingface": "vikhyatk/moondream2"
+   },
+   "tags": [
+    "captioning",
+    "face detection",
+    "reframing",
+    "vqa"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google's open-vocabulary detector that boxes whatever you describe in text, such as 'a scoreboard'. Useful for finding the HUD or score area in frames before reading it with an OCR model.",
+   "id": "models/owlv2-base-patch16-ensemble",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/owlv2-base-patch16-ensemble": {
+      "downloads": 2072459,
+      "last_modified": "2024-10-31",
+      "likes": 130
+     }
+    }
+   },
+   "name": "OWLv2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "owlv2-base-patch16-ensemble",
+   "source": {
+    "huggingface": "google/owlv2-base-patch16-ensemble"
+   },
+   "tags": [
+    "object detection",
+    "open vocabulary",
+    "scoreboard",
+    "hud"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A compact vision-language model built for document parsing: OCR, text spotting, and reading tables, charts and formulas. Its text-spotting mode can pick up on-screen text, but it is heavier than plain OCR models.",
+   "id": "models/paddleocr-vl-1-6",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "PaddlePaddle/PaddleOCR-VL-1.6": {
+      "downloads": 47082,
+      "last_modified": "2026-08-08",
+      "likes": 520
+     }
+    }
+   },
+   "name": "PaddleOCR-VL-1.6",
+   "relationship": "related",
+   "runs": "local",
+   "section": "ocr",
+   "slug": "paddleocr-vl-1-6",
+   "source": {
+    "huggingface": "PaddlePaddle/PaddleOCR-VL-1.6"
+   },
+   "tags": [
+    "ocr",
+    "text spotting",
+    "document parsing",
+    "paddleocr",
+    "gguf"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "NVIDIA's speech recognition model for 25 European languages, with automatic language detection and word-level timestamps. No Chinese, Japanese or Korean; its card targets Linux and NVIDIA GPUs.",
+   "id": "models/parakeet-tdt-0-6b-v3",
+   "kind": "model",
+   "license": "CC-BY-4.0",
+   "metrics": {
+    "models": {
+     "nvidia/parakeet-tdt-0.6b-v3": {
+      "downloads": 595565,
+      "last_modified": "2026-08-05",
+      "likes": 1177
+     }
+    }
+   },
+   "name": "parakeet-tdt-0.6b-v3",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "parakeet-tdt-0-6b-v3",
+   "source": {
+    "huggingface": "nvidia/parakeet-tdt-0.6b-v3"
+   },
+   "tags": [
+    "speech to text",
+    "nvidia",
+    "nemo",
+    "timestamps",
+    "european languages"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A lightweight PaddleOCR model that reads the text inside cropped text lines in English, Chinese or Japanese. Use it after a text detector to turn score or clock crops into text; it needs the PaddlePaddle runtime.",
+   "id": "models/pp-ocrv5-mobile-rec",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "PaddlePaddle/PP-OCRv5_mobile_rec": {
+      "downloads": 30577,
+      "last_modified": "2025-07-22",
+      "likes": 16
+     }
+    }
+   },
+   "name": "PP-OCRv5_mobile_rec",
+   "relationship": "related",
+   "runs": "local",
+   "section": "ocr",
+   "slug": "pp-ocrv5-mobile-rec",
+   "source": {
+    "huggingface": "PaddlePaddle/PP-OCRv5_mobile_rec"
+   },
+   "tags": [
+    "ocr",
+    "text recognition",
+    "scoreboard",
+    "paddleocr"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "PaddleOCR's text-detection model that outlines lines of text in an image, including rotated or curved text. Pair it with a recognition model to read scoreboards and timers; it needs the PaddlePaddle runtime.",
+   "id": "models/pp-ocrv5-server-det",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "PaddlePaddle/PP-OCRv5_server_det": {
+      "downloads": 511633,
+      "last_modified": "2025-07-22",
+      "likes": 75
+     }
+    }
+   },
+   "name": "PP-OCRv5_server_det",
+   "relationship": "related",
+   "runs": "local",
+   "section": "ocr",
+   "slug": "pp-ocrv5-server-det",
+   "source": {
+    "huggingface": "PaddlePaddle/PP-OCRv5_server_det"
+   },
+   "tags": [
+    "ocr",
+    "text detection",
+    "scoreboard",
+    "paddleocr"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small audio-event classifier that tags short windows with AudioSet classes such as laughter, cheering, applause and explosions, ready-made as ONNX and TFLite files.",
+   "id": "models/qualcomm-yamnet",
+   "kind": "model",
+   "license": "MIT",
+   "license_note": "The MIT terms come from the torch_audioset port; Google's original YAMNet is Apache-2.0, so credit both.",
+   "metrics": {
+    "models": {
+     "qualcomm/YamNet": {
+      "downloads": 348,
+      "last_modified": "2026-10-07",
+      "likes": 7
+     }
+    }
+   },
+   "name": "YamNet",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "qualcomm-yamnet",
+   "source": {
+    "huggingface": "qualcomm/YamNet"
+   },
+   "tags": [
+    "audio events",
+    "laughter",
+    "cheering",
+    "onnx"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Alibaba Qwen's small text LLM with a switchable thinking mode, runnable through Ollama, LM Studio or llama.cpp. A non-Gemma option for scoring transcript windows; turn thinking off for speed.",
+   "id": "models/qwen3-4b",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "Qwen/Qwen3-4B": {
+      "downloads": 8896913,
+      "last_modified": "2025-07-26",
+      "likes": 725
+     }
+    }
+   },
+   "name": "Qwen3-4B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "language",
+   "slug": "qwen3-4b",
+   "source": {
+    "huggingface": "Qwen/Qwen3-4B"
+   },
+   "tags": [
+    "llm",
+    "ollama",
+    "transcripts"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small Qwen vision-language model that describes images and video and, per its card, can place events in time within long videos. It is also in Ollama's library, which Clips Kitty already uses.",
+   "id": "models/qwen3-vl-2b-instruct",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "Qwen/Qwen3-VL-2B-Instruct": {
+      "downloads": 2717318,
+      "last_modified": "2025-10-23",
+      "likes": 482
+     }
+    }
+   },
+   "name": "Qwen3-VL-2B-Instruct",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "qwen3-vl-2b-instruct",
+   "source": {
+    "huggingface": "Qwen/Qwen3-VL-2B-Instruct"
+   },
+   "tags": [
+    "video understanding",
+    "captioning",
+    "ollama"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The step-up Qwen3-VL model for richer descriptions of images and video than the 2B version. Available through Ollama, though it will be slow without a GPU.",
+   "id": "models/qwen3-vl-4b-instruct",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "Qwen/Qwen3-VL-4B-Instruct": {
+      "downloads": 3264758,
+      "last_modified": "2025-10-15",
+      "likes": 487
+     }
+    }
+   },
+   "name": "Qwen3-VL-4B-Instruct",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "qwen3-vl-4b-instruct",
+   "source": {
+    "huggingface": "Qwen/Qwen3-VL-4B-Instruct"
+   },
+   "tags": [
+    "video understanding",
+    "captioning",
+    "ollama"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds the parts of a video that match a text query and scores highlights, using a light model built on CLIP. Research code with checkpoints and a single-video inference script.",
+   "id": "models/r2-tuning",
+   "kind": "model",
+   "license": "BSD-3-Clause",
+   "metrics": {
+    "models": {
+     "yeliudev/R2-Tuning": {
+      "downloads": 0,
+      "last_modified": "2024-04-17",
+      "likes": 2
+     }
+    }
+   },
+   "name": "R2-Tuning",
+   "relationship": "related",
+   "runs": "local",
+   "section": "moments",
+   "slug": "r2-tuning",
+   "source": {
+    "huggingface": "yeliudev/R2-Tuning"
+   },
+   "tags": [
+    "highlight detection",
+    "moment retrieval",
+    "text query",
+    "clip"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A real-time object detector that runs directly in Hugging Face Transformers, a permissively licensed way to find people in frames for framing or activity scoring.",
+   "id": "models/rtdetr-r50vd",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "PekingU/rtdetr_r50vd": {
+      "downloads": 166286,
+      "last_modified": "2025-02-06",
+      "likes": 36
+     }
+    }
+   },
+   "name": "RT-DETR",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "rtdetr-r50vd",
+   "source": {
+    "huggingface": "PekingU/rtdetr_r50vd"
+   },
+   "tags": [
+    "object detection",
+    "person detection",
+    "reframing"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Fast speech recognition model for Mandarin, Cantonese, English, Japanese and Korean that also tags laughter, applause, music and emotion, handy signals for spotting clip moments.",
+   "id": "models/sensevoice-small",
+   "kind": "model",
+   "license": "LicenseRef-FunASR-Model-License",
+   "license_note": "The SenseVoice code on GitHub is MIT, but the weights use the FunASR Model License: free use, changes and sharing with attribution; it ends for anyone who maliciously or baselessly attacks the model, and Alibaba may revise it.",
+   "metrics": {
+    "models": {
+     "FunAudioLLM/SenseVoiceSmall": {
+      "downloads": 17524,
+      "last_modified": "2026-06-20",
+      "likes": 491
+     }
+    }
+   },
+   "name": "SenseVoiceSmall",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "sensevoice-small",
+   "source": {
+    "huggingface": "FunAudioLLM/SenseVoiceSmall"
+   },
+   "tags": [
+    "transcription",
+    "laughter",
+    "applause",
+    "emotion",
+    "audio events"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google's image-text embedding model for matching frames to text prompts and comparing frames with each other. Useful for cheap tagging, spotting near-duplicate moments and ranking thumbnail candidates.",
+   "id": "models/siglip2-base-patch16-224",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "google/siglip2-base-patch16-224": {
+      "downloads": 1617710,
+      "last_modified": "2025-02-21",
+      "likes": 145
+     }
+    }
+   },
+   "name": "SigLIP 2 Base",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "siglip2-base-patch16-224",
+   "source": {
+    "huggingface": "google/siglip2-base-patch16-224"
+   },
+   "tags": [
+    "embeddings",
+    "zero-shot",
+    "thumbnails",
+    "tagging"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A tiny image-and-text model that captions frames and answers questions about them, small enough for CPU-only PCs and shipped with ONNX weights. Its captions are rough, so treat them as hints.",
+   "id": "models/smolvlm-256m-instruct",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "HuggingFaceTB/SmolVLM-256M-Instruct": {
+      "downloads": 397613,
+      "last_modified": "2025-04-08",
+      "likes": 418
+     }
+    }
+   },
+   "name": "SmolVLM-256M",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "smolvlm-256m-instruct",
+   "source": {
+    "huggingface": "HuggingFaceTB/SmolVLM-256M-Instruct"
+   },
+   "tags": [
+    "captioning",
+    "cpu",
+    "onnx"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The larger SmolVLM2 model for describing and answering questions about video and images in English, including reading text in frames. It needs about 5 GB of GPU memory for video.",
+   "id": "models/smolvlm2-2-2b-instruct",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "HuggingFaceTB/SmolVLM2-2.2B-Instruct": {
+      "downloads": 142726,
+      "last_modified": "2025-04-08",
+      "likes": 335
+     }
+    }
+   },
+   "name": "SmolVLM2 2.2B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "smolvlm2-2-2b-instruct",
+   "source": {
+    "huggingface": "HuggingFaceTB/SmolVLM2-2.2B-Instruct"
+   },
+   "tags": [
+    "video understanding",
+    "captioning",
+    "ocr"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small Hugging Face model that describes and answers questions about short videos and images in English, using under 2 GB of GPU memory. Useful for rating how visually interesting a candidate clip is.",
+   "id": "models/smolvlm2-500m-video-instruct",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "metrics": {
+    "models": {
+     "HuggingFaceTB/SmolVLM2-500M-Video-Instruct": {
+      "downloads": 1288826,
+      "last_modified": "2025-04-08",
+      "likes": 182
+     }
+    }
+   },
+   "name": "SmolVLM2-500M-Video",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "smolvlm2-500m-video-instruct",
+   "source": {
+    "huggingface": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+   },
+   "tags": [
+    "video understanding",
+    "captioning",
+    "onnx",
+    "highlights"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Works out who is speaking when in 16 kHz mono audio, counting and labelling each speaker; pyannote's current open diarization pipeline. Useful for podcasts and interviews where clips follow one voice.",
+   "id": "models/speaker-diarization-community-1",
+   "kind": "model",
+   "license": "CC-BY-4.0",
+   "license_note": "Access is gated on Hugging Face: sign in, give your company or university and use case, and agree that pyannote may email you before downloading. Once downloaded it runs offline. Attribution is required.",
+   "metrics": {
+    "models": {
+     "pyannote/speaker-diarization-community-1": {
+      "downloads": 5554891,
+      "last_modified": "2025-09-29",
+      "likes": 2595
+     }
+    }
+   },
+   "name": "speaker-diarization-community-1",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speakers",
+   "slug": "speaker-diarization-community-1",
+   "source": {
+    "huggingface": "pyannote/speaker-diarization-community-1"
+   },
+   "tags": [
+    "diarization",
+    "speakers",
+    "pyannote",
+    "podcast",
+    "interviews"
+   ],
+   "warning": "Runs through pyannote.audio, which has telemetry switched on by default; set PYANNOTE_METRICS_ENABLED=0 to turn it off."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The English-only distil-large-v3 converted for faster-whisper, which loads it by that name. Fast, accurate transcription for English videos; not suited to other languages.",
+   "id": "models/systran-faster-distil-whisper-large-v3",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "Systran/faster-distil-whisper-large-v3": {
+      "downloads": 52984,
+      "last_modified": "2024-03-25",
+      "likes": 70
+     }
+    }
+   },
+   "name": "Whisper distil-large-v3 model for CTranslate2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "systran-faster-distil-whisper-large-v3",
+   "source": {
+    "huggingface": "Systran/faster-distil-whisper-large-v3"
+   },
+   "tags": [
+    "transcription",
+    "english",
+    "faster-whisper",
+    "ctranslate2"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Whisper large-v3 converted to CTranslate2 format, the build faster-whisper loads when you ask for 'large-v3'. A roughly 3 GB download and slower than the turbo model.",
+   "id": "models/systran-faster-whisper-large-v3",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "Systran/faster-whisper-large-v3": {
+      "downloads": 1004408,
+      "last_modified": "2023-11-23",
+      "likes": 680
+     }
+    }
+   },
+   "name": "faster-whisper-large-v3",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "systran-faster-whisper-large-v3",
+   "source": {
+    "huggingface": "Systran/faster-whisper-large-v3"
+   },
+   "tags": [
+    "whisper",
+    "faster-whisper",
+    "ctranslate2",
+    "speech to text"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Whisper medium converted for faster-whisper, which loads it for the size name medium. The next multilingual size up from small for transcription with timestamps.",
+   "id": "models/systran-faster-whisper-medium",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "Systran/faster-whisper-medium": {
+      "downloads": 928672,
+      "last_modified": "2023-11-23",
+      "likes": 69
+     }
+    }
+   },
+   "name": "Whisper medium model for CTranslate2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "systran-faster-whisper-medium",
+   "source": {
+    "huggingface": "Systran/faster-whisper-medium"
+   },
+   "tags": [
+    "transcription",
+    "faster-whisper",
+    "ctranslate2"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Whisper small converted for faster-whisper, which loads it for the size name small. Multilingual transcription with timestamps that suits CPU-only machines.",
+   "id": "models/systran-faster-whisper-small",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "Systran/faster-whisper-small": {
+      "downloads": 3909110,
+      "last_modified": "2023-11-23",
+      "likes": 58
+     }
+    }
+   },
+   "name": "Whisper small model for CTranslate2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "systran-faster-whisper-small",
+   "source": {
+    "huggingface": "Systran/faster-whisper-small"
+   },
+   "tags": [
+    "transcription",
+    "faster-whisper",
+    "ctranslate2",
+    "cpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds the stretch of a video that matches a text query, such as a goal being scored, then checks and re-ranks candidate moments with confidence scores.",
+   "id": "models/videomind-2b",
+   "kind": "model",
+   "license": "BSD-3-Clause",
+   "license_note": "This repo holds only LoRA adapters; the Qwen2-VL-2B-Instruct base model it needs is downloaded separately and is Apache-2.0.",
+   "metrics": {
+    "models": {
+     "Qwen/Qwen2-VL-2B-Instruct": {
+      "downloads": 1338208,
+      "last_modified": "2025-01-12",
+      "likes": 520
+     },
+     "yeliudev/VideoMind-2B": {
+      "downloads": 69,
+      "last_modified": "2026-01-27",
+      "likes": 2
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "Qwen/Qwen2-VL-2B-Instruct"
+    }
+   ],
+   "name": "VideoMind-2B",
+   "relationship": "related",
+   "runs": "local",
+   "section": "moments",
+   "slug": "videomind-2b",
+   "source": {
+    "huggingface": "yeliudev/VideoMind-2B"
+   },
+   "tags": [
+    "moment retrieval",
+    "highlights",
+    "video search"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A video agent built on Qwen2-VL that answers a question by finding, then double-checking, the moments in a video that match it. Needs a GPU and Linux-oriented dependencies.",
+   "id": "models/videomind",
+   "kind": "model",
+   "license": "BSD-3-Clause",
+   "license_note": "Its LoRA weights are BSD-3-Clause but need the Qwen2-VL base model, which is Apache-2.0; keep both notices.",
+   "metrics": {
+    "models": {
+     "Qwen/Qwen2-VL-2B-Instruct": {
+      "downloads": 1338208,
+      "last_modified": "2025-01-12",
+      "likes": 520
+     },
+     "yeliudev/VideoMind-2B": {
+      "downloads": 69,
+      "last_modified": "2026-01-27",
+      "likes": 2
+     },
+     "yeliudev/VideoMind-2B-FT-QVHighlights": {
+      "downloads": 23,
+      "last_modified": "2026-01-27",
+      "likes": 1
+     },
+     "yeliudev/VideoMind-7B": {
+      "downloads": 49,
+      "last_modified": "2026-01-27",
+      "likes": 4
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "yeliudev/VideoMind-7B"
+    },
+    {
+     "huggingface": "yeliudev/VideoMind-2B-FT-QVHighlights"
+    },
+    {
+     "huggingface": "Qwen/Qwen2-VL-2B-Instruct"
+    }
+   ],
+   "name": "VideoMind",
+   "relationship": "related",
+   "runs": "local",
+   "section": "moments",
+   "slug": "videomind",
+   "source": {
+    "huggingface": "yeliudev/VideoMind-2B"
+   },
+   "tags": [
+    "video llm",
+    "moment retrieval",
+    "qwen2-vl",
+    "grounding",
+    "gpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small multilingual Whisper model for quick draft transcripts on weak hardware; not accurate enough for final captions.",
+   "id": "models/whisper-base",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.",
+   "metrics": {
+    "models": {
+     "openai/whisper-base": {
+      "downloads": 1722962,
+      "last_modified": "2024-02-29",
+      "likes": 295
+     }
+    }
+   },
+   "name": "whisper-base",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "whisper-base",
+   "source": {
+    "huggingface": "openai/whisper-base"
+   },
+   "tags": [
+    "transcription",
+    "multilingual",
+    "drafts"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OpenAI's official Whisper large-v3-turbo weights for Transformers: a slimmed-down large-v3 that transcribes much faster for a small loss in quality. faster-whisper and whisper.cpp use converted copies.",
+   "id": "models/whisper-large-v3-turbo",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "openai/whisper-large-v3-turbo": {
+      "downloads": 6348038,
+      "last_modified": "2024-10-04",
+      "likes": 3419
+     }
+    }
+   },
+   "name": "whisper-large-v3-turbo",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "whisper-large-v3-turbo",
+   "source": {
+    "huggingface": "openai/whisper-large-v3-turbo"
+   },
+   "tags": [
+    "whisper",
+    "speech to text",
+    "turbo",
+    "transformers"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OpenAI's largest multilingual Whisper model, for transcribing speech in many languages and translating it into English. It is in Transformers format, so faster-whisper needs a CTranslate2 conversion.",
+   "id": "models/whisper-large-v3",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.",
+   "metrics": {
+    "models": {
+     "openai/whisper-large-v3": {
+      "downloads": 3994754,
+      "last_modified": "2024-08-12",
+      "likes": 6573
+     }
+    }
+   },
+   "name": "Whisper large-v3",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "whisper-large-v3",
+   "source": {
+    "huggingface": "openai/whisper-large-v3"
+   },
+   "tags": [
+    "transcription",
+    "subtitles",
+    "multilingual",
+    "translation"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The middle-sized multilingual Whisper model, between small and large, for transcribing and translating speech.",
+   "id": "models/whisper-medium",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.",
+   "metrics": {
+    "models": {
+     "openai/whisper-medium": {
+      "downloads": 311915,
+      "last_modified": "2024-02-29",
+      "likes": 305
+     }
+    }
+   },
+   "name": "whisper-medium",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "whisper-medium",
+   "source": {
+    "huggingface": "openai/whisper-medium"
+   },
+   "tags": [
+    "transcription",
+    "subtitles",
+    "multilingual"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A lighter multilingual Whisper model for transcribing speech on machines with little GPU memory or only a CPU, at some cost in accuracy.",
+   "id": "models/whisper-small",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.",
+   "metrics": {
+    "models": {
+     "openai/whisper-small": {
+      "downloads": 3247080,
+      "last_modified": "2024-02-29",
+      "likes": 611
+     }
+    }
+   },
+   "name": "whisper-small",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "whisper-small",
+   "source": {
+    "huggingface": "openai/whisper-small"
+   },
+   "tags": [
+    "transcription",
+    "subtitles",
+    "multilingual",
+    "cpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The smallest multilingual Whisper model, handy for testing a transcription pipeline or for very weak hardware; too inaccurate for published captions.",
+   "id": "models/whisper-tiny",
+   "kind": "model",
+   "license": "Apache-2.0",
+   "license_note": "Hugging Face lists Apache-2.0, while OpenAI's GitHub releases the Whisper weights under MIT; both are permissive.",
+   "metrics": {
+    "models": {
+     "openai/whisper-tiny": {
+      "downloads": 1006572,
+      "last_modified": "2024-02-29",
+      "likes": 452
+     }
+    }
+   },
+   "name": "whisper-tiny",
+   "relationship": "related",
+   "runs": "local",
+   "section": "speech",
+   "slug": "whisper-tiny",
+   "source": {
+    "huggingface": "openai/whisper-tiny"
+   },
+   "tags": [
+    "transcription",
+    "testing",
+    "multilingual"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Scores short video windows against text labels you choose for zero-shot tagging of segments. Trained on human-action clips, so results on game footage are unconfirmed.",
+   "id": "models/xclip-base-patch16-zero-shot",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "microsoft/xclip-base-patch16-zero-shot": {
+      "downloads": 185540,
+      "last_modified": "2023-09-12",
+      "likes": 28
+     }
+    }
+   },
+   "name": "X-CLIP",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision-language",
+   "slug": "xclip-base-patch16-zero-shot",
+   "source": {
+    "huggingface": "microsoft/xclip-base-patch16-zero-shot"
+   },
+   "tags": [
+    "zero-shot",
+    "video tagging",
+    "video-text"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Detects people and objects, segments them and estimates body poses, useful for tracking speakers or players when reframing a video to vertical.",
+   "id": "models/yolo11",
+   "kind": "model",
+   "license": "AGPL-3.0",
+   "license_note": "Closed-source commercial use needs a paid Ultralytics Enterprise Licence. The Hub tag says agpl-3.0 while the ultralytics package declares AGPLv3 or later.",
+   "metrics": {
+    "models": {
+     "Ultralytics/YOLO11": {
+      "downloads": 23021,
+      "last_modified": "2026-06-26",
+      "likes": 207
+     }
+    }
+   },
+   "name": "Ultralytics YOLO11",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "yolo11",
+   "source": {
+    "huggingface": "Ultralytics/YOLO11"
+   },
+   "tags": [
+    "object detection",
+    "pose",
+    "tracking",
+    "reframing"
+   ],
+   "warning": "The ultralytics package it runs through sends anonymous usage analytics to Google Analytics by default; turn off with yolo settings sync=False."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Ultralytics' newest YOLO models for detecting people and objects, segmenting them and estimating poses, useful for tracking speakers or players when reframing.",
+   "id": "models/yolo26",
+   "kind": "model",
+   "license": "AGPL-3.0",
+   "license_note": "Closed-source commercial use needs a paid Ultralytics Enterprise Licence. The Hub tag says agpl-3.0 while the ultralytics package declares AGPLv3 or later.",
+   "metrics": {
+    "models": {
+     "Ultralytics/YOLO26": {
+      "downloads": 18696,
+      "last_modified": "2026-09-06",
+      "likes": 211
+     }
+    }
+   },
+   "name": "Ultralytics YOLO26",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "yolo26",
+   "source": {
+    "huggingface": "Ultralytics/YOLO26"
+   },
+   "tags": [
+    "object detection",
+    "pose",
+    "tracking",
+    "reframing"
+   ],
+   "warning": "The ultralytics package it runs through sends anonymous usage analytics to Google Analytics by default; turn off with yolo settings sync=False."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds laughs in podcast audio and returns each one with start, end and score, with presets that favour precision or recall. Comes with ONNX files for a lighter setup.",
+   "id": "models/zencastr-laughter-detection",
+   "kind": "model",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "zencastr/laughter-detection": {
+      "downloads": 63,
+      "last_modified": "2026-09-28",
+      "likes": 3
+     }
+    }
+   },
+   "name": "Zencastr Laughter Detection",
+   "relationship": "related",
+   "runs": "local",
+   "section": "audio-events",
+   "slug": "zencastr-laughter-detection",
+   "source": {
+    "huggingface": "zencastr/laughter-detection"
+   },
+   "tags": [
+    "laughter",
+    "podcast",
+    "audio events",
+    "onnx"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "ComfyUI nodes that run common FFmpeg jobs on video files, such as cutting, merging, watermarks, picture-in-picture and transitions. Cuts snap to keyframes.",
+   "id": "workflows/comfyui-ffmpeg",
+   "kind": "workflow",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "ComfyUI-FFmpeg",
+   "relationship": "related",
+   "runs": "local",
+   "section": "comfyui",
+   "slug": "comfyui-ffmpeg",
+   "source": {
+    "github": "https://github.com/MoonHugo/ComfyUI-FFmpeg"
+   },
+   "tags": [
+    "comfyui",
+    "ffmpeg",
+    "cutting",
+    "watermark",
+    "transitions"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "ComfyUI nodes that load videos as frames and combine frames and audio back into video files. The usual base for ComfyUI workflows that reframe or caption clips.",
+   "id": "workflows/comfyui-videohelpersuite",
+   "kind": "workflow",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "ComfyUI-VideoHelperSuite",
+   "relationship": "related",
+   "runs": "local",
+   "section": "comfyui",
+   "slug": "comfyui-videohelpersuite",
+   "source": {
+    "github": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+   },
+   "tags": [
+    "comfyui",
+    "video",
+    "frames",
+    "ffmpeg"
+   ],
+   "warning": "Load Video can download web URLs through yt-dlp when it is installed; YouTube's terms may not allow downloading videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OBS plugin that runs condition-and-action macros, for example saving the replay buffer when a video, speech, file or Twitch condition is met, to capture clip moments automatically.",
+   "id": "integrations/advanced-scene-switcher",
+   "kind": "integration",
+   "license": "GPL-2.0-only",
+   "metrics": {},
+   "name": "Advanced Scene Switcher",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "advanced-scene-switcher",
+   "source": {
+    "github": "https://github.com/WarmUpTill/SceneSwitcher"
+   },
+   "tags": [
+    "obs",
+    "replay buffer",
+    "automation",
+    "macros",
+    "twitch"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop chat client for Twitch that can save channel chat to timestamped log files, a simple way to keep a stream's chat for finding busy moments later.",
+   "id": "integrations/chatterino2",
+   "kind": "integration",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Chatterino 2",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "community",
+   "slug": "chatterino2",
+   "source": {
+    "github": "https://github.com/Chatterino/chatterino2"
+   },
+   "tags": [
+    "twitch",
+    "chat",
+    "chat logs"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
     "official"
    ],
    "checked": "2026-10-07",
@@ -68,6 +3582,734 @@
   {
    "added": "2026-10-07",
    "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "C# library that receives Counter-Strike 2 Game State Integration data and raises events for kills, rounds and bomb plants. Logging them while you record gives exact timestamps for highlights.",
+   "games": [
+    "counter-strike-2"
+   ],
+   "id": "integrations/counterstrike2gsi",
+   "kind": "integration",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "Counter-Strike 2 GSI",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "counterstrike2gsi",
+   "source": {
+    "github": "https://github.com/antonpup/CounterStrike2GSI"
+   },
+   "tags": [
+    "game state integration",
+    "csharp",
+    "kills",
+    "events"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "MCP server that lets AI agents work in DaVinci Resolve through its scripting API, for example to import a video and add clip moments as timeline markers.",
+   "id": "integrations/davinci-resolve-mcp",
+   "kind": "integration",
+   "license": "MIT",
+   "license_note": "Needs DaVinci Resolve, which is proprietary; external scripting needs the paid Studio edition, and the free edition works only through a bridge up to 21.0.x.",
+   "metrics": {},
+   "name": "DaVinci Resolve MCP Server",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "ai-assistants",
+   "slug": "davinci-resolve-mcp",
+   "source": {
+    "github": "https://github.com/samuelgursky/davinci-resolve-mcp"
+   },
+   "tags": [
+    "mcp",
+    "davinci resolve",
+    "markers",
+    "editing",
+    "agents"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Desktop chat bot for Twitch streamers with commands, timers and event-driven effects, including OBS control and creating Twitch clips. An effect can call a local program or URL when a replay is saved.",
+   "id": "integrations/firebot",
+   "kind": "integration",
+   "license": "GPL-3.0",
+   "license_note": "The README asks that anything using this code stays under the GPL and credits this repository.",
+   "metrics": {},
+   "name": "Firebot",
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "firebot",
+   "source": {
+    "github": "https://github.com/crowbartools/Firebot"
+   },
+   "tags": [
+    "twitch",
+    "chat bot",
+    "obs",
+    "clips"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "MCP server, Python library and CLI that give AI agents checked FFmpeg editing tools for trimming, captions, 9:16 resizing, scene detection and silence removal.",
+   "id": "integrations/kinocut",
+   "kind": "integration",
+   "license": "Apache-2.0",
+   "license_note": "The optional object-matte extra uses BiRefNet model weights whose licence was not confirmed.",
+   "metrics": {},
+   "name": "Kinocut",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "ai-assistants",
+   "slug": "kinocut",
+   "source": {
+    "github": "https://github.com/KyaniteLabs/kinocut"
+   },
+   "tags": [
+    "mcp",
+    "ffmpeg",
+    "captions",
+    "vertical video",
+    "agents"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OBS plugin that transcribes speech on your PC with Whisper while you stream or record. It shows live captions and can save SRT files timed to the recording, with optional translation.",
+   "id": "integrations/localvocal",
+   "kind": "integration",
+   "license": "GPL-2.0-or-later",
+   "metrics": {},
+   "name": "LocalVocal",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "streaming",
+   "slug": "localvocal",
+   "source": {
+    "github": "https://github.com/royshil/obs-localvocal"
+   },
+   "tags": [
+    "obs",
+    "captions",
+    "whisper",
+    "subtitles",
+    "transcription"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Node-RED nodes that connect to OBS Studio through obs-websocket to receive events and send requests, for example to hand a saved replay to a clip maker.",
+   "id": "integrations/node-red-contrib-obs-ws",
+   "kind": "integration",
+   "license": "MIT",
+   "metrics": {},
+   "name": "node-red-contrib-obs-ws",
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "node-red-contrib-obs-ws",
+   "source": {
+    "github": "https://github.com/lebaston100/node-red-contrib-obs-ws"
+   },
+   "tags": [
+    "node-red",
+    "obs",
+    "websocket",
+    "automation"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OBS plugin for Windows that turns the replay buffer on when a game is captured and files saved replays, recordings and screenshots into folders named after each game.",
+   "id": "integrations/obs-hadowplay",
+   "kind": "integration",
+   "license": "GPL-2.0-or-later",
+   "metrics": {},
+   "name": "OBS Hadowplay",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "obs-hadowplay",
+   "source": {
+    "github": "https://github.com/EZ64cool/obs-hadowplay"
+   },
+   "tags": [
+    "obs",
+    "replay buffer",
+    "game capture",
+    "shadowplay"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OBS script that marks moments in any recording or stream with a hotkey and saves their timestamps, file names and comments to a CSV file, so you can find clip moments later.",
+   "id": "integrations/obs-local-stream-marker",
+   "kind": "integration",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Local Stream Marker",
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "obs-local-stream-marker",
+   "source": {
+    "github": "https://github.com/honganqi/OBS-Local-Stream-Marker"
+   },
+   "tags": [
+    "obs",
+    "markers",
+    "bookmarks",
+    "csv",
+    "lua"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "MCP server that lets AI agents control a running OBS Studio, including scenes, recording, streaming and saving the replay buffer.",
+   "id": "integrations/obs-mcp",
+   "kind": "integration",
+   "license": "GPL-2.0-only",
+   "metrics": {},
+   "name": "OBS MCP Server",
+   "relationship": "related",
+   "runs": "local",
+   "section": "ai-assistants",
+   "slug": "obs-mcp",
+   "source": {
+    "github": "https://github.com/royshil/obs-mcp"
+   },
+   "tags": [
+    "mcp",
+    "obs",
+    "replay buffer",
+    "agents"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OBS plugin that keeps the last seconds of a source in memory for instant replays, with slow motion, reverse playback and a hotkey that saves the replay to disk.",
+   "id": "integrations/obs-replay-source",
+   "kind": "integration",
+   "license": "GPL-2.0-only",
+   "metrics": {},
+   "name": "Replay Source for OBS Studio",
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "obs-replay-source",
+   "source": {
+    "github": "https://github.com/exeldro/obs-replay-source"
+   },
+   "tags": [
+    "obs",
+    "instant replay",
+    "slow motion",
+    "replay buffer"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Remote-control API built into OBS Studio. Other programs can use it to start recordings, save the replay buffer, add chapter markers and react when a replay is saved.",
+   "id": "integrations/obs-websocket",
+   "kind": "integration",
+   "license": "GPL-2.0-or-later",
+   "metrics": {},
+   "name": "obs-websocket",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "obs-websocket",
+   "source": {
+    "github": "https://github.com/obsproject/obs-websocket"
+   },
+   "tags": [
+    "obs",
+    "websocket",
+    "api",
+    "replay buffer",
+    "remote control"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Self-hostable social media scheduler that posts videos to YouTube, TikTok, Instagram, X and other networks, with a public API for sending finished clips from other tools.",
+   "id": "integrations/postiz",
+   "kind": "integration",
+   "license": "AGPL-3.0",
+   "metrics": {},
+   "name": "Postiz",
+   "platforms": [
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "publishing",
+   "slug": "postiz",
+   "source": {
+    "github": "https://github.com/gitroomhq/postiz-app"
+   },
+   "tags": [
+    "scheduling",
+    "social media",
+    "publishing",
+    "tiktok",
+    "youtube"
+   ],
+   "warning": "Uploads your clips to the social accounts you connect, either from your own server or through the hosted Postiz Cloud."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Browser-based Twitch chat for streamers with moderation, alerts, a clip command and triggers that can control OBS or make HTTP calls when chat or stream events happen.",
+   "id": "integrations/twitchat",
+   "kind": "integration",
+   "license": "GPL-3.0",
+   "license_note": "The hosted twitchat.fr app limits how many triggers non-premium users can create.",
+   "metrics": {},
+   "name": "Twitchat",
+   "platforms": [
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "streaming",
+   "slug": "twitchat",
+   "source": {
+    "github": "https://github.com/Durss/Twitchat"
+   },
+   "tags": [
+    "twitch",
+    "chat",
+    "obs",
+    "triggers",
+    "alerts"
+   ],
+   "warning": "The main version runs on twitchat.fr and signs in with your Twitch account; self-hosting needs your own Twitch app."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Async Python library for the Twitch API and EventSub with chat-bot commands, for reading chat and stream events as live signals for clipping.",
+   "id": "integrations/twitchio",
+   "kind": "integration",
+   "license": "MIT",
+   "metrics": {},
+   "name": "TwitchIO",
+   "relationship": "related",
+   "runs": "both",
+   "section": "community",
+   "slug": "twitchio",
+   "source": {
+    "github": "https://github.com/TwitchIO/TwitchIO"
+   },
+   "tags": [
+    "twitch",
+    "chat",
+    "eventsub",
+    "python",
+    "bot"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "TypeScript libraries for the Twitch Helix API, chat and EventSub, so a clip tool can react to chat, channel point redemptions, subscriptions and follows as they happen.",
+   "id": "integrations/twurple",
+   "kind": "integration",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Twurple",
+   "relationship": "related",
+   "runs": "both",
+   "section": "community",
+   "slug": "twurple",
+   "source": {
+    "github": "https://github.com/twurple/twurple"
+   },
+   "tags": [
+    "twitch",
+    "chat",
+    "eventsub",
+    "typescript"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Uploads a video to YouTube from the command line through the official YouTube Data API, setting title, description, tags, privacy, playlists, thumbnail, captions and a scheduled publish time.",
+   "id": "integrations/youtubeuploader",
+   "kind": "integration",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "Youtube Uploader",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "publishing",
+   "slug": "youtubeuploader",
+   "source": {
+    "github": "https://github.com/porjo/youtubeuploader"
+   },
+   "tags": [
+    "youtube",
+    "upload",
+    "scheduling",
+    "publishing",
+    "cli"
+   ],
+   "warning": "Uploads your videos and their details to YouTube with your Google account."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "MCP server built on yt-dlp that lets AI agents search videos, read metadata, comments and subtitles, and download video or audio, optionally trimmed.",
+   "id": "integrations/yt-dlp-mcp",
+   "kind": "integration",
+   "license": "MIT",
+   "metrics": {},
+   "name": "yt-dlp-mcp",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "ai-assistants",
+   "slug": "yt-dlp-mcp",
+   "source": {
+    "github": "https://github.com/kevinwatt/yt-dlp-mcp"
+   },
+   "tags": [
+    "mcp",
+    "yt-dlp",
+    "download",
+    "youtube",
+    "subtitles"
+   ],
+   "warning": "Downloads videos, subtitles and comments from YouTube and other sites; their terms may not allow it for videos you don't own. It can use your browser cookies."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Removes dead air and silent parts from video or audio based on loudness, motion or subtitle matches. Renders the edit or exports a timeline for Premiere, DaVinci Resolve, Final Cut Pro, Shotcut or Kdenlive.",
+   "id": "tools/auto-editor",
+   "kind": "tool",
+   "license": "Unlicense",
+   "license_note": "Without a paid key from app.auto-editor.com, renders above 3200x1800 are downscaled and multi-source timeline export and the 'add' action are locked. The README says release binaries may be under other open-source licences.",
+   "metrics": {},
+   "name": "Auto-Editor",
+   "relationship": "related",
+   "runs": "local",
+   "section": "editing",
+   "slug": "auto-editor",
+   "source": {
+    "github": "https://github.com/WyattBlue/auto-editor"
+   },
+   "tags": [
+    "silence removal",
+    "premiere",
+    "davinci resolve",
+    "final cut pro",
+    "timeline"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python CLI and library that finds the busiest stretches of chat or danmaku in an ASS subtitle file and cuts those windows from the video as highlight clips.",
+   "id": "tools/auto-slice-video",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "auto-slice-video",
+   "relationship": "related",
+   "runs": "local",
+   "section": "clipping",
+   "slug": "auto-slice-video",
+   "source": {
+    "github": "https://github.com/timerring/auto-slice-video"
+   },
+   "tags": [
+    "danmaku",
+    "chat",
+    "bilibili",
+    "highlights"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Edits a video by letting you pick lines from its Whisper transcript and cutting the matching segments.",
+   "id": "tools/autocut",
+   "kind": "tool",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "AutoCut",
+   "relationship": "related",
+   "runs": "both",
+   "section": "editing",
+   "slug": "autocut",
+   "source": {
+    "github": "https://github.com/mli/autocut"
+   }
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python library and command line for Counter-Strike 2 demos that returns rounds, kills, damage, grenades and stats as tables. Handy for scoring rounds to find multi-kills and clutches.",
+   "games": [
+    "counter-strike-2"
+   ],
+   "id": "tools/awpy",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Awpy",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "awpy",
+   "source": {
+    "github": "https://github.com/pnxenopoulos/awpy"
+   },
+   "tags": [
+    "cs2",
+    "demos",
+    "stats",
+    "kills"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Records live streams and their danmaku chat from Bilibili, Douyin, Twitch, YouTube and other sites around the clock, with a web UI to cut segments and upload them to Bilibili.",
+   "id": "tools/biliup",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "The LICENSE file is MIT, but the README's disclaimer says the project is for personal learning and research only and that commercial use is prohibited.",
+   "metrics": {},
+   "name": "biliup",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streams",
+   "slug": "biliup",
+   "source": {
+    "github": "https://github.com/biliup/biliup"
+   },
+   "tags": [
+    "stream recording",
+    "twitch",
+    "bilibili",
+    "danmaku",
+    "upload"
+   ],
+   "warning": "Records streams from Twitch, YouTube, Douyin and other sites, whose terms may not allow it for streams you don't own; uploads use your Bilibili login."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Rust library that parses Rocket League .replay files: the header gives goals and scores, and the network data gives frame-by-frame details. The companion rrrocket tool outputs JSON.",
+   "games": [
+    "rocket-league"
+   ],
+   "id": "tools/boxcars",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Boxcars",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "boxcars",
+   "source": {
+    "github": "https://github.com/nickbabcock/boxcars"
+   },
+   "tags": [
+    "rocket league",
+    "replays",
+    "goals",
+    "rust"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Turns a video link into captioned clips: it downloads the video, transcribes it locally, scores moments with a built-in heuristic or a local Ollama model and renders vertical, square or wide clips that end on a full sentence.",
+   "id": "tools/chopify",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Chopify",
+   "relationship": "related",
+   "runs": "local",
+   "section": "clipping",
+   "slug": "chopify",
+   "source": {
+    "github": "https://github.com/mehbul/chopify"
+   },
+   "tags": [
+    "ollama",
+    "whisper",
+    "captions",
+    "vertical",
+    "podcast"
+   ],
+   "warning": "Downloads videos from YouTube and other sites with yt-dlp; their terms may not allow it for videos you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Java parser for Dota 2, CS:GO, CS2 and Deadlock replays that exposes the combat log, game events, entities and an end-of-game summary. One parser can cover kills and fights across several games.",
+   "games": [
+    "dota-2",
+    "counter-strike-go",
+    "counter-strike-2",
+    "deadlock"
+   ],
+   "id": "tools/clarity",
+   "kind": "tool",
+   "license": "BSD-3-Clause",
+   "metrics": {},
+   "name": "Clarity",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "clarity",
+   "source": {
+    "github": "https://github.com/skadistats/clarity"
+   },
+   "tags": [
+    "replay parser",
+    "java",
+    "dota 2",
+    "deadlock"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
     "official"
    ],
    "checked": "2026-10-07",
@@ -97,9 +4339,1640 @@
     "manifest"
    ],
    "uses": "api"
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Node-graph app for building and running image and video generation pipelines on your own GPU; the ComfyUI node packs in this catalog run inside it.",
+   "id": "tools/comfyui",
+   "kind": "tool",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "ComfyUI",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "local-ai",
+   "slug": "comfyui",
+   "source": {
+    "github": "https://github.com/Comfy-Org/ComfyUI"
+   },
+   "tags": [
+    "comfyui",
+    "nodes",
+    "video generation",
+    "workflows"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Plays back osu! beatmaps and replays from osu! stable and lazer and records them to video files through FFmpeg, from a GUI or the command line.",
+   "games": [
+    "osu"
+   ],
+   "id": "tools/danser-go",
+   "kind": "tool",
+   "license": "GPL-3.0",
+   "license_note": "It bundles the proprietary BASS audio library, which is free only for non-commercial use: selling danser-go or a derivative needs a paid BASS licence. Some assets listed in CREDITS.md, such as the logo, have their own terms.",
+   "metrics": {},
+   "name": "danser-go",
+   "platforms": [
+    "windows",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "danser-go",
+   "source": {
+    "github": "https://github.com/Wieku/danser-go"
+   },
+   "tags": [
+    "osu",
+    "replay",
+    "rendering",
+    "ffmpeg"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Go library that parses Counter-Strike 2 and CS:GO demos and calls your code on game events such as kills and round ends. It can also read live CSTV+ broadcasts.",
+   "games": [
+    "counter-strike-2",
+    "counter-strike-go"
+   ],
+   "id": "tools/demoinfocs-golang",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "demoinfocs-golang",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "demoinfocs-golang",
+   "source": {
+    "github": "https://github.com/markus-wa/demoinfocs-golang"
+   },
+   "tags": [
+    "cs2",
+    "csgo",
+    "demo parser",
+    "go"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Fast Counter-Strike 2 demo parser written in Rust and used from Python or JavaScript. Query a demo for events such as kills with their tick numbers to find highlight moments.",
+   "games": [
+    "counter-strike-2"
+   ],
+   "id": "tools/demoparser",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Demoparser",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "demoparser",
+   "source": {
+    "github": "https://github.com/LaihoE/demoparser"
+   },
+   "tags": [
+    "cs2",
+    "demo parser",
+    "kills",
+    "replays"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Splits a soundtrack into vocals, drums, bass and other stems, so you can isolate speech from background music before transcribing or captioning a clip.",
+   "id": "tools/demucs",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "The pretrained weights on Hugging Face (adefossez/HTDemucs) state no licence of their own; only the repository's MIT licence is confirmed.",
+   "metrics": {
+    "models": {
+     "adefossez/HTDemucs": {
+      "downloads": 0,
+      "last_modified": "2026-08-31",
+      "likes": 0
+     },
+     "adefossez/HTDemucs-ft": {
+      "downloads": 0,
+      "last_modified": "2026-08-31",
+      "likes": 0
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "adefossez/HTDemucs"
+    },
+    {
+     "huggingface": "adefossez/HTDemucs-ft"
+    }
+   ],
+   "name": "Demucs",
+   "relationship": "related",
+   "runs": "local",
+   "section": "media",
+   "slug": "demucs",
+   "source": {
+    "github": "https://github.com/adefossez/demucs"
+   },
+   "tags": [
+    "audio separation",
+    "vocals",
+    "stems",
+    "music"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python library that transcribes speech with Whisper models faster and with less memory than the original, with word timestamps, voice activity filtering and batched processing. Needs no separate FFmpeg install.",
+   "id": "tools/faster-whisper",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "Systran/faster-whisper-large-v3": {
+      "downloads": 1004408,
+      "last_modified": "2023-11-23",
+      "likes": 680
+     },
+     "Systran/faster-whisper-small": {
+      "downloads": 3909110,
+      "last_modified": "2023-11-23",
+      "likes": 58
+     },
+     "dropbox-dash/faster-whisper-large-v3-turbo": {
+      "downloads": 2210808,
+      "last_modified": "2025-11-05",
+      "likes": 71
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "Systran/faster-whisper-large-v3"
+    },
+    {
+     "huggingface": "Systran/faster-whisper-small"
+    },
+    {
+     "huggingface": "dropbox-dash/faster-whisper-large-v3-turbo"
+    }
+   ],
+   "name": "faster-whisper",
+   "relationship": "related",
+   "runs": "local",
+   "section": "transcription",
+   "slug": "faster-whisper",
+   "source": {
+    "github": "https://github.com/SYSTRAN/faster-whisper"
+   },
+   "tags": [
+    "whisper",
+    "speech to text",
+    "word timestamps",
+    "gpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python package that loads Formula 1 timing data, telemetry, results and schedules as pandas DataFrames, useful for lining up race footage with laps and key moments.",
+   "id": "tools/fastf1",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "FastF1",
+   "relationship": "related",
+   "runs": "both",
+   "section": "sports",
+   "slug": "fastf1",
+   "source": {
+    "github": "https://github.com/theOehrly/Fast-F1"
+   },
+   "sports": [
+    "formula-1"
+   ],
+   "tags": [
+    "f1",
+    "telemetry",
+    "timing",
+    "python"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "The standard command-line toolkit and libraries for decoding, cutting, filtering, encoding and muxing audio and video; most clip makers use it to cut and render clips.",
+   "id": "tools/ffmpeg",
+   "kind": "tool",
+   "license": "LGPL-2.1-or-later",
+   "license_note": "Builds made with --enable-gpl or with GPL libraries such as libx264 are GPL-2.0-or-later, and --enable-nonfree builds cannot be redistributed. Check the licence of the FFmpeg build you download.",
+   "metrics": {},
+   "name": "FFmpeg",
+   "relationship": "related",
+   "runs": "local",
+   "section": "media",
+   "slug": "ffmpeg",
+   "source": {
+    "github": "https://github.com/FFmpeg/FFmpeg"
+   },
+   "tags": [
+    "ffmpeg",
+    "encoding",
+    "video processing",
+    "cli"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Automatically fixes out-of-sync subtitles by shifting and stretching them to match the speech in a video or a correctly timed reference subtitle file.",
+   "id": "tools/ffsubsync",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "FFsubsync",
+   "platforms": [
+    "windows",
+    "macos",
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "captions",
+   "slug": "ffsubsync",
+   "source": {
+    "github": "https://github.com/smacke/ffsubsync"
+   },
+   "tags": [
+    "subtitles",
+    "sync",
+    "srt",
+    "alignment"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Reads Fortnite replay files and lists eliminations with start and end times plus match stats, which a small helper can turn into kill clips. A .NET library published on NuGet as FortniteReplayReader.",
+   "games": [
+    "fortnite"
+   ],
+   "id": "tools/fortnite-replay-decompressor",
+   "kind": "tool",
+   "license": "MIT AND GPL-3.0-or-later",
+   "license_note": "The repository LICENSE is MIT, but the bundled OozSharp decompressor (src/OozSharp/Kraken.cs, a port of ooz) is GPL-3.0-or-later and is part of the NuGet library, so redistributing it carries GPL-3.0-or-later duties too.",
+   "metrics": {},
+   "name": "FortniteReplayDecompressor",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "fortnite-replay-decompressor",
+   "source": {
+    "github": "https://github.com/Shiqan/FortniteReplayDecompressor"
+   },
+   "tags": [
+    "fortnite",
+    "replays",
+    "eliminations",
+    "kills",
+    "dotnet"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Self-hosted server that archives Twitch VODs and live streams together with their chat, including a rendered chat video, in a plain file layout that works without it.",
+   "id": "tools/ganymede",
+   "kind": "tool",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "Ganymede",
+   "platforms": [
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streams",
+   "slug": "ganymede",
+   "source": {
+    "github": "https://github.com/Zibbp/ganymede"
+   },
+   "tags": [
+    "twitch",
+    "vod",
+    "chat",
+    "archive",
+    "docker"
+   ],
+   "warning": "Downloads Twitch VODs, live streams and chat, which Twitch's terms may not allow for channels you don't own; an optional proxy setting is built to archive live streams without ads."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Pure Python Dota 2 replay parser that turns .dem files into match objects, tables, JSON or Parquet, covering the combat log, fights, Roshan, towers, wards and runes. Highlight scoring is left to you.",
+   "games": [
+    "dota-2"
+   ],
+   "id": "tools/gem-dota",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "gem",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "gem-dota",
+   "source": {
+    "github": "https://github.com/whanyu1212/gem-dota"
+   },
+   "tags": [
+    "dota 2",
+    "replay parser",
+    "fights",
+    "pandas"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Cuts long talk videos into ranked clips by listing every possible cut point from sentence ends, pauses and speaker changes, then having a hosted model judge each clip. Outputs MP4s, an edit list and an FCPXML timeline.",
+   "id": "tools/jevcut",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "Judging clips needs an API key for TypeSafe's hosted Jev model (through OpenRouter or the TypeSafe SDK), a paid service under its own terms.",
+   "metrics": {},
+   "name": "jevcut",
+   "relationship": "related",
+   "runs": "both",
+   "section": "clipping",
+   "slug": "jevcut",
+   "source": {
+    "github": "https://github.com/VBS2004/jevcut"
+   },
+   "tags": [
+    "boundaries",
+    "transcript",
+    "podcast",
+    "fcpxml"
+   ],
+   "warning": "Sends transcript text to TypeSafe's hosted Jev model, through OpenRouter by default, to judge every clip."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Detects which visible face is speaking, using both the audio and the picture, with a demo for your own videos. Useful for keeping vertical crops on the speaker; the authors' newer LR-ASD extends it.",
+   "id": "tools/light-asd",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "The demo's S3FD face detector code has no licence and its weights come from Google Drive with no stated licence; swap in a licensed face detector before reusing the demo pipeline.",
+   "metrics": {},
+   "name": "Light-ASD",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "light-asd",
+   "source": {
+    "github": "https://github.com/Junhua-Liao/Light-ASD"
+   },
+   "tags": [
+    "active speaker",
+    "face",
+    "speaker tracking",
+    "reframing"
+   ],
+   "warning": "Its Columbia evaluation script downloads a test video from YouTube with youtube-dl; YouTube's terms may not allow it. The demo on your own videos uses local files."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds the moments in a video that match a text query, such as a goal or people laughing, and scores each part for how highlight-worthy it is. Videos longer than 150 seconds must be split first.",
+   "id": "tools/lighthouse",
+   "kind": "tool",
+   "license": "Apache-2.0",
+   "license_note": "Pre-trained weights download separately from Google Drive and Zenodo with no stated licence, and were trained on datasets with non-commercial annotation terms (QVHighlights is CC BY-NC-SA 4.0).",
+   "metrics": {},
+   "name": "Lighthouse",
+   "relationship": "related",
+   "runs": "local",
+   "section": "clipping",
+   "slug": "lighthouse",
+   "source": {
+    "github": "https://github.com/line/lighthouse"
+   },
+   "tags": [
+    "moment retrieval",
+    "highlight detection",
+    "text query",
+    "saliency"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Runs GGUF language and vision models on CPU or GPU with a built-in OpenAI-compatible server, so moment-picking and captioning prompts can run offline.",
+   "id": "tools/llama-cpp",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "llama.cpp",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "local-ai",
+   "slug": "llama-cpp",
+   "source": {
+    "github": "https://github.com/ggml-org/llama.cpp"
+   },
+   "tags": [
+    "llm",
+    "gguf",
+    "local ai",
+    "server"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Translates SRT, ASS and VTT subtitle files with large language models through a desktop app or command line, and can also transcribe audio. Works with cloud AI providers or a local OpenAI-compatible server such as Ollama.",
+   "id": "tools/llm-subtrans",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "LLM-Subtrans",
+   "relationship": "related",
+   "runs": "both",
+   "section": "translation",
+   "slug": "llm-subtrans",
+   "source": {
+    "github": "https://github.com/machinewrapped/llm-subtrans"
+   },
+   "tags": [
+    "subtitles",
+    "translation",
+    "ollama",
+    "srt"
+   ],
+   "warning": "Sends subtitles, and audio when transcribing, to OpenRouter by default or another cloud AI provider you pick, unless you use a local server or Qwen Local."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Google's on-device machine learning framework with ready-made tasks for face, pose and object detection on desktop, mobile and web. Useful for finding faces and subjects when reframing clips to vertical.",
+   "id": "tools/mediapipe",
+   "kind": "tool",
+   "license": "Apache-2.0",
+   "license_note": "Its AutoFlip reframing solution is legacy and unsupported since March 2023.",
+   "metrics": {},
+   "name": "MediaPipe",
+   "platforms": [
+    "windows",
+    "android",
+    "ios",
+    "web"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "mediapipe",
+   "source": {
+    "github": "https://github.com/google-ai-edge/mediapipe"
+   },
+   "tags": [
+    "face detection",
+    "reframing",
+    "pose",
+    "object detection"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "PyTorch toolbox for action recognition, temporal action localization and spatio-temporal action detection, for training models that spot plays or events in sports and game footage.",
+   "id": "tools/mmaction2",
+   "kind": "tool",
+   "license": "Apache-2.0",
+   "metrics": {},
+   "name": "MMAction2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "mmaction2",
+   "source": {
+    "github": "https://github.com/open-mmlab/mmaction2"
+   },
+   "tags": [
+    "action detection",
+    "action recognition",
+    "pytorch",
+    "sports"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python library for editing video in code: cutting, joining, compositing, adding text and titles and applying effects, reading and writing files through FFmpeg. Slower than calling FFmpeg directly.",
+   "id": "tools/moviepy",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "MoviePy",
+   "relationship": "related",
+   "runs": "local",
+   "section": "media",
+   "slug": "moviepy",
+   "source": {
+    "github": "https://github.com/Zulko/moviepy"
+   },
+   "tags": [
+    "python",
+    "video editing",
+    "compositing",
+    "text overlay"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python client for NBA.com's stats and live data endpoints, including play-by-play and scoreboards, for lining up basketball highlights with game events.",
+   "id": "tools/nba-api",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "nba_api",
+   "relationship": "related",
+   "runs": "both",
+   "section": "sports",
+   "slug": "nba-api",
+   "source": {
+    "github": "https://github.com/swar/nba_api"
+   },
+   "sports": [
+    "basketball"
+   ],
+   "tags": [
+    "nba",
+    "play-by-play",
+    "python",
+    "stats"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Downloads and runs open language models such as Gemma and Qwen on your own computer, with a local API that clip tools can call to pick moments or write titles.",
+   "id": "tools/ollama",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Ollama",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "both",
+   "section": "local-ai",
+   "slug": "ollama",
+   "source": {
+    "github": "https://github.com/ollama/ollama"
+   },
+   "tags": [
+    "llm",
+    "local ai",
+    "gemma",
+    "api"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Dubs a video into another language from the command line: it separates the voice, identifies speakers, transcribes, translates and generates new speech. It saves an editable file so you can fix lines and re-render.",
+   "id": "tools/open-dubbing",
+   "kind": "tool",
+   "license": "Apache-2.0",
+   "license_note": "Its default NLLB translation and MMS speech models are CC-BY-NC-4.0 (non-commercial only), and its pyannote models are gated: accept their terms on Hugging Face and supply a token.",
+   "metrics": {
+    "models": {
+     "facebook/mms-tts-cat": {
+      "downloads": 393,
+      "last_modified": "2023-09-01",
+      "likes": 1
+     },
+     "facebook/nllb-200-1.3B": {
+      "downloads": 87040,
+      "last_modified": "2023-02-11",
+      "likes": 75
+     },
+     "facebook/nllb-200-3.3B": {
+      "downloads": 186477,
+      "last_modified": "2023-02-11",
+      "likes": 476
+     },
+     "pyannote/segmentation-3.0": {
+      "downloads": 5424247,
+      "last_modified": "2024-05-10",
+      "likes": 2116
+     },
+     "pyannote/speaker-diarization-3.1": {
+      "downloads": 7152207,
+      "last_modified": "2024-05-10",
+      "likes": 4187
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "facebook/nllb-200-1.3B"
+    },
+    {
+     "huggingface": "facebook/nllb-200-3.3B"
+    },
+    {
+     "huggingface": "facebook/mms-tts-cat"
+    },
+    {
+     "huggingface": "pyannote/speaker-diarization-3.1"
+    },
+    {
+     "huggingface": "pyannote/segmentation-3.0"
+    }
+   ],
+   "name": "Open Dubbing",
+   "relationship": "related",
+   "runs": "both",
+   "section": "translation",
+   "slug": "open-dubbing",
+   "source": {
+    "github": "https://github.com/Softcatala/open-dubbing"
+   },
+   "tags": [
+    "dubbing",
+    "translation",
+    "text to speech",
+    "voice"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "OpenAI's reference speech recognition tool and Python package: it transcribes speech in many languages, translates it into English and identifies the language. The original behind most Whisper ports.",
+   "id": "tools/openai-whisper",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "The README says both code and model weights are MIT. Hugging Face copies can differ: openai/whisper-large-v3 is tagged Apache-2.0, so check the licence of the exact repository you pin.",
+   "metrics": {},
+   "name": "Whisper",
+   "relationship": "related",
+   "runs": "local",
+   "section": "transcription",
+   "slug": "openai-whisper",
+   "source": {
+    "github": "https://github.com/openai/whisper"
+   },
+   "tags": [
+    "speech to text",
+    "transcription",
+    "translation",
+    "openai",
+    "python"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python toolkit that works out who spoke when in a recording, with speech activity, speaker change and overlap detection. Useful for cutting podcast clips at speaker turns and following the active speaker.",
+   "id": "tools/pyannote-audio",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "Pretrained pipelines on Hugging Face have their own licences and are often gated; the default community-1 pipeline is CC-BY-4.0 and needs sign-in, accepted terms and a token.",
+   "metrics": {
+    "models": {
+     "pyannote/speaker-diarization-community-1": {
+      "downloads": 5554891,
+      "last_modified": "2025-09-29",
+      "likes": 2595
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "pyannote/speaker-diarization-community-1"
+    }
+   ],
+   "name": "pyannote.audio",
+   "relationship": "related",
+   "runs": "both",
+   "section": "media",
+   "slug": "pyannote-audio",
+   "source": {
+    "github": "https://github.com/pyannote/pyannote-audio"
+   },
+   "tags": [
+    "diarization",
+    "speakers",
+    "podcast",
+    "voice activity"
+   ],
+   "warning": "Sends anonymous usage metrics (pipeline origin, file duration, speaker-count settings) by default; set PYANNOTE_METRICS_ENABLED=0 to turn it off."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Burns animated word-by-word captions onto videos using CSS-styled templates. It can transcribe with Whisper or reuse an existing Whisper JSON, SRT or VTT transcript.",
+   "id": "tools/pycaps",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "pycaps",
+   "relationship": "related",
+   "runs": "both",
+   "section": "captions",
+   "slug": "pycaps",
+   "source": {
+    "github": "https://github.com/francozanardi/pycaps"
+   },
+   "tags": [
+    "captions",
+    "subtitles",
+    "word by word",
+    "animated",
+    "templates"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds scene cuts and transitions in a video and lists them as timecodes or CSV, or splits the video at each cut. Useful for snapping clip starts and ends to shot changes.",
+   "id": "tools/pyscenedetect",
+   "kind": "tool",
+   "license": "BSD-3-Clause",
+   "metrics": {},
+   "name": "PySceneDetect",
+   "relationship": "related",
+   "runs": "local",
+   "section": "scenes",
+   "slug": "pyscenedetect",
+   "source": {
+    "github": "https://github.com/Breakthrough/PySceneDetect"
+   },
+   "tags": [
+    "scene detection",
+    "shot boundaries",
+    "cuts",
+    "split video"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Splits audio into stems such as vocals and instrumental with models trained for Ultimate Vocal Remover. Useful for removing game sound or background music before transcription.",
+   "id": "tools/python-audio-separator",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "Model weights download on first use and have no stated licences. Some models are marked VIP, meant only for paying UVR subscribers, so leave them out. The authors ask you to credit UVR when using its models.",
+   "metrics": {},
+   "name": "Audio Separator",
+   "relationship": "related",
+   "runs": "both",
+   "section": "media",
+   "slug": "python-audio-separator",
+   "source": {
+    "github": "https://github.com/nomadkaraoke/python-audio-separator"
+   },
+   "tags": [
+    "vocals",
+    "stems",
+    "audio separation",
+    "music removal"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Minecraft mod that records your sessions so you can replay them from any camera angle, mark moments with a hotkey and render camera paths to video for clipping.",
+   "games": [
+    "minecraft"
+   ],
+   "id": "tools/replaymod",
+   "kind": "tool",
+   "license": "GPL-3.0-or-later",
+   "metrics": {},
+   "name": "ReplayMod",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "replaymod",
+   "source": {
+    "github": "https://github.com/ReplayMod/ReplayMod"
+   },
+   "tags": [
+    "minecraft",
+    "replay",
+    "camera paths",
+    "rendering"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Detects and segments people and objects in video frames, a permissively licensed option for following players or a ball when reframing to vertical.",
+   "id": "tools/rf-detr",
+   "kind": "tool",
+   "license": "Apache-2.0",
+   "license_note": "The Atto, Femto, Pico, XLarge and 2XLarge detection models need the rfdetr[plus] extension and are under the separate PML 1.0 licence, not Apache-2.0.",
+   "metrics": {},
+   "name": "RF-DETR",
+   "relationship": "related",
+   "runs": "both",
+   "section": "vision",
+   "slug": "rf-detr",
+   "source": {
+    "github": "https://github.com/roboflow/rf-detr"
+   },
+   "tags": [
+    "object detection",
+    "segmentation",
+    "reframing",
+    "sports"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Computer-vision helpers for sports, with a soccer example that detects players, referees, the ball and pitch keypoints, splits players into teams and draws a top-down radar view. Handy for ball-following crops.",
+   "id": "tools/roboflow-sports",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "The soccer example's YOLOv8 detector is Ultralytics AGPL-3.0 (or a paid Ultralytics licence), its weights come from Google Drive with no stated licence, and the Kaggle training-data terms are unconfirmed.",
+   "metrics": {
+    "models": {
+     "google/siglip-base-patch16-224": {
+      "downloads": 1655791,
+      "last_modified": "2024-09-26",
+      "likes": 92
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "google/siglip-base-patch16-224"
+    }
+   ],
+   "name": "Roboflow sports",
+   "relationship": "related",
+   "runs": "local",
+   "section": "sports",
+   "slug": "roboflow-sports",
+   "source": {
+    "github": "https://github.com/roboflow/sports"
+   },
+   "sports": [
+    "soccer"
+   ],
+   "tags": [
+    "ball tracking",
+    "player tracking",
+    "team detection",
+    "radar",
+    "computer vision"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A small voice activity detector that finds where speech starts and stops in audio, on CPU or GPU. Useful for trimming silence, cleaning up Whisper input and spotting talk-heavy stretches.",
+   "id": "tools/silero-vad",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "The model weights ship in the repository under the same MIT licence. The README badge's 'CC BY-NC 4.0' alt text is out of date; the LICENSE file says MIT.",
+   "metrics": {},
+   "name": "Silero VAD",
+   "relationship": "related",
+   "runs": "local",
+   "section": "media",
+   "slug": "silero-vad",
+   "source": {
+    "github": "https://github.com/snakers4/silero-vad"
+   },
+   "tags": [
+    "voice activity",
+    "vad",
+    "silence",
+    "speech detection",
+    "onnx"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Tracks everyone on the pitch in a soccer broadcast and estimates each person's pitch position, role, team and jersey number, drawn on a minimap. Useful for player-focused clips; needs a CUDA GPU.",
+   "id": "tools/sn-gamestate",
+   "kind": "tool",
+   "license": "GPL-3.0",
+   "license_note": "Its baseline detector is Ultralytics YOLOv11 (AGPL-3.0 or a paid Ultralytics licence), and the licences of the baseline weights it downloads automatically were not confirmed.",
+   "metrics": {},
+   "name": "SoccerNet Game State Reconstruction",
+   "relationship": "related",
+   "runs": "local",
+   "section": "sports",
+   "slug": "sn-gamestate",
+   "source": {
+    "github": "https://github.com/SoccerNet/sn-gamestate"
+   },
+   "sports": [
+    "soccer"
+   ],
+   "tags": [
+    "player tracking",
+    "jersey numbers",
+    "minimap",
+    "soccernet"
+   ],
+   "warning": "Includes a config that downloads a YouTube video with yt-dlp; YouTube's terms may not allow it. Point it at your own local video files instead."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Whisper transcripts of soccer broadcast commentary for SoccerNet matches, with English translations and timed segments. Useful for testing transcript-based moment finding; it contains no video.",
+   "id": "tools/soccernet-echoes",
+   "kind": "tool",
+   "license": "CC-BY-4.0",
+   "license_note": "The GitHub repository has no licence file; CC BY 4.0 comes from the official Hugging Face copy (SoccerNet/SN-echoes), so use that copy and give attribution. The match videos are not included and need the SoccerNet NDA.",
+   "metrics": {},
+   "name": "SoccerNet-Echoes",
+   "relationship": "related",
+   "runs": "local",
+   "section": "sports",
+   "slug": "soccernet-echoes",
+   "source": {
+    "github": "https://github.com/SoccerNet/sn-echoes"
+   },
+   "sports": [
+    "soccer"
+   ],
+   "tags": [
+    "dataset",
+    "commentary",
+    "transcripts",
+    "whisper",
+    "benchmark"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Captures live streams and VODs from Twitch, Kick, YouTube and many other services and saves them to a file you can clip, or plays them in your video player. Command-line tool and Python library.",
+   "id": "tools/streamlink",
+   "kind": "tool",
+   "license": "BSD-2-Clause",
+   "metrics": {},
+   "name": "Streamlink",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streams",
+   "slug": "streamlink",
+   "source": {
+    "github": "https://github.com/streamlink/streamlink"
+   },
+   "tags": [
+    "twitch",
+    "kick",
+    "live",
+    "recording",
+    "stream capture"
+   ],
+   "warning": "Records streams and VODs from Twitch, Kick, YouTube and other sites; their terms may not allow it, and its Kick plugin solves a browser challenge that Kick's terms forbid bypassing."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Reads Rocket League replay files and gives you goals, demolitions, touches, boost pickups and stats timelines with exact times, ready to turn into highlight timestamps. Rust library with Python and JavaScript bindings.",
+   "games": [
+    "rocket-league"
+   ],
+   "id": "tools/subtr-actor",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "subtr-actor",
+   "relationship": "related",
+   "runs": "local",
+   "section": "games",
+   "slug": "subtr-actor",
+   "source": {
+    "github": "https://github.com/rlrml/subtr-actor"
+   },
+   "tags": [
+    "rocket league",
+    "replays",
+    "game events",
+    "rust",
+    "python"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python toolkit that puts any detector's results into one format and adds helpers for drawing boxes, smoothing detections and reading or writing video frames. Object tracking now lives in Roboflow's separate trackers package.",
+   "id": "tools/supervision",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "supervision",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "supervision",
+   "source": {
+    "github": "https://github.com/roboflow/supervision"
+   },
+   "tags": [
+    "computer vision",
+    "detection",
+    "tracking",
+    "annotation"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Spots the exact frames where events happen in sports video (soccer, tennis, diving, gymnastics, figure skating) and writes them with timestamps to JSON. Research code with checkpoints; needs an NVIDIA GPU.",
+   "id": "tools/t-deed",
+   "kind": "tool",
+   "license": "GPL-3.0",
+   "license_note": "Checkpoints are on Google Drive with no stated licence and were trained on data with its own terms (FineGym is non-commercial; SoccerNet video is behind an NDA). Code adapted from E2E-Spot keeps a BSD-3-Clause notice.",
+   "metrics": {},
+   "name": "T-DEED",
+   "relationship": "related",
+   "runs": "local",
+   "section": "sports",
+   "slug": "t-deed",
+   "source": {
+    "github": "https://github.com/arturxe2/T-DEED"
+   },
+   "sports": [
+    "soccer",
+    "tennis"
+   ],
+   "tags": [
+    "event spotting",
+    "action spotting",
+    "soccer",
+    "tennis",
+    "pytorch"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A modular framework that chains detectors, pose estimators, re-identification models and trackers to follow people or objects through a video. Its track data can drive player-following vertical crops.",
+   "id": "tools/tracklab",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "Installing it pulls in Ultralytics as a required dependency, which is AGPL-3.0 (or a paid Ultralytics licence); vendored code in plugins/ keeps its own licences.",
+   "metrics": {},
+   "name": "TrackLab",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "tracklab",
+   "source": {
+    "github": "https://github.com/TrackingLaboratory/tracklab"
+   },
+   "tags": [
+    "tracking",
+    "multi-object tracking",
+    "pose",
+    "re-identification",
+    "reframing"
+   ],
+   "warning": "Given a web address, it downloads the video with yt-dlp, and its sample config suggests a YouTube link; YouTube's terms may not allow it. Use local files."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Tracks the shuttlecock in badminton video and writes its position for every frame to a CSV, with an optional trajectory overlay video. Stretches where the shuttle is visible can be grouped into rallies for clips.",
+   "id": "tools/tracknetv3",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "TrackNetV3",
+   "relationship": "related",
+   "runs": "local",
+   "section": "sports",
+   "slug": "tracknetv3",
+   "source": {
+    "github": "https://github.com/qaz812345/TrackNetV3"
+   },
+   "sports": [
+    "badminton"
+   ],
+   "tags": [
+    "shuttlecock",
+    "ball tracking",
+    "rallies",
+    "badminton"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "A neural network that detects shot changes in any video and lists where each scene starts and ends. Useful for snapping clip edges to real cuts; TensorFlow, with a PyTorch port.",
+   "id": "tools/transnetv2",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "TransNet V2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "scenes",
+   "slug": "transnetv2",
+   "source": {
+    "github": "https://github.com/soCzech/TransNetV2"
+   },
+   "tags": [
+    "shot detection",
+    "scene detection",
+    "cuts",
+    "tensorflow",
+    "pytorch"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Finds highlights in Twitch VODs or local videos by combining loudness peaks, hype words and laughter in the transcript, chat speed and facial emotion. Exports the best clips, optionally as vertical video.",
+   "id": "tools/twitch-clip-miner",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Twitch AI Clip Miner",
+   "relationship": "related",
+   "runs": "local",
+   "section": "clipping",
+   "slug": "twitch-clip-miner",
+   "source": {
+    "github": "https://github.com/jamesbaughnd/twitch-clip-miner"
+   },
+   "tags": [
+    "twitch",
+    "chat",
+    "laughter",
+    "highlights",
+    "vod"
+   ],
+   "warning": "Downloads Twitch VODs and chat with yt-dlp and TwitchDownloaderCLI; Twitch's terms may not allow it for VODs you don't own."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Command-line tool that lists a Twitch channel's videos and clips and downloads them over several connections at once. It can also export chat as JSON, as a chat video or as subtitles.",
+   "id": "tools/twitch-dl",
+   "kind": "tool",
+   "license": "GPL-3.0",
+   "metrics": {},
+   "name": "twitch-dl",
+   "relationship": "related",
+   "runs": "local",
+   "section": "streams",
+   "slug": "twitch-dl",
+   "source": {
+    "github": "https://github.com/ihabunek/twitch-dl"
+   },
+   "tags": [
+    "twitch",
+    "vod",
+    "clips",
+    "chat",
+    "downloader"
+   ],
+   "warning": "Downloads VODs and clips from Twitch with a built-in client ID; Twitch's terms do not allow automated downloading. Use it only for videos you have the right to download."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Downloads Twitch VODs, clips and chat (as JSON, HTML or text) and can render the chat into a video. A Windows app plus a cross-platform command-line version.",
+   "id": "tools/twitchdownloader",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "Release binaries bundle third-party parts, including FFmpeg (GPLv2) and Xabe.FFmpeg.Downloader, whose terms include CC BY-NC-SA 3.0 (non-commercial), so redistributing them carries more than MIT duties.",
+   "metrics": {},
+   "name": "TwitchDownloader",
+   "platforms": [
+    "windows",
+    "linux",
+    "macos"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streams",
+   "slug": "twitchdownloader",
+   "source": {
+    "github": "https://github.com/lay295/TwitchDownloader"
+   },
+   "tags": [
+    "twitch",
+    "vod",
+    "chat",
+    "chat render",
+    "downloader"
+   ],
+   "warning": "Downloads VODs, clips and chat from Twitch through an unofficial API; Twitch's terms do not allow automated downloading. For your own VODs, use Twitch's own download option."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Python library and command line for YOLO object detection, segmentation and pose estimation that can also track people and objects across video frames. A common base for keeping a subject in frame when reframing.",
+   "id": "tools/ultralytics",
+   "kind": "tool",
+   "license": "AGPL-3.0-or-later",
+   "license_note": "Any plugin that imports it must be AGPL-compatible open source unless you buy an Ultralytics Enterprise licence. Trained models are AGPL-3.0 by default.",
+   "metrics": {
+    "models": {
+     "Ultralytics/YOLO26": {
+      "downloads": 18696,
+      "last_modified": "2026-09-06",
+      "likes": 211
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "Ultralytics/YOLO26"
+    }
+   ],
+   "name": "Ultralytics YOLO",
+   "relationship": "related",
+   "runs": "local",
+   "section": "vision",
+   "slug": "ultralytics",
+   "source": {
+    "github": "https://github.com/ultralytics/ultralytics"
+   },
+   "tags": [
+    "object detection",
+    "tracking",
+    "yolo",
+    "reframing",
+    "pose"
+   ],
+   "warning": "Sends anonymized analytics and crash reports by default (yolo settings sync=False turns them off). Accepts YouTube links as input, which YouTube's terms may not allow."
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Native C/C++ build of Whisper with command-line and server programs that transcribe without Python on CPU or GPU, including AMD and Intel cards through Vulkan. Outputs JSON and SRT, with optional voice activity detection.",
+   "id": "tools/whisper-cpp",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {
+    "models": {
+     "ggerganov/whisper.cpp": {
+      "downloads": 0,
+      "last_modified": "2024-10-29",
+      "likes": 1632
+     },
+     "ggml-org/whisper-vad": {
+      "downloads": 0,
+      "last_modified": "2025-11-17",
+      "likes": 26
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "ggerganov/whisper.cpp"
+    },
+    {
+     "huggingface": "ggml-org/whisper-vad"
+    }
+   ],
+   "name": "whisper.cpp",
+   "relationship": "related",
+   "runs": "local",
+   "section": "transcription",
+   "slug": "whisper-cpp",
+   "source": {
+    "github": "https://github.com/ggml-org/whisper.cpp"
+   },
+   "tags": [
+    "whisper",
+    "speech to text",
+    "vulkan",
+    "subtitles",
+    "cpu"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Command-line transcriber with the same options as OpenAI's whisper tool but running on faster-whisper, adding batched processing, voice activity filtering, speaker labels and live microphone input.",
+   "id": "tools/whisper-ctranslate2",
+   "kind": "tool",
+   "license": "MIT",
+   "license_note": "Speaker diarization needs pyannote.audio and the gated pyannote/speaker-diarization-community-1 model (CC-BY-4.0): accept its terms on Hugging Face and supply a token.",
+   "metrics": {
+    "models": {
+     "pyannote/speaker-diarization-community-1": {
+      "downloads": 5554891,
+      "last_modified": "2025-09-29",
+      "likes": 2595
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "pyannote/speaker-diarization-community-1"
+    }
+   ],
+   "name": "whisper-ctranslate2",
+   "relationship": "related",
+   "runs": "local",
+   "section": "transcription",
+   "slug": "whisper-ctranslate2",
+   "source": {
+    "github": "https://github.com/Softcatala/whisper-ctranslate2"
+   },
+   "tags": [
+    "whisper",
+    "speech to text",
+    "cli",
+    "diarization"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Extends OpenAI Whisper with word timestamps, a confidence score for every word and segment, voice activity detection and marking of likely disfluencies. Useful for captions and filler-word cleanup.",
+   "id": "tools/whisper-timestamped",
+   "kind": "tool",
+   "license": "AGPL-3.0",
+   "license_note": "The LICENSE file is AGPL-3.0, but the package metadata says GPLv3.",
+   "metrics": {},
+   "name": "whisper-timestamped",
+   "relationship": "related",
+   "runs": "local",
+   "section": "transcription",
+   "slug": "whisper-timestamped",
+   "source": {
+    "github": "https://github.com/linto-ai/whisper-timestamped"
+   },
+   "tags": [
+    "whisper",
+    "word timestamps",
+    "confidence",
+    "disfluencies",
+    "captions"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Transcribes speech with faster-whisper, then aligns every word for precise timestamps and can label who is speaking. Handy for word-by-word captions and speaker-aware reframing.",
+   "id": "tools/whisperx",
+   "kind": "tool",
+   "license": "BSD-2-Clause",
+   "license_note": "Speaker labels use the gated pyannote/speaker-diarization-community-1 model (CC-BY-4.0): sign in to Hugging Face, accept its terms and supply a token. Alignment models for many languages have their own licences.",
+   "metrics": {
+    "models": {
+     "pyannote/speaker-diarization-community-1": {
+      "downloads": 5554891,
+      "last_modified": "2025-09-29",
+      "likes": 2595
+     }
+    }
+   },
+   "models": [
+    {
+     "huggingface": "pyannote/speaker-diarization-community-1"
+    }
+   ],
+   "name": "WhisperX",
+   "relationship": "related",
+   "runs": "local",
+   "section": "transcription",
+   "slug": "whisperx",
+   "source": {
+    "github": "https://github.com/m-bain/whisperX"
+   },
+   "tags": [
+    "word timestamps",
+    "diarization",
+    "captions",
+    "alignment"
+   ]
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "community"
+   ],
+   "checked": "2026-10-07",
+   "description": "Command-line downloader for video and audio from thousands of sites, including Twitch and Kick, that can also save YouTube live chat. Use it to fetch a VOD or clip you have rights to before clipping it.",
+   "id": "tools/yt-dlp",
+   "kind": "tool",
+   "license": "Unlicense",
+   "license_note": "The repository and PyPI packages are Unlicense, but the standalone executables such as yt-dlp.exe bundle GPLv3+ code, so those binaries are GPLv3+ as a whole.",
+   "metrics": {},
+   "name": "yt-dlp",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "related",
+   "runs": "local",
+   "section": "streams",
+   "slug": "yt-dlp",
+   "source": {
+    "github": "https://github.com/yt-dlp/yt-dlp"
+   },
+   "tags": [
+    "downloader",
+    "youtube",
+    "twitch",
+    "kick",
+    "live chat"
+   ],
+   "warning": "Downloads videos from YouTube, Twitch, Kick and many other sites; their terms may not allow it for videos you don't own."
   }
  ],
  "format": 1,
+ "metrics_at": "2026-10-07",
  "plugins": [
   {
    "added": "2026-10-07",
@@ -254,6 +6127,11 @@
      "description": "Open-source apps for sports highlights and match analysis.",
      "id": "sports",
      "title": "Sports"
+    },
+    {
+     "description": "Apps that run steps on their own, such as posting a clip once it is ready.",
+     "id": "automation",
+     "title": "Automation"
     }
    ],
    "wanted": []
@@ -275,6 +6153,11 @@
     {
      "id": "community",
      "title": "Chat and community"
+    },
+    {
+     "description": "Live data from a game, such as kills and rounds, as they happen.",
+     "id": "games",
+     "title": "Games"
     }
    ],
    "wanted": []
@@ -304,6 +6187,14 @@
     {
      "id": "ocr",
      "title": "Reading text on screen"
+    },
+    {
+     "id": "vision-language",
+     "title": "Describing images and video"
+    },
+    {
+     "id": "speakers",
+     "title": "Speakers and voice activity"
     },
     {
      "id": "language",
@@ -391,6 +6282,10 @@
    ],
    "wanted": [
     {
+     "idea": "Game events for genres the big clipping apps barely cover, such as fighting games, racing, strategy, card games, MMOs, and retro or emulated games.",
+     "section": "gaming/generic"
+    },
+    {
      "idea": "PvP, Mythic+ and raid highlights, each knowing what a great moment looks like in that mode.",
      "section": "gaming/world-of-warcraft"
     },
@@ -452,8 +6347,21 @@
      "title": "For developers"
     },
     {
+     "description": "Libraries and command-line tools that pick the best moments in a video.",
+     "id": "clipping",
+     "title": "Finding moments"
+    },
+    {
      "id": "transcription",
      "title": "Transcription"
+    },
+    {
+     "id": "captions",
+     "title": "Captions and subtitles"
+    },
+    {
+     "id": "translation",
+     "title": "Translation and dubbing"
     },
     {
      "id": "media",
@@ -464,8 +6372,25 @@
      "title": "Scene detection"
     },
     {
+     "id": "vision",
+     "title": "Detection and tracking"
+    },
+    {
      "id": "editing",
      "title": "Automatic editing"
+    },
+    {
+     "description": "Read what happened in a game, with exact times, from its replay or demo files.",
+     "id": "games",
+     "title": "Game replays and events"
+    },
+    {
+     "id": "sports",
+     "title": "Sports analysis"
+    },
+    {
+     "id": "streams",
+     "title": "Stream recording and downloads"
     },
     {
      "id": "local-ai",

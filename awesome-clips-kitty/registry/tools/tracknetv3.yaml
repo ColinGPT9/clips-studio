@@ -1,0 +1,12 @@
+name: TrackNetV3
+description: Tracks the shuttlecock in badminton video and writes its position for every frame to a CSV, with an optional trajectory overlay video. Stretches where the shuttle is visible can be grouped into rallies for clips.
+section: sports
+relationship: related
+license: MIT
+source:
+  github: https://github.com/qaz812345/TrackNetV3
+runs: local
+tags: [shuttlecock, ball tracking, rallies, badminton]
+sports: [badminton]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,15 @@
+name: Roboflow sports
+description: Computer-vision helpers for sports, with a soccer example that detects players, referees, the ball and pitch keypoints, splits players into teams and draws a top-down radar view. Handy for ball-following crops.
+section: sports
+relationship: related
+license: MIT
+license_note: The soccer example's YOLOv8 detector is Ultralytics AGPL-3.0 (or a paid Ultralytics licence), its weights come from Google Drive with no stated licence, and the Kaggle training-data terms are unconfirmed.
+source:
+  github: https://github.com/roboflow/sports
+models:
+  - huggingface: google/siglip-base-patch16-224
+runs: local
+tags: [ball tracking, player tracking, team detection, radar, computer vision]
+sports: [soccer]
+added: 2026-10-07
+checked: 2026-10-07

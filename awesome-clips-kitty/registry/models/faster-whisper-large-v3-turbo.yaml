@@ -1,0 +1,11 @@
+name: faster-whisper-large-v3-turbo
+description: Whisper large-v3-turbo converted to CTranslate2 for faster-whisper, a good balance of speed and quality for long videos. Formerly mobiuslabsgmbh/faster-whisper-large-v3-turbo, the id faster-whisper's 'turbo' alias still uses.
+section: speech
+relationship: related
+license: MIT
+source:
+  huggingface: dropbox-dash/faster-whisper-large-v3-turbo
+runs: local
+tags: [whisper, faster-whisper, ctranslate2, turbo, speech to text]
+added: 2026-10-07
+checked: 2026-10-07

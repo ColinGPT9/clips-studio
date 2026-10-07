@@ -1,0 +1,11 @@
+name: MoviePy
+description: 'Python library for editing video in code: cutting, joining, compositing, adding text and titles and applying effects, reading and writing files through FFmpeg. Slower than calling FFmpeg directly.'
+section: media
+relationship: related
+license: MIT
+source:
+  github: https://github.com/Zulko/moviepy
+runs: local
+tags: [python, video editing, compositing, text overlay]
+added: 2026-10-07
+checked: 2026-10-07

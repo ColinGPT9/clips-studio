@@ -1,0 +1,14 @@
+name: SoccerNet Game State Reconstruction
+description: Tracks everyone on the pitch in a soccer broadcast and estimates each person's pitch position, role, team and jersey number, drawn on a minimap. Useful for player-focused clips; needs a CUDA GPU.
+section: sports
+relationship: related
+license: GPL-3.0
+license_note: Its baseline detector is Ultralytics YOLOv11 (AGPL-3.0 or a paid Ultralytics licence), and the licences of the baseline weights it downloads automatically were not confirmed.
+source:
+  github: https://github.com/SoccerNet/sn-gamestate
+runs: local
+tags: [player tracking, jersey numbers, minimap, soccernet]
+sports: [soccer]
+warning: Includes a config that downloads a YouTube video with yt-dlp; YouTube's terms may not allow it. Point it at your own local video files instead.
+added: 2026-10-07
+checked: 2026-10-07

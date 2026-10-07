@@ -1,0 +1,11 @@
+name: Gemma 4 26B A4B
+description: A mixture-of-experts Gemma 4 model that runs about as fast as a 4B model but needs memory for all its weights. Its long context could let a pipeline score a whole stream transcript in one pass.
+section: language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: google/gemma-4-26B-A4B-it
+runs: local
+tags: [llm, ollama, moe, long context]
+added: 2026-10-07
+checked: 2026-10-07

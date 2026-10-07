@@ -1,0 +1,13 @@
+name: Kinocut
+description: MCP server, Python library and CLI that give AI agents checked FFmpeg editing tools for trimming, captions, 9:16 resizing, scene detection and silence removal.
+section: ai-assistants
+relationship: related
+license: Apache-2.0
+license_note: The optional object-matte extra uses BiRefNet model weights whose licence was not confirmed.
+source:
+  github: https://github.com/KyaniteLabs/kinocut
+platforms: [windows, macos, linux]
+runs: local
+tags: [mcp, ffmpeg, captions, vertical video, agents]
+added: 2026-10-07
+checked: 2026-10-07

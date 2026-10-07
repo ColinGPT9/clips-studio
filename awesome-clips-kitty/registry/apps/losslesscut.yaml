@@ -1,0 +1,12 @@
+name: LosslessCut
+description: Desktop app for fast lossless trimming and cutting of video and audio without re-encoding. It can import segment lists such as CSV, so a list of clip timings can be cut in one go.
+section: companion
+relationship: related
+license: GPL-2.0-only
+source:
+  github: https://github.com/mifi/lossless-cut
+platforms: [windows, macos, linux]
+runs: local
+tags: [trimming, lossless, ffmpeg, cutting, editor]
+added: 2026-10-07
+checked: 2026-10-07

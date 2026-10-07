@@ -1,0 +1,13 @@
+name: DaVinci Resolve MCP Server
+description: MCP server that lets AI agents work in DaVinci Resolve through its scripting API, for example to import a video and add clip moments as timeline markers.
+section: ai-assistants
+relationship: related
+license: MIT
+license_note: Needs DaVinci Resolve, which is proprietary; external scripting needs the paid Studio edition, and the free edition works only through a bridge up to 21.0.x.
+source:
+  github: https://github.com/samuelgursky/davinci-resolve-mcp
+platforms: [windows, macos, linux]
+runs: local
+tags: [mcp, davinci resolve, markers, editing, agents]
+added: 2026-10-07
+checked: 2026-10-07

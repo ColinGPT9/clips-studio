@@ -1,0 +1,12 @@
+name: OpenShot Video Editor
+description: Beginner-friendly video editor for finishing clips, with titles, keyframe animation, unlimited tracks and EDL or XML timeline import.
+section: companion
+relationship: related
+license: GPL-3.0-or-later
+source:
+  github: https://github.com/OpenShot/openshot-qt
+platforms: [windows, macos, linux]
+runs: local
+tags: [editor, beginner, timeline]
+added: 2026-10-07
+checked: 2026-10-07

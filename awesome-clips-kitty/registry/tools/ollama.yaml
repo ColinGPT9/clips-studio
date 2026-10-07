@@ -1,0 +1,12 @@
+name: Ollama
+description: Downloads and runs open language models such as Gemma and Qwen on your own computer, with a local API that clip tools can call to pick moments or write titles.
+section: local-ai
+relationship: related
+license: MIT
+source:
+  github: https://github.com/ollama/ollama
+platforms: [windows, macos, linux]
+runs: both
+tags: [llm, local ai, gemma, api]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,13 @@
+name: FunClip
+description: Local app that transcribes video with FunASR speech models and lets you cut clips by picking transcript text or a speaker, with SRT subtitles for each clip. Well suited to Chinese-language videos.
+section: video-clipping
+relationship: related
+license: MIT
+license_note: 'The MIT licence covers the code only. Speech models download separately under their own licences: the README says the default Paraformer and CAM++ models list Apache-2.0, while SenseVoice uses the FunASR Model License, which requires attribution.'
+source:
+  github: https://github.com/modelscope/FunClip
+runs: both
+tags: [chinese, speaker, subtitles, asr, gradio]
+warning: Optional LLM clipping sends transcripts to cloud APIs. Its keyless g4f option routes text through third-party providers, some via browser automation; check their terms.
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,12 @@
+name: CED-Base
+description: Xiaomi's audio tagger that scores the 527 AudioSet sound classes, such as laughter, cheering and applause, on variable-length audio, with an ONNX export.
+section: audio-events
+relationship: related
+license: Apache-2.0
+license_note: The weights and Hugging Face model code are Apache-2.0, but the separate training code at RicherMans/CED is GPL-3.0.
+source:
+  huggingface: mispeech/ced-base
+runs: local
+tags: [audio events, audioset, laughter, onnx]
+added: 2026-10-07
+checked: 2026-10-07
