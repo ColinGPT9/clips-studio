@@ -75,9 +75,16 @@ class Limits:
 
 @dataclass
 class Model:
-    path: Path
+    """One model the manifest lists, on this PC. `path` is the folder (Hugging
+    Face), the file (url), the name:tag (Ollama) or the app's own path
+    (bundled); None when Clips Kitty couldn't tell (Ollama not answering).
+    `files` maps each listed file to its full path."""
+
+    path: Path | None
     revision: str = ""
     files: dict = field(default_factory=dict)
+    source: str = ""
+    id: str = ""
 
 
 @dataclass
@@ -113,7 +120,8 @@ class Job:
         self.limits = Limits(limits.get("max_clips"), limits.get("min_duration"), limits.get("max_duration"))
         self.focus: str | None = data.get("focus") or None
         self.models: dict[str, Model] = {
-            name: Model(Path(m["path"]), m.get("revision", ""), dict(m.get("files") or {}))
+            name: Model(Path(m["path"]) if m.get("path") else None, m.get("revision", ""),
+                        dict(m.get("files") or {}), m.get("source", ""), m.get("id", ""))
             for name, m in (data.get("models") or {}).items()
         }
         tools = data.get("tools") or {}

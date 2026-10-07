@@ -14,6 +14,9 @@ does not.
     PUT    /plugins/{publisher}/{name}/secrets  {"values": {"api_key": "..."}}
     GET    /marketplace?q=&category=&tag=&kind=        listed plugins, searched (no header)
     POST   /marketplace/refresh                        fetch the index addresses in settings (no header)
+    GET    /plugin-models                              every model installed plugins list, and where it is
+    POST   /plugin-models/plan      {"plugin", "model"}                  what downloading one would fetch
+    POST   /plugin-models/download  {"plugin", "model", "allow_pickle"}  download it into the shared folder
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from plugins import manager, permissions, registry, session, store
+from plugins import models as plugin_models
 from plugins._sdk import host
 
 
@@ -37,6 +41,12 @@ class InstallIn(BaseModel):
 
 class SecretsIn(BaseModel):
     values: dict[str, str | None]
+
+
+class ModelIn(BaseModel):
+    plugin: str
+    model: str
+    allow_pickle: bool = False
 
 
 def _game_name(slug: str) -> str:
@@ -55,9 +65,14 @@ def _unofficial(listing: dict) -> str | None:
 
 
 def install(app, *, data_dir: Path, config: dict | None = None, app_version: str | None = None, blocked=None,
-            git: str | None = None, fetcher=None, bundled_index: Path | None = None) -> str:
+            git: str | None = None, fetcher=None, bundled_index: Path | None = None,
+            model_fetcher=None, model_json=None) -> str:
     """Add the routes to `app`. Returns the session secret (for tests).
-    `blocked` defaults to the registry's block lists, read on each call."""
+    `blocked` defaults to the registry's block lists, read on each call.
+    `model_fetcher` and `model_json` stand in for the network in tests
+    (plugins/models.fetch_https and get_json)."""
+    model_fetcher = model_fetcher or plugin_models.fetch_https
+    model_json = model_json or plugin_models.get_json
     secret = session.secret_for(data_dir)
     version = app_version if app_version and app_version != "?" else None
     if blocked is None:
@@ -182,6 +197,49 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
     @app.post("/marketplace/refresh")
     def marketplace_refresh():
         return {"indexes": registry.refresh(data_dir, urls(), fetcher=fetcher)}
+
+    def ollama_list() -> list[dict] | None:
+        host_url = ((config or {}).get("llm") or {}).get("ollama_host") or "http://localhost:11434"
+        return plugin_models.ollama_models(host_url, fetch_json=model_json)
+
+    def model_ref(plugin: str, name: str) -> dict:
+        if not store.ID_RE.match(plugin):
+            raise HTTPException(404, f"{plugin!r} is not a plugin id")
+        found = store.get(data_dir, plugin)
+        if found is None:
+            raise HTTPException(404, f"{plugin} isn't installed")
+        for ref in plugin_models.refs_of(found.manifest):
+            if ref["name"] == name:
+                return ref
+        raise HTTPException(404, f"{found.name} lists no model called {name!r}")
+
+    def model_call(fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except plugin_models.ModelError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/plugin-models")
+    def plugin_model_list():
+        found = [p for p in (store.get(data_dir, pid) for pid in sorted(store.load(data_dir)["plugins"])) if p]
+        listed = [{"id": p.id, "manifest": p.manifest} for p in found]
+        asks_ollama = any(r["source"] == "ollama" for p in listed for r in plugin_models.refs_of(p["manifest"]))
+        out = model_call(plugin_models.overview, data_dir, listed, ollama=ollama_list() if asks_ollama else None)
+        if not asks_ollama:
+            out["ollama_reachable"] = None  # not asked: no plugin lists an Ollama model
+        return out
+
+    @app.post("/plugin-models/plan", dependencies=guarded)
+    def plugin_model_plan(body: ModelIn):
+        ref = model_ref(body.plugin, body.model)
+        return model_call(plugin_models.plan, data_dir, ref, fetch_json=model_json,
+                          ollama=ollama_list() if ref["source"] == "ollama" else None)
+
+    @app.post("/plugin-models/download", dependencies=guarded)
+    def plugin_model_download(body: ModelIn):
+        ref = model_ref(body.plugin, body.model)
+        return model_call(plugin_models.download, data_dir, ref, fetcher=model_fetcher, fetch_json=model_json,
+                          allow_pickle=body.allow_pickle)
 
     return secret
 

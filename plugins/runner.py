@@ -20,6 +20,7 @@ import shutil
 import time
 from pathlib import Path
 
+from plugins import models as plugin_models
 from plugins import store
 from plugins._sdk import contract, host
 
@@ -83,7 +84,7 @@ def transcript_of(segments, language: str) -> dict:
 
 
 def build_job(plugin: store.Installed, choice: dict, *, video, segments, language: str, config: dict,
-              output_dir: Path) -> tuple[dict, dict | None]:
+              output_dir: Path, models: dict | None = None) -> tuple[dict, dict | None]:
     """job.json's content, and the transcript to write beside it (or None).
     host.build_job decides what the plugin's permissions let in."""
     perms = set(plugin.manifest.get("permissions") or [])
@@ -110,7 +111,7 @@ def build_job(plugin: store.Installed, choice: dict, *, video, segments, languag
                     "min_duration": clips_cfg.get("min_duration"),
                     "max_duration": clips_cfg.get("max_duration")},
             focus=clips_cfg.get("focus") or None,
-            ollama=ollama, output_dir=output_dir, **tools,
+            ollama=ollama, models=models, output_dir=output_dir, **tools,
         )
     except ValueError as e:
         raise PluginError(str(e)) from e
@@ -173,6 +174,16 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
         raise PluginError(f"{plugin.name} needs Python, and none was found on this PC. "
                           "Install Python, or set plugins.python in settings.yaml.")
 
+    # Every model it lists must be here before it starts (an Ollama model
+    # with Ollama not answering can't be checked, and is let through).
+    ollama_host = (config.get("llm") or {}).get("ollama_host")
+    try:
+        model_paths, missing = plugin_models.for_job(data_dir, plugin.manifest, ollama_host=ollama_host)
+    except plugin_models.ModelError as e:
+        raise PluginError(f"{plugin.name} can't run: {e}") from e
+    if missing:
+        raise PluginError(f"{plugin.name} can't run: " + "; ".join(missing))
+
     runs = store.root(data_dir) / "runs"
     folder = runs / f"{_safe(video.video_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
     n = 1
@@ -180,7 +191,7 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
         n += 1
         folder = folder.with_name(f"{folder.name.rsplit('~', 1)[0]}~{n}")
     job, transcript = build_job(plugin, choice, video=video, segments=segments, language=language,
-                                config=config, output_dir=folder / "out")
+                                config=config, output_dir=folder / "out", models=model_paths)
     host.write_job(folder, job, transcript)
 
     print(f"      Pipeline: {plugin.name} {plugin.version} ({plugin.id})")

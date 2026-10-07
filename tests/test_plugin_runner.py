@@ -123,6 +123,41 @@ def test_the_job_holds_what_the_permissions_cover(echo, video):
                           {"start": 4.0, "end": 9.5, "text": "what a goal", "words": None}]
 
 
+def test_a_listed_model_must_be_here_before_the_plugin_starts_and_its_path_is_handed_over(
+        tmp_path, install_plugin, video):
+    import hashlib
+
+    import yaml
+
+    from plugins import models, runner
+
+    weights = b"example weights"
+    folder = tmp_path / "echo-with-a-model"
+    shutil.copytree(ECHO, folder)
+    manifest = yaml.safe_load((folder / "clipskitty.yaml").read_text(encoding="utf-8"))
+    manifest["models"] = [{"name": "weights", "source": "url", "id": "https://example.com/models/weights.onnx",
+                           "sha256": hashlib.sha256(weights).hexdigest(), "license": "apache-2.0"}]
+    (folder / "clipskitty.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, folder)
+
+    with pytest.raises(runner.PluginError, match=r"its model 'weights' \(https://example\.com/models/weights\.onnx\) "
+                                                 r"isn't on this PC: download it in Marketplace › Installed"):
+        _run(data_dir, video, {"ranges": ""})
+    assert not (data_dir / "plugins" / "runs").exists()  # stopped before anything ran
+
+    ref = models.refs_of(manifest)[0]
+    models.download(data_dir, ref, fetcher=lambda url, dest: Path(dest).write_bytes(weights),
+                    fetch_json=lambda url: pytest.fail("a url model needs no metadata"))
+    _run(data_dir, video, {"ranges": ""})
+    seen = _seen(data_dir)
+    path = str(models.target_path(data_dir, ref, "weights.onnx"))
+    assert seen["job"]["models"] == {"weights": {"source": "url", "id": ref["id"], "path": path,
+                                                 "revision": ref["sha256"], "files": {"weights.onnx": path}}}
+    assert seen["models"]["weights"]["path"] == path and seen["models"]["weights"]["source"] == "url"
+    assert Path(path).read_bytes() == weights
+
+
 def test_without_the_permissions_the_job_holds_none_of_it(tmp_path, install_plugin, video):
     folder = tmp_path / "echo"
     shutil.copytree(ECHO, folder)

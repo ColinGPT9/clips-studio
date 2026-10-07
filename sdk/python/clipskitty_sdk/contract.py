@@ -15,13 +15,15 @@ uses the very same checks, so what passes here passes in the app.
      "settings": {...},
      "limits": {"max_clips": 5, "min_duration": 10, "max_duration": 60},
      "focus": "what the user asked the clips to be about, or null",
-     "models": {"name": {"path": "...", "revision": "...", "files": {...}}},
+     "models": {"name": {"source": "huggingface", "id": "...", "path": "...", "revision": "...",
+                         "files": {"model.onnx": "..."}}},
      "tools": {"ffmpeg": "...", "ffprobe": "...", "ollama": {"host": "...", "model": "..."}},
      "output_dir": "..."}
 
 `video`, `transcript`, `tools.ffmpeg`/`tools.ffprobe` and `tools.ollama` are
 present only when the plugin's manifest asks for the permission that covers
-them (video.read, transcript.read, ffmpeg, ollama).
+them (video.read, transcript.read, ffmpeg, ollama). `models` has an entry for
+each model the manifest lists; the run doesn't start until each is on the PC.
 
 `transcript.json`: {"language": "en", "segments": [{"start", "end", "text",
 "words": [{"start", "end", "word"}] or null}]}, times in seconds.

@@ -42,8 +42,9 @@ def test_every_plugin_route_is_labelled_experimental(api):
     from server import api_stability as st
 
     client, _ = api
-    routes = [(m, p) for m, p, _mod in st.app_routes(client.app) if p.startswith(("/plugins", "/marketplace"))]
-    assert len(routes) == 12
+    routes = [(m, p) for m, p, _mod in st.app_routes(client.app)
+              if p.startswith(("/plugins", "/marketplace", "/plugin-models"))]
+    assert len(routes) == 15
     assert all(st.label(m, p) == st.EXPERIMENTAL for m, p in routes)
 
 
@@ -224,3 +225,71 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     r = client.post("/plugins/plan", json={"source": {"kind": "index", "id": "example-dev/missing"}}, headers=HEADERS)
     assert r.status_code == 404 and "not listed" in r.json()["detail"]
     assert client.post("/marketplace/refresh").json() == {"indexes": []}  # no address in settings
+
+
+def test_models_are_listed_looked_at_and_downloaded_through_the_api(tmp_path, monkeypatch, plugin_source,
+                                                                    install_plugin):
+    """GET /plugin-models, then plan and download one model, with Hugging Face
+    played by two functions: nothing touches the network."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    import hashlib
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from plugins import api as plugins_api
+
+    weights, rev = b"example weights", "1" * 40
+    sha = hashlib.sha256(weights).hexdigest()
+    repo = {"name": "detector", "source": "huggingface", "id": "example-org/example-model", "revision": rev}
+    manifest = plugin_source.manifest(models=[{**repo, "files": ["model.onnx"], "license": "apache-2.0"},
+                                              {**repo, "name": "old", "files": ["model.bin"]}])
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, plugin_source.folder(manifest=manifest))
+    fetched = []
+
+    def fetch_json(url):
+        if url.endswith(f"/api/models/example-org/example-model/revision/{rev}"):
+            return {"cardData": {"license": "apache-2.0"}, "gated": False}
+        if url.endswith(f"/api/models/example-org/example-model/tree/{rev}"):
+            return [{"path": f, "size": len(weights), "lfs": {"oid": sha}} for f in ("model.onnx", "model.bin")]
+        raise AssertionError(url)
+
+    def fetcher(url, dest):
+        fetched.append(url)
+        Path(dest).write_bytes(weights)
+
+    monkeypatch.setenv("CLIPS_KITTY_SESSION_SECRET", HEADERS["X-Clips-Kitty-Session"])
+    app = FastAPI()
+    plugins_api.install(app, data_dir=data_dir, app_version="2.0.0", model_fetcher=fetcher, model_json=fetch_json)
+    client = TestClient(app, base_url="http://127.0.0.1")
+
+    listed = client.get("/plugin-models").json()
+    assert [(m["name"], m["installed"]) for m in listed["models"]] == [("detector", False), ("old", False)]
+    assert listed["models"][0]["used_by"] == [{"plugin": PID, "name": "detector"}]
+    assert listed["ollama_reachable"] is None  # no plugin lists an Ollama model, so it wasn't asked
+
+    body = {"plugin": PID, "model": "detector"}
+    assert client.post("/plugin-models/plan", json=body).status_code == 403
+    assert client.post("/plugin-models/download", json=body).status_code == 403
+    plan = client.post("/plugin-models/plan", json=body, headers=HEADERS).json()
+    assert plan["download_bytes"] == len(weights) and plan["license"] == "apache-2.0" and plan["problem"] is None
+    assert plan["files"] == [{"file": "model.onnx", "installed": False, "size": len(weights), "sha256": sha,
+                              "already_here_as": None}]
+    assert fetched == []  # a plan downloads nothing
+
+    done = client.post("/plugin-models/download", json=body, headers=HEADERS).json()
+    assert done["installed"] is True and Path(done["path"]).parts[-2:] == ("snapshots", rev)
+    assert fetched == [f"https://huggingface.co/example-org/example-model/resolve/{rev}/model.onnx"]
+
+    old = {"plugin": PID, "model": "old"}
+    refused = client.post("/plugin-models/download", json=old, headers=HEADERS)
+    assert refused.status_code == 400 and "pickle format" in refused.json()["detail"]
+    linked = client.post("/plugin-models/download", json={**old, "allow_pickle": True}, headers=HEADERS).json()
+    assert linked["installed"] is True and len(fetched) == 1  # the same bytes: linked, not fetched again
+    assert [m["installed"] for m in client.get("/plugin-models").json()["models"]] == [True, True]
+
+    for wrong, status in (({"plugin": PID, "model": "nope"}, 404), ({"plugin": "example-dev/absent", "model": "x"}, 404),
+                          ({"plugin": "not an id", "model": "x"}, 404)):
+        assert client.post("/plugin-models/plan", json=wrong, headers=HEADERS).status_code == status

@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-188 routes: **60 stable**, **17 experimental**, 111 internal.
+191 routes: **60 stable**, **20 experimental**, 111 internal.
 
 | Label | Promise |
 |---|---|
@@ -162,6 +162,9 @@ Details: [`docs/API.md` › Plugins](../API.md#plugins).
 |---|---|---|
 | `GET /marketplace` | experimental | Listed plugins from the registry indexes, searched and filtered, with what is installed. |
 | `POST /marketplace/refresh` | experimental | Fetch the registry index addresses set in settings into the cache. |
+| `GET /plugin-models` | experimental | Every model the installed plugins list, once: where it is, its licence and size, and which plugins use it. |
+| `POST /plugin-models/download` | experimental | Download one plugin's model into the shared model folder, checked against its size and SHA-256. Session header. |
+| `POST /plugin-models/plan` | experimental | What downloading one plugin's model would fetch, from Hugging Face's metadata; downloads nothing. Session header. |
 | `GET /plugins` | experimental | Installed plugins with their versions, permissions and state, and the built-in modes. |
 | `POST /plugins/install` | experimental | Install what a plan fetched. Session header. |
 | `POST /plugins/plan` | experimental | Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header. |

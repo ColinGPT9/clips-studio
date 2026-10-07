@@ -43,6 +43,17 @@ def test_a_written_job_reads_back(tmp_path):
     assert job.models == {} and job.tools.ffmpeg is None
 
 
+def test_models_read_back_with_their_source_and_no_path_when_unknown(tmp_path):
+    models = {"detector": {"source": "huggingface", "id": "example-org/example-model", "path": str(tmp_path / "snap"),
+                           "revision": "0" * 40, "files": {"model.onnx": str(tmp_path / "snap" / "model.onnx")}},
+              "chat": {"source": "ollama", "id": "example-model:1b", "path": "", "revision": "", "files": {}}}
+    job = read_job(_job(tmp_path, models=models), out=io.StringIO())
+    detector, chat = job.models["detector"], job.models["chat"]
+    assert detector.path == tmp_path / "snap" and detector.files["model.onnx"].endswith("model.onnx")
+    assert (detector.source, detector.id, detector.revision) == ("huggingface", "example-org/example-model", "0" * 40)
+    assert chat.path is None and chat.source == "ollama" and chat.id == "example-model:1b"
+
+
 def test_job_problems_are_all_listed():
     problems = check_job({"plugin_api": 9, "video": {"duration": "long"}, "settings": []})
     assert any("plugin_api" in p for p in problems)

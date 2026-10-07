@@ -81,13 +81,15 @@ def job_settings(manifest: dict, chosen: dict | None) -> dict:
 def build_job(manifest: dict, *, settings: dict | None = None, video: dict | None = None,
               transcript: dict | None = None, limits: dict | None = None, focus: str | None = None,
               ffmpeg: str | None = None, ffprobe: str | None = None, ollama: dict | None = None,
-              output_dir: Path) -> tuple[dict, dict | None]:
+              models: dict | None = None, output_dir: Path) -> tuple[dict, dict | None]:
     """job.json's content, and the transcript to write beside it (or None).
 
     Only what the manifest's permissions cover goes in: the video with
     `video.read`, the transcript with `transcript.read`, FFmpeg's paths with
     `ffmpeg`, the local model's address with `ollama`. Everything else is left
-    out, so a plugin cannot read it from the job folder.
+    out, so a plugin cannot read it from the job folder. `models` is where the
+    models its manifest lists are on this PC (the app's plugins/models.py);
+    they are its own declarations, so no permission is needed for them.
     """
     perms = set(manifest.get("permissions") or [])
     job: dict = {
@@ -96,7 +98,7 @@ def build_job(manifest: dict, *, settings: dict | None = None, video: dict | Non
         "settings": job_settings(manifest, settings),
         "limits": {"max_clips": None, "min_duration": None, "max_duration": None, **(limits or {})},
         "focus": focus or None,
-        "models": {},
+        "models": dict(models or {}),
         "tools": {},
         "output_dir": str(output_dir),
     }

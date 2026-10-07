@@ -15,6 +15,8 @@ def main(job):
         "env": dict(os.environ),
         "secret": job.secret("api_key"),
         "transcript": job.transcript.segments() if job.transcript else None,
+        "models": {name: {"path": str(m.path) if m.path else None, "files": m.files, "source": m.source,
+                          "id": m.id, "revision": m.revision} for name, m in job.models.items()},
     }
     (job.output_dir / "seen.json").write_text(json.dumps(seen), encoding="utf-8")
     mode = job.settings.get("mode", "ok")
