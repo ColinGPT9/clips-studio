@@ -87,6 +87,8 @@ interface PluginInfo {
   author?: { name?: string; url?: string }
   links?: { docs?: string; funding?: string[] }
   requirements?: Requirements
+  /** Projects it builds on, as its manifest credits them. */
+  based_on?: BasedOn[]
 }
 
 export interface ListedVersion {
@@ -99,6 +101,8 @@ export interface ListedVersion {
   permissions?: string[]
   /** Why this version can't run on this Clips Kitty, or null. */
   problem_here?: string | null
+  /** The automated compatibility check of this version at this commit, when one ran. */
+  compatibility?: CompatibilityRecord
 }
 
 /** One plugin in a registry index, as GET /marketplace returns it. */
@@ -124,6 +128,104 @@ export interface Listing extends PluginInfo {
   pinned: boolean
   /** What stops the latest version running here, as far as the engine can tell. */
   problems_here: ProblemHere[]
+  /** "official" or "community", then "compatible" and "featured" when they apply. */
+  badges?: string[]
+  featured?: { reason: string; date: string }
+  /** Its section in Awesome Clips Kitty, such as "gaming/valorant". */
+  section?: string
+  metrics?: Metrics
+  discussions_url?: string
+}
+
+/** A project a plugin builds on (the manifest's `based_on`). */
+export interface BasedOn {
+  name: string
+  url: string
+  license: string
+  /** runs: starts it as a separate program; includes-code: contains its code; port: rewrites it. */
+  how: 'runs' | 'includes-code' | 'port' | string
+}
+
+/** The numbers the catalog carries, each from its own source (plugins/catalog.entry_metrics). */
+export interface Metrics {
+  github?: { stars?: number; pushed_at?: string; archived?: boolean; has_discussions?: boolean; discussions?: number }
+  /** Clips Kitty installs, from the install counter (listings only). */
+  installs?: number
+  /** Per Hugging Face model: downloads in the last 30 days, and likes. */
+  models?: Record<string, { downloads?: number; likes?: number; last_modified?: string }>
+  /** "archived", or "no commits since <date>". */
+  stale?: string
+}
+
+/** One automated compatibility check of one version (scripts/check_compatibility.py). */
+export interface CompatibilityRecord {
+  version: string
+  commit: string
+  app_version: string
+  plugin_api: number | null
+  checked_at: string
+  checks: Record<string, boolean>
+  passed: boolean
+  moments?: number
+  note?: string
+}
+
+export interface CatalogSection {
+  id: string
+  title: string
+  description?: string
+}
+
+/** An app, model, workflow, integration or tool in Awesome Clips Kitty (GET /marketplace/catalog). */
+export interface CatalogEntry {
+  key: string
+  kind: 'app' | 'model' | 'workflow' | 'integration' | 'tool' | string
+  name: string
+  description: string
+  section: string
+  relationship: 'built-with' | 'related' | string
+  license: string
+  license_note?: string
+  source: { github?: string; path?: string; huggingface?: string; url?: string }
+  models?: { huggingface: string }[]
+  platforms?: string[]
+  runs?: 'local' | 'cloud' | 'both' | string
+  tags?: string[]
+  games?: string[]
+  sports?: string[]
+  uses?: 'api' | 'sdk' | 'both' | string
+  /** The listed pipeline or plugin that runs it inside Clips Kitty. */
+  adapter?: string
+  adapter_listed?: boolean
+  warning?: string
+  added?: string
+  checked?: string
+  badges: string[]
+  featured?: { reason: string; date: string }
+  metrics: Metrics
+  discussions_url?: string
+  unofficial: string | null
+  index: string
+}
+
+export interface CatalogResponse {
+  entries: CatalogEntry[]
+  sections: Record<string, { sections: CatalogSection[]; wanted?: { section: string; idea: string }[] }>
+  kinds: { id: string; title: string }[]
+  relationships: Record<string, string>
+  badges: Record<string, { label: string; meaning: string }>
+  /** When the numbers were read, YYYY-MM-DD; null when never. */
+  metrics_at: string | null
+}
+
+/** GET /marketplace/counting. */
+export interface Counting {
+  enabled: boolean
+  /** Settings switch it off for everyone on this PC. */
+  locked_off: boolean
+  /** An index names a counter address, so something would be sent. */
+  active: boolean
+  text: string
 }
 
 export interface MarketplaceIndex {
@@ -139,6 +241,7 @@ export interface MarketplaceResponse {
   indexes: MarketplaceIndex[]
   categories: string[]
   kinds: Record<string, 'built' | 'planned'>
+  sections?: CatalogResponse['sections']
 }
 
 /** An installed community plugin, as GET /plugins returns it. */
@@ -159,6 +262,8 @@ export interface InstalledPlugin extends PluginInfo {
   /** Anything else the engine found missing on this PC (a Python to run it). */
   problems_here?: ProblemHere[]
   flag: { severity: 'blocked' | 'delisted' | string; reason?: string } | null
+  /** Only in the answer to Install: whether this install was counted. */
+  counted?: boolean
 }
 
 /** Where one model an installed plugin lists is on this PC (plugins/models.status). */
@@ -297,13 +402,16 @@ export function executionBadge(execution: string | null | undefined, text = ''):
 
 /** The trust tier as a badge, in the engine's words. */
 export function tierBadge(details: Pick<PluginDetails, 'tier' | 'tier_text'>): Badge {
-  const tone: Tone = details.tier === 'official' ? 'ok' : details.tier === 'listed' ? 'info' : 'warn'
+  const official = details.tier === 'official' || details.tier === 'listed-official'
+  const tone: Tone = official ? 'ok' : details.tier === 'listed' ? 'info' : 'warn'
   const title =
     details.tier === 'official'
       ? 'Ships with Clips Kitty.'
-      : details.tier === 'listed'
-        ? 'In a registry index. Automated checks passed; nobody has reviewed the code.'
-        : 'Installed from a folder or a link. Clips Kitty has not checked it.'
+      : details.tier === 'listed-official'
+        ? 'Made by the Clips Kitty project and listed in Awesome Clips Kitty.'
+        : details.tier === 'listed'
+          ? 'Listed in Awesome Clips Kitty by someone outside the project. Automated checks passed; nobody has reviewed the code.'
+          : 'Installed from a folder or a link. Clips Kitty has not checked it.'
   return { label: details.tier_text || details.tier, tone, title }
 }
 
@@ -692,6 +800,7 @@ export function slugLabel(slug: string): string {
 export const CHECK_LABELS: Record<string, string> = {
   manifest_valid: 'The manifest passed Clips Kitty’s checks',
   publisher_is_repository_owner: 'The publisher owns the GitHub repository',
+  official_repository: 'The repository is the Clips Kitty project’s own',
   commit_pinned: 'Each version is pinned to one commit',
   public_at_commit: 'The files were public at that commit'
 }
@@ -704,4 +813,143 @@ export function checkLines(checks: Record<string, unknown> | undefined): { text:
   return Object.entries(CHECK_LABELS)
     .filter(([key]) => checks && key in checks)
     .map(([key, text]) => ({ text, ok: checks?.[key] === true }))
+}
+
+
+// ---- Awesome Clips Kitty: labels, numbers and credits ------------------------------------------
+
+/** The directory's kinds the Marketplace browses besides pipelines (plugins/catalog.py DIRECTORY_KINDS). */
+export const DIRECTORY_KINDS: Record<string, string> = {
+  app: 'Apps',
+  model: 'Models',
+  workflow: 'Workflows',
+  integration: 'Integrations',
+  tool: 'Tools'
+}
+
+/** How a project relates to Clips Kitty, in words (plugins/catalog.py RELATIONSHIPS). */
+export const RELATIONSHIP_LABELS: Record<string, string> = {
+  'built-for': 'Built for Clips Kitty',
+  'built-with': 'Built with Clips Kitty',
+  related: 'Related'
+}
+
+/** The catalog's labels as badges. "official" and "community" are the
+ *  plugin's tier for a listing (tierBadge), so `extraOnly` leaves them out. */
+export function catalogBadges(badges: string[] | undefined, extraOnly = false): Badge[] {
+  const out: Badge[] = []
+  for (const b of badges ?? []) {
+    if (b === 'official' && !extraOnly)
+      out.push({ label: '✓ Official', tone: 'ok', title: 'Made and maintained by the Clips Kitty project.' })
+    else if (b === 'community' && !extraOnly)
+      out.push({ label: 'Community', tone: 'info', title: 'Made by someone outside the Clips Kitty project. Nobody has reviewed its code.' })
+    else if (b === 'compatible')
+      out.push({
+        label: '✓ Compatible',
+        tone: 'ok',
+        title:
+          'This version passed Clips Kitty’s automated compatibility checks. A technical label, not a security review.'
+      })
+    else if (b === 'featured') out.push({ label: '★ Featured', tone: 'info', title: 'Picked by a Clips Kitty maintainer.' })
+  }
+  return out
+}
+
+/** 1234 → "1.2k", 1200000 → "1.2M". */
+export function shortCount(n: number | undefined): string {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return ''
+  const one = (x: number, unit: string): string => `${(Math.round(x * 10) / 10).toString()}${unit}`
+  if (n >= 1e6) return one(n / 1e6, 'M')
+  if (n >= 1e3) return one(n / 1e3, 'k')
+  return String(Math.round(n))
+}
+
+/** Each number as its own line, never added to another. */
+export function metricLines(metrics: Metrics | undefined): { text: string; tone: Tone }[] {
+  const out: { text: string; tone: Tone }[] = []
+  if (!metrics) return out
+  if (typeof metrics.installs === 'number')
+    out.push({
+      text: `${metrics.installs.toLocaleString('en-US')} Clips Kitty ${metrics.installs === 1 ? 'install' : 'installs'}`,
+      tone: 'info'
+    })
+  const gh = metrics.github
+  if (gh && typeof gh.stars === 'number') out.push({ text: `★ ${shortCount(gh.stars)} on GitHub`, tone: 'info' })
+  if (gh && typeof gh.discussions === 'number' && gh.discussions > 0)
+    out.push({ text: `${gh.discussions} ${gh.discussions === 1 ? 'discussion' : 'discussions'} on GitHub`, tone: 'info' })
+  for (const [id, m] of Object.entries(metrics.models ?? {})) {
+    const bits = []
+    if (typeof m.downloads === 'number') bits.push(`${shortCount(m.downloads)} downloads a month`)
+    if (typeof m.likes === 'number') bits.push(`${shortCount(m.likes)} likes`)
+    if (bits.length) out.push({ text: `${id} on Hugging Face: ${bits.join(', ')}`, tone: 'info' })
+  }
+  if (metrics.stale) out.push({ text: `⚠ ${metrics.stale === 'archived' ? 'Archived by its authors' : metrics.stale}`, tone: 'warn' })
+  return out
+}
+
+/** Where a directory entry lives, as a safe link: its GitHub repository (or
+ *  folder, or a page of it), its Hugging Face page, or its home page. */
+export function entryLink(entry: Pick<CatalogEntry, 'source'>): string | null {
+  const s = entry.source ?? {}
+  if (s.github) {
+    const repo = safeLink(s.github)
+    if (!repo) return null
+    if (s.path) return safeLink(`${s.github.replace(/\/+$/, '')}/tree/HEAD/${s.path.replace(/^\/+|\/+$/g, '')}`)
+    const page = safeLink(s.url)
+    if (page && (page.startsWith(`${s.github}#`) || page.startsWith(`${s.github}/`))) return page
+    return repo
+  }
+  if (s.huggingface && /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s.huggingface))
+    return `https://huggingface.co/${s.huggingface}`
+  return safeLink(s.url)
+}
+
+const BASED_ON_HOW: Record<string, string> = {
+  runs: 'runs it as a separate program',
+  'includes-code': 'includes its code',
+  port: 'is a rewrite of it'
+}
+
+/** The projects a plugin credits, for "Built on" (https links only). */
+export function basedOnLines(items: BasedOn[] | undefined): { name: string; url: string | null; text: string }[] {
+  return (items ?? [])
+    .filter((b) => b && typeof b.name === 'string')
+    .map((b) => ({
+      name: b.name,
+      url: safeLink(b.url),
+      text: `${b.license} · ${BASED_ON_HOW[b.how] ? `this plugin ${BASED_ON_HOW[b.how]}` : b.how}`
+    }))
+}
+
+/** One sentence for a version's compatibility record, or null when it has none. */
+export function compatibilityText(record: CompatibilityRecord | undefined | null): { text: string; tone: Tone } | null {
+  if (!record) return null
+  const when = String(record.checked_at || '').slice(0, 10)
+  if (record.passed)
+    return {
+      text: `✓ Compatible: version ${record.version} passed the automated checks on Clips Kitty ${record.app_version}${when ? ` (${when})` : ''}. A technical check, not a security review.`,
+      tone: 'ok'
+    }
+  return {
+    text: `Version ${record.version} didn’t pass the automated checks on Clips Kitty ${record.app_version}${record.note ? `: ${record.note}` : ''}.`,
+    tone: 'warn'
+  }
+}
+
+/** Entries grouped by their kind's sections, in the catalog's order. An
+ *  entry in a section the list doesn't know goes under "Other". */
+export function groupBySection(
+  entries: CatalogEntry[],
+  sections: CatalogSection[] | undefined
+): { id: string; title: string; description?: string; entries: CatalogEntry[] }[] {
+  const out: { id: string; title: string; description?: string; entries: CatalogEntry[] }[] = []
+  const known = new Set<string>()
+  for (const s of sections ?? []) {
+    known.add(s.id)
+    const own = entries.filter((e) => e.section === s.id)
+    if (own.length) out.push({ id: s.id, title: s.title, description: s.description, entries: own })
+  }
+  const rest = entries.filter((e) => !known.has(e.section))
+  if (rest.length) out.push({ id: '', title: 'Other', entries: rest })
+  return out
 }

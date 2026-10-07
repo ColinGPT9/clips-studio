@@ -81,7 +81,7 @@ def test_every_tier_and_execution_gets_a_badge_in_the_engines_words(tmp_path):
                details)
     for d, (tier, execution) in zip(details, got, strict=True):
         assert tier["label"] == permissions.TIERS[d["tier"]]
-        assert tier["tone"] == {"official": "ok", "listed": "info", "link": "warn"}[d["tier"]]
+        assert tier["tone"] == {"official": "ok", "listed-official": "ok", "listed": "info", "link": "warn"}[d["tier"]]
         assert execution["title"] == d["execution_text"]
         assert execution["tone"] == {"local": "ok", "remote": "warn", "hybrid": "warn", None: "danger"}[d["execution"]]
 
@@ -335,3 +335,92 @@ def test_index_ages_sizes_and_slugs_read_as_words(tmp_path):
     assert got[1] == ["2.5 GB", "340 MB", "2 KB", ""]
     assert got[2] == ["Team wipe", "Big play"]
     assert got[3] == ["The list that came with Clips Kitty", "example.com"]
+
+
+# ---- Awesome Clips Kitty: labels, numbers and credits ---------------------------------------
+
+
+def test_the_directory_kinds_and_relationships_match_the_catalog(tmp_path):
+    from plugins import catalog
+
+    got = _run(tmp_path, "return [m.DIRECTORY_KINDS, m.RELATIONSHIP_LABELS]")
+    assert got[0] == {kind: catalog.KIND_TITLES[kind] for kind in catalog.DIRECTORY_KINDS.values()}
+    assert got[1] == catalog.RELATIONSHIPS
+
+
+def test_badges_say_what_they_mean_and_a_listing_shows_only_the_extra_ones(tmp_path):
+    from plugins import catalog
+
+    got = _run(tmp_path, "return [m.catalogBadges(data), m.catalogBadges(data, true), m.catalogBadges(['verified'])]",
+               ["official", "compatible", "featured"])
+    assert [b["label"] for b in got[0]] == [catalog.BADGES[b] for b in ("official", "compatible", "featured")]
+    assert [b["label"] for b in got[1]] == ["✓ Compatible", "★ Featured"]
+    assert "not a security review" in got[0][1]["title"]
+    assert got[2] == []  # an index can't invent a label
+
+
+def test_an_official_listing_needs_no_trust_tick_and_a_community_one_does(tmp_path):
+    plans = [{"details": permissions.describe(_manifest(), tier="listed-official")},
+             {"details": permissions.describe(_manifest(), tier="listed")}]
+    got = _run(tmp_path, "return data.map((p) => [m.confirmations(p), m.tierBadge(p.details)])", plans)
+    assert got[0][0] == [] and got[0][1]["tone"] == "ok" and got[0][1]["label"].startswith("✓ Official")
+    assert len(got[1][0]) == 1 and got[1][1]["label"] == "Community · not reviewed by a person"
+
+
+def test_each_number_is_its_own_line(tmp_path):
+    metrics = {"installs": 12482, "github": {"stars": 1234, "discussions": 3, "pushed_at": "2026-09-30"},
+               "models": {"example-org/speech": {"downloads": 52000, "likes": 40}}, "stale": "archived"}
+    got = _run(tmp_path, "return [m.metricLines(data), m.metricLines({installs: 1}), m.metricLines(undefined), "
+                         "[0, 999, 1000, 1250, 1999999].map(m.shortCount)]", metrics)
+    assert [line["text"] for line in got[0]] == [
+        "12,482 Clips Kitty installs", "★ 1.2k on GitHub", "3 discussions on GitHub",
+        "example-org/speech on Hugging Face: 52k downloads a month, 40 likes", "⚠ Archived by its authors"]
+    assert got[0][-1]["tone"] == "warn"
+    assert [line["text"] for line in got[1]] == ["1 Clips Kitty install"] and got[2] == []
+    assert got[3] == ["0", "999", "1k", "1.3k", "2M"]
+
+
+@pytest.mark.parametrize("source, link", [
+    ({"github": "https://github.com/example-org/app"}, "https://github.com/example-org/app"),
+    ({"github": "https://github.com/example-org/app", "path": "tools/cli"},
+     "https://github.com/example-org/app/tree/HEAD/tools/cli"),
+    ({"github": "https://github.com/example-org/app", "url": "https://github.com/example-org/app#readme"},
+     "https://github.com/example-org/app#readme"),
+    ({"github": "https://github.com/example-org/app", "url": "https://elsewhere.example.com"},
+     "https://github.com/example-org/app"),
+    ({"huggingface": "example-org/speech"}, "https://huggingface.co/example-org/speech"),
+    ({"huggingface": "../../evil"}, None),
+    ({"url": "https://example.org"}, "https://example.org/"),
+    ({"url": "javascript:alert(1)"}, None),
+])
+def test_an_entry_links_to_its_home(tmp_path, source, link):
+    assert _run(tmp_path, "return m.entryLink({source: data})", source) == link
+
+
+def test_credits_and_compatibility_in_words(tmp_path):
+    based_on = [{"name": "Example Clipper", "url": "https://github.com/example-org/clipper", "license": "MIT",
+                 "how": "runs"},
+                {"name": "Old Scorer", "url": "http://insecure.example.com", "license": "GPL-3.0-or-later",
+                 "how": "port"}]
+    record = {"version": "1.0.0", "commit": COMMIT, "app_version": "2.0.0", "plugin_api": 1,
+              "checked_at": "2026-10-07T05:00:00Z", "checks": {}, "passed": True}
+    got = _run(tmp_path, "return [m.basedOnLines(data.b), m.compatibilityText(data.r), "
+                         "m.compatibilityText({...data.r, passed: false, note: 'starts: it needs Python'}), "
+                         "m.compatibilityText(undefined)]", {"b": based_on, "r": record})
+    assert got[0] == [{"name": "Example Clipper", "url": "https://github.com/example-org/clipper",
+                       "text": "MIT · this plugin runs it as a separate program"},
+                      {"name": "Old Scorer", "url": None, "text": "GPL-3.0-or-later · this plugin is a rewrite of it"}]
+    assert got[1]["tone"] == "ok" and got[1]["text"].startswith("✓ Compatible: version 1.0.0 passed")
+    assert "(2026-10-07)" in got[1]["text"] and "not a security review" in got[1]["text"]
+    assert got[2]["tone"] == "warn" and got[2]["text"].endswith("starts: it needs Python.")
+    assert got[3] is None
+
+
+def test_entries_are_grouped_in_the_catalogs_order(tmp_path):
+    entries = [{"key": "apps/b", "section": "gaming"}, {"key": "apps/a", "section": "video-clipping"},
+               {"key": "apps/c", "section": "gone"}]
+    sections = [{"id": "video-clipping", "title": "Video clipping"}, {"id": "video-ai", "title": "Video AI"},
+                {"id": "gaming", "title": "Gaming"}]
+    got = _run(tmp_path, "return m.groupBySection(data.e, data.s)", {"e": entries, "s": sections})
+    assert [(g["title"], [e["key"] for e in g["entries"]]) for g in got] == [
+        ("Video clipping", ["apps/a"]), ("Gaming", ["apps/b"]), ("Other", ["apps/c"])]

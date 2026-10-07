@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
 import {
   CATEGORY_LABELS,
+  DIRECTORY_KINDS,
+  RELATIONSHIP_LABELS,
+  basedOnLines,
+  catalogBadges,
   checkLines,
   KIND_LABELS,
   categoryLabel,
+  compatibilityText,
   confirmations,
+  entryLink,
+  groupBySection,
+  metricLines,
   executionBadge,
   fetchedText,
   fitSummary,
@@ -19,7 +27,11 @@ import {
   updateLines,
   gitSource,
   type Badge,
+  type BasedOn,
   type BuiltinPlugin,
+  type CatalogEntry,
+  type CatalogResponse,
+  type Counting,
   type Hardware,
   type InstalledPlugin,
   type LinkItem,
@@ -28,6 +40,7 @@ import {
   type ModelPlan,
   type ModelStatus,
   type ModelsOverview,
+  type Metrics,
   type PluginDetails,
   type PluginPlan,
   type PluginsResponse,
@@ -120,6 +133,77 @@ function Links({ links }: { links: LinkItem[] }): JSX.Element | null {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+/** A link to a project's own page, through the same dialog as a developer's
+ *  links; plain text without the desktop app. */
+function OutLink({ url, children }: { url: string | null; children: ReactNode }): JSX.Element {
+  const open = window.studio?.openPluginLink
+  if (!url) return <span>{children}</span>
+  return open ? (
+    <button className="text-accent hover:underline text-left" onClick={() => void open(url)} title={url}>
+      {children} ↗
+    </button>
+  ) : (
+    <span title={url}>{children}</span>
+  )
+}
+
+/** The projects a plugin builds on, with their licences: the credit their
+ *  licences ask for, and what a user should know about where it comes from. */
+function BuiltOn({ items }: { items: BasedOn[] | undefined }): JSX.Element | null {
+  const lines = basedOnLines(items)
+  if (lines.length === 0) return null
+  return (
+    <div className="text-sm">
+      <p className="label mb-1">{t('Built on')}</p>
+      <ul className="space-y-0.5">
+        {lines.map((b) => (
+          <li key={b.name}>
+            <OutLink url={b.url}>{b.name}</OutLink> <span className="text-muted">· {t(b.text)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted mt-1">
+        {t('Each of these keeps its own licence. The developer says how the plugin uses them.')}
+      </p>
+    </div>
+  )
+}
+
+/** Each number from its own source, never added together, and where comments live. */
+function Numbers({
+  metrics,
+  discussions,
+  at
+}: {
+  metrics: Metrics | undefined
+  discussions?: string
+  at?: string | null
+}): JSX.Element | null {
+  const lines = metricLines(metrics)
+  if (lines.length === 0 && !discussions) return null
+  return (
+    <div className="text-sm">
+      <p className="label mb-1">{t('Numbers')}</p>
+      <ul className="space-y-0.5">
+        {lines.map((l) => (
+          <li key={l.text} className={l.tone === 'warn' ? 'text-warn' : ''}>
+            {t(l.text)}
+          </li>
+        ))}
+        {discussions && (
+          <li>
+            <OutLink url={discussions}>{t('Comments and ideas: GitHub Discussions')}</OutLink>
+          </li>
+        )}
+      </ul>
+      <p className="text-xs text-muted mt-1">
+        {t('Each number comes from its own source and is read for the catalog, not by this app.')}
+        {at ? ` ${t('Read on')} ${at}.` : ''}
+      </p>
     </div>
   )
 }
@@ -296,7 +380,6 @@ function ListingCard({
           </button>
           <p className="text-xs text-muted truncate">
             {listing.publisher} · {listing.latest}
-            {listing.license ? ` · ${listing.license}` : ''}
           </p>
         </div>
         {listing.installed &&
@@ -308,11 +391,20 @@ function ListingCard({
       </div>
       <div className="flex flex-wrap gap-1.5">
         <Pill badge={tierBadge(d)} />
+        {catalogBadges(listing.badges, true).map((b) => (
+          <Pill key={b.label} badge={b} />
+        ))}
         <Pill badge={executionBadge(d.execution, d.execution_text)} />
         {fit && <Pill badge={{ ...fit, title: '' }} />}
+        {listing.license && (
+          <Pill badge={{ label: `${t('Licence')} ${listing.license}`, tone: 'info', title: t('The licence the developer chose') }} />
+        )}
       </div>
       {listing.unofficial && <p className="text-xs text-muted">{listing.unofficial}</p>}
       <p className="text-sm">{listing.description}</p>
+      {metricLines(listing.metrics).length > 0 && (
+        <p className="text-xs text-muted">{metricLines(listing.metrics).slice(0, 2).map((l) => t(l.text)).join(' · ')}</p>
+      )}
       {listing.events && listing.events.length > 0 && (
         <p className="text-xs">
           <span className="text-muted">{t('Finds')}: </span>
@@ -392,6 +484,18 @@ function ListingPage({
             {listing.category ? ` · ${categoryLabel(listing.category)}` : ''}
           </p>
           {listing.unofficial && <p className="text-sm text-muted mt-1">{listing.unofficial}</p>}
+          {(listing.badges ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {catalogBadges(listing.badges).map((b) => (
+                <Pill key={b.label} badge={b} />
+              ))}
+            </div>
+          )}
+          {listing.featured && (
+            <p className="text-xs text-muted mt-1">
+              ★ {t('Featured')}: {listing.featured.reason}
+            </p>
+          )}
         </div>
         <p>{listing.description}</p>
         {listing.events && listing.events.length > 0 && (
@@ -447,6 +551,8 @@ function ListingPage({
           </div>
         )}
 
+        <BuiltOn items={listing.based_on} />
+        <Numbers metrics={listing.metrics} discussions={listing.discussions_url} />
         <Links links={listingLinks(listing)} />
 
         <div className="text-sm">
@@ -503,6 +609,11 @@ function ListingPage({
               ✕ {t('This version can’t run here')}: {chosen.problem_here}
             </p>
           )}
+          {chosen && compatibilityText(chosen.compatibility) && (
+            <p className={`text-sm ${compatibilityText(chosen.compatibility)?.tone === 'ok' ? 'text-success' : 'text-warn'}`}>
+              {t(compatibilityText(chosen.compatibility)?.text ?? '')}
+            </p>
+          )}
           {chosen && latest && chosen.version !== latest.version && !samePermissions(chosen.permissions, latest.permissions) && (
             <p className="text-sm text-warn">
               ⚠{' '}
@@ -528,6 +639,179 @@ function ListingPage({
   )
 }
 
+/** One app, model, workflow, integration or tool. They aren't installed
+ *  from here: each links to its home, and one that runs inside Clips Kitty
+ *  through a listed pipeline links to that. */
+function EntryCard({
+  entry,
+  onOpenListing
+}: {
+  entry: CatalogEntry
+  onOpenListing: (id: string) => void
+}): JSX.Element {
+  const link = entryLink(entry)
+  const numbers = metricLines(entry.metrics)
+  return (
+    <div className="card space-y-2 flex flex-col">
+      <div>
+        <OutLink url={link}>
+          <span className="font-semibold">{entry.name}</span>
+        </OutLink>
+        <p className="text-xs text-muted">
+          {t(RELATIONSHIP_LABELS[entry.relationship] ?? entry.relationship)}
+          {entry.uses ? ` · ${t(entry.uses === 'both' ? 'uses the API and the SDK' : entry.uses === 'sdk' ? 'uses the SDK' : 'uses the local API')}` : ''}
+          {entry.runs ? ` · ${t(entry.runs === 'local' ? 'runs locally' : entry.runs === 'cloud' ? 'runs online' : 'local or online')}` : ''}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {catalogBadges(entry.badges).map((b) => (
+          <Pill key={b.label} badge={b} />
+        ))}
+        <Pill badge={{ label: `${t('Licence')} ${entry.license}`, tone: 'info', title: t('The licence its authors chose') }} />
+        {!entry.checked && (
+          <Pill badge={{ label: t('Not yet checked'), tone: 'warn', title: t('Added by its authors; a maintainer hasn’t checked it against the criteria yet.') }} />
+        )}
+      </div>
+      {entry.unofficial && <p className="text-xs text-muted">{entry.unofficial}</p>}
+      <p className="text-sm">{entry.description}</p>
+      {entry.license_note && <p className="text-xs text-muted">{t('Licence note')}: {entry.license_note}</p>}
+      {entry.warning && <p className="text-xs text-warn font-medium">⚠ {entry.warning}</p>}
+      {numbers.length > 0 && (
+        <ul className="text-xs text-muted space-y-0.5">
+          {numbers.map((l) => (
+            <li key={l.text} className={l.tone === 'warn' ? 'text-warn' : ''}>
+              {t(l.text)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {entry.featured && <p className="text-xs text-muted">★ {entry.featured.reason}</p>}
+      <div className="flex flex-wrap gap-2 mt-auto pt-1 items-center">
+        {entry.adapter &&
+          (entry.adapter_listed ? (
+            <button className="btn-ghost !py-1.5" onClick={() => onOpenListing(entry.adapter ?? '')}>
+              {t('Use it in Clips Kitty')} →
+            </button>
+          ) : (
+            <span className="text-xs text-muted">
+              {t('Runs in Clips Kitty through')} {entry.adapter}
+            </span>
+          ))}
+        {entry.discussions_url && (
+          <span className="text-xs">
+            <OutLink url={entry.discussions_url}>{t('Discussions')}</OutLink>
+          </span>
+        )}
+        {(entry.platforms ?? []).length > 0 && (
+          <span className="text-xs text-muted">{(entry.platforms ?? []).map(slugLabel).join(', ')}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Awesome Clips Kitty's other kinds, by section: apps, models, workflows,
+ *  integrations and tools around Clips Kitty. */
+function CatalogBrowse({
+  kind,
+  q,
+  onOpenListing
+}: {
+  kind: string
+  q: string
+  onOpenListing: (id: string) => void
+}): JSX.Element {
+  const [data, setData] = useState<CatalogResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    const timer = setTimeout(
+      () => {
+        plugins
+          .catalog({ q: q.trim(), kind })
+          .then((r) => {
+            if (!live) return
+            setData(r)
+            setError(null)
+          })
+          .catch((e: Error) => live && setError(e.message))
+      },
+      q ? 250 : 0
+    )
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [kind, q])
+  if (error) return <div className="card text-error text-sm">{error}</div>
+  if (!data) return <p className="text-muted">{t('Loading…')}</p>
+  const groups = groupBySection(data.entries, data.sections[kind]?.sections)
+  return (
+    <div className="space-y-4">
+      {groups.length === 0 && (
+        <div className="card text-sm">
+          {q.trim()
+            ? t('Nothing in Awesome Clips Kitty matches that.')
+            : t('Nothing of this kind is in Awesome Clips Kitty yet.')}
+        </div>
+      )}
+      {groups.map((g) => (
+        <section key={g.id || 'other'} className="space-y-2">
+          <div>
+            <h3 className="font-semibold">{t(g.title)}</h3>
+            {g.description && <p className="text-xs text-muted">{t(g.description)}</p>}
+          </div>
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(18rem,1fr))]">
+            {g.entries.map((e) => (
+              <EntryCard key={e.key} entry={e} onOpenListing={onOpenListing} />
+            ))}
+          </div>
+        </section>
+      ))}
+      <p className="text-xs text-muted border-t border-raised/50 pt-3">
+        {t('From Awesome Clips Kitty, a curated list. Built with Clips Kitty: a separate app or tool that uses Clips Kitty. Related: relevant, not connected to Clips Kitty yet. Each project keeps its own licence.')}
+        {data.metrics_at ? ` ${t('Numbers read on')} ${data.metrics_at}.` : ''}
+      </p>
+    </div>
+  )
+}
+
+/** Whether installs are counted, and the switch. */
+function CountingNote({ manage }: { manage: boolean }): JSX.Element | null {
+  const [state, setState] = useState<Counting | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  useEffect(() => {
+    plugins.counting().then(setState).catch(() => setState(null))
+  }, [])
+  if (!state) return null
+  const toggle = (on: boolean): void => {
+    setProblem(null)
+    plugins
+      .setCounting(on)
+      .then(setState)
+      .catch((e: Error) => setProblem(e.message))
+  }
+  return (
+    <div className="space-y-1">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          className="size-4 mt-0.5 accent-[#38BDF8]"
+          checked={state.enabled}
+          disabled={!manage || state.locked_off}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        <span>
+          {t('Count my installs')}. {t(state.text)}
+          {state.locked_off && ` ${t('Switched off in settings.yaml (plugins.count_installs).')}`}
+          {!state.active && ` ${t('Nothing is counted yet: the catalog has no counter address.')}`}
+        </span>
+      </label>
+      {problem && <p className="text-error">{problem}</p>}
+    </div>
+  )
+}
+
 /** Search and browse the registry indexes. */
 function Browse({
   hardware,
@@ -542,6 +826,10 @@ function Browse({
   const [category, setCategory] = useState('')
   const [tag, setTag] = useState('')
   const kind = 'pipeline'
+  /** "pipeline", or one of the directory's other kinds (DIRECTORY_KINDS). */
+  const [view, setView] = useState('pipeline')
+  /** A listing opened from an app's card, kept open until the full list has loaded. */
+  const opening = useRef<string | null>(null)
   const [data, setData] = useState<MarketplaceResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
@@ -557,6 +845,7 @@ function Browse({
           .marketplace({ q: q.trim(), category, tag, kind })
           .then((r) => {
             if (!live) return
+            if (!q.trim() && !category && !tag) opening.current = null
             setData(r)
             setError(null)
           })
@@ -597,7 +886,7 @@ function Browse({
   // A listing the current results no longer have is closed, so it can't
   // reopen by itself when a later search brings it back.
   useEffect(() => {
-    if (open && data && !data.plugins.some((p) => p.id === open)) setOpen(null)
+    if (open && data && !data.plugins.some((p) => p.id === open) && opening.current !== open) setOpen(null)
   }, [data, open])
 
   const listing = open ? data?.plugins.find((p) => p.id === open) : null
@@ -607,7 +896,10 @@ function Browse({
         listing={listing}
         hardware={hardware}
         manage={manage}
-        onBack={() => setOpen(null)}
+        onBack={() => {
+          opening.current = null
+          setOpen(null)
+        }}
         onInstall={onInstall}
         onTag={(tg) => {
           setTag(tg)
@@ -630,24 +922,51 @@ function Browse({
         />
       </div>
 
-      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label={t('Type')}>
-        {Object.entries(KIND_LABELS).map(([id, label]) => {
-          const built = (data?.kinds ?? { pipeline: 'built' })[id] === 'built'
-          return (
+      <div className="flex flex-wrap gap-1.5 items-center" role="tablist" aria-label={t('Type')}>
+        {[['pipeline', KIND_LABELS.pipeline], ...Object.entries(DIRECTORY_KINDS)].map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={view === id}
+            className={`text-sm px-3 py-1 rounded-lg ${
+              view === id ? 'bg-accent/15 text-accent font-medium' : 'text-muted hover:text-ink'
+            }`}
+            onClick={() => setView(id)}
+          >
+            {t(label)}
+          </button>
+        ))}
+        {Object.entries(KIND_LABELS)
+          .filter(([id]) => id !== kind && (data?.kinds ?? {})[id] !== 'built' && !(id in DIRECTORY_KINDS))
+          .map(([id, label]) => (
             <span
               key={id}
-              className={`text-sm px-3 py-1 rounded-lg ${
-                id === kind ? 'bg-accent/15 text-accent font-medium' : 'text-muted opacity-60'
-              }`}
-              title={built ? '' : t('Planned: Clips Kitty can’t install this kind of plugin yet.')}
+              className="text-sm px-3 py-1 rounded-lg text-muted opacity-60"
+              title={t('Planned: Clips Kitty can’t install this kind of plugin yet.')}
             >
               {t(label)}
-              {!built && <span className="text-[10px] ml-1 uppercase">{t('planned')}</span>}
+              <span className="text-[10px] ml-1 uppercase">{t('planned')}</span>
             </span>
-          )
-        })}
+          ))}
       </div>
 
+      {view !== 'pipeline' && (
+        <CatalogBrowse
+          kind={view}
+          q={q}
+          onOpenListing={(id) => {
+            opening.current = id
+            setView('pipeline')
+            setQ('')
+            setCategory('')
+            setTag('')
+            setOpen(id)
+          }}
+        />
+      )}
+
+      {view === 'pipeline' && (
+      <>
       <div className="flex flex-wrap gap-1.5">
         <button
           className={`text-xs px-2.5 py-1 rounded-full ${!category ? 'bg-accent/15 text-accent' : 'bg-raised text-muted hover:text-ink'}`}
@@ -724,10 +1043,13 @@ function Browse({
           {refreshNote && <p>{refreshNote}</p>}
           <p>
             {t(
-              'Listed means an index’s automatic checks passed. It does not mean anyone reviewed the code. There are no ratings or install counts, and Clips Kitty sends nothing about what you browse.'
+              'Community means the catalog’s automatic checks passed. It does not mean anyone reviewed the code. ✓ Compatible means a version passed automated technical checks, not a security review. Clips Kitty sends nothing about what you browse.'
             )}
           </p>
+          <CountingNote manage={manage} />
         </div>
+      )}
+      </>
       )}
     </div>
   )
@@ -1132,6 +1454,7 @@ function InstalledCard({
             hardware={hardware}
             problems={plugin.problems_here ?? []}
           />
+          <BuiltOn items={plugin.based_on} />
           <Links links={listingLinks(plugin)} />
           <p className="text-xs text-muted">
             {t('Versions kept')}: {plugin.versions.join(', ')}
@@ -1382,7 +1705,14 @@ function InstallDialog({
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<InstalledPlugin | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
+  const [counting, setCounting] = useState<Counting | null>(null)
+  useEffect(() => {
+    plugins.counting().then(setCounting).catch(() => setCounting(null))
+  }, [])
   const needs = plan ? confirmations(plan) : []
+  const counted =
+    Boolean(counting?.enabled && counting.active && plan?.source.listed_in && !plan.update) &&
+    (plan?.details.tier === 'listed' || plan?.details.tier === 'listed-official')
   const ready = Boolean(plan?.ok && plan.plan_id) && needs.every((c) => ticked[c]) && !busy
   const install = (): void => {
     if (!plan?.plan_id) return
@@ -1451,7 +1781,13 @@ function InstallDialog({
               hardware={hardware}
               problems={null}
             />
+            <BuiltOn items={plan.plugin.based_on} />
             <Links links={listingLinks(plan.plugin)} />
+            {plan.ok && counted && (
+              <p className="text-xs text-muted">
+                {t('Installing adds one to this plugin’s public install count, kept by GitHub. Nothing about you or your videos is sent. You can switch counting off at the bottom of Browse.')}
+              </p>
+            )}
             {plan.ok && needs.length > 0 && (
               <div className="space-y-2 border-t border-raised/50 pt-3">
                 {needs.map((c) => (

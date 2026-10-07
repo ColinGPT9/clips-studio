@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from './api'
 import type {
+  CatalogResponse,
+  Counting,
   InstalledPlugin,
   MarketplaceResponse,
   ModelPlan,
@@ -96,8 +98,19 @@ export const plugins = {
     const qs = params.toString()
     return call<MarketplaceResponse>(`/marketplace${qs ? `?${qs}` : ''}`)
   },
+  /** Awesome Clips Kitty's apps, models, workflows, integrations and tools. */
+  catalog: (q: { q?: string; kind?: string; section?: string } = {}) => {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v) params.set(k, v)
+    const qs = params.toString()
+    return call<CatalogResponse>(`/marketplace/catalog${qs ? `?${qs}` : ''}`)
+  },
   refresh: () =>
     call<{ indexes: { url: string; ok: boolean; error?: string }[] }>('/marketplace/refresh', { method: 'POST' }),
+  /** Whether installs from the Marketplace are counted (anonymously), and switching it. */
+  counting: () => call<Counting>('/marketplace/counting'),
+  setCounting: (enabled: boolean) =>
+    call<Counting>('/marketplace/counting', { method: 'PUT', body: JSON.stringify({ enabled }) }, true),
   plan: (source: PluginSource) =>
     call<PluginPlan>('/plugins/plan', { method: 'POST', body: JSON.stringify({ source }) }, true),
   install: (planId: string) =>
