@@ -426,7 +426,7 @@ def bundled_path() -> Path:
     return catalog_path() / "index.json"
 
 
-def _clean_entry(e, *, trusted: bool) -> dict | None:
+def _clean_entry(e, *, ours: bool) -> dict | None:
     """A catalog entry read from an index, or None when it isn't one. Only
     the fields the Marketplace shows are kept, each only when it has the
     right shape, and links only when they are what they claim to be."""
@@ -468,9 +468,9 @@ def _clean_entry(e, *, trusted: bool) -> dict | None:
     out["metrics"] = _clean_metrics(e.get("metrics"))
     if _github_link(e.get("discussions_url")):
         out["discussions_url"] = e["discussions_url"]
-    if trusted and isinstance(e.get("featured"), dict):
+    if ours and isinstance(e.get("featured"), dict):
         out["featured"] = {k: str(e["featured"][k])[:200] for k in ("reason", "date") if k in e["featured"]}
-    out["badges"] = _trusted_badges(e.get("badges"), clean.get("github"), trusted=trusted, installable=False)
+    out["badges"] = _labels(e.get("badges"), clean.get("github"), ours=ours, installable=False)
     return out
 
 
@@ -509,23 +509,23 @@ def _count(n) -> bool:
     return isinstance(n, int) and not isinstance(n, bool) and n >= 0
 
 
-def _trusted_badges(claimed, repository, *, trusted: bool, installable: bool) -> list[str]:
+def _labels(claimed, repository, *, ours: bool, installable: bool) -> list[str]:
     """The labels a listing or entry shows. Only the bundled index's count:
     it was built by this project, so its Compatible and Featured come from
     real records and its Official repositories had every commit checked.
     Official also needs the repository to be the project's own, whatever an
     index says, and Compatible belongs to installable versions only. Any
     other index's listings are Community, whatever they claim."""
-    if not trusted:
+    if not ours:
         return catalog.badges(official=False)
     claimed = claimed if isinstance(claimed, list) else []
     return catalog.badges(official=catalog.is_official(repository),
                           compatible=installable and "compatible" in claimed, featured="featured" in claimed)
 
 
-def check_index(data, *, trusted: bool = False) -> dict:
+def check_index(data, *, ours: bool = False) -> dict:
     """An index read from anywhere, checked enough to use. Raises RegistryError.
-    `trusted` is for the bundled index only (see the module docstring)."""
+    `ours` is for the bundled index only, the one this project built (see the module docstring)."""
     if not isinstance(data, dict) or data.get("format") != FORMAT:
         raise RegistryError(f"not a Clips Kitty registry index (format {FORMAT})")
     plugins = data.get("plugins")
@@ -540,16 +540,16 @@ def check_index(data, *, trusted: bool = False) -> dict:
             claimed = p["checks"] if isinstance(p.get("checks"), dict) else {}
             checks = {k: v for k, v in claimed.items()
                       if isinstance(k, str) and v is True and k != "official_repository"}
-            if trusted and catalog.is_official(p["repository"]) and claimed.get("official_repository") is True:
+            if ours and catalog.is_official(p["repository"]) and claimed.get("official_repository") is True:
                 checks["official_repository"] = True
             item = {**p, "checks": checks, "metrics": _clean_metrics(p.get("metrics")),
-                    "badges": _trusted_badges(p.get("badges"), p["repository"], trusted=trusted, installable=True)}
+                    "badges": _labels(p.get("badges"), p["repository"], ours=ours, installable=True)}
             for key in ("aliases", "tags", "games", "sports", "events"):  # search reads these as word lists
                 if key in item and not (isinstance(item[key], list) and all(isinstance(x, str) for x in item[key])):
                     item.pop(key)
             if not _github_link(item.get("discussions_url")):
                 item.pop("discussions_url", None)
-            if not trusted:
+            if not ours:
                 item.pop("featured", None)
                 item["versions"] = [{k: v for k, v in version.items() if k != "compatibility"}
                                     for version in p["versions"]]
@@ -557,12 +557,12 @@ def check_index(data, *, trusted: bool = False) -> dict:
     blocklist = data.get("blocklist") if isinstance(data.get("blocklist"), list) else []
     out = {"format": FORMAT, "plugins": good, "blocklist": [b for b in blocklist if isinstance(b, dict)]}
     entries = data.get("catalog") if isinstance(data.get("catalog"), list) else []
-    out["catalog"] = [c for c in (_clean_entry(e, trusted=trusted) for e in entries) if c]
+    out["catalog"] = [c for c in (_clean_entry(e, ours=ours) for e in entries) if c]
     out["sections"] = data.get("sections") if isinstance(data.get("sections"), dict) else {}
     if isinstance(data.get("metrics_at"), str):
         out["metrics_at"] = data["metrics_at"][:10]
     counter = data.get("counter") if isinstance(data.get("counter"), dict) else {}
-    if trusted and catalog.counter_template_ok(counter.get("install")):
+    if ours and catalog.counter_template_ok(counter.get("install")):
         out["counter"] = {"install": counter["install"]}
     return out
 
@@ -620,7 +620,7 @@ def indexes(data_dir, urls: list[str], *, bundled: Path | None = None) -> list[d
     path = bundled or bundled_path()
     try:
         out.append({"url": "bundled", "fetched_at": None,
-                    "index": check_index(json.loads(path.read_text(encoding="utf-8")), trusted=True)})
+                    "index": check_index(json.loads(path.read_text(encoding="utf-8")), ours=True)})
     except (OSError, ValueError):
         pass
     for url in urls:

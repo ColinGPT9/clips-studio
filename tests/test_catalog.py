@@ -272,11 +272,11 @@ def test_only_the_bundled_index_gives_labels_or_counts_installs():
     assert "featured" not in data["catalog"][0] and "counter" not in data
     # The bundled index was built by this project: its Featured counts, Official follows the
     # repository whatever it claims, and a directory entry is never Compatible.
-    data = registry.check_index(_remote_index(), trusted=True)
+    data = registry.check_index(_remote_index(), ours=True)
     assert [e["badges"] for e in data["catalog"]] == [["community", "featured"], ["official"]]
     assert data["counter"] == {"install": OWN_COUNTER}
     assert "counter" not in registry.check_index({**_remote_index(), "counter": {"install": "javascript:alert(1)"}},
-                                                 trusted=True)
+                                                 ours=True)
 
 
 def test_an_entry_from_an_index_keeps_only_well_formed_fields():
@@ -292,7 +292,7 @@ def test_an_entry_from_an_index_keeps_only_well_formed_fields():
     # A listing too: odd checks or word lists are dropped, not a reason to fail.
     listing = {"id": "example-dev/odd", "repository": "https://github.com/ColinGPT9/clips-studio", "checks": ["x"],
                "games": 5, "tags": ["ok"], "versions": [{"version": "1.0.0", "commit": "a" * 40}]}
-    (got,) = registry.check_index({"format": 1, "plugins": [listing]}, trusted=True)["plugins"]
+    (got,) = registry.check_index({"format": 1, "plugins": [listing]}, ours=True)["plugins"]
     assert got["checks"] == {} and "games" not in got and got["tags"] == ["ok"]
 
 

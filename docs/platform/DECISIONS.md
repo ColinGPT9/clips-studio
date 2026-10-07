@@ -154,7 +154,7 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Decided:** (1) ✓ Official follows from the repository's GitHub owner (`plugins/catalog.py OFFICIAL_OWNERS`, today `colingpt9`), and the build checks every listed commit is on one of that repository's own branches or tags, because GitHub serves a fork's commits under the parent's address too; the app recomputes Official, and takes Official, Compatible, Featured and the install counter only from the index bundled with it, so any other index's listings and entries are Community; (2) ✓ Compatible belongs to one version at one commit with a passed record in `stats/compatibility.json`; directory entries never carry it; (3) the project's own repository may list its examples under another publisher name (`clips-kitty-examples/scene-cut-highlights`), and that listing shows "The repository is the Clips Kitty project's own" instead of claiming the publisher owns it; (4) a listing installs with the tier `listed-official` ("✓ Official · made by the Clips Kitty project", no trust tick) or `listed` ("Community · not reviewed by a person", one tick); (5) an entry nobody has checked against the inclusion criteria goes under "Not yet checked".
 **Alternatives:** trusting an index's badges; trusting the repository address alone (a fork's commit can be fetched through it); one "Listed" tier for both.
 **Why:** each label says only what is true and checkable.
-**Undo:** `_trusted_badges` and `listing_tier` in `plugins/registry.py`; `TIERS` in `plugins/permissions.py`.
+**Undo:** `_labels`, `check_index` and `listing_tier` in `plugins/registry.py`; `TIERS` in `plugins/permissions.py`.
 
 ## D23 · The install counter is a download count on GitHub, and is off until the catalog has a home
 
