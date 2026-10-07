@@ -345,19 +345,34 @@ def test_clips_kittys_online_list_is_named_and_described_plainly(tmp_path):
 
     now = 1_000_000_000
     hours_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 3 * 3600))
-    states = [None, {"fetched_at": None, "error": None}, {"fetched_at": hours_ago, "error": None},
-              {"fetched_at": hours_ago, "error": "the download failed"}, {"fetched_at": None, "error": "offline"}]
+    minutes_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 20 * 60))
+    offline = registry.WHY_OFFLINE
+    states = [
+        (None, True),
+        ({"fetched_at": None, "error": None}, True),
+        ({"fetched_at": None, "error": None}, False),  # the interface in a browser: no button to press
+        ({"fetched_at": hours_ago, "in_use": True, "error": None}, True),
+        ({"fetched_at": hours_ago, "in_use": True, "tried_at": minutes_ago, "error": offline}, True),
+        ({"fetched_at": None, "tried_at": minutes_ago, "error": registry.WHY_NOT_FOUND}, True),
+        ({"fetched_at": hours_ago, "in_use": False, "error": None}, True),  # set aside: older than this release's
+        ({"fetched_at": hours_ago, "in_use": False, "tried_at": minutes_ago, "error": offline}, True),
+    ]
     got = _run(tmp_path, "return [m.ONLINE_LIST, ['bundled', m.ONLINE_LIST, 'https://example.com/x.json', undefined]"
-                         ".map(m.isOurList), data.map((o) => m.onlineText(o ?? undefined, 1_000_000_000_000))]",
-               states)
+                         ".map(m.isOurList), data.map(([o, manage]) => m.onlineText(o ?? undefined, "
+                         "1_000_000_000_000, manage))]", states)
     assert got[0] == registry.ONLINE_URL
     assert got[1] == [True, True, False, False]
     assert got[2] == [
         "This shows the list that came with Clips Kitty. Check for new pipelines to get the online list.",
         "This shows the list that came with Clips Kitty. Check for new pipelines to get the online list.",
+        "This shows the list that came with Clips Kitty. The Clips Kitty desktop app gets the online list.",
         "Clips Kitty’s online list, updated 3 hours ago.",
-        "Couldn’t reach Clips Kitty’s online list just now, so this shows the copy from 3 hours ago.",
-        "Couldn’t reach Clips Kitty’s online list yet, so this shows the list that came with Clips Kitty."]
+        f"The check for new pipelines 20 minutes ago didn’t work. {offline} This shows its copy from 3 hours ago.",
+        f"The check for new pipelines 20 minutes ago didn’t work. {registry.WHY_NOT_FOUND} "
+        "This shows the list that came with Clips Kitty.",
+        "This shows the list that came with Clips Kitty, which is newer than its online copy.",
+        f"The check for new pipelines 20 minutes ago didn’t work. {offline} "
+        "This shows the list that came with Clips Kitty."]
 
 
 # ---- Awesome Clips Kitty: labels, numbers and credits ---------------------------------------

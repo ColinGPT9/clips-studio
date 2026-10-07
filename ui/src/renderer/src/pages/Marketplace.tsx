@@ -726,10 +726,13 @@ function EntryCard({
 function CatalogBrowse({
   kind,
   q,
+  stamp,
   onOpenListing
 }: {
   kind: string
   q: string
+  /** Changes when the lists may have changed (a check for new pipelines), so the entries load again. */
+  stamp: number
   onOpenListing: (id: string) => void
 }): JSX.Element {
   const [data, setData] = useState<CatalogResponse | null>(null)
@@ -755,7 +758,7 @@ function CatalogBrowse({
       live = false
       clearTimeout(timer)
     }
-  }, [kind, q])
+  }, [kind, q, stamp])
   if (error) return <div className="card text-error text-sm">{error}</div>
   if (!data) return <p className="text-muted">{t('Loading…')}</p>
   const groups = groupBySection(data.entries, data.sections[kind]?.sections)
@@ -849,7 +852,7 @@ function OnlineListNote({ manage, online }: { manage: boolean; online: OnlineLis
           onChange={(e) => toggle(e.target.checked)}
         />
         <span>
-          {t('Check Clips Kitty’s online list for new pipelines once a day, when the Marketplace opens.')}{' '}
+          {t('Check Clips Kitty’s online list once a day for new pipelines, and for warnings about pipelines you have.')}{' '}
           {t('It is one file from GitHub; nothing about you or what you browse is sent.')}
         </span>
       </label>
@@ -913,14 +916,17 @@ function Browse({
 
   // Opening the Marketplace checks Clips Kitty's online list when its copy is
   // a day old and the switch is on (the engine decides); new pipelines then
-  // appear without waiting for an app update. Quiet: the footer says how it went.
+  // appear without waiting for an app update. Quiet: the footer says how it
+  // went, and the button shows the check while it runs.
   useEffect(() => {
     if (!manage) return
     let live = true
+    setRefreshing(true)
     plugins
       .refresh(true)
       .then((r) => live && r.checked && setStamp((n) => n + 1))
       .catch(() => undefined)
+      .finally(() => live && setRefreshing(false))
     return () => {
       live = false
     }
@@ -938,8 +944,8 @@ function Browse({
             ? failed
                 .map((i) =>
                   i.url === ONLINE_LIST
-                    ? t('Couldn’t reach Clips Kitty’s online list. Check your internet connection and try again.')
-                    : `${indexName(i.url)}: ${i.error ?? t('could not be fetched')}`
+                    ? `${t('Couldn’t check Clips Kitty’s online list.')} ${t(i.error ?? '')}`.trim()
+                    : `${indexName(i.url)}: ${t(i.error ?? 'could not be fetched')}`
                 )
                 .join(' · ')
             : t('Up to date.')
@@ -977,6 +983,10 @@ function Browse({
 
   const others = (data?.indexes ?? []).filter((i) => i.kind === 'other')
   const onlineNever = !(data?.online?.fetched_at ?? null)
+  /** Where new pipelines come from on this screen: the button, or (in a browser) the desktop app. */
+  const getThem = manage
+    ? t('Press Check for new pipelines below.')
+    : t('The Clips Kitty desktop app checks for new pipelines.')
   const filtered = Boolean(q.trim() || category || tag)
   return (
     <div className="space-y-4">
@@ -1022,6 +1032,7 @@ function Browse({
         <CatalogBrowse
           kind={view}
           q={q}
+          stamp={stamp}
           onOpenListing={(id) => {
             opening.current = id
             setView('pipeline')
@@ -1070,9 +1081,9 @@ function Browse({
               <p>{t('No pipelines are listed yet.')}</p>
               <p className="text-muted">
                 {onlineNever
-                  ? t('Clips Kitty hasn’t got its online list yet: press Check for new pipelines below.')
+                  ? `${t('Clips Kitty hasn’t got its online list yet.')} ${getThem}`
                   : others.some((i) => !i.cached)
-                    ? t('Some of the lists set up in your settings haven’t been fetched yet: press Check for new pipelines below.')
+                    ? `${t('Some of the lists set up in your settings haven’t been fetched yet.')} ${getThem}`
                     : t('None of Clips Kitty’s lists has a pipeline yet.')}{' '}
                 {t('You can still install a plugin from a folder or a GitHub link.')}
               </p>
@@ -1097,7 +1108,7 @@ function Browse({
 
       {data && (
         <div className="text-xs text-muted space-y-1 border-t border-raised/50 pt-3">
-          <p>{t(onlineText(data.online, Date.now()))}</p>
+          <p>{t(onlineText(data.online, Date.now(), manage))}</p>
           {others.map((i) => (
             <p key={i.url}>
               {indexName(i.url)}: {i.plugins ?? 0} {i.plugins === 1 ? t('plugin') : t('plugins')}

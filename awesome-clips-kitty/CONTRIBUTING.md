@@ -2,7 +2,7 @@
 
 Awesome Clips Kitty is a folder of small YAML files, reviewed by pull request, from which two files are built: `README.md` for people and `index.json` for the Clips Kitty Marketplace. There is no server and no account to create. Listing, updating and installing are free, and Clips Kitty takes no share of anything a developer earns; link to your own pricing, sponsors or support page if you have one.
 
-Status: the format, the build, the app's reader and the Marketplace screens are **built**. **Not yet:** a public repository of its own. Until then the catalog lives in `awesome-clips-kitty/` in the Clips Kitty repository. Once a change is merged, the app's Marketplace picks it up from `index.json` on the main branch within a day (when it opens, or at once with **Check for new pipelines**), shown as Community until the next app release bundles it; only the bundled copy gives ✓ Official, ✓ Compatible, ★ Featured and install numbers.
+Status: the format, the build, the app's reader and the Marketplace screens are **built**. **Not yet:** a public repository of its own. Until then the catalog lives in `awesome-clips-kitty/` in the Clips Kitty repository. Once a change is merged, the app's Marketplace reads `index.json` on the main branch (when it opens, at most once a day, or at once with **Check for new pipelines**). From it the app takes new listings and entries from other owners, new versions, new sections and blocks, shown as Community until the next app release bundles them; only the bundled copy gives ✓ Official, ✓ Compatible, ★ Featured and install numbers. A change to an existing entry or listing, a removal, and anything in the Clips Kitty project's own repositories arrive with the next release.
 
 ```text
 awesome-clips-kitty/

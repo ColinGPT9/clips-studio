@@ -243,8 +243,11 @@ export interface OnlineList {
   url: string
   /** Whether the Marketplace checks it by itself, once a day, when it opens. */
   automatic: boolean
-  /** When the copy in use was fetched; null when never. */
+  /** When the cached copy was fetched; null when never. */
   fetched_at: string | null
+  /** Whether that copy is in use: one older than the list that came with this
+   *  version of Clips Kitty is set aside (it would add nothing). */
+  in_use?: boolean
   /** When a check was last tried, and why it failed (null when it worked). */
   tried_at: string | null
   error: string | null
@@ -771,7 +774,6 @@ export function gitSource(
   return { source: { kind: 'git', url: repo.replace(/\/+$/, ''), commit: sha, ...(path ? { path } : {}) } }
 }
 
-/** "Updated 3 hours ago", for an index's last fetch (the engine's ISO 8601 time). */
 /** How long ago an ISO 8601 time was, in words ("3 hours ago"), or null when it isn't one. */
 export function agoText(stamp: string | null, nowMs: number): string | null {
   const at = stamp ? Date.parse(stamp) : NaN
@@ -790,14 +792,21 @@ export function fetchedText(fetchedAt: string | null, nowMs: number): string {
   return ago ? `updated ${ago}` : 'not fetched yet'
 }
 
-/** What the Marketplace says about Clips Kitty's online list. */
-export function onlineText(online: OnlineList | undefined, nowMs: number): string {
-  const ago = agoText(online?.fetched_at ?? null, nowMs)
-  if (online?.error && ago)
-    return `Couldn’t reach Clips Kitty’s online list just now, so this shows the copy from ${ago}.`
-  if (online?.error) return 'Couldn’t reach Clips Kitty’s online list yet, so this shows the list that came with Clips Kitty.'
-  if (ago) return `Clips Kitty’s online list, updated ${ago}.`
-  return 'This shows the list that came with Clips Kitty. Check for new pipelines to get the online list.'
+/** What the Marketplace says about Clips Kitty's online list, in one or two
+ *  sentences. `manage` is whether this window can check it (the desktop app
+ *  can; the interface in a plain browser can't, so it isn't sent to a button). */
+export function onlineText(online: OnlineList | undefined, nowMs: number, manage = true): string {
+  const fetched = agoText(online?.fetched_at ?? null, nowMs)
+  const tried = agoText(online?.tried_at ?? null, nowMs)
+  const used = fetched !== null && online?.in_use !== false
+  const shows = used ? `This shows its copy from ${fetched}.` : 'This shows the list that came with Clips Kitty.'
+  if (online?.error) {
+    const when = tried ? `The check for new pipelines ${tried} didn’t work.` : 'The last check for new pipelines didn’t work.'
+    return `${when} ${online.error} ${shows}`
+  }
+  if (used) return `Clips Kitty’s online list, updated ${fetched}.`
+  if (fetched) return 'This shows the list that came with Clips Kitty, which is newer than its online copy.'
+  return `${shows} ${manage ? 'Check for new pipelines to get the online list.' : 'The Clips Kitty desktop app gets the online list.'}`
 }
 
 export function formatBytes(n: number | undefined): string {

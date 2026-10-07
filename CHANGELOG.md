@@ -32,9 +32,10 @@ were often broken in a way that only showed up on somebody else's machine.
 
 - **New pipelines without waiting for an update, and nothing else to install.** The
   Marketplace checks Clips Kitty's online list when it opens, at most once a day, so a
-  newly listed pipeline shows up without a new version of the app; **Check for new
-  pipelines** checks at once. Until a release includes it, a new pipeline shows as
-  Community. The check fetches one file from GitHub and sends nothing about you or what
+  newly listed pipeline or a new version shows up without a new version of the app;
+  **Check for new pipelines** checks at once. With a pipeline installed, the app also
+  checks when it starts, so a warning about a harmful version arrives without opening
+  the Marketplace. Until a release includes it, what the list adds shows as Community. The check fetches one file from GitHub and sends nothing about you or what
   you browse; a switch at the bottom of Browse turns it off. Pipelines also run on the
   Python inside Clips Kitty now, so a creator never installs Python for one.
   (Experimental routes: `/marketplace/online`; `/marketplace/refresh` now needs the

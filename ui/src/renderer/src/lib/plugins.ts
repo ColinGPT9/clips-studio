@@ -157,6 +157,33 @@ export const plugins = {
     ).then(changed)
 }
 
+/** At start, when pipelines are installed, ask the engine to check Clips
+ *  Kitty's online list if it is due (once a day, while the switch is on), so a
+ *  block on an installed version arrives without opening the Marketplace
+ *  (DECISIONS D29). Quiet; a failure is the footer's to report. The engine may
+ *  still be starting, so it waits a little and tries once more later. */
+export function checkOnlineListAtStart(): () => void {
+  let stopped = false
+  const attempt = async (): Promise<void> => {
+    if (stopped || !(await canManage())) return
+    const installed = await plugins.list()
+    if (stopped || installed.plugins.length === 0) return
+    const done = await plugins.refresh(true)
+    if (done.checked) window.dispatchEvent(new Event(PLUGINS_CHANGED))
+  }
+  let later: ReturnType<typeof setTimeout> | undefined
+  const first = setTimeout(() => {
+    attempt().catch(() => {
+      later = setTimeout(() => attempt().catch(() => undefined), 120_000)
+    })
+  }, 10_000)
+  return () => {
+    stopped = true
+    clearTimeout(first)
+    if (later) clearTimeout(later)
+  }
+}
+
 /** The installed pipelines a job can use, kept current as plugins change.
  *  Null until the engine answers; empty when none is installed and on. The
  *  Generate bar's Pipeline switch stays hidden in both cases. */

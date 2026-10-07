@@ -72,7 +72,8 @@ def _transcript(path: str | None) -> dict:
     return {"language": data.get("language", ""), "segments": list(data.get("segments") or [])}
 
 
-def _print_report(report, out=sys.stdout) -> None:
+def _print_report(report, out=None) -> None:
+    out = out or sys.stdout  # looked up now: a default argument would keep the stream from import time
     for line in report.errors:
         print(f"error: {line}", file=out)
     for line in report.warnings:

@@ -137,7 +137,7 @@ def _summary(data: dict | None) -> dict:
 
 
 def _version_order(a: str, b: str) -> int:
-    ta, tb = manifest._version_tuple(a), manifest._version_tuple(b)
+    ta, tb = manifest.version_key(a), manifest.version_key(b)
     return (ta > tb) - (ta < tb)
 
 
@@ -403,7 +403,7 @@ def view(data_dir, plugin_id: str, *, app_version: str | None = None, blocked=No
         "enabled": bool(entry.get("enabled", True)),
         "pinned": bool(entry.get("pinned", False)),
         "previous": entry.get("previous"),
-        "versions": sorted(entry.get("versions") or {}, key=manifest._version_tuple, reverse=True),
+        "versions": sorted(entry.get("versions") or {}, key=manifest.version_key, reverse=True),
         "installed_at": info.get("installed_at"),
         "source": source,
         "source_text": sources.describe(source) if source else "",

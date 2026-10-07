@@ -42,7 +42,7 @@ Clips Kitty                              your pipeline
 | Plugin contract 1, the Python SDK, running a pipeline for a job | built |
 | The manifest (`clipskitty.yaml`), its validator and JSON Schema | built |
 | Install from a folder or a Git commit; update, roll back, turn off, pin, remove | built (engine routes and the Marketplace screen) |
-| Awesome Clips Kitty, the catalog the Marketplace reads: listing and entry formats, index and README build, the app's search, install from a listing, block list, labels, compatibility check, weekly numbers | built; no public repository or index address exists yet, and the install counter has no address, so nothing is counted |
+| Awesome Clips Kitty, the catalog the Marketplace reads: listing and entry formats, index and README build, the app's search, install from a listing, block list, labels, compatibility check, weekly numbers | built; the app reads the catalog's index from the project's main branch (it answers once merged); no public repository of its own yet, and the install counter has no address, so nothing is counted |
 | Marketplace screen in the desktop app; the Pipeline switch on a video | built and type-checked; not yet looked at on a real PC |
 | Model references (Hugging Face, url, Ollama, bundled), one shared download, licence and size shown | built for public models; gated models planned |
 | Returning finished clip files instead of moments | planned |

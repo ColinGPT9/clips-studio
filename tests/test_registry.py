@@ -449,16 +449,118 @@ def test_the_online_list_brings_new_pipelines_as_community_and_never_counts_them
     assert kinds == [("bundled", "bundled", True), ("online", registry.ONLINE_URL, True)]
 
 
-@pytest.mark.parametrize("online_version, from_online", [("1.1.0", True), ("1.0.0", False), ("0.9.0", False)])
-def test_a_newer_version_online_wins_and_shows_as_community_until_a_release(tmp_path, online_version, from_online):
+@pytest.mark.parametrize("online_version, from_online", [("1.1.0", True), ("1.0.0", False), ("0.9.0", False),
+                                                       ("1.0.1-rc.1", True)])
+def test_a_newer_version_online_is_added_and_shows_as_community_until_a_release(tmp_path, online_version, from_online):
     data, bundled = tmp_path / "data", tmp_path / "index.json"
     bundled.write_text(json.dumps(_index([_listing("tool", ("1.0.0", 1), **LABELLED)])))
-    _online(data, _index([_listing("tool", (online_version, 2), ("1.0.0", 1))]))
+    _online(data, _index([{**_listing("tool", (online_version, 2), ("1.0.0", 1)), "name": "Tool Two"}]))
     (listing,) = registry.listings(data, [], bundled=bundled)
-    assert listing["index"] == (registry.ONLINE_URL if from_online else "bundled")
+    assert listing["index"] == "bundled"
     assert listing["latest"] == (online_version if from_online else "1.0.0")
-    assert listing["badges"] == (["community"] if from_online else ["community", "compatible", "featured"])
-    assert registry.find(data, [], f"{OWNER}/tool", bundled=bundled)[1]["version"] == listing["latest"]
+    assert listing["badges"] == (["community", "featured"] if from_online else ["community", "compatible", "featured"])
+    assert listing["name"] == ("Tool Two" if from_online else "Tool")  # what the newest version says it is
+    assert listing["metrics"]["installs"] == 120
+    _, newest = registry.find(data, [], f"{OWNER}/tool", bundled=bundled)
+    assert newest["version"] == listing["latest"]
+    assert newest["index"] == (registry.ONLINE_URL if from_online else "bundled")
+    assert registry.listing_tier(listing, newest) == "listed"
+
+
+def test_a_version_the_bundled_list_has_stays_the_bundled_one(tmp_path):
+    """D29: the online list adds versions; it never changes or removes one the
+    release's list checked, so its commit, compatibility record and counting stay."""
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    passed = {"passed": True, "plugin_api": 1, "app_version": "2.0.0", "date": "2026-10-05"}
+    bundled.write_text(json.dumps(_index([{**_listing("tool", ("1.0.0", 1)), "versions": [
+        {"version": "1.0.0", "commit": _commit(1), "compatibility": passed}]}], counter={
+        "install": "https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}"})))
+    for online in ([("1.1.0", 3), ("1.0.0", 2)], [("1.1.0", 3)]):  # a different commit, or none at all
+        _online(data, _index([_listing("tool", *online)]))
+        listing, kept = registry.find(data, [], f"{OWNER}/tool", "1.0.0", bundled=bundled)
+        assert kept["commit"] == _commit(1) and kept["compatibility"] == passed and kept["index"] == "bundled"
+        assert [v["version"] for v in listing["versions"]] == ["1.1.0", "1.0.0"]
+        assert registry.counter_for(data, [], kept["index"], bundled=bundled)
+        _, added = registry.find(data, [], f"{OWNER}/tool", "1.1.0", bundled=bundled)
+        assert added["index"] == registry.ONLINE_URL and "compatibility" not in added
+        assert registry.counter_for(data, [], added["index"], bundled=bundled) is None
+
+
+def test_the_online_list_never_changes_the_projects_own_listing_or_one_whose_code_moved(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    own = _listing("scene-cut-highlights", ("1.0.0", 1), owner="clips-kitty-examples",
+                   repository="https://github.com/ColinGPT9/clips-studio", path="examples/scene-cut")
+    other = _listing("tool", ("1.0.0", 2))
+    bundled.write_text(json.dumps(_index([own, other])))
+    _online(data, _index([
+        _listing("scene-cut-highlights", ("1.0.1", 3), owner="clips-kitty-examples"),  # now someone else's repository
+        {**_listing("tool", ("2.0.0", 4)), "repository": "https://github.com/someone-else/tool"},
+    ]))
+    found = {p["id"]: p for p in registry.listings(data, [], bundled=bundled)}
+    assert found["clips-kitty-examples/scene-cut-highlights"]["latest"] == "1.0.0"
+    assert registry.listing_tier(found["clips-kitty-examples/scene-cut-highlights"]) == "listed-official"
+    assert found[f"{OWNER}/tool"]["latest"] == "1.0.0"
+    assert found[f"{OWNER}/tool"]["repository"] == f"https://github.com/{OWNER}/tool"
+
+
+@pytest.mark.parametrize("older, newer", [("1.2.0-rc.1", "1.2.0"), ("1.2.0-rc.2", "1.2.0-rc.10"),
+                                          ("1.2.0-alpha", "1.2.0-alpha.1"), ("1.2.0-9", "1.2.0-alpha"),
+                                          ("1.2.0", "1.2.1"), ("1.9.0", "1.10.0")])
+def test_versions_are_ordered_the_semantic_versioning_way(older, newer):
+    from plugins._sdk import manifest
+
+    assert manifest.version_key(older) < manifest.version_key(newer)
+    assert manifest.version_key("1.2.0+build.5") == manifest.version_key("1.2.0")
+    assert manager._version_order(newer, older) == 1
+
+
+def test_a_broken_sections_value_online_is_dropped_not_a_crash(tmp_path):
+    data, bundled = tmp_path / "data", tmp_path / "index.json"
+    bundled.write_text(json.dumps(_index(sections={"pipeline": {"sections": [{"id": "gaming", "title": "Gaming"}]}})))
+    _online(data, _index(sections={"pipeline": {"sections": 5, "wanted": "x"},
+                                   "app": {"sections": [{"id": "editing", "title": "Editing"}, "junk", {"id": 3}]},
+                                   "model": 7}))
+    sections = registry.sections_of(registry.indexes(data, [], bundled=bundled))
+    assert sections["pipeline"]["sections"] == [{"id": "gaming", "title": "Gaming"}]
+    assert sections["app"]["sections"] == [{"id": "editing", "title": "Editing"}] and "model" not in sections
+
+
+def test_two_checks_at_once_fetch_the_online_list_once(tmp_path):
+    """The Marketplace opening and the button can ask together; the second
+    waits for the first and finds the list already fresh."""
+    import threading
+    import time as clock
+
+    data = tmp_path / "data"
+    calls = []
+
+    def slow(u, p):
+        calls.append(u)
+        clock.sleep(0.3)
+        Path(p).write_text(json.dumps(_index()))
+
+    threads = [threading.Thread(target=registry.refresh_online_if_due, args=(data,), kwargs={"fetcher": slow})
+               for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert calls == [registry.ONLINE_URL]
+    bundled = tmp_path / "index.json"
+    bundled.write_text(json.dumps(_index(metrics_at="2026-10-01")))
+    view = registry.online_status(data, bundled=bundled)
+    assert view["error"] is None and view["fetched_at"] and view["in_use"]
+    assert not list(registry._cache_dir(data).glob("*.part"))
+    bundled.write_text(json.dumps(_index(metrics_at="2026-10-09")))  # a newer release: that copy is set aside
+    assert registry.online_status(data, bundled=bundled)["in_use"] is False
+
+
+def test_a_list_that_isnt_there_waits_a_day_not_an_hour(tmp_path):
+    data, now = tmp_path / "data", 1_800_000_000.0
+    registry.refresh_online(data, fetcher=lambda u, p: Path(p).write_text("not json"), now=now)
+    assert registry.online_status(data)["error"] == registry.WHY_UNREADABLE
+    assert not registry.online_due(data, now=now + 2 * 3600)
+    assert registry.online_due(data, now=now + 25 * 3600)
 
 
 def test_an_online_block_applies_and_cant_lift_a_bundled_one(tmp_path):

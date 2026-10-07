@@ -145,8 +145,9 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
             except registry.RegistryError as e:
                 raise HTTPException(404, str(e)) from e
             return call(manager.plan, data_dir, registry.source_for(listing, entry), app_version=version,
-                        blocked=blocked, git=git, fetcher=fetcher, tier=registry.listing_tier(listing),
-                        expect={"id": listing["id"], "version": entry["version"]}, listed_in=listing["index"])
+                        blocked=blocked, git=git, fetcher=fetcher, tier=registry.listing_tier(listing, entry),
+                        expect={"id": listing["id"], "version": entry["version"]},
+                        listed_in=entry.get("index", listing["index"]))
         return call(manager.plan, data_dir, source, app_version=version, blocked=blocked, git=git,
                     fetcher=fetcher)
 
@@ -222,7 +223,7 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
             "indexes": [{"url": i["url"], "kind": i["kind"], "fetched_at": i["fetched_at"],
                          "cached": i["index"] is not None, "plugins": len((i["index"] or {}).get("plugins") or [])}
                         for i in known],
-            "online": registry.online_status(data_dir),
+            "online": registry.online_status(data_dir, bundled=bundled_index),
             "categories": list(manifest_vocabulary()["categories"]),
             "kinds": manifest_vocabulary()["kinds"],
         }
@@ -255,20 +256,19 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
         Marketplace opening (`automatic`) fetches only the online list, and
         only when registry.online_due says so. `checked` is whether anything was fetched."""
         if body is not None and body.automatic:
-            if not registry.online_due(data_dir):
-                return {"checked": False, "indexes": []}
-            return {"checked": True, "indexes": [registry.refresh_online(data_dir, fetcher=fetcher)]}
+            status = registry.refresh_online_if_due(data_dir, fetcher=fetcher)
+            return {"checked": status is not None, "indexes": [status] if status else []}
         return {"checked": True, "indexes": [registry.refresh_online(data_dir, fetcher=fetcher),
                                              *registry.refresh(data_dir, urls(), fetcher=fetcher)]}
 
     @app.get("/marketplace/online")
     def marketplace_online():
-        return registry.online_status(data_dir)
+        return registry.online_status(data_dir, bundled=bundled_index)
 
     @app.put("/marketplace/online", dependencies=guarded)
     def marketplace_set_online(body: SwitchIn):
         registry.set_online_checks(data_dir, body.enabled)
-        return registry.online_status(data_dir)
+        return registry.online_status(data_dir, bundled=bundled_index)
 
     def counting_view() -> dict:
         known = registry.indexes(data_dir, urls(), bundled=bundled_index)

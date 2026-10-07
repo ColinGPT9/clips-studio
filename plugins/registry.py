@@ -28,10 +28,12 @@ locally:
 
 - the copy bundled with the app (awesome-clips-kitty/index.json);
 - Clips Kitty's online list (ONLINE_URL): that same file on the main branch
-  of the project's repository, which changes only when a change to the
-  catalog is merged there. The app fetches it when the Marketplace opens and
-  its copy is a day old (a switch in the Marketplace turns that off), or when
-  the person presses Check for new pipelines;
+  of the project's repository, which changes when a change to the catalog is
+  merged there (and with the weekly numbers). The app fetches it when the
+  Marketplace opens, or the app starts with a pipeline installed, and its copy
+  is a day old (a switch in the Marketplace turns that off), or when the
+  person presses Check for new pipelines. It only adds: new listings and
+  entries, new versions of a bundled listing, new sections, and blocks;
 - any addresses in settings (`plugins.registry_urls`, none by default).
 
 Nothing here runs plugin code; the index build clones only the history of
@@ -57,6 +59,7 @@ import json
 import logging
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -82,6 +85,11 @@ WHY_TOO_LARGE = "The list is larger than Clips Kitty accepts."
 WHY_UNREADABLE = "That address doesn't hold a list Clips Kitty can read."
 WHY_NOT_HTTPS = "Only https:// addresses can be checked."
 WHY_NOT_SAVED = "The list couldn't be saved on this PC."
+WHYS = (WHY_OFFLINE, WHY_NOT_FOUND, WHY_SERVER, WHY_TOO_LARGE, WHY_UNREADABLE, WHY_NOT_HTTPS, WHY_NOT_SAVED)
+
+# One check of the online list at a time (the Marketplace opening and the
+# button can ask together; FastAPI runs the routes on several threads).
+_ONLINE_LOCK = threading.RLock()
 
 # Clips Kitty's online list: the catalog's index on the project's main branch
 # (D29). It answers once the catalog is merged there.
@@ -397,7 +405,7 @@ def _build_listing(listing: dict, label: str, kind: str, *, fetch, blocklist: li
         record = catalog.compatibility_for(listing["id"], entry, compatibility)
         if record:
             entry["compatibility"] = record
-        versions.append((manifest._version_tuple(v["version"]), entry, data))
+        versions.append((manifest.version_key(v["version"]), entry, data))
     if bad or not versions:
         return None, problems
     versions.sort(key=lambda t: t[0], reverse=True)
@@ -558,6 +566,24 @@ def _labels(claimed, repository, *, ours: bool, installable: bool) -> list[str]:
                           compatible=installable and "compatible" in claimed, featured="featured" in claimed)
 
 
+def _clean_sections(sections, *, ours: bool) -> dict:
+    """An index's sections, as sections_of merges them: for an index this
+    project didn't build with the app, only well-formed kinds and sections."""
+    if not isinstance(sections, dict):
+        return {}
+    if ours:
+        return sections
+    out = {}
+    for kind, value in sections.items():
+        if not (isinstance(kind, str) and isinstance(value, dict)):
+            continue
+        out[kind] = {**value, "sections": [x for x in _list(value.get("sections")) if isinstance(x, dict)
+                                           and isinstance(x.get("id"), str) and isinstance(x.get("title"), str)]}
+        if "wanted" in value:
+            out[kind]["wanted"] = [x for x in _list(value["wanted"]) if isinstance(x, str)]
+    return out
+
+
 def check_index(data, *, ours: bool = False) -> dict:
     """An index read from anywhere, checked enough to use. Raises RegistryError.
     `ours` is for the bundled index only, the one this project built (see the module docstring)."""
@@ -593,7 +619,7 @@ def check_index(data, *, ours: bool = False) -> dict:
     out = {"format": FORMAT, "plugins": good, "blocklist": [b for b in blocklist if isinstance(b, dict)]}
     entries = data.get("catalog") if isinstance(data.get("catalog"), list) else []
     out["catalog"] = [c for c in (_clean_entry(e, ours=ours) for e in entries) if c]
-    out["sections"] = data.get("sections") if isinstance(data.get("sections"), dict) else {}
+    out["sections"] = _clean_sections(data.get("sections"), ours=ours)
     if isinstance(data.get("metrics_at"), str):
         out["metrics_at"] = data["metrics_at"][:10]
     counter = data.get("counter") if isinstance(data.get("counter"), dict) else {}
@@ -643,11 +669,7 @@ def refresh(data_dir, urls: list[str], *, fetcher=None) -> list[dict]:
             continue
         target = _cache_file(data_dir, url)
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            part = target.with_suffix(".part")  # replaced whole, so a reader never sees half a list
-            part.write_text(json.dumps({"url": url, "fetched_at": _stamp(time.time()), "index": index}),
-                            encoding="utf-8")
-            part.replace(target)
+            _replace(target, json.dumps({"url": url, "fetched_at": _stamp(time.time()), "index": index}))
             status["ok"] = True
         except OSError as e:
             log.warning("Couldn't save the plugin list %s to %s: %s", url, target, e)
@@ -668,6 +690,23 @@ def _why(error: Exception) -> str:
     if isinstance(error, sources.TooLarge):
         return WHY_TOO_LARGE
     return WHY_UNREADABLE  # not JSON, or not a Clips Kitty index (check_index says why, in the log)
+
+
+def _replace(path: Path, text: str) -> None:
+    """Write a file whole: a reader never sees half of it, and two writers
+    at once each finish (the last one's copy stays)."""
+    import os
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, part = tempfile.mkstemp(dir=path.parent, prefix=path.stem + ".", suffix=".part")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            out.write(text)
+        os.replace(part, path)
+    except BaseException:
+        Path(part).unlink(missing_ok=True)
+        raise
 
 
 def _stamp(t: float) -> str:
@@ -694,11 +733,7 @@ def _checks(data_dir) -> dict:
 
 
 def _write_checks(data_dir, data: dict) -> None:
-    path = _checks_path(data_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    part = path.with_suffix(".part")
-    part.write_text(json.dumps(data), encoding="utf-8")
-    part.replace(path)
+    _replace(_checks_path(data_dir), json.dumps(data))
 
 
 def online_checks_on(data_dir) -> bool:
@@ -709,19 +744,24 @@ def online_checks_on(data_dir) -> bool:
 
 
 def set_online_checks(data_dir, on: bool) -> None:
-    _write_checks(data_dir, {**_checks(data_dir), "automatic": bool(on)})
+    with _ONLINE_LOCK:
+        _write_checks(data_dir, {**_checks(data_dir), "automatic": bool(on)})
 
 
-def online_status(data_dir) -> dict:
+def online_status(data_dir, *, bundled: Path | None = None) -> dict:
     """What the Marketplace says about Clips Kitty's online list: whether it
-    is checked automatically, when a copy was last fetched, and how the last
-    try went (`error` is None when it worked)."""
+    is checked automatically, when a copy was last fetched, whether that copy
+    is in use (one older than the list that came with the app is set aside),
+    and when the last try was and how it went (`error` is None when it worked)."""
     checks = _checks(data_dir)
     cached = _cached(data_dir, ONLINE_URL)
+    in_use = bool(cached) and next(i for i in indexes(data_dir, [], bundled=bundled)
+                                   if i["kind"] == "online")["index"] is not None
+    error = checks.get("error")
     return {"url": ONLINE_URL, "automatic": online_checks_on(data_dir),
-            "fetched_at": (cached or {}).get("fetched_at"),
+            "fetched_at": (cached or {}).get("fetched_at"), "in_use": in_use,
             "tried_at": checks["tried_at"] if isinstance(checks.get("tried_at"), str) else None,
-            "error": checks["error"][:300] if isinstance(checks.get("error"), str) else None}
+            "error": error if error in WHYS else (WHY_UNREADABLE if isinstance(error, str) else None)}
 
 
 def _within(stamp, seconds: float, now: float) -> bool:
@@ -738,12 +778,30 @@ def online_due(data_dir, *, now: float | None = None) -> bool:
     now = time.time() if now is None else now
     if _within((_cached(data_dir, ONLINE_URL) or {}).get("fetched_at"), CHECK_EVERY, now):
         return False
-    return not _within(_checks(data_dir).get("tried_at"), RETRY_AFTER, now)
+    checks = _checks(data_dir)
+    # Offline: try again in an hour. A list that isn't there or can't be read
+    # won't change by itself within the hour, so that waits a day.
+    wait = RETRY_AFTER if checks.get("error") in (None, WHY_OFFLINE, WHY_SERVER, WHY_NOT_SAVED) else CHECK_EVERY
+    return not _within(checks.get("tried_at"), wait, now)
 
 
 def refresh_online(data_dir, *, fetcher=None, now: float | None = None) -> dict:
     """Fetch Clips Kitty's online list into the cache now, and note when and
     how it went. Like refresh(), a failure keeps the last good copy."""
+    with _ONLINE_LOCK:
+        return _refresh_online(data_dir, fetcher=fetcher, now=now)
+
+
+def refresh_online_if_due(data_dir, *, fetcher=None, now: float | None = None) -> dict | None:
+    """refresh_online() when online_due() says so, else None. One check at a
+    time: a second caller waits, then finds the first one's answer and doesn't fetch again."""
+    with _ONLINE_LOCK:
+        if not online_due(data_dir, now=now):
+            return None
+        return _refresh_online(data_dir, fetcher=fetcher, now=now)
+
+
+def _refresh_online(data_dir, *, fetcher=None, now: float | None = None) -> dict:
     (status,) = refresh(data_dir, [ONLINE_URL], fetcher=fetcher)
     _write_checks(data_dir, {**_checks(data_dir), "tried_at": _stamp(time.time() if now is None else now),
                              "error": status["error"]})
@@ -813,27 +871,63 @@ def _project_own(repository) -> bool:
 
 def listings(data_dir, urls: list[str], *, bundled: Path | None = None) -> list[dict]:
     """Every listed plugin, once. An id in several indexes comes from the
-    first (bundled, online, then settings order), except that the online
-    list's copy wins over the bundled one when it has a newer version. The
-    online list never brings the project's own listings: they come with the
-    app, and from that list they would show as Community."""
+    first (bundled, online, then settings order); Clips Kitty's online list
+    only adds versions to a bundled listing (_add_online). The online list
+    never brings the project's own listings: they come with the app, and from
+    that list they would show as Community. Each version says which index it
+    came from (`index`), which decides its install tier and whether installing
+    it is counted."""
     picked: dict[str, dict] = {}
     entries = blocklist(data_dir, bundled=bundled)
     for item in indexes(data_dir, urls, bundled=bundled):
         for p in (item["index"] or {}).get("plugins", []):
             if item["kind"] == "online" and _project_own(p.get("repository")):
                 continue
-            versions = [v for v in p["versions"] if not block_entry(entries, p["id"], v["version"])]
+            versions = [{**v, "index": item["url"]} for v in p["versions"]
+                        if not block_entry(entries, p["id"], v["version"])]
             if not versions:
                 continue
-            listing = {**p, "versions": versions, "latest": versions[0]["version"], "index": item["url"]}
             have = picked.get(p["id"])
             if have is None:
-                picked[p["id"]] = listing
-            elif item["kind"] == "online" and have["index"] == "bundled" and \
-                    manifest._version_tuple(listing["latest"]) > manifest._version_tuple(have["latest"]):
-                picked[p["id"]] = listing
+                picked[p["id"]] = {**p, "versions": versions, "latest": versions[0]["version"], "index": item["url"]}
+            elif item["kind"] == "online" and have["index"] == "bundled":
+                picked[p["id"]] = _add_online(have, p, versions)
     return list(picked.values())
+
+
+def _same_place(a: dict, b: dict) -> bool:
+    def place(p):
+        return (str(p.get("repository", "")).lower().rstrip("/").removesuffix(".git"), p.get("path") or ".")
+    return place(a) == place(b)
+
+
+def _add_online(have: dict, online: dict, versions: list[dict]) -> dict:
+    """A bundled listing with the versions Clips Kitty's online list adds
+    (D29): only versions the bundled list doesn't have, so a version it has
+    keeps its commit, its compatibility record and its counting. Nothing is
+    added to one of the project's own listings, or from a listing whose code
+    is somewhere else. When the newest version is an added one, the listing
+    shows what that version is (name, permissions...) and loses ✓ Compatible,
+    which belonged to the bundled newest version."""
+    if _project_own(have.get("repository")) or not _same_place(have, online):
+        return have
+    known = {v["version"] for v in have["versions"]}
+    added = [v for v in versions if v["version"] not in known]
+    if not added:
+        return have
+    every = sorted(have["versions"] + added, key=lambda v: manifest.version_key(v["version"]), reverse=True)
+    out = {**have, "versions": every, "latest": every[0]["version"]}
+    if every[0]["index"] != "bundled":
+        out.update({k: online[k] for k in (*SHOWN, "settings") if k in online})
+        for k in (*SHOWN, "settings"):
+            if k not in online:
+                out.pop(k, None)
+        out["badges"] = [b for b in have.get("badges") or [] if b != "compatible"]
+    return out
+
+
+def _list(value) -> list:
+    return value if isinstance(value, list) else []
 
 
 def sections_of(known: list[dict]) -> dict:
@@ -852,9 +946,9 @@ def sections_of(known: list[dict]) -> dict:
                 if kind not in out:
                     out[kind] = dict(v)
                     continue
-                mine = [s for s in out[kind].get("sections") or [] if isinstance(s, dict)]
+                mine = [s for s in _list(out[kind].get("sections")) if isinstance(s, dict)]
                 ids = {s.get("id") for s in mine}
-                out[kind]["sections"] = mine + [s for s in v.get("sections") or []
+                out[kind]["sections"] = mine + [s for s in _list(v.get("sections"))
                                                 if isinstance(s, dict) and s.get("id") not in ids]
     return out
 
@@ -893,12 +987,13 @@ def find(data_dir, urls: list[str], plugin_id: str, version: str | None = None, 
     raise RegistryError(f"{plugin_id} is not listed in any index")
 
 
-def listing_tier(listing: dict) -> str:
-    """The install tier of a listing: official when the bundled index lists it
-    in one of the Clips Kitty project's own repositories (the build checked
-    each commit is on that repository's branches, so the code is the project's)."""
-    return "listed-official" if listing.get("index") == "bundled" and catalog.is_official(
-        listing.get("repository")) else "listed"
+def listing_tier(listing: dict, version: dict | None = None) -> str:
+    """The install tier of a listing, or of one of its versions: official when
+    the bundled index lists it in one of the Clips Kitty project's own
+    repositories (the build checked each commit is on that repository's
+    branches, so the code is the project's)."""
+    index = (version or {}).get("index", listing.get("index"))
+    return "listed-official" if index == "bundled" and catalog.is_official(listing.get("repository")) else "listed"
 
 
 _HISTORY: dict[str, set[str]] = {}

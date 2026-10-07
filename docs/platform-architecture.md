@@ -308,7 +308,7 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 
 1. A report arrives as an issue on the registry repository, or privately through GitHub's private vulnerability reporting on that repository for anything harmful.
 2. A maintainer adds an entry to `awesome-clips-kitty/registry/blocklist.yaml`: `id`, `versions` (`"*"` or a list), `severity` (`blocked` or `delisted`), `reason`, `date` and an optional advisory link. CI rebuilds `index.json`; blocked and delisted versions disappear from the Marketplace.
-3. The client refreshes the index and block list whenever the Marketplace opens, and every release of the app ships the list as of its build, so an offline PC still knows about old entries. **Until the owner publishes an index URL, this path cannot reach installed copies**: the only list an installed app has is the one it shipped with, so a newly blocked plugin keeps running until an app release carries the new list. Once a URL exists, the small block list should be fetched at engine start and before each plugin job, not only when the Marketplace opens (designed, not built).
+3. Every release of the app ships the list as of its build, so an offline PC still knows about old entries, and the app reads Clips Kitty's online list (the same file on the project's main branch, `DECISIONS.md` D29) once a day when the Marketplace opens or the app starts with a pipeline installed, unless the person switches that off; **Check for new pipelines** fetches it at once. A new block therefore reaches installed copies at the next of those checks, or with the next release. Fetching it before each plugin job as well is designed, not built.
 4. Copies already installed are flagged from the cached list. `blocked`: the runner refuses to start it, the plugin page shows the reason in red and offers Remove, and nothing else changes on its own. `delisted` (abandoned, licence problem, or broken, for example by a game patch): it still runs and shows "No longer listed: <reason>". Clips Kitty never deletes a user's files by itself; removal is the user's click.
 
 **Game patches.** Game pipelines break when a game's interface changes. A listing may carry an optional `tested_with` note per version (for example `{game: marvel-rivals, version: "Season 4"}`), shown as "Tested with …", and a maintainer delists a version reported broken with a reason that says so.
@@ -325,7 +325,7 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 | Plugin and pipeline | `version` (SemVer), one pipeline per plugin in API 1 | Each index entry maps a version to a tag and a commit; versions are immutable and never deleted, only blocked or delisted. Clips record `plugin` and `plugin_version` in their saved scores (`candidate.subscores` → `clips.scores`, `core/pipeline.py:1593`) as `plugin`, `plugin_version`, `plugin_label` and `plugin_why`, next to the existing `sport_label` and `game_why` keys. |
 | Model | `revision` (Hugging Face commit, Ollama digest, file SHA-256) | Pinned in the manifest. A new model revision is a new plugin version. |
 
-**Pinning, updates, rollback** (research Q13-Q15). The index is refreshed when the Marketplace opens; an update shows the new version, its changelog link and any change in permissions, network hosts or data sent, and installs only on a click. The new version installs beside the old one and becomes active only when it validates; the previous version stays on disk and **Roll back** makes it active again. **Pin** stops update offers for a plugin. No automatic updates; a security problem is handled by the block list, not by a forced update. Because Colin's PC is short of disk, only one previous version is kept by default.
+**Pinning, updates, rollback** (research Q13-Q15). Clips Kitty's online list is checked once a day when the Marketplace opens (D29); an update shows the new version, its changelog link and any change in permissions, network hosts or data sent, and installs only on a click. The new version installs beside the old one and becomes active only when it validates; the previous version stays on disk and **Roll back** makes it active again. **Pin** stops update offers for a plugin. No automatic updates; a security problem is handled by the block list, not by a forced update. Because Colin's PC is short of disk, only one previous version is kept by default.
 
 ## 8.10 Marketplace and registry
 
@@ -358,7 +358,7 @@ versions:
 
 **The build script** validates each listing, fetches the manifest at the pinned commit as raw text (it never clones with hooks, installs or runs plugin code), runs the manifest validator, checks that the manifest's `id` and `version` match the listing, that the publisher matches the repository owner, that a licence is declared, that the `clipskitty` publisher is not claimed, and writes `index.json` with the manifest fields the Marketplace shows plus the check results. GitHub stars and release download counts may be captured at build time and labelled as such. CI holds no secrets beyond the read-only default token and never checks out a contributor's branch with write permissions ([CVE-2025-6705](https://blogs.eclipse.org/post/mikaël-barbero/eclipse-open-vsx-registry-security-advisory), research H3). In tests the fetch is a fixture directory; nothing touches the network.
 
-**The client** (`plugins/registry.py`) reads index URLs from settings (none is invented: the default is the bundled copy until the owner publishes one), caches the last good copy under `<data_dir>/plugins/cache/`, works offline from that cache, and searches it locally.
+**The client** (`plugins/registry.py`) reads the bundled copy, Clips Kitty's online list (`ONLINE_URL`, D29) and any index URLs from settings, caches the last good copy under `<data_dir>/plugins/cache/`, works offline from that cache, and searches it locally.
 
 **Browse and search.**
 
@@ -391,7 +391,7 @@ All mounted through `plugins/api.py install(app, …)`, labelled **experimental*
 | `DELETE /plugins/{publisher}/{name}` | remove it (all its versions) | yes | 6 |
 | `PUT /plugins/{publisher}/{name}/secrets` | store its `secret` settings | yes | 6 |
 | `GET /marketplace` | the cached index, searched and filtered (`q`, `category`, `tag`, `kind`) | no | 7 |
-| `POST /marketplace/refresh` | fetch the configured index URLs into the cache | no (it only reads public data) | 7 |
+| `POST /marketplace/refresh` | fetch Clips Kitty's online list and the configured index URLs into the cache (`{"automatic": true}`: the online list, only when due) | yes (D29: a web page can't make the app fetch) | 7 |
 | `GET /plugin-models` | model references of installed plugins, installed or not, licence and size | no | 9 |
 
 ## 8.11 First-party dogfooding
@@ -417,7 +417,7 @@ The existing modes stay exactly where they are. Two things make them part of the
 | A bundled Python for plugins in the frozen build | **built** (D28): the engine runs plugin scripts itself | `{python}` resolves without a system Python |
 | Per-plugin Python environments (`run.python_requirements`) | needs the manager first; then built if time allows (Phase 6) | plugins can depend on wheels such as onnxruntime |
 | Routing by game, then genre, then generic | needs several pipelines per capability to exist first | a job can ask for a capability instead of one plugin |
-| Block list fetched at engine start and before each plugin job | needs a published index URL | blocking reaches installed copies without an app release |
+| Block list fetched before each plugin job | the online list is checked at app start and when the Marketplace opens (D29); a check before each job would add a network wait to every run | a block reaches an installed copy even on a PC that stays open for days |
 | Opt-in usage counts | owner's call | a counter, never on by default (superseded 2026-10-07: D20, install counts wanted; D23, a counter built on unless switched off, pending the owner's answer on that default, with no address yet, so nothing is counted; §8.10) |
 ## 8.13 Worked examples
 

@@ -1249,15 +1249,18 @@ The answer's `indexes` names each list with its `kind`: `bundled` (the copy
 that came with the app), `online` (Clips Kitty's online list, the catalog's
 index on the project's main branch) or `other` (an address in
 `plugins.registry_urls`); `online` says whether the Marketplace checks that
-list by itself, when its copy was fetched (`fetched_at`) and how the last try
-went (`tried_at`, `error`). What the online list adds shows as Community and is
+list by itself, when its copy was fetched (`fetched_at`), whether that copy is
+in use (`in_use`: one older than the bundled list is set aside) and how the
+last try went (`tried_at`, `error`). What the online list adds shows as Community and is
 never counted; only the bundled list labels (DECISIONS D29).
 `POST /marketplace/refresh` (session header) fetches Clips Kitty's online list
 and the indexes in `plugins.registry_urls` again and answers
 `{"checked": true, "indexes": [{"url", "ok", "error"}]}`; with
-`{"automatic": true}`, as the Marketplace sends when it opens, it fetches only
-the online list, and only when its copy is a day old and no check was tried in
-the last hour (`{"checked": false, "indexes": []}` otherwise). `error` is one
+`{"automatic": true}`, as the Marketplace sends when it opens (and the app at start, when a pipeline is installed), it fetches only
+the online list, and only when the automatic checks are on (`PUT
+/marketplace/online`), its copy is a day old and no check was tried in the last
+hour, or the last day after a list that wasn't there or couldn't be read
+(`{"checked": false, "indexes": []}` otherwise); one check runs at a time. `error` is one
 of a few fixed sentences (no connection, nothing at the address, the website's
 error, too large, not a list Clips Kitty can read, not https://, couldn't be
 saved); the details of what went wrong go to the engine's log.

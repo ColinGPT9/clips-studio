@@ -607,6 +607,18 @@ def _version_tuple(text: str) -> tuple[int, int, int]:
     return tuple(parts + [0] * (3 - len(parts)))  # type: ignore[return-value]
 
 
+def version_key(text: str) -> tuple:
+    """A sort key in Semantic Versioning order: 1.2.0-rc.1 < 1.2.0 < 1.2.1.
+    A pre-release sorts below its release; its dot-separated parts compare
+    as numbers when they are numbers (below any word), else as text; build
+    metadata (+...) is ignored."""
+    text = text.strip().split("+", 1)[0]
+    core, _, pre = text.partition("-")
+    parts = pre.split(".") if pre else []
+    return (_version_tuple(core), 0 if parts else 1,
+            tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in parts))
+
+
 def version_satisfies(version: str, spec: str) -> bool:
     """Whether a version (2.0.0) is inside a range (">=2.0, <3"). `~=2.1`
     means >=2.1 and <3; `~=2.1.0` means >=2.1.0 and <2.2."""

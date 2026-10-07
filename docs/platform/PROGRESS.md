@@ -69,7 +69,7 @@ Colin's message of 10:35 UTC answered the five open questions and widened the re
 - [x] A full review of the change: 30 problems confirmed and fixed; only the bundled index can label, count or say Official, every listed commit must be on the repository's own branches or tags, the counter address must be one of the project's GitHub releases (D22, D23)
 - [x] Research of open-source clipping and video-AI projects: 308 checked, 178 entries listed, six adapter plans, Eklipse and the gaming market, how other lists and install counters work (`docs/platform/research-notes/ecosystem-projects.md`, D27)
 - [x] Pipelines run on the Python inside the app (`_clipskitty_script_host.py`, `plugins/runner.py python_for`, the whole standard library in the spec, a script-mode smoke test in the Windows build): nothing for a creator to install (D28)
-- [x] Clips Kitty's online list: the catalog's `index.json` on the main branch, checked when the Marketplace opens (once a day, with a switch) or with Check for new pipelines; what it adds shows as Community until a release bundles it; the refresh route needs the session header; the privacy policy says what the check sends (D29)
+- [x] Clips Kitty's online list: the catalog's `index.json` on the main branch, checked when the Marketplace opens or the app starts with a pipeline installed (once a day, with a switch) or with Check for new pipelines; what it adds shows as Community until a release bundles it; the refresh route needs the session header; the privacy policy says what the check sends (D29)
 
 ## Next action
 

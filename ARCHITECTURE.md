@@ -82,7 +82,7 @@ Three things add network paths, and each is off until the user turns it on: **cl
 (the transcript, or the audio for cloud transcription, goes to the provider the user
 signed in to), **publishing** (finished clips go to the platforms, directly or through a
 publishing service) and **remote rendering** (one clip's stretch of video goes to the
-user's own render PC, [10.3](#103-remote-rendering)).
+user's own render PC, [10.3](#103-remote-rendering)). Two plain file fetches run on their own, carry nothing about the user, and can each be switched off: the desktop app's update check and Clips Kitty's online list of pipelines (`plugins/registry.py` `ONLINE_URL`, once a day when the Marketplace opens or the app starts with a pipeline installed; `docs/platform/DECISIONS.md` D29).
 
 ### End to end
 
