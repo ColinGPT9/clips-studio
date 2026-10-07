@@ -46,7 +46,7 @@ Rule for the night: every test that passed at this baseline must still pass afte
 - [x] 2 · Public API boundary: `server/api_stability.py` (60 stable, 5 experimental, 111 internal), generated `docs/developers/api-reference.md`, `tests/test_api_contract.py` (20 pass, 1 skips without psutil) (dc64ebd, 96929d6). Full suite after: 1899 passed, 14 failed (the baseline 14), 24 skipped.
 - [x] 3 · Plugin/pipeline contract: `sdk/python/clipskitty_sdk/` (contract, Job, host runner shared with the engine, `python -m clipskitty_sdk run`, local API client), `plugins/` (store lookup, runner), the `pipeline` job option on every entry point, one branch in `process_video`, the first-party adapter `examples/pipelines/transcript-highlights/` (run in tests, same moments as calling the scorer directly), packaging and CI lines (4cab905). `tests/test_plugin_sdk.py`, `test_plugin_runner.py`, `test_plugin_job_option.py`: 80 tests, all real plugin processes. Full suite after: 1987 passed, the baseline 14 failed, 24 skipped.
 - [x] 4 · Manifest validator `sdk/python/clipskitty_sdk/manifest.py` with a generated JSON Schema, `python -m clipskitty_sdk validate`, built-in manifests for Shorts, Gaming and Sports, setting values checked when a job is added (2e5d109). `tests/test_plugin_manifest.py` over 5 valid and 41 invalid fixtures, each invalid one naming the only messages it may produce. Full suite after: 2080 passed, the baseline 14 failed, 24 skipped.
-- [ ] 5 · Example external pipeline
+- [x] 5 · Example external pipeline `examples/pipelines/scene-cut-highlights/` (loud stretches started on the scene cut before them, FFmpeg only, stdlib and SDK only) (cdbcbfb). `tests/test_example_pipeline.py`: 12 tests, end to end through the app's runner on an FFmpeg-made video with cuts and a loud stretch at known times, a run with only the SDK on PYTHONPATH, an import check. No shared code changed; the Phase 4 suite plus these 12 pass.
 - [ ] 6 · Plugin manager
 - [ ] 7 · GitHub registry (index format, build script, offline client)
 - [ ] 8 · Marketplace UI
@@ -55,4 +55,4 @@ Rule for the night: every test that passed at this baseline must still pass afte
 
 ## Next action
 
-Phase 5: the example external pipeline and its end-to-end test.
+Phase 6: the plugin manager (install from a folder or a Git commit, enable, disable, update, roll back, remove, the session secret, routes).

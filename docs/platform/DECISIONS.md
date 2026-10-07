@@ -85,3 +85,10 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** the architecture as first written: the Hugging Face library's cache under `<data_dir>/models/` (inside Ollama's store, and moving Whisper's downloads if the variable were set), plugin-set snapshots borrowed from ComfyUI, a hand-kept schema, a session secret described as protecting against any local process, the Pipeline choice always visible, and platform tests that skip in CI.
 **Why:** each first version either contradicted another part of the design, changed existing behaviour, overclaimed a protection, or added something the brief did not ask for.
 **Undo:** each is one paragraph of the architecture and, once built, one module; the CI job is one block in `.github/workflows/ci.yml`.
+
+## D13 · The example pipeline is MIT-licensed
+
+**Decided:** `examples/pipelines/scene-cut-highlights/LICENSE` is MIT, while the repository is AGPL-3.0.
+**Alternatives:** AGPL-3.0 like the rest of the repository. Developers are told to copy the example as the start of their own plugin; under the AGPL their plugins would inherit it, which the brief's aim (anyone can build and share pipelines without forking) does not want decided by accident.
+**Why:** the example was written tonight and contains no code from the rest of the repository; it is the owner's to license, and a permissive default is the one that matches how it is meant to be used.
+**Undo:** replace the LICENSE file and the manifest's `license` field. This sits beside D5 (the SDK's own licence), which is still the owner's call.
