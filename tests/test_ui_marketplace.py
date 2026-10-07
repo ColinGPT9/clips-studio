@@ -553,11 +553,14 @@ UI = LIB.parent
 JARGON = re.compile(r"commit|repositor|manifest|\bforks?\b|registry|checksum|pickle|settings\.yaml|\bgit\b|exit code",
                     re.I)
 SHOUTED = re.compile(r"\bPATH\b")  # the environment variable; "path" in a sentence is a plain word
+# "Plugin" is the developers' word; a creator reads "pipeline". The one exception is the name of a
+# real folder they may have to open, in quotes: Clips Kitty’s “plugins” folder.
+PLUGIN_WORD = re.compile(r"(?<!“)\bplug-?ins?\b(?!”)", re.I)
 T_CALL = re.compile(r"\bt\(\s*(['\"`])((?:(?!\1)[^\\]|\\.)*)\1")
 
 
 def _jargon(text: str) -> list[str]:
-    return JARGON.findall(text) + SHOUTED.findall(text)
+    return JARGON.findall(text) + SHOUTED.findall(text) + PLUGIN_WORD.findall(text)
 
 
 def test_the_words_a_creator_reads_are_plain(tmp_path):
@@ -665,3 +668,88 @@ def test_the_consent_and_safety_lines_are_in_every_language(tmp_path):
         have = json.loads(path.read_text(encoding="utf-8"))
         assert sorted(lines - set(have)) == [], path.name
         assert all(have[line].strip() for line in lines), path.name
+
+
+def test_the_engines_words_a_creator_reads_say_pipeline():
+    """Text the engine sends that the screen shows (through t(), so it is a key
+    in the locale files) says "pipeline", not "plugin": counter.EXPLAIN sits
+    next to the counting switch, the models texts under Installed. Any such
+    constant in plugins/ that a locale file translates is checked too."""
+    import importlib
+    import pkgutil
+
+    import plugins
+    from plugins import counter, models
+    assert PLUGIN_WORD.search("a public count for that plugin") and not PLUGIN_WORD.search("Clips Kitty’s “plugins” folder")
+    keys = set()
+    for path in (UI / "locales").glob("*.json"):
+        keys |= set(json.loads(path.read_text(encoding="utf-8")))
+    shown = {counter.EXPLAIN, models.GATED, models.OLLAMA_MODELS, permissions.NOTICE, permissions.ENFORCED,
+             permissions.DECLARED, permissions.ENFORCEMENT_NOTE}
+    for info in pkgutil.iter_modules(plugins.__path__):
+        try:
+            module = importlib.import_module(f"plugins.{info.name}")
+        except ImportError:  # an optional dependency this test run doesn't have
+            continue
+        shown |= {v for k, v in vars(module).items() if k.isupper() and isinstance(v, str) and v in keys}
+    assert counter.EXPLAIN in keys
+    assert [s for s in shown if PLUGIN_WORD.search(s)] == []
+
+
+def test_the_marketplace_says_only_what_is_true_and_says_it_in_every_language():
+    """The counting switch, a pipeline installed switched off, its models,
+    the Community label and where a listing's code is: each line claims only
+    what Clips Kitty knows, and is translated in every locale file."""
+    from plugins import counter
+    page = (UI / "pages" / "Marketplace.tsx").read_text(encoding="utf-8")
+    strings = {m.group(2) for m in T_CALL.finditer(page)}
+    # plugins.count_installs is in this Windows account's own settings.yaml (core/paths.py), not the PC's
+    switched_off = "Switched off in your Clips Kitty settings file."
+    # a gated model is one Clips Kitty can't download (plugins/models.py GATED)
+    models_line = ("Some of its AI models may not be on this PC yet. Installed shows which ones, and whether "
+                   "Clips Kitty can download them.")
+    # an update or reinstall keeps the creator's Off switch, and the Generate bar offers only pipelines that are on
+    installed_off = "It is switched off, so the Generate bar doesn’t offer it. Switch it on under Installed."
+    # another list's checks are what that list reports; Clips Kitty only knows nobody there read the code
+    community = next(s for s in strings if s.startswith("Community: "))
+    assert "Its page says which automatic checks its list reports. Nobody at Clips Kitty has read its code." \
+        in community
+    # the address of the code is what the list build checked; the author's name is the developer's own words
+    code, name = "Its code is on GitHub at", "Its developer gives their name as"
+    # Clips Kitty can only know nobody *at Clips Kitty* read the code, and an Official pipeline's code is its own
+    automatic = "These checks are automatic. Nobody at Clips Kitty has read this pipeline’s code."
+    # the footer sends people to the listing page for its checks, so a list that reports none says so there
+    no_checks = ("This list doesn’t report any automatic checks that Clips Kitty knows about. "
+                 "Nobody at Clips Kitty has read this pipeline’s code.")
+    lines = {switched_off, models_line, installed_off, community, code, name, automatic, no_checks}
+    assert lines <= strings
+    assert not [s for s in strings if re.search(r"everyone on this PC|how to get them|checked its listing", s)]
+    assert not [s for s in strings if "Nobody has read" in s or "nobody has read" in s]
+
+    dialog = re.search(r"function InstallDialog\(.*?\n\}\n", page, re.S).group(0)
+    assert "const switchedOff = done?.enabled === false" in dialog  # a missing field reads as on, like the engine
+    assert "missing.length === 0 && !switchedOff && (" in dialog  # "Ready" only when it is on
+    assert re.search(r"\{switchedOff && \(?\s*<p[^>]*>\{t\('" + re.escape(installed_off) + r"'\)\}</p>", dialog)
+    where = re.search(r"\{t\('Where it comes from'\)\}(.*?)<TechnicalDetails(.*?)/>", page, re.S)
+    assert "t('Made by')" not in page and "listing.author?.name ?? listing.publisher}." not in where.group(1)
+    assert where.group(1).index(f"t('{code}')") < where.group(1).index(f"t('{name}')")
+    assert "['Repository', listing.repository]" in where.group(2)  # the full address stays in Technical details
+    # "owner/name" is read with the engine's own pattern for a GitHub address
+    assert sources.GITHUB_RE.pattern.replace("/", "\\/") in page
+    # the developer's own name appears only as theirs: not in the header under the pipeline's name, nowhere else
+    listing_page = re.search(r"function ListingPage\(.*?\n\}\n", page, re.S).group(0)
+    header = re.search(r"<h3[^>]*>\{listing\.name\}</h3>(.*?)</p>", listing_page, re.S).group(1)
+    assert "author" not in re.sub(r"\{/\*.*?\*/\}", "", header, flags=re.S) and "{listing.id}" in header
+    assert page.count("listing.author") == listing_page.count("listing.author") == 2  # the guard and the one line
+    # the "nobody at Clips Kitty has read it" lines are left out for an Official listing (code that is ours)
+    assert "const official = listing.details?.tier === 'listed-official'" in listing_page
+    assert re.search(r"\{!official && \(\s*<li>\{t\('" + re.escape(automatic) + r"'\)\}</li>", listing_page)
+    assert re.search(r"\{checks\.length === 0 && !official && \(\s*<p[^>]*>\s*\{t\(\s*'" + re.escape(no_checks),
+                     listing_page)
+
+    for path in sorted((UI / "locales").glob("*.json")):
+        have = json.loads(path.read_text(encoding="utf-8"))
+        assert sorted((lines | {counter.EXPLAIN}) - set(have)) == [], path.name
+        assert all(have[line].strip() for line in lines | {counter.EXPLAIN}), path.name
+        assert not [k for k in have if "everyone on this PC" in k or "for that plugin" in k], path.name
+        assert not [k for k in have if "Nobody has read this pipeline" in k], path.name

@@ -48,7 +48,8 @@ were often broken in a way that only showed up on somebody else's machine.
   one click away under **Technical details**. What you tick before installing, the warning
   that a pipeline can do anything you can do on your PC, and what "Clips Kitty hands this
   over" and "the developer says so" mean are in all 18 of the app's other languages. A download
-  that fails says so in one sentence and keeps what went wrong in the log. Apps, tools
+  that fails says why in one sentence (no connection, files no longer there, a full disk or
+  a damaged download) and keeps the details in the log. Apps, tools
   and the other entries of Awesome Clips Kitty each get one button, to their download
   page or website where the list has one, which opens your browser after showing you
   the address; entries that need the command line or Python say so and come last.

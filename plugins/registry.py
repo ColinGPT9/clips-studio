@@ -192,8 +192,9 @@ def check_listing(data, rel_path: str, *, folder: str = "pipelines", sections: d
         if key in data and not DATE_RE.match(str(data[key])):
             problems.append(f"{key}: YYYY-MM-DD")
     path = data.get("path", ".")
-    if not isinstance(path, str) or (path != "." and not manifest._relative_inside(path)):
-        problems.append("path: must be a folder inside the repository")
+    if not isinstance(path, str) or (path != "." and (not manifest._relative_inside(path)
+                                                      or sources._name_problem(path))):
+        problems.append("path: must be a folder inside the repository that Windows can create")
     aliases = data.get("aliases", [])
     if not isinstance(aliases, list) or len(aliases) > 10 or not all(
             isinstance(a, str) and 0 < len(a) <= 40 for a in aliases):
@@ -489,7 +490,7 @@ def _clean_entry(e, *, ours: bool) -> dict | None:
             clean["path"] = source["path"]
     if isinstance(source.get("huggingface"), str) and catalog.HF_ID_RE.match(source["huggingface"]):
         clean["huggingface"] = source["huggingface"]
-    if catalog._https(source.get("url")):
+    if catalog.url_problem(source.get("url")) is None:
         clean["url"] = source["url"]
     if catalog.homepage_problem(source.get("homepage")) is None:
         clean["homepage"] = source["homepage"]
@@ -692,7 +693,14 @@ def _why(error: Exception) -> str:
     cause = error.__cause__ if isinstance(error.__cause__, OSError) else error
     if isinstance(cause, urllib.error.HTTPError):
         return WHY_NOT_FOUND if cause.code in (404, 410) else WHY_SERVER
-    if isinstance(cause, OSError):  # no connection, a timeout, a refused or dropped connection
+    if isinstance(error, sources.FetchFailed):  # download() says what kind of failure it was
+        if error.kind == sources.OFFLINE:
+            return WHY_OFFLINE
+        if error.kind == sources.GONE:
+            return WHY_NOT_FOUND
+        if error.kind in (sources.DISK, sources.OTHER):  # writing the downloaded copy failed
+            return WHY_NOT_SAVED
+    elif isinstance(cause, OSError):  # no connection, a timeout, a refused or dropped connection
         return WHY_OFFLINE
     if isinstance(error, sources.TooLarge):
         return WHY_TOO_LARGE

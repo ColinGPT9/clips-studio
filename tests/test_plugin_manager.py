@@ -7,12 +7,15 @@ without Git) is a tarball made here and handed over by a fake fetcher.
 """
 
 import ast
+import errno
+import http.client
 import io
 import json
 import os
 import re
 import stat
 import tarfile
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -147,6 +150,34 @@ def test_the_install_screen_text_is_in_plain_words():
     assert not JARGON.search("Comments and ideas (opens GitHub's website)")  # word boundaries: GitHub is fine
 
 
+@pytest.mark.parametrize("model, pickle, validator_says", [
+    ({"source": "huggingface", "id": "example-org/example-model", "revision": "a" * 40,
+      "files": ["config.json", "weights/model.PT"]}, True, True),
+    ({"source": "url", "id": "https://example.com/dl/model.ckpt?download=1", "sha256": "c" * 64}, True, True),
+    # The download names the file without its #fragment, and asks; so does the validator.
+    ({"source": "url", "id": "https://example.com/dl/model.pt#v1", "sha256": "c" * 64}, True, True),
+    # A long name is shortened when it's saved, but keeps its extension, so the download still asks.
+    ({"source": "url", "id": "https://example.com/dl/" + "m" * 130 + ".pt", "sha256": "c" * 64}, True, True),
+    ({"source": "huggingface", "id": "example-org/example-model", "revision": "a" * 40,
+      "files": ["model.safetensors"]}, False, False),
+    ({"source": "url", "id": "https://example.com/dl/model.onnx", "sha256": "c" * 64}, False, False),
+])
+def test_a_model_file_that_can_run_code_is_said_plainly_before_install(data, plugin_source, model, pickle,
+                                                                       validator_says):
+    """The validator's warning is in Technical details, which is folded; the
+    person pressing Install sees a plain line too, whenever the download
+    will ask about the file (models.download decides that)."""
+    from plugins import models
+
+    manifest = plugin_source.manifest(models=[{"name": "detector", **model}])
+    plan = _plan(data, {"kind": "folder", "path": str(plugin_source.folder(manifest=manifest))})
+    assert plan["ok"], plan["errors"]
+    assert (manager.PICKLE_MODEL in plan["warnings"]) is pickle
+    assert any("pickle-format" in line for line in plan["technical"]) is validator_says
+    assert any(models.is_pickle(f) for f in models.parse({"name": "detector", **model})["files"]) is pickle
+    assert not JARGON.search(manager.PICKLE_MODEL)
+
+
 def test_an_invalid_plugin_is_refused_with_every_reason_and_nothing_is_kept(data, plugin_source):
     manifest = plugin_source.manifest(version="one", permissions=["video.read", "webcam"])
     del manifest["license"]
@@ -169,16 +200,43 @@ def test_a_source_must_be_well_formed(data):
         ({"kind": "git", "url": "https://example.com/a/b", "commit": "main"}, "40-character commit"),
         ({"kind": "git", "url": "http://example.com/a/b", "commit": COMMIT_X}, "https://"),
         ({"kind": "git", "url": "ext::sh -c touch% /tmp/x", "commit": COMMIT_X}, "https://"),
-        ({"kind": "folder"}, "folder's path"),
-        ({"kind": "zip", "path": "x"}, "unknown kind"),
-        ("a string", "a source is an object"),
+        ({"kind": "git", "url": "https://example.com/a/b", "commit": COMMIT_X, "path": 3}, "names its folder"),
+        ({"kind": "folder"}, "wasn't told which folder it's in"),
+        ({"kind": "zip", "path": "x"}, "doesn't know how to install from 'zip'"),
+        ("a string", "wasn't told where its files are"),
     ):
-        with pytest.raises(manager.ManagerError, match=fragment):
+        with pytest.raises(manager.ManagerError, match=fragment) as e:
             _plan(data, source)
+        assert str(e.value).startswith("Couldn't install this pipeline: ")
+        assert not re.search(r"\b(plugins?|a Git source)\b", str(e.value))
+
+
+@pytest.mark.parametrize("path, said", [
+    ("plugins/aux", "('plugins/aux') that Windows can't create"),
+    ("plugins/x.", "('plugins/x.') that Windows can't create"),
+    ("plugins\\x", "('plugins\\\\x') with \\ or : in its name, which Windows doesn't allow"),
+    ("../elsewhere", "('../elsewhere') outside its own files"),
+    ("plugins/.git/x", "('plugins/.git/x') inside a .git folder of version history, which Clips Kitty doesn't "
+                       "install"),
+])
+def test_a_listed_folder_that_cant_be_installed_says_why_and_who_fixes_it(data, path, said):
+    """A Marketplace listing's folder reaches clean_source as `path`; its
+    reason is kept, in words, with the folder named."""
+    source = {"kind": "git", "url": "https://github.com/example-dev/example", "commit": COMMIT_X, "path": path}
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, source, git="git-is-never-run", fetcher=lambda url, p: pytest.fail("nothing to download"))
+    assert str(e.value) == (f"Couldn't install this pipeline: its listing or link names a folder {said}. Its "
+                            "developer needs to correct the listing or link.")
+
+
+def test_a_listed_folder_of_slash_is_the_repository_itself():
+    source = {"kind": "git", "url": "https://github.com/example-dev/example", "commit": COMMIT_X}
+    assert sources.clean_source({**source, "path": "/"}) == source
+    assert sources.clean_source({**source, "path": "plugins//one/"})["path"] == "plugins/one"
 
 
 def test_a_folder_that_is_missing_is_refused(data, tmp_path):
-    with pytest.raises(manager.ManagerError, match="is not a folder"):
+    with pytest.raises(manager.ManagerError, match="Couldn't install this pipeline: there is no folder at"):
         _plan(data, {"kind": "folder", "path": str(tmp_path / "nowhere")})
 
 
@@ -221,11 +279,13 @@ def test_install_from_a_git_commit_puts_exactly_that_commit_in_place(data, plugi
     assert store.installed_choice(data, {"id": "fixture-dev/manager-test"}).version == "1.0.0"
 
 
-def test_a_commit_the_repository_does_not_have_is_refused(data, plugin_source):
+def test_a_commit_the_repository_does_not_have_is_refused(data, plugin_source, caplog):
     repo = plugin_source.repo()
     plugin_source.commit(repo)
-    with pytest.raises(manager.ManagerError, match="no commit 0123456"):
+    with pytest.raises(manager.ManagerError) as e:
         _plan(data, _git_source(repo, COMMIT_X))
+    assert str(e.value) == manager.DOWNLOAD_GONE
+    assert f"has no commit {COMMIT_X}" in caplog.text  # the developer's detail is in the log
 
 
 def test_a_symbolic_link_in_the_repository_refuses_the_plugin(data, plugin_source):
@@ -236,7 +296,8 @@ def test_a_symbolic_link_in_the_repository_refuses_the_plugin(data, plugin_sourc
     plugin_source.git(repo, "update-index", "--add", "--cacheinfo", f"120000,{blob},src/secrets")
     plugin_source.git(repo, "commit", "-q", "-m", "link")
     commit = plugin_source.git(repo, "rev-parse", "HEAD")
-    with pytest.raises(manager.ManagerError, match="src/secrets: symbolic links are not allowed"):
+    with pytest.raises(manager.ManagerError, match=r"it contains a shortcut \(src/secrets\), which Clips Kitty "
+                                                    r"doesn't install\. Its developer needs to replace it"):
         _plan(data, _git_source(repo, commit))
 
 
@@ -247,7 +308,8 @@ def test_a_submodule_refuses_the_plugin(data, plugin_source):
     plugin_source.git(repo, "update-index", "--add", "--cacheinfo", f"160000,{COMMIT_X},vendor/lib")
     plugin_source.git(repo, "commit", "-q", "-m", "submodule")
     commit = plugin_source.git(repo, "rev-parse", "HEAD")
-    with pytest.raises(manager.ManagerError, match="vendor/lib: the plugin uses a Git submodule"):
+    with pytest.raises(manager.ManagerError, match="it includes vendor/lib, a folder linked in from another "
+                                                    "project"):
         _plan(data, _git_source(repo, commit))
 
 
@@ -463,24 +525,24 @@ def test_a_folder_install_leaves_out_git_and_caches(data, plugin_source):
 def test_a_symbolic_link_in_a_folder_refuses_it(data, plugin_source, tmp_path):
     folder = plugin_source.folder()
     (folder / "elsewhere").symlink_to(tmp_path)
-    with pytest.raises(manager.ManagerError, match="elsewhere: symbolic links are not allowed"):
+    with pytest.raises(manager.ManagerError, match=r"a shortcut \(elsewhere\)"):
         _plan(data, {"kind": "folder", "path": str(folder)})
 
 
 def test_a_plugin_over_the_size_limits_is_refused(data, plugin_source, monkeypatch):
     monkeypatch.setattr(sources, "MAX_FILES", 2)
     folder = plugin_source.folder(files={"a.txt": "a", "b.txt": "b"})
-    with pytest.raises(manager.ManagerError, match="more than 2 files"):
+    with pytest.raises(manager.ManagerError, match="it has more than 2 files, more than Clips Kitty installs"):
         _plan(data, {"kind": "folder", "path": str(folder)})
 
 
 @pytest.mark.parametrize("name, fragment", [
-    ("../outside.py", "outside the plugin's folder"),
-    ("/etc/passwd", "outside the plugin's folder"),
-    ("src\\main.py", "can't be installed on Windows"),
-    ("C:/Windows/x", "can't be installed on Windows"),
-    (".git/hooks/post-checkout", "can't contain a .git entry"),
-    ("src/.GIT/config", "can't contain a .git entry"),
+    ("../outside.py", "outside its own folder"),
+    ("/etc/passwd", "outside its own folder"),
+    ("src\\main.py", "Windows doesn't allow"),
+    ("C:/Windows/x", "Windows doesn't allow"),
+    (".git/hooks/post-checkout", "part of a .git folder"),
+    ("src/.GIT/config", "part of a .git folder"),
     ("aux.txt", "Windows can't create"),
     ("trailing. ", "Windows can't create"),
 ])
@@ -492,7 +554,7 @@ def test_paths_that_would_land_elsewhere_are_refused(name, fragment):
 def test_names_that_differ_only_in_case_are_refused():
     budget = sources._Budget()
     budget.add("README.md", 1)
-    with pytest.raises(sources.SourceError, match="differ only in case"):
+    with pytest.raises(sources.SourceError, match=r"differ only in capital letters \('README.md' and 'readme.md'\)"):
         budget.add("readme.md", 1)
 
 
@@ -540,9 +602,9 @@ def test_without_git_a_github_commit_comes_from_its_archive(data, plugin_source,
 
 
 @pytest.mark.parametrize("extra, fragment", [
-    ("symlink", "symbolic links are not allowed"),
-    ("escape", "outside the plugin's folder"),
-    ("stamp", "the archive is of commit fffffff"),
+    ("symlink", r"a shortcut \(src/data\)"),
+    ("escape", "outside its own folder"),
+    ("stamp", "the download arrived damaged"),  # an archive of another commit
 ])
 def test_an_archive_that_could_escape_or_is_of_another_commit_is_refused(data, plugin_source, monkeypatch, extra,
                                                                          fragment):
@@ -584,19 +646,347 @@ def test_a_failed_download_says_so_plainly_and_keeps_the_details_in_the_log(data
     assert list((store.root(data) / manager.STAGING).iterdir()) == []
 
 
-def test_a_git_failure_says_the_same_plain_sentence(data, tmp_path, caplog):
+def test_a_git_repository_that_isnt_there_says_its_files_are_gone(data, tmp_path, caplog):
+    """A mistyped, deleted or private repository is not a connection problem."""
     if not sources.find_git():
         pytest.skip("git is not installed")
+    for url in ((tmp_path / "no-such-repository").resolve().as_uri(), "file:///nonexistent/repo-typo"):
+        with pytest.raises(manager.ManagerError) as e:
+            _plan(data, {"kind": "git", "url": url, "commit": "a" * 40})
+        assert str(e.value) == manager.DOWNLOAD_GONE
+        assert "internet" not in str(e.value) and "repo" not in str(e.value)
+    assert "git fetch failed" in caplog.text and "does not appear to be a git repository" in caplog.text
+    assert list((store.root(data) / manager.STAGING).iterdir()) == []
+
+
+def test_the_download_sentences_are_plain_words():
+    for text in [*manager.FETCH_FAILED.values(), manager.PICKLE_MODEL, sources.NOT_SAVED]:
+        assert not JARGON.search(text), text
+    assert set(manager.FETCH_FAILED) == {sources.OFFLINE, sources.GONE, sources.DISK, sources.DAMAGED, sources.OTHER}
+
+
+def _http_error(code: int):
+    return urllib.error.HTTPError("https://github.com/x", code, "status", {}, None)
+
+
+def _failing(make):
+    def fetcher(url, path):
+        raise make()
+
+    return fetcher
+
+
+@pytest.mark.parametrize("fetcher, said", [
+    (_failing(lambda: _http_error(404)), manager.DOWNLOAD_GONE),  # a commit or repository no longer there
+    (_failing(lambda: _http_error(410)), manager.DOWNLOAD_GONE),
+    (_failing(lambda: _http_error(403)), manager.DOWNLOAD_GONE),  # GitHub's answer for a private repository
+    (_failing(lambda: _http_error(503)), manager.DOWNLOAD_OTHER),
+    (_failing(lambda: urllib.error.URLError(OSError(errno.ENETUNREACH, "Network is unreachable"))),
+     manager.DOWNLOAD_FAILED),
+    (_failing(lambda: ConnectionResetError(104, "Connection reset by peer")), manager.DOWNLOAD_FAILED),
+    (_failing(lambda: TimeoutError("timed out")), manager.DOWNLOAD_FAILED),
+    (_failing(lambda: http.client.IncompleteRead(b"x", 10)), manager.DOWNLOAD_FAILED),
+    (_failing(lambda: OSError(errno.ENOSPC, "No space left on device")), manager.DISK_FULL),
+    (_failing(lambda: PermissionError(errno.EACCES, "Access is denied")), manager.DOWNLOAD_OTHER),
+    (lambda url, path: Path(path).write_bytes(b"not a gzip file"), manager.DOWNLOAD_DAMAGED),
+])
+def test_each_kind_of_download_failure_says_its_own_cause(data, monkeypatch, caplog, fetcher, said):
+    _no_git(monkeypatch)
+    source = {"kind": "git", "url": "https://github.com/fixture-dev/manager-test", "commit": COMMIT_X}
     with pytest.raises(manager.ManagerError) as e:
-        _plan(data, _git_source(tmp_path / "no-such-repository", COMMIT_X))
-    assert str(e.value) == manager.DOWNLOAD_FAILED
-    assert "no-such-repository" not in str(e.value) and "git fetch failed" in caplog.text
+        _plan(data, source, fetcher=fetcher)
+    assert str(e.value) == said
+    assert e.value.status == 400
+    assert said == manager.DOWNLOAD_FAILED or "internet" not in str(e.value)
+    assert caplog.text  # what went wrong is in the log
+    assert list((store.root(data) / manager.STAGING).iterdir()) == []
+
+
+def test_a_full_disk_while_saving_the_files_says_so(data, plugin_source, monkeypatch):
+    def full(*_a, **_k):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    folder = plugin_source.folder()
+    monkeypatch.setattr(sources, "_write", full)
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, {"kind": "folder", "path": str(folder)})
+    assert str(e.value) == manager.DISK_FULL
+
+    def broken(*_a, **_k):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(sources, "_write", broken)
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, {"kind": "folder", "path": str(folder)})
+    assert str(e.value) == ("Couldn't install this pipeline: its files couldn't be saved on this PC. Try again; "
+                            "if it happens again, send a bug report from Feedback (it includes the details).")
+
+
+def test_download_classifies_what_went_wrong(tmp_path, monkeypatch):
+    import urllib.request
+
+    class Response:
+        def __init__(self, error=None):
+            self.error, self.sent = error, False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, n):
+            if self.error:
+                raise self.error
+            if self.sent:
+                return b""
+            self.sent = True
+            return b"x" * 10
+
+    # A connection that broke off mid-download: an http.client error, not an OSError.
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=None: Response(
+        http.client.IncompleteRead(b"x", 100)))
+    with pytest.raises(sources.FetchFailed) as e:
+        sources.download("https://example.com/a.tar.gz", tmp_path / "a")
+    assert e.value.kind == sources.OFFLINE
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=None: Response(_http_error(404)))
+    with pytest.raises(sources.FetchFailed) as e:
+        sources.download("https://example.com/a.tar.gz", tmp_path / "a")
+    assert e.value.kind == sources.GONE
+    if Path("/dev/full").exists():  # a file that is always on a full disk
+        monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=None: Response())
+        with pytest.raises(sources.FetchFailed) as e:
+            sources.download("https://example.com/a.tar.gz", Path("/dev/full"))
+        assert e.value.kind == sources.DISK
+
+
+@pytest.mark.parametrize("error, kind", [
+    (_http_error(401), sources.GONE),
+    (_http_error(500), sources.OTHER),
+    (OSError(errno.ENOSPC, "No space left on device"), sources.DISK),
+    (OSError(getattr(errno, "EDQUOT", errno.ENOSPC), "Disk quota exceeded"), sources.DISK),
+    (OSError(errno.ENETUNREACH, "Network is unreachable"), sources.OFFLINE),
+    (ConnectionRefusedError(), sources.OFFLINE),
+    (OSError(errno.EIO, "Input/output error"), sources.OTHER),
+    (ValueError("anything else"), sources.OTHER),
+])
+def test_what_a_download_error_is(error, kind):
+    assert sources.failure(error) == kind
+
+
+def test_a_windows_full_disk_is_a_full_disk():
+    error = OSError(errno.EIO, "There is not enough space on the disk")
+    error.winerror = 112  # set by Windows only; ERROR_DISK_FULL
+    assert sources.failure(error) == sources.DISK
+
+
+@pytest.mark.parametrize("stderr, kind", [
+    ("remote: Repository not found.\nfatal: repository 'https://github.com/example-dev/x/' not found", sources.GONE),
+    ("fatal: could not read Username for 'https://github.com': terminal prompts disabled", sources.GONE),
+    ("fatal: '/home/someone/x' does not appear to be a git repository\nfatal: Could not read from remote "
+     "repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.", sources.GONE),
+    ("error: Server does not allow request for unadvertised object 0123456", sources.GONE),
+    ("fatal: couldn't find remote ref 0123456789abcdef0123456789abcdef01234567", sources.GONE),
+    ("fatal: unable to access 'https://example.com/x/': The requested URL returned error: 404", sources.GONE),
+    ("fatal: unable to access 'https://github.com/example-dev/x/': Could not resolve host: github.com",
+     sources.OFFLINE),
+    ("fatal: unable to access 'https://github.com/example-dev/x/': Failed to connect to github.com port 443",
+     sources.OFFLINE),
+    ("fatal: unable to access 'https://github.com/example-dev/x/': SSL certificate problem: unable to get local "
+     "issuer certificate", sources.OFFLINE),
+    ("fatal: unable to access 'https://github.com/example-dev/x/': OpenSSL SSL_read: Connection was reset",
+     sources.OFFLINE),
+    # A word in the address says nothing: an "ssl" repository that isn't there is gone.
+    ("fatal: repository 'https://github.com/example-dev/ssl/' not found", sources.GONE),
+    ("fatal: write error: No space left on device", sources.DISK),
+    ("error: object 0123456: hasDotgit: contains '.git'\nfatal: fsck error in packed object", sources.OTHER),
+    # The server's own disk is full: Git passes its words on ("remote: ..."), and this PC's disk is fine.
+    ("remote: fatal: Unable to create temporary file: No space left on device\nerror: git upload-pack: "
+     "git-pack-objects died with error.\nfatal: the remote end hung up unexpectedly", sources.OTHER),
+    ("remote: error: internal server error\nfatal: early EOF", sources.OTHER),  # the server failed, not the line
+    ("remote: Repository not found.\nfatal: Authentication failed", sources.GONE),  # the server can say it's gone
+    ("error: RPC failed; curl 56 Recv failure: Connection reset by peer\nfatal: early EOF", sources.OFFLINE),
+    # A Git that can't run its own helper is not a missing repository.
+    ("error: cannot run git-remote-https: No such file or directory", sources.OTHER),
+])
+def test_what_a_git_failure_is(stderr, kind):
+    assert sources._git_failure(stderr) == kind
+
+
+@pytest.mark.parametrize("stderr, kind", [
+    ("fatal: cannot mkdir /tmp/clipskitty-git-x/repo.git: No such file or directory", sources.OTHER),
+    ("fatal: Not a valid object name 0123456", sources.OTHER),
+    ("fatal: unable to create temporary file: No space left on device", sources.DISK),
+])
+def test_only_a_fetch_is_read_as_the_repository_or_the_connection(tmp_path, monkeypatch, stderr, kind):
+    """init, cat-file and ls-tree work on this PC only: their failure is the
+    disk or something else, never a missing repository or the internet."""
+    import subprocess
+
+    assert sources._git_failure(stderr, fetching=False) == kind
+
+    def failed(command, **_k):
+        return subprocess.CompletedProcess(command, 128, b"", stderr.encode())
+
+    monkeypatch.setattr(subprocess, "run", failed)
+    for command in ("init", "cat-file", "ls-tree"):
+        with pytest.raises(sources.FetchFailed) as e:
+            sources._git("git", [command], cwd=tmp_path, hooks=tmp_path)
+        assert e.value.kind == kind
+    monkeypatch.setattr(subprocess, "run", lambda command, **_k: subprocess.CompletedProcess(
+        command, 128, b"", b"fatal: '/x' does not appear to be a git repository"))
+    with pytest.raises(sources.FetchFailed) as e:
+        sources._git("git", ["fetch"], cwd=tmp_path, hooks=tmp_path)
+    assert e.value.kind == sources.GONE
+
+
+def test_git_speaks_english_whatever_the_pcs_language(monkeypatch):
+    """_git_failure reads Git's English words; Git for Windows ships its
+    messages in many languages, and so does the app."""
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    monkeypatch.setenv("LC_MESSAGES", "de_DE.UTF-8")
+    monkeypatch.setenv("LC_ALL", "de_DE.UTF-8")
+    monkeypatch.setenv("LANGUAGE", "de")
+    env = sources._git_env()
+    assert env["LC_ALL"] == "C"  # wins over LANG and LC_MESSAGES
+    assert "LANGUAGE" not in env
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+
+
+def test_git_that_times_out_or_cant_start(tmp_path, monkeypatch):
+    import subprocess
+
+    def slow(*_a, **_k):
+        raise subprocess.TimeoutExpired("git", sources.GIT_TIMEOUT)
+
+    monkeypatch.setattr(subprocess, "run", slow)
+    with pytest.raises(sources.FetchFailed) as e:
+        sources._git("git", ["fetch"], cwd=tmp_path, hooks=tmp_path)
+    assert e.value.kind == sources.OFFLINE
+    with pytest.raises(sources.FetchFailed) as e:
+        sources._git("git", ["cat-file", "--batch"], cwd=tmp_path, hooks=tmp_path)
+    assert e.value.kind == sources.OTHER  # works on this PC only: not the connection
+
+    def missing(*_a, **_k):
+        raise FileNotFoundError(errno.ENOENT, "No such file or directory", "git")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+    with pytest.raises(sources.FetchFailed) as e:
+        sources._git("git", ["fetch"], cwd=tmp_path, hooks=tmp_path)
+    assert e.value.kind == sources.OTHER
+
+
+# ---- reading a folder ----------------------------------------------------------------------------
+
+
+def test_a_folder_that_cant_be_read_is_named_not_a_crash(data, plugin_source, monkeypatch):
+    """plugin_folder and copy_folder read the folder the person chose; a file
+    they can't read (locked by another program, a cloud copy that won't come
+    down) is named, and the request never fails with a raw error."""
+    folder = plugin_source.folder()
+    real_is_file = Path.is_file
+
+    def locked(self, *a, **k):
+        if self.name == "clipskitty.yaml" and folder in self.parents:
+            raise PermissionError(errno.EACCES, "Access is denied", str(self))
+        return real_is_file(self, *a, **k)
+
+    monkeypatch.setattr(Path, "is_file", locked)
+    assert sources.plugin_folder(folder) == folder
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, {"kind": "folder", "path": str(folder)})
+    assert str(e.value) == ("Couldn't install this pipeline: Clips Kitty couldn't read clipskitty.yaml in that "
+                            "folder. If another program has it open, close it and try again.")
+    assert list((store.root(data) / manager.STAGING).iterdir()) == []
+
+
+def test_a_file_that_cant_be_read_while_copying_is_named(data, plugin_source, monkeypatch, caplog):
+    folder = plugin_source.folder()
+    real_read = Path.read_bytes
+
+    def locked(self):
+        if self.name == "main.py":
+            raise PermissionError(errno.EACCES, "The process cannot access the file", str(self))
+        return real_read(self)
+
+    monkeypatch.setattr(Path, "read_bytes", locked)
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, {"kind": "folder", "path": str(folder)})
+    assert str(e.value) == ("Couldn't install this pipeline: Clips Kitty couldn't read src/main.py in that "
+                            "folder. If another program has it open, close it and try again.")
+    assert "The process cannot access the file" in caplog.text
+
+
+def test_a_subfolder_that_cant_be_opened_is_named(data, plugin_source, monkeypatch):
+    """os.walk skips a folder it can't list unless told otherwise: the
+    pipeline would install without its files."""
+    folder = plugin_source.folder(files={"private/notes.txt": "x\n"})
+    real_scandir = os.scandir
+
+    def scandir(path="."):
+        if isinstance(path, (str, os.PathLike)) and Path(path).name == "private":
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, {"kind": "folder", "path": str(folder)})
+    assert str(e.value) == ("Couldn't install this pipeline: Clips Kitty couldn't open the folder private in that "
+                            "folder. Check that you can open it yourself, then try again.")
+
+
+def test_a_windows_junction_counts_as_a_link_on_every_python(tmp_path, monkeypatch):
+    """Path.is_junction only exists from Python 3.12; the app builds with
+    3.11. A junction's reparse tag is the mount-point one; other reparse
+    points (OneDrive's placeholders) are ordinary files."""
+    import types
+
+    junction, cloud, plain = (tmp_path / name for name in ("junction", "cloud", "plain"))
+    for path in (junction, cloud, plain):
+        path.mkdir()
+    real_lstat = os.lstat
+    tags = {"junction": 0xA0000003, "cloud": 0x9000601A}
+
+    def lstat(path, *a, **k):
+        name = Path(path).name
+        if name in tags:
+            return types.SimpleNamespace(st_reparse_tag=tags[name], st_mode=stat.S_IFDIR)
+        return real_lstat(path, *a, **k)
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    assert sources._is_link(junction) is True
+    assert sources._is_link(cloud) is False
+    assert sources._is_link(plain) is False
+
+    def unreadable(path, *a, **k):
+        raise PermissionError(errno.EACCES, "Access is denied")
+
+    monkeypatch.setattr(os, "lstat", unreadable)
+    assert sources._is_link(plain) is False  # what follows reads it, and says so if it can't
+
+
+def test_a_junction_in_a_folder_refuses_it(data, plugin_source, monkeypatch):
+    import types
+
+    folder = plugin_source.folder(files={"linked/a.txt": "a\n"})
+    real_lstat = os.lstat
+
+    def lstat(path, *a, **k):
+        if Path(path).name == "linked":
+            return types.SimpleNamespace(st_reparse_tag=0xA0000003, st_mode=stat.S_IFDIR)
+        return real_lstat(path, *a, **k)
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    with pytest.raises(manager.ManagerError, match=r"it contains a shortcut \(linked\), which Clips Kitty doesn't "
+                                                   r"install\. Its developer needs to replace it with the real "
+                                                   r"folder\."):
+        _plan(data, {"kind": "folder", "path": str(folder)})
 
 
 def test_without_git_a_repository_off_github_says_git_is_needed(data, monkeypatch):
     _no_git(monkeypatch)
     source = {"kind": "git", "url": "https://example.com/fixture-dev/manager-test", "commit": COMMIT_X}
-    with pytest.raises(manager.ManagerError, match="needs Git, which isn't installed"):
+    with pytest.raises(manager.ManagerError, match="needs Git, a free program that isn't installed on this PC"):
         _plan(data, source, fetcher=lambda url, path: pytest.fail("nothing to download"))
 
 

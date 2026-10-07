@@ -6,8 +6,11 @@ fake fetcher that records what it was asked for. The sizes are bytes, not
 gigabytes.
 """
 
+import errno
 import hashlib
+import http.client
 import os
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -74,6 +77,21 @@ def test_each_source_parses_to_a_reference():
     assert [r["name"] for r in refs] == ["killfeed", "weights", "chat", "speech"]
     assert refs[0]["revision"] == REV and refs[0]["license"] == "mit"
     assert refs[1]["files"] == ["weights_v2.onnx"]
+
+
+def test_a_url_models_file_name_keeps_what_the_pickle_check_reads():
+    """The download asks before a pickle-format file by its saved name; a
+    long name is shortened but keeps its extension, and a #fragment is not
+    part of it."""
+    def name(url):
+        return models.parse({"name": "w", "source": "url", "id": url, "sha256": "c" * 64})["files"][0]
+
+    long = name("https://example.com/dl/" + "m" * 130 + ".ckpt")
+    assert len(long) == 120 and long.endswith(".ckpt") and models.is_pickle(long)
+    assert name("https://example.com/dl/model.pt#v1") == "model.pt"
+    assert name("https://example.com/dl/" + "m" * 130 + ".onnx").endswith(".onnx")
+    assert name("https://example.com/dl/..") == "model"  # never a folder above its own
+    assert name("https://example.com/") == "model"
 
 
 def test_paths_stay_inside_the_shared_folder(tmp_path):
@@ -211,7 +229,7 @@ def test_offline_the_plan_says_the_size_is_unknown(tmp_path):
 
 def test_a_failed_download_says_so_plainly_and_logs_why(tmp_path, caplog):
     def offline(url, dest):
-        raise OSError("[Errno 101] Network is unreachable: C:/Users/someone/AppData")
+        raise urllib.error.URLError(OSError(errno.ENETUNREACH, "Network is unreachable: C:/Users/someone/AppData"))
 
     ref = hf(files=("model.onnx",))
     hub = Hub({"model.onnx": WEIGHTS})
@@ -219,6 +237,68 @@ def test_a_failed_download_says_so_plainly_and_logs_why(tmp_path, caplog):
         models.download(tmp_path, ref, fetcher=offline, fetch_json=hub.fetch_json)
     assert str(e.value) == "Couldn't download model.onnx. Check your internet connection and try again."
     assert "Network is unreachable" in caplog.text  # the details are in the log, not the message
+
+
+TRY_AGAIN = "Try again; if it happens again, send a bug report from Feedback (it includes the details)."
+
+
+@pytest.mark.parametrize("error, said", [
+    (urllib.error.HTTPError("https://example.com/model.onnx", 404, "Not Found", {}, None),
+     "Couldn't download model.onnx: it isn't at its address any more. Ask the pipeline's developer."),
+    (urllib.error.HTTPError("https://example.com/model.onnx", 403, "Forbidden", {}, None),
+     "Couldn't download model.onnx: it isn't at its address any more. Ask the pipeline's developer."),
+    (urllib.error.HTTPError("https://example.com/model.onnx", 502, "Bad Gateway", {}, None),
+     f"Couldn't download model.onnx. {TRY_AGAIN}"),
+    (http.client.IncompleteRead(b"x", 100),  # not an OSError
+     "Couldn't download model.onnx. Check your internet connection and try again."),
+    (TimeoutError("The read operation timed out"),
+     "Couldn't download model.onnx. Check your internet connection and try again."),
+    (OSError(errno.ENOSPC, "No space left on device"),  # writing the .part file; models can be many GB
+     "Couldn't save model.onnx: this PC's disk is full (the file is 1 KB). Free up some space and try again."),
+    (PermissionError(errno.EACCES, "Permission denied"),
+     f"Couldn't save model.onnx in Clips Kitty's model folder. {TRY_AGAIN}"),
+    (OSError(errno.EIO, "Input/output error"), f"Couldn't download model.onnx. {TRY_AGAIN}"),
+])
+def test_each_kind_of_failed_download_says_its_own_cause(tmp_path, caplog, error, said):
+    def failing(url, dest):
+        raise error
+
+    hub = Hub({"model.onnx": WEIGHTS})
+    with pytest.raises(models.ModelError) as e:
+        models.download(tmp_path, hf(files=("model.onnx",)), fetcher=failing, fetch_json=hub.fetch_json)
+    assert str(e.value) == said
+    assert said.endswith("Check your internet connection and try again.") or "internet" not in said
+    assert caplog.text
+    assert not any((tmp_path / "plugin-models" / "tmp").iterdir())
+
+
+def test_a_full_disk_after_the_download_names_the_size_it_knows(tmp_path, monkeypatch):
+    def full(*_a, **_k):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    def no_metadata(url):
+        raise OSError("offline")
+
+    hub = Hub({"model.onnx": WEIGHTS})
+    monkeypatch.setattr(models.os, "replace", full)
+    # Hugging Face's sizes unread: the manifest's size of the whole model is what is known.
+    ref = hf(files=("model.onnx",), size_bytes=1_400_000_000)
+    with pytest.raises(models.ModelError) as e:
+        models.download(tmp_path, ref, fetcher=hub.fetcher, fetch_json=no_metadata)
+    assert str(e.value) == ("Couldn't save model.onnx: this PC's disk is full (the model is 1.4 GB). Free up some "
+                            "space and try again.")
+    with pytest.raises(models.ModelError) as e:
+        models.download(tmp_path, hf(files=("model.onnx",)), fetcher=hub.fetcher, fetch_json=no_metadata)
+    assert str(e.value) == "Couldn't save model.onnx: this PC's disk is full. Free up some space and try again."
+
+    def denied(*_a, **_k):
+        raise PermissionError(errno.EACCES, "Access is denied")
+
+    monkeypatch.setattr(models.os, "replace", denied)
+    with pytest.raises(models.ModelError) as e:
+        models.download(tmp_path, ref, fetcher=hub.fetcher, fetch_json=hub.fetch_json)
+    assert str(e.value) == f"Couldn't save model.onnx in Clips Kitty's model folder. {TRY_AGAIN}"
+    assert models.status(tmp_path, ref)["installed"] is False
 
 
 @pytest.mark.parametrize("fail", [["symlink"], ["symlink", "link"]])
@@ -286,10 +366,26 @@ def test_a_plugin_gets_paths_for_what_is_here_and_a_reason_for_what_is_not(tmp_p
     assert set(handed) == {"killfeed", "chat"}
     assert Path(handed["killfeed"]["files"]["model.onnx"]).read_bytes() == WEIGHTS
     assert handed["killfeed"]["revision"] == REV and handed["chat"]["path"] == "example-model:latest"
-    assert missing == ["Its AI model 'weights' isn't downloaded yet. Open Marketplace › Installed and press "
-                       "Download (52 MB).",
+    assert missing == [("Its AI model 'weights' isn't downloaded yet. Open Marketplace › Installed and press "
+                        "Download (52 MB)."),
                        "Its AI model 'helper' isn't downloaded yet. Download example-helper:7b on the Models page."]
     assert models.for_job(tmp_path, {}) == ({}, [])
+
+
+def test_a_gated_model_that_isnt_here_is_not_sent_to_a_download_button_it_doesnt_have(tmp_path):
+    """Marketplace › Installed has no Download button for a gated model
+    (plan()'s problem is GATED), so the job doesn't send the person there."""
+    data = {"models": [
+        {"name": "faces", "source": "huggingface", "id": "example-org/example-gated", "revision": REV,
+         "files": ["model.onnx"], "gated": True, "size_bytes": 1_400_000_000},
+        {"name": "weights", "source": "url", "id": "https://example.com/w.onnx", "sha256": "c" * 64, "gated": True}]}
+    handed, missing = models.for_job(tmp_path, data)
+    assert handed == {}
+    assert missing == ["Its AI model 'faces' is shared only with people its makers give access to on Hugging Face, "
+                       "so Clips Kitty can't download it for you yet.",
+                       "Its AI model 'weights' is shared only with people its makers give access to, so Clips Kitty "
+                       "can't download it for you yet."]
+    assert not any("Download" in line for line in missing)
 
 
 # ---- the network rules ---------------------------------------------------------------------------------

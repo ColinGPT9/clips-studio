@@ -113,6 +113,16 @@ def test_an_entry_goes_into_the_index_with_its_labels_and_numbers(cat):
     ({"source": {}}, "source: github, huggingface or url"),
     ({"source": {"github": "https://gitlab.com/example-org/x"}}, "source.github: https://github.com/<owner>/<repo>"),
     ({"source": {"url": "http://example.com"}}, "source.url: an https address"),
+    ({"source": {"url": "https://example.com/setup.exe"}}, "source.url: a page, not a file"),
+    ({"source": {"github": "https://github.com/example-org/example-clipper",
+                 "url": "https://github.com/example-org/example-clipper/releases/download/v1/setup.exe"}},
+     "source.url: a page, not a file"),
+    ({"source": {"github": "https://github.com/example-org/example-clipper",
+                 "url": "https://github.com/example-org/example-clipper/releases/download/v1/tool.hta"}},
+     "source.url: a page, not a file (the address ends in .hta)"),
+    ({"source": {"github": "https://github.com/example-org/example-clipper",
+                 "url": "https://github.com/example-org/example-clipper/releases/download/v1/tool"}},
+     "source.url: a page, not a file (it is a GitHub address of a file"),
     ({"platforms": ["amiga"]}, "platforms: amiga not one of"),
     ({"stars": 5}, "stars: unknown field"),
     ({"added": None}, "added: the date it was added"),
@@ -134,8 +144,11 @@ GH = APP["source"]["github"]
 @pytest.mark.parametrize("source", [
     {"github": GH, "download": GH + "/releases"},
     {"github": GH, "download": "https://github.com/Example-Org/Example-Clipper/releases/latest/"},
-    {"github": GH, "homepage": "https://example.org/", "download": "https://downloads.example.org/clipper"},
+    {"github": GH, "homepage": "https://example.org/", "download": "https://example.org/clipper"},
+    {"github": GH, "homepage": "https://example.org/", "download": "https://www.example.org/clipper"},
     {"github": GH, "homepage": "https://www.example.org/", "download": "https://example.org/download"},
+    {"github": GH, "homepage": "https://someone.github.io/", "download": "https://someone.github.io/clipper/get"},
+    {"github": GH, "url": "https://example.org/clipper/", "homepage": "https://example.org/"},
     {"github": GH, "download": "https://apps.microsoft.com/detail/example-id"},
     {"github": GH, "homepage": "https://example.org/"},
 ])
@@ -158,6 +171,17 @@ def test_a_download_page_and_a_website_go_into_the_index_and_the_app_keeps_them(
      "source.download: a page, not a file"),
     ({"github": GH, "homepage": "https://example.org/", "download": "https://downloads.example.net/clipper"},
      "source.download: the GitHub repository's releases page"),
+    # a subdomain isn't the homepage's site any more: only the exact name or its www twin
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://downloads.example.org/clipper"},
+     "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "homepage": "https://www.com/", "download": "https://evil-site.com/get"},
+     "source.homepage: a full website name"),
+    ({"github": GH, "homepage": "https://www.co.uk/", "download": "https://someone-else.co.uk/get"},
+     "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "homepage": "https://github.io/", "download": "https://someone-else.github.io/get"},
+     "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "homepage": "https://www.github.io/", "download": "https://someone-else.github.io/get"},
+     "source.download: the GitHub repository's releases page"),
     ({"github": GH, "homepage": "https://example.org/", "download": "https://notexample.org/clipper"},
      "source.download: the GitHub repository's releases page"),
     ({"github": GH, "download": "https://github.com/someone-else/example-clipper/releases"},
@@ -179,6 +203,147 @@ def test_a_download_link_must_be_a_page_on_the_projects_own_site(cat, source, fr
     index, problems = cat.build()
     assert any(fragment in p for p in problems), problems
     assert index["catalog"] == []
+
+
+def _fetched(source):
+    return {"id": "apps/example-clipper", "kind": "app", "name": "Example Clipper", "license": "MIT",
+            "source": {"github": GH, **source}}
+
+
+@pytest.mark.parametrize("homepage, download", [
+    ("https://www.com/", "https://evil-site.com/get"),  # "com" is everyone's
+    ("https://www.co.uk/", "https://someone-else.co.uk/get"),  # every .co.uk site
+    ("https://github.io/", "https://someone-else.github.io/get"),  # anyone's GitHub Pages
+    ("https://www.github.io/", "https://someone-else.github.io/get"),
+    ("https://example.org/", "https://downloads.example.org/get"),  # a subdomain, not the same name
+    ("https://www.example.org/", "https://downloads.example.org/get"),
+])
+def test_a_homepage_cant_vouch_for_a_download_on_another_site(homepage, download):
+    """A download on the homepage's site is exactly its name or its www twin.
+    The app reads a list the same way, so a fetched entry loses the link."""
+    assert catalog.download_problem(download, github=GH, homepage=homepage)
+    kept = registry._clean_entry(_fetched({"homepage": homepage, "download": download}), ours=False)
+    assert "download" not in kept["source"]
+
+
+@pytest.mark.parametrize("homepage, download", [
+    ("https://example.org/", "https://example.org/get"),
+    ("https://example.org/", "https://www.example.org/get"),
+    ("https://www.example.org/", "https://example.org/get"),
+    ("https://www.example.org/", "https://www.example.org/get"),
+])
+def test_a_download_on_the_homepages_name_or_its_www_twin_is_kept(homepage, download):
+    assert catalog.download_problem(download, github=GH, homepage=homepage) is None
+    kept = registry._clean_entry(_fetched({"homepage": homepage, "download": download}), ours=False)
+    assert kept["source"]["download"] == download
+
+
+@pytest.mark.parametrize("homepage, download", [
+    ("https://gitlab.com/example-org/clipper", "https://gitlab.com/someone-else/tool/-/releases"),
+    ("https://codeberg.org/example-org/clipper", "https://codeberg.org/someone-else/tool/releases"),
+    ("https://bitbucket.org/example-org/clipper", "https://bitbucket.org/someone-else/tool/downloads/"),
+    ("https://sourceforge.net/projects/example-clipper/", "https://sourceforge.net/projects/someone-else/files/"),
+    ("https://sites.google.com/view/example-clipper", "https://sites.google.com/view/someone-else"),
+    ("https://drive.google.com/drive/folders/example", "https://drive.google.com/drive/folders/someone-else"),
+    ("https://docs.google.com/document/d/example", "https://docs.google.com/document/d/someone-else"),
+    ("https://www.dropbox.com/sh/example", "https://www.dropbox.com/sh/someone-else"),
+    ("https://hf.co/example-org", "https://hf.co/someone-else"),
+    ("https://gist.github.com/example-org", "https://gist.github.com/someone-else"),
+])
+def test_a_homepage_on_a_site_many_people_share_is_refused_and_vouches_for_no_download(homepage, download):
+    """On these sites strangers' pages share the homepage's website name, so
+    the same name doesn't make a download the project's own."""
+    assert catalog.homepage_problem(homepage) == (
+        "source.homepage: the project's own website, not a page on a site where many people have pages, such as "
+        "GitHub, GitLab or Google Sites (a GitHub page goes in github, a Hugging Face page in huggingface, any "
+        "other in url)")
+    assert catalog.download_problem(download, github=GH, homepage=homepage).startswith(
+        "source.download: the GitHub repository's releases page")
+    kept = registry._clean_entry(_fetched({"homepage": homepage, "download": download}), ours=False)
+    assert kept["source"] == {"github": GH}
+
+
+def test_a_trailing_dot_cant_take_a_homepage_or_download_past_the_shared_sites():
+    """github.com. opens github.com, but the name wouldn't match the list."""
+    assert catalog.homepage_problem("https://gitlab.com./someone").startswith("source.homepage: a plain https address")
+    assert catalog.download_problem("https://gitlab.com./someone-else", github=GH,
+                                    homepage="https://gitlab.com./someone").startswith(
+        "source.download: a plain https address")
+    assert catalog.url_problem("https://github.com./someone/clipper/raw/main/tool").startswith(
+        "source.url: a page, not a file (it is a GitHub address of a file")
+
+
+@pytest.mark.parametrize("path, ending", [
+    *((f"app{e}", e) for e in (
+        ".exe", ".msi", ".msp", ".msu", ".msix", ".msixbundle", ".appx", ".appxbundle", ".appinstaller",
+        ".application", ".appref-ms", ".bat", ".cmd", ".com", ".pif", ".scr", ".cpl", ".reg", ".hta", ".ps1", ".vbs",
+        ".vbe", ".js", ".jse", ".wsf", ".jar", ".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".tar", ".gz", ".xz", ".bz2",
+        ".zip", ".7z", ".rar", ".cab", ".iso", ".img", ".vhd", ".vhdx", ".dmg", ".pkg", ".appimage", ".deb", ".rpm",
+        ".apk", ".whl")),
+    ("Setup.EXE", ".exe"), ("app.exe;", ".exe"), ("app.exe%20", ".exe"), ("app.exe.", ".exe"),
+    ("app.exe.%20;", ".exe"), ("app.exe/", ".exe"), ("app.exe;jsessionid=1", ".exe"), ("app%2Eexe", ".exe"),
+])
+def test_an_address_that_ends_in_a_program_installer_or_archive_is_refused(path, ending):
+    address = "https://example.com/" + path
+    assert catalog.download_problem(address, homepage="https://example.com/") == \
+        f"source.download: a page, not a file (the address ends in {ending}; the project's own page says which file to get)"
+    assert catalog.homepage_problem(address) == f"source.homepage: a page, not a file (the address ends in {ending})"
+    assert catalog.url_problem(address) == f"source.url: a page, not a file (the address ends in {ending})"
+
+
+@pytest.mark.parametrize("address", [
+    GH + "/releases/download/v1/tool", GH + "/releases/latest/download/tool", GH + "/raw/main/tool",
+    GH + "/archive/refs/tags/v1", GH + "/zipball/main", GH + "/tarball/v1", GH + "/blob/main/tool?raw=true",
+    "https://gist.github.com/someone/0123abc/raw/tool",
+])
+def test_a_github_address_of_a_file_is_refused_whatever_it_ends_in(address):
+    reason = "it is a GitHub address of a file: a release download, a raw file or a source archive"
+    assert catalog.download_problem(address, github=GH) == \
+        f"source.download: a page, not a file ({reason}; the project's own page says which file to get)"
+    assert catalog.url_problem(address) == f"source.url: a page, not a file ({reason})"
+    kept = registry._clean_entry(_fetched({"url": address, "download": address}), ours=False)
+    assert kept["source"] == {"github": GH}
+
+
+@pytest.mark.parametrize("address, host", [
+    ("https://raw.githubusercontent.com/example-org/example-clipper/main/tool", "raw.githubusercontent.com"),
+    ("https://codeload.github.com/example-org/example-clipper/zip/main", "codeload.github.com"),
+])
+def test_an_address_on_a_github_file_host_is_refused(address, host):
+    assert catalog.url_problem(address) == f"source.url: a page, not a file ({host} only serves files)"
+    assert catalog.homepage_problem(address) == f"source.homepage: a page, not a file ({host} only serves files)"
+
+
+@pytest.mark.parametrize("path", ["app.exe%00", "get/app%0A", "get%E2%80%AE/page", "page?x=%E2%80%8B", "page#%0D"])
+def test_an_address_with_a_hidden_character_is_refused_and_says_so(path):
+    """It is refused for the hidden character, not taken for a file."""
+    address = "https://example.com/" + path
+    hidden = ("an address with no hidden or control characters in it, such as a line break or a right-to-left "
+              "mark, also when written with % (like %0A)")
+    assert catalog.download_problem(address, homepage="https://example.com/") == f"source.download: {hidden}"
+    assert catalog.homepage_problem(address) == f"source.homepage: {hidden}"
+    assert catalog.url_problem(address) == f"source.url: {hidden}"
+    assert catalog.url_problem("https://example.com/get‮/page") == f"source.url: {hidden}"
+
+
+def test_an_address_that_cant_be_read_says_so():
+    assert catalog.url_problem("https://[x/page") == \
+        "source.url: a correctly written https address, such as https://example.org/page"
+
+
+@pytest.mark.parametrize("path", ["", "download", "app.exe-guide", "get?file=app.exe", "releases/", "app.exe.html"])
+def test_an_address_whose_path_doesnt_end_in_a_listed_ending_passes(path):
+    """Only the end of the path is checked: get?file=app.exe passes though
+    it may well be a file, and so would a page that sends the browser on to one."""
+    address = "https://example.com/" + path
+    assert catalog.download_problem(address, homepage="https://example.com/") is None
+    assert catalog.url_problem(address) is None
+
+
+@pytest.mark.parametrize("address", [GH, GH + "#readme", GH + "/releases", GH + "/releases/latest",
+                                     GH + "/blob/main/README.md", GH + "/wiki"])
+def test_a_github_page_isnt_taken_for_a_file(address):
+    assert catalog.url_problem(address) is None
 
 
 def test_setup_is_installer_or_technical(cat):

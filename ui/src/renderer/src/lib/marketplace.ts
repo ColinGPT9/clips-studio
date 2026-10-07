@@ -225,7 +225,7 @@ export interface CatalogResponse {
 /** GET /marketplace/counting. */
 export interface Counting {
   enabled: boolean
-  /** Settings switch it off for everyone on this PC. */
+  /** settings.yaml switches it off for this Windows account. */
   locked_off: boolean
   /** An index names a counter address, so something would be sent. */
   active: boolean
@@ -435,7 +435,7 @@ export function tierBadge(details: Pick<PluginDetails, 'tier' | 'tier_text'>): B
       : details.tier === 'listed-official'
         ? 'Made by the Clips Kitty project and listed in Awesome Clips Kitty.'
         : details.tier === 'listed'
-          ? 'Listed in Awesome Clips Kitty by someone outside the project. Automated checks passed; nobody has reviewed the code.'
+          ? 'Made by someone outside the Clips Kitty project and installed from a list. Nobody at Clips Kitty has read its code.'
           : 'Installed from a folder or a link. Clips Kitty has not checked it.'
   return { label: details.tier_text || details.tier, tone, title }
 }
@@ -930,7 +930,7 @@ export function catalogBadges(badges: string[] | undefined, extraOnly = false): 
     if (b === 'official' && !extraOnly)
       out.push({ label: '✓ Official', tone: 'ok', title: 'Made and maintained by the Clips Kitty project.' })
     else if (b === 'community' && !extraOnly)
-      out.push({ label: 'Community', tone: 'info', title: 'Made by someone outside the Clips Kitty project. Nobody has reviewed its code.' })
+      out.push({ label: 'Community', tone: 'info', title: 'Made by someone outside the Clips Kitty project. Nobody at Clips Kitty has read its code.' })
     else if (b === 'compatible')
       out.push({
         label: '✓ Compatible',

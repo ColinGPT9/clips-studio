@@ -376,7 +376,7 @@ def _check_model(c: _Check, i: int, entry, names: set) -> None:
         sha = m.get("sha256")
         if not isinstance(sha, str) or not re.match(SHA256_PATTERN, sha):
             c.error(f"{where}.sha256", "is required for a url model: the file's SHA-256, 64 hex characters")
-        if isinstance(mid, str) and mid.lower().split("?")[0].endswith(PICKLE_SUFFIXES):
+        if isinstance(mid, str) and mid.lower().split("#")[0].split("?")[0].endswith(PICKLE_SUFFIXES):
             c.warn(f"{where}.id", "a pickle-format file, which can run code when loaded; Clips Kitty will ask "
                    "the user before downloading it")
     elif source == "bundled":

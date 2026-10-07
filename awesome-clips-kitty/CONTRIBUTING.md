@@ -96,18 +96,23 @@ GitHub is the home of code: source, issues, discussions and releases. Hugging Fa
 
 Clips Kitty is made for creators first, and a GitHub page is hard to use for someone who doesn't write code. When a project has a page where people download it, or a website of its own, add them. Each app, model, workflow, integration and tool gets one button in the Marketplace, which opens the first of these the entry has: `download` ("Download from <site>"), `homepage` ("Website"), `github` ("Code page on GitHub"), `huggingface` ("Model page on Hugging Face"), then `url` ("Website"). The README links an entry's name in the same order. Clips Kitty doesn't install these entries: the button opens the page in the browser, after the app has shown the full address and the person has agreed.
 
-- Both are `https://` addresses with no username or password in them.
-- `homepage` is the project's own website, not a page on GitHub or Hugging Face (those go in `github` and `huggingface`), and a page, not a file.
-- `download` is a page, not a file: an address ending in `.exe`, `.msi`, `.msix`, `.zip`, `.7z`, `.dmg`, `.pkg`, `.appimage`, `.deb`, `.rpm`, `.tar.gz` or `.whl` is refused. People then land on the project's own instructions and their browser's own download checks.
+- Both are `https://` addresses with no username or password in them, and with no dot at the end of the website name (`https://github.com./...` is refused).
+- `homepage` is the project's own website, on a full website name such as `https://example.org/` or `https://www.example.org/` (`https://www.com/` is refused), and a page, not a file. It can't be on a site where many people have pages under one website name, told apart only by the rest of the address, because there the same website name doesn't mean the same project, and a download link on it could be someone else's page. These are refused, and so is any name ending in one of them: `github.com`, `githubusercontent.com`, `huggingface.co`, `hf.co`, `gitlab.com`, `codeberg.org`, `bitbucket.org`, `sourceforge.net`, `sites.google.com`, `drive.google.com`, `docs.google.com`, `play.google.com`, `googleusercontent.com`, `dropbox.com`, `dropboxusercontent.com`, `onedrive.live.com`, `1drv.ms`, `mediafire.com` and `mega.nz`. Put a GitHub page in `github`, a Hugging Face page in `huggingface`, and any other in `url`. This list can't hold every such site, so a maintainer also checks `homepage` when they check the entry.
+- `download`, `homepage` and `url` are meant to be pages, not files. An address whose path ends in one of these is refused, in capitals or not:
+  - Windows programs, installers and scripts: `.exe`, `.msi`, `.msp`, `.msu`, `.msix`, `.msixbundle`, `.appx`, `.appxbundle`, `.appinstaller`, `.application`, `.appref-ms`, `.bat`, `.cmd`, `.com`, `.pif`, `.scr`, `.cpl`, `.reg`, `.hta`, `.ps1`, `.vbs`, `.vbe`, `.js`, `.jse`, `.wsf`, `.jar`;
+  - archives and disk images: `.tar.gz`, `.tar.xz`, `.tar.bz2`, `.tgz`, `.tar`, `.gz`, `.xz`, `.bz2`, `.zip`, `.7z`, `.rar`, `.cab`, `.iso`, `.img`, `.vhd`, `.vhdx`, `.dmg`;
+  - other systems' packages: `.pkg`, `.appimage`, `.deb`, `.rpm`, `.apk`, `.whl`.
+
+  The check decodes `%` escapes first, ignores any trailing `;`, `.`, spaces and `/` (Windows drops trailing dots and spaces from a file name), and also looks at the part of the last name before a `;`. A GitHub address of a file is refused whatever its name ends in: a release download (`.../releases/download/...` or `.../releases/latest/download/...`), a raw file (`.../raw/...`, or a `raw` query such as `?raw=true` on `github.com` or `gist.github.com`), a source archive (`.../archive/...`, `.../zipball/...` or `.../tarball/...`), and anything on `githubusercontent.com` or `codeload.github.com`. An address holding a control character or an invisible formatting character (such as a line break or a right-to-left mark), written as it is or with `%` (like `%0A`), is refused too, and the build says so. People then land on the project's own instructions and their browser's own download checks. Only the end of the address's path is checked: an address that doesn't end in one of these can still be a file, or send the browser on to one (`https://example.org/get?file=app.exe` passes, for example), and the check can't see that.
 - `download` is one of:
   - the GitHub repository's own releases page, `https://github.com/<owner>/<repo>/releases` or `.../releases/latest`, for the repository in `github`;
-  - a page on the `homepage`'s site or one of its subdomains (a homepage on `www.example.org` also allows `example.org` and its subdomains);
+  - a page on exactly the same website name as `homepage`, or its `www.` twin: a homepage on `example.org` allows `example.org` and `www.example.org`, and so does one on `www.example.org`. Other subdomains, such as `downloads.example.org`, are refused, because without a list of shared endings such as `co.uk` or `github.io` the check can't tell a project's own subdomain from someone else's site;
   - a Microsoft Store page, `https://apps.microsoft.com/...`.
 - A maintainer checks `homepage` and `download` when they check the entry (its `checked` date).
 
 `setup: technical` marks a project that needs the command line or Python to set up. The Marketplace shows "Needs technical setup (command line or Python)" on it and lists it after the others in its section, and so does the README. `setup: installer` is a project people download and run.
 
-The app checks `homepage`, `download` and `setup` again when it reads a list, and drops any that break these rules.
+The app checks `homepage`, `download`, `url` and `setup` again when it reads a list, and drops any that break these rules.
 
 ## Listing a pipeline or plugin
 
@@ -178,7 +183,7 @@ Each number is its own figure, from its own source, never added to another:
 
 ### The install counter
 
-Clips Kitty counts installs from this catalog without a server of its own: `registry/catalog.yaml` names a release download address in one of the project's own GitHub repositories, ending in `{asset}`, and after the first install of a listing (not an update or a version switch) the app requests that one small file, named after the listing. The plan is a GitHub release in this catalog's repository with one such file per listing, so the count is GitHub's public download count for it. The request carries no account, no identifier and nothing about your videos; users can switch counting off at the bottom of the Marketplace, or for a whole PC with `plugins.count_installs: false` in `settings.yaml`. The address is empty until the catalog has its own public repository, so nothing is counted yet.
+Clips Kitty counts installs from this catalog without a server of its own: `registry/catalog.yaml` names a release download address in one of the project's own GitHub repositories, ending in `{asset}`, and after the first install of a listing (not an update or a version switch) the app requests that one small file, named after the listing. The plan is a GitHub release in this catalog's repository with one such file per listing, so the count is GitHub's public download count for it. The request carries no account, no identifier and nothing about your videos; users can switch counting off at the bottom of the Marketplace, or for their whole Windows account with `plugins.count_installs: false` in `settings.yaml`. The address is empty until the catalog has its own public repository, so nothing is counted yet.
 
 ## Blocking
 

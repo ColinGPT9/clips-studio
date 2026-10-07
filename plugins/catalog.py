@@ -30,9 +30,10 @@ Three things are kept apart on purpose:
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import date
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from plugins import sources
 from plugins._sdk import manifest
@@ -63,7 +64,7 @@ BADGE_MEANING = {
                   "it installs, its requirements are met, and it runs on a sample video and gives an answer "
                   "Clips Kitty accepts. A technical label, not a security review.",
     "featured": "Picked by hand by a Clips Kitty maintainer as a notable project.",
-    "community": "Made by someone outside the Clips Kitty project. Nobody has reviewed its code.",
+    "community": "Made by someone outside the Clips Kitty project. Nobody at Clips Kitty has read its code.",
 }
 
 # GitHub owners whose projects are the Clips Kitty project's own.
@@ -78,14 +79,41 @@ ENTRY_FIELDS = ("name", "description", "section", "relationship", "license", "li
 SOURCE_FIELDS = ("github", "huggingface", "url", "path", "homepage", "download")
 # installer: people download it and run its installer. technical: it needs the command line or Python.
 SETUPS = ("installer", "technical")
-# A download link opens a page, never a file: people land on the project's own
-# instructions and their browser's own download checks.
-FILE_ENDINGS = (".exe", ".msi", ".msix", ".zip", ".7z", ".dmg", ".pkg", ".appimage", ".deb", ".rpm", ".tar.gz",
-                ".whl")
+# A download, homepage or url address whose path ends in one of these (a
+# program, installer, script, disk image or archive) is refused, and so is a
+# GitHub address of a file (GITHUB_FILE_RE, GITHUB_FILE_HOSTS), so the button
+# is meant to open a page: people land on the project's own instructions and
+# their browser's own download checks. Only the end of the address's path is
+# checked: an address that doesn't end in one of these can still be a file, or
+# send the browser on to one, and the check can't see that. Longer endings
+# come first so a message names .tar.gz rather than .gz.
+FILE_ENDINGS = (
+    # Windows programs, installers and scripts
+    ".exe", ".msi", ".msp", ".msu", ".msix", ".msixbundle", ".appx", ".appxbundle", ".appinstaller", ".application",
+    ".appref-ms", ".bat", ".cmd", ".com", ".pif", ".scr", ".cpl", ".reg", ".hta", ".ps1", ".vbs", ".vbe", ".js",
+    ".jse", ".wsf", ".jar",
+    # archives and disk images
+    ".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".tar", ".gz", ".xz", ".bz2", ".zip", ".7z", ".rar", ".cab", ".iso",
+    ".img", ".vhd", ".vhdx", ".dmg",
+    # other systems' packages
+    ".pkg", ".appimage", ".deb", ".rpm", ".apk", ".whl",
+)
+# GitHub addresses that serve a file whatever their name ends in: a release
+# download (also .../releases/latest/download/...), a raw file and a source
+# archive. On github.com and gist.github.com; a "raw" query (?raw=true) counts too.
+GITHUB_FILE_RE = re.compile(r"/[^/]+/[^/]+/(releases/(latest/)?download|raw|archive|zipball|tarball)(/|$)", re.I)
+GITHUB_FILE_HOSTS = ("githubusercontent.com", "codeload.github.com")
 STORE_HOST = "apps.microsoft.com"
-# Anyone can have pages on these, so a homepage there would let a download
-# link point at anyone's page: GitHub and Hugging Face pages go in github and huggingface.
-SHARED_HOSTS = ("github.com", "huggingface.co")
+# Sites where many people's pages share one website name, told apart only by
+# the rest of the address. A homepage on one of these would let a download
+# link point at a stranger's page on the same name, so it is refused: a GitHub
+# page goes in github, a Hugging Face one in huggingface, and any other in url.
+# The list can't hold every such site; a maintainer checks homepage and
+# download when they check an entry.
+SHARED_HOSTS = ("github.com", "githubusercontent.com", "huggingface.co", "hf.co", "gitlab.com", "codeberg.org",
+                "bitbucket.org", "sourceforge.net", "sites.google.com", "drive.google.com", "docs.google.com",
+                "play.google.com", "googleusercontent.com", "dropbox.com", "dropboxusercontent.com",
+                "onedrive.live.com", "1drv.ms", "mediafire.com", "mega.nz")
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SECTION_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$")
 HF_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$")
@@ -122,7 +150,9 @@ def _https(value) -> bool:
 def _web_host(value) -> str | None:
     """The host of a plain https address with no username or password in it,
     or None. A backslash is refused: a browser reads it as "/", so the host
-    it opens could differ from the one checked here."""
+    it opens could differ from the one checked here. So is a host with an
+    empty part, such as github.com. with its trailing dot: a browser opens
+    github.com, but the name would no longer match SHARED_HOSTS."""
     if not _https(value) or not re.fullmatch(r"[!-~]+", value) or "\\" in value:
         return None
     try:
@@ -130,11 +160,53 @@ def _web_host(value) -> str | None:
     except ValueError:
         return None
     host = parts.hostname or ""
-    return host if "@" not in parts.netloc and "." in host and re.fullmatch(r"[a-z0-9.-]+", host) else None
+    return host if "@" not in parts.netloc and re.fullmatch(r"([a-z0-9-]+\.)+[a-z0-9-]+", host) else None
 
 
-def _is_file(url: str) -> bool:
-    return unquote(urlsplit(url).path).rstrip("/").lower().endswith(FILE_ENDINGS)
+def _address_problem(field: str, url: str) -> str | None:
+    """Why an address can't be checked, or None: it can't be split into its
+    parts, or, once its %-escapes are decoded, it holds a control character
+    or an invisible formatting character (such as a line break or a
+    right-to-left mark), which could hide what the address really is."""
+    try:
+        urlsplit(url)
+    except ValueError:
+        return f"source.{field}: a correctly written https address, such as https://example.org/page"
+    if any(unicodedata.category(c) in ("Cc", "Cf") for c in unquote(url)):
+        return (f"source.{field}: an address with no hidden or control characters in it, such as a line break or "
+                "a right-to-left mark, also when written with % (like %0A)")
+    return None
+
+
+def _file_reason(url: str) -> str | None:
+    """Why a readable address is taken for a file, or None. The last part of
+    its path is read after decoding %-escapes, ignoring trailing ";", ".",
+    spaces and "/" (Windows drops trailing dots and spaces from a file name),
+    and compared with FILE_ENDINGS, and so is the part of it before a ";". A
+    GitHub address of a file counts whatever its name ends in."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().rstrip(".")
+    path = unquote(parts.path)
+    name = path.rstrip("/;. ").rsplit("/", 1)[-1].lower()
+    for part in (name, name.split(";", 1)[0].rstrip(". ")):
+        ending = next((e for e in FILE_ENDINGS if part.endswith(e)), None)
+        if ending:
+            return f"the address ends in {ending}"
+    if any(_on(host, files) for files in GITHUB_FILE_HOSTS):
+        return f"{host} only serves files"
+    if host in ("github.com", "www.github.com", "gist.github.com") and (
+            GITHUB_FILE_RE.match(path) or "raw" in parse_qs(parts.query, keep_blank_values=True)):
+        return "it is a GitHub address of a file: a release download, a raw file or a source archive"
+    return None
+
+
+def _page_problem(field: str, url: str, *, hint: str = "") -> str | None:
+    """Why source.<field> isn't the address of a page, or None."""
+    if problem := _address_problem(field, url):
+        return problem
+    if reason := _file_reason(url):
+        return f"source.{field}: a page, not a file ({reason}{hint})"
+    return None
 
 
 def _on(host: str, site: str) -> bool:
@@ -142,37 +214,59 @@ def _on(host: str, site: str) -> bool:
     return host == site or host.endswith("." + site)
 
 
+def _same_site(host: str, site: str) -> bool:
+    """Whether `host` is exactly `site` or its www twin (example.org and
+    www.example.org). Never a subdomain: without the list of shared
+    endings such as co.uk or github.io, a subdomain rule would let a
+    homepage on www.co.uk allow every .co.uk site."""
+    return host.removeprefix("www.") == site.removeprefix("www.")
+
+
 def homepage_problem(homepage) -> str | None:
     """Why a project's website can't be listed, or None."""
     host = _web_host(homepage)
     if not host:
         return "source.homepage: a plain https address with no username or password"
-    if _is_file(homepage):
-        return "source.homepage: a page, not a file"
+    if "." not in host.removeprefix("www."):
+        return "source.homepage: a full website name, such as https://example.org/ or https://www.example.org/"
+    if problem := _page_problem("homepage", homepage):
+        return problem
     if any(_on(host, shared) for shared in SHARED_HOSTS):
-        return "source.homepage: the project's own website (GitHub and Hugging Face pages go in github and huggingface)"
+        return ("source.homepage: the project's own website, not a page on a site where many people have pages, "
+                "such as GitHub, GitLab or Google Sites (a GitHub page goes in github, a Hugging Face page in "
+                "huggingface, any other in url)")
     return None
+
+
+def url_problem(url) -> str | None:
+    """Why an entry's source.url can't be listed, or None: an https address
+    of a page, not a file (see FILE_ENDINGS for how far that is checked)."""
+    if not _https(url):
+        return "source.url: an https address"
+    return _page_problem("url", url)
 
 
 def download_problem(download, *, github=None, homepage=None) -> str | None:
     """Why a download link can't be listed, or None. It is a page, not a
     file, and one of: the GitHub repository's own releases page, a page on
-    the homepage's site (or a subdomain of it), or a Microsoft Store page."""
+    exactly the homepage's host or its www twin (example.org and
+    www.example.org, never another subdomain), or a Microsoft Store page."""
     host = _web_host(download)
     if not host:
         return "source.download: a plain https address with no username or password"
-    if _is_file(download):
-        return "source.download: a page, not a file (the project's own page says which file to get)"
+    if problem := _page_problem("download", download, hint="; the project's own page says which file to get"):
+        return problem
     repo = github_repo(github)
     if repo and re.fullmatch(rf"https://github\.com/{re.escape(repo)}/releases(/latest)?/?", download, re.I):
         return None
     site = _web_host(homepage) if homepage_problem(homepage) is None else None
-    if site and _on(host, site.removeprefix("www.")):
+    if site and _same_site(host, site):
         return None
     if host == STORE_HOST:
         return None
     return ("source.download: the GitHub repository's releases page (https://github.com/<owner>/<repo>/releases or "
-            ".../releases/latest), a page on the homepage's site, or a Microsoft Store page "
+            ".../releases/latest), a page on exactly the same website name as the homepage (example.org and "
+            "www.example.org count as the same, other subdomains don't), or a Microsoft Store page "
             "(https://apps.microsoft.com/...)")
 
 
@@ -316,8 +410,8 @@ def check_entry(data, kind: str, slug: str, sections: dict) -> list[str]:
         if "huggingface" in source and not (isinstance(source["huggingface"], str)
                                             and HF_ID_RE.match(source["huggingface"])):
             problems.append("source.huggingface: a model id like owner/name")
-        if "url" in source and not _https(source["url"]):
-            problems.append("source.url: an https address")
+        if "url" in source and (problem := url_problem(source["url"])):
+            problems.append(problem)
         if "path" in source and ("github" not in source or not isinstance(source["path"], str)
                                  or not manifest._relative_inside(source["path"])):
             problems.append("source.path: a folder inside the GitHub repository")

@@ -1226,8 +1226,11 @@ curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" 
 
 A plan's `warnings` are in plain words for the person installing; `technical`
 holds the precise lines behind them (the manifest's own warnings, files that
-couldn't be fetched). A download or Git that fails answers with one fixed
-sentence; what went wrong is in the engine's log.
+couldn't be fetched); a model file that can run code when it is opened adds a
+plain line to `warnings` as well. A download or Git that fails answers with a
+fixed sentence for its cause (no connection, files no longer at the address,
+a full disk, a damaged download, or anything else); what went wrong is in the
+engine's log.
 
 `GET /plugins` lists what is installed (no header needed);
 `POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,
@@ -1272,7 +1275,7 @@ error, too large, not a list Clips Kitty can read, not https://, couldn't be
 saved); the details of what went wrong go to the engine's log.
 `GET /marketplace/online` (no header) answers like `online` above, and
 `PUT /marketplace/online` `{"enabled": false}` (session header) switches the
-automatic checks off for this PC (or on again). See
+automatic checks off for this Windows account (or on again). See
 [Marketplace publishing](developers/marketplace-publishing.md).
 
 `GET /marketplace/catalog` (`?q=`, `kind`, `section`; no header) lists the rest
@@ -1294,7 +1297,7 @@ Marketplace are counted:
 `locked_off` is true when settings say `plugins.count_installs: false`;
 `active` is false while the bundled index has no install counter address (no
 other index can count installs), which is the case today, so nothing is counted. `PUT /marketplace/counting`
-`{"enabled": false}` switches counting off for this PC (or on again), needs the
+`{"enabled": false}` switches counting off for this Windows account (or on again), needs the
 session header, and answers the same way. `POST /plugins/install` answers with
 `counted`: whether that install was counted, which only a first install from a
 listing can be. What a count sends: [Security](developers/security.md#what-clips-kitty-sends-when-you-install).

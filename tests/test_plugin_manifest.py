@@ -88,6 +88,11 @@ def test_pickle_model_files_are_flagged():
     data["models"][0]["files"] = ["killfeed.pt"]
     report = mf.validate(data)
     assert report.ok and any("pickle-format" in w for w in report.warnings)
+    # a url model's address, whatever follows a ? or a #
+    for address in ("https://example.com/w/model.pt?download=1", "https://example.com/w/model.pt#v1"):
+        data["models"] = [{"name": "weights", "source": "url", "id": address, "sha256": "a" * 64}]
+        report = mf.validate(data)
+        assert report.ok and any("pickle-format" in w for w in report.warnings), address
 
 
 def test_json_works_as_well_as_yaml():

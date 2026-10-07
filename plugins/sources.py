@@ -26,20 +26,27 @@ whole plugin, and so does a plugin over MAX_FILES files or MAX_BYTES bytes.
 Not tested on Windows.
 
 A download or Git that fails raises FetchFailed, whose message never carries
-the error's own text: that goes to the engine's log, and the manager answers
-with a plain sentence.
+the error's own text: that goes to the engine's log. Its `kind` says what went
+wrong (OFFLINE, GONE, DISK, DAMAGED or OTHER, see failure()), and the manager
+answers with a plain sentence for that kind.
 """
 
 from __future__ import annotations
 
+import errno
+import http.client
 import logging
 import os
 import re
 import shutil
+import socket
+import ssl
 import stat
 import subprocess
 import tarfile
 import tempfile
+import urllib.error
+import zlib
 from pathlib import Path, PurePosixPath
 
 from plugins._sdk import manifest
@@ -58,6 +65,21 @@ SKIPPED_DIRS = {".git", "__pycache__"}
 _WINDOWS_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
 # Said once on the install screen when fetch() names files it couldn't fetch.
 FILES_MISSING = "Some of this pipeline's files couldn't be downloaded, so it may not work. Ask its developer."
+TRY_AGAIN = "Try again; if it happens again, send a bug report from Feedback (it includes the details)."
+NOT_SAVED = f"its files couldn't be saved on this PC. {TRY_AGAIN}"
+
+# What a failed download or Git fetch was (FetchFailed.kind).
+OFFLINE = "offline"   # no connection, a timeout, a dropped connection
+GONE = "gone"         # the address, repository or commit isn't there (or is private)
+DISK = "disk"         # this PC's disk is full
+DAMAGED = "damaged"   # the download arrived, but isn't what it should be
+OTHER = "other"       # anything else; the log says what
+_DISK_ERRNOS = {errno.ENOSPC, getattr(errno, "EDQUOT", errno.ENOSPC)}
+_DISK_WINERRORS = {112, 39}  # ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL
+# No route to the server (the other connection errors are ConnectionError or TimeoutError).
+_NETWORK_ERRNOS = {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN}
+# A Windows junction (Path.is_junction is Python 3.12+; the app builds with 3.11).
+_MOUNT_POINT = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 
 
 class SourceError(ValueError):
@@ -69,39 +91,78 @@ class TooLarge(SourceError):
 
 
 class FetchFailed(SourceError):
-    """The network, Git or a damaged download failed, not the plugin. The
-    message says which, without the error's own text (that is in the log)."""
+    """The network, Git, the disk or a damaged download failed, not the
+    plugin. `kind` is OFFLINE, GONE, DISK, DAMAGED or OTHER; the message never
+    carries the error's own text (that is in the log)."""
+
+    def __init__(self, message: str, kind: str = OTHER):
+        super().__init__(message)
+        self.kind = kind
+
+
+def failure(error: BaseException) -> str:
+    """What kind of failure a download error is: GONE for an HTTP 401, 403,
+    404 or 410 (GitHub and Hugging Face answer 401 or 403 for a private or
+    missing repository), DISK for a full disk, OFFLINE for no connection, a
+    timeout or a connection that broke off, else OTHER."""
+    if isinstance(error, urllib.error.HTTPError):
+        return GONE if error.code in (401, 403, 404, 410) else OTHER
+    if isinstance(error, OSError) and (error.errno in _DISK_ERRNOS
+                                       or getattr(error, "winerror", None) in _DISK_WINERRORS):
+        return DISK
+    if isinstance(error, http.client.InvalidURL):
+        return OTHER
+    if isinstance(error, (urllib.error.URLError, ConnectionError, TimeoutError, http.client.HTTPException,
+                          socket.gaierror, socket.herror, ssl.SSLError)):
+        return OFFLINE
+    if isinstance(error, OSError) and error.errno in _NETWORK_ERRNOS:
+        return OFFLINE
+    return OTHER
 
 
 # ---- what a source is --------------------------------------------------------------
 
 
 def clean_source(spec) -> dict:
-    """A source as a caller gave it, checked for shape. Raises SourceError."""
+    """A source as a caller gave it, checked for shape. Raises SourceError,
+    whose message reads after "Couldn't install this pipeline: "."""
     if not isinstance(spec, dict):
-        raise SourceError('a source is an object: {"kind": "folder", "path": ...} or '
-                          '{"kind": "git", "url": ..., "commit": ...}')
+        raise SourceError("Clips Kitty wasn't told where its files are. Give a folder on this PC, or a "
+                          "repository's https:// address and a commit.")
     kind = spec.get("kind")
     if kind == "folder":
         path = spec.get("path")
         if not isinstance(path, str) or not path.strip():
-            raise SourceError("a folder source needs the folder's path")
-        return {"kind": "folder", "path": str(Path(path.strip()).expanduser())}
+            raise SourceError("Clips Kitty wasn't told which folder it's in. Choose the folder that holds its "
+                              f"{manifest.MANIFEST_FILE}.")
+        try:
+            folder = Path(path.strip()).expanduser()
+        except RuntimeError:  # ~someone, with no such user: copy_folder says there is no such folder
+            folder = Path(path.strip())
+        return {"kind": "folder", "path": str(folder)}
     if kind == "git":
         url, commit = spec.get("url"), spec.get("commit")
         if not isinstance(url, str) or not GIT_URL_RE.match(url.strip()):
-            raise SourceError("a Git source needs the repository's https:// address (or file:// for one on this PC)")
+            raise SourceError("its address isn't one Clips Kitty downloads from. Give the repository's https:// "
+                              "address (or a file:// address for one on this PC).")
         if not isinstance(commit, str) or not COMMIT_RE.match(commit.strip().lower()):
-            raise SourceError("a Git source needs the full 40-character commit hash: a branch or tag can change "
-                              "after you looked at it, a commit can't")
+            raise SourceError("Clips Kitty needs the full 40-character commit, not a branch or tag name: a branch "
+                              "or tag can change after you looked at it, a commit can't.")
         out = {"kind": "git", "url": url.strip().rstrip("/"), "commit": commit.strip().lower()}
         path = spec.get("path")
         if path not in (None, "", "."):
             if not isinstance(path, str):
-                raise SourceError("a Git source's path is the folder holding clipskitty.yaml")
-            out["path"] = _safe_relative(path.strip().strip("/"))
+                raise SourceError("its listing or link names its folder in a way Clips Kitty can't read. Its "
+                                  "developer needs to correct the listing or link.")
+            folder = path.strip().strip("/")
+            if folder not in ("", "."):  # "/" is the repository's own top folder
+                problem = _name_problem(folder)
+                if problem:
+                    raise SourceError(_FOLDER_PROBLEMS[problem].format(name=path.strip()))
+                out["path"] = PurePosixPath(folder).as_posix()
         return out
-    raise SourceError(f"unknown kind of source {kind!r}; expected folder or git")
+    raise SourceError(f"Clips Kitty doesn't know how to install from {kind!r}. It installs from a folder on this "
+                      "PC or from a repository's commit.")
 
 
 def describe(source: dict) -> str:
@@ -118,11 +179,13 @@ def describe(source: dict) -> str:
 def plugin_folder(folder: Path) -> Path:
     """The folder to install from: `folder` when clipskitty.yaml is in it,
     else its one subfolder that has clipskitty.yaml (the outer folder Windows
-    makes when it unpacks GitHub's "Download ZIP"), else `folder` as it is."""
+    makes when it unpacks GitHub's "Download ZIP"), else `folder` as it is.
+    A folder it can't read is returned as it is: copy_folder says what it
+    couldn't read."""
     folder = Path(folder)
-    if not folder.is_dir() or _is_link(folder) or (folder / manifest.MANIFEST_FILE).is_file():
-        return folder
     try:
+        if not folder.is_dir() or _is_link(folder) or (folder / manifest.MANIFEST_FILE).is_file():
+            return folder
         inside = [p for p in folder.iterdir()
                   if p.is_dir() and not _is_link(p) and (p / manifest.MANIFEST_FILE).is_file()]
     except OSError:
@@ -133,19 +196,51 @@ def plugin_folder(folder: Path) -> Path:
 # ---- checks shared by every source -------------------------------------------------
 
 
-def _safe_relative(name: str) -> str:
-    """A path from a plugin, as a relative POSIX path, or SourceError."""
+# Why a path can't be installed (_name_problem), said of a file in the
+# plugin, or of the folder a listing or link names (clean_source).
+_FILE_PROBLEMS = {
+    "characters": ("it has a file named {name!r}, and Windows doesn't allow \\ or : in a file name. "
+                   "Its developer needs to rename it."),
+    "outside": ("it names a file outside its own folder ({name!r}), which Clips Kitty doesn't install. "
+                "Its developer needs to fix it."),
+    "git": ("it contains {name!r}, part of a .git folder of version history, which Clips Kitty doesn't install. "
+            "Its developer needs to remove it."),
+    "windows": "it has a file named {name!r}, which Windows can't create. Its developer needs to rename it.",
+}
+_FOLDER_PROBLEMS = {
+    "characters": ("its listing or link names a folder ({name!r}) with \\ or : in its name, which Windows doesn't "
+                   "allow. Its developer needs to correct the listing or link."),
+    "outside": ("its listing or link names a folder ({name!r}) outside its own files. Its developer needs to "
+                "correct the listing or link."),
+    "git": ("its listing or link names a folder ({name!r}) inside a .git folder of version history, which Clips "
+            "Kitty doesn't install. Its developer needs to correct the listing or link."),
+    "windows": ("its listing or link names a folder ({name!r}) that Windows can't create. Its developer needs to "
+                "correct the listing or link."),
+}
+
+
+def _name_problem(name: str) -> str | None:
+    """Why a relative path from a plugin can't be installed (a key of
+    _FILE_PROBLEMS), or None."""
     if "\\" in name or ":" in name or "\0" in name:
-        raise SourceError(f"{name!r}: a file name with \\ or : can't be installed on Windows")
+        return "characters"
     p = PurePosixPath(name)
     if p.is_absolute() or not p.parts or any(part in ("..", ".") for part in p.parts):
-        raise SourceError(f"{name!r}: a path outside the plugin's folder")
+        return "outside"
     for part in p.parts:
         if part.lower() == ".git":
-            raise SourceError(f"{name!r}: a plugin can't contain a .git entry")
+            return "git"
         if _WINDOWS_RESERVED.match(part) or part.endswith((" ", ".")):
-            raise SourceError(f"{name!r}: Windows can't create a file with that name")
-    return p.as_posix()
+            return "windows"
+    return None
+
+
+def _safe_relative(name: str) -> str:
+    """A path from a plugin, as a relative POSIX path, or SourceError."""
+    problem = _name_problem(name)
+    if problem:
+        raise SourceError(_FILE_PROBLEMS[problem].format(name=name))
+    return PurePosixPath(name).as_posix()
 
 
 class _Budget:
@@ -160,12 +255,16 @@ class _Budget:
         self.files += 1
         self.bytes += max(0, size)
         if self.files > MAX_FILES:
-            raise SourceError(f"the plugin has more than {MAX_FILES} files")
+            raise SourceError(f"it has more than {MAX_FILES} files, more than Clips Kitty installs for one "
+                              "pipeline. Its developer needs to make it smaller.")
         if self.bytes > MAX_BYTES:
-            raise SourceError(f"the plugin is larger than {MAX_BYTES // (1024 * 1024)} MB")
+            raise SourceError(f"it's larger than {MAX_BYTES // (1024 * 1024)} MB, more than Clips Kitty installs "
+                              "for one pipeline. Its developer needs to make it smaller.")
         folded = name.lower()
         if folded in self.seen and self.seen[folded] != name:
-            raise SourceError(f"{self.seen[folded]!r} and {name!r} differ only in case, which is one file on Windows")
+            raise SourceError(f"it has two files whose names differ only in capital letters ({self.seen[folded]!r} "
+                              f"and {name!r}), and Windows treats them as one file. Its developer needs to "
+                              "rename one.")
         self.seen[folded] = name
 
 
@@ -185,41 +284,93 @@ def _write(dest: Path, rel: str, data: bytes, executable: bool, warnings: list) 
 
 
 def _is_link(path: Path) -> bool:
-    return path.is_symlink() or bool(getattr(path, "is_junction", lambda: False)())
+    """A symbolic link or a Windows junction. Path.is_junction is Python
+    3.12+, so a junction is read from its reparse tag (st_reparse_tag is only
+    on Windows). Other reparse points, such as OneDrive's placeholders, are
+    ordinary files and folders."""
+    try:
+        return path.is_symlink() or getattr(os.lstat(path), "st_reparse_tag", 0) == _MOUNT_POINT
+    except OSError:
+        return False  # the reads that follow fail, and say so
+
+
+def _shortcut(rel: str, what: str = "file") -> SourceError:
+    return SourceError(f"it contains a shortcut ({rel}), which Clips Kitty doesn't install. Its developer needs to "
+                       f"replace it with the real {what}.")
+
+
+def _not_ordinary(rel: str) -> SourceError:
+    return SourceError(f"it contains {rel}, which isn't an ordinary file or folder, so Clips Kitty doesn't install "
+                       "it. Its developer needs to remove it.")
+
+
+def _no_folder(folder: str) -> SourceError:
+    return SourceError(f"its listing or link points to a folder ({folder}) that isn't in its files. Its developer "
+                       "needs to correct the listing or link.")
+
+
+def _unreadable(rel: str) -> SourceError:
+    return SourceError(f"Clips Kitty couldn't read {rel} in that folder. If another program has it open, close it "
+                       "and try again.")
 
 
 def copy_folder(folder: Path, dest: Path) -> list[str]:
     """Copy a plugin folder into `dest` (which must not exist). `.git` and
     `__pycache__` folders are left out; a symbolic link anywhere refuses it.
-    Returns warnings."""
+    A file or folder it can't read is named. Returns warnings."""
     folder = Path(folder)
-    if not folder.is_dir():
-        raise SourceError(f"{folder} is not a folder")
+
+    def cannot_list(e: OSError):
+        log.warning("Couldn't read the folder %s: %s", e.filename, e)
+        try:
+            name = Path(e.filename).relative_to(folder).as_posix()
+        except (TypeError, ValueError):
+            name = "."
+        name = str(folder) if name == "." else f"{name} in that folder"
+        raise SourceError(f"Clips Kitty couldn't open the folder {name}. Check that you can open it yourself, "
+                          "then try again.") from e
+
+    try:
+        is_folder = folder.is_dir()
+    except OSError as e:
+        cannot_list(e)
+    if not is_folder:
+        raise SourceError(f"there is no folder at {folder}.")
     if _is_link(folder):
-        raise SourceError(f"{folder} is a symbolic link; give the folder it points to")
+        raise SourceError(f"{folder} is a shortcut to another folder. Choose the folder it points to instead.")
+
     budget, warnings, files = _Budget(), [], []
-    for here, dirs, names in os.walk(folder, followlinks=False):
+    for here, dirs, names in os.walk(folder, onerror=cannot_list, followlinks=False):
         base = Path(here)
         for d in list(dirs):
             if _is_link(base / d):
-                raise SourceError(f"{(base / d).relative_to(folder).as_posix()}: symbolic links are not allowed "
-                                  "in a plugin")
+                raise _shortcut((base / d).relative_to(folder).as_posix(), "folder")
             if d in SKIPPED_DIRS:
                 dirs.remove(d)
         for name in names:
             path = base / name
             rel = path.relative_to(folder).as_posix()
-            if _is_link(path):
-                raise SourceError(f"{rel}: symbolic links are not allowed in a plugin")
-            if not path.is_file():
-                raise SourceError(f"{rel}: not a regular file")
-            if name.endswith(".pyc"):
-                continue
-            budget.add(_safe_relative(rel), path.stat().st_size)
+            try:
+                if _is_link(path):
+                    raise _shortcut(rel)
+                if not path.is_file():
+                    raise _not_ordinary(rel)
+                if name.endswith(".pyc"):
+                    continue
+                size = path.stat().st_size
+            except OSError as e:
+                log.warning("Couldn't read %s: %s", path, e)
+                raise _unreadable(rel) from e
+            budget.add(_safe_relative(rel), size)
             files.append((rel, path))
     dest.mkdir(parents=True)
     for rel, path in files:
-        _write(dest, rel, path.read_bytes(), os.access(path, os.X_OK) and os.name != "nt", warnings)
+        try:
+            data = path.read_bytes()
+        except OSError as e:
+            log.warning("Couldn't read %s: %s", path, e)
+            raise _unreadable(rel) from e
+        _write(dest, rel, data, os.access(path, os.X_OK) and os.name != "nt", warnings)
     return warnings
 
 
@@ -235,7 +386,45 @@ def _git_env() -> dict:
     # Never ask for a password: a public plugin needs none, and a prompt would
     # hang the engine where nobody can see it.
     env.update(GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never", GIT_ASKPASS="", SSH_ASKPASS="")
+    # Git's messages in English whatever the PC's language: _git_failure reads them.
+    env["LC_ALL"] = "C"
+    env.pop("LANGUAGE", None)
     return env
+
+
+# What Git says, lower-cased with its quoted addresses and paths taken out, for
+# each kind of failure.
+_GIT_DISK = ("no space left on device", "not enough space on the disk", "disk quota exceeded")
+_GIT_GONE = ("repository not found", "not found", "could not read username", "does not appear to be a git repository",
+             "not our ref", "unadvertised object", "couldn't find remote ref",
+             "returned error: 401", "returned error: 403", "returned error: 404", "returned error: 410")
+_GIT_OFFLINE = ("could not resolve host", "could not resolve proxy", "failed to connect", "connection timed out",
+                "operation timed out", "connection refused", "connection reset", "network is unreachable",
+                "rpc failed", "early eof", "remote end hung up", "gnutls", "schannel", "certificate")
+_GIT_SSL = re.compile(r"(?<![a-z])ssl(?![a-z])")
+
+
+def _git_failure(stderr: str, *, fetching: bool = True) -> str:
+    """The kind of failure (OFFLINE, GONE, DISK or OTHER) Git's error output
+    describes. Lines Git passes on from the server ("remote: ...") can say a
+    repository isn't there, but never what this PC's disk or connection did;
+    an error the server reported is OTHER, not the connection. Only a fetch
+    reaches a repository, so any other command's failure is DISK or OTHER."""
+    lines = [re.sub(r"'[^'\n]*'", "''", line).strip()  # an address or path could hold any word
+             for line in stderr.lower().splitlines()]
+    from_server = [line for line in lines if line.startswith("remote:")]
+    own = "\n".join(line for line in lines if not line.startswith("remote:"))
+    if any(phrase in own for phrase in _GIT_DISK):
+        return DISK
+    if not fetching:
+        return OTHER
+    if any(phrase in text for text in (own, *from_server) for phrase in _GIT_GONE):
+        return GONE
+    if any(line.startswith(("remote: fatal", "remote: error")) for line in from_server):
+        return OTHER  # the server failed, not the connection
+    if any(phrase in own for phrase in _GIT_OFFLINE) or _GIT_SSL.search(own):
+        return OFFLINE
+    return OTHER
 
 
 def _git(git: str, args: list[str], *, cwd: Path, hooks: Path, input: bytes | None = None) -> bytes:
@@ -252,19 +441,23 @@ def _git(git: str, args: list[str], *, cwd: Path, hooks: Path, input: bytes | No
         "-c", "submodule.recurse=false",
         *args,
     ]
+    fetching = args[0] == "fetch"  # the one command that reaches the repository
     try:
         done = subprocess.run(command, cwd=cwd, input=input, capture_output=True, timeout=GIT_TIMEOUT,
                               env=_git_env(), check=False)
     except subprocess.TimeoutExpired as e:
         log.warning("git %s took longer than %d minutes", args[0], GIT_TIMEOUT // 60)
-        raise FetchFailed("Git took too long") from e
+        raise FetchFailed("Git took too long", OFFLINE if fetching else OTHER) from e
     except OSError as e:
         log.warning("git %s could not be started: %s", args[0], e)
-        raise FetchFailed("Git could not be started") from e
+        raise FetchFailed("Git could not be started", OTHER) from e
     if done.returncode != 0:
-        detail = done.stderr.decode("utf-8", "replace").strip().splitlines()
+        stderr = done.stderr.decode("utf-8", "replace")
+        lines = [line for line in stderr.strip().splitlines() if line.strip()]
+        # Git's own "fatal:" and "error:" lines say what happened; advice follows them.
+        detail = [line for line in lines if line.lower().startswith(("fatal:", "error:"))] or lines
         log.warning("git %s failed with code %d: %s", args[0], done.returncode, " / ".join(detail[-3:]))
-        raise FetchFailed("Git failed")
+        raise FetchFailed("Git failed", _git_failure(stderr, fetching=fetching))
     return done.stdout
 
 
@@ -272,10 +465,10 @@ def _read_batch(raw: bytes, count: int) -> list[bytes]:
     """The contents out of `git cat-file --batch` output."""
     out, i = [], 0
     for _ in range(count):
-        end = raw.index(b"\n", i)
-        header = raw[i:end].split(b" ")
-        if len(header) != 3 or header[1] != b"blob":
-            raise SourceError("Git returned something other than a file")
+        end = raw.find(b"\n", i)
+        header = raw[i:end].split(b" ") if end >= 0 else []
+        if len(header) != 3 or header[1] != b"blob" or not header[2].isdigit():
+            raise FetchFailed("Git returned something other than a file", OTHER)
         size = int(header[2])
         start = end + 1
         out.append(raw[start:start + size])
@@ -312,9 +505,11 @@ def fetch_git(url: str, commit: str, dest: Path, *, git: str, folder: str | None
         try:
             kind = _git(git, ["cat-file", "-t", commit], cwd=repo, hooks=hooks).strip()
         except SourceError as e:
-            raise SourceError(f"the repository has no commit {commit[:7]}") from e
+            log.warning("%s has no commit %s", url, commit)
+            raise FetchFailed(f"the repository has no commit {commit[:7]}", GONE) from e
         if kind != b"commit":
-            raise SourceError(f"{commit[:7]} is not a commit")
+            log.warning("%s in %s is not a commit", commit, url)
+            raise FetchFailed(f"{commit[:7]} is not a commit", GONE)
         listing = _git(git, ["ls-tree", "-r", "-z", "--long", "--full-tree", commit], cwd=repo, hooks=hooks)
         budget, entries = _Budget(), []
         for line in filter(None, listing.split(b"\0")):
@@ -324,9 +519,11 @@ def fetch_git(url: str, commit: str, dest: Path, *, git: str, folder: str | None
             if folder and _under(name, folder) is None:
                 continue
             if mode == b"120000":
-                raise SourceError(f"{name}: symbolic links are not allowed in a plugin")
+                raise _shortcut(name)
             if mode == b"160000" or kind == b"commit":
-                raise SourceError(f"{name}: the plugin uses a Git submodule, which Clips Kitty does not fetch")
+                raise SourceError(f"it includes {name}, a folder linked in from another project (a submodule), "
+                                  "which Clips Kitty doesn't download. Its developer needs to put those files in "
+                                  "the pipeline itself.")
             if kind != b"blob":
                 continue
             rel = _under(_safe_relative(name), folder)
@@ -338,7 +535,7 @@ def fetch_git(url: str, commit: str, dest: Path, *, git: str, folder: str | None
                    input=b"".join(sha.encode() + b"\n" for _, sha, _ in entries))
         contents = _read_batch(raw, len(entries))
     if folder and not entries:
-        raise SourceError(f"the commit has no folder {folder}")
+        raise _no_folder(folder)
     warnings: list[str] = []
     dest.mkdir(parents=True)
     for (rel, _sha, executable), data in zip(entries, contents):
@@ -361,7 +558,7 @@ def download(url: str, path: Path, *, limit: int = MAX_BYTES) -> None:
     import urllib.request
 
     if not url.startswith("https://"):
-        raise SourceError("only https:// downloads")
+        raise SourceError("Clips Kitty downloads only from secure (https://) addresses, and this one isn't.")
     request = urllib.request.Request(url, headers={"User-Agent": "Clips-Kitty-plugin-manager"})
     total = 0
     try:
@@ -369,11 +566,12 @@ def download(url: str, path: Path, *, limit: int = MAX_BYTES) -> None:
             while chunk := response.read(1024 * 1024):
                 total += len(chunk)
                 if total > limit:
-                    raise TooLarge(f"the download is larger than {limit // (1024 * 1024)} MB")
+                    raise TooLarge(f"the download is larger than {limit // (1024 * 1024)} MB, the most Clips Kitty "
+                                   "takes. Its developer needs to make it smaller.")
                 out.write(chunk)
-    except OSError as e:
+    except (OSError, http.client.HTTPException) as e:  # IncompleteRead is not an OSError
         log.warning("Couldn't download %s: %s", url, e)
-        raise FetchFailed("the download failed") from e
+        raise FetchFailed("the download failed", failure(e)) from e
 
 
 def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None = None) -> list[str]:
@@ -385,7 +583,8 @@ def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None
         with tarfile.open(archive, "r:gz") as tar:
             stamped = (tar.pax_headers or {}).get("comment")
             if stamped and stamped.strip() != commit:
-                raise SourceError(f"the archive is of commit {stamped.strip()[:7]}, not {commit[:7]}")
+                log.warning("The archive of commit %s is of commit %s", commit, stamped.strip())
+                raise FetchFailed(f"the archive is of commit {stamped.strip()[:7]}, not {commit[:7]}", DAMAGED)
             top = None
             for member in tar:
                 parts = PurePosixPath(member.name).parts
@@ -393,26 +592,27 @@ def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None
                     continue
                 top = top or parts[0]
                 if parts[0] != top:
-                    raise SourceError("the archive is not one repository folder")
+                    log.warning("The archive of commit %s is not one folder: %s and %s", commit, top, parts[0])
+                    raise FetchFailed("the archive is not one repository folder", DAMAGED)
                 if len(parts) == 1 and member.isdir():
                     continue
                 rel = _under(_safe_relative("/".join(parts[1:])), folder)
                 if rel is None or member.isdir():
                     continue
                 if member.issym() or member.islnk():
-                    raise SourceError(f"{rel}: symbolic links are not allowed in a plugin")
+                    raise _shortcut(rel)
                 if not member.isfile():
-                    raise SourceError(f"{rel}: not a regular file")
+                    raise _not_ordinary(rel)
                 if rel.endswith(".pyc") or "__pycache__" in PurePosixPath(rel).parts:
                     continue
                 budget.add(rel, member.size)
                 handle = tar.extractfile(member)
                 entries.append((rel, handle.read() if handle else b"", bool(member.mode & 0o111)))
-    except (tarfile.TarError, OSError, EOFError) as e:
+    except (tarfile.TarError, OSError, EOFError, zlib.error) as e:
         log.warning("Couldn't read the archive of commit %s: %s", commit, e)
-        raise FetchFailed("the downloaded archive could not be read") from e
+        raise FetchFailed("the downloaded archive could not be read", DAMAGED) from e
     if folder and not entries:
-        raise SourceError(f"the commit has no folder {folder}")
+        raise _no_folder(folder)
     dest.mkdir(parents=True)
     for rel, data, executable in entries:
         _write(dest, rel, data, executable, warnings)
@@ -441,11 +641,15 @@ def fetch(source: dict, dest: Path, *, git: str | None = None, fetcher=None) -> 
                 return fetch_git(source["url"], source["commit"], dest, git=git, folder=source.get("path"))
             archive_url = github_archive_url(source["url"], source["commit"])
             if not archive_url:
-                raise SourceError("installing from this address needs Git, which isn't installed on this PC. "
-                                  "Install Git, or install from a folder")
+                raise SourceError("downloading it from this address needs Git, a free program that isn't installed "
+                                  "on this PC. Install Git and try again, or ask its developer to put it on GitHub.")
             with tempfile.TemporaryDirectory(prefix="clipskitty-archive-") as tmp:
                 path = Path(tmp) / "plugin.tar.gz"
-                (fetcher or download)(archive_url, path)
+                try:
+                    (fetcher or download)(archive_url, path)
+                except (OSError, http.client.HTTPException) as e:  # a fetcher other than download()
+                    log.warning("Couldn't download %s: %s", archive_url, e)
+                    raise FetchFailed("the download failed", failure(e)) from e
                 return unpack_archive(path, source["commit"], dest, folder=source.get("path"))
     except SourceError:
         shutil.rmtree(dest, ignore_errors=True)
@@ -453,5 +657,7 @@ def fetch(source: dict, dest: Path, *, git: str | None = None, fetcher=None) -> 
     except OSError as e:
         shutil.rmtree(dest, ignore_errors=True)
         log.warning("Couldn't copy the plugin's files into %s: %s", dest, e)
-        raise SourceError("they couldn't be saved on this PC") from e
-    raise SourceError(f"unknown kind of source {source.get('kind')!r}")
+        if failure(e) == DISK:
+            raise FetchFailed("this PC's disk is full", DISK) from e
+        raise SourceError(NOT_SAVED) from e
+    raise SourceError(f"Clips Kitty doesn't know how to install from {source.get('kind')!r}.")

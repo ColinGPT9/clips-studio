@@ -36,6 +36,7 @@ its own process, because loading some formats runs code.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
 import os
@@ -50,6 +51,7 @@ import urllib.request
 from pathlib import Path, PurePosixPath
 
 from core.paths import discard
+from plugins import sources
 from plugins._sdk import manifest
 
 log = logging.getLogger(__name__)
@@ -127,8 +129,14 @@ def is_pickle(name: str) -> bool:
 
 
 def _url_file_name(url: str) -> str:
-    name = PurePosixPath(urllib.parse.urlsplit(url).path).name
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:120] or "model"
+    """The name a url model's file is saved under: the last part of its
+    address (no ?query or #fragment), made safe. A long name keeps its
+    extension, so is_pickle sees what the validator saw."""
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", PurePosixPath(urllib.parse.urlsplit(url).path).name)
+    if len(name) > 120:
+        suffix = PurePosixPath(name).suffix[:20]
+        name = name[:120 - len(suffix)] + suffix
+    return name if name not in ("", ".", "..") else "model"
 
 
 def _key(ref: dict, file: str) -> str:
@@ -506,45 +514,71 @@ def download(data_dir, ref: dict, *, fetcher=fetch_https, fetch_json=get_json, a
         if reuse is not None:
             sha, size, blob = item["sha256"], reuse.stat().st_size, reuse
         else:
-            tmp_dir.mkdir(parents=True, exist_ok=True)
             part = tmp_dir / f"{secrets.token_hex(8)}.part"
             url = hf_file_url(ref, item["file"]) if ref["source"] == "huggingface" else ref["id"]
             if on_progress:
                 on_progress({"file": item["file"], "index": n, "count": len(info["files"])})
             try:
-                fetcher(url, part)
-                size = part.stat().st_size
-                if size > MAX_FILE_BYTES:
-                    raise ModelError(f"{item['file']} is larger than {MAX_FILE_BYTES // 1024**3} GB")
-                if item["size"] is not None and size != item["size"]:
-                    raise ModelError(f"{item['file']}: got {size} bytes, expected {item['size']}")
-                sha = _sha256_of(part)
-                if item["sha256"] and sha != item["sha256"]:
-                    raise ModelError(f"{item['file']}: its SHA-256 doesn't match what "
-                                     + ("the manifest" if ref["source"] == "url" else "Hugging Face") + " says")
-                blob = (blob_dir / sha) if blob_dir else target
-                blob.parent.mkdir(parents=True, exist_ok=True)
-                if blob.exists():
-                    part.unlink()
-                else:
-                    os.replace(part, blob)
-            except (OSError, urllib.error.URLError) as e:
-                log.warning("Couldn't download %s of %s: %s", item["file"], ref["id"], e)
-                raise ModelError(f"Couldn't download {item['file']}. Check your internet connection and "
-                                 "try again.") from e
+                try:
+                    tmp_dir.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    raise _failed(ref, item, e, saving=True) from e
+                try:
+                    fetcher(url, part)
+                except (OSError, http.client.HTTPException) as e:  # URLError and HTTPError are OSErrors
+                    raise _failed(ref, item, e) from e
+                try:
+                    size = part.stat().st_size
+                    if size > MAX_FILE_BYTES:
+                        raise ModelError(f"{item['file']} is larger than {MAX_FILE_BYTES // 1024**3} GB")
+                    if item["size"] is not None and size != item["size"]:
+                        raise ModelError(f"{item['file']}: got {size} bytes, expected {item['size']}")
+                    sha = _sha256_of(part)
+                    if item["sha256"] and sha != item["sha256"]:
+                        raise ModelError(f"{item['file']}: its SHA-256 doesn't match what "
+                                         + ("the manifest" if ref["source"] == "url" else "Hugging Face") + " says")
+                    blob = (blob_dir / sha) if blob_dir else target
+                    blob.parent.mkdir(parents=True, exist_ok=True)
+                    if blob.exists():
+                        part.unlink()
+                    else:
+                        os.replace(part, blob)
+                except OSError as e:
+                    raise _failed(ref, item, e, saving=True) from e
             finally:
                 discard(part)  # never replaces the error being raised (issue #74)
-        if blob == target:
-            link = None
-        else:
-            link = _link(blob, target)
-        with _lock:
-            index = load_index(data_dir)
-            index["files"][_key(ref, item["file"])] = {
-                "sha256": sha, "size": size, "path": str(target), "blob": str(blob), "link": link,
-                "added": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-            _save_index(data_dir, index)
+        try:
+            link = None if blob == target else _link(blob, target)
+            with _lock:
+                index = load_index(data_dir)
+                index["files"][_key(ref, item["file"])] = {
+                    "sha256": sha, "size": size, "path": str(target), "blob": str(blob), "link": link,
+                    "added": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+                _save_index(data_dir, index)
+        except OSError as e:
+            raise _failed(ref, item, e, saving=True) from e
     return status(data_dir, ref)
+
+
+def _failed(ref: dict, item: dict, error: BaseException, *, saving: bool = False) -> ModelError:
+    """A model file that couldn't be downloaded (or, with `saving`, written
+    to the shared folder), said by what went wrong (sources.failure). What
+    the error says goes to the log, never into the message."""
+    file = item["file"]
+    log.warning("Couldn't %s %s of %s: %s", "save" if saving else "download", file, ref["id"], error)
+    kind = sources.failure(error)
+    if kind == sources.DISK:
+        need = (f" (the file is {size_text(item['size'])})" if item.get("size")
+                else f" (the model is {size_text(ref['size_bytes'])})" if ref.get("size_bytes") else "")
+        return ModelError(f"Couldn't save {file}: this PC's disk is full{need}. Free up some space and try again.")
+    if saving or isinstance(error, PermissionError):
+        return ModelError(f"Couldn't save {file} in Clips Kitty's model folder. {sources.TRY_AGAIN}")
+    if kind == sources.OFFLINE:
+        return ModelError(f"Couldn't download {file}. Check your internet connection and try again.")
+    if kind == sources.GONE:
+        return ModelError(f"Couldn't download {file}: it isn't at its address any more. Ask the pipeline's "
+                          "developer.")
+    return ModelError(f"Couldn't download {file}. {sources.TRY_AGAIN}")
 
 
 # ---- what a plugin gets --------------------------------------------------------------------------
@@ -567,6 +601,10 @@ def for_job(data_dir, data: dict, *, ollama_host: str | None = None, fetch_json=
                 missing.append(f"{model} isn't downloaded yet. Download {ref['id']} on the Models page.")
             elif ref["source"] == "bundled":
                 missing.append(f"{model} isn't part of this copy of Clips Kitty.")
+            elif ref["gated"]:  # no Download button for it (plan()'s problem is GATED)
+                where = " on Hugging Face" if ref["source"] == "huggingface" else ""
+                missing.append(f"{model} is shared only with people its makers give access to{where}, so Clips "
+                               "Kitty can't download it for you yet.")
             else:
                 size = f" ({size_text(ref['size_bytes'])})" if ref["size_bytes"] else ""
                 missing.append(f"{model} isn't downloaded yet. Open Marketplace › Installed and press "

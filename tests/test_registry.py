@@ -193,6 +193,7 @@ def test_the_build_lists_each_plugin_with_what_the_marketplace_shows(reg):
     ("version-mismatch", "the manifest's version is '9.9.9', the listing says '1.0.0'"),
     ("invalid-manifest", "clipskitty.yaml: license: is required"),
     ("no-manifest", "the manifest at commit"),
+    ("reserved-folder", "path: must be a folder inside the repository that Windows can create"),
 ])
 def test_the_build_refuses_a_bad_listing_and_says_why(reg, case, fragment):
     good = ("good", "Good", "utilities", [], [], [], "A good one.")
@@ -229,6 +230,9 @@ def test_the_build_refuses_a_bad_listing_and_says_why(reg, case, fragment):
         reg.listing(name, [("1.0.0", {k: v for k, v in m.items() if k != "license"})])
     elif case == "no-manifest":
         reg.listing(name, [("1.0.0", None)])
+    elif case == "reserved-folder":
+        reg.listing(name, [], raw={"id": f"{OWNER}/{name}", "repository": repo, "path": "plugins/aux",
+                                   "versions": [{"version": "1.0.0", "commit": commit}]})
     index, problems = reg.build()
     assert any(fragment in p for p in problems), problems
     assert [p["id"] for p in index["plugins"]] == ["example-dev/good"]  # the rest still builds
@@ -596,7 +600,7 @@ def test_a_fetched_list_cant_bring_a_bad_download_link_or_website():
     the catalog build does (plugins/catalog.py), and drops a bad one."""
     code = "https://github.com/someone/clipper"
     good = {"github": code, "homepage": "https://clipper.example.org/",
-            "download": "https://get.clipper.example.org/windows"}
+            "download": "https://www.clipper.example.org/windows"}
     bad = [
         {"download": code + "/releases/download/v1.0/clipper.exe"},  # a file, not a page
         {"homepage": "https://clipper.example.org/", "download": "https://elsewhere.example.net/clipper"},
@@ -614,6 +618,69 @@ def test_a_fetched_list_cant_bring_a_bad_download_link_or_website():
         got = by_id[f"apps/bad-{i}"]
         assert got["source"] == {"github": code, **({"homepage": "https://clipper.example.org/"} if i == 1 else {})}
         assert "setup" not in got
+
+
+def test_a_fetched_list_cant_vouch_for_a_download_on_someone_elses_site():
+    """A download on the homepage's site must be on exactly its name or its
+    www twin: a homepage on www.com, www.co.uk or github.io would otherwise
+    vouch for other people's sites, and the app would say the link is in
+    Clips Kitty's list."""
+    code = "https://github.com/someone/clipper"
+    cases = [
+        ("https://www.com/", "https://evil-site.com/get", False),
+        ("https://www.co.uk/", "https://someone-else.co.uk/get", True),
+        ("https://github.io/", "https://someone-else.github.io/get", True),
+        ("https://www.github.io/", "https://someone-else.github.io/get", True),
+        ("https://clipper.example.org/", "https://get.clipper.example.org/windows", True),
+    ]
+    entries = [_entry(f"case-{i}", source={"github": code, "homepage": h, "download": d})
+               for i, (h, d, _) in enumerate(cases)]
+    by_id = {e["id"]: e for e in registry.check_index(_index(catalog=entries))["catalog"]}
+    for i, (homepage, _, homepage_kept) in enumerate(cases):
+        assert by_id[f"apps/case-{i}"]["source"] == {"github": code, **({"homepage": homepage} if homepage_kept else {})}
+
+
+def test_a_fetched_list_cant_make_a_file_look_like_a_page():
+    """source.url gets the same file check as the download link: the card
+    would label a file on GitHub "Code page on GitHub", or elsewhere "Website"."""
+    code = "https://github.com/someone/clipper"
+    files = [code + f"/releases/download/v1/tool{e}" for e in (".exe", ".hta", ".js", ".msu", ".application",
+                                                                 ".vhdx", ".img", ".cab", ".tar")]
+    files += [code + "/releases/download/v1/tool", code + "/releases/latest/download/tool", code + "/raw/main/tool",
+              code + "/archive/refs/tags/v1", code + "/blob/main/tool?raw=true",
+              "https://raw.githubusercontent.com/someone/clipper/main/tool"]
+    entries = [
+        *(_entry(f"on-github-{i}", source={"github": code, "url": url}) for i, url in enumerate(files)),
+        _entry("only-a-file", source={"url": "https://example.com/setup.exe"}),
+        _entry("disguised", source={"github": code, "url": "https://example.com/app.exe%00"}),
+        _entry("a-page", source={"github": code, "url": code + "#how-to-use-it"}),
+    ]
+    by_id = {e["id"]: e for e in registry.check_index(_index(catalog=entries))["catalog"]}
+    for i in range(len(files)):
+        assert by_id[f"apps/on-github-{i}"]["source"] == {"github": code}, files[i]
+    assert "apps/only-a-file" not in by_id  # nothing left to open
+    assert by_id["apps/disguised"]["source"] == {"github": code}
+    assert by_id["apps/a-page"]["source"] == {"github": code, "url": code + "#how-to-use-it"}
+
+
+def test_a_fetched_list_cant_vouch_with_a_homepage_on_a_site_many_people_share():
+    """On GitLab, Codeberg, SourceForge, Google Sites and the like, strangers'
+    pages share one website name: a homepage there is dropped, and so is a
+    download that only the homepage would allow."""
+    code = "https://github.com/someone/clipper"
+    cases = [
+        ("https://gitlab.com/someone/clipper", "https://gitlab.com/someone-else/tool/-/releases"),
+        ("https://codeberg.org/someone/clipper", "https://codeberg.org/someone-else/tool/releases"),
+        ("https://bitbucket.org/someone/clipper", "https://bitbucket.org/someone-else/tool/downloads/"),
+        ("https://sourceforge.net/projects/clipper/", "https://sourceforge.net/projects/someone-else/files/"),
+        ("https://sites.google.com/view/clipper", "https://sites.google.com/view/someone-else"),
+        ("https://www.dropbox.com/sh/clipper", "https://www.dropbox.com/sh/someone-else"),
+    ]
+    entries = [_entry(f"case-{i}", source={"github": code, "homepage": h, "download": d})
+               for i, (h, d) in enumerate(cases)]
+    by_id = {e["id"]: e for e in registry.check_index(_index(catalog=entries))["catalog"]}
+    for i in range(len(cases)):
+        assert by_id[f"apps/case-{i}"]["source"] == {"github": code}
 
 
 def test_the_online_list_adds_directory_entries_and_sections_but_not_the_projects_own(tmp_path):
@@ -711,6 +778,10 @@ def test_a_failed_check_says_why_in_plain_words_and_keeps_details_out(tmp_path):
         (raising(TimeoutError("timed out")), registry.WHY_OFFLINE),
         (huge, registry.WHY_TOO_LARGE),
         (not_json, registry.WHY_UNREADABLE),
+        # as sources.download reports a connection that broke off, a full disk and a file it couldn't write
+        (raising(sources.FetchFailed("the download failed", sources.OFFLINE)), registry.WHY_OFFLINE),
+        (raising(sources.FetchFailed("the download failed", sources.DISK)), registry.WHY_NOT_SAVED),
+        (raising(sources.FetchFailed("the download failed", sources.OTHER)), registry.WHY_NOT_SAVED),
     ]
     for fetcher, why in cases:
         (status,) = registry.refresh(tmp_path / "data", [url], fetcher=fetcher)
@@ -780,9 +851,9 @@ def test_a_plugin_in_a_folder_of_its_repository_installs_from_git(tmp_path, plug
     folder = store.get(data, "fixture-dev/manager-test").folder
     assert sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()) == [
         "clipskitty.yaml", "src/main.py"]
-    with pytest.raises(manager.ManagerError, match="the commit has no folder plugins/two"):
+    with pytest.raises(manager.ManagerError, match=r"points to a folder \(plugins/two\) that isn't in its files"):
         manager.plan(data, {**source, "path": "plugins/two"}, app_version=APP)
-    with pytest.raises(manager.ManagerError, match="outside the plugin's folder"):
+    with pytest.raises(manager.ManagerError, match=r"names a folder \('\.\./elsewhere'\) outside its own files"):
         manager.plan(data, {**source, "path": "../elsewhere"}, app_version=APP)
 
 

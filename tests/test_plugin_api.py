@@ -304,7 +304,8 @@ def test_install_counting_can_be_switched_off_and_skips_updates(tmp_path, monkey
 
     publish(None)  # no counter address: nothing is sent, whatever the setting
     state = client.get("/marketplace/counting").json()
-    assert state["enabled"] is True and state["active"] is False and "no ID" in state["text"]
+    assert state["enabled"] is True and state["active"] is False and state["text"] == counter.EXPLAIN
+    assert "no ID" in state["text"] and "pipeline" in state["text"] and "plugin" not in state["text"]
     assert install("1.0.0")["counted"] is False
     client.delete("/plugins/example-dev/counted", headers=HEADERS)
     publish("https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/{asset}")
@@ -319,7 +320,8 @@ def test_install_counting_can_be_switched_off_and_skips_updates(tmp_path, monkey
     client.delete("/plugins/example-dev/counted", headers=HEADERS)
     assert install("1.1.0")["counted"] is False
     assert counted == ["https://github.com/ColinGPT9/awesome-clips-kitty/releases/download/installs/example-dev__counted.count"]
-    # Settings can switch it off for everyone on the PC, whatever was chosen.
+    # settings.yaml can switch it off, whatever was chosen. An installed app keeps that file in each
+    # Windows account's own app-data folder (core/paths.py), so this is one account's switch, not the PC's.
     counter.set_enabled(data_dir, True)
     assert counter.enabled(data_dir, {"plugins": {"count_installs": False}}) is False
     assert counter.count_install(data_dir, {"plugins": {"count_installs": False}},

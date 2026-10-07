@@ -33,7 +33,9 @@ from plugins import catalog, store
 PREFS_FILE = "counting.json"
 DEFAULT_ON = True
 TIMEOUT = 10
-EXPLAIN = ("Each install from the Marketplace adds one to a public count for that plugin, kept by GitHub. "
+# Shown to creators, through the screen's translations (ui/src/renderer/src/locales/*.json): a
+# change here needs the same key changed in every locale file.
+EXPLAIN = ("Each install from the Marketplace adds one to a public count for that pipeline, kept by GitHub. "
            "Clips Kitty sends no account, no ID and nothing about your videos; GitHub sees the request as it "
            "sees any download.")
 
@@ -52,8 +54,10 @@ def chosen(data_dir) -> bool | None:
 
 
 def enabled(data_dir, config: dict | None = None) -> bool:
-    """Whether installs are counted: settings can switch it off for everyone
-    on this PC; otherwise the person's choice; otherwise the default."""
+    """Whether installs are counted: settings can switch it off (the
+    settings.yaml core/paths.py gives this Windows account, so another account
+    on the same PC has its own); otherwise the person's choice; otherwise the
+    default."""
     if ((config or {}).get("plugins") or {}).get("count_installs") is False:
         return False
     choice = chosen(data_dir)

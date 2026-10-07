@@ -183,6 +183,13 @@ function CatalogLink({
   )
 }
 
+/** "owner/name" for a listing's code on GitHub (every list's listings have
+ *  one, plugins/registry.py), or "" for anything else. */
+function githubName(url: string | undefined): string {
+  const m = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(url ?? '')
+  return m ? `${m[1]}/${m[2]}` : ''
+}
+
 /** The projects a plugin builds on, with their licences: the credit their
  *  licences ask for, and what a user should know about where it comes from. */
 function BuiltOn({ items }: { items: BasedOn[] | undefined }): JSX.Element | null {
@@ -500,6 +507,8 @@ function ListingPage({
     JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort())
   const settings = Object.entries(listing.settings ?? {})
   const checks = checkLines(listing.checks)
+  const official = listing.details?.tier === 'listed-official'
+  const code = githubName(listing.repository)
   const works = rangeText(chosen?.requires?.clips_kitty)
   const testedWith = chosen?.tested_with
   // A list from elsewhere can give anything here, so a bad item reads oddly rather than breaking the page.
@@ -521,7 +530,9 @@ function ListingPage({
         <div>
           <h3 className="text-xl font-bold">{listing.name}</h3>
           <p className="text-sm text-muted">
-            {listing.id} · {t('by')} {listing.author?.name ?? listing.publisher}
+            {/* The id alone: its publisher part is what the list build checked. The author's name is
+                the developer's own words, shown only under "Where it comes from" as theirs. */}
+            {listing.id}
             {listing.license ? ` · ${t('licence')} ${listing.license}` : ''}
             {listing.category ? ` · ${categoryLabel(listing.category)}` : ''}
           </p>
@@ -599,9 +610,20 @@ function ListingPage({
 
         <div className="text-sm">
           <p className="label mb-1">{t('Where it comes from')}</p>
+          {/* The code's address is what the list build checked (the developer owns it, the version is on
+              its branch); the author's name is the developer's own words, checked only for length. */}
           <p>
-            {t('Made by')} {listing.author?.name ?? listing.publisher}. {t(listedInText(listing.index, online, Date.now()))}
+            {code && `${t('Its code is on GitHub at')} ${code}. `}
+            {t(listedInText(listing.index, online, Date.now()))}
           </p>
+          {listing.author?.name && (
+            <p>
+              {t('Its developer gives their name as')} {listing.author.name}.
+            </p>
+          )}
+          {/* An Official listing's code is the Clips Kitty project's own, so the "nobody at Clips Kitty
+              has read it" line is left out there. A Community listing always says something about
+              checks, even none, because the Browse footer sends people here to read them. */}
           {checks.length > 0 && (
             <ul className="text-xs text-muted mt-1">
               <li>
@@ -615,8 +637,17 @@ function ListingPage({
                   {!c.ok && ` (${t('not passed')})`}
                 </li>
               ))}
-              <li>{t('These checks are automatic. Nobody has read this pipeline’s code.')}</li>
+              {!official && (
+                <li>{t('These checks are automatic. Nobody at Clips Kitty has read this pipeline’s code.')}</li>
+              )}
             </ul>
+          )}
+          {checks.length === 0 && !official && (
+            <p className="text-xs text-muted mt-1">
+              {t(
+                'This list doesn’t report any automatic checks that Clips Kitty knows about. Nobody at Clips Kitty has read this pipeline’s code.'
+              )}
+            </p>
           )}
           <TechnicalDetails
             rows={[
@@ -874,7 +905,8 @@ function CountingNote({ manage }: { manage: boolean }): JSX.Element | null {
         />
         <span>
           {t('Count my installs')}. {t(state.text)}
-          {state.locked_off && ` ${t('Switched off for everyone on this PC.')}`}
+          {/* plugins.count_installs is in this Windows account's own settings.yaml (core/paths.py), not the whole PC's. */}
+          {state.locked_off && ` ${t('Switched off in your Clips Kitty settings file.')}`}
           {!state.active && ` ${t('Nothing is counted yet: Clips Kitty’s list doesn’t count installs yet.')}`}
         </span>
       </label>
@@ -1174,7 +1206,7 @@ function Browse({
           {refreshNote && <p>{refreshNote}</p>}
           <p>
             {t(
-              'Community: made by someone outside the Clips Kitty project. Clips Kitty checked its listing automatically; nobody has read its code. ✓ Compatible: Clips Kitty installed this version and ran it on a test video without errors. That is not a safety check. Browsing here tells nobody what you look at.'
+              'Community: made by someone outside the Clips Kitty project. Its page says which automatic checks its list reports. Nobody at Clips Kitty has read its code. ✓ Compatible: Clips Kitty installed this version and ran it on a test video without errors. That is not a safety check. Browsing here tells nobody what you look at.'
             )}
           </p>
           <OnlineListNote manage={manage} online={data.online} />
@@ -1783,8 +1815,13 @@ function InstallDialog({
       missing.push(t('It needs a key. Add it under Installed.'))
     const own = models?.models.filter((m) => m.used_by.some((u) => u.plugin === done.id))
     if (done.details.models.length > 0 && (!own || own.some((m) => m.installed !== true)))
-      missing.push(t('Some of its AI models may not be on this PC yet. Installed shows which, and how to get them.'))
+      missing.push(
+        t('Some of its AI models may not be on this PC yet. Installed shows which ones, and whether Clips Kitty can download them.')
+      )
   }
+  // An update or reinstall keeps the creator's Off switch (plugins/manager.py),
+  // and the Generate bar offers only pipelines that are on. A missing field is on.
+  const switchedOff = done?.enabled === false
   return (
     <div
       className="fixed inset-0 z-50 bg-base/80 backdrop-blur-sm grid place-items-center p-6"
@@ -1878,18 +1915,20 @@ function InstallDialog({
             <p className="text-success">
               ✓ {done.name} {done.version} {t('is installed.')}
             </p>
-            {missing.length === 0 ? (
+            {switchedOff && (
+              <p className="text-warn">{t('It is switched off, so the Generate bar doesn’t offer it. Switch it on under Installed.')}</p>
+            )}
+            {missing.length === 0 && !switchedOff && (
               <p>
                 {t('Ready. Add a video in the Generate bar, tick Pipeline and choose')} {done.name}.{' '}
                 {t('It runs only for the videos you choose it for.')}
               </p>
-            ) : (
-              missing.map((m) => (
-                <p key={m} className="text-warn">
-                  {m}
-                </p>
-              ))
             )}
+            {missing.map((m) => (
+              <p key={m} className="text-warn">
+                {m}
+              </p>
+            ))}
           </div>
         )}
         <div className="flex justify-end gap-2">

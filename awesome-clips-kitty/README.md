@@ -15,7 +15,7 @@ This is a curated directory, not a list of everything: a maintainer checks each 
 - **✓ Official**: made and maintained by the Clips Kitty project.
 - **✓ Compatible**: this version passed Clips Kitty's automated checks (its manifest is valid, it installs, its requirements are met, and it runs on a sample video and gives an answer Clips Kitty accepts). A technical label, not a security review.
 - **★ Featured**: picked by hand by a maintainer.
-- Everything else is **Community**: made by someone outside the project, and nobody has reviewed its code.
+- Everything else is **Community**: made by someone outside the project, and nobody at Clips Kitty has read its code.
 
 The numbers measure different things and are never added together: Clips Kitty installs, stars on GitHub, and a model's Hugging Face downloads. Every project keeps its own licence, shown like `MIT`, with a licence note where its models or parts have other terms. A ⚠ marks what to know before using a project: it sends your videos, audio or transcripts to an online service by default, downloads from sites whose terms may not allow it, has usage tracking switched on, or is archived or has had no commits for over a year.
 

@@ -12,18 +12,20 @@ What goes wrong with plugins most often, what the message means, and what to do.
 
 | Message | Why | Fix |
 |---|---|---|
-| "a Git source needs the full 40-character commit hash" | A branch or tag can change after you looked at it. | Use the commit (on GitHub, the long hash on the commit page). Pasting a GitHub link ending in `/tree/<commit>` fills it in. |
-| "Couldn't download this pipeline. Check your internet connection and try again." | No connection, or Git or the download failed: a repository that doesn't exist or is private fails this way too. What Git or the download said is in Clips Kitty's log. | Check the address, and that the repository is public. |
-| "Couldn't get the pipeline's files: the repository has no commit …" | The commit hasn't been pushed. | Push it; listed plugins must be public at that commit. |
+| "Couldn't install this pipeline: Clips Kitty needs the full 40-character commit, not a branch or tag name …" | A branch or tag can change after you looked at it. | Use the commit (on GitHub, the long hash on the commit page). Pasting a GitHub link ending in `/tree/<commit>` fills it in. |
+| "Couldn't download this pipeline. Check your internet connection and try again." | No connection, a timeout, or a connection that broke off. What Git or the download said is in Clips Kitty's log. | Check the connection and try again. |
+| "Couldn't download this pipeline: its files aren't where its listing or link says any more. …" | The repository doesn't exist at that address, is private, or hasn't got that commit (not pushed yet, or gone after a force-push). Git's or GitHub's own words are in Clips Kitty's log. | Check the address and the commit, and that the repository is public; listed plugins must be public at that commit. |
+| "Couldn't save this pipeline: this PC's disk is full. …", "Couldn't download this pipeline: the download arrived damaged. …", "Couldn't download this pipeline. Try again; if it happens again, send a bug report …" | A full disk; GitHub's archive that couldn't be unpacked or is of another commit; anything else Git or the download reported. The details are in Clips Kitty's log. | Free up space, or try again. |
 | "The folder you chose (…) has no clipskitty.yaml in it." | The folder isn't the plugin's own. A folder whose one subfolder has `clipskitty.yaml` (what Windows makes of GitHub's "Download ZIP") is installed from that subfolder. | Choose the folder that holds `clipskitty.yaml`. |
-| "…: symbolic links are not allowed in a plugin", "…: the plugin uses a Git submodule, which Clips Kitty does not fetch" | Links and submodules can point outside the plugin. | Commit the files themselves. |
-| "the commit has no folder …" | The listing or link names a subfolder that isn't there at that commit. | Check `path` in your listing, or the folder box. |
+| "Couldn't install this pipeline: it contains a shortcut (…), which Clips Kitty doesn't install. …", "…: it includes …, a folder linked in from another project (a submodule), which Clips Kitty doesn't download. …" | Symbolic links (and Windows junctions) and submodules can point outside the plugin. | Commit the files themselves. |
+| "Couldn't install this pipeline: its listing or link points to a folder (…) that isn't in its files. …" | The listing or link names a subfolder that isn't there at that commit. | Check `path` in your listing, or the folder box. |
+| "Couldn't install this pipeline: Clips Kitty couldn't read … in that folder. …" | Installing from a folder: another program (an editor, antivirus, a cloud-sync app) had that file locked, or a cloud copy didn't download. | Close the program, or make the file available offline, and try again. |
 | "Some of this pipeline's files couldn't be downloaded, so it may not work." (a warning; Technical details names each file: "… is stored with Git LFS, which Clips Kitty does not fetch") | Large files in Git LFS are not fetched; the plugin gets the small pointer file. | Reference big files as models instead ([Model references](model-references.md)). |
 | "Can't install: … needs Clips Kitty …" | `requires.clips_kitty` excludes this version. | Update Clips Kitty, or widen the range if your plugin works ([Versioning](versioning.md)). |
 | "the listing says version …, the files say …" | A registry listing and the manifest at its commit disagree. | Fix the listing or tag a new commit. |
 | "This install plan has expired or was already used" | Plans last an hour and are used once. | Look at the pipeline again. |
 | "This needs the X-Clips-Kitty-Session header" | Installing and changing plugins needs the app's session secret. | Use the desktop app, or send the header from a script ([`docs/API.md` › Plugins](../API.md#plugins)). |
-| "installing from this address needs Git, which isn't installed on this PC" | Without Git, Clips Kitty can only fetch GitHub's archive of a commit. | Install Git, or host on GitHub. |
+| "…: downloading it from this address needs Git, a free program that isn't installed on this PC. …" | Without Git, Clips Kitty can only fetch GitHub's archive of a commit. | Install Git, or host on GitHub. |
 
 ## Adding a video with a pipeline
 
@@ -47,6 +49,7 @@ What goes wrong with plugins most often, what the message means, and what to do.
 | "… gave an answer Clips Kitty can't use: …" | `result.json` broke the contract: a range outside the video, end before start, a score outside 0-100, too many ranges. | The message names the field. `Job.add_range` and `Job.finish` check the same rules as you go, except the video's length, which Clips Kitty checks when it reads the result. |
 | "… took longer than its … minute limit, so Clips Kitty stopped it." | `run.timeout_minutes` (default 60, at most 24 hours). | Raise it in your manifest if your pipeline is slow on long videos. |
 | "… can't run. Its AI model '…' isn't downloaded yet. …" | A model in your manifest hasn't been downloaded (in Ollama's case, on the Models page). | Download it in Marketplace › Installed, or on the Models page for an Ollama model. Give `size_bytes` and the message shows the size. |
+| "… can't run. Its AI model '…' is shared only with people its makers give access to on Hugging Face, so Clips Kitty can't download it for you yet." | The model is gated (`gated: true`), and Clips Kitty doesn't sign in to Hugging Face yet. | Choose an ungated model. |
 | "the pipeline … can't run here: it needs Clips Kitty …" | An app update left the plugin's version range behind. | Install a newer version of the plugin. |
 | "the pipeline … is blocked: …" | The version is on a registry block list. | Remove it in the Marketplace; install a version that isn't blocked. |
 | No moments found | Your plugin returned no ranges. | Normal for a video without what it looks for; `job.finish(notes=...)` lets you say why in the log. |
@@ -59,7 +62,9 @@ A plugin's own Python packages are not installed by Clips Kitty yet (planned). U
 |---|---|
 | "… is in a pickle format, which can run code when it is loaded. Confirm to download it." | Tick the box in the download dialog if you trust it; better, use a safetensors or ONNX file. |
 | "Its makers share this model only with people who sign in to Hugging Face and are given access. …" | The model is gated, and Clips Kitty doesn't sign in to Hugging Face yet. Choose an ungated model. |
-| "Couldn't download … Check your internet connection and try again." | The download failed; what went wrong is in Clips Kitty's log. Try again. |
+| "Couldn't download … Check your internet connection and try again." | No connection, a timeout, or a connection that broke off; what went wrong is in Clips Kitty's log. Try again. |
+| "Couldn't download …: it isn't at its address any more. Ask the pipeline's developer." | The address answered 401, 403, 404 or 410: the file was moved, removed or made private. Fix the address (or the commit) in your manifest. |
+| "Couldn't save …: this PC's disk is full …", "Couldn't save … in Clips Kitty's model folder. …" | The download arrived but couldn't be written to Clips Kitty's shared model folder. Free up space, or send a bug report from Feedback. |
 | "…: its SHA-256 doesn't match …", "got … bytes, expected …" | The file changed or the download broke. Try again; if it persists, the manifest's checksum is wrong. |
 | Marketplace says the model is "stored twice" | Windows refused a link, so the file was copied. It works; it takes the space twice. Turning on Windows Developer Mode allows links. |
 
