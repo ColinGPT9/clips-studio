@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('studio', {
   // hosts are permitted, so this cannot be used to launch arbitrary URLs.
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke('open-external', url),
+  // The session secret the engine's plugin-manager routes ask for, in an
+  // X-Clips-Kitty-Session header. Given only to this app's own pages.
+  pluginSession: (): Promise<string> => ipcRenderer.invoke('plugin-session'),
   // Whether closing the window keeps Clips Kitty running in the tray, for
   // watched channels. Off unless turned on; the main process remembers it.
   tray: {

@@ -11,6 +11,7 @@ import {
   shell
 } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { setupUpdater } from './updater'
@@ -30,6 +31,14 @@ const OLLAMA_HOST = `127.0.0.1:${OLLAMA_PORT}`
 
 let backend: ChildProcess | null = null
 let ollama: ChildProcess | null = null
+
+// The engine's plugin-manager routes (install, turn on and off, remove) need
+// this in an X-Clips-Kitty-Session header, so a web page or a stray script
+// can't drive them. New at each start; only this app's own window is given
+// it. A developer running the engine separately (BACKEND_EXTERNAL=1) sets the
+// same CLIPS_KITTY_SESSION_SECRET in both terminals. It is not a password
+// against software already running as the user: see plugins/session.py.
+const SESSION_SECRET = process.env.CLIPS_KITTY_SESSION_SECRET || randomBytes(32).toString('hex')
 
 // ---- keep watching in the tray (opt-in) ------------------------------------
 //
@@ -210,7 +219,8 @@ function startBackend(): void {
   const backendEnv: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONIOENCODING: 'utf-8',
-    PYTHONUTF8: '1'
+    PYTHONUTF8: '1',
+    CLIPS_KITTY_SESSION_SECRET: SESSION_SECRET
   }
 
   // Packaged builds run their own Ollama on a private port, so the engine has
@@ -586,6 +596,17 @@ ipcMain.handle('read-clipboard-key', () => {
 })
 
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))
+
+// The plugin-manager session secret, for this app's own pages only: the
+// window loads the bundled renderer (file:) or, in development, the Vite
+// server, and anything else asking gets nothing.
+ipcMain.handle('plugin-session', (event) => {
+  const url = event.senderFrame?.url ?? ''
+  const own =
+    url.startsWith('file:') ||
+    (!!process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL))
+  return own ? SESSION_SECRET : ''
+})
 
 // Folder picker for choosing where exported clips are saved.
 ipcMain.handle('pick-folder', async () => {

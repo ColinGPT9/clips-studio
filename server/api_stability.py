@@ -38,6 +38,7 @@ SECTIONS = {
     "integrations": ("Streamer integrations", "streamer-integrations"),
     "automation": ("Watched channels", "watched-channels"),
     "events": ("WebSocket events", "websocket-events"),
+    "plugins": ("Plugins", "plugins"),
 }
 
 # (method, path) -> (label, section, what it is for). WS marks the WebSocket.
@@ -121,6 +122,18 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     # docs/API.md documents this under thumbnails and also lists it among the
     # YouTube routes that "may change", so it is promised no more than that.
     ("POST", "/clips/{clip_id}/thumbnail"): (EXPERIMENTAL, "integrations", "Choose a clip's thumbnail."),
+    # The plugin platform (plugins/api.py). Experimental while it is new; the
+    # routes that change what is installed need the X-Clips-Kitty-Session header.
+    ("GET", "/plugins"): (EXPERIMENTAL, "plugins", "Installed plugins with their versions, permissions and state, and the built-in modes."),
+    ("POST", "/plugins/plan"): (EXPERIMENTAL, "plugins", "Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header."),
+    ("POST", "/plugins/install"): (EXPERIMENTAL, "plugins", "Install what a plan fetched. Session header."),
+    ("POST", "/plugins/{publisher}/{name}/enable"): (EXPERIMENTAL, "plugins", "Turn a plugin on. Session header."),
+    ("POST", "/plugins/{publisher}/{name}/disable"): (EXPERIMENTAL, "plugins", "Turn a plugin off. Session header."),
+    ("POST", "/plugins/{publisher}/{name}/rollback"): (EXPERIMENTAL, "plugins", "Go back to the version installed before. Session header."),
+    ("POST", "/plugins/{publisher}/{name}/pin"): (EXPERIMENTAL, "plugins", "Stop update offers for a plugin. Session header."),
+    ("POST", "/plugins/{publisher}/{name}/unpin"): (EXPERIMENTAL, "plugins", "Offer a plugin's updates again. Session header."),
+    ("DELETE", "/plugins/{publisher}/{name}"): (EXPERIMENTAL, "plugins", "Remove a plugin, its files and its stored keys. Session header."),
+    ("PUT", "/plugins/{publisher}/{name}/secrets"): (EXPERIMENTAL, "plugins", "Store a plugin's secret settings. Session header."),
 }
 
 

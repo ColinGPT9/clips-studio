@@ -1,26 +1,36 @@
 """Installed plugins, as the plugin manager leaves them on disk.
 
     <data_dir>/plugins/
-        installed.json                     what is installed, active and enabled
-        <publisher>/<name>/<version>/      one folder per installed version
-        envs/<publisher>/<name>/<version>/ a version's own Python packages, if any
-        runs/                              the job folders of recent runs
+        installed.json                               what is installed, active and enabled
+        installed/<publisher>/<name>/<version>/      one folder per installed version
+        envs/<publisher>/<name>/<version>/           a version's own Python packages (planned)
+        staging/                                     files fetched for an install plan, until installed
+        runs/                                        the job folders of recent runs
+        session.secret                               the plugin-manager routes' session secret
 
 installed.json:
 
     {"format": 1,
      "plugins": {"example-dev/example-pipeline": {
-         "active": "1.0.0", "enabled": true, "pinned": false,
-         "versions": {"1.0.0": {"folder": "example-dev/example-pipeline/1.0.0",
+         "active": "1.0.0", "previous": "0.9.0", "enabled": true, "pinned": false,
+         "versions": {"1.0.0": {"folder": "installed/example-dev/example-pipeline/1.0.0",
                                 "source": {"kind": "git", "url": "...", "commit": "..."},
-                                "tier": "listed", "installed_at": "...", "python": null}}}}}
+                                "tier": "listed", "installed_at": "...", "python": null},
+                      "0.9.0": {...}}}}}
+
+`previous` is the version Roll back returns to; only the active and previous
+versions are kept.
 
 This module only reads. Installing, updating and removing are the plugin
 manager's (plugins/manager.py), which writes the file atomically.
+
+`requires.clips_kitty` is checked here as well as at install, so a plugin an
+app update leaves behind is refused with a reason instead of failing oddly.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -46,6 +56,28 @@ def load(data_dir) -> dict:
     except (OSError, ValueError):
         pass
     return {"format": 1, "plugins": {}}
+
+
+@functools.lru_cache(maxsize=1)
+def app_version() -> str:
+    """This Clips Kitty's version (ui/package.json, as GET /health reports it), or "?"."""
+    from server.feedback import _app_version
+
+    return str(_app_version().get("app") or "?")
+
+
+def compatibility_problem(manifest_data: dict, version: str | None = None) -> str | None:
+    """Why a plugin can't run on this Clips Kitty, or None. An unknown app
+    version is not held against the plugin."""
+    spec = (manifest_data.get("requires") or {}).get("clips_kitty")
+    version = version or app_version()
+    if not isinstance(spec, str) or not VERSION_RE.match(version):
+        return None
+    try:
+        ok = manifest.version_satisfies(version, spec)
+    except ValueError:
+        return f"its Clips Kitty version range {spec!r} can't be read"
+    return None if ok else f"it needs Clips Kitty {spec}, and this is {version}"
 
 
 def read_manifest(folder: Path) -> dict:
@@ -132,5 +164,8 @@ def installed_choice(data_dir, choice: dict) -> Installed:
         raise ValueError(f"the pipeline {wanted} isn't installed")
     if not plugin.enabled:
         raise ValueError(f"the pipeline {plugin.name} is turned off; turn it on in Plugins first")
+    problem = compatibility_problem(plugin.manifest)
+    if problem:
+        raise ValueError(f"the pipeline {plugin.name} can't run here: {problem}")
     host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
     return plugin

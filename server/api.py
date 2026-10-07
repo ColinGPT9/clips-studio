@@ -700,6 +700,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     ai_api.install(app, config=config, db=db, data_dir=data_dir, settings_path=settings_path)
 
+    # Plugins: install, turn on and off, roll back and remove community
+    # pipelines (plugins/api.py). Its own module, the same way; the routes
+    # that change what is installed need the desktop app's session secret.
+    from plugins import api as plugins_api
+
+    plugins_api.install(app, data_dir=data_dir, app_version=app_version)
+
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
     from server import integrations

@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-176 routes: **60 stable**, **5 experimental**, 111 internal.
+186 routes: **60 stable**, **15 experimental**, 111 internal.
 
 | Label | Promise |
 |---|---|
@@ -153,6 +153,23 @@ Details: [`docs/API.md` › WebSocket events](../API.md#websocket-events).
 | Route | Label | What it is for |
 |---|---|---|
 | `WS /ws` | stable | Job, progress, queue, model and publishing events. |
+
+## Plugins
+
+Details: [`docs/API.md` › Plugins](../API.md#plugins).
+
+| Route | Label | What it is for |
+|---|---|---|
+| `GET /plugins` | experimental | Installed plugins with their versions, permissions and state, and the built-in modes. |
+| `POST /plugins/install` | experimental | Install what a plan fetched. Session header. |
+| `POST /plugins/plan` | experimental | Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header. |
+| `DELETE /plugins/{publisher}/{name}` | experimental | Remove a plugin, its files and its stored keys. Session header. |
+| `POST /plugins/{publisher}/{name}/disable` | experimental | Turn a plugin off. Session header. |
+| `POST /plugins/{publisher}/{name}/enable` | experimental | Turn a plugin on. Session header. |
+| `POST /plugins/{publisher}/{name}/pin` | experimental | Stop update offers for a plugin. Session header. |
+| `POST /plugins/{publisher}/{name}/rollback` | experimental | Go back to the version installed before. Session header. |
+| `PUT /plugins/{publisher}/{name}/secrets` | experimental | Store a plugin's secret settings. Session header. |
+| `POST /plugins/{publisher}/{name}/unpin` | experimental | Offer a plugin's updates again. Session header. |
 
 ## Internal
 
