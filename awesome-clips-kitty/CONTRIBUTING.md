@@ -73,10 +73,13 @@ source:                                  # required: at least one of github, hug
   path: tools/clipper                    # optional: a folder in that repository
   huggingface: example-org/example-model # a model's home
   url: https://example.org               # a home page, or the source when it isn't on GitHub
+  homepage: https://example.org/         # optional: the project's own website
+  download: https://github.com/example-org/example-clipper/releases/latest   # optional: the page people download it from
 models:                                  # optional: Hugging Face models it uses
   - huggingface: example-org/example-model
 platforms: [windows, macos, linux]       # optional: windows, macos, linux, web, android, ios
 runs: local                              # optional: local, cloud or both
+setup: installer                         # optional: installer (download and run it) or technical (command line or Python)
 tags: [subtitles, face tracking]         # optional: up to 10 short words people search for
 games: [example-game]                    # optional: games it covers
 sports: [soccer]                         # optional: sports it covers
@@ -88,6 +91,23 @@ checked: 2026-10-07                      # set by a maintainer once it meets the
 ```
 
 GitHub is the home of code: source, issues, discussions and releases. Hugging Face is the home of model weights: a model entry's `source` is its Hugging Face repository, and an app or pipeline names the models it uses with `models:`. Hugging Face is never the place an app or plugin is listed from.
+
+### Download pages and websites
+
+Clips Kitty is made for creators first, and a GitHub page is hard to use for someone who doesn't write code. When a project has a page where people download it, or a website of its own, add them. Each app, model, workflow, integration and tool gets one button in the Marketplace, which opens the first of these the entry has: `download` ("Download from <site>"), `homepage` ("Website"), `github` ("Code page on GitHub"), `huggingface` ("Model page on Hugging Face"), then `url` ("Website"). The README links an entry's name in the same order. Clips Kitty doesn't install these entries: the button opens the page in the browser, after the app has shown the full address and the person has agreed.
+
+- Both are `https://` addresses with no username or password in them.
+- `homepage` is the project's own website, not a page on GitHub or Hugging Face (those go in `github` and `huggingface`), and a page, not a file.
+- `download` is a page, not a file: an address ending in `.exe`, `.msi`, `.msix`, `.zip`, `.7z`, `.dmg`, `.pkg`, `.appimage`, `.deb`, `.rpm`, `.tar.gz` or `.whl` is refused. People then land on the project's own instructions and their browser's own download checks.
+- `download` is one of:
+  - the GitHub repository's own releases page, `https://github.com/<owner>/<repo>/releases` or `.../releases/latest`, for the repository in `github`;
+  - a page on the `homepage`'s site or one of its subdomains (a homepage on `www.example.org` also allows `example.org` and its subdomains);
+  - a Microsoft Store page, `https://apps.microsoft.com/...`.
+- A maintainer checks `homepage` and `download` when they check the entry (its `checked` date).
+
+`setup: technical` marks a project that needs the command line or Python to set up. The Marketplace shows "Needs technical setup (command line or Python)" on it and lists it after the others in its section, and so does the README. `setup: installer` is a project people download and run.
+
+The app checks `homepage`, `download` and `setup` again when it reads a list, and drops any that break these rules.
 
 ## Listing a pipeline or plugin
 

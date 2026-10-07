@@ -36,7 +36,7 @@ Don't copy someone else's model into your own repository or a `url` you host unl
 
 ## Gated models
 
-Some models need an account and the authors' approval ("gated"). Downloading one needs a Hugging Face token. Clips Kitty doesn't handle Hugging Face sign-in yet (planned), so the Marketplace explains the gate instead of trying. Until then, choose an ungated model, or document how your users get access and download it themselves.
+Some models need an account and the authors' approval ("gated"). Downloading one needs a Hugging Face token. Clips Kitty doesn't handle Hugging Face sign-in yet (planned), so the Marketplace explains the gate instead of trying: "Its makers share this model only with people who sign in to Hugging Face and are given access. Clips Kitty can't sign in to Hugging Face for you yet." Until then, choose an ungated model: a model in `models:` must be in Clips Kitty's shared folder before a run starts ([Model references](model-references.md)), and Clips Kitty can't download a gated one there.
 
 ## Sizes and hardware
 

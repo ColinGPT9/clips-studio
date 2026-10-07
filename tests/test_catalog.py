@@ -128,6 +128,64 @@ def test_a_bad_entry_is_left_out_and_says_why(cat, change, fragment):
     assert [e["id"] for e in index["catalog"]] == ["apps/good-one"]
 
 
+GH = APP["source"]["github"]
+
+
+@pytest.mark.parametrize("source", [
+    {"github": GH, "download": GH + "/releases"},
+    {"github": GH, "download": "https://github.com/Example-Org/Example-Clipper/releases/latest/"},
+    {"github": GH, "homepage": "https://example.org/", "download": "https://downloads.example.org/clipper"},
+    {"github": GH, "homepage": "https://www.example.org/", "download": "https://example.org/download"},
+    {"github": GH, "download": "https://apps.microsoft.com/detail/example-id"},
+    {"github": GH, "homepage": "https://example.org/"},
+])
+def test_a_download_page_and_a_website_go_into_the_index_and_the_app_keeps_them(cat, source):
+    cat.write("apps/example-clipper.yaml", {**APP, "source": source, "setup": "installer"})
+    index, problems = cat.build()
+    assert problems == []
+    (entry,) = index["catalog"]
+    assert entry["source"] == source and entry["setup"] == "installer"
+    (kept,) = registry.check_index(index, ours=True)["catalog"]
+    assert kept["source"] == source and kept["setup"] == "installer"
+
+
+@pytest.mark.parametrize("source, fragment", [
+    ({"github": GH, "download": GH + "/releases/download/v1.0/clipper-setup.exe"},
+     "source.download: a page, not a file"),
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://example.org/files/Clipper.MSI"},
+     "source.download: a page, not a file"),
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://example.org/clipper.tar.gz"},
+     "source.download: a page, not a file"),
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://downloads.example.net/clipper"},
+     "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://notexample.org/clipper"},
+     "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "download": "https://github.com/someone-else/example-clipper/releases"},
+     "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "download": GH + "/releases/tag/v1.0"}, "source.download: the GitHub repository's releases page"),
+    ({"github": GH, "download": "http://github.com/example-org/example-clipper/releases"},
+     "source.download: a plain https address with no username or password"),
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://me:secret@example.org/get"},
+     "source.download: a plain https address with no username or password"),
+    # a browser reads the backslash as "/" and opens elsewhere.example.net
+    ({"github": GH, "homepage": "https://example.org/", "download": "https://elsewhere.example.net\\.example.org/"},
+     "source.download: a plain https address"),
+    ({"github": GH, "homepage": "https://me@example.org/"}, "source.homepage: a plain https address with no username"),
+    ({"github": GH, "homepage": "https://example.org/clipper.zip"}, "source.homepage: a page, not a file"),
+    ({"github": GH, "homepage": "https://github.com/someone-else"}, "source.homepage: the project's own website"),
+])
+def test_a_download_link_must_be_a_page_on_the_projects_own_site(cat, source, fragment):
+    cat.write("apps/example-clipper.yaml", {**APP, "source": source})
+    index, problems = cat.build()
+    assert any(fragment in p for p in problems), problems
+    assert index["catalog"] == []
+
+
+def test_setup_is_installer_or_technical(cat):
+    cat.write("apps/example-clipper.yaml", {**APP, "setup": "easy"})
+    assert any("setup: installer" in p for p in cat.build()[1])
+
+
 def test_file_names_and_models_are_checked(cat):
     cat.write("apps/Bad_Name.yaml", APP)
     cat.write("apps/nested/deeper.yaml", APP)
@@ -213,6 +271,20 @@ def test_the_readme_is_generated_between_the_markers_and_the_rest_is_kept(cat):
     assert "stale text" not in out and catalog.write_readme(out, body) == out
     with pytest.raises(catalog.CatalogError, match="markers"):
         catalog.write_readme("# No markers\n", body)
+
+
+def test_the_readme_links_the_download_page_first_and_lists_technical_setup_last(cat):
+    cat.write("apps/a-tool.yaml", {**APP, "name": "A Tool", "setup": "technical"})
+    cat.write("apps/b-app.yaml", {**APP, "name": "B App", "setup": "installer", "source": {
+        "github": GH, "homepage": "https://example.org/", "download": "https://example.org/download"}})
+    cat.write("apps/c-app.yaml", {**APP, "name": "C App", "source": {"github": GH, "homepage": "https://example.org/"}})
+    index, problems = cat.build()
+    assert problems == []
+    body = catalog.readme_body(index["sections"], index["catalog"])
+    lines = [line for line in body.splitlines() if line.startswith("- [") and "](https://" in line]
+    assert lines[0].startswith("- [B App](https://example.org/download) - ")
+    assert lines[1].startswith("- [C App](https://example.org/) - ")
+    assert lines[2].startswith(f"- [A Tool]({GH}) - ") and "needs technical setup (command line or Python)" in lines[2]
 
 
 def test_the_script_writes_and_checks_the_readme(cat, capsys):

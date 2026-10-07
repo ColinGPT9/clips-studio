@@ -1218,10 +1218,16 @@ curl -X POST localhost:8765/plugins/plan -H "X-Clips-Kitty-Session: $SECRET" \
   -d '{"source": {"kind": "git", "url": "https://github.com/example-dev/example-plugin",
                   "commit": "<40-character commit hash>"}}'
 # → {"plan_id": "...", "ok": true, "plugin": {...}, "details": {"permissions": [...],
-#    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "update": null}
+#    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "technical": [],
+#    "update": null}
 curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" \
   -H 'Content-Type: application/json' -d '{"plan_id": "..."}'
 ```
+
+A plan's `warnings` are in plain words for the person installing; `technical`
+holds the precise lines behind them (the manifest's own warnings, files that
+couldn't be fetched). A download or Git that fails answers with one fixed
+sentence; what went wrong is in the engine's log.
 
 `GET /plugins` lists what is installed (no header needed);
 `POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,
@@ -1273,7 +1279,10 @@ automatic checks off for this PC (or on again). See
 of Awesome Clips Kitty: its apps, models, workflows, integrations and tools.
 They are not installed from here; each entry has an `id` (`apps/<name>`, the
 folder and file it comes from), its `source` (GitHub,
-Hugging Face or a home page), its `relationship` to Clips Kitty (`built-with`
+Hugging Face or a home page, and the project's own website, `homepage`, and
+download page, `download`, when the list has them), `setup` when given
+(`installer`, or `technical` for one that needs the command line or Python),
+its `relationship` to Clips Kitty (`built-with`
 or `related`), its `license`, its labels and its numbers. `kind` is one of
 `app`, `model`, `workflow`, `integration` or `tool` (anything else is a 400).
 The answer also carries the `sections`, `kinds`, `relationships`, what each

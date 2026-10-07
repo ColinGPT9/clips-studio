@@ -491,6 +491,11 @@ def _clean_entry(e, *, ours: bool) -> dict | None:
         clean["huggingface"] = source["huggingface"]
     if catalog._https(source.get("url")):
         clean["url"] = source["url"]
+    if catalog.homepage_problem(source.get("homepage")) is None:
+        clean["homepage"] = source["homepage"]
+    if catalog.download_problem(source.get("download"), github=clean.get("github"),
+                                homepage=clean.get("homepage")) is None:
+        clean["download"] = source["download"]
     if not clean:
         return None
     out = {"id": entry_id, "kind": e["kind"], "slug": entry_id[len(folder) + 1:], "name": e["name"][:80],
@@ -501,6 +506,8 @@ def _clean_entry(e, *, ours: bool) -> dict | None:
             out[key] = e[key][:300]
     if out.get("adapter") and not store.ID_RE.match(out["adapter"]):
         out.pop("adapter")
+    if e.get("setup") in catalog.SETUPS:
+        out["setup"] = e["setup"]
     for key in ("platforms", "tags", "games", "sports"):
         if isinstance(e.get(key), list):
             out[key] = [str(x)[:40] for x in e[key][:10] if isinstance(x, str)]

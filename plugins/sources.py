@@ -24,10 +24,15 @@ Either way a symbolic link, a path that would land outside the folder, a `.git`
 entry or two names that differ only in case (one file on Windows) refuse the
 whole plugin, and so does a plugin over MAX_FILES files or MAX_BYTES bytes.
 Not tested on Windows.
+
+A download or Git that fails raises FetchFailed, whose message never carries
+the error's own text: that goes to the engine's log, and the manager answers
+with a plain sentence.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -36,6 +41,10 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path, PurePosixPath
+
+from plugins._sdk import manifest
+
+log = logging.getLogger(__name__)
 
 MAX_FILES = 5000
 MAX_BYTES = 1024 * 1024 * 1024  # 1 GB: a plugin may ship its own program; models come separately
@@ -47,6 +56,8 @@ LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
 SKIPPED_DIRS = {".git", "__pycache__"}
 # Names Windows cannot create, whatever the extension.
 _WINDOWS_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
+# Said once on the install screen when fetch() names files it couldn't fetch.
+FILES_MISSING = "Some of this pipeline's files couldn't be downloaded, so it may not work. Ask its developer."
 
 
 class SourceError(ValueError):
@@ -55,6 +66,11 @@ class SourceError(ValueError):
 
 class TooLarge(SourceError):
     """A download stopped because it passed its size limit."""
+
+
+class FetchFailed(SourceError):
+    """The network, Git or a damaged download failed, not the plugin. The
+    message says which, without the error's own text (that is in the log)."""
 
 
 # ---- what a source is --------------------------------------------------------------
@@ -97,6 +113,21 @@ def describe(source: dict) -> str:
     if source.get("kind") == "folder":
         return f"the folder {source['path']}"
     return "unknown source"
+
+
+def plugin_folder(folder: Path) -> Path:
+    """The folder to install from: `folder` when clipskitty.yaml is in it,
+    else its one subfolder that has clipskitty.yaml (the outer folder Windows
+    makes when it unpacks GitHub's "Download ZIP"), else `folder` as it is."""
+    folder = Path(folder)
+    if not folder.is_dir() or _is_link(folder) or (folder / manifest.MANIFEST_FILE).is_file():
+        return folder
+    try:
+        inside = [p for p in folder.iterdir()
+                  if p.is_dir() and not _is_link(p) and (p / manifest.MANIFEST_FILE).is_file()]
+    except OSError:
+        return folder
+    return inside[0] if len(inside) == 1 else folder
 
 
 # ---- checks shared by every source -------------------------------------------------
@@ -147,7 +178,7 @@ def _write(dest: Path, rel: str, data: bytes, executable: bool, warnings: list) 
         target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     if data.startswith(LFS_POINTER):
         warnings.append(f"{rel} is stored with Git LFS, which Clips Kitty does not fetch: "
-                        "the plugin gets a small pointer file instead of the real one")
+                        "the pipeline gets a small pointer file instead of the real one")
 
 
 # ---- a folder ------------------------------------------------------------------------
@@ -225,12 +256,15 @@ def _git(git: str, args: list[str], *, cwd: Path, hooks: Path, input: bytes | No
         done = subprocess.run(command, cwd=cwd, input=input, capture_output=True, timeout=GIT_TIMEOUT,
                               env=_git_env(), check=False)
     except subprocess.TimeoutExpired as e:
-        raise SourceError(f"Git took longer than {GIT_TIMEOUT // 60} minutes") from e
+        log.warning("git %s took longer than %d minutes", args[0], GIT_TIMEOUT // 60)
+        raise FetchFailed("Git took too long") from e
     except OSError as e:
-        raise SourceError(f"Git could not be started ({e})") from e
+        log.warning("git %s could not be started: %s", args[0], e)
+        raise FetchFailed("Git could not be started") from e
     if done.returncode != 0:
         detail = done.stderr.decode("utf-8", "replace").strip().splitlines()
-        raise SourceError("Git: " + (detail[-1] if detail else f"failed with code {done.returncode}"))
+        log.warning("git %s failed with code %d: %s", args[0], done.returncode, " / ".join(detail[-3:]))
+        raise FetchFailed("Git failed")
     return done.stdout
 
 
@@ -338,7 +372,8 @@ def download(url: str, path: Path, *, limit: int = MAX_BYTES) -> None:
                     raise TooLarge(f"the download is larger than {limit // (1024 * 1024)} MB")
                 out.write(chunk)
     except OSError as e:
-        raise SourceError(f"the download failed ({e})") from e
+        log.warning("Couldn't download %s: %s", url, e)
+        raise FetchFailed("the download failed") from e
 
 
 def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None = None) -> list[str]:
@@ -374,7 +409,8 @@ def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None
                 handle = tar.extractfile(member)
                 entries.append((rel, handle.read() if handle else b"", bool(member.mode & 0o111)))
     except (tarfile.TarError, OSError, EOFError) as e:
-        raise SourceError(f"the archive could not be read ({e})") from e
+        log.warning("Couldn't read the archive of commit %s: %s", commit, e)
+        raise FetchFailed("the downloaded archive could not be read") from e
     if folder and not entries:
         raise SourceError(f"the commit has no folder {folder}")
     dest.mkdir(parents=True)
@@ -387,8 +423,9 @@ def unpack_archive(archive: Path, commit: str, dest: Path, *, folder: str | None
 
 
 def fetch(source: dict, dest: Path, *, git: str | None = None, fetcher=None) -> list[str]:
-    """Put a cleaned source's files in `dest` (which must not exist). Returns
-    warnings for the install screen. Raises SourceError.
+    """Put a cleaned source's files in `dest` (which must not exist). Returns a
+    line for each file it couldn't fetch (Git LFS), for the install screen's
+    technical details; FILES_MISSING says it plainly. Raises SourceError.
 
     `git` is the git program (found on PATH when not given); `fetcher(url, path)`
     downloads a URL to a file (download() when not given), for GitHub's archive
@@ -415,5 +452,6 @@ def fetch(source: dict, dest: Path, *, git: str | None = None, fetcher=None) -> 
         raise
     except OSError as e:
         shutil.rmtree(dest, ignore_errors=True)
-        raise SourceError(f"the plugin's files could not be written ({e})") from e
+        log.warning("Couldn't copy the plugin's files into %s: %s", dest, e)
+        raise SourceError("they couldn't be saved on this PC") from e
     raise SourceError(f"unknown kind of source {source.get('kind')!r}")

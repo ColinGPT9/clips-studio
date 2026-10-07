@@ -41,6 +41,18 @@ were often broken in a way that only showed up on somebody else's machine.
   (Experimental routes: `/marketplace/online`; `/marketplace/refresh` now needs the
   desktop app.)
 
+- **The Marketplace in plain words.** Browse and Installed are the only tabs: installing
+  a pipeline you're writing, from a folder or a link, is now **For developers**, a link
+  at the bottom of Browse. The Marketplace and the install screen say what a pipeline is,
+  where it comes from and what it may do in everyday words, and keep the exact details
+  one click away under **Technical details**. What you tick before installing, the warning
+  that a pipeline can do anything you can do on your PC, and what "Clips Kitty hands this
+  over" and "the developer says so" mean are in all 18 of the app's other languages. A download
+  that fails says so in one sentence and keeps what went wrong in the log. Apps, tools
+  and the other entries of Awesome Clips Kitty each get one button, to their download
+  page or website where the list has one, which opens your browser after showing you
+  the address; entries that need the command line or Python say so and come last.
+
 - **A second colour for the second speaker.** Tick **Second speaker in another colour**
   in the caption settings, for a whole run or for one clip in the editor, and pick the
   colour. When two people talk in a clip, the main speaker keeps the text colour and

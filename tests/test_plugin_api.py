@@ -98,7 +98,7 @@ def test_install_update_turn_off_roll_back_and_remove_through_the_api(api, plugi
     plan = plan.json()
     assert plan["ok"] and plan["plugin"]["id"] == PID
     assert plan["details"]["permissions"] == [
-        {"id": "video.read", "label": "Reads the video you process", "enforcement": "enforced for the hand-over"}]
+        {"id": "video.read", "label": "Reads the video you process", "enforcement": "Clips Kitty hands this over"}]
     assert client.get("/plugins").json()["plugins"] == []  # planned, not installed
 
     r = client.post("/plugins/install", json={"plan_id": plan["plan_id"]}, headers=HEADERS)

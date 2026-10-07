@@ -14,6 +14,7 @@ program they install does.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -25,10 +26,15 @@ from plugins import models as plugin_models
 from plugins import store
 from plugins._sdk import contract, host
 
+log = logging.getLogger(__name__)
+
 # Job folders of earlier runs kept for a look when something went wrong.
 KEEP_RUNS = 5
 DEFAULT_TIMEOUT_MINUTES = 60
 MAX_TIMEOUT_MINUTES = 24 * 60
+# After a run that ended without the plugin's own error line. The engine's log
+# (the plugin's output and the exit code) goes with a bug report.
+TRY_AGAIN = "Try again; if it happens again, send a bug report from Feedback (it includes the details)."
 
 
 class PluginError(RuntimeError):
@@ -172,6 +178,23 @@ def python_for(plugin, config: dict | None) -> str | None:
     return host.find_python(None)
 
 
+def _failure(plugin, outcome, reported: list[str]) -> str:
+    """Why a run failed, for the user: the plugin's own last error line (its
+    words for the user, as the contract says), else a plain sentence. What the
+    process said and its exit code go to the log, never into the message."""
+    if outcome.timed_out:
+        minutes = round(timeout_seconds(plugin.manifest) / 60)
+        return f"{plugin.name} took longer than its {minutes} minute limit, so Clips Kitty stopped it."
+    if reported:
+        return f"{plugin.name} failed: {reported[-1]}"
+    if outcome.exit_code is None:
+        log.warning("%s %s could not be started: %s", plugin.id, plugin.version, outcome.error)
+        return f"Clips Kitty couldn't start {plugin.name}. {TRY_AGAIN}"
+    log.warning("%s %s stopped with exit code %s: %s", plugin.id, plugin.version, outcome.exit_code,
+                outcome.error)
+    return f"{plugin.name} stopped before it finished. {TRY_AGAIN}"
+
+
 def find_clips(choice: dict, *, video, segments, language: str, config: dict, data_dir) -> list:
     """Ask the job's plugin for the video's moments, as ClipCandidates.
 
@@ -191,6 +214,7 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
         raise PluginError(f"{plugin.name} has no command to run in its manifest")
     python = python_for(plugin, config)
     if "{python}" in command and not python:
+        # Only a source checkout gets here: the installed app runs it on its own Python.
         raise PluginError(f"{plugin.name} needs Python 3.10 or newer, and none was found on this PC. "
                           "Install Python, or set plugins.python in settings.yaml.")
 
@@ -202,7 +226,7 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
     except plugin_models.ModelError as e:
         raise PluginError(f"{plugin.name} can't run: {e}") from e
     if missing:
-        raise PluginError(f"{plugin.name} can't run: " + "; ".join(missing))
+        raise PluginError(f"{plugin.name} can't run. " + " ".join(missing))
 
     runs = store.root(data_dir) / "runs"
     folder = runs / f"{_safe(video.video_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -217,7 +241,11 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
     print(f"      Pipeline: {plugin.name} {plugin.version} ({plugin.id})")
     progress.emit(stage="analyze", video_id=video.video_id, fraction=0.0, message=f"Running {plugin.name}")
 
+    reported: list[str] = []
+
     def on_event(event: dict) -> None:
+        if event["type"] == "error" and event.get("message"):
+            reported.append(event["message"])
         if event["type"] == "progress" and event.get("fraction") is not None:
             progress.emit(stage="analyze", video_id=video.video_id, fraction=event["fraction"],
                           message=event.get("message", ""))
@@ -236,7 +264,7 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
     if outcome.cancelled:
         raise cancel.CancelledError(video.video_id)
     if not outcome.ok:
-        raise PluginError(f"{plugin.name} failed: {outcome.error}")
+        raise PluginError(_failure(plugin, outcome, reported))
     try:
         result = host.read_result(folder, duration=video.duration,
                                   max_clips=job["limits"]["max_clips"])

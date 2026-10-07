@@ -141,8 +141,8 @@ def test_a_listed_model_must_be_here_before_the_plugin_starts_and_its_path_is_ha
     data_dir = tmp_path / "data"
     install_plugin(data_dir, folder)
 
-    with pytest.raises(runner.PluginError, match=r"its model 'weights' \(https://example\.com/models/weights\.onnx\) "
-                                                 r"isn't on this PC: download it in Marketplace › Installed"):
+    with pytest.raises(runner.PluginError, match=r"^Echo can't run\. Its AI model 'weights' isn't downloaded yet\. "
+                                                 r"Open Marketplace › Installed and press Download\.$"):
         _run(data_dir, video, {"ranges": ""})
     assert not (data_dir / "plugins" / "runs").exists()  # stopped before anything ran
 
@@ -250,6 +250,35 @@ def test_a_failed_run_says_what_went_wrong(echo, video, mode, message):
 
     with pytest.raises(PluginError, match=message):
         _run(echo, video, {"mode": mode})
+
+
+def test_a_plugin_that_stops_without_saying_why_gets_a_plain_sentence(tmp_path, install_plugin, video, caplog):
+    """No error line of its own (a crash outside the SDK, a program of its
+    own): the user reads what to do next, and the log keeps the exit code and
+    the last line for a bug report."""
+    import yaml
+
+    from plugins import runner
+
+    folder = tmp_path / "echo-that-stops"
+    shutil.copytree(ECHO, folder)
+    (folder / "src" / "main.py").write_text("import sys\nprint('half way', flush=True)\nsys.exit(3)\n",
+                                            encoding="utf-8")
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, folder)
+    with pytest.raises(runner.PluginError) as e:
+        _run(data_dir, video)
+    assert str(e.value) == ("Echo stopped before it finished. Try again; if it happens again, send a bug report "
+                            "from Feedback (it includes the details).")
+    assert "stopped with exit code 3: half way" in caplog.text
+
+    manifest = yaml.safe_load((folder / "clipskitty.yaml").read_text(encoding="utf-8"))
+    manifest["run"]["command"] = ["bin/not-there"]
+    (folder / "clipskitty.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    with pytest.raises(runner.PluginError) as e:
+        _run(data_dir, video)
+    assert str(e.value).startswith("Clips Kitty couldn't start Echo. Try again;")
+    assert "not-there" not in str(e.value) and "not-there" in caplog.text
 
 
 def test_stray_output_goes_to_the_log_and_does_not_break_the_run(echo, video, capsys):

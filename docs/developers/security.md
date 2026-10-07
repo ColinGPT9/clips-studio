@@ -4,14 +4,14 @@ What Clips Kitty does and does not protect when someone installs a plugin. Writt
 
 ## The one sentence
 
-**A plugin is code from the internet that runs on your PC with your rights.** The install screen says so in those words before anything is installed. Clips Kitty does not sandbox plugins: a plugin can do what any program you install can do.
+**A plugin is code from the internet that runs on your PC with your rights.** The install screen says so before anything is installed: "This pipeline is a program from the internet. It can do anything you can do on this PC." Clips Kitty does not sandbox plugins: a plugin can do what any program you install can do.
 
 ## What Clips Kitty does
 
 | Protection | What it covers | Status |
 |---|---|---|
 | **Nothing runs at install** | Installing copies files and checks the manifest. No `setup.py`, no install script, no Git hook or filter. Your code first runs when a job uses it. | built, tested |
-| **You see it first** | Publisher, source and commit, licence, tier and labels, what it is built on, each permission with whether it is enforced or declared, ⚠ a line for each kind of data that leaves the PC, requirements, a paid service, and that keys are readable by other programs. An update lists new permissions, hosts and data warnings. | built: the install dialog in the Marketplace, which also asks you to tick what you accept (an unlisted or unreviewed source, data leaving the PC, a required outside account) before Install is enabled |
+| **You see it first** | Publisher, source and commit, licence, tier and labels, what it is built on, each permission with whether it is enforced or declared (shown as "Clips Kitty hands this over" or "the developer says so"), ⚠ a line for each kind of data that leaves the PC, requirements, a paid service, and that keys are readable by other programs. An update lists new permissions, hosts and data warnings. | built: the install dialog in the Marketplace, which also asks you to tick what you accept (an unlisted or unreviewed source, data leaving the PC, a required outside account) before Install is enabled |
 | **Exactly the files you looked at** | A Git install takes one full commit hash and Git checks every file against it; the files planned are the files installed, checked again before they move into place. | built, tested |
 | **Files stay in their folder** | Symbolic links, submodules, paths that leave the folder, `.git` entries and archive tricks refuse the plugin. | built, tested; untested on Windows |
 | **Only what was asked for is handed over** | The video, transcript, FFmpeg and the local AI model are put in the job only with their permission ([Permissions](permissions.md)). | built, tested |
@@ -40,7 +40,7 @@ Every installed plugin has a tier, which says where it came from:
 | `listed` | Community · not reviewed by a person | Installed from a listing; the catalog's automated checks passed. |
 | `link` | Not listed · Clips Kitty has not checked this | Installed from a folder or a Git address no index lists. |
 
-Every tier but `official` gets the line "This plugin is code from the internet. It runs on this PC with your rights." The Marketplace also shows labels on listings: ✓ Official, ✓ Compatible, ★ Featured or Community ([Marketplace publishing](marketplace-publishing.md#labels)). **✓ Compatible is a technical label, not a trust or security guarantee:** the version's manifest is valid, it installs, its requirements are met, and it runs on a sample video and gives an answer Clips Kitty accepts. Nobody reads the code, and a plugin can pass and still do something its listing doesn't say. None of these changes what a plugin is allowed to do ([Permissions](permissions.md)).
+Every tier but `official` gets the line "This pipeline is a program from the internet. It can do anything you can do on this PC." The Marketplace also shows labels on listings: ✓ Official, ✓ Compatible, ★ Featured or Community ([Marketplace publishing](marketplace-publishing.md#labels)). **✓ Compatible is a technical label, not a trust or security guarantee:** the version's manifest is valid, it installs, its requirements are met, and it runs on a sample video and gives an answer Clips Kitty accepts. Nobody reads the code, and a plugin can pass and still do something its listing doesn't say. None of these changes what a plugin is allowed to do ([Permissions](permissions.md)).
 
 ## What Clips Kitty sends when you install
 

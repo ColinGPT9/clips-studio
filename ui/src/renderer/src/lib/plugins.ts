@@ -25,7 +25,8 @@ export const PLUGINS_CHANGED = 'plugins-changed'
 /** Sent on window to show the Marketplace (App switches to it). */
 export const OPEN_MARKETPLACE = 'open-marketplace'
 
-export type MarketplaceTab = 'browse' | 'installed' | 'add'
+/** Browse and Installed are tabs; For developers opens from the bottom of Browse. */
+export type MarketplaceTab = 'browse' | 'installed' | 'developers'
 
 let wantedTab: MarketplaceTab | null = null
 

@@ -195,8 +195,8 @@ def test_a_gated_model_is_explained_not_attempted(tmp_path):
     hub = Hub({"model.onnx": WEIGHTS}, gated=True)
     ref = hf(files=("model.onnx",))
     plan = models.plan(tmp_path, ref, fetch_json=hub.fetch_json)
-    assert plan["gated"] and "gated on Hugging Face" in plan["problem"]
-    with pytest.raises(models.ModelError, match="gated"):
+    assert plan["gated"] and plan["problem"] == models.GATED
+    with pytest.raises(models.ModelError, match="sign in to Hugging Face"):
         models.download(tmp_path, ref, fetcher=hub.fetcher, fetch_json=hub.fetch_json)
     assert hub.downloads == []
 
@@ -207,6 +207,18 @@ def test_offline_the_plan_says_the_size_is_unknown(tmp_path):
 
     plan = models.plan(tmp_path, hf(), fetch_json=offline)
     assert plan["size_known"] is False and plan["license"] is None and not plan["problem"]
+
+
+def test_a_failed_download_says_so_plainly_and_logs_why(tmp_path, caplog):
+    def offline(url, dest):
+        raise OSError("[Errno 101] Network is unreachable: C:/Users/someone/AppData")
+
+    ref = hf(files=("model.onnx",))
+    hub = Hub({"model.onnx": WEIGHTS})
+    with pytest.raises(models.ModelError) as e:
+        models.download(tmp_path, ref, fetcher=offline, fetch_json=hub.fetch_json)
+    assert str(e.value) == "Couldn't download model.onnx. Check your internet connection and try again."
+    assert "Network is unreachable" in caplog.text  # the details are in the log, not the message
 
 
 @pytest.mark.parametrize("fail", [["symlink"], ["symlink", "link"]])
@@ -241,7 +253,7 @@ def test_ollama_models_are_read_from_ollama_not_copied(tmp_path):
         raise OSError("connection refused")
 
     assert models.ollama_models("http://localhost:11434", fetch_json=down) is None
-    with pytest.raises(models.ModelError, match="pull it in Models"):
+    with pytest.raises(models.ModelError, match="downloaded on the Models page"):
         models.download(tmp_path, ref)
 
 
@@ -264,16 +276,19 @@ def test_a_plugin_gets_paths_for_what_is_here_and_a_reason_for_what_is_not(tmp_p
     data = {"models": [
         {"name": "killfeed", "source": "huggingface", "id": "example-org/example-model", "revision": REV,
          "files": ["model.onnx"]},
-        {"name": "weights", "source": "url", "id": "https://example.com/w.onnx", "sha256": "c" * 64},
-        {"name": "chat", "source": "ollama", "id": "example-model:latest"}]}
+        {"name": "weights", "source": "url", "id": "https://example.com/w.onnx", "sha256": "c" * 64,
+         "size_bytes": 52_428_800},
+        {"name": "chat", "source": "ollama", "id": "example-model:latest"},
+        {"name": "helper", "source": "ollama", "id": "example-helper:7b"}]}
     tags = {"models": [{"name": "example-model:latest"}]}
     handed, missing = models.for_job(tmp_path, data, ollama_host="http://localhost:11434",
                                      fetch_json=lambda url: tags)
     assert set(handed) == {"killfeed", "chat"}
     assert Path(handed["killfeed"]["files"]["model.onnx"]).read_bytes() == WEIGHTS
     assert handed["killfeed"]["revision"] == REV and handed["chat"]["path"] == "example-model:latest"
-    assert missing == ["its model 'weights' (https://example.com/w.onnx) isn't on this PC: "
-                       "download it in Marketplace › Installed"]
+    assert missing == ["Its AI model 'weights' isn't downloaded yet. Open Marketplace › Installed and press "
+                       "Download (52 MB).",
+                       "Its AI model 'helper' isn't downloaded yet. Download example-helper:7b on the Models page."]
     assert models.for_job(tmp_path, {}) == ({}, [])
 
 

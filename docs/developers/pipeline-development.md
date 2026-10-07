@@ -112,7 +112,7 @@ A plugin does not have to be Python: `run.command` can start a program shipped i
 
 At most 200 ranges; `0 <= start < end`; `score` 0-100 or left out; `label` up to 64 characters, `title` 200, `reason` 500, `notes` 4000.
 
-**Progress**, one JSON object per line on standard output: `{"type": "progress", "fraction": 0.4, "message": "..."}`, `{"type": "log", "message": "..."}`, `{"type": "error", "message": "..."}`. The last error line is the message the user sees if the run fails.
+**Progress**, one JSON object per line on standard output: `{"type": "progress", "fraction": 0.4, "message": "..."}`, `{"type": "log", "message": "..."}`, `{"type": "error", "message": "..."}`. The last error line is the message the user sees if the run fails. A run that fails without one tells the user "<Name> stopped before it finished. Try again; if it happens again, send a bug report from Feedback (it includes the details)."; your output and the exit code go to the job log.
 
 ## What your plugin receives, and what that does and doesn't protect
 

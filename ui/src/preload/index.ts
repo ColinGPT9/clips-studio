@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('studio', {
   // A plugin's own links (its repository, docs, developer). The main process
   // shows the full address and opens it only if the user agrees.
   openPluginLink: (url: string): Promise<boolean> => ipcRenderer.invoke('open-plugin-link', url),
+  // A link from an Awesome Clips Kitty entry (its download page or home), the same way.
+  openCatalogLink: (url: string, ours: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('open-catalog-link', url, ours),
   pickPluginFolder: (): Promise<string | null> => ipcRenderer.invoke('pick-plugin-folder'),
   // Whether closing the window keeps Clips Kitty running in the tray, for
   // watched channels. Off unless turned on; the main process remembers it.

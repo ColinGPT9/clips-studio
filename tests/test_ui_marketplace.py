@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from plugins import permissions, sources
+from plugins import catalog, permissions, sources
 from plugins._sdk import manifest
 
 LIB = Path(__file__).resolve().parent.parent / "ui" / "src" / "renderer" / "src" / "lib"
@@ -100,7 +100,8 @@ def test_install_asks_for_what_the_plugin_is_and_does(tmp_path):
     got = _run(tmp_path, "return data.map((p) => m.confirmations(p))", plans)
     assert got[0] == []
     assert len(got[1]) == 1 and "has not checked it" in got[1][0]
-    assert len(got[2]) == 1 and "nobody has reviewed" in got[2][0]
+    assert got[2] == ["I understand nobody at Clips Kitty has read this pipeline’s code, "
+                      "and it can do anything I can do on this PC."]
     assert len(got[3]) == 3 and "sends data off this PC" in got[3][1] and "account" in got[3][2]
 
 
@@ -335,6 +336,12 @@ def test_index_ages_sizes_and_slugs_read_as_words(tmp_path):
     assert got[0] == ["not fetched yet", "not fetched yet", "updated just now", "updated 10 minutes ago",
                       "updated 3 hours ago", "updated 3 days ago"]
     assert got[1] == ["2.5 GB", "340 MB", "2 KB", ""]
+    # the engine writes a model's size the same way in its "press Download (…)" message
+    from plugins import models
+
+    sizes = [2.5e9, 2.25e9, 3e9, 340e6, 2_500_000, 52_428_800, 2048, 500, 1]
+    assert _run(tmp_path, "return data.map((n) => m.formatBytes(n))", sizes) == [
+        models.size_text(int(n)) for n in sizes]
     assert got[2] == ["Team wipe", "Big play"]
     assert got[3] == ["The list that came with Clips Kitty", "Clips Kitty’s online list",
                       "A list from example.com (not Clips Kitty’s)"]
@@ -382,7 +389,9 @@ def test_the_directory_kinds_and_relationships_match_the_catalog(tmp_path):
     from plugins import catalog
 
     got = _run(tmp_path, "return [m.DIRECTORY_KINDS, m.RELATIONSHIP_LABELS]")
-    assert got[0] == {kind: catalog.KIND_TITLES[kind] for kind in catalog.DIRECTORY_KINDS.values()}
+    # Models are "AI model links" here, so the tab isn't taken for the app's Models page
+    assert got[0] == {**{kind: catalog.KIND_TITLES[kind] for kind in catalog.DIRECTORY_KINDS.values()},
+                      "model": "AI model links"}
     assert got[1] == catalog.RELATIONSHIPS
 
 
@@ -432,7 +441,44 @@ def test_each_number_is_its_own_line(tmp_path):
     ({"url": "javascript:alert(1)"}, None),
 ])
 def test_an_entry_links_to_its_home(tmp_path, source, link):
-    assert _run(tmp_path, "return m.entryLink({source: data})", source) == link
+    assert _run(tmp_path, "const l = m.entryLink({source: data}); return l && l.url", source) == link
+
+
+def test_an_entry_has_one_button_and_its_download_page_comes_first(tmp_path):
+    """Download page, website, GitHub, Hugging Face, any other page: the same
+    order as the README's links (plugins/catalog.py), each with its own label."""
+    gh, page = "https://github.com/example-org/app", "https://example.com/about"
+    every = {"github": gh, "huggingface": "example-org/speech", "url": page, "homepage": "https://www.example.org/",
+             "download": "https://www.example.org/download"}
+    drop = ("download", "homepage", "github", "huggingface")
+    sources_ = [{k: v for k, v in every.items() if k not in drop[:i]} for i in range(len(drop) + 1)]
+    got = _run(tmp_path, "return data.map((s) => m.entryLink({source: s}))", sources_)
+    assert got == [
+        {"url": "https://www.example.org/download", "label": "Download from", "host": "example.org"},
+        {"url": "https://www.example.org/", "label": "Website", "host": None},
+        {"url": gh, "label": "Code page on GitHub", "host": None},
+        {"url": "https://huggingface.co/example-org/speech", "label": "Model page on Hugging Face", "host": None},
+        {"url": page, "label": "Website", "host": None},
+    ]
+    assert [catalog._link({"source": s}) for s in sources_] == [link["url"] for link in got]
+    bad = _run(tmp_path, "return m.entryLink({source: data})", {"github": gh, "download": "javascript:alert(1)",
+                                                                  "homepage": "http://example.org/"})
+    assert bad == {"url": gh, "label": "Code page on GitHub", "host": None}
+
+
+def test_an_entry_card_says_it_opens_a_website_and_the_dialog_says_whose_list_it_is_in():
+    page = (UI / "pages" / "Marketplace.tsx").read_text(encoding="utf-8")
+    card = re.search(r"function EntryCard\(.*?\n\}\n", page, re.S).group(0)
+    assert "t(link.label)" in card and "link.host" in card
+    assert "t('Not installed by Clips Kitty · opens a website')" in card
+    assert "t('Needs technical setup (command line or Python)')" in card
+    assert "openPluginLink" not in card and "<OutLink" not in card  # its links go through the catalog's dialog
+    main = (UI.parent.parent / "main" / "index.ts").read_text(encoding="utf-8")
+    assert "ipcMain.handle('open-catalog-link'" in main
+    assert "This link is in Clips Kitty's list. It opens a website outside Clips Kitty." in main
+    assert "This link comes from the pipeline's developer, not from Clips Kitty." in main
+    preload = (UI.parent.parent / "preload" / "index.ts").read_text(encoding="utf-8")
+    assert "ipcRenderer.invoke('open-catalog-link', url, ours)" in preload
 
 
 def test_credits_and_compatibility_in_words(tmp_path):
@@ -446,8 +492,8 @@ def test_credits_and_compatibility_in_words(tmp_path):
                          "m.compatibilityText({...data.r, passed: false, note: 'starts: it needs Python'}), "
                          "m.compatibilityText(undefined)]", {"b": based_on, "r": record})
     assert got[0] == [{"name": "Example Clipper", "url": "https://github.com/example-org/clipper",
-                       "text": "MIT · this plugin runs it as a separate program"},
-                      {"name": "Old Scorer", "url": None, "text": "GPL-3.0-or-later · this plugin is a rewrite of it"}]
+                       "text": "MIT · this pipeline runs it as a separate program"},
+                      {"name": "Old Scorer", "url": None, "text": "GPL-3.0-or-later · this pipeline is a rewrite of it"}]
     assert got[1]["tone"] == "ok" and got[1]["text"].startswith("✓ Compatible: version 1.0.0 passed")
     assert "(2026-10-07)" in got[1]["text"] and "not a security review" in got[1]["text"]
     assert got[2]["tone"] == "warn" and got[2]["text"].endswith("starts: it needs Python.")
@@ -455,10 +501,167 @@ def test_credits_and_compatibility_in_words(tmp_path):
 
 
 def test_entries_are_grouped_in_the_catalogs_order(tmp_path):
-    entries = [{"id": "apps/b", "section": "gaming"}, {"id": "apps/a", "section": "video-clipping"},
-               {"id": "apps/c", "section": "gone"}]
+    entries = [{"id": "apps/t", "section": "gaming", "setup": "technical"}, {"id": "apps/b", "section": "gaming"},
+               {"id": "apps/a", "section": "video-clipping"}, {"id": "apps/c", "section": "gone"},
+               {"id": "apps/i", "section": "gaming", "setup": "installer"}]
     sections = [{"id": "video-clipping", "title": "Video clipping"}, {"id": "video-ai", "title": "Video AI"},
                 {"id": "gaming", "title": "Gaming"}]
     got = _run(tmp_path, "return m.groupBySection(data.e, data.s)", {"e": entries, "s": sections})
     assert [(g["title"], [e["id"] for e in g["entries"]]) for g in got] == [
-        ("Video clipping", ["apps/a"]), ("Gaming", ["apps/b"]), ("Other", ["apps/c"])]
+        ("Video clipping", ["apps/a"]), ("Gaming", ["apps/b", "apps/i", "apps/t"]), ("Other", ["apps/c"])]
+
+
+def test_version_ranges_read_as_words_the_way_the_engine_reads_them(tmp_path):
+    ranges = [">=2.0", ">=2.0, <3", ">2.0", "<=2.5", "~=2.1", "~=2.1.0", "~=2", "==2.0", ">=2.0, !=2.3",
+              "2.0", "", None, "two", ">=2.0, latest"]
+    got = _run(tmp_path, "return data.map((r) => m.rangeText(r))", ranges)
+    assert got == ["2.0 and newer", "2.0 up to, not including, 3", "newer than 2.0", "up to 2.5",
+                   "2.1 up to, not including, 3", "2.1.0 up to, not including, 2.2", "2 up to, not including, 3",
+                   "2.0 only", "2.0 and newer, except 2.3", "2.0 only", None, None, None, None]
+    # each is a range the manifest accepts, and the words agree with version_satisfies at their edges
+    edges = {"~=2.1": [("2.1.0", True), ("2.9.9", True), ("3.0.0", False), ("2.0.9", False)],
+             "~=2.1.0": [("2.1.0", True), ("2.1.9", True), ("2.2.0", False)],
+             "~=2": [("2.0.0", True), ("3.0.0", False)]}
+    for spec, cases in edges.items():
+        assert re.match(manifest.RANGE_PATTERN, spec)
+        for version, ok in cases:
+            assert manifest.version_satisfies(version, spec) is ok, (spec, version)
+
+
+def test_where_a_listing_and_an_install_come_from_in_a_few_words(tmp_path):
+    now = 1_000_000_000
+    hours_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 3 * 3600))
+    got = _run(tmp_path, "return [['bundled', m.ONLINE_LIST, m.ONLINE_LIST, 'https://lists.example.com/index.json']"
+                         ".map((u, i) => m.listedInText(u, i === 1 ? data.online : undefined, 1_000_000_000_000)), "
+                         "data.sources.map((s) => m.sourceLine(s))]",
+               {"online": {"fetched_at": hours_ago},
+                "sources": [{"kind": "git", "url": "https://github.com/example-dev/demo", "commit": COMMIT,
+                             "listed_in": "bundled"},
+                            {"kind": "git", "url": "https://github.com/example-dev/demo", "commit": COMMIT,
+                             "listed_in": "https://lists.example.com/index.json"},
+                            {"kind": "git", "url": "https://github.com/example-dev/demo", "commit": COMMIT},
+                            {"kind": "folder", "path": "C:/dev/demo"}, None]})
+    assert got[0] == ["In the list that came with Clips Kitty.", "In Clips Kitty’s online list (updated 3 hours ago).",
+                      "In Clips Kitty’s online list.", "In a list from lists.example.com (not Clips Kitty’s)."]
+    assert got[1] == ["From Clips Kitty’s list", "From a list on lists.example.com (not Clips Kitty’s)", "From a link",
+                      "From a folder on this PC", ""]
+
+
+# ---- plain words for creators -----------------------------------------------------------------------
+
+UI = LIB.parent
+JARGON = re.compile(r"commit|repositor|manifest|\bforks?\b|registry|checksum|pickle|settings\.yaml|\bgit\b|exit code",
+                    re.I)
+SHOUTED = re.compile(r"\bPATH\b")  # the environment variable; "path" in a sentence is a plain word
+T_CALL = re.compile(r"\bt\(\s*(['\"`])((?:(?!\1)[^\\]|\\.)*)\1")
+
+
+def _jargon(text: str) -> list[str]:
+    return JARGON.findall(text) + SHOUTED.findall(text)
+
+
+def test_the_words_a_creator_reads_are_plain(tmp_path):
+    """Words like commit, repository or manifest belong to developers. A
+    creator's screens say the same thing plainly; the exact facts are under
+    Technical details (components/TechnicalDetails.tsx) or in For developers
+    (pages/MarketplaceDevelopers.tsx), and neither is checked here."""
+    for name in ("pages/Marketplace.tsx", "components/PipelineFields.tsx"):
+        text = (UI / name).read_text(encoding="utf-8")
+        strings = [m.group(2) for m in T_CALL.finditer(text)]
+        assert strings, name
+        assert [s for s in strings if _jargon(s)] == [], name
+    # marketplace.ts has no t(): what its functions return is what the screen translates and shows
+    remote = _manifest(execution="remote", network=["api.example.com"],
+                       sends=[{"data": "audio", "to": "Example Cloud"}],
+                       service={"name": "Example Cloud", "url": "https://example.com", "required": True})
+    details = [permissions.describe(remote, tier=tier) for tier in permissions.TIERS]
+    old, new = _manifest(version="1.0.0"), _manifest(version="1.1.0", execution="hybrid", **{
+        k: v for k, v in remote.items() if k in ("network", "sends")}, permissions=["video.read", "network"])
+    plan = {"plugin": {"version": "1.1.0"}, "details": permissions.describe(new, tier="listed"),
+            "update": {"from": "1.0.0", "direction": "update", **permissions.changes(old, new)}}
+    record = {"version": "1.0.0", "commit": COMMIT, "app_version": "2.0.0", "plugin_api": 1,
+              "checked_at": "2026-10-07T05:00:00Z", "checks": {}, "passed": True}
+    shown = _run(tmp_path, """
+        const all = []
+        const add = (x) => { if (x && typeof x === 'object') Object.values(x).forEach(add); else if (x) all.push(String(x)) }
+        add([m.CHECK_LABELS, m.DIRECTORY_KINDS, m.KIND_LABELS, m.RELATIONSHIP_LABELS, m.CATEGORY_LABELS])
+        for (const d of data.details) {
+          add(m.confirmations({details: d})); add(m.tierBadge(d))
+          add(m.executionBadge(d.execution, d.execution_text).label)
+        }
+        add(m.executionBadge(null).label)
+        add(m.updateLines(data.plan))
+        add(m.catalogBadges(['official', 'community', 'compatible', 'featured']))
+        add([m.compatibilityText(data.record), m.compatibilityText({...data.record, passed: false})])
+        add(m.hardwareFit({gpu: 'required', vram_gb: 8, ram_gb: 16, disk_gb: 10, os: ['windows'], software: ['x']},
+                          {gpu: null, disk_free_bytes: 1e9, platform: 'win32'}))
+        add([m.fitSummary([{text: '', fit: 'no'}]), m.fitSummary([{text: '', fit: 'unknown'}])])
+        add([undefined, {fetched_at: null, error: 'x'}, {fetched_at: '2026-10-07T00:00:00Z'}]
+          .map((o) => m.onlineText(o, Date.now(), true)))
+        add(['bundled', m.ONLINE_LIST, 'https://lists.example.com/i.json'].map((u) => m.listedInText(u, undefined, 0)))
+        add([{listed_in: 'bundled'}, {listed_in: 'https://lists.example.com/i.json'}, {kind: 'git'}, {kind: 'folder'}]
+          .map(m.sourceLine))
+        add(['>=2.0, <3', '~=2.1', '==2.0, !=2.1'].map(m.rangeText))
+        add(m.basedOnLines([{name: 'A', url: '', license: 'MIT', how: 'runs'}, {name: 'B', url: '', license: 'MIT',
+                                                                                  how: 'includes-code'}]))
+        add(m.listingLinks({links: {docs: 'https://example.com/d', funding: ['https://example.com/f']},
+                            author: {url: 'https://example.com/a'}}).map((l) => l.label))
+        add(m.settingValue({type: 'secret'}, 'x'))
+        add([{download: 'https://example.org/d'}, {homepage: 'https://example.org/'}, {github: 'https://github.com/a/b'},
+             {huggingface: 'a/b'}].map((s) => m.entryLink({source: s}).label))
+        return all
+    """, {"details": details, "plan": plan, "record": record})
+    assert len(shown) > 50
+    assert [s for s in shown if _jargon(s)] == []
+
+
+def test_creators_get_two_tabs_and_developers_a_section_of_their_own():
+    """Browse and Installed are the tabs. Installing from a folder or a link,
+    which Clips Kitty hasn't checked, is For developers, opened from a quiet
+    link at the bottom of Browse, and nothing on a creator's screen sends
+    them there."""
+    page = (UI / "pages" / "Marketplace.tsx").read_text(encoding="utf-8")
+    tabs = re.search(r"const TABS\b.*?= \[(.*?)\]", page, re.S)
+    assert tabs and re.findall(r"id: '(\w+)'", tabs.group(1)) == ["browse", "installed"]
+    assert "t('For developers: install a pipeline you’re writing')" in page
+    assert "<MarketplaceDevelopers " in page and "function AddFromLink(" not in page
+    assert "MarketplaceTab = 'browse' | 'installed' | 'developers'" in (LIB / "plugins.ts").read_text(encoding="utf-8")
+    developers = (UI / "pages" / "MarketplaceDevelopers.tsx").read_text(encoding="utf-8")
+    assert "t('For developers')" in developers
+    assert "t('Clips Kitty hasn’t checked pipelines installed here. To find pipelines, use Browse.')" in developers
+    for name in ("pages/Marketplace.tsx", "components/PipelineFields.tsx"):
+        strings = [m.group(2) for m in T_CALL.finditer((UI / name).read_text(encoding="utf-8"))]
+        assert [s for s in strings if re.search(r"folder or a (GitHub )?link|Add from", s)] == [], name
+
+
+def test_the_screen_and_the_engine_use_the_same_words_for_what_a_pipeline_may_do():
+    """The explanation under "What it may do" is the engine's (plugins/permissions.py),
+    word for word, and names the two labels it puts after each permission."""
+    text = (UI / "pages" / "Marketplace.tsx").read_text(encoding="utf-8")
+    note = permissions.ENFORCEMENT_NOTE
+    assert f"'{note}'" in text
+    for label in (permissions.ENFORCED, permissions.DECLARED):
+        assert f"“{label[0].upper()}{label[1:]}”:" in note
+
+
+def test_the_consent_and_safety_lines_are_in_every_language(tmp_path):
+    """What a creator ticks before Install, and the engine's words for what a
+    pipeline may do, are translated in every locale file. A line whose English
+    changes falls back to English on screen, and fails here until it is
+    translated again."""
+    remote = _manifest(execution="remote", network=["api.example.com"],
+                       sends=[{"data": "audio", "to": "Example Cloud"}],
+                       service={"name": "Example Cloud", "url": "https://example.com", "required": True})
+    plans = [{"details": permissions.describe(remote, tier=tier)} for tier in ("link", "listed")]
+    ticks = _run(tmp_path, "return data.flatMap((p) => m.confirmations(p))", plans)
+    model_tick = "I trust this model. I understand its files can run programs on this PC when the pipeline opens them."
+    assert f"'{model_tick}'" in (UI / "pages" / "Marketplace.tsx").read_text(encoding="utf-8")
+    lines = {*ticks, model_tick, permissions.NOTICE, permissions.ENFORCED, permissions.DECLARED,
+             permissions.ENFORCEMENT_NOTE}
+    assert len(lines) == 9
+    locales = sorted((UI / "locales").glob("*.json"))
+    assert len(locales) >= 18
+    for path in locales:
+        have = json.loads(path.read_text(encoding="utf-8"))
+        assert sorted(lines - set(have)) == [], path.name
+        assert all(have[line].strip() for line in lines), path.name

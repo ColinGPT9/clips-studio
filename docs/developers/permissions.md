@@ -1,6 +1,6 @@
 # Permissions
 
-A plugin lists what it needs in its manifest's `permissions`, `network` and `sends`. The user sees each one, in plain words, before installing. This page says, for each, whether Clips Kitty **enforces** it (checks it and refuses otherwise) or whether it is **declared** (the developer states it and nothing stops the plugin doing otherwise).
+A plugin lists what it needs in its manifest's `permissions`, `network` and `sends`. The user sees each one, in plain words, before installing. This page says, for each, whether Clips Kitty **enforces** it (checks it and refuses otherwise) or whether it is **declared** (the developer states it and nothing stops the plugin doing otherwise). The install screen shows enforced as "Clips Kitty hands this over" and declared as "the developer says so", and explains them: "“Clips Kitty hands this over”: Clips Kitty decides what the pipeline is given. “The developer says so”: a promise only. Nothing stops a pipeline doing more, because it can do anything you can do on this PC." (`plugins/permissions.py`).
 
 **The rule behind the table.** A plugin is a program that runs on the user's PC with the user's own rights, as any program they install does. Clips Kitty decides what it *hands over* to a plugin, so a permission can be enforced for what is handed over. Clips Kitty does not sandbox the plugin's process, so it cannot stop a plugin from opening files, starting programs or using the network on its own. Where this page says "declared", that is why.
 

@@ -12,9 +12,9 @@ Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `pl
 | **Install** | The staged files are checked again and moved into place. The plugin is on. | `POST /plugins/install` |
 | **Use** | A job names it with `pipeline: {"id": "publisher/name"}`; the engine runs it at the detection step ([Pipeline development](pipeline-development.md)). | `POST /jobs` |
 | **Update** | A new version is planned and installed the same way, beside the old one, and becomes active once it validates. The old version is kept. | plan, install |
-| **Roll back** | The previous version becomes active again (and the newer one previous, so you can go forward again). | `POST /plugins/{publisher}/{name}/rollback` |
+| **Roll back** | The previous version becomes active again (and the newer one previous, so you can go forward again). The Marketplace's button is **Go back to …**. | `POST /plugins/{publisher}/{name}/rollback` |
 | **Turn off / on** | A plugin that is off can't be chosen for a job. | `.../disable`, `.../enable` |
-| **Pin** | The Marketplace stops offering this plugin's updates. Installing a version by hand still works. | `.../pin`, `.../unpin` |
+| **Pin** | The Marketplace stops offering this plugin's updates. Installing a version by hand still works. Its buttons are **Keep this version (no update offers)** and **Offer updates again**. | `.../pin`, `.../unpin` |
 | **Keys** | `secret` settings are stored in Clips Kitty's secrets store and handed only to this plugin's process. | `PUT .../secrets` |
 | **Remove** | Every version Clips Kitty installed and the plugin's stored keys are deleted. | `DELETE /plugins/{publisher}/{name}` |
 
@@ -29,6 +29,8 @@ Only two versions are kept: the active one and the one before it. Installing a t
 
 - **A folder** is copied; `.git` and `__pycache__` are left out. This is the developer's loop: change your code, plan and install again. Installing the same version again replaces its files.
 - **A Git commit** must be the full hash: a branch or tag can change after the user looked at it, a commit can't. With Git installed, Clips Kitty fetches that one commit into an empty repository of its own and writes the files out of Git's object store, so every file is the one the commit names. Without Git, a `github.com` repository is downloaded as GitHub's archive of that commit (GitHub's word for what the commit holds, not checked against the hash), and any other address says Git is needed.
+
+In the desktop app both are under **For developers: install a pipeline you're writing**, a link at the bottom of Marketplace › Browse. It isn't a tab: creators find pipelines in Browse.
 
 ## What installing does not do
 

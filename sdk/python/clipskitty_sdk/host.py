@@ -85,7 +85,7 @@ def job_settings(manifest: dict, chosen: dict | None) -> dict:
         if not isinstance(spec, dict):
             raise ValueError(f"this pipeline has no setting called '{name}'")
         if spec.get("type") == "secret":
-            raise ValueError(f"'{name}' is a secret: set it in the plugin's settings, not in a job")
+            raise ValueError(f"'{name}' is a secret: set it in the pipeline's settings, not in a job")
         problem = setting_value_problem(spec, value)
         if problem:
             raise ValueError(f"setting '{name}': {problem}")

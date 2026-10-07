@@ -13,13 +13,15 @@ What goes wrong with plugins most often, what the message means, and what to do.
 | Message | Why | Fix |
 |---|---|---|
 | "a Git source needs the full 40-character commit hash" | A branch or tag can change after you looked at it. | Use the commit (on GitHub, the long hash on the commit page). Pasting a GitHub link ending in `/tree/<commit>` fills it in. |
-| "Couldn't get the plugin's files: the repository has no commit …" | The commit hasn't been pushed, or the repository is private. | Push it; listed plugins must be public at that commit. |
+| "Couldn't download this pipeline. Check your internet connection and try again." | No connection, or Git or the download failed: a repository that doesn't exist or is private fails this way too. What Git or the download said is in Clips Kitty's log. | Check the address, and that the repository is public. |
+| "Couldn't get the pipeline's files: the repository has no commit …" | The commit hasn't been pushed. | Push it; listed plugins must be public at that commit. |
+| "The folder you chose (…) has no clipskitty.yaml in it." | The folder isn't the plugin's own. A folder whose one subfolder has `clipskitty.yaml` (what Windows makes of GitHub's "Download ZIP") is installed from that subfolder. | Choose the folder that holds `clipskitty.yaml`. |
 | "…: symbolic links are not allowed in a plugin", "…: the plugin uses a Git submodule, which Clips Kitty does not fetch" | Links and submodules can point outside the plugin. | Commit the files themselves. |
 | "the commit has no folder …" | The listing or link names a subfolder that isn't there at that commit. | Check `path` in your listing, or the folder box. |
-| "… is stored with Git LFS, which Clips Kitty does not fetch" (a warning) | Large files in Git LFS are not fetched; the plugin gets the small pointer file. | Reference big files as models instead ([Model references](model-references.md)). |
+| "Some of this pipeline's files couldn't be downloaded, so it may not work." (a warning; Technical details names each file: "… is stored with Git LFS, which Clips Kitty does not fetch") | Large files in Git LFS are not fetched; the plugin gets the small pointer file. | Reference big files as models instead ([Model references](model-references.md)). |
 | "Can't install: … needs Clips Kitty …" | `requires.clips_kitty` excludes this version. | Update Clips Kitty, or widen the range if your plugin works ([Versioning](versioning.md)). |
 | "the listing says version …, the files say …" | A registry listing and the manifest at its commit disagree. | Fix the listing or tag a new commit. |
-| "This install plan has expired or was already used" | Plans last an hour and are used once. | Look at the plugin again. |
+| "This install plan has expired or was already used" | Plans last an hour and are used once. | Look at the pipeline again. |
 | "This needs the X-Clips-Kitty-Session header" | Installing and changing plugins needs the app's session secret. | Use the desktop app, or send the header from a script ([`docs/API.md` › Plugins](../API.md#plugins)). |
 | "installing from this address needs Git, which isn't installed on this PC" | Without Git, Clips Kitty can only fetch GitHub's archive of a commit. | Install Git, or host on GitHub. |
 
@@ -39,10 +41,12 @@ What goes wrong with plugins most often, what the message means, and what to do.
 | "This pipeline needs X, which this version of Clips Kitty doesn't include" | Your plugin imports a package the app's own Python doesn't have. | Use the standard library, ship pure-Python code in your plugin's folder, or call your own executable as `run.command`. |
 | "This pipeline tried to use Clips Kitty's own code (…)" | Plugins can't import the engine's packages (`core`, `plugins`, `video`…); they change with every release. | Use the SDK and the job folder instead. |
 | `UnicodeDecodeError` or garbled text reading a file | The app's Python never runs in UTF-8 mode. | Pass `encoding="utf-8"` to `open()`, `read_text()` and `write_text()`. |
-| "… failed: …" | Your plugin exited with an error; the text is its last error line (`job.fail(...)`) or its last output. | Read the job log; reproduce with `python -m clipskitty_sdk run`. |
+| "… failed: …" | Your plugin exited with an error; the text is its last error line (`job.fail(...)`). | Read the job log; reproduce with `python -m clipskitty_sdk run`. |
+| "… stopped before it finished. Try again; if it happens again, send a bug report from Feedback (it includes the details)." | Your plugin exited with a code other than 0 and no error line. Its output and the exit code are in the job log. | Report errors with `job.fail(...)`, or a `{"type": "error"}` line, in words the user understands. |
+| "Clips Kitty couldn't start …" | `run.command` couldn't be started: a program that isn't there or can't run on this PC. The reason is in the log. | Check `run.command` and that the program is in your plugin's folder. |
 | "… gave an answer Clips Kitty can't use: …" | `result.json` broke the contract: a range outside the video, end before start, a score outside 0-100, too many ranges. | The message names the field. `Job.add_range` and `Job.finish` check the same rules as you go, except the video's length, which Clips Kitty checks when it reads the result. |
-| "the plugin took longer than its … minute limit" | `run.timeout_minutes` (default 60, at most 24 hours). | Raise it in your manifest if your pipeline is slow on long videos. |
-| "its model '…' isn't on this PC: …" | A model in your manifest hasn't been downloaded (or pulled, for Ollama). | Download it in Marketplace › Installed, or pull it on the Models page. |
+| "… took longer than its … minute limit, so Clips Kitty stopped it." | `run.timeout_minutes` (default 60, at most 24 hours). | Raise it in your manifest if your pipeline is slow on long videos. |
+| "… can't run. Its AI model '…' isn't downloaded yet. …" | A model in your manifest hasn't been downloaded (in Ollama's case, on the Models page). | Download it in Marketplace › Installed, or on the Models page for an Ollama model. Give `size_bytes` and the message shows the size. |
 | "the pipeline … can't run here: it needs Clips Kitty …" | An app update left the plugin's version range behind. | Install a newer version of the plugin. |
 | "the pipeline … is blocked: …" | The version is on a registry block list. | Remove it in the Marketplace; install a version that isn't blocked. |
 | No moments found | Your plugin returned no ranges. | Normal for a video without what it looks for; `job.finish(notes=...)` lets you say why in the log. |
@@ -54,12 +58,13 @@ A plugin's own Python packages are not installed by Clips Kitty yet (planned). U
 | Message | Fix |
 |---|---|
 | "… is in a pickle format, which can run code when it is loaded. Confirm to download it." | Tick the box in the download dialog if you trust it; better, use a safetensors or ONNX file. |
-| "this model is gated on Hugging Face …" | Clips Kitty doesn't sign in to Hugging Face yet. Choose an ungated model. |
+| "Its makers share this model only with people who sign in to Hugging Face and are given access. …" | The model is gated, and Clips Kitty doesn't sign in to Hugging Face yet. Choose an ungated model. |
+| "Couldn't download … Check your internet connection and try again." | The download failed; what went wrong is in Clips Kitty's log. Try again. |
 | "…: its SHA-256 doesn't match …", "got … bytes, expected …" | The file changed or the download broke. Try again; if it persists, the manifest's checksum is wrong. |
-| Marketplace says the model is a "copy" | Windows refused a link, so the file was copied. It works; it takes the space twice. Turning on Windows Developer Mode allows links. |
+| Marketplace says the model is "stored twice" | Windows refused a link, so the file was copied. It works; it takes the space twice. Turning on Windows Developer Mode allows links. |
 
 ## The Marketplace
 
-- **"No pipelines are listed yet."** Neither the list that came with this version nor Clips Kitty's online list has a pipeline yet (or the online list hasn't been fetched: press **Check for new pipelines**, which the desktop app shows at the bottom of Browse). Install from a folder or a link meanwhile.
+- **"No pipelines are listed yet."** Neither the list that came with this version nor Clips Kitty's online list has a pipeline yet (or the online list hasn't been fetched: press **Check for new pipelines**, which the desktop app shows at the bottom of Browse). To try your own pipeline meanwhile, install it from **For developers: install a pipeline you're writing** at the bottom of Browse.
 - **A listing is missing.** A new listing, or a new version, reaches the Marketplace once its pull request is merged, the next time the Marketplace checks Clips Kitty's online list (when it opens, at most once a day, unless that is switched off at the bottom of Browse), or at once with **Check for new pipelines**. Until the next release bundles it, it shows as Community. A change to an existing listing's text, and anything in the Clips Kitty project's own repositories, waits for the next release. A blocked version is never shown. If the footer says the check didn't work, it says why: no connection, nothing at the address yet, or a list the app can't read.
 - **Links don't open.** Each opens only after a dialog showing the address; outside the desktop app the address is shown as text to copy.

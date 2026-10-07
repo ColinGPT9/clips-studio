@@ -591,6 +591,31 @@ def _entry(slug, *, owner="someone", kind="app", **extra):
             "source": {"github": f"https://github.com/{owner}/{slug}"}, **extra}
 
 
+def test_a_fetched_list_cant_bring_a_bad_download_link_or_website():
+    """The app checks an entry's download page and website again, the way
+    the catalog build does (plugins/catalog.py), and drops a bad one."""
+    code = "https://github.com/someone/clipper"
+    good = {"github": code, "homepage": "https://clipper.example.org/",
+            "download": "https://get.clipper.example.org/windows"}
+    bad = [
+        {"download": code + "/releases/download/v1.0/clipper.exe"},  # a file, not a page
+        {"homepage": "https://clipper.example.org/", "download": "https://elsewhere.example.net/clipper"},
+        {"download": "https://github.com/someone-else/clipper/releases"},  # another repository's
+        {"homepage": "https://me:secret@clipper.example.org/", "download": "https://clipper.example.org/get"},
+        {"homepage": "http://clipper.example.org/"},
+        {"homepage": "https://github.com/someone-else"},
+        {"download": ["https://clipper.example.org/get"]},
+    ]
+    entries = [_entry("good", source=good, setup="installer"),
+               *(_entry(f"bad-{i}", source={"github": code, **s}, setup="easy") for i, s in enumerate(bad))]
+    by_id = {e["id"]: e for e in registry.check_index(_index(catalog=entries))["catalog"]}
+    assert by_id["apps/good"]["source"] == good and by_id["apps/good"]["setup"] == "installer"
+    for i in range(len(bad)):
+        got = by_id[f"apps/bad-{i}"]
+        assert got["source"] == {"github": code, **({"homepage": "https://clipper.example.org/"} if i == 1 else {})}
+        assert "setup" not in got
+
+
 def test_the_online_list_adds_directory_entries_and_sections_but_not_the_projects_own(tmp_path):
     data, bundled = tmp_path / "data", tmp_path / "index.json"
     sections = {"app": {"sections": [{"id": "editors", "title": "Editors"}], "wanted": []}}

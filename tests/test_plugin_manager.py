@@ -6,9 +6,11 @@ file://; nothing touches the network. GitHub's archive (the path for a PC
 without Git) is a tarball made here and handed over by a fake fetcher.
 """
 
+import ast
 import io
 import json
 import os
+import re
 import stat
 import tarfile
 from pathlib import Path
@@ -102,21 +104,47 @@ def test_a_plan_shows_permissions_and_what_leaves_the_pc_before_anything_install
     plan = _plan(data, {"kind": "folder", "path": str(folder)})
     assert plan["ok"] and plan["plan_id"] and plan["update"] is None
     d = plan["details"]
-    assert d["notice"] == "This plugin is code from the internet. It runs on this PC with your rights."
+    assert d["notice"] == "This pipeline is a program from the internet. It can do anything you can do on this PC."
     assert d["tier_text"] == "Not listed · Clips Kitty has not checked this"
     assert {p["id"]: (p["label"], p["enforcement"]) for p in d["permissions"]} == {
-        "video.read": ("Reads the video you process", "enforced for the hand-over"),
-        "network": ("Connects to: api.example.com", "declared by the developer"),
-        "ffmpeg": ("Uses Clips Kitty's FFmpeg", "enforced for the hand-over"),
+        "video.read": ("Reads the video you process", "Clips Kitty hands this over"),
+        "network": ("Connects to: api.example.com", "the developer says so"),
+        "ffmpeg": ("Uses Clips Kitty's FFmpeg", "Clips Kitty hands this over"),
     }
     assert d["data_warnings"] == ["⚠ Sends your video to Example Cloud, when you choose Cloud",
                                   "⚠ Sends your video's transcript off this computer"]
-    assert d["secrets"] == ["api_key"] and "Other plugins and programs running as you can read them" in d["secrets_notice"]
+    assert d["secrets"] == ["api_key"] and "Other pipelines and programs running as you can read them" in d["secrets_notice"]
     assert d["requirements"][0] == "A graphics card is recommended, 6 GB of video memory"
     text = permissions.render_text(plan)
     assert "⚠ Sends your video to Example Cloud, when you choose Cloud" in text
-    assert "Connects to: api.example.com (declared by the developer)" in text
+    assert "Reads the video you process (Clips Kitty hands this over)" in text
+    assert "Connects to: api.example.com (the developer says so)" in text
+    assert permissions.ENFORCEMENT_NOTE in text
     assert not (store.root(data) / store.STATE_FILE).exists()
+
+
+# Words a creator shouldn't have to know (docs/developers keeps them for developers).
+JARGON = re.compile(r"\b(plugins?|manifests?|commits?|repository|repositories|forks?|registry|checksums?|pickle|"
+                    r"git)\b|settings\.yaml|exit code", re.IGNORECASE)
+
+
+def _shown_text(module) -> list[str]:
+    """The text in a module a person can be shown: every string and f-string
+    part, leaving out docstrings and lower-case identifiers such as dict keys."""
+    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+    docstrings = {id(node.body[0].value) for node in ast.walk(tree)
+                  if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and node.body
+                  and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+    return [node.value for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
+            and not re.fullmatch(r"[a-z0-9_.{}-]*", node.value)]
+
+
+def test_the_install_screen_text_is_in_plain_words():
+    shown = _shown_text(permissions)
+    assert permissions.NOTICE in shown and permissions.ENFORCEMENT_NOTE in shown  # the scan sees them
+    assert [text for text in shown if JARGON.search(text) or re.search(r"\bPATH\b", text)] == []
+    assert not JARGON.search("Comments and ideas (opens GitHub's website)")  # word boundaries: GitHub is fine
 
 
 def test_an_invalid_plugin_is_refused_with_every_reason_and_nothing_is_kept(data, plugin_source):
@@ -152,6 +180,28 @@ def test_a_source_must_be_well_formed(data):
 def test_a_folder_that_is_missing_is_refused(data, tmp_path):
     with pytest.raises(manager.ManagerError, match="is not a folder"):
         _plan(data, {"kind": "folder", "path": str(tmp_path / "nowhere")})
+
+
+def test_a_folder_without_clipskitty_yaml_is_named_as_the_person_chose_it(data, plugin_source):
+    chosen = plugin_source.write(plugin_source.base / "Downloads", files={"notes.txt": "x\n"})
+    plugin_source.write(chosen / "one", files={"a.txt": "a\n"})
+    plan = _plan(data, {"kind": "folder", "path": str(chosen)})
+    assert plan["errors"] == [f"The folder you chose ({chosen}) has no clipskitty.yaml in it."]
+    assert manager.STAGING not in plan["errors"][0]
+
+
+def test_the_outer_folder_of_a_download_zip_installs_from_the_one_folder_inside(data, plugin_source):
+    """GitHub's "Download ZIP", unpacked by Windows, puts the plugin one folder
+    down: example-plugin-main/example-plugin-main/clipskitty.yaml."""
+    outer = plugin_source.base / "example-plugin-main"
+    inner = plugin_source.write(outer / "example-plugin-main", plugin_source.manifest(), {"src/main.py": "x\n"})
+    view = _install(data, {"kind": "folder", "path": str(outer)})
+    assert view["source"] == {"kind": "folder", "path": str(inner)}
+    assert (store.get(data, "fixture-dev/manager-test").folder / "src/main.py").read_text() == "x\n"
+    # Two folders with a clipskitty.yaml: Clips Kitty doesn't guess.
+    plugin_source.write(outer / "another", plugin_source.manifest(id="fixture-dev/another"))
+    plan = _plan(data, {"kind": "folder", "path": str(outer)})
+    assert plan["errors"] == [f"The folder you chose ({outer}) has no clipskitty.yaml in it."]
 
 
 # ---- Git -------------------------------------------------------------------------------------
@@ -215,13 +265,15 @@ def test_a_program_the_plugin_ships_stays_executable(data, plugin_source):
     assert mode & stat.S_IXUSR
 
 
-def test_a_git_lfs_pointer_is_named_in_the_warnings(data, plugin_source):
+def test_a_git_lfs_pointer_is_said_plainly_and_named_in_the_details(data, plugin_source):
     repo = plugin_source.repo()
     pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64 + "\nsize 12\n"
     commit = plugin_source.commit(repo, files={"model.onnx": pointer})
     plan = _plan(data, _git_source(repo, commit))
     assert plan["ok"]
-    assert any(w.startswith("model.onnx is stored with Git LFS") for w in plan["warnings"])
+    assert plan["warnings"] == ["Some of this pipeline's files couldn't be downloaded, so it may not work. "
+                                "Ask its developer."]
+    assert any(line.startswith("model.onnx is stored with Git LFS") for line in plan["technical"])
 
 
 # ---- update, roll back, keep two -----------------------------------------------------------
@@ -512,6 +564,33 @@ def test_an_archive_that_could_escape_or_is_of_another_commit_is_refused(data, p
     source = {"kind": "git", "url": "https://github.com/fixture-dev/manager-test", "commit": COMMIT_X}
     with pytest.raises(manager.ManagerError, match=fragment):
         _plan(data, source, fetcher=fetcher)
+
+
+def test_a_failed_download_says_so_plainly_and_keeps_the_details_in_the_log(data, monkeypatch, caplog):
+    import urllib.error
+    import urllib.request
+
+    _no_git(monkeypatch)
+
+    def offline(request, timeout=None):
+        raise urllib.error.URLError(OSError("[Errno 101] Network is unreachable: C:/Users/someone/AppData"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    source = {"kind": "git", "url": "https://github.com/fixture-dev/manager-test", "commit": COMMIT_X}
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, source)
+    assert str(e.value) == "Couldn't download this pipeline. Check your internet connection and try again."
+    assert "Network is unreachable" in caplog.text
+    assert list((store.root(data) / manager.STAGING).iterdir()) == []
+
+
+def test_a_git_failure_says_the_same_plain_sentence(data, tmp_path, caplog):
+    if not sources.find_git():
+        pytest.skip("git is not installed")
+    with pytest.raises(manager.ManagerError) as e:
+        _plan(data, _git_source(tmp_path / "no-such-repository", COMMIT_X))
+    assert str(e.value) == manager.DOWNLOAD_FAILED
+    assert "no-such-repository" not in str(e.value) and "git fetch failed" in caplog.text
 
 
 def test_without_git_a_repository_off_github_says_git_is_needed(data, monkeypatch):

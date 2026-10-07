@@ -276,7 +276,7 @@ Developer-hosted inference, OpenRouter and Replicate are not model *files*: they
 
 The brief's `video.write` collapses into `clips.write` (the only way a pipeline writes video into Clips Kitty), and `model.download` / `model.cache` into the `models:` list.
 
-**Security, in one place.** A plugin is code from the internet that runs as the user. The install screen says so in those words, names publisher, repository, version and commit, lists the permissions with their labels and any data-leaving warning, and installs nothing until the user confirms. Plugin-manager routes that change what is installed or enabled require a session secret in an `X-Clips-Kitty-Session` header (built in Phase 6; it does not exist before). The desktop app makes a random secret at each start, passes it to the engine in `CLIPS_KITTY_SESSION_SECRET` with the other variables it already sets (`backendEnv`, `ui/src/main/index.ts` ~:228) and hands it to its own window through the preload. An engine started without it (`python main.py serve`, or the app with `BACKEND_EXTERNAL=1`) makes its own and writes it to `<data_dir>/plugins/session.secret`, readable by the user, for scripts. Plugins never inherit it: `CLIPS_*` variables are stripped from their environment. What it stops: web pages (a page can send a simple cross-site POST without reading the answer; a custom header forces a preflight the CORS allow-list refuses, `server/api.py:577-582`) and stray scripts that call the API without knowing the secret. What it does not stop: software already running as the user, which can read the engine's environment or that file. It is not a boundary against an installed plugin. Installing never runs anything from the plugin: no `setup.py`, no install script, no hook; the installer copies files and validates the manifest. Python packages a plugin lists in `run.python_requirements` (planned; not built in Phase 3, `DECISIONS.md` D11) are a separate line on the install screen that the user agrees to; they go into the plugin's own environment under `<data_dir>/plugins/envs/` as wheels only, with hashes (`pip install --only-binary=:all: --require-hashes`), so no package build script runs at install and nothing from them runs until a job starts the plugin. Python plugins run on the app's own Python (DECISIONS D28); a plugin can also ship its own executable as `run.command`. A plugin with a `secret` setting gets an extra install-screen line: "Your keys for this plugin are stored for your Windows account. Other plugins and programs running as you can read them." Windows Job Object limits for plugin processes are designed and will be called enforced only once built and tested on Windows.
+**Security, in one place.** A plugin is code from the internet that runs as the user. The install screen says so ("This pipeline is a program from the internet. It can do anything you can do on this PC."), names publisher, repository, version and commit, lists the permissions with their labels and any data-leaving warning, and installs nothing until the user confirms. Plugin-manager routes that change what is installed or enabled require a session secret in an `X-Clips-Kitty-Session` header (built in Phase 6; it does not exist before). The desktop app makes a random secret at each start, passes it to the engine in `CLIPS_KITTY_SESSION_SECRET` with the other variables it already sets (`backendEnv`, `ui/src/main/index.ts` ~:228) and hands it to its own window through the preload. An engine started without it (`python main.py serve`, or the app with `BACKEND_EXTERNAL=1`) makes its own and writes it to `<data_dir>/plugins/session.secret`, readable by the user, for scripts. Plugins never inherit it: `CLIPS_*` variables are stripped from their environment. What it stops: web pages (a page can send a simple cross-site POST without reading the answer; a custom header forces a preflight the CORS allow-list refuses, `server/api.py:577-582`) and stray scripts that call the API without knowing the secret. What it does not stop: software already running as the user, which can read the engine's environment or that file. It is not a boundary against an installed plugin. Installing never runs anything from the plugin: no `setup.py`, no install script, no hook; the installer copies files and validates the manifest. Python packages a plugin lists in `run.python_requirements` (planned; not built in Phase 3, `DECISIONS.md` D11) are a separate line on the install screen that the user agrees to; they go into the plugin's own environment under `<data_dir>/plugins/envs/` as wheels only, with hashes (`pip install --only-binary=:all: --require-hashes`), so no package build script runs at install and nothing from them runs until a job starts the plugin. Python plugins run on the app's own Python (DECISIONS D28); a plugin can also ship its own executable as `run.command`. A plugin with a `secret` setting gets an extra install-screen line: "Your keys for this pipeline are stored for your Windows account. Other pipelines and programs running as you can read them." Windows Job Object limits for plugin processes are designed and will be called enforced only once built and tested on Windows.
 
 ## 8.8 Trust
 
@@ -325,7 +325,7 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 | Plugin and pipeline | `version` (SemVer), one pipeline per plugin in API 1 | Each index entry maps a version to a tag and a commit; versions are immutable and never deleted, only blocked or delisted. Clips record `plugin` and `plugin_version` in their saved scores (`candidate.subscores` → `clips.scores`, `core/pipeline.py:1593`) as `plugin`, `plugin_version`, `plugin_label` and `plugin_why`, next to the existing `sport_label` and `game_why` keys. |
 | Model | `revision` (Hugging Face commit, Ollama digest, file SHA-256) | Pinned in the manifest. A new model revision is a new plugin version. |
 
-**Pinning, updates, rollback** (research Q13-Q15). Clips Kitty's online list is checked once a day when the Marketplace opens (D29); an update shows the new version, its changelog link and any change in permissions, network hosts or data sent, and installs only on a click. The new version installs beside the old one and becomes active only when it validates; the previous version stays on disk and **Roll back** makes it active again. **Pin** stops update offers for a plugin. No automatic updates; a security problem is handled by the block list, not by a forced update. Because Colin's PC is short of disk, only one previous version is kept by default.
+**Pinning, updates, rollback** (research Q13-Q15). Clips Kitty's online list is checked once a day when the Marketplace opens (D29); an update shows the new version, its changelog link and any change in permissions, network hosts or data sent, and installs only on a click. The new version installs beside the old one and becomes active only when it validates; the previous version stays on disk and **Go back to …** (roll back) makes it active again. **Keep this version (no update offers)** (pin) stops update offers for a plugin. No automatic updates; a security problem is handled by the block list, not by a forced update. Because Colin's PC is short of disk, only one previous version is kept by default.
 
 ## 8.10 Marketplace and registry
 
@@ -364,7 +364,7 @@ versions:
 
 | Need | Design |
 |---|---|
-| Types | Pipelines (built); Plugins, Models, Workflows, Providers, Integrations appear as tabs that say "planned" until a kind exists. Models listed by installed plugins appear under Models. |
+| Types | Pipelines (built), and Awesome Clips Kitty's Apps, AI model links, Workflows, Integrations and Tools, which link to their own pages (the models tab is "AI model links" so it isn't taken for the app's Models page). Plugin kinds Clips Kitty can't install yet (caption styles, publishers, sources and the rest) get no tab until they can be installed. Models listed by installed pipelines appear under Installed. |
 | Categories | A closed list checked by CI: gaming, sports, creators, streaming, podcasting, captions, detection, analytics, audio, utilities (the brief's ten, research Q32). |
 | Tags | Lower case, at most 10; game and sport slugs (`marvel-rivals`, `world-of-warcraft`, `rocket-league`, `soccer`, `nhl`). |
 | Search | Local and forgiving: case and punctuation folded; matches name, description, tags, games, events and capability; an alias table grown by pull request (`wow` → `world-of-warcraft`, `football` → `soccer`); every word must match somewhere, ranked by where (name over tag over description). So "WoW", "World of Warcraft PvP", "Soccer goals", "Podcast shorts" each find the one specialised listing instead of a broad category. |
@@ -481,11 +481,11 @@ Install Open Shorts for Clips Kitty 1.0.0?
 example-dev · github.com/example-dev/clips-kitty-open-shorts · commit 0123456 · MIT
 Listed · not reviewed by a person · Unofficial: not made by the Open Shorts project
 
-This plugin is code from the internet. It runs on this PC with your rights.
+This pipeline is a program from the internet. It can do anything you can do on this PC.
 
 It will
-  Read the video you process ............................ enforced for the hand-over
-  Connect to 127.0.0.1:8000 and api.openshorts.app ..... declared by the developer
+  Read the video you process ............................ Clips Kitty hands this over
+  Connect to 127.0.0.1:8000 and api.openshorts.app ..... the developer says so
 ⚠ If you choose Hosted: sends the video's link to api.openshorts.app,
   which downloads and processes the video on its servers.
 ⚠ Open Shorts itself sends the transcript to Google Gemini unless you set it
@@ -521,13 +521,13 @@ Install Marvel Rivals Highlights 1.0.0?
 example-dev · github.com/example-dev/clips-kitty-marvel-rivals · commit 0123456 · MIT
 Listed · not reviewed by a person · Unofficial: not made or endorsed by the makers of Marvel Rivals
 
-This plugin is code from the internet. It runs on this PC with your rights.
-Runs on this PC. The developer declares that nothing leaves your computer.
+This pipeline is a program from the internet. It can do anything you can do on this PC.
+Runs on this PC. The developer says nothing leaves your computer.
 
 It will
-  Read the video you process and its transcript ........ enforced for the hand-over
-  Use Clips Kitty's FFmpeg .............................. enforced for the hand-over
-  Use your graphics card ................................ declared by the developer
+  Read the video you process and its transcript ........ Clips Kitty hands this over
+  Use Clips Kitty's FFmpeg .............................. Clips Kitty hands this over
+  Use your graphics card ................................ the developer says so
 Downloads
   killfeed.onnx · <size from the Hub> · Apache-2.0 · huggingface.co/example-dev/marvel-rivals-killfeed @ 0123456
 Python packages (installed into its own folder, wheels only)

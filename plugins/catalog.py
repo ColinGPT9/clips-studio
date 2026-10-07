@@ -32,6 +32,7 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from plugins import sources
 from plugins._sdk import manifest
@@ -72,9 +73,19 @@ PLATFORMS = ("windows", "macos", "linux", "web", "android", "ios")
 RUNS = ("local", "cloud", "both")
 USES = ("api", "sdk", "both")
 ENTRY_FIELDS = ("name", "description", "section", "relationship", "license", "license_note", "source", "models",
-                "platforms", "runs", "tags", "games", "sports", "adapter", "uses", "featured", "warning", "added",
-                "checked")
-SOURCE_FIELDS = ("github", "huggingface", "url", "path")
+                "platforms", "runs", "setup", "tags", "games", "sports", "adapter", "uses", "featured", "warning",
+                "added", "checked")
+SOURCE_FIELDS = ("github", "huggingface", "url", "path", "homepage", "download")
+# installer: people download it and run its installer. technical: it needs the command line or Python.
+SETUPS = ("installer", "technical")
+# A download link opens a page, never a file: people land on the project's own
+# instructions and their browser's own download checks.
+FILE_ENDINGS = (".exe", ".msi", ".msix", ".zip", ".7z", ".dmg", ".pkg", ".appimage", ".deb", ".rpm", ".tar.gz",
+                ".whl")
+STORE_HOST = "apps.microsoft.com"
+# Anyone can have pages on these, so a homepage there would let a download
+# link point at anyone's page: GitHub and Hugging Face pages go in github and huggingface.
+SHARED_HOSTS = ("github.com", "huggingface.co")
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SECTION_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$")
 HF_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$")
@@ -106,6 +117,63 @@ def _text(problems: list, where: str, value, *, limit: int, required: bool = Tru
 
 def _https(value) -> bool:
     return isinstance(value, str) and value.startswith("https://") and " " not in value and len(value) <= 300
+
+
+def _web_host(value) -> str | None:
+    """The host of a plain https address with no username or password in it,
+    or None. A backslash is refused: a browser reads it as "/", so the host
+    it opens could differ from the one checked here."""
+    if not _https(value) or not re.fullmatch(r"[!-~]+", value) or "\\" in value:
+        return None
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return None
+    host = parts.hostname or ""
+    return host if "@" not in parts.netloc and "." in host and re.fullmatch(r"[a-z0-9.-]+", host) else None
+
+
+def _is_file(url: str) -> bool:
+    return unquote(urlsplit(url).path).rstrip("/").lower().endswith(FILE_ENDINGS)
+
+
+def _on(host: str, site: str) -> bool:
+    """Whether `host` is `site` or one of its subdomains."""
+    return host == site or host.endswith("." + site)
+
+
+def homepage_problem(homepage) -> str | None:
+    """Why a project's website can't be listed, or None."""
+    host = _web_host(homepage)
+    if not host:
+        return "source.homepage: a plain https address with no username or password"
+    if _is_file(homepage):
+        return "source.homepage: a page, not a file"
+    if any(_on(host, shared) for shared in SHARED_HOSTS):
+        return "source.homepage: the project's own website (GitHub and Hugging Face pages go in github and huggingface)"
+    return None
+
+
+def download_problem(download, *, github=None, homepage=None) -> str | None:
+    """Why a download link can't be listed, or None. It is a page, not a
+    file, and one of: the GitHub repository's own releases page, a page on
+    the homepage's site (or a subdomain of it), or a Microsoft Store page."""
+    host = _web_host(download)
+    if not host:
+        return "source.download: a plain https address with no username or password"
+    if _is_file(download):
+        return "source.download: a page, not a file (the project's own page says which file to get)"
+    repo = github_repo(github)
+    if repo and re.fullmatch(rf"https://github\.com/{re.escape(repo)}/releases(/latest)?/?", download, re.I):
+        return None
+    site = _web_host(homepage) if homepage_problem(homepage) is None else None
+    if site and _on(host, site.removeprefix("www.")):
+        return None
+    if host == STORE_HOST:
+        return None
+    return ("source.download: the GitHub repository's releases page (https://github.com/<owner>/<repo>/releases or "
+            ".../releases/latest), a page on the homepage's site, or a Microsoft Store page "
+            "(https://apps.microsoft.com/...)")
 
 
 def _short_list(problems: list, where: str, value, *, limit: int = 10, item_limit: int = 40,
@@ -253,6 +321,11 @@ def check_entry(data, kind: str, slug: str, sections: dict) -> list[str]:
         if "path" in source and ("github" not in source or not isinstance(source["path"], str)
                                  or not manifest._relative_inside(source["path"])):
             problems.append("source.path: a folder inside the GitHub repository")
+        if "homepage" in source and (problem := homepage_problem(source["homepage"])):
+            problems.append(problem)
+        if "download" in source and (problem := download_problem(source["download"], github=source.get("github"),
+                                                                 homepage=source.get("homepage"))):
+            problems.append(problem)
         if kind == "model" and "huggingface" not in source and "url" not in source:
             problems.append("source: a model's home is its Hugging Face repository (huggingface: owner/name)")
     models = data.get("models")
@@ -264,6 +337,9 @@ def check_entry(data, kind: str, slug: str, sections: dict) -> list[str]:
     _short_list(problems, "platforms", data.get("platforms"), choices=PLATFORMS)
     if "runs" in data and data["runs"] not in RUNS:
         problems.append(f"runs: one of {', '.join(RUNS)}")
+    if "setup" in data and data["setup"] not in SETUPS:
+        problems.append("setup: installer (people download it and run its installer) or technical "
+                        "(it needs the command line or Python)")
     _short_list(problems, "tags", data.get("tags"))
     _short_list(problems, "games", data.get("games"))
     _short_list(problems, "sports", data.get("sports"))
@@ -470,7 +546,12 @@ def _stars(n) -> str:
 
 
 def _link(entry: dict) -> str:
+    """Where an entry's name leads: its download page, its website, its
+    GitHub repository (or a folder or page of it), its Hugging Face page,
+    then any other page (the Marketplace's entryLink keeps the same order)."""
     source = entry.get("source") or {}
+    if source.get("download") or source.get("homepage"):
+        return source.get("download") or source["homepage"]
     if source.get("github"):
         url = source["github"]
         if source.get("path"):
@@ -497,6 +578,8 @@ def _line(entry: dict) -> str:
     runs = {"local": "runs locally", "cloud": "cloud", "both": "local or cloud"}.get(entry.get("runs") or "")
     if runs:
         bits.append(runs)
+    if entry.get("setup") == "technical":
+        bits.append("needs technical setup (command line or Python)")
     nums = entry.get("metrics") or {}
     if nums.get("installs") is not None:
         bits.append(f"{nums['installs']:,} Clips Kitty installs")
@@ -519,6 +602,11 @@ def _line(entry: dict) -> str:
     return line
 
 
+def _order(entry: dict) -> tuple:
+    """By name, with the ones that need technical setup after the others."""
+    return entry.get("setup") == "technical", entry["name"].lower()
+
+
 def readme_body(sections: dict, entries: list[dict]) -> str:
     """The generated part of README.md: contents, every section with its
     entries (empty sections left out), unchecked entries, and the niches
@@ -538,7 +626,7 @@ def readme_body(sections: dict, entries: list[dict]) -> str:
         toc.append(f"- [{title}](#{_anchor(title)})")
         body += [f"## {title}", ""]
         for s in spec.get("sections", []):
-            own = sorted((e for e in checked if e.get("section") == s["id"]), key=lambda e: e["name"].lower())
+            own = sorted((e for e in checked if e.get("section") == s["id"]), key=_order)
             children = "/" not in s["id"] and any(str(e.get("section", "")).startswith(s["id"] + "/")
                                                    for e in checked)
             if not own and not children:
@@ -555,7 +643,7 @@ def readme_body(sections: dict, entries: list[dict]) -> str:
             toc.append(f"  - [{sub}](#{_anchor(sub)})")
             body += [f"### {sub}", "",
                      "_Added by their authors and not yet checked against the inclusion criteria._", ""]
-            body += [_line(e) for e in sorted(unchecked, key=lambda e: e["name"].lower())] + [""]
+            body += [_line(e) for e in sorted(unchecked, key=_order)] + [""]
     wanted = [(kind, w) for kind in KIND_ORDER for w in (sections.get(kind) or {}).get("wanted", [])]
     if wanted:
         toc.append("- [Wanted](#wanted)")

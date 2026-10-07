@@ -21,15 +21,17 @@ import {
   formatBytes,
   indexName,
   isOurList,
+  listedInText,
   listingLinks,
   needLines,
   ONLINE_LIST,
   onlineText,
+  rangeText,
   safeLink,
   slugLabel,
+  sourceLine,
   tierBadge,
   updateLines,
-  gitSource,
   type Badge,
   type BasedOn,
   type BuiltinPlugin,
@@ -62,6 +64,8 @@ import {
   type MarketplaceTab,
   type PluginSource
 } from '../lib/plugins'
+import TechnicalDetails from '../components/TechnicalDetails'
+import MarketplaceDevelopers from './MarketplaceDevelopers'
 
 /** The Marketplace: find community pipelines in the registry indexes, see
  *  what each one does and needs before installing, and manage the ones
@@ -156,6 +160,29 @@ function OutLink({ url, children }: { url: string | null; children: ReactNode })
   )
 }
 
+/** A link from an Awesome Clips Kitty entry. It opens in the browser only
+ *  after a dialog that shows the full address and says whether the link is in
+ *  Clips Kitty's own list; plain text without the desktop app. */
+function CatalogLink({
+  url,
+  ours,
+  className,
+  children
+}: {
+  url: string
+  ours: boolean
+  className: string
+  children: ReactNode
+}): JSX.Element {
+  const open = window.studio?.openCatalogLink
+  if (!open) return <span title={url}>{children}</span>
+  return (
+    <button className={className} onClick={() => void open(url, ours)} title={url}>
+      {children} ↗
+    </button>
+  )
+}
+
 /** The projects a plugin builds on, with their licences: the credit their
  *  licences ask for, and what a user should know about where it comes from. */
 function BuiltOn({ items }: { items: BasedOn[] | undefined }): JSX.Element | null {
@@ -172,7 +199,7 @@ function BuiltOn({ items }: { items: BasedOn[] | undefined }): JSX.Element | nul
         ))}
       </ul>
       <p className="text-xs text-muted mt-1">
-        {t('Each of these keeps its own licence. The developer says how the plugin uses them.')}
+        {t('Each of these keeps its own licence. The developer says how the pipeline uses them.')}
       </p>
     </div>
   )
@@ -202,7 +229,7 @@ function Numbers({
         ))}
         {comments && (
           <li>
-            <OutLink url={comments}>{t('Comments and ideas: GitHub Discussions')}</OutLink>
+            <OutLink url={comments}>{t('Comments and ideas (opens GitHub’s website)')}</OutLink>
           </li>
         )}
       </ul>
@@ -232,7 +259,7 @@ function DetailsBlock({
   const exec = executionBadge(details.execution, details.execution_text)
   return (
     <div className="space-y-3 text-sm">
-      {details.notice && <p className="text-warn">⚠ {details.notice}</p>}
+      {details.notice && <p className="text-warn">⚠ {t(details.notice)}</p>}
       <div className="flex flex-wrap gap-2 items-center">
         <Pill badge={tierBadge(details)} />
         <Pill badge={exec} />
@@ -257,14 +284,14 @@ function DetailsBlock({
           <ul className="space-y-0.5">
             {details.permissions.map((p) => (
               <li key={p.id}>
-                {p.label} <span className="text-xs text-muted">({p.enforcement})</span>
+                {p.label} <span className="text-xs text-muted">({t(p.enforcement)})</span>
               </li>
             ))}
           </ul>
         )}
         <p className="text-xs text-muted mt-1">
           {t(
-            '“Enforced” means Clips Kitty decides what it hands over. “Declared” means the developer says so and nothing stops the plugin doing more, because it runs with your rights.'
+            '“Clips Kitty hands this over”: Clips Kitty decides what the pipeline is given. “The developer says so”: a promise only. Nothing stops a pipeline doing more, because it can do anything you can do on this PC.'
           )}
         </p>
       </div>
@@ -304,7 +331,7 @@ function DetailsBlock({
             ))}
           </ul>
           <p className="text-xs text-muted mt-1">
-            {t('Once it is installed, its Hugging Face and web models are downloaded from Marketplace › Installed, into one folder every plugin shares. Ollama models are pulled on the Models page.')}
+            {t('Once it is installed, its AI models from Hugging Face and the web are downloaded under Marketplace › Installed, into one folder every pipeline shares. Models that run in Ollama are added on the Models page.')}
           </p>
         </div>
       )}
@@ -452,6 +479,7 @@ function ListingPage({
   listing,
   hardware,
   manage,
+  online,
   onBack,
   onInstall,
   onTag
@@ -459,6 +487,8 @@ function ListingPage({
   listing: Listing
   hardware: Hardware | null
   manage: boolean
+  /** Clips Kitty's online list, for how fresh a listing from it is. */
+  online: OnlineList | undefined
   onBack: () => void
   onInstall: (source: PluginSource) => void
   onTag: (tag: string) => void
@@ -470,6 +500,12 @@ function ListingPage({
     JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort())
   const settings = Object.entries(listing.settings ?? {})
   const checks = checkLines(listing.checks)
+  const works = rangeText(chosen?.requires?.clips_kitty)
+  const testedWith = chosen?.tested_with
+  // A list from elsewhere can give anything here, so a bad item reads oddly rather than breaking the page.
+  const tested = Array.isArray(testedWith)
+    ? testedWith.map((g) => [g?.game && slugLabel(String(g.game)), g?.version].filter(Boolean).join(' ')).join(', ')
+    : testedWith
   const action =
     listing.installed === version
       ? t('Install again')
@@ -564,11 +600,7 @@ function ListingPage({
         <div className="text-sm">
           <p className="label mb-1">{t('Where it comes from')}</p>
           <p>
-            {listing.repository}
-            {listing.path && listing.path !== '.' ? ` · ${listing.path}` : ''}
-          </p>
-          <p className="text-muted">
-            {t('Listed in')}: {indexName(listing.index)}
+            {t('Made by')} {listing.author?.name ?? listing.publisher}. {t(listedInText(listing.index, online, Date.now()))}
           </p>
           {checks.length > 0 && (
             <ul className="text-xs text-muted mt-1">
@@ -583,9 +615,19 @@ function ListingPage({
                   {!c.ok && ` (${t('not passed')})`}
                 </li>
               ))}
-              <li>{t('These checks are automatic. Nobody has read this plugin’s code.')}</li>
+              <li>{t('These checks are automatic. Nobody has read this pipeline’s code.')}</li>
             </ul>
           )}
+          <TechnicalDetails
+            rows={[
+              ['Repository', listing.repository],
+              ['Folder', listing.path && listing.path !== '.' ? listing.path : null],
+              ['Commit', chosen?.commit],
+              ['Tag', chosen?.tag],
+              ['requires.clips_kitty', chosen?.requires?.clips_kitty],
+              ['List', isOurList(listing.index) ? null : listing.index]
+            ]}
+          />
         </div>
 
         <div className="border-t border-raised/50 pt-3 space-y-2">
@@ -604,7 +646,7 @@ function ListingPage({
             <button
               className="btn-accent"
               disabled={!manage || Boolean(chosen?.problem_here)}
-              title={manage ? '' : t('Installing plugins needs the Clips Kitty desktop app.')}
+              title={manage ? '' : t('Installing pipelines needs the Clips Kitty desktop app.')}
               onClick={() => onInstall({ kind: 'index', id: listing.id, version })}
             >
               {action}
@@ -628,16 +670,15 @@ function ListingPage({
               )}
             </p>
           )}
-          {chosen && (
+          {(works || tested) && (
             <p className="text-xs text-muted">
-              {t('Commit')} {chosen.commit.slice(0, 12)}
-              {chosen.tag ? ` · ${t('tag')} ${chosen.tag}` : ''}
-              {chosen.requires?.clips_kitty ? ` · ${t('needs Clips Kitty')} ${chosen.requires.clips_kitty}` : ''}
-              {chosen.tested_with ? ` · ${t('tested with')} ${chosen.tested_with}` : ''}
+              {works ? `${t('Works with Clips Kitty')} ${t(works)}.` : ''}
+              {works && tested ? ' ' : ''}
+              {tested ? `${t('Tested with')} ${tested}.` : ''}
             </p>
           )}
           <p className="text-xs text-muted">
-            {t('Install shows you exactly what will be installed first. Nothing from the plugin runs until you process a video with it.')}
+            {t('Install shows you exactly what will be installed first. Nothing from the pipeline runs until you process a video with it.')}
           </p>
         </div>
       </section>
@@ -646,8 +687,8 @@ function ListingPage({
 }
 
 /** One app, model, workflow, integration or tool. They aren't installed
- *  from here: each links to its home, and one that runs inside Clips Kitty
- *  through a listed pipeline links to that. */
+ *  from here: each has one button to its download page or home, and one
+ *  that runs inside Clips Kitty through a listed pipeline links to that. */
 function EntryCard({
   entry,
   onOpenListing
@@ -656,13 +697,13 @@ function EntryCard({
   onOpenListing: (id: string) => void
 }): JSX.Element {
   const link = entryLink(entry)
+  const ours = isOurList(entry.index)
   const numbers = metricLines(entry.metrics)
+  const discussions = safeLink(entry.discussions_url)
   return (
     <div className="card space-y-2 flex flex-col">
       <div>
-        <OutLink url={link}>
-          <span className="font-semibold">{entry.name}</span>
-        </OutLink>
+        <span className="font-semibold">{entry.name}</span>
         <p className="text-xs text-muted">
           {t(RELATIONSHIP_LABELS[entry.relationship] ?? entry.relationship)}
           {entry.uses ? ` · ${t(entry.uses === 'both' ? 'uses the API and the SDK' : entry.uses === 'sdk' ? 'uses the SDK' : 'uses the local API')}` : ''}
@@ -692,30 +733,44 @@ function EntryCard({
         </ul>
       )}
       {entry.featured && <p className="text-xs text-muted">★ {entry.featured.reason}</p>}
-      <div className="flex flex-wrap gap-2 mt-auto pt-1 items-center">
-        {entry.adapter &&
-          (entry.adapter_listed ? (
-            <button className="btn-ghost !py-1.5" onClick={() => onOpenListing(entry.adapter ?? '')}>
-              {t('Use it in Clips Kitty')} →
-            </button>
-          ) : (
+      <div className="mt-auto pt-1 space-y-2">
+        {entry.setup === 'technical' && (
+          <p className="text-xs text-warn">{t('Needs technical setup (command line or Python)')}</p>
+        )}
+        {link && (
+          <div className="space-y-1">
+            <CatalogLink url={link.url} ours={ours} className="btn-ghost !py-1.5">
+              {t(link.label)}
+              {link.host ? ` ${link.host}` : ''}
+            </CatalogLink>
+            <p className="text-xs text-muted">{t('Not installed by Clips Kitty · opens a website')}</p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 items-center">
+          {entry.adapter &&
+            (entry.adapter_listed ? (
+              <button className="btn-ghost !py-1.5" onClick={() => onOpenListing(entry.adapter ?? '')}>
+                {t('Use it in Clips Kitty')} →
+              </button>
+            ) : (
+              <span className="text-xs text-muted">
+                {t('Runs in Clips Kitty through')} {entry.adapter}
+              </span>
+            ))}
+          {discussions && (
+            <CatalogLink url={discussions} ours={ours} className="text-xs text-accent hover:underline text-left">
+              {t('Discussions')}
+            </CatalogLink>
+          )}
+          {Array.isArray(entry.platforms) && entry.platforms.length > 0 && (
+            <span className="text-xs text-muted">{entry.platforms.map(slugLabel).join(', ')}</span>
+          )}
+          {entry.index && entry.index !== 'bundled' && (
             <span className="text-xs text-muted">
-              {t('Runs in Clips Kitty through')} {entry.adapter}
+              {t('From')} {indexName(entry.index)}
             </span>
-          ))}
-        {safeLink(entry.discussions_url) && (
-          <span className="text-xs">
-            <OutLink url={safeLink(entry.discussions_url)}>{t('Discussions')}</OutLink>
-          </span>
-        )}
-        {Array.isArray(entry.platforms) && entry.platforms.length > 0 && (
-          <span className="text-xs text-muted">{entry.platforms.map(slugLabel).join(', ')}</span>
-        )}
-        {entry.index && entry.index !== 'bundled' && (
-          <span className="text-xs text-muted">
-            {t('From')} {indexName(entry.index)}
-          </span>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
@@ -819,10 +874,13 @@ function CountingNote({ manage }: { manage: boolean }): JSX.Element | null {
         />
         <span>
           {t('Count my installs')}. {t(state.text)}
-          {state.locked_off && ` ${t('Switched off in settings.yaml (plugins.count_installs).')}`}
-          {!state.active && ` ${t('Nothing is counted yet: the catalog has no counter address.')}`}
+          {state.locked_off && ` ${t('Switched off for everyone on this PC.')}`}
+          {!state.active && ` ${t('Nothing is counted yet: Clips Kitty’s list doesn’t count installs yet.')}`}
         </span>
       </label>
+      {state.locked_off && (
+        <TechnicalDetails rows={[['Setting', 'plugins.count_installs: false in settings.yaml']]} />
+      )}
       {problem && <p className="text-error">{problem}</p>}
     </div>
   )
@@ -865,11 +923,14 @@ function OnlineListNote({ manage, online }: { manage: boolean; online: OnlineLis
 function Browse({
   hardware,
   manage,
-  onInstall
+  onInstall,
+  onDevelopers
 }: {
   hardware: Hardware | null
   manage: boolean
   onInstall: (source: PluginSource) => void
+  /** Opens For developers (installing from a folder or a link). */
+  onDevelopers: () => void
 }): JSX.Element {
   const [q, setQ] = useState('')
   const [category, setCategory] = useState('')
@@ -969,6 +1030,7 @@ function Browse({
         listing={listing}
         hardware={hardware}
         manage={manage}
+        online={data?.online}
         onBack={() => {
           opening.current = null
           setOpen(null)
@@ -1014,18 +1076,6 @@ function Browse({
             {t(label)}
           </button>
         ))}
-        {Object.entries(KIND_LABELS)
-          .filter(([id]) => id !== kind && (data?.kinds ?? {})[id] !== 'built' && !(id in DIRECTORY_KINDS))
-          .map(([id, label]) => (
-            <span
-              key={id}
-              className="text-sm px-3 py-1 rounded-lg text-muted opacity-60"
-              title={t('Planned: Clips Kitty can’t install this kind of plugin yet.')}
-            >
-              {t(label)}
-              <span className="text-[10px] ml-1 uppercase">{t('planned')}</span>
-            </span>
-          ))}
       </div>
 
       {view !== 'pipeline' && (
@@ -1083,9 +1133,10 @@ function Browse({
                 {onlineNever
                   ? `${t('Clips Kitty hasn’t got its online list yet.')} ${getThem}`
                   : others.some((i) => !i.cached)
-                    ? `${t('Some of the lists set up in your settings haven’t been fetched yet.')} ${getThem}`
-                    : t('None of Clips Kitty’s lists has a pipeline yet.')}{' '}
-                {t('You can still install a plugin from a folder or a GitHub link.')}
+                    ? `${t('Some lists added on this PC haven’t been checked yet.')} ${getThem}`
+                    : `${t('None of Clips Kitty’s lists has a pipeline yet.')} ${t(
+                        'Pipelines added to Clips Kitty’s list appear here after the next check for new pipelines.'
+                      )}`}
               </p>
             </>
           )}
@@ -1111,7 +1162,7 @@ function Browse({
           <p>{t(onlineText(data.online, Date.now(), manage))}</p>
           {others.map((i) => (
             <p key={i.url}>
-              {indexName(i.url)}: {i.plugins ?? 0} {i.plugins === 1 ? t('plugin') : t('plugins')}
+              {indexName(i.url)}: {i.plugins ?? 0} {i.plugins === 1 ? t('pipeline') : t('pipelines')}
               {` · ${t(fetchedText(i.fetched_at, Date.now()))}`}
             </p>
           ))}
@@ -1123,13 +1174,16 @@ function Browse({
           {refreshNote && <p>{refreshNote}</p>}
           <p>
             {t(
-              'Community means the catalog’s automatic checks passed. It does not mean anyone reviewed the code. ✓ Compatible means a version passed automated technical checks, not a security review. Clips Kitty sends nothing about what you browse.'
+              'Community: made by someone outside the Clips Kitty project. Clips Kitty checked its listing automatically; nobody has read its code. ✓ Compatible: Clips Kitty installed this version and ran it on a test video without errors. That is not a safety check. Browsing here tells nobody what you look at.'
             )}
           </p>
           <OnlineListNote manage={manage} online={data.online} />
           <CountingNote manage={manage} />
         </div>
       )}
+      <button className="text-xs text-muted hover:text-ink underline" onClick={onDevelopers}>
+        {t('For developers: install a pipeline you’re writing')}
+      </button>
       </>
       )}
     </div>
@@ -1206,7 +1260,7 @@ function ModelRow({
           {state.mark} {state.text}
         </span>
         {status?.link === 'copy' && (
-          <span className="text-muted"> · {t('stored as a copy (Windows refused a link), so it takes the space twice')}</span>
+          <span className="text-muted"> · {t('stored twice, so it uses twice the space (Windows didn’t let Clips Kitty share one copy)')}</span>
         )}
         {licence ? (
           <span className="text-muted">
@@ -1227,7 +1281,7 @@ function ModelRow({
       {status?.note && <p className="text-xs text-muted">{t(status.note)}</p>}
       {(status?.pickle_files ?? []).length > 0 && (
         <p className="text-xs text-warn">
-          ⚠ {(status?.pickle_files ?? []).join(', ')}: {t('a pickle format, which can run code when it is loaded.')}
+          ⚠ {(status?.pickle_files ?? []).join(', ')}: {t('files of a kind that can run hidden programs when they’re opened.')}
         </p>
       )}
       {fetchable && status?.installed === false && !plan && (
@@ -1269,7 +1323,7 @@ function ModelRow({
                 checked={pickleOk}
                 onChange={(e) => setPickleOk(e.target.checked)}
               />
-              {t('I trust this model: its pickle-format files can run code when the plugin loads them.')}
+              {t('I trust this model. I understand its files can run programs on this PC when the pipeline opens them.')}
             </label>
           )}
           <div className="flex gap-2">
@@ -1317,7 +1371,7 @@ function PluginModels({
       </ul>
       <p className="text-xs text-muted">
         {t(
-          'Downloaded models go in one folder shared by every plugin, so a file two plugins use is stored once. Clips Kitty checks each file’s size and checksum; it never loads a plugin’s model itself.'
+          'Downloaded models go in one folder shared by every pipeline, so a file two pipelines use is stored once. Clips Kitty checks each download is complete and unchanged, and never opens a pipeline’s model itself.'
         )}
       </p>
     </div>
@@ -1418,7 +1472,8 @@ function InstalledCard({
             {plugin.name} <span className="text-muted font-normal">{plugin.version}</span>
           </p>
           <p className="text-xs text-muted truncate">
-            {plugin.id} · {plugin.source_text}
+            {plugin.id}
+            {sourceLine(plugin.source) ? ` · ${t(sourceLine(plugin.source))}` : ''}
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm cursor-pointer shrink-0">
@@ -1435,13 +1490,15 @@ function InstalledCard({
       <div className="flex flex-wrap gap-1.5">
         <Pill badge={tierBadge(plugin.details)} />
         <Pill badge={executionBadge(plugin.details.execution, plugin.details.execution_text)} />
-        {plugin.pinned && <Pill badge={{ label: t('Pinned'), tone: 'info', title: t('Updates are not offered.') }} />}
+        {plugin.pinned && (
+          <Pill badge={{ label: t('Kept at this version'), tone: 'info', title: t('Updates are not offered.') }} />
+        )}
       </div>
       {plugin.flag && (
         <p className={`text-sm font-medium ${blocked ? 'text-error' : 'text-warn'}`}>
           {blocked
-            ? `${t('Blocked')}: ${plugin.flag.reason ?? t('on the registry’s block list')}. ${t('It can’t run. Remove it.')}`
-            : `${t('No longer listed')}: ${plugin.flag.reason ?? t('removed from the registry')}. ${t('It still runs.')}`}
+            ? `${t('Blocked')}: ${plugin.flag.reason ?? t('a list Clips Kitty uses has blocked this version')}. ${t('It can’t run. Remove it.')}`
+            : `${t('No longer listed')}: ${plugin.flag.reason ?? t('a list Clips Kitty uses has taken it off')}. ${t('It still runs.')}`}
         </p>
       )}
       {plugin.problem && <p className="text-sm text-error">{plugin.problem}</p>}
@@ -1480,18 +1537,18 @@ function InstalledCard({
           <button
             className="btn-ghost !py-1.5"
             disabled={busy || !manage}
-            onClick={() => run(() => plugins.rollback(plugin.id), `${t('Rolled back to')} ${plugin.previous}.`)}
+            onClick={() => run(() => plugins.rollback(plugin.id), `${t('Went back to')} ${plugin.previous}.`)}
           >
-            {t('Roll back to')} {plugin.previous}
+            {t('Go back to')} {plugin.previous}
           </button>
         )}
         <button
           className="btn-ghost !py-1.5"
           disabled={busy || !manage}
-          title={t('Pinned plugins are not offered updates. Installing a version yourself still works.')}
+          title={t('A pipeline kept at its version is not offered updates. Installing a version yourself still works.')}
           onClick={() => run(() => plugins.setPinned(plugin.id, !plugin.pinned))}
         >
-          {plugin.pinned ? t('Unpin') : t('Pin this version')}
+          {plugin.pinned ? t('Offer updates again') : t('Keep this version (no update offers)')}
         </button>
         <button className="btn-ghost !py-1.5" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
           {t('Details')} {expanded ? '▾' : '▸'}
@@ -1506,7 +1563,7 @@ function InstalledCard({
                   plugins.remove(plugin.id).then((r) =>
                     onRemoved(
                       r.files_left
-                        ? `${t('Removed')} ${plugin.name}. ${t('Some of its files were in use and are still in the plugins folder; delete them once Clips Kitty is closed.')}`
+                        ? `${t('Removed')} ${plugin.name}. ${t('Some of its files were in use and are still in Clips Kitty’s “plugins” folder; delete them once Clips Kitty is closed.')}`
                         : `${t('Removed')} ${plugin.name}.`
                     )
                   )
@@ -1541,6 +1598,7 @@ function InstalledCard({
             {t('Versions kept')}: {plugin.versions.join(', ')}
             {plugin.installed_at ? ` · ${t('installed')} ${plugin.installed_at}` : ''}
           </p>
+          <TechnicalDetails rows={[['Source', plugin.source_text]]} />
         </div>
       )}
     </div>
@@ -1644,7 +1702,7 @@ function Installed({
       {removed && <div className="card text-sm">{removed}</div>}
       {data.plugins.length === 0 ? (
         <div className="card text-sm">
-          {t('No community plugins installed. Find one under Browse, or add one from a folder or a link.')}
+          {t('No community pipelines installed. Find one under Browse.')}
         </div>
       ) : (
         data.plugins.map((p) => (
@@ -1671,103 +1729,6 @@ function Installed({
   )
 }
 
-/** Install from a folder on this PC or a Git repository at one commit. */
-function AddFromLink({
-  manage,
-  onInstall
-}: {
-  manage: boolean
-  onInstall: (source: PluginSource) => void
-}): JSX.Element {
-  const [folder, setFolder] = useState('')
-  const [link, setLink] = useState('')
-  const [commit, setCommit] = useState('')
-  const [sub, setSub] = useState('')
-  const [problem, setProblem] = useState<string | null>(null)
-  const pick = window.studio?.pickPluginFolder
-  const fromGit = (): void => {
-    const r = gitSource(link, commit, sub)
-    setProblem(r.problem ?? null)
-    if (r.source) onInstall(r.source)
-  }
-  return (
-    <div className="space-y-4 max-w-3xl">
-      {!manage && (
-        <div className="card text-sm text-warn">{t('Installing plugins needs the Clips Kitty desktop app.')}</div>
-      )}
-      <p className="text-sm text-warn">
-        ⚠{' '}
-        {t(
-          'A plugin from a folder or a link is not listed anywhere, and Clips Kitty has not checked it. Install only code you trust: it runs on this PC with your rights.'
-        )}
-      </p>
-      <section className="card space-y-3">
-        <h3 className="font-semibold">{t('From GitHub or another Git host')}</h3>
-        <label className="block space-y-1">
-          <span className="label">{t('Repository')}</span>
-          <input
-            className="input"
-            placeholder="https://github.com/example-dev/example-plugin"
-            value={link}
-            onChange={(e) => setLink(e.target.value)}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="label">{t('Commit (all 40 characters)')}</span>
-          <input
-            className="input font-mono"
-            placeholder={t('Or paste a GitHub link that ends in /tree/<commit>')}
-            value={commit}
-            onChange={(e) => setCommit(e.target.value)}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="label">{t('Folder in the repository (if it isn’t at the top)')}</span>
-          <input className="input" placeholder="plugins/my-plugin" value={sub} onChange={(e) => setSub(e.target.value)} />
-        </label>
-        {problem && <p className="text-sm text-error">{problem}</p>}
-        <button className="btn-accent" disabled={!manage || (!link.trim() && !commit.trim())} onClick={fromGit}>
-          {t('Look at it before installing')}
-        </button>
-        <p className="text-xs text-muted">
-          {t(
-            'A commit, not a branch: what you look at is exactly what gets installed. Clips Kitty reads the files without running anything from them.'
-          )}
-        </p>
-      </section>
-      <section className="card space-y-3">
-        <h3 className="font-semibold">{t('From a folder on this PC')}</h3>
-        <div className="flex gap-2">
-          <input
-            className="input flex-1"
-            placeholder={t('The folder with clipskitty.yaml in it')}
-            value={folder}
-            onChange={(e) => setFolder(e.target.value)}
-          />
-          {pick && (
-            <button
-              className="btn-ghost shrink-0"
-              onClick={() => void pick().then((p) => p && setFolder(p))}
-            >
-              {t('Choose…')}
-            </button>
-          )}
-        </div>
-        <button
-          className="btn-accent"
-          disabled={!manage || !folder.trim()}
-          onClick={() => onInstall({ kind: 'folder', path: folder.trim() })}
-        >
-          {t('Look at it before installing')}
-        </button>
-        <p className="text-xs text-muted">
-          {t('For plugins you are writing. Installing the same version again replaces it.')}
-        </p>
-      </section>
-    </div>
-  )
-}
-
 /** What installing would do, from the engine's plan, and the Install button. */
 function InstallDialog({
   plan,
@@ -1787,9 +1748,14 @@ function InstallDialog({
   const [done, setDone] = useState<InstalledPlugin | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const [counting, setCounting] = useState<Counting | null>(null)
+  /** Where the installed pipeline's models are, to tell whether it is ready. */
+  const [models, setModels] = useState<ModelsOverview | null>(null)
   useEffect(() => {
     plugins.counting().then(setCounting).catch(() => setCounting(null))
   }, [])
+  useEffect(() => {
+    if (done && done.details.models.length > 0) plugins.models().then(setModels).catch(() => setModels(null))
+  }, [done])
   const needs = plan ? confirmations(plan) : []
   // Only the bundled index can count installs (plugins/registry.py), and only a first install.
   const counted =
@@ -1806,20 +1772,32 @@ function InstallDialog({
       .catch((e: Error) => setFailed(e.message))
       .finally(() => setBusy(false))
   }
-  const name = plan?.plugin.name ?? plan?.plugin.id ?? t('this plugin')
+  const name = plan?.plugin.name ?? plan?.plugin.id ?? t('this pipeline')
+  // What still stands between the installed pipeline and a video. "Ready"
+  // only when nothing does; a model whose state isn't known yet counts.
+  const missing: string[] = []
+  if (done) {
+    if (done.problem) missing.push(done.problem)
+    for (const p of done.problems_here ?? []) missing.push(t(p.text))
+    if (done.details.secrets.some((s) => !done.secrets_set.includes(s)))
+      missing.push(t('It needs a key. Add it under Installed.'))
+    const own = models?.models.filter((m) => m.used_by.some((u) => u.plugin === done.id))
+    if (done.details.models.length > 0 && (!own || own.some((m) => m.installed !== true)))
+      missing.push(t('Some of its AI models may not be on this PC yet. Installed shows which, and how to get them.'))
+  }
   return (
     <div
       className="fixed inset-0 z-50 bg-base/80 backdrop-blur-sm grid place-items-center p-6"
       role="dialog"
       aria-modal="true"
-      aria-label={t('Install a plugin')}
+      aria-label={t('Install a pipeline')}
       onClick={busy ? undefined : onClose}
     >
       <div className="card w-full max-w-2xl space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {planning && <p className="text-muted">{t('Getting the files and checking them…')}</p>}
         {error && (
           <>
-            <h3 className="font-semibold text-lg">{t('Couldn’t look at this plugin')}</h3>
+            <h3 className="font-semibold text-lg">{t('Couldn’t look at this pipeline')}</h3>
             <p className="text-sm text-error">{error}</p>
           </>
         )}
@@ -1830,7 +1808,8 @@ function InstallDialog({
                 {plan.update?.direction === 'update' ? t('Update') : t('Install')} {name} {plan.plugin.version ?? ''}
               </h3>
               <p className="text-xs text-muted">
-                {plan.plugin.id} · {t('from')} {plan.source_text}
+                {plan.plugin.id}
+                {sourceLine(plan.source) ? ` · ${t(sourceLine(plan.source))}` : ''}
                 {plan.plugin.license ? ` · ${t('licence')} ${plan.plugin.license}` : ''}
               </p>
             </div>
@@ -1865,9 +1844,15 @@ function InstallDialog({
             />
             <BuiltOn items={plan.plugin.based_on} />
             <Links links={listingLinks(plan.plugin)} />
+            <TechnicalDetails
+              rows={[
+                ['Source', plan.source_text],
+                ['Warnings', plan.technical]
+              ]}
+            />
             {plan.ok && counted && (
               <p className="text-xs text-muted">
-                {t('Installing adds one to this plugin’s public install count, kept by GitHub. Clips Kitty sends no account, ID or details about your videos. You can switch counting off at the bottom of Browse.')}
+                {t('Installing adds 1 to this pipeline’s public install count. GitHub, the website that holds Clips Kitty’s code, keeps the count. Clips Kitty sends no account, no ID and nothing about your videos. You can switch counting off at the bottom of Browse.')}
               </p>
             )}
             {plan.ok && needs.length > 0 && (
@@ -1893,11 +1878,17 @@ function InstallDialog({
             <p className="text-success">
               ✓ {done.name} {done.version} {t('is installed.')}
             </p>
-            <p>
-              {t('To use it, add a video in the Generate bar, tick Pipeline and choose it. It runs only for the videos you choose it for.')}
-            </p>
-            {done.details.secrets.some((s) => !done.secrets_set.includes(s)) && (
-              <p className="text-warn">{t('It needs a key. Add it under Installed.')}</p>
+            {missing.length === 0 ? (
+              <p>
+                {t('Ready. Add a video in the Generate bar, tick Pipeline and choose')} {done.name}.{' '}
+                {t('It runs only for the videos you choose it for.')}
+              </p>
+            ) : (
+              missing.map((m) => (
+                <p key={m} className="text-warn">
+                  {m}
+                </p>
+              ))
             )}
           </div>
         )}
@@ -1960,11 +1951,12 @@ export default function Marketplace(): JSX.Element {
     setPlanning(false)
   }
 
+  // Two tabs. For developers opens from the bottom of Browse and keeps Browse lit.
   const TABS: { id: Tab; label: string }[] = [
     { id: 'browse', label: 'Browse' },
-    { id: 'installed', label: 'Installed' },
-    { id: 'add', label: 'Add from a folder or link' }
+    { id: 'installed', label: 'Installed' }
   ]
+  const lit: Tab = tab === 'developers' ? 'browse' : tab
 
   return (
     <div className="p-6 space-y-5 max-w-6xl">
@@ -1981,9 +1973,9 @@ export default function Marketplace(): JSX.Element {
           <button
             key={tb.id}
             role="tab"
-            aria-selected={tab === tb.id}
+            aria-selected={lit === tb.id}
             className={`px-4 py-2 text-sm -mb-px border-b-2 ${
-              tab === tb.id ? 'border-accent text-accent font-medium' : 'border-transparent text-muted hover:text-ink'
+              lit === tb.id ? 'border-accent text-accent font-medium' : 'border-transparent text-muted hover:text-ink'
             }`}
             onClick={() => setTab(tb.id)}
           >
@@ -1991,9 +1983,13 @@ export default function Marketplace(): JSX.Element {
           </button>
         ))}
       </div>
-      {tab === 'browse' && <Browse hardware={hardware} manage={manage} onInstall={startInstall} />}
+      {tab === 'browse' && (
+        <Browse hardware={hardware} manage={manage} onInstall={startInstall} onDevelopers={() => setTab('developers')} />
+      )}
       {tab === 'installed' && <Installed hardware={hardware} manage={manage} onInstall={startInstall} />}
-      {tab === 'add' && <AddFromLink manage={manage} onInstall={startInstall} />}
+      {tab === 'developers' && (
+        <MarketplaceDevelopers manage={manage} onInstall={startInstall} onBack={() => setTab('browse')} />
+      )}
       {dialog && (
         <InstallDialog
           key={plan?.plan_id ?? (planning ? 'planning' : 'closed')}

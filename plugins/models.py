@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -51,12 +52,17 @@ from pathlib import Path, PurePosixPath
 from core.paths import discard
 from plugins._sdk import manifest
 
+log = logging.getLogger(__name__)
+
 ROOT = "plugin-models"
 HF_BASE = "https://huggingface.co"
 MAX_FILE_BYTES = 64 * 1024**3
 CHUNK = 1024 * 1024
 SOURCES = manifest.MODEL_SOURCES
 PICKLE_SUFFIXES = manifest.PICKLE_SUFFIXES
+GATED = ("Its makers share this model only with people who sign in to Hugging Face and are given access. "
+         "Clips Kitty can't sign in to Hugging Face for you yet.")
+OLLAMA_MODELS = "Models that run in Ollama are downloaded on the Models page"
 
 _lock = threading.Lock()
 
@@ -67,6 +73,16 @@ class ModelError(ValueError):
 
 def root(data_dir) -> Path:
     return Path(data_dir) / ROOT
+
+
+def size_text(n: int) -> str:
+    """A size as the Marketplace writes it (formatBytes in ui/src/renderer/src/lib/marketplace.ts).
+    int(x + 0.5) rounds a half up, as Math.round does; round() would round it to even."""
+    if n >= 1e9:
+        return f"{int(n / 1e9 * 10 + 0.5) / 10:g} GB"
+    if n >= 1e6:
+        return f"{int(n / 1e6 + 0.5)} MB"
+    return f"{max(1, int(n / 1e3 + 0.5))} KB"
 
 
 # ---- references --------------------------------------------------------------------------
@@ -252,7 +268,8 @@ def status(data_dir, ref: dict, *, ollama: list[dict] | None = None, bundled=_bu
             if isinstance(match.get("size"), int):
                 out["size_bytes"] = match["size"]
         else:
-            out["note"] = f"pull {ref['id']} in Models" + (" (at the listed digest)" if ref["revision"] else "")
+            out["note"] = (f"download {ref['id']} on the Models page"
+                           + (" (the exact version the pipeline lists)" if ref["revision"] else ""))
         return out
 
     index = load_index(data_dir)
@@ -419,7 +436,7 @@ def plan(data_dir, ref: dict, *, fetch_json=get_json, ollama: list[dict] | None 
            "installed": st["installed"], "license": ref["license"], "gated": ref["gated"], "files": [],
            "download_bytes": 0, "size_known": True, "pickle_files": st["pickle_files"], "problem": None}
     if ref["source"] in ("ollama", "bundled"):
-        out["problem"] = ("pull it in Models; Ollama keeps its own models" if ref["source"] == "ollama"
+        out["problem"] = (f"{OLLAMA_MODELS}: download {ref['id']} there." if ref["source"] == "ollama"
                           else "it ships with Clips Kitty; nothing to download")
         return out
     hub = hub_info(ref, fetch_json=fetch_json) if ref["source"] == "huggingface" else {"files": {}}
@@ -443,9 +460,7 @@ def plan(data_dir, ref: dict, *, fetch_json=get_json, ollama: list[dict] | None 
             else:
                 out["download_bytes"] += size
     if out["gated"]:
-        out["problem"] = ("this model is gated on Hugging Face: it needs an account and access granted by its "
-                          "authors, and Clips Kitty doesn't sign in to Hugging Face yet (planned). Download it "
-                          "yourself, or ask the plugin's developer.")
+        out["problem"] = GATED
     return out
 
 
@@ -459,9 +474,10 @@ def download(data_dir, ref: dict, *, fetcher=fetch_https, fetch_json=get_json, a
     manifest gives, and refused on a mismatch. Pickle-format files need
     `allow_pickle` (the user's say on the install screen). Raises ModelError.
     """
+    if ref["source"] == "ollama":
+        raise ModelError(f"{ref['name']}: {OLLAMA_MODELS}.")
     if ref["source"] not in ("huggingface", "url"):
-        raise ModelError(f"{ref['name']}: Clips Kitty doesn't download {ref['source']} models"
-                         + (" (pull it in Models)" if ref["source"] == "ollama" else ""))
+        raise ModelError(f"{ref['name']}: Clips Kitty doesn't download {ref['source']} models")
     pickles = [f for f in ref["files"] if is_pickle(f)]
     if pickles and not allow_pickle:
         raise ModelError(f"{ref['name']}: {', '.join(pickles)} is in a pickle format, which can run code when it "
@@ -513,7 +529,9 @@ def download(data_dir, ref: dict, *, fetcher=fetch_https, fetch_json=get_json, a
                 else:
                     os.replace(part, blob)
             except (OSError, urllib.error.URLError) as e:
-                raise ModelError(f"{item['file']}: couldn't download it ({e})") from e
+                log.warning("Couldn't download %s of %s: %s", item["file"], ref["id"], e)
+                raise ModelError(f"Couldn't download {item['file']}. Check your internet connection and "
+                                 "try again.") from e
             finally:
                 discard(part)  # never replaces the error being raised (issue #74)
         if blob == target:
@@ -534,8 +552,9 @@ def download(data_dir, ref: dict, *, fetcher=fetch_https, fetch_json=get_json, a
 
 def for_job(data_dir, data: dict, *, ollama_host: str | None = None, fetch_json=get_json) -> tuple[dict, list[str]]:
     """job.json's "models" for a plugin: {name: {source, id, path, revision,
-    files: {file: path}}}, and a sentence for each model that isn't on this PC.
-    Ollama is asked only when the plugin lists an Ollama model."""
+    files: {file: path}}}, and a sentence for each model that isn't on this PC,
+    saying where to get it. Ollama is asked only when the plugin lists an
+    Ollama model."""
     refs = refs_of(data)
     installed = (ollama_models(ollama_host or "http://localhost:11434", fetch_json=fetch_json)
                  if any(r["source"] == "ollama" for r in refs) else None)
@@ -543,11 +562,15 @@ def for_job(data_dir, data: dict, *, ollama_host: str | None = None, fetch_json=
     for ref in refs:
         st = status(data_dir, ref, ollama=installed)
         if st["installed"] is False:
-            where = {"huggingface": "download it in Marketplace › Installed",
-                     "url": "download it in Marketplace › Installed",
-                     "ollama": f"pull {ref['id']} in Models",
-                     "bundled": "this copy of Clips Kitty doesn't include it"}[ref["source"]]
-            missing.append(f"its model '{ref['name']}' ({ref['id']}) isn't on this PC: {where}")
+            model = f"Its AI model '{ref['name']}'"
+            if ref["source"] == "ollama":
+                missing.append(f"{model} isn't downloaded yet. Download {ref['id']} on the Models page.")
+            elif ref["source"] == "bundled":
+                missing.append(f"{model} isn't part of this copy of Clips Kitty.")
+            else:
+                size = f" ({size_text(ref['size_bytes'])})" if ref["size_bytes"] else ""
+                missing.append(f"{model} isn't downloaded yet. Open Marketplace › Installed and press "
+                               f"Download{size}.")
             continue
         files = {f["file"]: f["path"] for f in st["files_status"] if f["path"]}
         out[ref["name"]] = {"source": ref["source"], "id": ref["id"], "path": st["path"] or "",

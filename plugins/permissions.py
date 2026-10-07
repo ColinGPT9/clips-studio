@@ -4,16 +4,21 @@ The labels and the enforced-or-declared split are the ones in
 docs/developers/permissions.md. "Enforced" means Clips Kitty decides what it
 hands over (plugins/runner.py); "declared" means the developer states it and
 nothing stops the plugin doing otherwise, because a plugin runs with the
-user's own rights. Nothing here claims more than that.
+user's own rights. Nothing here claims more than that. The person installing
+reads "pipeline" and no developer words (tests/test_plugin_manager.py checks).
 """
 
 from __future__ import annotations
 
 import sys
 
-NOTICE = "This plugin is code from the internet. It runs on this PC with your rights."
-ENFORCED = "enforced for the hand-over"
-DECLARED = "declared by the developer"
+NOTICE = "This pipeline is a program from the internet. It can do anything you can do on this PC."
+ENFORCED = "Clips Kitty hands this over"
+DECLARED = "the developer says so"
+# What the two say, wherever they are shown (the Marketplace has the same words).
+ENFORCEMENT_NOTE = ("“Clips Kitty hands this over”: Clips Kitty decides what the pipeline is given. "
+                    "“The developer says so”: a promise only. Nothing stops a pipeline doing more, because it "
+                    "can do anything you can do on this PC.")
 
 LABELS = {
     "video.read": "Reads the video you process",
@@ -38,7 +43,7 @@ DATA = {
 }
 
 EXECUTION = {
-    "local": "Runs on this PC. The developer declares that nothing leaves your computer.",
+    "local": "Runs on this PC. The developer says nothing leaves your computer.",
     "remote": "Runs on a service on the internet: your data leaves this PC (see the warnings).",
     "hybrid": "Runs on this PC and uses a service on the internet (see the warnings).",
 }
@@ -60,7 +65,8 @@ GPU = {"optional": "A graphics card helps but isn't needed", "recommended": "A g
 
 def secrets_notice() -> str:
     account = "your Windows account" if sys.platform == "win32" else "your user account"
-    return f"Your keys for this plugin are stored for {account}. Other plugins and programs running as you can read them."
+    return (f"Your keys for this pipeline are stored for {account}. Other pipelines and programs running as you "
+            "can read them.")
 
 
 def permission_lines(manifest: dict) -> list[dict]:
@@ -149,8 +155,8 @@ def describe(manifest: dict, *, tier: str = "link") -> dict:
                      "required": bool(service.get("required"))} if service else None),
         "secrets": secret_settings,
         "secrets_notice": secrets_notice() if secret_settings else None,
-        "python_packages": ("This plugin lists Python packages of its own. Installing them is planned; until then "
-                            "it runs with a Python you already have, without them, and may not work."
+        "python_packages": ("This pipeline lists extra parts it needs. Clips Kitty can't download them yet, so it "
+                            "runs without them and may not work."
                             if run.get("python_requirements") else None),
     }
 
@@ -185,6 +191,8 @@ def render_text(plan: dict) -> str:
     lines += ["", "It will"]
     for perm in about["permissions"]:
         lines.append(f"  {perm['label']} ({perm['enforcement']})")
+    if about["permissions"]:
+        lines.append(ENFORCEMENT_NOTE)
     lines += about["data_warnings"]
     if about["requirements"]:
         lines += ["Requirements"] + [f"  {line}" for line in about["requirements"]]

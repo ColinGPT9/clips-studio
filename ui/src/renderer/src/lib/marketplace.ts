@@ -9,7 +9,7 @@
 export interface PermissionLine {
   id: string
   label: string
-  /** "enforced for the hand-over" or "declared by the developer". */
+  /** "Clips Kitty hands this over" or "the developer says so". */
   enforcement: string
 }
 
@@ -95,7 +95,8 @@ export interface ListedVersion {
   version: string
   commit: string
   tag?: string
-  tested_with?: string
+  /** The games and their versions it was tested with, as the listing says. */
+  tested_with?: string | { game?: string; version?: string }[]
   date?: string
   requires?: { clips_kitty?: string; plugin_api?: number | string }
   permissions?: string[]
@@ -186,10 +187,13 @@ export interface CatalogEntry {
   relationship: 'built-with' | 'related' | string
   license: string
   license_note?: string
-  source: { github?: string; path?: string; huggingface?: string; url?: string }
+  /** download: the page people download it from; homepage: its own website (plugins/catalog.py checks both). */
+  source: { github?: string; path?: string; huggingface?: string; url?: string; homepage?: string; download?: string }
   models?: { huggingface: string }[]
   platforms?: string[]
   runs?: 'local' | 'cloud' | 'both' | string
+  /** installer: people download it and run its installer; technical: it needs the command line or Python. */
+  setup?: 'installer' | 'technical' | string
   tags?: string[]
   games?: string[]
   sports?: string[]
@@ -363,7 +367,10 @@ export interface PluginPlan {
   plan_id: string | null
   ok: boolean
   errors: string[]
+  /** In plain words, for the person installing. */
   warnings: string[]
+  /** For Technical details: the manifest's own warnings, files that couldn't be fetched. */
+  technical?: string[]
   plugin: Partial<PluginInfo>
   source: Record<string, string>
   source_text: string
@@ -592,11 +599,11 @@ export function confirmations(plan: Pick<PluginPlan, 'details'>): string[] {
   const out: string[] = []
   const d = plan.details
   if (d.tier === 'link')
-    out.push('I trust where this plugin comes from. Clips Kitty has not checked it, and it runs with my rights.')
+    out.push('I trust where this pipeline comes from. Clips Kitty has not checked it, and it can do anything I can do on this PC.')
   else if (d.tier === 'listed')
-    out.push('I understand nobody has reviewed this plugin’s code. It runs on this PC with my rights.')
+    out.push('I understand nobody at Clips Kitty has read this pipeline’s code, and it can do anything I can do on this PC.')
   if (d.data_warnings.length > 0 || d.execution === 'remote' || d.execution === 'hybrid')
-    out.push('I understand this plugin sends data off this PC, as the warnings above say.')
+    out.push('I understand this pipeline sends data off this PC, as the warnings above say.')
   if (d.service?.required) out.push('I understand it needs an account with a service outside Clips Kitty.')
   return out
 }
@@ -612,9 +619,9 @@ export function updateLines(plan: Pick<PluginPlan, 'update' | 'plugin' | 'detail
   if (!u) return []
   const to = plan.plugin.version ?? ''
   const out: ToneLine[] = []
-  if (u.direction === 'update') out.push({ text: `Updates ${u.from} to ${to}. ${u.from} is kept for roll back.`, tone: 'info' })
+  if (u.direction === 'update') out.push({ text: `Updates ${u.from} to ${to}. ${u.from} is kept, so you can go back to it.`, tone: 'info' })
   else if (u.direction === 'downgrade')
-    out.push({ text: `Goes back from ${u.from} to the older ${to}. ${u.from} is kept for roll back.`, tone: 'warn' })
+    out.push({ text: `Goes back from ${u.from} to the older ${to}. ${u.from} is kept, so you can go back to it.`, tone: 'warn' })
   else out.push({ text: `Replaces the installed copy of ${u.from}.`, tone: 'info' })
   const labels = new Map(plan.details.permissions.map((p) => [p.id, p.label]))
   for (const p of u.added_permissions) out.push({ text: `New permission: ${labels.get(p) ?? p}`, tone: 'warn' })
@@ -664,7 +671,7 @@ export function settingValue(spec: SettingSpec, raw: string | boolean): { value?
       return { problem: `is longer than ${spec.max_length} characters` }
     return { value }
   }
-  if (spec.type === 'secret') return { problem: 'a secret is set in the plugin’s settings, not in a job' }
+  if (spec.type === 'secret') return { problem: 'a secret is set in the pipeline’s settings, not in a job' }
   return { problem: `unknown setting type ${JSON.stringify(spec.type)}` }
 }
 
@@ -837,6 +844,37 @@ export function indexName(url: string): string {
   }
 }
 
+/** Which list a listing is in, and how fresh Clips Kitty's online copy is. */
+export function listedInText(url: string, online: OnlineList | undefined, nowMs: number): string {
+  if (url === 'bundled') return 'In the list that came with Clips Kitty.'
+  if (url === ONLINE_LIST) {
+    const ago = agoText(online?.fetched_at ?? null, nowMs)
+    return ago ? `In Clips Kitty’s online list (updated ${ago}).` : 'In Clips Kitty’s online list.'
+  }
+  try {
+    return `In a list from ${new URL(url).host} (not Clips Kitty’s).`
+  } catch {
+    return `In a list from ${url} (not Clips Kitty’s).`
+  }
+}
+
+/** Where an install comes from, in a few words. The engine's exact line
+ *  (address, folder and commit) goes under Technical details. */
+export function sourceLine(source: Record<string, string> | undefined): string {
+  const listed = source?.listed_in
+  if (listed) {
+    if (isOurList(listed)) return 'From Clips Kitty’s list'
+    try {
+      return `From a list on ${new URL(listed).host} (not Clips Kitty’s)`
+    } catch {
+      return 'From a list that isn’t Clips Kitty’s'
+    }
+  }
+  if (source?.kind === 'folder') return 'From a folder on this PC'
+  if (source?.kind === 'git') return 'From a link'
+  return ''
+}
+
 /** An event or game slug as words: "team_wipe" → "Team wipe". */
 export function slugLabel(slug: string): string {
   const words = slug.replace(/[_-]+/g, ' ').trim()
@@ -845,12 +883,12 @@ export function slugLabel(slug: string): string {
 
 /** The automated checks an index build ran on a listing (plugins/registry.py). */
 export const CHECK_LABELS: Record<string, string> = {
-  manifest_valid: 'The manifest passed Clips Kitty’s checks',
-  publisher_is_repository_owner: 'The publisher owns the GitHub repository',
-  official_repository: 'The repository is the Clips Kitty project’s own',
-  commit_pinned: 'Each version is pinned to one commit',
-  commit_on_branch: 'Each commit is on the repository’s own branches, not a fork’s',
-  public_at_commit: 'The files were public at that commit'
+  manifest_valid: 'Its setup file passed Clips Kitty’s checks',
+  publisher_is_repository_owner: 'The developer in its id owns the code’s page on GitHub',
+  official_repository: 'The code’s page on GitHub is the Clips Kitty project’s own',
+  commit_pinned: 'Each version is fixed and can’t change after it was listed',
+  commit_on_branch: 'Each version comes from the developer’s own code, not from someone else’s copy',
+  public_at_commit: 'Anyone could read each version’s code'
 }
 
 /** The checks an index reports for a listing, as lines to show: only the
@@ -866,10 +904,12 @@ export function checkLines(checks: Record<string, unknown> | undefined): { text:
 
 // ---- Awesome Clips Kitty: labels, numbers and credits ------------------------------------------
 
-/** The directory's kinds the Marketplace browses besides pipelines (plugins/catalog.py DIRECTORY_KINDS). */
+/** The directory's kinds the Marketplace browses besides pipelines
+ *  (plugins/catalog.py DIRECTORY_KINDS). Models are "AI model links" here,
+ *  so the tab isn't taken for the app's own Models page. */
 export const DIRECTORY_KINDS: Record<string, string> = {
   app: 'Apps',
-  model: 'Models',
+  model: 'AI model links',
   workflow: 'Workflows',
   integration: 'Integrations',
   tool: 'Tools'
@@ -936,21 +976,30 @@ export function metricLines(metrics: Metrics | undefined): { text: string; tone:
   return out
 }
 
-/** Where a directory entry lives, as a safe link: its GitHub repository (or
- *  folder, or a page of it), its Hugging Face page, or its home page. */
-export function entryLink(entry: Pick<CatalogEntry, 'source'>): string | null {
+/** The one link a directory entry's card offers, as a button: its download
+ *  page, its website, its GitHub repository (or folder, or a page of it), its
+ *  Hugging Face page, then any other page (plugins/catalog.py _link keeps the
+ *  same order). `label` is translated on screen; `host` follows it when there is one. */
+export function entryLink(
+  entry: Pick<CatalogEntry, 'source'>
+): { url: string; label: string; host: string | null } | null {
   const s = entry.source ?? {}
+  const download = safeLink(s.download)
+  if (download)
+    return { url: download, label: 'Download from', host: new URL(download).hostname.replace(/^www\./, '') }
+  const homepage = safeLink(s.homepage)
+  if (homepage) return { url: homepage, label: 'Website', host: null }
   if (s.github) {
-    const repo = safeLink(s.github)
-    if (!repo) return null
-    if (s.path) return safeLink(`${s.github.replace(/\/+$/, '')}/tree/HEAD/${s.path.replace(/^\/+|\/+$/g, '')}`)
+    let url = safeLink(s.github)
     const page = safeLink(s.url)
-    if (page && (page.startsWith(`${s.github}#`) || page.startsWith(`${s.github}/`))) return page
-    return repo
+    if (url && s.path) url = safeLink(`${s.github.replace(/\/+$/, '')}/tree/HEAD/${s.path.replace(/^\/+|\/+$/g, '')}`)
+    else if (url && page && (page.startsWith(`${s.github}#`) || page.startsWith(`${s.github}/`))) url = page
+    return url ? { url, label: 'Code page on GitHub', host: null } : null
   }
   if (s.huggingface && /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s.huggingface))
-    return `https://huggingface.co/${s.huggingface}`
-  return safeLink(s.url)
+    return { url: `https://huggingface.co/${s.huggingface}`, label: 'Model page on Hugging Face', host: null }
+  const url = safeLink(s.url)
+  return url ? { url, label: 'Website', host: null } : null
 }
 
 const BASED_ON_HOW: Record<string, string> = {
@@ -966,8 +1015,42 @@ export function basedOnLines(items: BasedOn[] | undefined): { name: string; url:
     .map((b) => ({
       name: b.name,
       url: safeLink(b.url),
-      text: `${b.license} · ${BASED_ON_HOW[b.how] ? `this plugin ${BASED_ON_HOW[b.how]}` : b.how}`
+      text: `${b.license} · ${BASED_ON_HOW[b.how] ? `this pipeline ${BASED_ON_HOW[b.how]}` : b.how}`
     }))
+}
+
+const RANGE_PART = /^\s*(>=|<=|==|!=|>|<|~=)?\s*(\d+(?:\.\d+){0,2})\s*$/
+
+/** A version range from a manifest in words, the way
+ *  manifest.version_satisfies reads it: ">=2.0" → "2.0 and newer",
+ *  ">=2.0, <3" → "2.0 up to, not including, 3". Null when there is none or
+ *  it isn't a range. */
+export function rangeText(range: string | undefined | null): string | null {
+  if (typeof range !== 'string' || !range.trim()) return null
+  let from = ''
+  let to = ''
+  const also: string[] = []
+  for (const part of range.split(',')) {
+    const m = RANGE_PART.exec(part)
+    if (!m) return null
+    const [, op = '==', v] = m
+    if (op === '>=') from = v
+    else if (op === '>') from = `newer than ${v}`
+    else if (op === '<') to = `up to, not including, ${v}`
+    else if (op === '<=') to = `up to ${v}`
+    else if (op === '!=') also.push(`except ${v}`)
+    else if (op === '==') also.push(`${v} only`)
+    else {
+      // ~=2.1 is >=2.1 and <3; ~=2.1.0 is >=2.1.0 and <2.2
+      const upper = v.split('.').map(Number)
+      upper.splice(Math.max(1, upper.length - 1))
+      upper[upper.length - 1] += 1
+      from = v
+      to = `up to, not including, ${upper.join('.')}`
+    }
+  }
+  const span = from && to ? `${from} ${to}` : from ? (from.startsWith('newer') ? from : `${from} and newer`) : to
+  return [span, ...also].filter(Boolean).join(', ')
 }
 
 /** One sentence for a version's compatibility record, or null when it has none. */
@@ -986,19 +1069,24 @@ export function compatibilityText(record: CompatibilityRecord | undefined | null
 }
 
 /** Entries grouped by their kind's sections, in the catalog's order. An
- *  entry in a section the list doesn't know goes under "Other". */
+ *  entry in a section the list doesn't know goes under "Other". In each
+ *  section, the ones that need technical setup come after the others. */
 export function groupBySection(
   entries: CatalogEntry[],
   sections: CatalogSection[] | undefined
 ): { id: string; title: string; description?: string; entries: CatalogEntry[] }[] {
   const out: { id: string; title: string; description?: string; entries: CatalogEntry[] }[] = []
   const known = new Set<string>()
+  const easyFirst = (list: CatalogEntry[]): CatalogEntry[] => [
+    ...list.filter((e) => e.setup !== 'technical'),
+    ...list.filter((e) => e.setup === 'technical')
+  ]
   for (const s of sections ?? []) {
     known.add(s.id)
     const own = entries.filter((e) => e.section === s.id)
-    if (own.length) out.push({ id: s.id, title: s.title, description: s.description, entries: own })
+    if (own.length) out.push({ id: s.id, title: s.title, description: s.description, entries: easyFirst(own) })
   }
   const rest = entries.filter((e) => !known.has(e.section))
-  if (rest.length) out.push({ id: '', title: 'Other', entries: rest })
+  if (rest.length) out.push({ id: '', title: 'Other', entries: easyFirst(rest) })
   return out
 }

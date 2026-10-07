@@ -56,7 +56,7 @@ model.revision                  # the commit, digest or SHA-256
 
 The same in `job.json`: `"models": {"detector": {"source": "huggingface", "id": "...", "path": "...", "revision": "...", "files": {"model.onnx": "..."}}}`.
 
-**A model that isn't on the PC stops the run before your plugin starts**, with a message naming it and saying where to get it ("its model 'detector' (example-org/example-model) isn't on this PC: download it in Marketplace › Installed"). So `job.models[name]` is there whenever your code runs. The one exception is an Ollama model when Ollama isn't answering: Clips Kitty can't tell, so the run goes ahead and your code finds out when it calls Ollama.
+**A model that isn't on the PC stops the run before your plugin starts**, with a message naming it and saying where to get it ("Its AI model 'detector' isn't downloaded yet. Open Marketplace › Installed and press Download (50 MB).", the size when the manifest gives `size_bytes`). So `job.models[name]` is there whenever your code runs. The one exception is an Ollama model when Ollama isn't answering: Clips Kitty can't tell, so the run goes ahead and your code finds out when it calls Ollama.
 
 **Loading is your job**, in your own process. Clips Kitty never loads a plugin's model: some formats run code when loaded, and a plugin's process is where that risk belongs.
 
