@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
-"""What a plugin's own code uses: read the job, report progress, return moments.
+"""What a plugin's own code uses: read the job, report progress, answer.
 
     from clipskitty_sdk import read_job
 
@@ -18,23 +18,46 @@ Or let `run(main)` do the reading, finishing and error reporting:
         ...
 
     run(main)
+
+A plugin that rates the moments others found, or says what happens in them,
+gets those moments in `job.moments` and answers about each one:
+
+    def main(job):
+        for m in job.moments:                     # found by Clips Kitty or a pipeline
+            said = job.text(m).lower()            # what is said during the moment
+            if "quark burst" in said:
+                job.rate(m, min(100, m.score + 15), reason="the caster called a big play")
+                job.understand(m, "The caster calls a quark burst here")
+
+`job.steps` is what this run is asked for (find, understand, rate) and
+`job.wants(step)` says whether it is asked for one, so one `main()` can serve
+every way the plugin is used. In a run that wasn't asked to understand,
+`understand()` is logged and keeps nothing, and so is `rate()` on a moment
+handed over in a run that wasn't asked to rate. `add_range()` returns a
+Moment too: `rate()` sets its score in any run, and `understand()` adds its
+notes in a run asked to understand.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import traceback
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .contract import (
+    MAX_CONTEXT,
+    MAX_CONTEXT_ITEMS,
     MAX_LABEL,
     MAX_NOTES,
     MAX_REASON,
     MAX_TITLE,
     PLUGIN_API_VERSION,
+    STEPS,
     ContractError,
     check_job,
     check_result,
@@ -73,6 +96,7 @@ class Limits:
     max_clips: int | None = None
     min_duration: float | None = None
     max_duration: float | None = None
+    min_score: float | None = None  # the creator's minimum score, in a run that rates or understands moments
 
 
 @dataclass
@@ -96,8 +120,83 @@ class Tools:
     ollama: dict | None = None
 
 
+def _number(value) -> float | None:
+    """`value` as a float when it is a finite number (not a bool), else None."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return float(value)
+    return None
+
+
+def one_line(text) -> str:
+    """`text` on one line: control characters removed, whitespace and newlines
+    collapsed to single spaces, nothing at either end."""
+    text = "" if text is None else str(text)
+    kept = "".join(ch for ch in text if ch.isspace() or unicodedata.category(ch) != "Cc")
+    return " ".join(kept.split())
+
+
+@dataclass
+class Moment:
+    """One moment of the video: handed over in `job.moments`, or a range of
+    the plugin's own from `job.add_range()`.
+
+    A handed moment's `id` is the one Clips Kitty gave it (m1, m2, ... in its
+    order); the plugin's own ranges are r1, r2, ... in the order added.
+    `score` is its current score, after any plugin that rated it before this
+    one, and `found_score` the score it was found with (for an own range, the
+    score given to add_range, if any). `found_by` is "clipskitty" or the id of
+    the plugin that found it. `title`, `reason` and `context` (what earlier
+    plugins said happens in it) come from what was said, so they are empty
+    without transcript.read. `signals` holds Clips Kitty's own subscores for
+    it: text, audio, visual, engagement, game, and reaction when it was
+    measured. `context` is never changed; `notes` are the ones this run
+    added with job.understand().
+    """
+
+    id: str
+    start: float
+    end: float
+    score: float | None = None
+    found_score: float | None = None
+    found_by: str = ""
+    label: str = ""
+    title: str = ""
+    reason: str = ""
+    context: tuple[str, ...] = ()
+    signals: dict = field(default_factory=dict)
+    _notes: list = field(default_factory=list, init=False, repr=False, compare=False)
+
+    @property
+    def notes(self) -> tuple[str, ...]:
+        """This run's own notes about the moment, from job.understand()."""
+        return tuple(self._notes)
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
+
+
+def _handed(data) -> Moment | None:
+    """A moment from job.json, or None when it lacks an id, a start or an end.
+    Keys this SDK doesn't know are ignored, so a later 1.x can add some."""
+    if not isinstance(data, dict) or not isinstance(data.get("id"), str):
+        return None
+    start, end = _number(data.get("start")), _number(data.get("end"))
+    if start is None or end is None:
+        return None
+    context, signals = data.get("context"), data.get("signals")
+    return Moment(
+        id=data["id"], start=start, end=end, score=_number(data.get("score")),
+        found_score=_number(data.get("found_score")), found_by=str(data.get("found_by") or ""),
+        label=str(data.get("label") or ""), title=str(data.get("title") or ""),
+        reason=str(data.get("reason") or ""),
+        context=tuple(n for n in context if isinstance(n, str)) if isinstance(context, list) else (),
+        signals=dict(signals) if isinstance(signals, dict) else {},
+    )
+
+
 class Job:
-    """One job: what Clips Kitty handed over, and the moments being returned."""
+    """One job: what Clips Kitty handed over, and the answer being returned."""
 
     def __init__(self, folder: Path, data: dict, out=None):
         self.folder = Path(folder)
@@ -105,6 +204,17 @@ class Job:
         self._out = out
         self._ranges: list[dict] = []
         self._finished = False
+        steps = data.get("steps")
+        # What this run is asked for; a job.json without steps is a find run.
+        self.steps: tuple[str, ...] = (tuple(s for s in steps if isinstance(s, str)) if isinstance(steps, list)
+                                       else ("find",))
+        handed = data.get("moments")
+        self._handed: list[Moment] = [m for m in map(_handed, handed if isinstance(handed, list) else []) if m]
+        self._by_id: dict[str, Moment] = {m.id: m for m in self._handed}
+        self._own: dict[str, tuple[Moment, dict]] = {}  # r1, r2, ...: the Moment and its range
+        self._rated: dict[str, tuple[float, str]] = {}  # a handed moment's id: (score, reason)
+        self._said: list[tuple[float, float, str]] | None = None  # the transcript, once read
+        self._logged: set[str] = set()
         plugin = data.get("plugin") or {}
         self.plugin_id: str = plugin.get("id", "")
         self.plugin_version: str = plugin.get("version", "")
@@ -119,7 +229,8 @@ class Job:
         )
         self.settings: dict = dict(data.get("settings") or {})
         limits = data.get("limits") or {}
-        self.limits = Limits(limits.get("max_clips"), limits.get("min_duration"), limits.get("max_duration"))
+        self.limits = Limits(limits.get("max_clips"), limits.get("min_duration"), limits.get("max_duration"),
+                             limits.get("min_score"))
         self.focus: str | None = data.get("focus") or None
         self.models: dict[str, Model] = {
             name: Model(Path(m["path"]) if m.get("path") else None, m.get("revision", ""),
@@ -153,16 +264,110 @@ class Job:
         """
         return os.environ.get(SECRET_PREFIX + name.upper().replace("-", "_")) or None
 
+    # ---- what this run is asked for --------------------------------------------
+
+    def wants(self, step: str) -> bool:
+        """Whether this run is asked to `find` moments, `understand` them (say
+        what happens in them) or `rate` them. A step name this SDK doesn't
+        know is never wanted."""
+        return step in STEPS and step in self.steps
+
+    @property
+    def moments(self) -> list[Moment]:
+        """The moments handed over to rate or understand, in Clips Kitty's
+        order. Empty in a find run."""
+        return list(self._handed)
+
+    def text(self, m: Moment) -> str:
+        """What is said during moment `m`: the transcript's segments that
+        overlap it, joined with spaces. The transcript is read once."""
+        if self.transcript is None:
+            raise ContractError("text", ["this job has no transcript: add transcript to inputs and "
+                                         "transcript.read to permissions"])
+        if self._said is None:
+            said = []
+            for s in self.transcript.segments():
+                start, end = (_number(s.get("start")), _number(s.get("end"))) if isinstance(s, dict) else (None, None)
+                words = str(s.get("text") or "").strip() if start is not None and end is not None else ""
+                if words:
+                    said.append((start, end, words))
+            self._said = said
+        return " ".join(words for start, end, words in self._said if start < m.end and end > m.start)
+
     # ---- the answer ----------------------------------------------------------
 
+    def _mine(self, m, what: str) -> tuple[Moment, dict | None]:
+        """`m` as this job handed it out, with its range when it is one of the
+        plugin's own (None for a handed moment)."""
+        if isinstance(m, Moment):
+            if self._by_id.get(m.id) is m:
+                return m, None
+            own = self._own.get(m.id)
+            if own is not None and own[0] is m:
+                return own
+        name = m.id if isinstance(m, Moment) else repr(m)
+        raise ContractError(what, [f"{name} is not a moment of this job"])
+
+    def _log_once(self, message: str) -> None:
+        if message not in self._logged:
+            self._logged.add(message)
+            self.log(message)
+
+    def understand(self, m: Moment, text: str) -> None:
+        """Say what happens in moment `m`, for its title: one note of this run.
+
+        The note is put on one line (control characters removed, whitespace
+        collapsed) and cut to MAX_CONTEXT characters; an empty note is
+        ignored. A moment takes at most MAX_CONTEXT_ITEMS notes from one run;
+        `m.context`, what earlier plugins said, is never changed or counted.
+        In a run that wasn't asked to understand, the note is logged as
+        ignored and nothing is kept.
+        """
+        m, _ = self._mine(m, "understand")
+        if not self.wants("understand"):
+            self._log_once("understand ignored: this job didn't ask for notes")
+            return
+        note = one_line(text)[:MAX_CONTEXT].rstrip()
+        if not note:
+            return
+        if len(m._notes) >= MAX_CONTEXT_ITEMS:
+            raise ContractError("understand", [f"at most {MAX_CONTEXT_ITEMS} notes for one moment"])
+        m._notes.append(note)
+
+    def rate(self, m: Moment, score: float, reason: str = "") -> None:
+        """Give moment `m` a score from 0 to 100, with why (cut to MAX_REASON
+        characters). Rating it again replaces the earlier rating; `m.score`
+        follows.
+
+        A moment that was handed over needs a run asked to rate: otherwise
+        the rating is logged as ignored and nothing is kept. On a range of
+        the plugin's own it sets that range's score and reason, exactly as
+        add_range(score=, reason=) would, in any run.
+        """
+        m, own = self._mine(m, "rate")
+        value = _number(score)
+        if value is None or not 0 <= value <= 100:
+            raise ContractError("rate", ["score must be a number from 0 to 100"])
+        why = ("" if reason is None else str(reason))[:MAX_REASON]
+        if own is not None:
+            own["score"], own["reason"] = value, why
+            m.score, m.reason = value, why
+            return
+        if not self.wants("rate"):
+            self._log_once("rate ignored: this job didn't ask for ratings")
+            return
+        self._rated[m.id] = (value, why)
+        m.score = value
+
     def add_range(self, start: float, end: float, *, score: float | None = None, label: str = "",
-                  title: str = "", reason: str = "") -> None:
+                  title: str = "", reason: str = "") -> Moment:
         """One moment of the source video, in seconds, to become a clip.
 
         `score` (0-100) is optional: without one, Clips Kitty keeps the order
         the ranges were added in. `label` is the kind of moment ("goal",
         "team_wipe"), `title` a short headline, `reason` why it was picked;
         Clips Kitty writes the clip's own title and captions either way.
+        Returns the range as a Moment (r1, r2, ...), for rate() and understand().
         """
         entry = {"start": float(start), "end": float(end), "label": str(label)[:MAX_LABEL],
                  "title": str(title)[:MAX_TITLE], "reason": str(reason)[:MAX_REASON]}
@@ -178,17 +383,49 @@ class Job:
         if limits.min_duration and length < limits.min_duration:
             self.log(f"range {start:.1f}-{end:.1f}s is shorter than this job's {limits.min_duration}s minimum")
         self._ranges.append(entry)
+        moment = Moment(id=f"r{len(self._own) + 1}", start=entry["start"], end=entry["end"],
+                        score=entry.get("score"), found_score=entry.get("score"), found_by=self.plugin_id,
+                        label=entry["label"], title=entry["title"], reason=entry["reason"])
+        self._own[moment.id] = (moment, entry)
+        return moment
 
     @property
     def ranges(self) -> list[dict]:
         return list(self._ranges)
 
+    def _answers(self) -> list[dict]:
+        """One answer for each handed moment this run rated or noted, in order."""
+        out = []
+        for m in self._handed:
+            answer: dict = {"id": m.id}
+            if m.id in self._rated:
+                answer["score"], answer["reason"] = self._rated[m.id]
+            if m._notes:
+                answer["context"] = list(m._notes)
+            if len(answer) > 1:
+                out.append(answer)
+        return out
+
     def finish(self, notes: str = "") -> Path:
-        """Write result.json. Call once, at the end; the process should then exit with 0."""
-        result = {"plugin_api": PLUGIN_API_VERSION, "ranges": self._ranges}
+        """Write result.json. Call once, at the end; the process should then exit with 0.
+
+        It holds the ranges added (each with its own notes, in a run asked to
+        understand), the answers about the moments handed over, and `notes`
+        for the job log. It is checked the way Clips Kitty checks it, for the
+        steps this run was asked for.
+        """
+        ranges = self._ranges
+        noted = {id(entry): m.notes for m, entry in self._own.values() if m._notes}
+        if noted and self.wants("understand"):
+            ranges = [{**entry, "context": list(noted[id(entry)])} if id(entry) in noted else entry
+                      for entry in self._ranges]
+        result: dict = {"plugin_api": PLUGIN_API_VERSION, "ranges": ranges}
+        answers = self._answers()
+        if answers:
+            result["moments"] = answers
         if notes:
             result["notes"] = str(notes)[:MAX_NOTES]
-        problems = check_result(result)
+        problems = check_result(result, steps=self.steps)
         if problems:
             raise ContractError("result", problems)
         target = self.folder / RESULT_FILE

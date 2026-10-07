@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -21,8 +22,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .contract import PLUGIN_API_VERSION, ContractError, check_result, parse_line
-from .job import JOB_FILE, RESULT_FILE, SECRET_PREFIX
+from .contract import MAX_CONTEXT, PLUGIN_API_VERSION, ContractError, check_result, parse_line
+from .job import JOB_FILE, RESULT_FILE, SECRET_PREFIX, one_line
 from .manifest import setting_value_problem
 
 SDK_DIR = Path(__file__).resolve().parent.parent  # the folder holding clipskitty_sdk/
@@ -93,10 +94,26 @@ def job_settings(manifest: dict, chosen: dict | None) -> dict:
     return out
 
 
+# What was said in a moment: its title (the hook), why it was picked, and what
+# earlier plugins said happens in it. Handed over only with transcript.read.
+SAID_IN_A_MOMENT = ("title", "reason", "context")
+
+
+def _moment_for(moment: dict, *, said: bool) -> dict:
+    """A copy of one moment for job.json, without what was said in it unless `said`."""
+    out = {key: (list(value) if isinstance(value, list) else dict(value) if isinstance(value, dict) else value)
+           for key, value in moment.items()}
+    if not said:
+        for key in SAID_IN_A_MOMENT:
+            out.pop(key, None)
+    return out
+
+
 def build_job(manifest: dict, *, settings: dict | None = None, video: dict | None = None,
               transcript: dict | None = None, limits: dict | None = None, focus: str | None = None,
               ffmpeg: str | None = None, ffprobe: str | None = None, ollama: dict | None = None,
-              models: dict | None = None, output_dir: Path) -> tuple[dict, dict | None]:
+              models: dict | None = None, output_dir: Path, steps=None,
+              moments: list | None = None) -> tuple[dict, dict | None]:
     """job.json's content, and the transcript to write beside it (or None).
 
     Only what the manifest's permissions cover goes in: the video with
@@ -105,18 +122,29 @@ def build_job(manifest: dict, *, settings: dict | None = None, video: dict | Non
     out, so a plugin cannot read it from the job folder. `models` is where the
     models its manifest lists are on this PC (the app's plugins/models.py);
     they are its own declarations, so no permission is needed for them.
+
+    `steps` (what the run is asked for) and `moments` (the moments to rate or
+    understand) go in only when given, so a plugin that uses neither gets
+    the job.json it always did. A moment's title, reason and context come
+    from what was said, so they go in only with `transcript.read`.
     """
     perms = set(manifest.get("permissions") or [])
     job: dict = {
         "plugin_api": PLUGIN_API_VERSION,
         "plugin": {"id": manifest.get("id", ""), "version": str(manifest.get("version", ""))},
+    }
+    if steps is not None:
+        job["steps"] = [steps] if isinstance(steps, str) else [str(step) for step in steps]
+    if moments is not None:
+        job["moments"] = [_moment_for(m, said="transcript.read" in perms) for m in moments]
+    job.update({
         "settings": job_settings(manifest, settings),
         "limits": {"max_clips": None, "min_duration": None, "max_duration": None, **(limits or {})},
         "focus": focus or None,
         "models": dict(models or {}),
         "tools": {},
         "output_dir": str(output_dir),
-    }
+    })
     if "video.read" in perms and video:
         job["video"] = dict(video)
     if "ffmpeg" in perms:
@@ -259,13 +287,23 @@ def run_plugin(command: list[str], *, cwd: Path, job_folder: Path, env: dict, ti
     return outcome
 
 
-def read_result(job_folder: Path, *, duration: float | None = None, max_clips: int | None = None) -> dict:
-    """The plugin's result.json, checked, with its ranges fitted to the video.
+_LINK = re.compile(r"(?:https?://|\bwww\.)\S+", re.IGNORECASE)
 
-    Ranges are clamped to [0, duration], those left shorter than a second are
-    dropped, scored ranges are kept best first (unscored ones keep the
-    plugin's order after them) and the list is cut to `max_clips`.
-    """
+
+def clean_note(text) -> str:
+    """A note of what happens in a moment, as Clips Kitty keeps it and gives
+    it to the AI that writes titles: control characters removed, links
+    (http://, https://, www.) taken out, whitespace and newlines collapsed to
+    single spaces, and cut to MAX_CONTEXT characters. "" when nothing is left."""
+    return " ".join(_LINK.sub(" ", one_line(text)).split())[:MAX_CONTEXT].rstrip()
+
+
+def _asked(steps) -> set:
+    return {steps} if isinstance(steps, str) else {s for s in steps or () if isinstance(s, str)}
+
+
+def _load_result(job_folder: Path, steps) -> dict:
+    """result.json, checked for the steps the run was asked for (None: as a find run's)."""
     path = job_folder / RESULT_FILE
     if not path.exists():
         raise ContractError("result", ["the plugin exited without writing result.json"])
@@ -273,9 +311,27 @@ def read_result(job_folder: Path, *, duration: float | None = None, max_clips: i
         data = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as e:
         raise ContractError("result", [f"result.json is not valid JSON ({e})"]) from e
-    problems = check_result(data)
+    problems = check_result(data, steps=steps)
     if problems:
         raise ContractError("result", problems)
+    return data
+
+
+def read_result(job_folder: Path, *, duration: float | None = None, max_clips: int | None = None,
+                steps=None) -> dict:
+    """The plugin's result.json, checked, with its ranges fitted to the video.
+
+    Ranges are clamped to [0, duration], those left shorter than a second are
+    dropped, scored ranges are kept best first (unscored ones keep the
+    plugin's order after them) and the list is cut to `max_clips`.
+
+    `steps` is what the run was asked for (None: checked as a find run's
+    answer, as always). In a find run asked to understand, each range's
+    notes (`context`) go through clean_note; empty ones are dropped, and the
+    key when none are left.
+    """
+    data = _load_result(job_folder, steps)
+    notes_asked = steps is not None and {"find", "understand"} <= _asked(steps)
     fitted = []
     for r in data.get("ranges", []):
         start, end = max(0.0, float(r["start"])), float(r["end"])
@@ -283,10 +339,68 @@ def read_result(job_folder: Path, *, duration: float | None = None, max_clips: i
             end = min(end, float(duration))
         if end - start < 1.0:
             continue
-        fitted.append({**r, "start": start, "end": end})
+        r = {**r, "start": start, "end": end}
+        if notes_asked and "context" in r:
+            notes = [n for n in map(clean_note, r["context"] or []) if n]
+            if notes:
+                r["context"] = notes
+            else:
+                del r["context"]
+        fitted.append(r)
     scored = sorted((r for r in fitted if r.get("score") is not None), key=lambda r: -r["score"])
     unscored = [r for r in fitted if r.get("score") is None]
     ranges = scored + unscored
     if max_clips:
         ranges = ranges[: int(max_clips)]
     return {**data, "ranges": ranges}
+
+
+def read_answers(job_folder: Path, *, steps, ids) -> tuple[dict, list[str]]:
+    """What a run asked to rate or understand moments answered, as Clips Kitty uses it.
+
+    Returns the answers by moment id, and a line for the log for each thing
+    ignored. An answer holds `score` (0-100) and `reason` when the run was
+    asked to rate and gave a score, and `context`, the notes through
+    clean_note with empty ones dropped, when it was asked to understand. A
+    moment without a usable answer is left out and keeps what it had.
+    Answers for moments not in `ids`, any ranges, and fields the run wasn't
+    asked for are ignored. A missing or invalid result.json raises
+    ContractError, as in read_result.
+    """
+    data = _load_result(job_folder, steps)
+    asked = _asked(steps)
+    rate, understand = "rate" in asked, "understand" in asked
+    known = set(ids)
+    answers: dict = {}
+    ignored: list[str] = []
+    unasked_scores = unasked_notes = False
+    given = data.get("moments")
+    for a in given if isinstance(given, list) else []:
+        if not isinstance(a, dict) or not isinstance(a.get("id"), str):
+            continue  # only possible when neither step was asked, so the answers weren't checked
+        if a["id"] not in known:
+            ignored.append(f"ignored: an answer for {a['id']}, which isn't one of this run's moments")
+            continue
+        answer: dict = {}
+        if a.get("score") is not None or a.get("reason"):
+            if not rate:
+                unasked_scores = True
+            elif a.get("score") is not None:
+                answer["score"], answer["reason"] = float(a["score"]), str(a.get("reason") or "")
+        if a.get("context"):
+            if not understand:
+                unasked_notes = True
+            else:
+                notes = [n for n in map(clean_note, a["context"]) if n]
+                if notes:
+                    answer["context"] = notes
+        if answer:
+            answers[a["id"]] = answer
+    ranges = data.get("ranges") or []
+    if ranges:
+        ignored.append(f"ignored: {len(ranges)} range(s): this run was asked about moments, not to find new ones")
+    if unasked_scores:
+        ignored.append("ignored: scores, because this run wasn't asked to rate")
+    if unasked_notes:
+        ignored.append("ignored: notes, because this run wasn't asked to understand")
+    return answers, ignored
