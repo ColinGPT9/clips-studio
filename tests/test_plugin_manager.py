@@ -68,9 +68,10 @@ def test_nothing_from_the_plugin_runs_when_it_is_planned_or_installed(data, plug
         "src/main.py": f"open({str(marker / 'main')!r}, 'w').close()\n",
         ".gitattributes": "* filter=trap\n",
     }
-    repo = plugin_source.repo()
-    # Committed with the trap filter off, so only a checkout would run it.
+    # Made and committed with the traps off, so only the installer could
+    # spring them (newer Git runs the reference-transaction hook at `git init`).
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    repo = plugin_source.repo()
     commit = plugin_source.commit(repo, files=files)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
 
