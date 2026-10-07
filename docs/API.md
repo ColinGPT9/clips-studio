@@ -1234,7 +1234,7 @@ curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" 
 `GET /marketplace` lists and searches the registry indexes the app knows
 (`?q=`, `category`, `tag`, `kind`), each listing with the same details a plan
 shows and whether it is installed; it reads only cached copies.
-`POST /marketplace/refresh` (header needed) fetches the indexes set in
+`POST /marketplace/refresh` (no header: it fetches only addresses the user set) fetches the indexes in
 `plugins.registry_urls` again. See
 [Marketplace publishing](developers/marketplace-publishing.md).
 
