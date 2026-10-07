@@ -1,6 +1,6 @@
 # SDK
 
-The Clips Kitty plugin SDK is a small Python package, `clipskitty_sdk`, in [`sdk/python/clipskitty_sdk/`](../../sdk/python/clipskitty_sdk/). A pipeline plugin uses it to read its job, report progress and hand back moments. It imports only the Python standard library (the developer `run` command also needs PyYAML to read your manifest), so depending on it does not mean depending on Clips Kitty.
+The Clips Kitty plugin SDK is a small Python package, `clipskitty_sdk`, in [`sdk/python/clipskitty_sdk/`](../../sdk/python/clipskitty_sdk/). A pipeline plugin uses it to read its job, report progress and hand back moments. It imports only the Python standard library (reading a YAML manifest also needs PyYAML), so depending on it does not mean depending on Clips Kitty.
 
 | | |
 |---|---|
@@ -97,7 +97,9 @@ This builds the same job folder the app builds (one shared function, `clipskitty
 | `--timeout SECONDS` | Default 600 |
 | `--job-dir DIR` | Build the job folder here instead of a new temporary folder, to look at it afterwards |
 
-`python -m clipskitty_sdk validate .`, which runs the manifest checks the registry runs, is **planned** with the manifest schema ([Plugin manifest](plugin-manifest.md)).
+`python -m clipskitty_sdk validate .` runs the manifest checks the app and the registry run ([Plugin manifest](plugin-manifest.md)); `run` runs them first and refuses a plugin that fails them. `python -m clipskitty_sdk schema` prints the manifest's JSON Schema for editors.
+
+`clipskitty_sdk.manifest` offers the same in code: `load(folder)`, `validate(data)` (a report with `errors` and `warnings`), `validate_folder(folder)` (also checks the files the manifest names exist and that the folder has no symbolic links), `setting_value_problem(spec, value)` and `version_satisfies("2.0.0", ">=2.0, <3")`.
 
 ## Calling Clips Kitty's API
 

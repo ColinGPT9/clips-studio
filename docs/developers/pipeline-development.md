@@ -2,7 +2,7 @@
 
 A **pipeline plugin** decides which moments of a video become clips. Clips Kitty does everything around that decision exactly as it does for its own modes: downloading, transcribing, writing titles and hashtags with the user's AI model, cropping to vertical, captions, rendering with FFmpeg, the library, publishing and the automation that watches channels. You write the part that knows your niche (a game's kill feed, a sport's scoreboard, a podcast's best exchanges) and nothing else.
 
-Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine and the job option. **Planned**: installing plugins from the app (the plugin manager), a manifest validator, and returning finished clip files.
+Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option and the manifest validator. **Planned**: installing plugins from the app (the plugin manager) and returning finished clip files.
 
 ## How a run works
 
@@ -78,7 +78,7 @@ The full list of manifest fields is in [Plugin manifest](plugin-manifest.md). Of
 
 `{python}` in `run.command` is replaced by: the `plugins.python` setting in `settings.yaml` if set, else the Python the engine runs on (in a source checkout), else `python`, `py` or `python3` from `PATH`. **The installed app does not ship a Python for plugins**, so a Python plugin needs the user to have Python installed; the runner says so in words when none is found. A plugin's own Python packages, installed into an environment of its own, are **planned**: for now a plugin can use the standard library, the SDK, and programs it calls (FFmpeg through `job.tools`, or its own executable as `run.command`).
 
-A plugin does not have to be Python: `run.command` can start any program. It then reads `job.json` and writes `result.json` itself, following the contract below.
+A plugin does not have to be Python: `run.command` can start a program shipped in the plugin's folder, named by a path with a slash (`["bin/detect.exe"]`, `["./detect"]`); Clips Kitty starts it by its full path, never from `PATH`. It then reads `job.json` and writes `result.json` itself, following the contract below.
 
 ## The contract (plugin contract 1)
 
@@ -145,7 +145,7 @@ The job option is `pipeline`, on `POST /jobs`, each item of `POST /jobs/batch`, 
 {"url": "https://www.youtube.com/watch?v=...", "pipeline": {"id": "example-dev/loud-moments", "settings": {"threshold": 0.9}}}
 ```
 
-`"pipeline": "example-dev/loud-moments"` is the same as `{"id": ...}`. `version` picks an installed version other than the active one. A pipeline that is not installed or is turned off is refused with 400 when the job is added, and settings the manifest does not declare (or `secret` ones) fail the job when it runs.
+`"pipeline": "example-dev/loud-moments"` is the same as `{"id": ...}`. `version` picks an installed version other than the active one. A pipeline that is not installed or is turned off, a setting the manifest does not declare, a `secret` setting, or a value that does not fit the setting's type is refused with 400 when the job is added.
 
 How it combines with the job's other options:
 
@@ -162,7 +162,8 @@ Clips Kitty still runs its own audio and visual signal pass before the plugin st
 
 ## Testing
 
-- `python -m clipskitty_sdk run . --video sample.mp4` runs your plugin the way the app does ([SDK](sdk.md)).
+- `python -m clipskitty_sdk validate .` checks your manifest the way the app and the registry do ([Plugin manifest](plugin-manifest.md)).
+- `python -m clipskitty_sdk run . --video sample.mp4` runs your plugin the way the app does ([SDK](sdk.md)); it refuses a plugin whose manifest the app would refuse.
 - Use the SDK's `check_result` in your own tests.
 - Installing into the app from your folder or from a Git commit comes with the plugin manager (**planned**; see [Plugin development](plugin-development.md)).
 
