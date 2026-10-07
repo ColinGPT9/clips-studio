@@ -203,7 +203,7 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     assert item["id"] == "example-dev/nhl-goals" and item["installed"] is None
     assert item["details"]["tier_text"] == "Listed · not reviewed by a person"
     assert item["unofficial"] == "Unofficial · not made or endorsed by the makers of NHL"
-    assert found["indexes"] == [{"url": "bundled", "fetched_at": None, "cached": True}]
+    assert found["indexes"] == [{"url": "bundled", "fetched_at": None, "cached": True, "plugins": 1}]
     assert "sports" in found["categories"] and found["kinds"]["pipeline"] == "built"
     assert client.get("/marketplace", params={"q": "soccer"}).json()["plugins"] == []
 

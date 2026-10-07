@@ -155,7 +155,8 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
         known = registry.indexes(data_dir, urls(), bundled=bundled_index)
         return {
             "plugins": out,
-            "indexes": [{"url": i["url"], "fetched_at": i["fetched_at"], "cached": i["index"] is not None}
+            "indexes": [{"url": i["url"], "fetched_at": i["fetched_at"], "cached": i["index"] is not None,
+                         "plugins": len((i["index"] or {}).get("plugins") or [])}
                         for i in known],
             "categories": list(manifest_vocabulary()["categories"]),
             "kinds": manifest_vocabulary()["kinds"],
