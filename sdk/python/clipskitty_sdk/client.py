@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """Calling Clips Kitty's local API from a plugin or a script.
 
     from clipskitty_sdk.client import LocalAPI

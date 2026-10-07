@@ -139,6 +139,9 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     ("PUT", "/plugins/{publisher}/{name}/secrets"): (EXPERIMENTAL, "plugins", "Store a plugin's secret settings. Session header."),
     ("GET", "/marketplace"): (EXPERIMENTAL, "plugins", "Listed plugins from the registry indexes, searched and filtered, with what is installed."),
     ("POST", "/marketplace/refresh"): (EXPERIMENTAL, "plugins", "Fetch the registry index addresses set in settings into the cache."),
+    ("GET", "/marketplace/catalog"): (EXPERIMENTAL, "plugins", "Awesome Clips Kitty's apps, models, workflows, integrations and tools, searched, with their sections, labels and numbers."),
+    ("GET", "/marketplace/counting"): (EXPERIMENTAL, "plugins", "Whether installs from the Marketplace are counted, and what counting sends."),
+    ("PUT", "/marketplace/counting"): (EXPERIMENTAL, "plugins", "Switch install counting on or off for this PC. Session header."),
 }
 
 

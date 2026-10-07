@@ -1,15 +1,17 @@
-"""Build registry/index.json from the listings in registry/plugins/.
+"""Build the Awesome Clips Kitty catalog: index.json for the app, README.md for people.
 
-    python scripts/build_registry_index.py                  # write registry/index.json
-    python scripts/build_registry_index.py --check          # fail if it is out of date or a listing is refused
+    python scripts/build_registry_index.py                  # write index.json and README.md
+    python scripts/build_registry_index.py --check          # fail if either is out of date or an entry is refused
     python scripts/build_registry_index.py --sources DIR    # read manifests from DIR instead of GitHub
 
-Each listed version's manifest is fetched at its commit as plain text from
-GitHub (raw.githubusercontent.com) and checked with the validator the app
-uses; nothing is cloned, installed or run. With --sources, a manifest is read
-from DIR/<owner>/<repo>/<commit>/<path>/clipskitty.yaml instead, which is how
-the tests run it without the network. What a listing must pass is in
-registry/README.md.
+The catalog is awesome-clips-kitty/ (CONTRIBUTING.md there says what an entry
+must pass). Each listed version's manifest is fetched at its commit as plain
+text from GitHub (raw.githubusercontent.com) and checked with the validator
+the app uses; nothing is cloned, installed or run. With --sources, a manifest
+is read from DIR/<owner>/<repo>/<commit>/<path>/clipskitty.yaml instead, which
+is how the tests run it without the network. The numbers (stars, downloads,
+installs) come from stats/metrics.json, which scripts/update_registry_metrics.py
+writes; this build never asks GitHub or Hugging Face for them.
 """
 
 import argparse
@@ -32,33 +34,55 @@ def fixture_reader(base: Path):
     return fetch
 
 
+def readme_for(index: dict, readme: str) -> str:
+    """The README with its generated part rebuilt from the index: the
+    directory entries and the installable listings, in their sections."""
+    from plugins import catalog
+
+    listings = [{**p, "kind": p.get("kind", "pipeline"),
+                 "source": {"github": p["repository"], **({"path": p["path"]} if p.get("path") not in (None, ".") else {})}}
+                for p in index["plugins"]]
+    return catalog.write_readme(readme, catalog.readme_body(index["sections"], [*index["catalog"], *listings]))
+
+
 def main(argv=None) -> int:
-    from plugins import registry
+    from plugins import catalog, registry
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--registry", type=Path, default=ROOT / "registry", help="the registry folder")
-    ap.add_argument("--out", type=Path, help="where to write the index (default: <registry>/index.json)")
-    ap.add_argument("--check", action="store_true", help="exit 1 if the index is out of date or a listing is refused")
+    ap.add_argument("--catalog", type=Path, default=registry.catalog_path(), help="the catalog folder")
+    ap.add_argument("--out", type=Path, help="where to write the index (default: <catalog>/index.json)")
+    ap.add_argument("--check", action="store_true", help="exit 1 if a file is out of date or an entry is refused")
     ap.add_argument("--sources", type=Path, help="read manifests from this folder instead of GitHub")
     args = ap.parse_args(argv)
 
-    out = args.out or args.registry / "index.json"
+    out = args.out or args.catalog / "index.json"
+    readme_path = args.catalog / "README.md"
     fetch = fixture_reader(args.sources) if args.sources else registry.fetch_raw
-    index, problems = registry.build_index(args.registry, fetch=fetch)
+    index, problems = registry.build_index(args.catalog, fetch=fetch)
     for problem in problems:
         print(f"refused: {problem}")
     text = registry.index_text(index)
+    readme = None
+    if readme_path.exists() and "sections" in index:
+        try:
+            readme = readme_for(index, readme_path.read_text(encoding="utf-8"))
+        except catalog.CatalogError as e:
+            print(f"refused: README.md: {e}")
+            problems.append(str(e))
+    counts = f"{len(index['plugins'])} listings, {len(index.get('catalog', []))} catalog entries"
     if args.check:
-        current = out.read_text(encoding="utf-8") if out.exists() else ""
-        if current != text:
-            print(f"{out} is out of date: run python scripts/build_registry_index.py")
+        stale = [str(path) for path, want in ((out, text), (readme_path, readme)) if want is not None
+                 and (path.read_text(encoding="utf-8") if path.exists() else "") != want]
+        for path in stale:
+            print(f"{path} is out of date: run python scripts/build_registry_index.py")
+        if stale or problems:
             return 1
-        if problems:
-            return 1
-        print(f"{out} is up to date ({len(index['plugins'])} plugins)")
+        print(f"{out} and the README are up to date ({counts})")
         return 0
     out.write_text(text, encoding="utf-8")
-    print(f"wrote {out} ({len(index['plugins'])} plugins, {len(problems)} refused)")
+    if readme is not None:
+        readme_path.write_text(readme, encoding="utf-8")
+    print(f"wrote {out} ({counts}, {len(problems)} refused)")
     return 1 if problems else 0
 
 

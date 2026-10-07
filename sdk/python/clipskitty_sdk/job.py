@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """What a plugin's own code uses: read the job, report progress, return moments.
 
     from clipskitty_sdk import read_job

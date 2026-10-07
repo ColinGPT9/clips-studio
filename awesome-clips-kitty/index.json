@@ -1,0 +1,490 @@
+{
+ "blocklist": [],
+ "catalog": [
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "official"
+   ],
+   "checked": "2026-10-07",
+   "description": "Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Ships with Clips Kitty.",
+   "key": "integrations/clips-kitty-mcp-server",
+   "kind": "integration",
+   "license": "AGPL-3.0-or-later",
+   "metrics": {},
+   "name": "Clips Kitty MCP server and agent skill",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "built-with",
+   "runs": "local",
+   "section": "ai-assistants",
+   "slug": "clips-kitty-mcp-server",
+   "source": {
+    "github": "https://github.com/ColinGPT9/clips-studio",
+    "url": "https://github.com/ColinGPT9/clips-studio#ask-an-ai-agent-to-do-it"
+   },
+   "tags": [
+    "mcp",
+    "ai agents",
+    "claude",
+    "cursor"
+   ],
+   "uses": "api"
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "official"
+   ],
+   "checked": "2026-10-07",
+   "description": "An OBS Studio dock that hands your stream to Clips Kitty once it really ends and shows the progress. Nothing runs while you are live. Pre-release; needs the next Clips Kitty release.",
+   "key": "integrations/clips-kitty-obs-plugin",
+   "kind": "integration",
+   "license": "GPL-2.0-or-later",
+   "metrics": {},
+   "name": "Clips Kitty OBS Plugin",
+   "platforms": [
+    "windows"
+   ],
+   "relationship": "built-with",
+   "runs": "local",
+   "section": "streaming",
+   "slug": "clips-kitty-obs-plugin",
+   "source": {
+    "github": "https://github.com/ColinGPT9/clips-kitty-obs-plugin"
+   },
+   "tags": [
+    "obs",
+    "streaming",
+    "twitch",
+    "youtube",
+    "vod"
+   ],
+   "uses": "api"
+  },
+  {
+   "added": "2026-10-07",
+   "badges": [
+    "official"
+   ],
+   "checked": "2026-10-07",
+   "description": "Write, check and test Clips Kitty plugins - the manifest validator, a local test host, and a client for the local API. MIT-licensed, so using it puts no licence on your plugin.",
+   "key": "tools/clips-kitty-sdk",
+   "kind": "tool",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Clips Kitty SDK for Python",
+   "platforms": [
+    "windows",
+    "macos",
+    "linux"
+   ],
+   "relationship": "built-with",
+   "runs": "local",
+   "section": "developer",
+   "slug": "clips-kitty-sdk",
+   "source": {
+    "github": "https://github.com/ColinGPT9/clips-studio",
+    "path": "sdk/python"
+   },
+   "tags": [
+    "sdk",
+    "python",
+    "plugins",
+    "manifest"
+   ],
+   "uses": "api"
+  }
+ ],
+ "format": 1,
+ "plugins": [
+  {
+   "added": "2026-10-07",
+   "aliases": [],
+   "author": {
+    "name": "Clips Kitty examples"
+   },
+   "badges": [
+    "official",
+    "compatible"
+   ],
+   "capability": "highlight_detection",
+   "category": "utilities",
+   "checked": "2026-10-07",
+   "checks": {
+    "commit_pinned": true,
+    "manifest_valid": true,
+    "official_repository": true,
+    "public_at_commit": true
+   },
+   "description": "An example pipeline. It finds stretches that are clearly louder than the rest of the video and starts each clip on the nearest scene cut before it, using FFmpeg only. It knows nothing about what is happening on screen: loud is not always interesting, and quiet highlights are missed.\n",
+   "events": [
+    "loud"
+   ],
+   "execution": "local",
+   "id": "clips-kitty-examples/scene-cut-highlights",
+   "inputs": [
+    "video"
+   ],
+   "kind": "pipeline",
+   "latest": "1.0.0",
+   "license": "MIT",
+   "metrics": {},
+   "name": "Loud moments, cut on scene changes (example)",
+   "network": [],
+   "outputs": [
+    "ranges"
+   ],
+   "path": "examples/pipelines/scene-cut-highlights",
+   "permissions": [
+    "video.read",
+    "ffmpeg"
+   ],
+   "publisher": "clips-kitty-examples",
+   "relationship": "built-for",
+   "repository": "https://github.com/ColinGPT9/clips-studio",
+   "requirements": {
+    "gpu": "none",
+    "os": [
+     "windows",
+     "macos",
+     "linux"
+    ]
+   },
+   "run": {
+    "command": [
+     "{python}",
+     "src/main.py"
+    ],
+    "timeout_minutes": 30
+   },
+   "section": "general",
+   "sends": [],
+   "settings": {
+    "lead_in_seconds": {
+     "title": "Seconds to keep before the loud part when no cut is near",
+     "type": "number"
+    },
+    "louder_by_db": {
+     "title": "How much louder than usual (dB)",
+     "type": "number"
+    },
+    "scene_threshold": {
+     "title": "How big a picture change counts as a cut",
+     "type": "number"
+    }
+   },
+   "tags": [
+    "example",
+    "loudness",
+    "scene-cuts",
+    "ffmpeg"
+   ],
+   "versions": [
+    {
+     "commit": "1f7f3c3f881ca794a574db3ecb774db6782c47c2",
+     "compatibility": {
+      "app_version": "2.0.0",
+      "checked_at": "2026-10-07T11:05:14Z",
+      "checks": {
+       "installs": true,
+       "manifest_valid": true,
+       "requirements_met": true,
+       "starts": true,
+       "valid_result": true
+      },
+      "commit": "1f7f3c3f881ca794a574db3ecb774db6782c47c2",
+      "moments": 1,
+      "passed": true,
+      "plugin_api": 1,
+      "version": "1.0.0"
+     },
+     "date": "2026-10-07",
+     "permissions": [
+      "video.read",
+      "ffmpeg"
+     ],
+     "requires": {
+      "clips_kitty": ">=2.0",
+      "plugin_api": 1
+     },
+     "version": "1.0.0"
+    }
+   ]
+  }
+ ],
+ "sections": {
+  "app": {
+   "sections": [
+    {
+     "description": "Complete applications that use the Clips Kitty API or SDK.",
+     "id": "built-with",
+     "title": "Built with Clips Kitty"
+    },
+    {
+     "description": "Existing applications that have a Clips Kitty adapter, so they can run through Clips Kitty.",
+     "id": "works-with",
+     "title": "Work with Clips Kitty"
+    },
+    {
+     "description": "Apps that go well with Clips Kitty, such as editors and recorders.",
+     "id": "companion",
+     "title": "Companion apps"
+    },
+    {
+     "description": "Open-source apps that turn long videos into short clips. Not connected to Clips Kitty yet; the ones with a licence and design that allow it are candidates for adapters.",
+     "id": "video-clipping",
+     "title": "Open-source video clipping"
+    },
+    {
+     "description": "Open-source apps for captions, dubbing, reframing and other video AI work.",
+     "id": "video-ai",
+     "title": "Open-source video AI"
+    },
+    {
+     "description": "Open-source apps for game clips and highlights.",
+     "id": "gaming",
+     "title": "Gaming"
+    },
+    {
+     "description": "Open-source apps for sports highlights and match analysis.",
+     "id": "sports",
+     "title": "Sports"
+    }
+   ],
+   "wanted": []
+  },
+  "integration": {
+   "sections": [
+    {
+     "id": "streaming",
+     "title": "Streaming"
+    },
+    {
+     "id": "ai-assistants",
+     "title": "AI assistants"
+    },
+    {
+     "id": "publishing",
+     "title": "Publishing"
+    },
+    {
+     "id": "community",
+     "title": "Chat and community"
+    }
+   ],
+   "wanted": []
+  },
+  "model": {
+   "sections": [
+    {
+     "id": "speech",
+     "title": "Speech to text"
+    },
+    {
+     "id": "audio-events",
+     "title": "Sound and audio events"
+    },
+    {
+     "id": "vision",
+     "title": "Detection and tracking"
+    },
+    {
+     "id": "scenes",
+     "title": "Scenes and shots"
+    },
+    {
+     "id": "moments",
+     "title": "Moment and highlight detection"
+    },
+    {
+     "id": "ocr",
+     "title": "Reading text on screen"
+    },
+    {
+     "id": "language",
+     "title": "Language models"
+    }
+   ],
+   "wanted": []
+  },
+  "pipeline": {
+   "sections": [
+    {
+     "description": "Pipelines for any kind of video.",
+     "id": "general",
+     "title": "General"
+    },
+    {
+     "id": "gaming",
+     "title": "Gaming"
+    },
+    {
+     "id": "gaming/generic",
+     "title": "Any game"
+    },
+    {
+     "id": "gaming/world-of-warcraft",
+     "title": "World of Warcraft"
+    },
+    {
+     "id": "gaming/marvel-rivals",
+     "title": "Marvel Rivals"
+    },
+    {
+     "id": "gaming/minecraft",
+     "title": "Minecraft"
+    },
+    {
+     "id": "gaming/valorant",
+     "title": "Valorant"
+    },
+    {
+     "id": "gaming/league-of-legends",
+     "title": "League of Legends"
+    },
+    {
+     "id": "gaming/counter-strike",
+     "title": "Counter-Strike"
+    },
+    {
+     "id": "gaming/rocket-league",
+     "title": "Rocket League"
+    },
+    {
+     "id": "gaming/fortnite",
+     "title": "Fortnite"
+    },
+    {
+     "id": "sports",
+     "title": "Sports"
+    },
+    {
+     "id": "sports/soccer",
+     "title": "Soccer"
+    },
+    {
+     "id": "sports/basketball",
+     "title": "Basketball"
+    },
+    {
+     "id": "sports/hockey",
+     "title": "Ice hockey"
+    },
+    {
+     "id": "sports/american-football",
+     "title": "American football"
+    },
+    {
+     "description": "Vlogs, IRL streams, reactions and just-chatting.",
+     "id": "creators",
+     "title": "Creators"
+    },
+    {
+     "id": "podcasts",
+     "title": "Podcasts and talk"
+    }
+   ],
+   "wanted": [
+    {
+     "idea": "PvP, Mythic+ and raid highlights, each knowing what a great moment looks like in that mode.",
+     "section": "gaming/world-of-warcraft"
+    },
+    {
+     "idea": "Team fights, multi-kills and ultimates.",
+     "section": "gaming/marvel-rivals"
+    },
+    {
+     "idea": "Builds, near-deaths and boss fights.",
+     "section": "gaming/minecraft"
+    },
+    {
+     "idea": "Clutches and aces.",
+     "section": "gaming/valorant"
+    },
+    {
+     "idea": "Team fights and objective steals.",
+     "section": "gaming/league-of-legends"
+    },
+    {
+     "idea": "Goals, saves and aerials.",
+     "section": "gaming/rocket-league"
+    },
+    {
+     "idea": "Goals, saves and fights from NHL-style broadcasts.",
+     "section": "sports/hockey"
+    }
+   ]
+  },
+  "plugin": {
+   "sections": [
+    {
+     "id": "detection",
+     "title": "Detection"
+    },
+    {
+     "id": "captions",
+     "title": "Captions and styles"
+    },
+    {
+     "id": "export",
+     "title": "Export and publishing"
+    },
+    {
+     "id": "sources",
+     "title": "Sources"
+    },
+    {
+     "id": "utilities",
+     "title": "Utilities"
+    }
+   ],
+   "wanted": []
+  },
+  "tool": {
+   "sections": [
+    {
+     "id": "developer",
+     "title": "For developers"
+    },
+    {
+     "id": "transcription",
+     "title": "Transcription"
+    },
+    {
+     "id": "media",
+     "title": "Audio and video processing"
+    },
+    {
+     "id": "scenes",
+     "title": "Scene detection"
+    },
+    {
+     "id": "editing",
+     "title": "Automatic editing"
+    },
+    {
+     "id": "local-ai",
+     "title": "Running AI locally"
+    }
+   ],
+   "wanted": []
+  },
+  "workflow": {
+   "sections": [
+    {
+     "id": "comfyui",
+     "title": "ComfyUI"
+    },
+    {
+     "id": "automation",
+     "title": "Automation"
+    }
+   ],
+   "wanted": []
+  }
+ }
+}

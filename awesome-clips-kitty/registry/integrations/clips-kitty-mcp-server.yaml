@@ -1,0 +1,14 @@
+name: Clips Kitty MCP server and agent skill
+description: Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Ships with Clips Kitty.
+section: ai-assistants
+relationship: built-with
+uses: api
+license: AGPL-3.0-or-later
+source:
+  github: https://github.com/ColinGPT9/clips-studio
+  url: https://github.com/ColinGPT9/clips-studio#ask-an-ai-agent-to-do-it
+platforms: [windows, macos, linux]
+runs: local
+tags: [mcp, ai agents, claude, cursor]
+added: 2026-10-07
+checked: 2026-10-07

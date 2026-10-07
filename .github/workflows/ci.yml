@@ -87,10 +87,11 @@ jobs:
               print('\n'.join(bad)); sys.exit(1)
           PY
 
-      - name: Plugin registry index is current
-        # registry/index.json is generated from registry/plugins/ and the block
-        # list; a listing that fails its checks fails here. With no listings
-        # it needs no network.
+      - name: Awesome Clips Kitty index and README are current
+        # awesome-clips-kitty/index.json and the generated part of its
+        # README.md come from awesome-clips-kitty/registry/ and stats/; an
+        # entry or listing that fails its checks fails here. Listed manifests
+        # are fetched from GitHub at their commits as plain text, never run.
         run: python scripts/build_registry_index.py --check
 
       - name: No accidental secrets in config

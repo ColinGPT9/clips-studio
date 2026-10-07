@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """Clips Kitty plugin SDK.
 
 A pipeline plugin is a program Clips Kitty starts with a job folder. It reads

@@ -132,7 +132,7 @@ def _entry(data_dir, plugin_id: str) -> tuple[dict, dict]:
 def _summary(data: dict | None) -> dict:
     data = data or {}
     keys = ("id", "name", "version", "kind", "description", "license", "repository", "category", "tags",
-            "games", "events", "execution", "author", "links", "requirements")
+            "games", "events", "execution", "author", "links", "requirements", "based_on")
     return {k: data.get(k) for k in keys if data.get(k) is not None}
 
 

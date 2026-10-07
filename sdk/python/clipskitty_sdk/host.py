@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """Running a plugin: the job folder, the process and the result.
 
 Clips Kitty's engine and `python -m clipskitty_sdk run` both run plugins

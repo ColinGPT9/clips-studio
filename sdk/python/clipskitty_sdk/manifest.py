@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """The plugin manifest, `clipskitty.yaml`: reading it and checking it.
 
     from clipskitty_sdk.manifest import load, validate
@@ -77,7 +79,10 @@ MAX_TIMEOUT_MINUTES = 24 * 60
 REQUIRED = ("manifest_version", "id", "name", "version", "kind", "capability", "description", "license",
             "requires", "run", "execution", "inputs", "outputs", "permissions")
 OPTIONAL = ("author", "repository", "events", "games", "settings", "models", "network", "sends",
-            "requirements", "category", "tags", "links", "service", "examples")
+            "requirements", "category", "tags", "links", "service", "examples", "based_on")
+# How a plugin builds on someone else's project (based_on[].how).
+BASED_ON_HOW = ("runs", "includes-code", "port")
+MAX_BASED_ON = 10
 INPUT_NEEDS = {"video": "video.read", "transcript": "transcript.read"}
 
 
@@ -549,6 +554,22 @@ def validate(data, *, builtin: bool = False) -> Report:
                 c.unknown(f"examples[{i}]", e, ("title", "url"))
                 c.text(f"examples[{i}].title", e.get("title"), limit=100)
                 c.url(f"examples[{i}].url", e.get("url"))
+    if "based_on" in data:
+        # Whose work this plugin builds on, so the Marketplace can credit it
+        # and show its licence beside the plugin's own.
+        items = c.items("based_on", data["based_on"])
+        if len(items) > MAX_BASED_ON:
+            c.error("based_on", f"at most {MAX_BASED_ON} projects")
+        for i, item in enumerate(items):
+            b = c.mapping(f"based_on[{i}]", item)
+            if b:
+                c.unknown(f"based_on[{i}]", b, ("name", "url", "license", "how"))
+                c.text(f"based_on[{i}].name", b.get("name"), limit=100)
+                c.url(f"based_on[{i}].url", b.get("url"))
+                c.text(f"based_on[{i}].license", b.get("license"), pattern=LICENSE_PATTERN, limit=100,
+                       hint="the other project's licence as an SPDX identifier, such as MIT")
+                # runs: starts it as a separate program; includes-code: contains its code; port: rewrites it.
+                c.choice(f"based_on[{i}].how", b.get("how"), BASED_ON_HOW, what="kind of use")
     return c.report
 
 
@@ -694,6 +715,10 @@ def json_schema() -> dict:
                 "properties": {"name": text, "url": https, "pricing": text, "required": {"type": "boolean"}}}]},
             "examples": {"type": "array", "items": {"type": "object", "required": ["title", "url"],
                                                     "properties": {"title": text, "url": https}}},
+            "based_on": {"type": "array", "maxItems": MAX_BASED_ON, "items": {
+                "type": "object", "required": ["name", "url", "license", "how"],
+                "properties": {"name": text, "url": https, "license": {"type": "string", "pattern": LICENSE_PATTERN},
+                               "how": enum(BASED_ON_HOW)}}},
         },
     }
 

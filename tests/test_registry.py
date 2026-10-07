@@ -9,6 +9,7 @@ Every id and address is a placeholder.
 
 import io
 import json
+import re
 import tarfile
 from pathlib import Path
 
@@ -66,10 +67,13 @@ def _manifest(name, title, category, tags, games, events, description, version="
 
 
 class Registry:
+    """A catalog folder laid out like awesome-clips-kitty/, with listings only."""
+
     def __init__(self, base: Path):
-        self.dir = base / "registry"
+        self.root = base / "catalog"
+        self.dir = self.root / "registry"
         self.sources = base / "raw"
-        (self.dir / "plugins").mkdir(parents=True)
+        (self.dir / "pipelines").mkdir(parents=True)
         (self.dir / "blocklist.yaml").write_text("[]\n")
         self.n = 0
 
@@ -91,7 +95,7 @@ class Registry:
                 self.manifest_at(name, commit, data, extra.get("path", "."))
         listing = raw or {"id": f"{OWNER}/{name}", "repository": f"https://github.com/{OWNER}/{name}",
                           "versions": entries, **extra}
-        target = self.dir / "plugins" / (file or f"{OWNER}/{name}.yaml")
+        target = self.dir / "pipelines" / (file or f"{OWNER}/{name}.yaml")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(yaml.safe_dump(listing))
         return entries
@@ -102,7 +106,7 @@ class Registry:
     def build(self):
         from scripts.build_registry_index import fixture_reader
 
-        return registry.build_index(self.dir, fetch=fixture_reader(self.sources))
+        return registry.build_index(self.root, fetch=fixture_reader(self.sources))
 
 
 @pytest.fixture
@@ -143,7 +147,7 @@ def test_the_build_lists_each_plugin_with_what_the_marketplace_shows(reg):
 
 
 @pytest.mark.parametrize("case, fragment", [
-    ("wrong-file", "the file must be plugins/example-dev/wrong-file.yaml"),
+    ("wrong-file", "the file must be pipelines/example-dev/wrong-file.yaml"),
     ("wrong-owner", "the publisher 'example-dev' must be the repository's GitHub owner, 'someone-else'"),
     ("reserved", "the publisher 'clipskitty' is reserved"),
     ("not-github", "repository: must be https://github.com/<owner>/<repo>"),
@@ -224,23 +228,37 @@ def test_the_script_writes_and_checks_the_index(reg, tmp_path, capsys):
     row = CATALOGUE[3]
     reg.listing(row[0], [("1.0.0", _manifest(*row))])
     out = tmp_path / "out.json"
-    args = ["--registry", str(reg.dir), "--sources", str(reg.sources), "--out", str(out)]
+    args = ["--catalog", str(reg.root), "--sources", str(reg.sources), "--out", str(out)]
     assert main([*args, "--check"]) == 1  # not written yet
     assert main(args) == 0 and json.loads(out.read_text())["plugins"][0]["id"] == f"{OWNER}/{row[0]}"
     assert main([*args, "--check"]) == 0
     reg.listing("unowned", [], raw={"id": f"{OWNER}/unowned", "repository": "https://github.com/other/unowned",
                                     "versions": [{"version": "1.0.0", "commit": _commit(7)}]})
     assert main([*args, "--check"]) == 1
-    assert "refused: plugins/example-dev/unowned.yaml" in capsys.readouterr().out
+    assert "refused: pipelines/example-dev/unowned.yaml" in capsys.readouterr().out
 
 
-def test_the_committed_index_is_up_to_date_and_needs_no_network():
-    def no_network(url):
-        raise AssertionError(f"the committed registry should need no fetch: {url}")
+def _this_repository(url):
+    """The project's own listings point at commits of this repository. Read
+    their manifests from the working tree, so the test needs no network: a
+    listed manifest that has changed since fails here until the change is
+    listed as a new version. (CI's build step fetches the real commits.)"""
+    m = re.match(r"https://raw\.githubusercontent\.com/ColinGPT9/clips-studio/[0-9a-f]{40}/(.+)$", url)
+    if not m:
+        raise AssertionError(f"the committed catalog should need no fetch: {url}")
+    return (ROOT / m.group(1)).read_text(encoding="utf-8")
 
-    index, problems = registry.build_index(ROOT / "registry", fetch=no_network)
+
+def test_the_committed_catalog_is_up_to_date():
+    from scripts.build_registry_index import readme_for
+
+    folder = ROOT / "awesome-clips-kitty"
+    index, problems = registry.build_index(folder, fetch=_this_repository)
     assert problems == []
-    assert (ROOT / "registry" / "index.json").read_text(encoding="utf-8") == registry.index_text(index)
+    hint = "run python scripts/build_registry_index.py"
+    assert (folder / "index.json").read_text(encoding="utf-8") == registry.index_text(index), hint
+    readme = (folder / "README.md").read_text(encoding="utf-8")
+    assert readme_for(index, readme) == readme, hint
 
 
 # ---- search --------------------------------------------------------------------------------
@@ -364,7 +382,7 @@ def test_install_from_a_listing_is_listed_and_checked_against_it(reg, tmp_path, 
     plan = manager.plan(data, source, app_version=APP, tier="listed", fetcher=fetcher, listed_in=listing["index"],
                         expect={"id": listing["id"], "version": version["version"]})
     assert plan["ok"], plan["errors"]
-    assert plan["details"]["tier_text"] == "Listed · not reviewed by a person"
+    assert plan["details"]["tier_text"] == "Community · not reviewed by a person"
     view = manager.install(data, plan["plan_id"], app_version=APP)
     assert view["details"]["tier"] == "listed" and view["source"]["listed_in"] == "bundled"
     folder = store.get(data, listing["id"]).folder

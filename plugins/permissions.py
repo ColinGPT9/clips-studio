@@ -43,11 +43,16 @@ EXECUTION = {
     "hybrid": "Runs on this PC and uses a service on the internet (see the warnings).",
 }
 
+# Where an installed plugin came from. "listed-official" and "listed" both
+# come from a catalog listing; the first is in one of the Clips Kitty
+# project's own repositories (plugins/catalog.py OFFICIAL_OWNERS).
 TIERS = {
     "official": "Official",
-    "listed": "Listed · not reviewed by a person",
+    "listed-official": "✓ Official · made by the Clips Kitty project",
+    "listed": "Community · not reviewed by a person",
     "link": "Not listed · Clips Kitty has not checked this",
 }
+LISTED_TIERS = ("listed-official", "listed")
 
 GPU = {"optional": "A graphics card helps but isn't needed", "recommended": "A graphics card is recommended",
        "required": "Needs a graphics card"}

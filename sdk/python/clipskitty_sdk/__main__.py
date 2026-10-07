@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """Developer tools: check a plugin, and run it on a video the way Clips Kitty would.
 
     python -m clipskitty_sdk validate <plugin folder>

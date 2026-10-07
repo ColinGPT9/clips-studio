@@ -82,8 +82,11 @@ def test_the_spec_bundles_the_plugin_runner_and_the_sdk():
     assert '"plugins" / "builtin"' in text and '"plugins/builtin"' in text, (
         "the spec no longer ships the official modes' manifests (plugins/builtin)"
     )
-    assert '(str(ROOT / "registry" / "index.json"), "registry")' in text, (
-        "the spec no longer ships registry/index.json where plugins/registry.py looks for it"
+    assert '(str(ROOT / "awesome-clips-kitty" / "index.json"), "awesome-clips-kitty")' in text, (
+        "the spec no longer ships awesome-clips-kitty/index.json where plugins/registry.py looks for it"
+    )
+    assert '(str(ROOT / "sdk" / "python" / "LICENSE"), "sdk/python")' in text, (
+        "the spec no longer ships the SDK's MIT licence beside it"
     )
 
 

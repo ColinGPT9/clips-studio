@@ -1,21 +1,31 @@
-"""The plugin registry: its index format, the index build, and the app's client.
+"""The registry: the index format, the index build, and the app's client.
 
-An index is one JSON file built from a folder of listings (registry/README.md):
+The index is one JSON file built from the Awesome Clips Kitty catalog
+(awesome-clips-kitty/, see plugins/catalog.py and its CONTRIBUTING.md):
 
     {"format": 1,
      "plugins": [{"id": "example-dev/example-plugin", "name": ..., "latest": "1.1.0",
                   "versions": [{"version": "1.1.0", "commit": "<40 hex>", ...}, ...],
                   "repository": "https://github.com/example-dev/example-plugin", "path": ".",
+                  "section": "gaming/generic", "relationship": "built-for",
+                  "badges": ["community", "compatible"], "metrics": {...}, "compatibility": {...},
                   ...the latest version's manifest fields the Marketplace shows...,
                   "checks": {...}}],
+     "catalog": [{"key": "apps/example-app", "kind": "app", "name": ..., "relationship": "related",
+                  "license": "MIT", "source": {"github": ...}, "badges": [...], "metrics": {...}, ...}],
+     "sections": {"app": {"sections": [{"id", "title", "description"}], "wanted": [...]}, ...},
+     "metrics_at": "2026-10-07",                       # when the numbers were read, if ever
+     "counter": {"install": "https://...{asset}..."},  # optional: where installs are counted
      "blocklist": [{"id": ..., "versions": "*" or [...], "severity": "blocked" | "delisted",
                     "reason": ..., "date": ...}]}
 
-build_index() makes one (scripts/build_registry_index.py runs it in CI). The
-client reads the copy bundled with the app (registry/index.json) and the
-indexes at the addresses in settings (`plugins.registry_urls`, none by
-default: no address has been published), caches the last good copy of each
-under <data_dir>/plugins/cache/, works offline from that cache, and searches
+"plugins" are the installable listings (pipelines today); "catalog" is
+everything else the directory lists. build_index() makes the index
+(scripts/build_registry_index.py runs it in CI). The client reads the copy
+bundled with the app (awesome-clips-kitty/index.json) and the indexes at the
+addresses in settings (`plugins.registry_urls`, none by default: no address
+has been published), caches the last good copy of each under
+<data_dir>/plugins/cache/, works offline from that cache, and searches
 locally. Nothing here runs plugin code or clones a repository.
 """
 
@@ -28,13 +38,13 @@ import sys
 import time
 from pathlib import Path
 
-from plugins import sources, store
+from plugins import catalog, sources, store
 from plugins._sdk import manifest
 
 FORMAT = 1
 CACHE = "cache"
 SEVERITIES = ("blocked", "delisted")
-LISTING_FIELDS = ("id", "repository", "path", "aliases", "versions")
+LISTING_FIELDS = ("id", "repository", "path", "aliases", "versions", "section", "featured", "added", "checked")
 VERSION_FIELDS = ("version", "commit", "tag", "tested_with", "date")
 MAX_INDEX_BYTES = 20 * 1024 * 1024
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -42,7 +52,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Manifest fields copied into the index for the Marketplace.
 SHOWN = ("name", "description", "kind", "capability", "license", "category", "tags", "games", "events",
          "execution", "inputs", "outputs", "permissions", "network", "sends", "requirements", "models", "service",
-         "links", "examples", "author", "run")
+         "links", "examples", "author", "run", "based_on")
 
 # Words people search for and the words listings use. A query word matches
 # either side. Grown by pull request; each entry must be true for everyone.
@@ -94,8 +104,9 @@ def fetch_raw(url: str) -> str:
     return data.decode("utf-8")
 
 
-def check_listing(data, rel_path: str) -> list[str]:
-    """Problems with one listing file's content (before any manifest is fetched)."""
+def check_listing(data, rel_path: str, *, folder: str = "pipelines", sections: dict | None = None) -> list[str]:
+    """Problems with one listing file's content (before any manifest is fetched).
+    `folder` is pipelines or plugins; `sections` is sections.yaml, when there is one."""
     problems = []
     if not isinstance(data, dict):
         return ["a listing is a mapping of fields"]
@@ -107,16 +118,29 @@ def check_listing(data, rel_path: str) -> list[str]:
         problems.append("id: must look like publisher/name")
         return problems
     if rel_path != f"{pid}.yaml":
-        problems.append(f"the file must be plugins/{pid}.yaml")
+        problems.append(f"the file must be {folder}/{pid}.yaml")
     publisher = pid.split("/", 1)[0]
     if publisher in manifest.RESERVED_PUBLISHERS:
         problems.append(f"id: the publisher {publisher!r} is reserved for plugins that ship with Clips Kitty")
     where = _owner_repo(data.get("repository"))
     if not where:
         problems.append("repository: must be https://github.com/<owner>/<repo>")
-    elif where[0].lower() != publisher:
+    elif where[0].lower() != publisher and where[0].lower() not in catalog.OFFICIAL_OWNERS:
+        # The Clips Kitty project's own repositories may hold listings under
+        # other publisher names (its examples); nobody else's may.
         problems.append(f"repository: the publisher {publisher!r} must be the repository's GitHub owner, "
                         f"{where[0]!r}")
+    if sections is not None:
+        kind = catalog.INSTALLABLE_KINDS.get(folder, "pipeline")
+        known = catalog.section_ids(sections, kind)
+        if data.get("section") not in known:
+            problems.append(f"section: one of {', '.join(known) or '(none defined for ' + kind + 's)'}")
+    elif "section" in data and not (isinstance(data["section"], str) and catalog.SECTION_RE.match(data["section"])):
+        problems.append("section: a section id from sections.yaml")
+    catalog.check_featured(problems, "featured", data.get("featured"))
+    for key in ("added", "checked"):
+        if key in data and not DATE_RE.match(str(data[key])):
+            problems.append(f"{key}: YYYY-MM-DD")
     path = data.get("path", ".")
     if not isinstance(path, str) or (path != "." and not manifest._relative_inside(path)):
         problems.append("path: must be a folder inside the repository")
@@ -200,13 +224,15 @@ def _settings_shown(settings) -> dict:
     return out
 
 
-def build_index(registry_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]]:
-    """Build an index from a registry folder. Returns (index, problems); a
-    listing with any problem is left out. `fetch(url) -> text` reads a
-    manifest at a commit (fetch_raw, or a fixture reader in tests)."""
+def build_index(catalog_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]]:
+    """Build an index from a catalog folder (one with a registry/ folder in
+    it). Returns (index, problems); a listing or entry with any problem is
+    left out. `fetch(url) -> text` reads a manifest at a commit (fetch_raw,
+    or a fixture reader in tests)."""
     import yaml
 
-    registry_dir = Path(registry_dir)
+    catalog_dir = Path(catalog_dir)
+    registry_dir = catalog_dir / "registry"
     problems: list[str] = []
     block_path = registry_dir / "blocklist.yaml"
     blocklist = yaml.safe_load(block_path.read_text(encoding="utf-8")) if block_path.exists() else []
@@ -214,66 +240,142 @@ def build_index(registry_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]
         problems.append(f"blocklist.yaml: {p}")
     blocklist = [_clean_block(e) for e in (blocklist or []) if isinstance(e, dict)] if not problems else []
 
+    has_sections = (registry_dir / "sections.yaml").exists()
+    sections, found = catalog.read_sections(catalog_dir) if has_sections else ({}, [])
+    problems += found
+    settings, found = catalog.read_settings(catalog_dir)
+    problems += found
+    metrics, compatibility = catalog.read_stats(catalog_dir)
+
     plugins = []
-    for path in sorted((registry_dir / "plugins").rglob("*")):
-        if path.is_dir() or path.name.startswith("."):
-            continue
-        rel = path.relative_to(registry_dir / "plugins").as_posix()
-        label = f"plugins/{rel}"
-        if path.suffix not in (".yaml", ".yml"):
-            problems.append(f"{label}: a listing is a .yaml file")
-            continue
-        try:
-            listing = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except yaml.YAMLError as e:
-            problems.append(f"{label}: not valid YAML ({e})")
-            continue
-        found = check_listing(listing, rel)
-        if found:
-            problems += [f"{label}: {p}" for p in found]
-            continue
-        owner, repo = _owner_repo(listing["repository"])
-        folder = listing.get("path", ".")
-        versions, bad = [], False
-        for v in listing["versions"]:
-            url = raw_manifest_url(owner, repo, v["commit"], folder)
+    for folder, kind in catalog.INSTALLABLE_KINDS.items():
+        base = registry_dir / folder
+        for path in sorted(base.rglob("*")) if base.is_dir() else ():
+            if path.is_dir() or path.name.startswith("."):
+                continue
+            rel = path.relative_to(base).as_posix()
+            label = f"{folder}/{rel}"
+            if path.suffix not in (".yaml", ".yml"):
+                problems.append(f"{label}: a listing is a .yaml file")
+                continue
             try:
-                data = yaml.safe_load(fetch(url))
-            except Exception as e:  # any failure to read is reported, not raised
-                problems.append(f"{label}: {v['version']}: the manifest at commit {v['commit'][:7]} could not be "
-                                f"read ({e})")
-                bad = True
+                listing = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except yaml.YAMLError as e:
+                problems.append(f"{label}: not valid YAML ({e})")
                 continue
-            report = manifest.validate(data)
-            found = [f"clipskitty.yaml: {err}" for err in report.errors]
-            if report.ok:
-                for key, want in (("id", listing["id"]), ("version", v["version"])):
-                    if data.get(key) != want:
-                        found.append(f"the manifest's {key} is {data.get(key)!r}, the listing says {want!r}")
+            found = check_listing(listing, rel, folder=folder, sections=sections if has_sections else None)
             if found:
-                problems += [f"{label}: {v['version']}: {f}" for f in found]
-                bad = True
+                problems += [f"{label}: {p}" for p in found]
                 continue
-            if block_entry(blocklist, listing["id"], v["version"]):
-                continue
-            entry = {"version": v["version"], "commit": v["commit"],
-                     "requires": data.get("requires"), "permissions": data.get("permissions")}
-            for key in ("tag", "tested_with", "date"):
-                if key in v:
-                    entry[key] = str(v[key]) if key == "date" else v[key]
-            versions.append((manifest._version_tuple(v["version"]), entry, data))
-        if bad or not versions:
+            item, found = _build_listing(listing, label, kind, fetch=fetch, blocklist=blocklist,
+                                         metrics=metrics, compatibility=compatibility)
+            problems += found
+            if item:
+                plugins.append(item)
+
+    entries, found = catalog.read_entries(catalog_dir, sections) if has_sections else ([], [])
+    problems += found
+    listed_ids = {p["id"] for p in plugins}
+    finished = []
+    for e in entries:
+        if e.get("adapter") and e["adapter"] not in listed_ids:
+            problems.append(f"{e['key']}: adapter: {e['adapter']} is not a listing here")
             continue
-        versions.sort(key=lambda t: t[0], reverse=True)
-        latest_manifest = versions[0][2]
-        item = {"id": listing["id"], "publisher": listing["id"].split("/")[0], "repository": listing["repository"],
-                "path": folder, "aliases": listing.get("aliases", []), "latest": versions[0][1]["version"],
-                "versions": [e for _, e, _ in versions], "settings": _settings_shown(latest_manifest.get("settings")),
-                "checks": {"manifest_valid": True, "publisher_is_repository_owner": True, "commit_pinned": True,
-                           "public_at_commit": True}}
-        item.update({k: latest_manifest[k] for k in SHOWN if k in latest_manifest})
-        plugins.append(item)
-    return {"format": FORMAT, "plugins": plugins, "blocklist": blocklist}, problems
+        finished.append(catalog.finish_entry(e, metrics))
+    index = {"format": FORMAT, "plugins": plugins, "blocklist": blocklist}
+    if has_sections:
+        index["catalog"] = finished
+        index["sections"] = {kind: {"sections": [{k: s[k] for k in ("id", "title", "description") if k in s}
+                                                 for s in spec.get("sections", [])],
+                                    "wanted": spec.get("wanted") or []}
+                             for kind, spec in sections.items()}
+    if metrics.get("generated_at"):
+        index["metrics_at"] = str(metrics["generated_at"])[:10]
+    if settings.get("counter"):
+        index["counter"] = settings["counter"]
+    return index, problems
+
+
+def _build_listing(listing: dict, label: str, kind: str, *, fetch, blocklist: list, metrics: dict,
+                   compatibility: dict) -> tuple[dict | None, list[str]]:
+    """One listing as the index carries it, with the manifest of every
+    version fetched at its commit and checked."""
+    problems: list[str] = []
+    owner, repo = _owner_repo(listing["repository"])
+    folder = listing.get("path", ".")
+    versions, bad = [], False
+    for v in listing["versions"]:
+        url = raw_manifest_url(owner, repo, v["commit"], folder)
+        try:
+            data = yaml_load(fetch(url))
+        except Exception as e:  # any failure to read is reported, not raised
+            problems.append(f"{label}: {v['version']}: the manifest at commit {v['commit'][:7]} could not be "
+                            f"read ({e})")
+            bad = True
+            continue
+        report = manifest.validate(data)
+        found = [f"clipskitty.yaml: {err}" for err in report.errors]
+        if report.ok:
+            for key, want in (("id", listing["id"]), ("version", v["version"])):
+                if data.get(key) != want:
+                    found.append(f"the manifest's {key} is {data.get(key)!r}, the listing says {want!r}")
+            if data.get("kind") != kind and kind == "pipeline":
+                found.append(f"the manifest's kind is {data.get('kind')!r}: only pipelines go in pipelines/")
+            elif data.get("kind") == "pipeline" and kind != "pipeline":
+                found.append("a pipeline's listing goes in pipelines/")
+        if found:
+            problems += [f"{label}: {v['version']}: {f}" for f in found]
+            bad = True
+            continue
+        if block_entry(blocklist, listing["id"], v["version"]):
+            continue
+        entry = {"version": v["version"], "commit": v["commit"],
+                 "requires": data.get("requires"), "permissions": data.get("permissions")}
+        for key in ("tag", "tested_with", "date"):
+            if key in v:
+                entry[key] = str(v[key]) if key == "date" else v[key]
+        record = catalog.compatibility_for(listing["id"], entry, compatibility)
+        if record:
+            entry["compatibility"] = record
+        versions.append((manifest._version_tuple(v["version"]), entry, data))
+    if bad or not versions:
+        return None, problems
+    versions.sort(key=lambda t: t[0], reverse=True)
+    latest_entry, latest_manifest = versions[0][1], versions[0][2]
+    item = {"id": listing["id"], "publisher": listing["id"].split("/")[0], "repository": listing["repository"],
+            "path": folder, "aliases": listing.get("aliases", []), "latest": latest_entry["version"],
+            "versions": [e for _, e, _ in versions], "settings": _settings_shown(latest_manifest.get("settings")),
+            "relationship": "built-for",
+            # A listing in one of the project's own repositories may use another publisher name (its
+            # examples); it says so instead of claiming the publisher owns the repository.
+            "checks": {"manifest_valid": True,
+                       ("publisher_is_repository_owner" if owner.lower() == listing["id"].split("/")[0].lower()
+                        else "official_repository"): True,
+                       "commit_pinned": True, "public_at_commit": True}}
+    item.update({k: latest_manifest[k] for k in SHOWN if k in latest_manifest})
+    for key in ("section", "added", "checked"):
+        if key in listing:
+            item[key] = str(listing[key])
+    record = latest_entry.get("compatibility")
+    compatible = bool(record and record.get("passed")
+                      and record.get("plugin_api") in manifest.SUPPORTED_PLUGIN_APIS)
+    item["badges"] = catalog.badges(official=catalog.is_official(listing["repository"]), compatible=compatible,
+                                    featured=bool(listing.get("featured")))
+    if listing.get("featured"):
+        item["featured"] = {"reason": listing["featured"]["reason"], "date": str(listing["featured"]["date"])}
+    models = [m.get("id") for m in latest_manifest.get("models") or []
+              if isinstance(m, dict) and m.get("source") == "huggingface" and m.get("id")]
+    item["metrics"] = catalog.entry_metrics(listing["repository"], models, metrics, listing_id=listing["id"])
+    url = catalog.discussions_url(listing["repository"], item["metrics"].get("github"))
+    if url:
+        item["discussions_url"] = url
+    return item, problems
+
+
+def yaml_load(text: str):
+    import yaml
+
+    return yaml.safe_load(text)
 
 
 def index_text(index: dict) -> str:
@@ -283,10 +385,58 @@ def index_text(index: dict) -> str:
 # ---- the client: reading indexes --------------------------------------------------------
 
 
-def bundled_path() -> Path:
+CATALOG_FOLDER = "awesome-clips-kitty"
+
+
+def catalog_path() -> Path:
+    """The Awesome Clips Kitty folder in a source checkout (or the frozen app's bundle)."""
     bundle = getattr(sys, "_MEIPASS", None)
     base = Path(bundle) if bundle else Path(__file__).resolve().parent.parent
-    return base / "registry" / "index.json"
+    return base / CATALOG_FOLDER
+
+
+def bundled_path() -> Path:
+    return catalog_path() / "index.json"
+
+
+def _clean_entry(e) -> dict | None:
+    """A catalog entry read from an index, or None when it isn't one. Links
+    are kept only when they are what they claim to be."""
+    if not isinstance(e, dict) or e.get("kind") not in catalog.DIRECTORY_KINDS.values():
+        return None
+    key = e.get("key")
+    folder = catalog.FOLDER_OF_KIND[e["kind"]]
+    if not isinstance(key, str) or not key.startswith(folder + "/") or not catalog.SLUG_RE.match(key[len(folder) + 1:]):
+        return None
+    if not isinstance(e.get("name"), str) or not isinstance(e.get("license"), str):
+        return None
+    source = e.get("source") if isinstance(e.get("source"), dict) else {}
+    clean = {}
+    if catalog.github_repo(source.get("github")):
+        clean["github"] = source["github"]
+        if isinstance(source.get("path"), str) and manifest._relative_inside(source["path"]):
+            clean["path"] = source["path"]
+    if isinstance(source.get("huggingface"), str) and catalog.HF_ID_RE.match(source["huggingface"]):
+        clean["huggingface"] = source["huggingface"]
+    if catalog._https(source.get("url")):
+        clean["url"] = source["url"]
+    if not clean:
+        return None
+    out = {**e, "source": clean}
+    if e.get("discussions_url") and not str(e["discussions_url"]).startswith("https://github.com/"):
+        out.pop("discussions_url")
+    out["badges"] = _trusted_badges(e.get("badges"), clean.get("github"), installable=False)
+    return out
+
+
+def _trusted_badges(claimed, repository, *, installable: bool) -> list[str]:
+    """Badges as an index claims them, except Official, which follows from
+    the repository whatever an index says (so an index at another address
+    can't make its plugins look like the project's own). Compatible belongs
+    to installable versions only."""
+    claimed = claimed if isinstance(claimed, list) else []
+    return catalog.badges(official=catalog.is_official(repository),
+                          compatible=installable and "compatible" in claimed, featured="featured" in claimed)
 
 
 def check_index(data) -> dict:
@@ -302,9 +452,23 @@ def check_index(data) -> dict:
                 and _owner_repo(p.get("repository")) and isinstance(p.get("versions"), list) and p["versions"]
                 and all(isinstance(v, dict) and sources.COMMIT_RE.match(str(v.get("commit", "")))
                         and manifest.VERSION_RE.match(str(v.get("version", ""))) for v in p["versions"])):
-            good.append(p)
+            checks = {k: v for k, v in (p.get("checks") or {}).items() if k != "official_repository"} \
+                if isinstance(p.get("checks"), dict) else {}
+            if catalog.is_official(p["repository"]) and (p.get("checks") or {}).get("official_repository") is True:
+                checks["official_repository"] = True
+            good.append({**p, "checks": checks,
+                         "badges": _trusted_badges(p.get("badges"), p["repository"], installable=True)})
     blocklist = data.get("blocklist") if isinstance(data.get("blocklist"), list) else []
-    return {"format": FORMAT, "plugins": good, "blocklist": [b for b in blocklist if isinstance(b, dict)]}
+    out = {"format": FORMAT, "plugins": good, "blocklist": [b for b in blocklist if isinstance(b, dict)]}
+    entries = data.get("catalog") if isinstance(data.get("catalog"), list) else []
+    out["catalog"] = [c for c in (_clean_entry(e) for e in entries) if c]
+    out["sections"] = data.get("sections") if isinstance(data.get("sections"), dict) else {}
+    if isinstance(data.get("metrics_at"), str):
+        out["metrics_at"] = data["metrics_at"][:10]
+    counter = data.get("counter") if isinstance(data.get("counter"), dict) else {}
+    if catalog.counter_template_ok(counter.get("install")):
+        out["counter"] = {"install": counter["install"]}
+    return out
 
 
 def index_urls(config: dict) -> list[str]:
@@ -405,6 +569,30 @@ def listings(data_dir, urls: list[str], *, bundled: Path | None = None) -> list[
     return out
 
 
+def catalog_entries(data_dir, urls: list[str], *, bundled: Path | None = None) -> tuple[list[dict], dict]:
+    """Every directory entry, once (a key in several indexes comes from the
+    first), and the sections of the first index that has any."""
+    seen, out, sections = set(), [], {}
+    for item in indexes(data_dir, urls, bundled=bundled):
+        index = item["index"] or {}
+        if not sections and index.get("sections"):
+            sections = index["sections"]
+        for e in index.get("catalog", []):
+            if e["key"] in seen:
+                continue
+            seen.add(e["key"])
+            out.append({**e, "index": item["url"]})
+    return out, sections
+
+
+def counter_for(data_dir, urls: list[str], index_url: str, *, bundled: Path | None = None) -> str | None:
+    """The install-counter address of the index a listing came from, if it has one."""
+    for item in indexes(data_dir, urls, bundled=bundled):
+        if item["url"] == index_url:
+            return ((item["index"] or {}).get("counter") or {}).get("install")
+    return None
+
+
 def find(data_dir, urls: list[str], plugin_id: str, version: str | None = None, *,
          bundled: Path | None = None) -> tuple[dict, dict]:
     """A listing and one of its versions (the latest when none is named)."""
@@ -415,6 +603,12 @@ def find(data_dir, urls: list[str], plugin_id: str, version: str | None = None, 
                     return p, v
             raise RegistryError(f"{plugin_id} {version} is not listed")
     raise RegistryError(f"{plugin_id} is not listed in any index")
+
+
+def listing_tier(listing: dict) -> str:
+    """The install tier of a listing: official when its repository is one of
+    the Clips Kitty project's own (that is where the files come from)."""
+    return "listed-official" if catalog.is_official(listing.get("repository")) else "listed"
 
 
 def source_for(listing: dict, version: dict) -> dict:
@@ -439,8 +633,10 @@ def _stem(word: str) -> str:
 
 
 def _fields(p: dict) -> dict:
-    return {"name": _norm(p.get("name")), "aliases": _norm(p.get("aliases")), "games": _norm(p.get("games")),
-            "tags": _norm(p.get("tags")), "events": _norm(p.get("events")), "category": _norm(p.get("category")),
+    return {"name": _norm(p.get("name")), "aliases": _norm(p.get("aliases")),
+            "games": _norm([*(p.get("games") or []), *(p.get("sports") or [])]),
+            "tags": _norm(p.get("tags")), "events": _norm(p.get("events")),
+            "category": _norm([p.get("category") or "", str(p.get("section") or "").replace("/", " ")]),
             "capability": _norm(p.get("capability")), "description": _norm(p.get("description"))}
 
 
@@ -463,14 +659,17 @@ def _word_score(word: str, fields: dict) -> int:
 
 
 def search(plugins: list[dict], q: str = "", *, category: str | None = None, tag: str | None = None,
-           kind: str | None = None) -> list[dict]:
-    """Listings matching a query, best first. Every word must match
-    somewhere; a word in the name counts most, one in the description least."""
+           kind: str | None = None, section: str | None = None) -> list[dict]:
+    """Listings or catalog entries matching a query, best first. Every word
+    must match somewhere; a word in the name counts most, one in the
+    description least. `section` matches a section and the sections inside it."""
     out = []
     words = [w for w in _norm(q).split() if w not in STOPWORDS]
     phrase = _norm(q)
     for p in plugins:
         if category and p.get("category") != category:
+            continue
+        if section and not (p.get("section") == section or str(p.get("section") or "").startswith(section + "/")):
             continue
         if tag and tag not in (p.get("tags") or []):
             continue
