@@ -12,6 +12,20 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **A Marketplace, and Awesome Clips Kitty.** Other developers can now write their own
+  "find the best moments" step (a pipeline) and list it; you install one from the new
+  **Marketplace** screen and switch it on for a video with the **Pipeline** option. Every
+  listing says what it may do, where it runs, what it needs and its licence, and asks you
+  to confirm before anything is installed. Nothing changes until you install something.
+  The Marketplace also shows **Awesome Clips Kitty**, a curated list of apps, models,
+  integrations and tools around Clips Kitty, each marked as built for Clips Kitty, built
+  with it, or related. Labels: ✓ Official (made by this project), ✓ Compatible (passed
+  automated checks; not a security review), ★ Featured and Community. Installs from the
+  Marketplace can be counted anonymously, with a switch to turn it off; nothing is counted
+  yet. The developer kit is now MIT-licensed; the app stays AGPL-3.0-or-later.
+  (Experimental routes: `/plugins`, `/marketplace`, `/marketplace/catalog`,
+  `/marketplace/counting`, `/plugin-models`.) (#129)
+
 - **A second colour for the second speaker.** Tick **Second speaker in another colour**
   in the caption settings, for a whole run or for one clip in the editor, and pick the
   colour. When two people talk in a clip, the main speaker keeps the text colour and

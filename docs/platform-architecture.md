@@ -9,7 +9,7 @@ Phase 1 of the overnight brief (`docs/platform/BRIEF.md` §8). It builds on [`do
 3. A **plugin manager and registry client** in a new engine package, `plugins/`, mounted on the existing app through the existing `install(app, …)` pattern.
 4. A **public SDK**, `sdk/python/clipskitty_sdk/`, standard library only, that developers use from their own repositories without importing anything from Clips Kitty.
 
-Plus documentation (`docs/developers/`), a static registry (`registry/`), a Marketplace page in the existing UI, and a model-reference layer over the model stores that already exist.
+Plus documentation (`docs/developers/`), a static registry (`registry/`; since 2026-10-07 the Awesome Clips Kitty catalog in `awesome-clips-kitty/`), a Marketplace page in the existing UI, and a model-reference layer over the model stores that already exist.
 
 ## What is reused and what is created
 
@@ -34,7 +34,7 @@ No second API, no second engine, no second queue, no second runtime. The one gen
 
 ```text
 Clips Kitty engine            existing local API              public SDK                     plugin / pipeline contract         Marketplace
-main.py serve           →     server/api.py create_app   →    sdk/python/clipskitty_sdk  →   clipskitty.yaml (manifest)    →    registry/index.json
+main.py serve           →     server/api.py create_app   →    sdk/python/clipskitty_sdk  →   clipskitty.yaml (manifest)    →    awesome-clips-kitty/index.json
 core/pipeline.py              127.0.0.1:8765, API v1          (stdlib only: read_job,        job.json → result.json             → plugins/registry.py
 server/jobs.py Worker         stability labels per route      progress, add_range, finish,   + progress lines on stdout         → GET /marketplace
                               docs/developers/api-reference   validate, local API client)    plugins/runner.py runs it          → Marketplace page (ui)
@@ -114,8 +114,8 @@ Models are listed in the manifest's `models:` section rather than a separate `mo
 python -m clipskitty_sdk validate .                     same checks the registry runs
 python -m clipskitty_sdk run . --video sample.mp4       same job folder the engine builds
 git tag v1.0.0 && git push --tags                       the developer's own repository
-pull request adding registry/plugins/<publisher>/<name>.yaml
-CI validates the listing and builds registry/index.json  (reads metadata only)
+pull request adding awesome-clips-kitty/registry/pipelines/<publisher>/<name>.yaml
+CI validates the listing and builds awesome-clips-kitty/index.json  (reads metadata only)
 user opens Marketplace → sees the listing → Install → picks it on the Generate bar
 ```
 
@@ -289,6 +289,8 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 | **Installed from a link** | Installed from a Git URL or a folder on this PC that no enabled index lists. | The user, on the install screen. | "Not listed · Clips Kitty has not checked this" |
 | **Blocked** | Matches the block list. It does not run. | A registry maintainer (removal path below). | "Blocked: <reason>" in red |
 
+**Since 2026-10-07** (`DECISIONS.md` D20) a listed plugin shows "Community · not reviewed by a person", or "✓ Official · made by the Clips Kitty project" (tier `listed-official`) when its repository is the project's own; the worked examples below still show the old wording. Listings also carry labels (✓ Official, ✓ Compatible, ★ Featured, Community; `awesome-clips-kitty/CONTRIBUTING.md`). There is still no "Verified".
+
 **"Verified" is defined and unused.** If the owner sets up a real review, the label would be **Reviewed**: a named maintainer read one specific commit against a written checklist, and the label applies to that commit only. Even then it is not a security audit, and the UI would say so. Until such a process exists, no listing carries it (`DECISIONS.md` D5).
 
 **Separate attributes**, each shown only when it is a fact:
@@ -305,7 +307,7 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 **Removal path.**
 
 1. A report arrives as an issue on the registry repository, or privately through GitHub's private vulnerability reporting on that repository for anything harmful.
-2. A maintainer adds an entry to `registry/blocklist.yaml`: `id`, `versions` (`"*"` or a list), `severity` (`blocked` or `delisted`), `reason`, `date` and an optional advisory link. CI rebuilds `index.json`; blocked and delisted versions disappear from the Marketplace.
+2. A maintainer adds an entry to `awesome-clips-kitty/registry/blocklist.yaml`: `id`, `versions` (`"*"` or a list), `severity` (`blocked` or `delisted`), `reason`, `date` and an optional advisory link. CI rebuilds `index.json`; blocked and delisted versions disappear from the Marketplace.
 3. The client refreshes the index and block list whenever the Marketplace opens, and every release of the app ships the list as of its build, so an offline PC still knows about old entries. **Until the owner publishes an index URL, this path cannot reach installed copies**: the only list an installed app has is the one it shipped with, so a newly blocked plugin keeps running until an app release carries the new list. Once a URL exists, the small block list should be fetched at engine start and before each plugin job, not only when the Marketplace opens (designed, not built).
 4. Copies already installed are flagged from the cached list. `blocked`: the runner refuses to start it, the plugin page shows the reason in red and offers Remove, and nothing else changes on its own. `delisted` (abandoned, licence problem, or broken, for example by a game patch): it still runs and shows "No longer listed: <reason>". Clips Kitty never deletes a user's files by itself; removal is the user's click.
 
@@ -329,15 +331,18 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 
 **Hybrid registry** (research Q12): one official static index built by CI from one listing file per plugin in a public Git repository, reviewed by pull request; installs from any GitHub URL, labelled "not listed"; and a setting to add other index URLs. The app never needs a Clips Kitty server.
 
-**In this repository first** (`DECISIONS.md` D5): `registry/` holds the format and tooling until the owner picks a public home.
+**In this repository first** (`DECISIONS.md` D5): `registry/` held the format and tooling until the owner picks a public home. On 2026-10-07 it became Awesome Clips Kitty, a curated directory in `awesome-clips-kitty/` (`DECISIONS.md` D20); its `CONTRIBUTING.md` is the reference for the layout and formats.
 
 ```text
-registry/
-  plugins/<publisher>/<name>.yaml   one listing file per plugin, submitted by pull request
-  blocklist.yaml
-  index.json                        built by CI; empty plugin list today
-  README.md                         how to submit
-scripts/build_registry_index.py     validate listings, fetch each manifest at its commit, write index.json
+awesome-clips-kitty/
+  registry/pipelines/<publisher>/<name>.yaml   one listing file per pipeline, submitted by pull request
+  registry/<kind>s/<name>.yaml                 apps, models, workflows, integrations and tools
+  registry/sections.yaml, catalog.yaml         sections per kind; the install counter's address
+  registry/blocklist.yaml
+  stats/                                       the numbers, and the compatibility check's records
+  index.json                                   built by CI; what the app reads
+  README.md, CONTRIBUTING.md                   the directory (partly generated) and how to submit
+scripts/build_registry_index.py                validate, fetch each manifest at its commit, write index.json and README.md
 ```
 
 A listing file is small because the manifest is the source of truth:
@@ -346,6 +351,7 @@ A listing file is small because the manifest is the source of truth:
 id: example-dev/marvel-rivals-highlights
 repository: https://github.com/example-dev/clips-kitty-marvel-rivals
 path: .                         # subfolder holding clipskitty.yaml, for monorepos
+section: gaming/marvel-rivals   # added 2026-10-07: a section from sections.yaml
 versions:
   - {version: 1.0.0, tag: v1.0.0, commit: 0123456789abcdef0123456789abcdef01234567}
 ```
@@ -369,6 +375,8 @@ versions:
 **Opening a listing's links.** The desktop app opens outside links only from an allow-list (`EXTERNAL_ALLOWED`, `ui/src/main/index.ts:487-560`), which on GitHub allows only Clips Kitty's own repository, and the window's content security policy blocks outside images (`ui/src/renderer/index.html:7`). Listings must not widen either. The Marketplace shows repository, docs, funding and service links as text with a Copy button, and opens one only through a new, narrow path: the engine confirms the URL is `https` and appears in the cached index for that listing, and the app asks "Open <host> in your browser?" first (Phase 8). Example images are not shown inside the app; they are links like the rest.
 
 **Ratings, counts, examples, cost** (research Q34-Q36, Q43): no in-app ratings (they need accounts and are gamed); GitHub stars shown as GitHub stars; no telemetry and no install counts, only "release downloads" if a plugin ships release assets; examples are the developer's own links. The Marketplace stays free because it runs nothing: a Git repository, a CI job, a JSON file. Clips Kitty takes no cut and processes no payments; `links.funding` and `service` are outbound links only.
+
+**Superseded on 2026-10-07** (`DECISIONS.md` D20): the owner decided to count installs from the catalog. After a first install from a listing the app requests one small file named after it, with no account, identifier or anything about videos, and users can switch it off (`plugins/counter.py`). Clips Kitty installs, GitHub stars and Hugging Face downloads are each shown as their own figure, read on a schedule rather than at build time (`scripts/update_registry_metrics.py`). The counter has no address yet, so nothing is counted until the privacy policy says it is.
 
 ## New routes
 
@@ -410,7 +418,7 @@ The existing modes stay exactly where they are. Two things make them part of the
 | Per-plugin Python environments (`run.python_requirements`) | needs the manager first; then built if time allows (Phase 6) | plugins can depend on wheels such as onnxruntime |
 | Routing by game, then genre, then generic | needs several pipelines per capability to exist first | a job can ask for a capability instead of one plugin |
 | Block list fetched at engine start and before each plugin job | needs a published index URL | blocking reaches installed copies without an app release |
-| Opt-in usage counts | owner's call | a counter, never on by default |
+| Opt-in usage counts | owner's call | a counter, never on by default (superseded 2026-10-07, D20: an install counter, on unless switched off, built and not yet given an address; §8.10) |
 ## 8.13 Worked examples
 
 Both are on paper. Publisher names, repositories, model ids and commits are placeholders.

@@ -7,14 +7,20 @@ The Clips Kitty plugin SDK is a small Python package, `clipskitty_sdk`, in [`sdk
 | SDK version | `clipskitty_sdk.__version__` = `1.0.0` |
 | Plugin contract | `clipskitty_sdk.PLUGIN_API_VERSION` = `1` (see [Versioning](versioning.md)) |
 | Python | 3.10 or newer |
-| Licence | The repository's AGPL-3.0 for now. Whether the SDK gets a more permissive licence is the owner's decision (`docs/platform/DECISIONS.md` D5). |
-| Published to PyPI | No. See "Getting the SDK" below. |
+| Licence | MIT ([`sdk/python/LICENSE`](../../sdk/python/LICENSE)). Clips Kitty itself is AGPL-3.0-or-later; the SDK is MIT so that a plugin, app or tool built on it can use any licence its author chooses, open or closed. Using the SDK does not put your code under the AGPL. |
+| Package | `clipskitty-sdk` ([`sdk/python/pyproject.toml`](../../sdk/python/pyproject.toml)); not published to PyPI. See "Getting the SDK" below. |
 
 ## Getting the SDK
 
 You do not install it in the app. When Clips Kitty starts your plugin it puts its own copy of the SDK on the plugin's `PYTHONPATH`, so `import clipskitty_sdk` works without a `requirements.txt` entry.
 
-To develop against it, point `PYTHONPATH` at a Clips Kitty checkout:
+To develop against it, install it from the repository with pip (the `yaml` extra adds PyYAML, for reading manifests):
+
+```text
+pip install "clipskitty-sdk[yaml] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+```
+
+or point `PYTHONPATH` at a Clips Kitty checkout:
 
 ```text
 git clone https://github.com/ColinGPT9/clips-studio

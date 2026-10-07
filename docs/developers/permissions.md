@@ -34,4 +34,10 @@ The manifest validator also ties them together: an `inputs` entry needs its perm
 - No resource limits on memory or child processes. Windows Job Object limits are designed and will be called enforced only once built and tested on Windows.
 - No per-plugin API credential: the local API is open to every program on the PC, plugins included. A scoped credential is designed, not built.
 
+## Tiers and labels grant nothing
+
+A plugin's install tier ("✓ Official · made by the Clips Kitty project", "Community · not reviewed by a person", "Not listed · Clips Kitty has not checked this") and its Marketplace labels (✓ Official, ✓ Compatible, ★ Featured) change nothing in the tables above: every plugin is handed what its permissions allow, and the same things stay declared. ✓ Compatible means one version's manifest is valid, it installs, its requirements are met and it runs on a sample video with an answer Clips Kitty accepts; it does not check that the plugin keeps to its declared `network`, `sends` or file permissions.
+
+Clips Kitty's own install counter is not a plugin permission and sends nothing about the user or their videos; [Security](security.md#what-clips-kitty-sends-when-you-install) says what it sends and how to switch it off.
+
 See [Security](security.md) for what this means for people installing plugins.

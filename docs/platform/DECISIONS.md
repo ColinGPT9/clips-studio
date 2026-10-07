@@ -134,3 +134,51 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** (1) the `huggingface_hub` library, which would add a dependency and its own cache and environment variables to the engine; one folder per plugin, which downloads the same model again for each; (5) letting the plugin find out; (8) the model card's README.
 **Why:** one copy per file, nothing fetched without the user's say, and every byte checked, with no new dependency and nothing changed for the engine's own models.
 **Undo:** `plugins/models.py` is new and only `plugins/runner.py` (the check before a run), `plugins/api.py` (three routes) and the SDK's `build_job`/`Model` reach it; dropping the runner's check makes a run go ahead without its models.
+
+## D20 · Colin's answers of 2026-10-07: licences, Awesome Clips Kitty, labels and install counts
+
+**Decided (by Colin, 10:35 UTC):** Clips Kitty stays AGPL-3.0-or-later; the SDK becomes MIT; the catalog's data is CC0-1.0; third-party plugins choose their own licence, shown in the Marketplace. The registry becomes **Awesome Clips Kitty**, a curated directory of apps, pipelines, plugins, models, workflows, integrations and tools, with three relationships kept apart (built for, built with, related). Labels are ✓ Official, ✓ Compatible (automated technical checks, not a trust or security claim), ★ Featured and Community; no "Verified". Install counts are wanted, anonymous and without accounts; GitHub stars and Hugging Face downloads and likes are shown as their own numbers; comments live in GitHub Discussions. GitHub holds code; Hugging Face holds models and is never where plugins are listed. Developers pay nothing and Clips Kitty takes no share.
+**Supersedes:** D5 (5) (the SDK kept the AGPL licence), the "Listed" tier name in D5 (2) and D17, and the research document's "no telemetry and no install counts" (`docs/platform-research.md` Q34-Q36, `docs/platform-architecture.md` §8 "Ratings, counts").
+**How it was applied:** `sdk/python/LICENSE` (MIT) with an SPDX line in each SDK file and its own `pyproject.toml`; `ui/package.json` says AGPL-3.0-or-later, as NOTICE and winget already did; the README's licence table; `registry/` moved to `awesome-clips-kitty/` with a CC0 `LICENSE`. The SDK was written entirely in this platform work, so nobody else's contribution is relicensed.
+**Undo:** the licence files and the `git mv`; the decisions themselves are Colin's.
+
+## D21 · One small file per entry, in this repository for now
+
+**Decided:** `awesome-clips-kitty/registry/<kind>s/<name>.yaml` for apps, models, workflows, integrations and tools, `registry/pipelines/<publisher>/<name>.yaml` for installable listings, `registry/sections.yaml` for each kind's sections and the niches wanted, `stats/` for the numbers and compatibility records; `index.json` and the generated half of `README.md` are both built by `scripts/build_registry_index.py`, and CI fails when either is stale. The folder stays in this repository until Colin answers the card about a repository of its own.
+**Alternatives:** one file per kind (`apps.yaml`, `pipelines.yaml`), which Colin's message offered "or another structure"; awesome-selfhosted-data's layout, which is also one file per entry.
+**Why:** two pull requests rarely touch the same file, a refused entry names its own file, and the folder can move to its own repository with `git subtree split` without changes.
+**Undo:** `plugins/catalog.py read_entries` and `CATALOG_FOLDER` in `plugins/registry.py`.
+
+## D22 · Labels follow from facts the app can check
+
+**Decided:** (1) ✓ Official follows from the repository's GitHub owner (`plugins/catalog.py OFFICIAL_OWNERS`, today `colingpt9`); the app recomputes it for every index it reads, so an index at another address can't make a project look official; (2) ✓ Compatible belongs to one version at one commit with a passed record in `stats/compatibility.json`; directory entries never carry it; (3) the project's own repository may list its examples under another publisher name (`clips-kitty-examples/scene-cut-highlights`), and that listing shows "The repository is the Clips Kitty project's own" instead of claiming the publisher owns it; (4) a listing installs with the tier `listed-official` ("✓ Official · made by the Clips Kitty project", no trust tick) or `listed` ("Community · not reviewed by a person", one tick); (5) an entry nobody has checked against the inclusion criteria goes under "Not yet checked".
+**Alternatives:** trusting an index's badges; one "Listed" tier for both.
+**Why:** each label says only what is true and checkable.
+**Undo:** `_trusted_badges` and `listing_tier` in `plugins/registry.py`; `TIERS` in `plugins/permissions.py`.
+
+## D23 · The install counter is a download count on GitHub, and is off until the catalog has a home
+
+**Decided:** after the first install of a listing (not an update, a rollback or a version switch), the app requests one small file named after the listing at the index's `counter.install` address; the plan is a GitHub release with one such file per listing, whose public download count is the number. No server, no account, no ID, nothing about videos; the request goes in the background and never holds up an install. It is on by default with a switch in the Marketplace (and `plugins.count_installs: false` for a whole PC), pending Colin's answer to the card. The address is empty today, so nothing is sent; a test fails if it is set while the website's privacy policy and the Store answers still say "No telemetry".
+**Alternatives:** a counter service of our own (a server and its costs); counting only people who switch it on (Colin's card offers it); counting updates too (they aren't installs).
+**Why:** Colin asked for install counts with minimal telemetry and no accounts; GitHub already sees the plugin's own download, and a release asset's count needs nothing new to run.
+**Undo:** `plugins/counter.py` and the counting lines in `plugins/api.py install_plugin`; with `counter.install: null` it does nothing.
+
+## D24 · Numbers are read weekly by a workflow, never by the app
+
+**Decided:** `scripts/update_registry_metrics.py` reads GitHub (stars, last push, archived, Discussions on, and with a token the number of discussions) for every repository the index names, and Hugging Face (its 30-day download figure and likes) for every model; a figure that can't be read keeps its last value. `.github/workflows/catalog-numbers.yml` runs it on Mondays, rebuilds the index and README, and commits. An entry with no commits for 365 days, or archived, is marked ⚠.
+**Alternatives:** the app asking GitHub and Hugging Face as you browse, which tells them what you looked at; daily runs, a commit a day.
+**Why:** CONTRIBUTING promises browsing tells nobody anything.
+**Undo:** delete the workflow; the numbers then stay as last committed.
+
+## D25 · The compatibility check runs plugin code, so it isn't automatic yet
+
+**Decided:** `scripts/check_compatibility.py` installs a listed version with the plugin manager, checks its requirements (no graphics card, a Python if it needs one, its models up to 2 GB), runs it on a generated 40-second video through the app's runner, and records each check. It is run by hand on a throwaway machine; there is no CI job for it. The official example passed in this session's sandbox at 1f7f3c3 on Clips Kitty 2.0.0.
+**Alternatives:** a CI job on every listing pull request. A plugin under test runs with the job's rights and could rewrite the results file the same job uploads, so this needs one isolated job per plugin and a separate job that only accepts its own record; designed, not built.
+**Why:** a "Compatible" label a plugin could award itself would be worse than none.
+**Undo:** delete `stats/compatibility.json` records; the badge disappears on the next build.
+
+## D26 · Plugins credit what they build on
+
+**Decided:** an optional manifest field `based_on` (up to 10 of name, https URL, SPDX licence, and how: `runs`, `includes-code` or `port`), shown as "Built on" on the listing, the install screen and the installed plugin.
+**Why:** Colin's rule that a plugin incorporating another project must respect its licence needs somewhere to say so, and adapters for open-source clipping apps are the long-term plan.
+**Undo:** remove `based_on` from `OPTIONAL` in the SDK's manifest; the Marketplace only shows it when present.

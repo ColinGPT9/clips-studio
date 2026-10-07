@@ -740,10 +740,12 @@ key, which the MCP client never sees). An agent skill for clients that support t
 
 ### Built with Clips Kitty
 
-Projects that run on this API are listed in **[PROJECTS.md](PROJECTS.md)**. The
+Projects that run on this API are listed in **[Awesome Clips Kitty](awesome-clips-kitty/)**,
+the directory of apps, pipelines, models, integrations and tools around Clips Kitty. The
 first is the [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin),
 an OBS Studio dock that hands your stream to Clips Kitty after it ends. Built one?
-Add it with a pull request, and give your repository the `clips-kitty` topic.
+Add it with a pull request ([how](awesome-clips-kitty/CONTRIBUTING.md)), and give your
+repository the `clips-kitty` topic.
 
 ## Architecture
 
@@ -823,8 +825,21 @@ calls is below, because "why not yet" is usually more useful than "not yet".
 
 ## License
 
-**GNU AGPL-3.0**. See [LICENSE](LICENSE), and [NOTICE](NOTICE) for what that means
+**GNU AGPL-3.0-or-later**. See [LICENSE](LICENSE), and [NOTICE](NOTICE) for what that means
 in practice and what the installer bundles.
+
+Three parts are licensed separately, so that building on Clips Kitty stays easy:
+
+| Part | Licence |
+|---|---|
+| Clips Kitty (the app, its engine, this repository) | AGPL-3.0-or-later |
+| The plugin SDK, [`sdk/python/`](sdk/python/) | MIT ([sdk/python/LICENSE](sdk/python/LICENSE)) |
+| The example pipeline, [`examples/pipelines/scene-cut-highlights/`](examples/pipelines/scene-cut-highlights/) | MIT |
+| The Awesome Clips Kitty catalog, [`awesome-clips-kitty/`](awesome-clips-kitty/) | CC0-1.0 |
+
+Plugins, pipelines and apps made by other people keep whatever licence their authors
+chose; the Marketplace shows it on every listing. Using the SDK does not put a
+plugin under the AGPL.
 
 **If you use the app, this changes nothing for you.** Install it, clip your streams,
 post the clips, earn from them. The AGPL binds people who *distribute* the software or

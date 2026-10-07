@@ -5,7 +5,7 @@ Clips Kitty finds the best moments in a long video and turns them into short cli
 That is where specialised knowledge pays: someone who knows one game, one sport or one kind of show can tell a great moment from a loud one far better than a general-purpose detector. You write the part that knows your niche. Clips Kitty does the rest, and its users find your pipeline in the Marketplace.
 
 ```text
-                         Marketplace (registry indexes on GitHub, searched in the app)
+                  Marketplace (the Awesome Clips Kitty index on GitHub, searched in the app)
                                          │
                        ┌─────────────────┼─────────────────┐
                    Pipelines          Models          (Plugins, Workflows,
@@ -42,7 +42,7 @@ Clips Kitty                              your pipeline
 | Plugin contract 1, the Python SDK, running a pipeline for a job | built |
 | The manifest (`clipskitty.yaml`), its validator and JSON Schema | built |
 | Install from a folder or a Git commit; update, roll back, turn off, pin, remove | built (engine routes and the Marketplace screen) |
-| Registry: listing format, index build, the app's search, install from a listing, block list | built; no public registry repository or index address exists yet |
+| Awesome Clips Kitty, the catalog the Marketplace reads: listing and entry formats, index and README build, the app's search, install from a listing, block list, labels, compatibility check, weekly numbers | built; no public repository or index address exists yet, and the install counter has no address, so nothing is counted |
 | Marketplace screen in the desktop app; the Pipeline switch on a video | built and type-checked; not yet looked at on a real PC |
 | Model references (Hugging Face, url, Ollama, bundled), one shared download, licence and size shown | built for public models; gated models planned |
 | Returning finished clip files instead of moments | planned |
@@ -72,12 +72,12 @@ Clips Kitty                              your pipeline
 - [Permissions](permissions.md): what each permission means, and which are enforced and which only declared.
 - [Security](security.md): what Clips Kitty does and doesn't protect, for the people installing plugins.
 - [Versioning](versioning.md): plugin versions, app versions, pinning, rollback.
-- [Marketplace publishing](marketplace-publishing.md): getting listed, how search finds you, what "listed" means.
+- [Marketplace publishing](marketplace-publishing.md): getting listed in Awesome Clips Kitty, labels, numbers, how search finds you, what a listing means.
 - [Troubleshooting](troubleshooting.md): the messages, and what to do.
 
 ## Promises
 
 - **Free.** Listing, updating and installing cost nothing. Clips Kitty takes no share of anything and processes no payments; link to your own pricing, sponsors or support page.
-- **Yours.** Your code stays in your repository under your licence. A listing points at it; nothing moves it.
+- **Yours.** Your code stays in your repository under the licence you choose, shown on your Marketplace card. Clips Kitty is AGPL-3.0-or-later, but the SDK is MIT, so using it puts no licence on your plugin. A listing points at your repository; nothing moves it.
 - **No fork.** Everything on these pages works against an unmodified Clips Kitty.
-- **Honest labels.** A permission is called enforced only where Clips Kitty enforces it, "listed" never means "reviewed", and data that leaves the PC is always shown as a warning.
+- **Honest labels.** A permission is called enforced only where Clips Kitty enforces it, neither a listing nor ✓ Compatible means "reviewed", and data that leaves the PC is always shown as a warning.

@@ -81,7 +81,8 @@ if plan["ok"]:
 | Tier | Means |
 |---|---|
 | Official | Ships inside Clips Kitty (Shorts, Gaming, Sports, described by `plugins/builtin/`) |
-| Listed · not reviewed by a person | In a registry index the user has enabled; the index's automated checks passed (built; no public index is published yet) |
-| Not listed · Clips Kitty has not checked this | Installed from a folder or a Git address. Everything installed today is this. |
+| ✓ Official · made by the Clips Kitty project | Installed from an Awesome Clips Kitty listing in one of the project's own repositories |
+| Community · not reviewed by a person | Installed from an Awesome Clips Kitty listing (or another index the user set up) whose automated checks passed; nobody has read its code |
+| Not listed · Clips Kitty has not checked this | Installed from a folder or a Git address |
 
-There is no "Verified" tier: nobody reviews plugin code, and Clips Kitty does not say otherwise. See [Security](security.md).
+Listings can also carry ✓ Compatible (a version passed the automated compatibility checks: a technical label, not a review) and ★ Featured (picked by a maintainer); see [Marketplace publishing](marketplace-publishing.md). There is no "Verified" tier: nobody reviews plugin code, and Clips Kitty does not say otherwise. See [Security](security.md).

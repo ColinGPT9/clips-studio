@@ -11,23 +11,42 @@ What Clips Kitty does and does not protect when someone installs a plugin. Writt
 | Protection | What it covers | Status |
 |---|---|---|
 | **Nothing runs at install** | Installing copies files and checks the manifest. No `setup.py`, no install script, no Git hook or filter. Your code first runs when a job uses it. | built, tested |
-| **You see it first** | Publisher, source and commit, licence, tier, each permission with whether it is enforced or declared, ⚠ a line for each kind of data that leaves the PC, requirements, a paid service, and that keys are readable by other programs. An update lists new permissions, hosts and data warnings. | built: the install dialog in the Marketplace, which also asks you to tick what you accept (an unlisted or unreviewed source, data leaving the PC, a required outside account) before Install is enabled |
+| **You see it first** | Publisher, source and commit, licence, tier and labels, what it is built on, each permission with whether it is enforced or declared, ⚠ a line for each kind of data that leaves the PC, requirements, a paid service, and that keys are readable by other programs. An update lists new permissions, hosts and data warnings. | built: the install dialog in the Marketplace, which also asks you to tick what you accept (an unlisted or unreviewed source, data leaving the PC, a required outside account) before Install is enabled |
 | **Exactly the files you looked at** | A Git install takes one full commit hash and Git checks every file against it; the files planned are the files installed, checked again before they move into place. | built, tested |
 | **Files stay in their folder** | Symbolic links, submodules, paths that leave the folder, `.git` entries and archive tricks refuse the plugin. | built, tested; untested on Windows |
 | **Only what was asked for is handed over** | The video, transcript, FFmpeg and the local AI model are put in the job only with their permission ([Permissions](permissions.md)). | built, tested |
 | **No credentials by accident** | A plugin's process does not inherit Clips Kitty's settings, the session secret, or any variable whose name looks like a key, token, password or cookie. | built, tested |
 | **It stops when told** | Cancel and the time limit stop the plugin and every process it started. | built; the Windows path is untested |
 | **Turn off, roll back, remove** | One click each; removal deletes the plugin's files and stored keys. | built (routes and the Marketplace's Installed tab) |
-| **Block list** | A maintainer can block a version for everyone; a blocked plugin is refused at install and at run, and flagged where it is installed. | built: `registry/blocklist.yaml` and every cached index's list, applied at install, at run and in the plugin list; no public registry repository yet |
+| **Block list** | A maintainer can block a version for everyone; a blocked plugin is refused at install and at run, and flagged where it is installed. | built: `awesome-clips-kitty/registry/blocklist.yaml` and every cached index's list, applied at install, at run and in the plugin list; no public catalog repository yet, so a new block reaches installed copies with the next app release |
 
 ## What it does not do, and says so
 
 - **No sandbox.** A plugin can read and write your files, start programs and use the network. `filesystem`, `network`, `project`, `gpu` and `sends` are declarations the developer makes; nothing enforces them.
-- **No code review.** Nobody reads plugin code before it is listed. "Listed" means automated checks passed, nothing more. There is no "Verified" badge.
+- **No code review.** Nobody reads plugin code before it is listed. A listing means automated checks passed, nothing more, and ✓ Compatible means one version installed and ran on a sample video on a throwaway machine. Neither is a security review. There is no "Verified" badge.
 - **No signing.** A commit hash proves the files are the ones listed, not who wrote them.
 - **Keys are not isolated between plugins.** A plugin's keys are stored for your account (encrypted with Windows DPAPI on Windows) and handed only to that plugin, but any program running as you, another plugin included, can read the store.
 - **The local API has no password.** Any program on your PC can call it, plugins included.
 - **Resource limits** (memory, processes) are designed, not built. They will be called enforced only once built and tested on Windows.
+
+## Tiers and labels
+
+Every installed plugin has a tier, which says where it came from:
+
+| Tier | Shown as | Means |
+|---|---|---|
+| `official` | Official | Ships inside Clips Kitty (Shorts, Gaming, Sports). |
+| `listed-official` | ✓ Official · made by the Clips Kitty project | Installed from a listing whose repository belongs to the Clips Kitty project. |
+| `listed` | Community · not reviewed by a person | Installed from a listing; the catalog's automated checks passed. |
+| `link` | Not listed · Clips Kitty has not checked this | Installed from a folder or a Git address no index lists. |
+
+Every tier but `official` gets the line "This plugin is code from the internet. It runs on this PC with your rights." The Marketplace also shows labels on listings: ✓ Official, ✓ Compatible, ★ Featured or Community ([Marketplace publishing](marketplace-publishing.md#labels)). **✓ Compatible is a technical label, not a trust or security guarantee:** the version's manifest is valid, it installs, its requirements are met, and it runs on a sample video and gives an answer Clips Kitty accepts. Nobody reads the code, and a plugin can pass and still do something its listing doesn't say. None of these changes what a plugin is allowed to do ([Permissions](permissions.md)).
+
+## What Clips Kitty sends when you install
+
+Installing from a listing fetches the plugin from GitHub at its commit, and any models you choose to download from where the manifest says. The Marketplace's numbers (stars, downloads, installs) come inside the index; the app never asks GitHub or Hugging Face for them.
+
+**The install counter** (`plugins/counter.py`): after a first install from a listing, Clips Kitty requests one small file named after the listing from the address the index gives, so the catalog can count installs. The request carries no account, no identifier, no cookie, no app version and nothing about your videos; the server that answers (GitHub, in the plan) sees the address it comes from, as it does for any download. Updates, rollbacks and version switches are not counted. Switch it off with "Count my installs" in the Marketplace, or for everyone on the PC with `plugins.count_installs: false` in `settings.yaml`. **Not on yet:** the catalog has no counter address (`awesome-clips-kitty/registry/catalog.yaml`), so nothing is sent.
 
 ## The session secret
 
@@ -46,4 +65,4 @@ The routes that fetch, install, change or remove plugins need an `X-Clips-Kitty-
 
 ## Reporting a harmful plugin
 
-Until the registry repository exists (planned), report it to the Clips Kitty maintainers through the project's GitHub repository. Once it exists, reports go there as issues, or privately through GitHub's private vulnerability reporting.
+Until Awesome Clips Kitty has a repository of its own (planned), report it to the Clips Kitty maintainers through the project's GitHub repository. Once it exists, reports go there as issues, or privately through GitHub's private vulnerability reporting. A maintainer blocks or delists the version in `awesome-clips-kitty/registry/blocklist.yaml`.

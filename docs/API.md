@@ -1231,9 +1231,15 @@ curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" 
 (with `"path"` for a plugin in a subfolder), or a registry listing,
 `{"kind": "index", "id": "publisher/name", "version": "1.2.0"}`.
 
-`GET /marketplace` lists and searches the registry indexes the app knows
-(`?q=`, `category`, `tag`, `kind`), each listing with the same details a plan
-shows and whether it is installed; it reads only cached copies. Each listing's
+`GET /marketplace` lists and searches the installable listings in the indexes
+the app knows (`?q=`, `category`, `tag`, `kind`, `section`), each listing with
+the same details a plan shows and whether it is installed; it reads only cached
+copies. `section` also matches the sections inside it, so `section=gaming`
+includes `gaming/valorant`. Each listing carries its `section`, its labels
+(`badges`: `official` or `community`, plus `compatible` and `featured` when they
+apply), its numbers (`metrics`, each from its own source) and, on each of its
+`versions`, the `compatibility` record when there is one; the answer's
+`sections` lists the sections of each installable kind. Each listing's
 `problems_here` says what the engine can tell would stop it running on this PC
 (`{"need": "app" | "python", "text": ...}`: a Clips Kitty version outside its
 range, no Python for a plugin that runs with one), and each of its `versions`
@@ -1242,6 +1248,26 @@ has its own `problem_here`. `GET /plugins` gives installed plugins the same
 `POST /marketplace/refresh` (no header: it fetches only addresses the user set) fetches the indexes in
 `plugins.registry_urls` again. See
 [Marketplace publishing](developers/marketplace-publishing.md).
+
+`GET /marketplace/catalog` (`?q=`, `kind`, `section`; no header) lists the rest
+of Awesome Clips Kitty: its apps, models, workflows, integrations and tools.
+They are not installed from here; each entry has its `source` (GitHub,
+Hugging Face or a home page), its `relationship` to Clips Kitty (`built-with`
+or `related`), its `license`, its labels and its numbers. `kind` is one of
+`app`, `model`, `workflow`, `integration` or `tool` (anything else is a 400).
+The answer also carries the `sections`, `kinds`, `relationships`, what each
+label means (`badges`) and `metrics_at`, the date the numbers were read.
+
+`GET /marketplace/counting` (no header) says whether installs from the
+Marketplace are counted:
+`{"enabled": true, "locked_off": false, "active": false, "text": "..."}`.
+`locked_off` is true when settings say `plugins.count_installs: false`;
+`active` is false while no index has an install counter address, which is the
+case today, so nothing is counted. `PUT /marketplace/counting`
+`{"enabled": false}` switches counting off for this PC (or on again), needs the
+session header, and answers the same way. `POST /plugins/install` answers with
+`counted`: whether that install was counted, which only a first install from a
+listing can be. What a count sends: [Security](developers/security.md#what-clips-kitty-sends-when-you-install).
 
 `GET /plugin-models` lists every model the installed plugins name, once, with
 where it is, its licence and size, and which plugins use it (no header).
@@ -1426,8 +1452,9 @@ Collected because each one has cost somebody time:
 
 ## Building something?
 
-- **Get it listed:** add it to [PROJECTS.md](../PROJECTS.md) with a pull request,
-  so people can find it.
+- **Get it listed:** add it to [Awesome Clips Kitty](../awesome-clips-kitty/README.md)
+  with a pull request ([how](../awesome-clips-kitty/CONTRIBUTING.md)), so people
+  can find it there and in the Marketplace.
 - **Need an internal endpoint?** Open an issue saying what you are building. The
   fastest way to get one promoted to supported is for somebody to need it.
 
