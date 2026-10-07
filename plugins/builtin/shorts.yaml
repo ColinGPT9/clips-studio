@@ -1,0 +1,27 @@
+# Clips Kitty's own modes, described in the plugin manifest's schema so the
+# Marketplace can list them beside community pipelines as Official, and so
+# the schema is tested against real pipelines. `run: builtin` means the app
+# runs its own code exactly as before; nothing here changes how a mode works.
+manifest_version: 1
+id: clipskitty/shorts
+name: Shorts
+version: 2.0.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Clips Kitty's standard mode. Your AI model reads the transcript for hooks,
+  opinions and quotable lines, weighed with the audio, the picture and the
+  audience's reaction, and the strongest moments become clips. The AI runs
+  where you chose in Settings; if that is an online provider, the transcript
+  goes to it.
+author: {name: Clips Kitty}
+repository: https://github.com/ColinGPT9/clips-studio
+license: AGPL-3.0-only
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run: builtin
+execution: local
+inputs: [video, transcript]
+outputs: [ranges]
+permissions: [video.read, transcript.read, ffmpeg, ollama]
+category: creators
+tags: [shorts, podcast, interview, highlights]

@@ -1,0 +1,48 @@
+# The worked example in docs/platform-architecture.md §8.4, copied as written there.
+# Names, ids and commits are placeholders.
+manifest_version: 1
+id: example-dev/marvel-rivals-highlights   # publisher/name; lower case, digits, hyphens
+name: Marvel Rivals Highlights
+version: 1.0.0                             # SemVer
+kind: pipeline                             # only "pipeline" in plugin API 1
+capability: highlight_detection
+description: >
+  Finds team wipes, multi-kills and ultimates in Marvel Rivals VODs by reading the kill feed.
+author: {name: Example Developer, url: https://github.com/example-dev}
+repository: https://github.com/example-dev/clips-kitty-marvel-rivals
+license: MIT                               # SPDX identifier
+requires:
+  clips_kitty: ">=2.0"                     # app versions it works with (the plugin_api check is what stops older apps)
+  plugin_api: 1                            # contract major version
+run:
+  command: ["{python}", "src/main.py"]     # argv; {python} is the Python Clips Kitty finds
+  python_requirements: requirements.txt    # optional: wheels only, hash-pinned, own environment, installed after you agree
+  timeout_minutes: 60
+execution: local                           # local | remote | hybrid
+inputs: [video, transcript]                # what the engine hands over
+outputs: [ranges]                          # ranges and/or clips
+events: [team_wipe, multi_kill, ultimate]  # labels its moments may carry
+games: [marvel-rivals]                     # optional, for discovery
+settings:                                  # rendered as a form; values arrive in job.settings
+  min_kills: {type: integer, default: 3, minimum: 2, maximum: 6, title: Smallest multi-kill}
+models:
+  - name: killfeed
+    source: huggingface
+    id: example-dev/marvel-rivals-killfeed
+    revision: 0123456789abcdef0123456789abcdef01234567
+    files: [killfeed.onnx]
+    format: onnx
+    license: apache-2.0
+permissions: [video.read, transcript.read, ffmpeg, gpu]
+network: []                                # hosts contacted; required for remote and hybrid
+sends: []                                  # what leaves the machine: video | video_link | audio | frames | transcript,
+                                           #   or {data, to, when} when it depends on a setting
+requirements: {gpu: recommended, vram_gb: 6, ram_gb: 8, disk_gb: 2, os: [windows], software: []}
+category: gaming
+tags: [marvel-rivals, highlights, kill-feed]
+links:
+  docs: https://github.com/example-dev/clips-kitty-marvel-rivals#readme
+  funding: [https://github.com/sponsors/example-dev]
+service: null                              # or {name, url, pricing, required: true|false}
+examples:
+  - {title: A team wipe, url: https://github.com/example-dev/clips-kitty-marvel-rivals/raw/v1.0.0/examples/wipe.jpg}

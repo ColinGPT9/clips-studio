@@ -1,0 +1,25 @@
+# See shorts.yaml for what the built-in manifests are for.
+manifest_version: 1
+id: clipskitty/sports
+name: Sports
+version: 2.0.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Soccer and basketball: finds goals, saves, dunks and game winners from the
+  commentary, the crowd and the on-screen scoreboard (config/sports.yaml,
+  sports/), one play per clip. The AI runs where you chose in Settings.
+author: {name: Clips Kitty}
+repository: https://github.com/ColinGPT9/clips-studio
+license: AGPL-3.0-only
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run: builtin
+execution: local
+inputs: [video, transcript]
+outputs: [ranges]
+# A few of the events config/sports.yaml defines, for search.
+events: [goal, penalty_goal, save, red_card, penalty_miss, game_winner, buzzer_beater, dunk, alley_oop, made_3]
+games: [soccer, basketball]
+permissions: [video.read, transcript.read, ffmpeg, ollama]
+category: sports
+tags: [sports, soccer, football, basketball, nba]

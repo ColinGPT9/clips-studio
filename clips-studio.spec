@@ -51,6 +51,9 @@ hiddenimports += collect_submodules("uvicorn")
 # Sports (sports/): each sport's package is imported by name from the registry
 # (sports/__init__.py SPORTS), which the analyser can't follow.
 hiddenimports += collect_submodules("sports")
+# Plugins (plugins/): imported inside functions only when a job names a
+# pipeline plugin, so name them all rather than rely on the analyser.
+hiddenimports += collect_submodules("plugins")
 hiddenimports += [
     "uvicorn.logging",
     "uvicorn.loops.auto",
@@ -114,6 +117,14 @@ datas += [
     # Each sport's moments, their worth and windows, and the commentary words
     # that mark them (sports/, the Sports toggle).
     (str(ROOT / "config" / "sports.yaml"), "config"),
+    # The plugin SDK as plain files: plugins/_sdk.py imports it from here, and
+    # every plugin process gets this folder on its PYTHONPATH (plugins/runner.py).
+    (str(ROOT / "sdk" / "python" / "clipskitty_sdk"), "sdk/python/clipskitty_sdk"),
+    # The official modes' manifests (plugins/builtin/), listed beside plugins.
+    (str(ROOT / "plugins" / "builtin"), "plugins/builtin"),
+    # The registry index as of this build (plugins/registry.py): the
+    # Marketplace's listings and the block list, until an index address exists.
+    (str(ROOT / "registry" / "index.json"), "registry"),
     # The sound tagger's 527 class names, in its output order (analysis/panns.py).
     (str(ROOT / "config" / "audioset_labels.txt"), "config"),
     # The three-second clip a voice model is checked with before it is used

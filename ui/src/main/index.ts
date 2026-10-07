@@ -11,6 +11,7 @@ import {
   shell
 } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { setupUpdater } from './updater'
@@ -30,6 +31,14 @@ const OLLAMA_HOST = `127.0.0.1:${OLLAMA_PORT}`
 
 let backend: ChildProcess | null = null
 let ollama: ChildProcess | null = null
+
+// The engine's plugin-manager routes (install, turn on and off, remove) need
+// this in an X-Clips-Kitty-Session header, so a web page or a stray script
+// can't drive them. New at each start; only this app's own window is given
+// it. A developer running the engine separately (BACKEND_EXTERNAL=1) sets the
+// same CLIPS_KITTY_SESSION_SECRET in both terminals. It is not a password
+// against software already running as the user: see plugins/session.py.
+const SESSION_SECRET = process.env.CLIPS_KITTY_SESSION_SECRET || randomBytes(32).toString('hex')
 
 // ---- keep watching in the tray (opt-in) ------------------------------------
 //
@@ -210,7 +219,8 @@ function startBackend(): void {
   const backendEnv: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONIOENCODING: 'utf-8',
-    PYTHONUTF8: '1'
+    PYTHONUTF8: '1',
+    CLIPS_KITTY_SESSION_SECRET: SESSION_SECRET
   }
 
   // Packaged builds run their own Ollama on a private port, so the engine has
@@ -586,6 +596,54 @@ ipcMain.handle('read-clipboard-key', () => {
 })
 
 ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))
+
+// The plugin-manager session secret, for this app's own pages only: the
+// window loads the bundled renderer (file:) or, in development, the Vite
+// server, and anything else asking gets nothing.
+ipcMain.handle('plugin-session', (event) => {
+  const url = event.senderFrame?.url ?? ''
+  const own =
+    url.startsWith('file:') ||
+    (!!process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL))
+  return own ? SESSION_SECRET : ''
+})
+
+// A plugin's links come from its developer's manifest, not from Clips Kitty,
+// so they get no allow-list entry: each one opens only after the user has seen
+// the full address in a native dialog and agreed. https only, no credentials.
+ipcMain.handle('open-plugin-link', async (event, url: unknown) => {
+  if (typeof url !== 'string' || url.length > 2000) return false
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !parsed.hostname) return false
+  const options = {
+    type: 'question' as const,
+    buttons: ['Open in browser', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Open a plugin link',
+    message: `Open ${parsed.host} in your browser?`,
+    detail: `${parsed.href}\n\nThis link comes from the plugin's developer, not from Clips Kitty.`
+  }
+  const parent = BrowserWindow.fromWebContents(event.sender)
+  const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
+  if (response !== 0) return false
+  await shell.openExternal(parsed.href)
+  return true
+})
+
+// Folder picker for installing a plugin from a folder on this PC.
+ipcMain.handle('pick-plugin-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose the plugin folder (the one with clipskitty.yaml)',
+    properties: ['openDirectory']
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
 
 // Folder picker for choosing where exported clips are saved.
 ipcMain.handle('pick-folder', async () => {

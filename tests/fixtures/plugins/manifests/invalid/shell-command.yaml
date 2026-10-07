@@ -1,0 +1,16 @@
+# expect: run.command[0]: 'bash' must be {python} or a path to a program inside the plugin's folder
+manifest_version: 1
+id: example-dev/loud-moments
+name: Loud moments
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Picks the loudest stretches of a video.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: [bash, -c, python src/main.py]
+execution: local
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read, ffmpeg]

@@ -36,7 +36,7 @@ jobs:
       - name: Compile every module
         # Catches syntax errors across the whole engine in seconds, without
         # installing PyTorch. Import checking would need ~4 GB of wheels.
-        run: python -m compileall -q analysis core creator llm longform multilingual publish server sources sports transcription video video_editor main.py
+        run: python -m compileall -q analysis core creator llm longform multilingual plugins publish sdk server sources sports transcription video video_editor main.py
 
       - name: Install what these checks need
         # NOT requirements.txt — that pulls ~4 GB of PyTorch wheels to run a
@@ -87,6 +87,12 @@ jobs:
               print('\n'.join(bad)); sys.exit(1)
           PY
 
+      - name: Plugin registry index is current
+        # registry/index.json is generated from registry/plugins/ and the block
+        # list; a listing that fails its checks fails here. With no listings
+        # it needs no network.
+        run: python scripts/build_registry_index.py --check
+
       - name: No accidental secrets in config
         # config/client_secret.json and token files are gitignored; this fails
         # loudly if one is ever committed anyway.
@@ -96,6 +102,32 @@ jobs:
             exit 1
           fi
           echo "no credential files tracked"
+
+  platform:
+    name: Plugin platform
+    runs-on: ubuntu-latest
+    # The plugin platform's tests import the engine's web layer and OpenCV (the
+    # API contract, the pipeline job option, the process_video branch), which
+    # the Python job above does not install, so they skip there. This job
+    # installs just those, within requirements.txt's ranges, and runs only them.
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install what these tests need
+        run: >-
+          pip install --quiet pytest requests httpx numpy pillow
+          "PyYAML>=6.0.3,<7" "fastapi>=0.141.1,<1" "opencv-python-headless>=4.14.0.94,<5"
+          "yt-dlp>=2026.8.19" "defusedxml>=0.7.1,<1"
+
+      - name: FFmpeg, for the example pipeline's end-to-end test
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
+      - name: Platform tests
+        run: python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py tests/test_example_pipeline.py
 
   ui:
     name: Desktop app

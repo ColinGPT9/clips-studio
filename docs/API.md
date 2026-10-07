@@ -8,9 +8,11 @@ a script that queues last night's VOD every morning.
 Nothing needs to be added to the app for that to work. The service is already
 running whenever Clips Kitty is open, on `127.0.0.1:8765`.
 
-The service has 86 HTTP endpoints and a WebSocket. This document covers the
+The service has about 175 HTTP routes and a WebSocket. This document covers the
 subset meant to be built against. Most of the rest are the desktop UI talking
-to itself, and are listed as internal below.
+to itself, and are listed as internal below. Every route, with its stability
+label (stable, experimental or internal), is in the generated
+[API reference](developers/api-reference.md).
 
 > **Every example here was run against a live instance**, and the responses are
 > real (with the video titles swapped for made-up ones). If something in this
@@ -128,6 +130,13 @@ Two consequences worth knowing before you debug something confusing:
 
 The endpoints in this document are the ones intended to be built on. They will
 not change shape without a note in [CHANGELOG.md](../CHANGELOG.md).
+
+These are the routes labelled **stable** in
+[`server/api_stability.py`](../server/api_stability.py), and
+`tests/test_api_contract.py` fails if one stops accepting what it accepted.
+A few routes this document only mentions in passing are **experimental**: meant
+for outside use, but not yet promised. The [API reference](developers/api-reference.md)
+lists every route with its label.
 
 **Everything else is internal**: branding assets, creator memory, caption
 editing, the AI edit endpoints, feedback submission. They exist to serve one
@@ -1188,6 +1197,59 @@ Returns 409 until the clips exist.
 ### `POST /automation/items/{id}/skip`
 
 Set aside a video that hasn't been queued yet, or decline an `ask`.
+
+## Plugins
+
+**Experimental.** Community pipelines: plugins that find a video's moments
+while Clips Kitty does the rest. Installing one never runs anything from it;
+a job runs it when its options say `pipeline: {"id": "publisher/name"}`.
+Developer guide: [Getting started](developers/getting-started.md).
+
+Routes that fetch, install, change or remove plugins need the
+`X-Clips-Kitty-Session` header. The desktop app sends it; a script reads it from
+`<data folder>/plugins/session.secret`. It keeps web pages and stray calls out;
+it is not a password against software already running as you.
+
+```bash
+# Installed app: %LOCALAPPDATA%\Clips Studio\data. A checkout: data/ in the repository.
+SECRET=$(cat data/plugins/session.secret)
+curl -X POST localhost:8765/plugins/plan -H "X-Clips-Kitty-Session: $SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"source": {"kind": "git", "url": "https://github.com/example-dev/example-plugin",
+                  "commit": "<40-character commit hash>"}}'
+# → {"plan_id": "...", "ok": true, "plugin": {...}, "details": {"permissions": [...],
+#    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "update": null}
+curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" \
+  -H 'Content-Type: application/json' -d '{"plan_id": "..."}'
+```
+
+`GET /plugins` lists what is installed (no header needed);
+`POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,
+`/unpin`, `DELETE /plugins/{publisher}/{name}` and
+`PUT /plugins/{publisher}/{name}/secrets` change one plugin. A source is
+`{"kind": "folder", "path": ...}`, `{"kind": "git", "url": ..., "commit": ...}`
+(with `"path"` for a plugin in a subfolder), or a registry listing,
+`{"kind": "index", "id": "publisher/name", "version": "1.2.0"}`.
+
+`GET /marketplace` lists and searches the registry indexes the app knows
+(`?q=`, `category`, `tag`, `kind`), each listing with the same details a plan
+shows and whether it is installed; it reads only cached copies. Each listing's
+`problems_here` says what the engine can tell would stop it running on this PC
+(`{"need": "app" | "python", "text": ...}`: a Clips Kitty version outside its
+range, no Python for a plugin that runs with one), and each of its `versions`
+has its own `problem_here`. `GET /plugins` gives installed plugins the same
+`problems_here`.
+`POST /marketplace/refresh` (no header: it fetches only addresses the user set) fetches the indexes in
+`plugins.registry_urls` again. See
+[Marketplace publishing](developers/marketplace-publishing.md).
+
+`GET /plugin-models` lists every model the installed plugins name, once, with
+where it is, its licence and size, and which plugins use it (no header).
+`POST /plugin-models/plan` `{"plugin": "publisher/name", "model": "<name>"}` says what
+downloading one would fetch, from Hugging Face's metadata, and
+`POST /plugin-models/download` (add `"allow_pickle": true` to accept a
+pickle-format file) downloads it into the shared model folder; both need
+the session header. See [Model references](developers/model-references.md).
 
 ## MCP: let an AI agent drive it
 

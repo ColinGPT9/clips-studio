@@ -1,0 +1,28 @@
+# A test plugin: does whatever its `mode` setting says, so the runner's
+# handling of every outcome can be checked (tests/test_plugin_runner.py).
+manifest_version: 1
+id: fixture-dev/echo
+name: Echo
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Returns the ranges it is told to, or fails the way it is told to.
+author: {name: Fixture Developer}
+repository: https://example.com/fixture-dev/echo  # a placeholder, not a real repository
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+  timeout_minutes: 5
+execution: local
+inputs: [video, transcript]
+outputs: [ranges]
+settings:
+  mode: {type: choice, options: [ok, fail, crash, bad, silent, sleep, noisy], default: ok, title: What to do}
+  ranges: {type: string, default: "", title: "Ranges as start-end:score, comma separated"}
+  api_key: {type: secret, title: An API key}
+permissions: [video.read, transcript.read, ffmpeg]
+network: []
+sends: []
+category: utilities
+tags: [test]

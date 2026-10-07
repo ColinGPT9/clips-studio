@@ -220,6 +220,10 @@ class Worker(threading.Thread):
                         # The person's direction (analysis/intent.py): adds
                         # points to what they asked for, and nothing else.
                         cfg["clips"]["focus"] = str(payload["focus"])
+                    if payload.get("pipeline"):
+                        # A plugin pipeline (plugins/): it picks the moments,
+                        # and everything after that is made as usual.
+                        cfg["clips"]["pipeline"] = payload["pipeline"]
                     if isinstance(payload.get("sport"), dict):
                         # The Sports toggle's Teams / players, and Custom's own
                         # words: directions too, so clips whose commentary

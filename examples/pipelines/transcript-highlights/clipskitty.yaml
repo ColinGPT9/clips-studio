@@ -1,0 +1,35 @@
+# Clips Kitty's own transcript scorer behind the plugin contract.
+#
+# A first-party adapter, not an example of what an outside developer may do:
+# src/main.py imports Clips Kitty's internals (analysis/highlights.py), so it
+# only runs next to a Clips Kitty source checkout. It exists to show that a
+# pipeline already in the app fits the contract unchanged. The community-style
+# example, which imports nothing but the SDK, is examples/pipelines/scene-cut-highlights.
+manifest_version: 1
+id: clips-kitty-examples/transcript-highlights
+name: Transcript highlights (first-party adapter)
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Picks moments from the transcript with the same scorer Clips Kitty's
+  Shorts mode starts from (analysis/highlights.find_highlights).
+author: {name: Clips Kitty}
+repository: https://github.com/ColinGPT9/clips-studio
+license: AGPL-3.0-only
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+  timeout_minutes: 60
+execution: local
+inputs: [transcript]
+outputs: [ranges]
+settings:
+  min_score: {type: integer, default: 60, minimum: 0, maximum: 100, title: Quality bar}
+  fake_model: {type: boolean, default: false, title: Use the canned reply instead of a model (for tests)}
+permissions: [transcript.read, ollama]
+network: []
+sends: []
+requirements: {gpu: optional, os: [windows, macos, linux]}
+category: creators
+tags: [podcast, highlights, transcript]

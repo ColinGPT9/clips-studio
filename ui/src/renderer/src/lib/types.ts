@@ -97,6 +97,12 @@ export interface SubScores {
   sport_context?: string
   /** Someone on screen, only as the broadcast's own caption named them. */
   sport_person?: string
+  /** A clip a community pipeline found: its id and version, its label for the
+   *  moment and its reason, in the plugin's words (plugins/runner.py). */
+  plugin?: string
+  plugin_version?: string
+  plugin_label?: string
+  plugin_why?: string
   source?: string
   rerank_position?: number
 }
@@ -386,6 +392,18 @@ export interface JobOptions {
   max_clips?: number
   /** The Sports toggle: the match is scored and framed as that sport. */
   sport?: SportOption
+  /** A community pipeline from the Marketplace finds the moments instead of
+   *  Clips Kitty's own scoring (plugins/runner.py). Not with Sports, Gaming
+   *  scoring or Longform; layouts still apply. */
+  pipeline?: PipelineChoice
+}
+
+/** A job's pipeline: an installed plugin's id, and the settings changed from
+ *  its defaults. No version: the installed (active) one runs. */
+export interface PipelineChoice {
+  id: string
+  version?: string
+  settings?: Record<string, unknown>
 }
 
 /** A Sports job's choices (sports.clean on the engine). */

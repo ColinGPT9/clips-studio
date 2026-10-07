@@ -1,0 +1,23 @@
+# See shorts.yaml for what the built-in manifests are for.
+manifest_version: 1
+id: clipskitty/gaming
+name: Gaming
+version: 2.0.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Scores a gaming stream as a gaming stream: what happened in the game and the
+  reaction to it, using the game being played (config/gaming.yaml), chat and
+  game sounds, with the Gaming layout for the facecam and gameplay. The AI
+  runs where you chose in Settings.
+author: {name: Clips Kitty}
+repository: https://github.com/ColinGPT9/clips-studio
+license: AGPL-3.0-only
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run: builtin
+execution: local
+inputs: [video, transcript]
+outputs: [ranges]
+permissions: [video.read, transcript.read, ffmpeg, ollama]
+category: gaming
+tags: [gaming, streaming, twitch, reaction]

@@ -1,0 +1,47 @@
+manifest_version: 1
+id: clips-kitty-examples/scene-cut-highlights
+name: Loud moments, cut on scene changes (example)
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  An example pipeline. It finds stretches that are clearly louder than the rest
+  of the video and starts each clip on the nearest scene cut before it, using
+  FFmpeg only. It knows nothing about what is happening on screen: loud is not
+  always interesting, and quiet highlights are missed.
+author: {name: Clips Kitty examples}
+repository: https://github.com/ColinGPT9/clips-studio
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+  timeout_minutes: 30
+execution: local
+inputs: [video]
+outputs: [ranges]
+events: [loud]
+settings:
+  louder_by_db:
+    type: number
+    default: 6
+    minimum: 1
+    maximum: 30
+    title: How much louder than usual (dB)
+  scene_threshold:
+    type: number
+    default: 0.3
+    minimum: 0.05
+    maximum: 0.9
+    title: How big a picture change counts as a cut
+  lead_in_seconds:
+    type: number
+    default: 4
+    minimum: 0
+    maximum: 20
+    title: Seconds to keep before the loud part when no cut is near
+permissions: [video.read, ffmpeg]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: utilities
+tags: [example, loudness, scene-cuts, ffmpeg]

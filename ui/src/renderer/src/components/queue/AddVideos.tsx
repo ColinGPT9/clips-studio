@@ -8,6 +8,9 @@ import CaptionStyleControls, {
 import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../WatermarkCard'
 import GamingLayoutEditor from '../GamingLayoutEditor'
 import SportFields from '../SportFields'
+import PipelineFields from '../PipelineFields'
+import { usePipelines } from '../../lib/plugins'
+import { fittingSettings } from '../../lib/marketplace'
 import { PRESETS } from '../../lib/gamingLayout'
 import {
   fitSport,
@@ -60,6 +63,7 @@ type ToggleKey =
   | 'gaming'
   | 'sport'
   | 'longform'
+  | 'pipeline'
   | 'watermark'
 
 /** Each of these decides what the frame is, so only one can be on. */
@@ -110,6 +114,13 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
     hint: '(match)',
     title:
       'For a match or a game (Soccer, Basketball): its moments (goals and saves, or dunks, threes, blocks and the reactions to them) are found from the crowd, the commentary and the scoreboard, one clip per moment with its build-up, and the 9:16 crop follows the play. Choose the sport and which moments to keep below.'
+  },
+  {
+    key: 'pipeline',
+    label: 'Pipeline',
+    hint: '(Marketplace)',
+    title:
+      'A pipeline you installed from the Marketplace finds this video’s moments its own way; Clips Kitty still cuts, frames and captions the clips. Not with Sports or Longform. Choose which pipeline below.'
   },
   {
     key: 'watermark',
@@ -287,6 +298,12 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   // The sports the engine offers; the Sports toggle shows only when it has one.
   const sports = useSports()
   const offered = sports ?? []
+  // Installed community pipelines that are on; the Pipeline switch shows only
+  // when there is one.
+  const pipelines = usePipelines()
+  const usable = pipelines ?? []
+  // Rows whose pipeline settings hold a value that can't be sent yet.
+  const [badSettings, setBadSettings] = useState<Record<string, boolean>>({})
 
   // Once the engine has said which sports it has, a remembered or copied
   // choice it no longer offers is fixed or dropped, rather than sent and
@@ -305,6 +322,30 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       })
     )
   }, [sports])
+
+  // Likewise a pipeline removed or turned off since this list was drafted is
+  // dropped, and a setting its installed version no longer has, or no longer
+  // allows that value for, goes back to its default: neither is refused at
+  // Generate over something the form doesn't show.
+  useEffect(() => {
+    if (!pipelines) return
+    setSlots((prev) =>
+      prev.map((s) => {
+        const choice = s.options.pipeline
+        if (!choice) return s
+        const plugin = pipelines.find((p) => p.id === choice.id)
+        if (!plugin) {
+          const { pipeline: _gone, ...options } = s.options
+          return { ...s, options }
+        }
+        const settings = fittingSettings(choice.settings, plugin.settings)
+        if (JSON.stringify(settings) === JSON.stringify(choice.settings ?? {})) return s
+        const { settings: _old, ...kept } = choice
+        const pipeline = Object.keys(settings).length > 0 ? { ...kept, settings } : kept
+        return { ...s, options: { ...s.options, pipeline } }
+      })
+    )
+  }, [pipelines])
 
   useEffect(() => {
     void api
@@ -325,6 +366,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   }, [slots])
 
   const ready = slots.filter((s) => s.url.trim() || s.path)
+  const settingsBad = ready.some((s) => s.options.pipeline && badSettings[s.key])
   const hasFiles = ready.some((s) => s.path)
   const wantsWatermark = slots.some((s) => s.options.watermark_profile_id)
   const room = capacity ?? maxActive
@@ -401,6 +443,10 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
           ...(rememberedShorts() ? { shorts: true } : {})
         }
       else delete next.longform
+    } else if (key === 'pipeline') {
+      const first = usable[0]
+      if (on && (next.pipeline || first)) next.pipeline = next.pipeline ?? { id: first.id }
+      else delete next.pipeline
     } else if (key === 'watermark') {
       const { profileId } = watermarkSelection()
       if (on && profileId) next.watermark_profile_id = profileId
@@ -440,6 +486,20 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       delete next.sport
       remember('sport', false)
     }
+    // A pipeline picks the moments itself, so it can't share a video with the
+    // modes that pick them their own way (Sports, Gaming scoring, Longform's
+    // outputs). Layouts (Vertical Live, Gaming, Podcast) still apply to it.
+    if (on && key === 'pipeline' && next.pipeline) {
+      for (const other of ['sport', 'longform'] as const) {
+        if (next[other]) {
+          delete next[other]
+          remember(other, false)
+        }
+      }
+      delete next.gaming_scoring
+    } else if (on && (key === 'sport' || key === 'longform') && next.pipeline) {
+      delete next.pipeline
+    }
     remember(key, on && (key !== 'sport' || Boolean(next.sport)), next.longform?.mode)
     return next
   }
@@ -472,8 +532,10 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       return
     }
     const next = slot.options.sport ? toggle(slot.options, 'sport', false) : { ...slot.options }
-    if (content === 'gaming') next.gaming_scoring = true
-    else delete next.gaming_scoring
+    if (content === 'gaming') {
+      next.gaming_scoring = true
+      delete next.pipeline // gaming scoring picks the moments: not with a pipeline
+    } else delete next.gaming_scoring
     try {
       localStorage.setItem(PREF.gaming_scoring, String(content === 'gaming'))
     } catch {
@@ -490,6 +552,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     if (key === 'gaming') return Boolean(o.gaming)
     if (key === 'sport') return Boolean(o.sport)
     if (key === 'longform') return Boolean(o.longform)
+    if (key === 'pipeline') return Boolean(o.pipeline)
     return Boolean(o.watermark_profile_id)
   }
 
@@ -663,6 +726,8 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 // Sports shows once the engine says it has a sport (and stays
                 // while it's on, so it can always be turned off).
                 if (tg.key === 'sport' && offered.length === 0 && !slot.options.sport) return null
+                // Pipeline likewise: only once a community pipeline is installed and on.
+                if (tg.key === 'pipeline' && usable.length === 0 && !slot.options.pipeline) return null
                 // Watermark needs a saved branding profile to point at. Without
                 // one there is nothing to burn in, so the box could be ticked
                 // and would simply un-tick itself — which reads as a broken
@@ -727,6 +792,18 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                   remember
                   name={`${n + 1}`}
                   onChange={(sport) => patchOptions(slot.key, { sport })}
+                />
+              </div>
+            )}
+
+            {slot.options.pipeline && (
+              <div className="flex items-center gap-3 flex-wrap mt-2">
+                <PipelineFields
+                  value={slot.options.pipeline}
+                  pipelines={pipelines}
+                  name={`${n + 1}`}
+                  onChange={(pipeline) => patchOptions(slot.key, { pipeline })}
+                  onProblem={(bad) => setBadSettings((b) => ({ ...b, [slot.key]: bad }))}
                 />
               </div>
             )}
@@ -917,10 +994,13 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
               localStorage.setItem('upload-channel', e.target.value)
             }}
           />
+          {settingsBad && (
+            <span className="text-xs text-error ml-auto">{t('Fix the pipeline setting marked in red first.')}</span>
+          )}
           <button
-            className="btn-accent shrink-0 ml-auto"
+            className={`btn-accent shrink-0 ${settingsBad ? '' : 'ml-auto'}`}
             onClick={() => generate()}
-            disabled={busy || ready.length === 0}
+            disabled={busy || ready.length === 0 || settingsBad}
           >
             {busy
               ? t('Starting…')
