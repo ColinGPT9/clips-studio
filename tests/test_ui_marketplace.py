@@ -417,10 +417,10 @@ def test_credits_and_compatibility_in_words(tmp_path):
 
 
 def test_entries_are_grouped_in_the_catalogs_order(tmp_path):
-    entries = [{"key": "apps/b", "section": "gaming"}, {"key": "apps/a", "section": "video-clipping"},
-               {"key": "apps/c", "section": "gone"}]
+    entries = [{"id": "apps/b", "section": "gaming"}, {"id": "apps/a", "section": "video-clipping"},
+               {"id": "apps/c", "section": "gone"}]
     sections = [{"id": "video-clipping", "title": "Video clipping"}, {"id": "video-ai", "title": "Video AI"},
                 {"id": "gaming", "title": "Gaming"}]
     got = _run(tmp_path, "return m.groupBySection(data.e, data.s)", {"e": entries, "s": sections})
-    assert [(g["title"], [e["key"] for e in g["entries"]]) for g in got] == [
+    assert [(g["title"], [e["id"] for e in g["entries"]]) for g in got] == [
         ("Video clipping", ["apps/a"]), ("Gaming", ["apps/b"]), ("Other", ["apps/c"])]

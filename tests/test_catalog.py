@@ -86,13 +86,13 @@ def test_an_entry_goes_into_the_index_with_its_labels_and_numbers(cat):
         "huggingface": {"example-org/example-speech": {"downloads": 52000, "likes": 40}}})
     index, problems = cat.build()
     assert problems == []
-    by_key = {e["key"]: e for e in index["catalog"]}
-    app = by_key["apps/example-clipper"]
+    by_id = {e["id"]: e for e in index["catalog"]}
+    app = by_id["apps/example-clipper"]
     assert app["kind"] == "app" and app["badges"] == ["community"] and app["relationship"] == "related"
     assert app["metrics"] == {"github": {"stars": 1234, "pushed_at": "2026-09-30", "archived": False,
                                          "has_discussions": True, "discussions": 12}}
     assert app["discussions_url"] == "https://github.com/example-org/example-clipper/discussions"
-    model = by_key["models/example-speech"]
+    model = by_id["models/example-speech"]
     assert model["metrics"] == {"models": {"example-org/example-speech": {"downloads": 52000, "likes": 40}}}
     assert "checked" not in model
     assert index["metrics_at"] == "2026-10-07"
@@ -125,7 +125,7 @@ def test_a_bad_entry_is_left_out_and_says_why(cat, change, fragment):
     cat.write("apps/good-one.yaml", {**APP, "name": "Good One"})
     index, problems = cat.build()
     assert any(fragment in p for p in problems), problems
-    assert [e["key"] for e in index["catalog"]] == ["apps/good-one"]
+    assert [e["id"] for e in index["catalog"]] == ["apps/good-one"]
 
 
 def test_file_names_and_models_are_checked(cat):
@@ -164,12 +164,12 @@ def test_official_featured_and_stale(cat):
         "example-org/archived": {"stars": 5, "pushed_at": "2026-01-01", "archived": True}}})
     index, problems = cat.build()
     assert problems == []
-    by_key = {e["key"]: e for e in index["catalog"]}
-    assert by_key["tools/clips-kitty-sdk"]["badges"] == ["official"]
-    assert by_key["apps/old-clipper"]["badges"] == ["community", "featured"]
-    assert by_key["apps/old-clipper"]["featured"] == {"reason": "The first of its kind", "date": TODAY}
-    assert by_key["apps/old-clipper"]["metrics"]["stale"] == "no commits since 2024-01-02"
-    assert by_key["apps/archived-clipper"]["metrics"]["stale"] == "archived"
+    by_id = {e["id"]: e for e in index["catalog"]}
+    assert by_id["tools/clips-kitty-sdk"]["badges"] == ["official"]
+    assert by_id["apps/old-clipper"]["badges"] == ["community", "featured"]
+    assert by_id["apps/old-clipper"]["featured"] == {"reason": "The first of its kind", "date": TODAY}
+    assert by_id["apps/old-clipper"]["metrics"]["stale"] == "no commits since 2024-01-02"
+    assert by_id["apps/archived-clipper"]["metrics"]["stale"] == "archived"
 
 
 def test_sections_are_checked(cat):
@@ -252,9 +252,9 @@ def test_the_counter_name_holds_no_slash():
 
 
 def test_an_index_from_elsewhere_cant_claim_official_or_compatible_entries():
-    entry = {"key": "apps/x", "kind": "app", "name": "X", "license": "MIT",
+    entry = {"id": "apps/x", "kind": "app", "name": "X", "license": "MIT",
              "source": {"github": "https://github.com/example-org/x"}, "badges": ["official", "compatible", "featured"]}
-    own = {**entry, "key": "tools/sdk", "kind": "tool", "source": {"github": "https://github.com/ColinGPT9/clips-studio"},
+    own = {**entry, "id": "tools/sdk", "kind": "tool", "source": {"github": "https://github.com/ColinGPT9/clips-studio"},
            "badges": ["community"]}
     data = registry.check_index({"format": 1, "plugins": [], "blocklist": [], "catalog": [entry, own],
                                  "counter": {"install": "javascript:alert(1)"}})

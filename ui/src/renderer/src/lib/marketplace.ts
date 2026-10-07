@@ -178,7 +178,7 @@ export interface CatalogSection {
 
 /** An app, model, workflow, integration or tool in Awesome Clips Kitty (GET /marketplace/catalog). */
 export interface CatalogEntry {
-  key: string
+  id: string
   kind: 'app' | 'model' | 'workflow' | 'integration' | 'tool' | string
   name: string
   description: string

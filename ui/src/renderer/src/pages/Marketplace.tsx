@@ -763,7 +763,7 @@ function CatalogBrowse({
           </div>
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(18rem,1fr))]">
             {g.entries.map((e) => (
-              <EntryCard key={e.key} entry={e} onOpenListing={onOpenListing} />
+              <EntryCard key={e.id} entry={e} onOpenListing={onOpenListing} />
             ))}
           </div>
         </section>

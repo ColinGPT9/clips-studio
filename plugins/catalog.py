@@ -346,7 +346,7 @@ def read_entries(catalog_dir: Path, sections: dict) -> tuple[list[dict], list[st
             if found:
                 problems += [f"{label}: {p}" for p in found]
                 continue
-            out.append({"key": f"{folder}/{path.stem}", "kind": kind, "slug": path.stem, **data})
+            out.append({"id": f"{folder}/{path.stem}", "kind": kind, "slug": path.stem, **data})
     return out, problems
 
 

@@ -1251,7 +1251,8 @@ has its own `problem_here`. `GET /plugins` gives installed plugins the same
 
 `GET /marketplace/catalog` (`?q=`, `kind`, `section`; no header) lists the rest
 of Awesome Clips Kitty: its apps, models, workflows, integrations and tools.
-They are not installed from here; each entry has its `source` (GitHub,
+They are not installed from here; each entry has an `id` (`apps/<name>`, the
+folder and file it comes from), its `source` (GitHub,
 Hugging Face or a home page), its `relationship` to Clips Kitty (`built-with`
 or `related`), its `license`, its labels and its numbers. `kind` is one of
 `app`, `model`, `workflow`, `integration` or `tool` (anything else is a 400).

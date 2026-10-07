@@ -11,7 +11,7 @@ The index is one JSON file built from the Awesome Clips Kitty catalog
                   "badges": ["community", "compatible"], "metrics": {...}, "compatibility": {...},
                   ...the latest version's manifest fields the Marketplace shows...,
                   "checks": {...}}],
-     "catalog": [{"key": "apps/example-app", "kind": "app", "name": ..., "relationship": "related",
+     "catalog": [{"id": "apps/example-app", "kind": "app", "name": ..., "relationship": "related",
                   "license": "MIT", "source": {"github": ...}, "badges": [...], "metrics": {...}, ...}],
      "sections": {"app": {"sections": [{"id", "title", "description"}], "wanted": [...]}, ...},
      "metrics_at": "2026-10-07",                       # when the numbers were read, if ever
@@ -279,7 +279,7 @@ def build_index(catalog_dir: Path, *, fetch=fetch_raw) -> tuple[dict, list[str]]
     finished = []
     for e in entries:
         if e.get("adapter") and e["adapter"] not in listed_ids:
-            problems.append(f"{e['key']}: adapter: {e['adapter']} is not a listing here")
+            problems.append(f"{e['id']}: adapter: {e['adapter']} is not a listing here")
             continue
         finished.append(catalog.finish_entry(e, metrics))
     index = {"format": FORMAT, "plugins": plugins, "blocklist": blocklist}
@@ -404,9 +404,10 @@ def _clean_entry(e) -> dict | None:
     are kept only when they are what they claim to be."""
     if not isinstance(e, dict) or e.get("kind") not in catalog.DIRECTORY_KINDS.values():
         return None
-    key = e.get("key")
+    entry_id = e.get("id")
     folder = catalog.FOLDER_OF_KIND[e["kind"]]
-    if not isinstance(key, str) or not key.startswith(folder + "/") or not catalog.SLUG_RE.match(key[len(folder) + 1:]):
+    if not isinstance(entry_id, str) or not entry_id.startswith(folder + "/") \
+            or not catalog.SLUG_RE.match(entry_id[len(folder) + 1:]):
         return None
     if not isinstance(e.get("name"), str) or not isinstance(e.get("license"), str):
         return None
@@ -570,7 +571,7 @@ def listings(data_dir, urls: list[str], *, bundled: Path | None = None) -> list[
 
 
 def catalog_entries(data_dir, urls: list[str], *, bundled: Path | None = None) -> tuple[list[dict], dict]:
-    """Every directory entry, once (a key in several indexes comes from the
+    """Every directory entry, once (an id in several indexes comes from the
     first), and the sections of the first index that has any."""
     seen, out, sections = set(), [], {}
     for item in indexes(data_dir, urls, bundled=bundled):
@@ -578,9 +579,9 @@ def catalog_entries(data_dir, urls: list[str], *, bundled: Path | None = None) -
         if not sections and index.get("sections"):
             sections = index["sections"]
         for e in index.get("catalog", []):
-            if e["key"] in seen:
+            if e["id"] in seen:
                 continue
-            seen.add(e["key"])
+            seen.add(e["id"])
             out.append({**e, "index": item["url"]})
     return out, sections
 
