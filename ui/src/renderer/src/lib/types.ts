@@ -688,6 +688,9 @@ export interface StudioEvent {
   span?: [number, number]
   /** Remote rendering only: "on Gaming PC · uploading 62%", "waiting for Gaming PC". */
   remote?: string
+  /** A Marketplace plugin rating or understanding the moments ('ranking' and
+   *  'understand' events): its name, for the progress label. */
+  plugin?: string
   clips?: number
   current?: number
   fraction?: number

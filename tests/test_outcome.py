@@ -132,6 +132,63 @@ def test_duplicates_are_named_when_they_dominate():
     assert out["cause"] == "duplicates"
 
 
+# ---- Marketplace plugins that rate moments (plugins/steps.py) ---------------
+
+
+def rated(score, **subscores):
+    """A moment a Marketplace plugin rated."""
+    return Candidate(score, plugin_ratings=[{"plugin": "example-dev/quarkbloom-rater", "score": score}],
+                     **subscores)
+
+
+def test_rater_set_asides_read_as_rated_out_before_no_people():
+    """Nothing was kept because a rater scored the moments under the minimum:
+    the rater chose, so the footage (blank reactions on game footage) and
+    fusion's duplicates don't take the blame."""
+    blank = [rated(10, reaction=0, reaction_measured=1) for _ in range(6)]
+    out = summarise_run([], rejected(blank), CONFIG)
+    assert (out["rated_out"], out["cause"], out["nothing_detected"]) == (6, "rated_out", 6)
+    dups = rejected([rated(20)]) + rejected([Candidate(90) for _ in range(6)], "overlap")
+    out = summarise_run([], dups, CONFIG)
+    assert (out["rated_out"], out["cause"]) == (1, "rated_out")
+    assert explain_no_clips(out) == ("No clips: 7 candidate(s) considered, best scored 90 against a threshold "
+                                     "of 55. Marketplace plugins rated 1 of them under the minimum score.")
+    # Clips were kept: there is nothing to explain, though the count stays.
+    out = summarise_run([Candidate(80)], rejected([rated(20)]), CONFIG)
+    assert (out["rated_out"], out["cause"]) == (1, None)
+    # A rated moment cut for the limit isn't a rated-out one.
+    out = summarise_run([], rejected([rated(20)], "over_limit"), CONFIG)
+    assert "rated_out" not in out
+
+
+def test_outcomes_without_steps_have_no_new_keys():
+    for kept, dropped in (([], []), ([Candidate(80)], rejected([Candidate(20)])),
+                          ([], rejected([measured(0) for _ in range(6)])),
+                          ([], rejected([Candidate(30)]) + rejected([Candidate(90)] * 3, "overlap"))):
+        out = summarise_run(kept, dropped, CONFIG)
+        assert set(out) == {"clips", "candidates", "best_score", "min_score", "rejected", "measured",
+                            "nothing_detected", "cause"}
+        assert out["cause"] != "rated_out"
+
+
+def test_failed_steps_and_rated_out_names_read_the_report():
+    from core.outcome import failed_steps, rated_out_names
+
+    report = [
+        {"plugin": "example-dev/quarkbloom-notes", "name": "Quarkbloom Notes", "ok": False, "set_aside": 0,
+         "error": "It isn't installed any more."},
+        {"plugin": "example-dev/quarkbloom-rater", "name": "Quarkbloom Rater", "ok": True, "set_aside": 2},
+        {"plugin": "example-dev/pace-rater", "ok": False, "set_aside": 0},          # no name: its id
+        {"plugin": "example-dev/late-rater", "name": "Late Rater", "ok": True, "set_aside": 1},
+        {"plugin": "example-dev/quarkbloom-notes", "name": "Quarkbloom Notes", "ok": False, "set_aside": 0},
+    ]
+    outcome = {"clips": 0, "steps": report}
+    assert failed_steps(outcome) == ["Quarkbloom Notes", "example-dev/pace-rater"]
+    assert rated_out_names(outcome) == ["Quarkbloom Rater", "Late Rater"]
+    for empty in ({}, {"clips": 3}, {"steps": []}, None):
+        assert failed_steps(empty) == [] and rated_out_names(empty) == []
+
+
 # ---- the log line ----------------------------------------------------------
 
 

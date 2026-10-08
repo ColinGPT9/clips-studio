@@ -41,6 +41,8 @@ _STAGES = {
     "signals": (0.40, 0.05, "Analyzing audio & visuals"),
     "analyze": (0.45, 0.20, "Finding the best moments"),
     "ranking": (0.65, 0.05, "Ranking the best moments"),
+    # A Marketplace plugin saying what happens in the moments (plugins/steps.py).
+    "understand": (0.65, 0.05, "Understanding the moments"),
     "reactions": (0.70, 0.08, "Scoring on-screen reactions"),
     "render": (0.78, 0.22, "Rendering clips"),
 }
@@ -322,6 +324,11 @@ class Worker(threading.Thread):
         fraction = base + weight * min(1.0, max(0.0, within))
         if event.get("stage") == "render" and event.get("clip") and event.get("total"):
             label = f"Rendering clip {event['clip']}/{event['total']}"
+        if event.get("plugin") and event.get("stage") in ("ranking", "understand"):
+            # A Marketplace plugin rating or understanding the moments: the bar
+            # may not move (it never goes back), so the label says who is working.
+            label = (f"Rating moments with {event['plugin']}" if event["stage"] == "ranking"
+                     else f"Understanding moments with {event['plugin']}")
         with self._progress_lock:
             entry = self._progress.get(job_id)
             if entry is None:

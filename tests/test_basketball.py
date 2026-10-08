@@ -2061,6 +2061,39 @@ def test_a_wrong_title_is_written_again_and_then_from_the_scoreboard():
     assert count == 2 and "- CLIP 1: " in rules and "name only Ruiz" in rules
 
 
+def test_check_titles_rewrite_keeps_plugin_notes():
+    """A title written again (core/pipeline.py hands check_titles the same
+    candidates) still carries what a Marketplace plugin said happens in the
+    clip's moment, beside the scoreboard's note."""
+    from analysis import metadata
+    from sports.basketball import titles
+
+    said = [_said_at(296.0, "over to Vance, Vance lets it fly, got it!", 0.5)]
+    profile, moments, segments = _basket_game(said, [(303, 1, 3)], description="Leo Vance.")
+    e = next(e for e in moments if e.confirmed)
+    c = ClipCandidate(start=e.start, end=e.end, score=80)
+    clips.mark(c, e, profile.event_label(e.type), 10)
+    c.subscores["plugin_notes"] = [{"plugin": "example-dev/quarkbloom-notes", "version": "1.0.0",
+                                    "name": "Quarkbloom Notes", "text": "The bench is on its feet"}]
+    prompts = []
+
+    class Model:
+        def generate(self, prompt, json_mode=False):
+            prompts.append(prompt)
+            return '{"items": []}'
+
+    def rewrite(subset, rules):
+        return metadata.generate_metadata_batch(subset, segments, "Spurs at Thunder", Model(), rules=rules)
+
+    titles.check(profile, [c], [_meta("Spurs Take the Lead!", "The Spurs lead.")], rewrite)
+    (rewrite,) = prompts
+    assert "RULES FOR THESE CLIPS" in rewrite
+    head = next(line for line in rewrite.splitlines() if line.startswith("CLIP 0 "))
+    assert head.startswith("CLIP 0 (the scoreboard: ")
+    assert head.endswith(" (notes from Marketplace plugins about this moment, background only, never invent "
+                         "beyond them: The bench is on its feet):")
+
+
 def test_more_wrong_titles_than_one_batch_are_written_again_batch_by_batch(capsys):
     """The title writer numbers each batch of 8 clips from 0: a ninth wrong
     title is written again in a call of its own, its rule numbered as its

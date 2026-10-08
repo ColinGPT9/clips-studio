@@ -437,6 +437,14 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     elif gaming_scoring:
         gaming_profile, chat, sounds = _gaming_scoring_inputs(
             config, video, db, known_games, hype_out, sounds_out.get("heard"))
+    # Understand and Rate (plugins/steps.py): plugins that look at the moments once they're
+    # found. None chosen: the same config object below, and nothing is imported.
+    steps_chosen = bool(config["clips"].get("rate") or config["clips"].get("understand"))
+    find_config = config
+    if steps_chosen:
+        from plugins import steps as plugin_steps
+
+        find_config = plugin_steps.shortlist_config(config)
     if config["clips"].get("pipeline"):
         # A plugin pipeline (plugins/) picks the moments in its own process;
         # titles, rendering and the library below are made as for any job.
@@ -445,12 +453,12 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         intent, rejections = None, []
         candidates = plugin_runner.find_clips(
             config["clips"]["pipeline"], video=video, segments=segments, language=content_lang,
-            config=config, data_dir=data_dir,
+            config=find_config, data_dir=data_dir,
         )
     else:
         intent = clip_direction(config, llm, video.duration)
         candidates, rejections = find_clips(
-            video.path, segments, llm, config,
+            video.path, segments, llm, find_config,
             signals=signals_out.get("signals"),
             creator_context=creator_ctx,
             weight_bias=(creator_prefs or {}).get("weight_bias"),
@@ -462,6 +470,11 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                if sport_profile is not None else {}),
             **({"intent": intent} if intent is not None else {}),
         )
+    step_report = []
+    if steps_chosen and candidates:
+        candidates, rejections, step_report = plugin_steps.after_finding(
+            candidates, rejections, video=video, segments=segments, language=content_lang,
+            config=config, data_dir=data_dir)
     for r in rejections:
         db.log_rejection(
             video.video_id,
@@ -483,6 +496,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     if sport_profile is not None and getattr(sport_profile, "report_data", None):
         # What the match gave (goals found, the score read, replays grouped).
         outcome["sport"] = sport_profile.report_data
+    if step_report:
+        # Each Understand and Rate plugin's run: what it did, or why it was skipped.
+        outcome["steps"] = step_report
     db.set_outcome(video.video_id, outcome)
 
     if not candidates:
@@ -501,6 +517,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             f"engage {s.get('engagement', '?')} | {c.source}"
             + (f" | direction +{s['intent']}: {s.get('intent_why', '')}" if s.get("intent") else "")
             + (f" | kept as asked: {s['required']}" if s.get("required") else "")
+            + (f" | rated {s.get('found_score', '?')}->{c.score} by "
+               f"{s['plugin_ratings'][-1].get('name') or s['plugin_ratings'][-1].get('plugin')}"
+               if s.get("plugin_ratings") else "")
         )
         print(f"      [{c.score:3d}] {c.start:7.1f}s - {c.end:7.1f}s  {c.hook}")
         print(f"            ({breakdown})")
@@ -1620,6 +1639,16 @@ def _register_clip(
             rendered = json.loads(render_opts_json) if render_opts_json else {}
             existing = db.get_clip(row["id"])
             kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
+            # A Marketplace plugin's rating (plugins/steps.py), now or on the
+            # run before: the score posting orders by follows it, or goes
+            # back to the unrated one. The title and metadata stay.
+            try:
+                old = json.loads(existing["scores"]) if existing and existing["scores"] else {}
+            except ValueError:
+                old = {}
+            if (candidate.subscores or {}).get("plugin_ratings") or (isinstance(old, dict)
+                                                                     and old.get("plugin_ratings")):
+                fresh["score"] = candidate.score
             if rendered.get("speaker_turns") != kept.get("speaker_turns"):
                 # The other speaker's turns: the row's must be the ones this
                 # file was burned with, or the editor colours its preview by

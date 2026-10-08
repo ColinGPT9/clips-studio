@@ -70,10 +70,10 @@ for each moment id, and leaves `ranges` empty:
 
 `score`, `reason` and `context` are each optional; a moment left out keeps
 what it had. Check a run's answer with
-`check_result(data, steps=job_json.get("steps"))`, as Job.finish() and the
-host's read_result() and read_answers() do. Without `steps` it is checked as
-a find run's answer, so a finder's result passes or fails exactly as it
-always has.
+`check_result(data, steps=job_json.get("steps"))`, as Job.finish(), the
+host's read_result() and read_answers(), and the app do. Without `steps` it
+is checked as a find run's answer, so a finder's result passes or fails
+exactly as it always has.
 
 Progress lines on standard output, one JSON object per line:
 

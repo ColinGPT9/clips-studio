@@ -3,6 +3,9 @@
 process_video calls find_clips() at its detection step when the job names a
 pipeline plugin. Everything before (download, transcription) and after
 (titles, rendering, captions, the library) is Clips Kitty's, unchanged.
+answer_moments() is the other kind of run: a plugin chosen under Rate &
+understand is handed the moments once they are found (plugins/steps.py) and
+answers about each one. Its failures carry a `why` in the creator's words.
 
 What the plugin receives depends on what its manifest asks for: the video
 only with `video.read`, the transcript only with `transcript.read`, FFmpeg's
@@ -42,7 +45,17 @@ TRY_AGAIN = "Try again; if it happens again, send a bug report from Feedback (it
 
 
 class PluginError(RuntimeError):
-    """A plugin run that could not give an answer. The message is for the user."""
+    """A plugin run that could not give an answer. The message is for the user
+    in a find run. In a run that rates or understands moments it is for the
+    log, and `why` says what happened in the creator's words, without the
+    plugin's name (the line around it names it). `code` says which check
+    stopped a run before it started: a ChoiceProblem's code, or "command",
+    "python" or "model"."""
+
+    def __init__(self, message: str = "", *, code: str | None = None, why: str = ""):
+        super().__init__(message)
+        self.code = code
+        self.why = why
 
 
 def _safe(text: str) -> str:
@@ -227,16 +240,16 @@ def _prepare(choice: dict, *, data_dir, config: dict, step: str):
     try:
         plugin = store.installed_choice(data_dir, store.clean_choice(choice), step=step)
     except ValueError as e:
-        raise PluginError(str(e)[:1].upper() + str(e)[1:]) from e
+        raise PluginError(str(e)[:1].upper() + str(e)[1:], code=getattr(e, "code", None)) from e
     run = plugin.manifest.get("run") or {}
     command = run.get("command")
     if not isinstance(command, list) or not command or not all(isinstance(p, str) for p in command):
-        raise PluginError(f"{plugin.name} has no command to run in its manifest")
+        raise PluginError(f"{plugin.name} has no command to run in its manifest", code="command")
     python = python_for(plugin, config)
     if "{python}" in command and not python:
         # Only a source checkout gets here: the installed app runs it on its own Python.
         raise PluginError(f"{plugin.name} needs Python 3.10 or newer, and none was found on this PC. "
-                          "Install Python, or set plugins.python in settings.yaml.")
+                          "Install Python, or set plugins.python in settings.yaml.", code="python")
 
     # Every model it lists must be here before it starts (an Ollama model
     # with Ollama not answering can't be checked, and is let through).
@@ -244,9 +257,9 @@ def _prepare(choice: dict, *, data_dir, config: dict, step: str):
     try:
         model_paths, missing = plugin_models.for_job(data_dir, plugin.manifest, ollama_host=ollama_host)
     except plugin_models.ModelError as e:
-        raise PluginError(f"{plugin.name} can't run: {e}") from e
+        raise PluginError(f"{plugin.name} can't run: {e}", code="model") from e
     if missing:
-        raise PluginError(f"{plugin.name} can't run. " + " ".join(missing))
+        raise PluginError(f"{plugin.name} can't run. " + " ".join(missing), code="model")
     return plugin, command, python, model_paths
 
 
@@ -264,7 +277,7 @@ def _new_folder(data_dir, video_id: str, tag: str = "") -> Path:
 
 
 def _execute(plugin: store.Installed, command: list, python: str | None, folder: Path, *, video, data_dir,
-             stage: str, timeout: float, label_name: str | None = None) -> None:
+             stage: str, timeout: float, label_name: str | None = None, failure=None) -> None:
     """Run the plugin on its written job folder until it exits, is cancelled
     or runs out of time (`timeout`, in seconds).
 
@@ -272,7 +285,8 @@ def _execute(plugin: store.Installed, command: list, python: str | None, folder:
     `plugin=label_name` when that is given, and its messages go to the job
     log. Afterwards only the newest KEEP_RUNS job folders are kept. Raises
     core.cancel.CancelledError when the job is cancelled, and PluginError
-    when the run didn't end well."""
+    when the run didn't end well: `failure(outcome, reported)` words it when
+    given (a moment run), else _failure does, as for every find run."""
     from core import cancel, progress
 
     reported: list[str] = []
@@ -299,6 +313,8 @@ def _execute(plugin: store.Installed, command: list, python: str | None, folder:
     if outcome.cancelled:
         raise cancel.CancelledError(video.video_id)
     if not outcome.ok:
+        if failure is not None:
+            raise failure(outcome, reported)
         raise PluginError(_failure(plugin, outcome, reported))
 
 
@@ -339,3 +355,131 @@ def find_clips(choice: dict, *, video, segments, language: str, config: dict, da
     progress.emit(stage="analyze", video_id=video.video_id, fraction=1.0,
                   message=f"{plugin.name} found {len(result['ranges'])} moment(s)")
     return to_candidates(plugin, result["ranges"], notes="understand" in (steps or ()))
+
+
+# ---- a run that rates or understands the moments others found -------------------
+
+# Why a moment run didn't happen, in the creator's words (the video page
+# shows "Clips Kitty made these clips without {name}. {why}"). None names the
+# plugin, and none asks for a bug report about someone else's plugin.
+_NOT_READY = {
+    "missing": "It isn't installed any more.",
+    "off": "It's turned off in Marketplace › Installed.",
+    "incompatible": "It can't run on this version of Clips Kitty.",
+    "command": "Its files are damaged. Install it again.",
+    "python": "It needs Python, and none was found on this PC.",
+    "model": "A model it needs isn't on this PC. Get it in Marketplace › Installed.",
+}
+# The plugin's own error line, cut to this many characters in the creator's sentence.
+MAX_SAID = 300
+
+
+def _sentence(text: str) -> str:
+    """`text` ending in one full stop (or its own ! or ?), never two."""
+    text = " ".join(str(text or "").split()).rstrip()
+    return text if text.endswith((".", "!", "?", "…")) else text + "."
+
+
+def _why_not_ready(e: PluginError, step: str) -> str:
+    """Why a moment run couldn't start (_prepare), for the creator."""
+    cause = e.__cause__
+    if e.code == "blocked":
+        reason = getattr(cause, "detail", "").strip().rstrip(".").strip()
+        return _sentence(f"It was blocked: {reason}" if reason else "It was blocked")
+    if e.code == "step":
+        return f"It can no longer {step} moments."
+    if e.code == "settings":
+        detail = getattr(cause, "detail", "") or str(cause or "")
+        return _sentence(f"A setting chosen for it no longer fits: {detail.strip().rstrip('.')}")
+    # A choice that isn't even shaped like one (a hand-written settings.yaml).
+    return _NOT_READY.get(e.code or "", "Clips Kitty couldn't read how it was chosen.")
+
+
+def _moment_failure(plugin: store.Installed, outcome, reported: list[str], timeout: float) -> PluginError:
+    """A moment run that didn't end well: the log's message, and its `why`."""
+    if outcome.timed_out:
+        minutes = max(1, round(timeout / 60))
+        stopped = f"took longer than its {minutes} minute limit, so Clips Kitty stopped it."
+        return PluginError(f"{plugin.name} {stopped}", why=f"It {stopped}")
+    if reported:
+        said = " ".join(reported[-1].split())
+        return PluginError(f"{plugin.name} failed: {said}", why="It said: " + _sentence(said[:MAX_SAID]))
+    if outcome.exit_code is None:
+        return PluginError(f"Clips Kitty couldn't start {plugin.name}: {outcome.error}",
+                           why="Clips Kitty couldn't start it.")
+    return PluginError(f"{plugin.name} stopped with exit code {outcome.exit_code}: {outcome.error}",
+                       why="It stopped before it finished.")
+
+
+def _result_notes(folder: Path) -> str:
+    """The `notes` of an answer read_answers has already checked."""
+    import json
+
+    try:
+        notes = json.loads((folder / "result.json").read_text(encoding="utf-8")).get("notes")
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return notes if isinstance(notes, str) else ""
+
+
+def answer_moments(choice, steps, moments: list[dict], *, video, segments, language: str, config: dict,
+                   data_dir, stage: str) -> dict:
+    """Ask a plugin chosen under Rate & understand about the moments found.
+
+    `steps` is what the run is asked for (understand, rate or both) and
+    `moments` the moments as job.json hands them over (plugins/steps.py
+    builds them). The run goes like a find run: the same checks, Python,
+    models, environment and secrets, with a job folder named after its steps,
+    the job's own clip limit and the creator's minimum score, and progress
+    reported as `stage` with the plugin's name. The answer is read with
+    host.read_answers, the function the SDK's runner uses too.
+
+    Returns {plugin, version, name, steps, answers, ignored}: the answers by
+    moment id, and the log's lines for what was ignored. Raises PluginError
+    with a `why` for the creator when it can't run or gives no usable answer,
+    and core.cancel.CancelledError when the job is cancelled while it runs.
+    """
+    from core import progress
+
+    asked = [step for step in ("understand", "rate") if step in (steps or ())]
+    if not asked:
+        raise ValueError("a moment run is asked to understand, to rate, or both")
+    for step in asked:
+        try:
+            plugin, command, python, model_paths = _prepare(choice, data_dir=data_dir, config=config,
+                                                            step=step)
+        except PluginError as e:
+            raise PluginError(str(e), code=e.code, why=_why_not_ready(e, step)) from e
+    choice = store.clean_choice(choice)  # as _prepare found it
+    folder = _new_folder(data_dir, video.video_id, "-".join(asked))
+    min_score = int((config.get("clips") or {}).get("min_score", 0))
+    try:
+        job, transcript = build_job(plugin, choice, video=video, segments=segments, language=language,
+                                    config=config, output_dir=folder / "out", models=model_paths,
+                                    steps=asked, moments=moments, min_score=min_score)
+    except PluginError as e:
+        detail = str(e).rstrip(".")
+        raise PluginError(str(e), code="settings",
+                          why=_sentence(f"A setting chosen for it no longer fits: {detail}")) from e
+    host.write_job(folder, job, transcript)
+
+    timeout = timeout_seconds(plugin.manifest, default=MOMENT_TIMEOUT_MINUTES)
+    progress.emit(stage=stage, video_id=video.video_id, fraction=0.0, message=f"Running {plugin.name}",
+                  plugin=plugin.name)
+    _execute(plugin, command, python, folder, video=video, data_dir=data_dir, stage=stage, timeout=timeout,
+             label_name=plugin.name,
+             failure=lambda outcome, reported: _moment_failure(plugin, outcome, reported, timeout))
+    try:
+        answers, ignored = host.read_answers(folder, steps=asked, ids=[m["id"] for m in moments])
+    except contract.ContractError as e:
+        raise PluginError(f"{plugin.name} gave an answer Clips Kitty can't use: {e}",
+                          why="Clips Kitty couldn't use its answer.") from e
+    notes = _result_notes(folder)
+    if notes:
+        print(f"      [{plugin.id}] {notes}")
+    for line in ignored:
+        print(f"      [{plugin.id}] {line}")
+    progress.emit(stage=stage, video_id=video.video_id, fraction=1.0,
+                  message=f"{plugin.name} answered about {len(answers)} moment(s)", plugin=plugin.name)
+    return {"plugin": plugin.id, "version": plugin.version, "name": plugin.name, "steps": asked,
+            "answers": answers, "ignored": ignored}

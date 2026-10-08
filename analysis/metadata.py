@@ -6,6 +6,7 @@ derived from the clip's hook and the source video title.
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -143,7 +144,7 @@ def generate_metadata_batch(
         blocks = []
         for i, c in enumerate(batch):
             text = _clip_text(c, segments)[:900]
-            blocks.append(f"CLIP {i}{_scoreboard_note(c)}:\n{text or '(no speech)'}")
+            blocks.append(f"CLIP {i}{_scoreboard_note(c)}{_plugin_notes(c)}:\n{text or '(no speech)'}")
         prompt = (
             template.replace("{video_title}", video_title)
             .replace("{count}", str(len(batch)))
@@ -234,6 +235,35 @@ def _scoreboard_note(c: ClipCandidate) -> str:
     if not crunch:
         words.append("not crunch time, so not clutch or late-game")
     return " (the scoreboard: " + "; ".join(words) + ")"
+
+
+# A note as plugins/steps.py keeps it: the same rules as the SDK's
+# host.clean_note, here so analysis/ never imports plugins/.
+_NOTE_LEN = 160
+_NOTES_LEN = 400
+_LINK = re.compile(r"(?:https?://|\bwww\.)\S+", re.IGNORECASE)
+
+
+def _one_line(text: str) -> str:
+    """A plugin's note on one line: control characters removed, links taken
+    out, whitespace and newlines collapsed, cut to 160 characters."""
+    kept = "".join(ch for ch in str(text or "") if ch.isspace() or unicodedata.category(ch) != "Cc")
+    return " ".join(_LINK.sub(" ", " ".join(kept.split())).split())[:_NOTE_LEN].rstrip()
+
+
+def _plugin_notes(c: ClipCandidate) -> str:
+    """What Marketplace plugins said happens in a clip's moment (plugins/steps.py),
+    for its title. "" for every clip without notes, whose prompt is unchanged."""
+    seen, parts = set(), []
+    for n in (c.subscores or {}).get("plugin_notes") or []:
+        text = _one_line(str(n.get("text") or "")) if isinstance(n, dict) else ""
+        if text and text not in seen:
+            seen.add(text)
+            parts.append(text)
+    if not parts:
+        return ""
+    return (" (notes from Marketplace plugins about this moment, background only,"
+            " never invent beyond them: " + "; ".join(parts)[:_NOTES_LEN] + ")")
 
 
 def _clip_text(c: ClipCandidate, segments: list[Segment]) -> str:

@@ -166,11 +166,14 @@ def clean_choice(value, *, what: str = "pipeline") -> dict:
 class ChoiceProblem(ValueError):
     """Why a job can't use the plugin it names (installed_choice). The message
     is the one the API and the job log show; `code` says which check failed:
-    "missing", "off", "incompatible", "blocked", "step" or "settings"."""
+    "missing", "off", "incompatible", "blocked", "step" or "settings".
+    `detail` is the block list's reason, or what is wrong with a setting, for
+    a sentence of the caller's own (plugins/runner.answer_moments)."""
 
-    def __init__(self, message: str, code: str):
+    def __init__(self, message: str, code: str, detail: str = ""):
         super().__init__(message)
         self.code = code
+        self.detail = detail
 
 
 def installed_choice(data_dir, choice: dict, step: str = "find") -> Installed:
@@ -190,8 +193,9 @@ def installed_choice(data_dir, choice: dict, step: str = "find") -> Installed:
 
     hit = registry.blocked_check(data_dir)(plugin.id, plugin.version)
     if hit and hit.get("severity") == "blocked":
-        raise ChoiceProblem(f"the pipeline {plugin.name} {plugin.version} is blocked: {hit.get('reason')}. "
-                            "Remove it in Marketplace › Installed.", "blocked")
+        reason = hit.get("reason")
+        raise ChoiceProblem(f"the pipeline {plugin.name} {plugin.version} is blocked: {reason}. "
+                            "Remove it in Marketplace › Installed.", "blocked", str(reason or ""))
     # A job's pipeline is asked to find, which needs `ranges` in the outputs:
     # every plugin that finds moments has it, so none is refused for it here.
     problem = manifest.step_problem(plugin.manifest, step)
@@ -200,5 +204,5 @@ def installed_choice(data_dir, choice: dict, step: str = "find") -> Installed:
     try:
         host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
     except ValueError as e:
-        raise ChoiceProblem(str(e), "settings") from e
+        raise ChoiceProblem(str(e), "settings", str(e)) from e
     return plugin
