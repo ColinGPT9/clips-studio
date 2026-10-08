@@ -29,6 +29,10 @@ gets those moments in `job.moments` and answers about each one:
                 job.rate(m, min(100, m.score + 15), reason="the caster called a big play")
                 job.understand(m, "The caster calls a quark burst here")
 
+`job.settings` holds the plugin's settings. A setting with no value (not
+declared, or declared without a default and left empty by the creator)
+raises SettingMissing; `job.settings.get(name, default)` never does.
+
 `job.steps` is what this run is asked for (find, understand, rate) and
 `job.wants(step)` says whether it is asked for one, so one `main()` can serve
 every way the plugin is used. In a run that wasn't asked to understand,
@@ -43,11 +47,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+import sysconfig
 import traceback
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ._hints import python_command
 from .contract import (
     MAX_CONTEXT,
     MAX_CONTEXT_ITEMS,
@@ -69,6 +75,45 @@ from .contract import _number as _finite
 JOB_FILE = "job.json"
 RESULT_FILE = "result.json"
 SECRET_PREFIX = "CLIPSKITTY_SECRET_"
+
+# The error line for a slip in the plugin's own code (a missing key, a wrong
+# type): creators see "{name} failed: " and this. The details go to the log.
+MISTAKE = "it stopped on a mistake in its own code. Ask its developer to fix it."
+# Exceptions that mean the plugin's code has a mistake, rather than a problem
+# it reports in words of its own (those keep their message).
+PROGRAMMING_ERRORS = (LookupError, AttributeError, TypeError, NameError, ArithmeticError)
+
+
+class SettingMissing(KeyError):
+    """job.settings[name] for a setting with no value: not declared in
+    clipskitty.yaml, or declared without a default and left empty by the
+    creator. str() is the plain line a creator sees; `hint` is the
+    developer's, which run() puts in the log."""
+
+    def __init__(self, name):
+        super().__init__(name)
+        self.name = name
+        self.hint = (f"no setting called {name!r} in job.settings: declare it under settings in clipskitty.yaml "
+                     f"with a default, or use job.settings.get({name!r}, <default>)")
+
+    def __str__(self) -> str:  # KeyError's own would put the sentence in quotes
+        return f"the setting {self.name} has no value: choose one in the pipeline's settings, or ask its developer"
+
+
+class Settings(dict):
+    """job.settings: a dict whose missing keys raise SettingMissing."""
+
+    def __missing__(self, key):
+        raise SettingMissing(key)
+
+
+def _shown(value) -> str:
+    """`value` as an error message shows it: its repr, cut to 40 characters."""
+    try:
+        text = repr(value)
+    except ValueError:  # an int with more digits than Python will print
+        text = f"a {type(value).__name__} too long to show"
+    return text if len(text) <= 40 else text[:37] + "..."
 
 
 @dataclass
@@ -225,7 +270,7 @@ class Job:
         self.transcript: Transcript | None = (
             Transcript(Path(transcript["path"]), transcript.get("language", "")) if transcript else None
         )
-        self.settings: dict = dict(data.get("settings") or {})
+        self.settings: Settings = Settings(data.get("settings") or {})
         limits = data.get("limits") or {}
         self.limits = Limits(limits.get("max_clips"), limits.get("min_duration"), limits.get("max_duration"),
                              limits.get("min_score"))
@@ -345,7 +390,7 @@ class Job:
         m, own = self._mine(m, "rate")
         value = _number(score)
         if value is None or not 0 <= value <= 100:
-            raise ContractError("rate", ["score must be a number from 0 to 100"])
+            raise ContractError("rate", [f"score must be a number from 0 to 100 (got {_shown(score)})"])
         why = ("" if reason is None else str(reason))[:MAX_REASON]
         if own is not None:
             own["score"], own["reason"] = value, why
@@ -373,7 +418,9 @@ class Job:
             entry["score"] = float(score)
         problems = check_result({"plugin_api": PLUGIN_API_VERSION, "ranges": [entry]})
         if problems:
-            raise ContractError("add_range", [p.replace("ranges[0]", "range") for p in problems])
+            problems = [p.replace("ranges[0]", "range") for p in problems]
+            raise ContractError("add_range", [f"{p} (got {_shown(score)})" if "score must be" in p else p
+                                              for p in problems])
         limits = self.limits
         length = entry["end"] - entry["start"]
         if limits.max_duration and length > limits.max_duration:
@@ -439,10 +486,24 @@ class Job:
         raise SystemExit(code)
 
 
+def _job_folder(folder) -> str | os.PathLike | None:
+    """Where the job folder is: `folder`, else the first command-line
+    argument, else the CLIPSKITTY_JOB environment variable."""
+    return folder or (sys.argv[1] if len(sys.argv) > 1 else None) or os.environ.get("CLIPSKITTY_JOB")
+
+
+def no_job_folder_text() -> str:
+    """What run() prints when the plugin was started without a job folder,
+    as when a developer runs `python src/main.py`."""
+    return ("This is a Clips Kitty plugin: Clips Kitty starts it with a job folder.\n"
+            f"To try it, run: {python_command()} run <the plugin's folder>\n"
+            "(no job folder: pass it as the first argument or set CLIPSKITTY_JOB)\n")
+
+
 def read_job(folder: str | os.PathLike | None = None, out=None) -> Job:
     """The job Clips Kitty prepared: from `folder`, else the first command-line
     argument, else the CLIPSKITTY_JOB environment variable."""
-    where = folder or (sys.argv[1] if len(sys.argv) > 1 else None) or os.environ.get("CLIPSKITTY_JOB")
+    where = _job_folder(folder)
     if not where:
         raise ContractError("job", ["no job folder: pass it as the first argument or set CLIPSKITTY_JOB"])
     path = Path(where)
@@ -453,13 +514,51 @@ def read_job(folder: str | os.PathLike | None = None, out=None) -> Job:
     return Job(path, data, out=out)
 
 
+def _where_it_stopped(error: BaseException) -> str:
+    """Where in the plugin's own code `error` was raised, as " (src/main.py
+    line 12)": the innermost frame in the plugin's folder (the working
+    folder, where Clips Kitty starts it), else the innermost one outside the
+    SDK and the standard library. "" when there is none."""
+    frames = traceback.extract_tb(error.__traceback__)
+    sdk = Path(__file__).resolve().parent
+    here = Path.cwd().resolve()
+    stdlib = {Path(p).resolve() for p in (sysconfig.get_paths().get("stdlib"),
+                                          sysconfig.get_paths().get("platstdlib")) if p}
+
+    def under(path: Path, folder: Path) -> bool:
+        return path == folder or folder in path.parents
+
+    outside = None
+    for frame in reversed(frames):
+        if frame.filename.startswith("<"):
+            continue
+        path = Path(frame.filename).resolve()
+        if under(path, sdk) or any(under(path, lib) for lib in stdlib):
+            continue
+        if under(path, here):
+            return f" ({path.relative_to(here).as_posix()} line {frame.lineno})"
+        outside = outside or f" ({frame.filename} line {frame.lineno})"
+    return outside or ""
+
+
 def run(main, folder: str | os.PathLike | None = None) -> None:
     """Read the job, call `main(job)`, and finish it, reporting any error.
 
-    An exception inside `main` becomes an error line with its message (the
-    traceback goes to the log), and the process exits with 1, so the job fails
-    with words rather than a stack trace.
+    An exception inside `main` becomes an error line (the traceback goes to
+    the log), and the process exits with 1, so the job fails with words
+    rather than a stack trace. The error line is the exception's message,
+    except for a slip in the plugin's own code (a KeyError, TypeError and the
+    like), which gets MISTAKE, with the exception and where it happened in a
+    log line, and a setting with no value (SettingMissing), which gets its
+    plain line, with the developer's hint in a log line.
+
+    Started without a job folder (a developer running `python src/main.py`),
+    it says how to try the plugin, on standard error, and exits with 2.
     """
+    if not _job_folder(folder):
+        sys.stderr.write(no_job_folder_text())
+        sys.stderr.flush()
+        raise SystemExit(2)
     job = read_job(folder)
     try:
         main(job)
@@ -470,4 +569,10 @@ def run(main, folder: str | os.PathLike | None = None) -> None:
     except Exception as e:  # report it the way the contract asks, then stop
         for line in traceback.format_exc().splitlines():
             job.log(line)
+        if isinstance(e, SettingMissing):
+            job.log(e.hint)
+            job.fail(str(e))
+        if isinstance(e, PROGRAMMING_ERRORS):
+            job.log(f"{type(e).__name__}: {e}{_where_it_stopped(e)}")
+            job.fail(MISTAKE)
         job.fail(str(e) or type(e).__name__)

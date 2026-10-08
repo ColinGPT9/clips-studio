@@ -12,6 +12,15 @@ The installed app puts its own SDK on the plugin's path, and it wins over one in
 - The package ships `py.typed`, so type checkers read its type hints.
 - The package's details list the Python versions it supports, and link to its issues and this changelog.
 - `edits` is a planned output, for the edit step: `outputs: [edits]` is refused with "output 'edits' is planned, not supported by plugin API 1" instead of "unknown output". `contract.PLANNED_STEPS` names the planned steps, `edit` and `export`.
+- `validate` and `run` show the line of `clipskitty.yaml` each problem is on, and "did you mean permissions?" under a misspelt field (`Report.hints`, `manifest.line_marks`). Without a `clipskitty.yaml`, or without PyYAML on the PC, they say so and exit with 2.
+- `version: 0.1` is refused with "YAML read this as the number 0.1; write a version like 0.1.0", in the app too. The `run.python_requirements` warning says that pipelines run on Clips Kitty's own Python.
+- `validate` and `run` warn about code that would fail on Clips Kitty's own Python (`clipskitty_sdk.lint`): syntax newer than Python 3.11, imports it doesn't promise (other packages, Clips Kitty's own code, modules the app leaves out or Windows lacks, a module at the plugin's root), and text files opened without `encoding=`. Files under `tests/` are skipped.
+- `host.APP_PYTHON` is `(3, 11)`, the Python Clips Kitty runs plugins on. `host.plugin_env` sets `PYTHONUTF8=0`.
+- `run` stops a plugin when Clips Kitty would (`host.timeout_seconds`: `run.timeout_minutes`, else 60 minutes to find and 10 to understand or rate) instead of after 600 seconds; `--timeout` still sets another limit.
+- `run`: a refused run makes no job folder; `--set` values follow the setting's type, and an unknown one lists the plugin's settings; `--steps` takes several words (`--steps understand rate`), and `--steps edit` says edit is planned; `--game`, `--game-hint` and `--model` fill `video.games` and `job.models`; a warning when the plugin asks for FFmpeg and none is found; each moment's reason (`why:`), and a warning for a label that isn't in the manifest's `events`; on a terminal, progress rewrites one line.
+- `run(main)` started without a job folder (`python src/main.py`) says how to try the plugin and exits with 2. `job.settings[name]` for a setting with no value raises `SettingMissing`: creators see a plain line and the log gets the developer's hint. A slip in the plugin's own code (a `KeyError`, `TypeError` and the like) gives creators "it stopped on a mistake in its own code. Ask its developer to fix it.", with the exception and its line in the log; other exceptions keep their message.
+- `job.rate` and `job.add_range` show the score they refused: "(got 140)".
+- `clipskitty_sdk.devrun` holds the core of `run`, so other tools can run a plugin the same way.
 
 ## 1.1.0
 

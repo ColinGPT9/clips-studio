@@ -175,6 +175,17 @@ def test_every_engine_package_is_guarded():
     assert packages | modules <= script_host.ENGINE_PACKAGES
 
 
+def test_the_sdk_lint_knows_the_engine_packages():
+    """`python -m clipskitty_sdk validate` warns about an import of Clips
+    Kitty's own code before the app refuses it, from its own copy of the list."""
+    from plugins._sdk import sdk_dir
+
+    assert str(sdk_dir()) in sys.path
+    from clipskitty_sdk import lint
+
+    assert lint.ENGINE_PACKAGES == script_host.ENGINE_PACKAGES
+
+
 def test_the_installed_app_runs_plugins_on_its_own_python(monkeypatch):
     """Frozen: {python} is the engine itself, and PATH is never searched, so
     Windows' "python" shortcut to the Store can't be picked."""

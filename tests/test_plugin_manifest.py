@@ -62,7 +62,7 @@ def test_every_rule_has_a_fixture():
                    "network-without-permission", "model-on-a-branch", "reserved-publisher", "shell-command",
                    "script-outside-folder", "default-above-maximum", "secret-with-default", "newer-plugin-api",
                    "ratings-without-moments", "moments-without-answers", "context-without-moments",
-                   "planned-edits-output"):
+                   "planned-edits-output", "numeric-version"):
         assert needed in names
 
 

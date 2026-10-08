@@ -104,7 +104,7 @@ A moment of the video, exported from `clipskitty_sdk`: one handed over in `job.m
 
 A rater that adds to `m.score` must handle `None` on its own ranges; handed moments always have a score.
 
-`rate` on a `Moment` this `Job` didn't hand out (from `job.moments` or `add_range`) raises `ContractError("rate", ["m9 is not a moment of this job"])`, printed as `rate: m9 is not a moment of this job`; `understand` raises the same with `understand`. A score outside 0-100 raises `ContractError("rate", ["score must be a number from 0 to 100"])`.
+`rate` on a `Moment` this `Job` didn't hand out (from `job.moments` or `add_range`) raises `ContractError("rate", ["m9 is not a moment of this job"])`, printed as `rate: m9 is not a moment of this job`; `understand` raises the same with `understand`. A score outside 0-100 raises `ContractError("rate", ["score must be a number from 0 to 100 (got 140)"])`, naming the score it refused.
 
 `job.finish()` writes your ranges (each with its own notes, in a run asked to understand), `moments` (one answer for each handed moment you rated or noted: `id`, plus `score` and `reason` when rated, plus `context` when noted), and `notes`. A plain finder's `result.json` is exactly what it always was. [Steps](steps.md) has examples of a rater, an understander and a plugin that does all three.
 
@@ -127,16 +127,16 @@ It asks for the run the app would make, using the same helpers (`manifest.offers
 |---|---|
 | `--video FILE` | Needed for a find run and for a plugin with `video.read`; a plugin that only rates or understands, without `video.read`, can leave it out. Its length is read with `ffprobe` when one is on `PATH` (or given with `--ffprobe`). |
 | `--duration SECONDS` | The video's length, when there is no `--video` or FFprobe can't read it |
-| `--steps find\|understand,rate` | What to ask for: `find`, or `understand`, `rate` or both (default: the run the app would make). An unknown step, a step the plugin doesn't offer, or `find` with `rate` is refused, with the app's own message where there is one: `error: --steps: the pipeline Quarkbloom Notes can't rate moments others found: its manifest needs moments in inputs and ratings in outputs`. |
+| `--steps find\|understand,rate` | What to ask for: `find`, or `understand`, `rate` or both, as separate words or with commas (default: the run the app would make). An unknown step, a step the plugin doesn't offer, or `find` with `rate` is refused, with the app's own message where there is one: `error: --steps: the pipeline Quarkbloom Notes can't rate moments others found: its manifest needs moments in inputs and ratings in outputs`. |
 | `--moments FILE` | The moments to hand over: a JSON list of `{start, end, score?, label?, title?, reason?, context?}`, or a finder's `result.json` (its `ranges` are used), so you can chain a finder into a rater. Ids `m1`… are filled in, a missing score becomes 60, and `found_by` is `clipskitty`. Without it, a run that rates or understands gets 5 sample moments, each scored 60, starting at 1/6, 2/6 … 5/6 of the video and each lasting the shorter of 20 seconds and a sixth of the video. The length comes from `--video`, else `--duration`, else the end of `--transcript`; with none of them, `run` stops with `error: no video length for sample moments: pass --duration, or --moments`. |
 | `--min-score N` | The creator's minimum score handed to a run that rates or understands (`limits.min_score`); default 55, the app's default |
 | `--transcript FILE` | `{"language", "segments"}` or a bare list of segments. Without it a plugin that asks for `transcript.read` gets an empty transcript. |
-| `--set NAME=VALUE` | A setting from your manifest; the value is read as JSON when it parses (`70`, `true`), else as text. Repeatable. |
+| `--set NAME=VALUE` | A setting from your manifest, read as its type: text for a `string`, JSON for `integer`, `number` and `boolean` (`70`, `true`), and for a `choice` the option as written. A name the manifest doesn't declare is refused with the names it does. Repeatable. |
 | `--secret NAME=VALUE` | A `secret` setting, passed in the environment as the app does |
 | `--max-clips`, `--min-duration`, `--max-duration`, `--focus` | The job's limits (defaults: no clip limit, 10 and 60 seconds, as in the app's settings) |
 | `--ollama-host`, `--ollama-model` | What a plugin with the `ollama` permission is told |
 | `--python`, `--ffmpeg`, `--ffprobe` | Which programs to use |
-| `--timeout SECONDS` | Default 600 |
+| `--timeout SECONDS` | Stop the plugin after this long. Default: what Clips Kitty allows, `run.timeout_minutes`, else 60 minutes for a find run and 10 for a run that understands or rates |
 | `--job-dir DIR` | Build the job folder here instead of a new temporary folder, to look at it afterwards |
 
 `python -m clipskitty_sdk validate .` runs the manifest checks the app and the registry run ([Plugin manifest](plugin-manifest.md)); `run` runs them first and refuses a plugin that fails them. `python -m clipskitty_sdk schema` prints the manifest's JSON Schema for editors.

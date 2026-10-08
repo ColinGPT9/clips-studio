@@ -22,6 +22,7 @@ is one source of truth.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from dataclasses import dataclass, field
@@ -99,10 +100,13 @@ class ManifestError(ValueError):
 @dataclass
 class Report:
     """What validate() found. A manifest is valid when `errors` is empty;
-    `warnings` are worth reading but do not stop an install."""
+    `warnings` are worth reading but do not stop an install. `hints` maps the
+    path of an unknown field to the known field it is probably a misspelling
+    of ("permisions": "permissions"), for `python -m clipskitty_sdk validate`."""
 
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    hints: dict[str, str] = field(default_factory=dict, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -110,6 +114,49 @@ class Report:
 
 
 # ---- reading ---------------------------------------------------------------------
+
+
+def has_yaml() -> bool:
+    """Whether PyYAML, which reading clipskitty.yaml needs, can be imported."""
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def line_marks(text: str) -> dict[str, int]:
+    """Where each field of a manifest's text is: its line (from 1), by the
+    path validate() names it with ("settings.min_kills.default", "outputs[1]").
+    A mapping key's line is the key's; a list item's is the item's. Empty when
+    PyYAML is missing or the text isn't valid YAML. Only reads the text's
+    structure (yaml.compose): nothing in it is built or run."""
+    try:
+        import yaml
+    except ImportError:
+        return {}
+    try:
+        root = yaml.compose(text, Loader=yaml.SafeLoader)
+    except yaml.YAMLError:
+        return {}
+    marks: dict[str, int] = {}
+
+    def walk(node, path: str) -> None:
+        if isinstance(node, yaml.MappingNode):
+            for key, value in node.value:
+                if not isinstance(key, yaml.ScalarNode):
+                    continue
+                where = f"{path}.{key.value}" if path else str(key.value)
+                marks.setdefault(where, key.start_mark.line + 1)
+                walk(value, where)
+        elif isinstance(node, yaml.SequenceNode):
+            for i, item in enumerate(node.value):
+                where = f"{path}[{i}]"
+                marks.setdefault(where, item.start_mark.line + 1)
+                walk(item, where)
+
+    walk(root, "")
+    return marks
 
 
 def load(folder: str | Path) -> dict:
@@ -199,7 +246,20 @@ class _Check:
     def unknown(self, where: str, data: dict, known) -> None:
         for key in data:
             if key not in known:
-                self.warn(f"{where}.{key}" if where else str(key), "unknown field, ignored")
+                path = f"{where}.{key}" if where else str(key)
+                self.warn(path, "unknown field, ignored")
+                close = difflib.get_close_matches(str(key), sorted(known), n=1, cutoff=0.75)
+                if close:
+                    self.report.hints[path] = close[0]
+
+
+def _as_version(number) -> str:
+    """A number YAML read where a version was meant, as a version: 0.1 is
+    0.1.0 and 2 is 2.0.0; anything else gets the example 1.0.0."""
+    parts = repr(number).split(".")
+    if len(parts) <= 3 and all(p.isdigit() for p in parts):
+        return ".".join(parts + ["0"] * (3 - len(parts)))
+    return "1.0.0"
 
 
 def _relative_inside(path: str) -> bool:
@@ -257,8 +317,9 @@ def _check_run(c: _Check, value, *, builtin: bool) -> None:
     if req is not None and c.text("run.python_requirements", req, limit=200) and not _relative_inside(req):
         c.error("run.python_requirements", "must be a file inside the plugin's folder")
     if req is not None:
-        c.warn("run.python_requirements", "per-plugin Python packages are planned; until then the plugin "
-               "runs with a Python the user already has, without these packages")
+        c.warn("run.python_requirements", "per-plugin Python packages are planned; until then a pipeline runs on "
+               "Clips Kitty's own Python with only the standard library and clipskitty_sdk, so these packages "
+               "won't be there")
     timeout = run.get("timeout_minutes")
     if timeout is not None:
         c.number("run.timeout_minutes", timeout, minimum=1, maximum=MAX_TIMEOUT_MINUTES)
@@ -475,8 +536,14 @@ def validate(data, *, builtin: bool = False) -> Report:
     if "name" in data:
         c.text("name", data["name"], limit=60)
     if "version" in data:
-        c.text("version", data["version"], pattern=VERSION_PATTERN, limit=60,
-               hint=f"{data['version']!r} is not a version like 1.2.0 (SemVer)")
+        version = data["version"]
+        if isinstance(version, (int, float)) and not isinstance(version, bool):
+            # `version: 0.1` unquoted: YAML reads a number, not text.
+            c.error("version", f"YAML read this as the number {version!r}; write a version like "
+                    f"{_as_version(version)}")
+        else:
+            c.text("version", version, pattern=VERSION_PATTERN, limit=60,
+                   hint=f"{version!r} is not a version like 1.2.0 (SemVer)")
     if "kind" in data:
         c.choice("kind", data["kind"], KINDS, planned=PLANNED_KINDS, what="kind")
     if "capability" in data:

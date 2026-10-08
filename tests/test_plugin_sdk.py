@@ -444,7 +444,7 @@ def test_rate_refuses_a_bad_score_or_a_foreign_moment(tmp_path):
     for score in (-1, 100.5, "90", None, True, float("nan"), float("inf")):
         with pytest.raises(ContractError) as e:
             job.rate(m1, score)
-        assert str(e.value) == "rate: score must be a number from 0 to 100"
+        assert str(e.value) == f"rate: score must be a number from 0 to 100 (got {score!r})"
     job.rate(m1, 0)
     job.rate(m1, 100)
     assert m1.score == 100
@@ -769,12 +769,13 @@ def test_the_plugin_environment_leaves_out_settings_and_credentials(tmp_path):
 def test_the_plugin_environment_runs_like_the_apps_own_python(tmp_path):
     """The marker lets the installed app's engine run the script itself
     (_clipskitty_script_host.py); start-up settings that Python ignores there
-    are dropped here too, so a developer's run behaves like a creator's."""
+    are dropped here too, and UTF-8 mode is switched off as it is there, so a
+    developer's run behaves like a creator's."""
     env = host.plugin_env({"PATH": "/bin", "CLIPSKITTY_SCRIPT_HOST": "0", "PYTHONUTF8": "1", "PYTHONHOME": "/x",
                            "PYTHONSTARTUP": "s.py", "PYTHONINSPECT": "1"},
                           job_folder=tmp_path, python_path=[tmp_path / "lib", "extra"])
     assert env["CLIPSKITTY_SCRIPT_HOST"] == "1"
-    assert not {"PYTHONUTF8", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT"} & set(env)
+    assert not {"PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT"} & set(env) and env["PYTHONUTF8"] == "0"
     assert env["PYTHONPATH"].split(os.pathsep) == [str(SDK), str(tmp_path / "lib"), "extra"]
     assert env["PYTHONIOENCODING"] == "utf-8" and env["PYTHONUNBUFFERED"] == "1"
 
@@ -1079,7 +1080,8 @@ def test_run_takes_a_finders_result_as_moments(tmp_path, capsys):
     ("echo", "find,understand", ("the pipeline Echo doesn't say what happens in the moments it finds: "
                                  "its manifest needs context in outputs")),
     ("grader", "find,rate", "a run that finds moments isn't also asked to rate others' moments; run them separately"),
-    ("grader", "edit", "unknown step 'edit'; expected find, understand or rate"),
+    ("grader", "edit", "edit is planned, not part of plugin contract 1 yet; use find, understand or rate"),
+    ("grader", "polish", "unknown step 'polish'; expected find, understand or rate"),
     ("grader", "rate,", "unknown step ''; expected find, understand or rate"),
 ])
 def test_run_refuses_a_step_the_plugin_doesnt_offer(tmp_path, capsys, plugin, steps, message):
@@ -1103,8 +1105,10 @@ def test_run_does_a_context_finders_find_run(tmp_path, capsys):
         assert "min_score" not in seen["limits"] and seen["video"]["duration"] == 120.0
         assert "2 moment(s), as Clips Kitty would take them:" in out
         assert ("      30.0s      50.0s  score 100  Burst at 30\n"
+                "       why: graded\n"
                 "       note: First quark burst of the match\n"
                 "       5.0s      20.0s  score  75  Burst at 5\n"
+                "       why: graded\n"
                 "       note: First quark burst of the match\n") in out
     # The SDK keeps the note as the plugin wrote it, on one line; the app takes the link out.
     written = json.loads((tmp_path / "default" / "result.json").read_text(encoding="utf-8"))

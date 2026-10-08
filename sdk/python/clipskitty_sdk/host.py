@@ -24,9 +24,25 @@ from pathlib import Path
 
 from .contract import MAX_CONTEXT, PLUGIN_API_VERSION, ContractError, check_result, parse_line
 from .job import JOB_FILE, RESULT_FILE, SECRET_PREFIX, one_line
-from .manifest import setting_value_problem
+from .manifest import MAX_TIMEOUT_MINUTES, setting_value_problem
 
 SDK_DIR = Path(__file__).resolve().parent.parent  # the folder holding clipskitty_sdk/
+
+# The Python that installed Clips Kitty runs plugins on: its engine's own,
+# frozen into the app (_clipskitty_script_host.py). This is the one place the
+# version is written. plugins/sources.py and tests/test_plugin_manager.py
+# already say "the app builds with 3.11"; scripts/build_installer.py refuses
+# to build with another minor version, the SDK's lint parses plugins with this
+# grammar, and CI's SDK (Windows) job tests on it.
+APP_PYTHON = (3, 11)
+
+# How long a run may take when the manifest's run.timeout_minutes says
+# nothing: a run that finds moments, and one that understands or rates the
+# moments others found (several can follow one find run). Never longer than
+# MAX_TIMEOUT_MINUTES. Clips Kitty's runner uses the same numbers
+# (plugins/runner.py; tests/test_plugin_runner.py checks they agree).
+FIND_TIMEOUT_MINUTES = 60
+MOMENT_TIMEOUT_MINUTES = 10
 
 # Variables a plugin never inherits from Clips Kitty: its own configuration,
 # and anything that looks like a credential. The plugin still runs as the
@@ -34,7 +50,7 @@ SDK_DIR = Path(__file__).resolve().parent.parent  # the folder holding clipskitt
 _CREDENTIAL_WORDS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "COOKIE", "AUTH")
 # Python start-up settings from the developer's own machine that would make a
 # plugin behave differently here than on the Python inside the installed app,
-# which ignores them all.
+# which ignores them all. PYTHONUTF8 is then set to 0 (plugin_env).
 _PYTHON_STARTUP = frozenset({"PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT", "PYTHONUTF8"})
 
 
@@ -44,9 +60,10 @@ def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk
 
     CLIPSKITTY_SCRIPT_HOST=1 lets the installed app's engine run a {python}
     command itself (main.py, _clipskitty_script_host.py); an ordinary Python
-    ignores it. UTF-8 mode is deliberately not switched on: the app's Python
-    can't have it, so a plugin that opens text files must pass encoding=, and
-    a developer's run here behaves the same way."""
+    ignores it. UTF-8 mode is switched off (PYTHONUTF8=0): the app's Python
+    never has it, so a plugin that opens text files must pass encoding=, and
+    a developer's run here behaves the same way, even on a Python whose UTF-8
+    mode is on by default (PEP 686). The frozen app ignores the variable."""
     env = {}
     for name, value in base.items():
         upper = name.upper()
@@ -62,10 +79,27 @@ def plugin_env(base: dict, *, job_folder: Path, secrets: dict | None = None, sdk
     env["PYTHONPATH"] = os.pathsep.join([str(sdk_dir), *(str(p) for p in python_path or [])])
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONUTF8"] = "0"
     for name, value in (secrets or {}).items():
         if value:
             env[SECRET_PREFIX + name.upper().replace("-", "_")] = str(value)
     return env
+
+
+def timeout_seconds(manifest: dict, default: float = FIND_TIMEOUT_MINUTES,
+                    maximum: float = MAX_TIMEOUT_MINUTES) -> float:
+    """How long a run may take, in seconds: the manifest's
+    run.timeout_minutes, else `default` minutes (MOMENT_TIMEOUT_MINUTES for a
+    run that rates or understands moments), at least a minute and never over
+    `maximum` minutes. Clips Kitty's runner and `python -m clipskitty_sdk run`
+    both use this rule."""
+    run = (manifest or {}).get("run")
+    minutes = (run.get("timeout_minutes") if isinstance(run, dict) else None) or default
+    try:
+        minutes = float(minutes)
+    except (TypeError, ValueError):
+        minutes = default
+    return max(1.0, min(float(maximum), minutes)) * 60
 
 
 def job_settings(manifest: dict, chosen: dict | None) -> dict:

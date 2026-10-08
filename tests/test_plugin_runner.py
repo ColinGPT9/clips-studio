@@ -616,6 +616,26 @@ def test_moment_runs_default_to_a_ten_minute_limit():
         assert runner.timeout_seconds({"run": {"timeout_minutes": 10**6}}, default=default) == 24 * 60 * 60
 
 
+def test_the_runner_and_the_sdk_share_one_time_limit_rule():
+    """`python -m clipskitty_sdk run` stops a plugin when Clips Kitty would:
+    the runner's timeout_seconds is a thin wrapper over the SDK's rule
+    (host.timeout_seconds), with the same numbers. The runner keeps its own
+    name, which scripts/check_compatibility.py and a test replace."""
+    from plugins import runner
+    from plugins._sdk import host
+
+    assert (runner.DEFAULT_TIMEOUT_MINUTES, runner.MOMENT_TIMEOUT_MINUTES, runner.MAX_TIMEOUT_MINUTES) == \
+        (host.FIND_TIMEOUT_MINUTES, host.MOMENT_TIMEOUT_MINUTES, host.MAX_TIMEOUT_MINUTES)
+    manifests = ({}, {"run": {}}, {"run": "builtin"}, {"run": {"timeout_minutes": 5}},
+                 {"run": {"timeout_minutes": 0.25}}, {"run": {"timeout_minutes": "soon"}},
+                 {"run": {"timeout_minutes": 10**6}})
+    for manifest in manifests:
+        assert runner.timeout_seconds(manifest) == host.timeout_seconds(manifest), manifest
+        assert runner.timeout_seconds(manifest, default=runner.MOMENT_TIMEOUT_MINUTES) == \
+            host.timeout_seconds(manifest, host.MOMENT_TIMEOUT_MINUTES), manifest
+    assert host.timeout_seconds({"run": {"timeout_minutes": 0.25}}) == 60  # never under a minute
+
+
 def test_the_shared_run_steps_tag_the_folder_and_name_the_plugin_only_when_asked(echo, video):
     """_new_folder and _execute, which find runs and moment runs share: a tag
     goes on the folder's name, and a plugin name on every progress event."""

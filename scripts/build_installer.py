@@ -34,6 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui"
 BACKEND_OUT = ROOT / "build" / "dist" / "backend"
+SDK = ROOT / "sdk" / "python"
 
 
 def say(step: str, message: str) -> None:
@@ -59,6 +60,29 @@ def run(cmd: list[str], cwd: Path, what: str) -> None:
     if result.returncode != 0:
         sys.exit(f"\n{what} failed (exit {result.returncode}). Nothing was packaged.")
     print(f"    done in {time.time() - started:.0f}s", flush=True)
+
+
+def app_python() -> tuple[int, int]:
+    """The Python Clips Kitty's plugins are promised: APP_PYTHON in
+    sdk/python/clipskitty_sdk/host.py, the one place it is written."""
+    if str(SDK) not in sys.path:
+        sys.path.insert(0, str(SDK))
+    from clipskitty_sdk.host import APP_PYTHON
+
+    return tuple(APP_PYTHON)
+
+
+def python_problem(version_info) -> str | None:
+    """Why this Python can't build Clips Kitty, or None. Plugins run on the
+    Python frozen into the app, and the docs and the SDK's checks promise
+    them APP_PYTHON, so a build on another minor version would break that
+    promise without anyone noticing."""
+    have, promised = tuple(version_info[:2]), app_python()
+    if have == promised:
+        return None
+    return (f"This build uses Python {have[0]}.{have[1]}, but Clips Kitty's plugins are promised Python "
+            f"{promised[0]}.{promised[1]} (APP_PYTHON in sdk/python/clipskitty_sdk/host.py). Build with "
+            f"{promised[0]}.{promised[1]}, or change APP_PYTHON and the docs that name it.")
 
 
 def check_tools(skip_ui: bool) -> None:
@@ -171,11 +195,15 @@ def smoke_test_backend() -> None:
 
 # Run by the frozen engine in script mode: the standard library, the SDK and
 # a process pool, then a deliberate exit code. Heavy engine packages must not
-# be loaded just to run a pipeline.
+# be loaded just to run a pipeline, and the frozen Python must be the one
+# plugins are promised (APP_PYTHON).
 SCRIPT_MODE_CHECK = """
 import concurrent.futures, csv, email.mime.text, json, sqlite3, statistics, sys, xml.etree.ElementTree
 from multiprocessing import Pool
 import clipskitty_sdk
+from clipskitty_sdk.host import APP_PYTHON
+
+assert tuple(sys.version_info[:2]) == tuple(APP_PYTHON), (sys.version_info[:2], APP_PYTHON)
 
 def square(n):
     return n * n
@@ -305,6 +333,11 @@ def main() -> None:
     args = ap.parse_args()
 
     started = time.time()
+    if not args.skip_backend:
+        # Checked before anything is fetched or frozen.
+        problem = python_problem(sys.version_info)
+        if problem:
+            sys.exit(f"\n{problem}")
     check_tools(args.skip_ui)
     ensure_vendored()
 

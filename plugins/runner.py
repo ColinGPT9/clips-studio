@@ -187,13 +187,13 @@ def to_candidates(plugin: store.Installed, ranges: list[dict], *, notes: bool = 
 def timeout_seconds(manifest: dict, default: float = DEFAULT_TIMEOUT_MINUTES) -> float:
     """How long a run may take: the manifest's run.timeout_minutes, else
     `default` minutes (MOMENT_TIMEOUT_MINUTES for a run that rates or
-    understands moments), never over MAX_TIMEOUT_MINUTES."""
-    minutes = (manifest.get("run") or {}).get("timeout_minutes") or default
-    try:
-        minutes = float(minutes)
-    except (TypeError, ValueError):
-        minutes = default
-    return max(1.0, min(float(MAX_TIMEOUT_MINUTES), minutes)) * 60
+    understands moments), never over MAX_TIMEOUT_MINUTES.
+
+    The rule is the SDK's (host.timeout_seconds), so `python -m clipskitty_sdk
+    run` stops a plugin when Clips Kitty would. The runner calls this name,
+    so a caller can still replace it (scripts/check_compatibility.py caps it,
+    and a test shortens it)."""
+    return host.timeout_seconds(manifest, default, MAX_TIMEOUT_MINUTES)
 
 
 def python_for(plugin, config: dict | None) -> str | None:
