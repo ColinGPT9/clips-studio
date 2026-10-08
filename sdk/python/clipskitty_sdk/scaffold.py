@@ -56,7 +56,7 @@ DEFAULT_PUBLISHER = "your-github-name"
 DEFAULT_GAME = "quarkbloom-arena"  # Quarkbloom Arena is a made-up game
 DEFAULT_LICENSE = "MIT"
 # The page `new` points to after making a plugin.
-GUIDE = "https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/getting-started.md"
+GUIDE = "https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md"
 
 # The questions `new` asks on a terminal, for what the command line left out.
 ASK_PUBLISHER = "Your GitHub name, in lower case (it becomes the publisher): "

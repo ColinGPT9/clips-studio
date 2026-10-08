@@ -14,4 +14,4 @@ execution: local
 inputs: [video]
 outputs: [ranges]
 permissions: [video.read, ffmpeg]
-tags: [Marvel Rivals]
+tags: [Quarkbloom Arena]

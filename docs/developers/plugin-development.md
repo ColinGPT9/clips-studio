@@ -1,6 +1,6 @@
 # Plugin development
 
-How a plugin gets from your folder or repository onto a user's PC, and what happens to it there. To write one, start with [Getting started](getting-started.md); the contract is in [Pipeline development](pipeline-development.md).
+How a plugin gets from your folder or repository onto a user's PC, and what happens to it there. To write one, start with [Getting started](getting-started.md) or [Your first game pipeline](first-game-pipeline.md); the contract is in [Pipeline development](pipeline-development.md).
 
 Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `plugins/sources.py`) with experimental API routes. Installing from a registry listing is **built** (Phase 7), and so is the Marketplace screen in the desktop app (Phase 8), which does all of the below with buttons. **Planned**: per-plugin Python packages.
 
@@ -57,24 +57,21 @@ The data folder is `%LOCALAPPDATA%\Clips Studio\data` in the installed app, `dat
 
 ## Doing it from a script
 
-The routes that fetch, install, change or remove plugins need the session secret in an `X-Clips-Kitty-Session` header. The desktop app makes one at each start; the engine writes it to `session.secret`. Examples are in [`docs/API.md` › Plugins](../API.md#plugins), and why the header exists is in [Security](security.md).
+The routes that fetch, install, change or remove plugins need the session secret in an `X-Clips-Kitty-Session` header. The desktop app makes one at each start; the engine writes it to `session.secret`. It keeps out web pages and scripts that don't know it, not programs running as you: any program running as the user can read that file, plugins included. Why the header exists is in [Security](security.md).
 
-```python
-from pathlib import Path
+To install a plugin you're writing, the SDK's `install` command does the plan and the install for you, in the Clips Kitty running on this PC: it prints Clips Kitty's install screen as text and asks first ([SDK › Installing it into Clips Kitty](sdk.md#installing-it-into-clips-kitty)). PowerShell:
 
-import requests
-
-data = Path("data")  # your data folder
-headers = {"X-Clips-Kitty-Session": (data / "plugins" / "session.secret").read_text().strip()}
-api = "http://127.0.0.1:8765"
-
-plan = requests.post(f"{api}/plugins/plan", headers=headers,
-                     json={"source": {"kind": "folder", "path": "C:/Users/you/code/my-plugin"}}).json()
-for line in plan["errors"]:
-    print("✗", line)
-if plan["ok"]:
-    print(requests.post(f"{api}/plugins/install", headers=headers, json={"plan_id": plan["plan_id"]}).json())
+```powershell
+py -m clipskitty_sdk install my-plugin
 ```
+
+bash:
+
+```bash
+python -m clipskitty_sdk install my-plugin
+```
+
+Everything else, and the calls `install` makes, are in [`docs/API.md` › Plugins](../API.md#plugins): `POST /plugins/plan` with a source, then `POST /plugins/install` with the plan's `plan_id`, each with the header.
 
 `GET /plugins` lists what is installed (no header): each plugin's versions, whether it is on and pinned, its source, the install screen's `details`, the names of keys that are set (never their values) a `problem` when it can't run, and `problems_here` for what this PC lacks (a Python to run it with); and the modes that ship with the app, marked Official.
 

@@ -1308,7 +1308,7 @@ else); what went wrong is in the engine's log.
 the app knows (`?q=`, `category`, `tag`, `kind`, `section`), each listing with
 the same details a plan shows and whether it is installed; it reads only cached
 copies. `section` also matches the sections inside it, so `section=gaming`
-includes `gaming/valorant`. Each listing carries its `section`, its labels
+includes `gaming/generic`. Each listing carries its `section`, its labels
 (`badges`: `official` or `community`, plus `compatible` and `featured` when they
 apply), its numbers (`metrics`, each from its own source) and, on each of its
 `versions`, the `compatibility` record when there is one; the answer's

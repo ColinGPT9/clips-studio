@@ -6,7 +6,7 @@ The Clips Kitty plugin SDK is a small Python package, `clipskitty_sdk`, in [`sdk
 |---|---|
 | SDK version | `clipskitty_sdk.__version__` = `1.2.0` (`python -m clipskitty_sdk --version`; [changelog](../../sdk/python/CHANGELOG.md)) |
 | Plugin contract | `clipskitty_sdk.PLUGIN_API_VERSION` = `1` (see [Versioning](versioning.md)) |
-| Python | 3.10 or newer |
+| Python | 3.10 or newer. Clips Kitty runs plugins on its own Python 3.11 (`clipskitty_sdk.host.APP_PYTHON`), so test on 3.11. |
 | Licence | MIT ([`sdk/python/LICENSE`](../../sdk/python/LICENSE)). Clips Kitty itself is AGPL-3.0-or-later; the SDK is MIT so that a plugin, app or tool built on it can use any licence its author chooses, open or closed. Using the SDK does not put your code under the AGPL. |
 | Package | `clipskitty-sdk` ([`sdk/python/pyproject.toml`](../../sdk/python/pyproject.toml)); not published to PyPI. See "Getting the SDK" below. |
 
@@ -14,21 +14,78 @@ The Clips Kitty plugin SDK is a small Python package, `clipskitty_sdk`, in [`sdk
 
 You do not install it in the app. When Clips Kitty starts your plugin it puts its own copy of the SDK on the plugin's `PYTHONPATH`, so `import clipskitty_sdk` works without a `requirements.txt` entry.
 
-To develop against it, install it from the repository with pip (the `yaml` extra adds PyYAML, for reading manifests):
+To develop against it, install it from the repository with pip. The `yaml` extra adds PyYAML, for reading manifests, and `test` adds pytest, for your plugin's tests. PowerShell:
 
-```text
-pip install "clipskitty-sdk[yaml] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+```powershell
+py -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
 ```
 
-or point `PYTHONPATH` at a Clips Kitty checkout:
+bash:
 
-```text
+```bash
+python -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+```
+
+No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
+
+Or point `PYTHONPATH` at a Clips Kitty checkout. PowerShell:
+
+```powershell
 git clone https://github.com/ColinGPT9/clips-studio
-set PYTHONPATH=C:\path\to\clips-studio\sdk\python        (Windows, cmd)
-export PYTHONPATH=/path/to/clips-studio/sdk/python        (macOS, Linux)
+$env:PYTHONPATH = "C:\path\to\clips-studio\sdk\python"
+```
+
+bash:
+
+```bash
+git clone https://github.com/ColinGPT9/clips-studio
+export PYTHONPATH=/path/to/clips-studio/sdk/python
 ```
 
 You never need the rest of the checkout. A plugin that imports anything from Clips Kitty other than `clipskitty_sdk` will not run in an installed copy of the app.
+
+The commands below are written `python -m clipskitty_sdk`, as in bash; in PowerShell on Windows, run them as `py -m clipskitty_sdk`. pip also installs a `clipskitty-sdk` command that does the same, but pip's command folder is often not on `PATH` on Windows.
+
+| Command | What it does |
+|---|---|
+| `new FOLDER --template NAME` | Starts a plugin from a template ([below](#starting-a-plugin-new)) |
+| `validate FOLDER` | Checks the manifest as Clips Kitty does, and the code for what would fail on Clips Kitty's Python |
+| `run FOLDER` | Runs the plugin the way Clips Kitty does ([below](#running-your-plugin-the-way-the-app-does)) |
+| `sample OUT.mp4` | Writes the 40-second sample video and its transcript ([below](#the-sample-video-and-frame)) |
+| `frame VIDEO --at SECONDS` | Writes one frame as a PNG, with a region drawn on it |
+| `install FOLDER` | Installs the plugin into the Clips Kitty running on this PC ([below](#installing-it-into-clips-kitty)) |
+| `listing FOLDER --section SECTION` | Writes the file that lists the plugin in the Marketplace's catalog ([below](#listing-it-listing)) |
+| `schema` | Prints the manifest's JSON Schema, for editors |
+| `--version` | Prints the SDK's version and the plugin contract it follows: `clipskitty-sdk 1.2.0 (plugin contract 1)` |
+
+[Your first game pipeline](first-game-pipeline.md) uses most of them, in order.
+
+## Starting a plugin: `new`
+
+```bash
+python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publisher your-github-name
+python -m clipskitty_sdk new --list
+```
+
+`new` writes a new plugin folder from a template: `clipskitty.yaml`, `src/main.py`, `README.md`, `tests/test_main.py` (using `clipskitty_sdk.testing`), `CHANGELOG.md`, `.gitignore`, `LICENSE`, `TEMPLATE-LICENSE.txt` and a GitHub workflow, `.github/workflows/clipskitty-check.yml`, that checks the plugin and runs its tests on Linux and Windows with Python 3.11. Every template is set up for Quarkbloom Arena, a made-up game, and runs as it is with `run --sample`.
+
+| Template | What it does |
+|---|---|
+| `blank` | finds nothing yet: a start for your own checks |
+| `transcript` | finds moments where your words are said |
+| `game-events` | finds moments when a coloured banner shows and the sound gets louder |
+| `rater` | rates moments others found, by the words said in them |
+| `understander` | notes what happens in moments others found, from the screen and the words |
+
+| Option | |
+|---|---|
+| `--publisher NAME` | Your GitHub name in lower case; it starts the plugin's id. Default `your-github-name`. On a terminal, `new` asks for it when it isn't given. `clipskitty` is reserved. |
+| `--name "Display name"` | The name people see. Default: from the folder's name; on a terminal, `new` asks. |
+| `--game SLUG` | The game, for the `game-events` template's `games`. Default `quarkbloom-arena`. |
+| `--author NAME` | Who holds the copyright in `LICENSE`. Default: the publisher. |
+| `--license SPDX` | The plugin's licence. Default `MIT`, with its text in `LICENSE`; for another, `new` leaves `LICENSE` out and says to add one. |
+
+It writes only into a new or empty folder, and it checks the `clipskitty.yaml` it makes before writing anything. `TEMPLATE-LICENSE.txt` holds the SDK's MIT notice, for the code that came from the template; your `LICENSE` covers your own work.
 
 ## Reading the job and answering
 
@@ -61,7 +118,7 @@ job.finish()                # writes result.json; then exit with status 0
 | Attribute or method | What it is |
 |---|---|
 | `job.plugin_id`, `job.plugin_version` | Your plugin, as installed |
-| `job.video` | `path`, `id`, `title`, `duration` (seconds or `None`), `games` (names Clips Kitty already knows the video shows). `None` unless your manifest asks for `video.read`. |
+| `job.video` | `path`, `id`, `title`, `duration` (seconds or `None`), `games`: what Clips Kitty already knows about the games the video shows, as a list in one of two shapes. A source that names the game gives `{"name": "…", "start": 0, "end": 812.5}` for each game and the seconds it is played (Twitch and Kick name it); a source that only says the video is about gaming gives `{"name": "", "start": 0, "end": 812.5, "hint": "the video's tags"}` (YouTube). Often empty. `None` unless your manifest asks for `video.read`. |
 | `job.transcript` | `path`, `language`, and `segments()` → `[{"start", "end", "text", "words"}]` in seconds. `None` unless your manifest asks for `transcript.read`. |
 | `job.settings` | Your manifest's settings: its defaults, then what the user chose for this job. Never contains `secret` settings. |
 | `job.secret(name)` | A `secret` setting (an API key, a licence key), read from the environment. Clips Kitty never writes secrets into the job folder. |
@@ -114,9 +171,10 @@ A rater that adds to `m.score` must handle `None` on its own ranges; handed mome
 
 ## Running your plugin the way the app does
 
-```text
-python -m clipskitty_sdk run . --video sample.mp4 --transcript transcript.json --set min_score=70
-python -m clipskitty_sdk run . --transcript transcript.json --moments moments.json
+```bash
+python -m clipskitty_sdk run my-plugin --sample
+python -m clipskitty_sdk run my-plugin --video match.mp4 --transcript transcript.json
+python -m clipskitty_sdk run my-plugin --transcript transcript.json --moments moments.json --min-score 70
 ```
 
 This builds the same job folder the app builds (one shared function, `clipskitty_sdk.host.build_job`), including leaving out what your permissions do not cover, starts your manifest's `run.command`, shows progress, and checks `result.json` with the app's own checks. Exit code 0 means the app would accept the answer, 1 that the run failed or the answer would be refused, 2 that the command could not start (no manifest, an unknown setting, a step the plugin doesn't offer).
@@ -134,15 +192,96 @@ It asks for the run the app would make, using the same helpers (`manifest.offers
 | `--transcript FILE` | `{"language", "segments"}` or a bare list of segments. Without it a plugin that asks for `transcript.read` gets an empty transcript. |
 | `--set NAME=VALUE` | A setting from your manifest, read as its type: text for a `string`, JSON for `integer`, `number` and `boolean` (`70`, `true`), and for a `choice` the option as written. A name the manifest doesn't declare is refused with the names it does. Repeatable. |
 | `--secret NAME=VALUE` | A `secret` setting, passed in the environment as the app does |
+| `--model NAME=PATH` | Where a model your manifest lists is on this PC: `job.models[NAME]`, with its `files` (the ones the manifest lists for it) inside `PATH`. A name the manifest doesn't list is refused with the names it does. Repeatable. |
+| `--game NAME`, `--game-hint TAGS` | What `job.video.games` holds: `--game` a game shown for the whole video, as Twitch and Kick name it; `--game-hint` the video's tags, as YouTube hands them over when it only says Gaming. Repeatable. |
 | `--max-clips`, `--min-duration`, `--max-duration`, `--focus` | The job's limits (defaults: no clip limit, 10 and 60 seconds, as in the app's settings) |
 | `--ollama-host`, `--ollama-model` | What a plugin with the `ollama` permission is told |
 | `--python`, `--ffmpeg`, `--ffprobe` | Which programs to use |
 | `--timeout SECONDS` | Stop the plugin after this long. Default: what Clips Kitty allows, `run.timeout_minutes`, else 60 minutes for a find run and 10 for a run that understands or rates |
 | `--job-dir DIR` | Build the job folder here instead of a new temporary folder, to look at it afterwards |
 
-`python -m clipskitty_sdk validate .` runs the manifest checks the app and the registry run ([Plugin manifest](plugin-manifest.md)); `run` runs them first and refuses a plugin that fails them. `python -m clipskitty_sdk schema` prints the manifest's JSON Schema for editors.
+Values holding commas go in quotes: `--set "banner_region=0.30,0.10,0.40,0.10"`. PowerShell passes an unquoted `a,b,c` to a program as separate arguments. `--steps` takes the words as one argument or several, so `--steps understand rate` works in every shell.
+
+The run prints `job folder: …` (a new temporary folder, kept so you can look inside it), the plugin's progress (on a terminal, one line rewritten in place), then the moments with each one's reason (`       why: ...`) and the plugin's notes. It warns when the plugin asks for `ffmpeg` and FFmpeg isn't on `PATH`, and when a moment's label isn't in the manifest's `events` (when it declares any). A run it refuses (no manifest, an unknown setting, a step the plugin doesn't offer) makes no job folder. A plugin started without a job folder (`python src/main.py`) says how to try it, and exits with 2.
+
+`python -m clipskitty_sdk validate .` runs the manifest checks the app and the registry run ([Plugin manifest](plugin-manifest.md)), with the line of `clipskitty.yaml` each problem is on; `run` runs them first and refuses a plugin that fails them. Both also warn about code that would fail on Clips Kitty's own Python (`clipskitty_sdk.lint`): syntax newer than Python 3.11, an import of anything but the standard library and `clipskitty_sdk` (Clips Kitty's own code, a module its Python leaves out or Windows lacks, a module at the plugin's root that should be in `src/`), and text files opened without `encoding=`. Files under `tests/` are skipped: they run only on your PC. `python -m clipskitty_sdk schema` prints the manifest's JSON Schema for editors.
 
 `clipskitty_sdk.manifest` offers the same in code: `load(folder)`, `validate(data)` (a report with `errors` and `warnings`), `validate_folder(folder)` (also checks the files the manifest names exist and that the folder has no symbolic links), `setting_value_problem(spec, value)` and `version_satisfies("2.0.0", ">=2.0, <3")`.
+
+## The sample video and `frame`
+
+```bash
+python -m clipskitty_sdk sample sample.mp4
+python -m clipskitty_sdk frame sample.mp4 --at 24 --region "0.30,0.10,0.40,0.10" --out frame.png
+```
+
+`sample OUT.mp4` writes the 40-second sample video that `run --sample` uses, and its transcript beside it as `OUT.transcript.json`. It is made only with FFmpeg's own generators, at 640x360: a red banner at the top (the region `0.30,0.10,0.40,0.10`) and a white square in the top right corner from 22 to 27 s, a loud sound from 22 to 27 s, and scene cuts at 10, 20 and 30 s, between dark and light backgrounds. The transcript says "round one, here we go" from 8 to 12 s, "what a quark burst" from 21 to 26 s and "just waiting for the respawn timer" from 34.5 to 39 s. It needs FFmpeg on `PATH`, or `--ffmpeg`.
+
+`frame VIDEO --at SECONDS` writes the frame at that second as a PNG (`--out`, default `frame-{SECONDS}s.png` in the current folder). With `--region` it draws a box just outside that part of the screen and prints it in pixels, quoted so it pastes into PowerShell as it is:
+
+```text
+wrote frame.png: the frame at 24 s of this 640x360 video
+region "0.30,0.10,0.40,0.10" is x=192 y=36 w=256 h=36 on this 640x360 video
+```
+
+A region is four numbers from 0 to 1, with commas, spaces or both between them: its left edge, its top edge, its width and its height, as parts of the frame. The same region fits a video of any size. `--region` takes the numbers as one argument or several, so PowerShell's split of an unquoted value still works.
+
+Neither command writes inside a plugin's folder (a folder with `clipskitty.yaml` at or above it), because Clips Kitty copies everything there when it installs the plugin: `error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. Write the sample somewhere else, for example: python -m clipskitty_sdk sample ../sample.mp4`.
+
+## Helpers: `media`, `signals`, `text`, `local_model`
+
+Modules for the work most game pipelines share, new in SDK 1.2.0. Like the rest of the SDK they use only the standard library, plus the FFmpeg Clips Kitty hands over. Import them at the top of `src/main.py` (`from clipskitty_sdk import media, signals, text`), as the templates do. From SDK 1.2.0 on, Clips Kitty stops a plugin that imports a module its SDK doesn't have, as soon as it starts, with "This pipeline needs a newer version of Clips Kitty. Update Clips Kitty, or ask the pipeline's developer which version it needs." The [Signals cookbook](signals-cookbook.md) has a recipe for each, with what it costs on the sample.
+
+### `media`: the video, with Clips Kitty's FFmpeg
+
+Each function takes the job. It needs `ffmpeg` in the manifest's permissions, and `video.read` for the video.
+
+| Name | What it is |
+|---|---|
+| `Region(x, y, w, h)` | A part of the screen as fractions of the frame, 0 to 1: left, top, width, height. `Region.parse("0.30,0.10,0.40,0.10")` reads one from text (commas, spaces or both), and `region.pixels(width, height)` gives `(x, y, w, h)` in whole pixels. A region outside the frame raises `ValueError` with a sentence. |
+| `probe(job)` | `VideoInfo(width, height, fps, duration)`, from FFprobe. A video the file says to show turned (as phones record) is measured turned, the way its frames are read. |
+| `frames(job, fps=4, region=None, size=(32, 8))` | The video's frames, `fps` a second from the start, one `Frame` at a time: `t` (seconds), `width`, `height`, `rgb` (3 bytes a pixel, row by row) and `pixel(x, y)`. `region` keeps only that part of each frame, and `size` shrinks what is kept, which makes each frame quick to check; `size=None` keeps the full size. FFmpeg reads the video once, as the frames are used; stopping early stops it. |
+| `jpeg(job, t, max_side=896)` | The frame at `t` seconds as JPEG bytes, shrunk so neither side is over `max_side` (never enlarged), for `local_model.ask(images=...)` |
+| `loudness(job)` | How loud each second is, in LUFS (FFmpeg's `ebur128`): item n is second n, and a silent second is `-70` (`media.SILENCE`). Empty for a video with no sound. |
+| `scene_cuts(job, threshold=0.3)` | The times the picture changes by more than `threshold` (0 to 1, FFmpeg's scene score) |
+
+Errors are `MediaError`, with a plain sentence a creator can read: `This pipeline needs FFmpeg: add ffmpeg to permissions in clipskitty.yaml`, `This pipeline needs the video: add video.read to permissions in clipskitty.yaml`, or what FFmpeg said when it couldn't read the video. `loudness()` and `scene_cuts()` are adapted from the [example pipeline](example-pipeline.md), which is MIT too.
+
+### `signals`: numbers and frames into moments
+
+It needs nothing of its own: it works on what `media` (or your own code) gives it, and on the job's limits.
+
+| Name | What it is |
+|---|---|
+| `colour_share(frame, colour="e0303a", tolerance=60)` | How much of the frame, 0 to 1, is `colour` (6 hex digits, or `(red, green, blue)`): each of red, green and blue within `tolerance` (0 to 255) of it |
+| `brightness(frame)` | How bright the frame is, 0 (black) to 255 (white) |
+| `difference(a, b)` | How different two frames of the same size are, 0 (the same) to 255 |
+| `spikes(values, louder_by=6.0, window=30)` | The positions in `values` at least `louder_by` above the median of the `window` values around them. For `loudness()`, the positions are seconds and `louder_by` is in dB. |
+| `stretches(times, gap=1.0, min_length=0.5)` | Times joined into `(first, last)` stretches where they are no more than `gap` apart, kept when at least `min_length` long |
+| `merge(ranges, gap=2.0)` | `(start, end)` ranges joined where they overlap or are no more than `gap` apart |
+| `around(job, start, end, lead=6.0, tail=3.0)` | A moment from `lead` seconds before `start` to `tail` after `end`, inside the video, fitted to the job's limits: cut to its longest clip (keeping the start) or made as long as its shortest. Seconds, rounded to 0.01. |
+
+### `text`: words in what is said
+
+| Name | What it is |
+|---|---|
+| `words_of(setting)` | The words or phrases in a setting such as `"quark burst, triple bloom"`: split on commas, each kept once |
+| `find_words(text, words)` | Which of `words` are in `text`, as whole words in any case or spacing: "win" doesn't match "window", and "Quark  Burst" matches "quark burst" |
+| `said(job, words)` | Each time one of `words` is said in the transcript: `(start, end, word)`, by the words' own times when the transcript has them (Clips Kitty's usually do), else the segment's |
+| `hits(job, moment, words)` | Which of `words` are said during `moment` |
+| `normalise(text)` | `text` as these compare it: Unicode's compatibility form, case folded, one space between words |
+
+`said()` and `hits()` need `transcript` in `inputs` and `transcript.read` in the permissions; without them they raise `ContractError`, as `job.text()` does.
+
+### `local_model`: the creator's local model, on this PC
+
+| Name | What it is |
+|---|---|
+| `model(job)` | The name of the creator's local model, as Clips Kitty hands it over |
+| `ask(job, prompt, *, images=(), json=False, timeout=120)` | Asks the model `prompt` (Ollama's `/api/generate`) and returns its answer. `images` are pictures to show it (JPEG or PNG bytes, such as `media.jpeg()` gives, or files). With `json`, it asks for JSON only, and a model that can think first is told not to. `timeout` is in seconds. |
+| `can_see(job)` | Whether the model can look at pictures: Ollama lists `vision` in what it can do (`/api/show`) |
+
+It needs `ollama` in the permissions, and the creator needs a local model in Clips Kitty. It talks only to a model on this PC (127.0.0.1, localhost or ::1): it never falls back to another address and never calls a cloud service, and its requests ignore proxy settings on purpose, so the prompt and the frames never leave the PC. The model is always the one the job names. Errors are `LocalModelError`: `This pipeline doesn't ask for the local model: add ollama to permissions in clipskitty.yaml`; `No local model is set in Clips Kitty (its AI may run at a cloud provider), and this helper only uses a model on this PC`; `Clips Kitty's model address {host} isn't on this PC, and this helper only talks to a model on this PC`; and plain sentences when the model doesn't answer or can't. What an older Ollama that doesn't list its capabilities answers to `can_see` hasn't been checked: it reads as a model that can't see.
 
 ## Testing your plugin
 
@@ -177,10 +316,21 @@ A run that can't start raises `ContractError` before any folder is made: a manif
 
 ## Installing it into Clips Kitty
 
-```text
-python -m clipskitty_sdk install .
-python -m clipskitty_sdk install . --watch
+PowerShell:
+
+```powershell
+py -m clipskitty_sdk install my-plugin
+py -m clipskitty_sdk install my-plugin --watch
 ```
+
+bash:
+
+```bash
+python -m clipskitty_sdk install my-plugin
+python -m clipskitty_sdk install my-plugin --watch
+```
+
+No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([From source](../../README.md#from-source)).
 
 `install` puts the plugin into the Clips Kitty running on this PC, as **For developers** in Marketplace › Browse does. It checks the plugin as `validate` does, asks Clips Kitty what installing it would do, prints Clips Kitty's own install screen as text, and asks `Install it? [y/N]`. Exit code 0 means installed, 1 not installed (Clips Kitty refused it, the answer was no, or `--yes` or `--watch` found something new), 2 that it stopped before asking for Clips Kitty's plan (a folder or manifest it refuses, Clips Kitty not running or too old, no session file).
 
@@ -190,6 +340,17 @@ python -m clipskitty_sdk install . --watch
 - `--watch` installs it as above, then reinstalls it after each save (it looks for changes every second), with the same rule as `--yes`: a save that adds something stops it. Ctrl+C stops it too. Whether a job already running the plugin is affected when its files are replaced hasn't been checked.
 
 It needs Clips Kitty's session secret, from `plugins/session.secret` in Clips Kitty's data folder: the folder `--data-dir` names, else the file Clips Kitty names when asked without the secret, else `%LOCALAPPDATA%\Clips Studio\data`. Whether the Microsoft Store build keeps its data folder there hasn't been checked; if `install` can't find the file, pass `--data-dir`. The secret keeps out web pages and scripts that don't know it, not programs running as you: any program running as the user can read its file, plugins included. `install` reads it for each request, sends it only to Clips Kitty on this PC (`--api` takes only 127.0.0.1, localhost or ::1), and never prints it. `install` and `clipskitty_sdk.local_model` ignore proxy settings on purpose, so the secret and a creator's frames stay on this PC.
+
+## Listing it: `listing`
+
+```bash
+python -m clipskitty_sdk listing my-plugin --section gaming/generic
+python -m clipskitty_sdk listing my-plugin --to my-plugin.yaml
+```
+
+`listing` writes the file that lists a finished plugin in Awesome Clips Kitty, the catalog the Marketplace reads, from the plugin's git repository: its `id`, `repository`, the `path` of the plugin inside it, the `section`, any `--alias` words (up to 10), the date, and this version at its full commit, with its tag when `v<version>` points at that commit. Run it from the folder that holds the plugin's folder; the file goes to `<name>.yaml` there, or to `--out`. `--to` adds this version to a listing you already have, and refuses a version already listed. Exit code 0 means written, 2 refused.
+
+Before it writes anything it checks that the plugin passes `validate`, that everything in the folder is committed, that the commit is on a branch you pushed, that the repository is the one `clipskitty.yaml` names, and that your id's publisher owns it. It refuses a plugin that still has a template's placeholders (`your-github-name`, `quarkbloom-arena`, `quark_burst`, "Quarkbloom Arena (a made-up game)" and a few more): a listing is for your real plugin. It runs only git commands that read; it never pushes, opens a pull request or fetches, so "pushed" means as far as your last push or fetch shows. It then says what to do next: add the file to the catalog, rebuild the catalog's index, and open one pull request with both ([Marketplace publishing](marketplace-publishing.md#getting-listed)).
 
 ## Calling Clips Kitty's API
 
@@ -203,6 +364,8 @@ api.add_job("https://www.youtube.com/watch?v=...", max_clips=3)
 
 `LocalAPI` wraps a few [stable routes](api-reference.md) (`health`, `add_job`, `jobs`, `job`, `queue`, `videos`, `clips`) with `urllib`; `get`, `post`, `patch` and `delete` reach any route. A refused call raises `APIError` with the HTTP status and the API's own message; `status` is 0 when Clips Kitty is not running. A pipeline plugin does not need the API to do its job.
 
+At 127.0.0.1, localhost or ::1 (the default), `LocalAPI` ignores proxy settings, so a proxy set in the environment never sees a request to this PC. At any other address it uses them, as `urllib` does. It never sends the session secret that installing plugins needs.
+
 ## Where the SDK is tested
 
-`tests/test_plugin_sdk.py` (job reading, progress lines, result writing and checking, moments, ratings and notes, errors, the environment, the job a manifest's permissions allow, the `run` command on fixture plugins, finding, rating and understanding, the API client against a stand-in server) runs with the standard library and PyYAML only, as in CI. `tests/test_plugin_runner.py` runs real plugin processes through the app's runner.
+`tests/test_plugin_sdk.py` (job reading, progress lines, result writing and checking, moments, ratings and notes, errors, the environment, the job a manifest's permissions allow, the `run` command on fixture plugins, finding, rating and understanding, the API client against a stand-in server) and the other `tests/test_plugin_sdk_*.py` files (the package, messages and the lint, the sample tools, `testing`, the helpers, `new` and the templates, `install` and `listing`) run with the standard library, PyYAML and pytest only, as in CI, on Linux and on Windows; the tests that need FFmpeg are skipped where it isn't installed. `tests/test_plugin_runner.py` runs real plugin processes through the app's runner, `tests/test_plugin_templates.py` runs every template through it, and `tests/test_plugin_docs.py` runs [Your first game pipeline](first-game-pipeline.md) and the [Signals cookbook](signals-cookbook.md) as written.

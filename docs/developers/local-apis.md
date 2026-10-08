@@ -17,18 +17,40 @@ The cheapest way to use what Clips Kitty has is to ask for it in your manifest's
 
 `job.tools.ollama.model` is the model the user chose in Clips Kitty (Gemma by default) when their AI runs locally, and empty when they chose a cloud provider: Clips Kitty never hands a plugin a cloud provider's key, so in that case your plugin either asks for its own model or does without. A plugin that needs a specific Ollama model lists it under `models:` with `source: ollama` ([Model references](model-references.md)); the user pulls it on the Models page, and the run stops with a message saying so if they haven't.
 
-Calling Ollama, with the standard library only:
+The SDK's `local_model` module (SDK 1.2.0) asks that model for you, with pictures when the model can look at them ([SDK](sdk.md#local_model-the-creators-local-model-on-this-pc), [Signals cookbook](signals-cookbook.md#asking-the-local-model-about-a-frame)):
 
 ```python
-import json, urllib.request
+from clipskitty_sdk import local_model, media
 
-ollama = job.tools.ollama
-if not ollama or not ollama.get("model"):
-    job.fail("This pipeline needs a local AI model. Choose one in Clips Kitty's Models page.")
-body = {"model": ollama["model"], "prompt": prompt, "stream": False, "format": "json"}
-req = urllib.request.Request(ollama["host"].rstrip("/") + "/api/generate",
-                             data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-answer = json.loads(urllib.request.urlopen(req, timeout=300).read())["response"]
+
+def main(job):
+    for m in job.moments:
+        if local_model.can_see(job):
+            said = local_model.ask(job, "What is on screen? Answer in one sentence.",
+                                   images=[media.jpeg(job, (m.start + m.end) / 2)])
+            job.understand(m, said)
+```
+
+It talks only to a model on this PC (127.0.0.1, localhost or ::1), refuses when Clips Kitty's AI runs at a cloud provider or at an address off this PC, and never falls back to another address. Its requests ignore proxy settings on purpose, so the prompt and the frames never leave the PC.
+
+Calling Ollama yourself, with the standard library only, use an opener without proxies: `urllib.request.urlopen` can send a request to this PC through a proxy set in the environment.
+
+```python
+import json
+import urllib.request
+
+NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def ask(job, prompt):
+    ollama = job.tools.ollama
+    if not ollama or not ollama.get("model"):
+        job.fail("This pipeline needs a local AI model. Choose one in Clips Kitty's Models page.")
+    body = {"model": ollama["model"], "prompt": prompt, "stream": False, "format": "json"}
+    req = urllib.request.Request(ollama["host"].rstrip("/") + "/api/generate",
+                                 data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"})
+    with NO_PROXY.open(req, timeout=300) as response:
+        return json.loads(response.read())["response"]
 ```
 
 Ollama has no password, so any program on the PC can use it; the `ollama` permission decides only whether Clips Kitty hands you the address and the user's model.
@@ -45,7 +67,9 @@ api.health()                                   # {"ok": True, "app_version": ...
 recent = api.videos()                          # the library
 ```
 
-Say so in your manifest: `project.read` to read the library, `project.write` to change it. These are **declared**, not enforced: the API has no authentication, so any program on the PC can call it. Stick to routes labelled stable ([API reference](api-reference.md)); others can change in any release. The plugin manager's routes need a session secret that plugins are not given, so a plugin can't install or remove plugins.
+Say so in your manifest: `project.read` to read the library, `project.write` to change it. These are **declared**, not enforced: the API has no authentication, so any program on the PC can call it. Stick to routes labelled stable ([API reference](api-reference.md)); others can change in any release. At 127.0.0.1, localhost or ::1, `LocalAPI` ignores proxy settings, so a request to this PC never goes to a proxy.
+
+The plugin manager's routes need the session secret, which the desktop app sends. It keeps out web pages and scripts that don't know it, not programs running as you: any program running as the user can read the file that holds it, plugins included. A plugin must not install or remove plugins; Clips Kitty can't stop one that tries.
 
 ## Other programs on the PC
 

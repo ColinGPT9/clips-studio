@@ -16,7 +16,7 @@ It does **not** know what is on screen or what is said. Loud is not the same as 
 clipskitty.yaml   id clips-kitty-examples/scene-cut-highlights; permissions video.read and ffmpeg; three settings
 README.md         what it does and doesn't, settings, permissions, how to try it
 LICENSE           MIT
-src/main.py       about 150 lines
+src/main.py       135 lines
 ```
 
 ## How `src/main.py` works

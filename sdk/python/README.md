@@ -78,6 +78,8 @@ When your plugin works, list it in Awesome Clips Kitty, the catalog Clips Kitty'
 
 ## Documentation
 
+- [Your first game pipeline](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md): from `new` to a plugin in Clips Kitty, step by step
+- [Signals cookbook](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/signals-cookbook.md): recipes for frames, colours, loudness, scene cuts, words and the local model
 - [SDK reference](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/sdk.md)
 - [Developer docs](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/README.md)
 - [Versioning](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/versioning.md)

@@ -86,7 +86,7 @@ def test_unknown_fields_warn_without_failing():
 
 
 def test_pickle_model_files_are_flagged():
-    data = yaml.safe_load((FIXTURES / "valid" / "marvel-rivals-design-example.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((FIXTURES / "valid" / "quarkbloom-arena-design-example.yaml").read_text(encoding="utf-8"))
     data["models"][0]["files"] = ["killfeed.pt"]
     report = mf.validate(data)
     assert report.ok and any("pickle-format" in w for w in report.warnings)

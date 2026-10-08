@@ -14,14 +14,14 @@ It reports every problem at once, each with the path of the field (`settings.min
 
 ```yaml
 manifest_version: 1
-id: example-dev/marvel-rivals-highlights   # publisher/name: lower case, digits, hyphens
-name: Marvel Rivals Highlights
-version: 1.0.0                             # SemVer
+id: example-dev/quarkbloom-arena-highlights   # publisher/name: lower case, digits, hyphens
+name: Quarkbloom Arena Highlights
+version: 1.0.0                                 # SemVer
 kind: pipeline
 capability: highlight_detection
-description: Finds team wipes, multi-kills and ultimates in Marvel Rivals VODs by reading the kill feed.
+description: Finds team wipes, multi-kills and quark bursts in Quarkbloom Arena recordings by reading the kill feed.
 author: {name: Example Developer, url: https://github.com/example-dev}
-repository: https://github.com/example-dev/clips-kitty-marvel-rivals
+repository: https://github.com/example-dev/clips-kitty-quarkbloom-arena
 license: MIT
 requires: {clips_kitty: ">=2.0", plugin_api: 1}
 run:
@@ -30,14 +30,14 @@ run:
 execution: local
 inputs: [video, transcript]
 outputs: [ranges]
-events: [team_wipe, multi_kill, ultimate]
-games: [marvel-rivals]
+events: [team_wipe, multi_kill, quark_burst]
+games: [quarkbloom-arena]
 settings:
   min_kills: {type: integer, default: 3, minimum: 2, maximum: 6, title: Smallest multi-kill}
 models:
   - name: killfeed
     source: huggingface
-    id: example-dev/marvel-rivals-killfeed
+    id: example-dev/quarkbloom-arena-killfeed
     revision: 0123456789abcdef0123456789abcdef01234567
     files: [killfeed.onnx]
     format: onnx
@@ -47,12 +47,12 @@ network: []
 sends: []
 requirements: {gpu: recommended, vram_gb: 6, ram_gb: 8, disk_gb: 2, os: [windows]}
 category: gaming
-tags: [marvel-rivals, highlights, kill-feed]
+tags: [quarkbloom-arena, highlights, kill-feed]
 links:
-  docs: https://github.com/example-dev/clips-kitty-marvel-rivals#readme
+  docs: https://github.com/example-dev/clips-kitty-quarkbloom-arena#readme
 ```
 
-(All names, ids and commits are placeholders.) More examples, valid and invalid, are in [`tests/fixtures/plugins/manifests/`](../../tests/fixtures/plugins/manifests/): each invalid one names the message it produces.
+(Quarkbloom Arena is a made-up game, and all names, ids and commits are placeholders.) More examples, valid and invalid, are in [`tests/fixtures/plugins/manifests/`](../../tests/fixtures/plugins/manifests/): each invalid one names the message it produces.
 
 ## Fields
 
@@ -75,12 +75,12 @@ Required fields are in bold.
 | `run.python_requirements` | A requirements file in the plugin | accepted with a warning: per-plugin Python packages are **planned** ([Pipeline development](pipeline-development.md)) |
 | **`execution`** | Where the work happens | `local`, `remote` or `hybrid` |
 | **`inputs`** | What it needs handed over | `video`, `transcript`, `moments`. `video` and `transcript` each need their permission; `moments` (the moments found before it runs) needs none. |
-| **`outputs`** | What it returns | `ranges` (moments it finds), `context` (what happens in moments), `ratings` (scores for moments others found). Together with `inputs` they say which steps the plugin does ([below](#inputs-and-outputs-which-steps-a-plugin-does)). `clips` (finished files) is planned. |
+| **`outputs`** | What it returns | `ranges` (moments it finds), `context` (what happens in moments), `ratings` (scores for moments others found). Together with `inputs` they say which steps the plugin does ([below](#inputs-and-outputs-which-steps-a-plugin-does)). `clips` (finished files) and `edits` (suggested cuts and framing, for the edit step) are planned, and refused with a message saying so. |
 | **`permissions`** | What it asks for | see [Permissions](permissions.md) |
 | `network` | Hosts it connects to | host names, optionally with a port; required with the `network` permission, and for `remote` and `hybrid` |
 | `sends` | What leaves the computer | `video`, `video_link`, `audio`, `frames`, `transcript`, or `{data, to, when}` when it depends on a setting. Required for `remote` and `hybrid`; a `local` pipeline sends nothing. Shown to the user as a ⚠ warning. |
 | `events` | Labels its moments may carry | lower case, digits, `_` and `-` |
-| `games` | Games it covers, for search | slugs such as `marvel-rivals` |
+| `games` | Games it covers, for search | slugs such as `quarkbloom-arena` |
 | `settings` | Options the user can set | below |
 | `models` | Models it uses | below; found on the PC, downloaded into one shared folder and handed to the plugin ([Model references](model-references.md)) |
 | `requirements` | What the PC needs | `gpu` (`none`, `optional`, `recommended`, `required`), `vram_gb`, `ram_gb`, `disk_gb`, `os` (`windows`, `macos`, `linux`), `software` (names, such as `docker`) |

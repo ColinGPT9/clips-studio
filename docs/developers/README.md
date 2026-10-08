@@ -24,6 +24,34 @@ That is where specialised knowledge pays: someone who knows one game, one sport 
 
 There is one API, one engine and one job queue. A community pipeline runs inside the same job as Clips Kitty's own modes; it is not a second app beside it.
 
+## The SDK at a glance
+
+```text
+Clips Kitty SDK
+
+Input                      a link or a video file
+  ↓
+Video                      Clips Kitty downloads it and writes down what is said
+  ↓
+Your plugin                every step is optional
+  ├── find                 picks the moments                  built
+  ├── understand           says what happens in each one      built
+  ├── rate                 scores each moment                 built
+  ├── edit                 suggests cuts and framing          coming later
+  └── export               posts to a platform                coming later
+  ↓
+Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
+  ↓
+Creator / Social Platform  posts when the creator clicks Publish, or on a schedule or automatic posting the creator switched on
+```
+
+- One plugin can find moments for a video; it replaces Clips Kitty's own finding.
+- Up to 3 plugins can understand and up to 3 can rate, after any finder.
+- A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](steps.md)).
+- Edit and export are not part of plugin contract 1: `outputs: [edits]` and `kind: publisher` are refused as planned.
+
+No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
+
 ## What a pipeline is
 
 A program, in any language, that Clips Kitty starts for one video. It reads a job folder (`job.json`: the video, its transcript, settings, the tools and models it asked for), works out which moments make good clips, and writes them back (`result.json`: start, end, score, label, reason). Progress goes to the app as it works. It can run entirely on the PC, call your own hosted model, or both, as long as it says so.
@@ -58,13 +86,15 @@ Clips Kitty                              your pipeline
 ## The pages
 
 **Start here**
-- [Getting started](getting-started.md): a working pipeline in a few minutes, tested outside the app, then installed in it.
+- [Your first game pipeline](first-game-pipeline.md): a pipeline for one (made-up) game, from `new` to installed and shared, with every command's output.
+- [Getting started](getting-started.md): the same steps, short: a working pipeline, tested outside the app, then installed in it.
 - [Example pipeline](example-pipeline.md): a complete one, laid out as its own repository, to copy.
 
 **Building**
 - [Pipeline development](pipeline-development.md): the contract, what you receive and return, testing.
 - [Steps](steps.md): find, understand and rate: which plugin does which step, and how their answers combine.
-- [SDK](sdk.md): the Python helper (`clipskitty_sdk`), every call.
+- [SDK](sdk.md): the Python helper (`clipskitty_sdk`), every call and command.
+- [Signals cookbook](signals-cookbook.md): recipes for reading a game's video: a region's frames, colours, brightness, loudness, scene cuts, words said, the local model.
 - [Plugin manifest](plugin-manifest.md): every field of `clipskitty.yaml`.
 - [Plugin development](plugin-development.md): install, update, roll back and remove, as a user and through the API.
 - [Model references](model-references.md) and [Hugging Face](hugging-face.md): naming models, one shared copy.

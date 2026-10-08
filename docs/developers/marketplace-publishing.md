@@ -32,7 +32,7 @@ GitHub is the home of code: the plugin, its manifest, docs, releases and discuss
 
 ## Sections
 
-Each listing names one `section` from `awesome-clips-kitty/registry/sections.yaml`. For pipelines these are `general`, `gaming` with one section per game (`gaming/valorant`, `gaming/rocket-league`, …), `sports` with one per sport (`sports/soccer`, `sports/hockey`, …), `creators` and `podcasts`. The README groups listings by section, search matches a section's words, and `GET /marketplace?section=gaming` returns that section and the ones inside it. (The Marketplace screen groups the directory's other kinds by section; its pipeline list doesn't group or filter by section yet.) `sections.yaml` also lists niches nobody has filled yet ("Wanted"), shown as ideas for developers, never as projects that exist.
+Each listing names one `section` from `awesome-clips-kitty/registry/sections.yaml`. For pipelines these are `general`, `gaming` with `gaming/generic` and one section per game, listed in `sections.yaml`, `sports` with one per sport (`sports/soccer`, `sports/hockey`, …), `creators` and `podcasts`. The README groups listings by section, search matches a section's words, and `GET /marketplace?section=gaming` returns that section and the ones inside it. (The Marketplace screen groups the directory's other kinds by section; its pipeline list doesn't group or filter by section yet.) `sections.yaml` also lists niches nobody has filled yet ("Wanted"), shown as ideas for developers, never as projects that exist.
 
 ## What the checks prove, and what they don't
 
@@ -93,10 +93,10 @@ Search runs in the app, over the index, with no server. It folds case and punctu
 
 So, to be found by people looking for exactly what you made:
 
-- **Name it for what it is**: "WoW Arena PvP Highlights" is found by "WoW", "World of Warcraft PvP" and "arena"; "Gaming Highlights" is found by everything and first for nothing.
-- **List the games** as slugs (`world-of-warcraft`, `rocket-league`, `nhl`) and the **events** you detect (`team_wipe`, `goal`).
-- **Tag the niche**, not the category: `mythic-plus`, `arena`, `chat-spikes`. Up to ten tags.
-- Pick the **one category** that fits: gaming, sports, creators, streaming, podcasting, captions, detection, analytics, audio or utilities; and the narrowest **section** that fits (`gaming/world-of-warcraft` rather than `gaming`).
+- **Name it for what it is**: "Quarkbloom Arena Burst Highlights" (for a made-up game) is found by "Quarkbloom", "Quarkbloom Arena bursts" and "burst"; "Gaming Highlights" is found by everything and first for nothing.
+- **List the games** as slugs (`quarkbloom-arena`, `soccer`) and the **events** you detect (`team_wipe`, `goal`).
+- **Tag the niche**, not the category: `ranked`, `arena`, `chat-spikes`. Up to ten tags.
+- Pick the **one category** that fits: gaming, sports, creators, streaming, podcasting, captions, detection, analytics, audio or utilities; and the narrowest **section** that fits: a game's own section rather than `gaming`, or `gaming/generic`.
 - Add `aliases` in the listing for names people use that you don't: a season name, an abbreviation.
 
 `tests/test_registry.py` checks that each of the searches in the platform brief ("Marvel Rivals", "WoW", "World of Warcraft PvP", "Minecraft", "Rocket League", "soccer", "Soccer goals", "NHL", "podcast", "Podcast shorts", "Twitch", "captions", "highlights") puts the specialised listing first in a test catalogue that also has broad ones.
