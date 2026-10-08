@@ -1027,9 +1027,12 @@ def commit_on_branch(owner: str, repo: str, commit: str, *, git: str | None = No
         git = git or shutil.which("git")
         if not git:
             raise RegistryError("git is needed to check where listed commits come from")
-        with tempfile.TemporaryDirectory(prefix="clipskitty-history-") as tmp:
+        # No background upkeep after the fetch: newer git starts it detached, and
+        # it can still be writing into the folder while the folder is removed.
+        quiet = ["-c", "maintenance.auto=false", "-c", "gc.auto=0", "-c", "fetch.writeCommitGraph=false"]
+        with tempfile.TemporaryDirectory(prefix="clipskitty-history-", ignore_cleanup_errors=True) as tmp:
             subprocess.run([git, "init", "-q", "--bare", tmp], check=True, capture_output=True)
-            subprocess.run([git, "-C", tmp, "fetch", "-q", "--filter=tree:0", "--no-tags",
+            subprocess.run([git, *quiet, "-C", tmp, "fetch", "-q", "--filter=tree:0", "--no-tags",
                             f"https://github.com/{owner}/{repo}.git",
                             "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"],
                            check=True, capture_output=True, timeout=600)
