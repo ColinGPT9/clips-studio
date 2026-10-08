@@ -10,6 +10,7 @@ moments are found and before the titles are written; a job without them
 never imports plugins.steps and hands its finder the same config as before.
 """
 
+import importlib
 import json
 import shutil
 import sys
@@ -331,7 +332,8 @@ def test_steps_go_with_sports_gaming_scoring_and_a_pipeline_but_not_longform(api
         assert r.status_code == 200 and r.json()["job_id"], (other, r.text)
         payload = _payload(client, r.json()["job_id"])
         assert payload["rate"] == payload["understand"] == [{"id": STEPPER_ID}], other
-        assert client.delete(f"/jobs/{r.json()['job_id']}").status_code == 200  # the queue holds five
+        deleted = client.delete(f"/jobs/{r.json()['job_id']}")
+        assert deleted.status_code == 200  # the queue holds five
     for longform in ({"mode": "highlights"}, {"mode": "short_clips", "shorts": True}):
         for field in ("rate", "understand"):
             assert _refused(client, {"url": _vod(20), "longform": longform, field: STEPPER_ID}) == LONGFORM_REFUSED
@@ -546,7 +548,7 @@ def _moments():
 
 
 def test_a_job_without_steps_never_imports_plugins_steps(pipeline_run, monkeypatch):
-    import plugins
+    plugins = importlib.import_module("plugins")
 
     monkeypatch.setitem(sys.modules, "plugins.steps", None)  # importing it now fails
     monkeypatch.delattr(plugins, "steps", raising=False)
@@ -643,10 +645,10 @@ def _video_row(db):
 
 
 def _register(db, tmp_path, candidate, title):
+    import core.pipeline as pipeline
     from analysis.metadata import ClipMetadata
-    from core.pipeline import _register_clip
 
-    _register_clip(db, "v", candidate, tmp_path / f"{title}.mp4",
+    pipeline._register_clip(db, "v", candidate, tmp_path / f"{title}.mp4",
                    ClipMetadata(title=title, description="", hashtags=[]), "")
     return db.conn.execute("SELECT score, title, scores, path FROM clips WHERE video_id = 'v' AND start_s = ?",
                            (round(candidate.start, 2),)).fetchone()

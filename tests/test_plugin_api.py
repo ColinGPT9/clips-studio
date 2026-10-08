@@ -128,7 +128,8 @@ def test_install_update_turn_off_roll_back_and_remove_through_the_api(api, plugi
     r = client.delete(f"/plugins/{PID}", headers=HEADERS)
     assert r.json() == {"removed": PID, "files_left": False, "keys_removed": True}
     assert client.get("/plugins").json()["plugins"] == []
-    assert client.delete(f"/plugins/{PID}", headers=HEADERS).status_code == 404
+    again = client.delete(f"/plugins/{PID}", headers=HEADERS)
+    assert again.status_code == 404
 
 
 def test_refusals_come_back_as_messages(api, plugin_source):

@@ -229,13 +229,13 @@ def test_posting_lines_follow_mode_and_best_n(tmp_path):
         ({"mode": "auto", "max_posts": 0}, rater, ["Clips go out in the order these plugins rate them."]),
         ({"mode": "ask", "max_posts": 0}, rater, ["Clips go out in the order these plugins rate them."]),
         ({"mode": "auto", "max_posts": 2}, notes,
-         ["This channel posts automatically, so what these plugins say about a moment can end up in the posted "
-          "title, description and hashtags without you checking them."]),
+         [("This channel posts automatically, so what these plugins say about a moment can end up in the posted "
+           "title, description and hashtags without you checking them.")]),
         ({"mode": "ask", "max_posts": 2}, notes, []),
         ({"mode": "auto", "max_posts": 2}, both,
          ["This channel posts only the 2 clips these plugins rate highest, without asking you.",
-          "This channel posts automatically, so what these plugins say about a moment can end up in the posted "
-          "title, description and hashtags without you checking them."]),
+          ("This channel posts automatically, so what these plugins say about a moment can end up in the posted "
+           "title, description and hashtags without you checking them.")]),
         ({"mode": "off", "max_posts": 3}, both, []),
         ({"mode": "auto", "max_posts": 3}, {}, []),
     ]
@@ -299,14 +299,14 @@ def test_the_video_page_says_what_each_plugin_did_in_plain_words(tmp_path):
         "Quarkbloom Notes said what happens in 7 of 12 moments.",
         "Quarkbloom Rater rated 12 of 12 moments.",
         "Quarkbloom Rater rated 12 of 12 moments. 4 rated under your minimum score (55) were set aside.",
-        "Quarkbloom Rater said what happens in 5 of 12 moments and rated 12. 1 rated under your minimum score (55) "
-        "were set aside.",
+        ("Quarkbloom Rater said what happens in 5 of 12 moments and rated 12. 1 rated under your minimum score (55) "
+         "were set aside."),
         "Quarkbloom Rater looked at the moments and changed nothing.",
         "Quarkbloom Rater looked at the moments and changed nothing.",
         "Clips Kitty made these clips without Quarkbloom Rater. It isn't installed any more.",
         "Clips Kitty made these clips without Quarkbloom Rater. It said: the arena feed was empty.",
-        "Clips Kitty made these clips without example-dev/quarkbloom-rater. It took longer than its 10 minute "
-        "limit, so Clips Kitty stopped it.",
+        ("Clips Kitty made these clips without example-dev/quarkbloom-rater. It took longer than its 10 minute "
+         "limit, so Clips Kitty stopped it."),
     ]
     assert not any(".." in line or "bug" in line.lower() for line in got)
     # the plugins named when a rater set every moment aside: each once, as core/outcome.py names them
@@ -336,11 +336,11 @@ def test_the_rate_and_understand_switch_reads_as_designed():
     for words in ("Moments found by", "Understand them with", "and with", "Rate them with", "then with",
                   "Clips Kitty (from what’s said)", "Clips Kitty’s own scores", "Choose a plugin", "Add another",
                   "Up to 3 plugins for each step",
-                  "They rate in this order: each one sees the score the one before it gave. The last one’s score "
-                  "is the one that counts.",
+                  ("They rate in this order: each one sees the score the one before it gave. The last one’s score "
+                   "is the one that counts."),
                   "Clips Kitty can use what each of them says (up to 8 notes for each moment).",
-                  "Rating decides which clips are made and their order, and which are posted when only the best "
-                  "few are.",
+                  ("Rating decides which clips are made and their order, and which are posted when only the best "
+                   "few are."),
                   "This plugin isn’t installed and turned on any more. Choose another, or remove it."):
         assert f"'{words}'" in fields, words
     pipeline = (UI / "components" / "PipelineFields.tsx").read_text(encoding="utf-8")

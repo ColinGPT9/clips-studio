@@ -1068,16 +1068,16 @@ def test_run_takes_a_finders_result_as_moments(tmp_path, capsys):
 
 
 @pytest.mark.parametrize("plugin, steps, message", [
-    ("notes", "rate", "the pipeline Quarkbloom Notes can't rate moments others found: "
-                      "its manifest needs moments in inputs and ratings in outputs"),
-    ("rater", "understand,rate", "the pipeline Quarkbloom Rater can't understand moments others found: "
-                                 "its manifest needs moments in inputs and context in outputs"),
-    ("rater", "find", "the pipeline Quarkbloom Rater doesn't find moments: it rates or understands moments others "
-                      "found. Choose it under Rate & understand instead"),
-    ("echo", "rate", "the pipeline Echo can't rate moments others found: "
-                     "its manifest needs moments in inputs and ratings in outputs"),
-    ("echo", "find,understand", "the pipeline Echo doesn't say what happens in the moments it finds: "
-                                "its manifest needs context in outputs"),
+    ("notes", "rate", ("the pipeline Quarkbloom Notes can't rate moments others found: "
+                       "its manifest needs moments in inputs and ratings in outputs")),
+    ("rater", "understand,rate", ("the pipeline Quarkbloom Rater can't understand moments others found: "
+                                  "its manifest needs moments in inputs and context in outputs")),
+    ("rater", "find", ("the pipeline Quarkbloom Rater doesn't find moments: it rates or understands moments others "
+                       "found. Choose it under Rate & understand instead")),
+    ("echo", "rate", ("the pipeline Echo can't rate moments others found: "
+                      "its manifest needs moments in inputs and ratings in outputs")),
+    ("echo", "find,understand", ("the pipeline Echo doesn't say what happens in the moments it finds: "
+                                 "its manifest needs context in outputs")),
     ("grader", "find,rate", "a run that finds moments isn't also asked to rate others' moments; run them separately"),
     ("grader", "edit", "unknown step 'edit'; expected find, understand or rate"),
     ("grader", "rate,", "unknown step ''; expected find, understand or rate"),

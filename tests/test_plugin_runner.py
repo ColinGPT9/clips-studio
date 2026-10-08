@@ -446,16 +446,16 @@ def test_installed_choice_refuses_a_finder_for_rate_and_a_rater_for_find(tmp_pat
     assert store.installed_choice(data_dir, notes, step="find").id == "fixture-dev/notes-finder"
     assert store.installed_choice(data_dir, rater, step="rate").id == "example-dev/quarkbloom-rater"
     refused = [
-        (echo, "rate", "the pipeline Echo can't rate moments others found: "
-                       "its manifest needs moments in inputs and ratings in outputs"),
-        (echo, "understand", "the pipeline Echo can't understand moments others found: "
-                             "its manifest needs moments in inputs and context in outputs"),
-        (notes, "understand", "the pipeline Notes Finder can't understand moments others found: "
-                              "its manifest needs moments in inputs and context in outputs"),
-        (rater, "understand", "the pipeline Quarkbloom Rater can't understand moments others found: "
-                              "its manifest needs moments in inputs and context in outputs"),
-        (rater, "find", "the pipeline Quarkbloom Rater doesn't find moments: it rates or understands "
-                        "moments others found. Choose it under Rate & understand instead"),
+        (echo, "rate", ("the pipeline Echo can't rate moments others found: "
+                        "its manifest needs moments in inputs and ratings in outputs")),
+        (echo, "understand", ("the pipeline Echo can't understand moments others found: "
+                              "its manifest needs moments in inputs and context in outputs")),
+        (notes, "understand", ("the pipeline Notes Finder can't understand moments others found: "
+                               "its manifest needs moments in inputs and context in outputs")),
+        (rater, "understand", ("the pipeline Quarkbloom Rater can't understand moments others found: "
+                               "its manifest needs moments in inputs and context in outputs")),
+        (rater, "find", ("the pipeline Quarkbloom Rater doesn't find moments: it rates or understands "
+                         "moments others found. Choose it under Rate & understand instead")),
     ]
     for choice, step, message in refused:
         with pytest.raises(store.ChoiceProblem) as e:
@@ -513,13 +513,13 @@ def test_choice_problems_carry_a_code_and_todays_message(tmp_path, install_plugi
     install_plugin(data_dir, ECHO)
     with monkeypatch.context() as m:
         m.setattr(store, "app_version", lambda: "1.9.0")
-        assert problem() == ("incompatible", "the pipeline Echo can't run here: it needs Clips Kitty >=2.0, "
-                                             "and this is 1.9.0")
+        assert problem() == ("incompatible", ("the pipeline Echo can't run here: it needs Clips Kitty >=2.0, "
+                                              "and this is 1.9.0"))
     with monkeypatch.context() as m:
         m.setattr(registry, "blocked_check", lambda data_dir: lambda pid, version: {
             "severity": "blocked", "reason": "It sends videos it does not declare"})
-        assert problem() == ("blocked", "the pipeline Echo 1.0.0 is blocked: It sends videos it does not declare. "
-                                        "Remove it in Marketplace › Installed.")
+        assert problem() == ("blocked", ("the pipeline Echo 1.0.0 is blocked: It sends videos it does not declare. "
+                                         "Remove it in Marketplace › Installed."))
     assert problem({**echo, "settings": {"colour": "red"}}) == ("settings", "this pipeline has no setting called 'colour'")
     assert problem({**echo, "settings": {"api_key": "pasted"}}) == (
         "settings", "'api_key' is a secret: set it in the pipeline's settings, not in a job")

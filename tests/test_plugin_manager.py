@@ -452,7 +452,8 @@ def test_remove_deletes_its_files_and_keys(data, plugin_source):
     pid = "fixture-dev/manager-test"
     folder = store.get(data, pid).folder
     manager.set_secrets(data, pid, {"api_key": "sk-test-0000"})
-    assert manager.remove(data, pid) == {"removed": pid, "files_left": False, "keys_removed": True}
+    removed = manager.remove(data, pid)
+    assert removed == {"removed": pid, "files_left": False, "keys_removed": True}
     assert store.get(data, pid) is None and not folder.exists()
     assert not (store.root(data) / manager.INSTALLED / "fixture-dev").exists()
     from core import secrets

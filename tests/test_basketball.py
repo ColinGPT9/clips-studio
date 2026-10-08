@@ -2008,13 +2008,13 @@ def test_a_title_written_from_the_play_says_only_what_it_holds():
     meta = _meta("wrong", "")
     w = titles.written(_play(), meta, 0)
     assert (w.title, w.description) == ("Marsh's Three Cuts It to 1",
-                                        "Marsh hits a three for the Spurs with 0:53 left in the 2nd quarter. "
-                                        "The Thunder still lead, 53-52.")
+                                        ("Marsh hits a three for the Spurs with 0:53 left in the 2nd quarter. "
+                                         "The Thunder still lead, 53-52."))
     w = titles.written(_play(scorer="", team="Thunder", other="Spurs", mine=103, theirs=109, before=-8, points=2,
                              shot="bucket", kind="made_2", when="Q4 0:52"), meta, 1)
     assert (w.title, w.description) == ("The Thunder Cut It to 6",
-                                        "The Thunder score with 0:52 left in the 4th quarter. "
-                                        "The Spurs still lead, 109-103.")
+                                        ("The Thunder score with 0:52 left in the 4th quarter. "
+                                         "The Spurs still lead, 109-103."))
     w = titles.written(_play(mine=111, theirs=103, before=6, points=2, shot="dunk", kind="dunk", sealed=True,
                              when="Q4 0:03"), meta, 0)
     assert w.title == "Marsh Seals It for the Spurs!" and w.description.endswith("The Spurs win it, 111-103.")

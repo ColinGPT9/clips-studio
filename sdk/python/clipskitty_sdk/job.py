@@ -280,8 +280,8 @@ class Job:
         """What is said during moment `m`: the transcript's segments that
         overlap it, joined with spaces. The transcript is read once."""
         if self.transcript is None:
-            raise ContractError("text", ["this job has no transcript: add transcript to inputs and "
-                                         "transcript.read to permissions"])
+            raise ContractError("text", [("this job has no transcript: add transcript to inputs and "
+                                          "transcript.read to permissions")])
         if self._said is None:
             said = []
             for s in self.transcript.segments():

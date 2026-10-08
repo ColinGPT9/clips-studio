@@ -128,8 +128,8 @@ def test_a_moments_input_needs_no_permission():
 def test_r1_and_r3_never_fire_together():
     report = mf.validate(_fixture("quarkbloom-rater", inputs=["video", "transcript"], outputs=["ratings", "context"],
                                   permissions=["video.read", "transcript.read"]))
-    assert report.errors == ["outputs[0]: ratings score moments found before this plugin runs: add moments to "
-                             "inputs (a pipeline's own ranges carry their score already)"]
+    assert report.errors == [("outputs[0]: ratings score moments found before this plugin runs: add moments to "
+                              "inputs (a pipeline's own ranges carry their score already)")]
     # By construction no two of the three rules fire on one manifest, whatever it lists.
     words_in, words_out = ("video", "transcript", "moments"), ("ranges", "ratings", "context")
     for i in range(1 << 3):
