@@ -6,7 +6,8 @@ X-Clips-Kitty-Session header (plugins/session.py); reading what is installed
 does not.
 
     GET    /plugins                                    installed plugins, and the built-in modes
-    POST   /plugins/plan       {"source": {...}}       fetch and check; say what installing would do
+    POST   /plugins/plan       {"source": {...}}       fetch and check; say what installing would do, with
+                                                       the install screen as `text`
                                (a source can be {"kind": "index", "id": ..., "version": ...}: a listing)
     POST   /plugins/install    {"plan_id": "..."}      install what a plan staged
     POST   /plugins/{publisher}/{name}/enable | disable | rollback | pin | unpin
@@ -144,12 +145,15 @@ def install(app, *, data_dir: Path, config: dict | None = None, app_version: str
                                                bundled=bundled_index)
             except registry.RegistryError as e:
                 raise HTTPException(404, str(e)) from e
-            return call(manager.plan, data_dir, registry.source_for(listing, entry), app_version=version,
-                        blocked=blocked, git=git, fetcher=fetcher, tier=registry.listing_tier(listing, entry),
-                        expect={"id": listing["id"], "version": entry["version"]},
-                        listed_in=entry.get("index", listing["index"]))
-        return call(manager.plan, data_dir, source, app_version=version, blocked=blocked, git=git,
-                    fetcher=fetcher)
+            planned = call(manager.plan, data_dir, registry.source_for(listing, entry), app_version=version,
+                           blocked=blocked, git=git, fetcher=fetcher, tier=registry.listing_tier(listing, entry),
+                           expect={"id": listing["id"], "version": entry["version"]},
+                           listed_in=entry.get("index", listing["index"]))
+        else:
+            planned = call(manager.plan, data_dir, source, app_version=version, blocked=blocked, git=git,
+                           fetcher=fetcher)
+        # The install screen as text, for the SDK's `install` command and other scripts.
+        return {**planned, "text": permissions.render_text(planned)}
 
     @app.post("/plugins/install", dependencies=guarded)
     def install_plugin(body: InstallIn):

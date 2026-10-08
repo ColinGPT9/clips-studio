@@ -125,7 +125,7 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     # The plugin platform (plugins/api.py). Experimental while it is new; the
     # routes that change what is installed need the X-Clips-Kitty-Session header.
     ("GET", "/plugins"): (EXPERIMENTAL, "plugins", "Installed plugins with their versions, permissions and state, and the built-in modes."),
-    ("POST", "/plugins/plan"): (EXPERIMENTAL, "plugins", "Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header."),
+    ("POST", "/plugins/plan"): (EXPERIMENTAL, "plugins", "Fetch a plugin from a folder or a Git commit and say what installing it would do, with the install screen as text. Session header."),
     ("POST", "/plugins/install"): (EXPERIMENTAL, "plugins", "Install what a plan fetched. Session header."),
     ("POST", "/plugins/{publisher}/{name}/enable"): (EXPERIMENTAL, "plugins", "Turn a plugin on. Session header."),
     ("POST", "/plugins/{publisher}/{name}/disable"): (EXPERIMENTAL, "plugins", "Turn a plugin off. Session header."),

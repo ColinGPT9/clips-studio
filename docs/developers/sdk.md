@@ -175,6 +175,22 @@ def test_it_finds_the_quark_burst(tmp_path):
 
 A run that can't start raises `ContractError` before any folder is made: a manifest Clips Kitty would refuse (its `errors` are the manifest's errors), a step the plugin doesn't offer, a setting it doesn't declare, or no video for a plugin with `video.read`.
 
+## Installing it into Clips Kitty
+
+```text
+python -m clipskitty_sdk install .
+python -m clipskitty_sdk install . --watch
+```
+
+`install` puts the plugin into the Clips Kitty running on this PC, as **For developers** in Marketplace › Browse does. It checks the plugin as `validate` does, asks Clips Kitty what installing it would do, prints Clips Kitty's own install screen as text, and asks `Install it? [y/N]`. Exit code 0 means installed, 1 not installed (Clips Kitty refused it, the answer was no, or `--yes` or `--watch` found something new), 2 that it stopped before asking for Clips Kitty's plan (a folder or manifest it refuses, Clips Kitty not running or too old, no session file).
+
+- It refuses a folder holding `.venv`, `venv` or `node_modules`, which Clips Kitty would copy into every install (keep a virtual environment next to the plugin's folder, not inside it), and a folder with a symbolic link, which Clips Kitty refuses. It warns about `.clipskitty` and videos over 50 MB, which Clips Kitty copies too.
+- A Clips Kitty from before plugin support, such as 2.0.0, can't install plugins, and `install` says so before it looks for the session secret.
+- `--yes` skips the question only when nothing is new: the same plugin is already installed, and the update adds no permission, network host, data sent off the PC, change to where it runs, or step. Otherwise it stops and says what is new.
+- `--watch` installs it as above, then reinstalls it after each save (it looks for changes every second), with the same rule as `--yes`: a save that adds something stops it. Ctrl+C stops it too. Whether a job already running the plugin is affected when its files are replaced hasn't been checked.
+
+It needs Clips Kitty's session secret, from `plugins/session.secret` in Clips Kitty's data folder: the folder `--data-dir` names, else the file Clips Kitty names when asked without the secret, else `%LOCALAPPDATA%\Clips Studio\data`. Whether the Microsoft Store build keeps its data folder there hasn't been checked; if `install` can't find the file, pass `--data-dir`. The secret keeps out web pages and scripts that don't know it, not programs running as you: any program running as the user can read its file, plugins included. `install` reads it for each request, sends it only to Clips Kitty on this PC (`--api` takes only 127.0.0.1, localhost or ::1), and never prints it. `install` and `clipskitty_sdk.local_model` ignore proxy settings on purpose, so the secret and a creator's frames stay on this PC.
+
 ## Calling Clips Kitty's API
 
 ```python

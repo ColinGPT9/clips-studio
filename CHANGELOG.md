@@ -28,7 +28,8 @@ were often broken in a way that only showed up on somebody else's machine.
   and activity, with a warning where one sends your videos or transcripts online or
   downloads from sites whose terms may not allow it.
   (Experimental routes: `/plugins`, `/marketplace`, `/marketplace/catalog`,
-  `/marketplace/counting`, `/plugin-models`.) (#129)
+  `/marketplace/counting`, `/plugin-models`; a plan from `POST /plugins/plan` carries
+  the install screen as `text`.) (#129)
 
 - **New pipelines without waiting for an update, and nothing else to install.** The
   Marketplace checks Clips Kitty's online list when it opens, at most once a day, so a

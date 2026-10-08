@@ -13,6 +13,8 @@
                                  [--model name=path ...] [--game NAME ...] [--game-hint TAGS]
     python -m clipskitty_sdk sample OUT.mp4
     python -m clipskitty_sdk frame VIDEO --at SECONDS [--region "0.30,0.10,0.40,0.10"] [--out FILE.png]
+    python -m clipskitty_sdk install <plugin folder> [--watch] [--yes] [--data-dir DIR]
+                                     [--api http://127.0.0.1:8765]
     python -m clipskitty_sdk schema [--write]
     python -m clipskitty_sdk --version
 
@@ -52,8 +54,17 @@ writes one frame of a video as a PNG, with a box drawn around --region and
 the region in pixels, to measure where something shows on screen. Neither
 writes inside a plugin's folder: Clips Kitty copies everything there.
 
+`install` puts the plugin into the Clips Kitty running on this PC, as
+Marketplace › Browse › For developers does (clipskitty_sdk.installer): it
+shows Clips Kitty's install screen as text and asks first. --yes skips the
+question only when nothing is new, and --watch reinstalls on each save until
+a save adds something. It talks only to Clips Kitty on this PC, never
+through a proxy.
+
 Exit code 0 means the app would accept the plugin's answer, 1 that the plugin
 failed or the app would refuse its answer, 2 that the run couldn't start.
+For `install`: 0 installed, 1 not installed, 2 it couldn't get as far as
+Clips Kitty's plan.
 """
 
 from __future__ import annotations
@@ -67,7 +78,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from . import __version__, devrun, host, samples, scaffold
+from . import __version__, devrun, host, installer, samples, scaffold
 from ._hints import python_command
 from .contract import MAX_RANGES, PLUGIN_API_VERSION, ContractError, _number
 from .job import RESULT_FILE
@@ -458,6 +469,10 @@ def cmd_new(args) -> int:
     return 0
 
 
+def cmd_install(args) -> int:
+    return installer.run(args.plugin, api=args.api, data_dir=args.data_dir, yes=args.yes, watch=args.watch)
+
+
 def version_line() -> str:
     """What --version prints: the SDK's version and the plugin contract's."""
     return f"clipskitty-sdk {__version__} (plugin contract {PLUGIN_API_VERSION})"
@@ -539,9 +554,22 @@ def main(argv: list[str] | None = None) -> int:
                             "(quote it); prints it in pixels")
     frame.add_argument("--out", metavar="FILE.png", help="where to write it (default: frame-SECONDSs.png here)")
     frame.add_argument("--ffmpeg")
+    inst = sub.add_parser("install", help="install a plugin you're writing into the Clips Kitty running on this PC")
+    inst.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml)")
+    inst.add_argument("--watch", action="store_true",
+                      help="after installing, reinstall it each time a file in the folder is saved, until a save "
+                           "adds something new or Ctrl+C")
+    inst.add_argument("--yes", action="store_true",
+                      help="install without asking, only when nothing is new: the same plugin is installed and the "
+                           "update adds no permission, network host, data sent, change to where it runs, or step")
+    inst.add_argument("--data-dir", metavar="DIR",
+                      help="Clips Kitty's data folder, the one holding plugins/session.secret (default: the one "
+                           "Clips Kitty names, else the installed app's)")
+    inst.add_argument("--api", default=installer.DEFAULT_API, metavar="URL",
+                      help=f"where Clips Kitty's API is, on this PC only (default: {installer.DEFAULT_API})")
     args = parser.parse_args(argv)
     return {"new": cmd_new, "validate": cmd_validate, "schema": cmd_schema, "run": cmd_run, "sample": cmd_sample,
-            "frame": cmd_frame}[args.command](args)
+            "frame": cmd_frame, "install": cmd_install}[args.command](args)
 
 
 if __name__ == "__main__":

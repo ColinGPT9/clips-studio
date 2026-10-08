@@ -132,6 +132,63 @@ def test_install_update_turn_off_roll_back_and_remove_through_the_api(api, plugi
     assert again.status_code == 404
 
 
+def test_a_plan_carries_the_install_screen_as_text(api, plugin_source):
+    """The install screen as text, for the SDK's `install` command: what
+    permissions.render_text makes of the plan, refused plans included."""
+    from plugins import permissions
+
+    client, _ = api
+    texts = []
+    for name, manifest in (("ok", plugin_source.manifest()), ("refused", plugin_source.manifest(permissions=[]))):
+        folder = plugin_source.folder(name, manifest)
+        plan = client.post("/plugins/plan", json={"source": {"kind": "folder", "path": str(folder)}},
+                           headers=HEADERS).json()
+        text = plan.pop("text")
+        assert text == permissions.render_text(plan)
+        texts.append(text)
+    assert texts[0].splitlines()[0] == "Install Manager test 1.0.0?"
+    assert "  Reads the video you process (Clips Kitty hands this over)" in texts[0].splitlines()
+    assert texts[1].splitlines()[-1] == "✗ inputs[0]: the video input needs the video.read permission"
+
+
+def test_the_sdks_yes_check_reads_a_real_plan(api, plugin_source):
+    """installer.nothing_new() and what_is_new(), which decide whether
+    `install --yes` and `--watch` may install without asking, read the plans
+    this app makes, so the shape they read can't drift from the app's."""
+    import importlib
+
+    from plugins._sdk import clipskitty_sdk  # the SDK, on the path the engine puts it on
+
+    installer = importlib.import_module(clipskitty_sdk.__name__ + ".installer")
+    client, _ = api
+    base = {"execution": "hybrid", "permissions": ["video.read", "network"], "network": ["a.example.com"],
+            "sends": ["transcript"]}
+
+    def plan(name, **changes):
+        folder = plugin_source.folder(name, plugin_source.manifest(**{**base, **changes}))
+        r = client.post("/plugins/plan", json={"source": {"kind": "folder", "path": str(folder)}}, headers=HEADERS)
+        assert r.status_code == 200 and r.json()["ok"], r.text
+        return r.json()
+
+    first = plan("first")
+    assert not installer.nothing_new(first)
+    assert installer.what_is_new(first) == [installer.FIRST_INSTALL]
+    assert client.post("/plugins/install", json={"plan_id": first["plan_id"]}, headers=HEADERS).status_code == 200
+
+    # Installed again unchanged, or a new version that adds nothing: nothing new.
+    assert installer.nothing_new(plan("same"))
+    assert installer.nothing_new(plan("newer", version="1.1.0", description="A plugin for the manager's tests, again."))
+    # Each thing an update can add, in turn, as the app's plan says it.
+    assert installer.what_is_new(plan("perm", permissions=["video.read", "network", "ffmpeg"])) == [
+        "permissions: ffmpeg"]
+    assert installer.what_is_new(plan("host", network=["a.example.com", "b.example.com"])) == [
+        "network hosts: b.example.com"]
+    assert installer.what_is_new(plan("sends", sends=["transcript", "video"])) == [
+        "data sent off the PC: ⚠ Sends your video off this computer"]
+    assert installer.what_is_new(plan("remote", execution="remote")) == ["a change to where it runs"]
+    assert installer.what_is_new(plan("step", outputs=["ranges", "context"])) == ["steps: Understands what it finds"]
+
+
 def test_refusals_come_back_as_messages(api, plugin_source):
     client, _ = api
     r = client.post("/plugins/plan", json={"source": {"kind": "git", "url": "https://example.com/x/y", "commit": "main"}},
@@ -227,6 +284,7 @@ def test_the_marketplace_searches_the_bundled_index_and_installs_from_it(tmp_pat
     r = client.post("/plugins/plan", json={"source": {"kind": "index", "id": "example-dev/nhl-goals"}}, headers=HEADERS)
     assert r.status_code == 200 and r.json()["ok"], r.text
     assert r.json()["source"] == {"kind": "git", "url": manifest["repository"], "commit": commit, "listed_in": "bundled"}
+    assert r.json()["text"] == plugins_api.permissions.render_text({k: v for k, v in r.json().items() if k != "text"})
     view = client.post("/plugins/install", json={"plan_id": r.json()["plan_id"]}, headers=HEADERS).json()
     assert client.get("/marketplace", params={"q": "NHL"}).json()["plugins"][0]["installed"] == "1.0.0"
     # One anonymous count for a first install from a listing, named after the listing and nothing else.

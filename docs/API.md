@@ -1282,18 +1282,19 @@ curl -X POST localhost:8765/plugins/plan -H "X-Clips-Kitty-Session: $SECRET" \
                   "commit": "<40-character commit hash>"}}'
 # → {"plan_id": "...", "ok": true, "plugin": {...}, "details": {"permissions": [...],
 #    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "technical": [],
-#    "update": null}
+#    "update": null, "text": "Install ...?\n..."}
 curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" \
   -H 'Content-Type: application/json' -d '{"plan_id": "..."}'
 ```
 
-A plan's `warnings` are in plain words for the person installing; `technical`
-holds the precise lines behind them (the manifest's own warnings, files that
-couldn't be fetched); a model file that can run code when it is opened adds a
-plain line to `warnings` as well. A download or Git that fails answers with a
-fixed sentence for its cause (no connection, files no longer at the address,
-a full disk, a damaged download, or anything else); what went wrong is in the
-engine's log.
+A plan's `text` is the install screen as plain text, without the buttons (the
+SDK's `install` command shows it). Its `warnings` are in plain words for the
+person installing; `technical` holds the precise lines behind them (the
+manifest's own warnings, files that couldn't be fetched); a model file that can
+run code when it is opened adds a plain line to `warnings` as well. A download
+or Git that fails answers with a fixed sentence for its cause (no connection,
+files no longer at the address, a full disk, a damaged download, or anything
+else); what went wrong is in the engine's log.
 
 `GET /plugins` lists what is installed (no header needed);
 `POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,

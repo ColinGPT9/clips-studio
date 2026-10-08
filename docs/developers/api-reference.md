@@ -172,7 +172,7 @@ Details: [`docs/API.md` › Plugins](../API.md#plugins).
 | `POST /plugin-models/plan` | experimental | What downloading one plugin's model would fetch, from Hugging Face's metadata; downloads nothing. Session header. |
 | `GET /plugins` | experimental | Installed plugins with their versions, permissions and state, and the built-in modes. |
 | `POST /plugins/install` | experimental | Install what a plan fetched. Session header. |
-| `POST /plugins/plan` | experimental | Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header. |
+| `POST /plugins/plan` | experimental | Fetch a plugin from a folder or a Git commit and say what installing it would do, with the install screen as text. Session header. |
 | `DELETE /plugins/{publisher}/{name}` | experimental | Remove a plugin, its files and its stored keys. Session header. |
 | `POST /plugins/{publisher}/{name}/disable` | experimental | Turn a plugin off. Session header. |
 | `POST /plugins/{publisher}/{name}/enable` | experimental | Turn a plugin on. Session header. |
