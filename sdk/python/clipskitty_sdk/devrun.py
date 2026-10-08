@@ -371,7 +371,8 @@ def label_warnings(manifest: dict, job_folder: Path) -> list[str]:
     return out
 
 
-__all__ = ["SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
+__all__ = ["DEFAULT_MAX_DURATION", "DEFAULT_MIN_DURATION", "DEFAULT_MIN_SCORE", "DEFAULT_OLLAMA_HOST",
+           "SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
            "manifest_refusal", "models_for", "moments_from", "probe_duration", "read_moments", "read_transcript",
            "report_lines", "run_steps", "sample_moments", "sample_video_wanted", "setting_value", "start",
            "time_limit", "touches_video", "transcript_end", "transcript_from", "typed_settings"]

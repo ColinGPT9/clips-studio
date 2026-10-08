@@ -113,11 +113,11 @@ def test_region_parses_and_maps_to_pixels():
 
 
 @pytest.mark.parametrize("call", [
-    lambda job: media.probe(job),
-    lambda job: media.frames(job),
+    media.probe,
+    media.frames,
     lambda job: media.jpeg(job, 1),
-    lambda job: media.loudness(job),
-    lambda job: media.scene_cuts(job),
+    media.loudness,
+    media.scene_cuts,
 ], ids=["probe", "frames", "jpeg", "loudness", "scene_cuts"])
 def test_media_names_the_missing_permission(tmp_path, call):
     video = tmp_path / "clip.mp4"

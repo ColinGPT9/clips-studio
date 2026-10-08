@@ -421,7 +421,7 @@ def _say(stream, text: str) -> None:
     except UnicodeEncodeError:
         text = text.encode(encoding, errors="replace").decode(encoding)
     except LookupError:
-        pass
+        pass  # an encoding Python doesn't know: print the text as it is
     print(text, file=stream, flush=True)
 
 

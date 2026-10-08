@@ -19,6 +19,7 @@ Standard library only.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 import weakref
@@ -93,12 +94,12 @@ def _segments(job) -> list[tuple[float, float, str, list]]:
     try:
         _SEGMENTS[job] = out
     except TypeError:
-        pass
+        pass  # a job that can't be weakly referenced isn't cached; it is read again next time
     return out
 
 
 def _seconds(value) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or math.isnan(value):
         return None
     return float(value)
 
