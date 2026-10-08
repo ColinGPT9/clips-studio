@@ -120,7 +120,7 @@ A listing is what makes something installable from the Marketplace.
 
 1. Put your plugin in a public GitHub repository with `clipskitty.yaml` at its root (or in the folder named by `path`). `python -m clipskitty_sdk validate .` must pass. The SDK is MIT-licensed, so using it puts no licence on your plugin.
 2. Tag a release and note its full commit hash.
-3. Open a pull request adding `registry/pipelines/<publisher>/<name>.yaml`:
+3. Add `registry/pipelines/<publisher>/<name>.yaml` (`python -m clipskitty_sdk listing <plugin folder> --section <section>` writes it from your plugin's folder and its git repository):
 
 ```yaml
 id: example-dev/example-plugin
@@ -136,7 +136,9 @@ versions:
     tested_with: [{game: example-game, version: "Season 1"}]   # optional
 ```
 
-Add a version by adding an entry; never change or remove one. The name, description, licence, permissions, models and everything else the Marketplace shows come from your manifest at that commit, so they cannot drift from the code.
+4. Run `python scripts/build_registry_index.py` from a Clips Kitty checkout (it needs PyYAML and the network), and open a pull request with the file and the updated `index.json` and `README.md`. CI runs the build with `--check`, which fails when they don't match the listings, so a pull request with the listing file alone fails.
+
+Add a version by adding an entry (`listing --to <the listing file>` does it); never change or remove one. The name, description, licence, permissions, models and everything else the Marketplace shows come from your manifest at that commit, so they cannot drift from the code.
 
 ### What the build checks
 

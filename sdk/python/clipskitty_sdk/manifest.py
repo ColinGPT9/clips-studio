@@ -159,6 +159,20 @@ def line_marks(text: str) -> dict[str, int]:
     return marks
 
 
+def yaml_data(text: str):
+    """What a YAML text holds, read with PyYAML's safe loader (nothing in it
+    is built or run), for the SDK's other YAML files, such as a catalog
+    listing (clipskitty_sdk.listing). The SDK imports PyYAML only here.
+    Raises ImportError without PyYAML, and ValueError for text that isn't
+    valid YAML."""
+    import yaml
+
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ValueError(f"not valid YAML ({e})") from e
+
+
 def load(folder: str | Path) -> dict:
     """The manifest in a plugin folder, as a mapping. Raises ManifestError."""
     path = Path(folder) / MANIFEST_FILE

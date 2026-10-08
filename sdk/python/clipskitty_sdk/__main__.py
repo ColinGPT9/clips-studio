@@ -15,6 +15,8 @@
     python -m clipskitty_sdk frame VIDEO --at SECONDS [--region "0.30,0.10,0.40,0.10"] [--out FILE.png]
     python -m clipskitty_sdk install <plugin folder> [--watch] [--yes] [--data-dir DIR]
                                      [--api http://127.0.0.1:8765]
+    python -m clipskitty_sdk listing <plugin folder> --section gaming/generic [--alias WORDS ...]
+                                     [--to EXISTING.yaml] [--out FILE]
     python -m clipskitty_sdk schema [--write]
     python -m clipskitty_sdk --version
 
@@ -61,10 +63,17 @@ question only when nothing is new, and --watch reinstalls on each save until
 a save adds something. It talks only to Clips Kitty on this PC, never
 through a proxy.
 
+`listing` writes the file that lists a finished plugin in Awesome Clips
+Kitty, the catalog the Marketplace reads (clipskitty_sdk.listing), from its
+folder's git repository: the folder must be committed and pushed, and the
+id's publisher must own the GitHub repository. --to adds this version to a
+listing that exists. It runs only git commands that read, and fetches
+nothing; the pull request, with the catalog's index rebuilt, is yours to open.
+
 Exit code 0 means the app would accept the plugin's answer, 1 that the plugin
 failed or the app would refuse its answer, 2 that the run couldn't start.
 For `install`: 0 installed, 1 not installed, 2 it couldn't get as far as
-Clips Kitty's plan.
+Clips Kitty's plan. For `listing`: 0 written, 2 refused.
 """
 
 from __future__ import annotations
@@ -78,7 +87,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from . import __version__, devrun, host, installer, samples, scaffold
+from . import __version__, devrun, host, installer, listing, samples, scaffold
 from ._hints import python_command
 from .contract import MAX_RANGES, PLUGIN_API_VERSION, ContractError, _number
 from .job import RESULT_FILE
@@ -473,6 +482,10 @@ def cmd_install(args) -> int:
     return installer.run(args.plugin, api=args.api, data_dir=args.data_dir, yes=args.yes, watch=args.watch)
 
 
+def cmd_listing(args) -> int:
+    return listing.run(args.plugin, section=args.section, aliases=args.alias or (), to=args.to, out=args.out)
+
+
 def version_line() -> str:
     """What --version prints: the SDK's version and the plugin contract's."""
     return f"clipskitty-sdk {__version__} (plugin contract {PLUGIN_API_VERSION})"
@@ -567,9 +580,21 @@ def main(argv: list[str] | None = None) -> int:
                            "Clips Kitty names, else the installed app's)")
     inst.add_argument("--api", default=installer.DEFAULT_API, metavar="URL",
                       help=f"where Clips Kitty's API is, on this PC only (default: {installer.DEFAULT_API})")
+    lst = sub.add_parser("listing", help="write the file that lists your plugin in the Marketplace's catalog "
+                         "(it only reads git: it never pushes or fetches)")
+    lst.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml), committed and pushed")
+    lst.add_argument("--section", metavar="SECTION",
+                     help="the catalog section, such as gaming/generic (awesome-clips-kitty/registry/sections.yaml)")
+    lst.add_argument("--alias", action="extend", nargs="+", metavar="WORDS",
+                     help="a word or short phrase people may search for (quote one with spaces); up to "
+                          f"{listing.MAX_ALIASES}")
+    lst.add_argument("--to", metavar="EXISTING.yaml",
+                     help="add this version to the listing you already have, instead of writing a new one")
+    lst.add_argument("--out", metavar="FILE",
+                     help="where to write it (default: <name>.yaml in this folder, or the --to file)")
     args = parser.parse_args(argv)
     return {"new": cmd_new, "validate": cmd_validate, "schema": cmd_schema, "run": cmd_run, "sample": cmd_sample,
-            "frame": cmd_frame, "install": cmd_install}[args.command](args)
+            "frame": cmd_frame, "install": cmd_install, "listing": cmd_listing}[args.command](args)
 
 
 if __name__ == "__main__":

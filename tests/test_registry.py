@@ -305,6 +305,113 @@ def test_the_script_writes_and_checks_the_index(reg, tmp_path, capsys):
     assert "refused: pipelines/example-dev/unowned.yaml" in capsys.readouterr().out
 
 
+def test_an_sdk_listing_passes_check_listing(tmp_path, monkeypatch):
+    """The listing the SDK's `listing` command writes, and the version its
+    --to adds, pass the registry's own checks, and the build lists both
+    versions from the plugin's repository. The repository's remote is named
+    as on GitHub, its pushes go to a bare repository here, and the build
+    reads the manifests from that bare repository, so nothing reaches the
+    network."""
+    import importlib
+    import shutil
+
+    from plugins._sdk import clipskitty_sdk  # the SDK, on the path the engine puts it on
+
+    listing = importlib.import_module(clipskitty_sdk.__name__ + ".listing")
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("needs git")
+    config = tmp_path / "gitconfig"
+    config.write_text("")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for key, value in (("GIT_AUTHOR_NAME", "Test Owner"), ("GIT_COMMITTER_NAME", "Test Owner"),
+                       ("GIT_AUTHOR_EMAIL", "test-owner@example.com"),
+                       ("GIT_COMMITTER_EMAIL", "test-owner@example.com")):
+        monkeypatch.setenv(key, value)
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        monkeypatch.delenv(key, raising=False)
+
+    def run(cwd, *args):
+        return subprocess.run([git, *args], cwd=str(cwd), check=True, capture_output=True, text=True).stdout
+
+    owner, name, path = "test-owner", "word-moments", "plugins/word-moments"
+    root, bare = tmp_path / "work" / name, tmp_path / "remote.git"
+    folder = root / path
+    (folder / "src").mkdir(parents=True)
+    (folder / "src" / "main.py").write_text("from clipskitty_sdk import run\n\n\ndef main(job):\n    job.finish()\n\n\n"
+                                            "if __name__ == \"__main__\":\n    run(main)\n")
+
+    def write_manifest(version):
+        data = {"manifest_version": 1, "id": f"{owner}/{name}", "name": "Word Moments", "version": version,
+                "kind": "pipeline", "capability": "highlight_detection", "license": "MIT",
+                "description": "Finds the moments when the commentary says one of your words.",
+                "repository": f"https://github.com/{owner}/{name}",
+                "requires": {"clips_kitty": ">=2.0", "plugin_api": 1},
+                "run": {"command": ["{python}", "src/main.py"]}, "execution": "local", "inputs": ["transcript"],
+                "outputs": ["ranges"], "permissions": ["transcript.read"], "category": "gaming"}
+        (folder / "clipskitty.yaml").write_text(yaml.safe_dump(data, sort_keys=False))
+
+    write_manifest("1.0.0")
+    run(tmp_path, "init", "-q", "--bare", str(bare))
+    run(root, "init", "-q")
+    run(root, "checkout", "-q", "-b", "main")
+    run(root, "remote", "add", "origin", f"https://github.com/{owner}/{name}")
+    run(root, "config", "remote.origin.pushurl", str(bare))
+    run(root, "add", "-A")
+    run(root, "commit", "-q", "-m", "1.0.0")
+    run(root, "push", "-q", "-u", "origin", "main")
+    out = tmp_path / "work" / f"{name}.yaml"
+    quiet = {"stdout": io.StringIO(), "stderr": io.StringIO()}
+    assert listing.run(folder, section="gaming/generic", aliases=["word moments"], out=out, today="2026-10-07",
+                       **quiet) == 0, quiet["stderr"].getvalue()
+    write_manifest("1.1.0")
+    run(root, "commit", "-q", "-am", "1.1.0")
+    run(root, "tag", "v1.1.0")
+    run(root, "push", "-q", "--tags", "origin", "main")
+    assert listing.run(folder, to=out, **quiet) == 0, quiet["stderr"].getvalue()
+
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    sections, found = catalog.read_sections(ROOT / "awesome-clips-kitty")
+    assert found == []
+    assert registry.check_listing(data, f"{owner}/{name}.yaml", folder="pipelines", sections=sections) == []
+    assert [v["version"] for v in data["versions"]] == ["1.0.0", "1.1.0"] and data["path"] == path
+
+    # The build, with the manifests read from the bare repository at each commit.
+    catalog_dir = tmp_path / "catalog"
+    (catalog_dir / "registry" / "pipelines" / owner).mkdir(parents=True)
+    (catalog_dir / "registry" / "blocklist.yaml").write_text("[]\n")
+    shutil.copy(ROOT / "awesome-clips-kitty" / "registry" / "sections.yaml", catalog_dir / "registry")
+    shutil.copy(out, catalog_dir / "registry" / "pipelines" / owner / f"{name}.yaml")
+
+    def fetch(url):
+        m = re.match(rf"https://raw\.githubusercontent\.com/{owner}/{name}/([0-9a-f]{{40}})/(.+)$", url)
+        assert m, url
+        return run(bare, "show", f"{m.group(1)}:{m.group(2)}")
+
+    def on_branch(o, r, commit):
+        assert (o, r) == (owner, name)
+        return bool(run(bare, "branch", "--contains", commit).strip())
+
+    index, problems = registry.build_index(catalog_dir, fetch=fetch, on_branch=on_branch)
+    assert problems == []
+    (plugin,) = index["plugins"]
+    assert (plugin["id"], plugin["section"], plugin["path"], plugin["aliases"]) == (
+        f"{owner}/{name}", "gaming/generic", path, ["word moments"])
+    newest_first = [(v["version"], v["commit"], v.get("tag")) for v in reversed(data["versions"])]
+    assert [(v["version"], v["commit"], v.get("tag")) for v in plugin["versions"]] == newest_first
+    assert newest_first[0][2] == "v1.1.0" and newest_first[1][2] is None
+
+    # The SDK's copies of the catalog's rules are the catalog's.
+    assert listing.SECTION_PATTERN == catalog.SECTION_RE.pattern
+    assert listing.OFFICIAL_OWNERS == catalog.OFFICIAL_OWNERS
+    longest = [f"{i}".rjust(listing.MAX_ALIAS_LENGTH, "x") for i in range(listing.MAX_ALIASES)]
+    assert registry.check_listing({**data, "aliases": longest}, f"{owner}/{name}.yaml") == []
+    for aliases in ([*longest, "one more"], ["x" * (listing.MAX_ALIAS_LENGTH + 1)]):
+        assert registry.check_listing({**data, "aliases": aliases}, f"{owner}/{name}.yaml") == [
+            "aliases: at most 10 words or short phrases"]
+
+
 def _this_repository(url):
     """The project's own listings point at commits of this repository. Read
     each manifest at its own commit with git, so the test needs no network.
