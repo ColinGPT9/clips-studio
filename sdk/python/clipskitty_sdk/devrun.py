@@ -16,7 +16,7 @@ import json
 import subprocess
 from pathlib import Path, PurePosixPath
 
-from . import host
+from . import host, samples
 from .contract import PLANNED_STEPS, STEPS, _number
 from .job import RESULT_FILE
 from .lint import lint_folder
@@ -32,6 +32,12 @@ MOMENT_STEPS = ("understand", "rate")
 DEFAULT_MOMENT_SCORE = 60
 SAMPLE_MOMENTS = 5
 SAMPLE_SECONDS = 20.0
+# What run --sample says when it can't make the test video.
+SAMPLE_NEEDS_FFMPEG = ("--sample needs FFmpeg to make the test video. Install FFmpeg, or pass --ffmpeg and "
+                       f"--ffprobe. An installed Clips Kitty has both, in {samples.INSTALLED_FFMPEG}.")
+SAMPLE_WITHOUT_VIDEO = (f"no FFmpeg here, so this run gets the sample transcript and a "
+                        f"{samples.SAMPLE_VIDEO_SECONDS:g}-second length but no video; this plugin doesn't read "
+                        "the video, so that is all it needs")
 # The width of "warning: ", so a hint lines up under the line it belongs to.
 _INDENT = " " * len("warning: ")
 
@@ -127,6 +133,30 @@ def run_steps(manifest: dict, asked: str | None) -> tuple[str, ...]:
         if problem:
             raise Refused(f"--steps: the pipeline {name} {problem}")
     return tuple(step for step in MOMENT_STEPS if step in chosen)
+
+
+def touches_video(manifest: dict) -> bool:
+    """Whether a plugin reads the video or runs FFmpeg (the video.read or
+    ffmpeg permission). One that does neither, such as a plugin that works
+    on the transcript, never sees the video file."""
+    return bool({"video.read", "ffmpeg"} & set(manifest.get("permissions") or []))
+
+
+def sample_video_wanted(manifest: dict, ffmpeg: str | None, given: dict) -> bool:
+    """For run --sample: True when the run gets the sample video (made with
+    `ffmpeg`), False when there is no FFmpeg here and the plugin never
+    touches the video, so the sample transcript and length are all it needs.
+    `given` maps each option --sample replaces (--video, --transcript,
+    --duration) to its value; one that is set is refused, and so is a
+    plugin that needs the video when there is no FFmpeg."""
+    for option, value in given.items():
+        if value is not None:
+            raise Refused(f"use --sample or {option}, not both")
+    if ffmpeg:
+        return True
+    if touches_video(manifest):
+        raise Refused(SAMPLE_NEEDS_FFMPEG)
+    return False
 
 
 def time_limit(manifest: dict, steps) -> float:
@@ -323,6 +353,7 @@ def label_warnings(manifest: dict, job_folder: Path) -> list[str]:
     return out
 
 
-__all__ = ["Refused", "games_for", "label_warnings", "manifest_refusal", "models_for",
-           "probe_duration", "read_moments", "read_transcript", "report_lines", "run_steps", "sample_moments",
-           "setting_value", "start", "time_limit", "transcript_end", "typed_settings"]
+__all__ = ["SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
+           "manifest_refusal", "models_for", "probe_duration", "read_moments", "read_transcript", "report_lines",
+           "run_steps", "sample_moments", "sample_video_wanted", "setting_value", "start", "time_limit",
+           "touches_video", "transcript_end", "typed_settings"]

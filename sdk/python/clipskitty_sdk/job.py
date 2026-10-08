@@ -496,7 +496,7 @@ def no_job_folder_text() -> str:
     """What run() prints when the plugin was started without a job folder,
     as when a developer runs `python src/main.py`."""
     return ("This is a Clips Kitty plugin: Clips Kitty starts it with a job folder.\n"
-            f"To try it, run: {python_command()} run <the plugin's folder>\n"
+            f"To try it, run: {python_command()} run <the plugin's folder> --sample\n"
             "(no job folder: pass it as the first argument or set CLIPSKITTY_JOB)\n")
 
 

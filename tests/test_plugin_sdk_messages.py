@@ -443,7 +443,7 @@ def test_hints_name_the_python_that_is_running(monkeypatch):
     other = str(Path(sys.executable).parent / "another" / "python.exe")
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: other if name == "python" else None)
     assert python_command() == "py -m clipskitty_sdk"
-    assert "To try it, run: py -m clipskitty_sdk run <the plugin's folder>\n" in no_job_folder_text()
+    assert "To try it, run: py -m clipskitty_sdk run <the plugin's folder> --sample\n" in no_job_folder_text()
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None)
     assert python_command() == "py -m clipskitty_sdk"  # no python on PATH at all
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: sys.executable if name == "python" else None)
@@ -451,7 +451,7 @@ def test_hints_name_the_python_that_is_running(monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: other)
     assert python_command() == "python -m clipskitty_sdk"
-    assert "To try it, run: python -m clipskitty_sdk run <the plugin's folder>\n" in no_job_folder_text()
+    assert "To try it, run: python -m clipskitty_sdk run <the plugin's folder> --sample\n" in no_job_folder_text()
 
 
 def test_run_warns_when_ffmpeg_is_missing(tmp_path, capsys, monkeypatch):
@@ -599,7 +599,7 @@ def test_running_main_py_directly_explains_and_exits_2(tmp_path, monkeypatch):
     assert done.returncode == 2 and done.stdout == ""
     assert done.stderr == no_job_folder_text() == (
         "This is a Clips Kitty plugin: Clips Kitty starts it with a job folder.\n"
-        f"To try it, run: {python_command()} run <the plugin's folder>\n"
+        f"To try it, run: {python_command()} run <the plugin's folder> --sample\n"
         "(no job folder: pass it as the first argument or set CLIPSKITTY_JOB)\n")
     # read_job's own message is unchanged.
     monkeypatch.setattr(sys, "argv", ["main.py"])

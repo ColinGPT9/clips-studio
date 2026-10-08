@@ -1141,12 +1141,12 @@ def test_run_needs_no_video_for_a_moment_only_plugin(tmp_path, capsys):
     code, seen = _dev_run(tmp_path, _rater(tmp_path), "--duration", "120")
     assert code == 0 and "video" not in seen
     capsys.readouterr()
-    # One that reads the video, or one asked to find moments, still needs it.
+    # One that reads the video still needs it, whether it finds moments or rates them.
     looker = _plugin(tmp_path, "frame-rater", "Frame Rater", ["moments", "video"], ["ratings"], ["video.read"])
     for plugin in (looker, ECHO, _all_in_one(tmp_path)):
         assert _dev_run(tmp_path, plugin, "--duration", "120", job=f"no-video-{plugin.name}") == (2, None)
-        assert ("error: --video is needed: a run that finds moments, or a plugin with the video.read permission, "
-                "needs a video to run on") in capsys.readouterr().err
+        assert ("error: --video is needed: a plugin with the video.read permission needs a video to run on, "
+                "or try it with --sample") in capsys.readouterr().err
     code, seen = _dev_run(tmp_path, looker, "--video", str(_a_video(tmp_path)), "--duration", "120", job="video")
     assert code == 0 and seen["video"]["duration"] == 120.0 and seen["steps"] == ["rate"]
 

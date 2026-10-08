@@ -3,11 +3,13 @@
 """Developer tools: check a plugin, and run it on a video the way Clips Kitty would.
 
     python -m clipskitty_sdk validate <plugin folder>
-    python -m clipskitty_sdk run <plugin folder> [--video clip.mp4] [--transcript t.json]
+    python -m clipskitty_sdk run <plugin folder> [--sample | --video clip.mp4] [--transcript t.json]
                                  [--duration SECONDS] [--moments moments.json]
                                  [--steps find | understand rate] [--min-score 55]
                                  [--set name=value ...] [--secret name=value ...]
                                  [--model name=path ...] [--game NAME ...] [--game-hint TAGS]
+    python -m clipskitty_sdk sample OUT.mp4
+    python -m clipskitty_sdk frame VIDEO --at SECONDS [--region "0.30,0.10,0.40,0.10"] [--out FILE.png]
     python -m clipskitty_sdk schema [--write]
     python -m clipskitty_sdk --version
 
@@ -28,11 +30,19 @@ it is given, as far as the plugin does each. --steps asks for `find`, or for
 `understand`, `rate` or both (as separate words or with commas). A run that
 understands or rates takes its moments from --moments (a list of {start,
 end, score?, label?, title?, reason?}, or a finder's result.json), or gets 5
-sample moments spread through the video. --video is needed for a find run
-and for a plugin with the video.read permission. --set values follow the
-setting's type. The run may take as long as Clips Kitty would allow
-(run.timeout_minutes, else 60 minutes to find and 10 to understand or rate)
-unless --timeout says otherwise.
+sample moments spread through the video. --video is needed only for a plugin
+with the video.read permission; a run without one is fitted to --duration,
+else to the end of --transcript. --sample hands over a 40-second test video
+and its transcript instead, made in the job folder (clipskitty_sdk.samples);
+a plugin that never touches the video gets the transcript even without
+FFmpeg. --set values follow the setting's type. The run may take as long as
+Clips Kitty would allow (run.timeout_minutes, else 60 minutes to find and 10
+to understand or rate) unless --timeout says otherwise.
+
+`sample` writes that test video and transcript somewhere else, and `frame`
+writes one frame of a video as a PNG, with a box drawn around --region and
+the region in pixels, to measure where something shows on screen. Neither
+writes inside a plugin's folder: Clips Kitty copies everything there.
 
 Exit code 0 means the app would accept the plugin's answer, 1 that the plugin
 failed or the app would refuse its answer, 2 that the run couldn't start.
@@ -49,7 +59,8 @@ import tempfile
 import threading
 from pathlib import Path
 
-from . import __version__, devrun, host
+from . import __version__, devrun, host, samples
+from ._hints import python_command
 from .contract import MAX_RANGES, PLUGIN_API_VERSION, ContractError, _number
 from .job import RESULT_FILE
 from .manifest import SCHEMA_FILE, schema_text, uses_steps, validate_folder
@@ -159,12 +170,16 @@ def cmd_run(args) -> int:
         print("error: fix the manifest first; Clips Kitty would refuse to install this plugin", file=sys.stderr)
         return 2
     perms = set(manifest.get("permissions") or [])
+    ffmpeg = args.ffmpeg or shutil.which("ffmpeg")
+    ffprobe = args.ffprobe or shutil.which("ffprobe")
     try:
         steps = devrun.run_steps(manifest, ",".join(args.steps) if args.steps else None)
         find_run = "find" in steps
-        if args.video is None and (find_run or "video.read" in perms):
-            raise devrun.Refused("--video is needed: a run that finds moments, or a plugin with the "
-                                 "video.read permission, needs a video to run on")
+        sample_video = args.sample and devrun.sample_video_wanted(
+            manifest, ffmpeg, {"--video": args.video, "--transcript": args.transcript, "--duration": args.duration})
+        if args.video is None and not args.sample and "video.read" in perms:
+            raise devrun.Refused("--video is needed: a plugin with the video.read permission needs a video to "
+                                 "run on, or try it with --sample")
         video = Path(args.video).resolve() if args.video is not None else None
         if video is not None and not video.is_file():
             raise devrun.Refused(f"no such video: {video}")
@@ -185,17 +200,23 @@ def cmd_run(args) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    ffmpeg = args.ffmpeg or shutil.which("ffmpeg")
-    ffprobe = args.ffprobe or shutil.which("ffprobe")
+    if args.sample:
+        print(f"note: --sample: {samples.SAMPLE_NOTE if sample_video else devrun.SAMPLE_WITHOUT_VIDEO}",
+              file=sys.stderr)
     if "ffmpeg" in perms and not ffmpeg:
         print("warning: this plugin asks for ffmpeg, but FFmpeg isn't on PATH. Install FFmpeg, or pass --ffmpeg "
               "and --ffprobe.", file=sys.stderr)
-    duration = devrun.probe_duration(ffprobe, video) if video is not None else None
-    if duration is None:
-        duration = args.duration
-    if "transcript.read" in perms and not args.transcript:
-        print("note: no --transcript given, so the plugin gets an empty one", file=sys.stderr)
-    transcript = devrun.read_transcript(args.transcript)
+    if args.sample:  # the sample video is made in the job folder, below
+        duration, transcript = samples.SAMPLE_VIDEO_SECONDS, samples.sample_transcript()
+    else:
+        duration = devrun.probe_duration(ffprobe, video) if video is not None else None
+        if duration is None:
+            duration = args.duration
+        if "transcript.read" in perms and not args.transcript:
+            print("note: no --transcript given, so the plugin gets an empty one", file=sys.stderr)
+        transcript = devrun.read_transcript(args.transcript)
+        if video is None and duration is None:
+            duration = devrun.transcript_end(transcript)  # what the answer is fitted to
 
     limits = {"max_clips": args.max_clips or None, "min_duration": args.min_duration,
               "max_duration": args.max_duration}
@@ -225,6 +246,14 @@ def cmd_run(args) -> int:
 
     # Every check has passed: only now is the job folder made.
     job_folder = Path(args.job_dir).resolve() if args.job_dir else Path(tempfile.mkdtemp(prefix="clipskitty-job-"))
+    if sample_video:
+        try:
+            video = samples.make_sample(job_folder / "sample.mp4", ffmpeg)[0].resolve()
+        except samples.SampleError as e:
+            print(f"error: {e}", file=sys.stderr)
+            if not args.job_dir:
+                shutil.rmtree(job_folder, ignore_errors=True)
+            return 2
     job, transcript = host.build_job(
         manifest,
         settings=settings,
@@ -314,6 +343,67 @@ def _show_answers(job_folder: Path, steps: tuple[str, ...], moments: list[dict])
     return 0
 
 
+def _inside_plugin(what: str, example: str) -> str:
+    return (f"error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. "
+            f"Write the {what} somewhere else, for example: {example}")
+
+
+def cmd_sample(args) -> int:
+    out = Path(args.out)
+    if samples.plugin_folder_holding(out) is not None:
+        print(_inside_plugin("sample", f"{python_command()} sample ../sample.mp4"), file=sys.stderr)
+        return 2
+    ffmpeg = args.ffmpeg or shutil.which("ffmpeg")
+    if not ffmpeg:
+        print("error: sample needs FFmpeg to make the test video. Install FFmpeg, or pass --ffmpeg. An installed "
+              f"Clips Kitty has it, in {samples.INSTALLED_FFMPEG}.", file=sys.stderr)
+        return 2
+    try:
+        video, transcript = samples.make_sample(out, ffmpeg)
+    except samples.SampleError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    print(f"wrote {video} and {transcript}: {samples.SAMPLE_NOTE}")
+    return 0
+
+
+def cmd_frame(args) -> int:
+    region = None
+    if args.region:
+        text = ",".join(args.region)  # PowerShell hands an unquoted 0.30,0.10,... over as several words
+        try:
+            region = samples.parse_region(text)
+        except ValueError as e:
+            print(f"error: --region: {e}", file=sys.stderr)
+            return 2
+    if not (_number(args.at) and args.at >= 0):
+        print("error: --at must be a number of seconds, 0 or more", file=sys.stderr)
+        return 2
+    out = Path(args.out) if args.out else Path(f"frame-{args.at:g}s.png")
+    if samples.plugin_folder_holding(out) is not None:
+        print(_inside_plugin("frame", "--out ../frame.png"), file=sys.stderr)
+        return 2
+    video = Path(args.video)
+    if not video.is_file():
+        print(f"error: no such video: {video}", file=sys.stderr)
+        return 2
+    ffmpeg = args.ffmpeg or shutil.which("ffmpeg")
+    if not ffmpeg:
+        print("error: frame needs FFmpeg to read the video. Install FFmpeg, or pass --ffmpeg. An installed Clips "
+              f"Kitty has it, in {samples.INSTALLED_FFMPEG}.", file=sys.stderr)
+        return 2
+    try:
+        width, height, box = samples.write_frame(ffmpeg, video, args.at, out, region)
+    except samples.SampleError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    print(f"wrote {out}: the frame at {args.at:g} s of this {width}x{height} video")
+    if box is not None:
+        x, y, w, h = box
+        print(f'region "{samples.region_text(text)}" is x={x} y={y} w={w} h={h} on this {width}x{height} video')
+    return 0
+
+
 def version_line() -> str:
     """What --version prints: the SDK's version and the plugin contract's."""
     return f"clipskitty-sdk {__version__} (plugin contract {PLUGIN_API_VERSION})"
@@ -330,7 +420,9 @@ def main(argv: list[str] | None = None) -> int:
     schema.add_argument("--write", action="store_true", help="write it to the SDK's schema/ folder (contributors)")
     run = sub.add_parser("run", help="run a plugin on a video the way Clips Kitty would")
     run.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml)")
-    run.add_argument("--video", help="a video file to run it on (needed to find moments, and with video.read)")
+    run.add_argument("--video", help="a video file to run it on (needed with video.read)")
+    run.add_argument("--sample", action="store_true",
+                     help="run it on a 40-second test video and its transcript, made in the job folder with FFmpeg")
     run.add_argument("--transcript", help="transcript.json ({language, segments}) to hand over")
     run.add_argument("--duration", type=float, metavar="SECONDS",
                      help="the video's length, when there is no --video or FFprobe can't read it")
@@ -365,8 +457,21 @@ def main(argv: list[str] | None = None) -> int:
                      help="stop the plugin after this long (default: what Clips Kitty allows: "
                           "run.timeout_minutes, else 60 minutes to find and 10 to understand or rate)")
     run.add_argument("--job-dir", help="where to build the job folder (default: a new temporary folder)")
+    sample = sub.add_parser("sample", help="write a 40-second test video and its transcript, made with FFmpeg")
+    sample.add_argument("out", metavar="OUT.mp4",
+                        help="where to write the video; its transcript goes beside it, as OUT.transcript.json")
+    sample.add_argument("--ffmpeg")
+    frame = sub.add_parser("frame", help="write one frame of a video as a PNG, to measure where things show")
+    frame.add_argument("video", help="the video")
+    frame.add_argument("--at", type=float, required=True, metavar="SECONDS", help="the frame's time")
+    frame.add_argument("--region", nargs="+", metavar="LEFT,TOP,WIDTH,HEIGHT",
+                       help='a box to draw, as fractions of the frame from 0 to 1, such as "0.30,0.10,0.40,0.10" '
+                            "(quote it); prints it in pixels")
+    frame.add_argument("--out", metavar="FILE.png", help="where to write it (default: frame-SECONDSs.png here)")
+    frame.add_argument("--ffmpeg")
     args = parser.parse_args(argv)
-    return {"validate": cmd_validate, "schema": cmd_schema, "run": cmd_run}[args.command](args)
+    return {"validate": cmd_validate, "schema": cmd_schema, "run": cmd_run, "sample": cmd_sample,
+            "frame": cmd_frame}[args.command](args)
 
 
 if __name__ == "__main__":

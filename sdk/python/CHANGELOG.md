@@ -21,6 +21,10 @@ The installed app puts its own SDK on the plugin's path, and it wins over one in
 - `run(main)` started without a job folder (`python src/main.py`) says how to try the plugin and exits with 2. `job.settings[name]` for a setting with no value raises `SettingMissing`: creators see a plain line and the log gets the developer's hint. A slip in the plugin's own code (a `KeyError`, `TypeError` and the like) gives creators "it stopped on a mistake in its own code. Ask its developer to fix it.", with the exception and its line in the log; other exceptions keep their message.
 - `job.rate` and `job.add_range` show the score they refused: "(got 140)".
 - `clipskitty_sdk.devrun` holds the core of `run`, so other tools can run a plugin the same way.
+- `python -m clipskitty_sdk sample OUT.mp4` writes a 40-second test video, made only with FFmpeg's own generators (a red banner at the top and a loud sound from 22 to 27 s, scene cuts at 10, 20 and 30 s), and `OUT.transcript.json`, which says "quark burst" from 21 to 26 s. It refuses to write inside a plugin's folder, which Clips Kitty copies on install.
+- `run --sample` makes that video and transcript in the job folder and runs the plugin on them. A plugin without `video.read` or `ffmpeg` needs no FFmpeg for it: it gets the transcript and a 40-second length. A find run of a plugin without `video.read` no longer needs `--video`: its moments are fitted to `--duration`, else to the end of `--transcript`.
+- `python -m clipskitty_sdk frame VIDEO --at SECONDS` writes one frame as a PNG; with `--region "0.30,0.10,0.40,0.10"` it draws a box around that part of the screen and prints it in pixels. `--region` takes the numbers as one argument or several. Like `sample`, it refuses to write inside a plugin's folder.
+- `clipskitty_sdk.samples`: `sample_transcript()`, `SAMPLE_VIDEO_SECONDS`, `make_sample()`, `parse_region()`, `region_pixels()` and `write_frame()`.
 
 ## 1.1.0
 
