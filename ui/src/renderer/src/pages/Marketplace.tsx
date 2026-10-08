@@ -1001,6 +1001,22 @@ function Browse({
   const [refreshing, setRefreshing] = useState(false)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
   const [stamp, setStamp] = useState(0)
+  // The other kinds that have something in them. One with nothing made for
+  // Clips Kitty yet gets no tab, rather than a tab that opens on nothing.
+  const [present, setPresent] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let live = true
+    plugins
+      .catalog()
+      .then((r) => live && setPresent(new Set(r.entries.map((e) => e.kind))))
+      .catch(() => live && setPresent(new Set()))
+    return () => {
+      live = false
+    }
+  }, [stamp])
+  useEffect(() => {
+    if (view !== 'pipeline' && !present.has(view)) setView('pipeline')
+  }, [present])
 
   useEffect(() => {
     let live = true
@@ -1118,7 +1134,10 @@ function Browse({
       </div>
 
       <div className="flex flex-wrap gap-1.5 items-center" role="tablist" aria-label={t('Type')}>
-        {[['pipeline', KIND_LABELS.pipeline], ...Object.entries(DIRECTORY_KINDS)].map(([id, label]) => (
+        {[
+          ['pipeline', KIND_LABELS.pipeline],
+          ...Object.entries(DIRECTORY_KINDS).filter(([id]) => present.has(id))
+        ].map(([id, label]) => (
           <button
             key={id}
             role="tab"

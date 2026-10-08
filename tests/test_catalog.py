@@ -22,7 +22,7 @@ TODAY = "2026-10-07"
 
 SECTIONS = {
     "app": {"sections": [{"id": "built-with", "title": "Built with Clips Kitty", "relationship": "built-with"},
-                         {"id": "works-with", "title": "Work with Clips Kitty", "relationship": "related"},
+                         {"id": "works-with", "title": "Work with Clips Kitty"},
                          {"id": "video-clipping", "title": "Video clipping",
                           "description": "Apps that cut long videos into short ones."},
                          {"id": "gaming", "title": "Gaming"}],
@@ -35,7 +35,7 @@ SECTIONS = {
 }
 
 APP = {"name": "Example Clipper", "description": "Turns long videos into vertical clips.",
-       "section": "video-clipping", "relationship": "related", "license": "MIT",
+       "section": "video-clipping", "relationship": "built-with", "uses": "api", "license": "MIT",
        "source": {"github": "https://github.com/example-org/example-clipper"}, "runs": "local",
        "platforms": ["windows", "linux"], "tags": ["subtitles"], "added": TODAY, "checked": TODAY}
 
@@ -77,7 +77,8 @@ def cat(tmp_path):
 def test_an_entry_goes_into_the_index_with_its_labels_and_numbers(cat):
     cat.write("apps/example-clipper.yaml", APP)
     cat.write("models/example-speech.yaml", {
-        "name": "Example Speech", "description": "Speech to text.", "section": "speech", "relationship": "related",
+        "name": "Example Speech", "description": "Speech to text.", "section": "speech", "relationship": "built-with",
+        "uses": "api",
         "license": "Apache-2.0", "source": {"huggingface": "example-org/example-speech"}, "added": TODAY})
     cat.stats("metrics.json", {
         "generated_at": "2026-10-07T05:00:00Z",
@@ -88,7 +89,7 @@ def test_an_entry_goes_into_the_index_with_its_labels_and_numbers(cat):
     assert problems == []
     by_id = {e["id"]: e for e in index["catalog"]}
     app = by_id["apps/example-clipper"]
-    assert app["kind"] == "app" and app["badges"] == ["community"] and app["relationship"] == "related"
+    assert app["kind"] == "app" and app["badges"] == ["community"] and app["relationship"] == "built-with"
     assert app["metrics"] == {"github": {"stars": 1234, "pushed_at": "2026-09-30", "archived": False,
                                          "has_discussions": True, "discussions": 12}}
     assert app["discussions_url"] == "https://github.com/example-org/example-clipper/discussions"
@@ -105,10 +106,10 @@ def test_an_entry_goes_into_the_index_with_its_labels_and_numbers(cat):
     ({"license": "NOASSERTION"}, "license: the project's licence"),
     ({"license": "Proprietary licence"}, "license: the project's licence"),
     ({"relationship": "built-for"}, "built-for is for installable plugins"),
-    ({"relationship": "built-with"}, "uses: what it uses of Clips Kitty"),
-    ({"uses": "api"}, "uses: only for built-with projects"),
+    ({"relationship": "related"}, "relationship: built-with (it uses Clips Kitty's API or SDK)"),
+    ({"relationship": "related"}, "A project that doesn't is not an entry"),
+    ({"uses": None}, "uses: what it uses of Clips Kitty"),
     ({"section": "nowhere"}, "section: one of built-with, works-with, video-clipping, gaming"),
-    ({"section": "built-with"}, "relationship: the section built-with is for built-with projects"),
     ({"section": "works-with"}, "adapter: an app in works-with names the listed pipeline"),
     ({"source": {}}, "source: github, huggingface or url"),
     ({"source": {"github": "https://gitlab.com/example-org/x"}}, "source.github: https://github.com/<owner>/<repo>"),
@@ -207,7 +208,7 @@ def test_a_download_link_must_be_a_page_on_the_projects_own_site(cat, source, fr
 
 def _fetched(source):
     return {"id": "apps/example-clipper", "kind": "app", "name": "Example Clipper", "license": "MIT",
-            "source": {"github": GH, **source}}
+            "relationship": "built-with", "source": {"github": GH, **source}}
 
 
 @pytest.mark.parametrize("homepage, download", [
@@ -355,7 +356,7 @@ def test_file_names_and_models_are_checked(cat):
     cat.write("apps/Bad_Name.yaml", APP)
     cat.write("apps/nested/deeper.yaml", APP)
     cat.write("models/no-home.yaml", {"name": "No home", "description": "A model.", "section": "speech",
-                                      "relationship": "related", "license": "MIT", "added": TODAY,
+                                      "relationship": "built-with", "uses": "api", "license": "MIT", "added": TODAY,
                                       "source": {"github": "https://github.com/example-org/model"}})
     cat.write("apps/with-models.yaml", {**APP, "models": [{"huggingface": "not a model id"}]})
     problems = cat.build()[1]
@@ -495,6 +496,7 @@ OWN_COUNTER = "https://github.com/ColinGPT9/awesome-clips-kitty/releases/downloa
 
 def _remote_index():
     entry = {"id": "apps/x", "kind": "app", "name": "X", "license": "MIT", "featured": {"reason": "Ours", "date": TODAY},
+             "relationship": "built-with",
              "source": {"github": "https://github.com/example-org/x"}, "badges": ["official", "compatible", "featured"]}
     own = {**entry, "id": "tools/sdk", "kind": "tool", "source": {"github": "https://github.com/ColinGPT9/clips-studio"},
            "badges": ["community"]}
@@ -516,8 +518,22 @@ def test_only_the_bundled_index_gives_labels_or_counts_installs():
                                                  ours=True)
 
 
+def test_a_link_to_another_project_is_not_an_entry_whatever_a_list_says():
+    """Only what is built with Clips Kitty is shown. The build refuses any
+    other entry (the parametrized cases above); the app drops one that
+    arrives in a fetched list, and one that says nothing of itself."""
+    for said in ({"relationship": "related"}, {"relationship": "built-for"}, {}):
+        index = _remote_index()
+        index["catalog"][0] = {**index["catalog"][0], **said}
+        if not said:
+            del index["catalog"][0]["relationship"]
+        for ours in (False, True):
+            assert [e["id"] for e in registry.check_index(index, ours=ours)["catalog"]] == ["tools/sdk"]
+
+
 def test_an_entry_from_an_index_keeps_only_well_formed_fields():
     bad = {"id": "apps/odd", "kind": "app", "name": "Odd", "license": "MIT", "source": {"github": "https://github.com/a/b"},
+           "relationship": "built-with",
            "adapter": ["not", "an", "id"], "games": "Valorant", "platforms": [1, "windows"], "unknown": "x",
            "discussions_url": "javascript:alert(1)",
            "metrics": {"github": {"stars": "lots", "pushed_at": 5}, "models": {"a/b": None, "c/d": {"downloads": 3}},

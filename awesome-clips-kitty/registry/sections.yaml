@@ -10,34 +10,6 @@ app:
       title: Built with Clips Kitty
       description: Complete applications that use the Clips Kitty API or SDK.
       relationship: built-with
-    - id: works-with
-      title: Work with Clips Kitty
-      description: Existing applications that have a Clips Kitty adapter, so they can run through Clips Kitty.
-      relationship: related
-    - id: companion
-      title: Companion apps
-      description: Apps that go well with Clips Kitty, such as editors and recorders.
-      relationship: related
-    - id: video-clipping
-      title: Open-source video clipping
-      description: Open-source apps that turn long videos into short clips. Not connected to Clips Kitty yet; the ones with a licence and design that allow it are candidates for adapters.
-      relationship: related
-    - id: video-ai
-      title: Open-source video AI
-      description: Open-source apps for captions, dubbing, reframing and other video AI work.
-      relationship: related
-    - id: gaming
-      title: Gaming
-      description: Open-source apps for game clips and highlights.
-      relationship: related
-    - id: sports
-      title: Sports
-      description: Open-source apps for sports highlights and match analysis.
-      relationship: related
-    - id: automation
-      title: Automation
-      description: Apps that run steps on their own, such as posting a clip once it is ready.
-      relationship: related
 
 pipeline:
   sections:

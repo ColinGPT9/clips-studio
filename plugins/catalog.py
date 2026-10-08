@@ -18,8 +18,9 @@ people read. Both come from scripts/build_registry_index.py.
 
 Three things are kept apart on purpose:
 - the relationship to Clips Kitty: "built-for" (runs inside it; only an
-  installable listing), "built-with" (a separate app or tool using its API or
-  SDK), "related" (relevant, not integrated);
+  installable listing) or "built-with" (a separate app or tool using its API
+  or SDK). There is no third kind: the catalog is for what people build with
+  Clips Kitty, and a link to another project is not an entry;
 - the badges: "official" (made by the Clips Kitty project) or "community" (the
   default), "compatible" (an installable version passed the automated checks:
   a technical label, not a review), "featured" (picked by a maintainer);
@@ -50,7 +51,6 @@ FOLDER_OF_KIND = {v: k for k, v in {**DIRECTORY_KINDS, **INSTALLABLE_KINDS}.item
 RELATIONSHIPS = {
     "built-for": "Built for Clips Kitty",
     "built-with": "Built with Clips Kitty",
-    "related": "Related",
 }
 BADGES = {
     "official": "✓ Official",
@@ -379,9 +379,9 @@ def check_entry(data, kind: str, slug: str, sections: dict) -> list[str]:
     if not isinstance(section, str) or section not in known:
         problems.append(f"section: one of {', '.join(known) or '(none defined for this kind)'}")
     relationship = data.get("relationship")
-    if relationship not in ("built-with", "related"):
-        problems.append("relationship: built-with (it uses Clips Kitty's API or SDK) or related (it doesn't yet); "
-                        "built-for is for installable plugins, which are listings")
+    if relationship != "built-with":
+        problems.append("relationship: built-with (it uses Clips Kitty's API or SDK). A project that doesn't "
+                        "is not an entry; built-for is for installable plugins, which are listings")
     else:
         wanted = next((s.get("relationship") for s in (sections.get(kind) or {}).get("sections", [])
                        if s["id"] == section), None)

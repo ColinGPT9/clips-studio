@@ -193,7 +193,7 @@ export interface CatalogEntry {
   name: string
   description: string
   section: string
-  relationship: 'built-with' | 'related' | string
+  relationship: 'built-with' | string
   license: string
   license_note?: string
   /** download: the page people download it from; homepage: its own website (plugins/catalog.py checks both). */
@@ -977,8 +977,7 @@ export const DIRECTORY_KINDS: Record<string, string> = {
 /** How a project relates to Clips Kitty, in words (plugins/catalog.py RELATIONSHIPS). */
 export const RELATIONSHIP_LABELS: Record<string, string> = {
   'built-for': 'Built for Clips Kitty',
-  'built-with': 'Built with Clips Kitty',
-  related: 'Related'
+  'built-with': 'Built with Clips Kitty'
 }
 
 /** The catalog's labels as badges. "official" and "community" are the

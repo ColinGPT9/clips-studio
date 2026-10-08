@@ -11,7 +11,7 @@ The index is one JSON file built from the Awesome Clips Kitty catalog
                   "badges": ["community", "compatible"], "metrics": {...}, "compatibility": {...},
                   ...the latest version's manifest fields the Marketplace shows...,
                   "checks": {...}}],
-     "catalog": [{"id": "apps/example-app", "kind": "app", "name": ..., "relationship": "related",
+     "catalog": [{"id": "apps/example-app", "kind": "app", "name": ..., "relationship": "built-with",
                   "license": "MIT", "source": {"github": ...}, "badges": [...], "metrics": {...}, ...}],
      "sections": {"app": {"sections": [{"id", "title", "description"}], "wanted": [...]}, ...},
      "metrics_at": "2026-10-07",                       # when the numbers were read, if ever
@@ -474,6 +474,10 @@ def _clean_entry(e, *, ours: bool) -> dict | None:
     the fields the Marketplace shows are kept, each only when it has the
     right shape, and links only when they are what they claim to be."""
     if not isinstance(e, dict) or e.get("kind") not in catalog.DIRECTORY_KINDS.values():
+        return None
+    # Only what is built with Clips Kitty is shown, whatever a list says: a
+    # link to another project is not an entry.
+    if e.get("relationship") != "built-with":
         return None
     entry_id = e.get("id")
     folder = catalog.FOLDER_OF_KIND[e["kind"]]

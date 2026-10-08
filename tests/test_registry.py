@@ -727,7 +727,7 @@ def test_an_online_copy_older_than_this_release_adds_nothing_but_its_blocks(tmp_
 
 def _entry(slug, *, owner="someone", kind="app", **extra):
     return {"id": f"{catalog.FOLDER_OF_KIND[kind]}/{slug}", "kind": kind, "name": slug.title(), "license": "MIT",
-            "source": {"github": f"https://github.com/{owner}/{slug}"}, **extra}
+            "relationship": "built-with", "source": {"github": f"https://github.com/{owner}/{slug}"}, **extra}
 
 
 def test_a_fetched_list_cant_bring_a_bad_download_link_or_website():
