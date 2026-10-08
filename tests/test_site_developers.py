@@ -241,6 +241,10 @@ def test_no_page_says_export_or_publisher_plugins_are_coming():
     assert NO_PUBLISHER in readme
     llms = flat(llms_section())
     assert "Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial" in llms
+    # A plain-text page: the referral address follows the name, and the note follows the sentence.
+    assert ("through WoopSocial (https://woopsocial.com/?via=clipskitty) it can post to many sites at once on "
+            "the creator's own account. Affiliate link - Clips Kitty may earn a commission if you sign up "
+            "through it, at no extra cost to you.") in llms
     assert "coming later" not in llms
 
 

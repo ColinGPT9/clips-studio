@@ -71,7 +71,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md)).
 - Up to 3 plugins can suggest edits for the clips that will be made: `job.wants("edit")` answers `True` in that run.
 - Edit plugins suggest edits that wait for the creator in the editor ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step)).
-- Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](https://github.com/ColinGPT9/clips-studio#publish-to-every-platform-at-once)). `job.wants("export")` answers `False`, and `kind: publisher` is refused: plugins don't post.
+- Posting isn't a plugin step: Clips Kitty posts clips itself, and through [WoopSocial](https://woopsocial.com/?via=clipskitty) it can post to many sites at once on the creator's own account ([Publish to every platform at once](https://github.com/ColinGPT9/clips-studio#publish-to-every-platform-at-once)). `job.wants("export")` answers `False`, and `kind: publisher` is refused: plugins don't post.
+  <sub>Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</sub>
 
 ## Get listed
 

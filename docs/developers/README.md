@@ -49,7 +49,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](steps.md)).
 - Up to 3 plugins can suggest edits for the clips that will be made.
 - Edit plugins suggest edits that wait for the creator in the editor ([Steps](steps.md#suggest-edits-the-edit-step)).
-- Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)). `kind: publisher` is refused: plugins don't post.
+- Posting isn't a plugin step: Clips Kitty posts clips itself, and through [WoopSocial](https://woopsocial.com/?via=clipskitty) it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)). `kind: publisher` is refused: plugins don't post.
+  <sub>Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</sub>
 
 No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
 

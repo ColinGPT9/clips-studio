@@ -468,6 +468,11 @@ STILL_TO_COME = re.compile(r"(?<!not )\b(?:coming later|later|planned|still to c
 # What the pages say instead (D34).
 POSTING = ("Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to "
            "many sites at once on the creator's own account")
+# Every page that names WoopSocial links it with the referral address and has the note beside it. The
+# README has both once, in its publishing section; on the other pages the name itself is the link.
+REFERRAL = "https://woopsocial.com/?via=clipskitty"
+POSTING_LINKED = POSTING.replace("WoopSocial", f"[WoopSocial]({REFERRAL})")
+AFFILIATE = "Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you."
 NO_PUBLISHER = "`kind: publisher` is refused: plugins don't post."
 
 
@@ -489,19 +494,19 @@ def test_no_page_says_export_or_publisher_plugins_are_coming():
         found += [f"{path.relative_to(ROOT)}: {sentence}" for sentence in _sentences(path.read_text(encoding="utf-8"))
                   if POSTING_PLUGINS.search(sentence) and STILL_TO_COME.search(sentence)]
     assert not found, "\n".join(found)
-    for page in (ROOT / "README.md", DEV_DOCS / "README.md", SDK / "README.md", STEPS, TUTORIAL):
-        assert POSTING in flat(page.read_text(encoding="utf-8")), page.relative_to(ROOT)
+    assert POSTING in flat((ROOT / "README.md").read_text(encoding="utf-8"))
+    for page in (DEV_DOCS / "README.md", SDK / "README.md", STEPS, TUTORIAL):
+        said = flat(page.read_text(encoding="utf-8"))
+        assert POSTING_LINKED in said, page.relative_to(ROOT)
+        assert f"<sub>{AFFILIATE}</sub>" in said, page.relative_to(ROOT)
     for page in (ROOT / "README.md", DEV_DOCS / "README.md", SDK / "README.md", STEPS, DEV_DOCS / "plugin-manifest.md"):
         assert NO_PUBLISHER in flat(page.read_text(encoding="utf-8")), page.relative_to(ROOT)
-    # They link README's publishing section for WoopSocial; the only WoopSocial address any of them
-    # has is the one that section already carries, with its affiliate note.
+    # The only WoopSocial address any page has is the referral one, and the README has its note too.
     addresses = {address for path in PAGES
                  for address in re.findall(r"https?://[^\s)\"'<>]*woopsocial[^\s)\"'<>]*",
                                            path.read_text(encoding="utf-8"))}
-    assert addresses == {"https://woopsocial.com/?via=clipskitty"}
-    readme = flat((ROOT / "README.md").read_text(encoding="utf-8"))
-    assert ("Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost "
-            "to you.") in readme
+    assert addresses == {REFERRAL}
+    assert AFFILIATE in flat((ROOT / "README.md").read_text(encoding="utf-8"))
 
 
 # ---- the editor in Steps --------------------------------------------------------------------

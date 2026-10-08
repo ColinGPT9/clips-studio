@@ -337,7 +337,8 @@ python -m clipskitty_sdk listing quarkbloom-bursts --section gaming/generic
 - It sees only the banner's part of the screen and how loud the video is. It can't read the banner's words; anything else of that colour in that place fools it; a big play without the banner is missed.
 - A stream that moves the game (a webcam over it, or the game shown smaller) puts something else in the region. Such a stream needs its own `banner_region`.
 - Loud isn't the same as exciting: commentary or music at the same volume all along hides the crowd.
-- It finds moments only. Saying what happens in them (understand) and scoring moments others found (rate) are other plugins' steps, or other templates ([Steps](steps.md)). Edit plugins suggest edits for the clips ([Steps](steps.md)). Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)).
+- It finds moments only. Saying what happens in them (understand) and scoring moments others found (rate) are other plugins' steps, or other templates ([Steps](steps.md)). Edit plugins suggest edits for the clips ([Steps](steps.md)). Posting isn't a plugin step: Clips Kitty posts clips itself, and through [WoopSocial](https://woopsocial.com/?via=clipskitty) it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)).
+  <sub>Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</sub>
 - It runs on the creator's PC with the creator's rights, like any program; Clips Kitty doesn't sandbox it ([Security](security.md)).
 
 ## Where to go next

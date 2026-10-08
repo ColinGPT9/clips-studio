@@ -317,7 +317,7 @@ _Pipelines for any kind of video._
 
 ### AI assistants
 
-- [Clips Kitty MCP server and agent skill](https://github.com/ColinGPT9/clips-studio#ask-an-ai-agent-to-do-it) - Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the YouTube, Upload-Post or WoopSocial accounts connected in Clips Kitty. Ships with Clips Kitty. `AGPL-3.0-or-later` · ✓ Official · runs locally
+- [Clips Kitty MCP server and agent skill](https://github.com/ColinGPT9/clips-studio#ask-an-ai-agent-to-do-it) - Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the accounts connected in Clips Kitty. Ships with Clips Kitty. `AGPL-3.0-or-later` · ✓ Official · runs locally
 - [DaVinci Resolve MCP Server](https://github.com/samuelgursky/davinci-resolve-mcp) - MCP server that lets AI agents work in DaVinci Resolve through its scripting API, for example to import a video and add clip moments as timeline markers. `MIT` · runs locally  
   Licence note: Needs DaVinci Resolve, which is proprietary; external scripting needs the paid Studio edition, and the free edition works only through a bridge up to 21.0.x.
 - [Kinocut](https://github.com/KyaniteLabs/kinocut) - MCP server, Python library and CLI that give AI agents checked FFmpeg editing tools for trimming, captions, 9:16 resizing, scene detection and silence removal. `Apache-2.0` · runs locally  

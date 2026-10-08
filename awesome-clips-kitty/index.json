@@ -3521,7 +3521,7 @@
     "official"
    ],
    "checked": "2026-10-07",
-   "description": "Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the YouTube, Upload-Post or WoopSocial accounts connected in Clips Kitty. Ships with Clips Kitty.",
+   "description": "Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the accounts connected in Clips Kitty. Ships with Clips Kitty.",
    "id": "integrations/clips-kitty-mcp-server",
    "kind": "integration",
    "license": "AGPL-3.0-or-later",

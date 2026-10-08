@@ -55,6 +55,7 @@ CONFIRMED = {
     "https://shields.io/badges/static-badge",
     "https://img.shields.io/badge/built_for-Clips_Kitty-0ea5e9",  # the badge itself: an SVG reading "built for: Clips Kitty"
     "https://docs.pypi.org/trusted-publishers/",
+    "https://woopsocial.com/?via=clipskitty",  # the referral link every page that names WoopSocial carries
     "https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/",
     "https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/",
 }
@@ -385,6 +386,13 @@ def test_no_draft_says_export_or_publisher_plugins_are_coming():
     posting = ("Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to "
                "many sites at once on the creator's own account")
     assert posting in flat(section("Show HN")) and posting in flat(dev_post())
+    # The page names WoopSocial, so it carries the referral link and its note once, outside the drafted
+    # posts: those keep the plain name, as written to each channel's rules.
+    page = flat(outside_blocks(text()))
+    assert "[WoopSocial](https://woopsocial.com/?via=clipskitty)" in page
+    assert ("<sub>Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost "
+            "to you.</sub>") in page
+    assert "woopsocial.com" not in dev_post()
     assert "`kind: publisher` is refused: plugins don't post." in flat(section("Show HN"))
 
 
