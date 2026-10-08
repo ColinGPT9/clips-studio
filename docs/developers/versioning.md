@@ -7,9 +7,9 @@ Every version number in the platform, where it lives, and what it promises.
 | **App** | `ui/package.json`, reported by `GET /health` as `app_version` | `2.0.0` | A plugin states the app versions it works with in `requires.clips_kitty`. |
 | **Local API** | `API_VERSION` in `server/api.py`, `GET /health` → `api_version` | `1` | A stable route changes only by adding; anything else raises it ([API](api.md)). Plugin routes are experimental. |
 | **Plugin contract** | `clipskitty_sdk.PLUGIN_API_VERSION`; a plugin's `requires.plugin_api` | `1` | Within a version only optional fields are added: plugins ignore job fields they don't know, the engine ignores result fields it doesn't know. |
-| **SDK** | `clipskitty_sdk.__version__` | `1.0.0` | Its major version is the plugin contract's. A plugin that vendors an older 1.x copy still works, because the contract is `job.json` and `result.json`, not the SDK's functions. |
+| **SDK** | `clipskitty_sdk.__version__` | `1.1.0` | Its major version is the plugin contract's. A plugin that vendors an older 1.x copy still works, because the contract is `job.json` and `result.json`, not the SDK's functions. SDK 1.0.0 ignores job.json's `steps` and `moments`, so a finder that vendors it works as before; a plugin that rates or understands needs 1.1.0 (`job.rate`, `job.understand` and `job.moments` are new in it), vendored or not vendored at all. SDK 1.1.0 ignores step names and moment keys it doesn't know, so a later 1.x can add them. |
 | **Manifest** | `manifest_version` | `1` | The validator says which versions it reads. |
-| **Plugin** | `version` in its manifest (SemVer) | yours | One pipeline per plugin. A clip records `plugin` and `plugin_version` in its saved scores. |
+| **Plugin** | `version` in its manifest (SemVer) | yours | One plugin may find, understand and rate ([Steps](steps.md)). A clip records `plugin` and `plugin_version` in its saved scores. |
 | **Model** | a Hugging Face commit, an Ollama digest or a file's SHA-256 | | Pinned in the manifest; a new model revision is a new plugin version ([Model references](model-references.md)). |
 
 ## `requires.clips_kitty`
@@ -22,7 +22,7 @@ Pick the lowest version you tested with, and an upper bound only when you know a
 
 ## Updates, rollback, pins
 
-- An update installs **beside** the version in use and becomes active only once it validates. The plan shows the new version and what changes: new permissions, hosts and data warnings, and whether it now runs on a remote service.
+- An update installs **beside** the version in use and becomes active only once it validates. The plan shows the new version and what changes: new permissions, hosts and data warnings, whether it now runs on a remote service, and any step it now also does ("Now also: Rates moments").
 - **Roll back** makes the previous version active; only the active and previous versions are kept.
 - **Pin** stops the Marketplace offering a plugin's updates.
 - There are **no automatic updates**. A harmful version is handled by the block list (built), never by forcing an update.

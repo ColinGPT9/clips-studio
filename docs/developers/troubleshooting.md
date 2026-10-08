@@ -5,7 +5,7 @@ What goes wrong with plugins most often, what the message means, and what to do.
 ## Where to look
 
 - **The job's log.** Everything your plugin prints (progress messages, log lines and standard error) goes into the job's log, prefixed with your plugin's id. In the app: the queue, the job, its log. Through the API: `GET /jobs/{id}/log`.
-- **The job folders.** The last five runs are kept in `plugins/runs/` inside Clips Kitty's data folder (`%LOCALAPPDATA%\Clips Studio\data` in the installed app, `data/` in a checkout), each with the `job.json` and `transcript.json` your plugin received and whatever it wrote, `result.json` included.
+- **The job folders.** The last five runs, of every plugin, finding and rating or understanding alike, are kept in `plugins/runs/` inside Clips Kitty's data folder (`%LOCALAPPDATA%\Clips Studio\data` in the installed app, `data/` in a checkout), each with the `job.json` and `transcript.json` your plugin received and whatever it wrote, `result.json` included.
 - **Outside the app.** `python -m clipskitty_sdk run <your folder> --video <file>` builds the same job folder, runs your plugin, and prints the moments the app would take, without the app. `python -m clipskitty_sdk validate <your folder>` checks the manifest. See [Getting started](getting-started.md).
 
 ## Installing
@@ -34,6 +34,9 @@ What goes wrong with plugins most often, what the message means, and what to do.
 | "pipeline: the pipeline … isn't installed", "… is turned off" | Install it, or turn it on in Marketplace › Installed. |
 | "setting 'mode': 'explode' is not one of …", "no setting called …", "'api_key' is a secret" | Only settings your manifest declares, with values of their type; secrets are entered once in Marketplace › Installed, never in a job. |
 | "… can't be combined with Sports, Gaming scoring or Longform" | A pipeline picks the moments itself. Layouts (Vertical Live, Gaming / Reaction's split, Podcast) still work with it. |
+| "rate[0]: the pipeline … can't rate moments others found: its manifest needs moments in inputs and ratings in outputs" (or understand, and context) | The plugin doesn't do that step. Declare `moments` in `inputs` and `ratings` (or `context`) in `outputs` ([Steps](steps.md)). |
+| "pipeline: the pipeline … doesn't find moments: it rates or understands moments others found. Choose it under Rate & understand instead" | A rater or understander can't be a job's Pipeline. Name it under `rate` or `understand`. |
+| "Rate & understand can't be combined with Longform: …", "rate: … is this job's pipeline, so it already scores and describes the moments it finds" | Longform picks and writes its clips its own way. A pipeline that rates or describes its own moments does so in its find run. |
 
 ## Running
 
@@ -47,12 +50,24 @@ What goes wrong with plugins most often, what the message means, and what to do.
 | "… stopped before it finished. Try again; if it happens again, send a bug report from Feedback (it includes the details)." | Your plugin exited with a code other than 0 and no error line. Its output and the exit code are in the job log. | Report errors with `job.fail(...)`, or a `{"type": "error"}` line, in words the user understands. |
 | "Clips Kitty couldn't start …" | `run.command` couldn't be started: a program that isn't there or can't run on this PC. The reason is in the log. | Check `run.command` and that the program is in your plugin's folder. |
 | "… gave an answer Clips Kitty can't use: …" | `result.json` broke the contract: a range outside the video, end before start, a score outside 0-100, too many ranges. | The message names the field. `Job.add_range` and `Job.finish` check the same rules as you go, except the video's length, which Clips Kitty checks when it reads the result. |
-| "… took longer than its … minute limit, so Clips Kitty stopped it." | `run.timeout_minutes` (default 60, at most 24 hours). | Raise it in your manifest if your pipeline is slow on long videos. |
+| "… took longer than its … minute limit, so Clips Kitty stopped it." | `run.timeout_minutes` (default 60 for a run that finds moments, 10 for one that rates or understands them; at most 24 hours). | Raise it in your manifest if your plugin is slow on long videos. |
 | "… can't run. Its AI model '…' isn't downloaded yet. …" | A model in your manifest hasn't been downloaded (in Ollama's case, on the Models page). | Download it in Marketplace › Installed, or on the Models page for an Ollama model. Give `size_bytes` and the message shows the size. |
 | "… can't run. Its AI model '…' is shared only with people its makers give access to on Hugging Face, so Clips Kitty can't download it for you yet." | The model is gated (`gated: true`), and Clips Kitty doesn't sign in to Hugging Face yet. | Choose an ungated model. |
 | "the pipeline … can't run here: it needs Clips Kitty …" | An app update left the plugin's version range behind. | Install a newer version of the plugin. |
 | "the pipeline … is blocked: …" | The version is on a registry block list. | Remove it in the Marketplace; install a version that isn't blocked. |
 | No moments found | Your plugin returned no ranges. | Normal for a video without what it looks for; `job.finish(notes=...)` lets you say why in the log. |
+
+## Rate & understand
+
+| What you see | Why | Fix |
+|---|---|---|
+| "ignored: scores, because this run wasn't asked to rate", or your scores change nothing | The run wasn't asked to rate: your manifest doesn't declare `ratings` (with `moments` in `inputs`), or the creator chose the plugin only to understand. | Declare `ratings` and `moments`, and choose the plugin in a Rate row under **Rate & understand**. A pipeline's own scores go in its ranges' `score`. |
+| "unrecognized arguments: --moments", or "unknown input 'moments'" | The SDK you run is older than 1.1.0. | Install it again (the `pip install` line in [`sdk/python/README.md`](../../sdk/python/README.md)), or point `PYTHONPATH` at a current checkout's `sdk/python`. A plugin that vendors its own copy needs 1.1.0 too. |
+| "Clips Kitty made these clips without …" on the video page, "Going on without …" in the job log | The plugin couldn't run, or gave an answer Clips Kitty couldn't use, so it was skipped. The sentence after the name says why; the technical message is on the next log line. | Fix what it says and process the video again with `force`. Meanwhile a watched channel that posts automatically holds that video's clips for the creator, and a job told to publish when it finishes doesn't. The command-line daily upload isn't held. |
+| "… rated every moment under your minimum score", "… moment(s) rated under the minimum score (55) set aside" | A rated moment under the job's `min_score` is set aside, unless it is a must-have. | Check your scale: 55 is the app's default minimum. Rate a moment you want kept at or above it, and leave a moment you have no opinion on unrated. |
+| Your notes aren't in an older clip's title | A forced re-run keeps the titles of clips made before, so the creator's edits win. New notes show in the clip editor and reach new clips' titles. | Nothing to fix in your plugin. The creator can edit the title; clips made from now on get the notes. |
+| "… took longer than its 10 minute limit, so Clips Kitty stopped it." | A run that rates or understands has a 10-minute default. | Set `run.timeout_minutes` in your manifest. |
+| "… note(s) not kept: at most 8 for each moment" | Every plugin's notes for one moment together are kept up to 8. | Give fewer, more useful notes; at most 5 from one run. |
 
 A plugin's own Python packages are not installed by Clips Kitty yet (planned). Until then, use the standard library, the SDK, FFmpeg through `job.tools`, Ollama, or ship your plugin as an executable.
 

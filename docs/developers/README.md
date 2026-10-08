@@ -1,6 +1,6 @@
 # Platform overview
 
-Clips Kitty finds the best moments in a long video and turns them into short clips: it downloads the video, transcribes it with Whisper, picks the moments, then cuts, frames, captions and publishes them, all on the user's PC. The platform lets anyone replace **one** of those steps, picking the moments, with their own pipeline, without forking the app.
+Clips Kitty finds the best moments in a long video and turns them into short clips: it downloads the video, transcribes it with Whisper, picks the moments, then cuts, frames, captions and publishes them, all on the user's PC. The platform lets anyone take over or add to the moment steps: find, understand, rate, with their own plugin, without forking the app.
 
 That is where specialised knowledge pays: someone who knows one game, one sport or one kind of show can tell a great moment from a loud one far better than a general-purpose detector. You write the part that knows your niche. Clips Kitty does the rest, and its users find your pipeline in the Marketplace.
 
@@ -14,7 +14,7 @@ That is where specialised knowledge pays: someone who knows one game, one sport 
                      Plugin contract 1 + Python SDK (clipskitty_sdk)
                                          │
              Clips Kitty's engine: one local API (127.0.0.1:8765), one job queue,
-             one pipeline: download → transcribe → [find moments] → cut, frame, caption
+    one pipeline: download → transcribe → [find] → [understand] → [rate] → cut, frame, caption
                                          │
                 ┌────────────────────────┼────────────────────────┐
              FFmpeg                   Whisper                Ollama / Gemma
@@ -27,6 +27,8 @@ There is one API, one engine and one job queue. A community pipeline runs inside
 ## What a pipeline is
 
 A program, in any language, that Clips Kitty starts for one video. It reads a job folder (`job.json`: the video, its transcript, settings, the tools and models it asked for), works out which moments make good clips, and writes them back (`result.json`: start, end, score, label, reason). Progress goes to the app as it works. It can run entirely on the PC, call your own hosted model, or both, as long as it says so.
+
+A plugin can also work on the moments after they are found, by Clips Kitty or by a pipeline: say what happens in each one, for the titles (**understand**), or give each one a new score (**rate**). The creator chooses those under **Rate & understand** when adding a video ([Steps](steps.md)).
 
 ```text
 Clips Kitty                              your pipeline
@@ -44,6 +46,7 @@ Clips Kitty                              your pipeline
 | Install from a folder or a Git commit; update, roll back, turn off, pin, remove | built (engine routes and the Marketplace screen) |
 | Awesome Clips Kitty, the catalog the Marketplace reads: listing and entry formats, index and README build, the app's search, install from a listing, block list, labels, compatibility check, weekly numbers | built; the app reads the catalog's index from the project's main branch (it answers once merged); no public repository of its own yet, and the install counter has no address, so nothing is counted |
 | Marketplace screen in the desktop app; the Pipeline switch on a video | built and type-checked; not yet looked at on a real PC |
+| Plugins that understand and rate the moments found ([Steps](steps.md)): SDK 1.1.0, the `rate` and `understand` job options, the Rate & understand switch | built; the switch is type-checked, not yet looked at on a real PC |
 | Model references (Hugging Face, url, Ollama, bundled), one shared download, licence and size shown | built for public models; gated models planned |
 | Returning finished clip files instead of moments | planned |
 | Plugin kinds other than pipelines (caption styles, publishers, sources, providers) | planned: the manifest names them and refuses them with a message |
@@ -60,6 +63,7 @@ Clips Kitty                              your pipeline
 
 **Building**
 - [Pipeline development](pipeline-development.md): the contract, what you receive and return, testing.
+- [Steps](steps.md): find, understand and rate: which plugin does which step, and how their answers combine.
 - [SDK](sdk.md): the Python helper (`clipskitty_sdk`), every call.
 - [Plugin manifest](plugin-manifest.md): every field of `clipskitty.yaml`.
 - [Plugin development](plugin-development.md): install, update, roll back and remove, as a user and through the API.

@@ -7,7 +7,7 @@ A plugin lists what it needs in its manifest's `permissions`, `network` and `sen
 | Permission | Shown to the user as | Enforced or declared | Status |
 |---|---|---|---|
 | `video.read` | Reads the video you process | **Enforced** for the hand-over: without it the job has no video path. Declared beyond that. | built |
-| `transcript.read` | Reads its transcript | **Enforced** for the hand-over: without it no transcript is written. Declared beyond that. | built |
+| `transcript.read` | Reads its transcript | **Enforced** for the hand-over: without it no transcript is written, and the moments a rater or understander is handed come without their `title`, `reason` and `context`, which come from what was said. Declared beyond that. | built |
 | `ffmpeg` | Uses Clips Kitty's FFmpeg | **Enforced** for the hand-over: without it the job has no FFmpeg path. Declared beyond that. | built |
 | `ollama` | Uses your local AI model | **Enforced** for the hand-over: without it the job has no Ollama address. A cloud AI provider's name and key are never handed over. Declared beyond that: Ollama has no password, so any program on the PC can use it. | built |
 | `gpu` | Uses your graphics card | Declared (a requirement, compared with this PC) | built (shown with the plugin manager) |
@@ -18,14 +18,16 @@ A plugin lists what it needs in its manifest's `permissions`, `network` and `sen
 | `models` (the manifest's `models:` list) | Uses these models: … | Enforced for downloads Clips Kitty makes (only the listed files, checked against their size and SHA-256, and only when the user presses Download); declared beyond, since the plugin's own code can fetch anything | built ([Model references](model-references.md)) |
 | `clips.write` | Returns finished clips | Refused in plugin contract 1 | planned |
 
-The manifest validator also ties them together: an `inputs` entry needs its permission (`video` needs `video.read`), hosts in `network` need the `network` permission and the other way round, and a `remote` or `hybrid` pipeline must list both `network` and `sends`. A `local` pipeline may not list `sends`.
+The manifest validator also ties them together: an `inputs` entry needs its permission (`video` needs `video.read`), hosts in `network` need the `network` permission and the other way round, and a `remote` or `hybrid` pipeline must list both `network` and `sends`. A `local` pipeline may not list `sends`. The `moments` input needs no permission: it holds the moments' times, scores, labels and Clips Kitty's own signal scores, and what was said reaches a plugin only with `transcript.read`.
+
+A moment's `title`, `reason` and `context` are taken from the transcript, so sending them off the PC counts as sending the transcript: a plugin that does so lists `transcript` in `sends`, as it would for the transcript itself. Like every `sends` entry, that is declared: Clips Kitty shows it to the user but can't check it ([Steps](steps.md)).
 
 ## Also enforced, whatever the permissions
 
 - **The environment.** A plugin's process does not inherit Clips Kitty's own variables (`CLIPS_*`, `CLIPSKITTY_*`) or any variable whose name contains KEY, TOKEN, SECRET, PASSWORD, PASSWD, CREDENTIAL, COOKIE or AUTH. This stops Clips Kitty handing over credentials by accident; it is not a wall, since the plugin can read the user's files.
 - **Secrets.** A plugin's `secret` settings reach only its own process, only in its environment, never in a file. They are not isolated from other software: the store is encrypted for the user's account (Windows) or readable only by the user (elsewhere), so another plugin running as the user can read it.
 - **Settings.** Only settings the manifest declares, with values that fit their type.
-- **Time.** A run stops at `run.timeout_minutes`, and a cancelled job stops the plugin and everything it started.
+- **Time.** A run stops at `run.timeout_minutes`: by default 60 minutes for a run that finds moments and 10 for one that rates or understands them. A cancelled job stops the plugin and everything it started.
 - **Installing runs nothing** from the plugin (built with the plugin manager).
 
 ## Not enforced, and said so

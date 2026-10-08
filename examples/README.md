@@ -11,6 +11,30 @@ Run them from the repo root.
 | [`drive_the_api.py`](drive_the_api.py) | The whole pipeline over HTTP, exactly as the desktop app drives it |
 | [`fake_backend.py`](fake_backend.py) | A deterministic stand-in for the model, so scoring runs without Ollama |
 
+## Marketplace plugins
+
+[`pipelines/`](pipelines/) holds plugins the way their developers would
+write them, each with a `clipskitty.yaml`. The two laid out as their own
+repository are MIT, unlike the rest of this repository, so you can copy
+them under any licence.
+
+| | What it shows |
+|---|---|
+| [`pipelines/scene-cut-highlights/`](pipelines/scene-cut-highlights/) | A pipeline that finds moments: loud stretches, each starting on a scene cut ([guide](../docs/developers/example-pipeline.md)) |
+| [`pipelines/keyword-rater/`](pipelines/keyword-rater/) | A plugin that rates and understands moments others found: it raises a moment's score and notes the word when the commentary says one of your words ([guide](../docs/developers/steps.md)) |
+| [`pipelines/transcript-highlights/`](pipelines/transcript-highlights/) | Clips Kitty's own transcript scorer through the plugin contract. It imports Clips Kitty's internals, so it is not one to copy |
+
+Try one without the app, with `sdk/python` on `PYTHONPATH`:
+
+```
+python -m clipskitty_sdk validate examples/pipelines/keyword-rater
+python -m clipskitty_sdk run examples/pipelines/keyword-rater --transcript tests/assets/sample_transcript.json --set "words=donated, mic"
+```
+
+No video is needed: the rater gets five sample moments spread through the
+sample transcript's two minutes, and the run prints each moment's score
+before and after, and its notes.
+
 ## Start here: scoring without a video
 
 ```

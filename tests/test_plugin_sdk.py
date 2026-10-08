@@ -858,7 +858,10 @@ def main(job):
 run(main)
 '''
 
-# The rater and the understander the developer docs show, exactly as written there.
+# The rater and the understander the developer docs show (docs/developers/steps.md),
+# exactly as written there: test_the_steps_page_shows_the_code_these_tests_run checks.
+STEPS_DOC = Path(__file__).resolve().parent.parent / "docs" / "developers" / "steps.md"
+
 DOCS_RATER = '''\
 # Rates moments of Quarkbloom Arena (a made-up game) by what the caster calls out.
 from clipskitty_sdk import run
@@ -898,6 +901,12 @@ def main(job):
 
 run(main)
 '''
+
+# What the docs' rater answers about three moments (test_the_docs_rater_and_understander_run),
+# as python -m clipskitty_sdk run prints it; the docs show the same lines.
+DOCS_RATER_ANSWERS = ("m1   812.0s-841.5s  score 72 -> 97  the caster called a big play\n"
+                      "m2   900.0s-925.0s  score 64 -> 10  the players are waiting to respawn\n"
+                      "m3   1000.0s-1012.0s  score 60\n")
 
 
 def _plugin(tmp_path, name: str, title: str, inputs: list, outputs: list, permissions: list,
@@ -1126,9 +1135,7 @@ def test_the_docs_rater_and_understander_run(tmp_path, capsys):
     code, _ = _dev_run(tmp_path, _rater(tmp_path, DOCS_RATER), *given, job="rater")
     out, err = capsys.readouterr()
     assert code == 0, out + err
-    assert ("m1   812.0s-841.5s  score 72 -> 97  the caster called a big play\n"
-            "m2   900.0s-925.0s  score 64 -> 10  the players are waiting to respawn\n"
-            "m3   1000.0s-1012.0s  score 60\n") in out
+    assert DOCS_RATER_ANSWERS in out
     code, _ = _dev_run(tmp_path, _understander(tmp_path, DOCS_NOTES), *given, job="notes")
     out, err = capsys.readouterr()
     assert code == 0, out + err
@@ -1137,6 +1144,27 @@ def test_the_docs_rater_and_understander_run(tmp_path, capsys):
             "m2   900.0s-925.0s  score 64\n"
             "m3   1000.0s-1012.0s  score 60\n"
             "       note: The team that was behind is catching up here\n") in out
+
+
+def test_the_steps_page_shows_the_code_these_tests_run():
+    """docs/developers/steps.md shows the rater and the understander the test
+    above runs, word for word, with the answers it prints, and its manifests
+    validate with no warnings, so the page can't drift from what works."""
+    yaml = pytest.importorskip("yaml")
+    import re
+
+    from clipskitty_sdk import manifest
+
+    doc = STEPS_DOC.read_text(encoding="utf-8")
+    blocks = {kind: re.findall(rf"```{kind}\n(.*?)```", doc, re.S) for kind in ("python", "yaml", "text")}
+    assert DOCS_RATER in blocks["python"] and DOCS_NOTES in blocks["python"]
+    assert DOCS_RATER_ANSWERS in blocks["text"]
+    rater = next(yaml.safe_load(b) for b in blocks["yaml"] if "quarkbloom-rater" in b)
+    notes = {**rater, "id": "example-dev/quarkbloom-notes", "name": "Quarkbloom Notes", "outputs": ["context"]}
+    for data, offered in ((rater, ("rate",)), (notes, ("understand",))):
+        report = manifest.validate(data)
+        assert (report.errors, report.warnings) == ([], [])
+        assert manifest.offers(data) == offered
 
 
 # ---- the local API client -----------------------------------------------------------

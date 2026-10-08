@@ -257,6 +257,27 @@ values in `config/settings.yaml`:
 | `watermark_profile_id` | int | branding profile applied to every clip |
 | `webhook_url` | string | http(s) URL to POST once when this job finishes |
 | `webhook_secret` | string | signs that POST, so the listener can trust it |
+| `pipeline` | object or string | an installed Marketplace pipeline picks the moments instead of Clips Kitty's own scoring: `{"id": "publisher/name", "version": "1.2.0", "settings": {...}}`, or just the id. Not with `sport`, `gaming_scoring` or `longform` |
+| `understand` | list | up to 3 installed Marketplace plugins that say what happens in each moment once it is found, in this order; their notes go to the AI that writes the titles, descriptions and hashtags. Each item is shaped like `pipeline`; one item alone is taken as a list of one |
+| `rate` | list | up to 3 installed Marketplace plugins that give each moment a new score once it is found (and any understanding is done), in this order; the last one's score counts. A moment rated under `min_score` is set aside, unless it is a must-have. Shaped like `understand` |
+
+**`rate` and `understand`** work on the moments whoever found them: Clips
+Kitty's own scoring, `sport`, `gaming_scoring` or a `pipeline`. They can't be
+combined with `longform` (`shorts` included): "Rate & understand can't be
+combined with Longform: Longform picks and writes its clips its own way. Turn
+one of them off." Naming the job's own `pipeline` again is refused too:
+"rate: example-dev/x is this job's pipeline, so it already scores and
+describes the moments it finds". Each item must be installed, turned on and
+able to do that step, or the job is refused with a message that names the
+item, for example `rate[0]: the pipeline example-dev/x isn't installed`.
+`{"clear": ["rate"]}` on `PATCH /jobs/{id}` drops one. Scores decide which
+clips are made and their order, so where a watched channel or the daily
+schedule posts only the best few, a rater decides which clips those are.
+Developer guide: [Steps](developers/steps.md).
+
+Apps without the Marketplace (2.0.0 and earlier) ignore `pipeline`, `rate` and
+`understand` without an error. `GET /plugins` tells them apart: those apps
+don't have it.
 
 **Two responses that are not failures and not `job_id`:**
 
@@ -495,6 +516,20 @@ Every processed video, newest first. A bare array:
   }
 ]
 ```
+
+Each video also carries `outcome`: what its last run made of it, or `null`.
+It holds numbers such as `clips`, `candidates`, `best_score`, `min_score`
+and `rejected` (by reason) and, when the run made no clips, a `cause`
+(`no_candidates`, `no_people`, `duplicates`, `below_threshold`, `rated_out`
+or `null`). `outcome.intent` and `outcome.sport` are described with `focus` and
+`sport`. A run with `understand` or `rate` adds:
+
+- `steps`: one entry for each plugin run, in order:
+  `{"plugin", "version", "name", "steps", "ok", "given", "noted", "rated", "set_aside"}`,
+  plus `error` when it didn't run. `error` is one sentence for the creator,
+  such as "It isn't installed any more."
+- `rated_out`: how many moments a plugin rated under the minimum score, when
+  any were. The cause `rated_out` means every moment was set aside that way.
 
 ### `GET /videos/{video_id}/clips`
 
@@ -1161,6 +1196,25 @@ The videos a watch has seen, newest first.
 - `publishing`
 - `done`
 
+**When a plugin the job chose didn't run.** If the job named plugins under
+`rate` or `understand` and one of them couldn't run, an `auto` watch doesn't
+post the clips: the item goes to `ask` with `publish_error` "Clips Kitty made
+these clips without {names}, so they weren't posted automatically. Check them
+and publish, or turn off Rate & understand in this channel's settings." An
+`ask` watch says "Clips Kitty made these clips without {names}. Check them
+before you publish." A job whose options name neither is never held this way.
+When a rater set every moment aside, the item is `done` with "{names} rated
+every moment under the minimum score ({min_score}), so there were no clips to
+publish." A job's own `then` publish is held the same way, with a line in its
+log. The command-line daily upload is not held.
+
+**Which clips a publish sends.** The first publish of an item sends the
+video's best `max_posts` clips by score (all of them with `0`), and the item
+remembers which ones. Every later publish of that item (the button again,
+Retry failed, the re-send of rejected posts) sends only clips from that first
+choice, even when a forced re-run has changed the scores since. An item
+published before Clips Kitty remembered the choice chooses again, once.
+
 `deliveries` holds one row per clip and platform. Its state is `sending`,
 `queued`, `processing`, `published`, `failed` or `skipped`.
 
@@ -1200,10 +1254,15 @@ Set aside a video that hasn't been queued yet, or decline an `ask`.
 
 ## Plugins
 
-**Experimental.** Community pipelines: plugins that find a video's moments
-while Clips Kitty does the rest. Installing one never runs anything from it;
-a job runs it when its options say `pipeline: {"id": "publisher/name"}`.
-Developer guide: [Getting started](developers/getting-started.md).
+**Experimental.** Community pipelines: plugins that find a video's moments,
+or say what happens in them and rate them, while Clips Kitty does the rest.
+Installing one never runs anything from it; a job runs it when its options
+say `pipeline: {"id": "publisher/name"}`, or name it under `understand` or
+`rate` ([`POST /jobs`](#post-jobs)). Each plugin's `details.steps` says which
+of these it can be chosen for (`Finds moments`, `Understands moments`,
+`Understands what it finds`, `Rates moments`), and `details.time_limit` how
+long a run that rates or understands may take. Developer guide:
+[Getting started](developers/getting-started.md) and [Steps](developers/steps.md).
 
 Routes that fetch, install, change or remove plugins need the
 `X-Clips-Kitty-Session` header. The desktop app sends it; a script reads it from
@@ -1372,7 +1431,12 @@ types:
 - **`job`** fires on status transitions. `error` is present when it failed.
 - **`progress`** is the pipeline talking. `stage` moves through `download`,
   `downloaded`, `converting source to H.264`, `transcribe`, `analyze`,
-  `render`, `done`. Render events carry `clip` and `total`.
+  `ranking`, `render`, `done`. Render events carry `clip` and `total`. A job
+  with `understand` or `rate` also has `understand` events (a plugin saying
+  what happens in the moments) and `ranking` events from each plugin that
+  rates them; both carry `plugin`, the plugin's name, and the job's progress
+  label reads "Understanding moments with {plugin}" or "Rating moments with
+  {plugin}".
   **`job_id` is `null` for prefetch downloads**, which belong to a future job,
   not the running one: never attribute them to the current job.
 - **`model_pull`** is download progress for `POST /models/pull`.

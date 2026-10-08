@@ -54,6 +54,38 @@ were often broken in a way that only showed up on somebody else's machine.
   page or website where the list has one, which opens your browser after showing you
   the address; entries that need the command line or Python say so and come last.
 
+- **Rate & understand: Marketplace plugins that look at your moments.** Once you have
+  installed a Marketplace plugin that can rate or understand moments, adding a video shows
+  a new switch, **Rate & understand**. Clips Kitty (or Sports, Gaming scoring or a
+  pipeline) still finds the moments. Then up to three plugins can say what happens in
+  each one, and up to three can give each one a new score, in the order you choose. What
+  a plugin says happens in a moment goes to the AI that writes the clip's title,
+  description and hashtags. A plugin's score decides which clips are made and their
+  order: the last plugin's score counts, and a moment it scores under your minimum score
+  is set aside (a must-have never is). Clips Kitty does any step you leave to it, and a
+  video without the switch is made exactly as before. Not with Longform. The clip editor
+  shows each plugin's score and notes, and the video page says what each plugin did, or
+  why Clips Kitty made the clips without it. The Marketplace marks what each plugin does
+  (Finds moments, Understands moments, Rates moments), how long Clips Kitty lets it work
+  on your moments (10 minutes unless the plugin says otherwise), and when an update
+  starts doing something new.
+
+  **A rating plugin decides what gets posted.** Where a watched channel or the daily
+  schedule posts only the best few clips, the scores decide which ones go out, so a
+  rating plugin decides that; elsewhere it decides the order. The job form, the channel's
+  settings and the Marketplace say so.
+
+  **A channel that posts by itself waits for you when a chosen plugin didn't run.** If a
+  plugin chosen for a video couldn't run, Clips Kitty still makes the clips, without it.
+  A watched channel that posts automatically then holds that video's clips for you to
+  check and publish, and a channel that asks first says why. A job told to publish its
+  clips when it finishes waits too. The command-line daily upload isn't held. In a
+  channel's settings you can keep its plugins or turn them off; choosing them for a
+  channel is done through the API for now. For developers: the plugin kit (SDK 1.1.0)
+  adds `job.rate()` and `job.understand()`, with an example plugin, and
+  [docs/developers/steps.md](docs/developers/steps.md) explains them.
+  (New job options: `rate`, `understand`.)
+
 - **A second colour for the second speaker.** Tick **Second speaker in another colour**
   in the caption settings, for a whole run or for one clip in the editor, and pick the
   colour. When two people talk in a clip, the main speaker keeps the text colour and
@@ -112,6 +144,11 @@ were often broken in a way that only showed up on somebody else's machine.
   watermark. The standard look stays the default.
 
 ### Changed
+
+- **A watched channel's re-sends keep its first choice of clips.** Retry failed and the
+  re-send of posts a platform rejected now send only clips the video's first publish
+  chose, even if processing the video again changed the scores or made new clips in
+  between. Nothing already sent is ever sent twice, as before.
 
 - **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a
   Gemma 4 model, and setup installs a different one on most PCs. The box used to say so
