@@ -1659,6 +1659,19 @@ def _register_clip(
             if (candidate.subscores or {}).get("plugin_ratings") or (isinstance(old, dict)
                                                                      and old.get("plugin_ratings")):
                 fresh["score"] = candidate.score
+            old_edits = old.get("plugin_edits") if isinstance(old, dict) else None
+            if old_edits or (candidate.subscores or {}).get("plugin_edits"):
+                # Edits plugins suggested (plugins/steps.py): the creator's
+                # decisions carry over to the same suggestions and a used one
+                # stays, marked remade when the file this points at was made
+                # without the row's saved edit (plugins/edit_marks.py).
+                from plugins import edit_marks
+
+                scores = dict(candidate.subscores or {})
+                scores["plugin_edits"] = edit_marks.carry(old_edits, scores.get("plugin_edits"), kept, rendered)
+                if not scores["plugin_edits"]:
+                    del scores["plugin_edits"]
+                fresh["scores"] = json.dumps(scores)
             if rendered.get("speaker_turns") != kept.get("speaker_turns"):
                 # The other speaker's turns: the row's must be the ones this
                 # file was burned with, or the editor colours its preview by

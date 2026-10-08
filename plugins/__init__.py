@@ -10,6 +10,7 @@ sdk/python/clipskitty_sdk/contract.py, the same files a plugin developer uses).
     store.py        what is installed, as the plugin manager leaves it on disk
     runner.py       one plugin run for one video
     steps.py        Rate & understand: plugins that look at the moments once they're found
+    edit_marks.py   what the creator did with suggested edits: used, hidden or taken back
     manager.py      plan, install, update, roll back, turn off, remove
     sources.py      a plugin's files from a folder or a Git commit, never run
     permissions.py  what a manifest asks for, in the install screen's words

@@ -491,7 +491,7 @@
    },
    "render_first": {
     "required": false,
-    "type": "null|{end?:null|number,render_opts?:null|object,start?:null|number}"
+    "type": "null|{end?:null|number,render_opts?:null|object,start?:null|number,suggestions?:null|object}"
    },
    "tags": {
     "required": false,

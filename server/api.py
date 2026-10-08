@@ -156,6 +156,9 @@ class ClipPatch(BaseModel):
     description: str | None = None
     hashtags: list[str] | None = None
     exported: bool | None = None  # the clip's star; exporting also sets it
+    # Hide or show an edit a plugin suggested: {"id", "state": "hidden" | "new"}
+    # (plugins/edit_marks.py). A suggestion is used by applying it, never here.
+    suggestion: dict | None = None
 
 
 class MergeIn(BaseModel):
@@ -260,6 +263,10 @@ class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
     render_opts: dict | None = None  # crop / captions / caption_style / caption_lines
+    # The edits plugins suggested that this render puts in the clip, as the
+    # editor used them: {"used": [{"id", "applied"}]} (plugins/edit_marks.py).
+    # The worker keeps only what the render really changed.
+    suggestions: dict | None = None
 
 
 class CaptionsIn(BaseModel):
@@ -1584,6 +1591,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 fields["exported_at"] = ""
             elif body.exported and not row["exported_at"]:
                 fields["exported_at"] = _now()
+            if body.suggestion is not None:
+                fields["scores"] = _suggestion_state(row, body.suggestion)
             if fields:
                 d.set_clip(clip_id, **fields)
             return _clip_json(d.get_clip(clip_id))
@@ -1776,6 +1785,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["end"] = body.end
             if body.render_opts:
                 payload["render_opts"] = _clean_render_gaming(dict(body.render_opts))
+            if body.suggestions is not None:
+                payload["suggestions"] = used_suggestions(body.suggestions)
             job_id = d.add_job("render", json.dumps(payload))
             _log_feedback(
                 d, row,
@@ -3106,6 +3117,37 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
 
 # ---- helpers --------------------------------------------------------------------
+
+
+def used_suggestions(value) -> dict:
+    """A render's `suggestions` (RenderIn; RenderFirst in server/youtube_api.py),
+    checked by plugins/edit_marks.py: 400 with what is wrong."""
+    from plugins import edit_marks
+
+    try:
+        return edit_marks.clean_used(value)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+def _suggestion_state(row, value) -> str:
+    """PATCH /clips/{id} `suggestion`: the clip's scores with that suggested
+    edit hidden, or shown again. Nothing renders."""
+    from plugins import edit_marks
+
+    try:
+        sid, state = edit_marks.clean_state(value)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    try:
+        scores = json.loads(row["scores"]) if row["scores"] else {}
+    except ValueError:
+        scores = {}
+    scores = scores if isinstance(scores, dict) else {}
+    entries = edit_marks.set_state(scores.get("plugin_edits"), sid, state)
+    if entries is None:
+        raise HTTPException(404, "no such suggestion on this clip")
+    return json.dumps({**scores, "plugin_edits": entries})
 
 
 def _clip_json(row) -> dict:

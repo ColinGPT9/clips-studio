@@ -740,6 +740,8 @@ class Worker(threading.Thread):
 
         # Persisted render options, overlaid with this edit's changes.
         render_opts = _json.loads(clip["render_opts"]) if clip["render_opts"] else {}
+        # As saved, for what this render changed in a suggested edit (below).
+        saved_opts = copy.deepcopy(render_opts)
         incoming = payload.get("render_opts") or {}
         if "caption_style" in incoming:
             merged_style = {**render_opts.get("caption_style", {}), **(incoming["caption_style"] or {})}
@@ -819,6 +821,8 @@ class Worker(threading.Thread):
             render_opts["speaker_turns"] = heard
         else:
             render_opts.pop("speaker_turns", None)
+        _mark_suggestions(candidate, payload, saved_opts, render_opts,
+                          (float(clip["start_s"]), float(clip["end_s"])), (start, end))
 
         # Translations, uploads and feedback REFERENCE this clip, and
         # foreign_keys is ON, so they have to be lifted out before the row can
@@ -854,3 +858,28 @@ class Worker(threading.Thread):
                   "dependent row(s)")
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
             discard(old_path)
+
+
+def _mark_suggestions(candidate, payload: dict, saved: dict, rendered: dict, window: tuple,
+                      new_window: tuple) -> None:
+    """After a render the creator asked for, what each edit a plugin
+    suggested for the clip now is (plugins/edit_marks.py): used, with what
+    this render really put in the clip, or no longer. Written into the
+    clip's subscores, which the new row is registered with, so a render that
+    failed records nothing. `saved` are the clip's options as they were at
+    `window`, `rendered` the ones it was just rendered with at `new_window`;
+    the payload's `suggestions.used` says what each Use in the editor added."""
+    scores = candidate.subscores if isinstance(candidate.subscores, dict) else {}
+    sent = payload.get("suggestions")
+    used = sent.get("used") if isinstance(sent, dict) else None
+    used = used if isinstance(used, list) else []
+    if not scores.get("plugin_edits"):
+        if used:
+            print(f"Not marked as used: {len(used)} suggested edit(s) named, but this clip has none")
+        return
+    from plugins import edit_marks
+
+    entries, lines = edit_marks.after_render(scores["plugin_edits"], used, saved, rendered, window, new_window)
+    for line in lines:
+        print(line)
+    candidate.subscores = {**scores, "plugin_edits": entries}
