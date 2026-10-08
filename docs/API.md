@@ -285,8 +285,9 @@ turned on and able to suggest edits, for example `edit[0]: the pipeline
 example-dev/x can't suggest edits for clips: its manifest needs moments in
 inputs and edits in outputs`. Each suggestion is kept in the clip's
 `scores.plugin_edits` ([below](#get-videosvideo_idclips)); the clip itself is
-made exactly as it would be without `edit`, and no run changes its
-`render_opts`. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
+made exactly as it would be without `edit`, and the edit step never writes a
+clip's `render_opts` (what a run writes to a clip it makes again is under
+**Clips the video already has**, below). Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
 An edit plugin that couldn't run holds nothing back: its suggestions change
 no clip, so watched channels and `then` publish as they would without it.
 `{"clear": ["edit"]}` on `PATCH /jobs/{id}` drops it. The word means three
@@ -319,13 +320,16 @@ with `by` `clip`) is made with its saved `render_opts`, except `profile`,
 `podcast`, `vertical_live`, `sport` and `speaker_turns`, which the job
 decides. In a Sports job only those per-clip keys are used, and the job's
 caption style, filter, watermark and card words stay. In a Gaming / Reaction
-job, an edited clip's `gaming` with `by` `video` or `creator` keeps its
+job, an edited clip's `gaming` with `by` `video`, `creator` or none keeps its
 layout and takes the job's webcam when a person chose it (`by` `user` or
-`creator`). Any other clip is made with the job's options. No run changes the
-choices saved on a clip you edited: a run records the split it rendered with
-and who is heard talking, and adds a Highlights card where the clip had none;
-for clips nobody edited it also updates the Highlights card words and the
-split to this run's.
+`creator`); outside a Gaming / Reaction job, a `gaming` a run found or
+remembered (`by` `video`, `creator` or none) is dropped. A `gaming` with `by`
+`user` or `clip`, or `null`, stays in any job but Sports, and an edited clip
+with no `gaming` gets the job's. Any other clip is made with the job's
+options. No run changes the choices saved on a clip you edited: a run records
+the split it rendered with and who is heard talking, and adds a Highlights
+card where the clip had none; for clips nobody edited it also updates the
+Highlights card words and the split to this run's.
 
 Other outcomes:
 

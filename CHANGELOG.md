@@ -187,9 +187,12 @@ were often broken in a way that only showed up on somebody else's machine.
   that file. A clip you edited is now made again with your edits, on this computer or a
   render PC, and goes into a match's story reels with them. Clips you never edited, and
   new ones, are made with the settings you chose, as before, even when you set up a
-  Gaming / Reaction split before processing. A clip you edited keeps its own look and
-  its own split, takes a webcam you set up or remembered for the video, and a split you
-  turned off for it stays off. In a match, your cuts, layout, caption fixes and colour
+  Gaming / Reaction split before processing. A clip you edited keeps its own look. In a
+  Gaming / Reaction job it keeps its own split, and a split that was found automatically
+  or remembered for the creator takes a webcam you set up or remembered for this run. A
+  split you set up before an earlier run or drew for that clip stays as it is, even with
+  Gaming / Reaction off (not in a match): change it in the clip editor. A split you turned
+  off for a clip stays off. In a match, your cuts, layout, caption fixes and colour
   adjustments are kept, and the caption style, colours, branding and title card are the
   job's; **Re-render** a clip to make it with its own. 16:9 Longform clips too. A clip
   with music you added renders on this computer even when a render PC is chosen.

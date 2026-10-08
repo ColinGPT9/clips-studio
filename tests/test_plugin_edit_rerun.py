@@ -9,7 +9,8 @@ renders with exactly the job's options, as before (_clip_opts(meta)).
 
 These tests run process_video and Longform's clip mode with download,
 transcription, analysis, the title writer and the render stubbed out, on
-throwaway databases. The suggestion data is shared with
+throwaway databases, rendering here or on a stand-in render PC, with a
+match's story reels spied. The suggestion data is shared with
 tests/test_plugin_edit_suggestions.py (tests/fixtures/edit_marks). Every
 game named is Quarkbloom Arena, a made-up game.
 """
@@ -17,6 +18,7 @@ game named is Quarkbloom Arena, a made-up game.
 import copy
 import hashlib
 import json
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -371,6 +373,57 @@ def test_a_trimmed_clip_is_left_as_it_was(rerun):
 # ---- the render, reels and Longform -------------------------------------------------------
 
 
+class _RenderPC:
+    """A render PC that takes every clip, called as remote_render/dispatch.py's
+    render_all is. It notes the options each clip is sent with (opts_for, or
+    the job's without it, as dispatch does), and the stubbed render makes it."""
+
+    def __init__(self):
+        self.job_opts = "not called"
+        self.sent: dict = {}
+
+    def renderer_for(self, _config):
+        return self
+
+    def render_all(self, _video_id, source, items, segments, clip_dir, config, render_opts, language, _workers,
+                   opts_for=None):
+        import core.pipeline as pipeline
+
+        self.job_opts = render_opts
+        for candidate, meta in items:
+            opts = opts_for(candidate, meta) if opts_for else render_opts
+            self.sent[(round(candidate.start, 2), round(candidate.end, 2))] = opts
+            yield candidate, meta, partial(pipeline._render_files, source, candidate, segments, clip_dir, config,
+                                           opts, language)
+
+
+def _match_with_reels(monkeypatch) -> list:
+    """A match read with story reels asked for, and the reels spied: for
+    each call, the length each clip was made, by its window's start."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    import core.pipeline as pipeline
+
+    class Reading:
+        def __init__(self, config, video):
+            self.config = config
+
+        def finish(self, hype_out=None):
+            return SimpleNamespace(option={"reels": ["recap"]}), None, None
+
+    asked: list = []
+
+    def reels(_db, _video_id, _profile, clips, *_a, made_seconds=None, **_k):
+        asked.append({round(c.candidate.start, 2): round((made_seconds or {}).get(str(c.path), -1.0), 6)
+                      for c in clips})
+        return []
+
+    monkeypatch.setattr(pipeline, "MatchReading", Reading)
+    monkeypatch.setattr(pipeline, "_sport_reels", reels)
+    return asked
+
+
+
 def test_a_split_turned_off_for_a_clip_stays_off_in_a_gaming_job(monkeypatch, tmp_path):
     pytest.importorskip("numpy")
     pytest.importorskip("cv2")
@@ -444,7 +497,27 @@ def test_a_story_reel_trims_an_edited_clips_card_by_its_made_length(monkeypatch,
     assert pipeline._made_seconds(window, "{not json") == 30.0
 
 
-def test_a_longform_rerun_makes_an_edited_16x9_clip_with_its_edits(monkeypatch, tmp_path):
+def test_a_match_reel_gets_the_length_an_edited_clip_was_made(rerun, monkeypatch):
+    """A re-run's story reels join its clips as made: the clip the creator
+    cut reaches them with the length its edit keeps, the others with their
+    window."""
+    asked = _match_with_reels(monkeypatch)
+    got = rerun(_found(), rows=[(100.0, 120.0, {"edit": E})], **SOCCER)
+    assert dict(got.renders)[(100.0, 120.0)] == {"edit": E}
+    assert asked == [{10.0: 20.0, 100.0: 18.0, 200.0: 20.0, 300.0: 20.0}]
+
+
+def _lf(start: float) -> tuple:
+    """The window of Longform's clip found at `start`, nudged as Longform nudges it."""
+    return round(start + 0.011, 2), round(start + 20.011, 2)
+
+
+def _longform(monkeypatch, tmp_path, saved: dict, pc=None, **clips) -> SimpleNamespace:
+    """Longform's clip mode on a video whose window at 100 s already has a
+    clip saved with `saved`, with download, transcription, analysis, the
+    title writer and the render stubbed out, rendered here or on `pc`. It
+    returns each render's options by window and that clip's options after
+    the run."""
     pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     import core.pipeline as pipeline
@@ -473,7 +546,7 @@ def test_a_longform_rerun_makes_an_edited_16x9_clip_with_its_edits(monkeypatch, 
     monkeypatch.setattr(pipeline, "online_transcription", lambda _config: None)
     monkeypatch.setattr(pipeline, "clip_direction", lambda *_a, **_k: None)
     monkeypatch.setattr(pipeline, "_with_usable_model", lambda cfg: cfg)
-    monkeypatch.setattr(pipeline, "_remote_renderer", lambda _config: None)
+    monkeypatch.setattr(pipeline, "_remote_renderer", pc.renderer_for if pc else (lambda _config: None))
     monkeypatch.setattr(pipeline, "_render_files", render)
     monkeypatch.setattr("transcription.transcriber.transcribe", lambda *_a, **_k: [])
     monkeypatch.setattr("transcription.transcriber.detected_language", lambda *_a, **_k: "en")
@@ -482,23 +555,80 @@ def test_a_longform_rerun_makes_an_edited_16x9_clip_with_its_edits(monkeypatch, 
     monkeypatch.setattr("analysis.metadata.generate_metadata_batch", titles)
     config = load_config(BUNDLED_CONFIG)
     config["paths"]["data_dir"] = str(tmp_path / "data")
-    config["clips"]["captions"] = False
+    config["clips"].update({"captions": False, **clips})
     db = StateDB(tmp_path / "state.db")
     try:
         db.upsert_video("vid321", title="A Quarkbloom Arena stream")
-        saved = {"profile": "short_clips", "edit": E}
         db.add_clip("vid321", 100.011, 120.011, 70, "h", path="/old/clip.mp4", title="Creator title",
                     render_opts=json.dumps(saved))
         longform.process_longform("local:stream", config, db, {"mode": "short_clips"})
-        assert renders == {(round(s + 0.011, 2), round(s + 20.011, 2)): saved if s == 100.0 else {"profile": "short_clips"}
-                           for s in STARTS}
         row = db.conn.execute("SELECT render_opts FROM clips WHERE start_s = 100.01").fetchone()
-        assert json.loads(row["render_opts"]) == saved
+        return SimpleNamespace(renders=renders, saved=json.loads(row["render_opts"]))
     finally:
         db.conn.close()
 
 
+def test_a_longform_rerun_makes_an_edited_16x9_clip_with_its_edits(monkeypatch, tmp_path):
+    saved = {"profile": "short_clips", "edit": E}
+    got = _longform(monkeypatch, tmp_path, saved)
+    assert got.renders == {_lf(s): saved if s == 100.0 else {"profile": "short_clips"} for s in STARTS}
+    assert got.saved == saved
+
+
+def test_a_longform_match_keeps_an_edited_clips_card_words_and_made_length(monkeypatch, tmp_path):
+    """A match's 16:9 clip the creator edited is made with their cut in the
+    job's look, keeps the card words saved on it, and reaches the reels with
+    the length its edit keeps."""
+    asked = _match_with_reels(monkeypatch)
+    saved = {"profile": "short_clips", "edit": E, "caption_style": {"post_style": "highlights"},
+             "headline": "MY CARD", "subline": "MINE"}
+    got = _longform(monkeypatch, tmp_path, saved, **SOCCER)
+    assert got.renders == {_lf(s): {"profile": "short_clips", **({"edit": E} if s == 100.0 else {})}
+                           for s in STARTS}
+    assert got.saved == saved
+    assert asked == [{_lf(s)[0]: 18.0 if s == 100.0 else 20.0 for s in STARTS}]
+
+
 # ---- render PCs ----------------------------------------------------------------------------
+
+
+def test_a_render_pc_gets_an_edited_clip_with_its_choices(rerun, monkeypatch):
+    """Sent to a render PC, as when made here: the clip the creator edited
+    goes with its saved choices over the job's options, and each window
+    with no clip yet with exactly the job's (_clip_opts(meta))."""
+    import core.pipeline as pipeline
+
+    new = [0.5, 0.5, 0.2, 0.2]
+    fresh = {"by": "user", "cam": new, "preset": "half", "panels": []}
+    found_split = {"by": "video", "cam": [0.0, 0.6, 0.3, 0.4], "preset": "small_cam", "order": "game_top"}
+    pc = _RenderPC()
+    monkeypatch.setattr(pipeline, "_remote_renderer", pc.renderer_for)
+    got = rerun(_found(), rows=[(100.0, 120.0, {"edit": E, "gaming": found_split})], fresh=fresh, gaming=True)
+    assert pc.job_opts == {"gaming": fresh}
+    assert pc.sent[(100.0, 120.0)] == {"gaming": {**found_split, "cam": new, "by": "user"}, "edit": E}
+    others = [w for w in pc.sent if w != (100.0, 120.0)]
+    assert len(others) == 3 and all(pc.sent[w] is pc.job_opts for w in others)
+    assert dict(got.renders) == pc.sent
+    assert Path(got.rows[(100.0, 120.0)]["path"]).name == "clip_00100-00120.mp4"
+    assert EDITED_LINE in got.out
+
+    # A Highlights job: each clip's own card, and the edited clip's choices over it.
+    pc = _RenderPC()
+    monkeypatch.setattr(pipeline, "_remote_renderer", pc.renderer_for)
+    got = rerun(_found(), rows=[(100.0, 120.0, HAND)], **HIGHLIGHTS)
+    assert pc.job_opts is None
+    assert pc.sent == {(s, s + 20.0): {**_card(s), **HAND} if s == 100.0 else _card(s) for s in STARTS}
+    assert got.rows[(100.0, 120.0)]["render_opts"] == HAND
+
+
+def test_a_longform_render_pc_gets_an_edited_clip_with_its_edits(monkeypatch, tmp_path):
+    saved = {"profile": "short_clips", "edit": E, "crop": "center"}
+    pc = _RenderPC()
+    got = _longform(monkeypatch, tmp_path, saved, pc=pc)
+    assert pc.job_opts == {"profile": "short_clips"}
+    assert pc.sent == {_lf(s): saved if s == 100.0 else {"profile": "short_clips"} for s in STARTS}
+    assert got.renders == pc.sent and got.saved == saved
+
 
 
 def test_a_render_pc_clip_is_checked_against_what_its_edit_keeps(monkeypatch, tmp_path):

@@ -445,10 +445,10 @@ def test_each_clip_goes_with_its_own_options(dispatching):
         (10.0, {"headline": "m1", "edit": {"keep": [[0, 8]]}}), (50.0, {"headline": "m2"})]
 
 
-def test_a_clip_with_music_from_this_pc_renders_here(dispatching):
+def test_a_clip_with_music_from_this_pc_renders_here(dispatching, capsys):
     """Music added in the editor is a file on this PC, which a render PC
     can't fetch: that clip renders here, whichever render mode is chosen,
-    and the others still go out."""
+    and the others still go out. The log counts only the clips sent."""
     dispatch, gw, tmp = dispatching
     q = gw.queue
     wid, _s = _paired(q)
@@ -461,11 +461,12 @@ def test_a_clip_with_music_from_this_pc_renders_here(dispatching):
     def opts_for(candidate, _meta):
         return music if candidate.start == 10.0 else {"crop": "center"}
 
-    for mode in ("auto", f"worker:{wid}"):
+    for mode, where in (("auto", "a render worker"), (f"worker:{wid}", "Render PC")):
         video = f"v-{mode[:4]}"
         specs: list = []
         t = _completing(q, wid, tmp, specs, 1)
         calls = []
+        capsys.readouterr()
         got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, mode, tmp).render_all(
             video, tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
             opts_for=opts_for)]
@@ -473,6 +474,16 @@ def test_a_clip_with_music_from_this_pc_renders_here(dispatching):
         assert calls == [10.0] and sorted(got) == [10.0, 50.0], mode
         assert [j["label"] for j in q.jobs_for(video)] == ["50s-70s"], mode
         assert [s["start"] for s in specs] == [50.0], mode
+        out = capsys.readouterr().out
+        assert f"Remote rendering: sending 1 clip(s) to {where}\n" in out, mode
+        assert "10s-30s renders here (its music is a file on this computer)" in out, mode
+    # Every clip with music: nothing goes out, and the log doesn't say it does.
+    calls = []
+    got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, f"worker:{wid}", tmp).render_all(
+        "v-all", tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+        opts_for=lambda _c, _m: music)]
+    assert sorted(calls) == [10.0, 50.0] and sorted(got) == [10.0, 50.0]
+    assert q.jobs_for("v-all") == [] and "sending" not in capsys.readouterr().out
 
 
 # ---- the worker's side --------------------------------------------------------------------

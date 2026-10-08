@@ -125,7 +125,10 @@ class RemoteRenderer:
             return
 
         where = self._worker_name(self.target) if self.target else "a render worker"
-        print(f"      Remote rendering: sending {len(items)} clip(s) to {where}")
+        # Only the clips that go out: one with music from this PC renders here (below).
+        sent = sum(not _needs_this_pc(opts_of(c)) for c, _m in items)
+        if sent:
+            print(f"      Remote rendering: sending {sent} clip(s) to {where}")
         pending: dict[str, tuple] = {}
         here_first: list = []
         for candidate, meta in items:
