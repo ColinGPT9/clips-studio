@@ -811,7 +811,7 @@ key, which the MCP client never sees). An agent skill for clients that support t
 ### Built with Clips Kitty
 
 Projects that run on this API are listed in **[Awesome Clips Kitty](awesome-clips-kitty/)**,
-the directory of apps, pipelines, models, integrations and tools around Clips Kitty. The
+the list of pipelines, plugins, integrations, apps and tools built with Clips Kitty. The
 first is the [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin),
 an OBS Studio dock that hands your stream to Clips Kitty after it ends. Built one?
 Add it with a pull request ([how](awesome-clips-kitty/CONTRIBUTING.md)), and give your

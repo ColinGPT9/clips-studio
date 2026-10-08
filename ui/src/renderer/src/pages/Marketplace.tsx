@@ -894,7 +894,7 @@ function CatalogBrowse({
         </section>
       ))}
       <p className="text-xs text-muted border-t border-raised/50 pt-3">
-        {t('From Awesome Clips Kitty, a curated list; an entry from another list you added says where it came from. Built with Clips Kitty: a separate app or tool that uses Clips Kitty. Related: relevant, not connected to Clips Kitty yet. Each project keeps its own licence.')}
+        {t('From Awesome Clips Kitty, a curated list; an entry from another list you added says where it came from. Built with Clips Kitty: a separate app or tool that uses Clips Kitty. Each project keeps its own licence.')}
         {data.metrics_at ? ` ${t('Numbers read on')} ${data.metrics_at}.` : ''}
       </p>
     </div>

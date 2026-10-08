@@ -32,6 +32,7 @@ One file per entry, rather than one long file per kind, so that two pull request
 
 A curated list is useful because not everything gets in. An entry must be:
 
+- **Built with Clips Kitty**: it runs inside Clips Kitty (a pipeline or plugin installed from the Marketplace), or it is a separate app or tool that uses Clips Kitty's local API or SDK. A project that does neither is not listed, however good it is: the Marketplace is not a place to promote other apps.
 - **Relevant**: it helps someone make, find, edit or publish clips, or build on Clips Kitty.
 - **Useful**: it works and does something real, not a placeholder or a tutorial exercise.
 - **Maintained, where that matters**: commits in the last year or so, unless it is a finished, stable tool. Archived projects are left out unless nothing replaces them; the README marks old ones with ⚠.
@@ -47,25 +48,24 @@ Game, league and brand names are only ever used to say what a project works with
 
 ## How a project relates to Clips Kitty
 
-Every entry says one of three things, and they never blur:
+Every entry says one of two things, and they never blur:
 
 | `relationship` | Means | Where |
 |---|---|---|
 | `built-for` | Runs inside Clips Kitty: a pipeline or plugin installed from the Marketplace. | Listings in `pipelines/` and `plugins/`; set automatically. |
 | `built-with` | A separate app or tool that uses Clips Kitty's local API or SDK. Say which with `uses: api`, `sdk` or `both`. | Any other kind. |
-| `related` | Relevant, not connected to Clips Kitty yet. | Any other kind. |
 
-An app and a pipeline are different things: an **app** stands on its own; a **pipeline** runs inside Clips Kitty. The same project can appear as both, for example an open-source clipping app (`apps/`) and the pipeline that runs it through Clips Kitty (`pipelines/`). Link them with the app's `adapter:` field; an app with an adapter belongs in the "Work with Clips Kitty" section.
+An app and a pipeline are different things: an **app** stands on its own and uses Clips Kitty's API or SDK; a **pipeline** runs inside Clips Kitty. Like how another clipping app picks its moments? Write a pipeline that picks them that way inside Clips Kitty, name that project in the manifest's `based_on`, keep its licence notice, and list the pipeline. A link to the other app is not an entry.
 
 ## Adding an app, model, workflow, integration or tool
 
 Add `registry/<kind>s/<name>.yaml`, where `<name>` is lowercase words joined by hyphens:
 
 ```yaml
-name: Example Clipper                    # required, up to 80 characters
-description: Turns long videos into vertical clips with subtitles.   # required, one or two sentences
-section: video-clipping                  # required: a section of this kind in sections.yaml
-relationship: related                    # required: built-with or related
+name: Example Dock                       # required, up to 80 characters
+description: Hands a finished stream to Clips Kitty and shows the clips.   # required, one or two sentences
+section: built-with                      # required: a section of this kind in sections.yaml
+relationship: built-with                 # required: it uses Clips Kitty's API or SDK
 license: MIT                             # required: the project's licence, as an SPDX expression
 license_note: The cloud/ folder has a separate commercial licence.   # optional: exceptions a user must know
 source:                                  # required: at least one of github, huggingface, url
@@ -83,8 +83,7 @@ setup: installer                         # optional: installer (download and run
 tags: [subtitles, face tracking]         # optional: up to 10 short words people search for
 games: [example-game]                    # optional: games it covers
 sports: [soccer]                         # optional: sports it covers
-uses: api                                # built-with only: api, sdk or both
-adapter: example-dev/example-clipper     # optional: the listed pipeline that runs it in Clips Kitty
+uses: api                                # required: api, sdk or both
 warning: Downloads videos from sites whose terms may not allow it.   # optional: shown with a ⚠
 added: 2026-10-07                        # required
 checked: 2026-10-07                      # set by a maintainer once it meets the criteria

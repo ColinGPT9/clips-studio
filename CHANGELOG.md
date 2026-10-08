@@ -17,16 +17,12 @@ were often broken in a way that only showed up on somebody else's machine.
   **Marketplace** screen and switch it on for a video with the **Pipeline** option. Every
   listing says what it may do, where it runs, what it needs and its licence, and asks you
   to confirm before anything is installed. Nothing changes until you install something.
-  The Marketplace also shows **Awesome Clips Kitty**, a curated list of apps, models,
-  integrations and tools around Clips Kitty, each marked as built for Clips Kitty, built
-  with it, or related. Labels: ✓ Official (made by this project), ✓ Compatible (passed
+  The Marketplace also shows **Awesome Clips Kitty**, the list of integrations, apps and
+  tools that other people have built with Clips Kitty. It lists only what runs in Clips
+  Kitty or uses it: a link to another project is not an entry. Labels: ✓ Official (made by this project), ✓ Compatible (passed
   automated checks; not a security review), ★ Featured and Community. Installs from the
   Marketplace can be counted anonymously, with a switch to turn it off; nothing is counted
   yet. The developer kit is now MIT-licensed; the app stays AGPL-3.0-or-later.
-  The list starts with 178 open-source projects (clippers, editors, transcription,
-  models, OBS and streaming tools, game replay readers), each checked for its licence
-  and activity, with a warning where one sends your videos or transcripts online or
-  downloads from sites whose terms may not allow it.
   (Experimental routes: `/plugins`, `/marketplace`, `/marketplace/catalog`,
   `/marketplace/counting`, `/plugin-models`; a plan from `POST /plugins/plan` carries
   the install screen as `text`.) (#129)

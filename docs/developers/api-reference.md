@@ -161,7 +161,7 @@ Details: [`docs/API.md` › Plugins](../API.md#plugins).
 | Route | Label | What it is for |
 |---|---|---|
 | `GET /marketplace` | experimental | Listed plugins from the registry indexes, searched and filtered, with what is installed. |
-| `GET /marketplace/catalog` | experimental | Awesome Clips Kitty's apps, models, workflows, integrations and tools, searched, with their sections, labels and numbers. |
+| `GET /marketplace/catalog` | experimental | Awesome Clips Kitty's entries built with Clips Kitty (integrations, apps and tools), searched, with their sections, labels and numbers. |
 | `GET /marketplace/counting` | experimental | Whether installs from the Marketplace are counted, and what counting sends. |
 | `PUT /marketplace/counting` | experimental | Switch install counting on or off for this PC. Session header. |
 | `GET /marketplace/online` | experimental | Whether the Marketplace checks Clips Kitty's online list by itself, when it last fetched it and how the last try went. |
