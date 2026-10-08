@@ -378,6 +378,7 @@ def test_a_batch_row_with_bad_steps_is_skipped_as_bad_option(api):
 
 
 def test_the_worker_copies_steps_only_when_given(tmp_path, monkeypatch):
+    pytest.importorskip("numpy")  # server.jobs imports the engine (analysis/fusion.py)
     import threading
     import time
     import types
