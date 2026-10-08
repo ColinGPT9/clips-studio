@@ -8,8 +8,16 @@ import CaptionStyleControls, {
 import SportFields from '../SportFields'
 import { sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../../lib/sports'
 import { watermarkSelection } from '../WatermarkCard'
-import { usePipelines, useStepPlugins } from '../../lib/plugins'
-import { MOMENT_STEPS, hasSteps, stepPostingLines, stepsPatch, usableFor } from '../../lib/steps'
+import { useEditPlugins, usePipelines, useStepPlugins } from '../../lib/plugins'
+import {
+  MOMENT_STEPS,
+  editPatch,
+  editPostingLines,
+  hasSteps,
+  stepPostingLines,
+  stepsPatch,
+  usableFor
+} from '../../lib/steps'
 import { t } from '../../lib/i18n'
 
 /** Settings for ONE queued video, or for every video a watched channel posts.
@@ -26,9 +34,10 @@ import { t } from '../../lib/i18n'
  *  One Save posts the whole panel. Caption style alone has eight fields, and
  *  a request per keystroke would be absurd.
  *
- *  Rate & understand, like Pipeline, are chosen when a video is added; here
- *  they can only be kept or turned off. A watched channel (`channel`) has its
- *  options replaced on every save, so the kept choices are sent back each time. */
+ *  Rate & understand and Suggest edits, like Pipeline, are chosen when a
+ *  video is added; here they can only be kept or turned off. A watched
+ *  channel (`channel`) has its options replaced on every save, so the kept
+ *  choices are sent back each time. */
 export default function QueueItemSettings({
   job,
   onSaved,
@@ -74,6 +83,9 @@ export default function QueueItemSettings({
   const [stepsKept, setStepsKept] = useState(Boolean(s.rate?.length || s.understand?.length))
   // For the names on the switch and a plugin that has gone; never saved.
   const stepPlugins = useStepPlugins()
+  // Suggest edits, kept or turned off, set the same way.
+  const [editKept, setEditKept] = useState(Boolean(s.edit?.length))
+  const editPlugins = useEditPlugins()
   const [style, setStyle] = useState<Required<CaptionStyle>>({
     ...DEFAULT_CAPTION_STYLE,
     ...(s.caption_style ?? {})
@@ -119,6 +131,9 @@ export default function QueueItemSettings({
       const steps = stepsPatch(s, stepsKept, Boolean(channel))
       Object.assign(patch, steps.patch)
       clear.push(...steps.clear)
+      const edits = editPatch(s, editKept, Boolean(channel))
+      Object.assign(patch, edits.patch)
+      clear.push(...edits.clear)
       if (watermark) {
         // Which branding profile is a single app-wide choice (Generate bar /
         // Creators tab); this toggle only decides whether THIS video uses it.
@@ -155,6 +170,7 @@ export default function QueueItemSettings({
     watermark,
     pipeline,
     stepsKept,
+    editKept,
     style
   ])
   const lastSaved = useRef(current)
@@ -185,6 +201,12 @@ export default function QueueItemSettings({
           )
         ]
   const postingLines = channel ? stepPostingLines(channel, s, t) : []
+  const editNames = (s.edit ?? []).map((c) => editPlugins?.find((p) => p.id === c.id)?.name ?? c.id)
+  const editGone =
+    editPlugins === null
+      ? []
+      : (s.edit ?? []).filter((c) => !editPlugins.some((p) => p.id === c.id)).map((c) => c.id)
+  const editLines = channel ? editPostingLines(channel, s, t) : []
 
   const toggle = (
     label: string,
@@ -227,6 +249,7 @@ export default function QueueItemSettings({
               setGaming(false)
               setPipeline(null)
               setStepsKept(false)
+              setEditKept(false)
             }
           },
           'Horizontal 1920x1080 outputs using the same AI.'
@@ -328,6 +351,25 @@ export default function QueueItemSettings({
                 : 'Marketplace plugins rate this video’s moments or say what happens in them, as chosen when it was added. Here they can only be kept or turned off. Longform picks its moments its own way, so turning it on turns these off.'
             )
           ))}
+        {Boolean(s.edit?.length) &&
+          (channel?.presetLongform ? (
+            <span className="text-sm text-muted">
+              {t('Suggest edits')} · {t('Not used: this channel’s preset makes Longform clips.')}
+            </span>
+          ) : (
+            toggle(
+              'Suggest edits',
+              `(${editNames.join(', ')})`,
+              editKept,
+              (on) => {
+                setEditKept(on)
+                if (on) setLongform(false) // the engine refuses the two together
+              },
+              channel
+                ? 'Marketplace plugins suggest edits for this channel’s clips, as chosen for this channel. Suggestions wait for you in the editor. Here they can only be kept or turned off. Longform makes its clips its own way, so turning it on turns these off.'
+                : 'Marketplace plugins suggest edits for this video’s clips, as chosen when it was added. Suggestions wait for you in the editor. Here they can only be kept or turned off. Longform makes its clips its own way, so turning it on turns these off.'
+            )
+          ))}
         {toggle(
           'Watermark',
           '(branding)',
@@ -346,6 +388,21 @@ export default function QueueItemSettings({
             </p>
           ))}
           {postingLines.map((line) => (
+            <p key={line} className="text-xs text-warn">
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {editKept && !channel?.presetLongform && editGone.length + editLines.length > 0 && (
+        <div className="space-y-1">
+          {editGone.map((name) => (
+            <p key={name} className="text-xs text-error">
+              {name} {t('isn’t installed and turned on any more. Turn off Suggest edits, or install it again.')}
+            </p>
+          ))}
+          {editLines.map((line) => (
             <p key={line} className="text-xs text-warn">
               {line}
             </p>

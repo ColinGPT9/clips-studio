@@ -1,8 +1,9 @@
-/** Rate & understand (plugins/steps.py): Marketplace plugins that look at a
- *  video's moments once they're found. Which installed plugins a job can name
- *  for each step, the keys a video's step rows report setting problems under,
- *  what the watch editor sends back, and the lines that say what the steps
- *  change on a watched channel and on the video page.
+/** Rate & understand and Suggest edits (plugins/steps.py): Marketplace
+ *  plugins that look at a video's moments once they're found, and at the
+ *  clips about to be made. Which installed plugins a job can name for each
+ *  step, the keys a video's step rows report setting problems under, what
+ *  the watch editor sends back, and the lines that say what the steps change
+ *  on a watched channel and on the video page.
  *
  *  Standalone, with type-only imports, so tests run it under Node
  *  (tests/test_ui_steps.py) against the engine's own helpers. Words that are
@@ -15,6 +16,10 @@ export type Step = 'find' | 'understand' | 'rate' | 'edit'
 /** The steps chosen under Rate & understand, in the order they run. */
 export type MomentStep = 'understand' | 'rate'
 export const MOMENT_STEPS: MomentStep[] = ['understand', 'rate']
+/** Every step a job names plugins for: Rate & understand's two, then
+ *  Suggest edits, in the order they run. */
+export type JobStep = MomentStep | 'edit'
+export const JOB_STEPS: JobStep[] = ['understand', 'rate', 'edit']
 
 /** Plugins for one step, in a job (plugins/steps.py MAX_PER_STEP). */
 export const MAX_PER_STEP = 3
@@ -47,7 +52,7 @@ export function offers(m: { inputs?: unknown; outputs?: unknown } | null | undef
 
 /** The installed plugins a job can name for this step: turned on, able to
  *  run here, not blocked, and able to do it. */
-export function usableFor(plugins: InstalledPlugin[], step: MomentStep): InstalledPlugin[] {
+export function usableFor(plugins: InstalledPlugin[], step: JobStep): InstalledPlugin[] {
   return plugins.filter(
     (p) =>
       (p.kind ?? 'pipeline') === 'pipeline' &&
@@ -61,6 +66,12 @@ export function usableFor(plugins: InstalledPlugin[], step: MomentStep): Install
 /** The installed plugins a job can name to understand or to rate (useStepPlugins). */
 export function stepPlugins(plugins: InstalledPlugin[]): InstalledPlugin[] {
   return plugins.filter((p) => MOMENT_STEPS.some((step) => usableFor([p], step).length > 0))
+}
+
+/** The installed plugins a job can name under Suggest edits (useEditPlugins).
+ *  The job's own pipeline may be one of them: a find run is never asked to edit. */
+export function editPlugins(plugins: InstalledPlugin[]): InstalledPlugin[] {
+  return usableFor(plugins, 'edit')
 }
 
 /** The plugin ticking Rate & understand puts in a video's rows: the first of
@@ -80,12 +91,16 @@ export function hasSteps(o: Pick<JobOptions, 'rate' | 'understand'> | null | und
 }
 
 /** The keys a video's step rows report setting problems under, for the rows
- *  it has now: `{slot}:understand:{id}` and `{slot}:rate:{id}`. Named by
- *  plugin, so removing a row never moves a problem onto another; a row that
- *  is gone has no key here, so it can't hold Generate. The Pipeline row's
- *  key is the bare slot key, never one of these. */
-export function stepProblemKeys(slotKey: string, o: Pick<JobOptions, 'rate' | 'understand'>): string[] {
-  return MOMENT_STEPS.flatMap((step) => (o[step] ?? []).map((c) => `${slotKey}:${step}:${c.id}`))
+ *  it has now: `{slot}:understand:{id}`, `{slot}:rate:{id}` and
+ *  `{slot}:edit:{id}`. Named by plugin, so removing a row never moves a
+ *  problem onto another; a row that is gone has no key here, so it can't
+ *  hold Generate. The Pipeline row's key is the bare slot key, never one of
+ *  these. */
+export function stepProblemKeys(
+  slotKey: string,
+  o: Pick<JobOptions, 'rate' | 'understand' | 'edit'>
+): string[] {
+  return JOB_STEPS.flatMap((step) => (o[step] ?? []).map((c) => `${slotKey}:${step}:${c.id}`))
 }
 
 /** What the queued-video or watched-channel panel sends for Rate &
@@ -106,6 +121,21 @@ export function stepsPatch(
     if (original.rate?.length) patch.rate = original.rate
     if (original.understand?.length) patch.understand = original.understand
   }
+  return { patch, clear: [] }
+}
+
+/** What the queued-video or watched-channel panel sends for Suggest edits,
+ *  as stepsPatch does for Rate & understand: off clears the list; kept, a
+ *  watched channel gets it back as it was and a queued video leaves it out. */
+export function editPatch(
+  original: Pick<JobOptions, 'edit'>,
+  kept: boolean,
+  replaces: boolean
+): { patch: Pick<JobOptions, 'edit'>; clear: string[] } {
+  const patch: Pick<JobOptions, 'edit'> = {}
+  if (!original.edit?.length) return { patch, clear: [] }
+  if (!kept) return { patch, clear: ['edit'] }
+  if (replaces) patch.edit = original.edit
   return { patch, clear: [] }
 }
 
@@ -149,6 +179,31 @@ export function stepPostingLines(
         'This channel posts automatically, so what these plugins say about a moment can end up in the posted title, description and hashtags without you checking them.'
       )
     )
+  return out
+}
+
+/** What Suggest edits means for a watched channel's clips: suggestions wait
+ *  in the editor, so what posts is the clip as Clips Kitty made it, and the
+ *  clips are ready only once every plugin has answered. */
+export function editPostingLines(
+  channel: ChannelPosting,
+  kept: Pick<JobOptions, 'edit'>,
+  tr: Words = english
+): string[] {
+  if (!kept.edit?.length) return []
+  const out: string[] = []
+  if (channel.mode === 'auto')
+    out.push(
+      tr(
+        'This channel posts clips as Clips Kitty made them, without waiting for you. Suggested edits wait in the editor, and Clips Kitty doesn’t put one into a clip until you use it and apply your edits. Using one later changes the clip in Clips Kitty. Posts that already went out stay as they were, and a later re-send of that clip sends the edited one.'
+      )
+    )
+  else if (channel.mode === 'ask') out.push(tr('Suggested edits wait for you in the editor. Check them before you publish.'))
+  out.push(
+    tr(
+      'Clips are made after every plugin has answered. Each one can add up to its time limit (shown in the Marketplace) before this channel’s clips are ready.'
+    )
+  )
   return out
 }
 

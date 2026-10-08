@@ -1,23 +1,27 @@
 import { t } from '../../lib/i18n'
 import type { InstalledPlugin } from '../../lib/marketplace'
-import { MAX_PER_STEP, usableFor, type MomentStep } from '../../lib/steps'
+import { MAX_PER_STEP, usableFor, type JobStep } from '../../lib/steps'
 import type { JobOptions, PipelineChoice, SportChoice } from '../../lib/types'
 import PipelineFields from '../PipelineFields'
 
 /** The words of each step's rows: the first row's label, the label of the
  *  rows after it, and what Clips Kitty does when no plugin is chosen. */
-const ROWS: Record<MomentStep, { first: string; more: string; none: string }> = {
+const ROWS: Record<JobStep, { first: string; more: string; none: string }> = {
   understand: { first: 'Understand them with', more: 'and with', none: 'Clips Kitty (from what’s said)' },
-  rate: { first: 'Rate them with', more: 'then with', none: 'Clips Kitty’s own scores' }
+  rate: { first: 'Rate them with', more: 'then with', none: 'Clips Kitty’s own scores' },
+  edit: { first: 'Suggest edits with', more: 'and with', none: 'No suggestions' }
 }
 
 /** One video's Rate & understand choices, under the switch, read as a
  *  sentence: who finds the moments, then the plugins that say what happens in
- *  them, then the plugins that score them, each in the order they run. Each
- *  chosen plugin is a PipelineFields row (where it runs, what it sends off
- *  this PC, a missing key, its settings). The engine checks everything again
- *  when the video is added (plugins/steps.py clean and check_installed). */
+ *  them, then the plugins that score them, each in the order they run. Or,
+ *  with `steps` ['edit'], its Suggest edits choices: the plugins that
+ *  suggest edits for each clip, in the order they run. Each chosen plugin is
+ *  a PipelineFields row (where it runs, what it sends off this PC, a missing
+ *  key, its settings). The engine checks everything again when the video is
+ *  added (plugins/steps.py clean and check_installed). */
 export default function StepFields({
+  steps = ['understand', 'rate'],
   options,
   plugins,
   pipelines,
@@ -26,17 +30,19 @@ export default function StepFields({
   onChange,
   onProblem
 }: {
+  /** Which steps' rows to show: Rate & understand's two (the default), or ['edit']. */
+  steps?: JobStep[]
   options: JobOptions
-  /** The plugins that can understand or rate (useStepPlugins); null while the engine hasn't said. */
+  /** The plugins that can do these steps (useStepPlugins, useEditPlugins); null while the engine hasn't said. */
   plugins: InstalledPlugin[] | null
   /** The installed pipelines, for the name of the one that finds the moments. */
   pipelines: InstalledPlugin[] | null
   sports: SportChoice[]
   name: string
   /** The step's new list; an empty one means Clips Kitty does that step. */
-  onChange: (step: MomentStep, next: PipelineChoice[]) => void
+  onChange: (step: JobStep, next: PipelineChoice[]) => void
   /** Whether a row's settings hold a value that can't be sent. */
-  onProblem: (step: MomentStep, id: string, bad: boolean) => void
+  onProblem: (step: JobStep, id: string, bad: boolean) => void
 }): JSX.Element {
   const finder = options.pipeline
     ? (pipelines?.find((p) => p.id === options.pipeline?.id)?.name ?? options.pipeline.id)
@@ -46,10 +52,12 @@ export default function StepFields({
         ? t('Gaming scoring')
         : t('Clips Kitty')
 
-  const step = (which: MomentStep): JSX.Element => {
+  const step = (which: JobStep): JSX.Element => {
     const chosen = options[which] ?? []
-    // The job's own pipeline already describes and scores what it finds: the engine refuses it here.
-    const usable = usableFor(plugins ?? [], which).filter((p) => p.id !== options.pipeline?.id)
+    // The job's own pipeline already describes and scores what it finds: the
+    // engine refuses it under Rate & understand. It may suggest edits: a find
+    // run is never asked to.
+    const usable = usableFor(plugins ?? [], which).filter((p) => which === 'edit' || p.id !== options.pipeline?.id)
     const free = usable.filter((p) => !chosen.some((c) => c.id === p.id))
     const words = ROWS[which]
     const add = free.length > 0 && chosen.length < MAX_PER_STEP
@@ -96,6 +104,20 @@ export default function StepFields({
           >
             + {t('Add another')}
           </button>
+        )}
+      </div>
+    )
+  }
+
+  if (!steps.includes('understand') && !steps.includes('rate')) {
+    const editors = options.edit?.length ?? 0
+    return (
+      <div className="w-full space-y-2">
+        {step('edit')}
+        {editors >= 2 && (
+          <p className="text-xs text-muted">
+            {t('Each plugin’s suggestion is shown on its own. You choose which to use.')}
+          </p>
         )}
       </div>
     )

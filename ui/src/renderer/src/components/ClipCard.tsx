@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
 import { sportMoment } from '../lib/sports'
+import { hasNewSuggestion } from '../lib/editSuggestions'
 import ScoreBadge from './ScoreBadge'
 import { Star, Trash } from './icons'
 
@@ -37,6 +38,8 @@ export default function ClipCard({
   const exported = !!clip.exported_at
   // A Sports job's clip: the moment it is ("Goal · 18' · HOM").
   const moment = sportMoment(clip.scores)
+  // A Marketplace plugin suggested an edit the creator hasn't used or hidden yet.
+  const suggested = hasNewSuggestion(clip.scores?.plugin_edits)
 
   // Lazy-load the thumbnail. Chromium allows only ~6 connections per host, so
   // a grid of 100+ <video> elements pointed at the local server starves its
@@ -69,7 +72,7 @@ export default function ClipCard({
         onClick={onClick}
         aria-label={`${name}${moment ? `, ${moment}` : ''}, ${duration} seconds, score ${clip.score}${
           badge ? ', horizontal longform' : ', vertical Short'
-        }${exported ? ', exported' : ''}${selected ? ', selected' : ''}`}
+        }${suggested ? ', suggested edit' : ''}${exported ? ', exported' : ''}${selected ? ', selected' : ''}`}
         aria-pressed={selected}
         className={`w-full text-left rounded-xl overflow-hidden bg-surface border transition-colors ${
           selected ? 'border-accent' : 'border-raised/60 hover:border-raised'
@@ -97,6 +100,15 @@ export default function ClipCard({
               className={`absolute ${onDelete ? 'top-9' : 'top-2'} right-2 bg-amber-500/90 text-black px-1.5 py-0.5 rounded text-[10px] font-bold`}
             >
               {badge}
+            </span>
+          )}
+          {/* Under the score badge: Publish takes the bottom left on hover. */}
+          {suggested && (
+            <span
+              className="absolute top-9 left-2 bg-accent/90 text-black px-1.5 py-0.5 rounded text-[10px] font-bold"
+              title="A Marketplace plugin suggested an edit for this clip. Open it in the editor to see it."
+            >
+              Suggested edit
             </span>
           )}
           <span className="absolute bottom-2 right-2 bg-base/80 px-1.5 py-0.5 rounded text-xs tabular-nums">

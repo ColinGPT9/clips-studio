@@ -138,8 +138,70 @@ export interface SubScores {
   found_score?: number
   plugin_ratings?: PluginRating[]
   plugin_notes?: PluginNote[]
+  /** Suggest edits (plugins/steps.py suggest_edits): what each plugin
+   *  suggested for this clip, and what the creator did with it
+   *  (plugins/edit_marks.py). None of it is in the clip until the creator
+   *  uses it in the editor and applies their edits. */
+  plugin_edits?: PluginEdit[]
   source?: string
   rerank_position?: number
+}
+
+/** What one plugin suggested for a clip, fitted to the editor's own controls
+ *  (the SDK's host.read_edits). Every time is in seconds of the video. */
+export interface SuggestedEdit {
+  /** Spans to take out. */
+  cuts?: [number, number][]
+  /** Spans to silence; the picture stays. */
+  mutes?: [number, number][]
+  volume?: number
+  fade_in?: number
+  fade_out?: number
+  speed?: number
+  /** The editor's Hook title. */
+  title_overlay?: { text: string; seconds: number }
+  /** A layout: track, center or letterbox. */
+  crop?: string
+}
+
+/** The editor fields one Use may set besides spans (plugins/edit_marks.py VALUES). */
+export type SuggestionValue = 'volume' | 'fade_in' | 'fade_out' | 'speed' | 'hook' | 'crop'
+
+/** What a used suggestion put in the clip's saved edit and is still there,
+ *  in seconds of the video: Take it back takes out only this. */
+export interface AppliedEdit {
+  removed?: [number, number][]
+  mutes?: [number, number][]
+  muted_words?: MutedWord[]
+  values?: Partial<Record<SuggestionValue, { before: unknown; after: unknown }>>
+}
+
+/** What a render says the creator used (POST /clips/{id}/render
+ *  `suggestions`, and `render_first.suggestions` when publishing): each
+ *  Use's additions, in seconds of the video. The worker keeps only what the
+ *  render really changed. */
+export interface UsedSuggestions {
+  used: { id: string; applied: AppliedEdit }[]
+}
+
+/** One plugin's suggestion for one clip (scores.plugin_edits). */
+export interface PluginEdit {
+  /** The same for the same suggestion from the same plugin, across re-runs. */
+  id: string
+  plugin: string
+  version?: string
+  name?: string
+  /** The clip's start and end, in seconds of the video, when it was suggested. */
+  window?: [number, number]
+  /** The shortest clip the video was made with: cuts were fitted to leave at least this. */
+  min_length?: number
+  edit: SuggestedEdit
+  reason?: string
+  state: 'new' | 'used' | 'hidden'
+  /** Only on a used one. */
+  applied?: AppliedEdit
+  /** A forced re-run made the clip's file again without its saved edits. */
+  remade?: boolean
 }
 
 /** A Marketplace plugin's score for one moment. Older entries may lack the name. */
@@ -454,6 +516,11 @@ export interface JobOptions {
    *  order, the last one counting. Not with Longform. */
   rate?: PipelineChoice[]
   understand?: PipelineChoice[]
+  /** Suggest edits (plugins/steps.py suggest_edits): up to 3 Marketplace
+   *  plugins that look at each clip about to be made and suggest edits,
+   *  which wait for the creator in the editor. The job's own pipeline may be
+   *  one of them. Not with Longform. */
+  edit?: PipelineChoice[]
 }
 
 /** A job's pipeline: an installed plugin's id, and the settings changed from

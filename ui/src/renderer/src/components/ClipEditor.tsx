@@ -4,6 +4,7 @@ import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/expor
 import { Folder, Scissors } from './icons'
 import type { Clip, PluginNote } from '../lib/types'
 import { sportMoment } from '../lib/sports'
+import { suggestionLine } from '../lib/editSuggestions'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
 
@@ -181,6 +182,19 @@ export default function ClipEditor({
           Notes from {n.who}: {n.texts.join(' · ')}
         </p>
       ))}
+      {/* Suggest edits (plugins/steps.py suggest_edits): what each plugin
+          suggested, and what came of it. They are used in the editor. */}
+      {(clip.scores.plugin_edits ?? [])
+        .filter((e) => e && typeof e.id === 'string' && e.edit)
+        .map((e) => (
+          <p
+            key={`edit-${e.id}`}
+            className="text-xs text-muted -mt-2"
+            title="An edit a Marketplace plugin suggested for this clip. Open the editor to use it or hide it."
+          >
+            {suggestionLine(e, { start: clip.start_s, end: clip.end_s })}
+          </p>
+        ))}
       {clip.scores.intent_why && (
         <p className="text-xs text-muted -mt-2" title="Points from the clip direction given with this video">
           Direction +{clip.scores.intent}: {clip.scores.intent_why}

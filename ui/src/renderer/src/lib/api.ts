@@ -26,6 +26,7 @@ import type {
   SportChoice,
   SystemStats,
   Translation,
+  UsedSuggestions,
   Video,
   Watch,
   WatchItem,
@@ -255,6 +256,9 @@ export const api = {
       description?: string
       hashtags?: string[]
       exported?: boolean
+      /** Hide or show an edit a plugin suggested. A suggestion is used by
+       *  applying it, never here (plugins/edit_marks.py). */
+      suggestion?: { id: string; state: 'hidden' | 'new' }
     }
   ) =>
     request<Clip>(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -311,10 +315,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ message })
     }),
-  rerenderClip: (id: number, range?: { start?: number; end?: number }, renderOpts?: RenderOpts) =>
+  /** `suggestions`: the edits plugins suggested that the creator used in
+   *  this render, as the editor recorded each Use. */
+  rerenderClip: (
+    id: number,
+    range?: { start?: number; end?: number },
+    renderOpts?: RenderOpts,
+    suggestions?: UsedSuggestions
+  ) =>
     request<{ job_id: number }>(`/clips/${id}/render`, {
       method: 'POST',
-      body: JSON.stringify({ ...(range ?? {}), render_opts: renderOpts ?? null })
+      body: JSON.stringify({
+        ...(range ?? {}),
+        render_opts: renderOpts ?? null,
+        ...(suggestions ? { suggestions } : {})
+      })
     }),
   exportClip: (id: number, folder: string) =>
     request<{ exported: string[] }>(`/clips/${id}/export`, {

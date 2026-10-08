@@ -1,4 +1,4 @@
-"""Rate & understand on screen (ui/src/renderer/src/lib/steps.ts).
+"""Rate & understand and Suggest edits on screen (ui/src/renderer/src/lib/steps.ts).
 
 The TypeScript runs under Node here, as tests/test_ui_marketplace.py runs the
 Marketplace's, and is fed what the engine really uses: the manifest helper
@@ -79,7 +79,8 @@ def test_offers_match_the_manifest_helper(tmp_path):
     got = _run(tmp_path, "return data.map((d) => m.offers(d))", data)
     assert got == [list(manifest.offers(d)) for d in data]
     # the fixtures cover every step, alone and together
-    assert {tuple(g) for g in got} >= {("find",), ("understand",), ("rate",), ("find", "understand", "rate"), ()}
+    assert {tuple(g) for g in got} >= {("find",), ("understand",), ("rate",), ("edit",),
+                                       ("find", "understand", "rate"), ()}
 
 
 def test_step_plugins_are_offered_only_for_steps_they_can_do(tmp_path):
@@ -110,6 +111,37 @@ def test_step_plugins_are_offered_only_for_steps_they_can_do(tmp_path):
         for p in plugins:
             if p["id"] in ids:
                 assert manifest.step_problem(p, step) is None, (p["id"], step)
+
+
+def test_edit_plugins_are_offered_only_where_the_engine_would_ask_them(tmp_path):
+    """Suggest edits lists the installed plugins whose manifest offers the edit
+    step (an `edits` output with `moments` in), turned on, able to run and not
+    blocked. One that finds moments and suggests edits is listed too: the
+    engine never asks a find run to edit, so it may be both."""
+    trimmer = yaml.safe_load((ROOT / "tests" / "fixtures" / "plugins" / "trimmer" / "clipskitty.yaml")
+                             .read_text(encoding="utf-8"))
+    no_moments = yaml.safe_load((MANIFESTS / "invalid" / "edits-without-moments.yaml").read_text(encoding="utf-8"))
+    plugins = [
+        _plugin("fixture-dev/trimmer", trimmer["inputs"], trimmer["outputs"]),
+        _plugin("example-dev/quarkbloom-finder-trimmer", ["video", "moments"], ["ranges", "edits"]),
+        _plugin("example-dev/quarkbloom-rater", ["moments", "transcript"], ["ratings"]),
+        _plugin("example-dev/edits-only", no_moments["inputs"], no_moments["outputs"]),
+        _plugin("example-dev/off-trimmer", ["moments"], ["edits"], enabled=False),
+        _plugin("example-dev/blocked-trimmer", ["moments"], ["edits"], flag={"severity": "blocked"}),
+        _plugin("example-dev/broken-trimmer", ["moments"], ["edits"], problem="it needs Clips Kitty >=9"),
+        _plugin("example-dev/caption-trimmer", ["moments"], ["edits"], kind="caption-style"),
+    ]
+    got = _run(tmp_path, "return [m.usableFor(data, 'edit'), m.editPlugins(data), m.stepPlugins(data)]"
+                         ".map((list) => list.map((p) => p.id))", plugins)
+    assert got[0] == got[1] == ["fixture-dev/trimmer", "example-dev/quarkbloom-finder-trimmer"]
+    # an editor is never listed under Rate & understand for its edits
+    assert got[2] == ["example-dev/quarkbloom-rater"]
+    for p in plugins:
+        offered = "edit" in manifest.offers(p)
+        assert (p["id"] in got[0]) == (offered and p["enabled"] and not p["problem"] and not p["flag"]
+                                       and p["kind"] == "pipeline"), p["id"]
+        if p["id"] in got[0]:
+            assert manifest.step_problem(p, "edit") is None, p["id"]
 
 
 def test_ticking_the_switch_never_picks_the_videos_own_pipeline(tmp_path):
@@ -173,11 +205,26 @@ def test_step_problem_keys_follow_the_rows(tmp_path):
     assert got[3:6] == [True, False, False]
     # the Pipeline guard is today's: its bare key, only while a pipeline is chosen
     assert got[6:] == [True, False]
+    # Suggest edits rows report under their own keys, after the moment steps',
+    # and may name the video's own Pipeline without clashing with its bare key
+    edits = {**options, "edit": [{"id": "example-dev/quarkbloom-finder"}, {"id": "fixture-dev/trimmer"}]}
+    got = _run(tmp_path, """
+        return [m.stepProblemKeys('s1', data), m.stepProblemKeys('s1', {edit: data.edit}),
+                m.stepProblemKeys('s1', {...data, edit: []})]
+    """, edits)
+    assert got[0] == ["s1:understand:example-dev/quarkbloom-notes", "s1:rate:example-dev/quarkbloom-rater",
+                      "s1:rate:example-dev/pace-rater", "s1:edit:example-dev/quarkbloom-finder",
+                      "s1:edit:fixture-dev/trimmer"]
+    assert got[1] == ["s1:edit:example-dev/quarkbloom-finder", "s1:edit:fixture-dev/trimmer"]
+    assert got[2] == got[0][:3]
     form = (UI / "components" / "queue" / "AddVideos.tsx").read_text(encoding="utf-8")
     assert re.search(r"\(s\.options\.pipeline && badSettings\[s\.key\]\) \|\|\s*"
                      r"stepProblemKeys\(s\.key, s\.options\)\.some\(\(k\) => badSettings\[k\]\)", form)
     assert "onProblem={(bad) => setBadSettings((b) => ({ ...b, [slot.key]: bad }))}" in form
     assert "[`${slot.key}:${step}:${id}`]: bad" in form
+    # both step blocks, Rate & understand's and Suggest edits', report so
+    assert form.count("setBadSettings((b) => ({ ...b, [`${slot.key}:${step}:${id}`]: bad }))") == 2
+    assert "steps={['edit']}" in form and "plugins={editPlugins}" in form
 
 
 # ---- the watch editor -------------------------------------------------------------------------
@@ -213,6 +260,64 @@ def test_the_watch_editor_sends_kept_steps_back_and_clears_them_when_off(tmp_pat
     card = (UI / "components" / "watch" / "WatchCard.tsx").read_text(encoding="utf-8")
     assert "mode: watch.publish.mode" in card and "max_posts: watch.publish.max_posts" in card
     assert "presetLongform: Boolean(automation.presets.find((p) => p.id === watch.preset)?.options?.longform)" in card
+
+
+def test_the_watch_editor_sends_kept_edit_plugins_back_and_clears_them_when_off(tmp_path):
+    """Suggest edits is kept or turned off as Rate & understand is: a watched
+    channel gets its list back on every save, a queued video leaves it out,
+    and off clears it. Without it the panel sends what it sent before."""
+    edit = [{"id": "fixture-dev/trimmer", "settings": {"mode": "ok"}},
+            {"id": "example-dev/quarkbloom-finder-trimmer"}]
+    with_edit = {"edit": edit, "rate": [{"id": "example-dev/quarkbloom-rater"}], "captions": False}
+    got = _run(tmp_path, """
+        return [m.editPatch(data, true, true), m.editPatch(data, true, false), m.editPatch(data, false, true),
+                m.editPatch(data, false, false), m.editPatch({}, false, true), m.editPatch({edit: []}, false, true),
+                m.editPatch({}, true, false)]
+    """, with_edit)
+    assert got[0] == {"patch": {"edit": edit}, "clear": []}
+    assert got[1] == {"patch": {}, "clear": []}
+    assert got[2] == got[3] == {"patch": {}, "clear": ["edit"]}
+    assert got[4] == got[5] == got[6] == {"patch": {}, "clear": []}
+    # what goes back is what the API stores: plugins.steps cleans it to itself
+    assert plugin_steps.clean("edit", got[0]["patch"]["edit"]) == edit
+    panel = (UI / "components" / "queue" / "QueueItemSettings.tsx").read_text(encoding="utf-8")
+    assert "const edits = editPatch(s, editKept, Boolean(channel))" in panel
+    # turning Longform on turns Suggest edits off too
+    longform = re.search(r"'Longform',\s*'\(16:9\)',\s*longform,\s*\(on\) => \{(.*?)\n          \},", panel, re.S)
+    assert longform and "setEditKept(false)" in longform.group(1)
+
+
+def test_edit_posting_lines_say_suggestions_wait_and_clips_wait_for_every_plugin(tmp_path):
+    """A watched channel with Suggest edits: an automatic one posts clips as
+    they were made, so it says the suggestions wait and what a later Use
+    does; one that asks says to check them; each says the clips wait for
+    every plugin's answer. Through t(), like the steps' posting lines."""
+    kept = {"edit": [{"id": "fixture-dev/trimmer"}]}
+    auto = ("This channel posts clips as Clips Kitty made them, without waiting for you. Suggested edits wait in "
+            "the editor, and Clips Kitty doesn’t put one into a clip until you use it and apply your edits. Using "
+            "one later changes the clip in Clips Kitty. Posts that already went out stay as they were, and a later "
+            "re-send of that clip sends the edited one.")
+    ask = "Suggested edits wait for you in the editor. Check them before you publish."
+    wait = ("Clips are made after every plugin has answered. Each one can add up to its time limit (shown in the "
+            "Marketplace) before this channel’s clips are ready.")
+    cases = [
+        ({"mode": "auto", "max_posts": 3}, kept, [auto, wait]),
+        ({"mode": "ask", "max_posts": 0}, kept, [ask, wait]),
+        ({"mode": "off", "max_posts": 3}, kept, [wait]),
+        ({"mode": "auto", "max_posts": 3}, {}, []),
+        ({"mode": "auto", "max_posts": 3}, {"edit": []}, []),
+    ]
+    got = _run(tmp_path, "return data.map(([channel, kept]) => m.editPostingLines(channel, kept))",
+               [[channel, kept] for channel, kept, _ in cases])
+    assert got == [lines for _, _, lines in cases]
+    said = _run(tmp_path, "const said = []; m.editPostingLines(data, {edit: [{id: 'x'}]}, (s) => { said.push(s);"
+                          " return s }); return said", {"mode": "auto", "max_posts": 1})
+    assert said == [auto, wait]
+    # the rate posting lines are as they were beside it
+    assert _run(tmp_path, "return m.stepPostingLines(data, {edit: [{id: 'x'}]})", {"mode": "auto", "max_posts": 2}) \
+        == []
+    panel = (UI / "components" / "queue" / "QueueItemSettings.tsx").read_text(encoding="utf-8")
+    assert "const editLines = channel ? editPostingLines(channel, s, t) : []" in panel
 
 
 def test_posting_lines_follow_mode_and_best_n(tmp_path):
@@ -253,10 +358,15 @@ def test_watch_settings_autosave_key_holds_only_the_steps_switch():
     assert current
     items = [i.strip() for i in current.group(1).split(",") if i.strip()]
     assert items == ["captions", "longClips", "podcast", "verticalLive", "gamingScoring", "gaming", "sport",
-                     "longform", "longformMode", "longformShorts", "watermark", "pipeline", "stepsKept", "style"]
+                     "longform", "longformMode", "longformShorts", "watermark", "pipeline", "stepsKept", "editKept",
+                     "style"]
     assert "const [stepsKept, setStepsKept] = useState(Boolean(s.rate?.length || s.understand?.length))" in panel
     assert "const stepPlugins = useStepPlugins()" in panel
-    for late in ("stepPlugins", "useStepPlugins", "stepNames", "stepsGone", "postingLines", "channel"):
+    # Suggest edits' switch likewise, set from the settings as the panel opens
+    assert "const [editKept, setEditKept] = useState(Boolean(s.edit?.length))" in panel
+    assert "const editPlugins = useEditPlugins()" in panel
+    for late in ("stepPlugins", "useStepPlugins", "stepNames", "stepsGone", "postingLines", "channel",
+                 "editPlugins", "useEditPlugins", "editNames", "editGone", "editLines"):
         assert late not in current.group(1), late
 
 

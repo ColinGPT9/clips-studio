@@ -318,13 +318,24 @@ def test_an_editor_shows_suggests_edits(tmp_path):
     assert got[0] == {"label": "Suggests edits", "tone": "info",
                       "title": "It suggests cuts, fades, a hook title or a layout for each clip. Turn on Suggest "
                                "edits when you add a video."}
-    # The time limit the app stops it at, in the edit run's words; one that
-    # also rates or understands gets one line for both.
-    assert got[1] == ["Clips Kitty stops it after 10 minutes when it suggests edits for a video’s clips."]
-    assert details["time_limit"] == got[1][0]
+    # When a suggestion reaches a clip, in the words the Suggest edits switch
+    # uses; then the time limit the app stops it at, in the edit run's words.
+    # One that also rates or understands gets one time line for both.
+    promise = ("Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your "
+               "edits (Apply edits, or Apply edits & upload).")
+    assert got[1] == [f"Its suggestions wait in the editor. {promise}",
+                      "Clips Kitty stops it after 10 minutes when it suggests edits for a video’s clips."]
+    assert details["time_limit"] == got[1][1]
+    form = (LIB.parent / "components" / "queue" / "AddVideos.tsx").read_text(encoding="utf-8")
+    switch = re.search(r"key: 'edit',\s*label: 'Suggest edits',\s*hint: '\(Marketplace\)',\s*title:\s*'([^']*)'", form)
+    assert switch and promise in switch.group(1)
+    # A plugin that only rates gets no promise line.
+    assert _run(tmp_path, "return m.stepLines({steps: ['Rates moments']})") == [
+        ("Its scores decide which clips are made and their order, and which are posted when a channel posts only "
+         "the best few.")]
     assert permissions.describe({**rater_editor, "run": {"timeout_minutes": 1}})["time_limit"] == ("Clips Kitty stops it after 1 minute when it rates or understands a video’s moments or "
                           "suggests edits for its clips.")
-    assert permissions.describe(finder_editor)["time_limit"] == got[1][0]
+    assert permissions.describe(finder_editor)["time_limit"] == got[1][1]
     base = {"kind": "pipeline", "enabled": True, "problem": None, "flag": None}
     plugins = [{**base, "id": "example-dev/quarkbloom-trimmer", "inputs": editor["inputs"], "outputs": ["edits"]}]
     assert _run(tmp_path, "return m.usablePipelines(data).map((p) => p.id)", plugins) == []

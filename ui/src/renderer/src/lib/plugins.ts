@@ -13,7 +13,7 @@ import type {
   PluginsResponse
 } from './marketplace'
 import { usablePipelines } from './marketplace'
-import { stepPlugins } from './steps'
+import { editPlugins, stepPlugins } from './steps'
 
 /** The plugin manager's routes (plugins/api.py). The ones that fetch,
  *  install or change plugins need the session secret, which only the
@@ -188,7 +188,7 @@ export function checkOnlineListAtStart(): () => void {
 
 /** Some of the installed plugins, kept current as plugins change. Null until
  *  the engine answers; asked again while the engine is still starting. The
- *  loader of usePipelines and useStepPlugins. */
+ *  loader of usePipelines, useStepPlugins and useEditPlugins. */
 function useInstalled(pick: (all: InstalledPlugin[]) => InstalledPlugin[]): InstalledPlugin[] | null {
   const [list, setList] = useState<InstalledPlugin[] | null>(null)
   useEffect(() => {
@@ -229,4 +229,12 @@ export function usePipelines(): InstalledPlugin[] | null {
  *  while it is null or empty, unless the video already names a step. */
 export function useStepPlugins(): InstalledPlugin[] | null {
   return useInstalled(stepPlugins)
+}
+
+/** The installed plugins a job can name under Suggest edits: turned on, not
+ *  blocked, and able to suggest edits for the clips Clips Kitty makes
+ *  (lib/steps.ts). Null until the engine answers; the switch stays hidden
+ *  while it is null or empty, unless the video already names one. */
+export function useEditPlugins(): InstalledPlugin[] | null {
+  return useInstalled(editPlugins)
 }

@@ -10,16 +10,17 @@ import GamingLayoutEditor from '../GamingLayoutEditor'
 import SportFields from '../SportFields'
 import PipelineFields from '../PipelineFields'
 import StepFields from './StepFields'
-import { usePipelines, useStepPlugins } from '../../lib/plugins'
-import { fittingSettings } from '../../lib/marketplace'
+import { useEditPlugins, usePipelines, useStepPlugins } from '../../lib/plugins'
+import { fittingSettings, type InstalledPlugin } from '../../lib/marketplace'
 import {
+  MAX_PER_STEP,
   MOMENT_STEPS,
   firstStepPlugin,
   hasSteps,
   offers,
   stepProblemKeys,
   usableFor,
-  type MomentStep
+  type JobStep
 } from '../../lib/steps'
 import { PRESETS } from '../../lib/gamingLayout'
 import {
@@ -75,6 +76,7 @@ type ToggleKey =
   | 'longform'
   | 'pipeline'
   | 'steps'
+  | 'edit'
   | 'watermark'
 
 /** Each of these decides what the frame is, so only one can be on. */
@@ -141,6 +143,13 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
       'Plugins you installed from the Marketplace look at the moments once they’re found, by Clips Kitty, Sports, Gaming scoring or a pipeline. One that understands says what happens in each moment, so the titles, descriptions and hashtags can say it. One that rates gives each moment its own score, which decides which clips are made and their order. Clips Kitty does any step you leave to it. Not with Longform.'
   },
   {
+    key: 'edit',
+    label: 'Suggest edits',
+    hint: '(Marketplace)',
+    title:
+      'Plugins you installed from the Marketplace look at each clip Clips Kitty is about to make and suggest edits: cuts, mutes, fades, speed, a hook title or the layout. Suggestions wait for you in the editor. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload). Not with Longform.'
+  },
+  {
     key: 'watermark',
     label: 'Watermark',
     hint: '(branding)',
@@ -176,8 +185,63 @@ const PREF = {
   sport: 'generate-sport',
   longform: 'generate-longform',
   longform_mode: 'generate-longform-mode',
-  longform_shorts: 'generate-longform-shorts'
+  longform_shorts: 'generate-longform-shorts',
+  // The Suggest edits plugins last chosen, as a list of choices.
+  edit: 'generate-edit'
 } as const
+
+/** The Suggest edits plugins last chosen in the Generate bar, or null. They
+ *  start this bar's rows only: once the installed plugins are known, one
+ *  that has gone is dropped and settings are fitted, as for a draft. */
+function rememberedEdit(): PipelineChoice[] | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREF.edit) ?? 'null')
+    if (!Array.isArray(raw)) return null
+    const list = raw
+      .filter((c) => c && typeof c.id === 'string' && c.id)
+      .slice(0, MAX_PER_STEP)
+      .map((c): PipelineChoice =>
+        c.settings && typeof c.settings === 'object' && !Array.isArray(c.settings)
+          ? { id: c.id, settings: c.settings }
+          : { id: c.id }
+      )
+    return list.length > 0 ? list : null
+  } catch {
+    return null // a corrupt saved choice only means it isn't remembered
+  }
+}
+
+/** Remember the Suggest edits plugins for the next video; none forgets them. */
+function rememberEdit(list: PipelineChoice[] | null | undefined): void {
+  try {
+    if (list?.length) localStorage.setItem(PREF.edit, JSON.stringify(list))
+    else localStorage.removeItem(PREF.edit)
+  } catch {
+    // Not remembered for next time; this video still gets it.
+  }
+}
+
+/** A new row's options in this bar: the remembered settings, with the
+ *  Suggest edits plugins last chosen (never with Longform). */
+function startingOptions(): JobOptions {
+  const o = seedOptions()
+  const edit = rememberedEdit()
+  if (edit && !o.longform) o.edit = edit
+  return o
+}
+
+/** A step's chosen plugins that can still do it, each with its settings
+ *  fitted to the installed version; a plugin that has gone is dropped. */
+function fittedChoices(list: PipelineChoice[], able: InstalledPlugin[]): PipelineChoice[] {
+  return list.flatMap((choice): PipelineChoice[] => {
+    const plugin = able.find((p) => p.id === choice.id)
+    if (!plugin) return []
+    const settings = fittingSettings(choice.settings, plugin.settings)
+    if (JSON.stringify(settings) === JSON.stringify(choice.settings ?? {})) return [choice]
+    const { settings: _old, ...kept } = choice
+    return [Object.keys(settings).length > 0 ? { ...kept, settings } : kept]
+  })
+}
 
 /** "Also make 9:16 Shorts" under Longform, as last chosen. */
 function rememberedShorts(): boolean {
@@ -196,6 +260,7 @@ function remember(key: ToggleKey, on: boolean, mode?: string): void {
     else if (key === 'vertical_live') localStorage.setItem(PREF.vertical_live, String(on))
     else if (key === 'gaming') localStorage.setItem(PREF.gaming, String(on))
     else if (key === 'sport') localStorage.setItem(PREF.sport, String(on))
+    else if (key === 'edit' && !on) localStorage.removeItem(PREF.edit) // on, rememberEdit keeps the list
     else if (key === 'longform') {
       localStorage.setItem(PREF.longform, String(on))
       if (mode) localStorage.setItem(PREF.longform_mode, mode)
@@ -280,7 +345,7 @@ function withoutPipelineInSteps(o: JobOptions): JobOptions {
 function emptySlot(from?: JobOptions): Slot {
   // A new row copies the one above it: a batch usually shares most settings,
   // and every switch is still overridable per video. Copied, not shared.
-  return { key: newKey(), url: '', path: null, title: '', options: copyable(from ?? seedOptions()) }
+  return { key: newKey(), url: '', path: null, title: '', options: copyable(from ?? startingOptions()) }
 }
 
 function loadDraft(): Slot[] {
@@ -339,6 +404,10 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   // understand switch shows only when there is one.
   const stepPlugins = useStepPlugins()
   const stepUsable = stepPlugins ?? []
+  // Installed plugins that can suggest edits for the clips; the Suggest
+  // edits switch shows only when there is one.
+  const editPlugins = useEditPlugins()
+  const editUsable = editPlugins ?? []
   // Rows whose pipeline settings hold a value that can't be sent yet: the
   // Pipeline row under the slot's key, each Rate & understand row under
   // `{slot}:{step}:{plugin id}` (lib/steps.ts stepProblemKeys).
@@ -398,15 +467,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
         for (const step of MOMENT_STEPS) {
           const list = s.options[step]
           if (!list) continue
-          const able = usableFor(stepPlugins, step)
-          const fitted = list.flatMap((choice): PipelineChoice[] => {
-            const plugin = able.find((p) => p.id === choice.id)
-            if (!plugin) return []
-            const settings = fittingSettings(choice.settings, plugin.settings)
-            if (JSON.stringify(settings) === JSON.stringify(choice.settings ?? {})) return [choice]
-            const { settings: _old, ...kept } = choice
-            return [Object.keys(settings).length > 0 ? { ...kept, settings } : kept]
-          })
+          const fitted = fittedChoices(list, usableFor(stepPlugins, step))
           if (fitted.length > 0) options[step] = fitted
           else delete options[step]
         }
@@ -416,8 +477,26 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     )
   }, [stepPlugins])
 
-  // A Rate & understand row that is gone (removed, unticked, dropped) takes
-  // its settings problem with it, so it can never hold Generate.
+  // And for Suggest edits, whose rows may name the video's own Pipeline.
+  useEffect(() => {
+    if (!editPlugins) return
+    setSlots((prev) =>
+      prev.map((s) => {
+        const list = s.options.edit
+        if (!list) return s
+        const fitted = fittedChoices(list, editPlugins)
+        if (JSON.stringify(fitted) === JSON.stringify(list)) return s
+        const options = { ...s.options }
+        if (fitted.length > 0) options.edit = fitted
+        else delete options.edit
+        return { ...s, options }
+      })
+    )
+  }, [editPlugins])
+
+  // A Rate & understand or Suggest edits row that is gone (removed,
+  // unticked, dropped) takes its settings problem with it, so it can never
+  // hold Generate.
   useEffect(() => {
     const live = new Set(slots.flatMap((s) => stepProblemKeys(s.key, s.options)))
     setBadSettings((b) => {
@@ -481,9 +560,11 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       )
     )
 
-  /** One Rate & understand step's plugins for this video. An empty list
-   *  leaves the step to Clips Kitty; with neither step left, the switch is off. */
-  const setStep = (key: string, step: MomentStep, list: PipelineChoice[]): void =>
+  /** One Rate & understand step's plugins for this video, or its Suggest
+   *  edits plugins. An empty list leaves the step to Clips Kitty; with no
+   *  plugin left, the switch is off. */
+  const setStep = (key: string, step: JobStep, list: PipelineChoice[]): void => {
+    if (step === 'edit') rememberEdit(list)
     setSlots((prev) =>
       prev.map((s) => {
         if (s.key !== key) return s
@@ -493,6 +574,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
         return { ...s, options, error: undefined }
       })
     )
+  }
 
   /** This video's caption style, whole, and a change to one field of it: the
    *  post style and the caption controls edit the same object. */
@@ -569,6 +651,12 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
         delete next.rate
         delete next.understand
       }
+    } else if (key === 'edit') {
+      // The first plugin that can suggest edits. The video's own Pipeline
+      // may be it: a find run is never asked to edit.
+      const first = editUsable[0]
+      if (on && !next.edit?.length && first) next.edit = [{ id: first.id }]
+      else if (!on) delete next.edit
     } else if (key === 'watermark') {
       const { profileId } = watermarkSelection()
       if (on && profileId) next.watermark_profile_id = profileId
@@ -631,7 +719,16 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       delete next.rate
       delete next.understand
     }
+    // Suggest edits likewise: it looks at the clips a Shorts run makes.
+    if (on && key === 'edit' && next.edit?.length && next.longform) {
+      delete next.longform
+      remember('longform', false)
+    } else if (on && key === 'longform' && next.edit) {
+      delete next.edit
+      remember('edit', false)
+    }
     remember(key, on && (key !== 'sport' || Boolean(next.sport)), next.longform?.mode)
+    if (key === 'edit' && on) rememberEdit(next.edit)
     return withoutPipelineInSteps(next)
   }
 
@@ -685,6 +782,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     if (key === 'longform') return Boolean(o.longform)
     if (key === 'pipeline') return Boolean(o.pipeline)
     if (key === 'steps') return Boolean(o.rate?.length || o.understand?.length)
+    if (key === 'edit') return Boolean(o.edit?.length)
     return Boolean(o.watermark_profile_id)
   }
 
@@ -704,7 +802,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
           url: '',
           path: p,
           title: (p.split(/[\\/]/).pop() ?? p).replace(/\.[^.]+$/, ''),
-          options: copyable(base ?? seedOptions())
+          options: copyable(base ?? startingOptions())
         }))
       const kept = prev.filter((s) => s.url.trim() || s.path)
       return [...kept, ...fresh]
@@ -862,6 +960,8 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 if (tg.key === 'pipeline' && usable.length === 0 && !slot.options.pipeline) return null
                 // Rate & understand likewise: once a plugin that can rate or understand is.
                 if (tg.key === 'steps' && stepUsable.length === 0 && !hasSteps(slot.options)) return null
+                // Suggest edits likewise: once a plugin that can suggest edits is.
+                if (tg.key === 'edit' && editUsable.length === 0 && !slot.options.edit?.length) return null
                 // Watermark needs a saved branding profile to point at. Without
                 // one there is nothing to burn in, so the box could be ticked
                 // and would simply un-tick itself — which reads as a broken
@@ -957,6 +1057,23 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 <StepFields
                   options={slot.options}
                   plugins={stepPlugins}
+                  pipelines={pipelines}
+                  sports={offered}
+                  name={`${n + 1}`}
+                  onChange={(step, list) => setStep(slot.key, step, list)}
+                  onProblem={(step, id, bad) =>
+                    setBadSettings((b) => ({ ...b, [`${slot.key}:${step}:${id}`]: bad }))
+                  }
+                />
+              </div>
+            )}
+
+            {Boolean(slot.options.edit?.length) && (
+              <div className="flex items-center gap-3 flex-wrap mt-2">
+                <StepFields
+                  steps={['edit']}
+                  options={slot.options}
+                  plugins={editPlugins}
                   pipelines={pipelines}
                   sports={offered}
                   name={`${n + 1}`}
