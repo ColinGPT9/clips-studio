@@ -226,6 +226,12 @@ class Worker(threading.Thread):
                         # A plugin pipeline (plugins/): it picks the moments,
                         # and everything after that is made as usual.
                         cfg["clips"]["pipeline"] = payload["pipeline"]
+                    for step in ("rate", "understand"):
+                        # Rate & understand (plugins/steps.py): plugins that
+                        # look at the moments once they're found, in order.
+                        chosen = payload.get(step)
+                        if chosen:
+                            cfg["clips"][step] = list(chosen) if isinstance(chosen, list) else [chosen]
                     if isinstance(payload.get("sport"), dict):
                         # The Sports toggle's Teams / players, and Custom's own
                         # words: directions too, so clips whose commentary
@@ -608,6 +614,17 @@ class Worker(threading.Thread):
             if not clip_ids:
                 print("  Publish skipped: the run produced no clips.")
                 return
+            if payload.get("rate") or payload.get("understand"):
+                # This job named plugins to rate or understand its moments:
+                # if one didn't run, the clips wait for the person instead.
+                # A job without them never reads the outcome for this.
+                from core.outcome import failed_steps
+
+                names = failed_steps(db.get_outcome(video_id))
+                if names:
+                    print(f"  Publish skipped: Clips Kitty made these clips without {', '.join(names)}, "
+                          "so they wait for you to publish them.")
+                    return
             platforms = list(then.get("platforms") or [])
             every_hours = float(then.get("every_hours") or 0)
             per_day = int(then.get("per_day") or 0)

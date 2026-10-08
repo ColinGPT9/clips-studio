@@ -355,7 +355,8 @@ def test_an_update_shows_what_changes_installs_beside_the_old_one_and_rolls_back
     assert plan["update"] == {
         "from": "1.0.0", "direction": "update", "added_permissions": ["network"], "removed_permissions": [],
         "added_hosts": ["api.example.com"], "removed_hosts": [],
-        "added_data_warnings": ["⚠ Sends frames from your video to Example Cloud"], "execution_changed": True}
+        "added_data_warnings": ["⚠ Sends frames from your video to Example Cloud"], "execution_changed": True,
+        "added_steps": []}
     assert store.get(data, pid).version == "1.0.0"  # still the old one until installed
     view = manager.install(data, plan["plan_id"], app_version=APP)
     assert (view["version"], view["previous"], view["versions"]) == ("1.1.0", "1.0.0", ["1.1.0", "1.0.0"])
@@ -1015,3 +1016,81 @@ def test_a_plugin_an_app_update_left_behind_says_why(data, plugin_source, monkey
     monkeypatch.setattr(store, "app_version", lambda: "3.0.0")
     with pytest.raises(ValueError, match=r"can't run here: it needs Clips Kitty >=2\.0, <3, and this is 3\.0\.0"):
         store.installed_choice(data, {"id": pid})
+
+
+# ---- what it does with a video's moments (Rate & understand) ------------------------------------------
+
+
+def _rater(plugin_source, **changes) -> dict:
+    """A plugin that rates moments of Quarkbloom Arena, a made-up game."""
+    return plugin_source.manifest(**{
+        "name": "Quarkbloom Rater", "description": "Rates moments of Quarkbloom Arena (a made-up game).",
+        "inputs": ["moments", "transcript"], "outputs": ["ratings"], "permissions": ["transcript.read"], **changes})
+
+
+def test_installed_summary_reports_inputs_and_outputs(data, plugin_source):
+    view = _install(data, {"kind": "folder", "path": str(plugin_source.folder(manifest=_rater(plugin_source)))})
+    assert (view["inputs"], view["outputs"]) == (["moments", "transcript"], ["ratings"])
+    listing = manager.listing(data, app_version=APP)
+    (entry,) = listing["plugins"]
+    assert (entry["inputs"], entry["outputs"]) == (["moments", "transcript"], ["ratings"])
+    assert all((b["inputs"], b["outputs"]) == (["video", "transcript"], ["ranges"]) for b in listing["builtin"])
+    plan = _plan(data, {"kind": "folder", "path": str(plugin_source.folder("finder"))})
+    assert (plan["plugin"]["inputs"], plan["plugin"]["outputs"]) == (["video"], ["ranges"])
+
+
+def test_an_update_that_starts_rating_says_so(data, plugin_source):
+    repo = plugin_source.repo()
+    v1 = plugin_source.commit(repo)  # finds moments
+    v2 = plugin_source.commit(repo, plugin_source.manifest(
+        version="1.1.0", inputs=["video", "transcript", "moments"], outputs=["ranges", "ratings"],
+        permissions=["video.read", "transcript.read"]))
+    _install(data, _git_source(repo, v1))
+    plan = _plan(data, _git_source(repo, v2))
+    assert plan["ok"] and plan["update"]["added_steps"] == ["Rates moments"]
+    assert plan["details"]["steps"] == ["Finds moments", "Rates moments"]
+    text = permissions.render_text(plan)
+    assert "What it does: Finds moments · Rates moments" in text
+    assert "  Now also: Rates moments" in text
+    # An update that does what it did before has nothing new to say.
+    _install(data, _git_source(repo, v2))
+    v3 = plugin_source.commit(repo, plugin_source.manifest(
+        version="1.2.0", inputs=["video", "transcript", "moments"], outputs=["ranges", "ratings"],
+        permissions=["video.read", "transcript.read"]))
+    plan = _plan(data, _git_source(repo, v3))
+    assert plan["update"]["added_steps"] == [] and "Now also" not in permissions.render_text(plan)
+
+
+def test_details_carry_steps_and_a_time_limit(plugin_source):
+    from plugins import runner
+
+    command = ["{python}", "src/main.py"]
+    manifests = {
+        "finder": plugin_source.manifest(),
+        "notes finder": plugin_source.manifest(inputs=["video", "transcript"], outputs=["ranges", "context"],
+                                               permissions=["video.read", "transcript.read"]),
+        "understander": _rater(plugin_source, outputs=["context"]),
+        "rater": _rater(plugin_source, run={"command": command, "timeout_minutes": 5}),
+        "all three": plugin_source.manifest(inputs=["video", "transcript", "moments"],
+                                            outputs=["ranges", "context", "ratings"],
+                                            permissions=["video.read", "transcript.read"],
+                                            run={"command": command, "timeout_minutes": 1}),
+    }
+    got = {name: (d["steps"], d["time_limit"])
+           for name, d in ((name, permissions.describe(m)) for name, m in manifests.items())}
+    limit = "Clips Kitty stops it after {} when it rates or understands a video’s moments."
+    assert got == {
+        "finder": (["Finds moments"], None),
+        "notes finder": (["Finds moments", "Understands what it finds"], None),
+        "understander": (["Understands moments"], limit.format("10 minutes")),
+        "rater": (["Rates moments"], limit.format("5 minutes")),
+        "all three": (["Finds moments", "Understands moments", "Rates moments"], limit.format("1 minute")),
+    }
+    # The limit it shows is the one the app stops it at.
+    assert runner.timeout_seconds(manifests["understander"], default=runner.MOMENT_TIMEOUT_MINUTES) == 10 * 60
+    # The install screen says what it does right after how it runs.
+    rater = manifests["rater"]
+    lines = permissions.render_text({"plugin": rater, "details": permissions.describe(rater)}).splitlines()
+    assert lines[lines.index(permissions.EXECUTION["local"]) + 1] == "What it does: Rates moments"
+    # Something that isn't a manifest yet (a plan refused as invalid) says nothing about it.
+    assert (permissions.describe({})["steps"], permissions.describe({})["time_limit"]) == ([], None)

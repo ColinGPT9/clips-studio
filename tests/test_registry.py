@@ -238,6 +238,34 @@ def test_the_build_refuses_a_bad_listing_and_says_why(reg, case, fragment):
     assert [p["id"] for p in index["plugins"]] == ["example-dev/good"]  # the rest still builds
 
 
+def test_a_listing_that_rates_needs_no_extra_rule(reg):
+    """A plugin that rates moments (Rate & understand) is a pipeline like a
+    finder: listed in pipelines/, built the same way, its inputs and outputs
+    carried to the Marketplace, which reads its steps from them."""
+    from plugins import permissions
+
+    finder = ("quarkbloom-finder", "Quarkbloom Finder", "gaming", [], [], [],
+              "Finds the quark bursts in Quarkbloom Arena (a made-up game).")
+    rater = ("quarkbloom-rater", "Quarkbloom Rater", "gaming", [], [], [],
+             "Rates moments of Quarkbloom Arena (a made-up game) by what the caster calls out.")
+    reg.listing(finder[0], [("1.0.0", _manifest(*finder))])
+    reg.listing(rater[0], [("1.0.0", _manifest(*rater, inputs=["moments", "transcript"], outputs=["ratings"],
+                                               permissions=["transcript.read"],
+                                               run={"command": ["{python}", "src/main.py"], "timeout_minutes": 5}))])
+    index, problems = reg.build()
+    assert problems == []
+    by_id = {p["id"]: p for p in index["plugins"]}
+    found, rates = by_id[f"{OWNER}/quarkbloom-finder"], by_id[f"{OWNER}/quarkbloom-rater"]
+    assert set(rates) == set(found) and rates["kind"] == found["kind"] == "pipeline"
+    assert rates["checks"] == found["checks"] and rates["badges"] == found["badges"]
+    assert (rates["inputs"], rates["outputs"]) == (["moments", "transcript"], ["ratings"])
+    details = permissions.describe(rates, tier=registry.listing_tier(rates))
+    assert details["steps"] == ["Rates moments"]
+    assert details["time_limit"] == ("Clips Kitty stops it after 5 minutes when it rates or understands a "
+                                     "video’s moments.")
+    assert permissions.describe(found, tier=registry.listing_tier(found))["steps"] == ["Finds moments"]
+
+
 def test_blocked_and_delisted_versions_leave_the_index_and_the_list_goes_in(reg):
     row = CATALOGUE[5]
     reg.listing(row[0], [("1.0.0", _manifest(*row)), ("1.1.0", _manifest(*row, version="1.1.0"))])

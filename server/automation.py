@@ -191,6 +191,11 @@ def job_payload(watch, url: str, origin: str = "watch") -> dict:
         payload.pop("sport")  # and a sport set beside a mode it can't share
     if payload.get("pipeline") and any(payload.get(k) for k in ("sport", "gaming_scoring", "longform")):
         payload.pop("pipeline")  # and a plugin pipeline beside a mode that picks moments its own way
+    if payload.get("longform"):
+        # Rate & understand work on a Shorts run's moments, and Longform has
+        # no such step: they stay in the options for a preset that has one.
+        payload.pop("rate", None)
+        payload.pop("understand", None)
     return payload
 
 
@@ -217,6 +222,60 @@ def _job_status(d: StateDB, item) -> str | None:
     if job is not None:
         return job["status"]
     return "done" if d.video_status(item["video_id"]) == "done" else "cancelled"
+
+
+def _steps_failed(d: StateDB, item, watch) -> list[str]:
+    """The names of the plugins this item's job chose to rate or understand
+    its moments (plugins/steps.py) that didn't run, from the video's outcome.
+    [] for a job that chose none, whatever an earlier run of the video left
+    in the outcome: only a job that named a step is held for one."""
+    job = d.get_job(item["job_id"]) if item["job_id"] else None
+    payload: dict = {}
+    if job is not None:
+        try:
+            payload = json.loads(job["payload"] or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+    else:
+        payload = job_payload(watch, item["url"])  # the job row was cleared from the history
+    if not isinstance(payload, dict) or not (payload.get("rate") or payload.get("understand")):
+        return []
+    from core.outcome import failed_steps
+
+    return failed_steps(d.get_outcome(item["video_id"]))
+
+
+def _window(clip) -> tuple[float, float]:
+    """A clip's lasting identity, its window in the video: a re-render or a
+    forced re-run gives it a new score or id, never a new window."""
+    return round(float(clip["start_s"]), 2), round(float(clip["end_s"]), 2)
+
+
+def _chosen_windows(item) -> set[tuple[float, float]] | None:
+    """The windows of the clips the item's first publish chose, or None when
+    none were kept yet (before its first publish, and for an item published
+    before they were kept): then the best N are chosen now."""
+    try:
+        saved = json.loads(item["chosen_clips"] or "null")
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+    if not isinstance(saved, list):
+        return None
+    try:
+        return {(round(float(start), 2), round(float(end), 2)) for start, end in saved}
+    except (TypeError, ValueError):
+        return None
+
+
+def _no_clips_error(outcome: dict) -> str:
+    """Why a finished video had no clips to publish, for the item."""
+    from core.outcome import rated_out_names
+
+    names = rated_out_names(outcome) if (outcome or {}).get("cause") == "rated_out" else []
+    if names:
+        return (f"{', '.join(names)} rated every moment under the minimum score ({outcome.get('min_score')}), "
+                "so there were no clips to publish.")
+    return "The run made no clips to publish."
 
 
 def _deliveries(d: StateDB, video_id: str) -> list[dict]:
@@ -698,10 +757,29 @@ class ChannelWatcher(threading.Thread):
                     self._say(f"Learned {n} new thing{'' if n == 1 else 's'} about {name} "
                               f"from {_quoted(item['title'])}", "learned")
             mode = publish_settings(watch).mode
+            # A plugin this job chose to rate or understand the moments didn't
+            # run: the clips were made without it, so a person looks first.
+            failed = (_steps_failed(d, item, watch)
+                      if item["publish_state"] == "" and mode in ("auto", "ask") else [])
+            names = ", ".join(failed)
+            if failed and mode == "auto":
+                d.set_watch_item(
+                    item["id"], publish_state="ask",
+                    publish_error=f"Clips Kitty made these clips without {names}, so they weren't posted "
+                                  "automatically. Check them and publish, or turn off Rate & understand in "
+                                  "this channel's settings.")
+                self._say(f"Clips of {_quoted(item['title'])} are ready, but Clips Kitty made them without "
+                          f"{names}, so they weren't posted automatically.", "done")
+                self._broadcaster.publish({"type": "automation"})
+                continue
             if item["publish_state"] == "publishing" or mode == "auto":
                 self.publish(d, item, watch)
             else:
-                d.set_watch_item(item["id"], publish_state="off" if mode == "off" else "ask")
+                fields = {"publish_state": "off" if mode == "off" else "ask"}
+                if failed:
+                    fields["publish_error"] = (f"Clips Kitty made these clips without {names}. "
+                                               "Check them before you publish.")
+                d.set_watch_item(item["id"], **fields)
                 self._say(
                     f"Clips of {_quoted(item['title'])} are ready"
                     + (". Waiting for you to publish them." if mode == "ask" else "."),
@@ -713,12 +791,19 @@ class ChannelWatcher(threading.Thread):
         """Send a finished video's clips out with its watch's settings."""
         settings = publish_settings(watch)
         # clips_for_video is ordered by score, so "the best N" is the first N.
-        clip_ids = [int(c["id"]) for c in d.clips_for_video(item["video_id"])]
-        if settings.max_posts:
-            clip_ids = clip_ids[: settings.max_posts]
+        clips = list(d.clips_for_video(item["video_id"]))
+        chosen = _chosen_windows(item)
+        if chosen is None:
+            # The first publish: the best N now. What it chose is kept below,
+            # because a forced re-run can change the scores (a rater's) and
+            # a re-send must not post a clip this one never chose.
+            picked = clips[: settings.max_posts] if settings.max_posts else clips
+        else:
+            picked = [c for c in clips if _window(c) in chosen]
+        clip_ids = [int(c["id"]) for c in picked]
         if not clip_ids:
             d.set_watch_item(item["id"], publish_state="done",
-                             publish_error="The run made no clips to publish.")
+                             publish_error=_no_clips_error(d.get_outcome(item["video_id"])))
             return {}
         if not settings.platforms:
             d.set_watch_item(item["id"], publish_state="ask",
@@ -728,7 +813,8 @@ class ChannelWatcher(threading.Thread):
             d.set_watch_item(item["id"], publish_state="ask",
                              publish_error="Publishing isn't available.")
             return {}
-        d.set_watch_item(item["id"], publish_state="publishing", publish_error="")
+        keep = {} if chosen is not None else {"chosen_clips": json.dumps([list(_window(c)) for c in picked])}
+        d.set_watch_item(item["id"], publish_state="publishing", publish_error="", **keep)
         where = ", ".join(_label(p) for p in settings.platforms)
         try:
             with self._busy(f"Sending clips of {_quoted(item['title'])} to {where}"):

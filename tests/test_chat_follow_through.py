@@ -295,3 +295,54 @@ def test_the_plan_says_the_budget_out_loud(monkeypatch):
     )
     text = mcp._schedule_clips_plan({"clip_ids": [1]})
     assert "5 a day, 1 hour apart, after what is already scheduled" in text
+
+
+# ---- Rate & understand: a chosen plugin that didn't run ----------------------------
+
+
+class _OutcomeDB(_FakeDB):
+    """A video whose outcome (core/outcome.py) is `outcome`; says whether it was read."""
+
+    def __init__(self, clips, outcome):
+        super().__init__(clips)
+        self._outcome = outcome
+        self.outcome_read = False
+
+    def get_outcome(self, video_id):
+        self.outcome_read = True
+        return self._outcome
+
+
+# A Shorts run of the video in which the rater it chose was skipped.
+_FAILED_STEP = {"clips": 2, "steps": [
+    {"plugin": "example-dev/quarkbloom-rater", "version": "1.0.0", "name": "Quarkbloom Rater", "steps": ["rate"],
+     "ok": False, "given": 2, "noted": 0, "rated": 0, "set_aside": 0, "error": "It isn't installed any more."}]}
+_PUBLISH = {"action": "publish", "platforms": ["youtube"]}
+
+
+def test_then_publish_is_skipped_when_a_step_failed(monkeypatch, tmp_path, capsys):
+    worker, called, _ = _capture_publish(monkeypatch, tmp_path)
+    payload = {"then": _PUBLISH, "rate": [{"id": "example-dev/quarkbloom-rater"}]}
+    worker._run_follow_up(_OutcomeDB([{"id": 1}, {"id": 2}], _FAILED_STEP), {"video_id": "abc"}, payload)
+    assert called == {}
+    assert capsys.readouterr().out == ("  Publish skipped: Clips Kitty made these clips without Quarkbloom Rater, "
+                                       "so they wait for you to publish them.\n")
+    # When every chosen step ran, it publishes as asked.
+    ran = {"clips": 2, "steps": [{**_FAILED_STEP["steps"][0], "ok": True, "rated": 2}]}
+    worker._run_follow_up(_OutcomeDB([{"id": 1}, {"id": 2}], ran), {"video_id": "abc"}, payload)
+    assert called["clip_ids"] == [1, 2]
+
+
+def test_a_longform_then_publish_after_a_failed_step_still_publishes(monkeypatch, tmp_path, capsys):
+    """A Longform job can't name a step, so an earlier Shorts run's failed one
+    never holds it: the outcome isn't even read."""
+    worker, called, _ = _capture_publish(monkeypatch, tmp_path)
+    payload = {"then": _PUBLISH, "longform": {"mode": "highlights"}}
+    worker._run_follow_up(_FakeDB([{"id": 1}, {"id": 2}]), {"video_id": "abc"}, payload)
+    today = (capsys.readouterr().out, dict(called))
+    called.clear()
+    db = _OutcomeDB([{"id": 1}, {"id": 2}], _FAILED_STEP)
+    worker._run_follow_up(db, {"video_id": "abc"}, payload)
+    assert (capsys.readouterr().out, dict(called)) == today
+    assert called["clip_ids"] == [1, 2] and db.outcome_read is False
+    assert today[0] == "  Publishing 2 clip(s) to youtube...\n  Published 0, skipped 0.\n"

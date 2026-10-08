@@ -59,6 +59,10 @@ class JobIn(BaseModel):
     webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
     hashtags: list[str] | None = None  # tags every clip of this job must carry
     pipeline: dict | str | None = None  # a plugin pipeline picks the moments: {id, version, settings} (plugins/)
+    # Rate & understand (plugins/steps.py): up to 3 plugins each, run on the
+    # moments once they are found. Choices shaped like `pipeline`, in order.
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
     then: dict | None = None  # what to do once this job finishes, e.g.
     #     {"action": "publish", "platforms": ["youtube"]}
     # Queueing returns in a second and the clips appear an hour later, so a
@@ -92,6 +96,8 @@ class JobPatch(BaseModel):
     webhook_url: str | None = None
     webhook_secret: str | None = None
     pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
     # Options to drop back to the app-wide default. Needed because null means
     # "unchanged" above, so there would otherwise be no way to turn one off.
     clear: list[str] = []
@@ -126,6 +132,8 @@ class BatchItemIn(BaseModel):
     webhook_url: str | None = None
     webhook_secret: str | None = None
     pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
 
 
 class BatchJobIn(BaseModel):
@@ -237,6 +245,8 @@ class LocalVideoIn(BaseModel):
     webhook_url: str | None = None
     webhook_secret: str | None = None
     pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
 
 
 class RenderIn(BaseModel):
@@ -449,7 +459,8 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     onto the same settings, and a limit enforced at only two of them is not a
     limit. `into` lets a patch merge onto an existing snapshot instead of
     replacing it, since an unset field there means "leave this alone".
-    `data_dir`, when given, is where a named plugin pipeline must be installed."""
+    `data_dir`, when given, is where a named plugin (the pipeline, or one
+    chosen to rate or understand the moments) must be installed."""
     payload: dict = dict(into or {})
     if getattr(body, "max_clips", None) is not None:
         payload["max_clips"] = max(1, min(10, body.max_clips))
@@ -510,6 +521,24 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
                 store.installed_choice(data_dir, payload["pipeline"])
         except ValueError as e:
             raise HTTPException(400, f"pipeline: {e}") from e
+    if getattr(body, "rate", None) or getattr(body, "understand", None):
+        # Rate & understand (plugins/steps.py): plugins that look at the
+        # moments once they're found. Checked like the pipeline, each list in
+        # its own words ("rate[0]: ..."). Imported only here, so a job
+        # without them never loads plugins.steps.
+        from plugins import steps as plugin_steps
+
+        for field in plugin_steps.FIELDS:
+            value = getattr(body, field, None)
+            if not value:
+                continue
+            try:
+                choices = plugin_steps.clean(field, value)
+                if data_dir is not None:
+                    plugin_steps.check_installed(data_dir, field, choices)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            payload[field] = choices
     if getattr(body, "watermark_profile_id", None):
         payload["watermark_profile_id"] = body.watermark_profile_id
     if getattr(body, "filter", None):
@@ -557,6 +586,19 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
                                     or payload.get("longform")):
         raise HTTPException(400, "A plugin pipeline can't be combined with Sports, Gaming scoring or "
                                  "Longform: each picks the moments its own way. Turn one of them off.")
+    # Rate & understand work on the moments a Shorts run finds, whoever found
+    # them (Sports, Gaming scoring and a pipeline included). Longform, with
+    # Shorts beside it or not, has no such step.
+    if (payload.get("rate") or payload.get("understand")) and payload.get("longform"):
+        raise HTTPException(400, "Rate & understand can't be combined with Longform: Longform picks and "
+                                 "writes its clips its own way. Turn one of them off.")
+    own = payload.get("pipeline")
+    own_id = own.get("id") if isinstance(own, dict) else own
+    for field in ("rate", "understand"):
+        for choice in payload.get(field) or []:
+            if own_id and (choice.get("id") if isinstance(choice, dict) else choice) == own_id:
+                raise HTTPException(400, f"{field}: {own_id} is this job's pipeline, so it already scores "
+                                         "and describes the moments it finds")
     if payload.get("gaming_scoring") and (payload.get("podcast") or payload.get("longform")):
         raise HTTPException(400, "Gaming / reaction scoring works with the standard layout, Vertical "
                                  "Live and Gaming / Reaction, not with Podcast or Longform.")

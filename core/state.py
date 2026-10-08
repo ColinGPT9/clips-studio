@@ -341,7 +341,7 @@ WATCH_ITEM_COLUMNS = frozenset({
     "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
     "reason", "job_id", "next_check_at", "publish_state", "publish_error",
     "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
-    "source_freed", "requested", "orientation",
+    "source_freed", "requested", "orientation", "chosen_clips",
 })
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -530,6 +530,11 @@ class StateDB:
             # vertical | horizontal | '' (not known): whether the video has a
             # portrait version, read when it is checked for readiness.
             ("orientation", "TEXT NOT NULL DEFAULT ''"),
+            # The clips the first publish chose, as a JSON list of
+            # [start_s, end_s], so a re-send keeps them even when a forced
+            # re-run (a rater's new scores) changed the order since. '' until
+            # then, and for items published before it was kept.
+            ("chosen_clips", "TEXT NOT NULL DEFAULT ''"),
         ):
             if column not in item_cols:
                 self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")

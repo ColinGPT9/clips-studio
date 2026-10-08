@@ -62,6 +62,17 @@ LISTED_TIERS = ("listed-official", "listed")
 GPU = {"optional": "A graphics card helps but isn't needed", "recommended": "A graphics card is recommended",
        "required": "Needs a graphics card"}
 
+# What it does with a video's moments, on the Marketplace's pills, in the
+# order the steps run (manifest.steps_of and manifest.offers). A finder that
+# declares `context` but takes no moments in describes only what it finds.
+STEP_WORDS = {
+    "find": "Finds moments",
+    "understand": "Understands moments",
+    "rate": "Rates moments",
+}
+UNDERSTANDS_ITS_OWN = "Understands what it finds"
+TIME_LIMIT = "Clips Kitty stops it after {n} {unit} when it rates or understands a video’s moments."
+
 
 def secrets_notice() -> str:
     account = "your Windows account" if sys.platform == "win32" else "your user account"
@@ -133,6 +144,34 @@ def model_lines(manifest: dict) -> list[dict]:
     return out
 
 
+def step_lines(manifest: dict) -> list[str]:
+    """What it can be chosen for, in pill words: Finds moments (a pipeline),
+    Understands moments and Rates moments (Rate & understand), or Understands
+    what it finds (a finder that describes its own moments)."""
+    from plugins._sdk import manifest as vocabulary
+
+    offered = vocabulary.offers(manifest)
+    out = []
+    for step in vocabulary.steps_of(manifest):
+        if step in offered:
+            out.append(STEP_WORDS[step])
+        elif step == "understand" and "find" in offered:
+            out.append(UNDERSTANDS_ITS_OWN)
+    return out
+
+
+def time_limit(manifest: dict) -> str | None:
+    """How long it may take to rate or understand a video's moments, as the
+    app stops it (plugins/runner.py), for a plugin that can; else None."""
+    from plugins import runner
+    from plugins._sdk import manifest as vocabulary
+
+    if not {"understand", "rate"} & set(vocabulary.offers(manifest)):
+        return None
+    minutes = runner.timeout_seconds(manifest, default=runner.MOMENT_TIMEOUT_MINUTES) / 60
+    return TIME_LIMIT.format(n=f"{minutes:g}", unit="minute" if minutes == 1 else "minutes")
+
+
 def describe(manifest: dict, *, tier: str = "link") -> dict:
     """Everything the install screen shows about what a plugin will do."""
     run = manifest.get("run") if isinstance(manifest.get("run"), dict) else {}
@@ -158,6 +197,8 @@ def describe(manifest: dict, *, tier: str = "link") -> dict:
         "python_packages": ("This pipeline lists extra parts it needs. Clips Kitty can't download them yet, so it "
                             "runs without them and may not work."
                             if run.get("python_requirements") else None),
+        "steps": step_lines(manifest),
+        "time_limit": time_limit(manifest),
     }
 
 
@@ -175,6 +216,9 @@ def changes(old: dict, new: dict) -> dict:
         "removed_hosts": sorted(old_hosts - new_hosts),
         "added_data_warnings": sorted(sends(new) - sends(old)),
         "execution_changed": old.get("execution") != new.get("execution"),
+        # A step it will now also do, such as rating moments: its scores then
+        # decide which clips are made, so it is said before the update installs.
+        "added_steps": [w for w in step_lines(new) if w not in step_lines(old)],
     }
 
 
@@ -188,6 +232,8 @@ def render_text(plan: dict) -> str:
         lines.append(about["notice"])
     if about.get("execution_text"):
         lines.append(about["execution_text"])
+    if about.get("steps"):
+        lines.append("What it does: " + " · ".join(about["steps"]))
     lines += ["", "It will"]
     for perm in about["permissions"]:
         lines.append(f"  {perm['label']} ({perm['enforcement']})")
@@ -213,6 +259,8 @@ def render_text(plan: dict) -> str:
                          ("added_data_warnings", "New data warnings")):
             if update[k]:
                 lines.append(f"  {title}: {', '.join(update[k])}")
+        for words in update.get("added_steps") or []:
+            lines.append(f"  Now also: {words}")
     for problem in plan.get("errors") or []:
         lines.append(f"✗ {problem}")
     for warning in plan.get("warnings") or []:

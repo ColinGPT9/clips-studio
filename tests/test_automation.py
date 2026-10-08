@@ -8,6 +8,7 @@ was closed is never silently lost, and nothing is published unless asked.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -75,7 +76,7 @@ class FakeBroadcaster:
 
 
 class Env:
-    def __init__(self, tmp_path, feed=None):
+    def __init__(self, tmp_path, feed=None, options_from=dict):
         self.now = START
         self.feed = feed or FakeFeed()
         self.db_path = tmp_path / "state.db"
@@ -87,7 +88,7 @@ class Env:
         app = FastAPI()
         self.watcher = automation.install(
             app, db=self.db, worker=self.worker, broadcaster=FakeBroadcaster(),
-            options_from=dict, feed=self.feed, clock=lambda: self.now,
+            options_from=options_from, feed=self.feed, clock=lambda: self.now,
             interval_minutes=15, publisher=self.publisher, data_dir=tmp_path,
         )
         self.client = TestClient(app, base_url="http://127.0.0.1")
@@ -1085,3 +1086,250 @@ def test_a_videos_shape_is_read_from_its_formats():
     assert _orientation({"formats": [{"width": 1920, "height": 1080}, {"vcodec": "none"}]}) == "horizontal"
     assert _orientation({"width": 720, "height": 1280}) == "vertical"
     assert _orientation({}) == ""
+
+
+# ---- Rate & understand -----------------------------------------------------------
+# A watch can choose Marketplace plugins to rate or understand its videos' moments
+# (plugins/steps.py). When one this job chose didn't run, the clips wait for a person.
+
+STEPPER = Path(__file__).resolve().parent / "fixtures" / "plugins" / "stepper"
+RATER = {"id": "example-dev/quarkbloom-rater"}
+
+
+def _step(**changes) -> dict:
+    """One entry of a video outcome's `steps`, as plugins/steps.after_finding reports it."""
+    entry = {"plugin": "example-dev/quarkbloom-rater", "version": "1.0.0", "name": "Quarkbloom Rater",
+             "steps": ["rate"], "ok": True, "given": 3, "noted": 0, "rated": 3, "set_aside": 0}
+    entry.update(changes)
+    return entry
+
+
+FAILED = {"clips": 3, "candidates": 3, "min_score": 55,
+          "steps": [_step(ok=False, rated=0, error="It isn't installed any more.")]}
+
+
+def _real_options(data_dir):
+    """A watch's options checked as the app checks them (server/api.py), with
+    plugins installed in `data_dir`."""
+    api = pytest.importorskip("server.api")
+    return lambda raw: api._process_options(api.JobPatch(**raw), data_dir=data_dir)
+
+
+def stepped_watch(env, mode="auto", options=None, **publish):
+    """A watch publishing with `mode` whose options choose a rater (unless
+    `options` says otherwise), once it has queued newnewnew01."""
+    watch = watched(env)
+    env.client.patch(f"/automation/watches/{watch['id']}", json={
+        "publish": {"mode": mode, "platforms": ["youtube"], **publish},
+        "options": {"rate": [RATER]} if options is None else options})
+    env.feed.listings[UC] = [yt("newnewnew01")]
+    env.later()
+    return watch
+
+
+def set_outcome(env, outcome, video_id="newnewnew01"):
+    env.run(lambda d: d.set_outcome(video_id, outcome))
+
+
+def feed_lines(env) -> list[str]:
+    return [e["text"] for e in activity(env)["events"]]
+
+
+def test_watch_options_accept_steps_and_drop_them_beside_longform(tmp_path, install_plugin):
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, STEPPER)
+    e = Env(tmp_path, options_from=_real_options(data_dir))
+    e.enable()
+    e.feed.listings[UC] = []
+    steps = {"rate": [{"id": "fixture-dev/stepper", "settings": {"scores": "*=+5"}}],
+             "understand": [{"id": "fixture-dev/stepper"}]}
+    response = e.client.post("/automation/watches", json={
+        "platform": "youtube", "channel": UC, "preset": "highlights",
+        "options": {"rate": {"id": "fixture-dev/stepper", "settings": {"scores": "*=+5"}},
+                    "understand": "fixture-dev/stepper"}})
+    assert response.status_code == 200 and response.json()["options"] == steps  # checked and kept
+    watch_id = response.json()["id"]
+    e.watcher.tick()
+    e.feed.listings[UC] = [yt("newnewnew01")]
+    e.later()
+    payload = json.loads(e.jobs()[0]["payload"])
+    assert payload["longform"] == {"mode": "highlights"} and not {"rate", "understand"} & set(payload)
+    # Kept in the watch, so a preset that makes Shorts hands them over again.
+    assert e.client.patch(f"/automation/watches/{watch_id}", json={"preset": "standard"}).status_code == 200
+    e.feed.listings[UC] = [yt("newnewnew02"), yt("newnewnew01")]
+    e.later()
+    payload = json.loads(next(j for j in e.jobs() if j["video_id"] == "newnewnew02")["payload"])
+    assert payload["rate"] == steps["rate"] and payload["understand"] == steps["understand"]
+    # Longform written into the options themselves drops them too; the modes that
+    # pick moments their own way, and a pipeline, keep them.
+    for options, kept in (({"longform": {"mode": "short_clips", "shorts": True}}, False),
+                          ({"sport": {"name": "soccer"}}, True), ({"gaming_scoring": True}, True),
+                          ({"pipeline": {"id": "fixture-dev/echo"}}, True)):
+        payload = automation.job_payload({"options": json.dumps({**steps, **options})}, yt("x").url)
+        assert ("rate" in payload and "understand" in payload) is kept, options
+    # One that isn't installed is refused when the watch is saved, in the job's words.
+    response = e.client.patch(f"/automation/watches/{watch_id}", json={"options": {"rate": "fixture-dev/missing"}})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "rate[0]: the pipeline fixture-dev/missing isn't installed"
+
+
+def test_auto_mode_holds_clips_when_a_chosen_step_failed(env):
+    stepped_watch(env)
+    finished_with_clips(env)
+    set_outcome(env, FAILED)
+    env.later(5)
+    env.later(5)
+    assert env.publish_calls == 0 and env.published == []
+    item = env.item("newnewnew01")
+    assert item["publish_state"] == "ask"
+    assert item["publish_error"] == (
+        "Clips Kitty made these clips without Quarkbloom Rater, so they weren't posted automatically. "
+        "Check them and publish, or turn off Rate & understand in this channel's settings.")
+    assert ("Clips of “Video newnewnew01” are ready, but Clips Kitty made them without Quarkbloom "
+            "Rater, so they weren't posted automatically.") in feed_lines(env)
+    # A person's go-ahead sends them.
+    assert env.client.post(f"/automation/items/{item['id']}/publish").status_code == 200
+    env.later(5)
+    assert len(env.published) == 1 and env.item("newnewnew01")["publish_state"] == "done"
+
+
+def test_ask_mode_says_a_chosen_step_failed(env):
+    stepped_watch(env, mode="ask", options={"understand": [RATER], "rate": [RATER]})
+    finished_with_clips(env)
+    set_outcome(env, {**FAILED, "steps": [_step(name="Quarkbloom Notes", steps=["understand"], ok=False),
+                                          _step(ok=False)]})
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert item["publish_state"] == "ask" and env.published == []
+    assert item["publish_error"] == ("Clips Kitty made these clips without Quarkbloom Notes, Quarkbloom Rater. "
+                                     "Check them before you publish.")
+    assert "Clips of “Video newnewnew01” are ready. Waiting for you to publish them." in feed_lines(env)
+    env.client.post(f"/automation/items/{item['id']}/publish")
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert len(env.published) == 1 and (item["publish_state"], item["publish_error"]) == ("done", "")
+
+
+def test_a_watch_without_steps_is_never_held_by_an_old_outcome(env):
+    stepped_watch(env, options={"captions": False})
+    finished_with_clips(env)
+    set_outcome(env, FAILED)  # left by an earlier run of the video that had a rater
+    env.later(5)
+    assert len(env.published) == 1
+    item = env.item("newnewnew01")
+    assert (item["publish_state"], item["publish_error"]) == ("done", "")
+
+
+def test_auto_mode_posts_the_best_rated_first(env):
+    stepped_watch(env, max_posts=2)
+    env.finish("newnewnew01")
+
+    def clips(d):
+        # (start, the score it was found with, the rater's score or None)
+        for start, found, rated in ((0.0, 90, 40), (10.0, 70, 95), (20.0, 80, None), (30.0, 75, 85)):
+            scores = {"text": found}
+            if rated is not None:
+                scores.update(found_score=found, plugin_ratings=[
+                    {"plugin": RATER["id"], "version": "1.0.0", "name": "Quarkbloom Rater",
+                     "score": rated, "reason": "the caster called a big play"}])
+            d.add_clip("newnewnew01", start, start + 8, found if rated is None else rated, f"hook {start:g}",
+                       scores=json.dumps(scores))
+        return {c["start_s"]: int(c["id"]) for c in d.clips_for_video("newnewnew01")}
+
+    ids = env.run(clips)
+    set_outcome(env, {"clips": 4, "steps": [_step(rated=3)]})
+    env.later(5)
+    assert env.published[0]["clip_ids"] == [ids[10.0], ids[30.0]]
+
+
+def test_no_clips_after_a_rater_says_so(env):
+    stepped_watch(env)
+    env.finish("newnewnew01")
+    set_outcome(env, {"clips": 0, "candidates": 3, "best_score": 30, "min_score": 55, "rejected": {"below_min_score": 3},
+                      "rated_out": 3, "cause": "rated_out", "steps": [_step(rated=3, set_aside=3)]})
+    env.later(5)
+    item = env.item("newnewnew01")
+    assert env.published == [] and item["publish_state"] == "done"
+    assert item["publish_error"] == ("Quarkbloom Rater rated every moment under the minimum score (55), "
+                                     "so there were no clips to publish.")
+
+
+def _windows(env) -> dict:
+    return env.run(lambda d: {c["start_s"]: int(c["id"]) for c in d.clips_for_video("newnewnew01")})
+
+
+def _rescore(env, scores: dict):
+    """What a forced re-run with a rater does to the score column (core/pipeline._register_clip)."""
+    def go(d):
+        for start, score in scores.items():
+            d.conn.execute("UPDATE clips SET score = ? WHERE video_id = 'newnewnew01' AND start_s = ?",
+                           (score, start))
+        d.conn.commit()
+    env.run(go)
+
+
+def _reject(env, clip_id):
+    env.run(lambda d: d.record_clip_publish(clip_id, "youtube", {
+        "provider": "woopsocial", "video_id": "newnewnew01", "state": "failed",
+        "error": "WoopSocial allows 5 YouTube posts a day on your plan."}))
+
+
+def test_a_resend_sends_only_the_clips_chosen_the_first_time(env):
+    stepped_watch(env, max_posts=2)
+    finished_with_clips(env, n=3)  # scores 90, 89, 88 at 0 s, 10 s and 20 s
+    set_outcome(env, {"clips": 3, "steps": [_step()]})
+    ids = _windows(env)
+    # The first publish can't start, and is tried again after a forced re-run changed the scores.
+    env.publish_error = Unreachable("Could not reach WoopSocial.")
+    env.later(5)
+    _rescore(env, {20.0: 99, 0.0: 10})
+    env.publish_error = None
+    env.later(automation.PUBLISH_RETRY_SECONDS)
+    chosen = [ids[10.0], ids[0.0]]  # the best two when it was first published, in today's order
+    assert [p["clip_ids"] for p in env.published] == [chosen]
+    # The re-send of a rejected post, and Retry failed, keep that choice.
+    _reject(env, ids[10.0])
+    env.later(5)
+    env.later(automation.DELIVERY_RETRY_DELAYS[0])
+    assert len(env.published) == 2 and env.published[1]["clip_ids"] == chosen
+    env.client.post(f"/automation/items/{env.item('newnewnew01')['id']}/publish")
+    env.later(5)
+    assert len(env.published) == 3 and env.published[2]["clip_ids"] == chosen
+
+
+def test_an_item_published_before_this_change_keeps_todays_choice(env):
+    stepped_watch(env, max_posts=2)
+    finished_with_clips(env, n=3)
+    set_outcome(env, {"clips": 3, "steps": [_step()]})
+    env.later(5)
+    ids = _windows(env)
+    assert env.published[0]["clip_ids"] == [ids[0.0], ids[10.0]]
+    item = env.item("newnewnew01")
+    env.run(lambda d: d.set_watch_item(item["id"], chosen_clips=""))  # as an item published before it was kept
+    _rescore(env, {20.0: 99})
+    env.client.post(f"/automation/items/{item['id']}/publish")
+    env.later(5)
+    assert env.published[1]["clip_ids"] == [ids[20.0], ids[0.0]]  # the best two now, as before this change
+
+
+def test_a_watch_keeps_its_rater_through_an_autosave(tmp_path, install_plugin):
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, STEPPER)
+    e = Env(tmp_path, options_from=_real_options(data_dir))
+    e.enable()
+    watch = watched(e)
+    kept = {"rate": [{"id": "fixture-dev/stepper", "settings": {"scores": "*=+5"}}],
+            "understand": [{"id": "fixture-dev/stepper"}]}
+    response = e.client.patch(f"/automation/watches/{watch['id']}", json={"options": {**kept, "captions": False}})
+    assert response.status_code == 200 and response.json()["options"] == {**kept, "captions": False}
+    # The watch editor saves every option it shows, sending the kept ones back as they were.
+    response = e.client.patch(f"/automation/watches/{watch['id']}",
+                              json={"options": {**kept, "captions": True}, "publish": {"mode": "ask"}})
+    assert response.status_code == 200 and response.json()["options"] == {**kept, "captions": True}
+    e.feed.listings[UC] = [yt("newnewnew01")]
+    e.later()
+    payload = json.loads(e.jobs()[0]["payload"])
+    assert payload["rate"] == kept["rate"] and payload["understand"] == kept["understand"]
+    # Options sent without them replace the watch's: that is how they are turned off.
+    response = e.client.patch(f"/automation/watches/{watch['id']}", json={"options": {"captions": True}})
+    assert response.json()["options"] == {"captions": True}

@@ -157,6 +157,274 @@ def test_a_watch_with_a_pipeline_beside_longform_keeps_longform():
     assert payload["pipeline"] == {"id": "fixture-dev/echo"} and payload["gaming"] is True
 
 
+# ---- Rate & understand through the API ---------------------------------------------------
+
+STEPPER_ID = "fixture-dev/stepper"
+GRADER_ID = "example-dev/quarkbloom-grader"
+LONGFORM_REFUSED = ("Rate & understand can't be combined with Longform: Longform picks and writes its clips "
+                    "its own way. Turn one of them off.")
+
+
+def _vod(n: int) -> str:
+    """A different placeholder link for each job, so none joins an earlier one."""
+    return f"https://www.twitch.tv/videos/{100000000 + n}"
+
+
+def _grader(tmp_path, install, data_dir):
+    """Installs the manifest fixture of a plugin that finds, understands and
+    rates (Quarkbloom Arena, a made-up game), so it can be named as a job's
+    pipeline and to rate or understand."""
+    folder = tmp_path / "grader"
+    folder.mkdir()
+    shutil.copy(ROOT / "tests" / "fixtures" / "plugins" / "manifests" / "valid" / "finds-understands-rates.yaml",
+                folder / "clipskitty.yaml")
+    install(data_dir, folder)
+
+
+def _refused(client, body, *, path="/jobs", method="post") -> str:
+    r = getattr(client, method)(path, json=body)
+    assert r.status_code == 400, (body, r.status_code, r.text)
+    return r.json()["detail"]
+
+
+def test_rate_and_understand_are_checked_like_pipeline(api):
+    client, data_dir, install = api
+    install(data_dir, STEPPER)
+    r = client.post("/jobs", json={"url": _vod(1), "rate": {"id": STEPPER_ID, "version": "1.0.0",
+                                                           "settings": {"scores": "*=+5"}},
+                                   "understand": STEPPER_ID})
+    assert r.status_code == 200, r.text
+    payload = _payload(client, r.json()["job_id"])
+    # A single choice or a bare id is a list of one; what is stored is the cleaned list.
+    assert payload["rate"] == [{"id": STEPPER_ID, "version": "1.0.0", "settings": {"scores": "*=+5"}}]
+    assert payload["understand"] == [{"id": STEPPER_ID}]
+    r = client.post("/jobs", json={"url": _vod(2), "rate": [], "understand": None})
+    assert r.status_code == 200 and not {"rate", "understand"} & set(_payload(client, r.json()["job_id"]))
+    # Not installed, turned off, settings that don't fit: refused at once, in the pipeline's words.
+    assert _refused(client, {"url": _vod(3), "rate": [{"id": STEPPER_ID, "settings": {"mode": "explode"}}]}) \
+        .startswith("rate[0]: setting 'mode': 'explode' is not one of")
+    assert "no setting called 'colour'" in _refused(
+        client, {"url": _vod(3), "understand": [{"id": STEPPER_ID, "settings": {"colour": "red"}}]})
+    install(data_dir, STEPPER, enabled=False)
+    assert _refused(client, {"url": _vod(3), "understand": STEPPER_ID}) == (
+        "understand[0]: the pipeline Stepper is turned off; turn it on in Marketplace › Installed first")
+    # Neither a list, an object nor an id fails validation, as a pipeline that is a list does.
+    assert client.post("/jobs", json={"url": _vod(3), "rate": 5}).status_code == 422
+
+
+def test_a_finder_cant_be_named_to_rate_and_a_rater_cant_be_the_pipeline(api):
+    client, data_dir, install = api
+    install(data_dir, ECHO)
+    install(data_dir, STEPPER)
+    assert _refused(client, {"url": _vod(1), "rate": "fixture-dev/echo"}) == (
+        "rate[0]: the pipeline Echo can't rate moments others found: its manifest needs moments in inputs "
+        "and ratings in outputs")
+    assert _refused(client, {"url": _vod(1), "understand": "fixture-dev/echo"}) == (
+        "understand[0]: the pipeline Echo can't understand moments others found: its manifest needs moments "
+        "in inputs and context in outputs")
+    assert _refused(client, {"url": _vod(1), "pipeline": STEPPER_ID}) == (
+        "pipeline: the pipeline Stepper doesn't find moments: it rates or understands moments others found. "
+        "Choose it under Rate & understand instead")
+    # Each where it belongs is fine.
+    r = client.post("/jobs", json={"url": _vod(1), "pipeline": "fixture-dev/echo", "rate": STEPPER_ID})
+    assert r.status_code == 200, r.text
+
+
+def test_existing_pipeline_messages_are_unchanged(api):
+    client, data_dir, install = api
+    for pipeline, detail in (
+        ({"id": "fixture-dev/echo"}, "pipeline: the pipeline fixture-dev/echo isn't installed"),
+        ({"id": "fixture-dev/echo", "version": "9.9.9"}, "pipeline: the pipeline fixture-dev/echo 9.9.9 isn't installed"),
+        ({"id": "Not An Id"}, "pipeline: pipeline.id must look like publisher/name (lower case, digits and hyphens)"),
+        ({"id": "a/b", "colour": "red"}, "pipeline: pipeline has unknown fields: colour"),
+        ({"id": "a/b", "version": "latest"}, "pipeline: pipeline.version must be a version like 1.2.0"),
+        ({"id": "a/b", "settings": ["x"]}, "pipeline: pipeline.settings must be an object"),
+        ({"id": "a/b", "settings": {"x": "y" * 16_001}}, "pipeline: pipeline.settings is too large"),
+    ):
+        # The pipeline is checked first, so a step beside it changes nothing in its message.
+        assert _refused(client, {"url": URL, "pipeline": pipeline}) == detail
+        assert _refused(client, {"url": URL, "pipeline": pipeline, "rate": STEPPER_ID}) == detail
+    install(data_dir, ECHO, enabled=False)
+    assert _refused(client, {"url": URL, "pipeline": "fixture-dev/echo"}) == (
+        "pipeline: the pipeline Echo is turned off; turn it on in Marketplace › Installed first")
+    install(data_dir, ECHO)
+    install(data_dir, STEPPER)
+    for other in ({"sport": {"name": "soccer"}}, {"gaming_scoring": True}, {"longform": {"mode": "highlights"}}):
+        for steps in ({}, {"rate": STEPPER_ID}):
+            assert _refused(client, {"url": URL, "pipeline": "fixture-dev/echo", **other, **steps}) == (
+                "A plugin pipeline can't be combined with Sports, Gaming scoring or Longform: each picks the "
+                "moments its own way. Turn one of them off.")
+
+
+def test_step_messages_name_their_field(api):
+    from plugins import steps
+
+    client, data_dir, install = api
+    install(data_dir, STEPPER)
+    for body, detail in (
+        ({"rate": [STEPPER_ID, "Not An Id"]},
+         "rate[1].id must look like publisher/name (lower case, digits and hyphens)"),
+        ({"rate": [{"id": "a/b", "x": 1}]}, "rate[0] has unknown fields: x"),
+        ({"understand": ["a/b", "a/c", {"id": "a/d", "settings": {"x": "y" * 16_001}}]},
+         "understand[2].settings is too large"),
+        ({"understand": [{"id": "a/b", "version": "latest"}]}, "understand[0].version must be a version like 1.2.0"),
+        ({"rate": ["fixture-dev/missing"]}, "rate[0]: the pipeline fixture-dev/missing isn't installed"),
+        ({"rate": [STEPPER_ID, {"id": "fixture-dev/missing", "version": "2.0.0"}]},
+         "rate[1]: the pipeline fixture-dev/missing 2.0.0 isn't installed"),
+        ({"understand": [{"id": STEPPER_ID, "version": "9.9.9"}]},
+         "understand[0]: the pipeline fixture-dev/stepper 9.9.9 isn't installed"),
+    ):
+        assert _refused(client, {"url": URL, **body}) == detail
+    with pytest.raises(ValueError) as e:
+        steps.clean("rate", 5)
+    assert str(e.value) == 'rate must be a plugin or a list of plugins: [{"id": "publisher/name"}]'
+
+
+def test_more_than_three_or_a_duplicate_is_refused(api):
+    from server.api import JobIn, _process_options
+
+    client, data_dir, install = api
+    install(data_dir, STEPPER)
+    assert _refused(client, {"url": URL, "rate": ["a/a", "a/b", "a/c", "a/d"]}) == (
+        "rate: at most 3 plugins for one step")
+    assert _refused(client, {"url": URL, "understand": [STEPPER_ID, {"id": STEPPER_ID, "settings": {"notes": "*=x"}}]}) \
+        == "understand: fixture-dev/stepper is listed twice"
+    # Three different ones are a fine shape (here without checking what is installed).
+    payload = _process_options(JobIn(url=URL, rate=["a/a", "a/b", "a/c"], understand=["a/a"]))
+    assert payload["rate"] == [{"id": "a/a"}, {"id": "a/b"}, {"id": "a/c"}] and payload["understand"] == [{"id": "a/a"}]
+
+
+def test_naming_the_jobs_pipeline_again_is_refused(api, tmp_path):
+    client, data_dir, install = api
+    _grader(tmp_path, install, data_dir)
+    for field in ("rate", "understand"):
+        assert _refused(client, {"url": _vod(1), "pipeline": GRADER_ID, field: [GRADER_ID]}) == (
+            f"{field}: {GRADER_ID} is this job's pipeline, so it already scores and describes the moments it finds")
+    # Another version or other settings are still the same plugin.
+    assert _refused(client, {"url": _vod(1), "pipeline": {"id": GRADER_ID, "version": "1.0.0"},
+                             "rate": {"id": GRADER_ID, "settings": {}}}).startswith(f"rate: {GRADER_ID} is this job's")
+    # A PATCH is judged on the payload it merges into, either way round.
+    job_id = client.post("/jobs", json={"url": _vod(2), "rate": GRADER_ID}).json()["job_id"]
+    assert _refused(client, {"pipeline": GRADER_ID}, path=f"/jobs/{job_id}", method="patch").startswith(
+        f"rate: {GRADER_ID} is this job's pipeline")
+    assert "pipeline" not in _payload(client, job_id)
+    job_id = client.post("/jobs", json={"url": _vod(3), "pipeline": GRADER_ID}).json()["job_id"]
+    assert _refused(client, {"understand": GRADER_ID}, path=f"/jobs/{job_id}", method="patch").startswith(
+        f"understand: {GRADER_ID} is this job's pipeline")
+    assert "understand" not in _payload(client, job_id)
+    # Clearing the pipeline in the same PATCH makes room for it.
+    r = client.patch(f"/jobs/{job_id}", json={"understand": GRADER_ID, "clear": ["pipeline"]})
+    assert r.status_code == 200, r.text
+    assert _payload(client, job_id)["understand"] == [{"id": GRADER_ID}]
+
+
+def test_steps_go_with_sports_gaming_scoring_and_a_pipeline_but_not_longform(api):
+    client, data_dir, install = api
+    install(data_dir, ECHO)
+    install(data_dir, STEPPER)
+    steps = {"rate": [STEPPER_ID], "understand": [STEPPER_ID]}
+    for n, other in enumerate(({"sport": {"name": "soccer"}}, {"gaming_scoring": True},
+                               {"pipeline": "fixture-dev/echo"}, {"gaming": True}, {"gaming": True, "gaming_scoring": True},
+                               {"vertical_live": True}, {"podcast": True},
+                               {"focus": "quark bursts", "min_score": 70, "max_clips": 3}), 1):
+        r = client.post("/jobs", json={"url": _vod(n), **other, **steps})
+        assert r.status_code == 200 and r.json()["job_id"], (other, r.text)
+        payload = _payload(client, r.json()["job_id"])
+        assert payload["rate"] == payload["understand"] == [{"id": STEPPER_ID}], other
+        assert client.delete(f"/jobs/{r.json()['job_id']}").status_code == 200  # the queue holds five
+    for longform in ({"mode": "highlights"}, {"mode": "short_clips", "shorts": True}):
+        for field in ("rate", "understand"):
+            assert _refused(client, {"url": _vod(20), "longform": longform, field: STEPPER_ID}) == LONGFORM_REFUSED
+    # Judged on the merged payload: a queued job with a rater can't gain Longform.
+    job_id = client.post("/jobs", json={"url": _vod(21), "rate": STEPPER_ID}).json()["job_id"]
+    assert _refused(client, {"longform": {"mode": "highlights"}}, path=f"/jobs/{job_id}", method="patch") \
+        == LONGFORM_REFUSED
+    r = client.patch(f"/jobs/{job_id}", json={"longform": {"mode": "highlights"}, "clear": ["rate"]})
+    assert r.status_code == 200, r.text
+
+
+def test_patch_adds_and_clears_rate(api):
+    client, data_dir, install = api
+    install(data_dir, STEPPER)
+    job_id = client.post("/jobs", json={"url": URL}).json()["job_id"]
+    assert client.patch(f"/jobs/{job_id}", json={"rate": STEPPER_ID}).status_code == 200
+    assert _payload(client, job_id)["rate"] == [{"id": STEPPER_ID}]
+    chosen = {"id": STEPPER_ID, "settings": {"notes": "*=This happens in the final round"}}
+    assert client.patch(f"/jobs/{job_id}", json={"understand": [chosen], "max_clips": 3}).status_code == 200
+    payload = _payload(client, job_id)
+    assert payload["rate"] == [{"id": STEPPER_ID}] and payload["understand"] == [chosen]
+    assert client.patch(f"/jobs/{job_id}", json={"clear": ["rate"]}).status_code == 200
+    payload = _payload(client, job_id)
+    assert "rate" not in payload and payload["understand"] == [chosen]
+    assert client.patch(f"/jobs/{job_id}", json={"clear": ["understand"]}).status_code == 200
+    assert not {"rate", "understand"} & set(_payload(client, job_id))
+    # A bad one leaves the job as it was.
+    assert _refused(client, {"rate": "fixture-dev/missing"}, path=f"/jobs/{job_id}", method="patch") == (
+        "rate[0]: the pipeline fixture-dev/missing isn't installed")
+    assert "rate" not in _payload(client, job_id)
+
+
+def test_a_batch_row_with_bad_steps_is_skipped_as_bad_option(api):
+    client, data_dir, install = api
+    install(data_dir, STEPPER)
+    body = client.post("/jobs/batch", json={"items": [
+        {"url": _vod(1), "rate": STEPPER_ID},
+        {"url": _vod(2), "understand": ["fixture-dev/missing"]},
+        {"url": _vod(3), "rate": [STEPPER_ID, STEPPER_ID]}]}).json()
+    assert [c["video_id"] for c in body["created"]] == ["tw_100000001"]
+    assert [(s["reason"], s["detail"]) for s in body["skipped"]] == [
+        ("bad_option", "understand[0]: the pipeline fixture-dev/missing isn't installed"),
+        ("bad_option", "rate: fixture-dev/stepper is listed twice")]
+
+
+def test_the_worker_copies_steps_only_when_given(tmp_path, monkeypatch):
+    import threading
+    import time
+    import types
+
+    from core import progress, queue
+    from core.state import StateDB
+    from main import BUNDLED_CONFIG, load_config
+    from server import jobs
+
+    config = load_config(BUNDLED_CONFIG)
+    config["paths"]["data_dir"] = str(tmp_path)
+    worker = jobs.Worker(config)
+    worker.prefetch = types.SimpleNamespace(wait_for=lambda _vid: None, maybe_start=lambda _db: None)
+    seen: list = []
+
+    def process_video(url, cfg, db, force=False):
+        seen.append((url, cfg["clips"]))
+
+    monkeypatch.setitem(sys.modules, "core.pipeline", types.SimpleNamespace(process_video=process_video))
+    monkeypatch.setattr(progress, "_handler", progress._handler)  # put back after the run
+    rate = [{"id": STEPPER_ID, "settings": {"scores": "*=+5"}}, {"id": "fixture-dev/other"}]
+    understand = [{"id": STEPPER_ID}]
+    db = StateDB(tmp_path / "state.db")
+    db.add_job("process", json.dumps({"url": "local:plain"}), video_id="plain")
+    db.add_job("process", json.dumps({"url": "local:steps", "rate": rate, "understand": understand}),
+               video_id="steps")
+    db.add_job("process", json.dumps({"url": "local:rater", "rate": rate}), video_id="rater")
+    # One choice not in a list, as a payload written by hand could hold it.
+    db.add_job("process", json.dumps({"url": "local:one", "understand": understand[0]}), video_id="one")
+    queue.set_paused(db, False)
+    db.close()
+    thread = threading.Thread(target=worker.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 30
+    while len(seen) < 4 and time.time() < deadline:
+        time.sleep(0.05)
+    worker.stop()
+    thread.join(timeout=10)
+    got = dict(seen)
+    assert set(got) == {"local:plain", "local:steps", "local:rater", "local:one"}
+    assert not {"rate", "understand"} & set(got["local:plain"])
+    assert got["local:steps"]["rate"] == rate and got["local:steps"]["understand"] == understand
+    assert got["local:rater"]["rate"] == rate and "understand" not in got["local:rater"]
+    assert got["local:one"]["understand"] == understand and "rate" not in got["local:one"]
+    assert not {"rate", "understand"} & set(worker.config["clips"])  # each job gets its own copy
+
+
 # ---- in process_video ------------------------------------------------------------
 
 

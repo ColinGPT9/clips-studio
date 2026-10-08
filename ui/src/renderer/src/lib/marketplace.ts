@@ -42,6 +42,11 @@ export interface PluginDetails {
   python_packages: string | null
   /** It runs with a Python from this PC (`{python}` in its command). */
   needs_python: boolean
+  /** What it can be chosen for, in pill words: "Finds moments", "Understands moments", "Rates moments",
+   *  or "Understands what it finds" for a finder that describes its own moments. */
+  steps: string[]
+  /** How long it may take to rate or understand a video's moments, for a plugin that can; else null. */
+  time_limit: string | null
 }
 
 /** Something the engine found that stops a plugin running on this PC. */
