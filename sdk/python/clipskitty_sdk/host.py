@@ -307,10 +307,18 @@ def _load_result(job_folder: Path, steps) -> dict:
     path = job_folder / RESULT_FILE
     if not path.exists():
         raise ContractError("result", ["the plugin exited without writing result.json"])
+    if not path.is_file():
+        # A folder can't be read, and a pipe or a device (a link to
+        # /dev/zero) could keep the read going for ever.
+        raise ContractError("result", ["result.json is not a file"])
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as e:
         raise ContractError("result", [f"result.json is not valid JSON ({e})"]) from e
+    except (OSError, RecursionError, MemoryError) as e:
+        # Unreadable, nested too deep to parse, or too large: refused like any
+        # other answer that can't be used, so a moment run is skipped.
+        raise ContractError("result", [f"result.json could not be read ({e or type(e).__name__})"]) from e
     problems = check_result(data, steps=steps)
     if problems:
         raise ContractError("result", problems)

@@ -57,6 +57,17 @@ export function stepPlugins(plugins: InstalledPlugin[]): InstalledPlugin[] {
   return plugins.filter((p) => MOMENT_STEPS.some((step) => usableFor([p], step).length > 0))
 }
 
+/** The plugin ticking Rate & understand puts in a video's rows: the first of
+ *  `usable` (stepPlugins) that isn't the video's own Pipeline, which the API
+ *  refuses in a step. Undefined when there is none: the job form then shows
+ *  the switch disabled, since ticking it could choose nothing. */
+export function firstStepPlugin(
+  usable: InstalledPlugin[],
+  o: Pick<JobOptions, 'pipeline'> | null | undefined
+): InstalledPlugin | undefined {
+  return usable.find((p) => p.id !== o?.pipeline?.id)
+}
+
 /** Whether a video's options name a step. */
 export function hasSteps(o: Pick<JobOptions, 'rate' | 'understand'> | null | undefined): boolean {
   return Boolean(o?.rate?.length || o?.understand?.length)

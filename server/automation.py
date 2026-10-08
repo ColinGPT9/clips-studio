@@ -799,11 +799,17 @@ class ChannelWatcher(threading.Thread):
             # a re-send must not post a clip this one never chose.
             picked = clips[: settings.max_posts] if settings.max_posts else clips
         else:
+            # A clip trimmed in the editor since keeps its place in the
+            # choice (StateDB.follow_chosen_clip, from the re-render).
             picked = [c for c in clips if _window(c) in chosen]
         clip_ids = [int(c["id"]) for c in picked]
         if not clip_ids:
-            d.set_watch_item(item["id"], publish_state="done",
-                             publish_error=_no_clips_error(d.get_outcome(item["video_id"])))
+            if clips:
+                error = ("The clips chosen when this video was first published aren't there any more, "
+                         "so there was nothing to send.")
+            else:
+                error = _no_clips_error(d.get_outcome(item["video_id"]))
+            d.set_watch_item(item["id"], publish_state="done", publish_error=error)
             return {}
         if not settings.platforms:
             d.set_watch_item(item["id"], publish_state="ask",

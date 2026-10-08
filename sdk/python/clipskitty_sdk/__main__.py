@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import shutil
 import subprocess
@@ -40,7 +39,7 @@ import tempfile
 from pathlib import Path
 
 from . import host
-from .contract import MAX_RANGES, STEPS, ContractError
+from .contract import MAX_RANGES, STEPS, ContractError, _number
 from .job import RESULT_FILE
 from .manifest import SCHEMA_FILE, find_steps, offers, schema_text, step_problem, uses_steps, validate_folder
 
@@ -96,10 +95,6 @@ def _transcript(path: str | None) -> dict:
     if isinstance(data, list):  # a bare list of segments
         data = {"language": "", "segments": data}
     return {"language": data.get("language", ""), "segments": list(data.get("segments") or [])}
-
-
-def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _run_steps(manifest: dict, asked: str | None) -> tuple[str, ...]:

@@ -112,6 +112,39 @@ def test_step_plugins_are_offered_only_for_steps_they_can_do(tmp_path):
                 assert manifest.step_problem(p, step) is None, (p["id"], step)
 
 
+def test_ticking_the_switch_never_picks_the_videos_own_pipeline(tmp_path):
+    """One plugin doing find, understand and rate, chosen as the video's
+    Pipeline, can't be chosen again under Rate & understand (the API refuses
+    it). With nothing else usable the job form disables the switch and says
+    why, rather than showing a box that un-ticks itself."""
+    both = _plugin("example-dev/quarkbloom-all-in-one", ["video", "transcript", "moments"],
+                   ["ranges", "context", "ratings"])
+    rater = _plugin("example-dev/quarkbloom-rater", ["moments", "transcript"], ["ratings"])
+    as_pipeline = {"pipeline": {"id": both["id"]}}
+    cases = [[[both], {}], [[both], None], [[both], as_pipeline], [[both, rater], as_pipeline], [[], {}]]
+    got = _run(tmp_path, "return data.map(([usable, o]) => m.firstStepPlugin(usable, o)?.id ?? null)", cases)
+    assert got == [both["id"], both["id"], None, rater["id"], None]
+    form = (UI / "components" / "queue" / "AddVideos.tsx").read_text(encoding="utf-8")
+    assert "const first = firstStepPlugin(stepUsable, next)" in form
+    assert "tg.key === 'steps' && !hasSteps(slot.options) && !firstStepPlugin(stepUsable, slot.options)" in form
+    assert "disabled={disabled}" in form
+    assert ("'The only plugin you can use to rate or understand moments is this video’s Pipeline, and it can’t "
+            "also be chosen here. Install or turn on another one in the Marketplace, or choose a different "
+            "Pipeline.'") in form
+
+
+def test_the_marketplace_never_says_every_pipeline_finds_moments():
+    """Raters and understanders are listed under Pipelines too (kind: pipeline),
+    and one that only rates or understands isn't offered under Pipeline."""
+    page = (UI / "pages" / "Marketplace.tsx").read_text(encoding="utf-8")
+    assert "each one finds a video’s moments" not in page
+    assert ("'Pipelines made by other developers: some find a video’s moments their own way, and others rate the "
+            "moments found or say what happens in them. Clips Kitty cuts, frames and captions the clips as usual.")\
+        in page
+    assert "{(done.outputs ?? ['ranges']).includes('ranges')" in page
+    assert "t('Ready. Add a video in the Generate bar, tick Rate & understand and choose')" in page
+
+
 # ---- the Generate guard -----------------------------------------------------------------------
 
 

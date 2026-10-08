@@ -675,6 +675,37 @@ class StateDB:
                     print(f"Could not restore {table} row for clip {new_clip_id}: {e}")
         self.conn.commit()
 
+    def follow_chosen_clip(self, video_id: str, old: tuple[float, float], new: tuple[float, float]) -> None:
+        """A re-render that moved a clip to a new window: a watched video's
+        saved first-publish choice (watch_items.chosen_clips, a JSON list of
+        [start_s, end_s]) follows it there. A clip trimmed after its post was
+        rejected is still one the first publish chose, so a re-send sends it."""
+        before = [round(float(old[0]), 2), round(float(old[1]), 2)]
+        after = [round(float(new[0]), 2), round(float(new[1]), 2)]
+        if before == after:
+            return
+        rows = self.conn.execute(
+            "SELECT id, chosen_clips FROM watch_items WHERE video_id = ? AND chosen_clips != ''",
+            (video_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                saved = json.loads(row["chosen_clips"])
+            except ValueError:
+                continue
+            if not isinstance(saved, list):
+                continue
+            moved = False
+            for i, window in enumerate(saved):
+                try:
+                    same = [round(float(window[0]), 2), round(float(window[1]), 2)] == before
+                except (IndexError, KeyError, TypeError, ValueError):
+                    continue
+                if same:
+                    saved[i], moved = after, True
+            if moved:
+                self.set_watch_item(row["id"], chosen_clips=json.dumps(saved))
+
     def delete_creator(self, creator_id: int) -> dict:
         """Remove a creator profile and everything learned about them.
 

@@ -115,7 +115,14 @@ class ContractError(ValueError):
 
 
 def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    """A finite number, not a bool. An int too large for a float (a JSON score
+    of 400 digits) is not one: math.isfinite raises OverflowError on it."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _text(value, limit: int) -> bool:

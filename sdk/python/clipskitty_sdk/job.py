@@ -41,7 +41,6 @@ notes in a run asked to understand.
 from __future__ import annotations
 
 import json
-import math
 import os
 import sys
 import traceback
@@ -65,6 +64,7 @@ from .contract import (
     log_line,
     progress_line,
 )
+from .contract import _number as _finite
 
 JOB_FILE = "job.json"
 RESULT_FILE = "result.json"
@@ -122,9 +122,7 @@ class Tools:
 
 def _number(value) -> float | None:
     """`value` as a float when it is a finite number (not a bool), else None."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
-        return float(value)
-    return None
+    return float(value) if _finite(value) else None
 
 
 def one_line(text) -> str:

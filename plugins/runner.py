@@ -401,8 +401,10 @@ def _moment_failure(plugin: store.Installed, outcome, reported: list[str], timeo
         minutes = max(1, round(timeout / 60))
         stopped = f"took longer than its {minutes} minute limit, so Clips Kitty stopped it."
         return PluginError(f"{plugin.name} {stopped}", why=f"It {stopped}")
-    if reported:
-        said = " ".join(reported[-1].split())
+    # The last error line it reported with words in it: a blank one (" ")
+    # says nothing, and would read "It said: ." on the video page.
+    said = next((line for line in (" ".join(r.split()) for r in reversed(reported)) if line), "")
+    if said:
         return PluginError(f"{plugin.name} failed: {said}", why="It said: " + _sentence(said[:MAX_SAID]))
     if outcome.exit_code is None:
         return PluginError(f"Clips Kitty couldn't start {plugin.name}: {outcome.error}",
@@ -417,7 +419,7 @@ def _result_notes(folder: Path) -> str:
 
     try:
         notes = json.loads((folder / "result.json").read_text(encoding="utf-8")).get("notes")
-    except (OSError, ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError, RecursionError, MemoryError):
         return ""
     return notes if isinstance(notes, str) else ""
 
@@ -473,6 +475,11 @@ def answer_moments(choice, steps, moments: list[dict], *, video, segments, langu
         answers, ignored = host.read_answers(folder, steps=asked, ids=[m["id"] for m in moments])
     except contract.ContractError as e:
         raise PluginError(f"{plugin.name} gave an answer Clips Kitty can't use: {e}",
+                          why="Clips Kitty couldn't use its answer.") from e
+    except Exception as e:
+        # Anything else reading it raised: still an answer that can't be used,
+        # so this run is skipped and the job goes on without it.
+        raise PluginError(f"{plugin.name} gave an answer Clips Kitty couldn't read: {type(e).__name__}: {e}",
                           why="Clips Kitty couldn't use its answer.") from e
     notes = _result_notes(folder)
     if notes:

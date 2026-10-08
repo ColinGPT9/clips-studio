@@ -729,6 +729,32 @@ def test_read_result_refuses_what_it_cannot_use(tmp_path):
         host.read_result(folder)
 
 
+def test_a_result_that_cant_even_be_read_is_refused_not_raised(tmp_path):
+    """A folder named result.json, notes nested too deep to parse and a
+    number too large for a float each used to escape as a Python error."""
+    folder = tmp_path / "run"
+    (folder / "result.json").mkdir(parents=True)
+    for read in (lambda: host.read_result(folder), lambda: host.read_answers(folder, steps=["rate"], ids=["m1"])):
+        with pytest.raises(ContractError, match=r"result\.json is not a file"):
+            read()
+    (folder / "result.json").rmdir()
+    (folder / "result.json").write_text('{"plugin_api": 1, "ranges": [], "notes": ' + "[" * 200_000
+                                        + "]" * 200_000 + "}", encoding="utf-8")
+    with pytest.raises(ContractError, match=r"result\.json could not be read \(maximum recursion depth"):
+        host.read_answers(folder, steps=["rate"], ids=["m1"])
+    huge = int("9" * 400)
+    assert check_result({"plugin_api": 1, "ranges": [{"start": 0, "end": huge}]}) == \
+        ["ranges[0]: start and end must be numbers of seconds"]
+    answer = {"plugin_api": 1, "ranges": [], "moments": [{"id": "m1", "score": huge}]}
+    assert check_result(answer, steps=["rate"]) == ["moments[0]: score must be a number from 0 to 100, or left out"]
+    (folder / "result.json").write_text(json.dumps(answer), encoding="utf-8")
+    with pytest.raises(ContractError, match=r"moments\[0\]: score must be a number"):
+        host.read_answers(folder, steps=["rate"], ids=["m1"])
+    job, _ = _moment_job(tmp_path / "job")
+    with pytest.raises(ContractError, match="rate: score must be a number from 0 to 100"):
+        job.rate(job.moments[0], huge)
+
+
 def test_the_plugin_environment_leaves_out_settings_and_credentials(tmp_path):
     env = host.plugin_env({"PATH": "/bin", "CLIPS_STUDIO_X": "1", "CLIPSKITTY_SECRET_OLD": "s",
                            "GITHUB_TOKEN": "t", "MY_PASSWORD": "p", "CUDA_PATH": "/cuda"},

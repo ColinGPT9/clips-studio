@@ -12,7 +12,15 @@ import PipelineFields from '../PipelineFields'
 import StepFields from './StepFields'
 import { usePipelines, useStepPlugins } from '../../lib/plugins'
 import { fittingSettings } from '../../lib/marketplace'
-import { MOMENT_STEPS, hasSteps, offers, stepProblemKeys, usableFor, type MomentStep } from '../../lib/steps'
+import {
+  MOMENT_STEPS,
+  firstStepPlugin,
+  hasSteps,
+  offers,
+  stepProblemKeys,
+  usableFor,
+  type MomentStep
+} from '../../lib/steps'
 import { PRESETS } from '../../lib/gamingLayout'
 import {
   fitSport,
@@ -552,7 +560,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     } else if (key === 'steps') {
       // The first plugin that can, in every step it can do: one that does
       // both is in both lists, and runs once.
-      const first = stepUsable.find((p) => p.id !== next.pipeline?.id)
+      const first = firstStepPlugin(stepUsable, next)
       if (on && !hasSteps(next) && first) {
         const can = offers(first)
         if (can.includes('understand')) next.understand = [{ id: first.id }]
@@ -859,23 +867,33 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 // and would simply un-tick itself — which reads as a broken
                 // checkbox. Disable it and say what is missing instead.
                 const needsProfile = tg.key === 'watermark' && !watermarkSelection().profileId
+                // Rate & understand the same way, when the only plugin that
+                // could do it is this video's Pipeline: the API refuses a
+                // pipeline named again, so ticking would do nothing.
+                const onlyThePipeline =
+                  tg.key === 'steps' && !hasSteps(slot.options) && !firstStepPlugin(stepUsable, slot.options)
+                const disabled = needsProfile || onlyThePipeline
                 const label = (
                   <label
                     key={tg.key}
                     className={`flex items-center gap-2 text-sm shrink-0 whitespace-nowrap ${
-                      needsProfile ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                     }`}
                     title={
                       needsProfile
                         ? 'Create a branding profile below first — there is no logo to burn in yet.'
-                        : tg.title
+                        : onlyThePipeline
+                          ? t(
+                              'The only plugin you can use to rate or understand moments is this video’s Pipeline, and it can’t also be chosen here. Install or turn on another one in the Marketplace, or choose a different Pipeline.'
+                            )
+                          : tg.title
                     }
                   >
                     <input
                       type="checkbox"
                       className="size-4 accent-[#38BDF8]"
                       checked={isOn(slot.options, tg.key)}
-                      disabled={needsProfile}
+                      disabled={disabled}
                       onChange={(e) => {
                         replaceOptions(slot.key, toggle(slot.options, tg.key, e.target.checked))
                         if (tg.key === 'gaming' && e.target.checked && (slot.path || slot.url.trim()))

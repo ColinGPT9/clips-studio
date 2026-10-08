@@ -839,6 +839,9 @@ class Worker(threading.Thread):
             restore["render_opts"] = _json.dumps(render_opts)
             db.set_clip(new_row["id"], **restore)
             db.reattach_clip_rows(new_row["id"], detached)
+            # A watched video's first publish kept the windows it chose
+            # (server/automation.py publish): a trimmed clip is still one of them.
+            db.follow_chosen_clip(video_id, (clip["start_s"], clip["end_s"]), (start, end))
         elif detached:
             # The re-render produced no row to hang them off. Say so rather
             # than dropping a translation or an upload record in silence.

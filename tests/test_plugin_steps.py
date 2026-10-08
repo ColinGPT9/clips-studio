@@ -299,6 +299,40 @@ def test_a_failing_step_is_reported_and_nothing_partial_lands(data_dir, video, a
             "from 0 to 100, or left out)") in out
 
 
+@pytest.mark.parametrize(("mode", "logged"), [
+    ("folder", "result: result.json is not a file"),
+    ("huge", "result: moments[0]: score must be a number from 0 to 100, or left out"),
+    ("deep", "result: result.json could not be read (maximum recursion depth exceeded"),
+])
+def test_an_answer_that_cant_even_be_read_is_skipped_and_the_job_goes_on(data_dir, video, capsys, mode, logged):
+    """result.json made a folder, a score too large for a float, notes nested
+    too deep to parse: each used to escape as a Python error and fail the job.
+    Each is an answer Clips Kitty can't use, so the run is skipped and reported."""
+    found = [_cand(10, 70), _cand(100, 60)]
+    kept, _rejections, report = _after(data_dir, video, found, rate=[_choice(mode=mode)])
+    assert [(c.start, c.score) for c in kept] == [(10, 70), (100, 60)]
+    assert "plugin_ratings" not in found[0].subscores
+    assert [(r["ok"], r["error"]) for r in report] == [(False, "Clips Kitty couldn't use its answer.")]
+    out = capsys.readouterr().out
+    assert "      Going on without Stepper: Clips Kitty couldn't use its answer.\n" in out
+    assert f"      (Stepper gave an answer Clips Kitty can't use: {logged}" in out
+
+
+def test_anything_else_reading_an_answer_raises_is_a_skip_too(data_dir, video, capsys, monkeypatch):
+    from plugins import runner
+
+    def broken(*_a, **_k):
+        raise OSError("the disk went away")
+
+    monkeypatch.setattr(runner.host, "read_answers", broken)
+    found = [_cand(10, 70)]
+    kept, _rejections, report = _after(data_dir, video, found, rate=[_choice(scores="*=99")])
+    assert [(c.start, c.score) for c in kept] == [(10, 70)]
+    assert [(r["ok"], r["error"]) for r in report] == [(False, "Clips Kitty couldn't use its answer.")]
+    assert ("      (Stepper gave an answer Clips Kitty couldn't read: OSError: the disk went away)"
+            in capsys.readouterr().out)
+
+
 def test_answers_about_other_moments_and_new_ranges_are_logged_and_left_out(data_dir, video, capsys):
     found = [_cand(10, 70), _cand(100, 60)]
     kept, _rejections, report = _after(data_dir, video, found, rate=[_choice(mode="unknown_ids")])
@@ -365,6 +399,8 @@ def test_failure_reasons_read_in_creator_words(tmp_path, data_dir, video, add_st
         (lambda m: None, {"rate": [_choice(mode="fail", message="Out of quark tokens!")]},
          "It said: Out of quark tokens!"),
         (lambda m: None, {"rate": [_choice(mode="fail", message="x" * 400)]}, "It said: " + "x" * 300 + "."),
+        # A blank error line says nothing: never "It said: .".
+        (lambda m: None, {"rate": [_choice(mode="fail", message=" ")]}, "It stopped before it finished."),
         (lambda m: _fake_outcome(m, exit_code=3, error="half way"), {"rate": [_choice()]},
          "It stopped before it finished."),
         (lambda m: _fake_outcome(m, exit_code=None, error="could not start the plugin"), {"rate": [_choice()]},
@@ -385,6 +421,17 @@ def test_failure_reasons_read_in_creator_words(tmp_path, data_dir, video, add_st
     out = capsys.readouterr().out
     assert "      Going on without fixture-dev/gone: It isn't installed any more.\n" in out
     assert "      (The pipeline fixture-dev/gone isn't installed)" in out
+
+
+def test_a_blank_error_line_is_passed_over_for_one_with_words():
+    from types import SimpleNamespace
+
+    from plugins import runner
+
+    plugin, outcome = SimpleNamespace(name="Stepper"), runner.host.RunOutcome(1, error="half way")
+    assert runner._moment_failure(plugin, outcome, ["The arena feed is down", " \n\t"], 600).why == \
+        "It said: The arena feed is down."
+    assert runner._moment_failure(plugin, outcome, ["   "], 600).why == "It stopped before it finished."
 
 
 def test_notes_past_eight_are_logged(data_dir, video, add_stepper, capsys):

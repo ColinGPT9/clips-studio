@@ -19,7 +19,7 @@ execution: local
 inputs: [transcript, moments]
 outputs: [context, ratings]
 settings:
-  mode: {type: choice, options: [ok, fail, bad, unknown_ids, ranges, sleep], default: ok, title: What to do}
+  mode: {type: choice, options: [ok, fail, bad, unknown_ids, ranges, sleep, folder, huge, deep], default: ok, title: What to do}
   scores: {type: string, default: "", title: "Scores as id=score or id=+points, comma separated; * for every moment"}
   notes: {type: string, default: "", title: "Notes as id=note|note, comma separated; * for every moment"}
   message: {type: string, default: "the arena feed could not be read", title: The error line in fail mode}

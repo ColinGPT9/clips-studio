@@ -148,7 +148,8 @@ were often broken in a way that only showed up on somebody else's machine.
 - **A watched channel's re-sends keep its first choice of clips.** Retry failed and the
   re-send of posts a platform rejected now send only clips the video's first publish
   chose, even if processing the video again changed the scores or made new clips in
-  between. Nothing already sent is ever sent twice, as before.
+  between. A clip you trimmed in the editor since is still one of them. Nothing already
+  sent is ever sent twice, as before.
 
 - **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a
   Gemma 4 model, and setup installs a different one on most PCs. The box used to say so

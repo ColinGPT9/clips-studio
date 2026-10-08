@@ -1944,8 +1944,12 @@ function InstallDialog({
             )}
             {missing.length === 0 && !switchedOff && (
               <p>
-                {t('Ready. Add a video in the Generate bar, tick Pipeline and choose')} {done.name}.{' '}
-                {t('It runs only for the videos you choose it for.')}
+                {/* One that only rates or understands moments isn't offered
+                    under Pipeline (usablePipelines), only under Rate & understand. */}
+                {(done.outputs ?? ['ranges']).includes('ranges')
+                  ? t('Ready. Add a video in the Generate bar, tick Pipeline and choose')
+                  : t('Ready. Add a video in the Generate bar, tick Rate & understand and choose')}{' '}
+                {done.name}. {t('It runs only for the videos you choose it for.')}
               </p>
             )}
             {missing.map((m) => (
@@ -2027,7 +2031,7 @@ export default function Marketplace(): JSX.Element {
         <h2 className="text-2xl font-bold">{t('Marketplace')}</h2>
         <p className="text-sm text-muted mt-1">
           {t(
-            'Pipelines made by other developers: each one finds a video’s moments its own way, and Clips Kitty cuts, frames and captions them as usual. Free to list and free to install; Clips Kitty handles no payments.'
+            'Pipelines made by other developers: some find a video’s moments their own way, and others rate the moments found or say what happens in them. Clips Kitty cuts, frames and captions the clips as usual. Free to list and free to install; Clips Kitty handles no payments.'
           )}
         </p>
       </div>

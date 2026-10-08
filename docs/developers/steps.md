@@ -261,10 +261,10 @@ A plugin that can't run, or gives an answer Clips Kitty can't use, is skipped. T
 | No Python | It needs Python, and none was found on this PC. |
 | A model missing | A model it needs isn't on this PC. Get it in Marketplace › Installed. |
 | Ran out of time | It took longer than its {n} minute limit, so Clips Kitty stopped it. |
-| Stopped with an error line | It said: {your last error line}. |
-| Stopped without one | It stopped before it finished. |
+| Stopped with an error line | It said: {your last error line that isn't blank}. |
+| Stopped without one, or with only blank ones | It stopped before it finished. |
 | Couldn't be started | Clips Kitty couldn't start it. |
-| An answer it can't use | Clips Kitty couldn't use its answer. |
+| An answer it can't use, or a `result.json` that can't be read (a folder, nested too deep, a number too large) | Clips Kitty couldn't use its answer. |
 
 Report problems with `job.fail("...")` in words a creator understands: that line is what the video page shows.
 

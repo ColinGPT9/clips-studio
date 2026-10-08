@@ -1212,8 +1212,12 @@ log. The command-line daily upload is not held.
 video's best `max_posts` clips by score (all of them with `0`), and the item
 remembers which ones. Every later publish of that item (the button again,
 Retry failed, the re-send of rejected posts) sends only clips from that first
-choice, even when a forced re-run has changed the scores since. An item
-published before Clips Kitty remembered the choice chooses again, once.
+choice, even when a forced re-run has changed the scores since. A clip
+trimmed in the editor since stays part of that choice. When none of the
+chosen clips is left, the item is `done` with "The clips chosen when this
+video was first published aren't there any more, so there was nothing to
+send." An item published before Clips Kitty remembered the choice chooses
+again, once.
 
 `deliveries` holds one row per clip and platform. Its state is `sending`,
 `queued`, `processing`, `published`, `failed` or `skipped`.

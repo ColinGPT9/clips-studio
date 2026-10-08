@@ -1312,6 +1312,72 @@ def test_an_item_published_before_this_change_keeps_todays_choice(env):
     assert env.published[1]["clip_ids"] == [ids[20.0], ids[0.0]]  # the best two now, as before this change
 
 
+def _trim(env, monkeypatch, clip_id, start) -> int:
+    """Trim a clip in the editor: the real re-render job (server/jobs.py
+    _rerender_clip), with the render itself stood in for. The clip comes back
+    with a new id and a new window. Returns the new id."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from types import SimpleNamespace
+
+    from core import pipeline
+    from server.jobs import Worker
+
+    for folder, name, data in (("downloads", "newnewnew01.mp4", b"source"),
+                               ("transcripts", "newnewnew01.json", b'{"segments": []}')):
+        (env.data_dir / folder).mkdir(exist_ok=True)
+        (env.data_dir / folder / name).write_bytes(data)
+
+    def render(_source, _candidate, _segments, clip_dir, _config, render_opts, _lang):
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        (clip_dir / "clip.mp4").write_bytes(b"clip")
+        return clip_dir / "clip.mp4", json.dumps(render_opts)
+
+    monkeypatch.setattr(pipeline, "_render_files", render)
+    job = SimpleNamespace(config={"paths": {"data_dir": str(env.data_dir)}, "clips": {"outro": False}})
+    env.run(lambda d: Worker._rerender_clip(job, d, {"clip_id": clip_id, "start": start}))
+    return _windows(env)[start]
+
+
+@pytest.mark.parametrize("max_posts", [0, 1])
+def test_a_clip_trimmed_after_its_post_was_rejected_is_sent_again(env, monkeypatch, max_posts):
+    """No rate or understand here: a re-send keeps the first publish's clips,
+    and a clip the creator trimmed since is still one of them."""
+    publishing_watch(env, max_posts=max_posts)
+    finished_with_clips(env, n=3)  # scores 90, 89, 88 at 0 s, 10 s and 20 s
+    env.later(5)
+    ids = _windows(env)
+    first = [ids[0.0], ids[10.0], ids[20.0]][: max_posts or 3]
+    assert [p["clip_ids"] for p in env.published] == [first]
+    reject_a_post(env)  # the best clip's YouTube post
+    trimmed = _trim(env, monkeypatch, ids[0.0], 1.0)
+    env.later(5)
+    env.later(automation.DELIVERY_RETRY_DELAYS[0])
+    # The trimmed clip goes out again; the others are passed over by
+    # publish_clips(once=True) as already sent, as before the choice was kept.
+    assert env.published[1]["clip_ids"] == [trimmed, ids[10.0], ids[20.0]][: max_posts or 3]
+    item = env.item("newnewnew01")
+    assert (item["publish_state"], item["publish_error"]) == ("done", "")
+    assert json.loads(env.run(lambda d: d.get_watch_item(item["id"])["chosen_clips"]))[0] == [1.0, 8.0]
+
+
+def test_a_resend_whose_chosen_clips_were_deleted_says_so(env):
+    publishing_watch(env, max_posts=1)
+    finished_with_clips(env, n=3)
+    env.later(5)
+    ids = _windows(env)
+    assert env.published[0]["clip_ids"] == [ids[0.0]]
+    reject_a_post(env)
+    env.run(lambda d: d.delete_clip(ids[0.0]))
+    env.later(5)
+    env.later(automation.DELIVERY_RETRY_DELAYS[0])
+    assert len(env.published) == 1  # never one the first publish didn't choose
+    item = env.item("newnewnew01")
+    assert item["publish_state"] == "done"
+    assert item["publish_error"] == ("The clips chosen when this video was first published aren't there "
+                                     "any more, so there was nothing to send.")
+
+
 def test_a_watch_keeps_its_rater_through_an_autosave(tmp_path, install_plugin):
     data_dir = tmp_path / "data"
     install_plugin(data_dir, STEPPER)
