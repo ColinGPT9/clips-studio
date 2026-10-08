@@ -162,6 +162,8 @@ def _probe_link(url: str) -> tuple[str, float, dict]:
 
     import yt_dlp
 
+    from sources.ytdlp_common import extract_info
+
     opts = {
         "quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True,
         # One video-only (or muxed) stream, small enough to seek in quickly, and
@@ -173,8 +175,7 @@ def _probe_link(url: str) -> tuple[str, float, dict]:
 
         opts.update(_impersonation())
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = extract_info(url, opts)
     except yt_dlp.utils.DownloadError as e:
         raise NotFrameable(f"Couldn't open that video: {str(e).splitlines()[0][:200]}") from e
     if info.get("is_live") and source != "twitch":

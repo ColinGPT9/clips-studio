@@ -6,6 +6,7 @@ Without a progress hook the UI's bar sits still during a long VOD download
 aborts promptly if the video is cancelled.
 """
 
+import re
 from pathlib import Path
 
 from core import cancel, progress
@@ -29,6 +30,73 @@ def _ffmpeg_dir() -> str | None:
     if resolved == "ffmpeg" or not Path(resolved).exists():
         return None
     return str(Path(resolved).parent)
+
+
+# What YouTube answers when it takes a connection for a bot ("Sign in to
+# confirm you're not a bot"). It goes by the address the request comes from,
+# and a PC on both IPv4 and IPv6 has two: refused over one, the same video
+# is served over the other a second later.
+_BOT_CHECK = "not a bot"
+_IPV4 = "0.0.0.0"       # yt-dlp's --force-ipv4
+# Set once a request only got through over IPv4. The rest of the session's
+# YouTube requests start there, rather than being refused again at every step
+# of a video.
+_ipv4_only = False
+# Only YouTube answers like this. A Twitch or Kick link is asked for the way
+# it always was, whatever YouTube has been doing.
+_YOUTUBE = re.compile(r"(?:^|//|\.)(?:youtube\.com|youtu\.be|youtube-nocookie\.com)(?:[/:?#]|$)", re.I)
+
+
+def is_bot_check(error) -> bool:
+    return _BOT_CHECK in str(error)
+
+
+def extract_info(url: str, opts: dict, *, download: bool = False, process: bool = True):
+    """yt-dlp's extract_info with `opts`, asked once more the other way when
+    YouTube answers with its bot check: over IPv4 after an ordinary request,
+    and an ordinary one after IPv4.
+
+    A request that works is made exactly as before, once. Any other failure,
+    and a second refusal, is raised as it is. Nobody signs in: this only
+    changes which of the PC's own addresses the request leaves from.
+    """
+    global _ipv4_only
+    import yt_dlp
+
+    # Asked as each caller used to ask: `process` only where one turned it off.
+    how = {"download": download} if process else {"download": download, "process": False}
+
+    def ask(options: dict):
+        with yt_dlp.YoutubeDL(options) as ydl:
+            return ydl.extract_info(url, **how)
+
+    if "source_address" in opts or not _YOUTUBE.search(url):
+        return ask(opts)        # an address the caller chose, or not YouTube: as it always was
+    ipv4 = {**opts, "source_address": _IPV4}
+    first, other = (ipv4, opts) if _ipv4_only else (opts, ipv4)
+    try:
+        return ask(first)
+    except yt_dlp.utils.DownloadError as e:
+        # Starting on IPv4 is a habit of this session, not a need: after a
+        # failure of any kind the next request starts the ordinary way.
+        _ipv4_only = False
+        if not is_bot_check(e):
+            raise
+        refused = e
+    try:
+        info = ask(other)
+    except yt_dlp.utils.DownloadError as e:
+        if is_bot_check(e):
+            raise
+        # The other way failed for a reason of its own (no such route, a
+        # timeout). The refusal is what stands in the way, and what is said.
+        raise refused from e
+    # yt-dlp has already printed its refusal, cookie advice and all: say what
+    # became of it, so the log does not read as a failure.
+    print("      (YouTube took the request for a bot; asked again "
+          f"{'over IPv4' if other is ipv4 else 'the ordinary way'} and was served)")
+    _ipv4_only = other is ipv4
+    return info
 
 
 def progress_opts(video_id: str | None) -> dict:

@@ -103,6 +103,13 @@ were often broken in a way that only showed up on somebody else's machine.
   Saved captions now follow the clip: the added seconds are captioned, your corrected
   text stays, and a clip already stuck this way is put right the next time it is
   re-rendered (#120).
+- **"Sign in to confirm you're not a bot" on a YouTube link.** YouTube decides that by
+  the address a request comes from, and a PC on both IPv4 and IPv6 has two: refused over
+  one, the same video is served over the other. Clips Kitty asked only the first way, so
+  the video failed with advice about cookies. It now asks once more over IPv4, and goes
+  on that way for the rest of the session. If both are refused, it says so in plain
+  words: wait an hour, switch off a VPN, or try another network. Nothing signs in and no
+  cookies are read.
 
 ---
 

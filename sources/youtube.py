@@ -18,7 +18,7 @@ import yt_dlp
 from defusedxml import ElementTree as ET
 
 from core.models import DownloadedVideo
-from sources.ytdlp_common import games_from_info, progress_opts
+from sources.ytdlp_common import extract_info, games_from_info, is_bot_check, progress_opts
 
 RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 _ATOM_NS = {
@@ -60,8 +60,7 @@ def resolve_channel(query: str) -> dict:
 
     # yt-dlp resolves any YouTube page to its channel without the Data API.
     opts = {"quiet": True, "no_warnings": True, "extract_flat": True, "playlist_items": "1"}
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    info = extract_info(url, opts)
 
     channel_id = info.get("channel_id") or info.get("uploader_id") or ""
     if not channel_id.startswith("UC"):
@@ -140,6 +139,20 @@ def _friendly_message(error: str) -> str | None:
             "an account, so it cannot fetch this one. The same stream on "
             "Twitch or Kick will work, as will a local file."
         )
+
+    # YouTube takes a connection for a bot by the address it comes from, and
+    # words it as a request to sign in. By the time this is shown the request
+    # has been made both ways the PC has (ytdlp_common.extract_info: IPv4 as
+    # well as IPv6) and refused both, so it is the network as a whole. A
+    # signed-in session would get through; Clips Kitty does not have one.
+    if is_bot_check(error):
+        return (
+            "YouTube is treating this network as a bot and will not serve the "
+            "video to it. The link is fine, and Clips Kitty has already asked "
+            "a second way. It usually clears on its own: wait an hour and try "
+            "again, switch off a VPN if you have one on, or try a different "
+            "network. Twitch, Kick and local files are not affected."
+        )
     return None
 
 
@@ -166,8 +179,7 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
     # Refuse live streams BEFORE downloading: a live URL would start an
     # open-ended real-time capture instead of fetching a finished file.
     with _friendly_errors():
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as probe:
-            probe_info = probe.extract_info(url, download=False)
+        probe_info = extract_info(url, {"quiet": True, "no_warnings": True})
     if probe_info.get("is_live"):
         raise ValueError(
             "This is a live stream — live processing isn't supported. "
@@ -205,8 +217,7 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
 
     try:
         with _friendly_errors():
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+            info = extract_info(url, opts, download=True)
     except yt_dlp.utils.DownloadError as e:
         if vertical and vertical_src.is_missing_format(str(e)):
             raise ValueError(vertical_src.no_vertical_version("youtube")) from e

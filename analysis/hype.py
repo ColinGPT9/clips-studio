@@ -379,9 +379,9 @@ def _clip_scale_interest(curve: np.ndarray) -> np.ndarray:
 def _youtube_heatmap(url: str, duration: float) -> np.ndarray | None:
     """YouTube's own "most replayed" watch-time heatmap (popular videos only),
     resampled to per-second 0..1. This is real audience retention data."""
-    import yt_dlp
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
-        info = ydl.extract_info(url, download=False)
+    from sources.ytdlp_common import extract_info
+
+    info = extract_info(url, {"quiet": True, "no_warnings": True, "skip_download": True})
     heat = info.get("heatmap")
     if not heat:
         return None
@@ -403,7 +403,8 @@ def _youtube_live_chat(url: str, video_id: str, duration: float) -> list[tuple[f
     subtitle track. Regular uploads have no such track -> empty."""
     import tempfile
 
-    import yt_dlp
+    from sources.ytdlp_common import extract_info
+
     with tempfile.TemporaryDirectory() as td:
         opts = {
             "quiet": True,
@@ -413,8 +414,7 @@ def _youtube_live_chat(url: str, video_id: str, duration: float) -> list[tuple[f
             "subtitleslangs": ["live_chat"],
             "outtmpl": str(Path(td) / "chat.%(ext)s"),
         }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        info = extract_info(url, opts, download=True)
         if "live_chat" not in (info.get("subtitles") or {}):
             return []
         files = list(Path(td).glob("*.live_chat.json"))

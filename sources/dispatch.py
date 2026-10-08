@@ -82,12 +82,9 @@ def game_info(url: str) -> list[dict]:
     if source == "local":
         return []
     try:
-        import yt_dlp
+        from sources.ytdlp_common import extract_info, games_from_info
 
-        from sources.ytdlp_common import games_from_info
-
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = extract_info(url, {"quiet": True, "no_warnings": True, "skip_download": True})
         return games_from_info(info, source)
     except Exception as e:
         print(f"      (could not ask the platform which game it is: {e})")
@@ -104,10 +101,9 @@ def description(url: str) -> str:
     if source == "local":
         return ""
     try:
-        import yt_dlp
+        from sources.ytdlp_common import extract_info
 
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = extract_info(url, {"quiet": True, "no_warnings": True, "skip_download": True})
         return str(info.get("description") or "")
     except Exception as e:
         print(f"      (could not fetch the video's description: {e})")
@@ -135,11 +131,9 @@ def metadata(url: str) -> tuple[str, str]:
         # import is all there ever was.
         raise ValueError("local uploads carry no remote metadata")
 
-    import yt_dlp
+    from sources.ytdlp_common import extract_info
 
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True}
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    info = extract_info(url, {"quiet": True, "no_warnings": True, "skip_download": True})
 
     return (
         info.get("title") or "",
