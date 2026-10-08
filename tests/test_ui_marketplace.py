@@ -220,6 +220,85 @@ def test_only_pipelines_that_can_run_are_offered(tmp_path):
     assert _run(tmp_path, "return m.usablePipelines(data).map((p) => p.id)", plugins) == ["a/ok", "a/delisted"]
 
 
+# What each role takes in and gives back (docs: the role table), with Quarkbloom
+# Arena (a made-up game) plugins as the examples.
+ROLES = {
+    "example-dev/quarkbloom-finder": (["video", "transcript"], ["ranges"]),
+    "example-dev/quarkbloom-captioned-finder": (["video", "transcript"], ["ranges", "context"]),
+    "example-dev/quarkbloom-notes": (["moments", "transcript"], ["context"]),
+    "example-dev/quarkbloom-rater": (["moments", "transcript"], ["ratings"]),
+    "example-dev/quarkbloom-all-in-one": (["video", "transcript", "moments"], ["ranges", "context", "ratings"]),
+}
+
+
+def test_only_pipelines_that_find_are_offered_as_pipeline(tmp_path):
+    """A plugin that only rates or understands moments others found is chosen
+    under Rate & understand, never as the job's Pipeline: the engine refuses
+    it there (store.installed_choice, step find)."""
+    base = {"kind": "pipeline", "enabled": True, "problem": None, "flag": None}
+    plugins = [{**base, "id": pid, "inputs": inputs, "outputs": outputs} for pid, (inputs, outputs) in ROLES.items()]
+    got = _run(tmp_path, "return m.usablePipelines(data).map((p) => p.id)", plugins)
+    assert got == ["example-dev/quarkbloom-finder", "example-dev/quarkbloom-captioned-finder",
+                   "example-dev/quarkbloom-all-in-one"]
+    assert got == [p["id"] for p in plugins if "find" in manifest.offers(p)]
+    assert manifest.step_problem(plugins[3], "find").startswith("doesn't find moments")
+
+
+def test_plugins_without_outputs_count_as_finders(tmp_path):
+    """Built-in modes and a plugin summary from before `outputs` was sent say
+    nothing about what they give back: they are finders, as every plugin was."""
+    base = {"kind": "pipeline", "enabled": True, "problem": None, "flag": None}
+    plugins = [{**base, "id": "a/old"}, {**base, "id": "a/finder", "outputs": ["ranges"]},
+               {**base, "id": "a/rater", "inputs": ["moments"], "outputs": ["ratings"]}]
+    assert _run(tmp_path, "return m.usablePipelines(data).map((p) => p.id)", plugins) == ["a/old", "a/finder"]
+
+
+def test_update_lines_say_what_a_plugin_now_also_does(tmp_path):
+    old = _manifest(version="1.0.0", inputs=["video", "transcript"], outputs=["ranges"],
+                    permissions=["video.read", "transcript.read"])
+    new = {**old, "version": "1.1.0", "inputs": ["video", "transcript", "moments"],
+           "outputs": ["ranges", "context", "ratings"]}
+    plan = {"plugin": {"version": "1.1.0"}, "details": permissions.describe(new, tier="listed"),
+            "update": {"from": "1.0.0", "direction": "update", **permissions.changes(old, new)}}
+    assert plan["update"]["added_steps"] == ["Understands moments", "Rates moments"]
+    lines = _run(tmp_path, "return m.updateLines(data)", plan)
+    assert [line for line in lines if line["text"].startswith("Now also")] == [
+        {"text": "Now also: Understands moments", "tone": "warn"},
+        {"text": "Now also: Rates moments", "tone": "warn"}]
+    # an update that does what it did before says nothing new about it
+    same = {**plan, "update": {"from": "1.0.0", "direction": "update", **permissions.changes(old, old)}}
+    assert not any(line["text"].startswith("Now also") for line in _run(tmp_path, "return m.updateLines(data)", same))
+
+
+def test_each_step_pill_says_where_it_is_chosen(tmp_path):
+    """The pills come from the engine's words (permissions.step_lines); each has
+    its title, and the details panel says what a rater's and an understander's
+    answers change, then the engine's time limit, word for word."""
+    words = [*permissions.STEP_WORDS.values(), permissions.UNDERSTANDS_ITS_OWN]
+    got = _run(tmp_path, "return data.map((w) => m.stepBadge(w))", words)
+    assert [(b["label"], b["tone"]) for b in got] == [(w, "info") for w in words]
+    titles = dict(zip(words, (b["title"] for b in got), strict=True))
+    assert titles == {
+        "Finds moments": "It picks a video’s moments itself, in place of Clips Kitty’s own scoring. "
+                         "Turn on Pipeline when you add a video to use it.",
+        "Understands moments": "It says what happens in each moment found by Clips Kitty or a pipeline, and "
+                               "Clips Kitty uses that when writing titles. Turn on Rate & understand when you "
+                               "add a video.",
+        "Rates moments": "It scores each moment found by Clips Kitty or a pipeline. Turn on Rate & understand "
+                         "when you add a video.",
+        "Understands what it finds": "It says what happens in the moments it finds, for the titles.",
+    }
+    details = [permissions.describe(_manifest(inputs=inputs, outputs=outputs, permissions=["transcript.read"]))
+               for inputs, outputs in ROLES.values()]
+    lines = _run(tmp_path, "return data.map((d) => m.stepLines(d))", details)
+    rater_line = ("Its scores decide which clips are made and their order, and which are posted when a channel "
+                  "posts only the best few.")
+    notes_line = "What it says about a moment goes into the request that writes your titles."
+    limit = "Clips Kitty stops it after 10 minutes when it rates or understands a video’s moments."
+    assert lines == [[], [notes_line], [notes_line, limit], [rater_line, limit], [rater_line, notes_line, limit]]
+    assert [d["time_limit"] for d in details] == [None, None, limit, limit, limit]
+
+
 SETTING_CASES = [
     ({"type": "integer", "minimum": 1, "maximum": 6}, "3", 3),
     ({"type": "integer", "minimum": 1, "maximum": 6}, "9", 9),

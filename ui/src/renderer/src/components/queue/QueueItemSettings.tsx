@@ -8,7 +8,8 @@ import CaptionStyleControls, {
 import SportFields from '../SportFields'
 import { sportForVertical, startingSport, useSports, verticalSports, verticalValue } from '../../lib/sports'
 import { watermarkSelection } from '../WatermarkCard'
-import { usePipelines } from '../../lib/plugins'
+import { usePipelines, useStepPlugins } from '../../lib/plugins'
+import { MOMENT_STEPS, hasSteps, stepPostingLines, stepsPatch, usableFor } from '../../lib/steps'
 import { t } from '../../lib/i18n'
 
 /** Settings for ONE queued video, or for every video a watched channel posts.
@@ -23,13 +24,18 @@ import { t } from '../../lib/i18n'
  *  way and the rest another, so the running item shows its settings read-only.
  *
  *  One Save posts the whole panel. Caption style alone has eight fields, and
- *  a request per keystroke would be absurd. */
+ *  a request per keystroke would be absurd.
+ *
+ *  Rate & understand, like Pipeline, are chosen when a video is added; here
+ *  they can only be kept or turned off. A watched channel (`channel`) has its
+ *  options replaced on every save, so the kept choices are sent back each time. */
 export default function QueueItemSettings({
   job,
   onSaved,
   save: saveTo,
   heading = 'Settings for this video only',
-  autoSave = false
+  autoSave = false,
+  channel
 }: {
   job: { id: number; settings: JobOptions }
   onSaved: () => void
@@ -41,6 +47,9 @@ export default function QueueItemSettings({
    *  channel, where a second Save button was one too many: captions were
    *  unticked, the other panel was saved, and clips came out with captions. */
   autoSave?: boolean
+  /** A watched channel's publishing, and whether its preset makes Longform
+   *  clips. Absent for a queued video. */
+  channel?: { mode: 'off' | 'ask' | 'auto'; max_posts: number; presetLongform: boolean }
 }): JSX.Element {
   const s = job.settings ?? {}
   const [captions, setCaptions] = useState(s.captions !== false)
@@ -60,6 +69,11 @@ export default function QueueItemSettings({
   const [pipeline, setPipeline] = useState<PipelineChoice | null>(s.pipeline ?? null)
   const pipelineId = s.pipeline?.id
   const pipelineName = usePipelines()?.find((p) => p.id === pipelineId)?.name ?? pipelineId
+  // Rate & understand, kept or turned off. Set from the settings as the panel
+  // opens, so opening it never saves.
+  const [stepsKept, setStepsKept] = useState(Boolean(s.rate?.length || s.understand?.length))
+  // For the names on the switch and a plugin that has gone; never saved.
+  const stepPlugins = useStepPlugins()
   const [style, setStyle] = useState<Required<CaptionStyle>>({
     ...DEFAULT_CAPTION_STYLE,
     ...(s.caption_style ?? {})
@@ -98,6 +112,11 @@ export default function QueueItemSettings({
       else clear.push('longform')
       // Left as it is when kept: the job already carries the checked choice.
       if (!pipeline) clear.push('pipeline')
+      // Kept, a channel sends them back (its options are replaced); a queued
+      // video leaves them as they are, like Pipeline.
+      const steps = stepsPatch(s, stepsKept, Boolean(channel))
+      Object.assign(patch, steps.patch)
+      clear.push(...steps.clear)
       if (watermark) {
         // Which branding profile is a single app-wide choice (Generate bar /
         // Creators tab); this toggle only decides whether THIS video uses it.
@@ -133,6 +152,7 @@ export default function QueueItemSettings({
     longformShorts,
     watermark,
     pipeline,
+    stepsKept,
     style
   ])
   const lastSaved = useRef(current)
@@ -145,6 +165,24 @@ export default function QueueItemSettings({
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSave, current])
+
+  // Shown only, never saved: the kept plugins' names, any that can no longer
+  // do their step, and what they change about a channel's posts.
+  const nameOf = (id: string): string => stepPlugins?.find((p) => p.id === id)?.name ?? id
+  const stepNames = [...new Set(MOMENT_STEPS.flatMap((step) => (s[step] ?? []).map((c) => nameOf(c.id))))]
+  const stepsGone =
+    stepPlugins === null
+      ? []
+      : [
+          ...new Set(
+            MOMENT_STEPS.flatMap((step) =>
+              (s[step] ?? [])
+                .filter((c) => !usableFor(stepPlugins, step).some((p) => p.id === c.id))
+                .map((c) => nameOf(c.id))
+            )
+          )
+        ]
+  const postingLines = channel ? stepPostingLines(channel, s, t) : []
 
   const toggle = (
     label: string,
@@ -186,6 +224,7 @@ export default function QueueItemSettings({
               setVerticalLive(false)
               setGaming(false)
               setPipeline(null)
+              setStepsKept(false)
             }
           },
           'Horizontal 1920x1080 outputs using the same AI.'
@@ -268,6 +307,25 @@ export default function QueueItemSettings({
             },
             'A pipeline from the Marketplace picks this video’s moments. Sports, Gaming scoring and Longform pick them their own way, so turning one of them on turns the pipeline off.'
           )}
+        {hasSteps(s) &&
+          (channel?.presetLongform ? (
+            <span className="text-sm text-muted">
+              {t('Rate & understand')} · {t('Not used: this channel’s preset makes Longform clips.')}
+            </span>
+          ) : (
+            toggle(
+              'Rate & understand',
+              `(${stepNames.join(', ')})`,
+              stepsKept,
+              (on) => {
+                setStepsKept(on)
+                if (on) setLongform(false) // the engine refuses the two together
+              },
+              channel
+                ? 'Marketplace plugins rate this channel’s moments or say what happens in them, as chosen for this channel. Here they can only be kept or turned off. Longform picks its moments its own way, so turning it on turns these off.'
+                : 'Marketplace plugins rate this video’s moments or say what happens in them, as chosen when it was added. Here they can only be kept or turned off. Longform picks its moments its own way, so turning it on turns these off.'
+            )
+          ))}
         {toggle(
           'Watermark',
           '(branding)',
@@ -276,6 +334,22 @@ export default function QueueItemSettings({
           'Burn your logo / channel handle into every clip of this video.'
         )}
       </div>
+
+      {stepsKept && !channel?.presetLongform && stepsGone.length + postingLines.length > 0 && (
+        <div className="space-y-1">
+          {stepsGone.map((name) => (
+            <p key={name} className="text-xs text-error">
+              {name}{' '}
+              {t('isn’t installed and turned on any more. Turn off Rate & understand, or install it again.')}
+            </p>
+          ))}
+          {postingLines.map((line) => (
+            <p key={line} className="text-xs text-warn">
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
 
       {sport && sports.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">

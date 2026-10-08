@@ -2,10 +2,23 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder, Scissors } from './icons'
-import type { Clip } from '../lib/types'
+import type { Clip, PluginNote } from '../lib/types'
 import { sportMoment } from '../lib/sports'
 
 const CHANNELS = ['text', 'audio', 'visual', 'reaction', 'engagement'] as const
+
+/** A clip's plugin notes, one line per plugin (and version), in the order they came. */
+function pluginNotes(notes: PluginNote[] | undefined): { key: string; who: string; texts: string[] }[] {
+  const out: { key: string; who: string; texts: string[] }[] = []
+  for (const n of notes ?? []) {
+    if (!n?.text) continue
+    const key = `${n.plugin}@${n.version ?? ''}`
+    const line = out.find((l) => l.key === key)
+    if (line) line.texts.push(n.text)
+    else out.push({ key, who: `${n.name || n.plugin}${n.version ? ` ${n.version}` : ''}`, texts: [n.text] })
+  }
+  return out
+}
 
 export default function ClipEditor({
   clip,
@@ -141,6 +154,33 @@ export default function ClipEditor({
           {clip.scores.plugin_why ? ` · ${clip.scores.plugin_why}` : ''}
         </p>
       )}
+      {/* Rate & understand (plugins/steps.py): each rating in the order it was
+          applied (the last one counts), the score before any, and the notes. */}
+      {(clip.scores.plugin_ratings ?? []).map((r, i) => (
+        <p
+          key={`rating-${i}`}
+          className="text-xs text-muted -mt-2"
+          title="A Marketplace plugin’s score for this moment, in its own words"
+        >
+          Rated {r.score} by {r.name || r.plugin}
+          {r.version ? ` ${r.version}` : ''}
+          {r.reason ? ` · ${r.reason}` : ''}
+        </p>
+      ))}
+      {clip.scores.found_score != null && (
+        <p className="text-xs text-muted -mt-2" title="The score this moment had before any plugin rated it">
+          Score when found: {clip.scores.found_score}
+        </p>
+      )}
+      {pluginNotes(clip.scores.plugin_notes).map((n) => (
+        <p
+          key={n.key}
+          className="text-xs text-muted -mt-2"
+          title="What a Marketplace plugin said happens in this moment. Clips Kitty gives notes like this to the AI when it writes a new clip’s title, description and hashtags."
+        >
+          Notes from {n.who}: {n.texts.join(' · ')}
+        </p>
+      ))}
       {clip.scores.intent_why && (
         <p className="text-xs text-muted -mt-2" title="Points from the clip direction given with this video">
           Direction +{clip.scores.intent}: {clip.scores.intent_why}

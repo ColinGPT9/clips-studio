@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
-import type { CaptionStyle, JobOptions } from '../../lib/types'
+import type { CaptionStyle, JobOptions, PipelineChoice } from '../../lib/types'
 import CaptionStyleControls, {
   DEFAULT_CAPTION_STYLE,
   PostStyleControls
@@ -9,8 +9,10 @@ import BrandingEditor, { setWatermarkEnabled, watermarkSelection } from '../Wate
 import GamingLayoutEditor from '../GamingLayoutEditor'
 import SportFields from '../SportFields'
 import PipelineFields from '../PipelineFields'
-import { usePipelines } from '../../lib/plugins'
+import StepFields from './StepFields'
+import { usePipelines, useStepPlugins } from '../../lib/plugins'
 import { fittingSettings } from '../../lib/marketplace'
+import { MOMENT_STEPS, hasSteps, offers, stepProblemKeys, usableFor, type MomentStep } from '../../lib/steps'
 import { PRESETS } from '../../lib/gamingLayout'
 import {
   fitSport,
@@ -64,6 +66,7 @@ type ToggleKey =
   | 'sport'
   | 'longform'
   | 'pipeline'
+  | 'steps'
   | 'watermark'
 
 /** Each of these decides what the frame is, so only one can be on. */
@@ -121,6 +124,13 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
     hint: '(Marketplace)',
     title:
       'A pipeline you installed from the Marketplace finds this video’s moments its own way; Clips Kitty still cuts, frames and captions the clips. Not with Sports or Longform. Choose which pipeline below.'
+  },
+  {
+    key: 'steps',
+    label: 'Rate & understand',
+    hint: '(Marketplace)',
+    title:
+      'Plugins you installed from the Marketplace look at the moments once they’re found, by Clips Kitty, Sports, Gaming scoring or a pipeline. One that understands says what happens in each moment, so the titles, descriptions and hashtags can say it. One that rates gives each moment its own score, which decides which clips are made and their order. Clips Kitty does any step you leave to it. Not with Longform.'
   },
   {
     key: 'watermark',
@@ -244,6 +254,21 @@ function copyable(o: JobOptions): JobOptions {
   return rest
 }
 
+/** A Pipeline also chosen in a Rate or Understand row is dropped from that
+ *  row: the job's own pipeline already describes and scores what it finds,
+ *  and the engine refuses the pair. Options without steps come back as they are. */
+function withoutPipelineInSteps(o: JobOptions): JobOptions {
+  const id = o.pipeline?.id
+  if (!id || !MOMENT_STEPS.some((step) => o[step]?.some((c) => c.id === id))) return o
+  const next = { ...o }
+  for (const step of MOMENT_STEPS) {
+    const kept = (next[step] ?? []).filter((c) => c.id !== id)
+    if (kept.length) next[step] = kept
+    else delete next[step]
+  }
+  return next
+}
+
 function emptySlot(from?: JobOptions): Slot {
   // A new row copies the one above it: a batch usually shares most settings,
   // and every switch is still overridable per video. Copied, not shared.
@@ -302,7 +327,13 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   // when there is one.
   const pipelines = usePipelines()
   const usable = pipelines ?? []
-  // Rows whose pipeline settings hold a value that can't be sent yet.
+  // Installed plugins that can understand or rate moments; the Rate &
+  // understand switch shows only when there is one.
+  const stepPlugins = useStepPlugins()
+  const stepUsable = stepPlugins ?? []
+  // Rows whose pipeline settings hold a value that can't be sent yet: the
+  // Pipeline row under the slot's key, each Rate & understand row under
+  // `{slot}:{step}:{plugin id}` (lib/steps.ts stepProblemKeys).
   const [badSettings, setBadSettings] = useState<Record<string, boolean>>({})
 
   // Once the engine has said which sports it has, a remembered or copied
@@ -347,6 +378,49 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     )
   }, [pipelines])
 
+  // The same for Rate & understand: a row whose plugin has gone, or can no
+  // longer do that step, is dropped, and its settings are fitted to the
+  // installed version.
+  useEffect(() => {
+    if (!stepPlugins) return
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (!hasSteps(s.options)) return s
+        const options = { ...s.options }
+        for (const step of MOMENT_STEPS) {
+          const list = s.options[step]
+          if (!list) continue
+          const able = usableFor(stepPlugins, step)
+          const fitted = list.flatMap((choice): PipelineChoice[] => {
+            const plugin = able.find((p) => p.id === choice.id)
+            if (!plugin) return []
+            const settings = fittingSettings(choice.settings, plugin.settings)
+            if (JSON.stringify(settings) === JSON.stringify(choice.settings ?? {})) return [choice]
+            const { settings: _old, ...kept } = choice
+            return [Object.keys(settings).length > 0 ? { ...kept, settings } : kept]
+          })
+          if (fitted.length > 0) options[step] = fitted
+          else delete options[step]
+        }
+        const next = withoutPipelineInSteps(options)
+        return JSON.stringify(next) === JSON.stringify(s.options) ? s : { ...s, options: next }
+      })
+    )
+  }, [stepPlugins])
+
+  // A Rate & understand row that is gone (removed, unticked, dropped) takes
+  // its settings problem with it, so it can never hold Generate.
+  useEffect(() => {
+    const live = new Set(slots.flatMap((s) => stepProblemKeys(s.key, s.options)))
+    setBadSettings((b) => {
+      const gone = Object.keys(b).filter((k) => k.includes(':') && !live.has(k))
+      if (gone.length === 0) return b
+      const next = { ...b }
+      for (const k of gone) delete next[k]
+      return next
+    })
+  }, [slots])
+
   useEffect(() => {
     void api
       .queue()
@@ -366,7 +440,11 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   }, [slots])
 
   const ready = slots.filter((s) => s.url.trim() || s.path)
-  const settingsBad = ready.some((s) => s.options.pipeline && badSettings[s.key])
+  const settingsBad = ready.some(
+    (s) =>
+      (s.options.pipeline && badSettings[s.key]) ||
+      stepProblemKeys(s.key, s.options).some((k) => badSettings[k])
+  )
   const hasFiles = ready.some((s) => s.path)
   const wantsWatermark = slots.some((s) => s.options.watermark_profile_id)
   const room = capacity ?? maxActive
@@ -382,6 +460,30 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       prev.map((s) =>
         s.key === key ? { ...s, options: { ...s.options, ...change }, error: undefined } : s
       )
+    )
+
+  /** This video's Pipeline choice. A plugin it names that is also in a Rate
+   *  or Understand row leaves that row. */
+  const patchPipeline = (key: string, pipeline: PipelineChoice): void =>
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.key === key
+          ? { ...s, options: withoutPipelineInSteps({ ...s.options, pipeline }), error: undefined }
+          : s
+      )
+    )
+
+  /** One Rate & understand step's plugins for this video. An empty list
+   *  leaves the step to Clips Kitty; with neither step left, the switch is off. */
+  const setStep = (key: string, step: MomentStep, list: PipelineChoice[]): void =>
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s.key !== key) return s
+        const options = { ...s.options }
+        if (list.length > 0) options[step] = list
+        else delete options[step]
+        return { ...s, options, error: undefined }
+      })
     )
 
   /** This video's caption style, whole, and a change to one field of it: the
@@ -447,6 +549,18 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       const first = usable[0]
       if (on && (next.pipeline || first)) next.pipeline = next.pipeline ?? { id: first.id }
       else delete next.pipeline
+    } else if (key === 'steps') {
+      // The first plugin that can, in every step it can do: one that does
+      // both is in both lists, and runs once.
+      const first = stepUsable.find((p) => p.id !== next.pipeline?.id)
+      if (on && !hasSteps(next) && first) {
+        const can = offers(first)
+        if (can.includes('understand')) next.understand = [{ id: first.id }]
+        if (can.includes('rate')) next.rate = [{ id: first.id }]
+      } else if (!on) {
+        delete next.rate
+        delete next.understand
+      }
     } else if (key === 'watermark') {
       const { profileId } = watermarkSelection()
       if (on && profileId) next.watermark_profile_id = profileId
@@ -500,8 +614,17 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     } else if (on && (key === 'sport' || key === 'longform') && next.pipeline) {
       delete next.pipeline
     }
+    // Rate & understand work on the moments a Shorts run finds, whoever finds
+    // them. Longform picks and writes its clips its own way.
+    if (on && key === 'steps' && hasSteps(next) && next.longform) {
+      delete next.longform
+      remember('longform', false)
+    } else if (on && key === 'longform') {
+      delete next.rate
+      delete next.understand
+    }
     remember(key, on && (key !== 'sport' || Boolean(next.sport)), next.longform?.mode)
-    return next
+    return withoutPipelineInSteps(next)
   }
 
   /** Longform's "Also make 9:16 Shorts": both formats from one run (#98). */
@@ -553,6 +676,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
     if (key === 'sport') return Boolean(o.sport)
     if (key === 'longform') return Boolean(o.longform)
     if (key === 'pipeline') return Boolean(o.pipeline)
+    if (key === 'steps') return Boolean(o.rate?.length || o.understand?.length)
     return Boolean(o.watermark_profile_id)
   }
 
@@ -728,6 +852,8 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 if (tg.key === 'sport' && offered.length === 0 && !slot.options.sport) return null
                 // Pipeline likewise: only once a community pipeline is installed and on.
                 if (tg.key === 'pipeline' && usable.length === 0 && !slot.options.pipeline) return null
+                // Rate & understand likewise: once a plugin that can rate or understand is.
+                if (tg.key === 'steps' && stepUsable.length === 0 && !hasSteps(slot.options)) return null
                 // Watermark needs a saved branding profile to point at. Without
                 // one there is nothing to burn in, so the box could be ticked
                 // and would simply un-tick itself — which reads as a broken
@@ -802,8 +928,24 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                   value={slot.options.pipeline}
                   pipelines={pipelines}
                   name={`${n + 1}`}
-                  onChange={(pipeline) => patchOptions(slot.key, { pipeline })}
+                  onChange={(pipeline) => patchPipeline(slot.key, pipeline)}
                   onProblem={(bad) => setBadSettings((b) => ({ ...b, [slot.key]: bad }))}
+                />
+              </div>
+            )}
+
+            {hasSteps(slot.options) && (
+              <div className="flex items-center gap-3 flex-wrap mt-2">
+                <StepFields
+                  options={slot.options}
+                  plugins={stepPlugins}
+                  pipelines={pipelines}
+                  sports={offered}
+                  name={`${n + 1}`}
+                  onChange={(step, list) => setStep(slot.key, step, list)}
+                  onProblem={(step, id, bad) =>
+                    setBadSettings((b) => ({ ...b, [`${slot.key}:${step}:${id}`]: bad }))
+                  }
                 />
               </div>
             )}

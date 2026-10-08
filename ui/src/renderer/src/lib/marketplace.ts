@@ -94,6 +94,10 @@ interface PluginInfo {
   requirements?: Requirements
   /** Projects it builds on, as its manifest credits them. */
   based_on?: BasedOn[]
+  /** What it takes in and gives back (video, transcript, moments; ranges,
+   *  context, ratings), which say what a job can choose it for (lib/steps.ts offers). */
+  inputs?: string[]
+  outputs?: string[]
 }
 
 export interface ListedVersion {
@@ -365,6 +369,8 @@ export interface PlanUpdate {
   removed_hosts: string[]
   added_data_warnings: string[]
   execution_changed: boolean
+  /** What it will now also do, in pill words ("Rates moments"). */
+  added_steps: string[]
 }
 
 /** What installing would do (POST /plugins/plan). */
@@ -634,17 +640,56 @@ export function updateLines(plan: Pick<PluginPlan, 'update' | 'plugin' | 'detail
   for (const w of u.added_data_warnings) out.push({ text: `New: ${w}`, tone: 'danger' })
   if (u.execution_changed)
     out.push({ text: `Where it runs has changed: ${plan.details.execution_text || 'not stated'}`, tone: 'warn' })
+  // A rater's scores decide which clips are made, so a new step is said before it installs.
+  for (const s of u.added_steps ?? []) out.push({ text: `Now also: ${s}`, tone: 'warn' })
   if (u.removed_permissions.length)
     out.push({ text: `No longer asks for: ${u.removed_permissions.join(', ')}`, tone: 'ok' })
   if (u.removed_hosts.length) out.push({ text: `No longer connects to: ${u.removed_hosts.join(', ')}`, tone: 'ok' })
   return out
 }
 
-/** The installed pipelines a job can use: turned on, able to run here, not blocked. */
+/** The installed pipelines a job can use: turned on, able to run here, not
+ *  blocked, and able to find moments. One that only rates or understands
+ *  moments others found is chosen under Rate & understand instead
+ *  (lib/steps.ts); one that doesn't say what it gives back is a finder. */
 export function usablePipelines(plugins: InstalledPlugin[]): InstalledPlugin[] {
   return plugins.filter(
-    (p) => (p.kind ?? 'pipeline') === 'pipeline' && p.enabled && !p.problem && p.flag?.severity !== 'blocked'
+    (p) =>
+      (p.kind ?? 'pipeline') === 'pipeline' &&
+      p.enabled &&
+      !p.problem &&
+      p.flag?.severity !== 'blocked' &&
+      (p.outputs ?? ['ranges']).includes('ranges')
   )
+}
+
+/** What each step pill means (plugins/permissions.py STEP_WORDS), as its title. */
+const STEP_TITLES: Record<string, string> = {
+  'Finds moments':
+    'It picks a video’s moments itself, in place of Clips Kitty’s own scoring. Turn on Pipeline when you add a video to use it.',
+  'Understands moments':
+    'It says what happens in each moment found by Clips Kitty or a pipeline, and Clips Kitty uses that when writing titles. Turn on Rate & understand when you add a video.',
+  'Understands what it finds': 'It says what happens in the moments it finds, for the titles.',
+  'Rates moments':
+    'It scores each moment found by Clips Kitty or a pipeline. Turn on Rate & understand when you add a video.'
+}
+
+/** A step pill (details.steps, in the engine's words) as a badge in the info tone. */
+export function stepBadge(words: string): Badge {
+  return { label: words, tone: 'info', title: STEP_TITLES[words] ?? '' }
+}
+
+/** The details panel's lines about a plugin that rates or understands
+ *  moments: what its answers change, and its time limit (the engine's words). */
+export function stepLines(details: Pick<PluginDetails, 'steps' | 'time_limit'>): string[] {
+  const out: string[] = []
+  const steps = details.steps ?? []
+  if (steps.includes('Rates moments'))
+    out.push('Its scores decide which clips are made and their order, and which are posted when a channel posts only the best few.')
+  if (steps.includes('Understands moments') || steps.includes('Understands what it finds'))
+    out.push('What it says about a moment goes into the request that writes your titles.')
+  if (details.time_limit) out.push(details.time_limit)
+  return out
 }
 
 /** The settings a job can set (secrets are set once, in the Marketplace). */

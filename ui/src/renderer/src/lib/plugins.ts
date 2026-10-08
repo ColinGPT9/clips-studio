@@ -13,6 +13,7 @@ import type {
   PluginsResponse
 } from './marketplace'
 import { usablePipelines } from './marketplace'
+import { stepPlugins } from './steps'
 
 /** The plugin manager's routes (plugins/api.py). The ones that fetch,
  *  install or change plugins need the session secret, which only the
@@ -185,10 +186,10 @@ export function checkOnlineListAtStart(): () => void {
   }
 }
 
-/** The installed pipelines a job can use, kept current as plugins change.
- *  Null until the engine answers; empty when none is installed and on. The
- *  Generate bar's Pipeline switch stays hidden in both cases. */
-export function usePipelines(): InstalledPlugin[] | null {
+/** Some of the installed plugins, kept current as plugins change. Null until
+ *  the engine answers; asked again while the engine is still starting. The
+ *  loader of usePipelines and useStepPlugins. */
+function useInstalled(pick: (all: InstalledPlugin[]) => InstalledPlugin[]): InstalledPlugin[] | null {
   const [list, setList] = useState<InstalledPlugin[] | null>(null)
   useEffect(() => {
     let live = true
@@ -197,7 +198,7 @@ export function usePipelines(): InstalledPlugin[] | null {
       plugins
         .list()
         .then((r) => {
-          if (live) setList(usablePipelines(r.plugins))
+          if (live) setList(pick(r.plugins))
         })
         .catch(() => {
           if (live) timer = setTimeout(load, 5000) // the engine is still starting
@@ -210,6 +211,22 @@ export function usePipelines(): InstalledPlugin[] | null {
       if (timer) clearTimeout(timer)
       window.removeEventListener(PLUGINS_CHANGED, load)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return list
+}
+
+/** The installed pipelines a job can use, kept current as plugins change.
+ *  Null until the engine answers; empty when none is installed and on. The
+ *  Generate bar's Pipeline switch stays hidden in both cases. */
+export function usePipelines(): InstalledPlugin[] | null {
+  return useInstalled(usablePipelines)
+}
+
+/** The installed plugins a job can name under Rate & understand: turned on,
+ *  not blocked, and able to understand or rate moments others found
+ *  (lib/steps.ts). Null until the engine answers; the switch stays hidden
+ *  while it is null or empty, unless the video already names a step. */
+export function useStepPlugins(): InstalledPlugin[] | null {
+  return useInstalled(stepPlugins)
 }

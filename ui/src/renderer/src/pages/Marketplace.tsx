@@ -30,6 +30,8 @@ import {
   safeLink,
   slugLabel,
   sourceLine,
+  stepBadge,
+  stepLines,
   tierBadge,
   updateLines,
   type Badge,
@@ -94,6 +96,20 @@ function Pill({ badge }: { badge: Badge }): JSX.Element {
     <span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${TONE[badge.tone]}`} title={badge.title}>
       {badge.label}
     </span>
+  )
+}
+
+/** What a plugin does with a video's moments (details.steps, the engine's
+ *  words), beside where it runs: Finds moments, Understands moments, Rates
+ *  moments. Each pill's title says where it is chosen. */
+function StepPills({ steps }: { steps: string[] | undefined }): JSX.Element {
+  return (
+    <>
+      {(steps ?? []).map((words) => {
+        const badge = stepBadge(words)
+        return <Pill key={words} badge={{ ...badge, label: t(badge.label), title: t(badge.title) }} />
+      })}
+    </>
   )
 }
 
@@ -270,8 +286,14 @@ function DetailsBlock({
       <div className="flex flex-wrap gap-2 items-center">
         <Pill badge={tierBadge(details)} />
         <Pill badge={exec} />
+        <StepPills steps={details.steps} />
       </div>
       {details.execution_text && <p className="text-muted">{details.execution_text}</p>}
+      {stepLines(details).map((line) => (
+        <p key={line} className="text-muted">
+          {t(line)}
+        </p>
+      ))}
 
       {details.data_warnings.length > 0 && (
         <ul className="space-y-1">
@@ -435,6 +457,7 @@ function ListingCard({
           <Pill key={b.label} badge={b} />
         ))}
         <Pill badge={executionBadge(d.execution, d.execution_text)} />
+        <StepPills steps={d.steps} />
         {fit && <Pill badge={{ ...fit, title: '' }} />}
         {listing.license && (
           <Pill badge={{ label: `${t('Licence')} ${listing.license}`, tone: 'info', title: t('The licence the developer chose') }} />
@@ -1522,6 +1545,7 @@ function InstalledCard({
       <div className="flex flex-wrap gap-1.5">
         <Pill badge={tierBadge(plugin.details)} />
         <Pill badge={executionBadge(plugin.details.execution, plugin.details.execution_text)} />
+        <StepPills steps={plugin.details.steps} />
         {plugin.pinned && (
           <Pill badge={{ label: t('Kept at this version'), tone: 'info', title: t('Updates are not offered.') }} />
         )}

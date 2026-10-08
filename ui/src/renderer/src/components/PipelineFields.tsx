@@ -15,13 +15,18 @@ import type { PipelineChoice } from '../lib/types'
  *  Shown under the video's switches when Pipeline is ticked, like the Sports
  *  row. A pipeline that sends anything off this PC says so right here, where
  *  the video is chosen for it. The engine checks the settings again when the
- *  video is added (plugins/store.clean_choice). */
+ *  video is added (plugins/store.clean_choice). A Rate & understand row
+ *  (StepFields) is the same fields with its own label, its own words for a
+ *  plugin that has gone, and a remove button. */
 export default function PipelineFields({
   value,
   pipelines,
   name,
   onChange,
-  onProblem
+  onProblem,
+  label,
+  missingText,
+  onRemove
 }: {
   value: PipelineChoice
   /** Null while the engine hasn't said which are installed. */
@@ -30,6 +35,12 @@ export default function PipelineFields({
   onChange: (next: PipelineChoice) => void
   /** Whether a box holds a value that can't be sent, so Generate can wait for it. */
   onProblem?: (bad: boolean) => void
+  /** The row's label, already translated; "Pipeline" when not given. */
+  label?: string
+  /** What is said when the chosen plugin isn't installed and on any more, already translated. */
+  missingText?: string
+  /** Shows a ✕ that takes this row away. */
+  onRemove?: () => void
 }): JSX.Element {
   const loading = pipelines === null
   const plugin = pipelines?.find((p) => p.id === value.id)
@@ -69,11 +80,11 @@ export default function PipelineFields({
   return (
     <div className="w-full space-y-2">
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="label shrink-0">{t('Pipeline')}</span>
+        <span className="label shrink-0">{label ?? t('Pipeline')}</span>
         <select
           className="input !w-72"
           value={value.id}
-          aria-label={`${t('Pipeline')} ${name}`}
+          aria-label={`${label ?? t('Pipeline')} ${name}`}
           onChange={(e) => {
             setRaw({})
             setProblems({})
@@ -91,6 +102,16 @@ export default function PipelineFields({
             </option>
           ))}
         </select>
+        {onRemove && (
+          <button
+            className="btn-ghost !px-2 !py-1 text-xs shrink-0"
+            aria-label={`${t('Remove')} ${plugin?.name ?? value.id}`}
+            title={`${t('Remove')} ${plugin?.name ?? value.id}`}
+            onClick={onRemove}
+          >
+            ✕
+          </button>
+        )}
         {exec && (
           <span className={`text-xs ${exec.tone === 'ok' ? 'text-muted' : 'text-warn'}`} title={exec.title}>
             {t(exec.label)}
@@ -105,7 +126,7 @@ export default function PipelineFields({
       </div>
       {!plugin && !loading && (
         <p className="text-xs text-error">
-          {t('This pipeline isn’t installed and turned on any more. Choose another, or untick Pipeline.')}
+          {missingText ?? t('This pipeline isn’t installed and turned on any more. Choose another, or untick Pipeline.')}
         </p>
       )}
       {plugin?.details.data_warnings.map((w) => (

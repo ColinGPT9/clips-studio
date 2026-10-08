@@ -9,11 +9,37 @@ export interface RunOutcome {
   measured: number
   nothing_detected: number
   /** Only set when no clips came out, and only when the evidence earns it. */
-  cause: 'no_people' | 'duplicates' | 'below_threshold' | 'no_candidates' | null
+  cause: 'no_people' | 'duplicates' | 'below_threshold' | 'no_candidates' | 'rated_out' | null
   /** The clip direction given with the job, and what came of it. */
   intent?: ClipDirection
   /** A Sports job: what the match gave (sports/core/clips.py report). */
   sport?: SportReport
+  /** Moments Marketplace plugins rated under the minimum score, so they were
+   *  set aside (core/outcome.py). Only present when above 0. */
+  rated_out?: number
+  /** Each Rate & understand plugin's run on this video (plugins/steps.py).
+   *  Only present when the job chose one. */
+  steps?: StepRun[]
+}
+
+/** One Marketplace plugin's run on a video's moments (plugins/steps.py
+ *  after_finding): what it was asked, and what came of it. */
+export interface StepRun {
+  plugin: string
+  version: string
+  /** Its installed name; the id when it wasn't installed. */
+  name: string
+  /** What it was asked for: ['understand'], ['rate'] or both. */
+  steps: string[]
+  ok: boolean
+  /** Moments it was given, said what happens in, and rated. */
+  given: number
+  noted: number
+  rated: number
+  /** Moments its rating put under the minimum score, so they were set aside. */
+  set_aside: number
+  /** Why it was skipped, in the creator's words (plugins/runner.py). */
+  error?: string
 }
 
 /** What a match gave: the moments found by type, the score read off the
@@ -103,8 +129,31 @@ export interface SubScores {
   plugin_version?: string
   plugin_label?: string
   plugin_why?: string
+  /** Rate & understand (plugins/steps.py): the score the moment was found
+   *  with, set when it was first rated; each rating in the order it was
+   *  applied (the last one counts); and what plugins said happens in it. */
+  found_score?: number
+  plugin_ratings?: PluginRating[]
+  plugin_notes?: PluginNote[]
   source?: string
   rerank_position?: number
+}
+
+/** A Marketplace plugin's score for one moment. Older entries may lack the name. */
+export interface PluginRating {
+  plugin: string
+  version?: string
+  name?: string
+  score: number
+  reason?: string
+}
+
+/** A Marketplace plugin's note on what happens in one moment. */
+export interface PluginNote {
+  plugin: string
+  version?: string
+  name?: string
+  text: string
 }
 
 export interface CaptionLine {
@@ -396,6 +445,12 @@ export interface JobOptions {
    *  Clips Kitty's own scoring (plugins/runner.py). Not with Sports, Gaming
    *  scoring or Longform; layouts still apply. */
   pipeline?: PipelineChoice
+  /** Rate & understand (plugins/steps.py): up to 3 Marketplace plugins each
+   *  that look at the moments once they're found. Understanders say what
+   *  happens in them, for the titles; raters give each a new score, in this
+   *  order, the last one counting. Not with Longform. */
+  rate?: PipelineChoice[]
+  understand?: PipelineChoice[]
 }
 
 /** A job's pipeline: an installed plugin's id, and the settings changed from
@@ -892,7 +947,8 @@ export interface AutomationStatus {
   interval_minutes: number
   watches: number
   watching: number
-  presets: { id: string; name: string; description: string }[]
+  /** Each preset's options (server/integrations.py PRESETS), e.g. Longform for highlights. */
+  presets: { id: string; name: string; description: string; options?: JobOptions }[]
 }
 
 /** What the watcher is doing now and did last, for the live panel. */

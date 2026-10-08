@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import NoClipsExplanation from '../components/NoClipsExplanation'
 import ClipDirectionNote from '../components/ClipDirectionNote'
+import PluginStepsNote from '../components/PluginStepsNote'
 import SportsNote from '../components/SportsNote'
 import ClipCard from '../components/ClipCard'
 import ClipEditor from '../components/ClipEditor'
@@ -154,6 +155,8 @@ export default function ClipStudio({
   const activeDirection = videos.find((v) => v.video_id === activeVideo)?.outcome?.intent ?? null
   // A Sports job: what the match gave.
   const activeMatch = videos.find((v) => v.video_id === activeVideo)?.outcome?.sport ?? null
+  // Rate & understand: what the Marketplace plugins chosen for it did.
+  const activeOutcome = videos.find((v) => v.video_id === activeVideo)?.outcome ?? null
   const editingClip = useMemo(
     () => clips.find((c) => c.id === editingClipId) ?? null,
     [clips, editingClipId]
@@ -389,6 +392,7 @@ export default function ClipStudio({
             {exportNotice && <p className="text-sm text-accent">{exportNotice}</p>}
             {activeMatch && <SportsNote report={activeMatch} />}
             {activeDirection && <ClipDirectionNote direction={activeDirection} />}
+            {activeOutcome?.steps?.length ? <PluginStepsNote outcome={activeOutcome} /> : null}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {shownClips.map((clip) => (
                 <ClipCard

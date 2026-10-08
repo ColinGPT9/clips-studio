@@ -267,6 +267,11 @@ export default function WatchCard({
             autoSave
             save={(patch) => api.patchWatch(watch.id, { options: patch })}
             onSaved={onChanged}
+            channel={{
+              mode: watch.publish.mode,
+              max_posts: watch.publish.max_posts,
+              presetLongform: Boolean(automation.presets.find((p) => p.id === watch.preset)?.options?.longform)
+            }}
           />
         </div>
       )}
