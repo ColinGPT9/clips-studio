@@ -257,8 +257,8 @@ def cmd_run(args) -> int:
               "max_duration": args.max_duration}
     moments = None
     if find_run and args.moments:
-        print("note: --moments is for a run that understands or rates moments, so this find run leaves it out",
-              file=sys.stderr)
+        print("note: --moments is for a run that understands, rates or suggests edits, so this find run leaves "
+              "it out", file=sys.stderr)
     if args.layout is not None and not edit_run:
         print("note: --layout is for a run that suggests edits, so this run leaves it out", file=sys.stderr)
     if edit_run:

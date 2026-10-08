@@ -77,9 +77,14 @@ export interface ClipContext {
   /** The clip's start and end now, in seconds of the video. */
   start: number
   end: number
-  /** Its transcript words, in seconds of the clip (api.clipWords). Without
-   *  them a summary doesn't count the words a mute hides. */
+  /** Its transcript words, in seconds of the clip (api.clipWords), once
+   *  read. Until then a summary doesn't count the words a mute hides, and
+   *  Use is off for a suggestion with mutes, so none stays in the captions. */
   words?: Word[]
+  /** The clip's saved edit and layout, as the editor opened them. A used
+   *  suggestion they still hold isn't offered Hide: hiding it would lose its
+   *  Take it back while the clip keeps it (the API refuses it too). */
+  saved?: EditorState
   /** Why a suggested layout can't be used here: a Gaming / Reaction split,
    *  a Vertical Live, or a 16:9 clip. Absent when the Layout buttons show. */
   noLayout?: 'gaming' | 'vertical_live' | 'landscape'
@@ -131,6 +136,8 @@ export const TAKEN_BACK =
   'Taken out of your edit. Your own changes stay. Apply your edits to make the clip without it.'
 export const NOTHING_LEFT = 'Nothing of this suggestion is left in your edit.'
 export const USED = 'You used this suggestion.'
+export const WORDS_PENDING =
+  'Use is off until this clip’s words are read, so its mutes can hide them in the captions too.'
 export const REMADE = 'This clip was made again without your saved edits, so its file doesn’t have them.'
 
 /** The editor's edit list with nothing changed. */
@@ -374,15 +381,31 @@ export function isEmpty(delta: UseDelta): boolean {
   )
 }
 
-/** The part of what a Use added that the editor's state still holds
- *  (plugins/edit_marks.py _still): spans it took out that are still out,
- *  its mute spans and words still there, and values still the suggestion's. */
+/** How far Take it back may put back a Use's cuts (`removed`): from the
+ *  first to the last second the clip keeps (`keep`), so a trim made since
+ *  stays, or past either when that edge is still where one of the Use's own
+ *  cuts left it, as a suggested trim of the clip's start or end does
+ *  (plugins/edit_marks.py _reach). */
+function reach(removed: Range[], keep: Range[]): Range {
+  let from = Math.min(...keep.map(([a]) => a))
+  let to = Math.max(...keep.map(([, b]) => b))
+  for (const [a, b] of spans(removed)) {
+    if (Math.abs(b - from) <= NEAR) from = Math.min(from, a)
+    if (Math.abs(a - to) <= NEAR) to = Math.max(to, b)
+  }
+  return [from, to]
+}
+
+/** The part of what a Use added that the editor's state still holds, as
+ *  Take it back would find it (plugins/edit_marks.py _still): spans it took
+ *  out that are still out and within reach, its mute spans and words still
+ *  there, and values still the suggestion's. */
 export function held(delta: UseDelta, state: EditorState, duration: number): UseDelta {
   const now = viewOf(state, duration)
   const mutes = [...now.mutes]
   const words = [...now.words]
   const out = emptyDelta()
-  out.removed = intersect(delta.removed, now.removed)
+  out.removed = intersect(intersect(delta.removed, [reach(delta.removed, now.kept)]), now.removed)
   for (const m of delta.mutes) {
     const i = mutes.findIndex((have) => sameTime(have, m))
     if (i >= 0) out.mutes.push(mutes.splice(i, 1)[0])
@@ -484,7 +507,8 @@ export function applySuggestion(
 
 /** Take out what a Use added, from the editor's state as it is now: the
  *  spans it took out come back, but only between the first and last second
- *  the clip keeps now, so a trim made since stays; its own mute spans and
+ *  the clip keeps now, so a trim made since stays, or past either when that
+ *  edge is still where the Use's own cut left it; its own mute spans and
  *  words go, while the creator's stay; and each value goes back only where
  *  the clip still holds the suggestion's. `changed` is false when nothing
  *  of it was left. */
@@ -499,9 +523,7 @@ export function takeBack(
   let changed = false
 
   const keep = keepOf(state.edit, duration)
-  const from = Math.min(...keep.map(([a]) => a))
-  const to = Math.max(...keep.map(([, b]) => b))
-  const back = minus(intersect(delta.removed, [[from, to]]), keep)
+  const back = minus(intersect(delta.removed, [reach(delta.removed, keep)]), keep)
   if (back.length > 0) {
     next.keep = spans([...keep, ...back]).map(([a, b]): Range => [round3(a), round3(b)])
     changed = true
@@ -741,7 +763,10 @@ export function lengthCheck(
   if (!cuts && !isNumber(edit.speed)) return { useOff: '', note: '' }
   const duration = ctx.end - ctx.start
   const trial = applySuggestion(state, edit, ctx).state.edit
-  if (cuts && keptSeconds(trial, duration) < MIN_LEFT)
+  // Cuts that leave no piece at all give an empty keep, which the render
+  // would read as no cut at all: that leaves nothing too.
+  const nothing = Array.isArray(trial.keep) && trial.keep.length === 0
+  if (cuts && (nothing || keptSeconds(trial, duration) < MIN_LEFT))
     return { useOff: tr('With your own cuts, these would leave almost nothing of the clip.'), note: '' }
   const length = finalLength(trial, duration)
   const floor = isNumber(entry.min_length) ? entry.min_length : 0
@@ -782,15 +807,19 @@ export function suggestionCards(
       actions: [],
       useOff: ''
     }
-    if (session) {
-      const left = !isEmpty(held(session, state, duration))
-      card.status = tr(left ? ADDED : NOTHING_LEFT)
-      card.actions = [left ? 'take_back' : 'hide']
-    } else if (entry.state === 'used') {
-      const left = !isEmpty(held(fromApplied(entry.applied, ctx.start), state, duration))
-      card.status = tr(left ? USED : NOTHING_LEFT)
-      card.actions = [left ? 'take_back' : 'hide']
-      if (entry.remade) {
+    if (session || entry.state === 'used') {
+      const left = !isEmpty(held(session ?? fromApplied(entry.applied, ctx.start), state, duration))
+      // Taken back but not applied yet: the saved edit still holds a used
+      // one, so Hide would lose its Take it back while the clip keeps it.
+      // Applying the edits hides it by itself.
+      const saved =
+        !left &&
+        entry.state === 'used' &&
+        ctx.saved !== undefined &&
+        !isEmpty(held(fromApplied(entry.applied, ctx.start), ctx.saved, duration))
+      card.status = tr(left ? (session ? ADDED : USED) : saved ? TAKEN_BACK : NOTHING_LEFT)
+      card.actions = left ? ['take_back'] : saved ? [] : ['hide']
+      if (!session && entry.remade) {
         card.notes.push(tr(REMADE))
         card.actions.push('make_again')
       }
@@ -802,6 +831,7 @@ export function suggestionCards(
       const length = lengthCheck(entry, state, ctx, tr)
       card.useOff = length.useOff
       if (length.note) card.notes.push(length.note)
+      if (!card.useOff && !ctx.words && pairs(entry.edit.mutes).length > 0) card.useOff = tr(WORDS_PENDING)
       if (suggested(entry.edit, 'crop') !== null && ctx.noLayout) {
         card.notes.push(noLayoutNote(ctx, tr))
         if (onlyLayout(entry.edit)) card.useOff = tr('Nothing in this suggestion can be used on this clip.')
@@ -831,7 +861,7 @@ export function suggestionLine(entry: PluginEdit, ctx: ClipContext, tr: Words = 
   return `${tr('Edit suggested by')} ${who}: ${what}${ending}`
 }
 
-/** Whether a clip has a suggestion the creator hasn't looked at yet (Clip Studio's chip). */
+/** Whether a clip has a suggestion the creator hasn't used or hidden yet (Clip Studio's chip). */
 export function hasNewSuggestion(entries: PluginEdit[] | undefined): boolean {
   return validEntries(entries).some((e) => e.state === 'new')
 }

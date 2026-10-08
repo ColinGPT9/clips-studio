@@ -3132,7 +3132,9 @@ def used_suggestions(value) -> dict:
 
 def _suggestion_state(row, value) -> str:
     """PATCH /clips/{id} `suggestion`: the clip's scores with that suggested
-    edit hidden, or shown again. Nothing renders."""
+    edit hidden, or shown again. Nothing renders. A used one whose parts the
+    clip's saved edit still holds is refused: it would lose its Take it back
+    while the clip keeps them."""
     from plugins import edit_marks
 
     try:
@@ -3147,6 +3149,13 @@ def _suggestion_state(row, value) -> str:
     entries = edit_marks.set_state(scores.get("plugin_edits"), sid, state)
     if entries is None:
         raise HTTPException(404, "no such suggestion on this clip")
+    try:
+        saved = json.loads(row["render_opts"]) if row["render_opts"] else {}
+    except ValueError:
+        saved = {}
+    if edit_marks.still_held(scores.get("plugin_edits"), sid, saved, (row["start_s"], row["end_s"])):
+        raise HTTPException(409, "suggestion: some of it is still in the clip's saved edit. Take it back and "
+                                 "apply your edits, and Clips Kitty hides it then")
     return json.dumps({**scores, "plugin_edits": entries})
 
 

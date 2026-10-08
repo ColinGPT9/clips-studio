@@ -272,6 +272,9 @@ export default function TimelineEditor({
   // Apply sends them, so the clip records which suggestions it now has.
   const [uses, setUses] = useState<Record<string, UseDelta>>({})
   const [words, setWords] = useState<Word[]>([])
+  // Whether api.clipWords has answered for this clip. Until it has, a
+  // suggested mute can't hide its words in the captions, so its Use waits.
+  const [wordsRead, setWordsRead] = useState(false)
   const [captionBase, setCaptionBase] = useState<CaptionLine[] | null>(null)
   const [playhead, setPlayhead] = useState(0) // original-timeline seconds
   const [busy, setBusy] = useState(false)
@@ -393,9 +396,13 @@ export default function TimelineEditor({
     lastSpeakerWord.current = null
     setZoom(1)
     onPreview(null)
+    setWordsRead(false)
     api
       .clipWords(clip.id)
-      .then((r) => setWords(r.words))
+      .then((r) => {
+        setWords(r.words)
+        setWordsRead(true)
+      })
       .catch(() => setWords([]))
     api
       .captions(clip.id)
@@ -472,10 +479,13 @@ export default function TimelineEditor({
     setHistory((h) => pushed<Past>(h, { edit }))
     setEdit(next)
   }
-  /** A Use or Take it back of a suggested edit: the edit list and the layout
-   *  together, as one Undo step that also holds the suggestion's mark. */
+  /** A Use or Take it back of a suggested edit: the edit list, and the
+   *  layout when it changes it, as one Undo step that also holds the
+   *  suggestion's mark. A step that didn't change the layout doesn't hold
+   *  it, so its Undo never takes back a layout chosen by hand since. */
   const pushSuggestion = (next: EditData, nextLayout: string, mark: UseMark): void => {
-    setHistory((h) => pushed<Past>(h, { edit, layout, suggestion: mark }))
+    const step: Past = nextLayout !== layout ? { edit, layout, suggestion: mark } : { edit, suggestion: mark }
+    setHistory((h) => pushed<Past>(h, step))
     setEdit(next)
     setLayout(nextLayout)
   }
@@ -1114,7 +1124,13 @@ export default function TimelineEditor({
   const suggestionClip: ClipContext = {
     start: clip.start_s,
     end: clip.end_s,
-    words,
+    words: wordsRead ? words : undefined,
+    // The saved edit, as the editor opened it: a used suggestion it still
+    // holds isn't offered Hide.
+    saved: {
+      edit: { ...defaultEdit(duration), ...(baked ?? {}) },
+      layout: clip.render_opts?.crop ?? 'track'
+    },
     // A layout is never set where the Layout buttons don't show, nor on a
     // split: another layout there would switch the split off.
     noLayout: isLandscape ? 'landscape' : isVerticalLive ? 'vertical_live' : gaming ? 'gaming' : undefined,
@@ -1123,7 +1139,21 @@ export default function TimelineEditor({
   const suggestionView = useMemo(
     () => suggestionCards(suggestions, { edit, layout }, uses, suggestionClip),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [suggestions, edit, layout, uses, words, gaming, highlights, isLandscape, isVerticalLive, clip.start_s, clip.end_s]
+    [
+      suggestions,
+      edit,
+      layout,
+      uses,
+      baked,
+      words,
+      wordsRead,
+      gaming,
+      highlights,
+      isLandscape,
+      isVerticalLive,
+      clip.start_s,
+      clip.end_s
+    ]
   )
   const suggestionOf = (id: string): PluginEdit | undefined => suggestions?.find((e) => e?.id === id)
   /** What Apply, or Apply edits & upload, says was used. */
@@ -1132,6 +1162,13 @@ export default function TimelineEditor({
   const onUseSuggestion = (id: string): void => {
     const entry = suggestionOf(id)
     if (!entry) return
+    // The card turns Use off when it would leave almost nothing of the clip,
+    // or before the clip's words are read; never draw it then.
+    const off = suggestionView.cards.find((c) => c.id === id)?.useOff
+    if (off) {
+      setNotice(off)
+      return
+    }
     const used = applySuggestion({ edit, layout }, entry.edit, suggestionClip)
     if (!used.changed) {
       setNotice(ALREADY)

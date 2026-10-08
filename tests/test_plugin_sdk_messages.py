@@ -475,8 +475,11 @@ def test_steps_edit_runs_and_shows_each_clip_as_clips_kitty_keeps_it(tmp_path, c
     assert [(m["id"], m["start"], m["end"]) for m in job["moments"]][:2] == [("m1", 20.0, 40.0), ("m2", 40.0, 60.0)]
     out = capsys.readouterr().out
     assert "Suggest edits: 5 of 5 clip(s) given a suggestion, as Clips Kitty would keep them:\n" in out
-    assert ("m1   20.0s-40.0s  20.0 s -> 18.0 s  cut 21.0-23.0 · fade out 0.5 s · layout center\n"
+    assert ("m1   20.0s-40.0s  20.0 s -> 18.0 s  cut 21.0-23.0, fade out 0.5 s, layout center\n"
             "     Starts on the action\n") in out
+    # What the SDK prints itself is ASCII, so any console can show it (a Windows
+    # console on code page 932 can't print a middle dot).
+    assert out.isascii()
     assert "changed: m1's fade_out 0.45 s to 0.5 s, the nearest the editor offers\n" in out
     # The editor's own log says the same before Clips Kitty reads the answer.
     assert "m1: fade_out 0.45 s will be 0.5 s, the nearest the editor offers" in out
@@ -519,7 +522,7 @@ def test_layout_fills_the_crops_an_edit_run_gets(tmp_path, capsys):
         assert _job_json(tmp_path, layout)["limits"]["crops"] == [], layout
         out = capsys.readouterr().out
         assert "ignored: m1's crop \"center\": this job's clips don't use a layout\n" in out, layout
-        assert "m1   20.0s-40.0s  20.0 s -> 18.0 s  cut 21.0-23.0 · fade out 0.5 s\n" in out, layout
+        assert "m1   20.0s-40.0s  20.0 s -> 18.0 s  cut 21.0-23.0, fade out 0.5 s\n" in out, layout
     assert _run(tmp_path, editor, "--duration", "120", "--layout", "standard", job="standard") == 0
     assert _job_json(tmp_path, "standard")["limits"]["crops"] == ["track", "center", "letterbox"]
     capsys.readouterr()

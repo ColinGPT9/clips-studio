@@ -466,7 +466,9 @@ def edit_lines(moments: list[dict], edits: dict) -> list[str]:
         before = m["end"] - m["start"]
         after = kept_length(m["start"], m["end"], edit.get("cuts", [])) / edit.get("speed", 1)
         size = f"{before:.1f} s" + (f" -> {after:.1f} s" if round(after, 1) != round(before, 1) else "")
-        out.append(f"{head}  {size}  {' · '.join(edit_parts(edit))}")
+        # Plain ASCII between the parts: a console on another code page
+        # (932 or 874 on Windows) can't print every character.
+        out.append(f"{head}  {size}  {', '.join(edit_parts(edit))}")
         if entry.get("reason"):
             out.append(f"     {entry['reason']}")
     return out

@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from .contract import (
     HOOK_SECONDS_CHOICES,
     MAX_CONTEXT,
     MAX_EDIT_REASON,
+    MAX_MOMENT_ID,
     MAX_TITLE_OVERLAY,
     PLUGIN_API_VERSION,
     SPEED_CHOICES,
@@ -356,17 +358,34 @@ def run_plugin(command: list[str], *, cwd: Path, job_folder: Path, env: dict, ti
 
 
 _LINK = re.compile(r"(?:https?://|\bwww\.)\S+", re.IGNORECASE)
+_JOINERS = "\u200c\u200d"  # zero-width non-joiner and joiner
+
+
+def _visible(text: str) -> str:
+    """`text` without invisible format characters (Unicode category Cf, such
+    as a zero-width space, a word joiner or a right-to-left override), which
+    could hide a web address from _LINK while it still shows. A zero-width
+    joiner or non-joiner between two non-ASCII characters stays, because
+    emoji and some scripts need it; a web address's start is plain ASCII."""
+    kept = []
+    for i, ch in enumerate(text):
+        if unicodedata.category(ch) != "Cf":
+            kept.append(ch)
+        elif ch in _JOINERS and 0 < i < len(text) - 1 and not text[i - 1].isascii() and not text[i + 1].isascii():
+            kept.append(ch)
+    return "".join(kept)
 
 
 def _cleaned(text, limit: int) -> str:
-    return " ".join(_LINK.sub(" ", one_line(text)).split())[:limit].rstrip()
+    return " ".join(_LINK.sub(" ", _visible(one_line(text))).split())[:limit].rstrip()
 
 
 def clean_note(text) -> str:
     """A note of what happens in a moment, as Clips Kitty keeps it and gives
-    it to the AI that writes titles: control characters removed, links
-    (http://, https://, www.) taken out, whitespace and newlines collapsed to
-    single spaces, and cut to MAX_CONTEXT characters. "" when nothing is left."""
+    it to the AI that writes titles: control characters and invisible format
+    characters removed, links (http://, https://, www.) taken out, whitespace
+    and newlines collapsed to single spaces, and cut to MAX_CONTEXT
+    characters. "" when nothing is left."""
     return _cleaned(text, MAX_CONTEXT)
 
 
@@ -495,12 +514,16 @@ def read_answers(job_folder: Path, *, steps, ids) -> tuple[dict, list[str]]:
 # contract.EDIT_FIELDS is ignored with one line for the answer.
 _EDIT_INSTEAD = {"keep": "write the spans to take out as cuts",
                  "hook": "write the hook title as title_overlay"}
+# How many of those other fields the line names, each on one line and cut
+# to MAX_MOMENT_ID characters; the rest are counted.
+_NAMED_FIELDS = 12
 
 
 def _fit_spans(mid: str, key: str, spans, window: tuple[float, float], lines: list[str]) -> list[list[float]]:
     """An edit's cuts or mutes clamped to the clip's window and joined where
     they overlap, each in seconds of the video to the millisecond. A span
-    wholly outside the clip is dropped with a line."""
+    wholly outside the clip is dropped with a line, and one left shorter
+    than a millisecond is dropped too: it changes nothing."""
     start, end = window
     kept = []
     for a, b in spans:
@@ -510,7 +533,8 @@ def _fit_spans(mid: str, key: str, spans, window: tuple[float, float], lines: li
                          f"({start:.1f}-{end:.1f} s)")
             continue
         kept.append((max(a, start), min(b, end)))
-    return [[round(a, 3), round(b, 3)] for a, b in merge_spans(kept)]
+    rounded = [[round(a, 3), round(b, 3)] for a, b in merge_spans(kept)]
+    return [span for span in rounded if span[0] < span[1]]
 
 
 def _moved(given: float, fitted: float) -> bool:
@@ -525,7 +549,9 @@ def _fit_edit(mid: str, edit: dict, window: tuple[float, float], crops: tuple, f
         lines.append(f"ignored: {mid}'s {key}: {_EDIT_INSTEAD[key]}")
     others = [str(key) for key in edit if key not in EDIT_FIELDS and key not in _EDIT_INSTEAD]
     if others:
-        lines.append(f"ignored: {', '.join(others)} in {mid}'s edit: Clips Kitty doesn't take them from a plugin")
+        named = ", ".join(one_line(key)[:MAX_MOMENT_ID] or '""' for key in others[:_NAMED_FIELDS])
+        more = f" and {len(others) - _NAMED_FIELDS} more" if len(others) > _NAMED_FIELDS else ""
+        lines.append(f"ignored: {named}{more} in {mid}'s edit: Clips Kitty doesn't take them from a plugin")
     out: dict = {}
     start, end = window
     length = end - start

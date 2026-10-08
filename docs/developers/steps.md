@@ -483,7 +483,7 @@ It mutes the words the creator lists, a teammate's name say, because that is wha
 
 ```text
 Suggest edits: 2 of 3 clip(s) given a suggestion, as Clips Kitty would keep them:
-m1   812.0s-841.5s  29.5 s -> 24.5 s  cut 815.6-820.6 · mute 830.4-830.9 · hook title "Triple bloom!" (3 s)
+m1   812.0s-841.5s  29.5 s -> 24.5 s  cut 815.6-820.6, mute 830.4-830.9, hook title "Triple bloom!" (3 s)
      Mutes the words you listed and cuts the respawn wait
 m2   900.0s-925.0s  no suggestion
 m3   1000.0s-1012.0s  12.0 s  hook title "Triple bloom!" (3 s)
@@ -499,10 +499,10 @@ m3   1000.0s-1012.0s  12.0 s  hook title "Triple bloom!" (3 s)
 
 ### What the creator sees
 
-- **Clip Studio** marks a clip with a suggestion not looked at yet: **Suggested edit**. The video page says "{name} suggested edits for {n} of {given} clips. Open a clip in the editor to see them.", or "{name} looked at the clips and suggested nothing."
+- **Clip Studio** marks a clip with a suggestion the creator hasn't used or hidden yet: **Suggested edit**. The video page says "{name} suggested edits for {n} of {given} clips. Open a clip in the editor to see them.", or "{name} looked at the clips and suggested nothing."
 - **The timeline editor** shows a card for each suggestion above the timeline: "Suggested by {name} {version}", what it does in the editor's own words ("Cuts 2 parts · 6.5 s shorter", "Mutes 1 part · hides 1 word in the captions", "Fades out 0.5 s", "Hook title: “Triple bloom!” for 3 s", "Layout: Center"…), your reason in quotes, and any value it would replace ("Replaces your fade out (0.3 s → 0.5 s)").
-- **Use** lays the suggestion over the editor's current edit, as one Undo step. Cuts are added to the creator's own, so a suggestion never brings back what the creator cut. Mutes are added beside the creator's, and every word inside a suggested mute is hidden in the burned captions, as a hand mute does. Volume, fades, speed, the hook title and the layout replace the current value. Nothing renders until the creator applies their edits; Use is off when the creator's cuts and the suggestion's would leave almost nothing, and the card warns when they would leave less than the job's shortest clip.
-- **Hide** puts the card away ("1 hidden suggestion · Show"). **Take it back** takes out only what the suggestion put in and is still as it left it; the creator's own changes stay.
+- **Use** lays the suggestion over the editor's current edit, as one Undo step. Cuts are added to the creator's own, so a suggestion never brings back what the creator cut. Mutes are added beside the creator's, and every word inside a suggested mute is hidden in the burned captions, as a hand mute does. Volume, fades, speed, the hook title and the layout replace the current value. Nothing renders until the creator applies their edits; Use is off when the creator's cuts and the suggestion's would leave almost nothing, or, for a suggestion with mutes, until the editor has read the clip's words, and the card warns when they would leave less than the job's shortest clip.
+- **Hide** puts the card away ("1 hidden suggestion · Show"). **Take it back** takes out only what the suggestion put in and is still as it left it, including a cut at the clip's start or end while that end is where the suggestion left it; the creator's own changes stay. A used suggestion the creator took back can be hidden only once they apply their edits, which hides it by itself.
 - The clip editor panel has one line per suggestion: "Edit suggested by {name} {version}: {what} · {reason}", ending "(used)", "(hidden)" or "(used, but the clip was made again without it)".
 
 Your reason and hook title are shown as you wrote them, never translated, and labelled with your plugin's name. A hook title uses the font picked for the video's language, so a title in another script may miss characters; the creator sees that in the preview before applying.
@@ -518,7 +518,7 @@ Each edit plugin makes the clips wait for its answer, up to its time limit, befo
 - **No run changes a clip's saved edit, layout or any other choice the creator made.**
 - **Decisions carry over.** On a forced re-run, a suggestion with the same id keeps the creator's decision: a hidden one stays hidden and a used one stays used. A suggestion that changed, even slightly, has a new id and is new again. A used suggestion the run no longer makes is kept, so the creator can still take it back; new and hidden ones it no longer makes are dropped, as old ratings are.
 - **A forced re-run makes the clip's file without its saved edit**, as it always has. Its used suggestions then carry `remade`, and each card says "This clip was made again without your saved edits, so its file doesn’t have them." with **Make it again with my edits**, which renders the clip again with its saved edit.
-- **A clip the creator trimmed since.** Times stay in seconds of the video and are turned into the clip's own seconds when the creator presses Use, so a suggestion still lands in the right place. When the clip's start or end moved since the suggestion was made, the card says "Made before you changed this clip’s start or end. Check the cuts before you apply."
+- **A clip the creator trimmed since.** Times stay in seconds of the video and are turned into the clip's own seconds when the creator presses Use, so a suggestion still lands in the right place. When the clip's start or end moved since a suggestion with cuts or mutes was made, its card says "Made before you changed this clip’s start or end. Check the cuts before you apply."
 - **Titles are never touched.** Suggestions don't reach the title writer; only notes do.
 
 ### Layouts

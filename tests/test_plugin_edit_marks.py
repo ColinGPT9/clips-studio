@@ -94,6 +94,43 @@ def test_a_later_render_trims_applied_and_hides_when_nothing_is_left(name):
     assert entry["applied"]["removed"] == [[103.0, 106.5]] and "muted_words" not in entry["applied"]
 
 
+def test_a_used_suggestion_the_saved_edit_still_holds_is_not_hidden():
+    """PATCH /clips/{id} refuses to hide or show a used suggestion while the
+    clip's saved edit holds some of it: it would lose its Take it back."""
+    c = AFTER["take_it_back"]
+    sid = c["entries"][0]["id"]
+    # `before` is the saved edit with the suggestion in it; `after`, the creator's own once taken back.
+    assert edit_marks.still_held(c["entries"], sid, c["before"], c["window"]) is True
+    assert edit_marks.still_held(c["entries"], sid, c["after"], c["window"]) is False
+    # A new or hidden one holds nothing to take back, and neither does an id the clip doesn't have.
+    for state in ("new", "hidden"):
+        assert edit_marks.still_held([{**c["entries"][0], "state": state}], sid, c["before"], c["window"]) is False
+    assert edit_marks.still_held(c["entries"], "0123456789ab", c["before"], c["window"]) is False
+
+
+def test_a_suggested_trim_of_the_clips_ends_stays_used_until_a_trim_passes_it():
+    """Take it back puts back a suggestion's cut at the clip's start or end
+    while that edge is where the cut left it, so a render keeps it used. A
+    cut the creator has since trimmed past is out of its reach."""
+    window = (100.0, 130.0)
+    entry = {"id": "b2c3d4e5f6a1", "plugin": "example-dev/quarkbloom-trimmer", "name": "Quarkbloom Trimmer",
+             "state": "used", "edit": {"cuts": [[100.0, 103.0], [110.0, 112.0], [127.0, 130.0]]},
+             "applied": {"removed": [[100.0, 103.0], [110.0, 112.0], [127.0, 130.0]]}}
+    saved = {"edit": {"keep": [[3, 10], [12, 27]]}}
+    (kept,), lines = edit_marks.after_render([entry], [], saved, saved, window)
+    assert kept["applied"] == entry["applied"] and lines == []
+    assert edit_marks.still_held([entry], entry["id"], saved, window) is True
+    # The creator trims the start past the suggestion's first two cuts: only its end cut is left.
+    trimmed = {"edit": {"keep": [[15, 27]]}}
+    (kept,), lines = edit_marks.after_render([entry], [], saved, trimmed, window)
+    assert kept["state"] == "used" and kept["applied"] == {"removed": [[127.0, 130.0]]}
+    # And past that too: none of it is left where Take it back could put it back.
+    (kept,), lines = edit_marks.after_render([entry], [], saved, {"edit": {"keep": [[15, 25]]}}, window)
+    assert kept["state"] == "hidden" and "applied" not in kept
+    assert lines == [("Marked as hidden: none of Quarkbloom Trimmer's suggested edit b2c3d4e5f6a1 is left in the "
+                      "clip's edit")]
+
+
 def test_a_rerun_keeps_the_creators_decision_on_the_same_suggestion():
     used, hidden = _carry("rerun_keeps_decision")
     assert (used["state"], used["version"], used["applied"]) == (

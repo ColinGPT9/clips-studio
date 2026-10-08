@@ -256,6 +256,18 @@ def test_patch_hides_and_shows_a_suggestion(studio):
     assert r.json()["title"] == "Quark burst"
     assert studio.jobs() == 0 and studio.renders == []
     assert studio.clip()["render_opts"] == MINE
+    # A used one whose parts the saved edit still holds is refused, hidden or shown: it would
+    # lose its Take it back while the clip keeps them (the editor took it back, unapplied).
+    with_it = _RENDER["take_it_back"]["before"]
+    studio.db.set_clip(cid, scores=json.dumps({"plugin_edits": [USED]}), render_opts=json.dumps(with_it))
+    for state in ("hidden", "new"):
+        r = patch({"suggestion": {"id": SID, "state": state}, "title": "Not this"})
+        assert r.status_code == 409
+        assert r.json()["detail"] == ("suggestion: some of it is still in the clip's saved edit. Take it back and "
+                                      "apply your edits, and Clips Kitty hides it then")
+    clip = studio.clip()
+    assert clip["scores"]["plugin_edits"] == [USED] and clip["title"] == "Quark burst"
+    assert clip["render_opts"] == with_it and studio.jobs() == 0
 
 
 def test_an_unknown_suggestion_id_is_refused(studio, capsys):

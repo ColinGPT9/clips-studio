@@ -391,6 +391,9 @@ def test_use_is_off_under_one_second_and_warns_under_the_shortest_clip(tmp_path)
         ({"cuts": [[100.0, 118.0]]}, None, 10),
         ({"cuts": [[100.0, 124.0]]}, None, 0),
         ({"fade_out": 0.5}, {"keep": [[0, 3]]}, 10),
+        # The creator kept 0-5 s, and the suggestion cuts all of it, or all but 0.1 s: no piece is left.
+        ({"cuts": [[100.0, 105.0]]}, {"keep": [[0, 5]]}, 10),
+        ({"cuts": [[100.0, 104.9]]}, {"keep": [[0, 5]]}, 10),
     ]
     got = _run(tmp_path, """
         return data.cases.map(([edit, keep, min]) => {
@@ -405,14 +408,44 @@ def test_use_is_off_under_one_second_and_warns_under_the_shortest_clip(tmp_path)
         [off, []],
         ["", ["With your own cuts, this leaves 1.0 s, shorter than the 10 s shortest clip this video was made with."]],
         ["", ["With your own cuts, this leaves 6.0 s, shorter than the 10 s shortest clip this video was made with."]],
-        ["", ["With your own cuts, this leaves 15.0 s, shorter than the 20 s shortest clip this video was made "
-              "with."]],
+        ["", [("With your own cuts, this leaves 15.0 s, shorter than the 20 s shortest clip this video was made "
+               "with.")]],
         ["", []],
         ["", []],
         ["", []],
+        [off, []],
+        [off, []],
     ]
     cards = _source("EditSuggestions.tsx")
     assert "disabled={busy || Boolean(card.useOff)}" in cards
+    # The editor never draws a suggestion its card turns Use off for, so it never writes an empty keep.
+    editor = _source("TimelineEditor.tsx")
+    assert re.search(r"const off = suggestionView\.cards\.find\(\(c\) => c\.id === id\)\?\.useOff\s*"
+                     r"if \(off\) \{\s*setNotice\(off\)\s*return", editor)
+
+
+def test_use_waits_for_the_clips_words_when_the_suggestion_mutes(tmp_path):
+    """Until the clip's words are read, a suggested mute couldn't hide them in
+    the captions, so Use is off for a suggestion with mutes, and the card
+    says nothing about the captions. Words read as none (no transcript) are
+    an answer: Use is on."""
+    got = _run(tmp_path, """
+        const card = (words, edit) => m.suggestionCards([{...data.entry, edit}], stateOf(null, 30), {},
+                                                        {start: 100, end: 130, words}).cards[0]
+        const mute = {mutes: [[108.25, 108.75]]}
+        return [card(undefined, mute), card(data.words, mute), card([], mute), card(undefined, {fade_out: 0.5}),
+                m.WORDS_PENDING]
+    """, {"entry": ENTRY, "words": WORDS})
+    waiting, read, none, fade, pending = got
+    assert waiting["useOff"] == pending and waiting["parts"] == ["Mutes 1 part"]
+    assert pending == "Use is off until this clip’s words are read, so its mutes can hide them in the captions too."
+    assert read["useOff"] == "" and read["parts"] == ["Mutes 1 part · hides 1 word in the captions"]
+    assert none["useOff"] == "" and none["parts"] == ["Mutes 1 part · captions are unchanged"]
+    assert fade["useOff"] == ""
+    editor = _source("TimelineEditor.tsx")
+    assert "words: wordsRead ? words : undefined," in editor
+    assert re.search(r"setWords\(r\.words\)\s*setWordsRead\(true\)", editor)
+    assert re.search(r"setWordsRead\(false\)\s*api\s*\.clipWords\(clip\.id\)", editor)
 
 
 # ---- Take it back, Undo and Reset ------------------------------------------------------------------
@@ -452,13 +485,108 @@ def test_take_it_back_takes_out_only_the_suggestions_parts_after_a_mixed_session
     assert back["edit"]["hook"] is None and back["layout"] == "letterbox"
     # Nothing is left to take out: the editor says so and offers Hide.
     assert got["twice"] is False
-    # What is still out is out by the creator's trim.
-    assert got["held"] == {"removed": [[27, 29]], "mutes": [], "muted_words": [], "values": {}}
+    # 27-29 s is still out, but by the creator's trim, past Take it back's reach: the card agrees.
+    assert got["held"] == {"removed": [], "mutes": [], "muted_words": [], "values": {}}
     # Straight after the Use, Take it back gives the creator's edit back exactly.
     assert got["right"] == got["start"]
     editor = _source("TimelineEditor.tsx")
     assert "pushSuggestion(back.state.edit, back.state.layout, { id, kind: 'take_back', delta: session })" in editor
     assert "fromApplied(entry.applied, clip.start_s)" in editor
+
+
+def test_take_it_back_puts_back_a_suggested_trim_of_either_end(tmp_path):
+    """A suggestion that trims the clip (the SDK's trim() and keep_only())
+    cuts at its start or end. Take it back puts those cuts back while each
+    edge is where the suggestion left it, in this session and after Apply,
+    and the card agrees with the button, as the engine does. A trim the
+    creator made since stays."""
+    cases = [["ends", [[100.0, 103.0], [127.0, 130.0]]], ["start_and_middle", [[100.0, 103.0], [110.0, 112.0]]]]
+    got = _run(tmp_path, """
+        const ctx = {start: 100, end: 130, words: data.words}
+        const s0 = stateOf(null, 30)
+        const card = (entries, state, uses) => {
+          const c = m.suggestionCards(entries, state, uses, ctx).cards[0]
+          return [c.status, c.actions]
+        }
+        return data.cases.map(([id, cuts]) => {
+          const entry = {...data.entry, id, edit: {cuts}, state: 'new'}
+          const used = m.applySuggestion(s0, entry.edit, ctx)
+          const back = m.takeBack(used.state, used.delta, ctx)
+          const applied = m.toApplied(used.delta, 100)
+          const stored = {...entry, state: 'used', applied}
+          const later = m.takeBack(used.state, m.fromApplied(applied, 100), ctx)
+          const keep = m.intersect(used.state.edit.keep, [[5, 30]])
+          const trimmed = {...used.state, edit: {...used.state.edit, keep}}
+          return {used: used.state, applied, back: back.state.edit.keep, changed: back.changed,
+                  session: card([entry], used.state, {[id]: used.delta}),
+                  sessionAfter: card([entry], back.state, {[id]: used.delta}),
+                  stored: card([stored], used.state, {}), later: later.state.edit.keep,
+                  laterAfter: card([stored], later.state, {}),
+                  trimmed: m.takeBack(trimmed, used.delta, ctx).state.edit.keep}
+        })
+    """, {"entry": ENTRY, "words": WORDS, "cases": cases})
+    ends, middle = got
+    assert ends["used"]["edit"]["keep"] == [[3, 27]] and middle["used"]["edit"]["keep"] == [[3, 10], [12, 30]]
+    added = "Added to your edit. It goes into the clip when you apply your edits. Undo takes it back."
+    for case in got:
+        assert case["changed"] is True and case["back"] == [[0, 30]] and case["later"] == [[0, 30]]
+        assert case["session"] == [added, ["take_back"]]
+        assert case["sessionAfter"] == ["Nothing of this suggestion is left in your edit.", ["hide"]]
+        assert case["stored"] == ["You used this suggestion.", ["take_back"]]
+        assert case["laterAfter"] == ["Nothing of this suggestion is left in your edit.", ["hide"]]
+    # Trimmed to start at 5 s since: the start cut is out of reach and the trim stays; the end cut comes back.
+    assert ends["trimmed"] == [[5, 30]] and middle["trimmed"] == [[5, 30]]
+    # The engine agrees: after Apply the suggestion stays used with all of it, and once taken
+    # back and applied it is hidden.
+    for (sid, cuts), case in zip(cases, got):
+        entry = {**ENTRY, "id": sid, "edit": {"cuts": cuts}, "state": "used", "applied": case["applied"]}
+        saved = _opts(case["used"])
+        (kept,), _ = edit_marks.after_render([entry], [], saved, saved, WINDOW)
+        assert kept["state"] == "used" and _norm(kept["applied"]) == _norm(case["applied"])
+        assert edit_marks.still_held([entry], sid, saved, WINDOW) is True
+        back = {**saved, "edit": {**saved["edit"], "keep": case["back"]}}
+        (kept,), _ = edit_marks.after_render([entry], [], saved, back, WINDOW)
+        assert kept["state"] == "hidden"
+
+
+def test_a_used_suggestion_taken_back_but_not_applied_offers_no_hide(tmp_path):
+    """Take it back changes only the editor's edit. While the clip's saved
+    edit still holds the suggestion, Hide would lose its Take it back (the
+    API refuses it too): the card says to apply instead. Applying hides it."""
+    case = next(c for c in AFTER_RENDER["cases"] if c["name"] == "take_it_back")
+    got = _run(tmp_path, """
+        const ctx = {start: 100, end: 130, words: data.words}
+        const saved = stateOf(data.case.before, 30)
+        const back = m.takeBack(saved, m.fromApplied(data.case.entries[0].applied, 100), ctx).state
+        const card = (entries, state, savedState) =>
+          m.suggestionCards(entries, state, {}, {...ctx, saved: savedState}).cards[0]
+        const unapplied = card(data.case.entries, back, saved)
+        const applied = card(data.case.entries, back, back)
+        const remade = card([{...data.case.entries[0], remade: true}], back, saved)
+        return [[unapplied.status, unapplied.actions], [applied.status, applied.actions], remade.actions,
+                card(data.case.entries, saved, saved).actions]
+    """, {"case": case, "words": WORDS})
+    unapplied, applied, remade, before = got
+    taken = "Taken out of your edit. Your own changes stay. Apply your edits to make the clip without it."
+    assert unapplied == [taken, []]
+    assert applied == ["Nothing of this suggestion is left in your edit.", ["hide"]]
+    assert remade == ["make_again"] and before == ["take_back"]
+    # The engine says the same about the saved edit.
+    sid = case["entries"][0]["id"]
+    assert edit_marks.still_held(case["entries"], sid, case["before"], case["window"]) is True
+    assert edit_marks.still_held(case["entries"], sid, case["after"], case["window"]) is False
+    editor = _source("TimelineEditor.tsx")
+    assert "edit: { ...defaultEdit(duration), ...(baked ?? {}) }," in editor
+
+
+def test_a_suggestion_step_holds_the_layout_only_when_it_changes_it():
+    """Layout buttons push no Undo step, so a Use or Take it back that left the
+    layout alone mustn't hold one: its Undo would take back a layout the
+    creator chose by hand since."""
+    editor = _source("TimelineEditor.tsx")
+    step = "const step: Past = nextLayout !== layout ? { edit, layout, suggestion: mark } : { edit, suggestion: mark }"
+    assert step in editor
+    assert "setHistory((h) => pushed<Past>(h, step))" in editor
 
 
 def test_reset_and_undo_clear_the_use_mark_and_later_edits_keep_it(tmp_path):

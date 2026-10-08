@@ -371,18 +371,24 @@ class EditSuggestion:
         a, b = self._span(what, start, end)
         m = self._m
         if b <= m.start or a >= m.end:
-            self._job._log_once(f"{m.id}: {what} {a:.1f}-{b:.1f} s is outside the clip "
-                                f"({m.start:.1f}-{m.end:.1f} s), so it isn't kept")
+            self._note(f"{m.id}: {what} {a:.1f}-{b:.1f} s is outside the clip "
+                       f"({m.start:.1f}-{m.end:.1f} s), so it isn't kept")
             return
         merged = merge_spans([*spans, (a, b)])
         if len(merged) > MAX_EDIT_SPANS:
             raise self._refuse(f"at most {MAX_EDIT_SPANS} {what}s for one clip")
         spans[:] = merged
 
+    def _note(self, message: str) -> None:
+        # A call Clips Kitty didn't ask for was logged once as ignored when
+        # it was made; saying what would happen to it would only mislead.
+        if self._kept:
+            self._job._log_once(message)
+
     def _nearest(self, what: str, given: float, fitted: float, unit: str = "") -> None:
         if abs(given - fitted) > 1e-9:
-            self._job._log_once(f"{self._m.id}: {what} {given:g}{unit} will be {fitted:g}{unit}, "
-                                "the nearest the editor offers")
+            self._note(f"{self._m.id}: {what} {given:g}{unit} will be {fitted:g}{unit}, "
+                       "the nearest the editor offers")
 
     def cut(self, start: float, end: float) -> EditSuggestion:
         """Take out [start, end] of the clip. Cuts add up; overlapping ones join."""
@@ -397,8 +403,9 @@ class EditSuggestion:
         if a is None or b is None:
             raise self._refuse(f"trim needs numbers of seconds of the video (got {_shown(start)} to {_shown(end)})")
         if a >= b:
-            raise self._refuse(f"trim needs start < end, in seconds of the video (got {_shown(start)} to "
-                               f"{_shown(end)})")
+            given = _shown(start) if start is not None else f"the clip's start, {a:g}"
+            to = _shown(end) if end is not None else f"the clip's end, {b:g}"
+            raise self._refuse(f"trim needs start < end, in seconds of the video (got {given} to {to})")
         if a > m.start:
             self.cut(m.start, min(a, m.end))
         if b < m.end:
@@ -477,7 +484,7 @@ class EditSuggestion:
         if mode not in crops:
             named = ", ".join(crops[:-1]) + f" or {crops[-1]}" if len(crops) > 1 else "".join(crops)
             why = f"this job's clips use {named}" if crops else "this job's clips don't use a layout"
-            self._job._log_once(f"{self._m.id}: crop {mode!r} will be ignored: {why}")
+            self._note(f"{self._m.id}: crop {mode!r} will be ignored: {why}")
         self._values["crop"] = mode
         return self
 

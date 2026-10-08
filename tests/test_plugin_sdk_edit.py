@@ -89,6 +89,14 @@ def test_read_edits_fits_cuts_to_the_clip(tmp_path):
     # An unrounded window, as the engine hands it over, keeps the cut's own seconds.
     edits, _ = _read(folder, windows={"m1": (812.004999, 841.49), "m2": (900.0, 925.0)})
     assert edits["m1"]["edit"]["cuts"] == [[812.005, 813.0], [815.0, 823.0], [840.0, 841.49]]
+    # A sliver under a millisecond inside the clip changes nothing once it is
+    # rounded, so it isn't kept as a span of no length.
+    folder = _answer(tmp_path, [{"id": "m2", "edit": {"cuts": [[899.0, 900.0001]], "mutes": [[910.0, 910.0004]]}}],
+                     name="sliver")
+    assert _read(folder) == ({}, ["ignored: m2's edit changes nothing"])
+    folder = _answer(tmp_path, [{"id": "m2", "edit": {"cuts": [[899.0, 900.0001]], "mutes": [[910.0, 911.0]]}}],
+                     name="sliver-and-mute")
+    assert _read(folder) == ({"m2": {"edit": {"mutes": [[910.0, 911.0]]}}}, [])
 
 
 def test_cuts_that_leave_less_than_the_shortest_clip_are_ignored_and_mutes_stay(tmp_path):
@@ -194,6 +202,13 @@ def test_fields_outside_the_allow_list_are_ignored_and_logged(tmp_path):
         "ignored: m2's keep: write the spans to take out as cuts",
         "ignored: m2's edit changes nothing",
     ]
+    # Each name is put on one line and cut short, and only the first 12 are named.
+    odd = {"music\nchanged: m1's speed 2 to 1, the nearest the editor offers": 1, "v" * 100: 1,
+           **{f"extra{k}": k for k in range(20)}}
+    _, lines = _read(_answer(tmp_path, [{"id": "m1", "edit": {**odd, "fade_in": 0.3}}], name="odd"))
+    assert lines == [("ignored: music changed: m1's speed 2 to 1, " + "v" * 32 + ", extra0, extra1, extra2, extra3, "
+                      "extra4, extra5, extra6, extra7, extra8, extra9 and 10 more in m1's edit: Clips Kitty "
+                      "doesn't take them from a plugin")]
     # None of them is refused: the answer is only checked for the fields it names.
     assert contract.check_result(json.loads((folder / "result.json").read_text(encoding="utf-8")),
                                  steps=["edit"]) == []
@@ -236,6 +251,24 @@ def test_title_overlay_is_one_line_without_web_addresses(tmp_path):
     edits, _ = _read(folder)
     assert edits["m1"]["edit"]["title_overlay"]["text"] == "example.com @quarkbloom " + "x" * 96
     assert edits["m1"]["reason"] == "See " + "r" * 130
+    # An invisible character can't hide a web address: a zero-width space, a
+    # word joiner, a byte order mark, a soft hyphen or a right-to-left override.
+    hidden = ["Join https\u200b://example.com/promo", "Join https\u2060://example.com/promo",
+              "Join \ufeffwww.example.com", "Join ww\u200bw.example.com", "Join ht\u00adtps://example.com",
+              "Join \u202ewww.example.com\u202c", "Join \u2066https://example.com\u2069"]
+    for k, text in enumerate(hidden):
+        folder = _answer(tmp_path, [{"id": "m1", "edit": {"title_overlay": {"text": text}, "reason": text}}],
+                         name=f"hidden{k}")
+        edits, _ = _read(folder)
+        assert edits == {"m1": {"edit": {"title_overlay": {"text": "Join", "seconds": 3}}, "reason": "Join"}}, text
+    # A reversed address isn't one, but it no longer shows as one either.
+    edits, _ = _read(_answer(tmp_path, [{"id": "m1", "edit": {"title_overlay": {
+        "text": "Triple bloom \u202emoc.elpmaxe.www"}}}], name="reversed"))
+    assert edits["m1"]["edit"]["title_overlay"]["text"] == "Triple bloom moc.elpmaxe.www"
+    # Joiners that emoji and some scripts need stay.
+    kept = "Quinn \U0001F469\u200d\U0001F467 \u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"
+    edits, _ = _read(_answer(tmp_path, [{"id": "m1", "edit": {"title_overlay": {"text": kept}}}], name="joiners"))
+    assert edits["m1"]["edit"]["title_overlay"]["text"] == kept
 
 
 # ---- job.suggest_edit: what a plugin calls ------------------------------------------
@@ -263,9 +296,13 @@ def test_suggest_edit_checks_at_once_and_adds_cuts(tmp_path):
             (lambda: s.title_overlay(" \n "), "title_overlay needs text (got ' \\n ')"),
             (lambda: s.title_overlay("Go", seconds=11), "title_overlay seconds must be a number from 1 to 10 (got 11)"),
             (lambda: s.crop("c" * 33), "crop must be text of 1 to 32 characters (got '" + "c" * 33 + "')"),
-            (lambda: s.keep_only(), "keep_only needs at least one (start, end) span to keep"),
+            (s.keep_only, "keep_only needs at least one (start, end) span to keep"),
             (lambda: s.keep_only((830, 820)), "keep_only needs start < end, in seconds of the video (got 830 to 820)"),
-            (lambda: s.trim(830, 820), "trim needs start < end, in seconds of the video (got 830 to 820)")):
+            (lambda: s.trim(830, 820), "trim needs start < end, in seconds of the video (got 830 to 820)"),
+            (lambda: s.trim(start=950), ("trim needs start < end, in seconds of the video (got 950 to the clip's "
+                                         "end, 841.5)")),
+            (lambda: s.trim(end=800), ("trim needs start < end, in seconds of the video (got the clip's start, "
+                                       "812 to 800)"))):
         with pytest.raises(ContractError) as e:
             call()
         assert str(e.value) == f"suggest_edit: {message}"
@@ -334,6 +371,10 @@ def test_suggest_edit_outside_an_edit_run_is_ignored(tmp_path):
     assert job.suggest_edit(m1) is s and s.cuts == ((815.0, 821.5),)
     with pytest.raises(ContractError):  # still checked, so one function serves every run
         s.speed(9)
+    # Nothing is said about what Clips Kitty would do to a suggestion it never
+    # gets: no nearest choice, no crop the job doesn't use, no span outside the clip.
+    _, m2 = job.moments
+    job.suggest_edit(m2).fade(fade_out=0.4).crop("center").cut(950, 960).speed(1.1).title_overlay("Go", seconds=4)
     job.rate(m1, 80)
     written = json.loads(job.finish().read_text(encoding="utf-8"))
     assert written["moments"] == [{"id": "m1", "score": 80.0, "reason": ""}]
@@ -341,7 +382,7 @@ def test_suggest_edit_outside_an_edit_run_is_ignored(tmp_path):
     # On a range of the plugin's own, in a find run.
     job, out = _job(tmp_path / "find", ("find",), moments=None)
     own = job.add_range(10, 40, score=70)
-    job.suggest_edit(own).trim(12)
+    job.suggest_edit(own).trim(12).fade(fade_out=0.4).crop("center").cut(50, 60).speed(1.1)
     assert job.suggest_edit(own).cuts == ((10.0, 12.0),)
     written = json.loads(job.finish().read_text(encoding="utf-8"))
     assert "moments" not in written and "edit" not in written["ranges"][0]

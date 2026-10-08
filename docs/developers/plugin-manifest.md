@@ -106,6 +106,7 @@ There is no field for a plugin's role. It follows from `inputs` and `outputs`, a
 | Understander | `[moments, transcript]` | `[context]` | Rate & understand |
 | Rater | `[moments, transcript]` | `[ratings]` | Rate & understand |
 | One plugin, all three | `[video, transcript, moments]` | `[ranges, context, ratings]` | Pipeline, or Rate & understand |
+| Editor | `[moments, transcript]` | `[edits]` | Suggest edits |
 
 `kind` stays `pipeline` and `capability` stays `highlight_detection` for each of them. A plugin given moments reads what is said in them, so it usually takes `transcript` and asks for `transcript.read` too.
 

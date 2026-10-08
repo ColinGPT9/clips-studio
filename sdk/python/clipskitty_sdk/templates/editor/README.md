@@ -9,12 +9,12 @@ It is set up for Quarkbloom Arena (a made-up game): replace it with yours. There
 It runs after Clips Kitty has chosen the clips and before it makes them, when you choose it under **Suggest edits** as you add a video. For each clip it suggests:
 
 - a mute over each of the `mute_words` said in it, from a tenth of a second before the word to a tenth after, so the whole word is silent and its caption is hidden too;
-- a cut of the wait after "respawn timer": from when it is said to 4 seconds after, when all of that is inside the clip;
+- a cut of the wait after "respawn timer": from when it is said to 4 seconds after, when all of that is inside the clip and the clip is still at least the video's shortest clip without it;
 - the hook title "Quark burst!" for the clip's first 3 seconds, when "quark burst" is said in it.
 
 Each suggestion comes with a reason, and a clip with none of these gets no suggestion. Suggestions wait for you in the timeline editor, where you can use or hide each one. Clips Kitty doesn't put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
 
-Clips Kitty fits each suggestion to its clip as it reads it. Cuts that would leave the clip shorter than the video's shortest clip are left out, for example, and the job's log says so.
+Clips Kitty fits each suggestion to its clip as it reads it. Cuts that would leave the clip shorter than the video's shortest clip are left out, for example, and the job's log says so. This plugin checks that before it suggests a cut, so its reason never names a cut Clips Kitty leaves out.
 
 ## What it can't see
 

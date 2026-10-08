@@ -611,7 +611,10 @@ file again without its saved edit, and the editor says so. Nothing in
 suggestion is used only by a render that applies it (`suggestions`, under
 [`render_first`](#publishing-to-youtube)): any other state is 400 "suggestion:
 state must be hidden or new; a suggestion is used by applying it", and an id
-the clip doesn't have is 404 "no such suggestion on this clip".
+the clip doesn't have is 404 "no such suggestion on this clip". A used
+suggestion whose parts the clip's saved edit still holds can't be hidden or
+shown: that is 409 "suggestion: some of it is still in the clip's saved
+edit. Take it back and apply your edits, and Clips Kitty hides it then".
 A clip from a `sport` job also carries the moment it is: `sport_event`
 (`goal`, `save`...), `sport_label`, `sport_minute` (from the match clock),
 `sport_t` (seconds into the video), `sport_team`, `sport_player`, `sport_period`,
@@ -851,8 +854,10 @@ at most 8, with `applied` shaped as in `scores.plugin_edits`
 ([above](#get-videosvideo_idclips)). The internal `POST /clips/{clip_id}/render`
 (Apply edits) takes the same field. Only what the render really changed, and
 only parts of each suggestion, is recorded, so a client can never mark more
-than it put in. A wrong shape is a 400, such as "suggestions: expected {used:
-[{id, applied}]}".
+than it put in. Each value's `before`, which Take it back puts back, is taken
+as the client sent it, checked only to be a value the editor could hold. A
+wrong shape is a 400, such as "suggestions: expected {used: [{id,
+applied}]}".
 
 ### Scheduling
 

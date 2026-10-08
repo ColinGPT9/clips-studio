@@ -60,9 +60,18 @@ def test_it_cuts_the_wait_after_the_respawn_timer(tmp_path):
 
 
 def test_a_cut_that_leaves_too_short_a_clip_is_left_out(tmp_path):
-    # From 8 to 22 s, the cut would leave 8 s of the clip, under the 10 s shortest clip.
+    # From 8 to 22 s, the cut would leave 8 s of the clip, under the 10 s shortest clip,
+    # so it isn't suggested and the clip isn't counted.
     run = testing.run_plugin(PLUGIN, transcript=MATCH, duration=40, moments=[{"start": 8, "end": 22}],
                              tmp_path=tmp_path)
     assert run.ok, run.error
     assert run.edits == {}
-    assert "ignored: m1's cuts: they would leave 8.0 s, under this job's 10 s shortest clip" in run.log
+    assert run.notes == "Suggested edits for 0 of 1 clip(s)."
+    # With a word to mute in the same clip, the reason names only the mute.
+    said = [{"start": 9.0, "end": 9.5, "text": "Quinn"}, *MATCH[1:2]]
+    run = testing.run_plugin(PLUGIN, transcript=said, duration=40, moments=[{"start": 8, "end": 22}],
+                             settings={"mute_words": "Quinn"}, tmp_path=tmp_path / "mute")
+    assert run.ok, run.error
+    assert run.edits == {"m1": {"edit": {"mutes": [[8.9, 9.6]]}, "reason": "Mutes the words you listed"}}
+    assert run.notes == "Suggested edits for 1 of 1 clip(s)."
+    assert not [line for line in run.log if "cuts" in line]

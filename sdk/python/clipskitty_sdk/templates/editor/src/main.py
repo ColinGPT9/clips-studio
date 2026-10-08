@@ -9,7 +9,8 @@ suggests:
 - a mute over each of the `mute_words` said in it, a little wider than the
   word, so the whole word is silent and its caption is hidden too;
 - a cut of the wait after WAIT_WORDS, from when they are said to
-  WAIT_SECONDS after, when all of that is inside the clip;
+  WAIT_SECONDS after, when all of that is inside the clip and the cuts
+  still leave the job's shortest clip;
 - HOOK_TITLE as the clip's hook title, when HOOK_WORDS are said in it;
 
 with a reason the creator sees. A clip with none of these gets no
@@ -20,7 +21,8 @@ doesn't put it into a clip until the creator uses it there and applies their
 edits. Times are seconds of the video, as text.said() gives them. Clips Kitty
 fits each suggestion to its clip as it reads the answer: for example, cuts
 that would leave the clip shorter than the job's shortest clip are left out,
-and the job's log says so.
+and the job's log says so. This plugin measures that first, with
+kept_length(), so its reason never names a cut Clips Kitty leaves out.
 
 Clips Kitty runs it on its own Python, which has the Python standard library
 and clipskitty_sdk and nothing else, so import only those, at the top of the
@@ -31,7 +33,7 @@ plugin's folder (`py -m clipskitty_sdk` in PowerShell); it needs no FFmpeg.
 from __future__ import annotations
 
 from clipskitty_sdk import run
-from clipskitty_sdk.contract import MAX_EDIT_SPANS  # cuts, and mutes, for one clip
+from clipskitty_sdk.contract import MAX_EDIT_SPANS, kept_length  # MAX_EDIT_SPANS: cuts, and mutes, per clip
 from clipskitty_sdk.text import said, words_of
 
 # ---- your game: change these ------------------------------------------------------------
@@ -58,6 +60,8 @@ def main(job):
     muted = said(job, words_of(job.settings.get("mute_words")))  # (start, end, word), in seconds of the video
     waits = said(job, WAIT_WORDS)
     hooks = said(job, HOOK_WORDS)
+    # Clips Kitty leaves out cuts that would make a clip shorter than this.
+    shortest = max(1.0, job.limits.min_duration or 0)
 
     suggested = 0
     for m in job.moments:  # the clips Clips Kitty will make
@@ -69,8 +73,10 @@ def main(job):
         if s.mutes:
             why.append("mutes the words you listed")
         for start, end, _ in waits:
-            if m.start < start and end + WAIT_SECONDS < m.end and len(s.cuts) < MAX_EDIT_SPANS:
-                s.cut(start, end + WAIT_SECONDS)
+            cut = (start, end + WAIT_SECONDS)
+            if (m.start < start and cut[1] < m.end and len(s.cuts) < MAX_EDIT_SPANS
+                    and kept_length(m.start, m.end, [*s.cuts, cut]) >= shortest):
+                s.cut(*cut)
         if s.cuts:
             why.append(f"cuts the wait after {quoted(WAIT_WORDS)}")
         if any(m.start <= start < m.end for start, _, _ in hooks):

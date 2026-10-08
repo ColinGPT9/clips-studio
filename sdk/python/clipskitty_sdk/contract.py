@@ -28,8 +28,8 @@ them (video.read, transcript.read, ffmpeg, ollama). `models` has an entry for
 each model the manifest lists; the run doesn't start until each is on the PC.
 
 Finding, understanding and rating. A plugin whose manifest uses the words
-`moments` (inputs), `ratings` or `context` (outputs) also gets `steps`: what
-this run is asked for, from STEPS. A find run is `["find"]`, or
+`moments` (inputs), `ratings`, `context` or `edits` (outputs) also gets
+`steps`: what this run is asked for, from STEPS. A find run is `["find"]`, or
 `["find", "understand"]` when the plugin also describes its own ranges. A run
 that rates or understands the moments others found is asked for
 `["understand"]`, `["rate"]` or both, and gets those moments and the

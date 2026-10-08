@@ -96,8 +96,8 @@ def test_no_moments_is_an_answer(echo, video):
     assert _run(echo, video, {"ranges": ""}) == []
 
 
-# Keys an edit step might one day use, and their values. Edit is planned, not
-# part of plugin contract 1, so none of them may change a clip today.
+# Keys a range might carry that only an edit run may suggest, and their values:
+# a find run is never asked to edit, so none of them may change a clip.
 RANGE_EXTRAS = {"edit": {"mutes": [[0, 2]], "speed": 2.0, "title_overlay": {"text": "WATCH THIS"}},
                 "music": "plugin-song.mp3", "watermark": {"text": "plugin-mark", "image": "plugin-logo.png"}}
 

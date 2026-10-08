@@ -7,15 +7,19 @@ entry, in one of three states:
 - "new": not used yet;
 - "hidden": put away by the creator (PATCH /clips/{id}), or used once and no
   longer in the clip's saved edit;
-- "used": some of it is in the clip's saved edit. Its `applied` says what it
-  put there and is still there, so Take it back takes out only that. It may
+- "used": some of it is in the clip's saved edit, where Take it back can
+  reach it. Its `applied` says what it put there and is still there, so
+  Take it back takes out only that. It may
   carry `remade: true`: a forced re-run has since made the clip's file
   without the saved edit.
 
 after_render() records a render the creator asked for (Apply edits, or
 Apply edits & upload). The editor says what each Use added (`applied`), but
 only what this render really changed is kept, and only parts of the
-suggestion itself, so a client can never record more than it put in.
+suggestion itself, so a client can never record more than it put in. Each
+value's `before`, the value Take it back puts back, is kept as the client
+sent it, checked only to be one the editor could hold: it is the editor's
+value when the creator pressed Use, which may never have been rendered.
 carry() keeps the creator's decisions when a forced re-run makes the same
 suggestions again. clean_used() and clean_state() are the API's checks.
 
@@ -274,15 +278,32 @@ def _fresh(entry: dict, applied, was: dict, now: dict) -> dict:
     return _record(removed, mutes, words, kept)
 
 
+def _reach(removed, kept) -> tuple[float, float]:
+    """How far Take it back may put back a suggestion's cuts (`removed`):
+    from the first to the last second the clip keeps (`kept`), so a trim
+    the creator made since stays, or past either when that edge is still
+    where one of the suggestion's own cuts left it, as a suggested trim of
+    the clip's start or end does. The editor's takeBack uses the same reach."""
+    lo, hi = min(a for a, _ in kept), max(b for _, b in kept)
+    for a, b in spans(removed):
+        if abs(b - lo) <= NEAR:
+            lo = min(lo, a)
+        if abs(a - hi) <= NEAR:
+            hi = max(hi, b)
+    return lo, hi
+
+
 def _still(applied, now: dict) -> dict:
-    """The part of a used suggestion's `applied` the rendered options still hold."""
+    """The part of a used suggestion's `applied` the rendered options still
+    hold: what Take it back could still take out."""
     removed, mutes, words, values = _parts(applied)
+    removed = intersect(intersect(removed, [_reach(removed, now["kept"])]), now["removed"])
     pool = list(now["mutes"])
     mutes = [hit for hit in (_take(pool, m) for m in mutes) if hit]
     pool = list(now["words"])
     words = [hit for hit in (_take(pool, w) for w in words) if hit]
     values = {k: v for k, v in values.items() if _same(k, now["values"][k], v.get("after"))}
-    return _record(intersect(removed, now["removed"]), mutes, words, values)
+    return _record(removed, mutes, words, values)
 
 
 def _merge(held: dict, fresh: dict) -> dict:
@@ -387,10 +408,22 @@ def carry(old, new, kept, rendered=None) -> list[dict]:
     return out
 
 
+def still_held(entries, sid: str, saved, window) -> bool:
+    """Whether the clip's saved options (`saved`, for the clip at `window`)
+    still hold some of used suggestion `sid`, as Take it back would find
+    it. Hiding or showing it then would drop its `applied` while the clip
+    keeps its parts, and with them the only way to take them out."""
+    for e in entries or []:
+        if isinstance(e, dict) and e.get("id") == sid and e.get("state") == "used":
+            return bool(_still(e.get("applied"), view(saved, window)))
+    return False
+
+
 def set_state(entries, sid: str, state: str) -> list[dict] | None:
     """The entries with suggestion `sid` hidden or shown ("hidden" or "new"),
     or None when the clip has no such suggestion. A used one loses its
-    `applied` and `remade`: only a used suggestion carries them."""
+    `applied` and `remade`: only a used suggestion carries them, so check
+    still_held() first."""
     entries = [e for e in entries or [] if isinstance(e, dict)]
     if not any(e.get("id") == sid for e in entries):
         return None
