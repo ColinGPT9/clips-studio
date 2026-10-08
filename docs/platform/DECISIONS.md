@@ -226,3 +226,37 @@ One entry per judgment call: what was decided, the alternatives, why, and how to
 **Alternatives:** a manifest `steps` field (it would say again what inputs and outputs already say); new kinds such as `rater` (the registry, the Marketplace's sections and `KIND_LABELS` would all need them); averaging the ratings (it hides which plugin decided, and the creator chose an order); raters that never change which clips are made (then a rating could only reorder, and the design lets a low score set a moment aside); rescuing fusion's `over_limit` spares for the raters (they aren't de-duplicated, so a rater could pick two copies of one moment); failing the job when a plugin fails (one plugin someone else wrote would cost the creator the whole video); a `requires.clips_kitty` floor (no released app has plugins at all); holding posting by the video's latest outcome alone (a job that named no step would be held by an earlier run's failure).
 **Why:** a creator who knows a niche can add what Clips Kitty can't know, such as what a moment means in a game or which call matters, without replacing how the moments are found. The same plugin can serve every finder, and every existing job, plugin and API client stays as it was.
 **Undo:** remove the `steps_chosen` hook in `process_video` and the `rate` and `understand` fields in `server/api.py`; `plugins/steps.py` can then be deleted. The SDK's additions are optional and can stay. The re-send rule is `chosen_clips` in `server/automation.py` `publish()`.
+
+## D31 · The SDK starter kit: what a developer gets, and what waits for Colin
+
+**Decided:** Colin asked for an SDK that is very easy for building game-specific pipelines and plugins, and that is marketed (17:20 UTC on 2026-10-07). The SDK becomes 1.2.0 (`sdk/python/CHANGELOG.md`). The plugin contract and manifest stay at 1.
+- **Commands:**
+  - `new` starts a plugin from five templates (blank, transcript, game-events, rater, understander);
+  - `sample` and `frame` make a test video with FFmpeg's own generators and pull out a frame;
+  - `run --sample` runs a plugin on that video;
+  - `install` puts a plugin into the Clips Kitty running on this PC;
+  - `listing` writes a plugin's catalog file locally;
+  - `--version` and a `clipskitty-sdk` command.
+- **New modules:** `clipskitty_sdk.testing` runs a plugin from its own tests; `media`, `text` and `local_model` hold helpers. Everything uses only the standard library, because plugins run on the app's own Python (D28).
+- **Templates and the tutorial use a made-up game,** Quarkbloom Arena. The tutorial is `docs/developers/first-game-pipeline.md`, with `signals-cookbook.md` beside it. Colin's games were examples, not requests, and nothing is built for a real game.
+- **Template code `new` copies keeps the SDK's MIT notice** (`templates/_shared/TEMPLATE-LICENSE.txt`). The developer's own code is under the licence they choose. A plugin's licence defaults to MIT.
+- **`install` talks only to this PC.** It sends the session header only to 127.0.0.1, localhost or ::1, never through a proxy, and follows a redirect only to the same address. It never prints the secret. It goes through the app's own plan and install, so a creator sees the same plan and risks.
+- **`listing` never pushes and never opens a pull request.** It refuses uncommitted or unpushed code, and code in a repository that doesn't match the manifest or its publisher.
+- **Promotion is a developers page, `site/developers.html`, plus launch drafts.** The drafts are in `docs/platform/developer-launch-drafts.md`, marked DRAFT. Nothing is posted, uploaded or created, and PyPI is untouched.
+- **A Windows CI job ("SDK (Windows)")** builds the wheel and runs the SDK's tests on Windows.
+- **Edit and export are planned words.** `outputs: [edits]` and `kind: publisher` are refused as "planned", not "unknown".
+
+**Waits for Colin** (the SDK plan's approval list, and the drafts' table):
+- publishing `clipskitty-sdk` to PyPI;
+- merging, which deploys the developers page;
+- the template repository and the licence for template output (MIT-0 or CC0-1.0 instead of the MIT notice);
+- the Discussions categories;
+- each post;
+- the "Built for Clips Kitty" badge;
+- the CONTRIBUTING licence sentence;
+- the release order;
+- the Python version releases are built with. Comments say 3.11, and `build_installer.py` now refuses another version.
+
+**Alternatives:** a separate SDK repository (developers would lose the engine tests the SDK is checked against, and Colin would have two repositories to look after); a cookiecutter or copier template (one more tool to install before a first plugin); templates for real games (Colin said not to).
+**Why:** a developer should get from nothing to a plugin running on a test video, and then inside Clips Kitty, without reading the engine, installing more than the SDK and FFmpeg, or touching GitHub until they want a listing.
+**Undo:** each part is its own commit (8a4836b to 82cd906, then the fixes up to 99788d4). Reverting the site and drafts commits removes the promotion, and the SDK's new modules can be removed without touching the engine.
