@@ -122,7 +122,7 @@ def test_a_suggested_trim_of_the_clips_ends_stays_used_until_a_trim_passes_it():
     assert edit_marks.still_held([entry], entry["id"], saved, window) is True
     # The creator trims the start past the suggestion's first two cuts: only its end cut is left.
     trimmed = {"edit": {"keep": [[15, 27]]}}
-    (kept,), lines = edit_marks.after_render([entry], [], saved, trimmed, window)
+    (kept,), _ = edit_marks.after_render([entry], [], saved, trimmed, window)
     assert kept["state"] == "used" and kept["applied"] == {"removed": [[127.0, 130.0]]}
     # And past that too: none of it is left where Take it back could put it back.
     (kept,), lines = edit_marks.after_render([entry], [], saved, {"edit": {"keep": [[15, 25]]}}, window)
