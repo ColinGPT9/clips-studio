@@ -111,7 +111,9 @@ export default function QueueItemSettings({
       if (longform) patch.longform = { mode: longformMode, ...(longformShorts ? { shorts: true } : {}) }
       else clear.push('longform')
       // Left as it is when kept: the job already carries the checked choice.
+      // A channel's options are replaced on every save, so it sends a kept one back.
       if (!pipeline) clear.push('pipeline')
+      else if (channel) patch.pipeline = pipeline
       // Kept, a channel sends them back (its options are replaced); a queued
       // video leaves them as they are, like Pipeline.
       const steps = stepsPatch(s, stepsKept, Boolean(channel))

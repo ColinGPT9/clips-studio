@@ -260,6 +260,17 @@ def test_watch_settings_autosave_key_holds_only_the_steps_switch():
         assert late not in current.group(1), late
 
 
+def test_a_watched_channel_keeps_its_pipeline_through_an_autosave():
+    """A channel's options are replaced on every save (PATCH /automation/watches
+    takes them whole), so a kept pipeline has to be sent back, as kept steps
+    are; a queued video's PATCH merges and leaves it as it is."""
+    panel = (UI / "components" / "queue" / "QueueItemSettings.tsx").read_text(encoding="utf-8")
+    assert re.search(r"if \(!pipeline\) clear\.push\('pipeline'\)\s*else if \(channel\) patch\.pipeline = pipeline",
+                     panel)
+    card = (UI / "components" / "watch" / "WatchCard.tsx").read_text(encoding="utf-8")
+    assert "save={(patch) => api.patchWatch(watch.id, { options: patch })}" in card and "channel={{" in card
+
+
 # ---- the video page ---------------------------------------------------------------------------
 
 
