@@ -26,6 +26,8 @@ from .manifest import MANIFEST_FILE, find_steps, has_yaml, line_marks, offers, s
 DEFAULT_MIN_DURATION = 10.0
 DEFAULT_MAX_DURATION = 60.0
 DEFAULT_MIN_SCORE = 55.0
+# Where a plugin with the ollama permission is told the local model answers, as in the app's settings.
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 # A moment run's steps, in the order the app runs them.
 MOMENT_STEPS = ("understand", "rate")
 # A moment from --moments without a score, and each sample moment, gets this one.
@@ -257,7 +259,12 @@ def probe_duration(ffprobe: str | None, video: Path) -> float | None:
 def read_transcript(path: str | None) -> dict:
     if not path:
         return {"language": "", "segments": []}
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return transcript_from(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def transcript_from(data) -> dict:
+    """A transcript as job.json's transcript.json holds it, from
+    {language, segments} or a bare list of segments."""
     if isinstance(data, list):  # a bare list of segments
         data = {"language": "", "segments": data}
     return {"language": data.get("language", ""), "segments": list(data.get("segments") or [])}
@@ -295,21 +302,32 @@ def read_moments(path: str) -> list[dict]:
         raise Refused(f"--moments: can't read {path} ({e.strerror or e})") from e
     except ValueError as e:
         raise Refused(f"--moments: {path} is not valid JSON ({e})") from e
+    try:
+        return moments_from(data)
+    except Refused as e:
+        raise Refused(f"--moments: {e}") from None
+
+
+def moments_from(data) -> list[dict]:
+    """The moments a run that understands or rates is handed, as job.json
+    holds them, from a list of {start, end, score?, label?, title?, reason?,
+    context?} or a finder's result.json (its ranges). Ids m1, m2... are
+    filled in, a missing score becomes DEFAULT_MOMENT_SCORE, and found_by is
+    clipskitty. Raises Refused with what is wrong."""
     if isinstance(data, dict) and isinstance(data.get("ranges"), list):
         data = data["ranges"]
     if not isinstance(data, list):
-        raise Refused("--moments: expected a list of {start, end, score?, label?, title?, reason?}, "
-                      "or a finder's result.json")
+        raise Refused("expected a list of {start, end, score?, label?, title?, reason?}, or a finder's result.json")
     out = []
     for i, item in enumerate(data):
         start, end = (item.get("start"), item.get("end")) if isinstance(item, dict) else (None, None)
         if not _number(start) or not _number(end) or not 0 <= start < end:
-            raise Refused(f"--moments: moment {i} needs a start and an end in seconds, the start first")
+            raise Refused(f"moment {i} needs a start and an end in seconds, the start first")
         score = item.get("score")
         if score is None:
             score = DEFAULT_MOMENT_SCORE
         elif not _number(score) or not 0 <= score <= 100:
-            raise Refused(f"--moments: moment {i}: score must be a number from 0 to 100, or left out")
+            raise Refused(f"moment {i}: score must be a number from 0 to 100, or left out")
         notes = item.get("context") if isinstance(item.get("context"), list) else []
         out.append(moment(i + 1, float(start), float(end), score, label=str(item.get("label") or ""),
                           title=str(item.get("title") or ""), reason=str(item.get("reason") or ""),
@@ -354,6 +372,6 @@ def label_warnings(manifest: dict, job_folder: Path) -> list[str]:
 
 
 __all__ = ["SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
-           "manifest_refusal", "models_for", "probe_duration", "read_moments", "read_transcript", "report_lines",
-           "run_steps", "sample_moments", "sample_video_wanted", "setting_value", "start", "time_limit",
-           "touches_video", "transcript_end", "typed_settings"]
+           "manifest_refusal", "models_for", "moments_from", "probe_duration", "read_moments", "read_transcript",
+           "report_lines", "run_steps", "sample_moments", "sample_video_wanted", "setting_value", "start",
+           "time_limit", "touches_video", "transcript_end", "transcript_from", "typed_settings"]

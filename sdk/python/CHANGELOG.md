@@ -25,6 +25,8 @@ The installed app puts its own SDK on the plugin's path, and it wins over one in
 - `run --sample` makes that video and transcript in the job folder and runs the plugin on them. A plugin without `video.read` or `ffmpeg` needs no FFmpeg for it: it gets the transcript and a 40-second length. A find run of a plugin without `video.read` no longer needs `--video`: its moments are fitted to `--duration`, else to the end of `--transcript`.
 - `python -m clipskitty_sdk frame VIDEO --at SECONDS` writes one frame as a PNG; with `--region "0.30,0.10,0.40,0.10"` it draws a box around that part of the screen and prints it in pixels. `--region` takes the numbers as one argument or several. Like `sample`, it refuses to write inside a plugin's folder.
 - `clipskitty_sdk.samples`: `sample_transcript()`, `SAMPLE_VIDEO_SECONDS`, `make_sample()`, `parse_region()`, `region_pixels()` and `write_frame()`.
+- `clipskitty_sdk.testing`, for a plugin's own tests: `run_plugin()` runs the plugin as `run` does and returns what it did (`ok`, `error`, `moments`, `answers`, `notes`, `events`, `log`); `make_job()` writes the job folder without running anything; `sample_video()` makes the sample video, and skips a pytest test when there is no FFmpeg; `sample_transcript()` and `SAMPLE_VIDEO_SECONDS` need nothing. A run that can't start raises `ContractError`.
+- `devrun.moments_from()` and `devrun.transcript_from()` take moments and a transcript as data rather than files.
 
 ## 1.1.0
 

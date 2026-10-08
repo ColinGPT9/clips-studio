@@ -144,6 +144,37 @@ It asks for the run the app would make, using the same helpers (`manifest.offers
 
 `clipskitty_sdk.manifest` offers the same in code: `load(folder)`, `validate(data)` (a report with `errors` and `warnings`), `validate_folder(folder)` (also checks the files the manifest names exist and that the folder has no symbolic links), `setting_value_problem(spec, value)` and `version_satisfies("2.0.0", ">=2.0, <3")`.
 
+## Testing your plugin
+
+`clipskitty_sdk.testing` runs your plugin from your own tests, as `run` does. It is for your PC, not for your plugin's code inside Clips Kitty. Your tests need pytest, which the `test` extra installs.
+
+```python
+from pathlib import Path
+
+from clipskitty_sdk import testing
+
+PLUGIN = Path(__file__).resolve().parent.parent   # the folder holding clipskitty.yaml
+
+
+def test_it_finds_the_quark_burst(tmp_path):
+    run = testing.run_plugin(PLUGIN, transcript=testing.sample_transcript(),
+                             duration=testing.SAMPLE_VIDEO_SECONDS, tmp_path=tmp_path)
+    assert run.ok, run.error
+    assert [m.label for m in run.moments] == ["words_said"]
+```
+
+| Name | What it does |
+|---|---|
+| `run_plugin(plugin, *, video=None, transcript=None, duration=None, settings=None, steps=None, moments=None, tmp_path=None, timeout=None, games=())` | Checks the manifest, builds the job folder with `host.build_job`, starts `run.command` (`{python}` is the Python running your tests), and reads the answer with `host.read_result` or `host.read_answers`. Without `steps` it asks for the run the app would make. Returns a `PluginRun`. The job folder is a new folder inside `tmp_path` (else the system's temporary folder), and is kept. `timeout` is in seconds; the default is the app's limit. |
+| `PluginRun` | `ok`; `error` (the plugin's own last error line, else why the run stopped or why Clips Kitty can't use its answer); `moments`, as `Moment`s: in a find run its ranges as Clips Kitty takes them (fitted to the video's length, scored ones best first, cut to the clip limit, numbered `m1`, `m2`…, `score` `None` when it gave none), in a run that understands or rates the moments it was handed, in their order, with the scores this run gave them and this run's `notes`; `answers` (by moment id, from `host.read_answers`); `notes` (result.json's `notes`); `events` (every progress, log and error line); `log` (its log lines, standard error included, and any `ignored:` line); `steps`; `folder` |
+| `make_job(folder, plugin, *, video=None, transcript=None, duration=None, settings=None, steps=None, moments=None, games=())` | Writes the same job folder at `folder` without running anything, and returns `folder`, so a test can call your own functions on `read_job(folder)` |
+| `sample_video(folder)` | Makes the 40-second sample video (as `sample` does) in `folder`, with its transcript beside it, and returns its path. It needs FFmpeg on `PATH`: without it a pytest test that calls it is skipped ("needs FFmpeg"), and anywhere else it raises `SampleUnavailable`. It refuses a folder inside a plugin's folder. |
+| `sample_transcript()`, `SAMPLE_VIDEO_SECONDS` | What is said in the sample video, and its length (40.0). They need nothing, so a test of a plugin that reads only the transcript runs without FFmpeg. |
+
+`transcript` is a `{language, segments}` mapping, a list of segments or a transcript.json path. `moments` are `Moment`s from an earlier run (so a finder's moments can be handed to your rater) or `{start, end, score?, label?, title?, reason?, context?}` mappings; without them a run that understands or rates gets 5 sample moments, as with `run`. `games` are names for `video.games`. A plugin with `video.read` needs `video`; any other plugin, a finder included, can leave it out. As in the app, only what the manifest's permissions cover reaches the plugin.
+
+A run that can't start raises `ContractError` before any folder is made: a manifest Clips Kitty would refuse (its `errors` are the manifest's errors), a step the plugin doesn't offer, a setting it doesn't declare, or no video for a plugin with `video.read`.
+
 ## Calling Clips Kitty's API
 
 ```python

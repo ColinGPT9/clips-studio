@@ -448,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--min-duration", type=float, default=devrun.DEFAULT_MIN_DURATION)
     run.add_argument("--max-duration", type=float, default=devrun.DEFAULT_MAX_DURATION)
     run.add_argument("--focus", help="what the user asked the clips to be about")
-    run.add_argument("--ollama-host", default="http://localhost:11434")
+    run.add_argument("--ollama-host", default=devrun.DEFAULT_OLLAMA_HOST)
     run.add_argument("--ollama-model", help="the local model the app would hand over")
     run.add_argument("--python", help="the Python to run {python} commands with")
     run.add_argument("--ffmpeg")
