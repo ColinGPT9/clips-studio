@@ -2,7 +2,7 @@
 
 # Developer launch drafts
 
-Drafts for telling developers about the Clips Kitty SDK. Each one waits for Colin. Nothing in this file has been posted, uploaded or set up anywhere.
+Drafts for telling developers about the Clips Kitty SDK. Each one waits for Colin. None of them has been posted, uploaded or set up anywhere, though this file itself can be read on the public branch (below).
 
 The channels' rules quoted below were read on 2026-10-08, from the pages linked beside them. Every claim about Clips Kitty was checked against this repository's code and docs on the same day.
 
@@ -22,7 +22,7 @@ The channels' rules quoted below were read on 2026-10-08, from the pages linked 
 
 ## Before any of it
 
-- **Pushing and merging.** This branch is public, so pushing it makes this file readable. Merging it deploys `site/` to GitHub Pages (`.github/workflows/pages.yml`), and the Hugging Face Space mirror too when its secrets are set (`.github/workflows/mirror.yml`). Both wait for Colin.
+- **Already readable; merging waits.** This branch is public and has been pushed, as Colin's brief asks after every commit (`docs/platform/BRIEF.md`), so this file, the source of the developers page (`site/developers.html`), the root README's SDK section and the developer docs can already be read on it. Nothing is posted anywhere, and the site isn't deployed. Merging it deploys `site/` to GitHub Pages (`.github/workflows/pages.yml`), and the Hugging Face Space mirror too when its secrets are set (`.github/workflows/mirror.yml`). Merging waits for Colin.
 - **What works only after the merge.** `main` doesn't have `sdk/python/pyproject.toml` yet. Until this branch is merged, the `pip install … @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python` line fails, the `blob/main` links below go to pages `main` doesn't have, and a template's own GitHub workflow can't install the SDK. Post nothing before the merge.
 - **Which release runs plugins.** No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source. A developer can try the SDK on its own (`new`, `run --sample`) as soon as the merge is in, but putting a plugin into Clips Kitty needs a source run until then. Show HN asks for work that people can try (below), so the best time to post is once a release runs plugins.
 - **Windows.** Every PowerShell command here was written to the docs' rules (`py -m`, commas quoted, no `&&`) but none has been run on Windows. Run the three Quickstart commands on a Windows PC first.
@@ -143,7 +143,7 @@ The test video has a red banner from 22 to 27 seconds and a loud sound at the sa
 ## Its limits
 
 - No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
-- Plugins run on Clips Kitty's own Python 3.11, with the standard library (minus a few modules the app leaves out) and the SDK. Clips Kitty can't install other packages yet, so no numpy, OpenCV or OCR for now.
+- Plugins run on Clips Kitty's own Python 3.11, with the standard library (minus a few modules the app leaves out) and the SDK. Clips Kitty can't install other packages yet. A few happen to be inside the app, numpy and OpenCV among them, and can be imported, but they aren't promised and may change with an app update.
 - Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty doesn't sandbox it. The install screen says what it declares.
 - Edit and export are coming later.
 - The SDK isn't on PyPI yet: it installs from GitHub.
@@ -320,7 +320,13 @@ What it does: a tag like `sdk-v1.2.0` starts it, and nothing else does. The buil
 1. On PyPI, add a pending publisher (https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/) for the project `clipskitty-sdk`: owner `ColinGPT9`, repository `clips-studio`, workflow `sdk-release.yml`, environment `pypi`. That page warns: "A "pending" publisher does not create a project or reserve a project's name until it is actually used to publish." PyPI's JSON API had no project called `clipskitty-sdk` on 2026-10-08, which doesn't prove the name will still be free.
 2. On GitHub, add an environment called `pypi` in the repository's settings.
 3. Save the block below as `.github/workflows/sdk-release.yml`, with the commits filled in.
-4. In `sdk/python/CHANGELOG.md`, change `## 1.2.0 (not released yet)` to the release. Change what says the SDK isn't on PyPI: the note at the top of `sdk/python/pyproject.toml` (`tests/test_plugin_sdk_package.py` checks it) and the Package row in `docs/developers/sdk.md`.
+4. In `sdk/python/CHANGELOG.md`, change `## 1.2.0 (not released yet)` to the release, and the line under the title, "No version is on PyPI yet." (`tests/test_plugin_sdk_package.py` checks that line word for word, and the `pyproject.toml` note below). Then change everything else that says the SDK isn't on PyPI or installs it from GitHub: search `sdk/python`, `docs/developers`, `site/`, `README.md` and this file for "PyPI", "git+https" and "installs from GitHub". On 2026-10-08 that found:
+   - the note at the top of `sdk/python/pyproject.toml`;
+   - the Package row in `docs/developers/sdk.md`;
+   - in `docs/developers/first-game-pipeline.md`, the note at the top ("Git (for step 1's install)") and the Git line in its "You need" list, and the Git line under the Quickstart on `site/developers.html`;
+   - the DEV draft's last limit, above;
+   - the git-based `pip install` commands in `README.md`, `sdk/python/README.md`, the developer docs, each template's README, `site/developers.html` and this file;
+   - the workflow that `new` puts in every plugin (`sdk/python/clipskitty_sdk/templates/_shared/github/workflows/clipskitty-check.yml`): its comment says it installs from GitHub until the SDK is on PyPI, and its git install becomes an install of the released version from PyPI.
 5. Tag a commit whose CI passed: `git tag sdk-v1.2.0`, then `git push origin sdk-v1.2.0`.
 
 The PyPA guide also gives the `pypi` environment a `url`, the project's page on PyPI. That page doesn't exist until the first upload, so the draft leaves it out.

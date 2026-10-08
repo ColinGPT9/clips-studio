@@ -65,12 +65,15 @@ class FakeApp:
     """Clips Kitty's API on 127.0.0.1, as far as install uses it. It records
     every request, with its headers. `secrets` are the session secrets it
     accepts; `session_path` is the file its 403 answer names; `plans` are
-    the answers to POST /plugins/plan, in turn (the last one repeats)."""
+    the answers to POST /plugins/plan, in turn (the last one repeats);
+    `redirects` maps a path to the address its 302 answer sends on to."""
 
-    def __init__(self, *, version="2.1.0", plugins=True, secrets=(SECRET,), session_path="", plans=None):
+    def __init__(self, *, version="2.1.0", plugins=True, secrets=(SECRET,), session_path="", plans=None,
+                 redirects=None):
         self.version, self.plugins, self.secrets = version, plugins, set(secrets)
         self.session_path = str(session_path)
         self.plans = list(plans or [_plan()])
+        self.redirects = dict(redirects or {})
         self.requests = []
         outer = self
 
@@ -83,6 +86,8 @@ class FakeApp:
                 status, reply = outer.answer(self.command, self.path, body, self.headers)
                 data = json.dumps(reply).encode("utf-8")
                 self.send_response(status)
+                if outer.redirects.get(self.path):
+                    self.send_header("Location", outer.redirects[self.path])
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -98,6 +103,8 @@ class FakeApp:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def answer(self, method, path, body, headers):
+        if self.redirects.get(path):
+            return 302, None
         if (method, path) == ("GET", "/health"):
             return 200, {"ok": True, "app_version": self.version, "api_version": 1}
         if (method, path) == ("GET", "/plugins"):
@@ -238,6 +245,109 @@ def test_install_says_when_the_app_is_older_than_plugin_support(capsys, monkeypa
 def test_the_from_source_link_points_at_a_real_heading():
     assert installer.FROM_SOURCE == "https://github.com/ColinGPT9/clips-studio#from-source"
     assert installer.FROM_SOURCE in installer.TOO_OLD
+
+
+def _read_request(conn) -> None:
+    """Read one HTTP request, its body included, so hanging up after the
+    answer doesn't reset the connection before the answer is read."""
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = conn.recv(65536)
+        if not chunk:
+            return
+        data += chunk
+    head, _, body = data.partition(b"\r\n\r\n")
+    length = re.search(rb"(?im)^content-length:\s*(\d+)", head)
+    while length and len(body) < int(length.group(1)):
+        chunk = conn.recv(65536)
+        if not chunk:
+            return
+        body += chunk
+
+
+@pytest.fixture
+def raw_servers():
+    """Servers on 127.0.0.1 that answer every request with the same bytes,
+    then hang up: what something that isn't Clips Kitty, or a Clips Kitty
+    closing part way through an answer, sends."""
+    made = []
+
+    def make(reply: bytes) -> str:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        listener.settimeout(0.2)
+
+        def serve():
+            while listener.fileno() != -1:
+                try:
+                    conn, _ = listener.accept()
+                except OSError:
+                    continue
+                with conn:
+                    try:
+                        conn.settimeout(10)
+                        _read_request(conn)
+                        conn.sendall(reply)
+                        conn.shutdown(socket.SHUT_WR)
+                    except OSError:
+                        pass
+
+        threading.Thread(target=serve, daemon=True).start()
+        made.append(listener)
+        return f"http://127.0.0.1:{listener.getsockname()[1]}"
+
+    yield make
+    for listener in made:
+        listener.close()
+
+
+def test_install_says_what_is_wrong_with_an_answer_that_isnt_clips_kittys(capsys, monkeypatch, plugin, data_dir,
+                                                                           raw_servers):
+    """http.client's own errors, which urllib passes on, are error lines with
+    exit code 2, not tracebacks."""
+    ssh = raw_servers(b"SSH-2.0-OpenSSH_9.6\r\n")
+    for api, said in (
+            (ssh, installer.NOT_CLIPS_KITTY.format(api=ssh)),
+            ("http://localhost:87x5", ("--api http://localhost:87x5 isn't an address install can use: give one "
+                                       "such as http://127.0.0.1:8765")),
+            ("http://127.0.0.1:99999", installer.BAD_API.format(api="http://127.0.0.1:99999"))):
+        code, out, err, asked = _install(capsys, monkeypatch, plugin, "--api", api, "--data-dir", data_dir)
+        assert (code, asked) == (2, []), err
+        assert err.splitlines()[-1] == f"error: {said}"
+
+    # An answer cut off part way: on its own, and in a --watch round, which goes on watching.
+    cut = raw_servers(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n"
+                      b'{"ok": 1}')
+    for path in ("/health", "/plugins/plan"):
+        with pytest.raises(installer.InstallRefused) as refused:
+            installer._call(cut, "POST", path, {})
+        assert str(refused.value) == f"Clips Kitty's answer to POST {path} stopped part way: is it still running?"
+    out, err = io.StringIO(), io.StringIO()
+    session = data_dir / "plugins" / "session.secret"
+    watching = installer._reinstall(cut, plugin, session, out=out, err=err)
+    assert watching is True
+    assert err.getvalue().splitlines() == [
+        "error: Clips Kitty's answer to POST /plugins/plan stopped part way: is it still running?",
+        "Still watching: save again to try again."]
+
+
+def test_install_follows_no_redirect_to_another_address(capsys, monkeypatch, apps, plugin, data_dir):
+    """A redirect to another address, even one on this PC, isn't followed,
+    so the session header goes nowhere but the address install was given."""
+    elsewhere = apps(session_path=data_dir / "plugins" / "session.secret")
+    app = apps(session_path=data_dir / "plugins" / "session.secret",
+               redirects={"/plugins/plan": elsewhere.url + "/plugins/plan"})
+    code, out, err, asked = _install(capsys, monkeypatch, plugin, "--api", app.url, "--data-dir", data_dir,
+                                     answers=["y"])
+    assert (code, asked) == (1, [])
+    assert err.splitlines()[-1] == "error: Clips Kitty answered 302 to the plan"
+    assert app.calls() == [("GET", "/health"), ("GET", "/plugins"), ("POST", "/plugins/plan")]
+    assert elsewhere.requests == []
+    # One to the same address (a framework's added or removed slash) is followed.
+    app.redirects = {"/plugins/": app.url + "/plugins"}
+    status, answer = installer._call(app.url, "GET", "/plugins/")
+    assert (status, answer) == (200, {"plugins": [], "builtin": []})
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     anchors = {re.sub(r"[^\w\- ]", "", h.lower()).replace(" ", "-")
                for h in re.findall(r"^#{1,6} +(.+?) *#*$", readme, re.M)}

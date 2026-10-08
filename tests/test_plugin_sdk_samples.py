@@ -9,6 +9,7 @@ ones that check what happens without it clear PATH, so they run everywhere.
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -287,18 +288,42 @@ def test_run_sample_needs_no_video(tmp_path, capsys):
     assert "note: no --moments given, so the plugin gets 5 sample moments" in err
 
 
+def _typed(path) -> str:
+    """A path as a refusal's example shows it: in double quotes when it has a space."""
+    text = str(path)
+    return f'"{text}"' if " " in text else text
+
+
 def test_sample_refuses_a_plugin_folder(tmp_path, capsys, monkeypatch):
     plugin = _words_finder(tmp_path)
     before = _files(plugin)
-    refusal = ("error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. "
-               f"Write the sample somewhere else, for example: {python_command()} sample ../sample.mp4\n")
+
+    def refusal(example):
+        return ("error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. "
+                f"Write the sample somewhere else, for example: {python_command()} sample {example}\n")
+
+    # From outside the plugin's folder, the place beside it, in full.
     for out in (plugin / "sample.mp4", plugin / "media" / "deeper" / "sample.mp4"):
         assert _cli("sample", out) == 2
-        assert capsys.readouterr().err == refusal
-    monkeypatch.chdir(plugin / "src")
+        assert capsys.readouterr().err == refusal(_typed(tmp_path.resolve() / "sample.mp4"))
+    # From inside it, a place outside it, even from its src folder, so
+    # running the example isn't refused again.
+    monkeypatch.chdir(plugin)
     assert _cli("sample", "sample.mp4") == 2
-    assert capsys.readouterr().err == refusal
+    assert capsys.readouterr().err == refusal(os.path.join("..", "sample.mp4"))
+    monkeypatch.chdir(plugin / "src")
+    example = os.path.join("..", "..", "sample.mp4")
+    for out in ("sample.mp4", os.path.join("..", "sample.mp4")):
+        code = _cli("sample", out)
+        assert code == 2
+        assert capsys.readouterr().err == refusal(example)
+    assert samples.plugin_folder_holding(Path(example)) is None
     assert _files(plugin) == before
+    # A path with a space is in double quotes, so it can be typed as it is.
+    spaced = _plugin(tmp_path / "my plugins", "quarkbloom-words", inputs="transcript", outputs="ranges",
+                     permissions="transcript.read", main=WORDS_FINDER_MAIN)
+    beside = tmp_path.resolve() / "my plugins" / "sample.mp4"
+    assert samples.beside_plugin(spaced.resolve(), "sample.mp4") == f'"{beside}"'
     assert samples.plugin_folder_holding(Path("../../sample.mp4")) is None  # beside the plugin is fine
     assert samples.plugin_folder_holding(Path("../sample.mp4")) == plugin.resolve()
 
@@ -448,12 +473,85 @@ def test_frame_refuses_a_plugin_folder(tmp_path, capsys, monkeypatch):
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"not decoded")
     before = _files(plugin)
-    refusal = ("error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. "
-               "Write the frame somewhere else, for example: --out ../frame.png\n")
+
+    def refusal(example):
+        return ("error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. "
+                f"Write the frame somewhere else, for example: --out {example}\n")
+
     for out in (plugin / "frame.png", plugin / "src" / "shots" / "frame.png"):
         assert _cli("frame", video, "--at", "1", "--out", out) == 2
-        assert capsys.readouterr().err == refusal
+        assert capsys.readouterr().err == refusal(_typed(tmp_path.resolve() / "frame.png"))
     monkeypatch.chdir(plugin)
     assert _cli("frame", video, "--at", "1") == 2  # frame-1s.png would go in the plugin's folder
-    assert capsys.readouterr().err == refusal
+    assert capsys.readouterr().err == refusal(os.path.join("..", "frame.png"))
+    monkeypatch.chdir(plugin / "src")
+    example = os.path.join("..", "..", "frame.png")
+    for out in ("frame.png", os.path.join("..", "frame.png")):
+        code = _cli("frame", video, "--at", "1", "--out", out)
+        assert code == 2
+        assert capsys.readouterr().err == refusal(example)
+    assert samples.plugin_folder_holding(Path(example)) is None
     assert _files(plugin) == before
+
+
+@needs_ffmpeg
+def test_frame_reads_a_10_bit_video(tmp_path, capsys):
+    """A 10-bit (HDR) recording gives an 8-bit picture, as media.frames
+    reads it, not "an unexpected picture"."""
+    video = tmp_path / "ten.mkv"
+    made = subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x2f7f1a:s=64x36:r=25:d=1",
+                           "-pix_fmt", "yuv420p10le", "-c:v", "ffv1", str(video)], capture_output=True, timeout=120)
+    if made.returncode != 0:
+        pytest.skip("this FFmpeg can't write a 10-bit FFV1 video")
+    out = tmp_path / "ten.png"
+    code = _cli("frame", video, "--at", "0.5", "--out", out)
+    assert code == 0
+    assert capsys.readouterr().out == f"wrote {out}: the frame at 0.5 s of this 64x36 video\n"
+    assert _near(_pixel(_rgb(out), 10, 10), (0x2F, 0x7F, 0x1A))
+
+
+@needs_ffmpeg
+def test_sample_and_frame_say_when_they_cant_write(tmp_path, capsys, monkeypatch, made_sample):
+    """A path they can't write to is an error line, not a traceback, and
+    leaves no half-written file."""
+    in_the_way = tmp_path / "afile"
+    in_the_way.write_text("", encoding="utf-8")
+    not_a_folder = f"{in_the_way} is a file, not a folder"
+    out = in_the_way / "s.mp4"
+    code = _cli("sample", out)
+    assert code == 1
+    assert capsys.readouterr().err == f"error: couldn't write {out}: {not_a_folder}\n"
+    # A folder, even a plugin's own (only the folders above it are checked for a plugin).
+    plugin = _words_finder(tmp_path)
+    before = _files(tmp_path)
+    for folder in (plugin, tmp_path):
+        code = _cli("sample", folder)
+        assert code == 1
+        assert capsys.readouterr().err == f"error: {folder} is a folder: name the video file to write, not a folder\n"
+    assert _files(tmp_path) == before
+    # The job folder of run --sample.
+    job = in_the_way / "job"
+    code = _cli("run", plugin, "--sample", "--job-dir", job)
+    assert code == 2
+    assert capsys.readouterr().err.endswith(
+        f"error: couldn't write {job.resolve() / 'sample.mp4'}: {in_the_way.resolve()} is a file, not a folder\n")
+
+    out = in_the_way / "f.png"
+    code = _cli("frame", made_sample, "--at", "23", "--out", out)
+    assert code == 1
+    assert capsys.readouterr().err == f"error: couldn't write {out}: {not_a_folder}\n"
+    code = _cli("frame", made_sample, "--at", "23", "--out", tmp_path)
+    assert code == 1
+    assert capsys.readouterr().err == f"error: {tmp_path} is a folder: name the picture file to write, not a folder\n"
+    assert _files(tmp_path) == before
+
+    # When the finished video can't be put in place, its temporary file goes too.
+    def refuse(src, dst):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(samples.os, "replace", refuse)
+    out = tmp_path / "media" / "sample.mp4"
+    with pytest.raises(samples.SampleError) as e:
+        samples.make_sample(out, FFMPEG)
+    assert str(e.value) == f"couldn't write {out}: Permission denied"
+    assert list(out.parent.iterdir()) == []

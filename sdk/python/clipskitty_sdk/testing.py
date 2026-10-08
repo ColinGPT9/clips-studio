@@ -213,7 +213,18 @@ def _games(games, duration) -> list[dict]:
     return devrun.games_for(names, (), duration) + shaped
 
 
-def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, games) -> _Prepared:
+def _text_pairs(given, what: str) -> dict[str, str]:
+    """{name: text} from a mapping of names to values, as `run`'s
+    NAME=VALUE options give them."""
+    if given is None:
+        return {}
+    if not isinstance(given, dict) or not all(isinstance(k, str) and k for k in given):
+        raise _refuse(what, "expected a dict of names to values")
+    return {k: str(v) for k, v in given.items()}
+
+
+def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, games, ollama_host=None,
+             ollama_model=None, models=None) -> _Prepared:
     """Every check `python -m clipskitty_sdk run` makes before a job folder
     exists, as ContractError."""
     folder = Path(plugin).resolve()
@@ -233,6 +244,13 @@ def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, g
         host.job_settings(manifest, settings)
     except ValueError as e:
         raise _refuse("settings", str(e)) from None
+    try:
+        where = devrun.models_for(manifest, _text_pairs(models, "models"))
+    except devrun.Refused as e:
+        raise _refuse("models", str(e).removeprefix("--model: ")) from None
+    for name, value in (("ollama_host", ollama_host), ("ollama_model", ollama_model)):
+        if value is not None and not isinstance(value, str):
+            raise _refuse(name, "expected text")
 
     if video is not None:
         video = Path(video).resolve()
@@ -274,8 +292,10 @@ def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, g
         "focus": None,
         "ffmpeg": shutil.which("ffmpeg"),
         "ffprobe": shutil.which("ffprobe"),
-        "ollama": {"host": devrun.DEFAULT_OLLAMA_HOST, "model": ""},
-        "models": {},
+        # As `run` hands them over: no model unless one is named, as when
+        # Clips Kitty's AI runs at a cloud provider.
+        "ollama": {"host": ollama_host or devrun.DEFAULT_OLLAMA_HOST, "model": ollama_model or ""},
+        "models": where,
         "steps": list(asked) if not find_run or uses_steps(manifest) else None,
         "moments": handed,
     }
@@ -283,7 +303,7 @@ def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, g
 
 
 def make_job(folder, plugin, *, video=None, transcript=None, duration=None, settings=None, steps=None,
-             moments=None, games=()) -> Path:
+             moments=None, games=(), ollama_host=None, ollama_model=None, models=None) -> Path:
     """Write the job folder Clips Kitty would make for the plugin in folder
     `plugin`, at `folder`, and return `folder`: `read_job(folder)` then
     gives the plugin's Job.
@@ -299,13 +319,23 @@ def make_job(folder, plugin, *, video=None, transcript=None, duration=None, sett
     from an earlier run, or {start, end, score?, label?, title?, reason?,
     context?} mappings; without them it gets 5 sample moments spread through
     the video. `games` are names of games the video shows, for video.games.
+    `ollama_model` is the creator's local model, for a plugin with the
+    `ollama` permission (`run`'s --ollama-model): without it the job names
+    none, as when Clips Kitty's AI runs at a cloud provider, and
+    local_model refuses. `ollama_host` is its address (default
+    http://localhost:11434). `models` maps a model the manifest lists to
+    where it is on this PC (`run`'s --model NAME=PATH). Secret settings are
+    never in the job folder: run_plugin's `secrets` hands them over; with
+    make_job, set CLIPSKITTY_SECRET_<NAME> in the test's environment (pytest's
+    monkeypatch.setenv) before calling job.secret().
 
     Raises ContractError when Clips Kitty would refuse the plugin's manifest,
     and for anything `python -m clipskitty_sdk run` refuses (a step the
     plugin doesn't offer, a setting it doesn't declare, no video for a plugin
     with video.read), before anything is written."""
     prepared = _prepare(plugin, video=video, transcript=transcript, duration=duration, settings=settings,
-                        steps=steps, moments=moments, games=games)
+                        steps=steps, moments=moments, games=games, ollama_host=ollama_host,
+                        ollama_model=ollama_model, models=models)
     folder = Path(folder).resolve()
     job, said = host.build_job(prepared.manifest, output_dir=folder / "out", **prepared.build)
     host.write_job(folder, job, said)
@@ -335,22 +365,27 @@ def _found(i: int, r: dict, *, plugin_id: str, notes: bool) -> Moment:
 
 
 def run_plugin(plugin, *, video=None, transcript=None, duration=None, settings=None, steps=None, moments=None,
-               tmp_path=None, timeout=None, games=()) -> PluginRun:
+               tmp_path=None, timeout=None, games=(), ollama_host=None, ollama_model=None, models=None,
+               secrets=None) -> PluginRun:
     """Run the plugin in folder `plugin` as Clips Kitty would, and return
     what it did as a PluginRun.
 
-    The inputs are make_job's. The job folder is a new folder inside
-    `tmp_path` (pass pytest's, which pytest cleans up), else in the system's
-    temporary folder; either way it is kept, in `PluginRun.folder`. `timeout`
-    is in seconds; without it the plugin may take as long as Clips Kitty
-    would allow (run.timeout_minutes, else 60 minutes to find and 10 to
-    understand or rate).
+    The inputs are make_job's. `secrets` are the plugin's secret settings by
+    name (`run`'s --secret NAME=VALUE), handed over in the environment as
+    Clips Kitty hands them over, for job.secret(). The job folder is a new
+    folder inside `tmp_path` (pass pytest's, which pytest cleans up), else
+    in the system's temporary folder; either way it is kept, in
+    `PluginRun.folder`. `timeout` is in seconds; without it the plugin may
+    take as long as Clips Kitty would allow (run.timeout_minutes, else 60
+    minutes to find and 10 to understand or rate).
 
     A plugin that fails, or gives an answer Clips Kitty can't use, gives a
     PluginRun with `ok` False and `error` saying why. A run that can't start
     raises ContractError, as make_job does, before any folder is made."""
     prepared = _prepare(plugin, video=video, transcript=transcript, duration=duration, settings=settings,
-                        steps=steps, moments=moments, games=games)
+                        steps=steps, moments=moments, games=games, ollama_host=ollama_host,
+                        ollama_model=ollama_model, models=models)
+    secrets = _text_pairs(secrets, "secrets")
     if timeout is not None and not (_float(timeout) and timeout > 0):
         raise _refuse("timeout", "must be a number of seconds above 0")
     limit = float(timeout) if timeout is not None else devrun.time_limit(prepared.manifest, prepared.steps)
@@ -361,8 +396,8 @@ def run_plugin(plugin, *, video=None, transcript=None, duration=None, settings=N
 
     events: list[dict] = []
     outcome = devrun.start(prepared.folder, prepared.manifest, job_folder, job, said,
-                           python=host.find_python() or "python", base_env=os.environ, timeout=limit,
-                           on_event=events.append)
+                           python=host.find_python() or "python", base_env=os.environ, secrets=secrets,
+                           timeout=limit, on_event=events.append)
     run = PluginRun(events=events, log=[e["message"] for e in events if e["type"] == "log"],
                     steps=prepared.steps, folder=job_folder)
     if not outcome.ok:

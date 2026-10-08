@@ -2,7 +2,7 @@
 
 This page builds a pipeline plugin for one game, from nothing to a plugin Clips Kitty runs. The game is **Quarkbloom Arena, a made-up game**: when a player makes a big play, a red "quark burst" banner shows at the top of the screen and the crowd gets loud. The plugin finds those moments in a recording, and Clips Kitty turns them into clips. Your game will show something else; the steps are the same.
 
-> **Which Clips Kitty runs it.** No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source. Steps 1 to 6 need only Python and FFmpeg. Step 7 needs a Clips Kitty that runs plugins: until a release does, run it from source ([From source](../../README.md#from-source)).
+> **Which Clips Kitty runs it.** No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source. Steps 1 to 6 don't need Clips Kitty: only Python, FFmpeg and Git (for step 1's install). Step 7 needs a Clips Kitty that runs plugins: until a release does, run it from source ([From source](../../README.md#from-source)).
 
 You need:
 - **Python 3.11**, the Python Clips Kitty runs plugins on. The SDK works on 3.10 or newer, but test on 3.11: newer Python code fails there.

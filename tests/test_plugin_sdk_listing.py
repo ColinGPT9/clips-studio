@@ -205,12 +205,18 @@ def test_listing_checks_its_arguments_and_where_it_writes(repo, capsys, monkeypa
         assert (code, _errors(err)) == (2, [f"error: {message}"]), args
     assert not (repo.root.parent / f"{NAME}.yaml").exists()
 
-    # Never inside a plugin's folder, which Clips Kitty copies on install.
+    # Never inside a plugin's folder, which Clips Kitty copies on install. The
+    # example is outside it from its src folder too, so following it works.
+    inside = ("error: that is inside a plugin's folder, and Clips Kitty copies everything there on install. Write "
+              "the listing somewhere else, for example: --out {}")
+    monkeypatch.chdir(repo.folder / "src")
+    example = os.path.join("..", "..", f"{NAME}.yaml")
+    for extra in ([], ["--out", os.path.join("..", f"{NAME}.yaml")]):
+        code, out, err = _listing(capsys, "..", "--section", "gaming/generic", *extra)
+        assert (code, _errors(err)) == (2, [inside.format(example)]), extra
     monkeypatch.chdir(repo.folder)
     code, out, err = _listing(capsys, ".", "--section", "gaming/generic")
-    assert (code, _errors(err)) == (2, [("error: that is inside a plugin's folder, and Clips Kitty copies everything "
-                                         "there on install. Write the listing somewhere else, for example: --out "
-                                         f"../{NAME}.yaml")])
+    assert (code, _errors(err)) == (2, [inside.format(os.path.join("..", f"{NAME}.yaml"))])
     # Never over another file: a listing that exists gets a version with --to.
     (repo.root.parent / "taken.yaml").write_text("keep\n", encoding="utf-8")
     code, out, err = _listing(capsys, ".", "--section", "gaming/generic", "--out", "../taken.yaml")
@@ -327,6 +333,39 @@ def test_listing_outside_a_repository_says_so(tmp_path, monkeypatch, capsys):
     assert (code, _errors(err)) == (2, [(f"error: {folder.resolve()} isn't in a git repository: a listing names a "
                                          "commit of your plugin's GitHub repository. Put the folder in one, push it "
                                          "to GitHub, then run this again")])
+
+
+def test_listing_shows_gits_own_words_when_the_repository_cant_be_read(repo, tmp_path, monkeypatch):
+    """A repository git refuses to read (owned by another user, as on a
+    shared or external drive) isn't called "not a git repository": git's
+    first line, and the command it suggests, are shown."""
+    real = listing._git
+    said = {}
+
+    def git_saying(git_path, folder, *args):
+        if args == ("rev-parse", "--show-prefix") and said:
+            return subprocess.CompletedProcess([git_path, *args], 128, "", said["stderr"])
+        return real(git_path, folder, *args)
+
+    monkeypatch.setattr(listing, "_git", git_saying)
+    manifest = {"id": PLUGIN_ID, "version": "1.0.0"}
+    said["stderr"] = (f"fatal: detected dubious ownership in repository at '{repo.root}'\n"
+                      "To add an exception for this directory, call:\n\n"
+                      f"\tgit config --global --add safe.directory {repo.root}\n")
+    with pytest.raises(listing.ListingRefused) as refused:
+        listing.place(repo.folder, manifest)
+    assert str(refused.value) == (f"git rev-parse --show-prefix failed: fatal: detected dubious ownership in "
+                                  f"repository at '{repo.root}'. Git says to run: git config --global --add "
+                                  f"safe.directory {repo.root}")
+    # Git in another language: no .git at or above the folder still means no repository.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if any((where / ".git").exists() for where in (outside.resolve(), *outside.resolve().parents)):
+        pytest.skip("the test's folder is inside a git repository")
+    said["stderr"] = "fatal: Kein Git-Repository (oder irgendeines der Elternverzeichnisse): .git\n"
+    with pytest.raises(listing.ListingRefused) as refused:
+        listing.place(outside, manifest)
+    assert str(refused.value) == listing.NOT_A_REPOSITORY.format(folder=outside)
 
 
 # ---- placeholders --------------------------------------------------------------------------

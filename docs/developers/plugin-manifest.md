@@ -67,7 +67,7 @@ Required fields are in bold.
 | **`kind`** | What sort of plugin | `pipeline`. `caption-style`, `publisher`, `source`, `integration`, `provider` and `component` are planned and refused with a message saying so. |
 | **`capability`** | What the pipeline does | `highlight_detection` |
 | **`description`** | One or two sentences | up to 1000 characters; say honestly what it detects |
-| **`license`** | The plugin's licence, your choice | an SPDX identifier: `MIT`, `Apache-2.0`, `GPL-3.0-only`, `MIT OR Apache-2.0`. Shown on every Marketplace card. Using the SDK (MIT) puts no licence on your plugin. |
+| **`license`** | The plugin's licence, your choice | an SPDX identifier: `MIT`, `Apache-2.0`, `GPL-3.0-only`, `MIT OR Apache-2.0`. Shown on every Marketplace card. Using the SDK (MIT) doesn't put your plugin under the AGPL; code that `new` copied from a template keeps the SDK's MIT notice, in `TEMPLATE-LICENSE.txt`. |
 | **`requires.clips_kitty`** | App versions it works with | a range: `>=2.0`, `>=2.0, <3`, `~=2.1` |
 | **`requires.plugin_api`** | The plugin contract it was written for | `1` |
 | **`run.command`** | What to start | a list: `["{python}", "src/main.py"]`, or a program in the plugin's folder by a path with a slash, `["bin/detect.exe"]` or `["./detect"]`. A bare name such as `bash` or `node` is refused, because it would be looked up on `PATH` rather than be the plugin's own program. `{python}` may only come first. |

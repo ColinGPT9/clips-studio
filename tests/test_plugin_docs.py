@@ -330,19 +330,15 @@ def test_the_cookbook_recipes_run(tmp_path, title):
     if reads_video and not FFMPEG:
         pytest.skip("needs FFmpeg and FFprobe")
     video = testing.sample_video(tmp_path / "media") if reads_video else None
-    folder = testing.make_job(tmp_path / "job", plugin, video=video, transcript=testing.sample_transcript(),
-                              duration=testing.SAMPLE_VIDEO_SECONDS)
-
-    server = None
+    server, model = None, {}
     if "ollama" in manifest["permissions"]:
         _FakeModel.asked = []
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _FakeModel)
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        job_json = folder / "job.json"
-        data = json.loads(job_json.read_text(encoding="utf-8"))
-        data["tools"]["ollama"] = {"host": f"http://127.0.0.1:{server.server_address[1]}", "model": "test-model"}
-        job_json.write_text(json.dumps(data), encoding="utf-8")
+        model = {"ollama_host": f"http://127.0.0.1:{server.server_address[1]}", "ollama_model": "test-model"}
     try:
+        folder = testing.make_job(tmp_path / "job", plugin, video=video, transcript=testing.sample_transcript(),
+                                  duration=testing.SAMPLE_VIDEO_SECONDS, **model)
         namespace = {"__name__": "recipe"}
         exec(compile(code, str(plugin / "src" / "main.py"), "exec"), namespace)
         job = read_job(folder, out=io.StringIO())

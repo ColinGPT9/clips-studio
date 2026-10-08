@@ -102,16 +102,26 @@ def needs_newer_sdk(error: BaseException) -> bool:
 class SettingMissing(KeyError):
     """job.settings[name] for a setting with no value: not declared in
     clipskitty.yaml, or declared without a default and left empty by the
-    creator. str() is the plain line a creator sees; `hint` is the
-    developer's, which run() puts in the log."""
+    creator, or a `secret` setting, which is never in job.settings (it is
+    read with job.secret()). str() is the plain line a creator sees; `hint`
+    is the developer's, which run() puts in the log."""
 
     def __init__(self, name):
         super().__init__(name)
         self.name = name
-        self.hint = (f"no setting called {name!r} in job.settings: declare it under settings in clipskitty.yaml "
-                     f"with a default, or use job.settings.get({name!r}, <default>)")
+        # A secret the creator set is handed over in the environment, not in job.settings.
+        self.is_secret = isinstance(name, str) and bool(os.environ.get(SECRET_PREFIX + name.upper().replace("-", "_")))
+        if self.is_secret:
+            self.hint = (f"{name!r} is a secret setting, and secrets are never in job.settings: read it with "
+                         f"job.secret({name!r})")
+        else:
+            self.hint = (f"no setting called {name!r} in job.settings: declare it under settings in clipskitty.yaml "
+                         f"with a default, or use job.settings.get({name!r}, <default>). A secret setting is read "
+                         f"with job.secret({name!r})")
 
     def __str__(self) -> str:  # KeyError's own would put the sentence in quotes
+        if self.is_secret:  # the creator did set it: the mistake is in the plugin's code
+            return MISTAKE
         return f"the setting {self.name} has no value: choose one in the pipeline's settings, or ask its developer"
 
 

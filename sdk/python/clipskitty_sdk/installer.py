@@ -43,6 +43,7 @@ only.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
@@ -95,6 +96,8 @@ LINK = "{path} is a symbolic link, and Clips Kitty refuses to install a folder t
 OFF_THIS_PC = "install only talks to Clips Kitty on this PC (127.0.0.1, localhost or ::1)"
 NOT_RUNNING = "Clips Kitty isn't running: nothing answered at {api}. Open the app, then run this again."
 NOT_CLIPS_KITTY = "something answered at {api}, but not as Clips Kitty does: is --api right?"
+BAD_API = f"--api {{api}} isn't an address install can use: give one such as {DEFAULT_API}"
+CUT_OFF = "Clips Kitty's answer to {method} {path} stopped part way: is it still running?"
 TOO_OLD = ("This Clips Kitty ({app_version}) can't install plugins: it came out before plugin support. Use a newer "
            f"Clips Kitty, or run it from source: {FROM_SOURCE}")
 NO_SESSION_FILE = ("couldn't find Clips Kitty's session file. Pass --data-dir with Clips Kitty's data folder (the one "
@@ -223,6 +226,8 @@ def _call(api: str, method: str, path: str, body=None, secret: Path | None = Non
     through _loopback, so proxy settings never route it off this PC."""
     if not _loopback.is_this_pc(api):
         raise InstallRefused(OFF_THIS_PC)
+    if not _loopback.port_ok(api):
+        raise InstallRefused(BAD_API.format(api=api))
     headers = {"Accept": "application/json"}
     data = None
     if body is not None:
@@ -230,20 +235,36 @@ def _call(api: str, method: str, path: str, body=None, secret: Path | None = Non
         headers["Content-Type"] = "application/json"
     if secret is not None:
         headers[HEADER] = _secret_in(secret)
-    request = urllib.request.Request(api.rstrip("/") + path, data=data, method=method, headers=headers)
     try:
+        request = urllib.request.Request(api.rstrip("/") + path, data=data, method=method, headers=headers)
         with _loopback.urlopen(request, timeout=timeout) as response:
             status, raw = response.status, response.read()
     except urllib.error.HTTPError as e:
-        status, raw = e.code, e.read()
+        status, raw = e.code, _error_body(e)
     except (urllib.error.URLError, OSError) as e:
         if isinstance(getattr(e, "reason", e), TimeoutError):
             raise InstallRefused(f"Clips Kitty didn't answer {method} {path} within {timeout:g} seconds", 1) from None
         raise InstallRefused(NOT_RUNNING.format(api=api)) from None
+    # http.client's own errors, which urllib passes on: an address it can't
+    # use, an answer cut off part way, or one that isn't HTTP at all.
+    except (http.client.InvalidURL, ValueError):
+        raise InstallRefused(BAD_API.format(api=api)) from None
+    except http.client.IncompleteRead:
+        raise InstallRefused(CUT_OFF.format(method=method, path=path)) from None
+    except http.client.HTTPException:
+        raise InstallRefused(NOT_CLIPS_KITTY.format(api=api)) from None
     try:
         return status, (json.loads(raw) if raw else None)
     except ValueError:
         return status, None
+
+
+def _error_body(error: urllib.error.HTTPError) -> bytes:
+    """The body of a refusal, or nothing when it can't be read."""
+    try:
+        return error.read()
+    except (http.client.HTTPException, OSError):
+        return b""
 
 
 def _detail(answer) -> str:
@@ -329,7 +350,7 @@ def _refusal(status: int, answer, secret: Path, what: str) -> InstallRefused:
     detail = _detail(answer)
     if status in (400, 404, 409):
         return InstallRefused(detail or f"Clips Kitty refused the {what} ({status})", 1)
-    return InstallRefused(f"Clips Kitty answered {status} to the {what}: {detail}", 1)
+    return InstallRefused(f"Clips Kitty answered {status} to the {what}" + (f": {detail}" if detail else ""), 1)
 
 
 def plan(api: str, folder: Path, secret: Path) -> dict:

@@ -112,6 +112,6 @@ Clips Kitty                              your pipeline
 ## Promises
 
 - **Free.** Listing, updating and installing cost nothing. Clips Kitty takes no share of anything and processes no payments; link to your own pricing, sponsors or support page.
-- **Yours.** Your code stays in your repository under the licence you choose, shown on your Marketplace card. Clips Kitty is AGPL-3.0-or-later, but the SDK is MIT, so using it puts no licence on your plugin. A listing points at your repository; nothing moves it.
+- **Yours.** Your code stays in your repository under the licence you choose, shown on your Marketplace card. Clips Kitty is AGPL-3.0-or-later, but the SDK is MIT, so using it doesn't put your plugin under the AGPL; code that `new` copied from a template keeps the SDK's MIT notice, in `TEMPLATE-LICENSE.txt`. A listing points at your repository; nothing moves it.
 - **No fork.** Everything on these pages works against an unmodified Clips Kitty.
 - **Honest labels.** A permission is called enforced only where Clips Kitty enforces it, neither a listing nor ✓ Compatible means "reviewed", and data that leaves the PC is always shown as a warning.

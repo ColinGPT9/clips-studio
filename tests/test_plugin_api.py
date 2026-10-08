@@ -151,6 +151,21 @@ def test_a_plan_carries_the_install_screen_as_text(api, plugin_source):
     assert texts[1].splitlines()[-1] == "✗ inputs[0]: the video input needs the video.read permission"
 
 
+@pytest.mark.parametrize("change", [{"license": ["MIT"]}, {"id": 123}, {"license": 5}])
+def test_a_plan_with_a_field_that_isnt_text_is_refused_not_a_server_error(api, plugin_source, change):
+    """A manifest field that should be text but is a list or a number gets
+    the refused plan with its ✗ lines, as it did before the plan carried its
+    text, not a 500."""
+    client, _ = api
+    folder = plugin_source.folder("odd", plugin_source.manifest(**change))
+    r = client.post("/plugins/plan", json={"source": {"kind": "folder", "path": str(folder)}}, headers=HEADERS)
+    assert r.status_code == 200, r.text
+    plan = r.json()
+    assert plan["ok"] is False and plan["errors"]
+    assert [f"✗ {e}" for e in plan["errors"]] == [line for line in plan["text"].splitlines()
+                                                  if line.startswith("✗ ")]
+
+
 def test_the_sdks_yes_check_reads_a_real_plan(api, plugin_source):
     """installer.nothing_new() and what_is_new(), which decide whether
     `install --yes` and `--watch` may install without asking, read the plans

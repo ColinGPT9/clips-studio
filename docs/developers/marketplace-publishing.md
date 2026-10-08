@@ -63,7 +63,7 @@ What it can't check yet, so such a plugin can't get the label: one that needs a 
 
 ## Licences
 
-- **Your plugin keeps your licence.** The manifest's `license` (an SPDX identifier) is shown on every Marketplace card. Clips Kitty is AGPL-3.0-or-later; the [SDK](sdk.md) is MIT, so using it puts no licence on your plugin. The example pipeline is MIT too.
+- **Your plugin keeps your licence.** The manifest's `license` (an SPDX identifier) is shown on every Marketplace card. Clips Kitty is AGPL-3.0-or-later; the [SDK](sdk.md) is MIT, so using it doesn't put your plugin under the AGPL; code that `new` copied from a template keeps the SDK's MIT notice, in `TEMPLATE-LICENSE.txt`. The example pipeline is MIT too.
 - **The catalog's data** (the list and its YAML files) is CC0-1.0. By contributing a listing you agree that the listing file is CC0; your plugin is unaffected.
 - **Building on someone else's project**: an adapter that runs another project, includes its code or ports it must respect that project's licence. Say so in the manifest's [`based_on`](plugin-manifest.md#based-on-other-projects); the Marketplace shows it as "Built on", with each project's licence and how your plugin uses it.
 

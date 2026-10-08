@@ -354,7 +354,8 @@ def read_job_with_moments(tmp_path):
 
 class _Server:
     """An HTTP server on 127.0.0.1 in a thread that records every request.
-    `answer(path, body)` gives (status, JSON) for each."""
+    `answer(path, body)` gives (status, JSON) for each, or (status, JSON,
+    headers)."""
 
     def __init__(self, answer):
         self.requests = []
@@ -369,9 +370,11 @@ class _Server:
                     body = raw
                 outer.requests.append({"method": self.command, "path": self.path, "body": body,
                                        "headers": dict(self.headers)})
-                status, reply = answer(self.path, body)
+                status, reply, *headers = answer(self.path, body)
                 data = json.dumps(reply).encode("utf-8")
                 self.send_response(status)
+                for name, value in (headers[0] if headers else {}).items():
+                    self.send_header(name, value)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -502,6 +505,71 @@ def test_ask_refuses_an_address_off_this_pc(tmp_path, servers):
                                                    "http://LOCALHOST", "http://[::1]:11434")] == [True] * 4
     assert [_loopback.is_this_pc(url) for url in ("http://10.0.0.1", "http://127.0.0.2", "", "not a url",
                                                    "http://[::1")] == [False] * 5
+
+
+def test_ask_follows_no_redirect_to_another_address(tmp_path, servers):
+    """A redirect to another address, even one on this PC, isn't followed:
+    the model's answer comes only from the address Clips Kitty gave."""
+    elsewhere = servers(_ollama(response="an answer from elsewhere"))
+    redirecting = servers(lambda path, body: (302, None, {"Location": elsewhere.url + path}))
+    job = _model_job(tmp_path, redirecting.url, name="redirected")
+    for call in ASKING[:2]:
+        with pytest.raises(local_model.LocalModelError) as refused:
+            call(job)
+        assert str(refused.value) == ("The local model couldn't answer: it redirected to another address, and "
+                                      "requests to this PC don't follow that")
+    assert elsewhere.requests == []
+    assert redirecting.paths() == ["/api/generate", "/api/show"]
+
+
+def _raw_server(reply: bytes):
+    """A server on 127.0.0.1 that reads one request and answers it with
+    `reply`, then hangs up. Returns (its address, its listening socket)."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+
+    def serve():
+        try:
+            conn, _ = listener.accept()
+        except OSError:
+            return
+        with conn:
+            try:
+                conn.settimeout(10)
+                data = b""
+                while b"\r\n\r\n" not in data:
+                    data += conn.recv(65536) or b"\r\n\r\n"
+                head, _, body = data.partition(b"\r\n\r\n")
+                length = [int(line.split(b":")[1]) for line in head.lower().splitlines()
+                          if line.startswith(b"content-length:")]
+                while length and len(body) < length[0]:
+                    body += conn.recv(65536) or b" " * length[0]
+                conn.sendall(reply)
+                conn.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    threading.Thread(target=serve, daemon=True).start()
+    return f"http://127.0.0.1:{listener.getsockname()[1]}", listener
+
+
+def test_ask_says_when_the_answer_cant_be_read(tmp_path):
+    """Something that isn't Ollama, or an answer cut off part way, is a
+    LocalModelError the creator can read, not http.client's own error."""
+    cut_off = (b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n"
+               b'{"response": "cut')
+    for i, reply in enumerate((b"SSH-2.0-OpenSSH_9.6\r\n", cut_off)):
+        url, listener = _raw_server(reply)
+        try:
+            with pytest.raises(local_model.LocalModelError) as refused:
+                local_model.ask(_model_job(tmp_path, url, name=f"unreadable-{i}"), "Say hi")
+        finally:
+            listener.close()
+        assert str(refused.value) == "The local model gave an answer this helper can't read"
+    with pytest.raises(local_model.LocalModelError) as refused:
+        local_model.ask(_model_job(tmp_path, "http://localhost:11x34", name="bad-port"), "Say hi")
+    assert str(refused.value) == "Clips Kitty's model address http://localhost:11x34 has a port this helper can't use"
 
 
 def test_ask_refuses_an_empty_model(tmp_path, servers):

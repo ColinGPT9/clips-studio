@@ -28,6 +28,7 @@ library only.
 from __future__ import annotations
 
 import base64
+import http.client
 import json as jsonlib
 import os
 import urllib.error
@@ -41,6 +42,8 @@ NO_MODEL = ("No local model is set in Clips Kitty (its AI may run at a cloud pro
             "uses a model on this PC")
 OFF_THIS_PC = ("Clips Kitty's model address {host} isn't on this PC, and this helper only talks to a model on "
                "this PC")
+UNREADABLE = "The local model gave an answer this helper can't read"
+BAD_PORT = "Clips Kitty's model address {host} has a port this helper can't use"
 
 # What Ollama said each model can do ("vision", "thinking", ...), by address
 # and model, once it has answered.
@@ -73,6 +76,8 @@ def _address(job) -> str:
     url = host if "://" in host else f"http://{host}"
     if not host or not _loopback.is_this_pc(url):
         raise LocalModelError(OFF_THIS_PC.format(host=host or "(none)"))
+    if not _loopback.port_ok(url):
+        raise LocalModelError(BAD_PORT.format(host=host))
     return url.rstrip("/")
 
 
@@ -86,18 +91,20 @@ def _post(address: str, path: str, body: dict, timeout: float) -> dict:
         try:
             said = jsonlib.loads(e.read() or b"null")
             said = said.get("error") if isinstance(said, dict) else said
-        except ValueError:
+        except (ValueError, http.client.HTTPException, OSError):
             said = None
         raise LocalModelError(f"The local model couldn't answer: {said or e.reason}") from e
     except (urllib.error.URLError, OSError) as e:
         reason = getattr(e, "reason", None) or e
         raise LocalModelError(f"The local model didn't answer at {address} ({reason}): is Ollama running?") from e
+    except (http.client.HTTPException, ValueError) as e:  # cut off part way, or not HTTP at all
+        raise LocalModelError(UNREADABLE) from e
     try:
         data = jsonlib.loads(raw)
     except ValueError:
         data = None
     if not isinstance(data, dict):
-        raise LocalModelError("The local model gave an answer this helper can't read")
+        raise LocalModelError(UNREADABLE)
     return data
 
 

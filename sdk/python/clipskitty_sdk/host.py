@@ -289,7 +289,7 @@ def run_plugin(command: list[str], *, cwd: Path, job_folder: Path, env: dict, ti
                 try:
                     on_event(event)
                 except Exception:
-                    pass
+                    pass  # a failing on_event callback must not stop the reader; the run's own lines are still kept
 
     readers = [threading.Thread(target=follow, args=(proc.stdout, False), daemon=True),
                threading.Thread(target=follow, args=(proc.stderr, True), daemon=True)]

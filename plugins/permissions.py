@@ -223,10 +223,14 @@ def changes(old: dict, new: dict) -> dict:
 
 
 def render_text(plan: dict) -> str:
-    """A plan as plain text: the install screen without the buttons."""
+    """A plan as plain text: the install screen without the buttons.
+
+    A refused plan carries the manifest's fields as written, so a field the
+    validator refused (`license: [MIT]`, `id: 123`) is shown as text rather
+    than stopping the answer: its ✗ line says what is wrong."""
     p, about = plan["plugin"], plan["details"]
     lines = [f"Install {p.get('name')} {p.get('version')}?",
-             " · ".join(x for x in (p.get("id"), plan.get("source_text"), p.get("license")) if x),
+             " · ".join(str(x) for x in (p.get("id"), plan.get("source_text"), p.get("license")) if x),
              about["tier_text"], ""]
     if about.get("notice"):
         lines.append(about["notice"])

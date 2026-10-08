@@ -7,11 +7,13 @@ SDK (Windows) job. Only the test that makes the sample video needs FFmpeg;
 the transcript tests clear PATH of it, so they run everywhere.
 """
 
+import http.server
 import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -395,12 +397,78 @@ def test_run_plugin_refuses_a_manifest_the_app_would(tmp_path):
             (_rater(tmp_path), {"duration": None},
              "moments: no video length for sample moments: pass duration, or moments"),
             (_rater(tmp_path / "again"), {"moments": [{"start": 5, "end": 2}]},
-             "moments: moment 0 needs a start and an end in seconds, the start first")):
+             "moments: moment 0 needs a start and an end in seconds, the start first"),
+            (finder, {"models": {"detector": "models/detector"}},
+             "models: the manifest lists no model called 'detector'; it lists: none"),
+            (finder, {"ollama_model": 3}, "ollama_model: expected text"),
+            (finder, {"secrets": ["api_key"]}, "secrets: expected a dict of names to values")):
         kwargs = {"duration": 40, **kwargs}
         with pytest.raises(ContractError) as e:
             testing.run_plugin(where, tmp_path=runs, **kwargs)
         assert str(e.value) == message, kwargs
     assert not runs.exists() and not (tmp_path / "job").exists()
+
+
+# Asks the creator's local model, and says whether its secret was handed over.
+LOCAL_MODEL_MAIN = '''\
+from clipskitty_sdk import local_model, run
+
+
+def main(job):
+    said = local_model.ask(job, "Say hi")
+    key = "set" if job.secret("api_key") else "not set"
+    job.add_range(1, 5, score=50, label="said", reason=f"{said}; the key is {key}")
+
+
+run(main)
+'''
+
+
+def test_run_plugin_hands_over_a_local_model_and_secrets(tmp_path, capsys):
+    """As `run --ollama-model --ollama-host --secret` does: without a model
+    the job names none, as when Clips Kitty's AI runs at a cloud provider."""
+    pytest.importorskip("yaml")
+    asked = []
+
+    class Ollama(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            asked.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            data = json.dumps({"response": "hi", "done": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    plugin = _plugin(tmp_path, "quarkbloom-asks", inputs="transcript", outputs="ranges",
+                     permissions="transcript.read, ollama", main=LOCAL_MODEL_MAIN,
+                     extra="settings:\n  api_key: {type: secret, label: Key}\n")
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Ollama)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    address = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        run = testing.run_plugin(plugin, duration=40, tmp_path=tmp_path / "runs")
+        assert not run.ok
+        assert run.error == ("No local model is set in Clips Kitty (its AI may run at a cloud provider), and this "
+                             "helper only uses a model on this PC")
+        run = testing.run_plugin(plugin, duration=40, tmp_path=tmp_path / "runs", ollama_host=address,
+                                 ollama_model="test-model", secrets={"api_key": "abc123"})
+        assert run.ok, run.error
+        assert [m.reason for m in run.moments] == ["hi; the key is set"]
+        assert [body["model"] for body in asked] == ["test-model"]
+        assert "abc123" not in (run.folder / "job.json").read_text(encoding="utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
+    folder = testing.make_job(tmp_path / "job", plugin, duration=40, ollama_host=address, ollama_model="test-model")
+    assert read_job(folder).tools.ollama == {"host": address, "model": "test-model"}
+    # `run` says why there is no model, and how to give it one.
+    code = _cli("run", plugin, "--duration", "40", "--job-dir", tmp_path / "cli-job")
+    assert code == 1
+    assert f"note: {devrun.NO_OLLAMA_MODEL}\n" in capsys.readouterr().err
 
 
 # ---- the sample -----------------------------------------------------------------------

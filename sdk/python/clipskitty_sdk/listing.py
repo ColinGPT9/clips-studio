@@ -95,6 +95,7 @@ WHICH_REMOTE = ("this folder's git repository has several remotes, none called o
 NOT_GITHUB = ("this folder's git remote is {b}, which isn't a GitHub repository: a listing's repository must be "
               "https://github.com/<owner>/<repo>")
 GIT_FAILED = "git {command} failed: {why}"
+GIT_SUGGESTS = "{failed}. Git says to run: {command}"
 NO_SECTION = ("--section is needed: a pipeline section id from awesome-clips-kitty/registry/sections.yaml, "
               "such as gaming/generic")
 BAD_SECTION = ("--section must be a section id from awesome-clips-kitty/registry/sections.yaml, such as "
@@ -104,7 +105,7 @@ BAD_ALIASES = (f"--alias: at most {MAX_ALIASES} words or short phrases, each up 
 TO_ONLY_ADDS = "--to only adds a version: change the section or aliases in {file} by hand"
 OUT_EXISTS = "{out} already exists. To add this version to that listing, pass --to {out}"
 INSIDE_PLUGIN = ("that is inside a plugin's folder, and Clips Kitty copies everything there on install. Write the "
-                 "listing somewhere else, for example: --out ../{name}.yaml")
+                 "listing somewhere else, for example: --out {example}")
 NOT_A_LISTING = "{file} isn't a listing: {why}"
 OTHER_PLUGIN = "{file} is the listing of {other}, not {id}"
 OTHER_PLACE = ("{file} lists {id} from {theirs}, but this folder is {ours}: every version of a listing comes "
@@ -245,6 +246,27 @@ def _failed(args, result) -> ListingRefused:
     return ListingRefused(GIT_FAILED.format(command=" ".join(args), why=why))
 
 
+def _no_repository(folder: Path, result) -> bool:
+    """Whether a failed `git rev-parse` means the folder isn't in a
+    repository, rather than another problem git's own words explain better
+    (a repository owned by another user, a broken one). Git's English
+    message says so; in another language, there is no .git at or above the
+    folder."""
+    if "not a git repository" in (result.stderr or "").lower():
+        return True
+    here = Path(folder).resolve()
+    return not any((where / ".git").exists() for where in (here, *here.parents))
+
+
+def _repository_failed(args, result) -> ListingRefused:
+    """git's first line, and the command it suggests when it gives one, such
+    as `git config --global --add safe.directory ...` for a repository owned
+    by another user."""
+    failed = _failed(args, result)
+    suggested = [line.strip() for line in (result.stderr or "").splitlines() if line.strip().startswith("git ")]
+    return ListingRefused(GIT_SUGGESTS.format(failed=failed, command=suggested[0])) if suggested else failed
+
+
 def _out(git: str, folder: Path, *args: str) -> str:
     result = _git(git, folder, *args)
     if result.returncode != 0:
@@ -301,7 +323,9 @@ def place(folder: str | os.PathLike, manifest: dict, *, git: str | None = None) 
         raise ListingRefused(NO_GIT)
     prefix = _git(git, folder, "rev-parse", "--show-prefix")
     if prefix.returncode != 0:
-        raise ListingRefused(NOT_A_REPOSITORY.format(folder=folder))
+        if _no_repository(folder, prefix):
+            raise ListingRefused(NOT_A_REPOSITORY.format(folder=folder))
+        raise _repository_failed(("rev-parse", "--show-prefix"), prefix)
     path = prefix.stdout.strip().strip("/") or "."
     if _out(git, folder, "status", "--porcelain", "--untracked-files=all", "--", ".").strip():
         raise ListingRefused(UNCOMMITTED)
@@ -470,8 +494,9 @@ def _target(manifest: dict, to, out) -> Path:
     file than the --to one."""
     name = manifest["id"].split("/", 1)[1]
     target = Path(out) if out else Path(to) if to else Path(f"{name}.yaml")
-    if samples.plugin_folder_holding(target) is not None:
-        raise ListingRefused(INSIDE_PLUGIN.format(name=name))
+    plugin = samples.plugin_folder_holding(target)
+    if plugin is not None:
+        raise ListingRefused(INSIDE_PLUGIN.format(example=samples.beside_plugin(plugin, f"{name}.yaml")))
     if target.exists() and not (to and _same_file(target, Path(to))):
         raise ListingRefused(OUT_EXISTS.format(out=target))
     return target

@@ -234,6 +234,8 @@ def cmd_run(args) -> int:
     if "ffmpeg" in perms and not ffmpeg:
         print("warning: this plugin asks for ffmpeg, but FFmpeg isn't on PATH. Install FFmpeg, or pass --ffmpeg "
               "and --ffprobe.", file=sys.stderr)
+    if "ollama" in perms and not args.ollama_model:
+        print(f"note: {devrun.NO_OLLAMA_MODEL}", file=sys.stderr)
     if args.sample:  # the sample video is made in the job folder, below
         duration, transcript = samples.SAMPLE_VIDEO_SECONDS, samples.sample_transcript()
     else:
@@ -378,8 +380,10 @@ def _inside_plugin(what: str, example: str) -> str:
 
 def cmd_sample(args) -> int:
     out = Path(args.out)
-    if samples.plugin_folder_holding(out) is not None:
-        print(_inside_plugin("sample", f"{python_command()} sample ../sample.mp4"), file=sys.stderr)
+    plugin = samples.plugin_folder_holding(out)
+    if plugin is not None:
+        example = samples.beside_plugin(plugin, "sample.mp4")
+        print(_inside_plugin("sample", f"{python_command()} sample {example}"), file=sys.stderr)
         return 2
     ffmpeg = args.ffmpeg or shutil.which("ffmpeg")
     if not ffmpeg:
@@ -408,8 +412,9 @@ def cmd_frame(args) -> int:
         print("error: --at must be a number of seconds, 0 or more", file=sys.stderr)
         return 2
     out = Path(args.out) if args.out else Path(f"frame-{args.at:g}s.png")
-    if samples.plugin_folder_holding(out) is not None:
-        print(_inside_plugin("frame", "--out ../frame.png"), file=sys.stderr)
+    plugin = samples.plugin_folder_holding(out)
+    if plugin is not None:
+        print(_inside_plugin("frame", f"--out {samples.beside_plugin(plugin, 'frame.png')}"), file=sys.stderr)
         return 2
     video = Path(args.video)
     if not video.is_file():

@@ -21,6 +21,7 @@ Quarkbloom Arena is a made-up game. Standard library only.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -117,13 +118,37 @@ def _tail(text: str) -> str:
     return lines[-1] if lines else "no message"
 
 
+_IS_A_FOLDER = "{out} is a folder: name the {what} file to write, not a folder"
+
+
+def _why(e: OSError) -> str:
+    return e.strerror or str(e)
+
+
+def _folder_for(out: Path, what: str) -> None:
+    """Make the folder `out` is written in. Raises SampleError, in plain
+    words, when `out` is a folder itself, a file is in the way of its
+    folder, or the folder can't be made."""
+    if out.is_dir():
+        raise SampleError(_IS_A_FOLDER.format(out=out, what=what))
+    for where in (out.parent, *out.parent.parents):
+        if where.exists():
+            if not where.is_dir():
+                raise SampleError(f"couldn't write {out}: {where} is a file, not a folder")
+            break
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise SampleError(f"couldn't write {out}: {_why(e)}") from e
+
+
 def make_sample(out: Path, ffmpeg: str) -> tuple[Path, Path]:
     """Write the sample video to `out` and its transcript beside it
     (transcript_path). Returns both paths. The video is written under a
     temporary name first, so a failed run leaves no half-written file.
-    Raises SampleError."""
+    Raises SampleError, also when `out` can't be written."""
     out = Path(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    _folder_for(out, "video")
     part = out.with_name(out.name + ".part")
     try:
         done = subprocess.run(sample_command(ffmpeg, part), capture_output=True, text=True, encoding="utf-8",
@@ -134,9 +159,17 @@ def make_sample(out: Path, ffmpeg: str) -> tuple[Path, Path]:
     if done.returncode != 0 or not part.is_file():
         part.unlink(missing_ok=True)
         raise SampleError(f"FFmpeg couldn't make the sample video: {_tail(done.stderr)}")
-    os.replace(part, out)
     transcript = transcript_path(out)
-    transcript.write_text(json.dumps(sample_transcript(), indent=1), encoding="utf-8")
+    try:
+        os.replace(part, out)
+    except OSError as e:
+        with contextlib.suppress(OSError):
+            part.unlink(missing_ok=True)
+        raise SampleError(f"couldn't write {out}: {_why(e)}") from e
+    try:
+        transcript.write_text(json.dumps(sample_transcript(), indent=1), encoding="utf-8")
+    except OSError as e:
+        raise SampleError(f"couldn't write {transcript}: {_why(e)}") from e
     return out, transcript
 
 
@@ -150,6 +183,22 @@ def plugin_folder_holding(path: Path) -> Path | None:
         if (where / MANIFEST_FILE).is_file():
             return where
     return None
+
+
+def beside_plugin(plugin: Path, name: str) -> str:
+    """Where to write `name` instead of inside the plugin folder `plugin`
+    (as plugin_folder_holding gives it): in the folder that holds the
+    plugin's folder. Written from the current folder when that is in there
+    (../sample.mp4 from the plugin's own folder, ../../sample.mp4 from its
+    src folder), else in full, and in double quotes when it has a space, so
+    it can be typed as it is."""
+    target = Path(plugin).parent / name
+    try:
+        Path.cwd().resolve().relative_to(target.parent)
+        shown = os.path.relpath(target)
+    except ValueError:  # not in there, or on another drive
+        shown = str(target)
+    return f'"{shown}"' if any(c.isspace() for c in shown) else shown
 
 
 # ---- regions ----------------------------------------------------------------------------
@@ -206,8 +255,11 @@ _PPM_HEADER = re.compile(rb"P6\s+(\d+)\s+(\d+)\s+(\d+)\s")
 def grab_frame(ffmpeg: str, video: Path, at: float) -> tuple[int, int, bytearray]:
     """The video's frame at `at` seconds: (width, height, RGB bytes, 3 per
     pixel, row by row). Raises SampleError."""
+    # rgb24, as media.frames asks for: without it a 10-bit (HDR) video gives
+    # a 16-bit picture.
     command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", f"{float(at):g}",
-               "-i", str(video), "-frames:v", "1", "-an", "-f", "image2pipe", "-c:v", "ppm", "-"]
+               "-i", str(video), "-frames:v", "1", "-an", "-pix_fmt", "rgb24", "-f", "image2pipe", "-c:v", "ppm",
+               "-"]
     try:
         done = subprocess.run(command, capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError) as e:
@@ -260,18 +312,23 @@ def write_frame(ffmpeg: str, video: Path, at: float, out: Path,
     """Write the video's frame at `at` seconds to `out` as a PNG, with a box
     drawn around `region` (fractions, as parse_region gives) when one is
     given. Returns (width, height, the region in pixels or None). Raises
-    SampleError."""
+    SampleError, also when `out` can't be written."""
+    out = Path(out)
+    if out.is_dir():  # said before reading the video, not after
+        raise SampleError(_IS_A_FOLDER.format(out=out, what="picture"))
     width, height, rgb = grab_frame(ffmpeg, video, at)
     box = region_pixels(region, width, height) if region is not None else None
     if box is not None:
         _draw_box(rgb, width, height, box)
-    out = Path(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(png_bytes(width, height, rgb))
+    _folder_for(out, "picture")
+    try:
+        out.write_bytes(png_bytes(width, height, rgb))
+    except OSError as e:
+        raise SampleError(f"couldn't write {out}: {_why(e)}") from e
     return width, height, box
 
 
 __all__ = ["BANNER_COLOUR", "BANNER_REGION", "BANNER_SECONDS", "INSTALLED_FFMPEG", "LOUD_SECONDS", "SAMPLE_HEIGHT",
-           "SAMPLE_NOTE", "SAMPLE_VIDEO_SECONDS", "SAMPLE_WIDTH", "SCENE_CUTS", "SampleError", "grab_frame",
-           "make_sample", "parse_region", "plugin_folder_holding", "png_bytes", "region_pixels", "region_text",
-           "sample_command", "sample_transcript", "transcript_path", "write_frame"]
+           "SAMPLE_NOTE", "SAMPLE_VIDEO_SECONDS", "SAMPLE_WIDTH", "SCENE_CUTS", "SampleError", "beside_plugin",
+           "grab_frame", "make_sample", "parse_region", "plugin_folder_holding", "png_bytes", "region_pixels",
+           "region_text", "sample_command", "sample_transcript", "transcript_path", "write_frame"]

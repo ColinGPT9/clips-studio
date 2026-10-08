@@ -28,6 +28,10 @@ DEFAULT_MAX_DURATION = 60.0
 DEFAULT_MIN_SCORE = 55.0
 # Where a plugin with the ollama permission is told the local model answers, as in the app's settings.
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+# What `run` says for a plugin with the ollama permission and no --ollama-model.
+NO_OLLAMA_MODEL = ("no --ollama-model given, so the plugin is told there is no local model, as when Clips Kitty's "
+                   "AI runs at a cloud provider. To try it with one, run Ollama on this PC and pass --ollama-model "
+                   "with the name of a model you have in it")
 # A moment run's steps, in the order the app runs them.
 MOMENT_STEPS = ("understand", "rate")
 # A moment from --moments without a score, and each sample moment, gets this one.
@@ -372,7 +376,7 @@ def label_warnings(manifest: dict, job_folder: Path) -> list[str]:
 
 
 __all__ = ["DEFAULT_MAX_DURATION", "DEFAULT_MIN_DURATION", "DEFAULT_MIN_SCORE", "DEFAULT_OLLAMA_HOST",
-           "SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
+           "NO_OLLAMA_MODEL", "SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
            "manifest_refusal", "models_for", "moments_from", "probe_duration", "read_moments", "read_transcript",
            "report_lines", "run_steps", "sample_moments", "sample_video_wanted", "setting_value", "start",
            "time_limit", "touches_video", "transcript_end", "transcript_from", "typed_settings"]

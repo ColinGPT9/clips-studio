@@ -612,7 +612,8 @@ def test_running_main_py_directly_explains_and_exits_2(tmp_path, monkeypatch):
 def test_a_missing_setting_says_how_to_fix_it(tmp_path, capsys):
     plain = "the setting min_kills has no value: choose one in the pipeline's settings, or ask its developer"
     hint = ("no setting called 'min_kills' in job.settings: declare it under settings in clipskitty.yaml with a "
-            "default, or use job.settings.get('min_kills', <default>)")
+            "default, or use job.settings.get('min_kills', <default>). A secret setting is read with "
+            "job.secret('min_kills')")
     # Declared without a default and left empty, as a creator can: the same as not declared.
     folder = _job(tmp_path, {"min_kills": {"type": "integer"}, "rounds": {"type": "integer", "default": 3}})
     job = read_job(folder, out=io.StringIO())
@@ -626,6 +627,27 @@ def test_a_missing_setting_says_how_to_fix_it(tmp_path, capsys):
     lines = _lines(capsys.readouterr().out)
     assert lines[-1] == {"type": "error", "message": plain}
     assert {"type": "log", "message": hint} in lines
+
+
+def test_a_secret_read_from_job_settings_points_at_job_secret(tmp_path, capsys, monkeypatch):
+    """A secret the creator set is in the environment, never in job.settings:
+    reading it there is the plugin's mistake, so the creator isn't told to
+    choose a value they already chose, and the hint names job.secret()."""
+    monkeypatch.setenv("CLIPSKITTY_SECRET_API_KEY", "abc123")
+    folder = _job(tmp_path, {"api_key": {"type": "secret"}})
+    job = read_job(folder, out=io.StringIO())
+    assert job.secret("api_key") == "abc123" and "api_key" not in job.settings
+    hint = "'api_key' is a secret setting, and secrets are never in job.settings: read it with job.secret('api_key')"
+    with pytest.raises(SettingMissing) as e:
+        job.settings["api_key"]
+    assert str(e.value) == MISTAKE and e.value.hint == hint
+    with pytest.raises(SystemExit) as stop:
+        run(lambda job: job.settings["api_key"], folder)
+    assert stop.value.code == 1
+    lines = _lines(capsys.readouterr().out)
+    assert lines[-1] == {"type": "error", "message": MISTAKE}
+    assert {"type": "log", "message": hint} in lines
+    assert "abc123" not in json.dumps(lines)
 
 
 def _load(path: Path):
