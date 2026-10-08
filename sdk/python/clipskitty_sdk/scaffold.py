@@ -40,12 +40,14 @@ TEMPLATES = {
     "game-events": "finds moments when a coloured banner shows and the sound gets louder",
     "rater": "rates moments others found, by the words said in them",
     "understander": "notes what happens in moments others found, from the screen and the words",
+    "editor": "suggests cuts, mutes and a hook title for clips others found",
 }
 
 # The Clips Kitty versions a new plugin asks for (requires.clips_kitty). The
-# templates import media, signals and text, which arrive with SDK 1.2.0, so
-# this is right only while the first release that runs plugins includes SDK
-# 1.2.0: 2.0.0 itself can't install any plugin. FLOOR_REVIEWED_AT is the
+# templates import media, signals and text, which arrive with SDK 1.2.0, and
+# the editor calls job.suggest_edit, which arrives with SDK 1.3.0, so this is
+# right only while the first release that runs plugins includes SDK 1.3.0:
+# 2.0.0 itself can't install any plugin. FLOOR_REVIEWED_AT is the
 # newest release in CHANGELOG.md when this was last checked;
 # tests/test_plugin_sdk_new.py fails when a newer release is added there.
 TEMPLATE_REQUIRES = ">=2.0"

@@ -5,7 +5,9 @@ app's version, run through the app's own runner, and run on Clips Kitty's own
 Python: main.py's script host with PYTHONPATH set to the repository's SDK
 alone, as the installed app starts it, so a template that imports a part of
 the SDK the app doesn't bundle fails here. The runs on the sample video need
-FFmpeg; the transcript and rater templates need none.
+FFmpeg; the transcript, rater and editor templates need none. The app's
+runner takes the editor once the engine runs edit plugins (plugins.steps
+names edit); until then that one case skips.
 """
 
 import json
@@ -24,12 +26,12 @@ if str(SDK) not in sys.path:
     sys.path.insert(0, str(SDK))
 
 from clipskitty_sdk import devrun, host, samples, scaffold, testing  # noqa: E402
-from clipskitty_sdk.contract import parse_line  # noqa: E402
+from clipskitty_sdk.contract import CROPS, parse_line  # noqa: E402
 
 FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 READS_THE_VIDEO = {"blank", "game-events", "understander"}
 STEPS = {"blank": ["Finds moments"], "transcript": ["Finds moments"], "game-events": ["Finds moments"],
-         "rater": ["Rates moments"], "understander": ["Understands moments"]}
+         "rater": ["Rates moments"], "understander": ["Understands moments"], "editor": ["Suggests edits"]}
 # What each finder finds on the sample: (start, end, label, reason).
 FOUND = {
     "blank": [],
@@ -44,6 +46,9 @@ ANSWERS = {
     "understander": {"m1": {"context": ['The commentary says "round one" here']},
                      "m3": {"context": ["The quark burst banner shows from 22.0 s"]}},
 }
+# What the editor suggests for the 5 sample clips, as Clips Kitty keeps it.
+EDITS = {"m3": {"edit": {"title_overlay": {"text": "Quark burst!", "seconds": 3}},
+                "reason": 'Adds a hook title where the commentary says "quark burst"'}}
 CONFIG = {"clips": {"min_score": 55, "min_duration": 10, "max_duration": 60, "max_clips_per_video": 0},
           "llm": {}}
 
@@ -112,6 +117,10 @@ def test_every_template_plans_cleanly_on_this_apps_version(template, tmp_path):
 def test_every_template_runs_through_the_apps_runner(template, tmp_path, sample, install_plugin):
     _needs_ffmpeg(template)
     from plugins import runner
+    from plugins import steps as plugin_steps
+
+    if template == "editor" and "edit" not in plugin_steps.FIELDS:
+        pytest.skip("the engine doesn't run edit plugins yet")
 
     folder = _made(tmp_path, template)
     data_dir = tmp_path / "data"
@@ -122,6 +131,12 @@ def test_every_template_runs_through_the_apps_runner(template, tmp_path, sample,
                                   config=CONFIG, data_dir=data_dir)
         assert [(c.start, c.end, c.subscores["plugin_label"], c.reason) for c in clips] == FOUND[template]
         assert all(c.source == f"plugin:{plugin_id}@0.1.0" for c in clips)
+    elif template == "editor":
+        out = runner.answer_moments({"id": plugin_id, "settings": {}}, ["edit"], _sample_moments(), video=video,
+                                    segments=_segments(), language="en", config=CONFIG, data_dir=data_dir,
+                                    stage="edit", crops=CROPS)
+        assert out["edits"] == EDITS
+        assert out["ignored"] == []
     else:
         steps = ["rate"] if template == "rater" else ["understand"]
         out = runner.answer_moments({"id": plugin_id, "settings": {}}, steps, _sample_moments(), video=video,
@@ -147,7 +162,14 @@ def test_every_template_runs_on_clips_kittys_python(template, tmp_path, sample):
     assert [e for e in map(parse_line, done.stdout.splitlines()) if e["type"] == "error"] == []
 
     data = json.loads((job / "job.json").read_text(encoding="utf-8"))
-    if template in FOUND:
+    if template == "editor":
+        limits = data["limits"]
+        edits, lines = host.read_edits(job, windows={m["id"]: (m["start"], m["end"]) for m in data["moments"]},
+                                       crops=limits["crops"], min_length=max(1.0, limits["min_duration"]),
+                                       max_length=limits["max_duration"])
+        assert data["steps"] == ["edit"] and limits["crops"] == list(CROPS)
+        assert edits == EDITS and lines == []
+    elif template in FOUND:
         result = host.read_result(job, duration=samples.SAMPLE_VIDEO_SECONDS, max_clips=None,
                                   steps=data.get("steps"))
         assert [(r["start"], r["end"], r["label"], r["reason"]) for r in result["ranges"]] == FOUND[template]

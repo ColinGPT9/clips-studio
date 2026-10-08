@@ -1,4 +1,4 @@
-"""`python -m clipskitty_sdk new` and its five templates (clipskitty_sdk.scaffold).
+"""`python -m clipskitty_sdk new` and its six templates (clipskitty_sdk.scaffold).
 
 A template must give a plugin that Clips Kitty accepts, that runs on the
 SDK's sample as designed, that the lint has nothing to say about, and whose
@@ -7,7 +7,8 @@ own tests and workflow pass, without a real game or a badge in it.
 Like every tests/test_plugin_sdk_*.py file, this needs only pytest and PyYAML
 and imports nothing from Clips Kitty's engine, so it also runs in CI's SDK
 (Windows) job. The runs on the sample video skip without FFmpeg; the
-transcript and rater templates need none, and one test clears PATH of it.
+transcript, rater and editor templates need none, and one test clears PATH of
+it.
 """
 
 import ast
@@ -46,6 +47,7 @@ transcript     finds moments where your words are said
 game-events    finds moments when a coloured banner shows and the sound gets louder
 rater          rates moments others found, by the words said in them
 understander   notes what happens in moments others found, from the screen and the words
+editor         suggests cuts, mutes and a hook title for clips others found
 """
 
 # What `run --sample` prints for each template, after its "job folder:" line.
@@ -91,10 +93,20 @@ ON_THE_SAMPLE = {
         "m5   33.3s-40.0s  score 60",
         "notes: Noted what happens in 2 of 5 moment(s).",
     ],
+    "editor": [
+        "Suggest edits: 1 of 5 clip(s) given a suggestion, as Clips Kitty would keep them:",
+        "m1   6.7s-13.3s  no suggestion",
+        "m2   13.3s-20.0s  no suggestion",
+        'm3   20.0s-26.7s  6.7 s  hook title "Quark burst!" (3 s)',
+        '     Adds a hook title where the commentary says "quark burst"',
+        "m4   26.7s-33.3s  no suggestion",
+        "m5   33.3s-40.0s  no suggestion",
+        "notes: Suggested edits for 1 of 5 clip(s).",
+    ],
 }
 # What each template can be chosen for (manifest.offers).
 OFFERS = {"blank": ("find",), "transcript": ("find",), "game-events": ("find",), "rater": ("rate",),
-          "understander": ("understand",)}
+          "understander": ("understand",), "editor": ("edit",)}
 GITIGNORE = ["__pycache__/", ".venv/", "venv/", ".clipskitty/", "node_modules/", "*.mp4", "*.mkv", "*.mov",
              "frame*.png"]
 
@@ -168,10 +180,10 @@ def made(tmp_path_factory) -> dict[str, Path]:
 # ---- the list ---------------------------------------------------------------------------
 
 
-def test_list_names_five_templates(capsys):
+def test_list_names_six_templates(capsys):
     assert _cli("new", "--list") == 0
     assert capsys.readouterr().out == LIST
-    assert list(scaffold.TEMPLATES) == ["blank", "transcript", "game-events", "rater", "understander"]
+    assert list(scaffold.TEMPLATES) == ["blank", "transcript", "game-events", "rater", "understander", "editor"]
     folders = sorted(p.name for p in scaffold.TEMPLATES_DIR.iterdir() if p.is_dir() and p.name != "__pycache__")
     assert folders == sorted([*scaffold.TEMPLATES, scaffold.SHARED])
 
@@ -214,7 +226,7 @@ def test_workflow_schema_and_powershell_dollars_survive(made):
         assert manifest.startswith(f"# yaml-language-server: $schema={SCHEMA_URL}\n")
         assert "runs-on: ${{ matrix.os }}" in files[".github/workflows/clipskitty-check.yml"]
         assert "name: Check (${{ matrix.os }})" in files[".github/workflows/clipskitty-check.yml"]
-        if template != "transcript" and template != "rater":
+        if template in READS_THE_VIDEO:
             assert '"$env:USERPROFILE\\Videos\\match.mp4"' in files["README.md"]
         # Every $ in a template's files is still there, as it was.
         for rel, text in files.items():
@@ -321,15 +333,15 @@ def test_every_template_runs_on_the_sample(template, made, tmp_path, capsys):
     assert _cli("run", made[template], "--sample", "--job-dir", tmp_path / "job") == 0
     captured = capsys.readouterr()
     assert _shown_after_the_job_folder(captured.out) == ON_THE_SAMPLE[template]
-    # Without FFmpeg, the transcript and rater templates get the sample's transcript and length alone.
+    # Without FFmpeg, the transcript, rater and editor templates get the sample's transcript and length alone.
     note = samples.SAMPLE_NOTE if shutil.which("ffmpeg") else devrun.SAMPLE_WITHOUT_VIDEO
     assert captured.err.splitlines()[0] == f"note: --sample: {note}"
     assert [line for line in captured.err.splitlines() if line.startswith("warning:")] == []
 
 
-def test_transcript_and_rater_templates_run_without_ffmpeg(made, tmp_path, monkeypatch, capsys):
+def test_transcript_rater_and_editor_templates_run_without_ffmpeg(made, tmp_path, monkeypatch, capsys):
     empty = _no_ffmpeg(tmp_path, monkeypatch)
-    for template in ("transcript", "rater"):
+    for template in ("transcript", "rater", "editor"):
         assert _cli("run", made[template], "--sample", "--job-dir", tmp_path / template) == 0
         captured = capsys.readouterr()
         assert _shown_after_the_job_folder(captured.out) == ON_THE_SAMPLE[template]
@@ -340,6 +352,21 @@ def test_transcript_and_rater_templates_run_without_ffmpeg(made, tmp_path, monke
         done = _pytest(copy, tmp_path, _sdk_env(PATH=str(empty)))
         assert done.returncode == 0, done.stdout + done.stderr
         assert "skipped" not in done.stdout and " passed" in done.stdout, done.stdout
+
+
+def test_the_editor_mutes_the_words_its_readme_sets_on_the_sample(made, tmp_path, capsys):
+    readme = (made["editor"] / "README.md").read_text(encoding="utf-8")
+    assert 'python -m clipskitty_sdk run . --sample --set "mute_words=round one"' in readme
+    assert _cli("run", made["editor"], "--sample", "--set", "mute_words=round one", "--job-dir", tmp_path / "job") == 0
+    shown = _shown_after_the_job_folder(capsys.readouterr().out)
+    # "round one" is said from 8.0 to 9.6 s, in the first clip; the hook title stays on the third.
+    assert shown == [
+        "Suggest edits: 2 of 5 clip(s) given a suggestion, as Clips Kitty would keep them:",
+        "m1   6.7s-13.3s  6.7 s  mute 7.9-9.7",
+        "     Mutes the words you listed",
+        *ON_THE_SAMPLE["editor"][2:-1],
+        "notes: Suggested edits for 2 of 5 clip(s).",
+    ]
 
 
 def test_generated_tests_pass(made, tmp_path):
@@ -430,7 +457,7 @@ def test_new_refuses_a_full_folder_and_the_reserved_publisher(tmp_path, capsys):
          "error: --publisher must be your GitHub name in lower case: letters, digits and hyphens"),
         (["new", tmp_path / "c", "--template", "highlights"],
          ("error: --template: there is no template called 'highlights'; choose one of blank, transcript, "
-          "game-events, rater, understander (new --list says what each does)")),
+          "game-events, rater, understander, editor (new --list says what each does)")),
         (["new", tmp_path / "d", "--template", "blank", "--name", "Q" * 61],
          "error: Clips Kitty would refuse this plugin, so new wrote nothing: name: is longer than 60 characters"),
         (["new", tmp_path / "e", "--template", "blank", "--license", "my own licence"],
@@ -444,7 +471,8 @@ def test_new_refuses_a_full_folder_and_the_reserved_publisher(tmp_path, capsys):
           "hyphens, such as quarkbloom-bursts")),
         (["new", "--template", "blank"],
          ("error: new needs a folder and a template: python -m clipskitty_sdk new FOLDER --template NAME "
-          "(templates: blank, transcript, game-events, rater, understander; new --list says what each does)")),
+          "(templates: blank, transcript, game-events, rater, understander, editor; new --list says what each "
+          "does)")),
     ]
     for args, message in refusals:
         assert _cli(*args) == 2, args
