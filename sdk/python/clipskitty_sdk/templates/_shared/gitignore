@@ -1,0 +1,14 @@
+# Made by python -m clipskitty_sdk new. This keeps these out of git. Clips
+# Kitty copies everything in a plugin's folder when it installs it from the
+# folder (all but .git and __pycache__), so keep virtual environments, test
+# videos and frames next to the folder, not inside it.
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.clipskitty/
+node_modules/
+*.mp4
+*.mkv
+*.mov
+frame*.png

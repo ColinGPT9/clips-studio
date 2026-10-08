@@ -346,7 +346,14 @@ def test_the_wheel_holds_py_typed_schema_and_templates():
         names = set(wheel.namelist())
         modules = {f"clipskitty_sdk/{p.relative_to(PACKAGE).as_posix()}" for p in PACKAGE.rglob("*.py")
                    if "__pycache__" not in p.parts}
-        expected = modules | {"clipskitty_sdk/py.typed", "clipskitty_sdk/schema/clipskitty.schema.json"}
+        # Every file `new` writes from, the dotfiles among them under the names they are stored by.
+        templates = {f"clipskitty_sdk/{p.relative_to(PACKAGE).as_posix()}" for p in (PACKAGE / "templates").rglob("*")
+                     if p.is_file() and "__pycache__" not in p.parts}
+        assert {"clipskitty_sdk/templates/_shared/gitignore",
+                "clipskitty_sdk/templates/_shared/github/workflows/clipskitty-check.yml"} <= templates
+        assert {f"clipskitty_sdk/templates/{name}/clipskitty.yaml" for name in
+                ("blank", "transcript", "game-events", "rater", "understander")} <= templates
+        expected = modules | templates | {"clipskitty_sdk/py.typed", "clipskitty_sdk/schema/clipskitty.schema.json"}
         assert sorted(expected - names) == []
         assert [n for n in names if n.endswith(".pyc") or "__pycache__" in n] == []
 

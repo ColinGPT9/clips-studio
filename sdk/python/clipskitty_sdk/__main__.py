@@ -2,6 +2,9 @@
 # Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """Developer tools: check a plugin, and run it on a video the way Clips Kitty would.
 
+    python -m clipskitty_sdk new FOLDER --template NAME [--publisher NAME] [--name "Display name"]
+                                 [--game SLUG] [--author NAME] [--license SPDX]
+    python -m clipskitty_sdk new --list
     python -m clipskitty_sdk validate <plugin folder>
     python -m clipskitty_sdk run <plugin folder> [--sample | --video clip.mp4] [--transcript t.json]
                                  [--duration SECONDS] [--moments moments.json]
@@ -15,6 +18,11 @@
 
 Installed with pip, `clipskitty-sdk` is the same command. On Windows, run it
 as `py -m clipskitty_sdk` (the hints it prints name the Python that runs it).
+
+`new` writes a new plugin folder from a template (clipskitty_sdk.scaffold):
+its manifest, code, README, tests and GitHub workflow, ready for
+`run --sample`. On a terminal it asks for your GitHub name and the plugin's
+name when the options don't give them.
 
 `validate` runs the manifest checks the app, the plugin manager and the
 registry run, shows the line in clipskitty.yaml each problem is on, and warns
@@ -59,7 +67,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from . import __version__, devrun, host, samples
+from . import __version__, devrun, host, samples, scaffold
 from ._hints import python_command
 from .contract import MAX_RANGES, PLUGIN_API_VERSION, ContractError, _number
 from .job import RESULT_FILE
@@ -404,6 +412,52 @@ def cmd_frame(args) -> int:
     return 0
 
 
+def _ask(question: str) -> str:
+    try:
+        return input(question).strip()
+    except EOFError:
+        return ""
+
+
+def _shown(path: str) -> str:
+    """A path as it goes into a command to copy: quoted when it holds a space."""
+    return f'"{path}"' if any(ch.isspace() for ch in path) else path
+
+
+def cmd_new(args) -> int:
+    if args.list:
+        sys.stdout.write(scaffold.list_text())
+        return 0
+    if not args.folder or not args.template:
+        print(f"error: new needs a folder and a template: {python_command()} new FOLDER --template NAME "
+              f"(templates: {', '.join(scaffold.TEMPLATES)}; new --list says what each does)", file=sys.stderr)
+        return 2
+    asking = _is_terminal(sys.stdin) and _is_terminal(sys.stdout)  # never ask a script or a test
+    try:
+        scaffold.template_files(args.template)
+        scaffold.check_folder(Path(args.folder))
+        publisher = args.publisher
+        if publisher is None:
+            publisher = (_ask(scaffold.ASK_PUBLISHER) if asking else "") or scaffold.DEFAULT_PUBLISHER
+        scaffold.check_publisher(publisher)
+        name = args.name
+        if name is None and asking:
+            name = _ask(scaffold.ASK_NAME)
+        scaffold.make(args.folder, args.template, publisher=publisher, name=name or None, game=args.game,
+                      author=args.author, license=args.license)
+    except scaffold.NewRefused as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    print(f"Made {args.folder} from the {args.template} template.")
+    note = scaffold.license_note(args.license)
+    if note:
+        print(f"note: {note}", file=sys.stderr)
+    print(f"Next: {python_command()} run {_shown(args.folder)} --sample")
+    print("Then change clipskitty.yaml, src/main.py and README.md for your game:")
+    print(scaffold.GUIDE)
+    return 0
+
+
 def version_line() -> str:
     """What --version prints: the SDK's version and the plugin contract's."""
     return f"clipskitty-sdk {__version__} (plugin contract {PLUGIN_API_VERSION})"
@@ -414,6 +468,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=version_line(),
                         help="print the SDK's version and the plugin contract it follows")
     sub = parser.add_subparsers(dest="command", required=True)
+    new = sub.add_parser("new", help="start a new plugin from a template")
+    new.add_argument("folder", nargs="?", help="the new plugin's folder (new, or empty); its name becomes the "
+                     "plugin's name in its id")
+    new.add_argument("--template", metavar="NAME", help=f"one of: {', '.join(scaffold.TEMPLATES)}")
+    new.add_argument("--list", action="store_true", help="list the templates and what each does")
+    new.add_argument("--publisher", metavar="NAME",
+                     help=f"your GitHub name, in lower case: the id's first part (default: {scaffold.DEFAULT_PUBLISHER})")
+    new.add_argument("--name", metavar="DISPLAY NAME", help="the plugin's name as people see it "
+                     "(default: from the folder's name)")
+    new.add_argument("--game", metavar="SLUG", default=scaffold.DEFAULT_GAME,
+                     help=f"the game it is for, in lower case with hyphens (default: {scaffold.DEFAULT_GAME}, "
+                          "a made-up game)")
+    new.add_argument("--author", metavar="NAME", help="who holds the copyright (default: the publisher)")
+    new.add_argument("--license", metavar="SPDX", default=scaffold.DEFAULT_LICENSE,
+                     help=f"the plugin's licence, as an SPDX id (default: {scaffold.DEFAULT_LICENSE}, whose text "
+                          "is written as LICENSE)")
     check = sub.add_parser("validate", help="check a plugin's manifest the way Clips Kitty and the registry do")
     check.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml)")
     schema = sub.add_parser("schema", help="print the manifest's JSON Schema, for editors")
@@ -470,7 +540,7 @@ def main(argv: list[str] | None = None) -> int:
     frame.add_argument("--out", metavar="FILE.png", help="where to write it (default: frame-SECONDSs.png here)")
     frame.add_argument("--ffmpeg")
     args = parser.parse_args(argv)
-    return {"validate": cmd_validate, "schema": cmd_schema, "run": cmd_run, "sample": cmd_sample,
+    return {"new": cmd_new, "validate": cmd_validate, "schema": cmd_schema, "run": cmd_run, "sample": cmd_sample,
             "frame": cmd_frame}[args.command](args)
 
 

@@ -50,7 +50,7 @@ Changelog = "https://github.com/ColinGPT9/clips-studio/blob/main/sdk/python/CHAN
 packages = ["clipskitty_sdk"]
 
 [tool.setuptools.package-data]
-clipskitty_sdk = ["schema/*.json", "py.typed"]
+clipskitty_sdk = ["schema/*.json", "py.typed", "templates/**/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "clipskitty_sdk.__version__"}

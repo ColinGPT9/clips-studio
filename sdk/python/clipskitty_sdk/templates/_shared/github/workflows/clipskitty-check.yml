@@ -1,0 +1,48 @@
+# Checks this Clips Kitty plugin on every push and pull request, on Linux and
+# Windows, with Python @@PYTHON@@: the Python Clips Kitty runs plugins on, so
+# newer Python code fails here rather than on a creator's PC. Made by
+# python -m clipskitty_sdk new.
+name: Clips Kitty check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "@@PYTHON@@"
+
+      - name: Install the Clips Kitty SDK, with PyYAML and pytest
+        # From Clips Kitty's repository (its main branch) until the SDK is on PyPI.
+        run: python -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+
+      - name: Install FFmpeg, for the sample video
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
+      - name: Check clipskitty.yaml and the code
+        run: python -m clipskitty_sdk validate .
+
+      - name: Run it on the sample video
+        if: runner.os == 'Linux'
+        run: python -m clipskitty_sdk run . --sample
+
+      - name: Tests
+        # On Windows there is no FFmpeg here, so the tests that need the
+        # sample video are skipped; the ones that need only its transcript run.
+        run: python -m pytest -q

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/sdk/python/clipskitty_sdk/schema/clipskitty.schema.json
+# What Clips Kitty reads about this plugin. Every field is described in
+# https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/plugin-manifest.md
+manifest_version: 1
+id: @@ID@@
+name: "@@NAME@@"
+version: 0.1.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  A pipeline that doesn't find any moments yet: it is the start of one. Say
+  here, in plain words, what it finds and what it can't see.
+author: {name: "@@AUTHOR@@"}
+license: "@@LICENSE@@"
+requires: {clips_kitty: "@@REQUIRES@@", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+execution: local
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read, ffmpeg]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: gaming

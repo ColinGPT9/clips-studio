@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/sdk/python/clipskitty_sdk/schema/clipskitty.schema.json
+# What Clips Kitty reads about this plugin. Every field is described in
+# https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/plugin-manifest.md
+manifest_version: 1
+id: @@ID@@
+name: "@@NAME@@"
+version: 0.1.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Notes what happens in the moments found in a video, for their titles: when
+  a coloured banner shows on screen, such as the red "quark burst" banner of
+  Quarkbloom Arena (a made-up game), and when the commentary says one of your
+  words. It only looks at that part of the screen and at what is said, and
+  it doesn't change which moments become clips.
+author: {name: "@@AUTHOR@@"}
+license: "@@LICENSE@@"
+requires: {clips_kitty: "@@REQUIRES@@", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+execution: local
+inputs: [moments, transcript, video]
+outputs: [context]
+settings:
+  banner_region:
+    type: string
+    default: "0.30,0.10,0.40,0.10"
+    max_length: 100
+    title: Where the banner shows, as left, top, width, height (0 to 1)
+  banner_colour:
+    type: string
+    default: "e0303a"
+    max_length: 7
+    title: The banner's colour, as 6 hex digits (red, green, blue)
+  cue_words:
+    type: string
+    default: "round one, overtime"
+    max_length: 1000
+    title: Words or phrases to note when they are said, separated by commas
+permissions: [transcript.read, video.read, ffmpeg]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: gaming
