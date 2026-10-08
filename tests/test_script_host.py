@@ -9,6 +9,7 @@ Windows is proven by scripts/build_installer.py's smoke test on a real build).
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -23,11 +24,14 @@ MAIN = ROOT / "main.py"
 SDK = ROOT / "sdk" / "python"
 
 
-def _run(args, tmp_path, *, python_path=(), marker="1", cwd=None):
+def _run(args, tmp_path, *, python_path=(), marker="1", cwd=None, sdk=SDK):
+    """main.py with this command line, as the installed app starts a
+    pipeline: `sdk` (the folder holding clipskitty_sdk) first on
+    PYTHONPATH, then `python_path`."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("CLIPSKITTY_", "PYTHON"))}
     if marker is not None:
         env["CLIPSKITTY_SCRIPT_HOST"] = marker
-    env["PYTHONPATH"] = os.pathsep.join([str(SDK), *map(str, python_path)])
+    env["PYTHONPATH"] = os.pathsep.join([str(sdk), *map(str, python_path)])
     return subprocess.run([sys.executable, str(MAIN), *map(str, args)], capture_output=True, text=True,
                           encoding="utf-8", cwd=str(cwd or tmp_path), env=env, timeout=120)
 
@@ -112,6 +116,74 @@ def test_a_module_the_app_lacks_gives_a_plain_error_line(tmp_path):
     assert _error_lines(done.stdout) == [
         ("This pipeline needs not_a_real_package_xyz, which this version of Clips Kitty doesn't include. "
          "Ask its developer to update it.")]
+
+
+def _older_sdk(tmp_path) -> Path:
+    """A copy of this SDK without the helpers SDK 1.2.0 added (media,
+    signals, text, local_model), the way an older Clips Kitty bundles it."""
+    older = tmp_path / "older-sdk"
+    shutil.copytree(SDK / "clipskitty_sdk", older / "clipskitty_sdk",
+                    ignore=shutil.ignore_patterns("__pycache__", "media.py", "signals.py", "text.py",
+                                                  "local_model.py"))
+    return older
+
+
+def test_a_pipeline_needing_a_newer_sdk_says_update_clips_kitty(tmp_path):
+    older = _older_sdk(tmp_path)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "ok.py").write_text("import clipskitty_sdk\nfrom clipskitty_sdk import read_job\n"
+                                   "print(clipskitty_sdk.__file__)\n")
+    done = _run([scripts / "ok.py"], tmp_path, sdk=older)
+    assert done.returncode == 0, done.stderr
+    assert Path(done.stdout.strip()).parent == older / "clipskitty_sdk"  # the older copy is the one used
+
+    for i, statement in enumerate(("import clipskitty_sdk.media", "from clipskitty_sdk import media",
+                                   "from clipskitty_sdk.media import Region", "import clipskitty_sdk.missing",
+                                   "from clipskitty_sdk import missing", "from clipskitty_sdk.job import Missing")):
+        script = scripts / f"s{i}.py"
+        script.write_text(f"{statement}\nprint('ran')\n")
+        done = _run([script], tmp_path, sdk=older)
+        assert done.returncode == 1, statement
+        assert _error_lines(done.stdout) == [
+            ("This pipeline needs a newer version of Clips Kitty. Update Clips Kitty, or ask the pipeline's "
+             "developer which version it needs.")], statement
+        assert "Traceback (most recent call last)" in done.stderr and "ran" not in done.stdout
+
+
+def test_other_missing_modules_keep_their_message(tmp_path):
+    for statement, expected in (
+            ("import not_a_real_package_xyz",
+             [("This pipeline needs not_a_real_package_xyz, which this version of Clips Kitty doesn't include. "
+               "Ask its developer to update it.")]),
+            ("import clipskitty_sdkx",  # only clipskitty_sdk and its own modules are the SDK
+             [("This pipeline needs clipskitty_sdkx, which this version of Clips Kitty doesn't include. "
+               "Ask its developer to update it.")]),
+            ("from core import pipeline",
+             [("This pipeline tried to use Clips Kitty's own code (core), which pipelines can't use. "
+               "Ask its developer to update it.")]),
+            ("from json import nothing_here", [])):  # a crash in the script, as before: no error line
+        (tmp_path / "s.py").write_text(f"{statement}\n")
+        done = _run([tmp_path / "s.py"], tmp_path)
+        assert done.returncode == 1, statement
+        assert _error_lines(done.stdout) == expected, statement
+        assert "Traceback (most recent call last)" in done.stderr
+
+
+def test_the_script_host_and_the_sdk_say_the_same_sentence():
+    """An SDK import at the top of the pipeline's file reaches the script
+    host; one inside main() reaches the SDK's run(). Both say the same."""
+    from plugins._sdk import sdk_dir
+
+    assert str(sdk_dir()) in sys.path
+    from clipskitty_sdk import job
+
+    assert script_host.NEWER_VERSION == job.NEWER_VERSION
+    errors = [ImportError("x", name="clipskitty_sdk"), ModuleNotFoundError("x", name="clipskitty_sdk.media"),
+              ImportError("x", name="clipskitty_sdk.job"), ModuleNotFoundError("x", name="clipskitty_sdkx"),
+              ModuleNotFoundError("x", name="numpy"), ImportError("x"), KeyError("clipskitty_sdk")]
+    assert [script_host.needs_newer_sdk(e) for e in errors] == [job.needs_newer_sdk(e) for e in errors] == [
+        True, True, True, False, False, False, False]
 
 
 def test_a_multiprocessing_child_loads_the_parents_script_first(tmp_path):

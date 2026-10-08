@@ -82,6 +82,21 @@ MISTAKE = "it stopped on a mistake in its own code. Ask its developer to fix it.
 # Exceptions that mean the plugin's code has a mistake, rather than a problem
 # it reports in words of its own (those keep their message).
 PROGRAMMING_ERRORS = (LookupError, AttributeError, TypeError, NameError, ArithmeticError)
+# The error line for a plugin that imports a part of the SDK this Clips Kitty
+# doesn't have: it was made with a newer SDK. Clips Kitty's script host says
+# the same for an import at the top of the plugin's file
+# (_clipskitty_script_host.py NEWER_VERSION; tests/test_script_host.py checks
+# they agree); run() says it for one inside main().
+NEWER_VERSION = ("This pipeline needs a newer version of Clips Kitty. Update Clips Kitty, or ask the pipeline's "
+                 "developer which version it needs.")
+
+
+def needs_newer_sdk(error: BaseException) -> bool:
+    """Whether `error` is an import of a module or name the SDK doesn't
+    have: `import clipskitty_sdk.media`, `from clipskitty_sdk import media`
+    or `from clipskitty_sdk.media import Region`, on an older SDK."""
+    name = getattr(error, "name", None) or ""
+    return isinstance(error, ImportError) and (name == "clipskitty_sdk" or name.startswith("clipskitty_sdk."))
 
 
 class SettingMissing(KeyError):
@@ -549,8 +564,10 @@ def run(main, folder: str | os.PathLike | None = None) -> None:
     rather than a stack trace. The error line is the exception's message,
     except for a slip in the plugin's own code (a KeyError, TypeError and the
     like), which gets MISTAKE, with the exception and where it happened in a
-    log line, and a setting with no value (SettingMissing), which gets its
-    plain line, with the developer's hint in a log line.
+    log line; a setting with no value (SettingMissing), which gets its
+    plain line, with the developer's hint in a log line; and an import of a
+    part of the SDK this Clips Kitty doesn't have (needs_newer_sdk), which
+    gets NEWER_VERSION.
 
     Started without a job folder (a developer running `python src/main.py`),
     it says how to try the plugin, on standard error, and exits with 2.
@@ -572,6 +589,10 @@ def run(main, folder: str | os.PathLike | None = None) -> None:
         if isinstance(e, SettingMissing):
             job.log(e.hint)
             job.fail(str(e))
+        if needs_newer_sdk(e):
+            job.log(f"{type(e).__name__}: {e}{_where_it_stopped(e)}: "
+                    "the clipskitty_sdk it runs with doesn't have it")
+            job.fail(NEWER_VERSION)
         if isinstance(e, PROGRAMMING_ERRORS):
             job.log(f"{type(e).__name__}: {e}{_where_it_stopped(e)}")
             job.fail(MISTAKE)

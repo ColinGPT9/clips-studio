@@ -11,7 +11,9 @@
 The API listens on 127.0.0.1:8765 while the desktop app runs. These helpers
 cover routes labelled stable (docs/developers/api-reference.md); `get`,
 `post`, `patch` and `delete` reach any other route, which may change without
-notice. Standard library only.
+notice. A request to this PC (127.0.0.1, localhost or ::1) ignores proxy
+settings, so it never leaves the PC; one to any other address uses them, as
+urllib does. Standard library only.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from . import _loopback
 
 DEFAULT_URL = "http://127.0.0.1:8765"
 SUPPORTED_API_VERSIONS = (1,)
@@ -48,8 +52,10 @@ class LocalAPI:
         data = None if body is None else json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=data, method=method,
                                      headers={"Content-Type": "application/json"} if data else {})
+        # On this PC, never through a proxy (_loopback); elsewhere, as urllib's settings say.
+        opener = _loopback.urlopen if _loopback.is_this_pc(self.base_url) else urllib.request.urlopen
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with opener(req, timeout=self.timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as e:
             try:

@@ -22,7 +22,9 @@ PYTHONUNBUFFERED and the rest of the PYTHON* variables:
   the bundle: they are not part of the plugin API, they change with every
   release, and keeping them out keeps a pipeline a separate program (D13).
   A pipeline's own folder of the same name still wins;
-- a module the app doesn't include stops the run with a plain error line;
+- a module the app doesn't include stops the run with a plain error line,
+  and so does a part of the SDK this app's copy doesn't have yet (the
+  pipeline was made with a newer SDK);
 - multiprocessing works: a child started with --multiprocessing-fork loads
   the parent's script as __mp_main__ first, which CPython's spawn does not do
   for a frozen Windows program.
@@ -197,6 +199,23 @@ def _say_error(message: str) -> None:
         pass  # nowhere to report it: the exit code still says the run failed
 
 
+# The error line for a pipeline that imports a part of the SDK this app's
+# copy doesn't have. The SDK's run() says the same for an import inside
+# main() (sdk/python/clipskitty_sdk/job.py NEWER_VERSION); written here so
+# this module needs nothing from the SDK.
+NEWER_VERSION = ("This pipeline needs a newer version of Clips Kitty. Update Clips Kitty, or ask the pipeline's "
+                 "developer which version it needs.")
+
+
+def needs_newer_sdk(error: BaseException) -> bool:
+    """An import of a module or name the bundled SDK doesn't have: `import
+    clipskitty_sdk.media`, `from clipskitty_sdk import media` (name
+    clipskitty_sdk) or `from clipskitty_sdk.media import Region` (name
+    clipskitty_sdk.media). The SDK's job.needs_newer_sdk is the same rule."""
+    name = getattr(error, "name", None) or ""
+    return isinstance(error, ImportError) and (name == "clipskitty_sdk" or name.startswith("clipskitty_sdk."))
+
+
 def missing_module_message(error: ModuleNotFoundError) -> str:
     name = (error.name or "").partition(".")[0] or "a module"
     if name in ENGINE_PACKAGES:
@@ -281,10 +300,13 @@ def main(argv: list[str]) -> int:
     except UsageError as e:
         _say_error(f"Clips Kitty's Python: {e}")
         return 2
-    except ModuleNotFoundError as e:
+    except ImportError as e:
         traceback.print_exc()
-        _say_error(missing_module_message(e))
-        return 1
+        if needs_newer_sdk(e):
+            _say_error(NEWER_VERSION)
+        elif isinstance(e, ModuleNotFoundError):
+            _say_error(missing_module_message(e))
+        return 1  # any other ImportError is a crash in the script, as below
     except Exception:  # a crash in the script is exit code 1, as in python; Ctrl+C passes through
         traceback.print_exc()
         return 1
