@@ -4,6 +4,8 @@ Clips Kitty turns a video into clips in a fixed order. Plugins can take over or 
 
 Status: **built** in plugin contract 1 for find, understand and rate (SDK 1.1.0, `tests/test_plugin_steps.py`). Two more steps, edit and export, are **planned**. They are not part of plugin contract 1, and `job.wants()` answers `False` for them.
 
+In a manifest, `outputs: [edits]` and `kind: publisher` are refused as planned.
+
 ## The run order
 
 ```text

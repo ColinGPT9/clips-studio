@@ -70,7 +70,7 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - One plugin can find moments for a video; it replaces Clips Kitty's own finding.
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md)).
-- Edit and export are not part of plugin contract 1: `job.wants("edit")` and `job.wants("export")` answer `False`, and `kind: publisher` is refused as planned.
+- Edit and export are not part of plugin contract 1: `job.wants("edit")` and `job.wants("export")` answer `False`, and `outputs: [edits]` and `kind: publisher` are refused as planned.
 
 ## Get listed
 

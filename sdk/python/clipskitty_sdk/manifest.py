@@ -60,7 +60,7 @@ CAPABILITIES = ("highlight_detection",)
 EXECUTIONS = ("local", "remote", "hybrid")
 INPUTS = ("video", "transcript", "moments")
 OUTPUTS = ("ranges", "ratings", "context")
-PLANNED_OUTPUTS = ("clips",)
+PLANNED_OUTPUTS = ("clips", "edits")  # edits: the planned edit step (contract.PLANNED_STEPS)
 PERMISSIONS = ("video.read", "transcript.read", "ffmpeg", "ollama", "gpu", "network",
                "filesystem.read", "filesystem.write", "project.read", "project.write")
 PLANNED_PERMISSIONS = ("clips.write",)

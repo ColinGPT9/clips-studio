@@ -104,6 +104,10 @@ MAX_MOMENT_ID = 32
 
 # What a run can be asked to do: find moments, say what happens in them, score them.
 STEPS = ("find", "understand", "rate")
+# Steps that are planned but not part of plugin contract 1. They are named for
+# messages only: Clips Kitty never asks a plugin for them, and job.wants() is
+# False for them.
+PLANNED_STEPS = ("edit", "export")
 
 
 class ContractError(ValueError):

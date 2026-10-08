@@ -61,7 +61,8 @@ def test_every_rule_has_a_fixture():
     for needed in ("planned-kind", "input-without-permission", "remote-without-sends", "local-that-sends",
                    "network-without-permission", "model-on-a-branch", "reserved-publisher", "shell-command",
                    "script-outside-folder", "default-above-maximum", "secret-with-default", "newer-plugin-api",
-                   "ratings-without-moments", "moments-without-answers", "context-without-moments"):
+                   "ratings-without-moments", "moments-without-answers", "context-without-moments",
+                   "planned-edits-output"):
         assert needed in names
 
 
@@ -199,6 +200,47 @@ def test_a_manifest_using_the_new_words_has_no_warnings(name):
     assert report.warnings == []
     context_finder = mf.validate(_fixture("minimal", outputs=["ranges", "context"]))
     assert context_finder.ok and context_finder.warnings == []
+
+
+def test_edit_and_export_words_are_planned_not_unknown():
+    """Edit and export are planned steps, not part of plugin contract 1. A
+    manifest that asks for them (outputs: [edits], kind: publisher) is
+    refused with a message that says so; `edit` is no manifest word at all."""
+    from clipskitty_sdk import contract
+
+    assert contract.PLANNED_STEPS == ("edit", "export")
+    assert not set(contract.PLANNED_STEPS) & set(contract.STEPS)
+    assert "edits" in mf.PLANNED_OUTPUTS and "publisher" in mf.PLANNED_KINDS
+    assert mf.validate(_fixture("minimal", outputs=["ranges", "edits"])).errors == [
+        "outputs[1]: output 'edits' is planned, not supported by plugin API 1"]
+    assert mf.validate(_fixture("minimal", kind="publisher")).errors == [
+        "kind: kind 'publisher' is planned, not supported by plugin API 1"]
+    assert mf.validate(_fixture("minimal", outputs=["ranges", "edit"])).errors == [
+        "outputs[1]: unknown output 'edit'; expected one of: ranges, ratings, context"]
+    # A planned word gives no step, so no job can ask a plugin for it.
+    assert mf.steps_of({"inputs": ["video"], "outputs": ["edits"]}) == ()
+
+
+def _enums(node) -> list:
+    """Every `enum` list in a JSON Schema, however deep."""
+    if isinstance(node, dict):
+        found = [node["enum"]] if isinstance(node.get("enum"), list) else []
+        return found + [e for v in node.values() for e in _enums(v)]
+    if isinstance(node, list):
+        return [e for v in node for e in _enums(v)]
+    return []
+
+
+def test_planned_words_leave_the_schema_unchanged():
+    """Planned words are refused by validate() and are not in the committed
+    schema, so an editor marks them too, and naming one changes no schema."""
+    schema = json.loads(mf.SCHEMA_FILE.read_text(encoding="utf-8"))
+    props = schema["properties"]
+    assert props["outputs"]["items"]["enum"] == list(mf.OUTPUTS)
+    assert props["kind"]["enum"] == list(mf.KINDS)
+    assert props["permissions"]["items"]["enum"] == list(mf.PERMISSIONS)
+    words = {w for enum in _enums(schema) for w in enum}
+    assert not words & {"edits", "edit", "export", *mf.PLANNED_OUTPUTS, *mf.PLANNED_KINDS, *mf.PLANNED_PERMISSIONS}
 
 
 def test_every_manifest_valid_before_the_new_words_still_finds():

@@ -94,6 +94,79 @@ def test_no_moments_is_an_answer(echo, video):
     assert _run(echo, video, {"ranges": ""}) == []
 
 
+# Keys an edit step might one day use, and their values. Edit is planned, not
+# part of plugin contract 1, so none of them may change a clip today.
+RANGE_EXTRAS = {"edit": {"mutes": [[0, 2]], "speed": 2.0, "title_overlay": {"text": "WATCH THIS"}},
+                "music": "plugin-song.mp3", "watermark": {"text": "plugin-mark", "image": "plugin-logo.png"}}
+
+RANGE_EXTRAS_MAIN = '''import json
+
+from clipskitty_sdk import run
+
+
+def main(job):
+    extras = json.loads(job.settings.get("extras") or "{}")
+    ranges = [{"start": 20, "end": 50, "score": 85, "label": "quark_burst", "title": "A quark burst",
+               "reason": "the banner shows", **extras},
+              {"start": 100, "end": 130, "label": "quiet", **extras}]
+    (job.folder / "result.json").write_text(json.dumps({"plugin_api": 1, "ranges": ranges}), encoding="utf-8")
+    job._finished = True
+
+
+if __name__ == "__main__":
+    run(main)
+'''
+
+
+def _keys_and_text(value) -> set:
+    """Every key and every piece of text inside `value`, however deep."""
+    if isinstance(value, dict):
+        return set(value) | {x for v in value.values() for x in _keys_and_text(v)}
+    if isinstance(value, (list, tuple)):
+        return {x for v in value for x in _keys_and_text(v)}
+    return {value} if isinstance(value, str) else set()
+
+
+def test_a_range_s_unknown_keys_never_reach_the_clip(tmp_path, install_plugin, video):
+    """Edit is planned (outputs: [edits] is refused), so nothing a plugin adds
+    to a range may change how a clip is made. The runner copies only the keys
+    it knows into a ClipCandidate: start, end, score, title or label as the
+    hook, reason, and notes when asked. A range carrying edit, music and
+    watermark makes exactly the clip the same range without them makes. Apart
+    from the answer's notes, printed to the log, the candidates are all of it
+    that goes on past the runner, so a clip's render options (render_opts)
+    can't differ either."""
+    import dataclasses
+
+    import yaml
+
+    folder = tmp_path / "range-extras"
+    (folder / "src").mkdir(parents=True)
+    manifest = yaml.safe_load((ECHO / "clipskitty.yaml").read_text(encoding="utf-8"))
+    manifest.update(id="fixture-dev/range-extras", name="Range Extras",
+                    settings={"extras": {"type": "string", "default": "", "title": "Extra range keys, as JSON"}})
+    (folder / "clipskitty.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    (folder / "src" / "main.py").write_text(RANGE_EXTRAS_MAIN, encoding="utf-8")
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, folder)
+
+    plain = _run(data_dir, video, {"extras": ""}, plugin="fixture-dev/range-extras")
+    extra = _run(data_dir, video, {"extras": json.dumps(RANGE_EXTRAS)}, plugin="fixture-dev/range-extras")
+    # The keys were in the answer the runner read...
+    answers = [json.loads(p.read_text(encoding="utf-8")) for p in (data_dir / "plugins" / "runs").glob("*/result.json")]
+    assert len(answers) == 2
+    assert any(all(r.get("music") == "plugin-song.mp3" and "edit" in r and "watermark" in r for r in a["ranges"])
+               for a in answers)
+    # ...and changed nothing about the clips.
+    assert [(c.start, c.end, c.score, c.hook) for c in extra] == [(20, 50, 85, "A quark burst"),
+                                                                  (100, 130, 85, "quiet")]
+    assert extra == plain
+    kept = set().union(*(_keys_and_text(dataclasses.asdict(c)) for c in extra))
+    for word in (*RANGE_EXTRAS, "title_overlay", "WATCH THIS", "plugin-song.mp3", "plugin-mark", "plugin-logo.png"):
+        assert word not in kept, f"{word!r} from a plugin's range reached a ClipCandidate"
+    assert "render_opts" not in {f.name for f in dataclasses.fields(extra[0])}
+
+
 def test_progress_is_reported_as_the_analyze_stage(echo, video):
     from core import progress
 
