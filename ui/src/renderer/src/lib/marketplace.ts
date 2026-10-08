@@ -671,7 +671,9 @@ const STEP_TITLES: Record<string, string> = {
     'It says what happens in each moment found by Clips Kitty or a pipeline, and Clips Kitty uses that when writing titles. Turn on Rate & understand when you add a video.',
   'Understands what it finds': 'It says what happens in the moments it finds, for the titles.',
   'Rates moments':
-    'It scores each moment found by Clips Kitty or a pipeline. Turn on Rate & understand when you add a video.'
+    'It scores each moment found by Clips Kitty or a pipeline. Turn on Rate & understand when you add a video.',
+  'Suggests edits':
+    'It suggests cuts, fades, a hook title or a layout for each clip. Turn on Suggest edits when you add a video.'
 }
 
 /** A step pill (details.steps, in the engine's words) as a badge in the info tone. */

@@ -75,7 +75,7 @@ Required fields are in bold.
 | `run.python_requirements` | A requirements file in the plugin | accepted with a warning: per-plugin Python packages are **planned** ([Pipeline development](pipeline-development.md)) |
 | **`execution`** | Where the work happens | `local`, `remote` or `hybrid` |
 | **`inputs`** | What it needs handed over | `video`, `transcript`, `moments`. `video` and `transcript` each need their permission; `moments` (the moments found before it runs) needs none. |
-| **`outputs`** | What it returns | `ranges` (moments it finds), `context` (what happens in moments), `ratings` (scores for moments others found). Together with `inputs` they say which steps the plugin does ([below](#inputs-and-outputs-which-steps-a-plugin-does)). `clips` (finished files) and `edits` (suggested cuts and framing, for the edit step) are planned, and refused with a message saying so. |
+| **`outputs`** | What it returns | `ranges` (moments it finds), `context` (what happens in moments), `ratings` (scores for moments others found), `edits` (suggested edits for the clips Clips Kitty makes). Together with `inputs` they say which steps the plugin does ([below](#inputs-and-outputs-which-steps-a-plugin-does)). `clips` (finished files) is planned, and refused with a message saying so. |
 | **`permissions`** | What it asks for | see [Permissions](permissions.md) |
 | `network` | Hosts it connects to | host names, optionally with a port; required with the `network` permission, and for `remote` and `hybrid` |
 | `sends` | What leaves the computer | `video`, `video_link`, `audio`, `frames`, `transcript`, or `{data, to, when}` when it depends on a setting. Required for `remote` and `hybrid`; a `local` pipeline sends nothing. Shown to the user as a ⚠ warning. |
@@ -109,13 +109,14 @@ There is no field for a plugin's role. It follows from `inputs` and `outputs`, a
 
 `kind` stays `pipeline` and `capability` stays `highlight_detection` for each of them. A plugin given moments reads what is said in them, so it usually takes `transcript` and asks for `transcript.read` too.
 
-Three rules tie the words together. The validator never gives two of them for one manifest, and a manifest that uses these words gets no new warning:
+Four rules tie the words together. The validator never gives two of them for one manifest, and a manifest that uses these words gets no new warning:
 
 | Rule | Message |
 |---|---|
 | `ratings` in outputs without `moments` in inputs | `outputs[i]: ratings score moments found before this plugin runs: add moments to inputs (a pipeline's own ranges carry their score already)` |
-| `moments` in inputs with neither `ratings` nor `context` in outputs | `inputs[i]: a plugin given moments answers about them: add ratings or context to outputs` |
-| `context` in outputs with no `ranges` in outputs, no `moments` in inputs and no `ratings` in outputs | `outputs[i]: context describes moments: add ranges to outputs, or moments to inputs` |
+| `moments` in inputs with none of `ratings`, `context` or `edits` in outputs | `inputs[i]: a plugin given moments answers about them: add ratings, context or edits to outputs` |
+| `edits` in outputs with no `moments` in inputs and no `ratings` in outputs | `outputs[i]: edits are suggested for the clips Clips Kitty makes from moments: add moments to inputs` |
+| `context` in outputs with no `ranges` in outputs, no `moments` in inputs and neither `ratings` nor `edits` in outputs | `outputs[i]: context describes moments: add ranges to outputs, or moments to inputs` |
 
 `clipskitty_sdk.manifest` answers the same questions in code: `steps_of(m)` (what the plugin does), `offers(m)` (what a job may name it for), `find_steps(m)` (what its find run is asked for) and `step_problem(m, step)` (why a job can't name it for a step).
 

@@ -26,9 +26,11 @@ at what it answered.
 with the function Clips Kitty builds it with (clipskitty_sdk.host.build_job),
 starts the plugin's run.command (`{python}` is the Python running the
 tests), and reads its answer with host.read_result or host.read_answers, the
-functions Clips Kitty reads it with. It asks for the run the app would make,
-as `python -m clipskitty_sdk run` does (clipskitty_sdk.devrun): a find run
-for a plugin that finds moments, else a run that understands and rates.
+functions Clips Kitty reads it with (host.read_edits in a run that suggests
+edits). It asks for the run the app would make, as
+`python -m clipskitty_sdk run` does (clipskitty_sdk.devrun): a find run for
+a plugin that finds moments, else a run that understands and rates, else an
+edit run for a plugin that only suggests edits.
 `make_job` only writes the job folder, for a test that calls the plugin's
 own functions on `read_job(folder)`.
 
@@ -90,12 +92,16 @@ class PluginRun:
     order, each with the `score` this run gave it (else the one it had) and
     this run's `notes`, and
     `answers` maps each answered moment's id to {score, reason, context}
-    (host.read_answers).
+    (host.read_answers). In a run that suggests edits, `moments` are the
+    clips it was handed, and `edits` maps each clip's id to its suggestion
+    as Clips Kitty keeps it, {edit, reason} (host.read_edits: fitted to the
+    clip and to the editor's choices).
 
     `notes` is the text it left for the job log (result.json's `notes`).
     `events` are its progress, log and error lines, parsed as Clips Kitty
     parses them, and `log` the messages of its log lines (standard error
-    included) and any `ignored:` line from reading its answers. `steps` is
+    included) and any `ignored:` or `changed:` line from reading its
+    answers. `steps` is
     what the run asked for, and `folder` the job folder, which is kept.
     """
 
@@ -103,6 +109,7 @@ class PluginRun:
     error: str = ""
     moments: list = field(default_factory=list)
     answers: dict = field(default_factory=dict)
+    edits: dict = field(default_factory=dict)
     notes: str = ""
     events: list = field(default_factory=list)
     log: list = field(default_factory=list)
@@ -186,7 +193,9 @@ def _moments(moments) -> list[dict]:
     if not isinstance(moments, (list, tuple)):
         raise _refuse("moments", "expected a list of moments, or the path of a JSON file holding one")
     given = [{"start": m.start, "end": m.end, "score": m.score, "label": m.label, "title": m.title,
-              "reason": m.reason, "context": [*m.context, *m.notes]} if isinstance(m, Moment) else m
+              "reason": m.reason, "context": [*m.context, *m.notes],
+              "suggested": [{"by": s.by, "name": s.name, "edit": dict(s.edit), "reason": s.reason}
+                            for s in m.suggested]} if isinstance(m, Moment) else m
              for m in moments]
     try:
         out = devrun.moments_from(given)
@@ -224,7 +233,7 @@ def _text_pairs(given, what: str) -> dict[str, str]:
 
 
 def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, games, ollama_host=None,
-             ollama_model=None, models=None) -> _Prepared:
+             ollama_model=None, models=None, layout=None) -> _Prepared:
     """Every check `python -m clipskitty_sdk run` makes before a job folder
     exists, as ContractError."""
     folder = Path(plugin).resolve()
@@ -239,7 +248,9 @@ def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, g
         asked = devrun.run_steps(manifest, _steps_text(steps))
     except devrun.Refused as e:
         raise _refuse("steps", str(e).removeprefix("--steps: ")) from None
-    find_run = "find" in asked
+    find_run, edit_run = "find" in asked, asked == devrun.EDIT_STEPS
+    if layout is not None and layout not in devrun.LAYOUTS:
+        raise _refuse("layout", f"expected one of: {', '.join(devrun.LAYOUTS)}")
     try:
         host.job_settings(manifest, settings)
     except ValueError as e:
@@ -272,8 +283,11 @@ def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, g
     limits = {"max_clips": None, "min_duration": devrun.DEFAULT_MIN_DURATION,
               "max_duration": devrun.DEFAULT_MAX_DURATION}
     handed = None
-    if not find_run:  # a run that understands or rates; a find run is never handed moments
+    if edit_run:  # the layouts the clips can use, and no minimum score
+        limits["crops"] = list(devrun.crops_for(layout))
+    elif not find_run:
         limits["min_score"] = devrun.DEFAULT_MIN_SCORE
+    if not find_run:  # a find run is never handed moments
         if moments is not None:
             handed = _moments(moments)
         else:
@@ -303,7 +317,7 @@ def _prepare(plugin, *, video, transcript, duration, settings, steps, moments, g
 
 
 def make_job(folder, plugin, *, video=None, transcript=None, duration=None, settings=None, steps=None,
-             moments=None, games=(), ollama_host=None, ollama_model=None, models=None) -> Path:
+             moments=None, games=(), ollama_host=None, ollama_model=None, models=None, layout=None) -> Path:
     """Write the job folder Clips Kitty would make for the plugin in folder
     `plugin`, at `folder`, and return `folder`: `read_job(folder)` then
     gives the plugin's Job.
@@ -314,11 +328,15 @@ def make_job(folder, plugin, *, video=None, transcript=None, duration=None, sett
     in the app. `duration` is the video's length when there is no video or
     FFprobe can't read it. `settings` are the creator's choices, by name.
     `steps` asks for `find`, or `understand`, `rate` or both (a list, or
-    text with commas); without it the job is the run the app would make.
-    `moments` are what a run that understands or rates is handed: Moments
-    from an earlier run, or {start, end, score?, label?, title?, reason?,
-    context?} mappings; without them it gets 5 sample moments spread through
-    the video. `games` are names of games the video shows, for video.games.
+    text with commas), or `edit`, a run of its own; without it the job is
+    the run the app would make. `moments` are what a run that understands,
+    rates or suggests edits is handed: Moments from an earlier run, or
+    {start, end, score?, label?, title?, reason?, context?, suggested?}
+    mappings; without them it gets 5 sample moments spread through the
+    video. `layout` is the kind of clip an edit run is for (`run`'s
+    --layout): "standard", the default, gives the job's clips every layout
+    (contract.CROPS), and any other kind none. `games` are names of games
+    the video shows, for video.games.
     `ollama_model` is the creator's local model, for a plugin with the
     `ollama` permission (`run`'s --ollama-model): without it the job names
     none, as when Clips Kitty's AI runs at a cloud provider, and
@@ -335,7 +353,7 @@ def make_job(folder, plugin, *, video=None, transcript=None, duration=None, sett
     with video.read), before anything is written."""
     prepared = _prepare(plugin, video=video, transcript=transcript, duration=duration, settings=settings,
                         steps=steps, moments=moments, games=games, ollama_host=ollama_host,
-                        ollama_model=ollama_model, models=models)
+                        ollama_model=ollama_model, models=models, layout=layout)
     folder = Path(folder).resolve()
     job, said = host.build_job(prepared.manifest, output_dir=folder / "out", **prepared.build)
     host.write_job(folder, job, said)
@@ -366,7 +384,7 @@ def _found(i: int, r: dict, *, plugin_id: str, notes: bool) -> Moment:
 
 def run_plugin(plugin, *, video=None, transcript=None, duration=None, settings=None, steps=None, moments=None,
                tmp_path=None, timeout=None, games=(), ollama_host=None, ollama_model=None, models=None,
-               secrets=None) -> PluginRun:
+               secrets=None, layout=None) -> PluginRun:
     """Run the plugin in folder `plugin` as Clips Kitty would, and return
     what it did as a PluginRun.
 
@@ -377,14 +395,14 @@ def run_plugin(plugin, *, video=None, transcript=None, duration=None, settings=N
     in the system's temporary folder; either way it is kept, in
     `PluginRun.folder`. `timeout` is in seconds; without it the plugin may
     take as long as Clips Kitty would allow (run.timeout_minutes, else 60
-    minutes to find and 10 to understand or rate).
+    minutes to find and 10 to understand, rate or suggest edits).
 
     A plugin that fails, or gives an answer Clips Kitty can't use, gives a
     PluginRun with `ok` False and `error` saying why. A run that can't start
     raises ContractError, as make_job does, before any folder is made."""
     prepared = _prepare(plugin, video=video, transcript=transcript, duration=duration, settings=settings,
                         steps=steps, moments=moments, games=games, ollama_host=ollama_host,
-                        ollama_model=ollama_model, models=models)
+                        ollama_model=ollama_model, models=models, layout=layout)
     secrets = _text_pairs(secrets, "secrets")
     if timeout is not None and not (_float(timeout) and timeout > 0):
         raise _refuse("timeout", "must be a number of seconds above 0")
@@ -417,6 +435,14 @@ def run_plugin(plugin, *, video=None, transcript=None, duration=None, settings=N
             notes = "understand" in prepared.steps
             run.moments = [_found(i, r, plugin_id=str(prepared.manifest.get("id", "")), notes=notes)
                            for i, r in enumerate(result["ranges"], 1)]
+        elif prepared.steps == devrun.EDIT_STEPS:
+            handed, limits = job["moments"], job["limits"]
+            run.edits, lines = host.read_edits(job_folder, windows={m["id"]: (m["start"], m["end"]) for m in handed},
+                                               crops=limits.get("crops") or (),
+                                               min_length=max(1.0, float(limits.get("min_duration") or 0)),
+                                               max_length=limits.get("max_duration"))
+            run.log += lines
+            run.moments = [_handed(data) for data in handed]
         else:
             handed = job["moments"]
             run.answers, ignored = host.read_answers(job_folder, steps=prepared.steps,

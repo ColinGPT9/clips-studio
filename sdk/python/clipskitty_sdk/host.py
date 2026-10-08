@@ -22,7 +22,23 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .contract import MAX_CONTEXT, PLUGIN_API_VERSION, ContractError, check_result, parse_line
+from .contract import (
+    DEFAULT_TITLE_OVERLAY_SECONDS,
+    EDIT_FIELDS,
+    FADE_CHOICES,
+    HOOK_SECONDS_CHOICES,
+    MAX_CONTEXT,
+    MAX_EDIT_REASON,
+    MAX_TITLE_OVERLAY,
+    PLUGIN_API_VERSION,
+    SPEED_CHOICES,
+    ContractError,
+    check_result,
+    kept_length,
+    merge_spans,
+    nearest_choice,
+    parse_line,
+)
 from .job import JOB_FILE, RESULT_FILE, SECRET_PREFIX, one_line
 from .manifest import MAX_TIMEOUT_MINUTES, setting_value_problem
 
@@ -133,13 +149,29 @@ def job_settings(manifest: dict, chosen: dict | None) -> dict:
 SAID_IN_A_MOMENT = ("title", "reason", "context")
 
 
+def _unsaid(suggested) -> dict:
+    """An earlier plugin's suggestion for a clip (a moment's `suggested`),
+    without its text: its reason and hook title are plugin text that may
+    come from what was said."""
+    if not isinstance(suggested, dict):
+        return suggested
+    out = {key: value for key, value in suggested.items() if key != "reason"}
+    if isinstance(out.get("edit"), dict):
+        out["edit"] = {key: value for key, value in out["edit"].items() if key != "title_overlay"}
+    return out
+
+
 def _moment_for(moment: dict, *, said: bool) -> dict:
-    """A copy of one moment for job.json, without what was said in it unless `said`."""
+    """A copy of one moment for job.json, without what was said in it unless
+    `said`: its title, reason and notes, and the reason and hook title of
+    what earlier plugins suggested for it."""
     out = {key: (list(value) if isinstance(value, list) else dict(value) if isinstance(value, dict) else value)
            for key, value in moment.items()}
     if not said:
         for key in SAID_IN_A_MOMENT:
             out.pop(key, None)
+        if isinstance(out.get("suggested"), list):
+            out["suggested"] = [_unsaid(s) for s in out["suggested"]]
     return out
 
 
@@ -158,9 +190,11 @@ def build_job(manifest: dict, *, settings: dict | None = None, video: dict | Non
     they are its own declarations, so no permission is needed for them.
 
     `steps` (what the run is asked for) and `moments` (the moments to rate or
-    understand) go in only when given, so a plugin that uses neither gets
-    the job.json it always did. A moment's title, reason and context come
-    from what was said, so they go in only with `transcript.read`.
+    understand, or the clips to suggest edits for) go in only when given, so
+    a plugin that uses neither gets the job.json it always did. A moment's
+    title, reason and context come from what was said, so they go in only
+    with `transcript.read`, and so do the reason and hook title of what
+    earlier plugins suggested for it. An edit run's `limits` carry `crops`.
     """
     perms = set(manifest.get("permissions") or [])
     job: dict = {
@@ -324,12 +358,16 @@ def run_plugin(command: list[str], *, cwd: Path, job_folder: Path, env: dict, ti
 _LINK = re.compile(r"(?:https?://|\bwww\.)\S+", re.IGNORECASE)
 
 
+def _cleaned(text, limit: int) -> str:
+    return " ".join(_LINK.sub(" ", one_line(text)).split())[:limit].rstrip()
+
+
 def clean_note(text) -> str:
     """A note of what happens in a moment, as Clips Kitty keeps it and gives
     it to the AI that writes titles: control characters removed, links
     (http://, https://, www.) taken out, whitespace and newlines collapsed to
     single spaces, and cut to MAX_CONTEXT characters. "" when nothing is left."""
-    return " ".join(_LINK.sub(" ", one_line(text)).split())[:MAX_CONTEXT].rstrip()
+    return _cleaned(text, MAX_CONTEXT)
 
 
 def _asked(steps) -> set:
@@ -415,7 +453,7 @@ def read_answers(job_folder: Path, *, steps, ids) -> tuple[dict, list[str]]:
     known = set(ids)
     answers: dict = {}
     ignored: list[str] = []
-    unasked_scores = unasked_notes = False
+    unasked_scores = unasked_notes = unasked_edits = False
     given = data.get("moments")
     for a in given if isinstance(given, list) else []:
         if not isinstance(a, dict) or not isinstance(a.get("id"), str):
@@ -423,6 +461,8 @@ def read_answers(job_folder: Path, *, steps, ids) -> tuple[dict, list[str]]:
         if a["id"] not in known:
             ignored.append(f"ignored: an answer for {a['id']}, which isn't one of this run's moments")
             continue
+        if a.get("edit") is not None and "edit" not in asked:
+            unasked_edits = True
         answer: dict = {}
         if a.get("score") is not None or a.get("reason"):
             if not rate:
@@ -445,4 +485,169 @@ def read_answers(job_folder: Path, *, steps, ids) -> tuple[dict, list[str]]:
         ignored.append("ignored: scores, because this run wasn't asked to rate")
     if unasked_notes:
         ignored.append("ignored: notes, because this run wasn't asked to understand")
+    if unasked_edits:
+        ignored.append("ignored: edits, because this run wasn't asked to suggest edits")
     return answers, ignored
+
+
+# Fields of an edit Clips Kitty never takes from a plugin that have a word of
+# their own, with what to write instead. Every other field outside
+# contract.EDIT_FIELDS is ignored with one line for the answer.
+_EDIT_INSTEAD = {"keep": "write the spans to take out as cuts",
+                 "hook": "write the hook title as title_overlay"}
+
+
+def _fit_spans(mid: str, key: str, spans, window: tuple[float, float], lines: list[str]) -> list[list[float]]:
+    """An edit's cuts or mutes clamped to the clip's window and joined where
+    they overlap, each in seconds of the video to the millisecond. A span
+    wholly outside the clip is dropped with a line."""
+    start, end = window
+    kept = []
+    for a, b in spans:
+        a, b = float(a), float(b)
+        if b <= start or a >= end:
+            lines.append(f"ignored: {mid}'s {key[:-1]} {a:.1f}-{b:.1f} s: it is outside the clip "
+                         f"({start:.1f}-{end:.1f} s)")
+            continue
+        kept.append((max(a, start), min(b, end)))
+    return [[round(a, 3), round(b, 3)] for a, b in merge_spans(kept)]
+
+
+def _moved(given: float, fitted: float) -> bool:
+    return abs(given - fitted) > 1e-9
+
+
+def _fit_edit(mid: str, edit: dict, window: tuple[float, float], crops: tuple, floor: float,
+              max_length: float | None, lines: list[str]) -> tuple[dict, str]:
+    """One answer's edit as Clips Kitty keeps it, and its cleaned reason."""
+    instead = [key for key in edit if key in _EDIT_INSTEAD]
+    for key in instead:
+        lines.append(f"ignored: {mid}'s {key}: {_EDIT_INSTEAD[key]}")
+    others = [str(key) for key in edit if key not in EDIT_FIELDS and key not in _EDIT_INSTEAD]
+    if others:
+        lines.append(f"ignored: {', '.join(others)} in {mid}'s edit: Clips Kitty doesn't take them from a plugin")
+    out: dict = {}
+    start, end = window
+    length = end - start
+    cuts = _fit_spans(mid, "cuts", edit.get("cuts") or [], window, lines)
+    if cuts:
+        left = kept_length(start, end, cuts)
+        if left < floor:
+            lines.append(f"ignored: {mid}'s cuts: they would leave {left:.1f} s, under this job's {floor:g} s "
+                         "shortest clip")
+        else:
+            out["cuts"], length = cuts, left
+    mutes = _fit_spans(mid, "mutes", edit.get("mutes") or [], window, lines)
+    if mutes:
+        out["mutes"] = mutes
+    if edit.get("volume") is not None:
+        volume = round(float(edit["volume"]), 2)  # the editor's slider moves in whole percents
+        if volume != 1:
+            out["volume"] = volume
+    for key in ("fade_in", "fade_out"):
+        if edit.get(key) is not None:
+            given = float(edit[key])
+            fade = nearest_choice(given, FADE_CHOICES)
+            if _moved(given, fade):
+                lines.append(f"changed: {mid}'s {key} {given:g} s to {fade:g} s, the nearest the editor offers")
+            if fade:
+                out[key] = fade
+    if edit.get("speed") is not None:
+        given = float(edit["speed"])
+        speed = nearest_choice(given, SPEED_CHOICES, toward=1)
+        after = length / speed
+        if speed > 1 and after < floor:
+            lines.append(f"ignored: {mid}'s speed: at {speed:g}x the clip would be {after:.1f} s, under this job's "
+                         f"{floor:g} s shortest clip")
+        elif speed < 1 and max_length and after > max_length:
+            lines.append(f"ignored: {mid}'s speed: at {speed:g}x the clip would be {after:.1f} s, over this job's "
+                         f"{max_length:g} s longest clip")
+        else:
+            if _moved(given, speed):
+                lines.append(f"changed: {mid}'s speed {given:g} to {speed:g}, the nearest the editor offers")
+            if speed != 1:
+                out["speed"] = speed
+    overlay = edit.get("title_overlay")
+    if overlay is not None:
+        text = _cleaned(overlay["text"], MAX_TITLE_OVERLAY)
+        if not text:
+            lines.append(f"ignored: {mid}'s title_overlay: no text is left once web addresses and line breaks "
+                         "are taken out")
+        else:
+            seconds = overlay.get("seconds")
+            given = float(DEFAULT_TITLE_OVERLAY_SECONDS if seconds is None else seconds)
+            fitted = nearest_choice(given, HOOK_SECONDS_CHOICES)
+            if _moved(given, fitted):
+                lines.append(f"changed: {mid}'s title_overlay seconds {given:g} s to {fitted:g} s, the nearest "
+                             "the editor offers")
+            out["title_overlay"] = {"text": text, "seconds": fitted}
+    crop = edit.get("crop")
+    if crop is not None:
+        if crop in crops:
+            out["crop"] = crop
+        elif not crops:
+            lines.append(f"ignored: {mid}'s crop \"{one_line(crop)}\": this job's clips don't use a layout")
+        else:
+            lines.append(f"ignored: {mid}'s crop \"{one_line(crop)}\": this job's clips don't use "
+                         f"\"{one_line(crop)}\"")
+    reason = _cleaned(edit.get("reason"), MAX_EDIT_REASON) if edit.get("reason") is not None else ""
+    return out, reason
+
+
+def read_edits(job_folder: Path, *, windows: dict, crops, min_length: float,
+               max_length: float | None = None) -> tuple[dict, list[str]]:
+    """What a run asked to suggest edits answered, as Clips Kitty keeps it.
+
+    `windows` maps each clip's moment id to its (start, end) in seconds of
+    the video; `crops` are the layouts this job's clips can use (the job's
+    `limits.crops`); `min_length` is the job's shortest clip, at least 1 s;
+    `max_length` its longest. Returns each clip's suggestion by moment id,
+    {"edit": {...}, "reason": "..."} (no reason when it gave none), and a
+    line for the log for each thing ignored or changed.
+
+    The edit is fitted to the clip and to the timeline editor. Cuts and
+    mutes are clamped to the clip and joined where they overlap; a span
+    wholly outside the clip is dropped. Cuts that would leave less than
+    `min_length` (pieces under contract.MIN_PIECE don't count) are ignored,
+    and a speed that would take the clip under it, or past `max_length`.
+    Volume is rounded to a whole percent. Fades, speed and the hook title's
+    seconds are set to the nearest of the editor's choices (FADE_CHOICES,
+    SPEED_CHOICES, HOOK_SECONDS_CHOICES), with a `changed:` line when one
+    moves. The hook title is put on one line, without web addresses that
+    start with http://, https:// or www., and cut to MAX_TITLE_OVERLAY
+    characters. A crop not in `crops` is ignored. Values that change nothing
+    (volume 1, fades 0, speed 1) are left out, and an edit left with nothing
+    is ignored. Fields contract.EDIT_FIELDS doesn't name are ignored with a
+    line, as are answers for other moments, ranges, scores and notes. A
+    missing or invalid result.json raises ContractError, as in read_result.
+    """
+    data = _load_result(job_folder, ["edit"])
+    floor = max(1.0, float(min_length or 0))
+    crops = tuple(crops or ())
+    edits: dict = {}
+    lines: list[str] = []
+    unasked_scores = unasked_notes = False
+    given = data.get("moments")
+    for a in given if isinstance(given, list) else []:
+        mid = a["id"]  # checked: every answer is an object with an id
+        if mid not in windows:
+            lines.append(f"ignored: an answer for {mid}, which isn't one of this run's moments")
+            continue
+        unasked_scores = unasked_scores or a.get("score") is not None or bool(a.get("reason"))
+        unasked_notes = unasked_notes or bool(a.get("context"))
+        if a.get("edit") is None:
+            continue
+        start, end = windows[mid]
+        fitted, reason = _fit_edit(mid, a["edit"], (float(start), float(end)), crops, floor, max_length, lines)
+        if not fitted:
+            lines.append(f"ignored: {mid}'s edit changes nothing")
+            continue
+        edits[mid] = {"edit": fitted, **({"reason": reason} if reason else {})}
+    ranges = data.get("ranges") or []
+    if ranges:
+        lines.append(f"ignored: {len(ranges)} range(s): this run was asked about moments, not to find new ones")
+    if unasked_scores:
+        lines.append("ignored: scores, because this run wasn't asked to rate")
+    if unasked_notes:
+        lines.append("ignored: notes, because this run wasn't asked to understand")
+    return edits, lines

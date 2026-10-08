@@ -82,6 +82,23 @@ def main(job):
 run(main)
 '''
 
+# Records its job and suggests the same edit for every clip it is handed.
+EDITOR_MAIN = '''\
+import json
+
+from clipskitty_sdk import run
+
+
+def main(job):
+    (job.output_dir / "seen.json").write_text(json.dumps(job.data), encoding="utf-8")
+    for m in job.moments:
+        job.suggest_edit(m).cut(m.start + 1, m.start + 3).fade(fade_out=0.45).crop("center")
+        job.suggest_edit(m).reason("Starts on the action")
+
+
+run(main)
+'''
+
 SLEEPER_MAIN = '''\
 import time
 
@@ -111,6 +128,11 @@ def _plugin(tmp_path, name="quarkbloom-bursts", *, title="Quarkbloom Bursts", in
 def _grader(tmp_path, **kwargs) -> Path:
     return _plugin(tmp_path, "quarkbloom-grader", title="Quarkbloom Grader", inputs="moments, transcript",
                    outputs="ratings, context", permissions="transcript.read", main=GRADER_MAIN, **kwargs)
+
+
+def _editor(tmp_path, outputs="edits", **kwargs) -> Path:
+    return _plugin(tmp_path, "quarkbloom-trimmer", title="Quarkbloom Trimmer", inputs="moments, transcript",
+                   outputs=outputs, permissions="transcript.read", main=EDITOR_MAIN, **kwargs)
 
 
 def _video(tmp_path) -> Path:
@@ -171,13 +193,13 @@ def test_validate_without_a_manifest_names_the_folder(tmp_path, capsys):
 
 def test_errors_carry_their_yaml_line(tmp_path, capsys):
     pytest.importorskip("yaml")
-    folder = _plugin(tmp_path, outputs="ranges, edits", extra=(
+    folder = _plugin(tmp_path, outputs="ranges, clips", extra=(
         "settings:\n"
         "  min_kills: {type: integer, default: 9, maximum: 6}\n"
         "colour: red\n"))
     assert _cli("validate", folder) == 1
     out = capsys.readouterr().out
-    assert "error: outputs[1]: output 'edits' is planned, not supported by plugin API 1 (clipskitty.yaml line 14)\n" \
+    assert "error: outputs[1]: output 'clips' is planned, not supported by plugin API 1 (clipskitty.yaml line 14)\n" \
         in out
     assert "error: settings.min_kills.default: 9 is above the maximum, 6 (clipskitty.yaml line 17)\n" in out
     assert "warning: colour: unknown field, ignored (clipskitty.yaml line 18)\n" in out
@@ -427,15 +449,106 @@ def test_steps_takes_commas_or_separate_words(tmp_path, capsys):
     assert "Understand and rate: 5 of 5 moment(s) answered" in capsys.readouterr().out
 
 
-def test_steps_edit_is_planned(tmp_path, capsys):
+def test_steps_export_is_planned(tmp_path, capsys):
     pytest.importorskip("yaml")
     grader = _grader(tmp_path)
-    for step in ("edit", "export"):
-        assert _run(tmp_path, grader, "--duration", "60", "--steps", "rate", step) == 2
-        assert capsys.readouterr().err.endswith(
-            f"error: --steps: {step} is planned, not part of plugin contract 1 yet; use find, understand or rate\n")
+    assert _run(tmp_path, grader, "--duration", "60", "--steps", "rate", "export") == 2
+    assert capsys.readouterr().err.endswith(
+        "error: --steps: export is planned, not part of plugin contract 1 yet; use find, understand, rate or edit\n")
     assert _run(tmp_path, grader, "--duration", "60", "--steps", "polish") == 2
-    assert capsys.readouterr().err.endswith("error: --steps: unknown step 'polish'; expected find, understand or rate\n")
+    assert capsys.readouterr().err.endswith(
+        "error: --steps: unknown step 'polish'; expected find, understand, rate or edit\n")
+    # A plugin that can't edit is told what its manifest needs.
+    assert _run(tmp_path, grader, "--duration", "60", "--steps", "edit") == 2
+    assert capsys.readouterr().err.endswith(
+        "error: --steps: the pipeline Quarkbloom Grader can't suggest edits for clips: its manifest needs moments in "
+        "inputs and edits in outputs\n")
+
+
+def test_steps_edit_runs_and_shows_each_clip_as_clips_kitty_keeps_it(tmp_path, capsys):
+    pytest.importorskip("yaml")
+    editor = _editor(tmp_path)
+    assert _run(tmp_path, editor, "--duration", "120", "--steps", "edit") == 0
+    job = _job_json(tmp_path)
+    assert job["steps"] == ["edit"]
+    assert job["limits"]["crops"] == ["track", "center", "letterbox"] and "min_score" not in job["limits"]
+    assert [(m["id"], m["start"], m["end"]) for m in job["moments"]][:2] == [("m1", 20.0, 40.0), ("m2", 40.0, 60.0)]
+    out = capsys.readouterr().out
+    assert "Suggest edits: 5 of 5 clip(s) given a suggestion, as Clips Kitty would keep them:\n" in out
+    assert ("m1   20.0s-40.0s  20.0 s -> 18.0 s  cut 21.0-23.0 · fade out 0.5 s · layout center\n"
+            "     Starts on the action\n") in out
+    assert "changed: m1's fade_out 0.45 s to 0.5 s, the nearest the editor offers\n" in out
+    # The editor's own log says the same before Clips Kitty reads the answer.
+    assert "m1: fade_out 0.45 s will be 0.5 s, the nearest the editor offers" in out
+
+
+def test_steps_edit_with_another_step_is_refused(tmp_path, capsys):
+    pytest.importorskip("yaml")
+    both = _editor(tmp_path, outputs="ratings, edits")
+    for steps in (["rate,edit"], ["edit", "understand"], ["find", "edit"]):
+        assert _run(tmp_path, both, "--duration", "120", "--steps", *steps) == 2, steps
+        assert capsys.readouterr().err.endswith(
+            "error: --steps: edit is a run of its own, after the clips are chosen: run it separately\n"), steps
+    assert not (tmp_path / "job").exists()
+
+
+def test_an_edit_only_plugin_gets_an_edit_run_and_others_are_told_they_can_edit(tmp_path, capsys):
+    pytest.importorskip("yaml")
+    editor = _editor(tmp_path)
+    assert _run(tmp_path, editor, "--duration", "120") == 0
+    assert _job_json(tmp_path)["steps"] == ["edit"]
+    captured = capsys.readouterr()
+    assert "Suggest edits: 5 of 5 clip(s)" in captured.out and "also suggests edits" not in captured.err
+    # A plugin that also rates gets its rate run, as before, and is told about --steps edit.
+    both = _editor(tmp_path / "both", outputs="ratings, edits")
+    assert _run(tmp_path, both, "--duration", "120", job="both") == 0
+    assert _job_json(tmp_path, "both")["steps"] == ["rate"]
+    captured = capsys.readouterr()
+    assert "note: it also suggests edits: run again with --steps edit\n" in captured.err
+    assert "Rate: 0 of 5 moment(s) answered" in captured.out
+    # Asked for by name, it says nothing more.
+    assert _run(tmp_path, both, "--duration", "120", "--steps", "rate", job="named") == 0
+    assert "also suggests edits" not in capsys.readouterr().err
+
+
+def test_layout_fills_the_crops_an_edit_run_gets(tmp_path, capsys):
+    pytest.importorskip("yaml")
+    editor = _editor(tmp_path)
+    for layout in ("podcast", "sports", "gaming", "vertical-live", "whole-frame"):
+        assert _run(tmp_path, editor, "--duration", "120", "--layout", layout, job=layout) == 0, layout
+        assert _job_json(tmp_path, layout)["limits"]["crops"] == [], layout
+        out = capsys.readouterr().out
+        assert "ignored: m1's crop \"center\": this job's clips don't use a layout\n" in out, layout
+        assert "m1   20.0s-40.0s  20.0 s -> 18.0 s  cut 21.0-23.0 · fade out 0.5 s\n" in out, layout
+    assert _run(tmp_path, editor, "--duration", "120", "--layout", "standard", job="standard") == 0
+    assert _job_json(tmp_path, "standard")["limits"]["crops"] == ["track", "center", "letterbox"]
+    capsys.readouterr()
+    # Another run leaves it out, and says so.
+    grader = _grader(tmp_path)
+    assert _run(tmp_path, grader, "--duration", "120", "--layout", "gaming", job="graded") == 0
+    assert "crops" not in _job_json(tmp_path, "graded")["limits"]
+    assert "note: --layout is for a run that suggests edits, so this run leaves it out\n" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        _run(tmp_path, editor, "--duration", "120", "--layout", "letterbox", job="wrong")
+
+
+def test_moments_may_carry_what_earlier_editors_suggested(tmp_path, capsys):
+    pytest.importorskip("yaml")
+    editor = _editor(tmp_path)
+    moments = tmp_path / "moments.json"
+    earlier = {"by": "example-dev/quarkbloom-framer", "name": "Quarkbloom Framer",
+               "edit": {"crop": "center", "title_overlay": {"text": "Bloom", "seconds": 3}},
+               "reason": "Keeps both players in frame"}
+    moments.write_text(json.dumps([{"start": 10, "end": 40, "suggested": [earlier]}, {"start": 50, "end": 80}]),
+                       encoding="utf-8")
+    assert _run(tmp_path, editor, "--moments", moments, "--duration", "120", "--steps", "edit") == 0
+    handed = _job_json(tmp_path)["moments"]
+    assert handed[0]["suggested"] == [earlier] and "suggested" not in handed[1]
+    capsys.readouterr()
+    moments.write_text(json.dumps([{"start": 10, "end": 40, "suggested": [{"edit": {}}]}]), encoding="utf-8")
+    assert _run(tmp_path, editor, "--moments", moments, "--duration", "120", job="bad") == 2
+    assert capsys.readouterr().err.endswith(
+        "error: --moments: moment 0: suggested must be a list of {by, name, edit, reason?}, by a plugin's id\n")
 
 
 def test_hints_name_the_python_that_is_running(monkeypatch):

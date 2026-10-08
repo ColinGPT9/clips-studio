@@ -69,6 +69,7 @@ STEP_WORDS = {
     "find": "Finds moments",
     "understand": "Understands moments",
     "rate": "Rates moments",
+    "edit": "Suggests edits",
 }
 UNDERSTANDS_ITS_OWN = "Understands what it finds"
 TIME_LIMIT = "Clips Kitty stops it after {n} {unit} when it rates or understands a video’s moments."
@@ -146,8 +147,9 @@ def model_lines(manifest: dict) -> list[dict]:
 
 def step_lines(manifest: dict) -> list[str]:
     """What it can be chosen for, in pill words: Finds moments (a pipeline),
-    Understands moments and Rates moments (Rate & understand), or Understands
-    what it finds (a finder that describes its own moments)."""
+    Understands moments and Rates moments (Rate & understand), Suggests edits
+    (for the clips Clips Kitty makes), or Understands what it finds (a
+    finder that describes its own moments)."""
     from plugins._sdk import manifest as vocabulary
 
     offered = vocabulary.offers(manifest)

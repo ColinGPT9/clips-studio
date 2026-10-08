@@ -332,6 +332,71 @@ def test_run_plugin_returns_moments_answers_and_notes(tmp_path):
     assert [m.notes for m in rated.moments] == [(), ()]
 
 
+# Suggests an edit for the clip where "quark burst" is said, and logs what
+# earlier editors suggested.
+EDITOR_MAIN = '''\
+from clipskitty_sdk import run
+
+
+def main(job):
+    for m in job.moments:
+        for earlier in m.suggested:
+            job.log(f"{m.id}: {earlier.name} suggested {', '.join(sorted(earlier.edit))}")
+        if "quark burst" in job.text(m):
+            s = job.suggest_edit(m)
+            s.trim(m.start + 1).mute(21, 22).title_overlay("Quark burst!", seconds=4).crop("center")
+            s.reason("Starts on the burst")
+
+
+run(main)
+'''
+
+
+def _editor(tmp_path) -> Path:
+    return _plugin(tmp_path, "quarkbloom-trimmer", inputs="moments, transcript", outputs="edits",
+                   permissions="transcript.read", main=EDITOR_MAIN)
+
+
+def test_run_plugin_returns_the_edits_clips_kitty_keeps(tmp_path):
+    """An edit run's `edits` are each clip's suggestion fitted as Clips Kitty
+    keeps it (host.read_edits), with its changed: and ignored: lines in the
+    log; `moments` are the clips it was handed."""
+    pytest.importorskip("yaml")
+    editor = _editor(tmp_path)
+    clips = [{"start": 17, "end": 40, "suggested": [{"by": "example-dev/quarkbloom-framer", "name": "Quarkbloom Framer",
+                                                      "edit": {"crop": "track", "fade_in": 0.3}}]},
+             {"start": 6, "end": 16}]
+    run = testing.run_plugin(editor, transcript=samples.sample_transcript(), duration=40, moments=clips,
+                             steps=["edit"], layout="standard", tmp_path=tmp_path / "runs")
+    assert run.ok, run.error
+    assert run.steps == ("edit",)
+    assert run.edits == {"m1": {"edit": {"cuts": [[17.0, 18.0]], "mutes": [[21.0, 22.0]],
+                                         "title_overlay": {"text": "Quark burst!", "seconds": 3}, "crop": "center"},
+                                "reason": "Starts on the burst"}}
+    assert [(m.id, m.start, m.end) for m in run.moments] == [("m1", 17.0, 40.0), ("m2", 6.0, 16.0)]
+    assert [s.name for s in run.moments[0].suggested] == ["Quarkbloom Framer"]
+    assert run.log == ["m1: Quarkbloom Framer suggested crop, fade_in",
+                       "m1: title_overlay seconds 4 s will be 3 s, the nearest the editor offers",
+                       "changed: m1's title_overlay seconds 4 s to 3 s, the nearest the editor offers"]
+    assert run.answers == {}
+
+    # The same plugin with no steps named gets its edit run; a Gaming clip uses no layout.
+    gaming = testing.run_plugin(editor, transcript=samples.sample_transcript(), duration=40, moments=clips[:1],
+                                layout="gaming", tmp_path=tmp_path / "runs")
+    assert gaming.ok and gaming.steps == ("edit",)
+    assert "crop" not in gaming.edits["m1"]["edit"]
+    assert "ignored: m1's crop \"center\": this job's clips don't use a layout" in gaming.log
+    assert "m1: crop 'center' will be ignored: this job's clips don't use a layout" in gaming.log
+    # Its moments, handed on, keep what was suggested before.
+    again = testing.make_job(tmp_path / "job", editor, transcript=samples.sample_transcript(), duration=40,
+                             moments=run.moments, layout="podcast")
+    data = _job_json(again)
+    assert data["steps"] == ["edit"] and data["limits"]["crops"] == []
+    assert data["moments"][0]["suggested"] == [{"by": "example-dev/quarkbloom-framer", "name": "Quarkbloom Framer",
+                                                "edit": {"crop": "track", "fade_in": 0.3}}]
+    assert read_job(again).moments[0].suggested == run.moments[0].suggested
+
+
 def test_run_plugin_reports_the_plugins_error_in_words(tmp_path):
     pytest.importorskip("yaml")
     plugin = _plugin(tmp_path, "quarkbloom-fails", inputs="transcript", outputs="ranges",
@@ -365,15 +430,15 @@ def test_run_plugin_reports_the_plugins_error_in_words(tmp_path):
 
 def test_run_plugin_refuses_a_manifest_the_app_would(tmp_path):
     pytest.importorskip("yaml")
-    plugin = _plugin(tmp_path, "quarkbloom-edits", inputs="transcript", outputs="ranges, edits",
+    plugin = _plugin(tmp_path, "quarkbloom-clips", inputs="transcript", outputs="ranges, clips",
                      permissions="transcript.read", main=IDLE_MAIN)
     _, report = validate_folder(plugin)
-    assert report.errors == ["outputs[1]: output 'edits' is planned, not supported by plugin API 1"]
+    assert report.errors == ["outputs[1]: output 'clips' is planned, not supported by plugin API 1"]
     runs = tmp_path / "runs"
     with pytest.raises(ContractError) as e:
         testing.run_plugin(plugin, duration=40, tmp_path=runs)
     assert e.value.errors == report.errors
-    assert str(e.value) == "clipskitty.yaml: outputs[1]: output 'edits' is planned, not supported by plugin API 1"
+    assert str(e.value) == "clipskitty.yaml: outputs[1]: output 'clips' is planned, not supported by plugin API 1"
     with pytest.raises(ContractError):
         testing.make_job(tmp_path / "job", plugin, duration=40)
 
@@ -385,7 +450,12 @@ def test_run_plugin_refuses_a_manifest_the_app_would(tmp_path):
     for where, kwargs, message in (
             (nowhere, {}, f"clipskitty.yaml: no clipskitty.yaml in {nowhere}: is this the plugin's folder?"),
             (finder, {"steps": "edit"},
-             "steps: edit is planned, not part of plugin contract 1 yet; use find, understand or rate"),
+             ("steps: the pipeline Quarkbloom Said can't suggest edits for clips: its manifest needs moments in "
+              "inputs and edits in outputs")),
+            (finder, {"steps": "export"},
+             "steps: export is planned, not part of plugin contract 1 yet; use find, understand, rate or edit"),
+            (finder, {"layout": "letterbox"},
+             "layout: expected one of: standard, podcast, sports, gaming, vertical-live, whole-frame"),
             (finder, {"steps": ["rate"]},
              ("steps: the pipeline Quarkbloom Said can't rate moments others found: its manifest needs moments in "
               "inputs and ratings in outputs")),

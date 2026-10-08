@@ -1,11 +1,11 @@
-# expect: outputs[1]: output 'edits' is planned, not supported by plugin API 1
+# expect: outputs[1]: edits are suggested for the clips Clips Kitty makes from moments: add moments to inputs
 manifest_version: 1
-id: example-dev/loud-moments
-name: Loud moments
+id: example-dev/quarkbloom-trimmer
+name: Quarkbloom Trimmer
 version: 1.0.0
 kind: pipeline
 capability: highlight_detection
-description: Picks the loudest stretches of a video.
+description: Suggests cuts for clips of Quarkbloom Arena (a made-up game).
 license: MIT
 requires: {clips_kitty: '>=2.0', plugin_api: 1}
 run:

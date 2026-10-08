@@ -60,8 +60,8 @@ PLANNED_KINDS = ("caption-style", "publisher", "source", "integration", "provide
 CAPABILITIES = ("highlight_detection",)
 EXECUTIONS = ("local", "remote", "hybrid")
 INPUTS = ("video", "transcript", "moments")
-OUTPUTS = ("ranges", "ratings", "context")
-PLANNED_OUTPUTS = ("clips", "edits")  # edits: the planned edit step (contract.PLANNED_STEPS)
+OUTPUTS = ("ranges", "ratings", "context", "edits")
+PLANNED_OUTPUTS = ("clips",)
 PERMISSIONS = ("video.read", "transcript.read", "ffmpeg", "ollama", "gpu", "network",
                "filesystem.read", "filesystem.write", "project.read", "project.write")
 PLANNED_PERMISSIONS = ("clips.write",)
@@ -509,17 +509,22 @@ def _words(data, key: str) -> list:
 
 def _check_steps(c: _Check, data: dict) -> None:
     """The rules that tie the moment words together. Each needs one of the
-    words `moments`, `ratings` or `context`, and no two can fire on one
-    manifest, so a manifest gets at most one of these errors."""
+    words `moments`, `ratings`, `context` or `edits`, and no two can fire on
+    one manifest, so a manifest gets at most one of these errors."""
     inputs, outputs = _words(data, "inputs"), _words(data, "outputs")
     if "ratings" in outputs and "moments" not in inputs:
         c.error(f"outputs[{outputs.index('ratings')}]", "ratings score moments found before this plugin runs: "
                 "add moments to inputs (a pipeline's own ranges carry their score already)")
-    if "moments" in inputs and "ratings" not in outputs and "context" not in outputs:
+    if "moments" in inputs and not any(w in outputs for w in ("ratings", "context", "edits")):
         c.error(f"inputs[{inputs.index('moments')}]", "a plugin given moments answers about them: "
-                "add ratings or context to outputs")
+                "add ratings, context or edits to outputs")
+    if "edits" in outputs and "moments" not in inputs and "ratings" not in outputs:
+        # with ratings it is the first rule's, and its fix fixes both
+        c.error(f"outputs[{outputs.index('edits')}]", "edits are suggested for the clips Clips Kitty makes "
+                "from moments: add moments to inputs")
     if ("context" in outputs and "ranges" not in outputs and "moments" not in inputs
-            and "ratings" not in outputs):  # with ratings it is the first rule's, and its fix fixes both
+            and "ratings" not in outputs and "edits" not in outputs):
+        # with ratings or edits it is that rule's, and adding moments fixes both
         c.error(f"outputs[{outputs.index('context')}]", "context describes moments: add ranges to outputs, "
                 "or moments to inputs")
 
@@ -706,7 +711,7 @@ def validate_folder(folder: str | Path, *, builtin: bool = False) -> tuple[dict 
     return data, report
 
 
-# ---- what a plugin does: find, understand, rate ------------------------------------
+# ---- what a plugin does: find, understand, rate, edit -------------------------------
 #
 # A plugin's role follows from its inputs and outputs; there is no field for it.
 # These functions decide what a plugin does and what a job may ask of it. Read
@@ -714,20 +719,22 @@ def validate_folder(folder: str | Path, *, builtin: bool = False) -> tuple[dict 
 # every place that asks gets the same answer.
 
 # The output that does each step.
-STEP_OUTPUTS = {"find": "ranges", "understand": "context", "rate": "ratings"}
+STEP_OUTPUTS = {"find": "ranges", "understand": "context", "rate": "ratings", "edit": "edits"}
 
 
 def steps_of(manifest) -> tuple[str, ...]:
     """What a plugin does, in run order: find for `ranges`, understand for
-    `context`, rate for `ratings`. A finder that declares `context` describes
-    its own ranges: it does find and understand, but is offered only find."""
+    `context`, rate for `ratings`, edit for `edits`. A finder that declares
+    `context` describes its own ranges: it does find and understand, but is
+    offered only find."""
     outputs = _words(manifest, "outputs")
     return tuple(step for step in STEPS if STEP_OUTPUTS[step] in outputs)
 
 
 def offers(manifest) -> tuple[str, ...]:
-    """The steps a job may name a plugin for: find for `ranges`; understand
-    and rate for `context` and `ratings` when it also takes `moments` in."""
+    """The steps a job may name a plugin for: find for `ranges`; understand,
+    rate and edit for `context`, `ratings` and `edits` when it also takes
+    `moments` in."""
     given = "moments" in _words(manifest, "inputs")
     return tuple(step for step in steps_of(manifest) if step == "find" or given)
 
@@ -740,11 +747,11 @@ def find_steps(manifest) -> tuple[str, ...]:
 
 
 def uses_steps(manifest) -> bool:
-    """Whether a manifest uses any of the words `moments`, `ratings` or
-    `context`. Only then does a find run's job.json carry `steps`, so a plain
-    finder's job is exactly what it always was."""
+    """Whether a manifest uses any of the words `moments`, `ratings`,
+    `context` or `edits`. Only then does a find run's job.json carry `steps`,
+    so a plain finder's job is exactly what it always was."""
     words = _words(manifest, "inputs") + _words(manifest, "outputs")
-    return any(w in words for w in ("moments", "ratings", "context"))
+    return any(w in words for w in ("moments", "ratings", "context", "edits"))
 
 
 def step_problem(manifest, step: str) -> str | None:
@@ -755,8 +762,13 @@ def step_problem(manifest, step: str) -> str | None:
     if step in offers(manifest):
         return None
     if step == "find":
+        if steps_of(manifest) == ("edit",):
+            return ("doesn't find moments: it suggests edits for the clips Clips Kitty makes. "
+                    "Choose it under Suggest edits instead")
         return ("doesn't find moments: it rates or understands moments others found. "
                 "Choose it under Rate & understand instead")
+    if step == "edit":
+        return "can't suggest edits for clips: its manifest needs moments in inputs and edits in outputs"
     return (f"can't {step} moments others found: its manifest needs moments in inputs "
             f"and {STEP_OUTPUTS[step]} in outputs")
 

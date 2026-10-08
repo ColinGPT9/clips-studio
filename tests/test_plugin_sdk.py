@@ -169,7 +169,58 @@ def test_check_result_with_steps_checks_moments_and_context():
         "ranges[2]: context must be a list of at most 5 notes of 1 to 160 characters"]
     assert check_result(notes, steps=["understand", "rate"]) == []  # a moment run's ranges carry no notes to check
     assert (contract.MAX_CONTEXT, contract.MAX_CONTEXT_ITEMS, contract.MAX_MOMENT_ID) == (160, 5, 32)
-    assert contract.STEPS == ("find", "understand", "rate")
+    assert contract.STEPS == ("find", "understand", "rate", "edit")
+
+
+def test_check_result_checks_edit_answers_only_in_an_edit_run():
+    """An answer's `edit` is checked against the render's own limits only in
+    a run asked to suggest edits; any problem refuses the whole answer. A
+    field the contract doesn't name is left for read_edits to ignore. In a
+    run that rates, an edit is never checked (read_answers logs it)."""
+    good = {"plugin_api": 1, "ranges": [], "moments": [
+        {"id": "m1", "edit": {"cuts": [[815.0, 821.5], [0, 1]], "mutes": [[830.2, 830.9]], "volume": 2,
+                              "fade_in": 0, "fade_out": 3, "speed": 0.5,
+                              "title_overlay": {"text": "x" * 120, "seconds": 10}, "crop": "b" * 32,
+                              "reason": "r" * 160, "music": "song.mp3", "keep": [[1, 2]]}},
+        {"id": "m2", "edit": {"speed": 3, "title_overlay": {"text": "Triple bloom!"}}},
+        {"id": "m3", "edit": {}}, {"id": "m4", "score": 70}]}
+    assert check_result(good, steps=["edit"]) == []
+    bad = {"plugin_api": 1, "ranges": [], "moments": [
+        {"id": "m1", "edit": {"cuts": [[830.0, 820.0], [5], [-1, 2]], "mutes": [[1, 2]] * 21}},
+        {"id": "m2", "edit": {"volume": 2.5, "fade_in": -0.1, "fade_out": "0.5", "speed": 3.5}},
+        {"id": "m3", "edit": {"title_overlay": {"text": ""}}},
+        {"id": "m4", "edit": {"title_overlay": {"text": "x" * 121}}},
+        {"id": "m5", "edit": {"title_overlay": {"text": "Go", "seconds": 11}}},
+        {"id": "m6", "edit": {"title_overlay": "Go", "crop": "c" * 33, "reason": "r" * 161}},
+        {"id": "m7", "edit": "cut the start"},
+        {"id": "m8", "edit": {"cuts": "all"}}]}
+    assert check_result(bad, steps=["edit"]) == [
+        "moments[0]: edit.cuts[0] needs 0 <= start < end, in seconds of the video (got 830.0 to 820.0)",
+        "moments[0]: edit.cuts[1] must be a [start, end] pair of seconds",
+        "moments[0]: edit.cuts[2] needs 0 <= start < end, in seconds of the video (got -1 to 2)",
+        "moments[0]: edit.mutes must be a list of at most 20 [start, end] pairs of seconds",
+        "moments[1]: edit.volume must be a number from 0 to 2",
+        "moments[1]: edit.fade_in must be a number from 0 to 3",
+        "moments[1]: edit.fade_out must be a number from 0 to 3",
+        "moments[1]: edit.speed must be a number from 0.5 to 3",
+        "moments[2]: edit.title_overlay needs text of 1 to 120 characters",
+        "moments[3]: edit.title_overlay needs text of 1 to 120 characters",
+        "moments[4]: edit.title_overlay.seconds must be a number from 1 to 10",
+        "moments[5]: edit.title_overlay needs text of 1 to 120 characters",
+        "moments[5]: edit.crop must be text of at most 32 characters",
+        "moments[5]: edit.reason must be text of at most 160 characters",
+        "moments[6]: edit must be an object",
+        "moments[7]: edit.cuts must be a list of at most 20 [start, end] pairs of seconds",
+    ]
+    # Not asked to edit: the edits aren't checked, in a moment run or a find run.
+    for steps in (["rate"], ["understand"], ["understand", "rate"], None, ["find"]):
+        assert check_result(bad, steps=steps) == [], steps
+    # An edit run's answers are still checked as answers.
+    assert check_result({"plugin_api": 1, "ranges": [], "moments": [{"id": "m1"}, {"id": "m1", "score": 101}]},
+                        steps=["edit"]) == ["moments[1]: moment m1 is answered twice",
+                                            "moments[1]: score must be a number from 0 to 100, or left out"]
+    assert (contract.MAX_EDIT_SPANS, contract.MAX_TITLE_OVERLAY, contract.MAX_EDIT_REASON, contract.CROPS) == (
+        20, 120, 160, ("track", "center", "letterbox"))
 
 
 def test_check_job_accepts_unknown_step_names_and_moment_keys():
@@ -498,9 +549,10 @@ def test_text_needs_a_transcript(tmp_path):
 
 def test_unknown_steps_and_moment_keys_are_ignored(tmp_path):
     later = [{**MOMENTS[0], "mood": "tense", "found_with": {"model": "a later key"}}]
-    job, out = _moment_job(tmp_path, ["rate", "edit", "export"], moments=later)
-    assert job.steps == ("rate", "edit", "export")
-    assert job.wants("rate") and not job.wants("edit") and not job.wants("export") and not job.wants("find")
+    job, out = _moment_job(tmp_path, ["rate", "export", "polish"], moments=later)
+    assert job.steps == ("rate", "export", "polish")
+    assert job.wants("rate") and not job.wants("export") and not job.wants("polish") and not job.wants("find")
+    assert not job.wants("edit")
     m = job.moments[0]
     assert not hasattr(m, "mood") and not hasattr(m, "found_with") and m.score == 72
     job.rate(m, 90)
@@ -1080,9 +1132,11 @@ def test_run_takes_a_finders_result_as_moments(tmp_path, capsys):
     ("echo", "find,understand", ("the pipeline Echo doesn't say what happens in the moments it finds: "
                                  "its manifest needs context in outputs")),
     ("grader", "find,rate", "a run that finds moments isn't also asked to rate others' moments; run them separately"),
-    ("grader", "edit", "edit is planned, not part of plugin contract 1 yet; use find, understand or rate"),
-    ("grader", "polish", "unknown step 'polish'; expected find, understand or rate"),
-    ("grader", "rate,", "unknown step ''; expected find, understand or rate"),
+    ("grader", "edit", ("the pipeline Quarkbloom Grader can't suggest edits for clips: its manifest needs "
+                        "moments in inputs and edits in outputs")),
+    ("grader", "export", "export is planned, not part of plugin contract 1 yet; use find, understand, rate or edit"),
+    ("grader", "polish", "unknown step 'polish'; expected find, understand, rate or edit"),
+    ("grader", "rate,", "unknown step ''; expected find, understand, rate or edit"),
 ])
 def test_run_refuses_a_step_the_plugin_doesnt_offer(tmp_path, capsys, plugin, steps, message):
     pytest.importorskip("yaml")

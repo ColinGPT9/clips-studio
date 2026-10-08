@@ -69,11 +69,32 @@ for each moment id, and leaves `ranges` empty:
                   "context": ["The team that was behind is catching up here"]}]}
 
 `score`, `reason` and `context` are each optional; a moment left out keeps
-what it had. Check a run's answer with
+what it had.
+
+Suggesting edits. A plugin with `edits` in its outputs and `moments` in its
+inputs can be asked for `["edit"]`, a run of its own: its `moments` are the
+clips Clips Kitty is about to make, and `limits.crops` lists the layouts
+those clips can use (CROPS, or none). A clip may carry `suggested`, what the
+edit plugins before this one in the same job suggested for it, read-only.
+Times are seconds of the video, as everywhere in this contract. The answer
+holds at most one `edit` for each moment id, every field optional:
+
+     "moments": [{"id": "m1", "edit": {"cuts": [[815.0, 821.5]], "mutes": [[830.2, 830.9]],
+                  "volume": 1.0, "fade_in": 0.3, "fade_out": 0.5, "speed": 1.25,
+                  "title_overlay": {"text": "Triple bloom!", "seconds": 3},
+                  "crop": "center", "reason": "Cuts the wait for the respawn timer"}}]
+
+A value outside the render's own limits refuses the whole answer. A field
+this contract doesn't name is ignored, and the host's read_edits() fits the
+rest to the clip and to the timeline editor's choices. Clips Kitty keeps an
+edit as a suggestion the creator can use in the editor; it changes no clip
+by itself.
+
+Check a run's answer with
 `check_result(data, steps=job_json.get("steps"))`, as Job.finish(), the
-host's read_result() and read_answers(), and the app do. Without `steps` it
-is checked as a find run's answer, so a finder's result passes or fails
-exactly as it always has.
+host's read_result(), read_answers() and read_edits(), and the app do.
+Without `steps` it is checked as a find run's answer, so a finder's result
+passes or fails exactly as it always has.
 
 Progress lines on standard output, one JSON object per line:
 
@@ -102,12 +123,37 @@ MAX_CONTEXT = 160  # characters in one note of what happens in a moment
 MAX_CONTEXT_ITEMS = 5  # notes for one moment, from one plugin, in one run
 MAX_MOMENT_ID = 32
 
-# What a run can be asked to do: find moments, say what happens in them, score them.
-STEPS = ("find", "understand", "rate")
+# What a run can be asked to do: find moments, say what happens in them, score
+# them, and suggest edits for the clips made from them.
+STEPS = ("find", "understand", "rate", "edit")
 # Steps that are planned but not part of plugin contract 1. They are named for
 # messages only: Clips Kitty never asks a plugin for them, and job.wants() is
 # False for them.
-PLANNED_STEPS = ("edit", "export")
+PLANNED_STEPS = ("export",)
+
+# The edit step: what a plugin may suggest for a clip (an answer's `edit`).
+EDIT_FIELDS = ("cuts", "mutes", "volume", "fade_in", "fade_out", "speed", "title_overlay", "crop", "reason")
+# The layouts a suggestion may name: the timeline editor's Layout buttons.
+CROPS = ("track", "center", "letterbox")
+MAX_EDIT_SPANS = 20  # cuts, and mutes, for one clip
+MAX_TITLE_OVERLAY = 120  # characters of a hook title
+MAX_EDIT_REASON = 160
+MAX_CROP = 32
+# The render's own limits (video_editor/timeline.py). A value outside them
+# refuses the whole answer; a value inside them never does.
+EDIT_NUMBERS = {"volume": (0, 2), "fade_in": (0, 3), "fade_out": (0, 3), "speed": (0.5, 3)}
+TITLE_OVERLAY_SECONDS = (1, 10)
+DEFAULT_TITLE_OVERLAY_SECONDS = 3
+# The timeline editor's own choices (TimelineEditor.tsx), which Clips Kitty
+# sets a suggested fade, speed and hook title length to: the nearest one, a
+# tie going toward no change. tests/test_plugin_sdk_edit.py reads the
+# editor's lists, so the two can't drift apart.
+FADE_CHOICES = (0, 0.3, 0.5, 1)
+SPEED_CHOICES = (0.75, 1, 1.25, 1.5, 2)
+HOOK_SECONDS_CHOICES = (2, 3, 5, 8)
+# A piece of a clip shorter than this is dropped when the clip is cut
+# (video_editor/timeline.py MIN_SEGMENT), so it doesn't count toward what cuts leave.
+MIN_PIECE = 0.25
 
 
 class ContractError(ValueError):
@@ -180,8 +226,82 @@ def _notes(value) -> bool:
             and all(isinstance(n, str) and 1 <= len(n) <= MAX_CONTEXT for n in value))
 
 
-def _check_answers(moments) -> list[str]:
-    """The problems with a moment run's `moments` answers."""
+def nearest_choice(value: float, choices, toward: float = 0) -> float:
+    """The one of `choices` nearest `value`. A tie goes to the one nearest
+    `toward`: no fade (0) for fades and hook title seconds, normal speed (1)
+    for speed. Distances are compared to a billionth, so 0.4 is a tie
+    between 0.3 and 0.5 however the floats round."""
+    return min(choices, key=lambda c: (round(abs(c - value), 9), abs(c - toward)))
+
+
+def merge_spans(spans) -> list[tuple[float, float]]:
+    """(start, end) spans sorted, with the ones that overlap or touch joined."""
+    merged: list[tuple[float, float]] = []
+    for a, b in sorted((float(a), float(b)) for a, b in spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def kept_length(start: float, end: float, cuts) -> float:
+    """Seconds of [start, end] left once `cuts` are taken out, counting only
+    the pieces of at least MIN_PIECE seconds, as the render keeps them."""
+    pieces, pos = [], float(start)
+    for a, b in merge_spans((max(a, start), min(b, end)) for a, b in cuts if b > start and a < end):
+        pieces.append(a - pos)
+        pos = max(pos, b)
+    pieces.append(end - pos)
+    return sum(p for p in pieces if p >= MIN_PIECE)
+
+
+def _span(value) -> bool:
+    return isinstance(value, (list, tuple)) and len(value) == 2 and _number(value[0]) and _number(value[1])
+
+
+def _check_edit(edit, where: str) -> list[str]:
+    """The problems with one answer's `edit`. Fields not in EDIT_FIELDS are
+    not checked: they are ignored, so a later contract can add some."""
+    if not isinstance(edit, dict):
+        return [f"{where}: edit must be an object"]
+    errors = []
+    for key in ("cuts", "mutes"):
+        spans = edit.get(key)
+        if spans is None:
+            continue
+        if not isinstance(spans, (list, tuple)) or len(spans) > MAX_EDIT_SPANS:
+            errors.append(f"{where}: edit.{key} must be a list of at most {MAX_EDIT_SPANS} [start, end] pairs "
+                          "of seconds")
+            continue
+        for j, span in enumerate(spans):
+            if not _span(span):
+                errors.append(f"{where}: edit.{key}[{j}] must be a [start, end] pair of seconds")
+            elif not 0 <= span[0] < span[1]:
+                errors.append(f"{where}: edit.{key}[{j}] needs 0 <= start < end, in seconds of the video "
+                              f"(got {span[0]} to {span[1]})")
+    for key, (low, high) in EDIT_NUMBERS.items():
+        value = edit.get(key)
+        if value is not None and (not _number(value) or not low <= value <= high):
+            errors.append(f"{where}: edit.{key} must be a number from {low:g} to {high:g}")
+    overlay = edit.get("title_overlay")
+    if overlay is not None:
+        low, high = TITLE_OVERLAY_SECONDS
+        text = overlay.get("text") if isinstance(overlay, dict) else None
+        if not isinstance(text, str) or not 1 <= len(text) <= MAX_TITLE_OVERLAY:
+            errors.append(f"{where}: edit.title_overlay needs text of 1 to {MAX_TITLE_OVERLAY} characters")
+        elif overlay.get("seconds") is not None and (not _number(overlay["seconds"])
+                                                     or not low <= overlay["seconds"] <= high):
+            errors.append(f"{where}: edit.title_overlay.seconds must be a number from {low} to {high}")
+    for key, limit in (("crop", MAX_CROP), ("reason", MAX_EDIT_REASON)):
+        if edit.get(key) is not None and not _text(edit[key], limit):
+            errors.append(f"{where}: edit.{key} must be text of at most {limit} characters")
+    return errors
+
+
+def _check_answers(moments, *, edit: bool = False) -> list[str]:
+    """The problems with a moment run's `moments` answers. Each answer's
+    `edit` is checked only in a run asked to suggest edits."""
     if not isinstance(moments, list) or len(moments) > MAX_RANGES:
         return [f"moments must be a list of at most {MAX_RANGES} answers"]
     errors, seen = [], set()
@@ -205,6 +325,8 @@ def _check_answers(moments) -> list[str]:
         if m.get("context") is not None and not _notes(m["context"]):
             errors.append(f"{where}: context must be a list of at most {MAX_CONTEXT_ITEMS} notes "
                           f"of 1 to {MAX_CONTEXT} characters")
+        if edit and m.get("edit") is not None:
+            errors.extend(_check_edit(m["edit"], where))
     return errors
 
 
@@ -215,7 +337,8 @@ def check_result(data, *, steps=None) -> list[str]:
     None (or `("find",)`) checks the result as a find run's, exactly as plugin
     API 1 always has: keys a finder isn't asked for are ignored. A range's
     `context` is checked only when `find` and `understand` were both asked,
-    and `moments` only when `understand` or `rate` was.
+    `moments` only when `understand`, `rate` or `edit` was, and an answer's
+    `edit` only when `edit` was.
     """
     if not isinstance(data, dict):
         return ["result.json must be a JSON object"]
@@ -224,7 +347,7 @@ def check_result(data, *, steps=None) -> list[str]:
     else:
         asked = {s for s in ((steps,) if isinstance(steps, str) else steps) if isinstance(s, str)}
     notes_asked = {"find", "understand"} <= asked
-    answers_asked = bool(asked & {"understand", "rate"})
+    answers_asked = bool(asked & {"understand", "rate", "edit"})
     errors = []
     if data.get("plugin_api") not in SUPPORTED_PLUGIN_APIS:
         errors.append(f"plugin_api must be one of {SUPPORTED_PLUGIN_APIS}, not {data.get('plugin_api')!r}")
@@ -253,7 +376,7 @@ def check_result(data, *, steps=None) -> list[str]:
             errors.append(f"{where}: context must be a list of at most {MAX_CONTEXT_ITEMS} notes "
                           f"of 1 to {MAX_CONTEXT} characters")
     if answers_asked and data.get("moments") is not None:
-        errors.extend(_check_answers(data["moments"]))
+        errors.extend(_check_answers(data["moments"], edit="edit" in asked))
     if data.get("clips"):
         errors.append("clips: returning finished clip files is planned, not part of plugin API 1 yet; return ranges")
     if data.get("notes") is not None and not _text(data["notes"], MAX_NOTES):

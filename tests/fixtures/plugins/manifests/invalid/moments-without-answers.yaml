@@ -1,4 +1,4 @@
-# expect: inputs[0]: a plugin given moments answers about them: add ratings or context to outputs
+# expect: inputs[0]: a plugin given moments answers about them: add ratings, context or edits to outputs
 manifest_version: 1
 id: example-dev/quarkbloom-rater
 name: Quarkbloom Rater

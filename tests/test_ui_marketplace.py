@@ -286,6 +286,8 @@ def test_each_step_pill_says_where_it_is_chosen(tmp_path):
                                "add a video.",
         "Rates moments": "It scores each moment found by Clips Kitty or a pipeline. Turn on Rate & understand "
                          "when you add a video.",
+        "Suggests edits": "It suggests cuts, fades, a hook title or a layout for each clip. Turn on Suggest edits "
+                          "when you add a video.",
         "Understands what it finds": "It says what happens in the moments it finds, for the titles.",
     }
     details = [permissions.describe(_manifest(inputs=inputs, outputs=outputs, permissions=["transcript.read"]))
@@ -297,6 +299,29 @@ def test_each_step_pill_says_where_it_is_chosen(tmp_path):
     limit = "Clips Kitty stops it after 10 minutes when it rates or understands a video’s moments."
     assert lines == [[], [notes_line], [notes_line, limit], [rater_line, limit], [rater_line, notes_line, limit]]
     assert [d["time_limit"] for d in details] == [None, None, limit, limit, limit]
+
+
+def test_an_editor_shows_suggests_edits(tmp_path):
+    """A plugin that suggests edits for the clips Clips Kitty makes gets its
+    own pill, with its title, beside any other step it offers. It is never
+    offered as the job's Pipeline."""
+    editor = _manifest(inputs=["moments", "transcript"], outputs=["edits"], permissions=["transcript.read"])
+    rater_editor = {**editor, "outputs": ["ratings", "edits"]}
+    finder_editor = {**editor, "inputs": ["video", "moments"], "outputs": ["ranges", "edits"]}
+    assert [permissions.step_lines(m) for m in (editor, rater_editor, finder_editor)] == [
+        ["Suggests edits"], ["Rates moments", "Suggests edits"], ["Finds moments", "Suggests edits"]]
+    # An edits output without moments in: it offers nothing it can be chosen for.
+    assert permissions.step_lines({**editor, "inputs": ["video"]}) == []
+    details = permissions.describe(editor)
+    assert details["steps"] == ["Suggests edits"]
+    got = _run(tmp_path, "return [m.stepBadge(data.steps[0]), m.stepLines(data)]", details)
+    assert got[0] == {"label": "Suggests edits", "tone": "info",
+                      "title": "It suggests cuts, fades, a hook title or a layout for each clip. Turn on Suggest "
+                               "edits when you add a video."}
+    assert got[1] == []
+    base = {"kind": "pipeline", "enabled": True, "problem": None, "flag": None}
+    plugins = [{**base, "id": "example-dev/quarkbloom-trimmer", "inputs": editor["inputs"], "outputs": ["edits"]}]
+    assert _run(tmp_path, "return m.usablePipelines(data).map((p) => p.id)", plugins) == []
 
 
 SETTING_CASES = [

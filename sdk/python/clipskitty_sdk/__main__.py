@@ -8,7 +8,8 @@
     python -m clipskitty_sdk validate <plugin folder>
     python -m clipskitty_sdk run <plugin folder> [--sample | --video clip.mp4] [--transcript t.json]
                                  [--duration SECONDS] [--moments moments.json]
-                                 [--steps find | understand rate] [--min-score 55]
+                                 [--steps find | understand rate | edit] [--min-score 55]
+                                 [--layout standard|podcast|sports|gaming|vertical-live|whole-frame]
                                  [--set name=value ...] [--secret name=value ...]
                                  [--model name=path ...] [--game NAME ...] [--game-hint TAGS]
     python -m clipskitty_sdk sample OUT.mp4
@@ -38,18 +39,22 @@ checks the app uses (clipskitty_sdk.devrun).
 
 Without --steps, `run` asks for the run the app would make: a find run for a
 plugin that finds moments, else a run that understands and rates the moments
-it is given, as far as the plugin does each. --steps asks for `find`, or for
-`understand`, `rate` or both (as separate words or with commas). A run that
-understands or rates takes its moments from --moments (a list of {start,
-end, score?, label?, title?, reason?}, or a finder's result.json), or gets 5
-sample moments spread through the video. --video is needed only for a plugin
+it is given, as far as the plugin does each, else an edit run for a plugin
+that only suggests edits. --steps asks for `find`, for `understand`, `rate`
+or both (as separate words or with commas), or for `edit`, which is a run of
+its own. A run that understands, rates or suggests edits takes its moments
+from --moments (a list of {start, end, score?, label?, title?, reason?}, or
+a finder's result.json; an edit run's may carry `suggested`, what earlier
+edit plugins suggested), or gets 5 sample moments spread through the video.
+An edit run's clips can use a layout only when --layout is standard, the
+default, as in the app. --video is needed only for a plugin
 with the video.read permission; a run without one is fitted to --duration,
 else to the end of --transcript. --sample hands over a 40-second test video
 and its transcript instead, made in the job folder (clipskitty_sdk.samples);
 a plugin that never touches the video gets the transcript even without
 FFmpeg. --set values follow the setting's type. The run may take as long as
 Clips Kitty would allow (run.timeout_minutes, else 60 minutes to find and 10
-to understand or rate) unless --timeout says otherwise.
+to understand, rate or suggest edits) unless --timeout says otherwise.
 
 `sample` writes that test video and transcript somewhere else, and `frame`
 writes one frame of a video as a PNG, with a box drawn around --region and
@@ -202,7 +207,7 @@ def cmd_run(args) -> int:
     ffprobe = args.ffprobe or shutil.which("ffprobe")
     try:
         steps = devrun.run_steps(manifest, ",".join(args.steps) if args.steps else None)
-        find_run = "find" in steps
+        find_run, edit_run = "find" in steps, steps == devrun.EDIT_STEPS
         sample_video = args.sample and devrun.sample_video_wanted(
             manifest, ffmpeg, {"--video": args.video, "--transcript": args.transcript, "--duration": args.duration})
         if args.video is None and not args.sample and "video.read" in perms:
@@ -254,8 +259,13 @@ def cmd_run(args) -> int:
     if find_run and args.moments:
         print("note: --moments is for a run that understands or rates moments, so this find run leaves it out",
               file=sys.stderr)
-    if not find_run:
+    if args.layout is not None and not edit_run:
+        print("note: --layout is for a run that suggests edits, so this run leaves it out", file=sys.stderr)
+    if edit_run:
+        limits["crops"] = list(devrun.crops_for(args.layout))
+    elif not find_run:
         limits["min_score"] = args.min_score
+    if not find_run:
         try:
             if args.moments:
                 moments = devrun.read_moments(args.moments)
@@ -323,8 +333,13 @@ def cmd_run(args) -> int:
         if code == 0:
             for line in devrun.label_warnings(manifest, job_folder):
                 print(f"warning: {line}", file=sys.stderr)
-        return code
-    return _show_answers(job_folder, steps, moments)
+    elif edit_run:
+        code = _show_edits(job_folder, job, moments)
+    else:
+        code = _show_answers(job_folder, steps, moments)
+    if code == 0 and not args.steps and devrun.also_edits(manifest, steps):
+        print(f"note: {devrun.ALSO_EDITS}", file=sys.stderr)
+    return code
 
 
 def _show_ranges(job_folder: Path, job: dict, duration: float | None) -> int:
@@ -366,6 +381,27 @@ def _show_answers(job_folder: Path, steps: tuple[str, ...], moments: list[dict])
         for note in answer.get("context", []):
             print(f"       note: {note}")
     for line in ignored:
+        print(line)
+    notes = json.loads((job_folder / RESULT_FILE).read_text(encoding="utf-8")).get("notes")
+    if notes:
+        print(f"notes: {notes}")
+    return 0
+
+
+def _show_edits(job_folder: Path, job: dict, moments: list[dict]) -> int:
+    """An edit run's answer, fitted as the app would keep it."""
+    limits = job["limits"]
+    try:
+        edits, lines = host.read_edits(job_folder, windows={m["id"]: (m["start"], m["end"]) for m in moments},
+                                       crops=limits.get("crops") or (),
+                                       min_length=max(1.0, float(limits.get("min_duration") or 0)),
+                                       max_length=limits.get("max_duration"))
+    except ContractError as e:
+        print(f"Clips Kitty would refuse this answer: {e}", file=sys.stderr)
+        return 1
+    print(f"Suggest edits: {len(edits)} of {len(moments)} clip(s) given a suggestion, as Clips Kitty would "
+          "keep them:")
+    for line in devrun.edit_lines(moments, edits) + lines:
         print(line)
     notes = json.loads((job_folder / RESULT_FILE).read_text(encoding="utf-8")).get("notes")
     if notes:
@@ -530,11 +566,15 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--duration", type=float, metavar="SECONDS",
                      help="the video's length, when there is no --video or FFprobe can't read it")
     run.add_argument("--steps", nargs="+", metavar="STEP",
-                     help="what to ask for: find, or understand and/or rate, as separate words or with commas "
-                          "(default: the run the app would make)")
+                     help="what to ask for: find, understand and/or rate (as separate words or with commas), or "
+                          "edit, a run of its own (default: the run the app would make)")
     run.add_argument("--moments", metavar="MOMENTS.JSON",
-                     help="the moments to rate or understand: a list of {start, end, score?, label?, title?, "
-                          "reason?}, or a finder's result.json (default: 5 sample moments)")
+                     help="the moments to rate or understand, or the clips to suggest edits for: a list of "
+                          "{start, end, score?, label?, title?, reason?, suggested?}, or a finder's result.json "
+                          "(default: 5 sample moments)")
+    run.add_argument("--layout", choices=devrun.LAYOUTS,
+                     help="the kind of clip an edit run is for: standard clips can use a layout (track, center, "
+                          f"letterbox), the others none (default: {devrun.DEFAULT_LAYOUT})")
     run.add_argument("--min-score", type=float, default=devrun.DEFAULT_MIN_SCORE,
                      help="the creator's minimum score, handed to a run that understands or rates moments "
                           f"(default {devrun.DEFAULT_MIN_SCORE:g})")
@@ -558,7 +598,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--ffprobe")
     run.add_argument("--timeout", type=float, metavar="SECONDS",
                      help="stop the plugin after this long (default: what Clips Kitty allows: "
-                          "run.timeout_minutes, else 60 minutes to find and 10 to understand or rate)")
+                          "run.timeout_minutes, else 60 minutes to find and 10 to understand, rate or suggest "
+                          "edits)")
     run.add_argument("--job-dir", help="where to build the job folder (default: a new temporary folder)")
     sample = sub.add_parser("sample", help="write a 40-second test video and its transcript, made with FFmpeg")
     sample.add_argument("out", metavar="OUT.mp4",

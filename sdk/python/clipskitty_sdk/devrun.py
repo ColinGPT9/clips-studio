@@ -17,7 +17,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 from . import host, samples
-from .contract import PLANNED_STEPS, STEPS, _number
+from .contract import CROPS, PLANNED_STEPS, STEPS, _number, kept_length
 from .job import RESULT_FILE
 from .lint import lint_folder
 from .manifest import MANIFEST_FILE, find_steps, has_yaml, line_marks, offers, step_problem
@@ -34,6 +34,14 @@ NO_OLLAMA_MODEL = ("no --ollama-model given, so the plugin is told there is no l
                    "with the name of a model you have in it")
 # A moment run's steps, in the order the app runs them.
 MOMENT_STEPS = ("understand", "rate")
+# An edit run: always alone, after the clips are chosen.
+EDIT_STEPS = ("edit",)
+# What `run` adds for a plugin that also suggests edits, when it makes another run.
+ALSO_EDITS = "it also suggests edits: run again with --steps edit"
+# The kinds of clip --layout names. Only standard vertical clips can use a
+# layout (contract.CROPS); every other kind gets none, as in the app.
+LAYOUTS = ("standard", "podcast", "sports", "gaming", "vertical-live", "whole-frame")
+DEFAULT_LAYOUT = "standard"
 # A moment from --moments without a score, and each sample moment, gets this one.
 DEFAULT_MOMENT_SCORE = 60
 SAMPLE_MOMENTS = 5
@@ -109,20 +117,30 @@ def report_lines(folder: Path, report, manifest: dict | None) -> list[str]:
 def run_steps(manifest: dict, asked: str | None) -> tuple[str, ...]:
     """The steps the run asks the plugin for: the run the app would make,
     or the one `asked` (comma-separated step names) names when the plugin
-    offers it."""
+    offers it. A plugin that only suggests edits gets an edit run; one that
+    also finds, understands or rates gets that run, and an edit run only
+    when asked for (`edit`, which is always a run of its own)."""
     name = manifest.get("name") or manifest.get("id")
     offered = offers(manifest)
     if asked is None:
         if "find" in offered:
             return find_steps(manifest)
-        return tuple(step for step in MOMENT_STEPS if step in offered)
+        moment_steps = tuple(step for step in MOMENT_STEPS if step in offered)
+        return EDIT_STEPS if not moment_steps and "edit" in offered else moment_steps
     chosen = [part.strip() for part in asked.split(",")]
     for step in chosen:
         if step in PLANNED_STEPS:
             raise Refused(f"--steps: {step} is planned, not part of plugin contract 1 yet; "
-                          "use find, understand or rate")
+                          "use find, understand, rate or edit")
         if step not in STEPS:
-            raise Refused(f"--steps: unknown step '{step}'; expected find, understand or rate")
+            raise Refused(f"--steps: unknown step '{step}'; expected find, understand, rate or edit")
+    if "edit" in chosen:
+        if set(chosen) != {"edit"}:
+            raise Refused("--steps: edit is a run of its own, after the clips are chosen: run it separately")
+        problem = step_problem(manifest, "edit")
+        if problem:
+            raise Refused(f"--steps: the pipeline {name} {problem}")
+        return EDIT_STEPS
     if "find" in chosen and "rate" in chosen:
         raise Refused("--steps: a run that finds moments isn't also asked to rate others' moments; "
                       "run them separately")
@@ -163,6 +181,18 @@ def sample_video_wanted(manifest: dict, ffmpeg: str | None, given: dict) -> bool
     if touches_video(manifest):
         raise Refused(SAMPLE_NEEDS_FFMPEG)
     return False
+
+
+def also_edits(manifest: dict, steps) -> bool:
+    """Whether to say ALSO_EDITS: the plugin suggests edits too, and this run isn't its edit run."""
+    return "edit" in offers(manifest) and tuple(steps) != EDIT_STEPS
+
+
+def crops_for(layout: str | None) -> tuple[str, ...]:
+    """limits.crops for --layout, as the app fills it: every layout
+    (contract.CROPS) for standard vertical clips, the default, and none for
+    any other kind of clip."""
+    return CROPS if (layout or DEFAULT_LAYOUT) == DEFAULT_LAYOUT else ()
 
 
 def time_limit(manifest: dict, steps) -> float:
@@ -280,11 +310,35 @@ def transcript_end(transcript: dict) -> float | None:
 
 
 def moment(number: int, start: float, end: float, score: float, *, label="", title="", reason="",
-           context=()) -> dict:
-    """One moment as the app hands it over: found by Clips Kitty, its score as found."""
-    return {"id": f"m{number}", "start": start, "end": end, "score": score, "found_score": score,
-            "found_by": "clipskitty", "label": label, "signals": {}, "title": title, "reason": reason,
-            "context": list(context)}
+           context=(), suggested=()) -> dict:
+    """One moment as the app hands it over: found by Clips Kitty, its score
+    as found, with what earlier edit plugins suggested for it when there is
+    anything."""
+    out = {"id": f"m{number}", "start": start, "end": end, "score": score, "found_score": score,
+           "found_by": "clipskitty", "label": label, "signals": {}, "title": title, "reason": reason,
+           "context": list(context)}
+    if suggested:
+        out["suggested"] = [dict(s) for s in suggested]
+    return out
+
+
+def _suggested_from(i: int, value) -> list[dict]:
+    """A --moments item's `suggested`: what earlier edit plugins suggested
+    for the clip, as job.json holds it ({by, name, edit, reason?})."""
+    if value is None:
+        return []
+    shape = f"moment {i}: suggested must be a list of {{by, name, edit, reason?}}, by a plugin's id"
+    if not isinstance(value, list):
+        raise Refused(shape)
+    out = []
+    for s in value:
+        if not (isinstance(s, dict) and isinstance(s.get("by"), str) and isinstance(s.get("edit"), dict)):
+            raise Refused(shape)
+        entry = {"by": s["by"], "name": str(s.get("name") or s["by"]), "edit": dict(s["edit"])}
+        if s.get("reason"):
+            entry["reason"] = str(s["reason"])
+        out.append(entry)
+    return out
 
 
 def sample_moments(length: float) -> list[dict]:
@@ -298,8 +352,9 @@ def sample_moments(length: float) -> list[dict]:
 
 
 def read_moments(path: str) -> list[dict]:
-    """--moments: a list of {start, end, score?, label?, title?, reason?}, or
-    a finder's result.json, whose ranges are used (with their notes)."""
+    """--moments: a list of {start, end, score?, label?, title?, reason?,
+    suggested?}, or a finder's result.json, whose ranges are used (with
+    their notes)."""
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except OSError as e:
@@ -313,11 +368,13 @@ def read_moments(path: str) -> list[dict]:
 
 
 def moments_from(data) -> list[dict]:
-    """The moments a run that understands or rates is handed, as job.json
-    holds them, from a list of {start, end, score?, label?, title?, reason?,
-    context?} or a finder's result.json (its ranges). Ids m1, m2... are
-    filled in, a missing score becomes DEFAULT_MOMENT_SCORE, and found_by is
-    clipskitty. Raises Refused with what is wrong."""
+    """The moments a run that understands or rates is handed, or the clips
+    an edit run is handed, as job.json holds them, from a list of {start,
+    end, score?, label?, title?, reason?, context?, suggested?} or a
+    finder's result.json (its ranges). Ids m1, m2... are filled in, a
+    missing score becomes DEFAULT_MOMENT_SCORE, and found_by is clipskitty.
+    `suggested`, to try a plugin after another edit plugin, is a list of
+    {by, name, edit, reason?}. Raises Refused with what is wrong."""
     if isinstance(data, dict) and isinstance(data.get("ranges"), list):
         data = data["ranges"]
     if not isinstance(data, list):
@@ -335,7 +392,8 @@ def moments_from(data) -> list[dict]:
         notes = item.get("context") if isinstance(item.get("context"), list) else []
         out.append(moment(i + 1, float(start), float(end), score, label=str(item.get("label") or ""),
                           title=str(item.get("title") or ""), reason=str(item.get("reason") or ""),
-                          context=[n for n in map(host.clean_note, notes) if n]))
+                          context=[n for n in map(host.clean_note, notes) if n],
+                          suggested=_suggested_from(i, item.get("suggested"))))
     return out
 
 
@@ -375,8 +433,49 @@ def label_warnings(manifest: dict, job_folder: Path) -> list[str]:
     return out
 
 
-__all__ = ["DEFAULT_MAX_DURATION", "DEFAULT_MIN_DURATION", "DEFAULT_MIN_SCORE", "DEFAULT_OLLAMA_HOST",
-           "NO_OLLAMA_MODEL", "SAMPLE_NEEDS_FFMPEG", "SAMPLE_WITHOUT_VIDEO", "Refused", "games_for", "label_warnings",
-           "manifest_refusal", "models_for", "moments_from", "probe_duration", "read_moments", "read_transcript",
-           "report_lines", "run_steps", "sample_moments", "sample_video_wanted", "setting_value", "start",
-           "time_limit", "touches_video", "transcript_end", "transcript_from", "typed_settings"]
+def edit_parts(edit: dict) -> list[str]:
+    """A fitted edit (host.read_edits) in words, one part per field."""
+    parts = [f"cut {a:.1f}-{b:.1f}" for a, b in edit.get("cuts", [])]
+    parts += [f"mute {a:.1f}-{b:.1f}" for a, b in edit.get("mutes", [])]
+    if "volume" in edit:
+        parts.append(f"volume {round(edit['volume'] * 100)}%")
+    for key, words in (("fade_in", "fade in"), ("fade_out", "fade out")):
+        if key in edit:
+            parts.append(f"{words} {edit[key]:g} s")
+    if "speed" in edit:
+        parts.append(f"speed {edit['speed']:g}x")
+    if "title_overlay" in edit:
+        parts.append(f"hook title \"{edit['title_overlay']['text']}\" ({edit['title_overlay']['seconds']:g} s)")
+    if "crop" in edit:
+        parts.append(f"layout {edit['crop']}")
+    return parts
+
+
+def edit_lines(moments: list[dict], edits: dict) -> list[str]:
+    """What `run` prints for an edit run: a line for each clip, with its
+    length before and after the suggestion and what it suggests, then the
+    reason under it."""
+    out = []
+    for m in moments:
+        head = f"{m['id']:<4} {m['start']:.1f}s-{m['end']:.1f}s"
+        entry = edits.get(m["id"])
+        if not entry:
+            out.append(f"{head}  no suggestion")
+            continue
+        edit = entry["edit"]
+        before = m["end"] - m["start"]
+        after = kept_length(m["start"], m["end"], edit.get("cuts", [])) / edit.get("speed", 1)
+        size = f"{before:.1f} s" + (f" -> {after:.1f} s" if round(after, 1) != round(before, 1) else "")
+        out.append(f"{head}  {size}  {' · '.join(edit_parts(edit))}")
+        if entry.get("reason"):
+            out.append(f"     {entry['reason']}")
+    return out
+
+
+__all__ = ["ALSO_EDITS", "DEFAULT_LAYOUT", "DEFAULT_MAX_DURATION", "DEFAULT_MIN_DURATION", "DEFAULT_MIN_SCORE",
+           "DEFAULT_OLLAMA_HOST", "EDIT_STEPS", "LAYOUTS", "NO_OLLAMA_MODEL", "SAMPLE_NEEDS_FFMPEG",
+           "SAMPLE_WITHOUT_VIDEO", "Refused", "also_edits", "crops_for", "edit_lines", "edit_parts", "games_for",
+           "label_warnings", "manifest_refusal", "models_for", "moments_from", "probe_duration", "read_moments",
+           "read_transcript", "report_lines", "run_steps", "sample_moments", "sample_video_wanted",
+           "setting_value", "start", "time_limit", "touches_video", "transcript_end", "transcript_from",
+           "typed_settings"]

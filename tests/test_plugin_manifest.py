@@ -62,7 +62,7 @@ def test_every_rule_has_a_fixture():
                    "network-without-permission", "model-on-a-branch", "reserved-publisher", "shell-command",
                    "script-outside-folder", "default-above-maximum", "secret-with-default", "newer-plugin-api",
                    "ratings-without-moments", "moments-without-answers", "context-without-moments",
-                   "planned-edits-output", "numeric-version"):
+                   "planned-clips-output", "edits-without-moments", "numeric-version"):
         assert needed in names
 
 
@@ -151,6 +151,9 @@ def test_r1_and_r3_never_fire_together():
      ("find", "understand", "rate"), ("find", "understand"), True),
     (["transcript", "moments"], ["ratings", "context"], ("understand", "rate"), ("understand", "rate"), ("find",), True),
     (["video", "moments"], ["ranges", "ratings"], ("find", "rate"), ("find", "rate"), ("find",), True),
+    (["moments", "transcript"], ["edits"], ("edit",), ("edit",), ("find",), True),
+    (["video", "transcript", "moments"], ["ranges", "ratings", "edits"], ("find", "rate", "edit"),
+     ("find", "rate", "edit"), ("find",), True),
 ])
 def test_steps_of_offers_and_find_steps_follow_inputs_and_outputs(inputs, outputs, does, offered, find_run, uses):
     data = {"inputs": inputs, "outputs": outputs}
@@ -189,8 +192,10 @@ def test_step_problem_names_what_the_manifest_needs():
     context_finder = _fixture("minimal", outputs=["ranges", "context"])
     assert mf.step_problem(context_finder, "find") is None
     assert mf.step_problem(context_finder, "understand").startswith("can't understand moments others found")
-    with pytest.raises(ValueError, match="unknown step 'edit'"):
-        mf.step_problem(rater, "edit")
+    assert mf.step_problem(rater, "edit") == (
+        "can't suggest edits for clips: its manifest needs moments in inputs and edits in outputs")
+    with pytest.raises(ValueError, match="unknown step 'export'; expected one of: find, understand, rate, edit"):
+        mf.step_problem(rater, "export")
 
 
 @pytest.mark.parametrize("name", ["quarkbloom-rater", "quarkbloom-notes", "finds-understands-rates"])
@@ -202,23 +207,87 @@ def test_a_manifest_using_the_new_words_has_no_warnings(name):
     assert context_finder.ok and context_finder.warnings == []
 
 
-def test_edit_and_export_words_are_planned_not_unknown():
-    """Edit and export are planned steps, not part of plugin contract 1. A
-    manifest that asks for them (outputs: [edits], kind: publisher) is
-    refused with a message that says so; `edit` is no manifest word at all."""
+def test_edits_is_an_output_and_export_stays_planned():
+    """Edit is a step of plugin contract 1: `edits` is an output like the
+    others. Export is still planned: a manifest that asks for it (outputs:
+    [clips], kind: publisher) is refused with a message that says so, and
+    `edit` is no manifest word at all."""
     from clipskitty_sdk import contract
 
-    assert contract.PLANNED_STEPS == ("edit", "export")
+    assert contract.STEPS == ("find", "understand", "rate", "edit")
+    assert contract.PLANNED_STEPS == ("export",)
     assert not set(contract.PLANNED_STEPS) & set(contract.STEPS)
-    assert "edits" in mf.PLANNED_OUTPUTS and "publisher" in mf.PLANNED_KINDS
-    assert mf.validate(_fixture("minimal", outputs=["ranges", "edits"])).errors == [
-        "outputs[1]: output 'edits' is planned, not supported by plugin API 1"]
+    assert "edits" in mf.OUTPUTS and "edits" not in mf.PLANNED_OUTPUTS
+    assert mf.PLANNED_OUTPUTS == ("clips",) and "publisher" in mf.PLANNED_KINDS
+    assert mf.STEP_OUTPUTS["edit"] == "edits"
+    assert mf.validate(_fixture("minimal", outputs=["ranges", "clips"])).errors == [
+        "outputs[1]: output 'clips' is planned, not supported by plugin API 1"]
     assert mf.validate(_fixture("minimal", kind="publisher")).errors == [
         "kind: kind 'publisher' is planned, not supported by plugin API 1"]
     assert mf.validate(_fixture("minimal", outputs=["ranges", "edit"])).errors == [
-        "outputs[1]: unknown output 'edit'; expected one of: ranges, ratings, context"]
+        "outputs[1]: unknown output 'edit'; expected one of: ranges, ratings, context, edits"]
     # A planned word gives no step, so no job can ask a plugin for it.
-    assert mf.steps_of({"inputs": ["video"], "outputs": ["edits"]}) == ()
+    assert mf.steps_of({"inputs": ["video"], "outputs": ["clips"]}) == ()
+    # An editor is offered to edit, and its manifest uses the step words.
+    editor = {"inputs": ["moments", "transcript"], "outputs": ["edits"]}
+    assert mf.steps_of(editor) == mf.offers(editor) == ("edit",)
+    assert mf.uses_steps(editor) and mf.uses_steps({"inputs": ["video"], "outputs": ["ranges", "edits"]})
+
+
+def test_an_editor_needs_moments_in_inputs():
+    """Edits are suggested for the clips made from moments, so `edits` in
+    outputs needs `moments` in inputs, and a plugin given moments may answer
+    with edits alone."""
+    editor = _fixture("quarkbloom-rater", outputs=["edits"])
+    report = mf.validate(editor)
+    assert report.ok, report.errors
+    assert report.warnings == []
+    assert mf.validate(_fixture("quarkbloom-rater", inputs=["transcript"], outputs=["edits"])).errors == [
+        "outputs[0]: edits are suggested for the clips Clips Kitty makes from moments: add moments to inputs"]
+    assert mf.validate(_fixture("quarkbloom-rater", outputs=["ranges"])).errors == [
+        "inputs[0]: a plugin given moments answers about them: add ratings, context or edits to outputs"]
+    # With ratings too, the ratings rule speaks, and adding moments fixes both.
+    assert mf.validate(_fixture("quarkbloom-rater", inputs=["transcript"], outputs=["ratings", "edits"])).errors == [
+        ("outputs[0]: ratings score moments found before this plugin runs: add moments to inputs (a pipeline's "
+         "own ranges carry their score already)")]
+    # With edits, the context rule stands down: adding moments fixes both.
+    assert mf.validate(_fixture("quarkbloom-rater", inputs=["transcript"], outputs=["context", "edits"])).errors == [
+        "outputs[1]: edits are suggested for the clips Clips Kitty makes from moments: add moments to inputs"]
+    assert mf.validate(_fixture("quarkbloom-rater", outputs=["context", "edits"])).ok
+    assert mf.validate(_fixture("finds-understands-rates", outputs=["ranges", "context", "ratings", "edits"])).ok
+
+
+def test_the_moment_rules_never_give_two_errors_with_edits():
+    """The validator's promise holds with the new word: whatever a manifest
+    lists of ranges, ratings, context and edits, with or without moments,
+    it gets at most one of the rules' errors."""
+    rules = (*STEP_RULES, "edits are suggested for the clips Clips Kitty makes from moments")
+    words_out = ("ranges", "ratings", "context", "edits")
+    for given in (False, True):
+        inputs = ["video", "transcript", *(["moments"] if given else [])]
+        for o in range(1, 1 << len(words_out)):
+            outputs = [w for k, w in enumerate(words_out) if o >> k & 1]
+            errors = mf.validate(_fixture("finds-understands-rates", inputs=inputs, outputs=outputs)).errors
+            fired = [rule for rule in rules if any(rule in e for e in errors)]
+            assert len(fired) <= 1, (inputs, outputs, fired)
+            assert len(errors) == len(fired), (inputs, outputs, errors)
+
+
+def test_an_edit_only_plugin_is_pointed_to_suggest_edits():
+    """A plugin that only suggests edits finds nothing: a job that names it
+    as its Pipeline is told to choose it under Suggest edits, not under
+    Rate & understand."""
+    editor = _fixture("quarkbloom-rater", outputs=["edits"])
+    assert mf.step_problem(editor, "find") == (
+        "doesn't find moments: it suggests edits for the clips Clips Kitty makes. "
+        "Choose it under Suggest edits instead")
+    assert mf.step_problem(editor, "edit") is None
+    for step in ("understand", "rate"):
+        assert mf.step_problem(editor, step).startswith(f"can't {step} moments others found")
+    # One that rates too is still pointed to Rate & understand.
+    rater_editor = _fixture("quarkbloom-rater", outputs=["ratings", "edits"])
+    assert mf.step_problem(rater_editor, "find").endswith("Choose it under Rate & understand instead")
+    assert mf.step_problem(rater_editor, "edit") is None
 
 
 def _enums(node) -> list:
@@ -240,7 +309,8 @@ def test_planned_words_leave_the_schema_unchanged():
     assert props["kind"]["enum"] == list(mf.KINDS)
     assert props["permissions"]["items"]["enum"] == list(mf.PERMISSIONS)
     words = {w for enum in _enums(schema) for w in enum}
-    assert not words & {"edits", "edit", "export", *mf.PLANNED_OUTPUTS, *mf.PLANNED_KINDS, *mf.PLANNED_PERMISSIONS}
+    assert "edits" in words
+    assert not words & {"edit", "export", *mf.PLANNED_OUTPUTS, *mf.PLANNED_KINDS, *mf.PLANNED_PERMISSIONS}
 
 
 def test_every_manifest_valid_before_the_new_words_still_finds():

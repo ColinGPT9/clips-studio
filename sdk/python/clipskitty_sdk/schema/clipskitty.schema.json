@@ -141,7 +141,8 @@
         "enum": [
           "ranges",
           "ratings",
-          "context"
+          "context",
+          "edits"
         ]
       },
       "minItems": 1

@@ -33,13 +33,28 @@ gets those moments in `job.moments` and answers about each one:
 declared, or declared without a default and left empty by the creator)
 raises SettingMissing; `job.settings.get(name, default)` never does.
 
-`job.steps` is what this run is asked for (find, understand, rate) and
+A plugin that suggests edits gets the clips Clips Kitty is about to make in
+`job.moments` too, in a run of its own, and suggests an edit for each one it
+wants to change. Times are seconds of the video:
+
+    def main(job):
+        for m in job.moments:                     # the clips Clips Kitty will make
+            s = job.suggest_edit(m)
+            s.trim(m.start + 2).fade(fade_out=0.5).title_overlay("Triple bloom!")
+            s.reason("Starts on the action")
+
+Clips Kitty keeps the suggestion for the creator, who can use it in the
+editor; it changes no clip by itself. `m.suggested` holds what edit plugins
+before this one suggested for the clip.
+
+`job.steps` is what this run is asked for (find, understand, rate, edit) and
 `job.wants(step)` says whether it is asked for one, so one `main()` can serve
 every way the plugin is used. In a run that wasn't asked to understand,
 `understand()` is logged and keeps nothing, and so is `rate()` on a moment
-handed over in a run that wasn't asked to rate. `add_range()` returns a
-Moment too: `rate()` sets its score in any run, and `understand()` adds its
-notes in a run asked to understand.
+handed over in a run that wasn't asked to rate, and `suggest_edit()` in a
+run that wasn't asked to edit. `add_range()` returns a Moment too: `rate()`
+sets its score in any run, and `understand()` adds its notes in a run asked
+to understand.
 """
 
 from __future__ import annotations
@@ -55,19 +70,33 @@ from pathlib import Path
 
 from ._hints import python_command
 from .contract import (
+    DEFAULT_TITLE_OVERLAY_SECONDS,
+    EDIT_FIELDS,
+    EDIT_NUMBERS,
+    FADE_CHOICES,
+    HOOK_SECONDS_CHOICES,
     MAX_CONTEXT,
     MAX_CONTEXT_ITEMS,
+    MAX_CROP,
+    MAX_EDIT_REASON,
+    MAX_EDIT_SPANS,
     MAX_LABEL,
     MAX_NOTES,
     MAX_REASON,
     MAX_TITLE,
+    MAX_TITLE_OVERLAY,
     PLUGIN_API_VERSION,
+    SPEED_CHOICES,
     STEPS,
+    TITLE_OVERLAY_SECONDS,
     ContractError,
     check_job,
     check_result,
     error_line,
+    kept_length,
     log_line,
+    merge_spans,
+    nearest_choice,
     progress_line,
 )
 from .contract import _number as _finite
@@ -167,6 +196,9 @@ class Limits:
     min_duration: float | None = None
     max_duration: float | None = None
     min_score: float | None = None  # the creator's minimum score, in a run that rates or understands moments
+    # The layouts this job's clips can use, in a run that suggests edits
+    # (contract.CROPS, or none); () in every other run.
+    crops: tuple[str, ...] = ()
 
 
 @dataclass
@@ -203,6 +235,31 @@ def one_line(text) -> str:
     return " ".join(kept.split())
 
 
+@dataclass(frozen=True)
+class Suggested:
+    """What an edit plugin that ran before this one in the same job suggested
+    for a clip (Moment.suggested), as Clips Kitty keeps it: read-only. `by`
+    is that plugin's id and `name` its name; `edit` holds the fitted fields
+    (contract.EDIT_FIELDS but `reason`), in seconds of the video. Without
+    transcript.read, `reason` is empty and `edit` has no title_overlay: they
+    are another plugin's text, which may come from what was said."""
+
+    by: str
+    name: str = ""
+    edit: dict = field(default_factory=dict)
+    reason: str = ""
+
+
+def _suggested(data) -> tuple[Suggested, ...]:
+    """A handed clip's `suggested`, skipping entries without a plugin id."""
+    if not isinstance(data, list):
+        return ()
+    return tuple(Suggested(by=s["by"], name=str(s.get("name") or ""),
+                           edit=dict(s["edit"]) if isinstance(s.get("edit"), dict) else {},
+                           reason=str(s.get("reason") or ""))
+                 for s in data if isinstance(s, dict) and isinstance(s.get("by"), str))
+
+
 @dataclass
 class Moment:
     """One moment of the video: handed over in `job.moments`, or a range of
@@ -218,7 +275,8 @@ class Moment:
     without transcript.read. `signals` holds Clips Kitty's own subscores for
     it: text, audio, visual, engagement, game, and reaction when it was
     measured. `context` is never changed; `notes` are the ones this run
-    added with job.understand().
+    added with job.understand(). In a run that suggests edits, `suggested`
+    holds what the edit plugins before this one suggested for the clip.
     """
 
     id: str
@@ -232,6 +290,7 @@ class Moment:
     reason: str = ""
     context: tuple[str, ...] = ()
     signals: dict = field(default_factory=dict)
+    suggested: tuple[Suggested, ...] = ()
     _notes: list = field(default_factory=list, init=False, repr=False, compare=False)
 
     @property
@@ -260,7 +319,230 @@ def _handed(data) -> Moment | None:
         reason=str(data.get("reason") or ""),
         context=tuple(n for n in context if isinstance(n, str)) if isinstance(context, list) else (),
         signals=dict(signals) if isinstance(signals, dict) else {},
+        suggested=_suggested(data.get("suggested")),
     )
+
+
+class EditSuggestion:
+    """The edit a plugin suggests for one clip: `job.suggest_edit(m)`.
+
+    Every method returns the suggestion, so calls chain:
+
+        job.suggest_edit(m).cut(815.0, 821.5).fade(fade_out=0.5).reason("Cuts the wait")
+
+    Times are seconds of the video, as `m.start` and `m.end` are. A value
+    the contract refuses raises ContractError at the call. What depends on
+    the job or the editor is logged once instead: a span wholly outside the
+    clip (not kept), a crop this job's clips don't use (kept; Clips Kitty
+    ignores it), and a fade, speed or hook title length that Clips Kitty
+    will set to the nearest of the timeline editor's choices. Clips Kitty
+    fits the rest when it reads the answer (host.read_edits).
+    """
+
+    def __init__(self, job: Job, moment: Moment, *, kept: bool):
+        self._job = job
+        self._m = moment
+        self._kept = kept  # False: a call Clips Kitty didn't ask for, logged and never written
+        self._cuts: list[tuple[float, float]] = []
+        self._mutes: list[tuple[float, float]] = []
+        self._values: dict = {}
+
+    def _refuse(self, message: str) -> ContractError:
+        return ContractError("suggest_edit", [message])
+
+    def _number(self, what: str, value, low: float, high: float) -> float:
+        number = _number(value)
+        if number is None or not low <= number <= high:
+            raise self._refuse(f"{what} must be a number from {low:g} to {high:g} (got {_shown(value)})")
+        return number
+
+    def _span(self, what: str, start, end) -> tuple[float, float]:
+        a, b = _number(start), _number(end)
+        if a is None or b is None:
+            raise self._refuse(f"{what} needs numbers of seconds of the video (got {_shown(start)} to {_shown(end)})")
+        if a < 0:
+            raise self._refuse(f"{what} needs a start of 0 or more, in seconds of the video (got {_shown(start)})")
+        if a >= b:
+            raise self._refuse(f"{what} needs start < end, in seconds of the video "
+                               f"(got {_shown(start)} to {_shown(end)})")
+        return a, b
+
+    def _add(self, what: str, spans: list, start, end) -> None:
+        a, b = self._span(what, start, end)
+        m = self._m
+        if b <= m.start or a >= m.end:
+            self._job._log_once(f"{m.id}: {what} {a:.1f}-{b:.1f} s is outside the clip "
+                                f"({m.start:.1f}-{m.end:.1f} s), so it isn't kept")
+            return
+        merged = merge_spans([*spans, (a, b)])
+        if len(merged) > MAX_EDIT_SPANS:
+            raise self._refuse(f"at most {MAX_EDIT_SPANS} {what}s for one clip")
+        spans[:] = merged
+
+    def _nearest(self, what: str, given: float, fitted: float, unit: str = "") -> None:
+        if abs(given - fitted) > 1e-9:
+            self._job._log_once(f"{self._m.id}: {what} {given:g}{unit} will be {fitted:g}{unit}, "
+                                "the nearest the editor offers")
+
+    def cut(self, start: float, end: float) -> EditSuggestion:
+        """Take out [start, end] of the clip. Cuts add up; overlapping ones join."""
+        self._add("cut", self._cuts, start, end)
+        return self
+
+    def trim(self, start: float | None = None, end: float | None = None) -> EditSuggestion:
+        """Keep the clip from `start` to `end`: a cut at each end. Either may be left out."""
+        m = self._m
+        a = m.start if start is None else _number(start)
+        b = m.end if end is None else _number(end)
+        if a is None or b is None:
+            raise self._refuse(f"trim needs numbers of seconds of the video (got {_shown(start)} to {_shown(end)})")
+        if a >= b:
+            raise self._refuse(f"trim needs start < end, in seconds of the video (got {_shown(start)} to "
+                               f"{_shown(end)})")
+        if a > m.start:
+            self.cut(m.start, min(a, m.end))
+        if b < m.end:
+            self.cut(max(b, m.start), m.end)
+        return self
+
+    def keep_only(self, *spans) -> EditSuggestion:
+        """Keep only these (start, end) spans of the clip: the rest is cut."""
+        if not spans:
+            raise self._refuse("keep_only needs at least one (start, end) span to keep")
+        kept = []
+        for span in spans:
+            if not isinstance(span, (list, tuple)) or len(span) != 2:
+                raise self._refuse(f"keep_only needs (start, end) spans (got {_shown(span)})")
+            kept.append(self._span("keep_only", *span))
+        m = self._m
+        pos = m.start
+        for a, b in merge_spans(kept):
+            if a >= m.end:
+                break
+            if a > pos:
+                self.cut(pos, a)
+            pos = max(pos, b)
+        if pos < m.end:
+            self.cut(pos, m.end)
+        return self
+
+    def mute(self, start: float, end: float) -> EditSuggestion:
+        """Silence [start, end]; the picture stays. Mutes add up; overlapping ones join."""
+        self._add("mute", self._mutes, start, end)
+        return self
+
+    def volume(self, level: float) -> EditSuggestion:
+        """The whole clip's loudness: 1 as it is, 0 silent, up to 2."""
+        self._values["volume"] = self._number("volume", level, *EDIT_NUMBERS["volume"])
+        return self
+
+    def fade(self, fade_in: float | None = None, fade_out: float | None = None) -> EditSuggestion:
+        """Fade in and out over this many seconds, up to 3 each. Clips Kitty
+        uses the nearest of the editor's choices, 0, 0.3, 0.5 or 1 s."""
+        for key, value in (("fade_in", fade_in), ("fade_out", fade_out)):
+            if value is not None:
+                number = self._number(key, value, *EDIT_NUMBERS[key])
+                self._nearest(key, number, nearest_choice(number, FADE_CHOICES), " s")
+                self._values[key] = number
+        return self
+
+    def speed(self, factor: float) -> EditSuggestion:
+        """Play the whole clip this much faster, 0.5 to 3. Clips Kitty uses
+        the nearest of the editor's choices, 0.75, 1, 1.25, 1.5 or 2."""
+        number = self._number("speed", factor, *EDIT_NUMBERS["speed"])
+        self._nearest("speed", number, nearest_choice(number, SPEED_CHOICES, toward=1))
+        self._values["speed"] = number
+        return self
+
+    def title_overlay(self, text: str, seconds: float = DEFAULT_TITLE_OVERLAY_SECONDS) -> EditSuggestion:
+        """The editor's Hook title: big text at the top for the clip's first
+        `seconds` (1 to 10; Clips Kitty uses the nearest of 2, 3, 5 or 8).
+        The text is put on one line and cut to MAX_TITLE_OVERLAY characters;
+        Clips Kitty takes out web addresses."""
+        line = one_line(text)[:MAX_TITLE_OVERLAY].rstrip()
+        if not line:
+            raise self._refuse(f"title_overlay needs text (got {_shown(text)})")
+        number = self._number("title_overlay seconds", seconds, *TITLE_OVERLAY_SECONDS)
+        self._nearest("title_overlay seconds", number, nearest_choice(number, HOOK_SECONDS_CHOICES), " s")
+        self._values["title_overlay"] = {"text": line, "seconds": number}
+        return self
+
+    def crop(self, mode: str) -> EditSuggestion:
+        """The clip's layout: one of job.limits.crops (contract.CROPS in a
+        job whose clips can use one). Another is kept, and Clips Kitty
+        ignores it."""
+        if not isinstance(mode, str) or not mode or len(mode) > MAX_CROP:
+            raise self._refuse(f"crop must be text of 1 to {MAX_CROP} characters (got {_shown(mode)})")
+        crops = self._job.limits.crops
+        if mode not in crops:
+            named = ", ".join(crops[:-1]) + f" or {crops[-1]}" if len(crops) > 1 else "".join(crops)
+            why = f"this job's clips use {named}" if crops else "this job's clips don't use a layout"
+            self._job._log_once(f"{self._m.id}: crop {mode!r} will be ignored: {why}")
+        self._values["crop"] = mode
+        return self
+
+    def reason(self, text: str) -> EditSuggestion:
+        """Why, in one line the creator sees (cut to MAX_EDIT_REASON characters)."""
+        line = one_line(text)[:MAX_EDIT_REASON].rstrip()
+        if line:
+            self._values["reason"] = line
+        else:
+            self._values.pop("reason", None)
+        return self
+
+    @property
+    def cuts(self) -> tuple[tuple[float, float], ...]:
+        """The cuts set so far, joined where they overlap."""
+        return tuple(self._cuts)
+
+    @property
+    def mutes(self) -> tuple[tuple[float, float], ...]:
+        """The mutes set so far, joined where they overlap."""
+        return tuple(self._mutes)
+
+    @property
+    def length(self) -> float:
+        """Seconds of the clip left after the cuts and the speed, as Clips
+        Kitty measures it: pieces shorter than contract.MIN_PIECE don't
+        count, and the speed is the nearest of the editor's choices."""
+        m = self._m
+        return kept_length(m.start, m.end, self._cuts) / self._speed()
+
+    def _speed(self) -> float:
+        speed = self._values.get("speed")
+        return 1.0 if speed is None else nearest_choice(speed, SPEED_CHOICES, toward=1)
+
+    def _data(self) -> dict:
+        """The edit as result.json holds it: what the plugin set, in EDIT_FIELDS order."""
+        data: dict = {}
+        if self._cuts:
+            data["cuts"] = [[a, b] for a, b in self._cuts]
+        if self._mutes:
+            data["mutes"] = [[a, b] for a, b in self._mutes]
+        data.update(self._values)
+        return {key: data[key] for key in EDIT_FIELDS if key in data}
+
+    def _length_lines(self, floor: float, longest) -> list[str]:
+        """What Clips Kitty will ignore because of the clip's length, as
+        host.read_edits decides it."""
+        m = self._m
+        out = []
+        length = m.end - m.start
+        if self._cuts:
+            left = kept_length(m.start, m.end, self._cuts)
+            if left < floor:
+                out.append(f"{m.id}: cuts leave {left:.1f} s, under this job's {floor:g} s shortest clip: "
+                           "Clips Kitty will ignore the cuts")
+            else:
+                length = left
+        speed = self._speed()
+        if speed > 1 and length / speed < floor:
+            out.append(f"{m.id}: cuts and speed leave {length / speed:.1f} s, under this job's {floor:g} s "
+                       "shortest clip: Clips Kitty will ignore the speed")
+        elif speed < 1 and longest and length / speed > longest:
+            out.append(f"{m.id}: speed makes the clip {length / speed:.1f} s, over this job's {longest:g} s "
+                       "longest clip: Clips Kitty will ignore the speed")
+        return out
 
 
 class Job:
@@ -281,6 +563,8 @@ class Job:
         self._by_id: dict[str, Moment] = {m.id: m for m in self._handed}
         self._own: dict[str, tuple[Moment, dict]] = {}  # r1, r2, ...: the Moment and its range
         self._rated: dict[str, tuple[float, str]] = {}  # a handed moment's id: (score, reason)
+        self._edits: dict[str, EditSuggestion] = {}  # a handed moment's id: its suggested edit
+        self._own_edits: dict[str, EditSuggestion] = {}  # suggest_edit() on an own range: never written
         self._said: list[tuple[float, float, str]] | None = None  # the transcript, once read
         self._logged: set[str] = set()
         plugin = data.get("plugin") or {}
@@ -297,8 +581,10 @@ class Job:
         )
         self.settings: Settings = Settings(data.get("settings") or {})
         limits = data.get("limits") or {}
+        crops = limits.get("crops")
         self.limits = Limits(limits.get("max_clips"), limits.get("min_duration"), limits.get("max_duration"),
-                             limits.get("min_score"))
+                             limits.get("min_score"),
+                             tuple(c for c in crops if isinstance(c, str)) if isinstance(crops, list) else ())
         self.focus: str | None = data.get("focus") or None
         self.models: dict[str, Model] = {
             name: Model(Path(m["path"]) if m.get("path") else None, m.get("revision", ""),
@@ -336,14 +622,15 @@ class Job:
 
     def wants(self, step: str) -> bool:
         """Whether this run is asked to `find` moments, `understand` them (say
-        what happens in them) or `rate` them. A step name this SDK doesn't
-        know is never wanted."""
+        what happens in them), `rate` them, or suggest edits for the clips
+        made from them (`edit`). A step name this SDK doesn't know is never
+        wanted."""
         return step in STEPS and step in self.steps
 
     @property
     def moments(self) -> list[Moment]:
-        """The moments handed over to rate or understand, in Clips Kitty's
-        order. Empty in a find run."""
+        """The moments handed over to rate or understand, or the clips to
+        suggest edits for, in Clips Kitty's order. Empty in a find run."""
         return list(self._handed)
 
     def text(self, m: Moment) -> str:
@@ -427,6 +714,27 @@ class Job:
         self._rated[m.id] = (value, why)
         m.score = value
 
+    def suggest_edit(self, m: Moment) -> EditSuggestion:
+        """The edit this run suggests for clip `m`, one of job.moments: the
+        same EditSuggestion on every call for `m`, so calls add up.
+
+        In a run that wasn't asked to suggest edits, the call is logged as
+        ignored and nothing is kept, and so is a call on one of the plugin's
+        own ranges: Clips Kitty asks for edits on the clips it hands over.
+        The returned suggestion still checks its calls, so one function can
+        serve every run.
+        """
+        m, own = self._mine(m, "suggest_edit")
+        if own is not None:
+            self._log_once(f"suggest_edit ignored on {m.id}: Clips Kitty asks for edits on the clips it hands "
+                           "over (job.moments)")
+            return self._own_edits.setdefault(m.id, EditSuggestion(self, m, kept=False))
+        if not self.wants("edit"):
+            self._log_once("suggest_edit ignored: this job didn't ask for edits")
+        if m.id not in self._edits:
+            self._edits[m.id] = EditSuggestion(self, m, kept=self.wants("edit"))
+        return self._edits[m.id]
+
     def add_range(self, start: float, end: float, *, score: float | None = None, label: str = "",
                   title: str = "", reason: str = "") -> Moment:
         """One moment of the source video, in seconds, to become a clip.
@@ -464,7 +772,8 @@ class Job:
         return list(self._ranges)
 
     def _answers(self) -> list[dict]:
-        """One answer for each handed moment this run rated or noted, in order."""
+        """One answer for each handed moment this run rated, noted or
+        suggested an edit for, in order."""
         out = []
         for m in self._handed:
             answer: dict = {"id": m.id}
@@ -472,6 +781,9 @@ class Job:
                 answer["score"], answer["reason"] = self._rated[m.id]
             if m._notes:
                 answer["context"] = list(m._notes)
+            suggestion = self._edits.get(m.id)
+            if suggestion is not None and suggestion._kept and suggestion._data():
+                answer["edit"] = suggestion._data()
             if len(answer) > 1:
                 out.append(answer)
         return out
@@ -480,10 +792,18 @@ class Job:
         """Write result.json. Call once, at the end; the process should then exit with 0.
 
         It holds the ranges added (each with its own notes, in a run asked to
-        understand), the answers about the moments handed over, and `notes`
-        for the job log. It is checked the way Clips Kitty checks it, for the
-        steps this run was asked for.
+        understand), the answers about the moments handed over (with the
+        edit suggested for each, in a run asked to edit), and `notes` for the
+        job log. It is checked the way Clips Kitty checks it, for the steps
+        this run was asked for. In a run asked to edit, a clip whose cuts or
+        speed leave less than the job's shortest clip (at least 1 s) gets a
+        log line saying what Clips Kitty will ignore.
         """
+        if self.wants("edit"):
+            floor = max(1.0, _number(self.limits.min_duration) or 0.0)
+            for suggestion in self._edits.values():
+                for line in suggestion._length_lines(floor, _number(self.limits.max_duration)):
+                    self._log_once(line)
         ranges = self._ranges
         noted = {id(entry): m.notes for m, entry in self._own.values() if m._notes}
         if noted and self.wants("understand"):
