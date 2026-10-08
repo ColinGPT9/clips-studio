@@ -358,9 +358,10 @@ def test_the_wheel_holds_py_typed_schema_and_templates():
         assert [n for n in names if n.endswith(".pyc") or "__pycache__" in n] == []
 
         dist_info = next(n.split("/")[0] for n in names if n.split("/")[0].endswith(".dist-info"))
-        entry_points = wheel.read(f"{dist_info}/entry_points.txt").decode("utf-8")
+        # A wheel built on Windows can write its metadata with CRLF line ends.
+        entry_points = wheel.read(f"{dist_info}/entry_points.txt").decode("utf-8").replace("\r\n", "\n")
         assert re.search(r"^clipskitty-sdk\s*=\s*clipskitty_sdk\.__main__:main$", entry_points, re.M)
-        metadata = wheel.read(f"{dist_info}/METADATA").decode("utf-8")
+        metadata = wheel.read(f"{dist_info}/METADATA").decode("utf-8").replace("\r\n", "\n")
     assert re.search(rf"^Version: {re.escape(__version__)}$", metadata, re.M)
     assert re.search(r"^License-Expression: MIT$", metadata, re.M)
     assert re.search(r"^Provides-Extra: yaml$", metadata, re.M)
