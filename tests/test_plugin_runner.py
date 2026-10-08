@@ -4,7 +4,8 @@ The runner hands a plugin process a job folder and turns its answer into the
 ClipCandidates the rest of process_video renders. These tests run real child
 processes: tests/fixtures/plugins/echo, which does whatever its `mode` setting
 says, tests/fixtures/plugins/notes-finder, which also says what happens in the
-moments it finds, and the first-party adapter in
+moments it finds, tests/fixtures/plugins/trimmer, which suggests edits for the
+clips it is handed, and the first-party adapter in
 examples/pipelines/transcript-highlights.
 """
 
@@ -22,6 +23,7 @@ from core.models import DownloadedVideo, Segment
 ROOT = Path(__file__).resolve().parent.parent
 ECHO = ROOT / "tests" / "fixtures" / "plugins" / "echo"
 NOTES_FINDER = ROOT / "tests" / "fixtures" / "plugins" / "notes-finder"
+TRIMMER = ROOT / "tests" / "fixtures" / "plugins" / "trimmer"
 ADAPTER = ROOT / "examples" / "pipelines" / "transcript-highlights"
 
 pytest.importorskip("yaml")
@@ -128,14 +130,16 @@ def _keys_and_text(value) -> set:
 
 
 def test_a_range_s_unknown_keys_never_reach_the_clip(tmp_path, install_plugin, video):
-    """Edit is planned (outputs: [edits] is refused), so nothing a plugin adds
-    to a range may change how a clip is made. The runner copies only the keys
-    it knows into a ClipCandidate: start, end, score, title or label as the
-    hook, reason, and notes when asked. A range carrying edit, music and
-    watermark makes exactly the clip the same range without them makes. Apart
-    from the answer's notes, printed to the log, the candidates are all of it
-    that goes on past the runner, so a clip's render options (render_opts)
-    can't differ either."""
+    """A find run is never asked to edit: edits are suggested only by a run of
+    their own, for the clips Clips Kitty makes (plugins/steps.py), and wait
+    for the creator. So nothing a plugin adds to a range may change how a
+    clip is made. The runner copies only the keys it knows into a
+    ClipCandidate: start, end, score, title or label as the hook, reason, and
+    notes when asked. A range carrying edit, music and watermark makes
+    exactly the clip the same range without them makes. Apart from the
+    answer's notes, printed to the log, the candidates are all of it that
+    goes on past the runner, so a clip's render options (render_opts) can't
+    differ either."""
     import dataclasses
 
     import yaml
@@ -673,6 +677,102 @@ def test_the_shared_run_steps_tag_the_folder_and_name_the_plugin_only_when_asked
     runner.host.write_job(folder, job, transcript)
     with pytest.raises(runner.PluginError, match="longer than"):
         runner._execute(plugin, command, python, folder, video=video, data_dir=echo, stage="analyze", timeout=1.5)
+
+
+# ---- an edit run: suggestions for the clips Clips Kitty makes ---------------------------
+
+TRIMMER_ID = "fixture-dev/trimmer"
+# Two clips as plugins/steps.py hands them over.
+CLIPS = [{"id": "m1", "start": 10.0, "end": 30.0, "score": 80, "found_score": 80, "found_by": "clipskitty",
+          "label": "", "signals": {}, "title": "A quark burst", "reason": "loud reaction", "context": []},
+         {"id": "m2", "start": 100.0, "end": 120.0, "score": 70, "found_score": 70, "found_by": "clipskitty",
+          "label": "", "signals": {}, "title": "Round one", "reason": "fast speech", "context": []}]
+
+
+@pytest.fixture
+def trimmer(tmp_path, install_plugin):
+    data_dir = tmp_path / "data"
+    install_plugin(data_dir, TRIMMER)
+    return data_dir
+
+
+def _edit_run(data_dir, video, edits=None, *, config=None, crops=("track", "center", "letterbox"), **settings):
+    from plugins import runner
+
+    choice = {"id": TRIMMER_ID, "settings": {**({"edits": json.dumps(edits)} if edits is not None else {}),
+                                             **settings}}
+    return runner.answer_moments(choice, ["edit"], CLIPS, video=video, segments=SEGMENTS, language="en",
+                                 config=config or _config(min_score=70), data_dir=data_dir, stage="edit",
+                                 crops=crops)
+
+
+def test_an_edit_run_has_no_min_score_and_has_crops(trimmer, video):
+    from core import progress
+    from plugins import runner
+
+    events = []
+    progress.set_handler(events.append)
+    try:
+        out = _edit_run(trimmer, video, {"m1": {"fade_out": 0.45, "crop": "letterbox"}, "m2": {"crop": "center"}},
+                        crops=("track", "center"))
+    finally:
+        progress.set_handler(None)
+    job = _seen(trimmer)["job"]
+    assert job["steps"] == ["edit"]
+    # Its clips are chosen already: the creator's minimum score isn't sent, the layouts they can use are.
+    assert job["limits"] == {"max_clips": None, "min_duration": 10, "max_duration": 60, "crops": ["track", "center"]}
+    assert [m["id"] for m in job["moments"]] == ["m1", "m2"]
+    (folder,) = (trimmer / "plugins" / "runs").iterdir()
+    assert re.fullmatch(r"vid123-\d{8}-\d{6}-edit", folder.name)
+    # Read with host.read_edits: fitted to the clip and to the editor, with a line for each change.
+    assert out == {"plugin": TRIMMER_ID, "version": "1.0.0", "name": "Trimmer", "steps": ["edit"],
+                   "edits": {"m1": {"edit": {"fade_out": 0.5}}, "m2": {"edit": {"crop": "center"}}},
+                   "ignored": ["changed: m1's fade_out 0.45 s to 0.5 s, the nearest the editor offers",
+                               "ignored: m1's crop \"letterbox\": this job's clips don't use \"letterbox\""]}
+    assert [(e["stage"], e["fraction"], e["plugin"]) for e in events] == [
+        ("edit", 0.0, "Trimmer"), ("edit", 0.5, "Trimmer"), ("edit", 1.0, "Trimmer")]
+    assert events[-1]["message"] == "Trimmer suggested edits for 2 clip(s)"
+    # Without layouts given, it is told there are none.
+    _edit_run(trimmer, video, {"m1": {"fade_in": 0.3}}, crops=None)
+    assert _seen(trimmer)["job"]["limits"]["crops"] == []
+    # An edit run is a run of its own: never asked beside another step.
+    for steps in (["rate", "edit"], ["edit", "understand"], ["edit", "edit"]):
+        with pytest.raises(ValueError, match="an edit run is asked to suggest edits and nothing else"):
+            runner.answer_moments({"id": TRIMMER_ID}, steps, CLIPS, video=video, segments=SEGMENTS, language="en",
+                                  config=_config(), data_dir=trimmer, stage="edit", crops=())
+
+
+def test_an_edit_run_stops_at_its_limit(trimmer, video, monkeypatch):
+    from plugins import runner
+
+    asked = []
+
+    def short(manifest, default=runner.DEFAULT_TIMEOUT_MINUTES):
+        asked.append(default)
+        return 1.5
+
+    monkeypatch.setattr(runner, "timeout_seconds", short)
+    with pytest.raises(runner.PluginError) as e:
+        _edit_run(trimmer, video, mode="sleep")
+    assert asked == [runner.MOMENT_TIMEOUT_MINUTES]  # a moment run's limit, unless its manifest sets one
+    assert e.value.why == "It took longer than its 1 minute limit, so Clips Kitty stopped it."
+    assert str(e.value) == "Trimmer took longer than its 1 minute limit, so Clips Kitty stopped it."
+
+
+def test_an_edit_run_that_cannot_start_says_it_can_no_longer_suggest_edits(echo, video, install_plugin):
+    from plugins import runner
+
+    install_plugin(echo, TRIMMER, enabled=False)
+    with pytest.raises(runner.PluginError) as e:
+        runner.answer_moments({"id": "fixture-dev/echo"}, ["edit"], CLIPS, video=video, segments=SEGMENTS,
+                              language="en", config=_config(), data_dir=echo, stage="edit", crops=())
+    assert (e.value.code, e.value.why) == ("step", "It can no longer suggest edits.")
+    assert str(e.value) == ("The pipeline Echo can't suggest edits for clips: its manifest needs moments in inputs "
+                            "and edits in outputs")
+    with pytest.raises(runner.PluginError) as e:
+        _edit_run(echo, video, {"*": {"fade_in": 0.3}})
+    assert (e.value.code, e.value.why) == ("off", "It's turned off in Marketplace › Installed.")
+    assert not (echo / "plugins" / "runs").exists()  # nothing ran
 
 
 # ---- dogfooding: Clips Kitty's own scorer behind the contract -------------------

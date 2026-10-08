@@ -192,10 +192,12 @@ def job_payload(watch, url: str, origin: str = "watch") -> dict:
     if payload.get("pipeline") and any(payload.get(k) for k in ("sport", "gaming_scoring", "longform")):
         payload.pop("pipeline")  # and a plugin pipeline beside a mode that picks moments its own way
     if payload.get("longform"):
-        # Rate & understand work on a Shorts run's moments, and Longform has
-        # no such step: they stay in the options for a preset that has one.
+        # Rate & understand work on a Shorts run's moments, and Suggest edits
+        # on its clips; Longform has no such step: they stay in the options
+        # for a preset that has one.
         payload.pop("rate", None)
         payload.pop("understand", None)
+        payload.pop("edit", None)
     return payload
 
 

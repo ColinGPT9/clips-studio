@@ -5,9 +5,7 @@ app's version, run through the app's own runner, and run on Clips Kitty's own
 Python: main.py's script host with PYTHONPATH set to the repository's SDK
 alone, as the installed app starts it, so a template that imports a part of
 the SDK the app doesn't bundle fails here. The runs on the sample video need
-FFmpeg; the transcript, rater and editor templates need none. The app's
-runner takes the editor once the engine runs edit plugins (plugins.steps
-names edit); until then that one case skips.
+FFmpeg; the transcript, rater and editor templates need none.
 """
 
 import json
@@ -117,10 +115,6 @@ def test_every_template_plans_cleanly_on_this_apps_version(template, tmp_path):
 def test_every_template_runs_through_the_apps_runner(template, tmp_path, sample, install_plugin):
     _needs_ffmpeg(template)
     from plugins import runner
-    from plugins import steps as plugin_steps
-
-    if template == "editor" and "edit" not in plugin_steps.FIELDS:
-        pytest.skip("the engine doesn't run edit plugins yet")
 
     folder = _made(tmp_path, template)
     data_dir = tmp_path / "data"

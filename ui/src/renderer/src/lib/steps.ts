@@ -11,7 +11,7 @@
 import type { InstalledPlugin } from './marketplace'
 import type { JobOptions, RunOutcome, StepRun } from './types'
 
-export type Step = 'find' | 'understand' | 'rate'
+export type Step = 'find' | 'understand' | 'rate' | 'edit'
 /** The steps chosen under Rate & understand, in the order they run. */
 export type MomentStep = 'understand' | 'rate'
 export const MOMENT_STEPS: MomentStep[] = ['understand', 'rate']
@@ -19,9 +19,14 @@ export const MOMENT_STEPS: MomentStep[] = ['understand', 'rate']
 /** Plugins for one step, in a job (plugins/steps.py MAX_PER_STEP). */
 export const MAX_PER_STEP = 3
 
-const STEPS: Step[] = ['find', 'understand', 'rate']
+const STEPS: Step[] = ['find', 'understand', 'rate', 'edit']
 /** What each step answers with (manifest.STEP_OUTPUTS). */
-const STEP_OUTPUTS: Record<Step, string> = { find: 'ranges', understand: 'context', rate: 'ratings' }
+const STEP_OUTPUTS: Record<Step, string> = {
+  find: 'ranges',
+  understand: 'context',
+  rate: 'ratings',
+  edit: 'edits'
+}
 
 type Words = (s: string) => string
 const english: Words = (s) => s
@@ -31,8 +36,9 @@ function words(value: unknown): unknown[] {
 }
 
 /** The steps a job may name a plugin for, as the engine's manifest.offers
- *  says: find for `ranges` in its outputs; understand for `context` and rate
- *  for `ratings`, each only when it also takes `moments` in. */
+ *  says: find for `ranges` in its outputs; understand for `context`, rate
+ *  for `ratings` and edit for `edits`, each only when it also takes
+ *  `moments` in. */
 export function offers(m: { inputs?: unknown; outputs?: unknown } | null | undefined): Step[] {
   const outputs = words(m?.outputs)
   const given = words(m?.inputs).includes('moments')
@@ -152,9 +158,21 @@ function nameOf(run: Pick<StepRun, 'name' | 'plugin'>): string {
 }
 
 /** One line of the video page's "Marketplace plugins on this video": what a
- *  plugin's run on the moments did, or why Clips Kitty made the clips without it. */
+ *  plugin's run on the moments did, or why Clips Kitty made the clips without
+ *  it. A Suggest edits run (steps ['edit']) says how many clips it suggested
+ *  edits for; its failure changed no clip, so it says no suggestions came. */
 export function stepRunText(run: StepRun, minScore: number, tr: Words = english): string {
   const name = nameOf(run)
+  if (run.steps.length === 1 && run.steps[0] === 'edit') {
+    if (!run.ok) {
+      const why = run.error ? ` ${tr(run.error)}` : ''
+      return `${tr('No edit suggestions from')} ${name}.${why}`
+    }
+    const suggested = run.suggested ?? 0
+    if (suggested <= 0) return `${name} ${tr('looked at the clips and suggested nothing.')}`
+    const open = tr('clips. Open a clip in the editor to see them.')
+    return `${name} ${tr('suggested edits for')} ${suggested} ${tr('of')} ${run.given} ${open}`
+  }
   if (!run.ok) {
     const why = run.error ? ` ${tr(run.error)}` : ''
     return `${tr('Clips Kitty made these clips without')} ${name}.${why}`

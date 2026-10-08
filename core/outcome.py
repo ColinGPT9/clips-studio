@@ -142,8 +142,10 @@ def _names(outcome: dict, keep) -> list[str]:
 
 def failed_steps(outcome: dict) -> list[str]:
     """The names of the Understand and Rate plugins (plugins/steps.py) that
-    were skipped in this video's run, from its outcome's `steps`."""
-    return _names(outcome, lambda entry: not entry.get("ok"))
+    were skipped in this video's run, from its outcome's `steps`. A Suggest
+    edits plugin that was skipped isn't one: its suggestions change no clip,
+    so its failure holds nothing."""
+    return _names(outcome, lambda entry: not entry.get("ok") and entry.get("steps") != ["edit"])
 
 
 def rated_out_names(outcome: dict) -> list[str]:

@@ -319,6 +319,40 @@ def test_the_video_page_says_what_each_plugin_did_in_plain_words(tmp_path):
     assert rated_out_names(outcome) == ["Quarkbloom Rater", "example-dev/pace-rater"]
 
 
+def test_the_video_page_says_what_each_edit_plugin_suggested(tmp_path):
+    """A Suggest edits run (plugins/steps.suggest_edits: steps ['edit'], with
+    `suggested`) says how many clips it suggested edits for, or that it
+    suggested nothing; one that didn't run says no suggestions came, since
+    its failure changed no clip. Never "looked at the moments"."""
+    trimmer = {"plugin": "example-dev/quarkbloom-trimmer", "version": "1.0.0", "name": "Quarkbloom Trimmer",
+               "steps": ["edit"], "ok": True, "given": 5, "suggested": 4, "noted": 0, "rated": 0, "set_aside": 0}
+    runs = [
+        trimmer,
+        {**trimmer, "suggested": 0},
+        {**trimmer, "ok": False, "suggested": 0, "error": "It isn't installed any more."},
+        {**trimmer, "ok": False, "suggested": 0, "error": "It said: the arena feed was empty."},
+        {**trimmer, "ok": False, "suggested": 0},
+        {**trimmer, "name": "", "ok": False, "suggested": 0, "error": "Clips Kitty couldn't use its answer."},
+        # A rater beside it reads as before.
+        _run_entry(rated=12),
+    ]
+    got = _run(tmp_path, "return data.map((r) => m.stepRunText(r, 55))", runs)
+    assert got == [
+        "Quarkbloom Trimmer suggested edits for 4 of 5 clips. Open a clip in the editor to see them.",
+        "Quarkbloom Trimmer looked at the clips and suggested nothing.",
+        "No edit suggestions from Quarkbloom Trimmer. It isn't installed any more.",
+        "No edit suggestions from Quarkbloom Trimmer. It said: the arena feed was empty.",
+        "No edit suggestions from Quarkbloom Trimmer.",
+        "No edit suggestions from example-dev/quarkbloom-trimmer. Clips Kitty couldn't use its answer.",
+        "Quarkbloom Rater rated 12 of 12 moments.",
+    ]
+    assert not any(".." in line or "moments and changed nothing" in line for line in got[:6])
+    # Through t(), like the lines around it.
+    words = _run(tmp_path, "const said = []; m.stepRunText(data, 55, (s) => { said.push(s); return s });"
+                           " return said", trimmer)
+    assert sorted(words) == ["clips. Open a clip in the editor to see them.", "of", "suggested edits for"]
+
+
 def test_the_rate_and_understand_switch_reads_as_designed():
     """The job form's switch, its rows and the video page use the design's
     words, through t() like their neighbours; the Pipeline switch's own words

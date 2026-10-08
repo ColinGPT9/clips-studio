@@ -189,6 +189,23 @@ def test_failed_steps_and_rated_out_names_read_the_report():
         assert failed_steps(empty) == [] and rated_out_names(empty) == []
 
 
+def test_a_failed_edit_plugin_is_not_a_failed_step():
+    """A Suggest edits plugin that didn't run changed no clip (its suggestions
+    only wait in the editor), so it never holds posting: failed_steps leaves
+    it out, beside a rater that ran or one that didn't."""
+    from core.outcome import failed_steps, rated_out_names
+
+    rater = {"plugin": "example-dev/quarkbloom-rater", "name": "Quarkbloom Rater", "steps": ["rate"], "ok": True,
+             "given": 3, "noted": 0, "rated": 3, "set_aside": 0}
+    trimmer = {"plugin": "example-dev/quarkbloom-trimmer", "name": "Quarkbloom Trimmer", "steps": ["edit"],
+               "ok": False, "given": 3, "suggested": 0, "noted": 0, "rated": 0, "set_aside": 0,
+               "error": "It isn't installed any more."}
+    assert failed_steps({"clips": 3, "steps": [trimmer]}) == []
+    assert failed_steps({"clips": 3, "steps": [rater, trimmer]}) == []
+    assert failed_steps({"clips": 3, "steps": [{**rater, "ok": False}, trimmer]}) == ["Quarkbloom Rater"]
+    assert rated_out_names({"clips": 3, "steps": [rater, trimmer]}) == []
+
+
 # ---- the log line ----------------------------------------------------------
 
 

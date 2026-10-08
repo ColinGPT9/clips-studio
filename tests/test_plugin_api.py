@@ -151,6 +151,36 @@ def test_a_plan_carries_the_install_screen_as_text(api, plugin_source):
     assert texts[1].splitlines()[-1] == "✗ inputs[0]: the video input needs the video.read permission"
 
 
+def test_an_edit_plugin_installs_through_the_api_and_is_named_under_edit(api, plugin_source):
+    """One that suggests edits for the clips: the install screen says so and
+    how long it may take, a job can name it under `edit`, and a finder named
+    there is told what it can't do."""
+    client, data_dir = api
+    editor = {"id": "fixture-dev/quarkbloom-trims", "name": "Quarkbloom Trims", "inputs": ["transcript", "moments"],
+              "outputs": ["edits"], "permissions": ["transcript.read"],
+              "run": {"command": ["{python}", "src/main.py"], "timeout_minutes": 5}}
+    for name, manifest in (("editor", plugin_source.manifest(**editor)), ("finder", plugin_source.manifest())):
+        plan = client.post("/plugins/plan", json={"source": {"kind": "folder",
+                                                             "path": str(plugin_source.folder(name, manifest))}},
+                           headers=HEADERS).json()
+        assert plan["ok"], plan["errors"]
+        if name == "editor":
+            assert plan["details"]["steps"] == ["Suggests edits"]
+            assert plan["details"]["time_limit"] == (
+                "Clips Kitty stops it after 5 minutes when it suggests edits for a video’s clips.")
+            assert "What it does: Suggests edits" in plan["text"].splitlines()
+        assert client.post("/plugins/install", json={"plan_id": plan["plan_id"]}, headers=HEADERS).status_code == 200
+    url = "https://www.youtube.com/watch?v=aB3dEfGhIjK"
+    r = client.post("/jobs", json={"url": url, "edit": "fixture-dev/quarkbloom-trims"})
+    assert r.status_code == 200, r.text
+    payload = json.loads(client.get(f"/jobs/{r.json()['job_id']}").json()["payload"])
+    assert payload["edit"] == [{"id": "fixture-dev/quarkbloom-trims"}]
+    r = client.post("/jobs", json={"url": "https://www.twitch.tv/videos/100000001", "edit": PID})
+    assert r.status_code == 400
+    assert r.json()["detail"] == ("edit[0]: the pipeline Manager test can't suggest edits for clips: its manifest "
+                                  "needs moments in inputs and edits in outputs")
+
+
 @pytest.mark.parametrize("change", [{"license": ["MIT"]}, {"id": 123}, {"license": 5}])
 def test_a_plan_with_a_field_that_isnt_text_is_refused_not_a_server_error(api, plugin_source, change):
     """A manifest field that should be text but is a list or a number gets

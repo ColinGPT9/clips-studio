@@ -475,6 +475,16 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         candidates, rejections, step_report = plugin_steps.after_finding(
             candidates, rejections, video=video, segments=segments, language=content_lang,
             config=config, data_dir=data_dir)
+    if config["clips"].get("edit") and candidates:
+        # Suggest edits (plugins/steps.py): plugins that suggest an edit for
+        # each clip about to be made. Their suggestions wait on the clips for
+        # the creator; the clips themselves, and how they render, are unchanged.
+        # None chosen: nothing is imported.
+        from plugins import steps as plugin_steps
+
+        step_report += plugin_steps.suggest_edits(
+            candidates, video=video, segments=segments, language=content_lang,
+            config=config, data_dir=data_dir)
     for r in rejections:
         db.log_rejection(
             video.video_id,
@@ -497,7 +507,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
         # What the match gave (goals found, the score read, replays grouped).
         outcome["sport"] = sport_profile.report_data
     if step_report:
-        # Each Understand and Rate plugin's run: what it did, or why it was skipped.
+        # Each Understand, Rate and Suggest edits plugin's run: what it did, or why it was skipped.
         outcome["steps"] = step_report
     db.set_outcome(video.video_id, outcome)
 

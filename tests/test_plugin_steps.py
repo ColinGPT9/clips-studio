@@ -1,16 +1,21 @@
-"""Rate & understand: plugins that look at a video's moments once they're found
-(plugins/steps.py, and plugins/runner.answer_moments for each run).
+"""Rate & understand and Suggest edits: plugins that look at a video's moments
+once they're found, and at the clips chosen from them (plugins/steps.py, and
+plugins/runner.answer_moments for each run).
 
 These tests run real child processes: tests/fixtures/plugins/stepper rates
 the moments it is handed and says what happens in them as its settings say,
-or fails the way it is told to. Copies of it under other ids stand in for
-several plugins chosen in one job. Every game named is Quarkbloom Arena, a
-made-up game.
+and tests/fixtures/plugins/trimmer suggests edits for the clips it is
+handed; each fails the way it is told to. Copies of them under other ids
+stand in for several plugins chosen in one job. Every game named is
+Quarkbloom Arena, a made-up game.
 """
 
 import copy
+import hashlib
+import importlib
 import json
 import shutil
+import sys
 import threading
 from pathlib import Path
 
@@ -552,3 +557,323 @@ def test_clean_and_check_installed_name_the_field_and_the_item(data_dir):
     with pytest.raises(ValueError) as e:
         steps.check_installed(data_dir, "rate", [{"id": "fixture-dev/stepper"}, {"id": "fixture-dev/gone"}])
     assert str(e.value) == "rate[1]: the pipeline fixture-dev/gone isn't installed"
+
+
+# ---- Suggest edits ---------------------------------------------------------------------
+# Plugins that suggest an edit for each clip about to be made. Their suggestions
+# wait on the clips (subscores["plugin_edits"]); nothing about the clips changes.
+
+TRIMMER = ROOT / "tests" / "fixtures" / "plugins" / "trimmer"
+TRIMMER_WHO = {"plugin": "fixture-dev/trimmer", "version": "1.0.0", "name": "Trimmer"}
+CROPS = ["track", "center", "letterbox"]
+# What the trimmer is told to suggest for a clip: its spans count from the clip's start.
+TRIM = {"cuts": [[2, 6.5]], "mutes": [[8.25, 8.75]], "fade_out": 0.45, "crop": "center",
+        "title_overlay": {"text": "Quark burst!", "seconds": 3}, "reason": "Cuts the wait for the respawn timer"}
+
+
+def _trimmed(start: float) -> dict:
+    """TRIM for the clip starting at `start`, as Clips Kitty keeps it: in seconds
+    of the video, the fade set to the nearest the editor offers, the reason apart."""
+    return {"cuts": [[start + 2, start + 6.5]], "mutes": [[start + 8.25, start + 8.75]], "fade_out": 0.5,
+            "title_overlay": {"text": "Quark burst!", "seconds": 3}, "crop": "center"}
+
+
+@pytest.fixture
+def add_trimmer(tmp_path, data_dir, install_plugin):
+    """Install the trimmer (fixture-dev/trimmer), or a copy of it under another id and name."""
+    def add(pid: str = "fixture-dev/trimmer", name: str = "Trimmer", *, enabled: bool = True) -> str:
+        folder = TRIMMER
+        if pid != "fixture-dev/trimmer":
+            folder = tmp_path / "copies" / pid.replace("/", "-")
+            shutil.copytree(TRIMMER, folder)
+            manifest = (folder / "clipskitty.yaml").read_text(encoding="utf-8")
+            manifest = manifest.replace("id: fixture-dev/trimmer", f"id: {pid}").replace("name: Trimmer",
+                                                                                        f"name: {name}")
+            (folder / "clipskitty.yaml").write_text(manifest, encoding="utf-8")
+        install_plugin(data_dir, folder, enabled=enabled)
+        return pid
+
+    return add
+
+
+def _trim(pid: str = "fixture-dev/trimmer", edits: dict | None = None, **settings) -> dict:
+    return {"id": pid, "settings": {**({"edits": json.dumps(edits)} if edits is not None else {}), **settings}}
+
+
+def _suggest(data_dir, video, clips, **clips_cfg) -> list[dict]:
+    from plugins import steps
+
+    return steps.suggest_edits(list(clips), video=video, segments=SEGMENTS, language="en",
+                               config=_config(**clips_cfg), data_dir=data_dir)
+
+
+def _edit_entry(**changes) -> dict:
+    """One run's report entry, as suggest_edits makes it."""
+    return {**TRIMMER_WHO, "steps": ["edit"], "ok": True, "given": 2, "suggested": 2, "noted": 0, "rated": 0,
+            "set_aside": 0, **changes}
+
+
+@pytest.mark.parametrize(("clips", "crops"), [
+    ({}, CROPS),                                                   # standard vertical
+    ({"podcast": True}, []),
+    ({"sport": {"name": "soccer"}}, []),
+    # A match filmed 9:16: process_video sets vertical_live before finding.
+    ({"sport": {"name": "soccer"}, "vertical_live": True}, []),
+    ({"gaming": True}, []),
+    ({"vertical_live": True}, []),
+    ({"vertical": False}, []),
+])
+def test_crops_follow_the_job(clips, crops):
+    from plugins import steps
+
+    assert list(steps.crops_for(_config(**clips))) == crops
+    assert list(steps.crops_for({"clips": clips})) == crops  # a hand-written config without the defaults
+
+
+def test_later_edit_plugins_see_earlier_suggestions(data_dir, video, add_trimmer, tmp_path, capsys):
+    first, second = add_trimmer(), add_trimmer("fixture-dev/framer", "Framer")
+    trace = tmp_path / "trace.jsonl"
+    clips = [_cand(10, 80), _cand(100, 70)]
+    report = _suggest(data_dir, video, clips, edit=[
+        _trim(first, {"m1": TRIM}, trace=str(trace)),
+        _trim(second, {"*": {"fade_in": 0.3, "reason": "Eases in"}}, trace=str(trace))])
+    runs = _trace(trace)
+    assert [(r["plugin"], r["steps"]) for r in runs] == [(first, ["edit"]), (second, ["edit"])]
+    # Every run is handed the same clips, with what the runs before it suggested.
+    assert all([(m["id"], m["start"], m["end"]) for m in r["moments"]] == [("m1", 10.0, 30.0), ("m2", 100.0, 120.0)]
+               for r in runs)
+    assert all("suggested" not in m for m in runs[0]["moments"])
+    assert runs[1]["moments"][0]["suggested"] == [{"by": first, "name": "Trimmer", "edit": _trimmed(10),
+                                                   "reason": TRIM["reason"]}]
+    assert "suggested" not in runs[1]["moments"][1]
+    assert all(r["limits"]["crops"] == CROPS and "min_score" not in r["limits"] for r in runs)
+    # Each plugin's suggestion is kept apart, in the order they ran.
+    assert [(e["plugin"], e["edit"], e["reason"]) for e in clips[0].subscores["plugin_edits"]] == [
+        (first, _trimmed(10), TRIM["reason"]), (second, {"fade_in": 0.3}, "Eases in")]
+    assert [(e["plugin"], e["edit"]) for e in clips[1].subscores["plugin_edits"]] == [(second, {"fade_in": 0.3})]
+    assert report == [_edit_entry(suggested=1), _edit_entry(plugin=second, name="Framer")]
+    out = capsys.readouterr().out
+    assert "      Suggest edits: Trimmer 1.0.0 (fixture-dev/trimmer) on 2 clip(s)\n" in out
+    assert "      Trimmer suggested edits for 1 of 2 clip(s)\n" in out
+    assert "      Framer suggested edits for 2 of 2 clip(s)\n" in out
+    assert "changed: m1's fade_out 0.45 s to 0.5 s, the nearest the editor offers" in out
+
+
+def test_a_failed_edit_plugin_changes_no_clip_and_keeps_earlier_suggestions(data_dir, video, add_trimmer, capsys):
+    first = add_trimmer()
+    broken, late = add_trimmer("fixture-dev/broken-trimmer", "Broken Trimmer"), add_trimmer("fixture-dev/late", "Late")
+    clips = [_cand(10, 80, text=61), _cand(100, 70)]
+    before = [(c.start, c.end, c.score, c.hook, c.reason) for c in clips]
+    report = _suggest(data_dir, video, clips, edit=[
+        _trim(first, {"m1": TRIM}), _trim(broken, {"*": TRIM}, mode="fail"), _trim(late, {"*": {"fade_in": 1}})])
+    assert report == [_edit_entry(suggested=1),
+                      _edit_entry(plugin=broken, name="Broken Trimmer", ok=False, suggested=0,
+                                  error="It said: the arena feed could not be read."),
+                      _edit_entry(plugin=late, name="Late")]
+    # The clips are as they were, with the suggestions of the plugins that answered.
+    assert [(c.start, c.end, c.score, c.hook, c.reason) for c in clips] == before
+    assert clips[0].subscores["text"] == 61
+    assert [e["plugin"] for e in clips[0].subscores["plugin_edits"]] == [first, late]
+    assert [e["plugin"] for e in clips[1].subscores["plugin_edits"]] == [late]
+    assert "      Going on without Broken Trimmer: It said: the arena feed could not be read.\n" in capsys.readouterr().out
+
+    # An answer Clips Kitty can't use is refused whole: nothing of it is kept,
+    # and a clip with no suggestion keeps its subscores as they were.
+    untouched = [_cand(10, 80, text=61), _cand(100, 70)]
+    report = _suggest(data_dir, video, untouched, edit=[_trim(first, {"*": TRIM}, mode="bad")])
+    assert report == [_edit_entry(ok=False, suggested=0, error="Clips Kitty couldn't use its answer.")]
+    assert [c.subscores for c in untouched] == [{"text": 61}, None]
+    # Nothing to suggest for: no run is started.
+    runs = len(list((data_dir / "plugins" / "runs").iterdir()))
+    assert _suggest(data_dir, video, [], edit=[_trim(first, {"*": TRIM})]) == []
+    assert len(list((data_dir / "plugins" / "runs").iterdir())) == runs
+
+
+def test_a_stored_window_is_rounded_like_the_clip_row(data_dir, video, add_trimmer, db, tmp_path):
+    add_trimmer()
+    trace = tmp_path / "trace.jsonl"
+    clip = ClipCandidate(start=812.123456, end=841.987654, score=85, hook="He holds the bridge alone")
+    _suggest(data_dir, video, [clip], edit=[_trim(edits={"m1": {"fade_out": 0.5, "reason": "Fades out"}},
+                                                  trace=str(trace))])
+    (handed,) = _trace(trace)[0]["moments"]
+    assert (handed["start"], handed["end"]) == (812.123456, 841.987654)  # the plugin gets the window as it is
+    (entry,) = clip.subscores["plugin_edits"]
+    key = json.dumps({"plugin": "fixture-dev/trimmer", "edit": {"fade_out": 0.5}}, sort_keys=True)
+    assert entry == {"id": hashlib.sha256(key.encode("utf-8")).hexdigest()[:12], **TRIMMER_WHO,
+                     "window": [812.12, 841.99], "min_length": 10.0, "edit": {"fade_out": 0.5},
+                     "reason": "Fades out", "state": "new"}
+    # The clip's row keeps the same window, so the editor finds the suggestion's clip by it.
+    db.conn.execute("INSERT INTO videos (video_id, title, status, created_at, updated_at)"
+                    " VALUES ('vid321', 'A Quarkbloom Arena match', 'done', 'x', 'x')")
+    clip_id = db.add_clip("vid321", clip.start, clip.end, clip.score, clip.hook, scores=json.dumps(clip.subscores))
+    row = db.get_clip(clip_id)
+    assert [row["start_s"], row["end_s"]] == entry["window"]
+    # The same suggestion made again, in another run, has the same id.
+    again = ClipCandidate(start=812.123456, end=841.987654, score=85, hook="He holds the bridge alone")
+    _suggest(data_dir, video, [again], edit=[_trim(edits={"m1": {"fade_out": 0.5}})])
+    assert again.subscores["plugin_edits"][0]["id"] == entry["id"]
+
+
+# ---- Suggest edits in process_video -----------------------------------------------------
+
+HIGHLIGHTS = {"caption_style": {"post_style": "highlights"}}
+
+
+@pytest.fixture
+def made(monkeypatch, tmp_path, data_dir):
+    """process_video from finding to the clip rows, with download,
+    transcription, analysis, the title writer and the render stubbed out.
+
+    `made(found, **clips)` runs a job whose finder finds `found` and returns
+    (rows, renders, titled, outcome): the clip rows, each render as
+    ((start, end), the options it was given) in window order, the clips the
+    titles were written for, in order, and the video's outcome. Each run has
+    a database of its own."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    pytest.importorskip("PIL")  # the end card (video/outro.py)
+    import core.pipeline as pipeline
+    from analysis.metadata import ClipMetadata
+    from core.state import StateDB
+    from main import BUNDLED_CONFIG, load_config
+
+    source = tmp_path / "match.mp4"
+    source.write_bytes(b"not really a video")
+    video = DownloadedVideo(video_id="vid321", title="A Quarkbloom Arena match", path=source, duration=600.0)
+    monkeypatch.setattr(pipeline, "_cached_or_download", lambda *_a, **_k: video)
+    monkeypatch.setattr(pipeline, "transcribe", lambda *_a, **_k: list(SEGMENTS))
+    monkeypatch.setattr("transcription.transcriber.detected_language", lambda *_a, **_k: "en")
+    monkeypatch.setattr("video.encoding.source_codec", lambda _p: "h264")
+    monkeypatch.setattr("analysis.audio_features.extract_audio_features", lambda _p: {})
+    monkeypatch.setattr("analysis.visual_features.extract_visual_features", lambda _p: {})
+    monkeypatch.setattr("analysis.hype.audience_signals", lambda *_a, **_k: (None, None))
+    monkeypatch.setattr(pipeline, "_with_usable_model", lambda cfg: cfg)
+    monkeypatch.setattr(pipeline, "create_backend", lambda cfg: object())
+    monkeypatch.setattr(pipeline, "clip_direction", lambda *_a, **_k: None)
+    monkeypatch.setattr(pipeline, "_share_the_cpu", lambda workers: None)
+    found: list = []
+    renders: list = []
+    titled: list = []
+    monkeypatch.setattr(pipeline, "find_clips", lambda *_a, **_k: ([copy.deepcopy(c) for c in found], []))
+
+    def titles(candidates, *_a, **_k):
+        titled.extend((c.start, c.end, c.score) for c in candidates)
+        return [ClipMetadata(title=f"Clip at {c.start:g}", description="", hashtags=[],
+                             headline=f"AT {c.start:g}", subline="QUARKBLOOM") for c in candidates]
+
+    def render(source, candidate, segments, clip_dir, config, render_opts=None, content_language="en"):
+        renders.append(((candidate.start, candidate.end), copy.deepcopy(render_opts)))
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        out = clip_dir / f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}.mp4"
+        out.write_bytes(b"a clip")
+        return out, json.dumps(render_opts) if render_opts else ""
+
+    monkeypatch.setattr(pipeline, "generate_metadata_batch", titles)
+    monkeypatch.setattr(pipeline, "_render_files", render)
+    runs = iter(range(1, 100))
+
+    def run(moments, **clips):
+        config = load_config(BUNDLED_CONFIG)
+        config["paths"]["data_dir"] = str(data_dir)
+        config["clips"].update({"captions": False, "min_duration": 10, "max_duration": 60, "min_score": 55,
+                                "max_clips_per_video": 0, **clips})
+        found[:] = moments
+        renders.clear()
+        titled.clear()
+        db = StateDB(tmp_path / f"state-{next(runs)}.db")
+        try:
+            pipeline.process_video("local:stream", config, db, force=True)
+            rows = [dict(r) for r in db.conn.execute(
+                "SELECT start_s, end_s, score, hook, title, status, scores, render_opts FROM clips"
+                " WHERE video_id = 'vid321' ORDER BY start_s")]
+            return rows, sorted(renders, key=lambda r: r[0]), list(titled), db.get_outcome("vid321")
+        finally:
+            db.conn.close()
+
+    return run
+
+
+def _found():
+    return [_cand(10, 60), _cand(100, 90), _cand(200, 75), _cand(300, 70)]
+
+
+def _card(start: float) -> dict:
+    """The Highlights card _clip_opts(meta) gives the clip at `start`."""
+    return {"headline": f"AT {start:g}", "subline": "QUARKBLOOM"}
+
+
+def test_suggestions_are_kept_on_the_clip_never_in_its_render_options(made, add_trimmer):
+    add_trimmer()
+    for style, options in (({}, [None] * 4), (HIGHLIGHTS, [_card(s) for s in (10, 100, 200, 300)])):
+        rows, renders, _titled, outcome = made(_found(), edit=[_trim(edits={"*": TRIM})], **style)
+        # Every clip renders with exactly the options it gets without the plugin: _clip_opts(meta).
+        assert renders == [((s, s + 20.0), o) for s, o in zip((10.0, 100.0, 200.0, 300.0), options)]
+        for row, opts in zip(rows, options, strict=True):
+            assert row["render_opts"] == (json.dumps(opts) if opts else "")
+            (kept,) = json.loads(row["scores"])["plugin_edits"]
+            assert (kept["edit"], kept["state"]) == (_trimmed(row["start_s"]), "new")
+        assert outcome["steps"] == [_edit_entry(given=4, suggested=4)]
+
+
+def test_a_job_naming_only_edit_makes_the_same_clips(made, add_trimmer):
+    add_trimmer()
+    for style in ({}, HIGHLIGHTS):
+        plain = made(_found(), **style)
+        edited = made(_found(), edit=[_trim(edits={"*": TRIM})], **style)
+        # The same windows, scores, titles and order, rendered with byte-identical options.
+        keep = ("start_s", "end_s", "score", "hook", "title", "status", "render_opts")
+        assert [{k: r[k] for k in keep} for r in edited[0]] == [{k: r[k] for k in keep} for r in plain[0]]
+        assert json.dumps(edited[1]) == json.dumps(plain[1])
+        assert edited[2] == plain[2] == [(10.0, 30.0, 60), (100.0, 120.0, 90), (200.0, 220.0, 75),
+                                         (300.0, 320.0, 70)]
+        # The scores differ only by the suggestions kept beside them.
+        for a, b in zip(plain[0], edited[0], strict=True):
+            scores = json.loads(b["scores"])
+            kept = scores.pop("plugin_edits")
+            assert kept and scores == json.loads(a["scores"])
+        assert "steps" not in plain[3] and edited[3]["steps"] == [_edit_entry(given=4, suggested=4)]
+
+
+def test_edit_plugins_see_only_the_clips_that_are_made(made, add_trimmer, tmp_path):
+    add_trimmer()
+    trace = tmp_path / "trace.jsonl"
+    rows, renders, titled, outcome = made(_found(), rate=[_choice(scores="m1=95")], max_clips_per_video=2,
+                                          edit=[_trim(edits={"*": {"fade_in": 0.3}}, trace=str(trace))])
+    # The rater and the clip limit chose two clips; the editor saw those two, in that order.
+    assert titled == [(10.0, 30.0, 95), (100.0, 120.0, 90)]
+    (run,) = _trace(trace)
+    assert [(m["id"], m["start"], m["end"], m["score"]) for m in run["moments"]] == [
+        ("m1", 10.0, 30.0, 95), ("m2", 100.0, 120.0, 90)]
+    assert run["limits"] == {"max_clips": 2, "min_duration": 10, "max_duration": 60, "crops": CROPS}
+    assert [w for w, _opts in renders] == [(10.0, 30.0), (100.0, 120.0)]
+    assert [len(json.loads(r["scores"])["plugin_edits"]) for r in rows] == [1, 1]
+    assert [e["steps"] for e in outcome["steps"]] == [["rate"], ["edit"]]
+    assert outcome["steps"][1] == _edit_entry()
+
+
+def test_a_job_without_edit_never_reaches_the_edit_step_and_renders_as_before(made, monkeypatch):
+    """A job that names no edit plugin renders every clip with the options it
+    always did (_clip_opts(meta), byte for byte). With no step at all,
+    plugins.steps is never imported; with Rate & understand alone, its edit
+    step is never called."""
+    plugins = importlib.import_module("plugins")
+    found = _found()
+    with monkeypatch.context() as m:
+        m.setitem(sys.modules, "plugins.steps", None)  # importing it now fails
+        m.delattr(plugins, "steps", raising=False)
+        bare = made(found)
+        card = made(found, **HIGHLIGHTS)
+    assert json.dumps(bare[1]) == json.dumps([((s, s + 20.0), None) for s in (10.0, 100.0, 200.0, 300.0)])
+    assert json.dumps(card[1]) == json.dumps([((s, s + 20.0), _card(s)) for s in (10.0, 100.0, 200.0, 300.0)])
+    assert all(r["render_opts"] == "" for r in bare[0])
+
+    from plugins import steps
+
+    def never(*_a, **_k):
+        raise AssertionError("a job without edit reached the edit step")
+
+    monkeypatch.setattr(steps, "suggest_edits", never)
+    rated = made(found, understand=[_choice(notes="*=The final round")])
+    assert json.dumps(rated[1]) == json.dumps(bare[1])
+    assert not any("plugin_edits" in json.loads(r["scores"]) for r in rated[0])
+    assert [e["steps"] for e in rated[3]["steps"]] == [["understand"]]

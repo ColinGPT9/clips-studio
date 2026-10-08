@@ -1,11 +1,12 @@
-"""Understand and Rate: Marketplace plugins that look at a video's moments
-once they're found.
+"""Understand, Rate and Suggest edits: Marketplace plugins that look at a
+video's moments once they're found, and at the clips chosen from them.
 
 A job may name, besides how its moments are found (Clips Kitty's own scoring,
 Sports, Gaming scoring or a pipeline plugin), up to MAX_PER_STEP plugins that
-say what happens in each moment (`understand`) and up to MAX_PER_STEP that
-give each moment a new score (`rate`). process_video calls after_finding()
-between finding the moments and writing their titles:
+say what happens in each moment (`understand`), up to MAX_PER_STEP that
+give each moment a new score (`rate`) and up to MAX_PER_STEP that suggest an
+edit for each clip (`edit`). process_video calls after_finding() between
+finding the moments and writing their titles:
 
 - Understanders run first, in the order chosen, then raters. A plugin chosen
   for both runs once, at its place among the raters, asked to do both.
@@ -23,13 +24,23 @@ between finding the moments and writing their titles:
   RATE_POOL_FACTOR times the limit (shortlist_config), so the raters have
   more to choose from. Understanders never change which clips are made.
 
-Nothing here is imported for a job that names neither step. What a plugin
-answered is kept in each clip's subscores: `found_score`, `plugin_ratings`
-and `plugin_notes`. The per-video report goes into the outcome as `steps`
-(core/outcome.py reads it for the posting code).
+Then, still before the titles, process_video calls suggest_edits() with the
+clips that will be made. Each edit plugin, in the order chosen, is handed
+those clips and what the edit plugins before it suggested, and its fitted
+suggestions are kept on the clips. A suggestion changes nothing about a clip:
+not which clips are made, their windows, scores or order, nor the options
+they are rendered with. It waits for the creator in the editor.
+
+Nothing here is imported for a job that names none of the steps. What a
+plugin answered is kept in each clip's subscores: `found_score`,
+`plugin_ratings`, `plugin_notes` and `plugin_edits`. The per-video report goes
+into the outcome as `steps` (core/outcome.py reads it for the posting code).
 """
 
 from __future__ import annotations
+
+import hashlib
+import json
 
 from plugins import runner, store
 from plugins._sdk import contract
@@ -44,11 +55,11 @@ MAX_NOTES_PER_MOMENT = 8
 MAX_MOMENTS = contract.MAX_RANGES
 # Clips Kitty's own subscores a plugin is handed as a moment's signals.
 SIGNALS = ("text", "audio", "visual", "engagement", "game")
-FIELDS = ("understand", "rate")
+FIELDS = ("understand", "rate", "edit")
 
 
 def clean(field: str, value) -> list[dict]:
-    """A job's `rate` or `understand` option, checked for shape: a list of up
+    """A job's `rate`, `understand` or `edit` option, checked for shape: a list of up
     to MAX_PER_STEP plugin choices, each as store.clean_choice cleans the
     `pipeline` option. A single choice or id is a list of one. Raises
     ValueError with a message that starts with the field."""
@@ -262,3 +273,108 @@ def after_finding(candidates: list, rejections: list, *, video, segments, langua
         new += [Rejection(c, "over_limit") for c in found[limit:]]
         found = found[:limit]
     return found, list(rejections) + new, report
+
+
+# ---- Suggest edits: plugins that suggest an edit for each clip that is made --------------
+
+
+def crops_for(config: dict) -> tuple[str, ...]:
+    """The layouts this job's clips can use, as an edit run's `limits.crops`:
+    the timeline editor's three (contract.CROPS) for a standard vertical job,
+    none for every other kind. Sports and Podcast give a layout their own
+    meaning, Gaming / Reaction keeps its split, and Vertical Live (a Sports
+    match filmed 9:16 included) and a job with `vertical` off frame no clip."""
+    from core import modes
+
+    clips = config.get("clips") or {}
+    if (not clips.get("vertical", True) or modes.is_vertical_live(config) or modes.is_gaming(config)
+            or clips.get("podcast") or modes.sport(config)):
+        return ()
+    return tuple(contract.CROPS)
+
+
+def _earlier(entry: dict) -> dict:
+    """A kept suggestion as a later edit plugin is handed it (`suggested`)."""
+    out = {"by": entry.get("plugin"), "name": entry.get("name") or "", "edit": dict(entry.get("edit") or {})}
+    if entry.get("reason"):
+        out["reason"] = entry["reason"]
+    return out
+
+
+def suggestion_id(plugin_id: str, edit: dict) -> str:
+    """A suggestion's id: the same plugin making the same fitted suggestion
+    gets the same one in every version and every run of the video."""
+    key = json.dumps({"plugin": plugin_id, "edit": edit}, sort_keys=True)
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
+
+def suggest_edits(clips: list, *, video, segments, language: str, config: dict, data_dir) -> list[dict]:
+    """Run the job's Suggest edits plugins on the clips that will be made.
+    Returns the report.
+
+    `clips` are the candidates as process_video will render them, after Rate
+    & understand and the clip limit; the first MAX_MOMENTS are handed over
+    (m1, m2, ... in their order). The plugins run one after another in the
+    order chosen, each handed what the ones before it suggested
+    (`suggested`). Each suggestion, fitted by host.read_edits, is added to
+    the clip's subscores as one `plugin_edits` entry: {id, plugin, version,
+    name, window, min_length, edit, reason, state: "new"}, with the window in
+    seconds of the video rounded to 2 decimals, as the clip's row keeps it.
+    Nothing else about a clip changes, and a clip with no suggestion keeps
+    its subscores as they were.
+
+    The report has one entry for each run: {plugin, version, name, steps:
+    ["edit"], ok, given, suggested, noted: 0, rated: 0, set_aside: 0,
+    error?}, `error` being why it was skipped, in the creator's words.
+    """
+    from core import cancel
+
+    clips_cfg = config.get("clips") or {}
+    if not clips:
+        return []  # no edit run is ever started with no clips
+    pool = list(clips[:MAX_MOMENTS])
+    crops = crops_for(config)
+    min_length = max(1.0, float(clips_cfg.get("min_duration") or 0))
+    report: list[dict] = []
+
+    for choice in _choices(clips_cfg.get("edit")):
+        cancel.check_active()
+        who = _who(choice, data_dir)
+        named = " ".join(part for part in (who["name"], who["version"]) if part)
+        print(f"      Suggest edits: {named} ({who['plugin']}) on {len(pool)} clip(s)")
+        entry = {**who, "steps": ["edit"], "ok": True, "given": len(pool), "suggested": 0, "noted": 0,
+                 "rated": 0, "set_aside": 0}
+        report.append(entry)
+        moments = []
+        for i, c in enumerate(pool, 1):
+            moment = moments_of(f"m{i}", c)
+            earlier = [_earlier(e) for e in (c.subscores or {}).get("plugin_edits") or [] if isinstance(e, dict)]
+            if earlier:
+                moment["suggested"] = earlier
+            moments.append(moment)
+        try:
+            got = runner.answer_moments(choice, ["edit"], moments, video=video, segments=segments,
+                                        language=language, config=config, data_dir=data_dir, stage="edit",
+                                        crops=crops)
+        except runner.PluginError as e:
+            why = e.why or str(e)
+            entry.update(ok=False, error=why)
+            print(f"      Going on without {who['name']}: {why}")
+            print(f"      ({e})")
+            continue
+        entry.update(plugin=got["plugin"], version=got["version"], name=got["name"])
+        for i, c in enumerate(pool, 1):
+            answer = got["edits"].get(f"m{i}")
+            if not answer:
+                continue
+            kept = {"id": suggestion_id(got["plugin"], answer["edit"]), "plugin": got["plugin"],
+                    "version": got["version"], "name": got["name"],
+                    "window": [round(float(c.start), 2), round(float(c.end), 2)], "min_length": min_length,
+                    "edit": answer["edit"], "reason": answer.get("reason") or "", "state": "new"}
+            # A copy of its own: the finder's dicts are never changed.
+            subscores = dict(c.subscores or {})
+            subscores["plugin_edits"] = [*(subscores.get("plugin_edits") or []), kept]
+            c.subscores = subscores
+            entry["suggested"] += 1
+        print(f"      {got['name']} suggested edits for {entry['suggested']} of {len(pool)} clip(s)")
+    return report

@@ -63,6 +63,10 @@ class JobIn(BaseModel):
     # moments once they are found. Choices shaped like `pipeline`, in order.
     rate: list | dict | str | None = None
     understand: list | dict | str | None = None
+    # Suggest edits (plugins/steps.py): up to 3 plugins, run on the clips
+    # once they are chosen. Their suggestions wait for the creator in the
+    # editor; this is a list of plugins, not an edit list (render_opts.edit).
+    edit: list | dict | str | None = None
     then: dict | None = None  # what to do once this job finishes, e.g.
     #     {"action": "publish", "platforms": ["youtube"]}
     # Queueing returns in a second and the clips appear an hour later, so a
@@ -98,6 +102,7 @@ class JobPatch(BaseModel):
     pipeline: dict | str | None = None
     rate: list | dict | str | None = None
     understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
     # Options to drop back to the app-wide default. Needed because null means
     # "unchanged" above, so there would otherwise be no way to turn one off.
     clear: list[str] = []
@@ -134,6 +139,7 @@ class BatchItemIn(BaseModel):
     pipeline: dict | str | None = None
     rate: list | dict | str | None = None
     understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
 
 
 class BatchJobIn(BaseModel):
@@ -247,6 +253,7 @@ class LocalVideoIn(BaseModel):
     pipeline: dict | str | None = None
     rate: list | dict | str | None = None
     understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
 
 
 class RenderIn(BaseModel):
@@ -460,7 +467,8 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     limit. `into` lets a patch merge onto an existing snapshot instead of
     replacing it, since an unset field there means "leave this alone".
     `data_dir`, when given, is where a named plugin (the pipeline, or one
-    chosen to rate or understand the moments) must be installed."""
+    chosen to rate or understand the moments or to suggest edits for the
+    clips) must be installed."""
     payload: dict = dict(into or {})
     if getattr(body, "max_clips", None) is not None:
         payload["max_clips"] = max(1, min(10, body.max_clips))
@@ -521,11 +529,12 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
                 store.installed_choice(data_dir, payload["pipeline"])
         except ValueError as e:
             raise HTTPException(400, f"pipeline: {e}") from e
-    if getattr(body, "rate", None) or getattr(body, "understand", None):
-        # Rate & understand (plugins/steps.py): plugins that look at the
-        # moments once they're found. Checked like the pipeline, each list in
-        # its own words ("rate[0]: ..."). Imported only here, so a job
-        # without them never loads plugins.steps.
+    if getattr(body, "rate", None) or getattr(body, "understand", None) or getattr(body, "edit", None):
+        # Rate & understand and Suggest edits (plugins/steps.py): plugins
+        # that look at the moments once they're found, and at the clips once
+        # they're chosen. Checked like the pipeline, each list in its own
+        # words ("rate[0]: ..."). Imported only here, so a job without them
+        # never loads plugins.steps.
         from plugins import steps as plugin_steps
 
         for field in plugin_steps.FIELDS:
@@ -591,6 +600,11 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     # Shorts beside it or not, has no such step.
     if (payload.get("rate") or payload.get("understand")) and payload.get("longform"):
         raise HTTPException(400, "Rate & understand can't be combined with Longform: Longform picks and "
+                                 "writes its clips its own way. Turn one of them off.")
+    # Suggest edits works on the clips a Shorts run makes. A job's own
+    # pipeline may be named under it: a find run is never asked to edit.
+    if payload.get("edit") and payload.get("longform"):
+        raise HTTPException(400, "Suggest edits can't be combined with Longform: Longform picks and "
                                  "writes its clips its own way. Turn one of them off.")
     own = payload.get("pipeline")
     own_id = own.get("id") if isinstance(own, dict) else own

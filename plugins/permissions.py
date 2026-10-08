@@ -72,7 +72,12 @@ STEP_WORDS = {
     "edit": "Suggests edits",
 }
 UNDERSTANDS_ITS_OWN = "Understands what it finds"
+# How long it may take, as the app stops it: rating or understanding the
+# moments, suggesting edits for the clips, or both.
 TIME_LIMIT = "Clips Kitty stops it after {n} {unit} when it rates or understands a video’s moments."
+TIME_LIMIT_EDITS = "Clips Kitty stops it after {n} {unit} when it suggests edits for a video’s clips."
+TIME_LIMIT_BOTH = ("Clips Kitty stops it after {n} {unit} when it rates or understands a video’s moments or "
+                   "suggests edits for its clips.")
 
 
 def secrets_notice() -> str:
@@ -163,15 +168,19 @@ def step_lines(manifest: dict) -> list[str]:
 
 
 def time_limit(manifest: dict) -> str | None:
-    """How long it may take to rate or understand a video's moments, as the
-    app stops it (plugins/runner.py), for a plugin that can; else None."""
+    """How long it may take to rate or understand a video's moments, or to
+    suggest edits for its clips, as the app stops it (plugins/runner.py),
+    for a plugin that can do either; else None."""
     from plugins import runner
     from plugins._sdk import manifest as vocabulary
 
-    if not {"understand", "rate"} & set(vocabulary.offers(manifest)):
+    offered = set(vocabulary.offers(manifest))
+    moments, edits = bool({"understand", "rate"} & offered), "edit" in offered
+    if not (moments or edits):
         return None
     minutes = runner.timeout_seconds(manifest, default=runner.MOMENT_TIMEOUT_MINUTES) / 60
-    return TIME_LIMIT.format(n=f"{minutes:g}", unit="minute" if minutes == 1 else "minutes")
+    text = TIME_LIMIT_BOTH if moments and edits else TIME_LIMIT if moments else TIME_LIMIT_EDITS
+    return text.format(n=f"{minutes:g}", unit="minute" if minutes == 1 else "minutes")
 
 
 def describe(manifest: dict, *, tier: str = "link") -> dict:

@@ -17,25 +17,28 @@ export interface RunOutcome {
   /** Moments Marketplace plugins rated under the minimum score, so they were
    *  set aside (core/outcome.py). Only present when above 0. */
   rated_out?: number
-  /** Each Rate & understand plugin's run on this video (plugins/steps.py).
-   *  Only present when the job chose one. */
+  /** Each Rate & understand and Suggest edits plugin's run on this video
+   *  (plugins/steps.py). Only present when the job chose one. */
   steps?: StepRun[]
 }
 
 /** One Marketplace plugin's run on a video's moments (plugins/steps.py
- *  after_finding): what it was asked, and what came of it. */
+ *  after_finding), or on its clips (suggest_edits): what it was asked, and
+ *  what came of it. */
 export interface StepRun {
   plugin: string
   version: string
   /** Its installed name; the id when it wasn't installed. */
   name: string
-  /** What it was asked for: ['understand'], ['rate'] or both. */
+  /** What it was asked for: ['understand'], ['rate'] or both, or ['edit']. */
   steps: string[]
   ok: boolean
-  /** Moments it was given, said what happens in, and rated. */
+  /** Moments (clips, in an edit run) it was given, said what happens in, and rated. */
   given: number
   noted: number
   rated: number
+  /** Clips it suggested an edit for: only in an edit run. */
+  suggested?: number
   /** Moments its rating put under the minimum score, so they were set aside. */
   set_aside: number
   /** Why it was skipped, in the creator's words (plugins/runner.py). */

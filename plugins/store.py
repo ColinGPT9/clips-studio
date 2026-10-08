@@ -178,7 +178,7 @@ class ChoiceProblem(ValueError):
 
 def installed_choice(data_dir, choice: dict, step: str = "find") -> Installed:
     """The installed, enabled plugin a cleaned choice names, able to do `step`
-    (find, understand or rate), or ChoiceProblem saying why not."""
+    (find, understand, rate or edit), or ChoiceProblem saying why not."""
     plugin = get(data_dir, choice["id"], choice.get("version"))
     if plugin is None:
         wanted = choice["id"] + (f" {choice['version']}" if choice.get("version") else "")

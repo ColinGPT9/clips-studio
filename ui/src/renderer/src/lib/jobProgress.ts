@@ -27,7 +27,16 @@ const STAGES: Record<string, { base: number; weight: number; label: string }> = 
   // A Marketplace plugin saying what happens in the moments (Rate & understand).
   understand: { base: 0.65, weight: 0.05, label: 'Understanding the moments' },
   reactions: { base: 0.7, weight: 0.08, label: 'Scoring on-screen reactions' },
+  // A Marketplace plugin suggesting edits for the clips (Suggest edits).
+  edit: { base: 0.7, weight: 0.08, label: 'Suggesting edits' },
   render: { base: 0.78, weight: 0.22, label: 'Rendering clips' }
+}
+
+/** A stage's label while a Marketplace plugin works in it, before its name. */
+const PLUGIN_LABELS: Record<'ranking' | 'understand' | 'edit', string> = {
+  ranking: 'Rating moments with',
+  understand: 'Understanding moments with',
+  edit: 'Suggesting edits with'
 }
 
 export const emptyProgress: JobProgress = {
@@ -74,15 +83,14 @@ export function applyEvent(p: JobProgress, e: StudioEvent): JobProgress {
   // Remote rendering adds where the clip is; a later local event keeps it
   // until the stage moves on.
   const remote = e.stage === 'render' ? (e.remote ?? p.remote) : undefined
-  // A Marketplace plugin rating or understanding the moments names itself:
-  // the bar may not move then, because it never goes backwards.
+  // A Marketplace plugin rating or understanding the moments, or suggesting
+  // edits for the clips, names itself: the bar may not move then, because it
+  // never goes backwards.
   const label =
     e.stage === 'render' && e.clip && e.total
       ? `Rendering clip ${e.clip}/${e.total}${remote ? ` · ${remote}` : ''}`
-      : e.plugin && (e.stage === 'ranking' || e.stage === 'understand')
-        ? e.stage === 'ranking'
-          ? `Rating moments with ${e.plugin}`
-          : `Understanding moments with ${e.plugin}`
+      : e.plugin && (e.stage === 'ranking' || e.stage === 'understand' || e.stage === 'edit')
+        ? `${PLUGIN_LABELS[e.stage]} ${e.plugin}`
         : stage.label
 
   return {

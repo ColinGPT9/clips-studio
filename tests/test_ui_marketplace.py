@@ -318,7 +318,13 @@ def test_an_editor_shows_suggests_edits(tmp_path):
     assert got[0] == {"label": "Suggests edits", "tone": "info",
                       "title": "It suggests cuts, fades, a hook title or a layout for each clip. Turn on Suggest "
                                "edits when you add a video."}
-    assert got[1] == []
+    # The time limit the app stops it at, in the edit run's words; one that
+    # also rates or understands gets one line for both.
+    assert got[1] == ["Clips Kitty stops it after 10 minutes when it suggests edits for a video’s clips."]
+    assert details["time_limit"] == got[1][0]
+    assert permissions.describe({**rater_editor, "run": {"timeout_minutes": 1}})["time_limit"] == ("Clips Kitty stops it after 1 minute when it rates or understands a video’s moments or "
+                          "suggests edits for its clips.")
+    assert permissions.describe(finder_editor)["time_limit"] == got[1][0]
     base = {"kind": "pipeline", "enabled": True, "problem": None, "flag": None}
     plugins = [{**base, "id": "example-dev/quarkbloom-trimmer", "inputs": editor["inputs"], "outputs": ["edits"]}]
     assert _run(tmp_path, "return m.usablePipelines(data).map((p) => p.id)", plugins) == []

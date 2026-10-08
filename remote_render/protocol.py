@@ -23,11 +23,13 @@ def render_config(config: dict) -> dict:
     """The allowlisted part of the config a worker renders with."""
     out = {k: json.loads(json.dumps(config.get(k) or {})) for k in CONFIG_SECTIONS}
     # A plugin pipeline (plugins/) picks moments on the main PC, and Rate &
-    # understand plugins (plugins/steps.py) look at them there; their choices
-    # and settings play no part in rendering, so they don't travel.
+    # understand and Suggest edits plugins (plugins/steps.py) look at them and
+    # at the clips there; their choices and settings play no part in
+    # rendering, so they don't travel.
     out["clips"].pop("pipeline", None)
     out["clips"].pop("rate", None)
     out["clips"].pop("understand", None)
+    out["clips"].pop("edit", None)
     return out
 
 

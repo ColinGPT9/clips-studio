@@ -74,6 +74,9 @@ def test_stage_tables_match_the_app():
     assert list(app) == list(_STAGES)
     assert app == {name: (float(base), float(weight), label) for name, (base, weight, label) in _STAGES.items()}
     assert _STAGES["understand"] == (0.65, 0.05, "Understanding the moments")
+    # Suggest edits shares the reactions' span, as understand shares ranking's.
+    assert _STAGES["edit"] == (0.70, 0.08, "Suggesting edits") and _STAGES["edit"][:2] == _STAGES["reactions"][:2]
+    assert list(_STAGES).index("edit") == list(_STAGES).index("render") - 1
 
 
 def test_moment_runs_name_the_plugin_in_the_label(worker):
@@ -93,6 +96,16 @@ def test_moment_runs_name_the_plugin_in_the_label(worker):
     assert worker.progress_snapshot(7)["label"] == "Finding the best moments"
 
 
+def test_an_edit_run_names_the_plugin_and_the_bar_never_goes_back(worker):
+    worker._record_progress(7, {"stage": "understand", "fraction": 1.0, "plugin": "Quarkbloom Notes"})
+    worker._record_progress(7, {"stage": "edit", "fraction": 0.5, "plugin": "Quarkbloom Trimmer"})
+    snap = worker.progress_snapshot(7)
+    assert snap["label"] == "Suggesting edits with Quarkbloom Trimmer"
+    assert snap["percent"] == round((0.70 + 0.08 * 0.5) * 100)
+    worker._record_progress(7, {"stage": "edit", "fraction": 0.2})
+    assert worker.progress_snapshot(7)["label"] == "Suggesting edits"
+
+
 def test_the_app_names_the_plugin_in_the_label_too(tmp_path):
     """applyEvent in jobProgress.ts, run under Node: the same labels."""
     node = shutil.which("node")
@@ -103,7 +116,9 @@ def test_the_app_names_the_plugin_in_the_label_too(tmp_path):
     events = [{"type": "progress", "stage": "ranking", "fraction": 0.5, "plugin": "Quarkbloom Rater"},
               {"type": "progress", "stage": "understand", "fraction": 0.5, "plugin": "Quarkbloom Notes"},
               {"type": "progress", "stage": "ranking", "current": 1, "total": 2},
-              {"type": "progress", "stage": "analyze", "fraction": 0.5, "plugin": "Quarkbloom Finder"}]
+              {"type": "progress", "stage": "analyze", "fraction": 0.5, "plugin": "Quarkbloom Finder"},
+              {"type": "progress", "stage": "edit", "fraction": 0.5, "plugin": "Quarkbloom Trimmer"},
+              {"type": "progress", "stage": "edit", "fraction": 0.5}]
     script = (f"const m = await import({json.dumps(module.as_uri())});"
               f"const events = {json.dumps(events)};"
               "console.log(JSON.stringify(events.map((e) => m.applyEvent(m.emptyProgress, e).label)));")
@@ -114,4 +129,5 @@ def test_the_app_names_the_plugin_in_the_label_too(tmp_path):
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == ["Rating moments with Quarkbloom Rater",
                                     "Understanding moments with Quarkbloom Notes",
-                                    "Ranking the best moments", "Finding the best moments"]
+                                    "Ranking the best moments", "Finding the best moments",
+                                    "Suggesting edits with Quarkbloom Trimmer", "Suggesting edits"]

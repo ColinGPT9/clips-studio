@@ -44,6 +44,8 @@ _STAGES = {
     # A Marketplace plugin saying what happens in the moments (plugins/steps.py).
     "understand": (0.65, 0.05, "Understanding the moments"),
     "reactions": (0.70, 0.08, "Scoring on-screen reactions"),
+    # A Marketplace plugin suggesting edits for the clips (plugins/steps.py).
+    "edit": (0.70, 0.08, "Suggesting edits"),
     "render": (0.78, 0.22, "Rendering clips"),
 }
 
@@ -226,9 +228,10 @@ class Worker(threading.Thread):
                         # A plugin pipeline (plugins/): it picks the moments,
                         # and everything after that is made as usual.
                         cfg["clips"]["pipeline"] = payload["pipeline"]
-                    for step in ("rate", "understand"):
-                        # Rate & understand (plugins/steps.py): plugins that
-                        # look at the moments once they're found, in order.
+                    for step in ("rate", "understand", "edit"):
+                        # Rate & understand and Suggest edits (plugins/steps.py):
+                        # plugins that look at the moments once they're found,
+                        # and at the clips once they're chosen, in order.
                         chosen = payload.get(step)
                         if chosen:
                             cfg["clips"][step] = list(chosen) if isinstance(chosen, list) else [chosen]
@@ -330,11 +333,13 @@ class Worker(threading.Thread):
         fraction = base + weight * min(1.0, max(0.0, within))
         if event.get("stage") == "render" and event.get("clip") and event.get("total"):
             label = f"Rendering clip {event['clip']}/{event['total']}"
-        if event.get("plugin") and event.get("stage") in ("ranking", "understand"):
-            # A Marketplace plugin rating or understanding the moments: the bar
-            # may not move (it never goes back), so the label says who is working.
-            label = (f"Rating moments with {event['plugin']}" if event["stage"] == "ranking"
-                     else f"Understanding moments with {event['plugin']}")
+        if event.get("plugin") and event.get("stage") in ("ranking", "understand", "edit"):
+            # A Marketplace plugin rating or understanding the moments, or
+            # suggesting edits for the clips: the bar may not move (it never
+            # goes back), so the label says who is working.
+            label = {"ranking": f"Rating moments with {event['plugin']}",
+                     "understand": f"Understanding moments with {event['plugin']}",
+                     "edit": f"Suggesting edits with {event['plugin']}"}[event["stage"]]
         with self._progress_lock:
             entry = self._progress.get(job_id)
             if entry is None:

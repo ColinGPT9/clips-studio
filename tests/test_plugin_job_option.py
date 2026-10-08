@@ -8,6 +8,8 @@ reaches find_clips exactly as before.
 The `rate` and `understand` options (plugins/steps.py) run after the
 moments are found and before the titles are written; a job without them
 never imports plugins.steps and hands its finder the same config as before.
+The `edit` option is checked the same way, and is refused beside Longform as
+they are, but a job may name its own pipeline under it.
 """
 
 import importlib
@@ -379,6 +381,135 @@ def test_a_batch_row_with_bad_steps_is_skipped_as_bad_option(api):
         ("bad_option", "rate: fixture-dev/stepper is listed twice")]
 
 
+# ---- Suggest edits through the API --------------------------------------------------
+
+TRIMMER = ROOT / "tests" / "fixtures" / "plugins" / "trimmer"
+TRIMMER_ID = "fixture-dev/trimmer"
+EDIT_LONGFORM_REFUSED = ("Suggest edits can't be combined with Longform: Longform picks and writes its clips "
+                         "its own way. Turn one of them off.")
+
+
+def test_edit_is_checked_like_rate(api):
+    client, data_dir, install = api
+    install(data_dir, TRIMMER)
+    chosen = {"id": TRIMMER_ID, "version": "1.0.0", "settings": {"mode": "ok"}}
+    # A single choice or a bare id is a list of one; what is stored is the cleaned list.
+    for n, (edit, stored) in enumerate(((chosen, [chosen]), ([chosen], [chosen]), (TRIMMER_ID, [{"id": TRIMMER_ID}]),
+                                        ([], None), (None, None)), 1):
+        r = client.post("/jobs", json={"url": _vod(n), "edit": edit})
+        assert r.status_code == 200, r.text
+        assert _payload(client, r.json()["job_id"]).get("edit") == stored, edit
+        deleted = client.delete(f"/jobs/{r.json()['job_id']}")
+        assert deleted.status_code == 200  # the queue holds five
+    for body, detail in (
+        ({"edit": ["fixture-dev/missing"]}, "edit[0]: the pipeline fixture-dev/missing isn't installed"),
+        ({"edit": [{"id": TRIMMER_ID, "version": "9.9.9"}]},
+         "edit[0]: the pipeline fixture-dev/trimmer 9.9.9 isn't installed"),
+        ({"edit": [{"id": TRIMMER_ID, "settings": {"colour": "red"}}]}, None),
+        ({"edit": [TRIMMER_ID, "Not An Id"]},
+         "edit[1].id must look like publisher/name (lower case, digits and hyphens)"),
+        ({"edit": ["a/a", "a/b", "a/c", "a/d"]}, "edit: at most 3 plugins for one step"),
+        ({"edit": [TRIMMER_ID, {"id": TRIMMER_ID, "settings": {"mode": "fail"}}]},
+         "edit: fixture-dev/trimmer is listed twice"),
+    ):
+        refused = _refused(client, {"url": _vod(4), **body})
+        if detail is None:
+            assert refused.startswith("edit[0]: ") and "no setting called 'colour'" in refused
+        else:
+            assert refused == detail
+    assert _refused(client, {"url": _vod(4), "edit": [{"id": TRIMMER_ID, "settings": {"mode": "explode"}}]}) \
+        .startswith("edit[0]: setting 'mode': 'explode' is not one of")
+    assert client.post("/jobs", json={"url": _vod(4), "edit": 5}).status_code == 422
+    # A queued job gains and drops it; a bad one leaves the job as it was.
+    job_id = client.post("/jobs", json={"url": _vod(5)}).json()["job_id"]
+    assert client.patch(f"/jobs/{job_id}", json={"edit": TRIMMER_ID}).status_code == 200
+    assert _payload(client, job_id)["edit"] == [{"id": TRIMMER_ID}]
+    assert _refused(client, {"edit": "fixture-dev/missing"}, path=f"/jobs/{job_id}", method="patch") == (
+        "edit[0]: the pipeline fixture-dev/missing isn't installed")
+    assert _payload(client, job_id)["edit"] == [{"id": TRIMMER_ID}]
+    assert client.patch(f"/jobs/{job_id}", json={"clear": ["edit"]}).status_code == 200
+    assert "edit" not in _payload(client, job_id)
+    deleted = client.delete(f"/jobs/{job_id}")
+    assert deleted.status_code == 200
+    # A batch skips a row with a bad one, as it does a bad rater.
+    body = client.post("/jobs/batch", json={"items": [
+        {"url": _vod(6), "edit": TRIMMER_ID}, {"url": _vod(7), "edit": ["fixture-dev/missing"]}]}).json()
+    assert [c["video_id"] for c in body["created"]] == ["tw_100000006"]
+    assert [(s["reason"], s["detail"]) for s in body["skipped"]] == [
+        ("bad_option", "edit[0]: the pipeline fixture-dev/missing isn't installed")]
+    # Turned off: refused in the same words as a pipeline.
+    install(data_dir, TRIMMER, enabled=False)
+    assert _refused(client, {"url": _vod(8), "edit": TRIMMER_ID}) == (
+        "edit[0]: the pipeline Trimmer is turned off; turn it on in Marketplace › Installed first")
+
+
+def test_a_plugin_that_cant_edit_gets_edits_message(api):
+    client, data_dir, install = api
+    for folder in (ECHO, STEPPER, TRIMMER):
+        install(data_dir, folder)
+    for name, plugin_id in (("Echo", "fixture-dev/echo"), ("Stepper", STEPPER_ID)):
+        assert _refused(client, {"url": _vod(1), "edit": plugin_id}) == (
+            f"edit[0]: the pipeline {name} can't suggest edits for clips: its manifest needs moments in inputs "
+            "and edits in outputs")
+    # And an edit plugin named for another step is told where it belongs.
+    assert _refused(client, {"url": _vod(1), "pipeline": TRIMMER_ID}) == (
+        "pipeline: the pipeline Trimmer doesn't find moments: it suggests edits for the clips Clips Kitty makes. "
+        "Choose it under Suggest edits instead")
+    assert _refused(client, {"url": _vod(1), "rate": TRIMMER_ID}) == (
+        "rate[0]: the pipeline Trimmer can't rate moments others found: its manifest needs moments in inputs "
+        "and ratings in outputs")
+    # Each where it belongs is fine.
+    r = client.post("/jobs", json={"url": _vod(1), "pipeline": "fixture-dev/echo", "rate": STEPPER_ID,
+                                   "edit": TRIMMER_ID})
+    assert r.status_code == 200, r.text
+    payload = _payload(client, r.json()["job_id"])
+    assert (payload["pipeline"], payload["rate"], payload["edit"]) == (
+        {"id": "fixture-dev/echo"}, [{"id": STEPPER_ID}], [{"id": TRIMMER_ID}])
+
+
+def test_edit_goes_with_every_shorts_mode_but_not_longform(api):
+    client, data_dir, install = api
+    install(data_dir, ECHO)
+    install(data_dir, TRIMMER)
+    for n, other in enumerate(({"sport": {"name": "soccer"}}, {"gaming_scoring": True},
+                               {"pipeline": "fixture-dev/echo"}, {"gaming": True}, {"vertical_live": True},
+                               {"podcast": True}), 1):
+        r = client.post("/jobs", json={"url": _vod(n), **other, "edit": TRIMMER_ID})
+        assert r.status_code == 200 and r.json()["job_id"], (other, r.text)
+        assert _payload(client, r.json()["job_id"])["edit"] == [{"id": TRIMMER_ID}], other
+        deleted = client.delete(f"/jobs/{r.json()['job_id']}")
+        assert deleted.status_code == 200  # the queue holds five
+    for longform in ({"mode": "highlights"}, {"mode": "short_clips", "shorts": True}):
+        assert _refused(client, {"url": _vod(20), "longform": longform, "edit": TRIMMER_ID}) == EDIT_LONGFORM_REFUSED
+    # Judged on the merged payload: a queued job with an edit plugin can't gain Longform.
+    job_id = client.post("/jobs", json={"url": _vod(21), "edit": TRIMMER_ID}).json()["job_id"]
+    assert _refused(client, {"longform": {"mode": "highlights"}}, path=f"/jobs/{job_id}", method="patch") \
+        == EDIT_LONGFORM_REFUSED
+    r = client.patch(f"/jobs/{job_id}", json={"longform": {"mode": "highlights"}, "clear": ["edit"]})
+    assert r.status_code == 200, r.text
+
+
+def test_the_jobs_own_pipeline_may_be_named_under_edit(api, tmp_path):
+    client, data_dir, install = api
+    # The grader (Quarkbloom Arena, a made-up game), here also able to suggest edits.
+    folder = tmp_path / "grader-editor"
+    folder.mkdir()
+    text = (ROOT / "tests" / "fixtures" / "plugins" / "manifests" / "valid" / "finds-understands-rates.yaml") \
+        .read_text(encoding="utf-8")
+    assert "outputs: [ranges, context, ratings]\n" in text
+    (folder / "clipskitty.yaml").write_text(
+        text.replace("outputs: [ranges, context, ratings]\n", "outputs: [ranges, context, ratings, edits]\n"),
+        encoding="utf-8")
+    install(data_dir, folder)
+    r = client.post("/jobs", json={"url": _vod(1), "pipeline": GRADER_ID, "edit": [GRADER_ID]})
+    assert r.status_code == 200, r.text
+    payload = _payload(client, r.json()["job_id"])
+    assert payload["pipeline"] == {"id": GRADER_ID} and payload["edit"] == [{"id": GRADER_ID}]
+    # Rating its own moments again is still refused.
+    assert _refused(client, {"url": _vod(2), "pipeline": GRADER_ID, "rate": [GRADER_ID], "edit": [GRADER_ID]}) == (
+        f"rate: {GRADER_ID} is this job's pipeline, so it already scores and describes the moments it finds")
+
+
 def test_the_worker_copies_steps_only_when_given(tmp_path, monkeypatch):
     pytest.importorskip("numpy")  # server.jobs imports the engine (analysis/fusion.py)
     import threading
@@ -410,22 +541,26 @@ def test_the_worker_copies_steps_only_when_given(tmp_path, monkeypatch):
     db.add_job("process", json.dumps({"url": "local:rater", "rate": rate}), video_id="rater")
     # One choice not in a list, as a payload written by hand could hold it.
     db.add_job("process", json.dumps({"url": "local:one", "understand": understand[0]}), video_id="one")
+    edit = [{"id": TRIMMER_ID, "settings": {"mode": "ok"}}]
+    db.add_job("process", json.dumps({"url": "local:edit", "edit": edit}), video_id="edit")
     queue.set_paused(db, False)
     db.close()
     thread = threading.Thread(target=worker.run, daemon=True)
     thread.start()
     deadline = time.time() + 30
-    while len(seen) < 4 and time.time() < deadline:
+    while len(seen) < 5 and time.time() < deadline:
         time.sleep(0.05)
     worker.stop()
     thread.join(timeout=10)
     got = dict(seen)
-    assert set(got) == {"local:plain", "local:steps", "local:rater", "local:one"}
-    assert not {"rate", "understand"} & set(got["local:plain"])
+    assert set(got) == {"local:plain", "local:steps", "local:rater", "local:one", "local:edit"}
+    assert not {"rate", "understand", "edit"} & set(got["local:plain"])
     assert got["local:steps"]["rate"] == rate and got["local:steps"]["understand"] == understand
     assert got["local:rater"]["rate"] == rate and "understand" not in got["local:rater"]
     assert got["local:one"]["understand"] == understand and "rate" not in got["local:one"]
-    assert not {"rate", "understand"} & set(worker.config["clips"])  # each job gets its own copy
+    assert got["local:edit"]["edit"] == edit and not {"rate", "understand"} & set(got["local:edit"])
+    assert "edit" not in got["local:steps"] and "edit" not in got["local:rater"]
+    assert not {"rate", "understand", "edit"} & set(worker.config["clips"])  # each job gets its own copy
 
 
 # ---- in process_video ------------------------------------------------------------

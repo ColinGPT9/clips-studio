@@ -1,0 +1,30 @@
+# A test plugin: suggests edits for the clips it is handed, as its settings
+# say, or fails the way it is told to, so the engine's handling of every
+# answer can be checked (tests/test_plugin_steps.py). It knows Quarkbloom
+# Arena, a made-up game.
+manifest_version: 1
+id: fixture-dev/trimmer
+name: Trimmer
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Suggests edits for clips of a Quarkbloom Arena (a made-up game) match as it is told to.
+author: {name: Fixture Developer}
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+  timeout_minutes: 5
+execution: local
+inputs: [transcript, moments]
+outputs: [edits]
+settings:
+  mode: {type: choice, options: [ok, fail, bad, sleep], default: ok, title: What to do}
+  edits: {type: string, default: "", title: "Edits as JSON by moment id, * for every clip; span times count from the clip's start"}
+  message: {type: string, default: "the arena feed could not be read", title: The error line in fail mode}
+  trace: {type: string, default: "", title: A file to add a line to for each run}
+permissions: [transcript.read]
+network: []
+sends: []
+category: utilities
+tags: [test]

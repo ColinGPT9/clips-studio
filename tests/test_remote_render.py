@@ -30,6 +30,22 @@ def test_a_job_carries_the_render_settings_and_no_secrets():
     assert a != protocol.job_id("v", 10, 31, {"crop": "center"}, config)
 
 
+def test_edit_choices_do_not_travel_or_change_the_job_hash():
+    """The plugins a job chose to suggest edits (clips.edit, a list of plugins,
+    not an edit list) stay on the main PC, like Rate & understand's: a render
+    PC gets the same config, and the job hash is the same, with or without them."""
+    plain = {"clips": {"vertical": True, "captions": True}, "tracking": {}, "video": {}}
+    with_edit = {**plain, "clips": {**plain["clips"], "edit": [
+        {"id": "example-dev/quarkbloom-trimmer", "settings": {"mute_words": "round one"}}]}}
+    assert protocol.render_config(with_edit) == protocol.render_config(plain)
+    assert "edit" not in protocol.render_config(with_edit)["clips"]
+    assert "edit" in with_edit["clips"]  # the job's own config is left as it was
+    assert protocol.job_id("v", 10, 30, None, with_edit) == protocol.job_id("v", 10, 30, None, plain)
+    # A clip's own edit list is a render option, and still makes it a different job.
+    opts = {"edit": {"keep": [[0, 5], [8, 20]]}}
+    assert protocol.job_id("v", 10, 30, opts, with_edit) != protocol.job_id("v", 10, 30, None, with_edit)
+
+
 def test_what_needs_the_face_tracking_models():
     assert protocol.needs_framing({"clips": {}}, None)
     assert not protocol.needs_framing({"clips": {"vertical_live": True}}, None)     # whole frame kept

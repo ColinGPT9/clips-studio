@@ -5,7 +5,9 @@ pipeline plugin. Everything before (download, transcription) and after
 (titles, rendering, captions, the library) is Clips Kitty's, unchanged.
 answer_moments() is the other kind of run: a plugin chosen under Rate &
 understand is handed the moments once they are found (plugins/steps.py) and
-answers about each one. Its failures carry a `why` in the creator's words.
+answers about each one, and one chosen under Suggest edits is handed the
+clips that will be made and suggests an edit for each. Its failures carry a
+`why` in the creator's words.
 
 What the plugin receives depends on what its manifest asks for: the video
 only with `video.read`, the transcript only with `transcript.read`, FFmpeg's
@@ -109,12 +111,13 @@ def transcript_of(segments, language: str) -> dict:
 
 def build_job(plugin: store.Installed, choice: dict, *, video, segments, language: str, config: dict,
               output_dir: Path, models: dict | None = None, steps=None, moments: list | None = None,
-              min_score=None) -> tuple[dict, dict | None]:
+              min_score=None, crops=None) -> tuple[dict, dict | None]:
     """job.json's content, and the transcript to write beside it (or None).
     host.build_job decides what the plugin's permissions let in.
 
-    `steps` and `moments` go in only when given, and `limits.min_score` only
-    when `min_score` is, so a plain finder's job is what it always was."""
+    `steps` and `moments` go in only when given, `limits.min_score` only when
+    `min_score` is, and `limits.crops` (an edit run's layouts) only when
+    `crops` is, so a plain finder's job is what it always was."""
     perms = set(plugin.manifest.get("permissions") or [])
     clips_cfg = config.get("clips") or {}
     limits = {"max_clips": int(clips_cfg.get("max_clips_per_video") or 0) or None,
@@ -122,6 +125,8 @@ def build_job(plugin: store.Installed, choice: dict, *, video, segments, languag
               "max_duration": clips_cfg.get("max_duration")}
     if min_score is not None:
         limits["min_score"] = min_score
+    if crops is not None:
+        limits["crops"] = list(crops)
     tools: dict = {}
     if "ffmpeg" in perms:
         from core.binaries import ffmpeg, ffprobe
@@ -387,7 +392,7 @@ def _why_not_ready(e: PluginError, step: str) -> str:
         reason = getattr(cause, "detail", "").strip().rstrip(".").strip()
         return _sentence(f"It was blocked: {reason}" if reason else "It was blocked")
     if e.code == "step":
-        return f"It can no longer {step} moments."
+        return "It can no longer suggest edits." if step == "edit" else f"It can no longer {step} moments."
     if e.code == "settings":
         detail = getattr(cause, "detail", "") or str(cause or "")
         return _sentence(f"A setting chosen for it no longer fits: {detail.strip().rstrip('.')}")
@@ -425,25 +430,38 @@ def _result_notes(folder: Path) -> str:
 
 
 def answer_moments(choice, steps, moments: list[dict], *, video, segments, language: str, config: dict,
-                   data_dir, stage: str) -> dict:
-    """Ask a plugin chosen under Rate & understand about the moments found.
+                   data_dir, stage: str, crops=None) -> dict:
+    """Ask a plugin chosen under Rate & understand about the moments found,
+    or one chosen under Suggest edits about the clips that will be made.
 
-    `steps` is what the run is asked for (understand, rate or both) and
-    `moments` the moments as job.json hands them over (plugins/steps.py
+    `steps` is what the run is asked for (understand, rate or both; or
+    exactly ["edit"], an edit run, never with another step) and `moments`
+    the moments or clips as job.json hands them over (plugins/steps.py
     builds them). The run goes like a find run: the same checks, Python,
     models, environment and secrets, with a job folder named after its steps,
-    the job's own clip limit and the creator's minimum score, and progress
-    reported as `stage` with the plugin's name. The answer is read with
-    host.read_answers, the function the SDK's runner uses too.
+    the job's own clip limit, and progress reported as `stage` with the
+    plugin's name. A run that rates or understands is given the creator's
+    minimum score, and its answer is read with host.read_answers. An edit
+    run is given no minimum score but the layouts the job's clips can use
+    (`crops`, as limits.crops), and its answer is read with host.read_edits,
+    which fits each suggestion to its clip and to the timeline editor. The
+    SDK's runner reads with the same two functions.
 
     Returns {plugin, version, name, steps, answers, ignored}: the answers by
-    moment id, and the log's lines for what was ignored. Raises PluginError
-    with a `why` for the creator when it can't run or gives no usable answer,
-    and core.cancel.CancelledError when the job is cancelled while it runs.
+    moment id, and the log's lines for what was ignored. An edit run returns
+    `edits` (each clip's fitted suggestion by moment id, as read_edits gives
+    it) in place of `answers`, and its `ignored` lines include the
+    `changed:` ones. Raises PluginError with a `why` for the creator when it
+    can't run or gives no usable answer, and core.cancel.CancelledError when
+    the job is cancelled while it runs.
     """
     from core import progress
 
-    asked = [step for step in ("understand", "rate") if step in (steps or ())]
+    steps = list(steps or ())
+    edit = steps == ["edit"]
+    if "edit" in steps and not edit:
+        raise ValueError("an edit run is asked to suggest edits and nothing else")
+    asked = ["edit"] if edit else [step for step in ("understand", "rate") if step in steps]
     if not asked:
         raise ValueError("a moment run is asked to understand, to rate, or both")
     for step in asked:
@@ -454,11 +472,14 @@ def answer_moments(choice, steps, moments: list[dict], *, video, segments, langu
             raise PluginError(str(e), code=e.code, why=_why_not_ready(e, step)) from e
     choice = store.clean_choice(choice)  # as _prepare found it
     folder = _new_folder(data_dir, video.video_id, "-".join(asked))
-    min_score = int((config.get("clips") or {}).get("min_score", 0))
+    clips_cfg = config.get("clips") or {}
+    # An edit run's clips are already chosen: no minimum score, but the layouts they can use.
+    min_score = None if edit else int(clips_cfg.get("min_score", 0))
     try:
         job, transcript = build_job(plugin, choice, video=video, segments=segments, language=language,
                                     config=config, output_dir=folder / "out", models=model_paths,
-                                    steps=asked, moments=moments, min_score=min_score)
+                                    steps=asked, moments=moments, min_score=min_score,
+                                    crops=tuple(crops or ()) if edit else None)
     except PluginError as e:
         detail = str(e).rstrip(".")
         raise PluginError(str(e), code="settings",
@@ -472,7 +493,14 @@ def answer_moments(choice, steps, moments: list[dict], *, video, segments, langu
              label_name=plugin.name,
              failure=lambda outcome, reported: _moment_failure(plugin, outcome, reported, timeout))
     try:
-        answers, ignored = host.read_answers(folder, steps=asked, ids=[m["id"] for m in moments])
+        if edit:
+            longest = clips_cfg.get("max_duration")
+            answers, ignored = host.read_edits(
+                folder, windows={m["id"]: (m["start"], m["end"]) for m in moments}, crops=job["limits"]["crops"],
+                min_length=max(1.0, float(clips_cfg.get("min_duration") or 0)),
+                max_length=float(longest) if longest else None)
+        else:
+            answers, ignored = host.read_answers(folder, steps=asked, ids=[m["id"] for m in moments])
     except contract.ContractError as e:
         raise PluginError(f"{plugin.name} gave an answer Clips Kitty can't use: {e}",
                           why="Clips Kitty couldn't use its answer.") from e
@@ -486,7 +514,8 @@ def answer_moments(choice, steps, moments: list[dict], *, video, segments, langu
         print(f"      [{plugin.id}] {notes}")
     for line in ignored:
         print(f"      [{plugin.id}] {line}")
-    progress.emit(stage=stage, video_id=video.video_id, fraction=1.0,
-                  message=f"{plugin.name} answered about {len(answers)} moment(s)", plugin=plugin.name)
+    done = (f"{plugin.name} suggested edits for {len(answers)} clip(s)" if edit
+            else f"{plugin.name} answered about {len(answers)} moment(s)")
+    progress.emit(stage=stage, video_id=video.video_id, fraction=1.0, message=done, plugin=plugin.name)
     return {"plugin": plugin.id, "version": plugin.version, "name": plugin.name, "steps": asked,
-            "answers": answers, "ignored": ignored}
+            "edits" if edit else "answers": answers, "ignored": ignored}
