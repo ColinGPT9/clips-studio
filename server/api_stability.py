@@ -141,7 +141,7 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     ("POST", "/marketplace/refresh"): (EXPERIMENTAL, "plugins", "Fetch Clips Kitty's online list and the registry index addresses set in settings into the cache; automatic: the online list only, when a day old. Session header."),
     ("GET", "/marketplace/online"): (EXPERIMENTAL, "plugins", "Whether the Marketplace checks Clips Kitty's online list by itself, when it last fetched it and how the last try went."),
     ("PUT", "/marketplace/online"): (EXPERIMENTAL, "plugins", "Switch the Marketplace's automatic checks of Clips Kitty's online list on or off for this PC. Session header."),
-    ("GET", "/marketplace/catalog"): (EXPERIMENTAL, "plugins", "Awesome Clips Kitty's apps, models, workflows, integrations and tools, searched, with their sections, labels and numbers."),
+    ("GET", "/marketplace/catalog"): (EXPERIMENTAL, "plugins", "Awesome Clips Kitty's entries built with Clips Kitty (integrations, apps and tools), searched, with their sections, labels and numbers."),
     ("GET", "/marketplace/counting"): (EXPERIMENTAL, "plugins", "Whether installs from the Marketplace are counted, and what counting sends."),
     ("PUT", "/marketplace/counting"): (EXPERIMENTAL, "plugins", "Switch install counting on or off for this PC. Session header."),
 }
