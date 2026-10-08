@@ -81,6 +81,28 @@ the graphics card.
 Install it from the Microsoft Store, with the Web Setup from the GitHub releases,
 or from a terminal: `winget install ColinGPT9.ClipsKitty`.
 
+## For developers
+
+The Clips Kitty SDK (`clipskitty_sdk`, Python, MIT) is for writing a small
+plugin that finds, understands or rates the moments in a video, for one game
+or one kind of show; Clips Kitty does the rest: the download, the transcript,
+and cutting, framing and captioning the clips. Every step is optional: one
+plugin can find the moments, and up to 3 can understand and up to 3 can rate
+them. Plugins that edit or export are coming later. A plugin runs on Clips
+Kitty's own Python 3.11, with the standard library (minus a few modules it
+leaves out) and the SDK, on the creator's PC with the creator's rights, like
+any program: Clips Kitty doesn't sandbox it, and its install screen shows what
+the plugin declares. The templates and tutorial use Quarkbloom Arena, a
+made-up game.
+
+No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the
+first release that includes it; until that is out, run Clips Kitty from source.
+
+- [Clips Kitty SDK](https://colingpt9.github.io/clips-studio/developers.html)
+- [Your first game pipeline](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md)
+- [The SDK's README](https://github.com/ColinGPT9/clips-studio/blob/main/sdk/python/README.md)
+- [Developer docs](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/README.md)
+
 ## Links
 
 - [Website](https://colingpt9.github.io/clips-studio/)

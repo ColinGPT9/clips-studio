@@ -1,5 +1,10 @@
 # Extending Clips Kitty
 
+> **Writing a plugin?** To find, understand or rate the moments in a video for a game,
+> a sport or a kind of show, you don't need to change Clips Kitty: write a plugin with
+> the SDK. Start with [Your first game pipeline](developers/first-game-pipeline.md) and
+> the [developer docs](developers/README.md). This page is for changing the app itself.
+
 The changes people most often want to make, and what each actually touches.
 All of them are deliberately small, if one of these turns into a sprawling
 diff, something has drifted and the design is worth a second look.
