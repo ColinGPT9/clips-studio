@@ -14,7 +14,7 @@ in `contract.py`.
 from .contract import PLUGIN_API_VERSION, SUPPORTED_PLUGIN_APIS, ContractError, check_job, check_result
 from .job import Job, Moment, read_job, run
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
     "PLUGIN_API_VERSION",

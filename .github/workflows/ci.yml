@@ -132,6 +132,35 @@ jobs:
           python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py
           tests/test_example_pipeline.py tests/test_catalog.py
 
+  sdk-windows:
+    name: SDK (Windows)
+    runs-on: windows-latest
+    # The SDK's own tests on Windows, where Clips Kitty runs, with Clips
+    # Kitty's Python (3.11) and nothing but pytest and PyYAML: the files
+    # named tests/test_plugin_sdk_*.py import nothing from the engine
+    # (test_plugin_sdk_package.py checks). This runner has no FFmpeg, so the
+    # tests that need it skip here and run in the Plugin platform job.
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install what these tests need
+        run: pip install --quiet pytest "PyYAML>=6.0.3,<7"
+
+      - name: Build the SDK's wheel, for the wheel test
+        shell: bash
+        run: |
+          pip wheel --quiet --no-deps sdk/python -w dist
+          echo "CLIPSKITTY_SDK_WHEEL=$(ls dist/*.whl)" >> "$GITHUB_ENV"
+
+      - name: SDK tests
+        # bash, because PowerShell doesn't expand a glob for a program it starts.
+        shell: bash
+        run: python -m pytest -q --tb=short tests/test_plugin_sdk_*.py
+
   ui:
     name: Desktop app
     runs-on: ubuntu-latest

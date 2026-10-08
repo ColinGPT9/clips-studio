@@ -4,7 +4,7 @@ The Clips Kitty plugin SDK is a small Python package, `clipskitty_sdk`, in [`sdk
 
 | | |
 |---|---|
-| SDK version | `clipskitty_sdk.__version__` = `1.1.0` |
+| SDK version | `clipskitty_sdk.__version__` = `1.2.0` (`python -m clipskitty_sdk --version`; [changelog](../../sdk/python/CHANGELOG.md)) |
 | Plugin contract | `clipskitty_sdk.PLUGIN_API_VERSION` = `1` (see [Versioning](versioning.md)) |
 | Python | 3.10 or newer |
 | Licence | MIT ([`sdk/python/LICENSE`](../../sdk/python/LICENSE)). Clips Kitty itself is AGPL-3.0-or-later; the SDK is MIT so that a plugin, app or tool built on it can use any licence its author chooses, open or closed. Using the SDK does not put your code under the AGPL. |

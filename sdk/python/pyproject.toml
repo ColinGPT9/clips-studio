@@ -1,7 +1,7 @@
 # The Clips Kitty plugin SDK as an installable package, for developing a
 # plugin outside the app. Clips Kitty itself never installs it: the app puts
-# its own copy on each plugin's PYTHONPATH (plugins/runner.py). Not published
-# to PyPI; install it from this repository (sdk/python/README.md).
+# its own copy on each plugin's PYTHONPATH (plugins/runner.py).
+# Not published to PyPI; install it from this repository (sdk/python/README.md).
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
@@ -11,23 +11,46 @@ name = "clipskitty-sdk"
 dynamic = ["version"]
 description = "Write pipelines for Clips Kitty: read the job, report progress, return moments, check the manifest."
 readme = "README.md"
+# A PEP 639 licence expression. No "License ::" classifier: setuptools 77 and
+# later refuse a licence expression together with one.
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = []
+keywords = ["clips-kitty", "plugin", "sdk", "video", "highlights"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Typing :: Typed",
+]
 
 [project.optional-dependencies]
+# Reading a plugin's clipskitty.yaml.
 yaml = ["PyYAML>=6"]
+# Running a plugin's own tests on the developer's PC (never inside the app).
+test = ["pytest"]
+
+[project.scripts]
+clipskitty-sdk = "clipskitty_sdk.__main__:main"
 
 [project.urls]
 Documentation = "https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/sdk.md"
 Source = "https://github.com/ColinGPT9/clips-studio/tree/main/sdk/python"
+Issues = "https://github.com/ColinGPT9/clips-studio/issues"
+Changelog = "https://github.com/ColinGPT9/clips-studio/blob/main/sdk/python/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["clipskitty_sdk"]
 
 [tool.setuptools.package-data]
-clipskitty_sdk = ["schema/*.json"]
+clipskitty_sdk = ["schema/*.json", "py.typed"]
 
 [tool.setuptools.dynamic]
 version = {attr = "clipskitty_sdk.__version__"}

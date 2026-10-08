@@ -8,6 +8,9 @@
                                  [--steps find|understand,rate] [--min-score 55]
                                  [--set name=value ...] [--secret name=value ...]
     python -m clipskitty_sdk schema [--write]
+    python -m clipskitty_sdk --version
+
+Installed with pip, `clipskitty-sdk` is the same command.
 
 `validate` runs the manifest checks the app, the plugin manager and the
 registry run. `run` builds the same job folder the app builds
@@ -38,8 +41,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import host
-from .contract import MAX_RANGES, STEPS, ContractError, _number
+from . import __version__, host
+from .contract import MAX_RANGES, PLUGIN_API_VERSION, STEPS, ContractError, _number
 from .job import RESULT_FILE
 from .manifest import SCHEMA_FILE, find_steps, offers, schema_text, step_problem, uses_steps, validate_folder
 
@@ -367,8 +370,15 @@ def _show_answers(job_folder: Path, steps: tuple[str, ...], moments: list[dict])
     return 0
 
 
+def version_line() -> str:
+    """What --version prints: the SDK's version and the plugin contract's."""
+    return f"clipskitty-sdk {__version__} (plugin contract {PLUGIN_API_VERSION})"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m clipskitty_sdk", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--version", action="version", version=version_line(),
+                        help="print the SDK's version and the plugin contract it follows")
     sub = parser.add_subparsers(dest="command", required=True)
     check = sub.add_parser("validate", help="check a plugin's manifest the way Clips Kitty and the registry do")
     check.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml)")
