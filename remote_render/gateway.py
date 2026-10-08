@@ -173,7 +173,7 @@ def create_app(queue: RenderQueue, data_dir: Path):
             problem = "checksum mismatch"
         else:
             spec = json.loads(row["spec"])
-            want = float(spec["end"]) - float(spec["start"])
+            want = protocol.expected_seconds(spec)
             got = piece.duration(part)
             if not (want * 0.5 <= got <= want + 60):
                 problem = f"duration {got:.1f}s, expected about {want:.1f}s"

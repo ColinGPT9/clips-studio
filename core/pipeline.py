@@ -539,6 +539,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # This run's clips, the re-rendered ones too (a re-run registers nothing
     # new): a match's story reels are joined from them.
     made = []
+    made_seconds: dict = {}   # each clip's file's length before its card, for its story reels
     # Human-browsable layout: clips/<channel>/<video title> [id]/clip_*.mp4
     clip_dir = (
         data_dir / "clips"
@@ -648,6 +649,22 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                 "headline": meta.headline or _post_style.headline_from_title(meta.title),
                 "subline": meta.subline}
 
+    # A clip the creator edited, found again by this run, is made with what
+    # they saved (D33), as "Make it again with my edits" makes it; a match
+    # keeps the job's look. Read here: the renders run in worker threads,
+    # and sqlite stays on this one.
+    choices = _creator_choices(db, video.video_id, config, gaming_opts)
+    again = sum(bool(choices.get(_window(c))) for c in candidates)
+    if again:
+        print(f"      {again} clip(s) you edited are made again with your edits"
+              + (" (caption style, colours, branding and title card as this job sets them)"
+                 if modes.sport(config) else ""))
+
+    def _opts_for(candidate, meta) -> dict | None:
+        """One clip's render options: the job's (_clip_opts), with the
+        creator's saved choices over them when the clip has some."""
+        return _with_choices(_clip_opts(meta), choices.get(_window(candidate)))
+
     def _finish(candidate, meta, get_result) -> None:
         nonlocal done_count, last_failure, repeated_failures
         done_count += 1
@@ -666,8 +683,9 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                 repeated_failures = 0
                 print(f"      Render failed for {where}: {reason}")
             return
+        made_seconds[str(final_path)] = _made_seconds(candidate, render_opts_json)
         clip = _register_clip(db, video.video_id, candidate, final_path, meta,
-                              render_opts_json, config)
+                              render_opts_json, config, edited=_window(candidate) in choices)
         if clip:
             rendered.append(clip)
         made.append(clip or RenderedClip(source_video_id=video.video_id, candidate=candidate, path=final_path))
@@ -680,7 +698,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             futures = {
                 pool.submit(
                     _render_files, video.path, candidate, segments, clip_dir, config,
-                    _clip_opts(meta), content_lang,
+                    _opts_for(candidate, meta), content_lang,
                 ): (candidate, meta)
                 for candidate, meta in zip(candidates, metas)
             }
@@ -695,7 +713,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     else:
         for candidate, meta, get_result in remote.render_all(
             video.video_id, video.path, list(zip(candidates, metas)), segments, clip_dir, config,
-            gaming_opts, content_lang, workers, opts_for=_clip_opts,
+            gaming_opts, content_lang, workers, opts_for=_opts_for,
         ):
             _finish(candidate, meta, get_result)
 
@@ -708,7 +726,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # A match's story reels, when asked for (sports/core/reels.py): joined
     # from the clips just rendered.
     if sport_profile is not None and made and (sport_profile.option or {}).get("reels"):
-        rendered += _sport_reels(db, video.video_id, sport_profile, made, clip_dir, config, segments)
+        rendered += _sport_reels(db, video.video_id, sport_profile, made, clip_dir, config, segments,
+                                 made_seconds=made_seconds)
 
     elapsed = time.monotonic() - started
     db.set_process_seconds(video.video_id, elapsed)
@@ -725,7 +744,8 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
 
 
 def _sport_reels(db: StateDB, video_id: str, profile, clips: list, clip_dir: Path, config: dict,
-                 segments: list | None = None, start: float = 0.0, opts: dict | None = None) -> list:
+                 segments: list | None = None, start: float = 0.0, opts: dict | None = None,
+                 made_seconds: dict | None = None) -> list:
     """The story reels a Sports job asked for, joined from this run's
     `clips` and registered as clips of their own: the recap, a reel per
     team, per player (the transcript's `segments` say which clips' commentary
@@ -735,7 +755,10 @@ def _sport_reels(db: StateDB, video_id: str, profile, clips: list, clip_dir: Pat
 
     A reel is known by what it is (its kind, its team or player, its
     format), not by its length: a re-run makes it again into its own row and
-    file, and a reel never takes another clip's row because it is as long."""
+    file, and a reel never takes another clip's row because it is as long.
+
+    `made_seconds` is each clip file's length before its card, by path,
+    where an edit changed it (D33)."""
     reel_clips = []
     try:
         from analysis.metadata import ClipMetadata
@@ -759,8 +782,8 @@ def _sport_reels(db: StateDB, video_id: str, profile, clips: list, clip_dir: Pat
             # all of it), and one at the end of the reel, made the way a
             # clip's is: outro.finish writes the reel from the join.
             paths = [c.path for c in reel.parts]
-            trims = [outro.DURATION if outro.has_outro(c.path, c.candidate.end - c.candidate.start) else 0.0
-                     for c in reel.parts]
+            trims = [outro.DURATION if outro.has_outro(c.path, (made_seconds or {}).get(
+                str(c.path), c.candidate.end - c.candidate.start)) else 0.0 for c in reel.parts]
             out = clip_dir / reels.file_name(reel)
             joined = out.with_name(f"{out.stem}.pre-card.mp4") if card else out
             try:
@@ -822,6 +845,119 @@ def _free_end(db: StateDB, video_id: str, start: float, end: float, own: int | N
         if row is None or row["id"] == own:
             return end
         end = round(end + 0.01, 2)
+
+
+# What only a person sets on one clip. The timeline editor's Apply always
+# sends `edit` (null when nothing is cut), with any split drawn or changed
+# there; the Captions panel sends `captions` and the colour controls
+# `adjust`; the Layout buttons, caption fixes, Fix speakers and the AI chat
+# edit set the others. A first run writes none.
+_BY_HAND = ("edit", "crop", "caption_lines", "speaker_edits", "adjust", "captions", "normalize_audio")
+# What the job decides for every clip, whatever a clip saved: Longform's
+# profile, Podcast, Vertical Live, the sport, and who is heard talking,
+# which every render hears again.
+_JOB_DECIDES = ("profile", "podcast", "vertical_live", "sport", "speaker_turns")
+# A webcam a person chose for the whole job (gaming/run.py TRUSTED): set up
+# for this video before processing, or remembered for the creator.
+_JOB_PERSON = ("user", "creator")
+_WEBCAMS = ("cam", "cam2")
+
+
+def _window(candidate) -> tuple[float, float]:
+    """A clip's window as its row is known by (core/state.py add_clip)."""
+    return round(candidate.start, 2), round(candidate.end, 2)
+
+
+def _edited(opts: dict) -> bool:
+    """Whether the creator made this clip again by hand (D33): it holds a key
+    only a person sets on one clip, or a split no run writes, turned off for
+    this clip (null) or on for it alone ("clip"). A split saved as "user"
+    doesn't count on its own: one set up before processing is saved so on
+    every clip the run makes, and Apply sends `edit` with one drawn there."""
+    if any(k in opts for k in _BY_HAND):
+        return True
+    if "gaming" not in opts:
+        return False
+    split = opts["gaming"]
+    return split is None or (isinstance(split, dict) and split.get("by") == "clip")
+
+
+def _clip_split(split, job_split, gaming_job: bool) -> dict:
+    """An edited clip's split, as {"gaming": ...} to lay over the job's, or {}
+    for the job's own (D33). One a person set for this clip (off, drawn, or on
+    for it alone) stays whatever the job; "user" may also be a split set up
+    for an earlier run, which nothing tells apart. One a run found or
+    remembered stays only in a Gaming / Reaction job, with its layout, and
+    takes the webcam a person chose for this job when there is one."""
+    if split is None or (isinstance(split, dict) and split.get("by") in ("user", "clip")):
+        return {"gaming": split}
+    if not gaming_job or not isinstance(split, dict):
+        return {}
+    if isinstance(job_split, dict) and job_split.get("by") in _JOB_PERSON:
+        split = {**split, **{k: job_split[k] for k in _WEBCAMS if k in job_split}, "by": job_split["by"]}
+    return {"gaming": split}
+
+
+def _creator_choices(db: StateDB, video_id: str, config: dict, gaming_opts: dict | None = None,
+                     profile: str | None = None) -> dict:
+    """The saved options of this video's clips the creator made again by
+    hand, by window, for a run that makes those windows again to render them
+    with (D33): what "Make it again with my edits" renders, less what the job
+    decides. Only clips of this output (Shorts, or Longform's `profile`),
+    never a story reel. A clip nobody edited isn't here: it renders as the
+    job says, as it always did.
+
+    A Sports job takes only what a person set on the clip alone: a match
+    keeps the job's framing and look. `gaming_opts` is the job's split
+    (_gaming_prepare), for the webcam a person chose for it."""
+    from core import modes
+
+    gaming_job, sport_job = modes.is_gaming(config), bool(modes.sport(config))
+    job_split = (gaming_opts or {}).get("gaming")
+    out = {}
+    for row in db.clips_for_video(video_id):
+        try:
+            opts = json.loads(row["render_opts"] or "{}")
+        except ValueError:
+            continue
+        if not isinstance(opts, dict) or opts.get("reel") or opts.get("profile") != profile or not _edited(opts):
+            continue
+        if sport_job:
+            choice = {k: opts[k] for k in _BY_HAND if k in opts}
+        else:
+            choice = {k: v for k, v in opts.items() if k not in _JOB_DECIDES and k != "gaming"}
+            if "gaming" in opts:
+                choice.update(_clip_split(opts["gaming"], job_split, gaming_job))
+        out[(round(float(row["start_s"]), 2), round(float(row["end_s"]), 2))] = choice
+    return out
+
+
+def _with_choices(job_opts: dict | None, choices: dict | None) -> dict | None:
+    """A clip's render options: the job's, with the creator's saved choices
+    over them. Without choices, the job's own, the same object."""
+    if not choices:
+        return job_opts
+    return {**(job_opts or {}), **choices}
+
+
+def _made_seconds(candidate, render_opts_json: str) -> float:
+    """How long a clip plays as rendered, before its end card: its window,
+    or what the edit it was rendered with keeps of it, at its speed. A story
+    reel trims each clip's card by it."""
+    window = candidate.end - candidate.start
+    try:
+        opts = json.loads(render_opts_json) if render_opts_json else {}
+    except ValueError:
+        return window
+    edit = opts.get("edit") if isinstance(opts, dict) else None
+    if not edit:
+        return window
+    from video_editor.timeline import made_seconds
+
+    try:
+        return made_seconds(edit, window)
+    except (TypeError, ValueError):
+        return window
 
 
 def _remote_renderer(config: dict):
@@ -1233,8 +1369,11 @@ def _render_files(
     # Gaming / Split-Screen (gaming/): opt-in, per video or per clip. Tried
     # first inside the tracked branch; anything it declines or fails at goes
     # on to the standard layout below. Off -> never imported.
+    # A split turned off for this clip in the editor ("gaming": null) stays
+    # off in a job that has it on (D33).
     gaming = (not landscape and not vertical_live and not podcast
-              and (modes.is_gaming(opts) or modes.is_gaming(config)))
+              and (modes.is_gaming(opts)
+                   or (modes.is_gaming(config) and not ("gaming" in opts and opts["gaming"] is None))))
     gaming_kept = None
     canvas = (1920, 1080) if landscape else (1080, 1920)
 
@@ -1610,6 +1749,7 @@ def _register_clip(
     meta: ClipMetadata,
     render_opts_json: str,
     config: dict | None = None,
+    edited: bool = False,
 ) -> RenderedClip | None:
     """DB write for one rendered clip. Main thread only (sqlite connections
     are not shareable across threads).
@@ -1620,6 +1760,9 @@ def _register_clip(
     longform.assemble and never call _render_files at all, so hooking the
     renderer silently left two of the four longform profiles with no end card.
     Hooking the funnel means a mode added later cannot miss it either.
+
+    `edited`: the creator made this clip again by hand (D33), so a run never
+    replaces its saved caption style or card words.
     """
     clip_id = db.add_clip(
         video_id,
@@ -1691,7 +1834,14 @@ def _register_clip(
                 # card must be the one this file was rendered with. The editor
                 # and its re-renders start from the row, so a stale one drops
                 # the new card on the next edit, or brings an old one back.
-                fresh["render_opts"] = json.dumps(_with_card_of(kept, rendered))
+                card = _with_card_of(kept, rendered)
+                if edited:
+                    # A clip the creator edited keeps its own caption style and
+                    # card words; this run's card is added only where it had
+                    # none (D33). Outside Sports its file was made with them; a
+                    # Sports job made it in the job's look.
+                    card.update({k: kept[k] for k in ("caption_style", "headline", "subline") if k in kept})
+                fresh["render_opts"] = json.dumps(card)
             db.set_clip(row["id"], **fresh)
         print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None

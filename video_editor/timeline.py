@@ -134,3 +134,12 @@ class EditList:
                 return None
             offset += b - a
         return None
+
+
+def made_seconds(edit, window: float) -> float:
+    """How long a clip `window` seconds long plays once rendered with this
+    saved edit (render_opts["edit"]), before any end card: what the edit
+    keeps of it at its speed, or the window itself when the render applies
+    none of it (EditList.from_dict)."""
+    parsed = EditList.from_dict(edit, duration=window)
+    return parsed.final_duration() if parsed is not None else window

@@ -10,8 +10,10 @@ entry, in one of three states:
 - "used": some of it is in the clip's saved edit, where Take it back can
   reach it. Its `applied` says what it put there and is still there, so
   Take it back takes out only that. It may
-  carry `remade: true`: a forced re-run has since made the clip's file
-  without the saved edit.
+  carry `remade: true`: the clip's file was made again without the saved
+  edit. A run makes a clip the creator edited with its saved edit and
+  layout (D33), so only an edit saved while a run was making the clip
+  leaves one.
 
 after_render() records a render the creator asked for (Apply edits, or
 Apply edits & upload). The editor says what each Use added (`applied`), but
@@ -366,7 +368,7 @@ def after_render(entries, used, before, after, window, new_window=None) -> tuple
 
 
 def carry(old, new, kept, rendered=None) -> list[dict]:
-    """The `plugin_edits` of a clip a forced re-run made again at the same
+    """The `plugin_edits` of a clip a run made again at the same
     window (core/pipeline._register_clip). `old` are the row's entries,
     `new` this run's; `kept` is the row's saved options, which the re-run
     keeps, and `rendered` the options its new file was made with.

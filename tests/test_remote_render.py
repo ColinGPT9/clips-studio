@@ -53,6 +53,17 @@ def test_what_needs_the_face_tracking_models():
     assert not protocol.needs_framing({"clips": {}}, {"vertical_live": True})
 
 
+def test_the_expected_length_follows_the_clips_edit():
+    """The main PC checks a returned clip against how long it plays: its
+    window, or what the clip's saved edit keeps of it at its speed (D33)."""
+    assert protocol.expected_seconds({"start": 10, "end": 40}) == 30.0
+    assert protocol.expected_seconds({"start": 10, "end": 40, "render_opts": None}) == 30.0
+    edit = {"keep": [[0, 5], [10, 20]], "speed": 1.5}
+    assert protocol.expected_seconds({"start": 10, "end": 40, "render_opts": {"edit": edit}}) == 10.0
+    for broken in ({"keep": "nope"}, ["not", "an", "edit"], {"keep": [[0, 5]], "hook": {"text": "x", "seconds": "y"}}):
+        assert protocol.expected_seconds({"start": 10, "end": 40, "render_opts": {"edit": broken}}) == 30.0, broken
+
+
 def test_a_worker_is_matched_on_what_it_can_actually_do():
     ok = {"protocol": protocol.PROTOCOL, "encoders": ["cpu"], "framing": True}
     assert protocol.compatible(True, ok) == (True, "")
@@ -390,6 +401,78 @@ def test_a_failed_clip_renders_here_in_automatic_but_not_on_a_chosen_worker(disp
             assert calls == [10.0]
         else:
             assert calls == [] and "exited with code 1" in outcomes[0]
+
+
+def _completing(q, wid, tmp, specs: list, count: int):
+    """A render PC that renders `count` jobs, noting each one's spec."""
+    def work():
+        done = 0
+        while done < count:
+            job = q.claim(wid)
+            if job is None:
+                time.sleep(0.05)
+                continue
+            specs.append(job["spec"])
+            result = tmp / f"result_{job['id']}.mp4"
+            result.write_bytes(b"rendered")
+            q.complete(job["id"], wid, result, "")
+            done += 1
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    return t
+
+
+def test_each_clip_goes_with_its_own_options(dispatching):
+    """opts_for(candidate, meta): each clip's own options, its title card or,
+    on a re-run, the creator's saved choices (D33), travel with its job."""
+    dispatch, gw, tmp = dispatching
+    q = gw.queue
+    wid, _s = _paired(q)
+    specs: list = []
+    t = _completing(q, wid, tmp, specs, 2)
+
+    def opts_for(candidate, meta):
+        return {"headline": meta, **({"edit": {"keep": [[0, 8]]}} if candidate.start == 10.0 else {})}
+
+    calls = []
+    got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, "auto", tmp).render_all(
+        "v", tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+        opts_for=opts_for)]
+    t.join(5)
+    assert calls == [] and sorted(got) == [10.0, 50.0]
+    assert sorted((s["start"], s["render_opts"]) for s in specs) == [
+        (10.0, {"headline": "m1", "edit": {"keep": [[0, 8]]}}), (50.0, {"headline": "m2"})]
+
+
+def test_a_clip_with_music_from_this_pc_renders_here(dispatching):
+    """Music added in the editor is a file on this PC, which a render PC
+    can't fetch: that clip renders here, whichever render mode is chosen,
+    and the others still go out."""
+    dispatch, gw, tmp = dispatching
+    q = gw.queue
+    wid, _s = _paired(q)
+    q.heartbeat(wid, {}, False, 1, [])
+    music = {"edit": {"music": {"path": "music/quarkbloom-theme.mp3", "volume": 0.4}}}
+    assert dispatch._needs_this_pc(music)
+    assert not dispatch._needs_this_pc({"edit": {"music": {"path": " "}}})
+    assert not dispatch._needs_this_pc({"edit": {"keep": [[0, 8]]}}) and not dispatch._needs_this_pc(None)
+
+    def opts_for(candidate, _meta):
+        return music if candidate.start == 10.0 else {"crop": "center"}
+
+    for mode in ("auto", f"worker:{wid}"):
+        video = f"v-{mode[:4]}"
+        specs: list = []
+        t = _completing(q, wid, tmp, specs, 1)
+        calls = []
+        got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, mode, tmp).render_all(
+            video, tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+            opts_for=opts_for)]
+        t.join(5)
+        assert calls == [10.0] and sorted(got) == [10.0, 50.0], mode
+        assert [j["label"] for j in q.jobs_for(video)] == ["50s-70s"], mode
+        assert [s["start"] for s in specs] == [50.0], mode
 
 
 # ---- the worker's side --------------------------------------------------------------------

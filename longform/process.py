@@ -34,9 +34,13 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     from core.models import RenderedClip
     from core.pipeline import (
         _cached_or_download,
+        _creator_choices,
+        _made_seconds,
         _register_clip,
         _render_files,
         _safe_name,
+        _window,
+        _with_choices,
         _with_usable_model,
         convert_slow_source,
     )
@@ -150,6 +154,12 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         / profile["subdir"]
     )
     render_opts = {"profile": mode}
+    # A 16:9 clip the creator edited is made again with what they saved (D33).
+    choices = _creator_choices(db, video.video_id, config, profile=mode)
+
+    def _opts_for(candidate, _meta) -> dict:
+        return _with_choices(dict(render_opts), choices.get(_window(candidate)))
+
     from transcription.transcriber import detected_language
 
     content_lang = forced_lang if forced_lang != "auto" else detected_language(
@@ -158,6 +168,7 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     workers = max(1, int(config.get("video", {}).get("parallel_renders", 2)))
     done_count = 0
     made = []   # this run's clips, re-rendered ones too, for a match's reels
+    made_seconds: dict = {}   # each clip's file's length before its card, for its reels
 
     def _finish(candidate, meta, get_result) -> None:
         nonlocal done_count
@@ -168,8 +179,9 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         except Exception as e:
             print(f"      Render failed for {candidate.start:.0f}s-{candidate.end:.0f}s: {e}")
             return
+        made_seconds[str(final_path)] = _made_seconds(candidate, render_opts_json)
         clip = _register_clip(db, video.video_id, candidate, final_path, meta,
-                              render_opts_json, config)
+                              render_opts_json, config, edited=_window(candidate) in choices)
         made.append(clip or RenderedClip(source_video_id=video.video_id, candidate=candidate, path=final_path))
 
     # Remote rendering, when on (Settings -> Advanced settings); else local as always.
@@ -181,7 +193,7 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
             futures = {
                 pool.submit(
                     _render_files, video.path, c, segments, clip_dir, config,
-                    dict(render_opts), content_lang,
+                    _opts_for(c, m), content_lang,
                 ): (c, m)
                 for c, m in zip(candidates, metas)
             }
@@ -191,7 +203,7 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     else:
         for candidate, meta, get_result in remote.render_all(
             video.video_id, video.path, list(zip(candidates, metas)), segments, clip_dir, config,
-            dict(render_opts), content_lang, workers,
+            dict(render_opts), content_lang, workers, opts_for=_opts_for,
         ):
             _finish(candidate, meta, get_result)
 
@@ -201,7 +213,7 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
         from core.pipeline import _sport_reels
 
         _sport_reels(db, video.video_id, sport_profile, made, clip_dir, config, segments,
-                     start=_NUDGE, opts={"profile": mode})
+                     start=_NUDGE, opts={"profile": mode}, made_seconds=made_seconds)
 
     elapsed = time.monotonic() - started
     db.set_process_seconds(video.video_id, elapsed)

@@ -42,6 +42,23 @@ def job_id(video_id: str, start: float, end: float, render_opts: dict | None, co
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
+def expected_seconds(spec: dict) -> float:
+    """How long a job's clip plays, before any end card: its window, or what
+    the clip's saved edit keeps of it at its speed (video_editor/timeline.py).
+    The main PC checks a returned clip against it."""
+    window = float(spec["end"]) - float(spec["start"])
+    opts = spec.get("render_opts")
+    edit = opts.get("edit") if isinstance(opts, dict) else None
+    if not edit:
+        return window
+    from video_editor.timeline import made_seconds
+
+    try:
+        return made_seconds(edit, window)
+    except (TypeError, ValueError):
+        return window
+
+
 def needs_framing(render_cfg: dict, render_opts: dict | None) -> bool:
     """Whether the render tracks faces or lays out a split (it needs the
     tracking models), or is a straight cut of the whole frame (any worker)."""
