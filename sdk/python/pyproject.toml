@@ -52,5 +52,10 @@ packages = ["clipskitty_sdk"]
 [tool.setuptools.package-data]
 clipskitty_sdk = ["schema/*.json", "py.typed", "templates/**/*"]
 
+# Python's byte-code caches, which running a template's tests leaves beside
+# it, never go into the wheel ("*" here also matches inside folders).
+[tool.setuptools.exclude-package-data]
+clipskitty_sdk = ["*.pyc"]
+
 [tool.setuptools.dynamic]
 version = {attr = "clipskitty_sdk.__version__"}

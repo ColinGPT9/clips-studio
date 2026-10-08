@@ -193,6 +193,14 @@ def test_py_typed_ships_as_package_data():
     assert "py.typed" in _pyproject()["tool"]["setuptools"]["package-data"]["clipskitty_sdk"]
 
 
+def test_byte_code_caches_stay_out_of_the_wheel():
+    # templates/**/* would otherwise take the __pycache__ a template's tests
+    # leave in the source folder; the wheel test below checks a built wheel.
+    setuptools = _pyproject()["tool"]["setuptools"]
+    assert "templates/**/*" in setuptools["package-data"]["clipskitty_sdk"]
+    assert setuptools["exclude-package-data"]["clipskitty_sdk"] == ["*.pyc"]
+
+
 # ---- the version -----------------------------------------------------------------
 
 

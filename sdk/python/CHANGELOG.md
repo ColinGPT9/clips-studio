@@ -10,6 +10,7 @@ The installed app puts its own SDK on the plugin's path, and it wins over one in
 - Installed with pip, the SDK adds a `clipskitty-sdk` command, the same as `python -m clipskitty_sdk`.
 - A `test` extra installs pytest, for a plugin's own tests: `pip install "clipskitty-sdk[yaml,test]"`.
 - The package ships `py.typed`, so type checkers read its type hints.
+- A wheel built from a folder where tests have run leaves out Python's byte-code caches (`*.pyc`).
 - The package's details list the Python versions it supports, and link to its issues and this changelog.
 - `edits` is a planned output, for the edit step: `outputs: [edits]` is refused with "output 'edits' is planned, not supported by plugin API 1" instead of "unknown output". `contract.PLANNED_STEPS` names the planned steps, `edit` and `export`.
 - `validate` and `run` show the line of `clipskitty.yaml` each problem is on, and "did you mean permissions?" under a misspelt field (`Report.hints`, `manifest.line_marks`). Without a `clipskitty.yaml`, or without PyYAML on the PC, they say so and exit with 2.
