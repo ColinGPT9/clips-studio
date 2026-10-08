@@ -38,11 +38,11 @@ Parts under other licences
 
 The plugin SDK in sdk/python/ (clipskitty_sdk, which the installer also
 bundles so plugins can import it) is MIT-licensed; its notice is in
-sdk/python/LICENSE and travels with it. The example pipeline in
-examples/pipelines/scene-cut-highlights/ is MIT as well, and the Awesome
-Clips Kitty catalog in awesome-clips-kitty/ is CC0-1.0. Plugins, pipelines
-and apps made by other people keep their own licences; installing one does
-not change it, and nothing here changes theirs.
+sdk/python/LICENSE and travels with it. The example plugins in
+examples/pipelines/scene-cut-highlights/ and examples/pipelines/keyword-rater/
+are MIT as well, and the Awesome Clips Kitty catalog in awesome-clips-kitty/
+is CC0-1.0. Plugins, pipelines and apps made by other people keep their own
+licences; installing one does not change it, and nothing here changes theirs.
 
 -------------------------------------------------------------------------------
 Why a copyleft licence

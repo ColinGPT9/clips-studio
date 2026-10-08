@@ -1,0 +1,38 @@
+manifest_version: 1
+id: clips-kitty-examples/keyword-rater
+name: Keyword rater (example)
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  An example plugin that works on moments after they are found. When the
+  commentary during a moment says one of your words, it raises that moment's
+  score and notes the word for the title. It only matches words in the
+  transcript: it knows nothing about what is happening on screen, and a moment
+  nobody talks about is left as it was.
+author: {name: Clips Kitty examples}
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+execution: local
+inputs: [moments, transcript]
+outputs: [context, ratings]
+settings:
+  words:
+    type: string
+    default: ""
+    max_length: 1000
+    title: Words or phrases to listen for, separated by commas
+  bonus:
+    type: integer
+    default: 15
+    minimum: 1
+    maximum: 50
+    title: Points a moment gains when one of them is said
+permissions: [transcript.read]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: utilities
+tags: [example, rate, understand, transcript]

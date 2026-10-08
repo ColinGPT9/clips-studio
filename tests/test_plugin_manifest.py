@@ -230,7 +230,8 @@ def test_the_built_in_versions_follow_the_app():
         assert mf.version_satisfies(app, data["requires"]["clips_kitty"])
 
 
-@pytest.mark.parametrize("folder", ["tests/fixtures/plugins/echo", "examples/pipelines/transcript-highlights"])
+@pytest.mark.parametrize("folder", ["tests/fixtures/plugins/echo", "examples/pipelines/transcript-highlights",
+                                    "examples/pipelines/keyword-rater"])
 def test_the_plugins_in_this_repository_validate(folder):
     data, report = mf.validate_folder(ROOT / folder)
     assert report.ok, report.errors

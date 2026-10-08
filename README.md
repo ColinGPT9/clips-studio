@@ -834,7 +834,7 @@ Three parts are licensed separately, so that building on Clips Kitty stays easy:
 |---|---|
 | Clips Kitty (the app, its engine, this repository) | AGPL-3.0-or-later |
 | The plugin SDK, [`sdk/python/`](sdk/python/) | MIT ([sdk/python/LICENSE](sdk/python/LICENSE)) |
-| The example pipeline, [`examples/pipelines/scene-cut-highlights/`](examples/pipelines/scene-cut-highlights/) | MIT |
+| The example plugins, [`examples/pipelines/scene-cut-highlights/`](examples/pipelines/scene-cut-highlights/) and [`examples/pipelines/keyword-rater/`](examples/pipelines/keyword-rater/) | MIT |
 | The Awesome Clips Kitty catalog, [`awesome-clips-kitty/`](awesome-clips-kitty/) | CC0-1.0 |
 
 Plugins, pipelines and apps made by other people keep whatever licence their authors
