@@ -101,7 +101,7 @@ were often broken in a way that only showed up on somebody else's machine.
   is marked if its clip ever comes out without your edits, so you can apply them
   again. For developers: the plugin kit (SDK 1.3.0) adds `job.suggest_edit()`
   and an `editor` template, and [docs/developers/steps.md](docs/developers/steps.md)
-  explains the edit step. Plugins that post to a platform (export) are still to come.
+  explains the edit step. Plugins don't post: Clips Kitty posts clips itself.
   (New job option: `edit`. New fields: `suggestions` on `render_first` when publishing,
   `suggestion` on `PATCH /clips/{id}`, and `plugin_edits` in a clip's `scores`.)
 

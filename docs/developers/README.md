@@ -37,8 +37,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests edits for the creator     built
-  └── export               posts to a platform                coming later
+  └── edit                 suggests edits for the creator     built
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
   ↓
@@ -49,7 +48,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](steps.md)).
 - Up to 3 plugins can suggest edits for the clips that will be made.
-- Export is not part of plugin contract 1: `kind: publisher` is refused as planned. Edit plugins suggest edits that wait for the creator in the editor ([Steps](steps.md#suggest-edits-the-edit-step)).
+- Edit plugins suggest edits that wait for the creator in the editor ([Steps](steps.md#suggest-edits-the-edit-step)).
+- Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)). `kind: publisher` is refused: plugins don't post.
 
 No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
 
@@ -79,7 +79,8 @@ Clips Kitty                              your pipeline
 | Plugins that suggest edits for the clips ([Steps](steps.md#suggest-edits-the-edit-step)): SDK 1.3.0, the `edit` job option, the Suggest edits switch, the suggestions in the timeline editor with Use, Hide and Take it back | built; the switch and the editor are type-checked, not yet looked at on a real PC |
 | Model references (Hugging Face, url, Ollama, bundled), one shared download, licence and size shown | built for public models; gated models planned |
 | Returning finished clip files instead of moments | planned |
-| Plugin kinds other than pipelines (caption styles, publishers, sources, providers) | planned: the manifest names them and refuses them with a message |
+| Plugin kinds other than pipelines (caption styles, sources, providers) | planned: the manifest names them and refuses them with a message |
+| Plugins that post clips (`kind: publisher`) | not planned: the manifest refuses them, and Clips Kitty posts clips itself |
 | A plugin's own Python packages, installed for it | planned |
 | Sandboxing a plugin's process | not planned for now; see [Security](security.md) for what that means |
 

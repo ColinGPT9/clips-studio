@@ -1,12 +1,15 @@
 """The website's developers page (site/developers.html) and the links to it.
 
 It says what the code does: the SDK picture's boxes are the ones in
-sdk/python/README.md, edit is marked built and export as coming later, each
-building block names what it needs, and the sentence about which release
-runs plugins (kept in docs/developers/versioning.md) is in the hero, the
-Quickstart and the questions, in the root README's "Write a plugin" section,
-in llms.txt and on the roadmap. It names no real game as our example, claims
-no sandbox, and links only to pages that exist in this checkout.
+sdk/python/README.md, every step is marked built and none is coming later,
+posting isn't a plugin step (Clips Kitty posts clips itself, and WoopSocial
+posts to many sites at once, linked as the site's other pages link it, with
+its affiliate note), each building block names what it needs, and the
+sentence about which release runs plugins (kept in
+docs/developers/versioning.md) is in the hero, the Quickstart and the
+questions, in the root README's "Write a plugin" section, in llms.txt and on
+the roadmap. It names no real game as our example, claims no sandbox, and
+links only to pages that exist in this checkout.
 
 It reads the names of real games from Clips Kitty's own registry, so it is an
 engine test, not one of the SDK's own (tests/test_plugin_sdk_*.py).
@@ -42,6 +45,17 @@ CAPTION = ("posts when the creator clicks Publish, or on a schedule or automatic
            "switched on")
 NO_SANDBOX = ("Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty "
               "doesn't sandbox it. The install screen says what it declares.")
+POSTING = ("Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to "
+           "many sites at once on the creator's own account.")
+NO_PUBLISHER = "kind: publisher is refused: plugins don't post."
+# The WoopSocial link exactly as the site's other pages have it, and the note that goes with it.
+WOOPSOCIAL = ('<a href="https://woopsocial.com/?via=clipskitty" target="_blank" '
+              'rel="noopener noreferrer sponsored">WoopSocial</a>')
+AFFILIATE_NOTE = ('<p class="note">Affiliate link - Clips Kitty may earn a commission if you sign up through it, '
+                  'at no extra cost to you.</p>')
+# A sentence that names export or publisher plugins, and one that says they are still to come.
+POSTING_PLUGINS = re.compile(r"\bexport\b|kind: publisher|\bpublishers\b|\bpublisher plugins?\b", re.I)
+STILL_TO_COME = re.compile(r"(?<!not )\b(?:coming later|later|planned|still to come|coming soon)\b", re.I)
 
 
 def _suggestion_promise() -> str:
@@ -178,7 +192,7 @@ def _page_picture() -> tuple[list, list]:
     return boxes, steps
 
 
-def test_edit_is_built_and_export_is_coming_later():
+def test_every_step_is_built_and_posting_is_not_a_plugin_step():
     boxes, steps = _page_picture()
     want_boxes, want_steps = _readme_picture()
     assert [tuple(map(html.unescape, b)) for b in boxes] == want_boxes
@@ -189,14 +203,62 @@ def test_edit_is_built_and_export_is_coming_later():
         "understand": ("", "built", "built"),
         "rate": ("", "built", "built"),
         "edit": ("", "built", "built"),
-        "export": (" later", "later", "coming later"),
     }
-    assert "Clips Kitty SDK" in visible(section(page(), "how-it-fits"))
+    fits = visible(section(page(), "how-it-fits"))
+    assert "Clips Kitty SDK" in fits
+    assert "Edit plugins suggest edits that wait for the creator in the editor" in fits
+    assert POSTING in fits and NO_PUBLISHER in fits
     faq = visible(section(page(), "faq"))
-    assert "What about edit and export? Edit is built; export is coming later." in faq
+    assert "What about edit and posting? Edit is built, and posting isn't a plugin step." in faq
     assert "Edit plugins suggest edits that wait for the creator in the editor" in faq
     assert SUGGESTION_PROMISE in faq
-    assert "Edit plugins suggest edits that wait for the creator in the editor" in visible(section(page(), "how-it-fits"))
+    assert ("Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the "
+            "creator's own account. A manifest that asks for a publisher (kind: publisher) is refused: plugins "
+            "don't post.") in faq
+
+
+def _promises_posting_plugins(text: str) -> list[str]:
+    """The sentences of some text that name export or publisher plugins and say they are still to come."""
+    sentences = re.split(r"(?<=[.;!?])\s+", flat(text))
+    return [s for s in sentences if POSTING_PLUGINS.search(s) and STILL_TO_COME.search(s)]
+
+
+def test_no_page_says_export_or_publisher_plugins_are_coming():
+    roadmap = (SITE / "roadmap.html").read_text(encoding="utf-8")
+    texts = {
+        "site/developers.html": page(),
+        "README.md, Write a plugin": readme_section(),
+        "site/llms.txt, For developers": llms_section(),
+        "site/roadmap.html": roadmap,
+    }
+    for where, text in texts.items():
+        # What a reader sees, and what search engines read in its attributes and data.
+        for said in (visible(text), flat(html.unescape(text))):
+            assert not _promises_posting_plugins(said), (where, _promises_posting_plugins(said))
+    assert "coming later" not in flat(html.unescape(page())).lower()
+    readme = flat(readme_section()).replace("`", "")
+    assert POSTING.removesuffix(".") + " ([Publish to every platform at once](#publish-to-every-platform-at-once))." in readme
+    assert NO_PUBLISHER in readme
+    llms = flat(llms_section())
+    assert "Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial" in llms
+    assert "coming later" not in llms
+
+
+def test_the_woopsocial_link_is_the_sites_own_with_its_note():
+    text = page()
+    tags = [tag for tag in re.findall(r"<a\b[^>]*>.*?</a>", text, re.S) if "woopsocial" in tag.lower()]
+    assert tags == [WOOPSOCIAL]
+    # The same link, word for word, that the home page and the roadmap already carry.
+    for other in ("index.html", "roadmap.html"):
+        assert WOOPSOCIAL in (SITE / other).read_text(encoding="utf-8"), other
+    # It sits in How a plugin fits in, with the affiliate note the site puts beside it.
+    fits = section(text, "how-it-fits")
+    assert WOOPSOCIAL in fits
+    assert fits.index(WOOPSOCIAL) < fits.index(AFFILIATE_NOTE)
+    assert text.count(AFFILIATE_NOTE) == 1
+    # Only that one WoopSocial address, anywhere on the page.
+    addresses = set(re.findall(r"https?://[^\s\"<>]*woopsocial[^\s\"<>]*", text))
+    assert addresses == {"https://woopsocial.com/?via=clipskitty"}
 
 
 def test_the_caption_is_exact():
@@ -284,6 +346,8 @@ def check_url(url: str) -> str | None:
         return None
     if url == "https://paypal.me/clipsstudio":
         return None  # the donate link every page already has
+    if url == "https://woopsocial.com/?via=clipskitty":
+        return None  # the WoopSocial link the home page, the roadmap and the privacy policy already have
     if url.startswith("https://colingpt9.github.io/clips-studio/"):
         rel = url.removeprefix("https://colingpt9.github.io/clips-studio/") or "index.html"
         return None if (SITE / rel).is_file() else f"no site/{rel}"
@@ -428,7 +492,7 @@ def test_the_roadmap_no_longer_lists_plugins_as_future_only():
     later_text = visible(later[0]).lower()
     assert "plugin architecture" not in later_text
     assert "community extensions" not in later_text
-    assert "plugins that export" in later_text
+    assert "export" not in later_text
     assert "edit and export" not in later_text and "plugins that edit" not in later_text
     assert "creator analytics" in later_text and "more models" in later_text
 

@@ -89,12 +89,13 @@ or one kind of show; Clips Kitty does the rest: the download, the transcript,
 and cutting, framing and captioning the clips. Every step is optional: one
 plugin can find the moments, and up to 3 can understand and up to 3 can rate
 them. Up to 3 can suggest edits for the clips, which wait for the creator in
-the editor; plugins that export are coming later. A plugin runs on Clips
-Kitty's own Python 3.11, with the standard library (minus a few modules it
-leaves out) and the SDK, on the creator's PC with the creator's rights, like
-any program: Clips Kitty doesn't sandbox it, and its install screen shows what
-the plugin declares. The templates and tutorial use Quarkbloom Arena, a
-made-up game.
+the editor. Posting isn't a plugin step: Clips Kitty posts clips itself, and
+through WoopSocial it can post to many sites at once on the creator's own
+account. A plugin runs on Clips Kitty's own Python 3.11, with the standard
+library (minus a few modules it leaves out) and the SDK, on the creator's PC
+with the creator's rights, like any program: Clips Kitty doesn't sandbox it,
+and its install screen shows what the plugin declares. The templates and
+tutorial use Quarkbloom Arena, a made-up game.
 
 No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the
 first release that includes it; until that is out, run Clips Kitty from source.

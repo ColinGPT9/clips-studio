@@ -59,8 +59,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests edits for the creator     built
-  └── export               posts to a platform                coming later
+  └── edit                 suggests edits for the creator     built
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
   ↓
@@ -71,7 +70,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md)).
 - Up to 3 plugins can suggest edits for the clips that will be made: `job.wants("edit")` answers `True` in that run.
-- Export is not part of plugin contract 1: `job.wants("export")` answers `False`, and `kind: publisher` is refused as planned. Edit plugins suggest edits that wait for the creator in the editor ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step)).
+- Edit plugins suggest edits that wait for the creator in the editor ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step)).
+- Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](https://github.com/ColinGPT9/clips-studio#publish-to-every-platform-at-once)). `job.wants("export")` answers `False`, and `kind: publisher` is refused: plugins don't post.
 
 ## Get listed
 

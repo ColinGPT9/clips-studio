@@ -69,8 +69,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests edits for the creator     built
-  └── export               posts to a platform                coming later
+  └── edit                 suggests edits for the creator     built
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
   ↓
@@ -461,6 +460,48 @@ def test_no_page_says_a_plugin_cannot_post_or_is_sandboxed():
     assert ("It keeps out web pages and scripts that don't know it, not programs running as you: any program "
             "running as the user can read the file that holds it, plugins included. A plugin must not install "
             "or remove plugins; Clips Kitty can't stop one that tries.") in local
+
+
+# A sentence that names export or publisher plugins, and one that says they are still to come.
+POSTING_PLUGINS = re.compile(r"\bexport\b|kind: publisher|`publisher`|\bpublishers\b|\bpublisher plugins?\b", re.I)
+STILL_TO_COME = re.compile(r"(?<!not )\b(?:coming later|later|planned|still to come|coming soon)\b", re.I)
+# What the pages say instead (D34).
+POSTING = ("Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to "
+           "many sites at once on the creator's own account")
+NO_PUBLISHER = "`kind: publisher` is refused: plugins don't post."
+
+
+def _sentences(markdown: str) -> list[str]:
+    """A Markdown page's sentences. A table's rows are read one at a time, so
+    a sentence never runs from one row into the next."""
+    out = []
+    for block in re.split(r"\n\s*\n", markdown):
+        for part in block.splitlines() if block.lstrip().startswith("|") else [block]:
+            out += re.split(r"(?<=[.;!?])\s+", flat(part))
+    return out
+
+
+def test_no_page_says_export_or_publisher_plugins_are_coming():
+    found = []
+    for path in PAGES:
+        if path.name == "CHANGELOG.md":
+            continue  # a changelog says what each version had, such as the SDK's PLANNED_STEPS
+        found += [f"{path.relative_to(ROOT)}: {sentence}" for sentence in _sentences(path.read_text(encoding="utf-8"))
+                  if POSTING_PLUGINS.search(sentence) and STILL_TO_COME.search(sentence)]
+    assert not found, "\n".join(found)
+    for page in (ROOT / "README.md", DEV_DOCS / "README.md", SDK / "README.md", STEPS, TUTORIAL):
+        assert POSTING in flat(page.read_text(encoding="utf-8")), page.relative_to(ROOT)
+    for page in (ROOT / "README.md", DEV_DOCS / "README.md", SDK / "README.md", STEPS, DEV_DOCS / "plugin-manifest.md"):
+        assert NO_PUBLISHER in flat(page.read_text(encoding="utf-8")), page.relative_to(ROOT)
+    # They link README's publishing section for WoopSocial; the only WoopSocial address any of them
+    # has is the one that section already carries, with its affiliate note.
+    addresses = {address for path in PAGES
+                 for address in re.findall(r"https?://[^\s)\"'<>]*woopsocial[^\s)\"'<>]*",
+                                           path.read_text(encoding="utf-8"))}
+    assert addresses == {"https://woopsocial.com/?via=clipskitty"}
+    readme = flat((ROOT / "README.md").read_text(encoding="utf-8"))
+    assert ("Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost "
+            "to you.") in readme
 
 
 # ---- the editor in Steps --------------------------------------------------------------------

@@ -83,10 +83,6 @@
         color: var(--muted);
         font-size: 0.92rem;
       }
-      ul.steps li.later code,
-      ul.steps li.later .what {
-        opacity: 0.75;
-      }
       .tag {
         font-style: normal;
         font-size: 0.74rem;
@@ -100,10 +96,6 @@
       .tag.built {
         color: var(--success);
         border: 1px solid rgb(52 211 153 / 0.45);
-      }
-      .tag.later {
-        color: var(--warn);
-        border: 1px solid rgb(251 191 36 / 0.45);
       }
       .code-label {
         margin: 22px 0 6px;
@@ -225,10 +217,10 @@
               },
               {
                 "@type": "Question",
-                "name": "What about edit and export?",
+                "name": "What about edit and posting?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Edit is built; export is coming later. Edit plugins suggest edits that wait for the creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title or a layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload). A manifest that asks for a publisher (kind: publisher) is refused as planned, and until then Clips Kitty publishes the clips itself."
+                  "text": "Edit is built, and posting isn't a plugin step. Edit plugins suggest edits that wait for the creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title or a layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload). Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account. A manifest that asks for a publisher (kind: publisher) is refused: plugins don't post."
                 }
               },
               {
@@ -318,7 +310,6 @@
                   <li class="step"><code>understand</code><span class="what">says what happens in each one</span><em class="tag built">built</em></li>
                   <li class="step"><code>rate</code><span class="what">scores each moment</span><em class="tag built">built</em></li>
                   <li class="step"><code>edit</code><span class="what">suggests edits for the creator</span><em class="tag built">built</em></li>
-                  <li class="step later"><code>export</code><span class="what">posts to a platform</span><em class="tag later">coming later</em></li>
                 </ul>
               </li>
               <li class="box"><strong>Clips Kitty</strong><span>does every step no plugin does, then cuts, frames and captions the clips</span></li>
@@ -334,11 +325,16 @@
               manifest (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md" target="_blank" rel="noopener noreferrer">Steps</a>).
             </li>
             <li>
-              Export is not part of plugin contract 1: <code>kind: publisher</code> is refused as
-              planned. Edit plugins suggest edits that wait for the creator in the editor
+              Edit plugins suggest edits that wait for the creator in the editor
               (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step" target="_blank" rel="noopener noreferrer">Steps</a>).
             </li>
+            <li>
+              Posting isn't a plugin step: Clips Kitty posts clips itself, and through
+              <a href="https://woopsocial.com/?via=clipskitty" target="_blank" rel="noopener noreferrer sponsored">WoopSocial</a> it can post to many sites at once on the creator's own account.
+              <code>kind: publisher</code> is refused: plugins don't post.
+            </li>
           </ul>
+          <p class="note">Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</p>
         </div>
       </section>
 
@@ -645,14 +641,15 @@ python -m clipskitty_sdk run quarkbloom-bursts --sample</code></pre>
             <a href="https://github.com/ColinGPT9/clips-studio#from-source" target="_blank" rel="noopener noreferrer">From source</a>.
           </p>
 
-          <h3>What about edit and export?</h3>
+          <h3>What about edit and posting?</h3>
           <p>
-            Edit is built; export is coming later. Edit plugins suggest edits that wait for the
-            creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title or a
-            layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the
-            editor and apply your edits (Apply edits, or Apply edits &amp; upload). A manifest
-            that asks for a publisher (kind: publisher) is refused as planned, and until then
-            Clips Kitty publishes the clips itself.
+            Edit is built, and posting isn't a plugin step. Edit plugins suggest edits that wait
+            for the creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title
+            or a layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the
+            editor and apply your edits (Apply edits, or Apply edits &amp; upload). Clips Kitty
+            posts clips itself, and through WoopSocial it can post to many sites at once on the
+            creator's own account. A manifest that asks for a publisher (kind: publisher) is
+            refused: plugins don't post.
           </p>
 
           <h3>Does a rater decide what an automatic channel posts?</h3>

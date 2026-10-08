@@ -64,7 +64,7 @@ Required fields are in bold.
 | **`id`** | `publisher/name` | lower case letters, digits and hyphens; publisher up to 39 characters, name up to 64. The publisher `clipskitty` is reserved for the modes that ship with the app. For a listed plugin the publisher must be the repository's GitHub owner (checked by the catalog's index build; only the Clips Kitty project's own repositories may list examples under another name, such as `clips-kitty-examples`). |
 | **`name`** | What users see | up to 60 characters |
 | **`version`** | This release | SemVer, `1.2.0` or `1.2.0-beta.1` |
-| **`kind`** | What sort of plugin | `pipeline`. `caption-style`, `publisher`, `source`, `integration`, `provider` and `component` are planned and refused with a message saying so. |
+| **`kind`** | What sort of plugin | `pipeline`. `caption-style`, `source`, `integration`, `provider` and `component` are planned and refused with a message saying so. `kind: publisher` is refused: plugins don't post. |
 | **`capability`** | What the pipeline does | `highlight_detection` |
 | **`description`** | One or two sentences | up to 1000 characters; say honestly what it detects |
 | **`license`** | The plugin's licence, your choice | an SPDX identifier: `MIT`, `Apache-2.0`, `GPL-3.0-only`, `MIT OR Apache-2.0`. Shown on every Marketplace card. Using the SDK (MIT) doesn't put your plugin under the AGPL; code that `new` copied from a template keeps the SDK's MIT notice, in `TEMPLATE-LICENSE.txt`. |

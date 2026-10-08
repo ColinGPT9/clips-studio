@@ -367,9 +367,25 @@ def test_it_claims_no_sandbox_and_says_which_release_runs_plugins():
     for where in (flat(section("Show HN")), flat(dev_post())):
         assert NO_SANDBOX in where
         said = where.lower()
-        assert "export is coming later" in said
         assert "edit plugins suggest edits that wait for the creator in the editor" in said
-        assert "edit and export are coming later" not in said
+        # No export plugins (D34): Clips Kitty posts clips itself.
+        assert "clips kitty posts clips itself" in said and "plugins don't post" in said
+        assert "coming later" not in said
+
+
+def test_no_draft_says_export_or_publisher_plugins_are_coming():
+    """Colin chose no export plugins (D34): no sentence that names export or publisher plugins says they
+    are still to come, and where a draft says how clips get posted it names WoopSocial."""
+    sentences = re.split(r"(?<=[.;!?])\s+", flat(outside_blocks(text())))
+    sentences += [s for _, body in fenced(text()) for s in re.split(r"(?<=[.;!?])\s+", flat(body))]
+    posting_plugins = re.compile(r"\bexport\b|kind: publisher|\bpublishers\b|\bpublisher plugins?\b", re.I)
+    still_to_come = re.compile(r"(?<!not )\b(?:coming later|later|planned|still to come|coming soon)\b", re.I)
+    found = [s for s in sentences if posting_plugins.search(s) and still_to_come.search(s)]
+    assert not found, found
+    posting = ("Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to "
+               "many sites at once on the creator's own account")
+    assert posting in flat(section("Show HN")) and posting in flat(dev_post())
+    assert "`kind: publisher` is refused: plugins don't post." in flat(section("Show HN"))
 
 
 def test_the_picture_is_the_sdks():

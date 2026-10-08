@@ -2,9 +2,9 @@
 
 Clips Kitty turns a video into clips in a fixed order. Plugins can take over or add to the steps that work on the video's moments and clips: **find** picks the moments, **understand** says what happens in each one, **rate** gives each one a new score, and **edit** suggests an edit for each clip Clips Kitty is about to make. Clips Kitty does every step no plugin does, so a job that names no plugin runs exactly as it always has.
 
-Status: **built** in plugin contract 1 for find, understand and rate (SDK 1.1.0, `tests/test_plugin_steps.py`) and for edit (SDK 1.3.0, `tests/test_plugin_steps.py` and `tests/test_plugin_edit_*.py`). An edit plugin suggests edits that wait for the creator in the editor; it changes no clip by itself ([Suggest edits](#suggest-edits-the-edit-step)). One more step, export, is **planned**. It is not part of plugin contract 1, and `job.wants("export")` answers `False`.
+Status: **built** in plugin contract 1 for find, understand and rate (SDK 1.1.0, `tests/test_plugin_steps.py`) and for edit (SDK 1.3.0, `tests/test_plugin_steps.py` and `tests/test_plugin_edit_*.py`). An edit plugin suggests edits that wait for the creator in the editor; it changes no clip by itself ([Suggest edits](#suggest-edits-the-edit-step)). Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)). `job.wants("export")` answers `False`.
 
-In a manifest, `kind: publisher` is refused as planned.
+In a manifest, `kind: publisher` is refused: plugins don't post.
 
 ## The run order
 
