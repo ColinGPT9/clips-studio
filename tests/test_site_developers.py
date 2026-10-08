@@ -1,7 +1,7 @@
 """The website's developers page (site/developers.html) and the links to it.
 
 It says what the code does: the SDK picture's boxes are the ones in
-sdk/python/README.md, edit and export are marked as coming later, each
+sdk/python/README.md, edit is marked built and export as coming later, each
 building block names what it needs, and the sentence about which release
 runs plugins (kept in docs/developers/versioning.md) is in the hero, the
 Quickstart and the questions, in the root README's "Write a plugin" section,
@@ -42,6 +42,18 @@ CAPTION = ("posts when the creator clicks Publish, or on a schedule or automatic
            "switched on")
 NO_SANDBOX = ("Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty "
               "doesn't sandbox it. The install screen says what it declares.")
+
+
+def _suggestion_promise() -> str:
+    """The one sentence that says when a suggested edit reaches a clip, as
+    the app shows it (ui/src/renderer/src/lib/marketplace.ts)."""
+    marketplace = (ROOT / "ui" / "src" / "renderer" / "src" / "lib" / "marketplace.ts").read_text(encoding="utf-8")
+    m = re.search(r"export const SUGGESTION_PROMISE =\s*'([^']*)'", marketplace)
+    assert m, "SUGGESTION_PROMISE is not in marketplace.ts"
+    return m.group(1)
+
+
+SUGGESTION_PROMISE = _suggestion_promise()
 
 
 def flat(text: str) -> str:
@@ -166,7 +178,7 @@ def _page_picture() -> tuple[list, list]:
     return boxes, steps
 
 
-def test_edit_and_export_are_marked_coming_later():
+def test_edit_is_built_and_export_is_coming_later():
     boxes, steps = _page_picture()
     want_boxes, want_steps = _readme_picture()
     assert [tuple(map(html.unescape, b)) for b in boxes] == want_boxes
@@ -176,12 +188,15 @@ def test_edit_and_export_are_marked_coming_later():
         "find": ("", "built", "built"),
         "understand": ("", "built", "built"),
         "rate": ("", "built", "built"),
-        "edit": (" later", "later", "coming later"),
+        "edit": ("", "built", "built"),
         "export": (" later", "later", "coming later"),
     }
     assert "Clips Kitty SDK" in visible(section(page(), "how-it-fits"))
     faq = visible(section(page(), "faq"))
-    assert "What about edit and export? Coming later." in faq
+    assert "What about edit and export? Edit is built; export is coming later." in faq
+    assert "Edit plugins suggest edits that wait for the creator in the editor" in faq
+    assert SUGGESTION_PROMISE in faq
+    assert "Edit plugins suggest edits that wait for the creator in the editor" in visible(section(page(), "how-it-fits"))
 
 
 def test_the_caption_is_exact():
@@ -311,7 +326,9 @@ def test_its_links_resolve_and_external_ones_open_safely():
         elif target.startswith("#"):
             assert target[1:] in md_anchors(ROOT / "README.md"), target
         else:
-            assert (ROOT / target).is_file(), target
+            path, _, anchor = target.partition("#")
+            assert (ROOT / path).is_file(), target
+            assert not anchor or anchor in md_anchors(ROOT / path), target
     for target in re.findall(r"\]\((https?://[^)\s]+)\)", llms_section()):
         assert check_url(target) is None, target
 
@@ -411,13 +428,15 @@ def test_the_roadmap_no_longer_lists_plugins_as_future_only():
     later_text = visible(later[0]).lower()
     assert "plugin architecture" not in later_text
     assert "community extensions" not in later_text
-    assert "edit and export" in later_text
+    assert "plugins that export" in later_text
+    assert "edit and export" not in later_text and "plugins that edit" not in later_text
     assert "creator analytics" in later_text and "more models" in later_text
 
     item = re.search(r'<li class="partial" id="plugins">(.*?)</li>', roadmap, re.S)
     assert item, "the plugins item is in the roadmap's Now section"
     assert item.group(0) not in later[0]
     said = visible(item.group(1))
-    assert "Plugins that find, understand and rate the moments in a video are built" in said
+    assert ("Plugins that find, understand and rate the moments in a video are built, and so are plugins "
+            "that suggest edits for the clips, which wait for you in the editor") in said
     assert release_sentence() in said
     assert 'href="developers.html"' in item.group(1)

@@ -260,6 +260,7 @@ values in `config/settings.yaml`:
 | `pipeline` | object or string | an installed Marketplace pipeline picks the moments instead of Clips Kitty's own scoring: `{"id": "publisher/name", "version": "1.2.0", "settings": {...}}`, or just the id. Not with `sport`, `gaming_scoring` or `longform` |
 | `understand` | list | up to 3 installed Marketplace plugins that say what happens in each moment once it is found, in this order; their notes go to the AI that writes the titles, descriptions and hashtags. Each item is shaped like `pipeline`; one item alone is taken as a list of one |
 | `rate` | list | up to 3 installed Marketplace plugins that give each moment a new score once it is found (and any understanding is done), in this order; the last one's score counts. A moment rated under `min_score` is set aside, unless it is a must-have. Shaped like `understand` |
+| `edit` | list | up to 3 installed Marketplace plugins that suggest edits for the clips that will be made, once they are chosen (after any rating and the clip limit), in this order; each is handed what the ones before it suggested. The suggestions wait for the creator in the timeline editor and change no clip. Shaped like `understand` |
 
 **`rate` and `understand`** work on the moments whoever found them: Clips
 Kitty's own scoring, `sport`, `gaming_scoring` or a `pipeline`. They can't be
@@ -275,8 +276,27 @@ clips are made and their order, so where a watched channel or the daily
 schedule posts only the best few, a rater decides which clips those are.
 Developer guide: [Steps](developers/steps.md).
 
-Apps without the Marketplace (2.0.0 and earlier) ignore `pipeline`, `rate` and
-`understand` without an error. `GET /plugins` tells them apart: those apps
+**`edit`** works on the clips a Shorts run makes, whoever found the moments.
+It can't be combined with `longform`: "Suggest edits can't be combined with
+Longform: Longform picks and writes its clips its own way. Turn one of them
+off." The job's own `pipeline` may be named under it, and then has an edit
+run of its own after the clips are chosen. Each item must be installed,
+turned on and able to suggest edits, for example `edit[0]: the pipeline
+example-dev/x can't suggest edits for clips: its manifest needs moments in
+inputs and edits in outputs`. Each suggestion is kept in the clip's
+`scores.plugin_edits` ([below](#get-videosvideo_idclips)); the clip itself is
+made exactly as it would be without `edit`, and no run changes its
+`render_opts`. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
+An edit plugin that couldn't run holds nothing back: its suggestions change
+no clip, so watched channels and `then` publish as they would without it.
+`{"clear": ["edit"]}` on `PATCH /jobs/{id}` drops it. The word means three
+things: this job field is a list of plugins, while a clip's `render_opts.edit`
+and the preview's `edit` are the timeline editor's edit list; a job's `edit`
+never reaches a clip's render options. Developer guide:
+[Steps › Suggest edits](developers/steps.md#suggest-edits-the-edit-step).
+
+Apps without the Marketplace (2.0.0 and earlier) ignore `pipeline`, `rate`,
+`understand` and `edit` without an error. `GET /plugins` tells them apart: those apps
 don't have it.
 
 **Two responses that are not failures and not `job_id`:**
@@ -522,12 +542,14 @@ It holds numbers such as `clips`, `candidates`, `best_score`, `min_score`
 and `rejected` (by reason) and, when the run made no clips, a `cause`
 (`no_candidates`, `no_people`, `duplicates`, `below_threshold`, `rated_out`
 or `null`). `outcome.intent` and `outcome.sport` are described with `focus` and
-`sport`. A run with `understand` or `rate` adds:
+`sport`. A run with `understand`, `rate` or `edit` adds:
 
 - `steps`: one entry for each plugin run, in order:
   `{"plugin", "version", "name", "steps", "ok", "given", "noted", "rated", "set_aside"}`,
   plus `error` when it didn't run. `error` is one sentence for the creator,
-  such as "It isn't installed any more."
+  such as "It isn't installed any more." An edit run's entry has `steps`
+  `["edit"]`, `given` the clips it was handed and `suggested` how many of them
+  it suggested an edit for; its `noted`, `rated` and `set_aside` are 0.
 - `rated_out`: how many moments a plugin rated under the minimum score, when
   any were. The cause `rated_out` means every moment was set aside that way.
 
@@ -556,6 +578,40 @@ or `null`). `outcome.intent` and `outcome.sport` are described with `focus` and
 
 `score` is the final 0–100 ranking; `scores` is the breakdown that produced it,
 which is the interesting part if you are building your own selection on top.
+
+A clip a plugin suggested edits for (the job's `edit`) carries them in
+`scores.plugin_edits`, one entry for each suggestion:
+
+```json
+"plugin_edits": [
+  {"id": "3f1c0a9e7b2d", "plugin": "example-dev/quarkbloom-trimmer", "version": "1.0.0",
+   "name": "Quarkbloom Trimmer", "window": [812.0, 841.5], "min_length": 10.0,
+   "edit": {"cuts": [[815.6, 820.6]], "title_overlay": {"text": "Triple bloom!", "seconds": 3}},
+   "reason": "Cuts the respawn wait", "state": "new"}
+]
+```
+
+`id` is the same whenever the same plugin suggests the same edit, in every
+run and every version, so the creator's decision carries over a forced re-run.
+`window` is the clip's start and end when it was suggested, and `edit` holds
+`cuts`, `mutes`, `volume`, `fade_in`, `fade_out`, `speed`, `title_overlay` and
+`crop` as Clips Kitty fitted them, its times in seconds of the video. `state`
+is `new`, `hidden` (put away by the creator, or used once and no longer in the
+clip's saved edit) or `used`. A used entry has `applied`, what it put in the
+clip and is still there: `{"removed", "mutes", "muted_words", "values"}`, the
+cuts it took out, the mutes it added, the words those hide in the captions
+(`{start, end, word}`) and `{field: {before, after}}` for each of `volume`,
+`fade_in`, `fade_out`, `speed`, `hook` and `crop` it changed, all in video
+seconds. It may also have `remade: true`: a forced re-run has made the clip's
+file again without its saved edit, and the editor says so. Nothing in
+`plugin_edits` changes a clip by itself.
+
+`PATCH /clips/{clip_id}` with `{"suggestion": {"id": "3f1c0a9e7b2d", "state":
+"hidden"}}` hides one, and `"state": "new"` shows it again. Nothing renders. A
+suggestion is used only by a render that applies it (`suggestions`, under
+[`render_first`](#publishing-to-youtube)): any other state is 400 "suggestion:
+state must be hidden or new; a suggestion is used by applying it", and an id
+the clip doesn't have is 404 "no such suggestion on this clip".
 A clip from a `sport` job also carries the moment it is: `sport_event`
 (`goal`, `save`...), `sport_label`, `sport_minute` (from the match clock),
 `sport_t` (seconds into the video), `sport_team`, `sport_player`, `sport_period`,
@@ -781,13 +837,22 @@ Returns immediately. Watch the `publish` WebSocket events, or poll
 | `license` | `youtube` or `creativeCommon` |
 | `embeddable`, `public_stats_viewable`, `notify_subscribers` | booleans |
 | `default_language`, `playlist_id`, `thumbnail` | optional |
-| `render_first` | `{start?, end?, render_opts?}`: re-render before uploading |
+| `render_first` | `{start?, end?, render_opts?, suggestions?}`: re-render before uploading |
 
 **`render_first` is how "no manual export" works.** Pass the editor's pending
 `render_opts` and the clip is re-rendered through the ordinary `render` job
 first, then uploaded. Omit it and the existing rendered file is used as-is.
 Either way the clip's own `render_opts` are never modified. The project stays
 editable.
+
+`render_first.suggestions` says which edits a plugin suggested this render
+puts in the clip, as the editor used them: `{"used": [{"id", "applied"}]}`,
+at most 8, with `applied` shaped as in `scores.plugin_edits`
+([above](#get-videosvideo_idclips)). The internal `POST /clips/{clip_id}/render`
+(Apply edits) takes the same field. Only what the render really changed, and
+only parts of each suggestion, is recorded, so a client can never mark more
+than it put in. A wrong shape is a 400, such as "suggestions: expected {used:
+[{id, applied}]}".
 
 ### Scheduling
 
@@ -1202,7 +1267,9 @@ post the clips: the item goes to `ask` with `publish_error` "Clips Kitty made
 these clips without {names}, so they weren't posted automatically. Check them
 and publish, or turn off Rate & understand in this channel's settings." An
 `ask` watch says "Clips Kitty made these clips without {names}. Check them
-before you publish." A job whose options name neither is never held this way.
+before you publish." A job whose options name neither is never held this way, and neither is one
+whose only skipped plugin was named under `edit`: its suggestions change no
+clip.
 When a rater set every moment aside, the item is `done` with "{names} rated
 every moment under the minimum score ({min_score}), so there were no clips to
 publish." A job's own `then` publish is held the same way, with a line in its
@@ -1259,13 +1326,15 @@ Set aside a video that hasn't been queued yet, or decline an `ask`.
 ## Plugins
 
 **Experimental.** Community pipelines: plugins that find a video's moments,
-or say what happens in them and rate them, while Clips Kitty does the rest.
+say what happens in them and rate them, or suggest edits for the clips, while
+Clips Kitty does the rest.
 Installing one never runs anything from it; a job runs it when its options
-say `pipeline: {"id": "publisher/name"}`, or name it under `understand` or
-`rate` ([`POST /jobs`](#post-jobs)). Each plugin's `details.steps` says which
+say `pipeline: {"id": "publisher/name"}`, or name it under `understand`,
+`rate` or `edit` ([`POST /jobs`](#post-jobs)). Each plugin's `details.steps` says which
 of these it can be chosen for (`Finds moments`, `Understands moments`,
-`Understands what it finds`, `Rates moments`), and `details.time_limit` how
-long a run that rates or understands may take. Developer guide:
+`Understands what it finds`, `Rates moments`, `Suggests edits`), and
+`details.time_limit` how long a run that rates, understands or suggests edits
+may take. Developer guide:
 [Getting started](developers/getting-started.md) and [Steps](developers/steps.md).
 
 Routes that fetch, install, change or remove plugins need the
@@ -1441,7 +1510,9 @@ types:
   what happens in the moments) and `ranking` events from each plugin that
   rates them; both carry `plugin`, the plugin's name, and the job's progress
   label reads "Understanding moments with {plugin}" or "Rating moments with
-  {plugin}".
+  {plugin}". A job with `edit` also has `edit` events, from each plugin
+  suggesting edits for the clips, after `ranking` and before `render`; they
+  carry `plugin` too, and the label reads "Suggesting edits with {plugin}".
   **`job_id` is `null` for prefetch downloads**, which belong to a future job,
   not the running one: never attribute them to the current job.
 - **`model_pull`** is download progress for `POST /models/pull`.

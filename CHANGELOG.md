@@ -87,6 +87,24 @@ were often broken in a way that only showed up on somebody else's machine.
   [docs/developers/steps.md](docs/developers/steps.md) explains them.
   (New job options: `rate`, `understand`.)
 
+- **Suggest edits: Marketplace plugins that suggest edits for your clips.** Once you have
+  installed a Marketplace plugin that can suggest edits, adding a video shows a new
+  switch, **Suggest edits**. After the clips are chosen, up to three plugins, in the order
+  you choose, can each suggest an edit for every clip: parts to cut, stretches to mute
+  (their captions are hidden too), the volume, fades, the speed, a hook title or a layout,
+  with a sentence saying why. The clips are made exactly as they would be without the
+  switch. Open a clip in the editor to see each suggestion, with the plugin's name, and
+  **Use** it, **Hide** it, or **Take it back** after using it; Take it back removes only
+  what the suggestion added, never your own edits. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
+  A plugin that couldn't suggest anything never holds a channel's automatic posting, and
+  the video page says what each plugin suggested. Not with Longform. A suggestion you used
+  is marked when a forced re-run makes the clip again without your edits, so you can
+  apply them again. For developers: the plugin kit (SDK 1.3.0) adds `job.suggest_edit()`
+  and an `editor` template, and [docs/developers/steps.md](docs/developers/steps.md)
+  explains the edit step. Plugins that post to a platform (export) are still to come.
+  (New job option: `edit`. New fields: `suggestions` on `render_first` when publishing,
+  `suggestion` on `PATCH /clips/{id}`, and `plugin_edits` in a clip's `scores`.)
+
 - **A second colour for the second speaker.** Tick **Second speaker in another colour**
   in the caption settings, for a whole run or for one clip in the editor, and pick the
   colour. When two people talk in a clip, the main speaker keeps the text colour and

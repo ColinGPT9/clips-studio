@@ -1233,7 +1233,9 @@ def test_the_docs_rater_and_understander_run(tmp_path, capsys):
 def test_the_steps_page_shows_the_code_these_tests_run():
     """docs/developers/steps.md shows the rater and the understander the test
     above runs, word for word, with the answers it prints, and its manifests
-    validate with no warnings, so the page can't drift from what works."""
+    validate with no warnings, so the page can't drift from what works. Its
+    editor's manifest validates too, as one that only suggests edits; the
+    editor itself runs in tests/test_plugin_docs.py."""
     yaml = pytest.importorskip("yaml")
     import re
 
@@ -1245,7 +1247,8 @@ def test_the_steps_page_shows_the_code_these_tests_run():
     assert DOCS_RATER_ANSWERS in blocks["text"]
     rater = next(yaml.safe_load(b) for b in blocks["yaml"] if "quarkbloom-rater" in b)
     notes = {**rater, "id": "example-dev/quarkbloom-notes", "name": "Quarkbloom Notes", "outputs": ["context"]}
-    for data, offered in ((rater, ("rate",)), (notes, ("understand",))):
+    editor = next(yaml.safe_load(b) for b in blocks["yaml"] if "quarkbloom-trimmer" in b)
+    for data, offered in ((rater, ("rate",)), (notes, ("understand",)), (editor, ("edit",))):
         report = manifest.validate(data)
         assert (report.errors, report.warnings) == ([], [])
         assert manifest.offers(data) == offered

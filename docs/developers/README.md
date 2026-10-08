@@ -1,6 +1,6 @@
 # Platform overview
 
-Clips Kitty finds the best moments in a long video and turns them into short clips: it downloads the video, transcribes it with Whisper, picks the moments, then cuts, frames, captions and publishes them, all on the user's PC. The platform lets anyone take over or add to the moment steps: find, understand, rate, with their own plugin, without forking the app.
+Clips Kitty finds the best moments in a long video and turns them into short clips: it downloads the video, transcribes it with Whisper, picks the moments, then cuts, frames, captions and publishes them, all on the user's PC. The platform lets anyone take over or add to the moment steps: find, understand, rate, and suggest edits for the clips, with their own plugin, without forking the app.
 
 That is where specialised knowledge pays: someone who knows one game, one sport or one kind of show can tell a great moment from a loud one far better than a general-purpose detector. You write the part that knows your niche. Clips Kitty does the rest, and its users find your pipeline in the Marketplace.
 
@@ -14,7 +14,7 @@ That is where specialised knowledge pays: someone who knows one game, one sport 
                      Plugin contract 1 + Python SDK (clipskitty_sdk)
                                          │
              Clips Kitty's engine: one local API (127.0.0.1:8765), one job queue,
-    one pipeline: download → transcribe → [find] → [understand] → [rate] → cut, frame, caption
+    one pipeline: download → transcribe → [find] → [understand] → [rate] → [edit] → cut, frame, caption
                                          │
                 ┌────────────────────────┼────────────────────────┐
              FFmpeg                   Whisper                Ollama / Gemma
@@ -37,7 +37,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests cuts and framing          coming later
+  ├── edit                 suggests edits for the creator     built
   └── export               posts to a platform                coming later
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
@@ -48,7 +48,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - One plugin can find moments for a video; it replaces Clips Kitty's own finding.
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](steps.md)).
-- Edit and export are not part of plugin contract 1: `outputs: [edits]` and `kind: publisher` are refused as planned.
+- Up to 3 plugins can suggest edits for the clips that will be made.
+- Export is not part of plugin contract 1: `kind: publisher` is refused as planned. Edit plugins suggest edits that wait for the creator in the editor ([Steps](steps.md#suggest-edits-the-edit-step)).
 
 No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
 
@@ -56,7 +57,7 @@ No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the fi
 
 A program, in any language, that Clips Kitty starts for one video. It reads a job folder (`job.json`: the video, its transcript, settings, the tools and models it asked for), works out which moments make good clips, and writes them back (`result.json`: start, end, score, label, reason). Progress goes to the app as it works. It can run entirely on the PC, call your own hosted model, or both, as long as it says so.
 
-A plugin can also work on the moments after they are found, by Clips Kitty or by a pipeline: say what happens in each one, for the titles (**understand**), or give each one a new score (**rate**). The creator chooses those under **Rate & understand** when adding a video ([Steps](steps.md)).
+A plugin can also work on the moments after they are found, by Clips Kitty or by a pipeline: say what happens in each one, for the titles (**understand**), or give each one a new score (**rate**). The creator chooses those under **Rate & understand** when adding a video ([Steps](steps.md)). Once the clips are chosen, a plugin can also suggest edits for each one (**edit**): cuts, mutes, a hook title. The creator chooses those under **Suggest edits**, and each suggestion waits in the timeline editor until the creator uses it ([Steps](steps.md#suggest-edits-the-edit-step)).
 
 ```text
 Clips Kitty                              your pipeline
@@ -75,6 +76,7 @@ Clips Kitty                              your pipeline
 | Awesome Clips Kitty, the catalog the Marketplace reads: listing and entry formats, index and README build, the app's search, install from a listing, block list, labels, compatibility check, weekly numbers | built; the app reads the catalog's index from the project's main branch (it answers once merged); no public repository of its own yet, and the install counter has no address, so nothing is counted |
 | Marketplace screen in the desktop app; the Pipeline switch on a video | built and type-checked; not yet looked at on a real PC |
 | Plugins that understand and rate the moments found ([Steps](steps.md)): SDK 1.1.0, the `rate` and `understand` job options, the Rate & understand switch | built; the switch is type-checked, not yet looked at on a real PC |
+| Plugins that suggest edits for the clips ([Steps](steps.md#suggest-edits-the-edit-step)): SDK 1.3.0, the `edit` job option, the Suggest edits switch, the suggestions in the timeline editor with Use, Hide and Take it back | built; the switch and the editor are type-checked, not yet looked at on a real PC |
 | Model references (Hugging Face, url, Ollama, bundled), one shared download, licence and size shown | built for public models; gated models planned |
 | Returning finished clip files instead of moments | planned |
 | Plugin kinds other than pipelines (caption styles, publishers, sources, providers) | planned: the manifest names them and refuses them with a message |
@@ -92,7 +94,7 @@ Clips Kitty                              your pipeline
 
 **Building**
 - [Pipeline development](pipeline-development.md): the contract, what you receive and return, testing.
-- [Steps](steps.md): find, understand and rate: which plugin does which step, and how their answers combine.
+- [Steps](steps.md): find, understand, rate and edit: which plugin does which step, how their answers combine, and how a suggested edit waits for the creator.
 - [SDK](sdk.md): the Python helper (`clipskitty_sdk`), every call and command.
 - [Signals cookbook](signals-cookbook.md): recipes for reading a game's video: a region's frames, colours, brightness, loudness, scene cuts, words said, the local model.
 - [Plugin manifest](plugin-manifest.md): every field of `clipskitty.yaml`.

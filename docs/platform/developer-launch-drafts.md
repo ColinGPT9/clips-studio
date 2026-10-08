@@ -50,8 +50,8 @@ HN's submit form needs an account, so how long a title it takes wasn't checked. 
 **What the text could say, in Colin's own words.** Each point is checked against the code:
 - **What it is.** Clips Kitty is a free, open-source app that turns long videos and streams into short clips on the creator's own PC. The SDK is a small Python package for writing plugins that teach it what a good moment looks like in a particular game or kind of show.
 - **In and out.** Clips Kitty starts a plugin with a job folder. Its `job.json` points to the video and the transcript, and holds the creator's settings and clip lengths. A finder writes `result.json` with moments: each has a start and an end in seconds, and can have a score from 0 to 100, a label and a reason.
-- **Which steps.** Find, understand and rate are built. One plugin can find a video's moments, replacing Clips Kitty's own finding. Up to 3 can understand (their notes go to the AI that writes each clip's title, description and hashtags), and up to 3 can rate (their scores decide which clips are made). Edit and export are coming later: plugin contract 1 refuses `outputs: [edits]` and `kind: publisher`.
-- **Trying it.** `new` makes a plugin from one of five templates, and `run --sample` runs it the way Clips Kitty would, on a 40-second test video the SDK makes with FFmpeg. The `game-events` template finds a red banner and a loud sound in that video. It is set up for Quarkbloom Arena, a made-up game.
+- **Which steps.** Find, understand, rate and edit are built. One plugin can find a video's moments, replacing Clips Kitty's own finding. Up to 3 can understand (their notes go to the AI that writes each clip's title, description and hashtags), and up to 3 can rate (their scores decide which clips are made). Edit plugins suggest edits that wait for the creator in the editor: up to 3 can suggest cuts, mutes, a hook title and more for each clip, and Clips Kitty doesn't put a suggestion into a clip until the creator uses it there and applies their edits. Export is coming later: plugin contract 1 refuses `kind: publisher`.
+- **Trying it.** `new` makes a plugin from one of six templates, and `run --sample` runs it the way Clips Kitty would, on a 40-second test video the SDK makes with FFmpeg. The `game-events` template finds a red banner and a loud sound in that video. It is set up for Quarkbloom Arena, a made-up game.
 - **What it runs on.** Clips Kitty runs plugins on its own Python 3.11, with the standard library (minus a few modules the app leaves out) and the SDK. It can't install other packages yet.
 - **Licences.** The SDK is MIT, so a plugin can use any licence. Clips Kitty itself is AGPL-3.0-or-later.
 - **Not sandboxed.** Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty doesn't sandbox it. The install screen says what it declares.
@@ -86,7 +86,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests cuts and framing          coming later
+  ├── edit                 suggests edits for the creator     built
   └── export               posts to a platform                coming later
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
@@ -97,9 +97,10 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - One plugin can find moments for a video; it replaces Clips Kitty's own finding.
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest.
-- Edit and export are not part of plugin contract 1: `outputs: [edits]` and `kind: publisher` are refused as planned.
+- Up to 3 plugins can suggest edits for the clips that will be made.
+- Export is not part of plugin contract 1: `kind: publisher` is refused as planned. Edit plugins suggest edits that wait for the creator in the editor.
 
-Clips Kitty starts a plugin with a job folder. Its `job.json` points to the video and the transcript, and holds the creator's settings and clip lengths. A finder answers in `result.json` with moments: each has a start and an end, and can have a score from 0 to 100, a label and a reason. An understander adds a note on what happens in each moment, and the notes go to the AI that writes each clip's title, description and hashtags. A rater gives each moment a new score, and the scores decide which clips are made.
+Clips Kitty starts a plugin with a job folder. Its `job.json` points to the video and the transcript, and holds the creator's settings and clip lengths. A finder answers in `result.json` with moments: each has a start and an end, and can have a score from 0 to 100, a label and a reason. An understander adds a note on what happens in each moment, and the notes go to the AI that writes each clip's title, description and hashtags. A rater gives each moment a new score, and the scores decide which clips are made. An editor suggests edits for each clip Clips Kitty makes, such as a cut, a mute or a hook title, and each one waits for the creator in the editor until they use it.
 
 ## Try it
 
@@ -133,7 +134,7 @@ The test video has a red banner from 22 to 27 seconds and a loud sound at the sa
 
 ## What's in it
 
-- `new`: five templates (blank, transcript, game-events, rater and understander), each with its own tests and a GitHub workflow that checks it on Linux and Windows.
+- `new`: six templates (blank, transcript, game-events, rater, understander and editor), each with its own tests and a GitHub workflow that checks it on Linux and Windows.
 - `run --sample`: runs your plugin the way Clips Kitty does, on the test video, without Clips Kitty.
 - `frame`: one frame of your own recording with a box drawn on it, to measure where your game's banner or icon is.
 - Helpers: `media` (frames, loudness and scene cuts, through FFmpeg), `signals`, `text` (the words said, with their times), `local_model` (asks the creator's local model, only on their PC) and `testing`.
@@ -145,7 +146,7 @@ The test video has a red banner from 22 to 27 seconds and a loud sound at the sa
 - No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
 - Plugins run on Clips Kitty's own Python 3.11, with the standard library (minus a few modules the app leaves out) and the SDK. Clips Kitty can't install other packages yet. A few happen to be inside the app, numpy and OpenCV among them, and can be imported, but they aren't promised and may change with an app update.
 - Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty doesn't sandbox it. The install screen says what it declares.
-- Edit and export are coming later.
+- Export is coming later. Edit plugins suggest edits that wait for the creator in the editor; Clips Kitty doesn't put a suggestion into a clip until the creator uses it there and applies their edits.
 - The SDK isn't on PyPI yet: it installs from GitHub.
 
 ## Licence

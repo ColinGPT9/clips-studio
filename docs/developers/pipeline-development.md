@@ -4,7 +4,7 @@ A **pipeline plugin** decides which moments of a video become clips. Clips Kitty
 
 Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option, the manifest validator and the plugin manager (install from a folder or a Git commit, through experimental API routes). The Marketplace screen in the desktop app (Phase 8) installs and manages plugins, and the Generate bar's **Pipeline** switch picks one for a video. **Planned**: returning finished clip files.
 
-A plugin can also work on the moments after they are found, by Clips Kitty or by a pipeline: say what happens in each one (understand) or give each one a new score (rate). That is chosen under **Rate & understand**, not Pipeline, and [Steps](steps.md) explains it. This page is about finding.
+A plugin can also work on the moments after they are found, by Clips Kitty or by a pipeline: say what happens in each one (understand) or give each one a new score (rate). That is chosen under **Rate & understand**, not Pipeline, and [Steps](steps.md) explains it. Once the clips are chosen, a plugin chosen under **Suggest edits** can suggest edits for each one, which wait for the creator in the editor ([Steps](steps.md#suggest-edits-the-edit-step)). This page is about finding.
 
 ## How a run works
 
@@ -163,6 +163,7 @@ How it combines with the job's other options:
 | `focus` | Handed to the plugin as `focus` |
 | `min_score` | Not applied to your scores (above). Applied to the scores a rater gives. |
 | Rate & understand (`rate`, `understand`) | Allowed: up to 3 plugins for each step look at the moments your pipeline found, after it, as they do after Clips Kitty's own scoring, Sports or Gaming scoring. They can't name your pipeline again. Not with Longform. ([Steps](steps.md)) |
+| Suggest edits (`edit`) | Allowed: up to 3 plugins suggest edits for the clips that will be made, after rating and the clip limit. Your pipeline may be one of them, in an edit run of its own. Not with Longform. ([Steps](steps.md#suggest-edits-the-edit-step)) |
 | Captions, caption style, hashtags, watermark, `long_clips`, publishing | Applied after the plugin, as for any job |
 
 Clips Kitty still runs its own audio and visual signal pass before the plugin starts; skipping it for plugin jobs is a possible later speed-up.

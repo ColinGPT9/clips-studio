@@ -22,12 +22,18 @@ The manifest validator also ties them together: an `inputs` entry needs its perm
 
 A moment's `title`, `reason` and `context` are taken from the transcript, so sending them off the PC counts as sending the transcript: a plugin that does so lists `transcript` in `sends`, as it would for the transcript itself. Like every `sends` entry, that is declared: Clips Kitty shows it to the user but can't check it ([Steps](steps.md)).
 
+**Suggesting edits needs no permission.** An edit run hands over the clips as moments, and what earlier edit plugins suggested for them (`suggested`); their reasons and hook titles are plugin text that may come from what was said, so they reach a plugin only with `transcript.read`. What Clips Kitty does with the answer is the same for every plugin:
+
+> Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
+
+That sentence says what Clips Kitty does with a suggestion, not what a plugin is able to do. A plugin runs as the user, so nothing stops its own code from changing clip files or posting by itself, as with any program the user installs; that is why `filesystem.write` and `project.write` are declared, not enforced ([Steps](steps.md#suggest-edits-the-edit-step)).
+
 ## Also enforced, whatever the permissions
 
 - **The environment.** A plugin's process does not inherit Clips Kitty's own variables (`CLIPS_*`, `CLIPSKITTY_*`) or any variable whose name contains KEY, TOKEN, SECRET, PASSWORD, PASSWD, CREDENTIAL, COOKIE or AUTH. This stops Clips Kitty handing over credentials by accident; it is not a wall, since the plugin can read the user's files.
 - **Secrets.** A plugin's `secret` settings reach only its own process, only in its environment, never in a file. They are not isolated from other software: the store is encrypted for the user's account (Windows) or readable only by the user (elsewhere), so another plugin running as the user can read it.
 - **Settings.** Only settings the manifest declares, with values that fit their type.
-- **Time.** A run stops at `run.timeout_minutes`: by default 60 minutes for a run that finds moments and 10 for one that rates or understands them. A cancelled job stops the plugin and everything it started.
+- **Time.** A run stops at `run.timeout_minutes`: by default 60 minutes for a run that finds moments and 10 for one that rates or understands them or suggests edits for the clips. A cancelled job stops the plugin and everything it started.
 - **Installing runs nothing** from the plugin (built with the plugin manager).
 
 ## Not enforced, and said so

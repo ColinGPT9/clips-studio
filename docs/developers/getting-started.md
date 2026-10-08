@@ -36,7 +36,7 @@ bash:
 python -m clipskitty_sdk new my-plugin --template blank --publisher your-github-name
 ```
 
-Use your own GitHub name, in lower case. `new --list` shows the five templates: `blank`, `transcript`, `game-events`, `rater` and `understander`. In the new folder's `clipskitty.yaml`:
+Use your own GitHub name, in lower case. `new --list` shows the six templates: `blank`, `transcript`, `game-events`, `rater`, `understander` and `editor`. In the new folder's `clipskitty.yaml`:
 
 - `id` is `<your GitHub name>/<plugin name>`, lower case;
 - set `name`, `description` (what it detects, honestly), `license` and `repository`;

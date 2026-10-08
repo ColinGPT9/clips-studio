@@ -88,7 +88,8 @@ plugin that finds, understands or rates the moments in a video, for one game
 or one kind of show; Clips Kitty does the rest: the download, the transcript,
 and cutting, framing and captioning the clips. Every step is optional: one
 plugin can find the moments, and up to 3 can understand and up to 3 can rate
-them. Plugins that edit or export are coming later. A plugin runs on Clips
+them. Up to 3 can suggest edits for the clips, which wait for the creator in
+the editor; plugins that export are coming later. A plugin runs on Clips
 Kitty's own Python 3.11, with the standard library (minus a few modules it
 leaves out) and the SDK, on the creator's PC with the creator's rights, like
 any program: Clips Kitty doesn't sandbox it, and its install screen shows what

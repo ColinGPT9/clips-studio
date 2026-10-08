@@ -366,7 +366,10 @@ def test_it_claims_no_sandbox_and_says_which_release_runs_plugins():
         assert sentence in where
     for where in (flat(section("Show HN")), flat(dev_post())):
         assert NO_SANDBOX in where
-        assert "edit and export are coming later" in where.lower()
+        said = where.lower()
+        assert "export is coming later" in said
+        assert "edit plugins suggest edits that wait for the creator in the editor" in said
+        assert "edit and export are coming later" not in said
 
 
 def test_the_picture_is_the_sdks():

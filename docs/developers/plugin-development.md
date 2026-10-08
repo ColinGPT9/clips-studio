@@ -10,7 +10,7 @@ Status: the plugin manager is **built** in the engine (`plugins/manager.py`, `pl
 |---|---|---|
 | **Plan** | Clips Kitty fetches the files into a staging folder, validates the manifest, checks it is for this Clips Kitty, and says what installing would do: the permissions with their labels, any ⚠ data warnings, requirements, and for an update what changes. Nothing is installed. | `POST /plugins/plan` |
 | **Install** | The staged files are checked again and moved into place. The plugin is on. | `POST /plugins/install` |
-| **Use** | A job names it with `pipeline: {"id": "publisher/name"}`, or under `rate` or `understand`; the engine runs it at the find step, or after it to understand and rate ([Pipeline development](pipeline-development.md), [Steps](steps.md)). | `POST /jobs` |
+| **Use** | A job names it with `pipeline: {"id": "publisher/name"}`, or under `rate`, `understand` or `edit`; the engine runs it at the find step, after it to understand and rate, or on the clips that will be made to suggest edits ([Pipeline development](pipeline-development.md), [Steps](steps.md)). | `POST /jobs` |
 | **Update** | A new version is planned and installed the same way, beside the old one, and becomes active once it validates. The old version is kept. | plan, install |
 | **Roll back** | The previous version becomes active again (and the newer one previous, so you can go forward again). The Marketplace's button is **Go back to …**. | `POST /plugins/{publisher}/{name}/rollback` |
 | **Turn off / on** | A plugin that is off can't be chosen for a job. | `.../disable`, `.../enable` |

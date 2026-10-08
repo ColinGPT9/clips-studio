@@ -228,7 +228,7 @@
                 "name": "What about edit and export?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Coming later. Plugin contract 1 covers find, understand and rate. A manifest that asks for edits (outputs: [edits]) or a publisher (kind: publisher) is refused as planned, and until then Clips Kitty does both itself."
+                  "text": "Edit is built; export is coming later. Edit plugins suggest edits that wait for the creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title or a layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload). A manifest that asks for a publisher (kind: publisher) is refused as planned, and until then Clips Kitty publishes the clips itself."
                 }
               },
               {
@@ -317,7 +317,7 @@
                   <li class="step"><code>find</code><span class="what">picks the moments</span><em class="tag built">built</em></li>
                   <li class="step"><code>understand</code><span class="what">says what happens in each one</span><em class="tag built">built</em></li>
                   <li class="step"><code>rate</code><span class="what">scores each moment</span><em class="tag built">built</em></li>
-                  <li class="step later"><code>edit</code><span class="what">suggests cuts and framing</span><em class="tag later">coming later</em></li>
+                  <li class="step"><code>edit</code><span class="what">suggests edits for the creator</span><em class="tag built">built</em></li>
                   <li class="step later"><code>export</code><span class="what">posts to a platform</span><em class="tag later">coming later</em></li>
                 </ul>
               </li>
@@ -328,13 +328,15 @@
           <ul class="precise">
             <li>One plugin can find moments for a video; it replaces Clips Kitty's own finding.</li>
             <li>Up to 3 plugins can understand and up to 3 can rate, after any finder.</li>
+            <li>Up to 3 plugins can suggest edits for the clips that will be made.</li>
             <li>
               A plugin's role comes from <code>inputs</code> and <code>outputs</code> in its
               manifest (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md" target="_blank" rel="noopener noreferrer">Steps</a>).
             </li>
             <li>
-              Edit and export are not part of plugin contract 1: <code>outputs: [edits]</code>
-              and <code>kind: publisher</code> are refused as planned.
+              Export is not part of plugin contract 1: <code>kind: publisher</code> is refused as
+              planned. Edit plugins suggest edits that wait for the creator in the editor
+              (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step" target="_blank" rel="noopener noreferrer">Steps</a>).
             </li>
           </ul>
         </div>
@@ -645,9 +647,12 @@ python -m clipskitty_sdk run quarkbloom-bursts --sample</code></pre>
 
           <h3>What about edit and export?</h3>
           <p>
-            Coming later. Plugin contract 1 covers find, understand and rate. A manifest that
-            asks for edits (outputs: [edits]) or a publisher (kind: publisher) is refused as
-            planned, and until then Clips Kitty does both itself.
+            Edit is built; export is coming later. Edit plugins suggest edits that wait for the
+            creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title or a
+            layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the
+            editor and apply your edits (Apply edits, or Apply edits &amp; upload). A manifest
+            that asks for a publisher (kind: publisher) is refused as planned, and until then
+            Clips Kitty publishes the clips itself.
           </p>
 
           <h3>Does a rater decide what an automatic channel posts?</h3>

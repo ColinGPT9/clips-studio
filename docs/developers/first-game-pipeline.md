@@ -50,7 +50,7 @@ Then change clipskitty.yaml, src/main.py and README.md for your game:
 https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md
 ```
 
-Put your own GitHub name, in lower case, in place of `your-github-name`: it becomes the publisher in the plugin's id, `your-github-name/quarkbloom-bursts`. On Windows the Next line may say `py -m clipskitty_sdk`: it names the Python that ran `new`. `new --list` shows the other templates: `blank`, `transcript`, `rater` and `understander`.
+Put your own GitHub name, in lower case, in place of `your-github-name`: it becomes the publisher in the plugin's id, `your-github-name/quarkbloom-bursts`. On Windows the Next line may say `py -m clipskitty_sdk`: it names the Python that ran `new`. `new --list` shows the other templates: `blank`, `transcript`, `rater`, `understander` and `editor`.
 
 `new` wrote these files:
 
@@ -337,12 +337,12 @@ python -m clipskitty_sdk listing quarkbloom-bursts --section gaming/generic
 - It sees only the banner's part of the screen and how loud the video is. It can't read the banner's words; anything else of that colour in that place fools it; a big play without the banner is missed.
 - A stream that moves the game (a webcam over it, or the game shown smaller) puts something else in the region. Such a stream needs its own `banner_region`.
 - Loud isn't the same as exciting: commentary or music at the same volume all along hides the crowd.
-- It finds moments only. Saying what happens in them (understand) and scoring moments others found (rate) are other plugins' steps, or other templates ([Steps](steps.md)). Edit and export plugins are coming later.
+- It finds moments only. Saying what happens in them (understand) and scoring moments others found (rate) are other plugins' steps, or other templates ([Steps](steps.md)). Export plugins are coming later; edit plugins suggest edits for the clips ([Steps](steps.md)).
 - It runs on the creator's PC with the creator's rights, like any program; Clips Kitty doesn't sandbox it ([Security](security.md)).
 
 ## Where to go next
 
 - [Signals cookbook](signals-cookbook.md): a region's frames, colours, brightness, an icon, loudness, scene cuts, words said, and asking the creator's local model about a frame.
 - [SDK](sdk.md): every call and command.
-- [Steps](steps.md): find, understand and rate, and how their answers combine.
+- [Steps](steps.md): find, understand, rate and edit, and how their answers combine.
 - [Troubleshooting](troubleshooting.md): the messages, and what to do.

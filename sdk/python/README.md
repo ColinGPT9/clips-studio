@@ -59,7 +59,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests cuts and framing          coming later
+  ├── edit                 suggests edits for the creator     built
   └── export               posts to a platform                coming later
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
@@ -70,7 +70,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - One plugin can find moments for a video; it replaces Clips Kitty's own finding.
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md)).
-- Edit and export are not part of plugin contract 1: `job.wants("edit")` and `job.wants("export")` answer `False`, and `outputs: [edits]` and `kind: publisher` are refused as planned.
+- Up to 3 plugins can suggest edits for the clips that will be made: `job.wants("edit")` answers `True` in that run.
+- Export is not part of plugin contract 1: `job.wants("export")` answers `False`, and `kind: publisher` is refused as planned. Edit plugins suggest edits that wait for the creator in the editor ([Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step)).
 
 ## Get listed
 

@@ -1,7 +1,8 @@
-"""The developer docs say what the code does: "Your first game pipeline" and
-the "Signals cookbook" run as written, on this checkout's SDK, and no page
-shows a real game as our example, says a plugin can't post or is sandboxed,
-or gives PowerShell a command it would run differently.
+"""The developer docs say what the code does: "Your first game pipeline", the
+"Signals cookbook" and the editor in "Steps" run as written, on this
+checkout's SDK, and no page shows a real game as our example, says a plugin
+can't post or is sandboxed, or gives PowerShell a command it would run
+differently.
 
 The tutorial's install lines are never run (they would fetch the SDK from
 GitHub's main branch, not this checkout): every other command runs with
@@ -37,13 +38,14 @@ for path in (str(ROOT), str(SDK)):
 
 from clipskitty_sdk import read_job, scaffold, testing  # noqa: E402
 from clipskitty_sdk.lint import lint_folder  # noqa: E402
-from clipskitty_sdk.manifest import load, validate_folder  # noqa: E402
+from clipskitty_sdk.manifest import load, offers, validate, validate_folder  # noqa: E402
 
 from plugins import registry  # noqa: E402
 
 DEV_DOCS = ROOT / "docs" / "developers"
 TUTORIAL = DEV_DOCS / "first-game-pipeline.md"
 COOKBOOK = DEV_DOCS / "signals-cookbook.md"
+STEPS = DEV_DOCS / "steps.md"
 VERSIONING = DEV_DOCS / "versioning.md"
 FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 needs_ffmpeg = pytest.mark.skipif(not FFMPEG, reason="needs FFmpeg and FFprobe")
@@ -67,7 +69,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests cuts and framing          coming later
+  ├── edit                 suggests edits for the creator     built
   └── export               posts to a platform                coming later
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
@@ -459,6 +461,87 @@ def test_no_page_says_a_plugin_cannot_post_or_is_sandboxed():
     assert ("It keeps out web pages and scripts that don't know it, not programs running as you: any program "
             "running as the user can read the file that holds it, plugins included. A plugin must not install "
             "or remove plugins; Clips Kitty can't stop one that tries.") in local
+
+
+# ---- the editor in Steps --------------------------------------------------------------------
+
+# What the editor in Steps is handed there: the rater's three moments as the clips, and a
+# transcript with word times saying "respawn timer" at 815.6 s, "Sam, a triple bloom" at
+# 830.5 s and "triple bloom" again at 1003 s.
+EDITOR_CLIPS = [{"start": 812, "end": 841.5, "score": 72}, {"start": 900, "end": 925, "score": 64},
+                {"start": 1000, "end": 1012}]
+EDITOR_TRANSCRIPT = {"language": "en", "segments": [
+    {"start": 815.0, "end": 817.0, "text": "Just the respawn timer now.", "words": [
+        {"start": 815.0, "end": 815.4, "word": "Just"}, {"start": 815.4, "end": 815.6, "word": "the"},
+        {"start": 815.6, "end": 816.1, "word": "respawn"}, {"start": 816.1, "end": 816.6, "word": "timer"},
+        {"start": 816.6, "end": 817.0, "word": "now."}]},
+    {"start": 830.0, "end": 832.0, "text": "Nice one Sam, a triple bloom!", "words": [
+        {"start": 830.0, "end": 830.3, "word": "Nice"}, {"start": 830.3, "end": 830.5, "word": "one"},
+        {"start": 830.5, "end": 830.8, "word": "Sam,"}, {"start": 830.9, "end": 831.0, "word": "a"},
+        {"start": 831.0, "end": 831.5, "word": "triple"}, {"start": 831.5, "end": 832.0, "word": "bloom!"}]},
+    {"start": 905.0, "end": 915.0, "text": "Nothing happening here."},
+    {"start": 1003.0, "end": 1010.0, "text": "What a triple bloom!"}]}
+
+
+def suggestion_promise() -> str:
+    """The one sentence that says when a suggested edit reaches a clip, as the
+    app shows it on the Suggest edits switch and in the Marketplace."""
+    marketplace = (ROOT / "ui" / "src" / "renderer" / "src" / "lib" / "marketplace.ts").read_text(encoding="utf-8")
+    m = re.search(r"export const SUGGESTION_PROMISE =\s*'([^']*)'", marketplace)
+    assert m, "SUGGESTION_PROMISE is not in marketplace.ts"
+    return m.group(1)
+
+
+def test_the_steps_page_editor_runs_as_written(tmp_path):
+    """The editor in Steps, its manifest and its code exactly as the page shows
+    them, run through `python -m clipskitty_sdk run --steps edit` on the
+    inputs the page describes, prints what the page shows."""
+    page = blocks(STEPS)
+    manifest_text = next(b.text for b in page if b.lang == "yaml" and "quarkbloom-trimmer" in b.text)
+    main = next(b.text for b in page if b.lang == "python" and "job.suggest_edit(m)" in b.text)
+    shown = next(b.text for b in page if b.lang == "text" and b.text.startswith("Suggest edits:"))
+    data = yaml.safe_load(manifest_text)
+    report = validate(data)
+    assert (report.errors, report.warnings) == ([], [])
+    assert offers(data) == ("edit",)
+    assert data["settings"]["mute_words"]["default"] == ""
+
+    plugin = tmp_path / "quarkbloom-trimmer"
+    (plugin / "src").mkdir(parents=True)
+    (plugin / "clipskitty.yaml").write_text(manifest_text, encoding="utf-8")
+    (plugin / "src" / "main.py").write_text(main, encoding="utf-8")
+    assert lint_folder(plugin) == []
+    transcript = tmp_path / "transcript.json"
+    transcript.write_text(json.dumps(EDITOR_TRANSCRIPT), encoding="utf-8")
+    clips = tmp_path / "clips.json"
+    clips.write_text(json.dumps(EDITOR_CLIPS), encoding="utf-8")
+    env = {**os.environ, "PYTHONPATH": str(SDK), "PYTHONUNBUFFERED": "1"}
+    for name in ("PYTEST_CURRENT_TEST", "PYTEST_ADDOPTS", "PYTEST_XDIST_WORKER"):
+        env.pop(name, None)
+    done = subprocess.run([sys.executable, "-m", "clipskitty_sdk", "run", str(plugin), "--steps", "edit",
+                           "--transcript", str(transcript), "--moments", str(clips), "--set", "mute_words=Sam",
+                           "--job-dir", str(tmp_path / "job")],
+                          cwd=tmp_path, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert shown in done.stdout, f"steps.md shows:\n{shown}\nbut it printed:\n{done.stdout}"
+    assert "changed:" not in done.stdout + done.stderr and "ignored:" not in done.stdout + done.stderr
+    # The page says what it ran, and what each value means.
+    prose = flat(STEPS.read_text(encoding="utf-8"))
+    assert "`--set mute_words=Sam`, `run --steps edit` prints:" in prose
+    assert "`tests/test_plugin_docs.py` runs it, as written here, through `python -m clipskitty_sdk run --steps edit`." in prose
+
+
+def test_the_promise_sentence_is_the_apps():
+    """Steps, Permissions and Security say when a suggestion reaches a clip in
+    the app's own sentence, and none of them says a plugin can't change one."""
+    promise = suggestion_promise()
+    for name in ("steps.md", "permissions.md", "security.md"):
+        text = flat((DEV_DOCS / name).read_text(encoding="utf-8"))
+        assert promise in text, name
+        assert not re.search(r"\bplugins? (?:can't|cannot|can not) (?:change|edit) (?:a |the )?clips?\b", text, re.I), name
+    # What it is, and what it isn't: a description of what Clips Kitty does, not a wall.
+    assert "That describes what Clips Kitty does with your answer; it is not a sandbox." in flat(
+        STEPS.read_text(encoding="utf-8"))
 
 
 # ---- PowerShell ------------------------------------------------------------------------------

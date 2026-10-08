@@ -688,7 +688,7 @@ Your plugin                every step is optional
   ├── find                 picks the moments                  built
   ├── understand           says what happens in each one      built
   ├── rate                 scores each moment                 built
-  ├── edit                 suggests cuts and framing          coming later
+  ├── edit                 suggests edits for the creator     built
   └── export               posts to a platform                coming later
   ↓
 Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
@@ -699,7 +699,8 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - One plugin can find moments for a video; it replaces Clips Kitty's own finding.
 - Up to 3 plugins can understand and up to 3 can rate, after any finder.
 - A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](docs/developers/steps.md)).
-- Edit and export are not part of plugin contract 1: `outputs: [edits]` and `kind: publisher` are refused as planned.
+- Up to 3 plugins can suggest edits for the clips that will be made.
+- Export is not part of plugin contract 1: `kind: publisher` is refused as planned. Edit plugins suggest edits that wait for the creator in the editor ([Steps](docs/developers/steps.md#suggest-edits-the-edit-step)).
 
 Three commands install the SDK, make a plugin from the `game-events` template (for
 Quarkbloom Arena, a made-up game) and run it on a test video the SDK makes. They need
