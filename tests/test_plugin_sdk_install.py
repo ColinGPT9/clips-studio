@@ -291,7 +291,7 @@ def raw_servers():
                         conn.sendall(reply)
                         conn.shutdown(socket.SHUT_WR)
                     except OSError:
-                        pass
+                        pass  # the client hung up first; the test checks what the client saw
 
         threading.Thread(target=serve, daemon=True).start()
         made.append(listener)

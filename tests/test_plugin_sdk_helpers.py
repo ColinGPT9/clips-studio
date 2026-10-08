@@ -548,7 +548,7 @@ def _raw_server(reply: bytes):
                 conn.sendall(reply)
                 conn.shutdown(socket.SHUT_WR)
             except OSError:
-                pass
+                pass  # the client hung up first; the test checks what the client saw
 
     threading.Thread(target=serve, daemon=True).start()
     return f"http://127.0.0.1:{listener.getsockname()[1]}", listener
