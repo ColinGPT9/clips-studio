@@ -62,6 +62,9 @@ Back on the main PC, **Render clips on**:
 - **Only on <a render PC>**: always there. If it's off, the clips wait for it,
   and the progress bar offers **Render here instead**. Nothing falls back
   without you choosing it.
+- A clip with music you added in the editor renders on this computer
+  whichever you choose: the music is a file here, and a render PC can't
+  fetch it.
 
 The progress bar says where each clip is: "Rendering clip 3/10 · on Gaming PC ·
 uploading 62%".
@@ -93,8 +96,8 @@ FFmpeg shows CPU encoding), whether it can do face tracking, and its version.
 - **The network drops mid-transfer**: transfers carry on from where they
   stopped, in both directions.
 - **A clip arrives damaged**: every file is checked (size, checksum, and that it
-  plays for the right length) before it's accepted; a damaged one is rendered
-  again.
+  plays for the right length: its window, or what its edit keeps of it) before
+  it's accepted; a damaged one is rendered again.
 - **Cancel**: cancelling a video stops its clips on the render PC too, at its next
   check-in (within ten seconds), including any FFmpeg it started.
 - **"Worker update required"**: the two PCs run different versions. Install the

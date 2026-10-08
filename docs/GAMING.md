@@ -177,7 +177,9 @@ again.
 
 The same editor is in the **clip editor** (Effects → Layout → **Gaming /
 Reaction** → *Change layout…*) to change one clip: shown in *Update preview*,
-saved on *Apply*.
+saved on *Apply*. Processing the video again keeps a clip you edited in its own
+layout. A webcam you set up or remembered for the video reaches it too, and a
+webcam you drew for that clip, or a split you turned off for it, stays.
 
 ## Who the streamer is, when it's found automatically
 

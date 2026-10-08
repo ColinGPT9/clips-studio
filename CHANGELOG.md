@@ -98,8 +98,8 @@ were often broken in a way that only showed up on somebody else's machine.
   what the suggestion added, never your own edits. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
   A plugin that couldn't suggest anything never holds a channel's automatic posting, and
   the video page says what each plugin suggested. Not with Longform. A suggestion you used
-  is marked when a forced re-run makes the clip again without your edits, so you can
-  apply them again. For developers: the plugin kit (SDK 1.3.0) adds `job.suggest_edit()`
+  is marked if its clip ever comes out without your edits, so you can apply them
+  again. For developers: the plugin kit (SDK 1.3.0) adds `job.suggest_edit()`
   and an `editor` template, and [docs/developers/steps.md](docs/developers/steps.md)
   explains the edit step. Plugins that post to a platform (export) are still to come.
   (New job option: `edit`. New fields: `suggestions` on `render_first` when publishing,
@@ -180,6 +180,19 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **Processing a video again keeps your edits.** **Process again** made every clip it
+  found again from the start: cuts, mutes, a layout, captions you fixed, colours,
+  branding and title-card words you had applied in the editor stayed in the editor but
+  were missing from the clip's file, and a channel that posts automatically could post
+  that file. A clip you edited is now made again with your edits, on this computer or a
+  render PC, and goes into a match's story reels with them. Clips you never edited, and
+  new ones, are made with the settings you chose, as before, even when you set up a
+  Gaming / Reaction split before processing. A clip you edited keeps its own look and
+  its own split, takes a webcam you set up or remembered for the video, and a split you
+  turned off for it stays off. In a match, your cuts, layout, caption fixes and colour
+  adjustments are kept, and the caption style, colours, branding and title card are the
+  job's; **Re-render** a clip to make it with its own. 16:9 Longform clips too. A clip
+  with music you added renders on this computer even when a render PC is chosen.
 - **A model download that failed no longer says it finished.** When Ollama could not
   fetch a model (no connection, a name that does not exist, a full disk), the Models
   page, setup and the box above all showed the download as done, with nothing installed.

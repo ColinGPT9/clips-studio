@@ -282,9 +282,15 @@ How they're made:
   28' AWO").
 - **With Longform,** its 16:9 clips make 16:9 reels too. Its Highlights video
   already is the match's recap.
-- **Changing a reel.** A reel isn't re-rendered on its own: re-render its
-  clips, then process the video again. Each reel is made again into the same
-  clip, keeping its title.
+- **Processing a match again** makes each clip you edited with your cuts,
+  layout, caption fixes, speaker fixes and colour adjustments. The caption
+  style, colour preset, branding and title card are this job's, the same as
+  every other clip of the match. A change you made to those on one clip stays
+  saved on it: **Re-render** in its clip panel, with the start and end as they
+  are, makes it with them.
+- **Changing a reel.** A reel isn't re-rendered on its own: change its clips
+  in the editor, then process the video again. Each reel is made again into
+  the same clip, keeping its title, from the clips as they were just made.
 
 ## Measured and left out
 

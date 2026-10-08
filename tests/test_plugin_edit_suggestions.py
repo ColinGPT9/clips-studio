@@ -290,9 +290,11 @@ def test_an_unknown_suggestion_id_is_refused(studio, capsys):
 
 def test_a_rerun_never_touches_the_saved_edit(studio, monkeypatch, tmp_path):
     """A forced re-run of the video (process_video at a window the clip
-    already has) keeps the clip's title, status and saved edit, points it at
-    a file made without that edit, and carries the creator's decisions on
-    the suggestions it makes again (scratchpad map, section 2.3)."""
+    already has) keeps the clip's title, status and saved edit, and carries
+    the creator's decisions on the suggestions it makes again. Here the file
+    it registers was made without that edit, as when the edit was saved
+    while the run was making the clip (D33), so the used one is marked
+    remade."""
     import core.pipeline as pipeline
     from analysis.metadata import ClipMetadata
     from core.models import ClipCandidate

@@ -243,7 +243,7 @@ values in `config/settings.yaml`:
 
 | Field | Type | What it does |
 |---|---|---|
-| `force` | bool | process again even if this video is already done |
+| `force` | bool | process again even if this video is already done. A clip you edited is made again with its saved `render_opts` (below) |
 | `max_clips` | int | cap clips from this video |
 | `min_score` | int | quality bar, 0–100 |
 | `captions` | bool | burn captions in (default true) |
@@ -310,6 +310,22 @@ Re-submitting a finished video is silently a no-op without `force`, because
 processing costs an hour and produces duplicate clips. **Check for `job_id`
 being `null`** rather than assuming a job was created. Retry with
 `{"force": true}` if you meant it.
+
+**Clips the video already has.** A run that makes a window again keeps the
+clip's title, description, hashtags and status. A clip the creator edited
+(its `render_opts` hold `edit`, `crop`, `caption_lines`, `speaker_edits`,
+`adjust`, `captions` or `normalize_audio`, or `"gaming": null`, or a `gaming`
+with `by` `clip`) is made with its saved `render_opts`, except `profile`,
+`podcast`, `vertical_live`, `sport` and `speaker_turns`, which the job
+decides. In a Sports job only those per-clip keys are used, and the job's
+caption style, filter, watermark and card words stay. In a Gaming / Reaction
+job, an edited clip's `gaming` with `by` `video` or `creator` keeps its
+layout and takes the job's webcam when a person chose it (`by` `user` or
+`creator`). Any other clip is made with the job's options. No run changes the
+choices saved on a clip you edited: a run records the split it rendered with
+and who is heard talking, and adds a Highlights card where the clip had none;
+for clips nobody edited it also updates the Highlights card words and the
+split to this run's.
 
 Other outcomes:
 
@@ -602,8 +618,9 @@ clip and is still there: `{"removed", "mutes", "muted_words", "values"}`, the
 cuts it took out, the mutes it added, the words those hide in the captions
 (`{start, end, word}`) and `{field: {before, after}}` for each of `volume`,
 `fade_in`, `fade_out`, `speed`, `hook` and `crop` it changed, all in video
-seconds. It may also have `remade: true`: a forced re-run has made the clip's
-file again without its saved edit, and the editor says so. Nothing in
+seconds. It may also have `remade: true`: the clip's file was made again
+without its saved edit (the edit was saved while a run was making the clip),
+and the editor says so. Nothing in
 `plugin_edits` changes a clip by itself.
 
 `PATCH /clips/{clip_id}` with `{"suggestion": {"id": "3f1c0a9e7b2d", "state":
