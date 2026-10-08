@@ -1,0 +1,12 @@
+name: subtr-actor
+description: Reads Rocket League replay files and gives you goals, demolitions, touches, boost pickups and stats timelines with exact times, ready to turn into highlight timestamps. Rust library with Python and JavaScript bindings.
+section: games
+relationship: related
+license: MIT
+source:
+  github: https://github.com/rlrml/subtr-actor
+runs: local
+tags: [rocket league, replays, game events, rust, python]
+games: [rocket-league]
+added: 2026-10-07
+checked: 2026-10-07

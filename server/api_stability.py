@@ -125,7 +125,7 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     # The plugin platform (plugins/api.py). Experimental while it is new; the
     # routes that change what is installed need the X-Clips-Kitty-Session header.
     ("GET", "/plugins"): (EXPERIMENTAL, "plugins", "Installed plugins with their versions, permissions and state, and the built-in modes."),
-    ("POST", "/plugins/plan"): (EXPERIMENTAL, "plugins", "Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header."),
+    ("POST", "/plugins/plan"): (EXPERIMENTAL, "plugins", "Fetch a plugin from a folder or a Git commit and say what installing it would do, with the install screen as text. Session header."),
     ("POST", "/plugins/install"): (EXPERIMENTAL, "plugins", "Install what a plan fetched. Session header."),
     ("POST", "/plugins/{publisher}/{name}/enable"): (EXPERIMENTAL, "plugins", "Turn a plugin on. Session header."),
     ("POST", "/plugins/{publisher}/{name}/disable"): (EXPERIMENTAL, "plugins", "Turn a plugin off. Session header."),
@@ -138,7 +138,12 @@ ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     ("DELETE", "/plugins/{publisher}/{name}"): (EXPERIMENTAL, "plugins", "Remove a plugin, its files and its stored keys. Session header."),
     ("PUT", "/plugins/{publisher}/{name}/secrets"): (EXPERIMENTAL, "plugins", "Store a plugin's secret settings. Session header."),
     ("GET", "/marketplace"): (EXPERIMENTAL, "plugins", "Listed plugins from the registry indexes, searched and filtered, with what is installed."),
-    ("POST", "/marketplace/refresh"): (EXPERIMENTAL, "plugins", "Fetch the registry index addresses set in settings into the cache."),
+    ("POST", "/marketplace/refresh"): (EXPERIMENTAL, "plugins", "Fetch Clips Kitty's online list and the registry index addresses set in settings into the cache; automatic: the online list only, when a day old. Session header."),
+    ("GET", "/marketplace/online"): (EXPERIMENTAL, "plugins", "Whether the Marketplace checks Clips Kitty's online list by itself, when it last fetched it and how the last try went."),
+    ("PUT", "/marketplace/online"): (EXPERIMENTAL, "plugins", "Switch the Marketplace's automatic checks of Clips Kitty's online list on or off for this PC. Session header."),
+    ("GET", "/marketplace/catalog"): (EXPERIMENTAL, "plugins", "Awesome Clips Kitty's apps, models, workflows, integrations and tools, searched, with their sections, labels and numbers."),
+    ("GET", "/marketplace/counting"): (EXPERIMENTAL, "plugins", "Whether installs from the Marketplace are counted, and what counting sends."),
+    ("PUT", "/marketplace/counting"): (EXPERIMENTAL, "plugins", "Switch install counting on or off for this PC. Session header."),
 }
 
 

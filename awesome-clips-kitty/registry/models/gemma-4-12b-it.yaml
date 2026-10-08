@@ -1,0 +1,11 @@
+name: Gemma 4 12B Unified
+description: A mid-size Gemma 4 model with a long context window and text, image and short-audio input. A step up for ranking moments on mid-range GPUs, and available in Ollama.
+section: language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: google/gemma-4-12B-it
+runs: local
+tags: [llm, ollama, multimodal, long context]
+added: 2026-10-07
+checked: 2026-10-07

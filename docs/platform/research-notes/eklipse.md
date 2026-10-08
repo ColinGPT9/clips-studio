@@ -7,6 +7,8 @@ Platform: Eklipse (eklipse.gg, app.eklipse.gg). Tier 1, Track D (market referenc
 **Verdict (two lines).** Eklipse is a closed, cloud-only SaaS with three detection layers: per-game "detection models" with a per-game event taxonomy (Valorant: KILL/ACE/CLUTCH/TEAM ACE/VICTORY; Fortnite: DOUBLE/TRIPLE/MEGA/EPIC ELIMINATION…), per-genre tuning in the June-2026 "Gameplay Intelligence" engine (five buckets: FPS, battle royale, MOBA, tactical shooter, strategy/non-action), and a generic audio/reaction fallback for the rest of the "3,000+" games; the game is chosen automatically from the stream's category metadata (one game per VOD), with a manual "Resubmit → select game" override.
 No API, SDK, plugin system or developer program is published (home, features, terms, help-centre search): H9 confirmed, with the nuance that detection is per game *and* per genre, not per genre only. Useful as a feature checklist for a specialised gaming pipeline, not as an extensibility model.
 
+**Update (2026-10-07).** Read again for Colin's message of 10:35 UTC: Eklipse has been paid-only and cloud-only since June 2026, its pages give 300+, 1,000+ and 3,000+ as the number of games, and Powder (a local Windows clipper) shut down in July 2026 according to Eklipse. What the wider gaming market covers, and which genres no product detects game events for, is in [ecosystem-projects.md](ecosystem-projects.md#gaming-what-the-market-covers-and-where-the-gaps-are).
+
 ---
 
 ## Template points 1–9 (mostly n/a: Eklipse is a product, not an extension ecosystem)

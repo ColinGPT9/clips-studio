@@ -7,13 +7,37 @@ import type {
   EditData,
   GamingSettings,
   LiveOverlay,
+  PluginEdit,
   SpeakerTurn,
   TranslationPreview,
+  UsedSuggestions,
   WatermarkConfig,
   Word
 } from '../lib/types'
 import FeatureBoundary from './FeatureBoundary'
 import GamingLayoutEditor from './GamingLayoutEditor'
+import EditSuggestions from './EditSuggestions'
+import {
+  ADDED,
+  ALREADY,
+  NOTHING_LEFT,
+  TAKEN_BACK,
+  applySuggestion,
+  defaultEdit,
+  fromApplied,
+  marksAfterUndo,
+  marksWithout,
+  pushed,
+  suggestionCards,
+  takeBack,
+  toggledWord,
+  usedForRender,
+  wordMuted as isWordMuted,
+  withoutMarks,
+  type ClipContext,
+  type UseDelta,
+  type UseMark
+} from '../lib/editSuggestions'
 import { PRESETS } from '../lib/gamingLayout'
 import { compactEdits, fixSpeakers, groupWords, paintTurns, tagLines } from '../lib/speakerTurns'
 import MultilingualExport from './MultilingualExport'
@@ -96,8 +120,10 @@ const UPLOADPOST_TAB: { id: Tab; label: string; icon: JSX.Element } = {
 }
 
 /** One step Undo can take back: the edit list as it was, or the speaker
- *  fixes as they were (null = as the clip was saved). */
-type Past = { edit: EditData } | { speakers: SpeakerTurn[] | null }
+ *  fixes as they were (null = as the clip was saved). A Use or Take it back
+ *  of a suggested edit is one step: it also holds the layout as it was, and
+ *  the Use mark Undo drops or puts back (lib/editSuggestions.ts). */
+type Past = { edit: EditData; layout?: string; suggestion?: UseMark } | { speakers: SpeakerTurn[] | null }
 
 /** A user text correction for one transcript word (misheard by Whisper). */
 interface WordEdit {
@@ -137,21 +163,6 @@ const PROFANITY = new Set([
 ])
 
 const normToken = (w: string): string => w.toLowerCase().replace(/[^a-z]/g, '')
-
-function defaultEdit(duration: number): EditData {
-  return {
-    keep: [[0, duration]],
-    mutes: [],
-    muted_words: [],
-    volume: 1,
-    mute_all: false,
-    fade_in: 0,
-    fade_out: 0,
-    speed: 1,
-    hook: null,
-    music: null
-  }
-}
 
 function isDefault(e: EditData, duration: number): boolean {
   const keep = e.keep ?? [[0, duration]]
@@ -255,7 +266,15 @@ export default function TimelineEditor({
   // (cuts, mutes, volume...) and the speaker fixes share it, so Ctrl+Z
   // always takes back the last thing, whichever kind it was.
   const [history, setHistory] = useState<Past[]>([])
+  // The suggested edits used in this session, by id: what each Use added,
+  // in seconds of the clip. Kept outside the Undo history, so its 30-step
+  // cap can't lose one; Undo of the Use drops it, and Reset drops them all.
+  // Apply sends them, so the clip records which suggestions it now has.
+  const [uses, setUses] = useState<Record<string, UseDelta>>({})
   const [words, setWords] = useState<Word[]>([])
+  // Whether api.clipWords has answered for this clip. Until it has, a
+  // suggested mute can't hide its words in the captions, so its Use waits.
+  const [wordsRead, setWordsRead] = useState(false)
   const [captionBase, setCaptionBase] = useState<CaptionLine[] | null>(null)
   const [playhead, setPlayhead] = useState(0) // original-timeline seconds
   const [busy, setBusy] = useState(false)
@@ -361,6 +380,7 @@ export default function TimelineEditor({
   useEffect(() => {
     setEdit({ ...defaultEdit(duration), ...(clip.render_opts?.edit ?? {}) })
     setHistory([])
+    setUses({})
     setNotice('')
     setDraftEditJson(null)
     setLayout(clip.render_opts?.crop ?? 'track')
@@ -376,9 +396,13 @@ export default function TimelineEditor({
     lastSpeakerWord.current = null
     setZoom(1)
     onPreview(null)
+    setWordsRead(false)
     api
       .clipWords(clip.id)
-      .then((r) => setWords(r.words))
+      .then((r) => {
+        setWords(r.words)
+        setWordsRead(true)
+      })
       .catch(() => setWords([]))
     api
       .captions(clip.id)
@@ -452,15 +476,31 @@ export default function TimelineEditor({
   }, [baked, duration, videoRef, draftActive])
 
   const push = (next: EditData): void => {
-    setHistory((h) => [...h.slice(-30), { edit }])
+    setHistory((h) => pushed<Past>(h, { edit }))
     setEdit(next)
+  }
+  /** A Use or Take it back of a suggested edit: the edit list, and the
+   *  layout when it changes it, as one Undo step that also holds the
+   *  suggestion's mark. A step that didn't change the layout doesn't hold
+   *  it, so its Undo never takes back a layout chosen by hand since. */
+  const pushSuggestion = (next: EditData, nextLayout: string, mark: UseMark): void => {
+    const step: Past = nextLayout !== layout ? { edit, layout, suggestion: mark } : { edit, suggestion: mark }
+    setHistory((h) => pushed<Past>(h, step))
+    setEdit(next)
+    setLayout(nextLayout)
   }
   const undo = (): void => {
     setHistory((h) => {
       if (h.length === 0) return h
       const last = h[h.length - 1]
-      if ('edit' in last) setEdit(last.edit)
-      else setSpeakerEdits(last.speakers)
+      if ('edit' in last) {
+        setEdit(last.edit)
+        if (last.layout !== undefined) setLayout(last.layout)
+        if (last.suggestion) {
+          const mark = last.suggestion
+          setUses((u) => marksAfterUndo(u, mark))
+        }
+      } else setSpeakerEdits(last.speakers)
       return h.slice(0, -1)
     })
   }
@@ -661,32 +701,12 @@ export default function TimelineEditor({
     setNotice(`Muted ${flagged.length} flagged word(s) — audio + captions clean after Apply`)
   }
 
-  const wordMuted = (w: Word): boolean =>
-    edit.muted_words.some((m) => Math.abs(m.start - w.start) < 0.03 && m.word === w.word)
+  // A word mute silences the word and hides it in the captions. Its rules
+  // live in lib/editSuggestions.ts, where tests check that a used
+  // suggestion's mute never stops one toggling.
+  const wordMuted = (w: Word): boolean => isWordMuted(edit, w)
 
-  const toggleWord = (w: Word): void => {
-    if (wordMuted(w)) {
-      push({
-        ...edit,
-        muted_words: edit.muted_words.filter(
-          (m) => !(Math.abs(m.start - w.start) < 0.03 && m.word === w.word)
-        ),
-        mutes: edit.mutes.filter(
-          (m) => !(Math.abs(m[0] - Math.max(0, w.start - 0.04)) < 0.05)
-        )
-      })
-    } else {
-      const range: Range = [
-        Number(Math.max(0, w.start - 0.04).toFixed(2)),
-        Number(Math.min(duration, w.end + 0.04).toFixed(2))
-      ]
-      push({
-        ...edit,
-        muted_words: [...edit.muted_words, { start: w.start, end: w.end, word: w.word }],
-        mutes: [...edit.mutes, range]
-      })
-    }
-  }
+  const toggleWord = (w: Word): void => push(toggledWord(edit, w, duration))
 
   // Trim handles: drag the outer edges of the first/last kept segment. Global
   // listeners are attached ONCE (they read live state via refs), so dragging
@@ -1095,6 +1115,115 @@ export default function TimelineEditor({
     return renderOpts
   }
 
+  // ---- edits Marketplace plugins suggested (scores.plugin_edits) -------------
+  // Each waits on the clip as a card above the timeline. Use draws it on the
+  // timeline like Trim pauses & filler: nothing renders, and it goes into the
+  // clip only when the creator applies their edits. The words and the edit
+  // arithmetic are lib/editSuggestions.ts's.
+  const suggestions = clip.scores?.plugin_edits
+  const suggestionClip: ClipContext = {
+    start: clip.start_s,
+    end: clip.end_s,
+    words: wordsRead ? words : undefined,
+    // The saved edit, as the editor opened it: a used suggestion it still
+    // holds isn't offered Hide.
+    saved: {
+      edit: { ...defaultEdit(duration), ...(baked ?? {}) },
+      layout: clip.render_opts?.crop ?? 'track'
+    },
+    // A layout is never set where the Layout buttons don't show, nor on a
+    // split: another layout there would switch the split off.
+    noLayout: isLandscape ? 'landscape' : isVerticalLive ? 'vertical_live' : gaming ? 'gaming' : undefined,
+    highlights
+  }
+  const suggestionView = useMemo(
+    () => suggestionCards(suggestions, { edit, layout }, uses, suggestionClip),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      suggestions,
+      edit,
+      layout,
+      uses,
+      baked,
+      words,
+      wordsRead,
+      gaming,
+      highlights,
+      isLandscape,
+      isVerticalLive,
+      clip.start_s,
+      clip.end_s
+    ]
+  )
+  const suggestionOf = (id: string): PluginEdit | undefined => suggestions?.find((e) => e?.id === id)
+  /** What Apply, or Apply edits & upload, says was used. */
+  const usedSuggestions = (): UsedSuggestions | undefined => usedForRender(uses, suggestions, clip.start_s)
+
+  const onUseSuggestion = (id: string): void => {
+    const entry = suggestionOf(id)
+    if (!entry) return
+    // The card turns Use off when it would leave almost nothing of the clip,
+    // or before the clip's words are read; never draw it then.
+    const off = suggestionView.cards.find((c) => c.id === id)?.useOff
+    if (off) {
+      setNotice(off)
+      return
+    }
+    const used = applySuggestion({ edit, layout }, entry.edit, suggestionClip)
+    if (!used.changed) {
+      setNotice(ALREADY)
+      return
+    }
+    pushSuggestion(used.state.edit, used.state.layout, { id, kind: 'use', delta: used.delta })
+    setUses((u) => ({ ...u, [id]: used.delta }))
+    setNotice(ADDED)
+  }
+
+  const onTakeBack = (id: string): void => {
+    const entry = suggestionOf(id)
+    const session = uses[id] ?? null
+    const delta = session ?? (entry?.state === 'used' ? fromApplied(entry.applied, clip.start_s) : null)
+    if (!delta) return
+    const back = takeBack({ edit, layout }, delta, suggestionClip)
+    if (!back.changed) {
+      setNotice(NOTHING_LEFT)
+      return
+    }
+    pushSuggestion(back.state.edit, back.state.layout, { id, kind: 'take_back', delta: session })
+    if (session) setUses((u) => marksWithout(u, [id]))
+    setNotice(TAKEN_BACK)
+  }
+
+  /** Hide or show suggestions on the clip (PATCH /clips/{id}). Nothing renders. */
+  const setSuggestionState = async (ids: string[], state: 'hidden' | 'new'): Promise<void> => {
+    setBusy(true)
+    try {
+      for (const id of ids) await api.patchClip(clip.id, { suggestion: { id, state } })
+      if (state === 'hidden') setUses((u) => marksWithout(u, ids))
+      onChanged()
+    } catch (e) {
+      setNotice(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** A clip a forced re-run made again without its saved edits: render the
+   *  saved options again (the render route with no new options). */
+  const makeAgain = async (): Promise<void> => {
+    setBusy(true)
+    setNotice('')
+    try {
+      await api.rerenderClip(clip.id)
+      setNotice('Making the clip again with your saved edits — re-rendering…')
+      onChanged()
+    } catch (e) {
+      setNotice(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const apply = async (): Promise<void> => {
     setBusy(true)
     setNotice('')
@@ -1112,7 +1241,7 @@ export default function TimelineEditor({
           remembered = ` (Couldn’t remember the split for this creator: ${e instanceof Error ? e.message : e})`
         }
       }
-      await api.rerenderClip(clip.id, undefined, renderOpts)
+      await api.rerenderClip(clip.id, undefined, renderOpts, usedSuggestions())
       setNotice(
         (cleared ? 'Restoring original — re-rendering…' : 'Applying edits — re-rendering…') + remembered
       )
@@ -1330,13 +1459,28 @@ export default function TimelineEditor({
               // Like the caption style, speaker fixes are not brought back
               // by undoing Reset: their steps go, or Undo would restore some
               // of them beside an edit list they were never made with.
-              setHistory((h) => h.filter((step) => 'edit' in step))
+              // Suggestions used in this session are no longer used: their
+              // marks go, from the history too, so Undo can't bring one back.
+              setUses({})
+              setHistory((h) => withoutMarks(h.filter((step) => 'edit' in step)))
             }}
           >
             Reset
           </button>
         </div>
       </div>
+
+      <EditSuggestions
+        cards={suggestionView.cards}
+        hidden={suggestionView.hidden.length}
+        busy={busy}
+        makeAgainOff={dirty ? 'Apply your edits instead: that makes the clip again with them.' : ''}
+        onUse={onUseSuggestion}
+        onHide={(id) => void setSuggestionState([id], 'hidden')}
+        onTakeBack={onTakeBack}
+        onMakeAgain={() => void makeAgain()}
+        onShowHidden={() => void setSuggestionState(suggestionView.hidden, 'new')}
+      />
 
       {/* timeline — press and DRAG anywhere to scrub; zoom in for precise cuts */}
       <div className="space-y-1">
@@ -2074,7 +2218,8 @@ export default function TimelineEditor({
             // Unsaved edits mean the publish renders first, through the very
             // same job Apply edits queues — so what lands on YouTube is what
             // the preview showed, and the timeline stays editable after.
-            pendingRender={dirty ? { render_opts: buildRenderOpts() } : null}
+            // Suggestions used in this session go with it, as with Apply.
+            pendingRender={dirty ? { render_opts: buildRenderOpts(), suggestions: usedSuggestions() } : null}
             duration={duration}
             currentTime={playhead}
             onOpenSettings={() => window.dispatchEvent(new CustomEvent('open-settings'))}

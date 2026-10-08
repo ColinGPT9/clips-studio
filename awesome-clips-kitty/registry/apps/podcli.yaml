@@ -1,0 +1,14 @@
+name: podcli
+description: Podcast clipper that transcribes episodes locally, suggests clips, crops to the active speaker and burns in captions. Use it from a CLI, a web studio or an AI agent over MCP.
+section: video-clipping
+relationship: related
+license: AGPL-3.0-only
+license_note: 'Open core: podcli Pro adds a cloud multicam editor, and a commercial licence is offered. Speaker diarization needs an HF_TOKEN because the pyannote models are gated; accept their terms on Hugging Face first.'
+source:
+  github: https://github.com/nmbrthirteen/podcli
+platforms: [windows, macos, linux]
+runs: both
+tags: [podcast, captions, face tracking, mcp, whisper]
+warning: Clip scoring sends transcripts to Anthropic or OpenAI through the Claude Code or Codex CLI if installed. It can pull episodes from URLs with yt-dlp, which sites' terms may not allow.
+added: 2026-10-07
+checked: 2026-10-07

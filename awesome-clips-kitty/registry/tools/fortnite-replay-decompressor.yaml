@@ -1,0 +1,13 @@
+name: FortniteReplayDecompressor
+description: Reads Fortnite replay files and lists eliminations with start and end times plus match stats, which a small helper can turn into kill clips. A .NET library published on NuGet as FortniteReplayReader.
+section: games
+relationship: related
+license: MIT AND GPL-3.0-or-later
+license_note: The repository LICENSE is MIT, but the bundled OozSharp decompressor (src/OozSharp/Kraken.cs, a port of ooz) is GPL-3.0-or-later and is part of the NuGet library, so redistributing it carries GPL-3.0-or-later duties too.
+source:
+  github: https://github.com/Shiqan/FortniteReplayDecompressor
+runs: local
+tags: [fortnite, replays, eliminations, kills, dotnet]
+games: [fortnite]
+added: 2026-10-07
+checked: 2026-10-07

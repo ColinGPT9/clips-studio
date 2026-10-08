@@ -1,0 +1,16 @@
+# expect: outputs[1]: ratings score moments found before this plugin runs: add moments to inputs (a pipeline's own ranges carry their score already)
+manifest_version: 1
+id: example-dev/loud-moments
+name: Loud moments
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Picks the loudest stretches of a video.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: ['{python}', src/main.py]
+execution: local
+inputs: [video]
+outputs: [ranges, ratings]
+permissions: [video.read, ffmpeg]

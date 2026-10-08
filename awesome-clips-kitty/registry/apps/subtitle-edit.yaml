@@ -1,0 +1,13 @@
+name: Subtitle Edit
+description: Desktop subtitle editor for fixing caption timing and text against the video and waveform, converting between hundreds of formats, and running speech-to-text, OCR and translation.
+section: companion
+relationship: related
+license: MIT
+source:
+  github: https://github.com/SubtitleEdit/subtitleedit
+platforms: [windows, macos, linux]
+runs: both
+tags: [subtitles, srt, editor, ocr, whisper]
+warning: Its optional yt-dlp add-on downloads videos from online sites; their terms may not allow it for videos you don't own.
+added: 2026-10-07
+checked: 2026-10-07

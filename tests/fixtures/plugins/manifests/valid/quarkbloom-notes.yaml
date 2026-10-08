@@ -1,0 +1,15 @@
+# An understander: it says what happens in each moment found by Clips Kitty or a pipeline.
+manifest_version: 1
+id: example-dev/quarkbloom-notes
+name: Quarkbloom Notes
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Says what happens in moments of Quarkbloom Arena (a made-up game), for the titles.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run: {command: ['{python}', src/main.py], timeout_minutes: 5}
+execution: local
+inputs: [moments, transcript]
+outputs: [context]
+permissions: [transcript.read]

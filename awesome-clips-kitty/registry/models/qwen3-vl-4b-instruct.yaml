@@ -1,0 +1,11 @@
+name: Qwen3-VL-4B-Instruct
+description: The step-up Qwen3-VL model for richer descriptions of images and video than the 2B version. Available through Ollama, though it will be slow without a GPU.
+section: vision-language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: Qwen/Qwen3-VL-4B-Instruct
+runs: local
+tags: [video understanding, captioning, ollama]
+added: 2026-10-07
+checked: 2026-10-07

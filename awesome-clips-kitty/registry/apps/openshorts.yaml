@@ -1,0 +1,14 @@
+name: OpenShorts
+description: Self-hosted web app that turns long videos into vertical shorts with Whisper transcription, LLM moment picking, face-tracked reframing and subtitles. It can use a local LLM through Ollama.
+section: video-clipping
+relationship: related
+license: MIT
+license_note: Everything in the cloud/ folder is under the source-available OpenShorts Commercial License. Its Remotion render service is free only for individuals, non-profits and companies with up to 3 employees.
+source:
+  github: https://github.com/mutonby/openshorts
+platforms: [web]
+runs: both
+tags: [shorts, reframing, subtitles, self-hosted, mcp]
+warning: Sends transcripts to Google Gemini by default to pick moments, and video frames to pick layouts. Downloads videos from YouTube; its terms may not allow it for videos you don't own.
+added: 2026-10-07
+checked: 2026-10-07

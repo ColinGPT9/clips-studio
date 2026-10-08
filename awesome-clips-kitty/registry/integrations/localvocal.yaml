@@ -1,0 +1,12 @@
+name: LocalVocal
+description: OBS plugin that transcribes speech on your PC with Whisper while you stream or record. It shows live captions and can save SRT files timed to the recording, with optional translation.
+section: streaming
+relationship: related
+license: GPL-2.0-or-later
+source:
+  github: https://github.com/royshil/obs-localvocal
+platforms: [windows, macos, linux]
+runs: both
+tags: [obs, captions, whisper, subtitles, transcription]
+added: 2026-10-07
+checked: 2026-10-07

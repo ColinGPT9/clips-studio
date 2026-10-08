@@ -1,0 +1,12 @@
+name: YuNet
+description: A tiny face detector that runs on CPU with OpenCV alone, useful for keeping faces in frame when cropping a video to vertical.
+section: vision
+relationship: related
+license: MIT
+license_note: Trained on WIDER Face, whose dataset card lists CC BY-NC-ND 4.0; whether that limits commercial use of the weights is legally unsettled.
+source:
+  huggingface: opencv/face_detection_yunet
+runs: local
+tags: [face detection, face tracking, reframing, opencv]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,11 @@
+name: SigLIP 2 Base
+description: Google's image-text embedding model for matching frames to text prompts and comparing frames with each other. Useful for cheap tagging, spotting near-duplicate moments and ranking thumbnail candidates.
+section: vision-language
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: google/siglip2-base-patch16-224
+runs: local
+tags: [embeddings, zero-shot, thumbnails, tagging]
+added: 2026-10-07
+checked: 2026-10-07

@@ -30,11 +30,38 @@ def test_a_job_carries_the_render_settings_and_no_secrets():
     assert a != protocol.job_id("v", 10, 31, {"crop": "center"}, config)
 
 
+def test_edit_choices_do_not_travel_or_change_the_job_hash():
+    """The plugins a job chose to suggest edits (clips.edit, a list of plugins,
+    not an edit list) stay on the main PC, like Rate & understand's: a render
+    PC gets the same config, and the job hash is the same, with or without them."""
+    plain = {"clips": {"vertical": True, "captions": True}, "tracking": {}, "video": {}}
+    with_edit = {**plain, "clips": {**plain["clips"], "edit": [
+        {"id": "example-dev/quarkbloom-trimmer", "settings": {"mute_words": "round one"}}]}}
+    assert protocol.render_config(with_edit) == protocol.render_config(plain)
+    assert "edit" not in protocol.render_config(with_edit)["clips"]
+    assert "edit" in with_edit["clips"]  # the job's own config is left as it was
+    assert protocol.job_id("v", 10, 30, None, with_edit) == protocol.job_id("v", 10, 30, None, plain)
+    # A clip's own edit list is a render option, and still makes it a different job.
+    opts = {"edit": {"keep": [[0, 5], [8, 20]]}}
+    assert protocol.job_id("v", 10, 30, opts, with_edit) != protocol.job_id("v", 10, 30, None, with_edit)
+
+
 def test_what_needs_the_face_tracking_models():
     assert protocol.needs_framing({"clips": {}}, None)
     assert not protocol.needs_framing({"clips": {"vertical_live": True}}, None)     # whole frame kept
     assert not protocol.needs_framing({"clips": {}}, {"profile": "16:9"})           # longform
     assert not protocol.needs_framing({"clips": {}}, {"vertical_live": True})
+
+
+def test_the_expected_length_follows_the_clips_edit():
+    """The main PC checks a returned clip against how long it plays: its
+    window, or what the clip's saved edit keeps of it at its speed (D33)."""
+    assert protocol.expected_seconds({"start": 10, "end": 40}) == 30.0
+    assert protocol.expected_seconds({"start": 10, "end": 40, "render_opts": None}) == 30.0
+    edit = {"keep": [[0, 5], [10, 20]], "speed": 1.5}
+    assert protocol.expected_seconds({"start": 10, "end": 40, "render_opts": {"edit": edit}}) == 10.0
+    for broken in ({"keep": "nope"}, ["not", "an", "edit"], {"keep": [[0, 5]], "hook": {"text": "x", "seconds": "y"}}):
+        assert protocol.expected_seconds({"start": 10, "end": 40, "render_opts": {"edit": broken}}) == 30.0, broken
 
 
 def test_a_worker_is_matched_on_what_it_can_actually_do():
@@ -374,6 +401,89 @@ def test_a_failed_clip_renders_here_in_automatic_but_not_on_a_chosen_worker(disp
             assert calls == [10.0]
         else:
             assert calls == [] and "exited with code 1" in outcomes[0]
+
+
+def _completing(q, wid, tmp, specs: list, count: int):
+    """A render PC that renders `count` jobs, noting each one's spec."""
+    def work():
+        done = 0
+        while done < count:
+            job = q.claim(wid)
+            if job is None:
+                time.sleep(0.05)
+                continue
+            specs.append(job["spec"])
+            result = tmp / f"result_{job['id']}.mp4"
+            result.write_bytes(b"rendered")
+            q.complete(job["id"], wid, result, "")
+            done += 1
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    return t
+
+
+def test_each_clip_goes_with_its_own_options(dispatching):
+    """opts_for(candidate, meta): each clip's own options, its title card or,
+    on a re-run, the creator's saved choices (D33), travel with its job."""
+    dispatch, gw, tmp = dispatching
+    q = gw.queue
+    wid, _s = _paired(q)
+    specs: list = []
+    t = _completing(q, wid, tmp, specs, 2)
+
+    def opts_for(candidate, meta):
+        return {"headline": meta, **({"edit": {"keep": [[0, 8]]}} if candidate.start == 10.0 else {})}
+
+    calls = []
+    got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, "auto", tmp).render_all(
+        "v", tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+        opts_for=opts_for)]
+    t.join(5)
+    assert calls == [] and sorted(got) == [10.0, 50.0]
+    assert sorted((s["start"], s["render_opts"]) for s in specs) == [
+        (10.0, {"headline": "m1", "edit": {"keep": [[0, 8]]}}), (50.0, {"headline": "m2"})]
+
+
+def test_a_clip_with_music_from_this_pc_renders_here(dispatching, capsys):
+    """Music added in the editor is a file on this PC, which a render PC
+    can't fetch: that clip renders here, whichever render mode is chosen,
+    and the others still go out. The log counts only the clips sent."""
+    dispatch, gw, tmp = dispatching
+    q = gw.queue
+    wid, _s = _paired(q)
+    q.heartbeat(wid, {}, False, 1, [])
+    music = {"edit": {"music": {"path": "music/quarkbloom-theme.mp3", "volume": 0.4}}}
+    assert dispatch._needs_this_pc(music)
+    assert not dispatch._needs_this_pc({"edit": {"music": {"path": " "}}})
+    assert not dispatch._needs_this_pc({"edit": {"keep": [[0, 8]]}}) and not dispatch._needs_this_pc(None)
+
+    def opts_for(candidate, _meta):
+        return music if candidate.start == 10.0 else {"crop": "center"}
+
+    for mode, where in (("auto", "a render worker"), (f"worker:{wid}", "Render PC")):
+        video = f"v-{mode[:4]}"
+        specs: list = []
+        t = _completing(q, wid, tmp, specs, 1)
+        calls = []
+        capsys.readouterr()
+        got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, mode, tmp).render_all(
+            video, tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+            opts_for=opts_for)]
+        t.join(5)
+        assert calls == [10.0] and sorted(got) == [10.0, 50.0], mode
+        assert [j["label"] for j in q.jobs_for(video)] == ["50s-70s"], mode
+        assert [s["start"] for s in specs] == [50.0], mode
+        out = capsys.readouterr().out
+        assert f"Remote rendering: sending 1 clip(s) to {where}\n" in out, mode
+        assert "10s-30s renders here (its music is a file on this computer)" in out, mode
+    # Every clip with music: nothing goes out, and the log doesn't say it does.
+    calls = []
+    got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, f"worker:{wid}", tmp).render_all(
+        "v-all", tmp / "s.mp4", _items(), [], tmp / "clips", CONFIG, None, "en", 2, local=_local(calls),
+        opts_for=lambda _c, _m: music)]
+    assert sorted(calls) == [10.0, 50.0] and sorted(got) == [10.0, 50.0]
+    assert q.jobs_for("v-all") == [] and "sending" not in capsys.readouterr().out
 
 
 # ---- the worker's side --------------------------------------------------------------------

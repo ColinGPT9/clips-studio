@@ -16,7 +16,7 @@ description: >
   Shorts mode starts from (analysis/highlights.find_highlights).
 author: {name: Clips Kitty}
 repository: https://github.com/ColinGPT9/clips-studio
-license: AGPL-3.0-only
+license: AGPL-3.0-or-later
 requires: {clips_kitty: ">=2.0", plugin_api: 1}
 run:
   command: ["{python}", "src/main.py"]

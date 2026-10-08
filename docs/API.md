@@ -243,7 +243,7 @@ values in `config/settings.yaml`:
 
 | Field | Type | What it does |
 |---|---|---|
-| `force` | bool | process again even if this video is already done |
+| `force` | bool | process again even if this video is already done. A clip you edited is made again with its saved `render_opts` (below) |
 | `max_clips` | int | cap clips from this video |
 | `min_score` | int | quality bar, 0–100 |
 | `captions` | bool | burn captions in (default true) |
@@ -257,6 +257,48 @@ values in `config/settings.yaml`:
 | `watermark_profile_id` | int | branding profile applied to every clip |
 | `webhook_url` | string | http(s) URL to POST once when this job finishes |
 | `webhook_secret` | string | signs that POST, so the listener can trust it |
+| `pipeline` | object or string | an installed Marketplace pipeline picks the moments instead of Clips Kitty's own scoring: `{"id": "publisher/name", "version": "1.2.0", "settings": {...}}`, or just the id. Not with `sport`, `gaming_scoring` or `longform` |
+| `understand` | list | up to 3 installed Marketplace plugins that say what happens in each moment once it is found, in this order; their notes go to the AI that writes the titles, descriptions and hashtags. Each item is shaped like `pipeline`; one item alone is taken as a list of one |
+| `rate` | list | up to 3 installed Marketplace plugins that give each moment a new score once it is found (and any understanding is done), in this order; the last one's score counts. A moment rated under `min_score` is set aside, unless it is a must-have. Shaped like `understand` |
+| `edit` | list | up to 3 installed Marketplace plugins that suggest edits for the clips that will be made, once they are chosen (after any rating and the clip limit), in this order; each is handed what the ones before it suggested. The suggestions wait for the creator in the timeline editor and change no clip. Shaped like `understand` |
+
+**`rate` and `understand`** work on the moments whoever found them: Clips
+Kitty's own scoring, `sport`, `gaming_scoring` or a `pipeline`. They can't be
+combined with `longform` (`shorts` included): "Rate & understand can't be
+combined with Longform: Longform picks and writes its clips its own way. Turn
+one of them off." Naming the job's own `pipeline` again is refused too:
+"rate: example-dev/x is this job's pipeline, so it already scores and
+describes the moments it finds". Each item must be installed, turned on and
+able to do that step, or the job is refused with a message that names the
+item, for example `rate[0]: the pipeline example-dev/x isn't installed`.
+`{"clear": ["rate"]}` on `PATCH /jobs/{id}` drops one. Scores decide which
+clips are made and their order, so where a watched channel or the daily
+schedule posts only the best few, a rater decides which clips those are.
+Developer guide: [Steps](developers/steps.md).
+
+**`edit`** works on the clips a Shorts run makes, whoever found the moments.
+It can't be combined with `longform`: "Suggest edits can't be combined with
+Longform: Longform picks and writes its clips its own way. Turn one of them
+off." The job's own `pipeline` may be named under it, and then has an edit
+run of its own after the clips are chosen. Each item must be installed,
+turned on and able to suggest edits, for example `edit[0]: the pipeline
+example-dev/x can't suggest edits for clips: its manifest needs moments in
+inputs and edits in outputs`. Each suggestion is kept in the clip's
+`scores.plugin_edits` ([below](#get-videosvideo_idclips)); the clip itself is
+made exactly as it would be without `edit`, and the edit step never writes a
+clip's `render_opts` (what a run writes to a clip it makes again is under
+**Clips the video already has**, below). Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
+An edit plugin that couldn't run holds nothing back: its suggestions change
+no clip, so watched channels and `then` publish as they would without it.
+`{"clear": ["edit"]}` on `PATCH /jobs/{id}` drops it. The word means three
+things: this job field is a list of plugins, while a clip's `render_opts.edit`
+and the preview's `edit` are the timeline editor's edit list; a job's `edit`
+never reaches a clip's render options. Developer guide:
+[Steps › Suggest edits](developers/steps.md#suggest-edits-the-edit-step).
+
+Apps without the Marketplace (2.0.0 and earlier) ignore `pipeline`, `rate`,
+`understand` and `edit` without an error. `GET /plugins` tells them apart: those apps
+don't have it.
 
 **Two responses that are not failures and not `job_id`:**
 
@@ -269,6 +311,25 @@ Re-submitting a finished video is silently a no-op without `force`, because
 processing costs an hour and produces duplicate clips. **Check for `job_id`
 being `null`** rather than assuming a job was created. Retry with
 `{"force": true}` if you meant it.
+
+**Clips the video already has.** A run that makes a window again keeps the
+clip's title, description, hashtags and status. A clip the creator edited
+(its `render_opts` hold `edit`, `crop`, `caption_lines`, `speaker_edits`,
+`adjust`, `captions` or `normalize_audio`, or `"gaming": null`, or a `gaming`
+with `by` `clip`) is made with its saved `render_opts`, except `profile`,
+`podcast`, `vertical_live`, `sport` and `speaker_turns`, which the job
+decides. In a Sports job only those per-clip keys are used, and the job's
+caption style, filter, watermark and card words stay. In a Gaming / Reaction
+job, an edited clip's `gaming` with `by` `video`, `creator` or none keeps its
+layout and takes the job's webcam when a person chose it (`by` `user` or
+`creator`); outside a Gaming / Reaction job, a `gaming` a run found or
+remembered (`by` `video`, `creator` or none) is dropped. A `gaming` with `by`
+`user` or `clip`, or `null`, stays in any job but Sports, and an edited clip
+with no `gaming` gets the job's. Any other clip is made with the job's
+options. No run changes the choices saved on a clip you edited: a run records
+the split it rendered with and who is heard talking, and adds a Highlights
+card where the clip had none; for clips nobody edited it also updates the
+Highlights card words and the split to this run's.
 
 Other outcomes:
 
@@ -496,6 +557,22 @@ Every processed video, newest first. A bare array:
 ]
 ```
 
+Each video also carries `outcome`: what its last run made of it, or `null`.
+It holds numbers such as `clips`, `candidates`, `best_score`, `min_score`
+and `rejected` (by reason) and, when the run made no clips, a `cause`
+(`no_candidates`, `no_people`, `duplicates`, `below_threshold`, `rated_out`
+or `null`). `outcome.intent` and `outcome.sport` are described with `focus` and
+`sport`. A run with `understand`, `rate` or `edit` adds:
+
+- `steps`: one entry for each plugin run, in order:
+  `{"plugin", "version", "name", "steps", "ok", "given", "noted", "rated", "set_aside"}`,
+  plus `error` when it didn't run. `error` is one sentence for the creator,
+  such as "It isn't installed any more." An edit run's entry has `steps`
+  `["edit"]`, `given` the clips it was handed and `suggested` how many of them
+  it suggested an edit for; its `noted`, `rated` and `set_aside` are 0.
+- `rated_out`: how many moments a plugin rated under the minimum score, when
+  any were. The cause `rated_out` means every moment was set aside that way.
+
 ### `GET /videos/{video_id}/clips`
 
 ```json
@@ -521,6 +598,44 @@ Every processed video, newest first. A bare array:
 
 `score` is the final 0–100 ranking; `scores` is the breakdown that produced it,
 which is the interesting part if you are building your own selection on top.
+
+A clip a plugin suggested edits for (the job's `edit`) carries them in
+`scores.plugin_edits`, one entry for each suggestion:
+
+```json
+"plugin_edits": [
+  {"id": "3f1c0a9e7b2d", "plugin": "example-dev/quarkbloom-trimmer", "version": "1.0.0",
+   "name": "Quarkbloom Trimmer", "window": [812.0, 841.5], "min_length": 10.0,
+   "edit": {"cuts": [[815.6, 820.6]], "title_overlay": {"text": "Triple bloom!", "seconds": 3}},
+   "reason": "Cuts the respawn wait", "state": "new"}
+]
+```
+
+`id` is the same whenever the same plugin suggests the same edit, in every
+run and every version, so the creator's decision carries over a forced re-run.
+`window` is the clip's start and end when it was suggested, and `edit` holds
+`cuts`, `mutes`, `volume`, `fade_in`, `fade_out`, `speed`, `title_overlay` and
+`crop` as Clips Kitty fitted them, its times in seconds of the video. `state`
+is `new`, `hidden` (put away by the creator, or used once and no longer in the
+clip's saved edit) or `used`. A used entry has `applied`, what it put in the
+clip and is still there: `{"removed", "mutes", "muted_words", "values"}`, the
+cuts it took out, the mutes it added, the words those hide in the captions
+(`{start, end, word}`) and `{field: {before, after}}` for each of `volume`,
+`fade_in`, `fade_out`, `speed`, `hook` and `crop` it changed, all in video
+seconds. It may also have `remade: true`: the clip's file was made again
+without its saved edit (the edit was saved while a run was making the clip),
+and the editor says so. Nothing in
+`plugin_edits` changes a clip by itself.
+
+`PATCH /clips/{clip_id}` with `{"suggestion": {"id": "3f1c0a9e7b2d", "state":
+"hidden"}}` hides one, and `"state": "new"` shows it again. Nothing renders. A
+suggestion is used only by a render that applies it (`suggestions`, under
+[`render_first`](#publishing-to-youtube)): any other state is 400 "suggestion:
+state must be hidden or new; a suggestion is used by applying it", and an id
+the clip doesn't have is 404 "no such suggestion on this clip". A used
+suggestion whose parts the clip's saved edit still holds can't be hidden or
+shown: that is 409 "suggestion: some of it is still in the clip's saved
+edit. Take it back and apply your edits, and Clips Kitty hides it then".
 A clip from a `sport` job also carries the moment it is: `sport_event`
 (`goal`, `save`...), `sport_label`, `sport_minute` (from the match clock),
 `sport_t` (seconds into the video), `sport_team`, `sport_player`, `sport_period`,
@@ -746,13 +861,24 @@ Returns immediately. Watch the `publish` WebSocket events, or poll
 | `license` | `youtube` or `creativeCommon` |
 | `embeddable`, `public_stats_viewable`, `notify_subscribers` | booleans |
 | `default_language`, `playlist_id`, `thumbnail` | optional |
-| `render_first` | `{start?, end?, render_opts?}`: re-render before uploading |
+| `render_first` | `{start?, end?, render_opts?, suggestions?}`: re-render before uploading |
 
 **`render_first` is how "no manual export" works.** Pass the editor's pending
 `render_opts` and the clip is re-rendered through the ordinary `render` job
 first, then uploaded. Omit it and the existing rendered file is used as-is.
 Either way the clip's own `render_opts` are never modified. The project stays
 editable.
+
+`render_first.suggestions` says which edits a plugin suggested this render
+puts in the clip, as the editor used them: `{"used": [{"id", "applied"}]}`,
+at most 8, with `applied` shaped as in `scores.plugin_edits`
+([above](#get-videosvideo_idclips)). The internal `POST /clips/{clip_id}/render`
+(Apply edits) takes the same field. Only what the render really changed, and
+only parts of each suggestion, is recorded, so a client can never mark more
+than it put in. Each value's `before`, which Take it back puts back, is taken
+as the client sent it, checked only to be a value the editor could hold. A
+wrong shape is a 400, such as "suggestions: expected {used: [{id,
+applied}]}".
 
 ### Scheduling
 
@@ -1161,6 +1287,31 @@ The videos a watch has seen, newest first.
 - `publishing`
 - `done`
 
+**When a plugin the job chose didn't run.** If the job named plugins under
+`rate` or `understand` and one of them couldn't run, an `auto` watch doesn't
+post the clips: the item goes to `ask` with `publish_error` "Clips Kitty made
+these clips without {names}, so they weren't posted automatically. Check them
+and publish, or turn off Rate & understand in this channel's settings." An
+`ask` watch says "Clips Kitty made these clips without {names}. Check them
+before you publish." A job whose options name neither is never held this way, and neither is one
+whose only skipped plugin was named under `edit`: its suggestions change no
+clip.
+When a rater set every moment aside, the item is `done` with "{names} rated
+every moment under the minimum score ({min_score}), so there were no clips to
+publish." A job's own `then` publish is held the same way, with a line in its
+log. The command-line daily upload is not held.
+
+**Which clips a publish sends.** The first publish of an item sends the
+video's best `max_posts` clips by score (all of them with `0`), and the item
+remembers which ones. Every later publish of that item (the button again,
+Retry failed, the re-send of rejected posts) sends only clips from that first
+choice, even when a forced re-run has changed the scores since. A clip
+trimmed in the editor since stays part of that choice. When none of the
+chosen clips is left, the item is `done` with "The clips chosen when this
+video was first published aren't there any more, so there was nothing to
+send." An item published before Clips Kitty remembered the choice chooses
+again, once.
+
 `deliveries` holds one row per clip and platform. Its state is `sending`,
 `queued`, `processing`, `published`, `failed` or `skipped`.
 
@@ -1200,10 +1351,17 @@ Set aside a video that hasn't been queued yet, or decline an `ask`.
 
 ## Plugins
 
-**Experimental.** Community pipelines: plugins that find a video's moments
-while Clips Kitty does the rest. Installing one never runs anything from it;
-a job runs it when its options say `pipeline: {"id": "publisher/name"}`.
-Developer guide: [Getting started](developers/getting-started.md).
+**Experimental.** Community pipelines: plugins that find a video's moments,
+say what happens in them and rate them, or suggest edits for the clips, while
+Clips Kitty does the rest.
+Installing one never runs anything from it; a job runs it when its options
+say `pipeline: {"id": "publisher/name"}`, or name it under `understand`,
+`rate` or `edit` ([`POST /jobs`](#post-jobs)). Each plugin's `details.steps` says which
+of these it can be chosen for (`Finds moments`, `Understands moments`,
+`Understands what it finds`, `Rates moments`, `Suggests edits`), and
+`details.time_limit` how long a run that rates, understands or suggests edits
+may take. Developer guide:
+[Getting started](developers/getting-started.md) and [Steps](developers/steps.md).
 
 Routes that fetch, install, change or remove plugins need the
 `X-Clips-Kitty-Session` header. The desktop app sends it; a script reads it from
@@ -1218,10 +1376,20 @@ curl -X POST localhost:8765/plugins/plan -H "X-Clips-Kitty-Session: $SECRET" \
   -d '{"source": {"kind": "git", "url": "https://github.com/example-dev/example-plugin",
                   "commit": "<40-character commit hash>"}}'
 # → {"plan_id": "...", "ok": true, "plugin": {...}, "details": {"permissions": [...],
-#    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "update": null}
+#    "data_warnings": ["⚠ Sends ..."], ...}, "errors": [], "warnings": [], "technical": [],
+#    "update": null, "text": "Install ...?\n..."}
 curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" \
   -H 'Content-Type: application/json' -d '{"plan_id": "..."}'
 ```
+
+A plan's `text` is the install screen as plain text, without the buttons (the
+SDK's `install` command shows it). Its `warnings` are in plain words for the
+person installing; `technical` holds the precise lines behind them (the
+manifest's own warnings, files that couldn't be fetched); a model file that can
+run code when it is opened adds a plain line to `warnings` as well. A download
+or Git that fails answers with a fixed sentence for its cause (no connection,
+files no longer at the address, a full disk, a damaged download, or anything
+else); what went wrong is in the engine's log.
 
 `GET /plugins` lists what is installed (no header needed);
 `POST /plugins/{publisher}/{name}/enable`, `/disable`, `/rollback`, `/pin`,
@@ -1231,17 +1399,67 @@ curl -X POST localhost:8765/plugins/install -H "X-Clips-Kitty-Session: $SECRET" 
 (with `"path"` for a plugin in a subfolder), or a registry listing,
 `{"kind": "index", "id": "publisher/name", "version": "1.2.0"}`.
 
-`GET /marketplace` lists and searches the registry indexes the app knows
-(`?q=`, `category`, `tag`, `kind`), each listing with the same details a plan
-shows and whether it is installed; it reads only cached copies. Each listing's
+`GET /marketplace` lists and searches the installable listings in the indexes
+the app knows (`?q=`, `category`, `tag`, `kind`, `section`), each listing with
+the same details a plan shows and whether it is installed; it reads only cached
+copies. `section` also matches the sections inside it, so `section=gaming`
+includes `gaming/generic`. Each listing carries its `section`, its labels
+(`badges`: `official` or `community`, plus `compatible` and `featured` when they
+apply), its numbers (`metrics`, each from its own source) and, on each of its
+`versions`, the `compatibility` record when there is one; the answer's
+`sections` lists the sections of each installable kind. Each listing's
 `problems_here` says what the engine can tell would stop it running on this PC
 (`{"need": "app" | "python", "text": ...}`: a Clips Kitty version outside its
 range, no Python for a plugin that runs with one), and each of its `versions`
 has its own `problem_here`. `GET /plugins` gives installed plugins the same
 `problems_here`.
-`POST /marketplace/refresh` (no header: it fetches only addresses the user set) fetches the indexes in
-`plugins.registry_urls` again. See
+The answer's `indexes` names each list with its `kind`: `bundled` (the copy
+that came with the app), `online` (Clips Kitty's online list, the catalog's
+index on the project's main branch) or `other` (an address in
+`plugins.registry_urls`); `online` says whether the Marketplace checks that
+list by itself, when its copy was fetched (`fetched_at`), whether that copy is
+in use (`in_use`: one older than the bundled list is set aside) and how the
+last try went (`tried_at`, `error`). What the online list adds shows as Community and is
+never counted; only the bundled list labels (DECISIONS D29).
+`POST /marketplace/refresh` (session header) fetches Clips Kitty's online list
+and the indexes in `plugins.registry_urls` again and answers
+`{"checked": true, "indexes": [{"url", "ok", "error"}]}`; with
+`{"automatic": true}`, as the Marketplace sends when it opens (and the app at start, when a pipeline is installed), it fetches only
+the online list, and only when the automatic checks are on (`PUT
+/marketplace/online`), its copy is a day old and no check was tried in the last
+hour, or the last day after a list that wasn't there or couldn't be read
+(`{"checked": false, "indexes": []}` otherwise); one check runs at a time. `error` is one
+of a few fixed sentences (no connection, nothing at the address, the website's
+error, too large, not a list Clips Kitty can read, not https://, couldn't be
+saved); the details of what went wrong go to the engine's log.
+`GET /marketplace/online` (no header) answers like `online` above, and
+`PUT /marketplace/online` `{"enabled": false}` (session header) switches the
+automatic checks off for this Windows account (or on again). See
 [Marketplace publishing](developers/marketplace-publishing.md).
+
+`GET /marketplace/catalog` (`?q=`, `kind`, `section`; no header) lists the rest
+of Awesome Clips Kitty: its apps, models, workflows, integrations and tools.
+They are not installed from here; each entry has an `id` (`apps/<name>`, the
+folder and file it comes from), its `source` (GitHub,
+Hugging Face or a home page, and the project's own website, `homepage`, and
+download page, `download`, when the list has them), `setup` when given
+(`installer`, or `technical` for one that needs the command line or Python),
+its `relationship` to Clips Kitty (`built-with`
+or `related`), its `license`, its labels and its numbers. `kind` is one of
+`app`, `model`, `workflow`, `integration` or `tool` (anything else is a 400).
+The answer also carries the `sections`, `kinds`, `relationships`, what each
+label means (`badges`) and `metrics_at`, the date the numbers were read.
+
+`GET /marketplace/counting` (no header) says whether installs from the
+Marketplace are counted:
+`{"enabled": true, "locked_off": false, "active": false, "text": "..."}`.
+`locked_off` is true when settings say `plugins.count_installs: false`;
+`active` is false while the bundled index has no install counter address (no
+other index can count installs), which is the case today, so nothing is counted. `PUT /marketplace/counting`
+`{"enabled": false}` switches counting off for this Windows account (or on again), needs the
+session header, and answers the same way. `POST /plugins/install` answers with
+`counted`: whether that install was counted, which only a first install from a
+listing can be. What a count sends: [Security](developers/security.md#what-clips-kitty-sends-when-you-install).
 
 `GET /plugin-models` lists every model the installed plugins name, once, with
 where it is, its licence and size, and which plugins use it (no header).
@@ -1313,7 +1531,14 @@ types:
 - **`job`** fires on status transitions. `error` is present when it failed.
 - **`progress`** is the pipeline talking. `stage` moves through `download`,
   `downloaded`, `converting source to H.264`, `transcribe`, `analyze`,
-  `render`, `done`. Render events carry `clip` and `total`.
+  `ranking`, `render`, `done`. Render events carry `clip` and `total`. A job
+  with `understand` or `rate` also has `understand` events (a plugin saying
+  what happens in the moments) and `ranking` events from each plugin that
+  rates them; both carry `plugin`, the plugin's name, and the job's progress
+  label reads "Understanding moments with {plugin}" or "Rating moments with
+  {plugin}". A job with `edit` also has `edit` events, from each plugin
+  suggesting edits for the clips, after `ranking` and before `render`; they
+  carry `plugin` too, and the label reads "Suggesting edits with {plugin}".
   **`job_id` is `null` for prefetch downloads**, which belong to a future job,
   not the running one: never attribute them to the current job.
 - **`model_pull`** is download progress for `POST /models/pull`.
@@ -1426,8 +1651,9 @@ Collected because each one has cost somebody time:
 
 ## Building something?
 
-- **Get it listed:** add it to [PROJECTS.md](../PROJECTS.md) with a pull request,
-  so people can find it.
+- **Get it listed:** add it to [Awesome Clips Kitty](../awesome-clips-kitty/README.md)
+  with a pull request ([how](../awesome-clips-kitty/CONTRIBUTING.md)), so people
+  can find it there and in the Marketplace.
 - **Need an internal endpoint?** Open an issue saying what you are building. The
   fastest way to get one promoted to supported is for somebody to need it.
 

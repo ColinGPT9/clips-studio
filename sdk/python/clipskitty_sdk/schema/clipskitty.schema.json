@@ -130,7 +130,8 @@
       "items": {
         "enum": [
           "video",
-          "transcript"
+          "transcript",
+          "moments"
         ]
       }
     },
@@ -138,7 +139,10 @@
       "type": "array",
       "items": {
         "enum": [
-          "ranges"
+          "ranges",
+          "ratings",
+          "context",
+          "edits"
         ]
       },
       "minItems": 1
@@ -461,6 +465,40 @@
           "url": {
             "type": "string",
             "pattern": "^https://"
+          }
+        }
+      }
+    },
+    "based_on": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "license",
+          "how"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https://"
+          },
+          "license": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9.+-]+( (AND|OR|WITH) [A-Za-z0-9.+-]+)*$"
+          },
+          "how": {
+            "enum": [
+              "runs",
+              "includes-code",
+              "port"
+            ]
           }
         }
       }

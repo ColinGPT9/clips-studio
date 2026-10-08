@@ -1,0 +1,13 @@
+name: Kdenlive
+description: KDE's free timeline video editor for finishing clips. Its project files and command-line rendering let other tools hand over a ready-made timeline.
+section: companion
+relationship: related
+license: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+license_note: The KDE-Accepted-GPL option allows later GPL versions approved by KDE e.V.
+source:
+  github: https://github.com/KDE/kdenlive
+platforms: [windows, macos, linux]
+runs: local
+tags: [editor, timeline, kde, render]
+added: 2026-10-07
+checked: 2026-10-07

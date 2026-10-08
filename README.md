@@ -86,6 +86,7 @@ there is no cap on how many clips you make.
 - [Publish to every platform at once](#publish-to-every-platform-at-once)
 - [GPU acceleration](#gpu-acceleration)
 - [Command line use](#command-line-use)
+- [Write a plugin](#write-a-plugin)
 - [Build on it](#build-on-it)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
@@ -669,6 +670,70 @@ a short quick-setup block, everything advanced is below it. Every LLM prompt is 
 text file in [config/prompts/](config/prompts/), so you can tune how clips are scored
 without touching Python.
 
+## Write a plugin
+
+Know a game, a sport or a kind of show better than a general-purpose detector does?
+Write a small Python plugin that finds, understands or rates the moments in a video,
+and Clips Kitty does the rest. The SDK is MIT, so your plugin can use any licence, and
+nothing has to be forked.
+
+```text
+Clips Kitty SDK
+
+Input                      a link or a video file
+  ↓
+Video                      Clips Kitty downloads it and writes down what is said
+  ↓
+Your plugin                every step is optional
+  ├── find                 picks the moments                  built
+  ├── understand           says what happens in each one      built
+  ├── rate                 scores each moment                 built
+  └── edit                 suggests edits for the creator     built
+  ↓
+Clips Kitty                does every step no plugin does, then cuts, frames and captions the clips
+  ↓
+Creator / Social Platform  posts when the creator clicks Publish, or on a schedule or automatic posting the creator switched on
+```
+
+- One plugin can find moments for a video; it replaces Clips Kitty's own finding.
+- Up to 3 plugins can understand and up to 3 can rate, after any finder.
+- A plugin's role comes from `inputs` and `outputs` in its manifest ([Steps](docs/developers/steps.md)).
+- Up to 3 plugins can suggest edits for the clips that will be made.
+- Edit plugins suggest edits that wait for the creator in the editor ([Steps](docs/developers/steps.md#suggest-edits-the-edit-step)).
+- Posting isn't a plugin step: Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account ([Publish to every platform at once](#publish-to-every-platform-at-once)). `kind: publisher` is refused: plugins don't post.
+
+Three commands install the SDK, make a plugin from the `game-events` template (for
+Quarkbloom Arena, a made-up game) and run it on a test video the SDK makes. They need
+Python 3.11, FFmpeg and Git.
+
+PowerShell (Windows):
+
+```powershell
+py -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+py -m clipskitty_sdk new quarkbloom-bursts --template game-events --publisher your-github-name
+py -m clipskitty_sdk run quarkbloom-bursts --sample
+```
+
+bash (macOS, Linux):
+
+```bash
+python -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publisher your-github-name
+python -m clipskitty_sdk run quarkbloom-bursts --sample
+```
+
+No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first
+release that includes it; until that is out, run Clips Kitty from source
+([From source](#from-source)).
+
+**[Your first game pipeline](docs/developers/first-game-pipeline.md)** goes on from
+there, step by step, to a plugin installed in Clips Kitty and listed in its Marketplace.
+The [Signals cookbook](docs/developers/signals-cookbook.md) has recipes for reading a
+game's video, the [SDK reference](docs/developers/sdk.md) has every command and call,
+and the [developer docs](docs/developers/README.md) have everything else. The website's
+[Clips Kitty SDK](https://colingpt9.github.io/clips-studio/developers.html) page is the
+short version.
+
 ## Build on it
 
 The desktop app is a window onto a **local HTTP API**, which is running whenever
@@ -702,17 +767,22 @@ security note in the API docs before you point anything at it.
 
 ### Or bring your own model
 
-That is building *around* the app. You can also build *inside* it. The pipeline
-runs **YOLOv8 (ultralytics), OpenCV and TalkNet-ASD** locally, and what decides
-which moments become clips is a set of per-second signals, not a hardcoded idea
-of what is interesting. A detector that emits a confidence over the timeline can
-be added as one more signal, and its peaks become candidate clips.
+That is building *around* the app. You can also build *inside* it, and the place to
+start is a plugin ([Write a plugin](#write-a-plugin)). If the footage you care about is
+not what this was tuned for, whether that is sports, gaming, reactions, lectures or
+something nobody has tried, a plugin can find, understand or rate its moments without a
+fork. It runs on Clips Kitty's own Python, with the standard library (minus a few
+modules the app leaves out) and the SDK: Clips Kitty can't install other Python packages
+for a plugin yet.
 
-So if the footage you care about is not what this was tuned for, whether that is
-sports, gaming, reactions, lectures or something nobody has tried, fork it and
-plug your own detection in. **[docs/EXTENDING.md](docs/EXTENDING.md#bring-your-own-model)**
-has the contract, the file to copy, and the performance trap worth knowing before
-you start.
+To change the app itself instead: the pipeline runs **YOLOv8 (ultralytics), OpenCV and
+TalkNet-ASD** locally, and what decides which moments become clips is a set of
+per-second signals, not a hardcoded idea of what is interesting. A detector that emits
+a confidence over the timeline can be added as one more signal, and its peaks become
+candidate clips. If your detection needs Python packages Clips Kitty can't install for a
+plugin yet, fork it and plug your own detection in.
+**[docs/EXTENDING.md](docs/EXTENDING.md#bring-your-own-model)** has the contract, the
+file to copy, and the performance trap worth knowing before you start.
 
 **Nothing has to poll.** Submit a job with a `webhook_url` and the engine POSTs
 once when it finishes, signed with your own secret if you pass one, so a dock or
@@ -740,10 +810,12 @@ key, which the MCP client never sees). An agent skill for clients that support t
 
 ### Built with Clips Kitty
 
-Projects that run on this API are listed in **[PROJECTS.md](PROJECTS.md)**. The
+Projects that run on this API are listed in **[Awesome Clips Kitty](awesome-clips-kitty/)**,
+the directory of apps, pipelines, models, integrations and tools around Clips Kitty. The
 first is the [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin),
 an OBS Studio dock that hands your stream to Clips Kitty after it ends. Built one?
-Add it with a pull request, and give your repository the `clips-kitty` topic.
+Add it with a pull request ([how](awesome-clips-kitty/CONTRIBUTING.md)), and give your
+repository the `clips-kitty` topic.
 
 ## Architecture
 
@@ -823,8 +895,21 @@ calls is below, because "why not yet" is usually more useful than "not yet".
 
 ## License
 
-**GNU AGPL-3.0**. See [LICENSE](LICENSE), and [NOTICE](NOTICE) for what that means
+**GNU AGPL-3.0-or-later**. See [LICENSE](LICENSE), and [NOTICE](NOTICE) for what that means
 in practice and what the installer bundles.
+
+Three parts are licensed separately, so that building on Clips Kitty stays easy:
+
+| Part | Licence |
+|---|---|
+| Clips Kitty (the app, its engine, this repository) | AGPL-3.0-or-later |
+| The plugin SDK, [`sdk/python/`](sdk/python/) | MIT ([sdk/python/LICENSE](sdk/python/LICENSE)) |
+| The example plugins, [`examples/pipelines/scene-cut-highlights/`](examples/pipelines/scene-cut-highlights/) and [`examples/pipelines/keyword-rater/`](examples/pipelines/keyword-rater/) | MIT |
+| The Awesome Clips Kitty catalog, [`awesome-clips-kitty/`](awesome-clips-kitty/) | CC0-1.0 |
+
+Plugins, pipelines and apps made by other people keep whatever licence their authors
+chose; the Marketplace shows it on every listing. Using the SDK does not put a
+plugin under the AGPL.
 
 **If you use the app, this changes nothing for you.** Install it, clip your streams,
 post the clips, earn from them. The AGPL binds people who *distribute* the software or

@@ -1,0 +1,12 @@
+name: Chatterino 2
+description: Desktop chat client for Twitch that can save channel chat to timestamped log files, a simple way to keep a stream's chat for finding busy moments later.
+section: community
+relationship: related
+license: MIT
+source:
+  github: https://github.com/Chatterino/chatterino2
+platforms: [windows, macos, linux]
+runs: both
+tags: [twitch, chat, chat logs]
+added: 2026-10-07
+checked: 2026-10-07

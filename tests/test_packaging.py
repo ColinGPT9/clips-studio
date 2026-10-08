@@ -10,10 +10,18 @@ Python package lying around, so excluding one from the bundle changes nothing
 locally and breaks the release.
 """
 
+import importlib.util
 import re
+import sys
 from pathlib import Path
 
-SPEC = Path(__file__).resolve().parent.parent / "clips-studio.spec"
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+SPEC = ROOT / "clips-studio.spec"
+SDK = ROOT / "sdk" / "python"
+if str(SDK) not in sys.path:
+    sys.path.insert(0, str(SDK))
 
 
 def _excludes() -> list[str]:
@@ -82,8 +90,11 @@ def test_the_spec_bundles_the_plugin_runner_and_the_sdk():
     assert '"plugins" / "builtin"' in text and '"plugins/builtin"' in text, (
         "the spec no longer ships the official modes' manifests (plugins/builtin)"
     )
-    assert '(str(ROOT / "registry" / "index.json"), "registry")' in text, (
-        "the spec no longer ships registry/index.json where plugins/registry.py looks for it"
+    assert '(str(ROOT / "awesome-clips-kitty" / "index.json"), "awesome-clips-kitty")' in text, (
+        "the spec no longer ships awesome-clips-kitty/index.json where plugins/registry.py looks for it"
+    )
+    assert '(str(ROOT / "sdk" / "python" / "LICENSE"), "sdk/python")' in text, (
+        "the spec no longer ships the SDK's MIT licence beside it"
     )
 
 
@@ -106,3 +117,84 @@ def test_voice_turns_needs_nothing_the_bundle_leaves_out():
         assert not re.search(rf"^\s*(?:import|from)\s+{package}\b", source, re.M), (
             f"analysis/voice_turns.py imports {package}, which an installed copy may not have"
         )
+
+
+def test_pipelines_get_the_whole_standard_library():
+    """Pipelines run on the engine's own Python (_clipskitty_script_host.py),
+    and PyInstaller packs only the modules the engine imports. Without the
+    stdlib loop, `import csv` in a pipeline works in a checkout and fails in
+    the installed app alone."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert "sys.stdlib_module_names - STDLIB_SKIP" in text
+    skip = re.search(r"^STDLIB_SKIP = \{(.*?)^\}", text, re.S | re.M)
+    assert skip, "clips-studio.spec no longer has STDLIB_SKIP"
+    skipped = set(re.findall(r'"([^"]+)"', skip.group(1)))
+    assert {"tkinter", "_tkinter", "test"} <= skipped
+    assert not {"csv", "statistics", "sqlite3", "email", "json", "multiprocessing", "zoneinfo"} & skipped
+    assert '"_clipskitty_script_host"' in text
+
+
+def test_script_mode_is_decided_before_the_engine_loads():
+    """main.py hands a pipeline's command line to the script host before its
+    heavy imports, so a pipeline starts quickly and loads none of the engine."""
+    main = (SPEC.parent / "main.py").read_text(encoding="utf-8")
+    assert main.index("CLIPSKITTY_SCRIPT_HOST") < main.index("\nimport yaml")
+
+
+def _stdlib_skip() -> set[str]:
+    text = SPEC.read_text(encoding="utf-8")
+    skip = re.search(r"^STDLIB_SKIP = \{(.*?)^\}", text, re.S | re.M)
+    assert skip, "clips-studio.spec no longer has STDLIB_SKIP"
+    return set(re.findall(r'"([^"]+)"', skip.group(1)))
+
+
+def test_the_sdk_lint_knows_what_the_app_leaves_out():
+    """`python -m clipskitty_sdk validate` warns about a standard library
+    module the installed app doesn't have: what the spec leaves out on
+    purpose, and the POSIX-only modules the Windows build can't find."""
+    from clipskitty_sdk import lint
+
+    skipped = _stdlib_skip()
+    assert skipped <= lint.NOT_BUNDLED
+    assert lint.NOT_BUNDLED - skipped == lint.NOT_ON_WINDOWS
+    assert lint.APP_LEAVES_OUT == skipped
+
+
+def _build_installer():
+    spec = importlib.util.spec_from_file_location("build_installer_under_test", ROOT / "scripts" / "build_installer.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_build_refuses_another_python():
+    """Plugins run on the Python frozen into the app, and the SDK's lint, its
+    CI job and the docs promise them host.APP_PYTHON. A build on another
+    minor version is refused before anything is frozen, and the frozen
+    engine's script-mode check asserts the version it really has."""
+    from clipskitty_sdk.host import APP_PYTHON
+
+    build = _build_installer()
+    assert APP_PYTHON == (3, 11)
+    assert build.python_problem((3, 12, 0)) == (
+        "This build uses Python 3.12, but Clips Kitty's plugins are promised Python 3.11 (APP_PYTHON in "
+        "sdk/python/clipskitty_sdk/host.py). Build with 3.11, or change APP_PYTHON and the docs that name it.")
+    assert build.python_problem((3, 11, 9)) is None
+    assert build.python_problem((3, 11, 0, "final", 0)) is None
+    check = build.SCRIPT_MODE_CHECK
+    assert "from clipskitty_sdk.host import APP_PYTHON" in check
+    assert "assert tuple(sys.version_info[:2]) == tuple(APP_PYTHON)" in check
+    main = build.main.__code__.co_names
+    assert "python_problem" in main
+
+
+def test_ci_tests_the_sdk_on_clips_kittys_python():
+    """CI's SDK (Windows) job runs the SDK's tests on the app's own Python."""
+    yaml = pytest.importorskip("yaml")
+    from clipskitty_sdk.host import APP_PYTHON
+
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    job = ci["jobs"]["sdk-windows"]
+    versions = [step["with"]["python-version"] for step in job["steps"]
+                if str(step.get("uses", "")).startswith("actions/setup-python")]
+    assert versions == [".".join(map(str, APP_PYTHON))]

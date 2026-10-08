@@ -1,0 +1,16 @@
+# expect: outputs[0]: context describes moments: add ranges to outputs, or moments to inputs
+manifest_version: 1
+id: example-dev/quarkbloom-notes
+name: Quarkbloom Notes
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Says what happens in moments of Quarkbloom Arena (a made-up game), for the titles.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: ['{python}', src/main.py]
+execution: local
+inputs: [transcript]
+outputs: [context]
+permissions: [transcript.read]

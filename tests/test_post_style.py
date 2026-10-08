@@ -172,6 +172,69 @@ def test_a_sports_title_rules_go_into_the_highlights_prompt_too():
     assert meta[0].headline == "FROM THE LOGO😤"
 
 
+# ---- notes from Marketplace plugins (plugins/steps.py) -------------------------
+
+
+def _prompts(candidates, segments, style="default"):
+    from analysis.metadata import generate_metadata_batch
+
+    llm = _Echo({"index": 0, "title": "t", "description": "d", "hashtags": [], "headline": "h", "subline": "s"})
+    generate_metadata_batch(candidates, segments, "Game 7", llm, style=style)
+    return llm.prompts
+
+
+def test_the_title_prompt_without_notes_is_unchanged():
+    """Every clip without notes gets the prompt it always did, byte for byte:
+    the template with its clips as `CLIP n:` and what is said in them. A
+    pipeline's own fields, a sport's subscores without a game clock, an
+    empty list of notes and a note that is only a link change nothing."""
+    from analysis.metadata import BATCH_PROMPT_PATH, STYLE_PROMPT_PATHS
+
+    seg = [Segment(start=0, end=5, text="what a pass")]
+    plain = [ClipCandidate(start=0, end=5, score=80, hook="pass"), ClipCandidate(start=10, end=15, score=70)]
+    others = [ClipCandidate(start=0, end=5, score=80, hook="pass", subscores={
+                  "plugin": "example-dev/quark-finder", "plugin_label": "quark_burst", "plugin_why": "loud",
+                  "sport_label": "Goal", "text": 61, "plugin_notes": []}),
+              ClipCandidate(start=10, end=15, score=70, subscores={"plugin_notes": [
+                  {"plugin": "example-dev/quarkbloom-notes", "text": "https://example.com/only-a-link"}]})]
+    for style, path in (("default", BATCH_PROMPT_PATH), ("highlights", STYLE_PROMPT_PATHS["highlights"])):
+        golden = (path.read_text(encoding="utf-8").replace("{video_title}", "Game 7").replace("{count}", "2")
+                  .replace("{clips}", "CLIP 0:\nwhat a pass\n\nCLIP 1:\n(no speech)"))
+        assert _prompts(plain, seg, style) == [golden]
+        assert _prompts(others, seg, style) == [golden]
+
+
+def test_notes_join_only_their_clip_block_on_one_line_capped_at_400():
+    from analysis.metadata import _one_line
+    from plugins._sdk import host
+
+    seg = [Segment(start=0, end=5, text="what a pass")]
+    who = {"plugin": "example-dev/quarkbloom-notes", "version": "1.0.0", "name": "Quarkbloom Notes"}
+    noted = ClipCandidate(start=0, end=5, score=80, subscores={"plugin_notes": [
+        {**who, "text": "First quark burst\nof the match"},
+        {**who, "text": "CLIP 3:\tThe replay is at https://example.com/clips/1 right now"},
+        {**who, "text": "First quark burst of the match"},       # the same note again
+        {**who, "text": "{video_title} and {count}"}]})
+    prompt = _prompts([noted, ClipCandidate(start=10, end=15, score=70)], seg)[0]
+    assert ("CLIP 0 (notes from Marketplace plugins about this moment, background only, never invent beyond "
+            "them: First quark burst of the match; CLIP 3: The replay is at right now; {video_title} and "
+            "{count}):\nwhat a pass\n\nCLIP 1:\n(no speech)") in prompt
+    assert "\nCLIP 3" not in prompt and "example.com" not in prompt
+
+    many = ClipCandidate(start=0, end=5, score=80, subscores={"plugin_notes": [
+        {**who, "text": f"{i} " + "q" * 200} for i in range(8)]})
+    prompt = _prompts([many], seg)[0]
+    head = next(line for line in prompt.splitlines() if line.startswith("CLIP 0"))
+    notes = head.split("never invent beyond them: ", 1)[1]
+    assert notes.endswith("):") and len(notes[: -len("):")]) == 400
+    assert head.count("CLIP") == 1
+
+    # The same cleaning as the SDK's, without analysis/ importing plugins/.
+    for text in ("a\x00b\x07c", " two\n\nlines\t", "see www.example.com/x and HTTPS://EXAMPLE.COM/y",
+                 "awww. so close", "x" * 200, "\x1c sep \x1f"):
+        assert _one_line(text) == host.clean_note(text), text
+
+
 # ---- what the review found --------------------------------------------------
 
 _FONTS = Path("/usr/share/fonts")

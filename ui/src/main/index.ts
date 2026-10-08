@@ -8,7 +8,8 @@ import {
   dialog,
   ipcMain,
   nativeImage,
-  shell
+  shell,
+  type IpcMainInvokeEvent
 } from 'electron'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -222,6 +223,10 @@ function startBackend(): void {
     PYTHONUTF8: '1',
     CLIPS_KITTY_SESSION_SECRET: SESSION_SECRET
   }
+  // The engine runs a pipeline's Python script when this is set
+  // (_clipskitty_script_host.py). Only pipeline processes get it; the engine
+  // itself must never start with it.
+  delete backendEnv.CLIPSKITTY_SCRIPT_HOST
 
   // Packaged builds run their own Ollama on a private port, so the engine has
   // to be told where it is — settings.yaml's default 11434 would send it to a
@@ -608,10 +613,11 @@ ipcMain.handle('plugin-session', (event) => {
   return own ? SESSION_SECRET : ''
 })
 
-// A plugin's links come from its developer's manifest, not from Clips Kitty,
-// so they get no allow-list entry: each one opens only after the user has seen
-// the full address in a native dialog and agreed. https only, no credentials.
-ipcMain.handle('open-plugin-link', async (event, url: unknown) => {
+// A pipeline's links come from its developer's manifest, and a catalog entry's
+// point at someone else's project, so they get no allow-list entry: each one
+// opens only after the user has seen the full address in a native dialog that
+// says where it comes from, and agreed. https only, no credentials.
+async function openAfterAsking(event: IpcMainInvokeEvent, url: unknown, from: string): Promise<boolean> {
   if (typeof url !== 'string' || url.length > 2000) return false
   let parsed: URL
   try {
@@ -625,21 +631,38 @@ ipcMain.handle('open-plugin-link', async (event, url: unknown) => {
     buttons: ['Open in browser', 'Cancel'],
     defaultId: 1,
     cancelId: 1,
-    title: 'Open a plugin link',
+    title: 'Open a website?',
     message: `Open ${parsed.host} in your browser?`,
-    detail: `${parsed.href}\n\nThis link comes from the plugin's developer, not from Clips Kitty.`
+    detail: `${parsed.href}\n\n${from}`
   }
   const parent = BrowserWindow.fromWebContents(event.sender)
   const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
   if (response !== 0) return false
   await shell.openExternal(parsed.href)
   return true
-})
+}
+
+ipcMain.handle('open-plugin-link', (event, url: unknown) =>
+  openAfterAsking(event, url, "This link comes from the pipeline's developer, not from Clips Kitty.")
+)
+
+// An Awesome Clips Kitty entry's download page or home. The renderer says
+// whether the entry came from one of Clips Kitty's own lists (the one that
+// came with the app or its online copy) or from another list.
+ipcMain.handle('open-catalog-link', (event, url: unknown, ours: unknown) =>
+  openAfterAsking(
+    event,
+    url,
+    ours === true
+      ? "This link is in Clips Kitty's list. It opens a website outside Clips Kitty."
+      : "This link is in a list that isn't Clips Kitty's. It opens a website outside Clips Kitty."
+  )
+)
 
 // Folder picker for installing a plugin from a folder on this PC.
 ipcMain.handle('pick-plugin-folder', async () => {
   const result = await dialog.showOpenDialog({
-    title: 'Choose the plugin folder (the one with clipskitty.yaml)',
+    title: 'Choose the pipeline folder (the one with clipskitty.yaml)',
     properties: ['openDirectory']
   })
   return result.canceled ? null : result.filePaths[0]

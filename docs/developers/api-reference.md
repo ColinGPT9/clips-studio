@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-191 routes: **60 stable**, **20 experimental**, 111 internal.
+196 routes: **60 stable**, **25 experimental**, 111 internal.
 
 | Label | Promise |
 |---|---|
@@ -161,13 +161,18 @@ Details: [`docs/API.md` › Plugins](../API.md#plugins).
 | Route | Label | What it is for |
 |---|---|---|
 | `GET /marketplace` | experimental | Listed plugins from the registry indexes, searched and filtered, with what is installed. |
-| `POST /marketplace/refresh` | experimental | Fetch the registry index addresses set in settings into the cache. |
+| `GET /marketplace/catalog` | experimental | Awesome Clips Kitty's apps, models, workflows, integrations and tools, searched, with their sections, labels and numbers. |
+| `GET /marketplace/counting` | experimental | Whether installs from the Marketplace are counted, and what counting sends. |
+| `PUT /marketplace/counting` | experimental | Switch install counting on or off for this PC. Session header. |
+| `GET /marketplace/online` | experimental | Whether the Marketplace checks Clips Kitty's online list by itself, when it last fetched it and how the last try went. |
+| `PUT /marketplace/online` | experimental | Switch the Marketplace's automatic checks of Clips Kitty's online list on or off for this PC. Session header. |
+| `POST /marketplace/refresh` | experimental | Fetch Clips Kitty's online list and the registry index addresses set in settings into the cache; automatic: the online list only, when a day old. Session header. |
 | `GET /plugin-models` | experimental | Every model the installed plugins list, once: where it is, its licence and size, and which plugins use it. |
 | `POST /plugin-models/download` | experimental | Download one plugin's model into the shared model folder, checked against its size and SHA-256. Session header. |
 | `POST /plugin-models/plan` | experimental | What downloading one plugin's model would fetch, from Hugging Face's metadata; downloads nothing. Session header. |
 | `GET /plugins` | experimental | Installed plugins with their versions, permissions and state, and the built-in modes. |
 | `POST /plugins/install` | experimental | Install what a plan fetched. Session header. |
-| `POST /plugins/plan` | experimental | Fetch a plugin from a folder or a Git commit and say what installing it would do. Session header. |
+| `POST /plugins/plan` | experimental | Fetch a plugin from a folder or a Git commit and say what installing it would do, with the install screen as text. Session header. |
 | `DELETE /plugins/{publisher}/{name}` | experimental | Remove a plugin, its files and its stored keys. Session header. |
 | `POST /plugins/{publisher}/{name}/disable` | experimental | Turn a plugin off. Session header. |
 | `POST /plugins/{publisher}/{name}/enable` | experimental | Turn a plugin on. Session header. |

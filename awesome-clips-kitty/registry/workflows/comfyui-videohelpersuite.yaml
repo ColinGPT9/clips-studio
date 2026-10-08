@@ -1,0 +1,12 @@
+name: ComfyUI-VideoHelperSuite
+description: ComfyUI nodes that load videos as frames and combine frames and audio back into video files. The usual base for ComfyUI workflows that reframe or caption clips.
+section: comfyui
+relationship: related
+license: GPL-3.0
+source:
+  github: https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
+runs: local
+tags: [comfyui, video, frames, ffmpeg]
+warning: Load Video can download web URLs through yt-dlp when it is installed; YouTube's terms may not allow downloading videos you don't own.
+added: 2026-10-07
+checked: 2026-10-07

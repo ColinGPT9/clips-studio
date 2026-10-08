@@ -1,0 +1,19 @@
+# A plugin that runs another open-source project and credits it. Names and ids are placeholders.
+manifest_version: 1
+id: example-dev/example-clipper-adapter
+name: Example Clipper for Clips Kitty
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Lets Example Clipper pick the moments, then Clips Kitty titles, crops and captions them.
+repository: https://github.com/example-dev/example-clipper-adapter
+license: Apache-2.0
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run: {command: ["{python}", "src/main.py"]}
+execution: local
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read]
+based_on:
+  - {name: Example Clipper, url: "https://github.com/example-org/example-clipper", license: MIT, how: runs}
+  - {name: Example Scorer, url: "https://github.com/example-org/example-scorer", license: GPL-3.0-or-later, how: port}

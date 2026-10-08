@@ -66,6 +66,12 @@ def summarise_run(candidates, rejections, config) -> dict:
         "measured": len(measured),
         "nothing_detected": sum(1 for r in measured if r <= NOTHING_DETECTED),
     }
+    # Moments a Marketplace plugin rated under the minimum score
+    # (plugins/steps.py). Only runs with a rater have the key.
+    rated_out = sum(1 for r in dropped if r.reason == "below_min_score" and r.candidate is not None
+                    and (r.candidate.subscores or {}).get("plugin_ratings"))
+    if rated_out:
+        out["rated_out"] = rated_out
     out["cause"] = _cause(out) if not kept else None
     return out
 
@@ -83,6 +89,10 @@ def _cause(out: dict) -> str | None:
     if not out["candidates"]:
         # Nothing was even proposed, so scoring never came into it.
         return "no_candidates"
+    if out.get("rated_out"):
+        # Nothing was kept and a rater set moments aside: the rater chose,
+        # so neither the footage nor duplicates take the blame.
+        return "rated_out"
 
     measured, blank = out["measured"], out["nothing_detected"]
     if measured >= MIN_EVIDENCE and blank >= measured * AGREEMENT:
@@ -115,4 +125,30 @@ def explain_no_clips(out: dict) -> str:
         return head + ". Most candidates repeated one already kept."
     if cause == "no_candidates":
         return "No clips: nothing was proposed as a candidate at all."
+    if cause == "rated_out":
+        return head + f". Marketplace plugins rated {out['rated_out']} of them under the minimum score."
     return head + ". Lowering clips.min_score in settings would let more through."
+
+
+def _names(outcome: dict, keep) -> list[str]:
+    names: list[str] = []
+    for entry in (outcome or {}).get("steps") or []:
+        if isinstance(entry, dict) and keep(entry):
+            name = str(entry.get("name") or entry.get("plugin") or "")
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def failed_steps(outcome: dict) -> list[str]:
+    """The names of the Understand and Rate plugins (plugins/steps.py) that
+    were skipped in this video's run, from its outcome's `steps`. A Suggest
+    edits plugin that was skipped isn't one: its suggestions change no clip,
+    so its failure holds nothing."""
+    return _names(outcome, lambda entry: not entry.get("ok") and entry.get("steps") != ["edit"])
+
+
+def rated_out_names(outcome: dict) -> list[str]:
+    """The names of the plugins that rated moments of this video's run under
+    the minimum score, so they were set aside."""
+    return _names(outcome, lambda entry: isinstance(entry.get("set_aside"), int) and entry["set_aside"] > 0)

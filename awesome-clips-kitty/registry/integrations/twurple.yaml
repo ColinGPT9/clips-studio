@@ -1,0 +1,11 @@
+name: Twurple
+description: TypeScript libraries for the Twitch Helix API, chat and EventSub, so a clip tool can react to chat, channel point redemptions, subscriptions and follows as they happen.
+section: community
+relationship: related
+license: MIT
+source:
+  github: https://github.com/twurple/twurple
+runs: both
+tags: [twitch, chat, eventsub, typescript]
+added: 2026-10-07
+checked: 2026-10-07

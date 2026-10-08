@@ -341,7 +341,7 @@ WATCH_ITEM_COLUMNS = frozenset({
     "watch_id", "platform", "url", "title", "published_at", "detected_at", "state",
     "reason", "job_id", "next_check_at", "publish_state", "publish_error",
     "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
-    "source_freed", "requested", "orientation",
+    "source_freed", "requested", "orientation", "chosen_clips",
 })
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
@@ -530,6 +530,11 @@ class StateDB:
             # vertical | horizontal | '' (not known): whether the video has a
             # portrait version, read when it is checked for readiness.
             ("orientation", "TEXT NOT NULL DEFAULT ''"),
+            # The clips the first publish chose, as a JSON list of
+            # [start_s, end_s], so a re-send keeps them even when a forced
+            # re-run (a rater's new scores) changed the order since. '' until
+            # then, and for items published before it was kept.
+            ("chosen_clips", "TEXT NOT NULL DEFAULT ''"),
         ):
             if column not in item_cols:
                 self.conn.execute(f"ALTER TABLE watch_items ADD COLUMN {column} {decl}")
@@ -669,6 +674,37 @@ class StateDB:
                 except sqlite3.Error as e:
                     print(f"Could not restore {table} row for clip {new_clip_id}: {e}")
         self.conn.commit()
+
+    def follow_chosen_clip(self, video_id: str, old: tuple[float, float], new: tuple[float, float]) -> None:
+        """A re-render that moved a clip to a new window: a watched video's
+        saved first-publish choice (watch_items.chosen_clips, a JSON list of
+        [start_s, end_s]) follows it there. A clip trimmed after its post was
+        rejected is still one the first publish chose, so a re-send sends it."""
+        before = [round(float(old[0]), 2), round(float(old[1]), 2)]
+        after = [round(float(new[0]), 2), round(float(new[1]), 2)]
+        if before == after:
+            return
+        rows = self.conn.execute(
+            "SELECT id, chosen_clips FROM watch_items WHERE video_id = ? AND chosen_clips != ''",
+            (video_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                saved = json.loads(row["chosen_clips"])
+            except ValueError:
+                continue
+            if not isinstance(saved, list):
+                continue
+            moved = False
+            for i, window in enumerate(saved):
+                try:
+                    same = [round(float(window[0]), 2), round(float(window[1]), 2)] == before
+                except (IndexError, KeyError, TypeError, ValueError):
+                    continue
+                if same:
+                    saved[i], moved = after, True
+            if moved:
+                self.set_watch_item(row["id"], chosen_clips=json.dumps(saved))
 
     def delete_creator(self, creator_id: int) -> dict:
         """Remove a creator profile and everything learned about them.

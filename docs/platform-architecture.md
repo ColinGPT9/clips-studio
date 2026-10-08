@@ -9,7 +9,7 @@ Phase 1 of the overnight brief (`docs/platform/BRIEF.md` §8). It builds on [`do
 3. A **plugin manager and registry client** in a new engine package, `plugins/`, mounted on the existing app through the existing `install(app, …)` pattern.
 4. A **public SDK**, `sdk/python/clipskitty_sdk/`, standard library only, that developers use from their own repositories without importing anything from Clips Kitty.
 
-Plus documentation (`docs/developers/`), a static registry (`registry/`), a Marketplace page in the existing UI, and a model-reference layer over the model stores that already exist.
+Plus documentation (`docs/developers/`), a static registry (`registry/`; since 2026-10-07 the Awesome Clips Kitty catalog in `awesome-clips-kitty/`), a Marketplace page in the existing UI, and a model-reference layer over the model stores that already exist.
 
 ## What is reused and what is created
 
@@ -18,9 +18,9 @@ Plus documentation (`docs/developers/`), a static registry (`registry/`), a Mark
 | Accepting a job | `POST /jobs`, `JobIn`, `_process_options` (`server/api.py:39-66`, `:440-550`), `Worker.run` payload copy (`server/jobs.py:187-262`) | one optional job field, `pipeline: {id, version, settings}`, on every model `_process_options` serves (`JobIn`, `JobPatch`, `BatchItemIn`, `LocalVideoIn`, and automation watches through `JobPatch`), validated there and copied by the worker like every other option; automation's conflict guard (`server/automation.py:183-191`) drops it beside Sports, Gaming scoring or Longform |
 | Running a job | the queue and the single worker (`core/queue.py`, `server/jobs.py`), `process_video` (`core/pipeline.py:192`) | one branch at the detection call (`core/pipeline.py:438-450`, `clip_direction` and `find_clips`): the plugin runner instead, when `config["clips"]["pipeline"]` is set |
 | Download and transcription | `_cached_or_download`, `transcribe` (`core/pipeline.py:205`, `:402`) | nothing |
-| Rendering and registration | `_render_files`, `_register_clip`, metadata generation (`core/pipeline.py:1123`, `:1563`, `:514`) | nothing; plugin moments become `ClipCandidate`s (`core/models.py:43`) |
+| Rendering and registration | `_render_files`, `_register_clip`, metadata generation (`core/pipeline.py:1155`, `:1595`, `:546`) | nothing; plugin moments become `ClipCandidate`s (`core/models.py:43`) |
 | Running another process | the render worker's spawn pattern (`remote_render/worker.py:82-87`; that child is Clips Kitty's own executable, not third-party code), `core/cancel.py` | `plugins/runner.py` and `clipskitty_sdk/host.py` (job folder, child process, progress lines, timeout, cancel, killing the process tree) |
-| Progress | `core.progress.emit` → `Broadcaster` → `/ws` (`core/progress.py`, `server/events.py`), the `fraction` field the worker already folds into its percentage (`server/jobs.py:312-318`) | nothing new in the protocol: plugin progress is emitted as the existing `analyze` stage with a `fraction`, so `_STAGES` and the UI mirror stay untouched |
+| Progress | `core.progress.emit` → `Broadcaster` → `/ws` (`core/progress.py`, `server/events.py`), the `fraction` field the worker already folds into its percentage (`server/jobs.py:312-318`) | nothing new in the protocol: plugin progress is emitted as the existing `analyze` stage with a `fraction`, so `_STAGES` and the UI mirror stay untouched. Understand and rate (DECISIONS D30) add one stage, `understand`, to both; a rater reports the existing `ranking` stage, and both carry the plugin's name. Suggest edits (DECISIONS D32) adds one more, `edit` (from 70% over 8%, sharing reactions' span, "Suggesting edits with {plugin}") |
 | Mounting routes | `install(app, …)` (`server/api.py:629-706`) | `plugins/api.py install(app, …)` with the plugin, Marketplace and model routes |
 | Data location | `core.paths.resolve_data_dir` (`core/paths.py:19-50`), the writable per-user data folder | `<data_dir>/plugins/` for installed plugins, their state, run folders and the registry cache |
 | API versioning | `API_VERSION = 1` (`server/api.py:34`), `docs/API.md:127-142` | a stability label per route (`server/api_stability.py`), a generated reference, contract tests; `PLUGIN_API_VERSION = 1` for the contract |
@@ -34,7 +34,7 @@ No second API, no second engine, no second queue, no second runtime. The one gen
 
 ```text
 Clips Kitty engine            existing local API              public SDK                     plugin / pipeline contract         Marketplace
-main.py serve           →     server/api.py create_app   →    sdk/python/clipskitty_sdk  →   clipskitty.yaml (manifest)    →    registry/index.json
+main.py serve           →     server/api.py create_app   →    sdk/python/clipskitty_sdk  →   clipskitty.yaml (manifest)    →    awesome-clips-kitty/index.json
 core/pipeline.py              127.0.0.1:8765, API v1          (stdlib only: read_job,        job.json → result.json             → plugins/registry.py
 server/jobs.py Worker         stability labels per route      progress, add_range, finish,   + progress lines on stdout         → GET /marketplace
                               docs/developers/api-reference   validate, local API client)    plugins/runner.py runs it          → Marketplace page (ui)
@@ -69,7 +69,7 @@ Five candidate types, kept as few as the code allows. Three collapse into others
 
 | Type | Decision | Maps onto | First release |
 |---|---|---|---|
-| **Pipeline** | A plugin of kind `pipeline` that implements a capability (first: `highlight_detection`) and returns scored, labelled moments (returning finished clips is planned). | The detection step of `process_video` (`core/pipeline.py:439`), with rendering and registration unchanged; returned files go through `_register_clip` (`core/pipeline.py:1563`). | **Built.** |
+| **Pipeline** | A plugin of kind `pipeline` that implements a capability (first: `highlight_detection`) and returns scored, labelled moments (returning finished clips is planned). The same kind covers plugins that work on the moments once they are found: they say what happens in them (outputs `context`) or rate them (outputs `ratings`), given `moments` as an input, and a job names them under `understand` and `rate` (DECISIONS D30, `docs/developers/steps.md`). It also covers plugins that suggest edits for the clips that will be made (outputs `edits`, given `moments`), named under `edit`: their suggestions wait for the creator in the timeline editor (DECISIONS D32). | The detection step of `process_video` (`core/pipeline.py:448`), with rendering and registration unchanged; understand and rate run right after it (`plugins/steps.after_finding`, `core/pipeline.py:474`), and Suggest edits after the clip limit (`plugins/steps.suggest_edits`, `core/pipeline.py:485`), adding only `plugin_edits` to each clip's scores; returned files go through `_register_clip` (`core/pipeline.py:1595`). | **Built**, find, understand, rate and edit (suggestions only). |
 | **Plugin** | The umbrella: anything installed from a repository with a `clipskitty.yaml`. A pipeline is one kind of plugin. Later kinds each map onto a seam that already exists: `caption-style` (the caption looks, `video/post_style.py` and `video/captions.py`), `publisher` (`publish/base.py:103`), `source` (`sources/dispatch.py`: `identify()` at :14-25, `download()` at :150), `integration` (the streamer hand-over, `server/integrations.py`). | The manifest's `kind` field. | **Built for `kind: pipeline` only.** Other kinds are rejected by the validator with "planned" in the message. |
 | **Model** | Not executable and not installed on its own: a **reference** a plugin lists, resolved by the model manager. | `plugins/models.py` over the Hugging Face cache, Ollama's store and `vendor/` (§8.6). | **Built** (references, detection, reuse; downloads behind an injectable fetcher). |
 | **Workflow** | **Collapses into pipeline + presets.** Clipping has a fixed flow in which only detection varies (`core/pipeline.py:192-682`), and the compositions the brief lists ("Gaming → Captions → Vertical") are already job options and presets (`JobIn`, automation watches, streamer presets). Automation watches can carry a `pipeline` in their options (built in Phase 3); streamer presets cannot yet (planned). | `server/api.py:39-66`; `server/automation.py`; `server/integrations.py:37-58`. | Not a separate type. Pipeline composition is designed in §8.12. |
@@ -114,8 +114,8 @@ Models are listed in the manifest's `models:` section rather than a separate `mo
 python -m clipskitty_sdk validate .                     same checks the registry runs
 python -m clipskitty_sdk run . --video sample.mp4       same job folder the engine builds
 git tag v1.0.0 && git push --tags                       the developer's own repository
-pull request adding registry/plugins/<publisher>/<name>.yaml
-CI validates the listing and builds registry/index.json  (reads metadata only)
+pull request adding awesome-clips-kitty/registry/pipelines/<publisher>/<name>.yaml
+CI validates the listing and builds awesome-clips-kitty/index.json  (reads metadata only)
 user opens Marketplace → sees the listing → Install → picks it on the Generate bar
 ```
 
@@ -210,11 +210,13 @@ Why the isolated worker first: it is the only model that keeps plugin code out o
 ```
 
    `video` appears only with `video.read`, `transcript` only with `transcript.read`, `tools.ffmpeg` only with `ffmpeg`, models only those the manifest lists. Settings start from the manifest's defaults; a setting the manifest does not declare, or a `secret` one, is refused (Phase 3), and values are checked against their declared types (Phase 4).
-4. It starts `run.command` (with `{python}` replaced by the plugin's own environment when it has one, otherwise by the Python Clips Kitty finds: the `plugins.python` setting, then the engine's own interpreter in a source checkout, then `python` or `py` on `PATH`) with the plugin's install folder as working directory, the job folder path as the only argument and in `CLIPSKITTY_JOB`, and the SDK folder on `PYTHONPATH`. The rest of the environment is the user's, minus Clips Kitty's own variables (`CLIPS_*`, `CLIPSKITTY_*`) and any variable whose name contains KEY, TOKEN, SECRET, PASSWORD, PASSWD, CREDENTIAL, COOKIE or AUTH. An allow-list (`PATH`, `SYSTEMROOT`, `TEMP`, locale) was the first design; it was dropped because model libraries need `HOME`/`USERPROFILE`, `APPDATA` and `CUDA_*`, and a deny-list keeps credentials out just as well (`DECISIONS.md` D9). Neither is a wall: the plugin runs as the user and can read what the user can.
+4. It starts `run.command` (with `{python}` replaced by the plugin's own environment when it has one, otherwise by the Python Clips Kitty finds: the `plugins.python` setting, then, in the installed app, the engine's own Python in script mode (`_clipskitty_script_host.py`, DECISIONS D28), and in a source checkout the engine's own interpreter, then `python` or `py` on `PATH`) with the plugin's install folder as working directory, the job folder path as the only argument and in `CLIPSKITTY_JOB`, and the SDK folder on `PYTHONPATH`. The rest of the environment is the user's, minus Clips Kitty's own variables (`CLIPS_*`, `CLIPSKITTY_*`) and any variable whose name contains KEY, TOKEN, SECRET, PASSWORD, PASSWD, CREDENTIAL, COOKIE or AUTH. An allow-list (`PATH`, `SYSTEMROOT`, `TEMP`, locale) was the first design; it was dropped because model libraries need `HOME`/`USERPROFILE`, `APPDATA` and `CUDA_*`, and a deny-list keeps credentials out just as well (`DECISIONS.md` D9). Neither is a wall: the plugin runs as the user and can read what the user can.
 5. It reads standard output line by line: `{"type":"progress","fraction":0.4,"message":"…"}` becomes `progress.emit(stage="analyze", fraction=…, message=…)`, which the worker already folds into the job's percentage (`server/jobs.py:312-318`); other lines go to the job log. Reader threads collect standard output and standard error, so a cancel is noticed every half second even while the plugin prints nothing. It honours the job's cancel flag through `core/cancel.py` and the manifest's timeout, killing the process tree on either: the plugin starts in its own process group (POSIX `start_new_session`, killed with `killpg`) or, on Windows, its own process group with `taskkill /T /F`. The Windows path is untested; a Job Object with kill-on-close is the sturdier choice once it can be tested there.
 6. On exit 0 it reads `result.json`, validates it with the same SDK validator, clamps ranges to the video and the job's limits, and returns `ClipCandidate`s: `start`, `end`, `score` (or a rank-based score when the plugin gives none), `hook` from the title, `reason`, `source = "plugin:<id>@<version>"`, and `subscores = {"plugin": id, "plugin_version": …, "plugin_label": …, "plugin_why": …}`. On any other exit it raises with the plugin's last error line, and the job fails with that message.
-7. `process_video` continues unchanged: metadata, `_render_files`, `_register_clip`. (Planned: clips returned as files (`clips.write`) copied into the clip folder and registered through `_register_clip` with a candidate for their range, like `_sport_reels` does today, `core/pipeline.py:685-754`.)
-8. The `pipeline` selection is left out of the render settings sent to a paired render PC (`remote_render/protocol.py render_config`), so a plugin's settings never leave the main PC that way and remote render job ids stay as they were.
+7. With `understand` or `rate` in the job (DECISIONS D30), `plugins/steps.after_finding` then runs each chosen plugin on the moments found, understanders first, through `runner.answer_moments`: the same checks, environment and process handling as steps 2-5, with `steps` and `moments` in `job.json`, a folder named `<video_id>-<date>-<time>-understand`, `-rate` or `-understand-rate`, and a 10-minute default limit. It applies their notes and scores, sets aside rated moments under the minimum score (must-haves excepted), and cuts to the clip limit. A plugin that fails is skipped and reported in the video's `outcome.steps`.
+   With `edit` in the job (DECISIONS D32), `plugins/steps.suggest_edits` then runs each chosen plugin, in order, on the clips that will be made, in a folder ending `-edit`, each handed what the ones before it suggested. `host.read_edits` fits each answer to its clip and to the editor's choices, and each suggestion is added to the clip's scores as one `plugin_edits` entry. Nothing else about a clip changes: its first render and its `render_opts` are what they would be without `edit`. The creator uses, hides or takes back each suggestion in the timeline editor; a render the creator asks for records what it used (`plugins/edit_marks.py`).
+8. `process_video` continues unchanged: metadata, `_render_files`, `_register_clip`. (Planned: clips returned as files (`clips.write`) copied into the clip folder and registered through `_register_clip` with a candidate for their range, like `_sport_reels` does today, `core/pipeline.py:685-754`.)
+9. The `pipeline`, `rate`, `understand` and `edit` selections are left out of the render settings sent to a paired render PC (`remote_render/protocol.py render_config`), so a plugin's settings never leave the main PC that way and remote render job ids stay as they were.
 
 ## 8.6 Models
 
@@ -276,7 +278,7 @@ Developer-hosted inference, OpenRouter and Replicate are not model *files*: they
 
 The brief's `video.write` collapses into `clips.write` (the only way a pipeline writes video into Clips Kitty), and `model.download` / `model.cache` into the `models:` list.
 
-**Security, in one place.** A plugin is code from the internet that runs as the user. The install screen says so in those words, names publisher, repository, version and commit, lists the permissions with their labels and any data-leaving warning, and installs nothing until the user confirms. Plugin-manager routes that change what is installed or enabled require a session secret in an `X-Clips-Kitty-Session` header (built in Phase 6; it does not exist before). The desktop app makes a random secret at each start, passes it to the engine in `CLIPS_KITTY_SESSION_SECRET` with the other variables it already sets (`backendEnv`, `ui/src/main/index.ts` ~:228) and hands it to its own window through the preload. An engine started without it (`python main.py serve`, or the app with `BACKEND_EXTERNAL=1`) makes its own and writes it to `<data_dir>/plugins/session.secret`, readable by the user, for scripts. Plugins never inherit it: `CLIPS_*` variables are stripped from their environment. What it stops: web pages (a page can send a simple cross-site POST without reading the answer; a custom header forces a preflight the CORS allow-list refuses, `server/api.py:577-582`) and stray scripts that call the API without knowing the secret. What it does not stop: software already running as the user, which can read the engine's environment or that file. It is not a boundary against an installed plugin. Installing never runs anything from the plugin: no `setup.py`, no install script, no hook; the installer copies files and validates the manifest. Python packages a plugin lists in `run.python_requirements` (planned; not built in Phase 3, `DECISIONS.md` D11) are a separate line on the install screen that the user agrees to; they go into the plugin's own environment under `<data_dir>/plugins/envs/` as wheels only, with hashes (`pip install --only-binary=:all: --require-hashes`), so no package build script runs at install and nothing from them runs until a job starts the plugin. Until a Python ships with the app, Python plugins need a Python the user installed; a plugin can avoid that by shipping its own executable as `run.command`. A plugin with a `secret` setting gets an extra install-screen line: "Your keys for this plugin are stored for your Windows account. Other plugins and programs running as you can read them." Windows Job Object limits for plugin processes are designed and will be called enforced only once built and tested on Windows.
+**Security, in one place.** A plugin is code from the internet that runs as the user. The install screen says so ("This pipeline is a program from the internet. It can do anything you can do on this PC."), names publisher, repository, version and commit, lists the permissions with their labels and any data-leaving warning, and installs nothing until the user confirms. Plugin-manager routes that change what is installed or enabled require a session secret in an `X-Clips-Kitty-Session` header (built in Phase 6; it does not exist before). The desktop app makes a random secret at each start, passes it to the engine in `CLIPS_KITTY_SESSION_SECRET` with the other variables it already sets (`backendEnv`, `ui/src/main/index.ts` ~:228) and hands it to its own window through the preload. An engine started without it (`python main.py serve`, or the app with `BACKEND_EXTERNAL=1`) makes its own and writes it to `<data_dir>/plugins/session.secret`, readable by the user, for scripts. Plugins never inherit it: `CLIPS_*` variables are stripped from their environment. What it stops: web pages (a page can send a simple cross-site POST without reading the answer; a custom header forces a preflight the CORS allow-list refuses, `server/api.py:577-582`) and stray scripts that call the API without knowing the secret. What it does not stop: software already running as the user, which can read the engine's environment or that file. It is not a boundary against an installed plugin. Installing never runs anything from the plugin: no `setup.py`, no install script, no hook; the installer copies files and validates the manifest. Python packages a plugin lists in `run.python_requirements` (planned; not built in Phase 3, `DECISIONS.md` D11) are a separate line on the install screen that the user agrees to; they go into the plugin's own environment under `<data_dir>/plugins/envs/` as wheels only, with hashes (`pip install --only-binary=:all: --require-hashes`), so no package build script runs at install and nothing from them runs until a job starts the plugin. Python plugins run on the app's own Python (DECISIONS D28); a plugin can also ship its own executable as `run.command`. A plugin with a `secret` setting gets an extra install-screen line: "Your keys for this pipeline are stored for your Windows account. Other pipelines and programs running as you can read them." Windows Job Object limits for plugin processes are designed and will be called enforced only once built and tested on Windows.
 
 ## 8.8 Trust
 
@@ -288,6 +290,8 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 | **Listed** | Has an entry in a registry index the user has enabled, and the index's automated checks passed (§8.10). Nobody has read the code. | The registry's pull-request checks plus a maintainer's merge. | "Listed · not reviewed by a person" |
 | **Installed from a link** | Installed from a Git URL or a folder on this PC that no enabled index lists. | The user, on the install screen. | "Not listed · Clips Kitty has not checked this" |
 | **Blocked** | Matches the block list. It does not run. | A registry maintainer (removal path below). | "Blocked: <reason>" in red |
+
+**Since 2026-10-07** (`DECISIONS.md` D20) a listed plugin shows "Community · not reviewed by a person", or "✓ Official · made by the Clips Kitty project" (tier `listed-official`) when its repository is the project's own; the worked examples below still show the old wording. Listings also carry labels (✓ Official, ✓ Compatible, ★ Featured, Community; `awesome-clips-kitty/CONTRIBUTING.md`). There is still no "Verified".
 
 **"Verified" is defined and unused.** If the owner sets up a real review, the label would be **Reviewed**: a named maintainer read one specific commit against a written checklist, and the label applies to that commit only. Even then it is not a security audit, and the UI would say so. Until such a process exists, no listing carries it (`DECISIONS.md` D5).
 
@@ -305,8 +309,8 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 **Removal path.**
 
 1. A report arrives as an issue on the registry repository, or privately through GitHub's private vulnerability reporting on that repository for anything harmful.
-2. A maintainer adds an entry to `registry/blocklist.yaml`: `id`, `versions` (`"*"` or a list), `severity` (`blocked` or `delisted`), `reason`, `date` and an optional advisory link. CI rebuilds `index.json`; blocked and delisted versions disappear from the Marketplace.
-3. The client refreshes the index and block list whenever the Marketplace opens, and every release of the app ships the list as of its build, so an offline PC still knows about old entries. **Until the owner publishes an index URL, this path cannot reach installed copies**: the only list an installed app has is the one it shipped with, so a newly blocked plugin keeps running until an app release carries the new list. Once a URL exists, the small block list should be fetched at engine start and before each plugin job, not only when the Marketplace opens (designed, not built).
+2. A maintainer adds an entry to `awesome-clips-kitty/registry/blocklist.yaml`: `id`, `versions` (`"*"` or a list), `severity` (`blocked` or `delisted`), `reason`, `date` and an optional advisory link. CI rebuilds `index.json`; blocked and delisted versions disappear from the Marketplace.
+3. Every release of the app ships the list as of its build, so an offline PC still knows about old entries, and the app reads Clips Kitty's online list (the same file on the project's main branch, `DECISIONS.md` D29) once a day when the Marketplace opens or the app starts with a pipeline installed, unless the person switches that off; **Check for new pipelines** fetches it at once. A new block therefore reaches installed copies at the next of those checks, or with the next release. Fetching it before each plugin job as well is designed, not built.
 4. Copies already installed are flagged from the cached list. `blocked`: the runner refuses to start it, the plugin page shows the reason in red and offers Remove, and nothing else changes on its own. `delisted` (abandoned, licence problem, or broken, for example by a game patch): it still runs and shows "No longer listed: <reason>". Clips Kitty never deletes a user's files by itself; removal is the user's click.
 
 **Game patches.** Game pipelines break when a game's interface changes. A listing may carry an optional `tested_with` note per version (for example `{game: marvel-rivals, version: "Season 4"}`), shown as "Tested with …", and a maintainer delists a version reported broken with a reason that says so.
@@ -320,24 +324,27 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 | Plugin API (job contract) | `PLUGIN_API_VERSION = 1` in `clipskitty_sdk` and the engine | The engine lists the plugin API versions it supports. A plugin asking for one it does not support is refused at install with "needs a newer (or older) Clips Kitty". Within a version only optional fields are added: plugins ignore job fields they do not know, the engine ignores result fields it does not know. |
 | SDK | `clipskitty_sdk.__version__`, major = plugin API | The SDK is a convenience over the files; a plugin that vendors an older 1.x copy still works because the contract is `job.json` and `result.json`, not the SDK's functions. |
 | Manifest | `manifest_version: 1` | The validator knows which versions it can read and says so. |
-| Plugin and pipeline | `version` (SemVer), one pipeline per plugin in API 1 | Each index entry maps a version to a tag and a commit; versions are immutable and never deleted, only blocked or delisted. Clips record `plugin` and `plugin_version` in their saved scores (`candidate.subscores` → `clips.scores`, `core/pipeline.py:1593`) as `plugin`, `plugin_version`, `plugin_label` and `plugin_why`, next to the existing `sport_label` and `game_why` keys. |
+| Plugin and pipeline | `version` (SemVer); in API 1 one plugin may find, understand and rate (DECISIONS D30) | Each index entry maps a version to a tag and a commit; versions are immutable and never deleted, only blocked or delisted. Clips record `plugin` and `plugin_version` in their saved scores (`candidate.subscores` → `clips.scores`, `core/pipeline.py:1593`) as `plugin`, `plugin_version`, `plugin_label` and `plugin_why`, next to the existing `sport_label` and `game_why` keys. |
 | Model | `revision` (Hugging Face commit, Ollama digest, file SHA-256) | Pinned in the manifest. A new model revision is a new plugin version. |
 
-**Pinning, updates, rollback** (research Q13-Q15). The index is refreshed when the Marketplace opens; an update shows the new version, its changelog link and any change in permissions, network hosts or data sent, and installs only on a click. The new version installs beside the old one and becomes active only when it validates; the previous version stays on disk and **Roll back** makes it active again. **Pin** stops update offers for a plugin. No automatic updates; a security problem is handled by the block list, not by a forced update. Because Colin's PC is short of disk, only one previous version is kept by default.
+**Pinning, updates, rollback** (research Q13-Q15). Clips Kitty's online list is checked once a day when the Marketplace opens (D29); an update shows the new version, its changelog link and any change in permissions, network hosts or data sent, and installs only on a click. The new version installs beside the old one and becomes active only when it validates; the previous version stays on disk and **Go back to …** (roll back) makes it active again. **Keep this version (no update offers)** (pin) stops update offers for a plugin. No automatic updates; a security problem is handled by the block list, not by a forced update. Because Colin's PC is short of disk, only one previous version is kept by default.
 
 ## 8.10 Marketplace and registry
 
 **Hybrid registry** (research Q12): one official static index built by CI from one listing file per plugin in a public Git repository, reviewed by pull request; installs from any GitHub URL, labelled "not listed"; and a setting to add other index URLs. The app never needs a Clips Kitty server.
 
-**In this repository first** (`DECISIONS.md` D5): `registry/` holds the format and tooling until the owner picks a public home.
+**In this repository first** (`DECISIONS.md` D5): `registry/` held the format and tooling until the owner picks a public home. On 2026-10-07 it became Awesome Clips Kitty, a curated directory in `awesome-clips-kitty/` (`DECISIONS.md` D20); its `CONTRIBUTING.md` is the reference for the layout and formats.
 
 ```text
-registry/
-  plugins/<publisher>/<name>.yaml   one listing file per plugin, submitted by pull request
-  blocklist.yaml
-  index.json                        built by CI; empty plugin list today
-  README.md                         how to submit
-scripts/build_registry_index.py     validate listings, fetch each manifest at its commit, write index.json
+awesome-clips-kitty/
+  registry/pipelines/<publisher>/<name>.yaml   one listing file per pipeline, submitted by pull request
+  registry/<kind>s/<name>.yaml                 apps, models, workflows, integrations and tools
+  registry/sections.yaml, catalog.yaml         sections per kind; the install counter's address
+  registry/blocklist.yaml
+  stats/                                       the numbers, and the compatibility check's records
+  index.json                                   built by CI; what the app reads
+  README.md, CONTRIBUTING.md                   the directory (partly generated) and how to submit
+scripts/build_registry_index.py                validate, fetch each manifest at its commit, write index.json and README.md
 ```
 
 A listing file is small because the manifest is the source of truth:
@@ -346,19 +353,20 @@ A listing file is small because the manifest is the source of truth:
 id: example-dev/marvel-rivals-highlights
 repository: https://github.com/example-dev/clips-kitty-marvel-rivals
 path: .                         # subfolder holding clipskitty.yaml, for monorepos
+section: gaming/marvel-rivals   # added 2026-10-07: a section from sections.yaml
 versions:
   - {version: 1.0.0, tag: v1.0.0, commit: 0123456789abcdef0123456789abcdef01234567}
 ```
 
 **The build script** validates each listing, fetches the manifest at the pinned commit as raw text (it never clones with hooks, installs or runs plugin code), runs the manifest validator, checks that the manifest's `id` and `version` match the listing, that the publisher matches the repository owner, that a licence is declared, that the `clipskitty` publisher is not claimed, and writes `index.json` with the manifest fields the Marketplace shows plus the check results. GitHub stars and release download counts may be captured at build time and labelled as such. CI holds no secrets beyond the read-only default token and never checks out a contributor's branch with write permissions ([CVE-2025-6705](https://blogs.eclipse.org/post/mikaël-barbero/eclipse-open-vsx-registry-security-advisory), research H3). In tests the fetch is a fixture directory; nothing touches the network.
 
-**The client** (`plugins/registry.py`) reads index URLs from settings (none is invented: the default is the bundled copy until the owner publishes one), caches the last good copy under `<data_dir>/plugins/cache/`, works offline from that cache, and searches it locally.
+**The client** (`plugins/registry.py`) reads the bundled copy, Clips Kitty's online list (`ONLINE_URL`, D29) and any index URLs from settings, caches the last good copy under `<data_dir>/plugins/cache/`, works offline from that cache, and searches it locally.
 
 **Browse and search.**
 
 | Need | Design |
 |---|---|
-| Types | Pipelines (built); Plugins, Models, Workflows, Providers, Integrations appear as tabs that say "planned" until a kind exists. Models listed by installed plugins appear under Models. |
+| Types | Pipelines (built), and Awesome Clips Kitty's Apps, AI model links, Workflows, Integrations and Tools, which link to their own pages (the models tab is "AI model links" so it isn't taken for the app's Models page). Plugin kinds Clips Kitty can't install yet (caption styles, publishers, sources and the rest) get no tab until they can be installed. Models listed by installed pipelines appear under Installed. |
 | Categories | A closed list checked by CI: gaming, sports, creators, streaming, podcasting, captions, detection, analytics, audio, utilities (the brief's ten, research Q32). |
 | Tags | Lower case, at most 10; game and sport slugs (`marvel-rivals`, `world-of-warcraft`, `rocket-league`, `soccer`, `nhl`). |
 | Search | Local and forgiving: case and punctuation folded; matches name, description, tags, games, events and capability; an alias table grown by pull request (`wow` → `world-of-warcraft`, `football` → `soccer`); every word must match somewhere, ranked by where (name over tag over description). So "WoW", "World of Warcraft PvP", "Soccer goals", "Podcast shorts" each find the one specialised listing instead of a broad category. |
@@ -369,6 +377,8 @@ versions:
 **Opening a listing's links.** The desktop app opens outside links only from an allow-list (`EXTERNAL_ALLOWED`, `ui/src/main/index.ts:487-560`), which on GitHub allows only Clips Kitty's own repository, and the window's content security policy blocks outside images (`ui/src/renderer/index.html:7`). Listings must not widen either. The Marketplace shows repository, docs, funding and service links as text with a Copy button, and opens one only through a new, narrow path: the engine confirms the URL is `https` and appears in the cached index for that listing, and the app asks "Open <host> in your browser?" first (Phase 8). Example images are not shown inside the app; they are links like the rest.
 
 **Ratings, counts, examples, cost** (research Q34-Q36, Q43): no in-app ratings (they need accounts and are gamed); GitHub stars shown as GitHub stars; no telemetry and no install counts, only "release downloads" if a plugin ships release assets; examples are the developer's own links. The Marketplace stays free because it runs nothing: a Git repository, a CI job, a JSON file. Clips Kitty takes no cut and processes no payments; `links.funding` and `service` are outbound links only.
+
+**Superseded on 2026-10-07** (`DECISIONS.md` D20): the owner decided to count installs from the catalog. After a first install from a listing the app requests one small file named after it, with no account, identifier or anything about videos, and users can switch it off (`plugins/counter.py`). It is on by default until the owner answers whether it should be (D23). Clips Kitty installs, GitHub stars and Hugging Face downloads are each shown as their own figure, read on a schedule rather than at build time (`scripts/update_registry_metrics.py`). The counter has no address yet, so nothing is counted until the privacy policy says it is.
 
 ## New routes
 
@@ -383,7 +393,7 @@ All mounted through `plugins/api.py install(app, …)`, labelled **experimental*
 | `DELETE /plugins/{publisher}/{name}` | remove it (all its versions) | yes | 6 |
 | `PUT /plugins/{publisher}/{name}/secrets` | store its `secret` settings | yes | 6 |
 | `GET /marketplace` | the cached index, searched and filtered (`q`, `category`, `tag`, `kind`) | no | 7 |
-| `POST /marketplace/refresh` | fetch the configured index URLs into the cache | no (it only reads public data) | 7 |
+| `POST /marketplace/refresh` | fetch Clips Kitty's online list and the configured index URLs into the cache (`{"automatic": true}`: the online list, only when due) | yes (D29: a web page can't make the app fetch) | 7 |
 | `GET /plugin-models` | model references of installed plugins, installed or not, licence and size | no | 9 |
 
 ## 8.11 First-party dogfooding
@@ -397,7 +407,7 @@ The existing modes stay exactly where they are. Two things make them part of the
 
 **Capability market.** Every pipeline names a `capability` (first: `highlight_detection`). Several implementations coexist under one capability: Official Shorts, Official Gaming, Open Shorts, a community model, a soccer model, a game model, a remote API. The job picks one by id (`pipeline: {id, version}`); the Marketplace can group by capability. Nothing routes between them in the first release. What keeps the door open: typed `capability`, the shared result shape, `events` labels, and `execution` with `sends`. Later, OpenRouter-style preferences (research §7.3) can be added as job fields (`pipeline: {capability: highlight_detection, prefer: [...], fallback: true}`) without changing a plugin.
 
-**Pipeline composition.** A later `kind: component` with typed inputs and outputs (`frames → events`, `events → ranges`, `ranges → ranked ranges`) lets a pipeline list other plugins it calls through the engine, so a Marvel Rivals pipeline can reuse a community kill-feed reader or a highlight ranker. What keeps the door open now: plugin ids are namespaced and versioned, `requires` is a mapping that can gain a `plugins:` entry, the result already carries labels and reasons a ranker can consume, and the model manager already shares models between plugins.
+**Pipeline composition.** A later `kind: component` with typed inputs and outputs (`frames → events`, `events → ranges`, `ranges → ranked ranges`) lets a pipeline list other plugins it calls through the engine, so a Marvel Rivals pipeline can reuse a community kill-feed reader or a highlight ranker. `ranges → ranked ranges` is now built another way, as the **rate** step, with **understand** beside it (`ranges → described ranges`): the job, not a pipeline, names up to three of each, and they run after whatever found the moments (DECISIONS D30, `docs/developers/steps.md`). What keeps the door open now: plugin ids are namespaced and versioned, `requires` is a mapping that can gain a `plugins:` entry, the result already carries labels and reasons a ranker can consume, and the model manager already shares models between plugins.
 
 | Designed, not built | Why not tonight | What it changes later |
 |---|---|---|
@@ -406,11 +416,11 @@ The existing modes stay exactly where they are. Two things make them part of the
 | Host services (OCR, tracker, frame grabbing) as endpoints | they are private Python today (`repo-map.md` §13) | plugins stop shipping their own OCR |
 | Multi-segment ranges | renderer cuts one span today | `segments: [{start, end}]` per range |
 | Other plugin kinds (caption-style, publisher, source, integration, provider, component) | one kind proves the contract | new `kind` values |
-| A bundled Python for plugins in the frozen build | packaging work | `{python}` resolves without a system Python |
+| A bundled Python for plugins in the frozen build | **built** (D28): the engine runs plugin scripts itself | `{python}` resolves without a system Python |
 | Per-plugin Python environments (`run.python_requirements`) | needs the manager first; then built if time allows (Phase 6) | plugins can depend on wheels such as onnxruntime |
 | Routing by game, then genre, then generic | needs several pipelines per capability to exist first | a job can ask for a capability instead of one plugin |
-| Block list fetched at engine start and before each plugin job | needs a published index URL | blocking reaches installed copies without an app release |
-| Opt-in usage counts | owner's call | a counter, never on by default |
+| Block list fetched before each plugin job | the online list is checked at app start and when the Marketplace opens (D29); a check before each job would add a network wait to every run | a block reaches an installed copy even on a PC that stays open for days |
+| Opt-in usage counts | owner's call | a counter, never on by default (superseded 2026-10-07: D20, install counts wanted; D23, a counter built on unless switched off, pending the owner's answer on that default, with no address yet, so nothing is counted; §8.10) |
 ## 8.13 Worked examples
 
 Both are on paper. Publisher names, repositories, model ids and commits are placeholders.
@@ -473,11 +483,11 @@ Install Open Shorts for Clips Kitty 1.0.0?
 example-dev · github.com/example-dev/clips-kitty-open-shorts · commit 0123456 · MIT
 Listed · not reviewed by a person · Unofficial: not made by the Open Shorts project
 
-This plugin is code from the internet. It runs on this PC with your rights.
+This pipeline is a program from the internet. It can do anything you can do on this PC.
 
 It will
-  Read the video you process ............................ enforced for the hand-over
-  Connect to 127.0.0.1:8000 and api.openshorts.app ..... declared by the developer
+  Read the video you process ............................ Clips Kitty hands this over
+  Connect to 127.0.0.1:8000 and api.openshorts.app ..... the developer says so
 ⚠ If you choose Hosted: sends the video's link to api.openshorts.app,
   which downloads and processes the video on its servers.
 ⚠ Open Shorts itself sends the transcript to Google Gemini unless you set it
@@ -513,13 +523,13 @@ Install Marvel Rivals Highlights 1.0.0?
 example-dev · github.com/example-dev/clips-kitty-marvel-rivals · commit 0123456 · MIT
 Listed · not reviewed by a person · Unofficial: not made or endorsed by the makers of Marvel Rivals
 
-This plugin is code from the internet. It runs on this PC with your rights.
-Runs on this PC. The developer declares that nothing leaves your computer.
+This pipeline is a program from the internet. It can do anything you can do on this PC.
+Runs on this PC. The developer says nothing leaves your computer.
 
 It will
-  Read the video you process and its transcript ........ enforced for the hand-over
-  Use Clips Kitty's FFmpeg .............................. enforced for the hand-over
-  Use your graphics card ................................ declared by the developer
+  Read the video you process and its transcript ........ Clips Kitty hands this over
+  Use Clips Kitty's FFmpeg .............................. Clips Kitty hands this over
+  Use your graphics card ................................ the developer says so
 Downloads
   killfeed.onnx · <size from the Hub> · Apache-2.0 · huggingface.co/example-dev/marvel-rivals-killfeed @ 0123456
 Python packages (installed into its own folder, wheels only)
@@ -548,7 +558,7 @@ Each phase is its own commits (code, then docs), ends with `ruff check .` and th
 
 ## How the four success tests pass
 
-**1. The niche developer.** They write `clipskitty.yaml` and `src/main.py` against the SDK (§8.2-8.4) and never open Clips Kitty's source; reference their model on Hugging Face by commit (§8.6); test with `python -m clipskitty_sdk validate` and `run`; push to their own GitHub repository; open a pull request adding one listing file to the registry (§8.10). Users find it by searching the game's name, see what it needs and sends, install it (§8.7, §8.13), and pick it in the job form. Clips Kitty does the download, transcript, FFmpeg, crop, captions, titles, library and publishing. Nothing is forked. Components: Phases 3-8; the model reference is Phase 9. **Gaps:** users cannot discover a new listing until an index URL is published, because the bundled index changes only with an app release (§8.8); Python plugins need a Python the user installed and their own packages are planned (D11); listing links open only through the confirmed path (§8.10).
+**1. The niche developer.** They write `clipskitty.yaml` and `src/main.py` against the SDK (§8.2-8.4) and never open Clips Kitty's source; reference their model on Hugging Face by commit (§8.6); test with `python -m clipskitty_sdk validate` and `run`; push to their own GitHub repository; open a pull request adding one listing file to the registry (§8.10). Users find it by searching the game's name, see what it needs and sends, install it (§8.7, §8.13), and pick it in the job form. Clips Kitty does the download, transcript, FFmpeg, crop, captions, titles, library and publishing. Nothing is forked. Components: Phases 3-8; the model reference is Phase 9. **Gaps:** a new listing shows as Community until a release bundles it, because only the bundled index labels (§8.8, D22, D29); Python plugins run on the Python inside the app and their own packages are planned (D28); listing links open only through the confirmed path (§8.10).
 
 **2. Open Shorts.** The adapter in §8.13 is a pipeline like any other; Open Shorts stays the Open Shorts project's, runs in its own Docker container or hosted service, and the user keeps Clips Kitty for everything after detection. Its data use is declared and shown. Not built tonight (research §7.7 question 8); the contract it needs is. **Gaps:** it needs Docker with WSL 2 or a hosted account; hosted mode cannot take local files; Clips Kitty's Whisper cannot be reused; and Open Shorts' own frame and silent-video stages send data to Gemini that only Open Shorts' configuration can stop.
 

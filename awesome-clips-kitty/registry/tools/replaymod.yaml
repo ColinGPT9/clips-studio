@@ -1,0 +1,12 @@
+name: ReplayMod
+description: Minecraft mod that records your sessions so you can replay them from any camera angle, mark moments with a hotkey and render camera paths to video for clipping.
+section: games
+relationship: related
+license: GPL-3.0-or-later
+source:
+  github: https://github.com/ReplayMod/ReplayMod
+runs: local
+tags: [minecraft, replay, camera paths, rendering]
+games: [minecraft]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,12 @@
+name: Chopify
+description: 'Turns a video link into captioned clips: it downloads the video, transcribes it locally, scores moments with a built-in heuristic or a local Ollama model and renders vertical, square or wide clips that end on a full sentence.'
+section: clipping
+relationship: related
+license: MIT
+source:
+  github: https://github.com/mehbul/chopify
+runs: local
+tags: [ollama, whisper, captions, vertical, podcast]
+warning: Downloads videos from YouTube and other sites with yt-dlp; their terms may not allow it for videos you don't own.
+added: 2026-10-07
+checked: 2026-10-07

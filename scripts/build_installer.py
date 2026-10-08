@@ -34,6 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui"
 BACKEND_OUT = ROOT / "build" / "dist" / "backend"
+SDK = ROOT / "sdk" / "python"
 
 
 def say(step: str, message: str) -> None:
@@ -59,6 +60,29 @@ def run(cmd: list[str], cwd: Path, what: str) -> None:
     if result.returncode != 0:
         sys.exit(f"\n{what} failed (exit {result.returncode}). Nothing was packaged.")
     print(f"    done in {time.time() - started:.0f}s", flush=True)
+
+
+def app_python() -> tuple[int, int]:
+    """The Python Clips Kitty's plugins are promised: APP_PYTHON in
+    sdk/python/clipskitty_sdk/host.py, the one place it is written."""
+    if str(SDK) not in sys.path:
+        sys.path.insert(0, str(SDK))
+    from clipskitty_sdk.host import APP_PYTHON
+
+    return tuple(APP_PYTHON)
+
+
+def python_problem(version_info) -> str | None:
+    """Why this Python can't build Clips Kitty, or None. Plugins run on the
+    Python frozen into the app, and the docs and the SDK's checks promise
+    them APP_PYTHON, so a build on another minor version would break that
+    promise without anyone noticing."""
+    have, promised = tuple(version_info[:2]), app_python()
+    if have == promised:
+        return None
+    return (f"This build uses Python {have[0]}.{have[1]}, but Clips Kitty's plugins are promised Python "
+            f"{promised[0]}.{promised[1]} (APP_PYTHON in sdk/python/clipskitty_sdk/host.py). Build with "
+            f"{promised[0]}.{promised[1]}, or change APP_PYTHON and the docs that name it.")
 
 
 def check_tools(skip_ui: bool) -> None:
@@ -166,6 +190,58 @@ def smoke_test_backend() -> None:
         print(output[-2000:])
         sys.exit("\nThe frozen engine failed to run. Fix the spec before packaging.")
     print(f"    engine runs (exit 0, {len(output)} bytes of output)")
+    smoke_test_script_mode(exe)
+
+
+# Run by the frozen engine in script mode: the standard library, the SDK and
+# a process pool, then a deliberate exit code. Heavy engine packages must not
+# be loaded just to run a pipeline, and the frozen Python must be the one
+# plugins are promised (APP_PYTHON).
+SCRIPT_MODE_CHECK = """
+import concurrent.futures, csv, email.mime.text, json, sqlite3, statistics, sys, xml.etree.ElementTree
+from multiprocessing import Pool
+import clipskitty_sdk
+from clipskitty_sdk.host import APP_PYTHON
+
+assert tuple(sys.version_info[:2]) == tuple(APP_PYTHON), (sys.version_info[:2], APP_PYTHON)
+
+def square(n):
+    return n * n
+
+if __name__ == "__main__":
+    with Pool(2) as pool:
+        assert pool.map(square, [1, 2, 3]) == [1, 4, 9]
+    heavy = sorted(m for m in ("numpy", "torch", "yaml", "cv2", "core") if m in sys.modules)
+    assert not heavy, heavy
+    print("script mode ok", sys.version.split()[0])
+    sys.exit(3)
+"""
+
+
+def smoke_test_script_mode(exe: Path) -> None:
+    """Pipelines run on this same frozen Python (_clipskitty_script_host.py).
+    Prove it before packaging: a script runs with the whole standard library
+    and the SDK, a multiprocessing pool works, its exit code survives, and
+    it starts without loading the engine."""
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="clipskitty-script-mode-") as tmp:
+        script = Path(tmp) / "check.py"
+        script.write_text(SCRIPT_MODE_CHECK, encoding="utf-8")
+        # What plugin_env (sdk/python/clipskitty_sdk/host.py) gives a pipeline.
+        env = {**os.environ, "CLIPSKITTY_SCRIPT_HOST": "1",
+               "PYTHONPATH": str(BACKEND_OUT / "_internal" / "sdk" / "python")}
+        started = time.monotonic()
+        result = subprocess.run([str(exe), str(script)], capture_output=True, text=True, timeout=300,
+                                cwd=tmp, env=env)
+        took = time.monotonic() - started
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 3 or "script mode ok" not in output:
+        print(output[-2000:])
+        sys.exit(f"\nThe frozen engine couldn't run a pipeline script (exit {result.returncode}). "
+                 "Fix the spec or _clipskitty_script_host.py before packaging.")
+    print(f"    pipelines run on the bundled Python ({took:.1f} s to run the check)")
 
 
 def build_ui() -> None:
@@ -257,6 +333,11 @@ def main() -> None:
     args = ap.parse_args()
 
     started = time.time()
+    if not args.skip_backend:
+        # Checked before anything is fetched or frozen.
+        problem = python_problem(sys.version_info)
+        if problem:
+            sys.exit(f"\n{problem}")
     check_tools(args.skip_ui)
     ensure_vendored()
 

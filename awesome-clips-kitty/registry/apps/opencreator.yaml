@@ -1,0 +1,13 @@
+name: OpenCreator
+description: Creator workspace, formerly KrillinAI, that transcribes, translates and dubs videos and renders bilingual subtitles in landscape or portrait, plus AI writing, image and video tools.
+section: video-ai
+relationship: related
+license: Apache-2.0
+source:
+  github: https://github.com/krillinai/OpenCreator
+platforms: [windows, macos, web]
+runs: both
+tags: [translation, dubbing, subtitles, portrait, whisper]
+warning: Desktop app sends usage stats by default (off in Settings); sends prompts and subtitles to your AI service; downloads videos from YouTube and other sites, whose terms may not allow it.
+added: 2026-10-07
+checked: 2026-10-07

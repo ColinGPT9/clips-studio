@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from './api'
 import type {
+  CatalogResponse,
+  Counting,
   InstalledPlugin,
   MarketplaceResponse,
   ModelPlan,
   ModelStatus,
   ModelsOverview,
+  OnlineList,
   PluginPlan,
   PluginsResponse
 } from './marketplace'
 import { usablePipelines } from './marketplace'
+import { editPlugins, stepPlugins } from './steps'
 
 /** The plugin manager's routes (plugins/api.py). The ones that fetch,
  *  install or change plugins need the session secret, which only the
@@ -22,7 +26,8 @@ export const PLUGINS_CHANGED = 'plugins-changed'
 /** Sent on window to show the Marketplace (App switches to it). */
 export const OPEN_MARKETPLACE = 'open-marketplace'
 
-export type MarketplaceTab = 'browse' | 'installed' | 'add'
+/** Browse and Installed are tabs; For developers opens from the bottom of Browse. */
+export type MarketplaceTab = 'browse' | 'installed' | 'developers'
 
 let wantedTab: MarketplaceTab | null = null
 
@@ -96,8 +101,29 @@ export const plugins = {
     const qs = params.toString()
     return call<MarketplaceResponse>(`/marketplace${qs ? `?${qs}` : ''}`)
   },
-  refresh: () =>
-    call<{ indexes: { url: string; ok: boolean; error?: string }[] }>('/marketplace/refresh', { method: 'POST' }),
+  /** Awesome Clips Kitty's apps, models, workflows, integrations and tools. */
+  catalog: (q: { q?: string; kind?: string; section?: string } = {}) => {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v) params.set(k, v)
+    const qs = params.toString()
+    return call<CatalogResponse>(`/marketplace/catalog${qs ? `?${qs}` : ''}`)
+  },
+  /** Check for new listings. `automatic`: the Marketplace opening, which
+   *  checks Clips Kitty's online list only when it is due (once a day). */
+  refresh: (automatic = false) =>
+    call<{ checked: boolean; indexes: { url: string; ok: boolean; error?: string | null }[] }>(
+      '/marketplace/refresh',
+      { method: 'POST', body: JSON.stringify({ automatic }) },
+      true
+    ),
+  /** Whether the Marketplace checks Clips Kitty's online list by itself, and switching it. */
+  online: () => call<OnlineList>('/marketplace/online'),
+  setOnline: (enabled: boolean) =>
+    call<OnlineList>('/marketplace/online', { method: 'PUT', body: JSON.stringify({ enabled }) }, true),
+  /** Whether installs from the Marketplace are counted (anonymously), and switching it. */
+  counting: () => call<Counting>('/marketplace/counting'),
+  setCounting: (enabled: boolean) =>
+    call<Counting>('/marketplace/counting', { method: 'PUT', body: JSON.stringify({ enabled }) }, true),
   plan: (source: PluginSource) =>
     call<PluginPlan>('/plugins/plan', { method: 'POST', body: JSON.stringify({ source }) }, true),
   install: (planId: string) =>
@@ -133,10 +159,37 @@ export const plugins = {
     ).then(changed)
 }
 
-/** The installed pipelines a job can use, kept current as plugins change.
- *  Null until the engine answers; empty when none is installed and on. The
- *  Generate bar's Pipeline switch stays hidden in both cases. */
-export function usePipelines(): InstalledPlugin[] | null {
+/** At start, when pipelines are installed, ask the engine to check Clips
+ *  Kitty's online list if it is due (once a day, while the switch is on), so a
+ *  block on an installed version arrives without opening the Marketplace
+ *  (DECISIONS D29). Quiet; a failure is the footer's to report. The engine may
+ *  still be starting, so it waits a little and tries once more later. */
+export function checkOnlineListAtStart(): () => void {
+  let stopped = false
+  const attempt = async (): Promise<void> => {
+    if (stopped || !(await canManage())) return
+    const installed = await plugins.list()
+    if (stopped || installed.plugins.length === 0) return
+    const done = await plugins.refresh(true)
+    if (done.checked) window.dispatchEvent(new Event(PLUGINS_CHANGED))
+  }
+  let later: ReturnType<typeof setTimeout> | undefined
+  const first = setTimeout(() => {
+    attempt().catch(() => {
+      later = setTimeout(() => attempt().catch(() => undefined), 120_000)
+    })
+  }, 10_000)
+  return () => {
+    stopped = true
+    clearTimeout(first)
+    if (later) clearTimeout(later)
+  }
+}
+
+/** Some of the installed plugins, kept current as plugins change. Null until
+ *  the engine answers; asked again while the engine is still starting. The
+ *  loader of usePipelines, useStepPlugins and useEditPlugins. */
+function useInstalled(pick: (all: InstalledPlugin[]) => InstalledPlugin[]): InstalledPlugin[] | null {
   const [list, setList] = useState<InstalledPlugin[] | null>(null)
   useEffect(() => {
     let live = true
@@ -145,7 +198,7 @@ export function usePipelines(): InstalledPlugin[] | null {
       plugins
         .list()
         .then((r) => {
-          if (live) setList(usablePipelines(r.plugins))
+          if (live) setList(pick(r.plugins))
         })
         .catch(() => {
           if (live) timer = setTimeout(load, 5000) // the engine is still starting
@@ -158,6 +211,30 @@ export function usePipelines(): InstalledPlugin[] | null {
       if (timer) clearTimeout(timer)
       window.removeEventListener(PLUGINS_CHANGED, load)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return list
+}
+
+/** The installed pipelines a job can use, kept current as plugins change.
+ *  Null until the engine answers; empty when none is installed and on. The
+ *  Generate bar's Pipeline switch stays hidden in both cases. */
+export function usePipelines(): InstalledPlugin[] | null {
+  return useInstalled(usablePipelines)
+}
+
+/** The installed plugins a job can name under Rate & understand: turned on,
+ *  not blocked, and able to understand or rate moments others found
+ *  (lib/steps.ts). Null until the engine answers; the switch stays hidden
+ *  while it is null or empty, unless the video already names a step. */
+export function useStepPlugins(): InstalledPlugin[] | null {
+  return useInstalled(stepPlugins)
+}
+
+/** The installed plugins a job can name under Suggest edits: turned on, not
+ *  blocked, and able to suggest edits for the clips Clips Kitty makes
+ *  (lib/steps.ts). Null until the engine answers; the switch stays hidden
+ *  while it is null or empty, unless the video already names one. */
+export function useEditPlugins(): InstalledPlugin[] | null {
+  return useInstalled(editPlugins)
 }

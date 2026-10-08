@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/sdk/python/clipskitty_sdk/schema/clipskitty.schema.json
+# What Clips Kitty reads about this plugin. Every field is described in
+# https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/plugin-manifest.md
+manifest_version: 1
+id: @@ID@@
+name: "@@NAME@@"
+version: 0.1.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Rates the moments found in a video by the words said in them: a moment
+  where the commentary says one of your good words, such as "quark burst" in
+  Quarkbloom Arena (a made-up game), scores higher, and one where it says a
+  dull word scores lower. It only reads what is said: it doesn't see the
+  screen, and a moment nobody talks about keeps its score.
+author: {name: "@@AUTHOR@@"}
+license: "@@LICENSE@@"
+requires: {clips_kitty: "@@REQUIRES@@", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+execution: local
+inputs: [moments, transcript]
+outputs: [ratings]
+settings:
+  good_words:
+    type: string
+    default: "quark burst"
+    max_length: 1000
+    title: Words or phrases that make a moment better, separated by commas
+  bonus:
+    type: integer
+    default: 15
+    minimum: 1
+    maximum: 50
+    title: Points a moment gains when one of them is said
+  dull_words:
+    type: string
+    default: "waiting"
+    max_length: 1000
+    title: Words or phrases that make a moment dull, separated by commas
+  dull_score:
+    type: integer
+    default: 10
+    minimum: 0
+    maximum: 100
+    title: The score a dull moment drops to
+permissions: [transcript.read]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: gaming

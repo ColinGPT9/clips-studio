@@ -1,0 +1,14 @@
+name: whisper.cpp
+description: Native C/C++ build of Whisper with command-line and server programs that transcribe without Python on CPU or GPU, including AMD and Intel cards through Vulkan. Outputs JSON and SRT, with optional voice activity detection.
+section: transcription
+relationship: related
+license: MIT
+source:
+  github: https://github.com/ggml-org/whisper.cpp
+models:
+  - huggingface: ggerganov/whisper.cpp
+  - huggingface: ggml-org/whisper-vad
+runs: local
+tags: [whisper, speech to text, vulkan, subtitles, cpu]
+added: 2026-10-07
+checked: 2026-10-07

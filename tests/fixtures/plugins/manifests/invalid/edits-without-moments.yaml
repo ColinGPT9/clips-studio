@@ -1,0 +1,16 @@
+# expect: outputs[1]: edits are suggested for the clips Clips Kitty makes from moments: add moments to inputs
+manifest_version: 1
+id: example-dev/quarkbloom-trimmer
+name: Quarkbloom Trimmer
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Suggests cuts for clips of Quarkbloom Arena (a made-up game).
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: ['{python}', src/main.py]
+execution: local
+inputs: [video]
+outputs: [ranges, edits]
+permissions: [video.read, ffmpeg]

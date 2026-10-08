@@ -22,6 +22,7 @@ it returns {"severity": "blocked" | "delisted", "reason": ...} or None.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -30,8 +31,10 @@ import threading
 import time
 from pathlib import Path
 
-from plugins import permissions, sources, store
+from plugins import models, permissions, sources, store
 from plugins._sdk import manifest
+
+log = logging.getLogger(__name__)
 
 INSTALLED = "installed"
 STAGING = "staging"
@@ -39,6 +42,21 @@ STAGING_MAX_AGE = 3600
 MAX_SECRET_LENGTH = 4096
 PLAN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 BUILTIN_DIR = Path(__file__).resolve().parent / "builtin"
+# A download or Git that failed, one sentence for each kind of failure
+# (sources.FetchFailed.kind); what went wrong is in the engine's log.
+DOWNLOAD_FAILED = "Couldn't download this pipeline. Check your internet connection and try again."
+DOWNLOAD_GONE = ("Couldn't download this pipeline: its files aren't where its listing or link says any more. "
+                 "Its developer may have moved or removed them, or made them private.")
+DISK_FULL = "Couldn't save this pipeline: this PC's disk is full. Free up some space and try again."
+DOWNLOAD_DAMAGED = "Couldn't download this pipeline: the download arrived damaged. Try again."
+DOWNLOAD_OTHER = f"Couldn't download this pipeline. {sources.TRY_AGAIN}"
+FETCH_FAILED = {sources.OFFLINE: DOWNLOAD_FAILED, sources.GONE: DOWNLOAD_GONE, sources.DISK: DISK_FULL,
+                sources.DAMAGED: DOWNLOAD_DAMAGED, sources.OTHER: DOWNLOAD_OTHER}
+# Said on the install screen when the download of a model it lists will ask
+# first because the file is pickle-format (the validator's warning, in
+# Technical details, names the file).
+PICKLE_MODEL = ("One of its AI model files is a kind that can run programs when it's opened. Clips Kitty will ask "
+                "you before it downloads that file.")
 
 _lock = threading.RLock()
 
@@ -131,13 +149,15 @@ def _entry(data_dir, plugin_id: str) -> tuple[dict, dict]:
 
 def _summary(data: dict | None) -> dict:
     data = data or {}
+    # `inputs` and `outputs` say which steps it can be chosen for (find, or
+    # understand and rate: manifest.offers), as a listing's do (registry SHOWN).
     keys = ("id", "name", "version", "kind", "description", "license", "repository", "category", "tags",
-            "games", "events", "execution", "author", "links", "requirements")
+            "games", "events", "execution", "author", "links", "requirements", "based_on", "inputs", "outputs")
     return {k: data.get(k) for k in keys if data.get(k) is not None}
 
 
 def _version_order(a: str, b: str) -> int:
-    ta, tb = manifest._version_tuple(a), manifest._version_tuple(b)
+    ta, tb = manifest.version_key(a), manifest.version_key(b)
     return (ta > tb) - (ta < tb)
 
 
@@ -145,9 +165,39 @@ def _block_problems(blocked, plugin_id: str, version: str) -> tuple[list, list]:
     hit = blocked(plugin_id, version) if blocked and plugin_id and version else None
     if not hit:
         return [], []
+    # Any list Clips Kitty reads can block (plugins/registry.py blocklist), not only its own;
+    # the Marketplace's Installed tab uses the same words.
     if hit.get("severity") == "blocked":
-        return [f"Blocked: {hit.get('reason') or 'on the registry block list'}"], []
-    return [], [f"No longer listed: {hit.get('reason') or 'removed from the registry'}"]
+        return [f"Blocked: {hit.get('reason') or 'a list Clips Kitty uses has blocked this version'}"], []
+    return [], ["No longer listed: " + (hit.get("reason") or "a list Clips Kitty uses has taken it off")]
+
+
+def _no_manifest(source: dict) -> str:
+    """The missing clipskitty.yaml, named where the person looked (the
+    validator would name the staging folder)."""
+    if source["kind"] == "folder":
+        return f"The folder you chose ({source['path']}) has no {manifest.MANIFEST_FILE} in it."
+    return f"There is no {manifest.MANIFEST_FILE} in {sources.describe(source)}."
+
+
+def _pickle_model(data: dict | None) -> bool:
+    """Whether downloading a model the manifest lists will ask first because
+    a file is pickle-format: the download's own rule (models.download), on
+    the file names models.parse gives (a url model's is the last part of its
+    address, without any ?query or #fragment)."""
+    listed = data.get("models") if isinstance(data, dict) else None
+    for entry in listed if isinstance(listed, list) else []:
+        if not isinstance(entry, dict) or entry.get("source") not in ("huggingface", "url"):
+            continue
+        if entry["source"] == "huggingface" and not isinstance(entry.get("files"), list):
+            continue  # the validator has said what is wrong with it
+        try:
+            ref = models.parse(entry)
+        except ValueError:  # a ModelError, or an address urlsplit can't read
+            continue
+        if any(models.is_pickle(f) for f in ref["files"]):
+            return True
+    return False
 
 
 # ---- plan and install -------------------------------------------------------------------
@@ -158,30 +208,51 @@ def plan(data_dir, source, *, app_version: str | None = None, tier: str = "link"
     """Fetch a source into a staging folder and say what installing it would do.
 
     The answer has everything the install screen shows (`details`, from
-    plugins/permissions.py), the manifest's errors and warnings, and, when the
-    plugin is already installed, what the change would be (`update`). With no
-    errors it carries a `plan_id` for install(). `expect` ({id, version}) is
-    what a registry listing says the files are; a mismatch is an error.
-    `listed_in` names the index a listed plugin came from (recorded with it).
+    plugins/permissions.py), the manifest's errors, `warnings` in plain words
+    for the person installing (PICKLE_MODEL among them, so a model file the
+    download will ask about is never only in the folded details),
+    `technical` lines for its Technical details (the manifest's own
+    warnings, files that couldn't be fetched) and, when the plugin is
+    already installed, what the change would be (`update`).
+    With no errors it carries a `plan_id` for install(). `expect` ({id,
+    version}) is what a registry listing says the files are; a mismatch is an
+    error. `listed_in` names the index a listed plugin came from (recorded
+    with it). A folder without clipskitty.yaml whose one subfolder has it is
+    installed from that subfolder (sources.plugin_folder).
     """
     try:
         source = sources.clean_source(source)
     except sources.SourceError as e:
-        raise ManagerError(str(e)) from e
+        raise ManagerError(f"Couldn't install this pipeline: {e}") from e
+    if source["kind"] == "folder":
+        source["path"] = str(sources.plugin_folder(Path(source["path"])))
     if listed_in:
         source["listed_in"] = listed_in
     _clean_staging(data_dir)
     plan_id = secrets.token_hex(8)
     stage = store.root(data_dir) / STAGING / plan_id
-    stage.mkdir(parents=True)
     try:
-        warnings = sources.fetch(source, stage / "files", git=git, fetcher=fetcher)
+        stage.mkdir(parents=True)
+    except OSError as e:
+        log.warning("Couldn't make the staging folder %s: %s", stage, e)
+        raise ManagerError(DISK_FULL if sources.failure(e) == sources.DISK
+                           else f"Couldn't install this pipeline: {sources.NOT_SAVED}") from e
+    try:
+        not_fetched = sources.fetch(source, stage / "files", git=git, fetcher=fetcher)
+    except sources.FetchFailed as e:
+        _remove_tree(stage, data_dir)
+        raise ManagerError(FETCH_FAILED.get(e.kind, DOWNLOAD_OTHER)) from e
     except sources.SourceError as e:
         _remove_tree(stage, data_dir)
-        raise ManagerError(f"Couldn't get the plugin's files: {e}") from e
+        raise ManagerError(f"Couldn't install this pipeline: {e}") from e
 
     data, report = manifest.validate_folder(stage / "files")
-    errors, warnings = list(report.errors), warnings + list(report.warnings)
+    errors, technical = list(report.errors), not_fetched + list(report.warnings)
+    warnings = [sources.FILES_MISSING] if not_fetched else []
+    if _pickle_model(data):
+        warnings.append(PICKLE_MODEL)
+    if not (stage / "files" / manifest.MANIFEST_FILE).is_file():
+        errors = [_no_manifest(source)]
     pid, version = (data or {}).get("id"), (data or {}).get("version")
     if data and report.ok:
         problem = store.compatibility_problem(data, app_version)
@@ -209,6 +280,7 @@ def plan(data_dir, source, *, app_version: str | None = None, tier: str = "link"
         "ok": ok,
         "errors": errors,
         "warnings": warnings,
+        "technical": technical,
         "plugin": _summary(data),
         "source": source,
         "source_text": sources.describe(source),
@@ -241,13 +313,14 @@ def install(data_dir, plan_id: str, *, app_version: str | None = None, blocked=N
     try:
         meta = json.loads((stage / "plan.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        raise ManagerError("This install plan has expired or was already used. Look at the plugin again.", 404) from e
+        raise ManagerError("This install plan has expired or was already used. Look at the pipeline again.",
+                           404) from e
     files = stage / "files"
     # Checked again: the staged files are what gets installed, not what was described.
     data, report = manifest.validate_folder(files)
     if not report.ok or not data or (data.get("id"), data.get("version")) != (meta["id"], meta["version"]):
         _remove_tree(stage, data_dir)
-        raise ManagerError("The plugin's files changed after they were checked. Look at the plugin again.", 409)
+        raise ManagerError("The pipeline's files changed after they were checked. Look at the pipeline again.", 409)
     problem = store.compatibility_problem(data, app_version)
     errors, _ = _block_problems(blocked, meta["id"], meta["version"])
     if problem or errors:
@@ -389,7 +462,7 @@ def view(data_dir, plugin_id: str, *, app_version: str | None = None, blocked=No
     tier = info.get("tier", "link")
     problem = None
     if plugin is None:
-        problem = "its files are missing or its manifest can't be read; remove it and install it again"
+        problem = "its files are missing or can't be read; remove it and install it again"
     else:
         problem = store.compatibility_problem(data, app_version)
     hit = blocked(plugin_id, active) if blocked and active else None
@@ -403,7 +476,7 @@ def view(data_dir, plugin_id: str, *, app_version: str | None = None, blocked=No
         "enabled": bool(entry.get("enabled", True)),
         "pinned": bool(entry.get("pinned", False)),
         "previous": entry.get("previous"),
-        "versions": sorted(entry.get("versions") or {}, key=manifest._version_tuple, reverse=True),
+        "versions": sorted(entry.get("versions") or {}, key=manifest.version_key, reverse=True),
         "installed_at": info.get("installed_at"),
         "source": source,
         "source_text": sources.describe(source) if source else "",

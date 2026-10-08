@@ -1,0 +1,12 @@
+name: clap-htsat-fused
+description: Matches audio against any text labels you type, such as crowd cheering or explosion, so you can search a long recording for sounds without training a model.
+section: audio-events
+relationship: related
+license: Apache-2.0
+license_note: Its LAION-Audio-630K training audio is marked research-only by the dataset; the model card does not apply that term to the weights.
+source:
+  huggingface: laion/clap-htsat-fused
+runs: local
+tags: [audio events, zero-shot, sound search, embeddings]
+added: 2026-10-07
+checked: 2026-10-07

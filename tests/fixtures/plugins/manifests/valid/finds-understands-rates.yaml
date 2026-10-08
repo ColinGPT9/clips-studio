@@ -1,0 +1,17 @@
+# One plugin doing all three: as a job's pipeline it finds moments and says what
+# happens in them; chosen to rate and understand, it grades what others found.
+manifest_version: 1
+id: example-dev/quarkbloom-grader
+name: Quarkbloom Grader
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Finds the quark bursts in Quarkbloom Arena (a made-up game) matches, says what happens in them and rates them.
+license: MIT
+requires: {clips_kitty: '>=2.0', plugin_api: 1}
+run:
+  command: ['{python}', src/main.py]
+execution: local
+inputs: [video, transcript, moments]
+outputs: [ranges, context, ratings]
+permissions: [video.read, transcript.read]

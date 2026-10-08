@@ -15,7 +15,7 @@
     <meta property="og:title" content="Clips Kitty privacy policy" />
     <meta
       property="og:description"
-      content="No telemetry, no account, nothing sent on its own. What the app stores, what leaves your machine, and when."
+      content="No telemetry, no account, nothing about you sent anywhere. What the app stores, what leaves your machine, and when."
     />
     <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
   </head>
@@ -42,6 +42,7 @@
           <a href="descript-alternative.html">vs Descript</a>
           <a href="roadmap.html">Roadmap</a>
           <a href="changelog.html">Changelog</a>
+          <a href="developers.html">Developers</a>
           <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a class="donate" href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
         </nav>
@@ -54,13 +55,14 @@
           <span class="eyebrow">Privacy policy</span>
           <h1>Clips Kitty does not collect anything about you</h1>
           <p class="lead">
-            No telemetry, no analytics, and nothing sent anywhere on its own. Your video is
-            processed on your own computer, and the only way any of it leaves is if you
+            No telemetry, no analytics, and nothing about you sent anywhere. The app does check
+            two plain files on its own, for an app update and for new pipelines, and you can
+            switch either off. Your video is processed on your own computer, and the only way any of it leaves is if you
             press publish, either to your own YouTube channel or through a publishing
             service you have connected. This page explains exactly what is stored, what can
             leave your machine, and what triggers it.
           </p>
-          <p><strong>Last updated:</strong> 27 September 2026</p>
+          <p><strong>Last updated:</strong> 7 October 2026</p>
         </div>
       </div>
 
@@ -72,7 +74,8 @@
             <li><strong>No account with us.</strong> There is nothing to sign up for, and no Clips Kitty server to sign in to. The optional sign-ins are to <em>your own</em> accounts: YouTube, which goes straight to Google, a publishing service if you choose to use one, and your ChatGPT plan, which goes straight to OpenAI.</li>
             <li><strong>Your video never leaves your PC unless you publish it.</strong> Transcription, scoring, face tracking, subtitles and rendering all run locally, on your own hardware, by default. Both ways of publishing are off by default and described below.</li>
             <li><strong>The AI runs locally too, by default.</strong> The language model runs on your machine through Ollama. Your transcript is not sent to OpenAI, Google, Anthropic or anyone else, unless you choose one of them yourself, with your own API key, for a PC that cannot run the AI (described below).</li>
-            <li><strong>Five things reach the internet, and all are things you asked for:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, publishing a clip through a social publishing service, and using a cloud AI provider with your own key or your own ChatGPT plan. The last three only happen if you switch them on.</li>
+            <li><strong>Five things reach the internet because you asked for them:</strong> downloading a video, downloading an AI model, publishing a clip to your own YouTube channel, publishing a clip through a social publishing service, and using a cloud AI provider with your own key or your own ChatGPT plan. The last three only happen if you switch them on.</li>
+            <li><strong>Two plain file checks run on their own:</strong> one for a newer version of the app, and one for new pipelines in the Marketplace. Neither sends anything about you, and each can be switched off (described below).</li>
           </ul>
         </div>
       </section>
@@ -105,7 +108,12 @@
           <ul>
             <li><strong>Downloading a video.</strong> Pasting a YouTube, Twitch or Kick link fetches that video from that platform. Your request goes to them, subject to their own privacy policies, exactly as if you had opened the page in a browser.</li>
             <li><strong>Downloading an AI model.</strong> Choosing a model fetches it from the Ollama library. That is a file download; nothing about you is sent with it.</li>
+          </ul>
+
+          <h3>On its own, and you can switch it off</h3>
+          <ul>
             <li><strong>Checking for updates.</strong> The desktop app asks a static file on Hugging Face whether a newer version exists. This is a plain file fetch with no identifier attached, and it can be turned off in Settings. Copies installed from the Microsoft Store do not do this at all, because the Store handles updates.</li>
+            <li><strong>Checking for new pipelines.</strong> When you open the Marketplace, or start Clips Kitty with a pipeline installed, and the app's copy of the list of pipelines is more than a day old, the app downloads Clips Kitty's current list: one file from raw.githubusercontent.com, where GitHub serves the files of Clips Kitty's public code. It brings new pipelines and warnings about pipelines found to be harmful. This is a plain file fetch with no identifier attached; nothing about what you browse, search or have installed is sent. It can be switched off at the bottom of the Marketplace's Browse tab, and the Check for new pipelines button there fetches the list when you press it.</li>
           </ul>
 
           <h3>Only if you turn on YouTube publishing</h3>
@@ -352,6 +360,7 @@
           <a href="index.html">Home</a>
           <a href="roadmap.html">Roadmap</a>
           <a href="changelog.html">Changelog</a>
+          <a href="developers.html">Build a plugin</a>
           <a href="privacy.html">Privacy</a>
           <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">★ Star it</a>
           <a href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a>

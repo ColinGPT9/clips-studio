@@ -1,0 +1,21 @@
+# expect: based_on[0].license
+# expect: based_on[0].how
+# expect: based_on[1].url
+# expect: based_on[1].name
+manifest_version: 1
+id: example-dev/example-clipper-adapter
+name: Example Clipper for Clips Kitty
+version: 1.0.0
+kind: pipeline
+capability: highlight_detection
+description: Lets Example Clipper pick the moments.
+license: MIT
+requires: {clips_kitty: ">=2.0", plugin_api: 1}
+run: {command: ["{python}", "src/main.py"]}
+execution: local
+inputs: [video]
+outputs: [ranges]
+permissions: [video.read]
+based_on:
+  - {name: Example Clipper, url: "https://github.com/example-org/example-clipper", license: "whatever I like", how: copied}
+  - {url: "ftp://example.org/scorer", license: MIT, how: runs}

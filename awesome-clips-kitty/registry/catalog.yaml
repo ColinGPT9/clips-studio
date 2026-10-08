@@ -1,0 +1,15 @@
+# Catalog-wide settings.
+#
+# counter.install: where Clips Kitty counts an install from this catalog, as
+# an https address with {asset} in it (the listing id with "/" turned into
+# "__", plus ".count"). Empty until the catalog has a public repository: the
+# plan is a GitHub release named "installs" in it with one small file per
+# listing, whose public download count is the install count
+# (scripts/update_registry_metrics.py reads it back). No other data is sent.
+#
+# Before this is set: the website's privacy policy (site/privacy.html) and
+# the Microsoft Store answers (docs/msstore-submission-sheet.md) say "No
+# telemetry", and must first say that installs from the Marketplace are
+# counted. tests/test_catalog.py fails until they do.
+counter:
+  install: null

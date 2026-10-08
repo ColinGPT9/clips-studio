@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
-import type { Clip, StudioEvent } from '../lib/types'
+import type { Clip, StudioEvent, UsedSuggestions } from '../lib/types'
 import { useEvents } from '../lib/useEvents'
 import {
   describeInstant,
@@ -27,8 +27,15 @@ import YouTubeThumbnail from './YouTubeThumbnail'
 interface Props {
   clip: Clip
   status: YouTubeStatus
-  /** Unsaved timeline edits, if any. Passing these makes the publish render first. */
-  pendingRender: { start?: number; end?: number; render_opts: Record<string, unknown> } | null
+  /** Unsaved timeline edits, if any. Passing these makes the publish render
+   *  first. `suggestions`: the suggested edits used in them, sent as
+   *  render_first.suggestions so the clip records them as Apply edits does. */
+  pendingRender: {
+    start?: number
+    end?: number
+    render_opts: Record<string, unknown>
+    suggestions?: UsedSuggestions
+  } | null
   duration: number
   currentTime: number
   onOpenSettings: () => void

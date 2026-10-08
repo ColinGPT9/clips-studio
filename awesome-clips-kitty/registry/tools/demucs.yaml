@@ -1,0 +1,15 @@
+name: Demucs
+description: Splits a soundtrack into vocals, drums, bass and other stems, so you can isolate speech from background music before transcribing or captioning a clip.
+section: media
+relationship: related
+license: MIT
+license_note: The pretrained weights on Hugging Face (adefossez/HTDemucs) state no licence of their own; only the repository's MIT licence is confirmed.
+source:
+  github: https://github.com/adefossez/demucs
+models:
+  - huggingface: adefossez/HTDemucs
+  - huggingface: adefossez/HTDemucs-ft
+runs: local
+tags: [audio separation, vocals, stems, music]
+added: 2026-10-07
+checked: 2026-10-07

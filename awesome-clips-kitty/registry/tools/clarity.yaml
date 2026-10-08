@@ -1,0 +1,12 @@
+name: Clarity
+description: Java parser for Dota 2, CS:GO, CS2 and Deadlock replays that exposes the combat log, game events, entities and an end-of-game summary. One parser can cover kills and fights across several games.
+section: games
+relationship: related
+license: BSD-3-Clause
+source:
+  github: https://github.com/skadistats/clarity
+runs: local
+tags: [replay parser, java, dota 2, deadlock]
+games: [dota-2, counter-strike-go, counter-strike-2, deadlock]
+added: 2026-10-07
+checked: 2026-10-07

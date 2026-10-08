@@ -5,14 +5,21 @@ see the progress events that went out before. What it reads must agree with
 the percentage and time left the app itself is showing.
 """
 
+import json
+import re
+import shutil
+import subprocess
 import time
+from pathlib import Path
 
 import pytest
 
 try:
-    from server.jobs import Worker
+    from server.jobs import _STAGES, Worker
 except ImportError as e:  # CI installs only the light dependencies
     pytest.skip(f"worker imports unavailable: {e}", allow_module_level=True)
+
+JOB_PROGRESS = Path(__file__).resolve().parent.parent / "ui/src/renderer/src/lib/jobProgress.ts"
 
 
 @pytest.fixture
@@ -54,3 +61,73 @@ def test_render_names_the_clip(worker):
 
 def test_a_job_that_is_not_running_has_no_progress(worker):
     assert worker.progress_snapshot(99) is None
+
+
+def test_stage_tables_match_the_app():
+    """The worker's stages and the app's (jobProgress.ts STAGES), the same
+    stages in the same order with the same figures and labels."""
+    source = JOB_PROGRESS.read_text(encoding="utf-8")
+    table = source[source.index("const STAGES"):]
+    table = table[:table.index("\n}\n")]
+    app = {name: (float(base), float(weight), label) for name, base, weight, label in re.findall(
+        r"^  (\w+): \{ base: ([\d.]+), weight: ([\d.]+), label: '([^']*)' \}", table, re.MULTILINE)}
+    assert list(app) == list(_STAGES)
+    assert app == {name: (float(base), float(weight), label) for name, (base, weight, label) in _STAGES.items()}
+    assert _STAGES["understand"] == (0.65, 0.05, "Understanding the moments")
+    # Suggest edits shares the reactions' span, as understand shares ranking's.
+    assert _STAGES["edit"] == (0.70, 0.08, "Suggesting edits") and _STAGES["edit"][:2] == _STAGES["reactions"][:2]
+    assert list(_STAGES).index("edit") == list(_STAGES).index("render") - 1
+
+
+def test_moment_runs_name_the_plugin_in_the_label(worker):
+    worker._record_progress(7, {"stage": "ranking", "fraction": 0.5, "plugin": "Quarkbloom Rater"})
+    snap = worker.progress_snapshot(7)
+    assert snap["label"] == "Rating moments with Quarkbloom Rater"
+    assert snap["percent"] == round((0.65 + 0.05 * 0.5) * 100)
+    worker._record_progress(7, {"stage": "understand", "fraction": 0.5, "plugin": "Quarkbloom Notes"})
+    assert worker.progress_snapshot(7)["label"] == "Understanding moments with Quarkbloom Notes"
+    # Clips Kitty's own ranking carries no plugin, and keeps its label.
+    worker._record_progress(7, {"stage": "ranking", "current": 2, "total": 3})
+    assert worker.progress_snapshot(7)["label"] == "Ranking the best moments"
+    worker._record_progress(7, {"stage": "understand", "fraction": 0.2})
+    assert worker.progress_snapshot(7)["label"] == "Understanding the moments"
+    # A plugin name on another stage changes nothing.
+    worker._record_progress(7, {"stage": "analyze", "fraction": 0.5, "plugin": "Quarkbloom Finder"})
+    assert worker.progress_snapshot(7)["label"] == "Finding the best moments"
+
+
+def test_an_edit_run_names_the_plugin_and_the_bar_never_goes_back(worker):
+    worker._record_progress(7, {"stage": "understand", "fraction": 1.0, "plugin": "Quarkbloom Notes"})
+    worker._record_progress(7, {"stage": "edit", "fraction": 0.5, "plugin": "Quarkbloom Trimmer"})
+    snap = worker.progress_snapshot(7)
+    assert snap["label"] == "Suggesting edits with Quarkbloom Trimmer"
+    assert snap["percent"] == round((0.70 + 0.08 * 0.5) * 100)
+    worker._record_progress(7, {"stage": "edit", "fraction": 0.2})
+    assert worker.progress_snapshot(7)["label"] == "Suggesting edits"
+
+
+def test_the_app_names_the_plugin_in_the_label_too(tmp_path):
+    """applyEvent in jobProgress.ts, run under Node: the same labels."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node isn't available")
+    module = tmp_path / "jobProgress.ts"
+    module.write_text(JOB_PROGRESS.read_text(encoding="utf-8"), encoding="utf-8")
+    events = [{"type": "progress", "stage": "ranking", "fraction": 0.5, "plugin": "Quarkbloom Rater"},
+              {"type": "progress", "stage": "understand", "fraction": 0.5, "plugin": "Quarkbloom Notes"},
+              {"type": "progress", "stage": "ranking", "current": 1, "total": 2},
+              {"type": "progress", "stage": "analyze", "fraction": 0.5, "plugin": "Quarkbloom Finder"},
+              {"type": "progress", "stage": "edit", "fraction": 0.5, "plugin": "Quarkbloom Trimmer"},
+              {"type": "progress", "stage": "edit", "fraction": 0.5}]
+    script = (f"const m = await import({json.dumps(module.as_uri())});"
+              f"const events = {json.dumps(events)};"
+              "console.log(JSON.stringify(events.map((e) => m.applyEvent(m.emptyProgress, e).label)));")
+    r = subprocess.run([node, "--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", script],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 and "strip-types" in r.stderr:
+        pytest.skip("this Node can't run TypeScript directly")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["Rating moments with Quarkbloom Rater",
+                                    "Understanding moments with Quarkbloom Notes",
+                                    "Ranking the best moments", "Finding the best moments",
+                                    "Suggesting edits with Quarkbloom Trimmer", "Suggesting edits"]

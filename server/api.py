@@ -59,6 +59,14 @@ class JobIn(BaseModel):
     webhook_secret: str | None = None  # signs that POST (X-Clips-Kitty-Signature)
     hashtags: list[str] | None = None  # tags every clip of this job must carry
     pipeline: dict | str | None = None  # a plugin pipeline picks the moments: {id, version, settings} (plugins/)
+    # Rate & understand (plugins/steps.py): up to 3 plugins each, run on the
+    # moments once they are found. Choices shaped like `pipeline`, in order.
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
+    # Suggest edits (plugins/steps.py): up to 3 plugins, run on the clips
+    # once they are chosen. Their suggestions wait for the creator in the
+    # editor; this is a list of plugins, not an edit list (render_opts.edit).
+    edit: list | dict | str | None = None
     then: dict | None = None  # what to do once this job finishes, e.g.
     #     {"action": "publish", "platforms": ["youtube"]}
     # Queueing returns in a second and the clips appear an hour later, so a
@@ -92,6 +100,9 @@ class JobPatch(BaseModel):
     webhook_url: str | None = None
     webhook_secret: str | None = None
     pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
     # Options to drop back to the app-wide default. Needed because null means
     # "unchanged" above, so there would otherwise be no way to turn one off.
     clear: list[str] = []
@@ -126,6 +137,9 @@ class BatchItemIn(BaseModel):
     webhook_url: str | None = None
     webhook_secret: str | None = None
     pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
 
 
 class BatchJobIn(BaseModel):
@@ -142,6 +156,9 @@ class ClipPatch(BaseModel):
     description: str | None = None
     hashtags: list[str] | None = None
     exported: bool | None = None  # the clip's star; exporting also sets it
+    # Hide or show an edit a plugin suggested: {"id", "state": "hidden" | "new"}
+    # (plugins/edit_marks.py). A suggestion is used by applying it, never here.
+    suggestion: dict | None = None
 
 
 class MergeIn(BaseModel):
@@ -237,12 +254,19 @@ class LocalVideoIn(BaseModel):
     webhook_url: str | None = None
     webhook_secret: str | None = None
     pipeline: dict | str | None = None
+    rate: list | dict | str | None = None
+    understand: list | dict | str | None = None
+    edit: list | dict | str | None = None
 
 
 class RenderIn(BaseModel):
     start: float | None = None
     end: float | None = None
     render_opts: dict | None = None  # crop / captions / caption_style / caption_lines
+    # The edits plugins suggested that this render puts in the clip, as the
+    # editor used them: {"used": [{"id", "applied"}]} (plugins/edit_marks.py).
+    # The worker keeps only what the render really changed.
+    suggestions: dict | None = None
 
 
 class CaptionsIn(BaseModel):
@@ -449,7 +473,9 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
     onto the same settings, and a limit enforced at only two of them is not a
     limit. `into` lets a patch merge onto an existing snapshot instead of
     replacing it, since an unset field there means "leave this alone".
-    `data_dir`, when given, is where a named plugin pipeline must be installed."""
+    `data_dir`, when given, is where a named plugin (the pipeline, or one
+    chosen to rate or understand the moments or to suggest edits for the
+    clips) must be installed."""
     payload: dict = dict(into or {})
     if getattr(body, "max_clips", None) is not None:
         payload["max_clips"] = max(1, min(10, body.max_clips))
@@ -510,6 +536,25 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
                 store.installed_choice(data_dir, payload["pipeline"])
         except ValueError as e:
             raise HTTPException(400, f"pipeline: {e}") from e
+    if getattr(body, "rate", None) or getattr(body, "understand", None) or getattr(body, "edit", None):
+        # Rate & understand and Suggest edits (plugins/steps.py): plugins
+        # that look at the moments once they're found, and at the clips once
+        # they're chosen. Checked like the pipeline, each list in its own
+        # words ("rate[0]: ..."). Imported only here, so a job without them
+        # never loads plugins.steps.
+        from plugins import steps as plugin_steps
+
+        for field in plugin_steps.FIELDS:
+            value = getattr(body, field, None)
+            if not value:
+                continue
+            try:
+                choices = plugin_steps.clean(field, value)
+                if data_dir is not None:
+                    plugin_steps.check_installed(data_dir, field, choices)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            payload[field] = choices
     if getattr(body, "watermark_profile_id", None):
         payload["watermark_profile_id"] = body.watermark_profile_id
     if getattr(body, "filter", None):
@@ -557,6 +602,24 @@ def _process_options(body, into: dict | None = None, data_dir: Path | None = Non
                                     or payload.get("longform")):
         raise HTTPException(400, "A plugin pipeline can't be combined with Sports, Gaming scoring or "
                                  "Longform: each picks the moments its own way. Turn one of them off.")
+    # Rate & understand work on the moments a Shorts run finds, whoever found
+    # them (Sports, Gaming scoring and a pipeline included). Longform, with
+    # Shorts beside it or not, has no such step.
+    if (payload.get("rate") or payload.get("understand")) and payload.get("longform"):
+        raise HTTPException(400, "Rate & understand can't be combined with Longform: Longform picks and "
+                                 "writes its clips its own way. Turn one of them off.")
+    # Suggest edits works on the clips a Shorts run makes. A job's own
+    # pipeline may be named under it: a find run is never asked to edit.
+    if payload.get("edit") and payload.get("longform"):
+        raise HTTPException(400, "Suggest edits can't be combined with Longform: Longform picks and "
+                                 "writes its clips its own way. Turn one of them off.")
+    own = payload.get("pipeline")
+    own_id = own.get("id") if isinstance(own, dict) else own
+    for field in ("rate", "understand"):
+        for choice in payload.get(field) or []:
+            if own_id and (choice.get("id") if isinstance(choice, dict) else choice) == own_id:
+                raise HTTPException(400, f"{field}: {own_id} is this job's pipeline, so it already scores "
+                                         "and describes the moments it finds")
     if payload.get("gaming_scoring") and (payload.get("podcast") or payload.get("longform")):
         raise HTTPException(400, "Gaming / reaction scoring works with the standard layout, Vertical "
                                  "Live and Gaming / Reaction, not with Podcast or Longform.")
@@ -1528,6 +1591,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 fields["exported_at"] = ""
             elif body.exported and not row["exported_at"]:
                 fields["exported_at"] = _now()
+            if body.suggestion is not None:
+                fields["scores"] = _suggestion_state(row, body.suggestion)
             if fields:
                 d.set_clip(clip_id, **fields)
             return _clip_json(d.get_clip(clip_id))
@@ -1720,6 +1785,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 payload["end"] = body.end
             if body.render_opts:
                 payload["render_opts"] = _clean_render_gaming(dict(body.render_opts))
+            if body.suggestions is not None:
+                payload["suggestions"] = used_suggestions(body.suggestions)
             job_id = d.add_job("render", json.dumps(payload))
             _log_feedback(
                 d, row,
@@ -3050,6 +3117,46 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
 
 # ---- helpers --------------------------------------------------------------------
+
+
+def used_suggestions(value) -> dict:
+    """A render's `suggestions` (RenderIn; RenderFirst in server/youtube_api.py),
+    checked by plugins/edit_marks.py: 400 with what is wrong."""
+    from plugins import edit_marks
+
+    try:
+        return edit_marks.clean_used(value)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+def _suggestion_state(row, value) -> str:
+    """PATCH /clips/{id} `suggestion`: the clip's scores with that suggested
+    edit hidden, or shown again. Nothing renders. A used one whose parts the
+    clip's saved edit still holds is refused: it would lose its Take it back
+    while the clip keeps them."""
+    from plugins import edit_marks
+
+    try:
+        sid, state = edit_marks.clean_state(value)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    try:
+        scores = json.loads(row["scores"]) if row["scores"] else {}
+    except ValueError:
+        scores = {}
+    scores = scores if isinstance(scores, dict) else {}
+    entries = edit_marks.set_state(scores.get("plugin_edits"), sid, state)
+    if entries is None:
+        raise HTTPException(404, "no such suggestion on this clip")
+    try:
+        saved = json.loads(row["render_opts"]) if row["render_opts"] else {}
+    except ValueError:
+        saved = {}
+    if edit_marks.still_held(scores.get("plugin_edits"), sid, saved, (row["start_s"], row["end_s"])):
+        raise HTTPException(409, "suggestion: some of it is still in the clip's saved edit. Take it back and "
+                                 "apply your edits, and Clips Kitty hides it then")
+    return json.dumps({**scores, "plugin_edits": entries})
 
 
 def _clip_json(row) -> dict:

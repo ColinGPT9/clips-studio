@@ -98,6 +98,26 @@ runner, a different interface entirely.
 If you build something, say so in an issue. Needing an endpoint is the fastest
 way to get it moved from internal to supported.
 
+### Write a plugin
+
+A plugin finds, understands or rates the moments in a video, for one game,
+sport or kind of show, without changing Clips Kitty. Three commands start one
+and run it on a test video (in PowerShell, write `py -m` for `python -m`):
+
+```bash
+python -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+python -m clipskitty_sdk new my-plugin --template game-events --publisher your-github-name
+python -m clipskitty_sdk run my-plugin --sample
+```
+
+No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the
+first release that includes it; until that is out, run Clips Kitty from
+source. The walk-through is
+[docs/developers/first-game-pipeline.md](docs/developers/first-game-pipeline.md),
+and everything else for plugin developers is in
+[docs/developers/](docs/developers/README.md). The SDK is MIT, so your plugin
+can use any licence you choose.
+
 ## Building the Windows installer
 
 ```

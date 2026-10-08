@@ -12,6 +12,99 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **A Marketplace, and Awesome Clips Kitty.** Other developers can now write their own
+  "find the best moments" step (a pipeline) and list it; you install one from the new
+  **Marketplace** screen and switch it on for a video with the **Pipeline** option. Every
+  listing says what it may do, where it runs, what it needs and its licence, and asks you
+  to confirm before anything is installed. Nothing changes until you install something.
+  The Marketplace also shows **Awesome Clips Kitty**, a curated list of apps, models,
+  integrations and tools around Clips Kitty, each marked as built for Clips Kitty, built
+  with it, or related. Labels: ✓ Official (made by this project), ✓ Compatible (passed
+  automated checks; not a security review), ★ Featured and Community. Installs from the
+  Marketplace can be counted anonymously, with a switch to turn it off; nothing is counted
+  yet. The developer kit is now MIT-licensed; the app stays AGPL-3.0-or-later.
+  The list starts with 178 open-source projects (clippers, editors, transcription,
+  models, OBS and streaming tools, game replay readers), each checked for its licence
+  and activity, with a warning where one sends your videos or transcripts online or
+  downloads from sites whose terms may not allow it.
+  (Experimental routes: `/plugins`, `/marketplace`, `/marketplace/catalog`,
+  `/marketplace/counting`, `/plugin-models`; a plan from `POST /plugins/plan` carries
+  the install screen as `text`.) (#129)
+
+- **New pipelines without waiting for an update, and nothing else to install.** The
+  Marketplace checks Clips Kitty's online list when it opens, at most once a day, so a
+  newly listed pipeline or a new version shows up without a new version of the app;
+  **Check for new pipelines** checks at once. With a pipeline installed, the app also
+  checks when it starts, so a warning about a harmful version arrives without opening
+  the Marketplace. Until a release includes it, what the list adds shows as Community. The check fetches one file from GitHub and sends nothing about you or what
+  you browse; a switch at the bottom of Browse turns it off. Pipelines also run on the
+  Python inside Clips Kitty now, so a creator never installs Python for one.
+  (Experimental routes: `/marketplace/online`; `/marketplace/refresh` now needs the
+  desktop app.)
+
+- **The Marketplace in plain words.** Browse and Installed are the only tabs: installing
+  a pipeline you're writing, from a folder or a link, is now **For developers**, a link
+  at the bottom of Browse. The Marketplace and the install screen say what a pipeline is,
+  where it comes from and what it may do in everyday words, and keep the exact details
+  one click away under **Technical details**. What you tick before installing, the warning
+  that a pipeline can do anything you can do on your PC, and what "Clips Kitty hands this
+  over" and "the developer says so" mean are in all 18 of the app's other languages. A download
+  that fails says why in one sentence (no connection, files no longer there, a full disk or
+  a damaged download) and keeps the details in the log. Apps, tools
+  and the other entries of Awesome Clips Kitty each get one button, to their download
+  page or website where the list has one, which opens your browser after showing you
+  the address; entries that need the command line or Python say so and come last.
+
+- **Rate & understand: Marketplace plugins that look at your moments.** Once you have
+  installed a Marketplace plugin that can rate or understand moments, adding a video shows
+  a new switch, **Rate & understand**. Clips Kitty (or Sports, Gaming scoring or a
+  pipeline) still finds the moments. Then up to three plugins can say what happens in
+  each one, and up to three can give each one a new score, in the order you choose. What
+  a plugin says happens in a moment goes to the AI that writes the clip's title,
+  description and hashtags. A plugin's score decides which clips are made and their
+  order: the last plugin's score counts, and a moment it scores under your minimum score
+  is set aside (a must-have never is). Clips Kitty does any step you leave to it, and a
+  video without the switch is made exactly as before. Not with Longform. The clip editor
+  shows each plugin's score and notes, and the video page says what each plugin did, or
+  why Clips Kitty made the clips without it. The Marketplace marks what each plugin does
+  (Finds moments, Understands moments, Rates moments), how long Clips Kitty lets it work
+  on your moments (10 minutes unless the plugin says otherwise), and when an update
+  starts doing something new.
+
+  **A rating plugin decides what gets posted.** Where a watched channel or the daily
+  schedule posts only the best few clips, the scores decide which ones go out, so a
+  rating plugin decides that; elsewhere it decides the order. The job form, the channel's
+  settings and the Marketplace say so.
+
+  **A channel that posts by itself waits for you when a chosen plugin didn't run.** If a
+  plugin chosen for a video couldn't run, Clips Kitty still makes the clips, without it.
+  A watched channel that posts automatically then holds that video's clips for you to
+  check and publish, and a channel that asks first says why. A job told to publish its
+  clips when it finishes waits too. The command-line daily upload isn't held. In a
+  channel's settings you can keep its plugins or turn them off; choosing them for a
+  channel is done through the API for now. For developers: the plugin kit (SDK 1.1.0)
+  adds `job.rate()` and `job.understand()`, with an example plugin, and
+  [docs/developers/steps.md](docs/developers/steps.md) explains them.
+  (New job options: `rate`, `understand`.)
+
+- **Suggest edits: Marketplace plugins that suggest edits for your clips.** Once you have
+  installed a Marketplace plugin that can suggest edits, adding a video shows a new
+  switch, **Suggest edits**. After the clips are chosen, up to three plugins, in the order
+  you choose, can each suggest an edit for every clip: parts to cut, stretches to mute
+  (their captions are hidden too), the volume, fades, the speed, a hook title or a layout,
+  with a sentence saying why. The clips are made exactly as they would be without the
+  switch. Open a clip in the editor to see each suggestion, with the plugin's name, and
+  **Use** it, **Hide** it, or **Take it back** after using it; Take it back removes only
+  what the suggestion added, never your own edits. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).
+  A plugin that couldn't suggest anything never holds a channel's automatic posting, and
+  the video page says what each plugin suggested. Not with Longform. A suggestion you used
+  is marked if its clip ever comes out without your edits, so you can apply them
+  again. For developers: the plugin kit (SDK 1.3.0) adds `job.suggest_edit()`
+  and an `editor` template, and [docs/developers/steps.md](docs/developers/steps.md)
+  explains the edit step. Plugins don't post: Clips Kitty posts clips itself.
+  (New job option: `edit`. New fields: `suggestions` on `render_first` when publishing,
+  `suggestion` on `PATCH /clips/{id}`, and `plugin_edits` in a clip's `scores`.)
+
 - **A second colour for the second speaker.** Tick **Second speaker in another colour**
   in the caption settings, for a whole run or for one clip in the editor, and pick the
   colour. When two people talk in a clip, the main speaker keeps the text colour and
@@ -71,6 +164,12 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Changed
 
+- **A watched channel's re-sends keep its first choice of clips.** Retry failed and the
+  re-send of posts a platform rejected now send only clips the video's first publish
+  chose, even if processing the video again changed the scores or made new clips in
+  between. A clip you trimmed in the editor since is still one of them. Nothing already
+  sent is ever sent twice, as before.
+
 - **The box at the bottom offers to install Gemma 4.** Ask Clips Kitty only runs on a
   Gemma 4 model, and setup installs a different one on most PCs. The box used to say so
   in a line of small grey text. It now says "Install Gemma 4 to use this box" and has an
@@ -81,6 +180,22 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **Processing a video again keeps your edits.** **Process again** made every clip it
+  found again from the start: cuts, mutes, a layout, captions you fixed, colours,
+  branding and title-card words you had applied in the editor stayed in the editor but
+  were missing from the clip's file, and a channel that posts automatically could post
+  that file. A clip you edited is now made again with your edits, on this computer or a
+  render PC, and goes into a match's story reels with them. Clips you never edited, and
+  new ones, are made with the settings you chose, as before, even when you set up a
+  Gaming / Reaction split before processing. A clip you edited keeps its own look. In a
+  Gaming / Reaction job it keeps its own split, and a split that was found automatically
+  or remembered for the creator takes a webcam you set up or remembered for this run. A
+  split you set up before an earlier run or drew for that clip stays as it is, even with
+  Gaming / Reaction off (not in a match): change it in the clip editor. A split you turned
+  off for a clip stays off. In a match, your cuts, layout, caption fixes and colour
+  adjustments are kept, and the caption style, colours, branding and title card are the
+  job's; **Re-render** a clip to make it with its own. 16:9 Longform clips too. A clip
+  with music you added renders on this computer even when a render PC is chosen.
 - **A model download that failed no longer says it finished.** When Ollama could not
   fetch a model (no connection, a name that does not exist, a full disk), the Models
   page, setup and the box above all showed the download as done, with nothing installed.

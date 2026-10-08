@@ -1,0 +1,12 @@
+name: Gemma 3 4B
+description: The previous-generation Gemma model with 4B parameters, reading text and images. Clips Kitty recommends it through Ollama for PCs without a graphics card, though it cannot drive the Ask box.
+section: language
+relationship: related
+license: LicenseRef-Gemma-Terms-of-Use
+license_note: 'Gated: sign in to Hugging Face and accept Google''s Gemma Terms of Use first. The terms add a Prohibited Use Policy, and anyone redistributing the weights must pass those limits on with a Notice file.'
+source:
+  huggingface: google/gemma-3-4b-it
+runs: local
+tags: [llm, ollama, cpu]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,12 @@
+name: obs-websocket
+description: Remote-control API built into OBS Studio. Other programs can use it to start recordings, save the replay buffer, add chapter markers and react when a replay is saved.
+section: streaming
+relationship: related
+license: GPL-2.0-or-later
+source:
+  github: https://github.com/obsproject/obs-websocket
+platforms: [windows, macos, linux]
+runs: local
+tags: [obs, websocket, api, replay buffer, remote control]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 ColinGPT9. The Clips Kitty SDK; see sdk/python/LICENSE.
 """The plugin manifest, `clipskitty.yaml`: reading it and checking it.
 
     from clipskitty_sdk.manifest import load, validate
@@ -20,12 +22,13 @@ is one source of truth.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from .contract import SUPPORTED_PLUGIN_APIS
+from .contract import STEPS, SUPPORTED_PLUGIN_APIS
 
 MANIFEST_FILE = "clipskitty.yaml"
 MANIFEST_VERSIONS = (1,)
@@ -56,8 +59,8 @@ KINDS = ("pipeline",)
 PLANNED_KINDS = ("caption-style", "publisher", "source", "integration", "provider", "component")
 CAPABILITIES = ("highlight_detection",)
 EXECUTIONS = ("local", "remote", "hybrid")
-INPUTS = ("video", "transcript")
-OUTPUTS = ("ranges",)
+INPUTS = ("video", "transcript", "moments")
+OUTPUTS = ("ranges", "ratings", "context", "edits")
 PLANNED_OUTPUTS = ("clips",)
 PERMISSIONS = ("video.read", "transcript.read", "ffmpeg", "ollama", "gpu", "network",
                "filesystem.read", "filesystem.write", "project.read", "project.write")
@@ -77,8 +80,13 @@ MAX_TIMEOUT_MINUTES = 24 * 60
 REQUIRED = ("manifest_version", "id", "name", "version", "kind", "capability", "description", "license",
             "requires", "run", "execution", "inputs", "outputs", "permissions")
 OPTIONAL = ("author", "repository", "events", "games", "settings", "models", "network", "sends",
-            "requirements", "category", "tags", "links", "service", "examples")
-INPUT_NEEDS = {"video": "video.read", "transcript": "transcript.read"}
+            "requirements", "category", "tags", "links", "service", "examples", "based_on")
+# How a plugin builds on someone else's project (based_on[].how).
+BASED_ON_HOW = ("runs", "includes-code", "port")
+MAX_BASED_ON = 10
+# The permission each input needs. Moments need none: what was said in them
+# (their title, reason and notes) comes only with transcript.read.
+INPUT_NEEDS = {"video": "video.read", "transcript": "transcript.read", "moments": None}
 
 
 class ManifestError(ValueError):
@@ -92,10 +100,13 @@ class ManifestError(ValueError):
 @dataclass
 class Report:
     """What validate() found. A manifest is valid when `errors` is empty;
-    `warnings` are worth reading but do not stop an install."""
+    `warnings` are worth reading but do not stop an install. `hints` maps the
+    path of an unknown field to the known field it is probably a misspelling
+    of ("permisions": "permissions"), for `python -m clipskitty_sdk validate`."""
 
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    hints: dict[str, str] = field(default_factory=dict, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -103,6 +114,63 @@ class Report:
 
 
 # ---- reading ---------------------------------------------------------------------
+
+
+def has_yaml() -> bool:
+    """Whether PyYAML, which reading clipskitty.yaml needs, can be imported."""
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def line_marks(text: str) -> dict[str, int]:
+    """Where each field of a manifest's text is: its line (from 1), by the
+    path validate() names it with ("settings.min_kills.default", "outputs[1]").
+    A mapping key's line is the key's; a list item's is the item's. Empty when
+    PyYAML is missing or the text isn't valid YAML. Only reads the text's
+    structure (yaml.compose): nothing in it is built or run."""
+    try:
+        import yaml
+    except ImportError:
+        return {}
+    try:
+        root = yaml.compose(text, Loader=yaml.SafeLoader)
+    except yaml.YAMLError:
+        return {}
+    marks: dict[str, int] = {}
+
+    def walk(node, path: str) -> None:
+        if isinstance(node, yaml.MappingNode):
+            for key, value in node.value:
+                if not isinstance(key, yaml.ScalarNode):
+                    continue
+                where = f"{path}.{key.value}" if path else str(key.value)
+                marks.setdefault(where, key.start_mark.line + 1)
+                walk(value, where)
+        elif isinstance(node, yaml.SequenceNode):
+            for i, item in enumerate(node.value):
+                where = f"{path}[{i}]"
+                marks.setdefault(where, item.start_mark.line + 1)
+                walk(item, where)
+
+    walk(root, "")
+    return marks
+
+
+def yaml_data(text: str):
+    """What a YAML text holds, read with PyYAML's safe loader (nothing in it
+    is built or run), for the SDK's other YAML files, such as a catalog
+    listing (clipskitty_sdk.listing). The SDK imports PyYAML only here.
+    Raises ImportError without PyYAML, and ValueError for text that isn't
+    valid YAML."""
+    import yaml
+
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ValueError(f"not valid YAML ({e})") from e
 
 
 def load(folder: str | Path) -> dict:
@@ -192,7 +260,20 @@ class _Check:
     def unknown(self, where: str, data: dict, known) -> None:
         for key in data:
             if key not in known:
-                self.warn(f"{where}.{key}" if where else str(key), "unknown field, ignored")
+                path = f"{where}.{key}" if where else str(key)
+                self.warn(path, "unknown field, ignored")
+                close = difflib.get_close_matches(str(key), sorted(known), n=1, cutoff=0.75)
+                if close:
+                    self.report.hints[path] = close[0]
+
+
+def _as_version(number) -> str:
+    """A number YAML read where a version was meant, as a version: 0.1 is
+    0.1.0 and 2 is 2.0.0; anything else gets the example 1.0.0."""
+    parts = repr(number).split(".")
+    if len(parts) <= 3 and all(p.isdigit() for p in parts):
+        return ".".join(parts + ["0"] * (3 - len(parts)))
+    return "1.0.0"
 
 
 def _relative_inside(path: str) -> bool:
@@ -250,8 +331,9 @@ def _check_run(c: _Check, value, *, builtin: bool) -> None:
     if req is not None and c.text("run.python_requirements", req, limit=200) and not _relative_inside(req):
         c.error("run.python_requirements", "must be a file inside the plugin's folder")
     if req is not None:
-        c.warn("run.python_requirements", "per-plugin Python packages are planned; until then the plugin "
-               "runs with a Python the user already has, without these packages")
+        c.warn("run.python_requirements", "per-plugin Python packages are planned; until then a pipeline runs on "
+               "Clips Kitty's own Python with only the standard library and clipskitty_sdk, so these packages "
+               "won't be there")
     timeout = run.get("timeout_minutes")
     if timeout is not None:
         c.number("run.timeout_minutes", timeout, minimum=1, maximum=MAX_TIMEOUT_MINUTES)
@@ -371,7 +453,7 @@ def _check_model(c: _Check, i: int, entry, names: set) -> None:
         sha = m.get("sha256")
         if not isinstance(sha, str) or not re.match(SHA256_PATTERN, sha):
             c.error(f"{where}.sha256", "is required for a url model: the file's SHA-256, 64 hex characters")
-        if isinstance(mid, str) and mid.lower().split("?")[0].endswith(PICKLE_SUFFIXES):
+        if isinstance(mid, str) and mid.lower().split("#")[0].split("?")[0].endswith(PICKLE_SUFFIXES):
             c.warn(f"{where}.id", "a pickle-format file, which can run code when loaded; Clips Kitty will ask "
                    "the user before downloading it")
     elif source == "bundled":
@@ -419,6 +501,34 @@ def _check_requirements(c: _Check, value) -> None:
             c.text(f"requirements.software[{i}]", name, limit=80)
 
 
+def _words(data, key: str) -> list:
+    """A manifest's list field (inputs, outputs), or [] when it isn't a list."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, list) else []
+
+
+def _check_steps(c: _Check, data: dict) -> None:
+    """The rules that tie the moment words together. Each needs one of the
+    words `moments`, `ratings`, `context` or `edits`, and no two can fire on
+    one manifest, so a manifest gets at most one of these errors."""
+    inputs, outputs = _words(data, "inputs"), _words(data, "outputs")
+    if "ratings" in outputs and "moments" not in inputs:
+        c.error(f"outputs[{outputs.index('ratings')}]", "ratings score moments found before this plugin runs: "
+                "add moments to inputs (a pipeline's own ranges carry their score already)")
+    if "moments" in inputs and not any(w in outputs for w in ("ratings", "context", "edits")):
+        c.error(f"inputs[{inputs.index('moments')}]", "a plugin given moments answers about them: "
+                "add ratings, context or edits to outputs")
+    if "edits" in outputs and "moments" not in inputs and "ratings" not in outputs:
+        # with ratings it is the first rule's, and its fix fixes both
+        c.error(f"outputs[{outputs.index('edits')}]", "edits are suggested for the clips Clips Kitty makes "
+                "from moments: add moments to inputs")
+    if ("context" in outputs and "ranges" not in outputs and "moments" not in inputs
+            and "ratings" not in outputs and "edits" not in outputs):
+        # with ratings or edits it is that rule's, and adding moments fixes both
+        c.error(f"outputs[{outputs.index('context')}]", "context describes moments: add ranges to outputs, "
+                "or moments to inputs")
+
+
 def validate(data, *, builtin: bool = False) -> Report:
     """Every problem with a manifest mapping. `builtin` is for the manifests
     that ship inside Clips Kitty (plugins/builtin/), the only ones that may use
@@ -445,8 +555,14 @@ def validate(data, *, builtin: bool = False) -> Report:
     if "name" in data:
         c.text("name", data["name"], limit=60)
     if "version" in data:
-        c.text("version", data["version"], pattern=VERSION_PATTERN, limit=60,
-               hint=f"{data['version']!r} is not a version like 1.2.0 (SemVer)")
+        version = data["version"]
+        if isinstance(version, (int, float)) and not isinstance(version, bool):
+            # `version: 0.1` unquoted: YAML reads a number, not text.
+            c.error("version", f"YAML read this as the number {version!r}; write a version like "
+                    f"{_as_version(version)}")
+        else:
+            c.text("version", version, pattern=VERSION_PATTERN, limit=60,
+                   hint=f"{version!r} is not a version like 1.2.0 (SemVer)")
     if "kind" in data:
         c.choice("kind", data["kind"], KINDS, planned=PLANNED_KINDS, what="kind")
     if "capability" in data:
@@ -471,11 +587,13 @@ def validate(data, *, builtin: bool = False) -> Report:
                 permissions.add(perm)
     if "inputs" in data:
         for i, item in enumerate(c.items("inputs", data["inputs"])):
-            if c.choice(f"inputs[{i}]", item, INPUTS, what="input") and INPUT_NEEDS[item] not in permissions:
+            if (c.choice(f"inputs[{i}]", item, INPUTS, what="input") and INPUT_NEEDS[item]
+                    and INPUT_NEEDS[item] not in permissions):
                 c.error(f"inputs[{i}]", f"the {item} input needs the {INPUT_NEEDS[item]} permission")
     if "outputs" in data:
         for i, item in enumerate(c.items("outputs", data["outputs"], allow_empty=False)):
             c.choice(f"outputs[{i}]", item, OUTPUTS, planned=PLANNED_OUTPUTS, what="output")
+    _check_steps(c, data)
 
     network = c.items("network", data.get("network", []))
     for i, host in enumerate(network):
@@ -549,6 +667,22 @@ def validate(data, *, builtin: bool = False) -> Report:
                 c.unknown(f"examples[{i}]", e, ("title", "url"))
                 c.text(f"examples[{i}].title", e.get("title"), limit=100)
                 c.url(f"examples[{i}].url", e.get("url"))
+    if "based_on" in data:
+        # Whose work this plugin builds on, so the Marketplace can credit it
+        # and show its licence beside the plugin's own.
+        items = c.items("based_on", data["based_on"])
+        if len(items) > MAX_BASED_ON:
+            c.error("based_on", f"at most {MAX_BASED_ON} projects")
+        for i, item in enumerate(items):
+            b = c.mapping(f"based_on[{i}]", item)
+            if b:
+                c.unknown(f"based_on[{i}]", b, ("name", "url", "license", "how"))
+                c.text(f"based_on[{i}].name", b.get("name"), limit=100)
+                c.url(f"based_on[{i}].url", b.get("url"))
+                c.text(f"based_on[{i}].license", b.get("license"), pattern=LICENSE_PATTERN, limit=100,
+                       hint="the other project's licence as an SPDX identifier, such as MIT")
+                # runs: starts it as a separate program; includes-code: contains its code; port: rewrites it.
+                c.choice(f"based_on[{i}].how", b.get("how"), BASED_ON_HOW, what="kind of use")
     return c.report
 
 
@@ -577,6 +711,68 @@ def validate_folder(folder: str | Path, *, builtin: bool = False) -> tuple[dict 
     return data, report
 
 
+# ---- what a plugin does: find, understand, rate, edit -------------------------------
+#
+# A plugin's role follows from its inputs and outputs; there is no field for it.
+# These functions decide what a plugin does and what a job may ask of it. Read
+# a plugin's role through them, not from its inputs and outputs directly, so
+# every place that asks gets the same answer.
+
+# The output that does each step.
+STEP_OUTPUTS = {"find": "ranges", "understand": "context", "rate": "ratings", "edit": "edits"}
+
+
+def steps_of(manifest) -> tuple[str, ...]:
+    """What a plugin does, in run order: find for `ranges`, understand for
+    `context`, rate for `ratings`, edit for `edits`. A finder that declares
+    `context` describes its own ranges: it does find and understand, but is
+    offered only find."""
+    outputs = _words(manifest, "outputs")
+    return tuple(step for step in STEPS if STEP_OUTPUTS[step] in outputs)
+
+
+def offers(manifest) -> tuple[str, ...]:
+    """The steps a job may name a plugin for: find for `ranges`; understand,
+    rate and edit for `context`, `ratings` and `edits` when it also takes
+    `moments` in."""
+    given = "moments" in _words(manifest, "inputs")
+    return tuple(step for step in steps_of(manifest) if step == "find" or given)
+
+
+def find_steps(manifest) -> tuple[str, ...]:
+    """What a find run asks the plugin for: find, and understand too when it
+    describes the ranges it finds (outputs `ranges` and `context`)."""
+    outputs = _words(manifest, "outputs")
+    return ("find", "understand") if "ranges" in outputs and "context" in outputs else ("find",)
+
+
+def uses_steps(manifest) -> bool:
+    """Whether a manifest uses any of the words `moments`, `ratings`,
+    `context` or `edits`. Only then does a find run's job.json carry `steps`,
+    so a plain finder's job is exactly what it always was."""
+    words = _words(manifest, "inputs") + _words(manifest, "outputs")
+    return any(w in words for w in ("moments", "ratings", "context", "edits"))
+
+
+def step_problem(manifest, step: str) -> str | None:
+    """Why a job can't name this plugin for `step`, or None when it can. The
+    text follows "the pipeline {name} " in the app's messages."""
+    if step not in STEPS:
+        raise ValueError(f"unknown step {step!r}; expected one of: {', '.join(STEPS)}")
+    if step in offers(manifest):
+        return None
+    if step == "find":
+        if steps_of(manifest) == ("edit",):
+            return ("doesn't find moments: it suggests edits for the clips Clips Kitty makes. "
+                    "Choose it under Suggest edits instead")
+        return ("doesn't find moments: it rates or understands moments others found. "
+                "Choose it under Rate & understand instead")
+    if step == "edit":
+        return "can't suggest edits for clips: its manifest needs moments in inputs and edits in outputs"
+    return (f"can't {step} moments others found: its manifest needs moments in inputs "
+            f"and {STEP_OUTPUTS[step]} in outputs")
+
+
 # ---- version ranges ----------------------------------------------------------------
 
 
@@ -584,6 +780,18 @@ def _version_tuple(text: str) -> tuple[int, int, int]:
     core = re.split(r"[-+]", text.strip(), maxsplit=1)[0]
     parts = [int(p) for p in core.split(".")[:3]]
     return tuple(parts + [0] * (3 - len(parts)))  # type: ignore[return-value]
+
+
+def version_key(text: str) -> tuple:
+    """A sort key in Semantic Versioning order: 1.2.0-rc.1 < 1.2.0 < 1.2.1.
+    A pre-release sorts below its release; its dot-separated parts compare
+    as numbers when they are numbers (below any word), else as text; build
+    metadata (+...) is ignored."""
+    text = text.strip().split("+", 1)[0]
+    core, _, pre = text.partition("-")
+    parts = pre.split(".") if pre else []
+    return (_version_tuple(core), 0 if parts else 1,
+            tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in parts))
 
 
 def version_satisfies(version: str, spec: str) -> bool:
@@ -615,7 +823,8 @@ def version_satisfies(version: str, spec: str) -> bool:
 def json_schema() -> dict:
     """A JSON Schema (draft 2020-12) for editors, made from this module's tables.
     It checks shapes, names and vocabularies; rules that span fields (an input
-    needs its permission, remote needs sends) are only in validate()."""
+    needs its permission, remote needs sends, ratings need moments) are only
+    in validate()."""
     text = {"type": "string", "minLength": 1}
     https = {"type": "string", "pattern": r"^https://"}
 
@@ -694,6 +903,10 @@ def json_schema() -> dict:
                 "properties": {"name": text, "url": https, "pricing": text, "required": {"type": "boolean"}}}]},
             "examples": {"type": "array", "items": {"type": "object", "required": ["title", "url"],
                                                     "properties": {"title": text, "url": https}}},
+            "based_on": {"type": "array", "maxItems": MAX_BASED_ON, "items": {
+                "type": "object", "required": ["name", "url", "license", "how"],
+                "properties": {"name": text, "url": https, "license": {"type": "string", "pattern": LICENSE_PATTERN},
+                               "how": enum(BASED_ON_HOW)}}},
         },
     }
 

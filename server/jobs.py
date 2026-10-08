@@ -41,7 +41,11 @@ _STAGES = {
     "signals": (0.40, 0.05, "Analyzing audio & visuals"),
     "analyze": (0.45, 0.20, "Finding the best moments"),
     "ranking": (0.65, 0.05, "Ranking the best moments"),
+    # A Marketplace plugin saying what happens in the moments (plugins/steps.py).
+    "understand": (0.65, 0.05, "Understanding the moments"),
     "reactions": (0.70, 0.08, "Scoring on-screen reactions"),
+    # A Marketplace plugin suggesting edits for the clips (plugins/steps.py).
+    "edit": (0.70, 0.08, "Suggesting edits"),
     "render": (0.78, 0.22, "Rendering clips"),
 }
 
@@ -224,6 +228,13 @@ class Worker(threading.Thread):
                         # A plugin pipeline (plugins/): it picks the moments,
                         # and everything after that is made as usual.
                         cfg["clips"]["pipeline"] = payload["pipeline"]
+                    for step in ("rate", "understand", "edit"):
+                        # Rate & understand and Suggest edits (plugins/steps.py):
+                        # plugins that look at the moments once they're found,
+                        # and at the clips once they're chosen, in order.
+                        chosen = payload.get(step)
+                        if chosen:
+                            cfg["clips"][step] = list(chosen) if isinstance(chosen, list) else [chosen]
                     if isinstance(payload.get("sport"), dict):
                         # The Sports toggle's Teams / players, and Custom's own
                         # words: directions too, so clips whose commentary
@@ -322,6 +333,13 @@ class Worker(threading.Thread):
         fraction = base + weight * min(1.0, max(0.0, within))
         if event.get("stage") == "render" and event.get("clip") and event.get("total"):
             label = f"Rendering clip {event['clip']}/{event['total']}"
+        if event.get("plugin") and event.get("stage") in ("ranking", "understand", "edit"):
+            # A Marketplace plugin rating or understanding the moments, or
+            # suggesting edits for the clips: the bar may not move (it never
+            # goes back), so the label says who is working.
+            label = {"ranking": f"Rating moments with {event['plugin']}",
+                     "understand": f"Understanding moments with {event['plugin']}",
+                     "edit": f"Suggesting edits with {event['plugin']}"}[event["stage"]]
         with self._progress_lock:
             entry = self._progress.get(job_id)
             if entry is None:
@@ -601,6 +619,17 @@ class Worker(threading.Thread):
             if not clip_ids:
                 print("  Publish skipped: the run produced no clips.")
                 return
+            if payload.get("rate") or payload.get("understand"):
+                # This job named plugins to rate or understand its moments:
+                # if one didn't run, the clips wait for the person instead.
+                # A job without them never reads the outcome for this.
+                from core.outcome import failed_steps
+
+                names = failed_steps(db.get_outcome(video_id))
+                if names:
+                    print(f"  Publish skipped: Clips Kitty made these clips without {', '.join(names)}, "
+                          "so they wait for you to publish them.")
+                    return
             platforms = list(then.get("platforms") or [])
             every_hours = float(then.get("every_hours") or 0)
             per_day = int(then.get("per_day") or 0)
@@ -711,6 +740,8 @@ class Worker(threading.Thread):
 
         # Persisted render options, overlaid with this edit's changes.
         render_opts = _json.loads(clip["render_opts"]) if clip["render_opts"] else {}
+        # As saved, for what this render changed in a suggested edit (below).
+        saved_opts = copy.deepcopy(render_opts)
         incoming = payload.get("render_opts") or {}
         if "caption_style" in incoming:
             merged_style = {**render_opts.get("caption_style", {}), **(incoming["caption_style"] or {})}
@@ -790,6 +821,8 @@ class Worker(threading.Thread):
             render_opts["speaker_turns"] = heard
         else:
             render_opts.pop("speaker_turns", None)
+        _mark_suggestions(candidate, payload, saved_opts, render_opts,
+                          (float(clip["start_s"]), float(clip["end_s"])), (start, end))
 
         # Translations, uploads and feedback REFERENCE this clip, and
         # foreign_keys is ON, so they have to be lifted out before the row can
@@ -815,6 +848,9 @@ class Worker(threading.Thread):
             restore["render_opts"] = _json.dumps(render_opts)
             db.set_clip(new_row["id"], **restore)
             db.reattach_clip_rows(new_row["id"], detached)
+            # A watched video's first publish kept the windows it chose
+            # (server/automation.py publish): a trimmed clip is still one of them.
+            db.follow_chosen_clip(video_id, (clip["start_s"], clip["end_s"]), (start, end))
         elif detached:
             # The re-render produced no row to hang them off. Say so rather
             # than dropping a translation or an upload record in silence.
@@ -822,3 +858,28 @@ class Worker(threading.Thread):
                   "dependent row(s)")
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
             discard(old_path)
+
+
+def _mark_suggestions(candidate, payload: dict, saved: dict, rendered: dict, window: tuple,
+                      new_window: tuple) -> None:
+    """After a render the creator asked for, what each edit a plugin
+    suggested for the clip now is (plugins/edit_marks.py): used, with what
+    this render really put in the clip, or no longer. Written into the
+    clip's subscores, which the new row is registered with, so a render that
+    failed records nothing. `saved` are the clip's options as they were at
+    `window`, `rendered` the ones it was just rendered with at `new_window`;
+    the payload's `suggestions.used` says what each Use in the editor added."""
+    scores = candidate.subscores if isinstance(candidate.subscores, dict) else {}
+    sent = payload.get("suggestions")
+    used = sent.get("used") if isinstance(sent, dict) else None
+    used = used if isinstance(used, list) else []
+    if not scores.get("plugin_edits"):
+        if used:
+            print(f"Not marked as used: {len(used)} suggested edit(s) named, but this clip has none")
+        return
+    from plugins import edit_marks
+
+    entries, lines = edit_marks.after_render(scores["plugin_edits"], used, saved, rendered, window, new_window)
+    for line in lines:
+        print(line)
+    candidate.subscores = {**scores, "plugin_edits": entries}

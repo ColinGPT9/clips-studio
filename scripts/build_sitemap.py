@@ -36,6 +36,7 @@ PRIORITY = {
     "gaming.html": "0.8",
     "sports.html": "0.8",
     "local-vs-cloud.html": "0.7",
+    "developers.html": "0.7",
 }
 DEFAULT_PRIORITY = "0.6"
 

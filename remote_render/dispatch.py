@@ -72,6 +72,15 @@ def _assets(render_opts: dict | None, config: dict) -> dict:
     return {str(name): True} if name else {}
 
 
+def _needs_this_pc(render_opts: dict | None) -> bool:
+    """Whether a clip needs a file only this PC has: music added in the
+    editor (edit.music), which a render PC can't fetch and would leave
+    out (video_editor/export.py)."""
+    edit = (render_opts or {}).get("edit")
+    music = edit.get("music") if isinstance(edit, dict) else None
+    return isinstance(music, dict) and bool(str(music.get("path") or "").strip())
+
+
 class RemoteRenderer:
     def __init__(self, gateway, mode: str, data_dir: Path):
         self.gateway = gateway
@@ -90,9 +99,10 @@ class RemoteRenderer:
     def render_all(self, video_id: str, source: Path, items: list, segments: list, clip_dir: Path,
                    config: dict, render_opts: dict | None, language: str, workers: int, local=None,
                    opts_for=None):
-        """opts_for(meta), when given, is each clip's own render options
-        (e.g. its headline, video/post_style.py) in place of render_opts."""
-        per_clip = {id(c): opts_for(m) for c, m in items} if opts_for else {}
+        """opts_for(candidate, meta), when given, is each clip's own render
+        options (its title card, video/post_style.py; on a re-run, the
+        creator's saved choices, D33) in place of render_opts."""
+        per_clip = {id(c): opts_for(c, m) for c, m in items} if opts_for else {}
 
         def opts_of(c):
             return per_clip.get(id(c), render_opts)
@@ -115,11 +125,20 @@ class RemoteRenderer:
             return
 
         where = self._worker_name(self.target) if self.target else "a render worker"
-        print(f"      Remote rendering: sending {len(items)} clip(s) to {where}")
+        # Only the clips that go out: one with music from this PC renders here (below).
+        sent = sum(not _needs_this_pc(opts_of(c)) for c, _m in items)
+        if sent:
+            print(f"      Remote rendering: sending {sent} clip(s) to {where}")
         pending: dict[str, tuple] = {}
+        here_first: list = []
         for candidate, meta in items:
             cancel.check_active()
             ropts = opts_of(candidate)
+            if _needs_this_pc(ropts):
+                print(f"      Remote rendering: {int(candidate.start)}s-{int(candidate.end)}s renders here "
+                      "(its music is a file on this computer)")
+                here_first.append((candidate, meta))
+                continue
             style = (ropts or {}).get("caption_style") or (config.get("clips") or {}).get("caption_style") or {}
             if style.get("second_speaker"):
                 # Who is talking when is heard here, with the whole video to
@@ -156,6 +175,8 @@ class RemoteRenderer:
         last_note = ""
         with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
             here: dict = {}
+            for candidate, meta in here_first:
+                here[pool.submit(local, candidate)] = (candidate, meta)
             while pending or here:
                 try:
                     cancel.check_active()

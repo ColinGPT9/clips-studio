@@ -1,4 +1,5 @@
 import { t } from '../lib/i18n'
+import { ratedOutNames } from '../lib/steps'
 import type { RunOutcome } from '../lib/types'
 
 /** Why a finished run produced no clips.
@@ -49,6 +50,15 @@ export default function NoClipsExplanation({ outcome, compact }: Props): JSX.Ele
       <p className="font-medium text-ink">{t('No clips from this video, and nothing went wrong.')}</p>
       <p className="text-muted">{numbers}</p>
 
+      {/* Every moment was set aside by a Marketplace plugin's rating
+          (core/outcome.py rated_out): only that is said, not the footage. */}
+      {cause === 'rated_out' && (
+        <p className="text-muted">
+          {ratedOutNames(outcome).join(', ')} {t('rated every moment under your minimum score')} ({min_score}).{' '}
+          {t('Lower the minimum score, or turn off Rate & understand for this video.')}
+        </p>
+      )}
+
       {cause === 'no_people' && (
         <>
           <p className="text-muted">
@@ -79,13 +89,15 @@ export default function NoClipsExplanation({ outcome, compact }: Props): JSX.Ele
         </p>
       )}
 
-      <p className="text-muted">
-        {cause === 'no_people'
-          ? t(
-              'Lowering Minimum score in Settings will start producing clips, but they will be picked without the visual half of the signal - expect them to be arbitrary.'
-            )
-          : t('Lowering Minimum score in Settings would let more of these through.')}
-      </p>
+      {cause !== 'rated_out' && (
+        <p className="text-muted">
+          {cause === 'no_people'
+            ? t(
+                'Lowering Minimum score in Settings will start producing clips, but they will be picked without the visual half of the signal - expect them to be arbitrary.'
+              )
+            : t('Lowering Minimum score in Settings would let more of these through.')}
+        </p>
+      )}
     </div>
   )
 }

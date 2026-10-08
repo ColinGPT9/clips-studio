@@ -36,7 +36,7 @@ Don't copy someone else's model into your own repository or a `url` you host unl
 
 ## Gated models
 
-Some models need an account and the authors' approval ("gated"). Downloading one needs a Hugging Face token. Clips Kitty doesn't handle Hugging Face sign-in yet (planned), so the Marketplace explains the gate instead of trying. Until then, choose an ungated model, or document how your users get access and download it themselves.
+Some models need an account and the authors' approval ("gated"). Downloading one needs a Hugging Face token. Clips Kitty doesn't handle Hugging Face sign-in yet (planned), so the Marketplace explains the gate instead of trying: "Its makers share this model only with people who sign in to Hugging Face and are given access. Clips Kitty can't sign in to Hugging Face for you yet." Until then, choose an ungated model: a model in `models:` must be in Clips Kitty's shared folder before a run starts ([Model references](model-references.md)), and Clips Kitty can't download a gated one there.
 
 ## Sizes and hardware
 
@@ -45,5 +45,9 @@ Say what your model needs in the manifest's `requirements` (`gpu`, `vram_gb`, `r
 ## Running a model on Hugging Face's servers instead
 
 Hugging Face Inference Providers and Inference Endpoints run models remotely. To your plugin they are a remote API: your code calls them, the user supplies their own key as a `secret` setting, and your manifest declares the hosts and what is sent. See [Remote APIs](remote-apis.md).
+
+## In the catalog
+
+[Awesome Clips Kitty](../../awesome-clips-kitty/README.md), the catalog the Marketplace reads, can list a model as an entry (`registry/models/<name>.yaml`) whose source is its Hugging Face repository, and apps and pipelines name the Hugging Face models they use. Hugging Face holds the weights and the model card; it is never where a plugin is listed from, which is always a GitHub repository ([Marketplace publishing](marketplace-publishing.md)). A model's Hugging Face downloads (last 30 days) and likes belong to the model: a listing that uses it shows them under the model's id, never added to the plugin's own numbers. They are read on a schedule into the catalog, not by the app; none have been read yet.
 
 See also: [Model references](model-references.md).

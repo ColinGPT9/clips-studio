@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/sdk/python/clipskitty_sdk/schema/clipskitty.schema.json
+# What Clips Kitty reads about this plugin. Every field is described in
+# https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/plugin-manifest.md
+manifest_version: 1
+id: @@ID@@
+name: "@@NAME@@"
+version: 0.1.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Finds the moments when a coloured banner shows on screen and the sound gets
+  louder, such as the red "quark burst" banner of Quarkbloom Arena (a made-up
+  game). It only looks at that part of the screen and at how loud the video
+  is: it can't read the banner's words, and a moment without the banner is
+  missed.
+author: {name: "@@AUTHOR@@"}
+license: "@@LICENSE@@"
+requires: {clips_kitty: "@@REQUIRES@@", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+execution: local
+inputs: [video]
+outputs: [ranges]
+events: [quark_burst]
+games: [@@GAME@@]
+settings:
+  banner_region:
+    type: string
+    default: "0.30,0.10,0.40,0.10"
+    max_length: 100
+    title: Where the banner shows, as left, top, width, height (0 to 1)
+  banner_colour:
+    type: string
+    default: "e0303a"
+    max_length: 7
+    title: The banner's colour, as 6 hex digits (red, green, blue)
+  louder_by_db:
+    type: number
+    default: 6
+    minimum: 1
+    maximum: 30
+    title: How much louder the sound gets at the same time (dB)
+  needs_loud:
+    type: boolean
+    default: true
+    title: Only when the sound gets louder too
+permissions: [video.read, ffmpeg]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: gaming

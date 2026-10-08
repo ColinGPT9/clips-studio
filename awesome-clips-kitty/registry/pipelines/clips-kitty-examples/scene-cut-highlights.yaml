@@ -1,0 +1,10 @@
+id: clips-kitty-examples/scene-cut-highlights
+repository: https://github.com/ColinGPT9/clips-studio
+path: examples/pipelines/scene-cut-highlights
+section: general
+added: 2026-10-07
+checked: 2026-10-07
+versions:
+  - version: 1.0.0
+    commit: 1f7f3c3f881ca794a574db3ecb774db6782c47c2
+    date: 2026-10-07

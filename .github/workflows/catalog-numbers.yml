@@ -1,0 +1,58 @@
+# Refresh the numbers Awesome Clips Kitty shows: GitHub stars and activity,
+# Hugging Face downloads and likes, and Clips Kitty installs once the install
+# counter exists (awesome-clips-kitty/CONTRIBUTING.md, "Numbers").
+#
+# It reads public figures GitHub and Hugging Face already keep, writes them to
+# awesome-clips-kitty/stats/metrics.json, rebuilds the index and README so the
+# app's bundled copy carries them, and commits if anything changed. It never
+# installs or runs a plugin. Weekly: stars don't need to be fresher than that,
+# and each run is a commit.
+
+name: Catalog numbers
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write   # it commits the numbers back to this repository
+
+concurrency:
+  group: catalog-numbers
+  cancel-in-progress: false
+
+jobs:
+  numbers:
+    name: Read the catalog's numbers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install what the scripts need
+        run: pip install --quiet "PyYAML>=6.0.3,<7"
+
+      - name: Read the numbers
+        env:
+          # Read-only use: stars, last push and discussion counts of public repositories.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/update_registry_metrics.py
+
+      - name: Rebuild the index and README with them
+        run: python scripts/build_registry_index.py
+
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet -- awesome-clips-kitty; then
+            echo "No new numbers."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add awesome-clips-kitty/stats awesome-clips-kitty/index.json awesome-clips-kitty/README.md
+          git commit -m "Awesome Clips Kitty: numbers for $(date -u +%Y-%m-%d)"
+          git push

@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clips Kitty SDK</title>
+    <meta
+      name="description"
+      content="Teach Clips Kitty your game: write a small Python plugin that finds, understands or rates the moments in a video, and Clips Kitty does the rest. The SDK is free and MIT."
+    />
+    <link rel="canonical" href="https://colingpt9.github.io/clips-studio/developers.html" />
+    <link rel="icon" href="assets/mascot.png" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* The SDK picture: the same boxes as the text picture in
+         sdk/python/README.md, as a real list so screen readers get the
+         steps in order. */
+      .sdk-flow {
+        margin: 0;
+        max-width: 760px;
+      }
+      .sdk-flow .flow-title {
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0 0 14px;
+      }
+      ol.flow {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 30px;
+      }
+      ol.flow > li {
+        position: relative;
+        background: var(--surface);
+        border: 1px solid rgb(28 51 84 / 0.6);
+        border-radius: var(--radius);
+        padding: 14px 18px;
+      }
+      ol.flow > li + li::before {
+        content: '↓';
+        content: '↓' / '';
+        position: absolute;
+        top: -28px;
+        left: 26px;
+        line-height: 26px;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      ol.flow > li > strong {
+        display: block;
+      }
+      ol.flow > li > span {
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+      ol.flow > li.plugin {
+        border-color: rgb(56 189 248 / 0.45);
+        background: rgb(56 189 248 / 0.08);
+      }
+      ul.steps {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+        display: grid;
+        gap: 8px;
+      }
+      ul.steps li {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 12px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: var(--base);
+      }
+      ul.steps li code {
+        min-width: 7.5em;
+      }
+      ul.steps li .what {
+        flex: 1 1 14em;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      .tag {
+        font-style: normal;
+        font-size: 0.74rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        padding: 2px 9px;
+        border-radius: 999px;
+      }
+      .tag.built {
+        color: var(--success);
+        border: 1px solid rgb(52 211 153 / 0.45);
+      }
+      .code-label {
+        margin: 22px 0 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .code-label + pre {
+        margin-top: 0;
+      }
+      .card h3 code {
+        font-size: 1em;
+      }
+      .card p.needs {
+        margin-top: 10px;
+        color: var(--ink);
+      }
+      ol.plain {
+        margin: 0 0 18px;
+        padding-left: 22px;
+        color: var(--muted);
+      }
+      ol.plain li + li {
+        margin-top: 6px;
+      }
+      ol.plain strong,
+      ul.precise strong {
+        color: var(--ink);
+      }
+      ul.precise {
+        margin: 24px 0 0;
+        padding-left: 22px;
+        color: var(--muted);
+        font-size: 0.94rem;
+        max-width: 760px;
+      }
+    </style>
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Clips Kitty" />
+    <meta property="og:url" content="https://colingpt9.github.io/clips-studio/developers.html" />
+    <meta property="og:title" content="Clips Kitty SDK" />
+    <meta
+      property="og:description"
+      content="Write a small Python plugin that finds, understands or rates the moments in a video. Clips Kitty does the rest. Free, and the SDK is MIT."
+    />
+    <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebPage",
+            "name": "Clips Kitty SDK",
+            "url": "https://colingpt9.github.io/clips-studio/developers.html",
+            "description": "Teach Clips Kitty your game: write a small Python plugin that finds, understands or rates the moments in a video, and Clips Kitty does the rest. The SDK is free and MIT.",
+            "inLanguage": "en",
+            "datePublished": "2026-10-08",
+            "dateModified": "2026-10-08",
+            "about": {
+              "@type": "SoftwareSourceCode",
+              "name": "Clips Kitty SDK",
+              "codeRepository": "https://github.com/ColinGPT9/clips-studio",
+              "programmingLanguage": "Python",
+              "license": "https://github.com/ColinGPT9/clips-studio/blob/main/sdk/python/LICENSE"
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Clips Kitty",
+                "item": "https://colingpt9.github.io/clips-studio/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Clips Kitty SDK",
+                "item": "https://colingpt9.github.io/clips-studio/developers.html"
+              }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Can I name a real game?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, as an unofficial plugin. A listing that names games shows \"Unofficial · not made or endorsed by the makers of\" those games in the Marketplace. Our own examples use Quarkbloom Arena, a made-up game."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is a plugin sandboxed?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty doesn't sandbox it. The install screen says what it declares, and which of those Clips Kitty enforces."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which Python do plugins run on?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Clips Kitty's own: Python 3.11, with the standard library (except a few modules it leaves out, which validate warns about) and the SDK. Clips Kitty can't install other packages yet. Test on 3.11: newer Python syntax or library calls fail there."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which Clips Kitty runs plugins?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source. The README says how: From source."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What about edit and posting?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Edit is built, and posting isn't a plugin step. Edit plugins suggest edits that wait for the creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title or a layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload). Clips Kitty posts clips itself, and through WoopSocial it can post to many sites at once on the creator's own account. A manifest that asks for a publisher (kind: publisher) is refused: plugins don't post."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does a rater decide what an automatic channel posts?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, where it posts only the best few clips. When a watched channel or the daily schedule posts only the best few, the scores decide which ones go out, so a rating plugin decides that; elsewhere it decides the order. A moment a rater scores under the creator's minimum score is set aside, unless the creator marked it a must-have."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img src="assets/mascot.png" alt="" />
+          <span>
+            <span class="name">Clips <span>Kitty</span></span>
+            <span class="tagline">local-first AI clipping</span>
+          </span>
+        </a>
+        <nav class="site" aria-label="Main">
+          <a href="index.html">Home</a>
+          <a href="twitch.html">Twitch</a>
+          <a href="kick.html">Kick</a>
+          <a href="youtube.html">YouTube</a>
+          <a href="gaming.html">Gaming</a>
+          <a href="sports.html">Sports</a>
+          <a href="local-vs-cloud.html">Local vs cloud</a>
+          <a href="alternatives.html">Compare</a>
+          <a href="opus-clip-alternative.html">vs Opus Clip</a>
+          <a href="descript-alternative.html">vs Descript</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="developers.html" aria-current="page">Developers</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="donate" href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero" id="top">
+        <div class="wrap">
+          <span class="eyebrow">For developers</span>
+          <h1>Clips Kitty SDK</h1>
+          <p class="lead">
+            Teach Clips Kitty your game. Write a small Python plugin that finds, understands or
+            rates the moments in a video. Clips Kitty does the rest.
+          </p>
+          <p class="lead">
+            Your plugin knows what a great moment looks like in your game. Clips Kitty downloads
+            the video, writes down what is said, and turns the moments into finished vertical
+            clips with captions and titles, on the creator's own PC.
+          </p>
+          <p class="note">
+            No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first
+            release that includes it; until that is out, run Clips Kitty from source.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md" target="_blank" rel="noopener noreferrer">Start building</a>
+          </div>
+        </div>
+      </div>
+
+      <section id="how-it-fits">
+        <div class="wrap">
+          <h2>How a plugin fits in</h2>
+          <p class="section-lead">
+            A plugin is a folder with a manifest, <code>clipskitty.yaml</code>, and a Python
+            script. Clips Kitty starts it for each video with a job folder, and every step is
+            optional: a video that uses no plugin is made exactly as before.
+          </p>
+          <figure class="sdk-flow">
+            <p class="flow-title">Clips Kitty SDK</p>
+            <ol class="flow">
+              <li class="box"><strong>Input</strong><span>a link or a video file</span></li>
+              <li class="box"><strong>Video</strong><span>Clips Kitty downloads it and writes down what is said</span></li>
+              <li class="box plugin"><strong>Your plugin</strong><span>every step is optional</span>
+                <ul class="steps">
+                  <li class="step"><code>find</code><span class="what">picks the moments</span><em class="tag built">built</em></li>
+                  <li class="step"><code>understand</code><span class="what">says what happens in each one</span><em class="tag built">built</em></li>
+                  <li class="step"><code>rate</code><span class="what">scores each moment</span><em class="tag built">built</em></li>
+                  <li class="step"><code>edit</code><span class="what">suggests edits for the creator</span><em class="tag built">built</em></li>
+                </ul>
+              </li>
+              <li class="box"><strong>Clips Kitty</strong><span>does every step no plugin does, then cuts, frames and captions the clips</span></li>
+              <li class="box"><strong>Creator / Social Platform</strong><span>posts when the creator clicks Publish, or on a schedule or automatic posting the creator switched on</span></li>
+            </ol>
+          </figure>
+          <ul class="precise">
+            <li>One plugin can find moments for a video; it replaces Clips Kitty's own finding.</li>
+            <li>Up to 3 plugins can understand and up to 3 can rate, after any finder.</li>
+            <li>Up to 3 plugins can suggest edits for the clips that will be made.</li>
+            <li>
+              A plugin's role comes from <code>inputs</code> and <code>outputs</code> in its
+              manifest (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md" target="_blank" rel="noopener noreferrer">Steps</a>).
+            </li>
+            <li>
+              Edit plugins suggest edits that wait for the creator in the editor
+              (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step" target="_blank" rel="noopener noreferrer">Steps</a>).
+            </li>
+            <li>
+              Posting isn't a plugin step: Clips Kitty posts clips itself, and through
+              <a href="https://woopsocial.com/?via=clipskitty" target="_blank" rel="noopener noreferrer sponsored">WoopSocial</a> it can post to many sites at once on the creator's own account.
+              <code>kind: publisher</code> is refused: plugins don't post.
+            </li>
+          </ul>
+          <p class="note">Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</p>
+        </div>
+      </section>
+
+      <section id="what-you-can-build">
+        <div class="wrap">
+          <h2>What you can build</h2>
+          <p class="section-lead">
+            Someone who knows one game can tell a great moment from a loud one far better than a
+            general-purpose detector. Three kinds of plugin, each with a template to start from:
+          </p>
+          <div class="grid">
+            <div class="card">
+              <h3>Game events</h3>
+              <p>
+                Your game shows something when a big play happens: a banner, a line in the kill
+                feed, an icon, a sound. A finder looks for it and hands Clips Kitty the moments.
+                Template: <code>game-events</code>, or <code>transcript</code> to find the words
+                the commentary says.
+              </p>
+            </div>
+            <div class="card">
+              <h3>A rater for your community's taste</h3>
+              <p>
+                Clips Kitty or another plugin finds the moments; your rater gives each one a new
+                score, by what your viewers like and what they skip. Template:
+                <code>rater</code>.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Notes for better titles</h3>
+              <p>
+                Say what happens in each moment, and Clips Kitty's AI uses it when it writes the
+                clip's title, description and hashtags. Template: <code>understander</code>.
+              </p>
+            </div>
+          </div>
+          <p class="note">
+            <strong>Wanted:</strong> game events for genres the big clipping apps barely cover,
+            such as fighting games, racing, strategy, card games, MMOs, and retro or emulated
+            games. The
+            <a href="https://github.com/ColinGPT9/clips-studio/blob/main/awesome-clips-kitty/README.md#wanted" target="_blank" rel="noopener noreferrer">Wanted list</a>
+            in Awesome Clips Kitty has more ideas nobody has built yet (it is kept in
+            <a href="https://github.com/ColinGPT9/clips-studio/blob/main/awesome-clips-kitty/registry/sections.yaml" target="_blank" rel="noopener noreferrer"><code>sections.yaml</code></a>).
+          </p>
+        </div>
+      </section>
+
+      <section id="quickstart">
+        <div class="wrap">
+          <h2>Quickstart</h2>
+          <p class="section-lead">
+            Three commands: install the SDK, make a plugin from the <code>game-events</code>
+            template, and run it on a test video the SDK makes. The template is for
+            <strong>Quarkbloom Arena, a made-up game</strong>; put your own GitHub name, in
+            lower case, in place of <code>your-github-name</code>.
+          </p>
+          <p class="code-label">PowerShell (Windows)</p>
+          <pre><code class="language-powershell">py -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+py -m clipskitty_sdk new quarkbloom-bursts --template game-events --publisher your-github-name
+py -m clipskitty_sdk run quarkbloom-bursts --sample</code></pre>
+          <p class="code-label">bash (macOS, Linux)</p>
+          <pre><code class="language-bash">python -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
+python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publisher your-github-name
+python -m clipskitty_sdk run quarkbloom-bursts --sample</code></pre>
+          <p>
+            The last command makes a 40-second test video with a red banner and a loud sound,
+            runs the plugin on it the way Clips Kitty would, and prints the one moment it finds.
+            You need <strong>Python 3.11</strong>, the Python Clips Kitty runs plugins on;
+            <strong>FFmpeg</strong> on <code>PATH</code>, for the test video; and
+            <strong>Git</strong>, because the SDK installs from GitHub. If you use a virtual
+            environment, make it beside your plugin's folder, never inside it.
+          </p>
+          <p class="note">
+            No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first
+            release that includes it; until that is out, run Clips Kitty from source.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-accent" href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md" target="_blank" rel="noopener noreferrer">Your first game pipeline</a>
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/blob/main/sdk/python/README.md" target="_blank" rel="noopener noreferrer">The SDK on GitHub</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="building-blocks">
+        <div class="wrap">
+          <h2>Building blocks</h2>
+          <p class="section-lead">
+            Modules for the work most game plugins share, in SDK 1.2.0. Each says what it needs,
+            and your plugin's manifest asks for it.
+          </p>
+          <div class="grid">
+            <div class="card" id="block-media">
+              <h3><code>media</code></h3>
+              <p>
+                Reads the video with the FFmpeg Clips Kitty hands over: its size, a part of the
+                screen frame by frame, one frame as a JPEG, its loudness and its scene cuts.
+              </p>
+              <p class="needs">
+                Needs: FFmpeg (the <code>ffmpeg</code> permission), and <code>video.read</code>
+                for the video itself.
+              </p>
+            </div>
+            <div class="card" id="block-signals">
+              <h3><code>signals</code></h3>
+              <p>
+                Turns numbers and frames into moments: how much of a frame is one colour, how
+                bright it is, loud spikes, stretches of time, and a moment fitted to the clip
+                lengths the creator chose.
+              </p>
+              <p class="needs">
+                Needs nothing of its own: it works on the numbers and frames that
+                <code>media</code> gives it.
+              </p>
+            </div>
+            <div class="card" id="block-text">
+              <h3><code>text</code></h3>
+              <p>
+                Finds words in what is said: whole words in any case, with the times they are
+                said, and which ones fall inside a moment.
+              </p>
+              <p class="needs">
+                Needs: the transcript (<code>transcript</code> in <code>inputs</code> and the
+                <code>transcript.read</code> permission).
+              </p>
+            </div>
+            <div class="card" id="block-local-model">
+              <h3><code>local_model</code></h3>
+              <p>
+                Asks the creator's local model in Clips Kitty a question, about a frame too when
+                the model can see pictures.
+              </p>
+              <p class="needs">
+                Needs: the <code>ollama</code> permission, and a creator who uses a local model
+                in Clips Kitty. It uses that model only on this PC: it refuses when Clips Kitty's
+                AI runs at a cloud provider or at an address off this PC, and it ignores proxy
+                settings, so the frames never leave the PC.
+              </p>
+            </div>
+            <div class="card" id="block-testing">
+              <h3><code>testing</code></h3>
+              <p>
+                Runs your plugin from its own tests, the way Clips Kitty would, on the SDK's test
+                video or test transcript.
+              </p>
+              <p class="needs">
+                For tests on your PC, not in the app: install the <code>test</code> extra for
+                pytest.
+              </p>
+            </div>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/signals-cookbook.md" target="_blank" rel="noopener noreferrer">Signals cookbook</a>
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/sdk.md" target="_blank" rel="noopener noreferrer">Every call in the SDK</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="free-and-yours">
+        <div class="wrap">
+          <h2>Free and yours</h2>
+          <ul class="ticks">
+            <li>
+              <strong>The SDK is MIT</strong>
+              (<a href="https://github.com/ColinGPT9/clips-studio/blob/main/sdk/python/LICENSE" target="_blank" rel="noopener noreferrer">licence</a>).
+              Using it doesn't put your plugin under the AGPL, so your plugin can
+              have any licence; code that <code>new</code> copied from a template
+              keeps the SDK's MIT notice, in <code>TEMPLATE-LICENSE.txt</code>.
+              Clips Kitty itself is AGPL-3.0-or-later.
+            </li>
+            <li>
+              <strong>Your plugin keeps its own licence,</strong> open or closed, and the
+              Marketplace shows it. Your code stays in your own repository.
+            </li>
+            <li>
+              <strong>No fee and no share.</strong> Listing, updating and installing cost
+              nothing, and Clips Kitty takes no share of what you earn. Link your own pricing,
+              sponsors or support page from your manifest.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="what-creators-see">
+        <div class="wrap">
+          <h2>What creators see</h2>
+          <p class="section-lead">
+            Installing runs nothing: a plugin's code first runs when a video uses it. Before
+            anything is installed, Clips Kitty's install screen starts with "This pipeline is a
+            program from the internet. It can do anything you can do on this PC." Then it shows
+            the publisher, the source and commit, the licence, the labels, each permission with
+            whether Clips Kitty enforces it or only the developer says so, and a ⚠ line for each
+            kind of data that leaves the PC. An update lists what it adds.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>What it means</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Community · not reviewed by a person</strong></td><td>Installed from a listing in Awesome Clips Kitty whose automated checks passed.</td></tr>
+                <tr><td><strong>✓ Official · made by the Clips Kitty project</strong></td><td>From a repository that belongs to the Clips Kitty project.</td></tr>
+                <tr><td><strong>✓ Compatible</strong></td><td>One version installed and ran on a sample video. An automated check, not a review.</td></tr>
+                <tr><td><strong>Unofficial · not made or endorsed by the makers of …</strong></td><td>A listing that names a game, built from the games it names.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            Every plugin runs on the creator's PC with their rights, like any program; Clips
+            Kitty doesn't sandbox it. The install screen says what it declares.
+            <a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/security.md" target="_blank" rel="noopener noreferrer">What Clips Kitty does and doesn't protect</a>.
+          </p>
+        </div>
+      </section>
+
+      <section id="get-listed">
+        <div class="wrap">
+          <h2>Get listed</h2>
+          <p class="section-lead">
+            Creators find plugins in Clips Kitty's Marketplace, which reads Awesome Clips Kitty,
+            a catalog kept on GitHub. Getting in costs nothing.
+          </p>
+          <ol class="plain">
+            <li>Commit your plugin to a public GitHub repository and push it.</li>
+            <li>
+              From the folder that holds your plugin's folder, write its listing file with
+              <code>listing</code>. It checks that everything is committed and pushed and that
+              your GitHub name owns the repository.
+            </li>
+            <li>
+              Open one pull request to
+              <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">ColinGPT9/clips-studio</a>
+              with the listing file and the catalog's index rebuilt
+              (<code>python scripts/build_registry_index.py</code> rebuilds
+              <code>awesome-clips-kitty/index.json</code> and its <code>README.md</code>).
+            </li>
+            <li>
+              Once it is merged, it reaches creators through Clips Kitty's online list. In the
+              versions of Clips Kitty that have the Marketplace, it shows up the next time the
+              Marketplace checks that list (when it opens, at most once a day), or at once with
+              <strong>Check for new pipelines</strong>.
+            </li>
+          </ol>
+          <p class="code-label">PowerShell (Windows)</p>
+          <pre><code class="language-powershell">py -m clipskitty_sdk listing quarkbloom-bursts --section gaming/generic</code></pre>
+          <p class="code-label">bash (macOS, Linux)</p>
+          <pre><code class="language-bash">python -m clipskitty_sdk listing quarkbloom-bursts --section gaming/generic</code></pre>
+          <p>
+            A listing is for your real plugin: <code>listing</code> refuses one that still has
+            the template's placeholders.
+            <a href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/marketplace-publishing.md#getting-listed" target="_blank" rel="noopener noreferrer">Getting listed</a>
+            has the rest.
+          </p>
+        </div>
+      </section>
+
+      <section id="help">
+        <div class="wrap">
+          <h2>Help</h2>
+          <p class="section-lead">
+            Ask in GitHub Discussions, and report a problem with the SDK or its docs in Issues.
+            The troubleshooting page lists the messages you may meet, and what to do about each.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+            <a class="btn btn-ghost" href="https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/troubleshooting.md" target="_blank" rel="noopener noreferrer">Troubleshooting</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq">
+        <div class="wrap">
+          <h2>Questions</h2>
+
+          <h3>Can I name a real game?</h3>
+          <p>
+            Yes, as an unofficial plugin. A listing that names games shows "Unofficial · not made
+            or endorsed by the makers of" those games in the Marketplace. Our own examples use
+            Quarkbloom Arena, a made-up game.
+          </p>
+
+          <h3>Is a plugin sandboxed?</h3>
+          <p>
+            No. Every plugin runs on the creator's PC with their rights, like any program; Clips
+            Kitty doesn't sandbox it. The install screen says what it declares, and which of
+            those Clips Kitty enforces.
+          </p>
+
+          <h3>Which Python do plugins run on?</h3>
+          <p>
+            Clips Kitty's own: Python 3.11, with the standard library (except a few modules it
+            leaves out, which validate warns about) and the SDK. Clips Kitty can't install other
+            packages yet. Test on 3.11: newer Python syntax or library calls fail there.
+          </p>
+
+          <h3>Which Clips Kitty runs plugins?</h3>
+          <p>
+            No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first
+            release that includes it; until that is out, run Clips Kitty from source. The README
+            says how:
+            <a href="https://github.com/ColinGPT9/clips-studio#from-source" target="_blank" rel="noopener noreferrer">From source</a>.
+          </p>
+
+          <h3>What about edit and posting?</h3>
+          <p>
+            Edit is built, and posting isn't a plugin step. Edit plugins suggest edits that wait
+            for the creator in the editor: cuts, mutes, the volume, fades, the speed, a hook title
+            or a layout. Clips Kitty doesn’t put a suggestion into a clip until you use it in the
+            editor and apply your edits (Apply edits, or Apply edits &amp; upload). Clips Kitty
+            posts clips itself, and through WoopSocial it can post to many sites at once on the
+            creator's own account. A manifest that asks for a publisher (kind: publisher) is
+            refused: plugins don't post.
+          </p>
+
+          <h3>Does a rater decide what an automatic channel posts?</h3>
+          <p>
+            Yes, where it posts only the best few clips. When a watched channel or the daily
+            schedule posts only the best few, the scores decide which ones go out, so a rating
+            plugin decides that; elsewhere it decides the order. A moment a rater scores under
+            the creator's minimum score is set aside, unless the creator marked it a must-have.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap cols">
+        <span>Free and open source.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="changelog.html">Changelog</a>
+          <a href="developers.html">Build a plugin</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="https://github.com/ColinGPT9/clips-studio" target="_blank" rel="noopener noreferrer">★ Star it</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a>
+          <a href="https://github.com/ColinGPT9/clips-studio/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+          <a href="https://paypal.me/clipsstudio" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="analytics.js"></script>
+    <script src="donate.js"></script>
+  </body>
+</html>

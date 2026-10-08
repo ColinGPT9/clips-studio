@@ -1,0 +1,12 @@
+name: Firebot
+description: Desktop chat bot for Twitch streamers with commands, timers and event-driven effects, including OBS control and creating Twitch clips. An effect can call a local program or URL when a replay is saved.
+section: streaming
+relationship: related
+license: GPL-3.0
+license_note: The README asks that anything using this code stays under the GPL and credits this repository.
+source:
+  github: https://github.com/crowbartools/Firebot
+runs: local
+tags: [twitch, chat bot, obs, clips]
+added: 2026-10-07
+checked: 2026-10-07

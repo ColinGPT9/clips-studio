@@ -1,0 +1,13 @@
+name: ClipMint
+description: Desktop app that transcribes podcasts, vlogs and stream VODs locally, ranks moments with a cloud LLM and renders vertical clips with captions and a webcam-over-gameplay layout.
+section: video-clipping
+relationship: related
+license: MIT
+source:
+  github: https://github.com/kleZ799/clipmint
+platforms: [windows]
+runs: both
+tags: [gaming, vod, podcast, webcam, youtube]
+warning: Sends transcripts to Gemini, Groq or OpenAI to rank moments. Downloads YouTube videos, optionally with your browser cookies; YouTube's terms may not allow it.
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,11 @@
+name: auto-slice-video
+description: Python CLI and library that finds the busiest stretches of chat or danmaku in an ASS subtitle file and cuts those windows from the video as highlight clips.
+section: clipping
+relationship: related
+license: MIT
+source:
+  github: https://github.com/timerring/auto-slice-video
+runs: local
+tags: [danmaku, chat, bilibili, highlights]
+added: 2026-10-07
+checked: 2026-10-07

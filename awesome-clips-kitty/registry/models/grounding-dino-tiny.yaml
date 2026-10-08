@@ -1,0 +1,11 @@
+name: Grounding DINO tiny
+description: Finds objects you name in plain text, such as a ball or a scoreboard, and draws boxes around them without any training. Handy for locating on-screen elements in sampled game or sports frames.
+section: vision
+relationship: related
+license: Apache-2.0
+source:
+  huggingface: IDEA-Research/grounding-dino-tiny
+runs: local
+tags: [object detection, zero-shot, scoreboard, transformers]
+added: 2026-10-07
+checked: 2026-10-07

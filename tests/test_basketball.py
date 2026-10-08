@@ -2008,13 +2008,13 @@ def test_a_title_written_from_the_play_says_only_what_it_holds():
     meta = _meta("wrong", "")
     w = titles.written(_play(), meta, 0)
     assert (w.title, w.description) == ("Marsh's Three Cuts It to 1",
-                                        "Marsh hits a three for the Spurs with 0:53 left in the 2nd quarter. "
-                                        "The Thunder still lead, 53-52.")
+                                        ("Marsh hits a three for the Spurs with 0:53 left in the 2nd quarter. "
+                                         "The Thunder still lead, 53-52."))
     w = titles.written(_play(scorer="", team="Thunder", other="Spurs", mine=103, theirs=109, before=-8, points=2,
                              shot="bucket", kind="made_2", when="Q4 0:52"), meta, 1)
     assert (w.title, w.description) == ("The Thunder Cut It to 6",
-                                        "The Thunder score with 0:52 left in the 4th quarter. "
-                                        "The Spurs still lead, 109-103.")
+                                        ("The Thunder score with 0:52 left in the 4th quarter. "
+                                         "The Spurs still lead, 109-103."))
     w = titles.written(_play(mine=111, theirs=103, before=6, points=2, shot="dunk", kind="dunk", sealed=True,
                              when="Q4 0:03"), meta, 0)
     assert w.title == "Marsh Seals It for the Spurs!" and w.description.endswith("The Spurs win it, 111-103.")
@@ -2059,6 +2059,39 @@ def test_a_wrong_title_is_written_again_and_then_from_the_scoreboard():
     assert "Ruiz" in out[2].title and "Okafor" not in out[2].title + out[2].description
     count, rules = asked[0]
     assert count == 2 and "- CLIP 1: " in rules and "name only Ruiz" in rules
+
+
+def test_check_titles_rewrite_keeps_plugin_notes():
+    """A title written again (core/pipeline.py hands check_titles the same
+    candidates) still carries what a Marketplace plugin said happens in the
+    clip's moment, beside the scoreboard's note."""
+    from analysis import metadata
+    from sports.basketball import titles
+
+    said = [_said_at(296.0, "over to Vance, Vance lets it fly, got it!", 0.5)]
+    profile, moments, segments = _basket_game(said, [(303, 1, 3)], description="Leo Vance.")
+    e = next(e for e in moments if e.confirmed)
+    c = ClipCandidate(start=e.start, end=e.end, score=80)
+    clips.mark(c, e, profile.event_label(e.type), 10)
+    c.subscores["plugin_notes"] = [{"plugin": "example-dev/quarkbloom-notes", "version": "1.0.0",
+                                    "name": "Quarkbloom Notes", "text": "The bench is on its feet"}]
+    prompts = []
+
+    class Model:
+        def generate(self, prompt, json_mode=False):
+            prompts.append(prompt)
+            return '{"items": []}'
+
+    def rewrite(subset, rules):
+        return metadata.generate_metadata_batch(subset, segments, "Spurs at Thunder", Model(), rules=rules)
+
+    titles.check(profile, [c], [_meta("Spurs Take the Lead!", "The Spurs lead.")], rewrite)
+    (rewrite,) = prompts
+    assert "RULES FOR THESE CLIPS" in rewrite
+    head = next(line for line in rewrite.splitlines() if line.startswith("CLIP 0 "))
+    assert head.startswith("CLIP 0 (the scoreboard: ")
+    assert head.endswith(" (notes from Marketplace plugins about this moment, background only, never invent "
+                         "beyond them: The bench is on its feet):")
 
 
 def test_more_wrong_titles_than_one_batch_are_written_again_batch_by_batch(capsys):

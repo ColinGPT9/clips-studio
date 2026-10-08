@@ -1,0 +1,12 @@
+name: gem
+description: Pure Python Dota 2 replay parser that turns .dem files into match objects, tables, JSON or Parquet, covering the combat log, fights, Roshan, towers, wards and runes. Highlight scoring is left to you.
+section: games
+relationship: related
+license: MIT
+source:
+  github: https://github.com/whanyu1212/gem-dota
+runs: local
+tags: [dota 2, replay parser, fights, pandas]
+games: [dota-2]
+added: 2026-10-07
+checked: 2026-10-07

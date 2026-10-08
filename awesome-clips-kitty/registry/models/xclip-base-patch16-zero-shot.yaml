@@ -1,0 +1,11 @@
+name: X-CLIP
+description: Scores short video windows against text labels you choose for zero-shot tagging of segments. Trained on human-action clips, so results on game footage are unconfirmed.
+section: vision-language
+relationship: related
+license: MIT
+source:
+  huggingface: microsoft/xclip-base-patch16-zero-shot
+runs: local
+tags: [zero-shot, video tagging, video-text]
+added: 2026-10-07
+checked: 2026-10-07

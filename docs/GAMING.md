@@ -177,7 +177,13 @@ again.
 
 The same editor is in the **clip editor** (Effects → Layout → **Gaming /
 Reaction** → *Change layout…*) to change one clip: shown in *Update preview*,
-saved on *Apply*.
+saved on *Apply*. Processing the video again with Gaming / Reaction on keeps a
+clip you edited in its own layout. When that clip's split was found
+automatically or remembered for the creator, a webcam you set up for this run,
+or one remembered for the creator, reaches it too. A split you set up before an
+earlier run, a webcam you drew for that clip, or a split you turned off for it
+stays as it is, even with Gaming / Reaction off for the new run (a Sports job
+uses its own layout). Change it in the clip editor.
 
 ## Who the streamer is, when it's found automatically
 

@@ -28,7 +28,9 @@ manager's (plugins/manager.py), which writes the file atomically.
 `requires.clips_kitty` is checked here as well as at install, so a plugin an
 app update leaves behind is refused with a reason instead of failing oddly;
 so is the registry's block list (plugins/registry.py), so a blocked version
-is refused when a job names it and when it runs.
+is refused when a job names it and when it runs. installed_choice also
+checks that the plugin's manifest can do the step it is named for (find,
+understand or rate).
 """
 
 from __future__ import annotations
@@ -127,53 +129,80 @@ def get(data_dir, plugin_id: str, version: str | None = None) -> Installed | Non
     )
 
 
-def clean_choice(value) -> dict:
-    """A job's `pipeline` option, checked for shape: {id, version?, settings?}.
+def clean_choice(value, *, what: str = "pipeline") -> dict:
+    """A job's plugin choice, checked for shape: {id, version?, settings?}.
 
-    A plain string is taken as the id. Whether the plugin is installed is
-    checked separately, against a data folder (see installed_choice).
+    `what` names the field in the messages: the `pipeline` option by default,
+    or one item of a step's list, such as `rate[1]`. A plain string is taken
+    as the id. Whether the plugin is installed is checked separately, against
+    a data folder (see installed_choice).
     """
     if isinstance(value, str):
         value = {"id": value}
     if not isinstance(value, dict):
-        raise ValueError("pipeline must be an object: {\"id\": \"publisher/name\"}")
+        raise ValueError(f"{what} must be an object: {{\"id\": \"publisher/name\"}}")
     unknown = set(value) - {"id", "version", "settings"}
     if unknown:
-        raise ValueError(f"pipeline has unknown fields: {', '.join(sorted(unknown))}")
+        raise ValueError(f"{what} has unknown fields: {', '.join(sorted(unknown))}")
     pid = value.get("id")
     if not isinstance(pid, str) or not ID_RE.match(pid):
-        raise ValueError("pipeline.id must look like publisher/name (lower case, digits and hyphens)")
+        raise ValueError(f"{what}.id must look like publisher/name (lower case, digits and hyphens)")
     out = {"id": pid}
     version = value.get("version")
     if version is not None:
         if not isinstance(version, str) or not VERSION_RE.match(version):
-            raise ValueError("pipeline.version must be a version like 1.2.0")
+            raise ValueError(f"{what}.version must be a version like 1.2.0")
         out["version"] = version
     settings = value.get("settings")
     if settings is not None:
         if not isinstance(settings, dict):
-            raise ValueError("pipeline.settings must be an object")
+            raise ValueError(f"{what}.settings must be an object")
         if len(json.dumps(settings)) > 16_000:
-            raise ValueError("pipeline.settings is too large")
+            raise ValueError(f"{what}.settings is too large")
         out["settings"] = settings
     return out
 
 
-def installed_choice(data_dir, choice: dict) -> Installed:
-    """The installed, enabled plugin a cleaned choice names, or ValueError saying why not."""
+class ChoiceProblem(ValueError):
+    """Why a job can't use the plugin it names (installed_choice). The message
+    is the one the API and the job log show; `code` says which check failed:
+    "missing", "off", "incompatible", "blocked", "step" or "settings".
+    `detail` is the block list's reason, or what is wrong with a setting, for
+    a sentence of the caller's own (plugins/runner.answer_moments)."""
+
+    def __init__(self, message: str, code: str, detail: str = ""):
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
+
+
+def installed_choice(data_dir, choice: dict, step: str = "find") -> Installed:
+    """The installed, enabled plugin a cleaned choice names, able to do `step`
+    (find, understand, rate or edit), or ChoiceProblem saying why not."""
     plugin = get(data_dir, choice["id"], choice.get("version"))
     if plugin is None:
         wanted = choice["id"] + (f" {choice['version']}" if choice.get("version") else "")
-        raise ValueError(f"the pipeline {wanted} isn't installed")
+        raise ChoiceProblem(f"the pipeline {wanted} isn't installed", "missing")
     if not plugin.enabled:
-        raise ValueError(f"the pipeline {plugin.name} is turned off; turn it on in Marketplace › Installed first")
+        raise ChoiceProblem(f"the pipeline {plugin.name} is turned off; turn it on in Marketplace › Installed first",
+                            "off")
     problem = compatibility_problem(plugin.manifest)
     if problem:
-        raise ValueError(f"the pipeline {plugin.name} can't run here: {problem}")
+        raise ChoiceProblem(f"the pipeline {plugin.name} can't run here: {problem}", "incompatible")
     from plugins import registry
 
     hit = registry.blocked_check(data_dir)(plugin.id, plugin.version)
     if hit and hit.get("severity") == "blocked":
-        raise ValueError(f"the pipeline {plugin.name} {plugin.version} is blocked: {hit.get('reason')}. Remove it in Marketplace › Installed.")
-    host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
+        reason = hit.get("reason")
+        raise ChoiceProblem(f"the pipeline {plugin.name} {plugin.version} is blocked: {reason}. "
+                            "Remove it in Marketplace › Installed.", "blocked", str(reason or ""))
+    # A job's pipeline is asked to find, which needs `ranges` in the outputs:
+    # every plugin that finds moments has it, so none is refused for it here.
+    problem = manifest.step_problem(plugin.manifest, step)
+    if problem:
+        raise ChoiceProblem(f"the pipeline {plugin.name} {problem}", "step")
+    try:
+        host.job_settings(plugin.manifest, choice.get("settings"))  # refuses unknown or ill-typed settings now
+    except ValueError as e:
+        raise ChoiceProblem(str(e), "settings", str(e)) from e
     return plugin

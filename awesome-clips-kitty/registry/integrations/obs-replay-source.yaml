@@ -1,0 +1,11 @@
+name: Replay Source for OBS Studio
+description: OBS plugin that keeps the last seconds of a source in memory for instant replays, with slow motion, reverse playback and a hotkey that saves the replay to disk.
+section: streaming
+relationship: related
+license: GPL-2.0-only
+source:
+  github: https://github.com/exeldro/obs-replay-source
+runs: local
+tags: [obs, instant replay, slow motion, replay buffer]
+added: 2026-10-07
+checked: 2026-10-07

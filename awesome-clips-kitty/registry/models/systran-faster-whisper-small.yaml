@@ -1,0 +1,11 @@
+name: Whisper small model for CTranslate2
+description: Whisper small converted for faster-whisper, which loads it for the size name small. Multilingual transcription with timestamps that suits CPU-only machines.
+section: speech
+relationship: related
+license: MIT
+source:
+  huggingface: Systran/faster-whisper-small
+runs: local
+tags: [transcription, faster-whisper, ctranslate2, cpu]
+added: 2026-10-07
+checked: 2026-10-07

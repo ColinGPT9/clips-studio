@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/sdk/python/clipskitty_sdk/schema/clipskitty.schema.json
+# What Clips Kitty reads about this plugin. Every field is described in
+# https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/plugin-manifest.md
+manifest_version: 1
+id: @@ID@@
+name: "@@NAME@@"
+version: 0.1.0
+kind: pipeline
+capability: highlight_detection
+description: >
+  Suggests edits for the clips Clips Kitty makes, by the words said in them:
+  it mutes the words you list, cuts the wait after "respawn timer" and adds
+  a hook title where the commentary says "quark burst", as in Quarkbloom
+  Arena (a made-up game). It only reads what is said. Its suggestions wait
+  for you in the editor, and Clips Kitty doesn't put one into a clip until
+  you use it there and apply your edits.
+author: {name: "@@AUTHOR@@"}
+license: "@@LICENSE@@"
+requires: {clips_kitty: "@@REQUIRES@@", plugin_api: 1}
+run:
+  command: ["{python}", "src/main.py"]
+execution: local
+inputs: [moments, transcript]
+outputs: [edits]
+settings:
+  mute_words:
+    type: string
+    default: ""
+    max_length: 1000
+    title: Words or phrases to mute, separated by commas
+permissions: [transcript.read]
+network: []
+sends: []
+requirements: {gpu: none, os: [windows, macos, linux]}
+category: gaming

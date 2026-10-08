@@ -1,0 +1,12 @@
+name: Shotcut
+description: Free cross-platform timeline video editor for finishing clips. It opens MLT project files, so a list of moments can be handed over as a ready-made timeline.
+section: companion
+relationship: related
+license: GPL-3.0-or-later
+source:
+  github: https://github.com/mltframework/shotcut
+platforms: [windows, macos, linux]
+runs: local
+tags: [editor, timeline, mlt]
+added: 2026-10-07
+checked: 2026-10-07

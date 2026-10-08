@@ -1,0 +1,15 @@
+name: Half-Life Advanced Effects
+description: Records Counter-Strike 2 and CS:GO demos as high-quality video with camera control and effects, and exports camera motion to After Effects or Blender. Gives you clean game footage to cut into clips.
+section: gaming
+relationship: related
+license: MIT
+license_note: MIT covers only the project's own code; the README says the licence does not apply to submodules (such as Detours, rapidxml and a fork of Valve's Half-Life SDK), which have their own terms.
+source:
+  github: https://github.com/advancedfx/advancedfx
+platforms: [windows]
+runs: local
+tags: [demos, recording, movie making, camera, hlae]
+games: [counter-strike-2, counter-strike-go]
+warning: Hooks into the game; its README says it is technically a hack and joining VAC-protected servers with it will probably get you VAC banned. Use it only offline on demos.
+added: 2026-10-07
+checked: 2026-10-07

@@ -12,6 +12,8 @@
 # every print() in the pipeline into a crash. Electron passes windowsHide so
 # no console window is ever shown to the user.
 
+import importlib.util
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
@@ -103,7 +105,35 @@ hiddenimports += [
     "cryptography.x509",
     "cryptography.hazmat.primitives.asymmetric.ec",
     "sources.preview_frames",
+    # Runs a pipeline's Python script when main.py is started with the
+    # plugin marker (_clipskitty_script_host.py).
+    "_clipskitty_script_host",
 ]
+
+# The whole standard library, for pipelines. They run on this Python
+# (_clipskitty_script_host.py), and PyInstaller otherwise packs only the
+# modules the engine itself happens to import, so an ordinary `import csv` or
+# `import statistics` in a pipeline could fail in the installed app alone.
+# The list comes from the Python doing the freezing, so it always matches it.
+# Left out: GUI toolkits (tkinter is excluded below), the test suite, and
+# tools for building or installing Python. tests/test_packaging.py guards it.
+STDLIB_SKIP = {
+    "tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "test", "ensurepip", "venv", "lib2to3",
+    "distutils", "pydoc_data", "antigravity", "this",
+}
+for _name in sorted(sys.stdlib_module_names - STDLIB_SKIP):
+    if _name.startswith("__"):
+        continue
+    try:
+        _spec = importlib.util.find_spec(_name)
+    except (ImportError, ValueError):
+        _spec = None
+    if _spec is None:  # not on this platform (POSIX-only modules on Windows, and so on)
+        continue
+    hiddenimports.append(_name)
+    if _spec.submodule_search_locations:
+        hiddenimports += collect_submodules(
+            _name, filter=lambda n: ".test" not in n and ".idle_test" not in n, on_error="ignore")
 
 # Config the app reads from disk at runtime. Prompts especially: they are
 # plain text on purpose so they can be tuned without touching code, and that
@@ -120,11 +150,13 @@ datas += [
     # The plugin SDK as plain files: plugins/_sdk.py imports it from here, and
     # every plugin process gets this folder on its PYTHONPATH (plugins/runner.py).
     (str(ROOT / "sdk" / "python" / "clipskitty_sdk"), "sdk/python/clipskitty_sdk"),
+    # The SDK is MIT, unlike the rest of the app: its licence travels with it.
+    (str(ROOT / "sdk" / "python" / "LICENSE"), "sdk/python"),
     # The official modes' manifests (plugins/builtin/), listed beside plugins.
     (str(ROOT / "plugins" / "builtin"), "plugins/builtin"),
     # The registry index as of this build (plugins/registry.py): the
     # Marketplace's listings and the block list, until an index address exists.
-    (str(ROOT / "registry" / "index.json"), "registry"),
+    (str(ROOT / "awesome-clips-kitty" / "index.json"), "awesome-clips-kitty"),
     # The sound tagger's 527 class names, in its output order (analysis/panns.py).
     (str(ROOT / "config" / "audioset_labels.txt"), "config"),
     # The three-second clip a voice model is checked with before it is used

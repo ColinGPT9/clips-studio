@@ -4,6 +4,8 @@ A **pipeline plugin** decides which moments of a video become clips. Clips Kitty
 
 Status: **built** in plugin contract 1: the contract, the SDK, the runner in the engine, the job option, the manifest validator and the plugin manager (install from a folder or a Git commit, through experimental API routes). The Marketplace screen in the desktop app (Phase 8) installs and manages plugins, and the Generate bar's **Pipeline** switch picks one for a video. **Planned**: returning finished clip files.
 
+A plugin can also work on the moments after they are found, by Clips Kitty or by a pipeline: say what happens in each one (understand) or give each one a new score (rate). That is chosen under **Rate & understand**, not Pipeline, and [Steps](steps.md) explains it. Once the clips are chosen, a plugin chosen under **Suggest edits** can suggest edits for each one, which wait for the creator in the editor ([Steps](steps.md#suggest-edits-the-edit-step)). This page is about finding.
+
 ## How a run works
 
 ```text
@@ -74,9 +76,9 @@ def main(job):
 run(main)
 ```
 
-The full list of manifest fields is in [Plugin manifest](plugin-manifest.md). Of them, the runner uses today: `id`, `name`, `version`, `run.command`, `run.timeout_minutes`, `permissions` and `settings`.
+The full list of manifest fields is in [Plugin manifest](plugin-manifest.md). Of them, the runner uses today: `id`, `name`, `version`, `run.command`, `run.timeout_minutes`, `permissions`, `settings`, and `inputs` and `outputs`, which say which steps the plugin does ([Steps](steps.md)).
 
-`{python}` in `run.command` is replaced by: the `plugins.python` setting in `settings.yaml` if set, else the Python the engine runs on (in a source checkout), else `python`, `py` or `python3` from `PATH`. **The installed app does not ship a Python for plugins**, so a Python plugin needs the user to have Python installed; the runner says so in words when none is found. A plugin's own Python packages, installed into an environment of its own, are **planned**: for now a plugin can use the standard library, the SDK, and programs it calls (FFmpeg through `job.tools`, or its own executable as `run.command`).
+`{python}` in `run.command` is replaced by the Python your plugin runs on. **In the installed app that is Clips Kitty's own Python**, the one its engine runs on, so creators never install Python for your plugin. It behaves like an ordinary `python` with three differences: **(1)** the standard library and the SDK are always there, and Clips Kitty's own code (`core`, `plugins`, `video`…) is not; **(2)** other packages that happen to be inside the app (numpy, OpenCV…) can be imported but are not promised yet, so they may change with an app update; **(3)** it never runs in UTF-8 mode, so open text files with `encoding="utf-8"`. A module the app doesn't include stops the run with a message naming it, and a part of the SDK that the app's own SDK doesn't have yet (a module added in a later SDK than the one the app bundles) stops it with "This pipeline needs a newer version of Clips Kitty. Update Clips Kitty, or ask the pipeline's developer which version it needs." In a source checkout `{python}` is the `plugins.python` setting in `settings.yaml` if set, else the Python the engine runs on, else `python`, `py` or `python3` from `PATH`. A plugin's own Python packages, installed into an environment of its own, are **planned**: for now a plugin can use the standard library, the SDK, pure-Python code in its own folder, and programs it calls (FFmpeg through `job.tools`, or its own executable as `run.command`).
 
 A plugin does not have to be Python: `run.command` can start a program shipped in the plugin's folder, named by a path with a slash (`["bin/detect.exe"]`, `["./detect"]`); Clips Kitty starts it by its full path, never from `PATH`. It then reads `job.json` and writes `result.json` itself, following the contract below.
 
@@ -112,7 +114,9 @@ A plugin does not have to be Python: `run.command` can start a program shipped i
 
 At most 200 ranges; `0 <= start < end`; `score` 0-100 or left out; `label` up to 64 characters, `title` 200, `reason` 500, `notes` 4000.
 
-**Progress**, one JSON object per line on standard output: `{"type": "progress", "fraction": 0.4, "message": "..."}`, `{"type": "log", "message": "..."}`, `{"type": "error", "message": "..."}`. The last error line is the message the user sees if the run fails.
+A plugin whose manifest uses the words `moments`, `ratings` or `context` also finds `steps` in its job.json: `["find"]`, or `["find", "understand"]` when its outputs have both `ranges` and `context`. Such a finder may give each range a `context` of up to 5 notes, each up to 160 characters, saying what happens in it. A plugin that uses none of these words gets exactly the job.json above. [Steps](steps.md) has the rest.
+
+**Progress**, one JSON object per line on standard output: `{"type": "progress", "fraction": 0.4, "message": "..."}`, `{"type": "log", "message": "..."}`, `{"type": "error", "message": "..."}`. The last error line is the message the user sees if the run fails. A run that fails without one tells the user "<Name> stopped before it finished. Try again; if it happens again, send a bug report from Feedback (it includes the details)."; your output and the exit code go to the job log.
 
 ## What your plugin receives, and what that does and doesn't protect
 
@@ -125,7 +129,7 @@ At most 200 ranges; `0 <= start < end`; `score` 0-100 or left out; `label` up to
 
 "Enforced" means only that: the job folder does not contain what was not granted. **Your plugin runs as the user, with the user's rights**, like any program they install. Nothing stops it from opening other files, starting programs or using the network. The [Permissions](permissions.md) page lists which declarations are checked by the app and which are only shown to the user, and [Security](security.md) explains what that means for people installing plugins.
 
-**The environment.** Your process inherits the user's environment minus Clips Kitty's own settings (`CLIPS_*`, `CLIPSKITTY_*`) and any variable whose name contains `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `COOKIE` or `AUTH`. It gets `CLIPSKITTY_JOB` (the job folder), `PYTHONPATH` (the SDK), UTF-8 settings for Python, and each of your `secret` settings as `CLIPSKITTY_SECRET_<NAME>`. This keeps Clips Kitty from handing credentials over by accident; it is not a wall, since a process running as the user can read the user's files.
+**The environment.** Your process inherits the user's environment minus Clips Kitty's own settings (`CLIPS_*`, `CLIPSKITTY_*`) and any variable whose name contains `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `COOKIE` or `AUTH`. It gets `CLIPSKITTY_JOB` (the job folder), `PYTHONPATH` (the SDK), `PYTHONIOENCODING=utf-8` (its own output is UTF-8; files aren't, so open them with `encoding="utf-8"`), and each of your `secret` settings as `CLIPSKITTY_SECRET_<NAME>`. This keeps Clips Kitty from handing credentials over by accident; it is not a wall, since a process running as the user can read the user's files.
 
 **Secrets.** A setting of `type: secret` is stored in Clips Kitty's secrets store (`core/secrets.py`: encrypted with Windows DPAPI under the user's account; on other systems a file only the user can read) and reaches only your process, only in its environment, never in a file. Secrets are not isolated between plugins: any program running as the user, including another plugin, can read the same store.
 
@@ -136,7 +140,8 @@ At most 200 ranges; `0 <= start < end`; `score` 0-100 or left out; `label` up to
 - A clip's score is yours, or, without one, comes from its place: 90 for the first, 5 less for each after, never under 50.
 - `title` (or `label`) becomes the clip's working headline; Clips Kitty still writes the final title, description and hashtags with the user's AI model.
 - Each clip records where it came from: `source` is `plugin:<id>@<version>`, and its scores keep `plugin`, `plugin_version`, `plugin_label` and `plugin_why` (your `reason`).
-- The job's minimum score (`min_score`) is **not** applied to plugin results: your plugin returns the moments it stands behind.
+- Your `title`, `label` and `reason` don't reach the AI that writes titles. A range's `context` does, but only when your manifest declares `context` in outputs: Clips Kitty then asks for it (`steps` is `["find", "understand"]`), cleans each note and keeps it with the clip, and the title request includes it ([Steps](steps.md#notes-in-the-titles)). Without the declaration a `context` key is ignored.
+- The job's minimum score (`min_score`) is **not** applied to your scores: your plugin returns the moments it stands behind. It is applied to a score a rater gives a moment afterwards ([Steps](steps.md)).
 
 ## Choosing a pipeline for a job
 
@@ -154,19 +159,21 @@ How it combines with the job's other options:
 |---|---|
 | Sports, Gaming scoring, Longform | Refused (400): each picks the moments its own way. A watched channel that has both keeps the other mode and drops the pipeline. |
 | Gaming layout (`gaming`), Vertical Live, Podcast | Allowed: they change how clips are framed, not which moments are picked. With a pipeline, Gaming's own stream scoring is skipped. |
-| `max_clips` | Becomes `limits.max_clips`, and the list is cut to it |
+| `max_clips` | Becomes `limits.max_clips`, and the list is cut to it. With a rater chosen under Rate & understand, your plugin is asked for three times the limit (at most 200), and the cut to the limit is made after rating. |
 | `focus` | Handed to the plugin as `focus` |
-| `min_score` | Not applied (above) |
+| `min_score` | Not applied to your scores (above). Applied to the scores a rater gives. |
+| Rate & understand (`rate`, `understand`) | Allowed: up to 3 plugins for each step look at the moments your pipeline found, after it, as they do after Clips Kitty's own scoring, Sports or Gaming scoring. They can't name your pipeline again. Not with Longform. ([Steps](steps.md)) |
+| Suggest edits (`edit`) | Allowed: up to 3 plugins suggest edits for the clips that will be made, after rating and the clip limit. Your pipeline may be one of them, in an edit run of its own. Not with Longform. ([Steps](steps.md#suggest-edits-the-edit-step)) |
 | Captions, caption style, hashtags, watermark, `long_clips`, publishing | Applied after the plugin, as for any job |
 
 Clips Kitty still runs its own audio and visual signal pass before the plugin starts; skipping it for plugin jobs is a possible later speed-up.
 
 ## Testing
 
-- `python -m clipskitty_sdk validate .` checks your manifest the way the app and the registry do ([Plugin manifest](plugin-manifest.md)).
-- `python -m clipskitty_sdk run . --video sample.mp4` runs your plugin the way the app does ([SDK](sdk.md)); it refuses a plugin whose manifest the app would refuse.
-- Use the SDK's `check_result` in your own tests.
-- Install it into the app from your folder (plan, then install) to try it on real jobs; see [Plugin development](plugin-development.md).
+- `python -m clipskitty_sdk validate .` checks your manifest the way the app and the registry do ([Plugin manifest](plugin-manifest.md)), and warns about code that would fail on Clips Kitty's Python.
+- `python -m clipskitty_sdk run . --sample` runs your plugin the way the app does, on the SDK's 40-second sample video, and `--video` on your own ([SDK](sdk.md)); it refuses a plugin whose manifest the app would refuse.
+- `clipskitty_sdk.testing` runs your plugin from your own pytest tests, and the SDK's `check_result` checks an answer ([SDK › Testing your plugin](sdk.md#testing-your-plugin)).
+- `python -m clipskitty_sdk install .` installs it into the Clips Kitty running on this PC, to try it on real jobs; see [Plugin development](plugin-development.md). In PowerShell, run these as `py -m clipskitty_sdk`.
 
 ## The first-party adapter
 

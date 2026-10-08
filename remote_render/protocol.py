@@ -22,9 +22,14 @@ CONFIG_SECTIONS = ("clips", "tracking", "video")
 def render_config(config: dict) -> dict:
     """The allowlisted part of the config a worker renders with."""
     out = {k: json.loads(json.dumps(config.get(k) or {})) for k in CONFIG_SECTIONS}
-    # A plugin pipeline (plugins/) picks moments on the main PC; its choice and
-    # settings play no part in rendering, so they don't travel.
+    # A plugin pipeline (plugins/) picks moments on the main PC, and Rate &
+    # understand and Suggest edits plugins (plugins/steps.py) look at them and
+    # at the clips there; their choices and settings play no part in
+    # rendering, so they don't travel.
     out["clips"].pop("pipeline", None)
+    out["clips"].pop("rate", None)
+    out["clips"].pop("understand", None)
+    out["clips"].pop("edit", None)
     return out
 
 
@@ -35,6 +40,23 @@ def job_id(video_id: str, start: float, end: float, render_opts: dict | None, co
                       "o": render_opts or {}, "c": render_config(config), "p": PROTOCOL},
                      sort_keys=True, default=str)
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+def expected_seconds(spec: dict) -> float:
+    """How long a job's clip plays, before any end card: its window, or what
+    the clip's saved edit keeps of it at its speed (video_editor/timeline.py).
+    The main PC checks a returned clip against it."""
+    window = float(spec["end"]) - float(spec["start"])
+    opts = spec.get("render_opts")
+    edit = opts.get("edit") if isinstance(opts, dict) else None
+    if not edit:
+        return window
+    from video_editor.timeline import made_seconds
+
+    try:
+        return made_seconds(edit, window)
+    except (TypeError, ValueError):
+        return window
 
 
 def needs_framing(render_cfg: dict, render_opts: dict | None) -> bool:

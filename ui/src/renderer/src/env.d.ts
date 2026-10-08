@@ -57,6 +57,10 @@ interface Window {
      *  native dialog showing the full address. Resolves false if refused or
      *  cancelled. Absent in the browser shim and in an older preload. */
     openPluginLink?: (url: string) => Promise<boolean>
+    /** Opens a link from an Awesome Clips Kitty entry the same way; `ours`
+     *  says it is in one of Clips Kitty's own lists, which the dialog names.
+     *  Absent in the browser shim and in an older preload. */
+    openCatalogLink?: (url: string, ours: boolean) => Promise<boolean>
     /** Folder picker for installing a plugin from a folder on this PC. */
     pickPluginFolder?: () => Promise<string | null>
     /** Absent in the browser shim and in a preload older than the renderer. */

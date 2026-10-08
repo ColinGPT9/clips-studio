@@ -4,16 +4,21 @@ The labels and the enforced-or-declared split are the ones in
 docs/developers/permissions.md. "Enforced" means Clips Kitty decides what it
 hands over (plugins/runner.py); "declared" means the developer states it and
 nothing stops the plugin doing otherwise, because a plugin runs with the
-user's own rights. Nothing here claims more than that.
+user's own rights. Nothing here claims more than that. The person installing
+reads "pipeline" and no developer words (tests/test_plugin_manager.py checks).
 """
 
 from __future__ import annotations
 
 import sys
 
-NOTICE = "This plugin is code from the internet. It runs on this PC with your rights."
-ENFORCED = "enforced for the hand-over"
-DECLARED = "declared by the developer"
+NOTICE = "This pipeline is a program from the internet. It can do anything you can do on this PC."
+ENFORCED = "Clips Kitty hands this over"
+DECLARED = "the developer says so"
+# What the two say, wherever they are shown (the Marketplace has the same words).
+ENFORCEMENT_NOTE = ("“Clips Kitty hands this over”: Clips Kitty decides what the pipeline is given. "
+                    "“The developer says so”: a promise only. Nothing stops a pipeline doing more, because it "
+                    "can do anything you can do on this PC.")
 
 LABELS = {
     "video.read": "Reads the video you process",
@@ -38,24 +43,47 @@ DATA = {
 }
 
 EXECUTION = {
-    "local": "Runs on this PC. The developer declares that nothing leaves your computer.",
+    "local": "Runs on this PC. The developer says nothing leaves your computer.",
     "remote": "Runs on a service on the internet: your data leaves this PC (see the warnings).",
     "hybrid": "Runs on this PC and uses a service on the internet (see the warnings).",
 }
 
+# Where an installed plugin came from. "listed-official" and "listed" both
+# come from a catalog listing; the first is in one of the Clips Kitty
+# project's own repositories (plugins/catalog.py OFFICIAL_OWNERS).
 TIERS = {
     "official": "Official",
-    "listed": "Listed · not reviewed by a person",
+    "listed-official": "✓ Official · made by the Clips Kitty project",
+    "listed": "Community · not reviewed by a person",
     "link": "Not listed · Clips Kitty has not checked this",
 }
+LISTED_TIERS = ("listed-official", "listed")
 
 GPU = {"optional": "A graphics card helps but isn't needed", "recommended": "A graphics card is recommended",
        "required": "Needs a graphics card"}
 
+# What it does with a video's moments, on the Marketplace's pills, in the
+# order the steps run (manifest.steps_of and manifest.offers). A finder that
+# declares `context` but takes no moments in describes only what it finds.
+STEP_WORDS = {
+    "find": "Finds moments",
+    "understand": "Understands moments",
+    "rate": "Rates moments",
+    "edit": "Suggests edits",
+}
+UNDERSTANDS_ITS_OWN = "Understands what it finds"
+# How long it may take, as the app stops it: rating or understanding the
+# moments, suggesting edits for the clips, or both.
+TIME_LIMIT = "Clips Kitty stops it after {n} {unit} when it rates or understands a video’s moments."
+TIME_LIMIT_EDITS = "Clips Kitty stops it after {n} {unit} when it suggests edits for a video’s clips."
+TIME_LIMIT_BOTH = ("Clips Kitty stops it after {n} {unit} when it rates or understands a video’s moments or "
+                   "suggests edits for its clips.")
+
 
 def secrets_notice() -> str:
     account = "your Windows account" if sys.platform == "win32" else "your user account"
-    return f"Your keys for this plugin are stored for {account}. Other plugins and programs running as you can read them."
+    return (f"Your keys for this pipeline are stored for {account}. Other pipelines and programs running as you "
+            "can read them.")
 
 
 def permission_lines(manifest: dict) -> list[dict]:
@@ -83,8 +111,9 @@ def data_warnings(manifest: dict) -> list[str]:
 
 
 def needs_python(manifest: dict) -> bool:
-    """Whether it runs with a Python from this PC (`{python}` in run.command):
-    the installed app doesn't include one for plugins."""
+    """Whether it runs with Python (`{python}` in run.command). The installed
+    app runs it on its own Python, so only a source checkout without one can
+    lack it (plugins/runner.py python_for)."""
     run = manifest.get("run") if isinstance(manifest.get("run"), dict) else {}
     command = run.get("command")
     return isinstance(command, list) and "{python}" in command
@@ -107,8 +136,6 @@ def requirement_lines(manifest: dict) -> list[str]:
         out.append("Works on " + ", ".join(names.get(o, o) for o in req["os"]))
     if req.get("software"):
         out.append("Needs " + ", ".join(map(str, req["software"])))
-    if needs_python(manifest):
-        out.append("Python 3 installed on this PC")
     return out
 
 
@@ -121,6 +148,39 @@ def model_lines(manifest: dict) -> list[dict]:
             out.append({k: m.get(k) for k in ("name", "source", "id", "revision", "files", "license",
                                                "size_bytes", "gated") if m.get(k) is not None})
     return out
+
+
+def step_lines(manifest: dict) -> list[str]:
+    """What it can be chosen for, in pill words: Finds moments (a pipeline),
+    Understands moments and Rates moments (Rate & understand), Suggests edits
+    (for the clips Clips Kitty makes), or Understands what it finds (a
+    finder that describes its own moments)."""
+    from plugins._sdk import manifest as vocabulary
+
+    offered = vocabulary.offers(manifest)
+    out = []
+    for step in vocabulary.steps_of(manifest):
+        if step in offered:
+            out.append(STEP_WORDS[step])
+        elif step == "understand" and "find" in offered:
+            out.append(UNDERSTANDS_ITS_OWN)
+    return out
+
+
+def time_limit(manifest: dict) -> str | None:
+    """How long it may take to rate or understand a video's moments, or to
+    suggest edits for its clips, as the app stops it (plugins/runner.py),
+    for a plugin that can do either; else None."""
+    from plugins import runner
+    from plugins._sdk import manifest as vocabulary
+
+    offered = set(vocabulary.offers(manifest))
+    moments, edits = bool({"understand", "rate"} & offered), "edit" in offered
+    if not (moments or edits):
+        return None
+    minutes = runner.timeout_seconds(manifest, default=runner.MOMENT_TIMEOUT_MINUTES) / 60
+    text = TIME_LIMIT_BOTH if moments and edits else TIME_LIMIT if moments else TIME_LIMIT_EDITS
+    return text.format(n=f"{minutes:g}", unit="minute" if minutes == 1 else "minutes")
 
 
 def describe(manifest: dict, *, tier: str = "link") -> dict:
@@ -145,9 +205,11 @@ def describe(manifest: dict, *, tier: str = "link") -> dict:
                      "required": bool(service.get("required"))} if service else None),
         "secrets": secret_settings,
         "secrets_notice": secrets_notice() if secret_settings else None,
-        "python_packages": ("This plugin lists Python packages of its own. Installing them is planned; until then "
-                            "it runs with a Python you already have, without them, and may not work."
+        "python_packages": ("This pipeline lists extra parts it needs. Clips Kitty can't download them yet, so it "
+                            "runs without them and may not work."
                             if run.get("python_requirements") else None),
+        "steps": step_lines(manifest),
+        "time_limit": time_limit(manifest),
     }
 
 
@@ -165,22 +227,33 @@ def changes(old: dict, new: dict) -> dict:
         "removed_hosts": sorted(old_hosts - new_hosts),
         "added_data_warnings": sorted(sends(new) - sends(old)),
         "execution_changed": old.get("execution") != new.get("execution"),
+        # A step it will now also do, such as rating moments: its scores then
+        # decide which clips are made, so it is said before the update installs.
+        "added_steps": [w for w in step_lines(new) if w not in step_lines(old)],
     }
 
 
 def render_text(plan: dict) -> str:
-    """A plan as plain text: the install screen without the buttons."""
+    """A plan as plain text: the install screen without the buttons.
+
+    A refused plan carries the manifest's fields as written, so a field the
+    validator refused (`license: [MIT]`, `id: 123`) is shown as text rather
+    than stopping the answer: its ✗ line says what is wrong."""
     p, about = plan["plugin"], plan["details"]
     lines = [f"Install {p.get('name')} {p.get('version')}?",
-             " · ".join(x for x in (p.get("id"), plan.get("source_text"), p.get("license")) if x),
+             " · ".join(str(x) for x in (p.get("id"), plan.get("source_text"), p.get("license")) if x),
              about["tier_text"], ""]
     if about.get("notice"):
         lines.append(about["notice"])
     if about.get("execution_text"):
         lines.append(about["execution_text"])
+    if about.get("steps"):
+        lines.append("What it does: " + " · ".join(about["steps"]))
     lines += ["", "It will"]
     for perm in about["permissions"]:
         lines.append(f"  {perm['label']} ({perm['enforcement']})")
+    if about["permissions"]:
+        lines.append(ENFORCEMENT_NOTE)
     lines += about["data_warnings"]
     if about["requirements"]:
         lines += ["Requirements"] + [f"  {line}" for line in about["requirements"]]
@@ -201,6 +274,8 @@ def render_text(plan: dict) -> str:
                          ("added_data_warnings", "New data warnings")):
             if update[k]:
                 lines.append(f"  {title}: {', '.join(update[k])}")
+        for words in update.get("added_steps") or []:
+            lines.append(f"  Now also: {words}")
     for problem in plan.get("errors") or []:
         lines.append(f"✗ {problem}")
     for warning in plan.get("warnings") or []:

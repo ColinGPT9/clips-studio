@@ -1,0 +1,12 @@
+name: OpenCut
+description: Free, open video editor in the spirit of CapCut for trimming and assembling clips. This repository holds a ground-up rewrite that is still in progress.
+section: companion
+relationship: related
+license: MIT
+source:
+  github: https://github.com/OpenCut-app/OpenCut
+platforms: [web]
+runs: local
+tags: [editor, capcut alternative, video editing]
+added: 2026-10-07
+checked: 2026-10-07

@@ -16,7 +16,7 @@ import { api } from './lib/api'
 import type { StudioEvent } from './lib/types'
 import { useEvents } from './lib/useEvents'
 import { useQueueNotifications } from './lib/queueNotifications'
-import { OPEN_MARKETPLACE } from './lib/plugins'
+import { OPEN_MARKETPLACE, checkOnlineListAtStart } from './lib/plugins'
 import mascot from './assets/mascot.png'
 
 type Page = 'dashboard' | 'queue' | 'watch' | 'studio' | 'creators' | 'marketplace' | 'models' | 'settings'
@@ -83,6 +83,8 @@ export default function App(): JSX.Element {
     window.addEventListener(OPEN_MARKETPLACE, open)
     return () => window.removeEventListener(OPEN_MARKETPLACE, open)
   }, [])
+  // Installed pipelines hear about a blocked version without the Marketplace being opened.
+  useEffect(() => checkOnlineListAtStart(), [])
   // Whether any AI runs in the cloud on the user's own key, so the sidebar's
   // "100% local" line is only ever shown when it is true.
   const [cloudAI, setCloudAI] = useState('')

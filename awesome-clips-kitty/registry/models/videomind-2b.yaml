@@ -1,0 +1,14 @@
+name: VideoMind-2B
+description: Finds the stretch of a video that matches a text query, such as a goal being scored, then checks and re-ranks candidate moments with confidence scores.
+section: moments
+relationship: related
+license: BSD-3-Clause
+license_note: This repo holds only LoRA adapters; the Qwen2-VL-2B-Instruct base model it needs is downloaded separately and is Apache-2.0.
+source:
+  huggingface: yeliudev/VideoMind-2B
+models:
+  - huggingface: Qwen/Qwen2-VL-2B-Instruct
+runs: local
+tags: [moment retrieval, highlights, video search]
+added: 2026-10-07
+checked: 2026-10-07

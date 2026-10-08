@@ -48,6 +48,16 @@ def _force_utf8_io() -> None:
 
 _force_utf8_io()
 
+# A pipeline running on the Python inside the installed app: the engine is
+# started as `api.exe src/main.py ...` with this marker (plugin_env in
+# sdk/python/clipskitty_sdk/host.py). Handled here, before the heavy imports
+# below, so a pipeline starts quickly and loads none of the engine.
+if os.environ.get("CLIPSKITTY_SCRIPT_HOST") == "1":
+    import _clipskitty_script_host
+
+    if _clipskitty_script_host.wants_host(sys.argv):
+        sys.exit(_clipskitty_script_host.main(sys.argv[1:]))
+
 import yaml
 
 from core.paths import resolve_data_dir, user_config_path

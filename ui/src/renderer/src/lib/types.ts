@@ -9,11 +9,40 @@ export interface RunOutcome {
   measured: number
   nothing_detected: number
   /** Only set when no clips came out, and only when the evidence earns it. */
-  cause: 'no_people' | 'duplicates' | 'below_threshold' | 'no_candidates' | null
+  cause: 'no_people' | 'duplicates' | 'below_threshold' | 'no_candidates' | 'rated_out' | null
   /** The clip direction given with the job, and what came of it. */
   intent?: ClipDirection
   /** A Sports job: what the match gave (sports/core/clips.py report). */
   sport?: SportReport
+  /** Moments Marketplace plugins rated under the minimum score, so they were
+   *  set aside (core/outcome.py). Only present when above 0. */
+  rated_out?: number
+  /** Each Rate & understand and Suggest edits plugin's run on this video
+   *  (plugins/steps.py). Only present when the job chose one. */
+  steps?: StepRun[]
+}
+
+/** One Marketplace plugin's run on a video's moments (plugins/steps.py
+ *  after_finding), or on its clips (suggest_edits): what it was asked, and
+ *  what came of it. */
+export interface StepRun {
+  plugin: string
+  version: string
+  /** Its installed name; the id when it wasn't installed. */
+  name: string
+  /** What it was asked for: ['understand'], ['rate'] or both, or ['edit']. */
+  steps: string[]
+  ok: boolean
+  /** Moments (clips, in an edit run) it was given, said what happens in, and rated. */
+  given: number
+  noted: number
+  rated: number
+  /** Clips it suggested an edit for: only in an edit run. */
+  suggested?: number
+  /** Moments its rating put under the minimum score, so they were set aside. */
+  set_aside: number
+  /** Why it was skipped, in the creator's words (plugins/runner.py). */
+  error?: string
 }
 
 /** What a match gave: the moments found by type, the score read off the
@@ -103,8 +132,93 @@ export interface SubScores {
   plugin_version?: string
   plugin_label?: string
   plugin_why?: string
+  /** Rate & understand (plugins/steps.py): the score the moment was found
+   *  with, set when it was first rated; each rating in the order it was
+   *  applied (the last one counts); and what plugins said happens in it. */
+  found_score?: number
+  plugin_ratings?: PluginRating[]
+  plugin_notes?: PluginNote[]
+  /** Suggest edits (plugins/steps.py suggest_edits): what each plugin
+   *  suggested for this clip, and what the creator did with it
+   *  (plugins/edit_marks.py). None of it is in the clip until the creator
+   *  uses it in the editor and applies their edits. */
+  plugin_edits?: PluginEdit[]
   source?: string
   rerank_position?: number
+}
+
+/** What one plugin suggested for a clip, fitted to the editor's own controls
+ *  (the SDK's host.read_edits). Every time is in seconds of the video. */
+export interface SuggestedEdit {
+  /** Spans to take out. */
+  cuts?: [number, number][]
+  /** Spans to silence; the picture stays. */
+  mutes?: [number, number][]
+  volume?: number
+  fade_in?: number
+  fade_out?: number
+  speed?: number
+  /** The editor's Hook title. */
+  title_overlay?: { text: string; seconds: number }
+  /** A layout: track, center or letterbox. */
+  crop?: string
+}
+
+/** The editor fields one Use may set besides spans (plugins/edit_marks.py VALUES). */
+export type SuggestionValue = 'volume' | 'fade_in' | 'fade_out' | 'speed' | 'hook' | 'crop'
+
+/** What a used suggestion put in the clip's saved edit and is still there,
+ *  in seconds of the video: Take it back takes out only this. */
+export interface AppliedEdit {
+  removed?: [number, number][]
+  mutes?: [number, number][]
+  muted_words?: MutedWord[]
+  values?: Partial<Record<SuggestionValue, { before: unknown; after: unknown }>>
+}
+
+/** What a render says the creator used (POST /clips/{id}/render
+ *  `suggestions`, and `render_first.suggestions` when publishing): each
+ *  Use's additions, in seconds of the video. The worker keeps only what the
+ *  render really changed. */
+export interface UsedSuggestions {
+  used: { id: string; applied: AppliedEdit }[]
+}
+
+/** One plugin's suggestion for one clip (scores.plugin_edits). */
+export interface PluginEdit {
+  /** The same for the same suggestion from the same plugin, across re-runs. */
+  id: string
+  plugin: string
+  version?: string
+  name?: string
+  /** The clip's start and end, in seconds of the video, when it was suggested. */
+  window?: [number, number]
+  /** The shortest clip the video was made with: cuts were fitted to leave at least this. */
+  min_length?: number
+  edit: SuggestedEdit
+  reason?: string
+  state: 'new' | 'used' | 'hidden'
+  /** Only on a used one. */
+  applied?: AppliedEdit
+  /** A forced re-run made the clip's file again without its saved edits. */
+  remade?: boolean
+}
+
+/** A Marketplace plugin's score for one moment. Older entries may lack the name. */
+export interface PluginRating {
+  plugin: string
+  version?: string
+  name?: string
+  score: number
+  reason?: string
+}
+
+/** A Marketplace plugin's note on what happens in one moment. */
+export interface PluginNote {
+  plugin: string
+  version?: string
+  name?: string
+  text: string
 }
 
 export interface CaptionLine {
@@ -396,6 +510,17 @@ export interface JobOptions {
    *  Clips Kitty's own scoring (plugins/runner.py). Not with Sports, Gaming
    *  scoring or Longform; layouts still apply. */
   pipeline?: PipelineChoice
+  /** Rate & understand (plugins/steps.py): up to 3 Marketplace plugins each
+   *  that look at the moments once they're found. Understanders say what
+   *  happens in them, for the titles; raters give each a new score, in this
+   *  order, the last one counting. Not with Longform. */
+  rate?: PipelineChoice[]
+  understand?: PipelineChoice[]
+  /** Suggest edits (plugins/steps.py suggest_edits): up to 3 Marketplace
+   *  plugins that look at each clip about to be made and suggest edits,
+   *  which wait for the creator in the editor. The job's own pipeline may be
+   *  one of them. Not with Longform. */
+  edit?: PipelineChoice[]
 }
 
 /** A job's pipeline: an installed plugin's id, and the settings changed from
@@ -688,6 +813,9 @@ export interface StudioEvent {
   span?: [number, number]
   /** Remote rendering only: "on Gaming PC · uploading 62%", "waiting for Gaming PC". */
   remote?: string
+  /** A Marketplace plugin rating or understanding the moments ('ranking' and
+   *  'understand' events): its name, for the progress label. */
+  plugin?: string
   clips?: number
   current?: number
   fraction?: number
@@ -889,7 +1017,8 @@ export interface AutomationStatus {
   interval_minutes: number
   watches: number
   watching: number
-  presets: { id: string; name: string; description: string }[]
+  /** Each preset's options (server/integrations.py PRESETS), e.g. Longform for highlights. */
+  presets: { id: string; name: string; description: string; options?: JobOptions }[]
 }
 
 /** What the watcher is doing now and did last, for the live panel. */

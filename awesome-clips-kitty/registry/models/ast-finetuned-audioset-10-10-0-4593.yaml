@@ -1,0 +1,11 @@
+name: Audio Spectrogram Transformer
+description: Scores audio against the 527 AudioSet sound classes, including laughter, cheering, applause, crowd and screaming, to help find lively moments in a long video.
+section: audio-events
+relationship: related
+license: BSD-3-Clause
+source:
+  huggingface: MIT/ast-finetuned-audioset-10-10-0.4593
+runs: local
+tags: [audio events, laughter, cheering, audioset]
+added: 2026-10-07
+checked: 2026-10-07

@@ -9,7 +9,7 @@
 export interface PermissionLine {
   id: string
   label: string
-  /** "enforced for the hand-over" or "declared by the developer". */
+  /** "Clips Kitty hands this over" or "the developer says so". */
   enforcement: string
 }
 
@@ -42,6 +42,11 @@ export interface PluginDetails {
   python_packages: string | null
   /** It runs with a Python from this PC (`{python}` in its command). */
   needs_python: boolean
+  /** What it can be chosen for, in pill words: "Finds moments", "Understands moments", "Rates moments",
+   *  or "Understands what it finds" for a finder that describes its own moments. */
+  steps: string[]
+  /** How long it may take to rate or understand a video's moments, for a plugin that can; else null. */
+  time_limit: string | null
 }
 
 /** Something the engine found that stops a plugin running on this PC. */
@@ -87,18 +92,27 @@ interface PluginInfo {
   author?: { name?: string; url?: string }
   links?: { docs?: string; funding?: string[] }
   requirements?: Requirements
+  /** Projects it builds on, as its manifest credits them. */
+  based_on?: BasedOn[]
+  /** What it takes in and gives back (video, transcript, moments; ranges,
+   *  context, ratings), which say what a job can choose it for (lib/steps.ts offers). */
+  inputs?: string[]
+  outputs?: string[]
 }
 
 export interface ListedVersion {
   version: string
   commit: string
   tag?: string
-  tested_with?: string
+  /** The games and their versions it was tested with, as the listing says. */
+  tested_with?: string | { game?: string; version?: string }[]
   date?: string
   requires?: { clips_kitty?: string; plugin_api?: number | string }
   permissions?: string[]
   /** Why this version can't run on this Clips Kitty, or null. */
   problem_here?: string | null
+  /** The automated compatibility check of this version at this commit, when one ran. */
+  compatibility?: CompatibilityRecord
 }
 
 /** One plugin in a registry index, as GET /marketplace returns it. */
@@ -106,7 +120,7 @@ export interface Listing extends PluginInfo {
   publisher: string
   latest: string
   versions: ListedVersion[]
-  /** The index it came from: "bundled" or an address from settings. */
+  /** The index it came from: "bundled", Clips Kitty's online list (ONLINE_LIST) or an address from settings. */
   index: string
   path?: string
   aliases?: string[]
@@ -124,21 +138,141 @@ export interface Listing extends PluginInfo {
   pinned: boolean
   /** What stops the latest version running here, as far as the engine can tell. */
   problems_here: ProblemHere[]
+  /** "official" or "community", then "compatible" and "featured" when they apply. */
+  badges?: string[]
+  featured?: { reason: string; date: string }
+  /** Its section in Awesome Clips Kitty, such as "gaming/valorant". */
+  section?: string
+  metrics?: Metrics
+  discussions_url?: string
+}
+
+/** A project a plugin builds on (the manifest's `based_on`). */
+export interface BasedOn {
+  name: string
+  url: string
+  license: string
+  /** runs: starts it as a separate program; includes-code: contains its code; port: rewrites it. */
+  how: 'runs' | 'includes-code' | 'port' | string
+}
+
+/** The numbers the catalog carries, each from its own source (plugins/catalog.entry_metrics). */
+export interface Metrics {
+  github?: { stars?: number; pushed_at?: string; archived?: boolean; has_discussions?: boolean; discussions?: number }
+  /** Clips Kitty installs, from the install counter (listings only). */
+  installs?: number
+  /** Per Hugging Face model: downloads in the last 30 days, and likes. */
+  models?: Record<string, { downloads?: number; likes?: number; last_modified?: string }>
+  /** "archived", or "no commits since <date>". */
+  stale?: string
+}
+
+/** One automated compatibility check of one version (scripts/check_compatibility.py). */
+export interface CompatibilityRecord {
+  version: string
+  commit: string
+  app_version: string
+  plugin_api: number | null
+  checked_at: string
+  checks: Record<string, boolean>
+  passed: boolean
+  moments?: number
+  note?: string
+}
+
+export interface CatalogSection {
+  id: string
+  title: string
+  description?: string
+}
+
+/** An app, model, workflow, integration or tool in Awesome Clips Kitty (GET /marketplace/catalog). */
+export interface CatalogEntry {
+  id: string
+  kind: 'app' | 'model' | 'workflow' | 'integration' | 'tool' | string
+  name: string
+  description: string
+  section: string
+  relationship: 'built-with' | 'related' | string
+  license: string
+  license_note?: string
+  /** download: the page people download it from; homepage: its own website (plugins/catalog.py checks both). */
+  source: { github?: string; path?: string; huggingface?: string; url?: string; homepage?: string; download?: string }
+  models?: { huggingface: string }[]
+  platforms?: string[]
+  runs?: 'local' | 'cloud' | 'both' | string
+  /** installer: people download it and run its installer; technical: it needs the command line or Python. */
+  setup?: 'installer' | 'technical' | string
+  tags?: string[]
+  games?: string[]
+  sports?: string[]
+  uses?: 'api' | 'sdk' | 'both' | string
+  /** The listed pipeline or plugin that runs it inside Clips Kitty. */
+  adapter?: string
+  adapter_listed?: boolean
+  warning?: string
+  added?: string
+  checked?: string
+  badges: string[]
+  featured?: { reason: string; date: string }
+  metrics: Metrics
+  discussions_url?: string
+  unofficial: string | null
+  index: string
+}
+
+export interface CatalogResponse {
+  entries: CatalogEntry[]
+  sections: Record<string, { sections: CatalogSection[]; wanted?: { section: string; idea: string }[] }>
+  kinds: { id: string; title: string }[]
+  relationships: Record<string, string>
+  badges: Record<string, { label: string; meaning: string }>
+  /** When the numbers were read, YYYY-MM-DD; null when never. */
+  metrics_at: string | null
+}
+
+/** GET /marketplace/counting. */
+export interface Counting {
+  enabled: boolean
+  /** settings.yaml switches it off for this Windows account. */
+  locked_off: boolean
+  /** An index names a counter address, so something would be sent. */
+  active: boolean
+  text: string
 }
 
 export interface MarketplaceIndex {
   url: string
+  /** The copy bundled with the app, Clips Kitty's online list, or one from settings. */
+  kind?: 'bundled' | 'online' | 'other'
   /** When the engine last fetched it, as an ISO 8601 UTC time; null when never. */
   fetched_at: string | null
   cached: boolean
   plugins?: number
 }
 
+/** GET /marketplace/online: Clips Kitty's online list (plugins/registry.py online_status). */
+export interface OnlineList {
+  url: string
+  /** Whether the Marketplace checks it by itself, once a day, when it opens. */
+  automatic: boolean
+  /** When the cached copy was fetched; null when never. */
+  fetched_at: string | null
+  /** Whether that copy is in use: one older than the list that came with this
+   *  version of Clips Kitty is set aside (it would add nothing). */
+  in_use?: boolean
+  /** When a check was last tried, and why it failed (null when it worked). */
+  tried_at: string | null
+  error: string | null
+}
+
 export interface MarketplaceResponse {
   plugins: Listing[]
   indexes: MarketplaceIndex[]
+  online?: OnlineList
   categories: string[]
   kinds: Record<string, 'built' | 'planned'>
+  sections?: CatalogResponse['sections']
 }
 
 /** An installed community plugin, as GET /plugins returns it. */
@@ -159,6 +293,8 @@ export interface InstalledPlugin extends PluginInfo {
   /** Anything else the engine found missing on this PC (a Python to run it). */
   problems_here?: ProblemHere[]
   flag: { severity: 'blocked' | 'delisted' | string; reason?: string } | null
+  /** Only in the answer to Install: whether this install was counted. */
+  counted?: boolean
 }
 
 /** Where one model an installed plugin lists is on this PC (plugins/models.status). */
@@ -233,6 +369,8 @@ export interface PlanUpdate {
   removed_hosts: string[]
   added_data_warnings: string[]
   execution_changed: boolean
+  /** What it will now also do, in pill words ("Rates moments"). */
+  added_steps: string[]
 }
 
 /** What installing would do (POST /plugins/plan). */
@@ -240,7 +378,10 @@ export interface PluginPlan {
   plan_id: string | null
   ok: boolean
   errors: string[]
+  /** In plain words, for the person installing. */
   warnings: string[]
+  /** For Technical details: the manifest's own warnings, files that couldn't be fetched. */
+  technical?: string[]
   plugin: Partial<PluginInfo>
   source: Record<string, string>
   source_text: string
@@ -297,13 +438,16 @@ export function executionBadge(execution: string | null | undefined, text = ''):
 
 /** The trust tier as a badge, in the engine's words. */
 export function tierBadge(details: Pick<PluginDetails, 'tier' | 'tier_text'>): Badge {
-  const tone: Tone = details.tier === 'official' ? 'ok' : details.tier === 'listed' ? 'info' : 'warn'
+  const official = details.tier === 'official' || details.tier === 'listed-official'
+  const tone: Tone = official ? 'ok' : details.tier === 'listed' ? 'info' : 'warn'
   const title =
     details.tier === 'official'
       ? 'Ships with Clips Kitty.'
-      : details.tier === 'listed'
-        ? 'In a registry index. Automated checks passed; nobody has reviewed the code.'
-        : 'Installed from a folder or a link. Clips Kitty has not checked it.'
+      : details.tier === 'listed-official'
+        ? 'Made by the Clips Kitty project and listed in Awesome Clips Kitty.'
+        : details.tier === 'listed'
+          ? 'Made by someone outside the Clips Kitty project and installed from a list. Nobody at Clips Kitty has read its code.'
+          : 'Installed from a folder or a link. Clips Kitty has not checked it.'
   return { label: details.tier_text || details.tier, tone, title }
 }
 
@@ -386,9 +530,10 @@ export function hardwareFit(req: Requirements | undefined, hw: Hardware | null):
 }
 
 /** Everything a plugin needs, against this PC: its declared requirements
- *  (hardwareFit), a Python to run it with, and anything else the engine says
- *  stops it running here. `problems` null: the engine wasn't asked, so
- *  whether Python is here is unknown. */
+ *  (hardwareFit) and anything the engine says stops it running here. The
+ *  installed app runs Python plugins on its own Python, so a missing Python
+ *  only ever shows up as a problem the engine reports (a source checkout
+ *  without one). */
 export function needLines(
   req: Requirements | undefined,
   hw: Hardware | null,
@@ -397,12 +542,7 @@ export function needLines(
 ): FitLine[] {
   const out = hardwareFit(req, hw)
   const python = problems?.find((p) => p.need === 'python')
-  if (details.needs_python)
-    out.push(
-      python
-        ? { text: python.text, fit: 'no' }
-        : { text: 'Python 3 installed on this PC', fit: problems ? 'yes' : 'unknown' }
-    )
+  if (details.needs_python && python) out.push({ text: python.text, fit: 'no' })
   for (const p of problems ?? []) if (p.need !== 'python') out.push({ text: p.text, fit: 'no' })
   return out
 }
@@ -470,11 +610,11 @@ export function confirmations(plan: Pick<PluginPlan, 'details'>): string[] {
   const out: string[] = []
   const d = plan.details
   if (d.tier === 'link')
-    out.push('I trust where this plugin comes from. Clips Kitty has not checked it, and it runs with my rights.')
+    out.push('I trust where this pipeline comes from. Clips Kitty has not checked it, and it can do anything I can do on this PC.')
   else if (d.tier === 'listed')
-    out.push('I understand nobody has reviewed this plugin’s code. It runs on this PC with my rights.')
+    out.push('I understand nobody at Clips Kitty has read this pipeline’s code, and it can do anything I can do on this PC.')
   if (d.data_warnings.length > 0 || d.execution === 'remote' || d.execution === 'hybrid')
-    out.push('I understand this plugin sends data off this PC, as the warnings above say.')
+    out.push('I understand this pipeline sends data off this PC, as the warnings above say.')
   if (d.service?.required) out.push('I understand it needs an account with a service outside Clips Kitty.')
   return out
 }
@@ -490,9 +630,9 @@ export function updateLines(plan: Pick<PluginPlan, 'update' | 'plugin' | 'detail
   if (!u) return []
   const to = plan.plugin.version ?? ''
   const out: ToneLine[] = []
-  if (u.direction === 'update') out.push({ text: `Updates ${u.from} to ${to}. ${u.from} is kept for roll back.`, tone: 'info' })
+  if (u.direction === 'update') out.push({ text: `Updates ${u.from} to ${to}. ${u.from} is kept, so you can go back to it.`, tone: 'info' })
   else if (u.direction === 'downgrade')
-    out.push({ text: `Goes back from ${u.from} to the older ${to}. ${u.from} is kept for roll back.`, tone: 'warn' })
+    out.push({ text: `Goes back from ${u.from} to the older ${to}. ${u.from} is kept, so you can go back to it.`, tone: 'warn' })
   else out.push({ text: `Replaces the installed copy of ${u.from}.`, tone: 'info' })
   const labels = new Map(plan.details.permissions.map((p) => [p.id, p.label]))
   for (const p of u.added_permissions) out.push({ text: `New permission: ${labels.get(p) ?? p}`, tone: 'warn' })
@@ -500,17 +640,65 @@ export function updateLines(plan: Pick<PluginPlan, 'update' | 'plugin' | 'detail
   for (const w of u.added_data_warnings) out.push({ text: `New: ${w}`, tone: 'danger' })
   if (u.execution_changed)
     out.push({ text: `Where it runs has changed: ${plan.details.execution_text || 'not stated'}`, tone: 'warn' })
+  // A rater's scores decide which clips are made, so a new step is said before it installs.
+  for (const s of u.added_steps ?? []) out.push({ text: `Now also: ${s}`, tone: 'warn' })
   if (u.removed_permissions.length)
     out.push({ text: `No longer asks for: ${u.removed_permissions.join(', ')}`, tone: 'ok' })
   if (u.removed_hosts.length) out.push({ text: `No longer connects to: ${u.removed_hosts.join(', ')}`, tone: 'ok' })
   return out
 }
 
-/** The installed pipelines a job can use: turned on, able to run here, not blocked. */
+/** The installed pipelines a job can use: turned on, able to run here, not
+ *  blocked, and able to find moments. One that only rates or understands
+ *  moments others found is chosen under Rate & understand instead
+ *  (lib/steps.ts); one that doesn't say what it gives back is a finder. */
 export function usablePipelines(plugins: InstalledPlugin[]): InstalledPlugin[] {
   return plugins.filter(
-    (p) => (p.kind ?? 'pipeline') === 'pipeline' && p.enabled && !p.problem && p.flag?.severity !== 'blocked'
+    (p) =>
+      (p.kind ?? 'pipeline') === 'pipeline' &&
+      p.enabled &&
+      !p.problem &&
+      p.flag?.severity !== 'blocked' &&
+      (p.outputs ?? ['ranges']).includes('ranges')
   )
+}
+
+/** What each step pill means (plugins/permissions.py STEP_WORDS), as its title. */
+const STEP_TITLES: Record<string, string> = {
+  'Finds moments':
+    'It picks a video’s moments itself, in place of Clips Kitty’s own scoring. Turn on Pipeline when you add a video to use it.',
+  'Understands moments':
+    'It says what happens in each moment found by Clips Kitty or a pipeline, and Clips Kitty uses that when writing titles. Turn on Rate & understand when you add a video.',
+  'Understands what it finds': 'It says what happens in the moments it finds, for the titles.',
+  'Rates moments':
+    'It scores each moment found by Clips Kitty or a pipeline. Turn on Rate & understand when you add a video.',
+  'Suggests edits':
+    'It suggests cuts, fades, a hook title or a layout for each clip. Turn on Suggest edits when you add a video.'
+}
+
+/** A step pill (details.steps, in the engine's words) as a badge in the info tone. */
+export function stepBadge(words: string): Badge {
+  return { label: words, tone: 'info', title: STEP_TITLES[words] ?? '' }
+}
+
+/** The one sentence that says when a suggested edit reaches a clip: the
+ *  same on the Suggest edits switch, here and in the docs. */
+export const SUGGESTION_PROMISE =
+  'Clips Kitty doesn’t put a suggestion into a clip until you use it in the editor and apply your edits (Apply edits, or Apply edits & upload).'
+
+/** The details panel's lines about a plugin that rates or understands
+ *  moments, or suggests edits for clips: what its answers change, and its
+ *  time limit (the engine's words). */
+export function stepLines(details: Pick<PluginDetails, 'steps' | 'time_limit'>): string[] {
+  const out: string[] = []
+  const steps = details.steps ?? []
+  if (steps.includes('Rates moments'))
+    out.push('Its scores decide which clips are made and their order, and which are posted when a channel posts only the best few.')
+  if (steps.includes('Understands moments') || steps.includes('Understands what it finds'))
+    out.push('What it says about a moment goes into the request that writes your titles.')
+  if (steps.includes('Suggests edits')) out.push(`Its suggestions wait in the editor. ${SUGGESTION_PROMISE}`)
+  if (details.time_limit) out.push(details.time_limit)
+  return out
 }
 
 /** The settings a job can set (secrets are set once, in the Marketplace). */
@@ -542,7 +730,7 @@ export function settingValue(spec: SettingSpec, raw: string | boolean): { value?
       return { problem: `is longer than ${spec.max_length} characters` }
     return { value }
   }
-  if (spec.type === 'secret') return { problem: 'a secret is set in the plugin’s settings, not in a job' }
+  if (spec.type === 'secret') return { problem: 'a secret is set in the pipeline’s settings, not in a job' }
   return { problem: `unknown setting type ${JSON.stringify(spec.type)}` }
 }
 
@@ -652,17 +840,39 @@ export function gitSource(
   return { source: { kind: 'git', url: repo.replace(/\/+$/, ''), commit: sha, ...(path ? { path } : {}) } }
 }
 
-/** "Updated 3 hours ago", for an index's last fetch (the engine's ISO 8601 time). */
-export function fetchedText(fetchedAt: string | null, nowMs: number): string {
-  const at = fetchedAt ? Date.parse(fetchedAt) : NaN
-  if (!Number.isFinite(at)) return 'not fetched yet'
+/** How long ago an ISO 8601 time was, in words ("3 hours ago"), or null when it isn't one. */
+export function agoText(stamp: string | null, nowMs: number): string | null {
+  const at = stamp ? Date.parse(stamp) : NaN
+  if (!Number.isFinite(at)) return null
   const s = Math.max(0, Math.round((nowMs - at) / 1000))
-  if (s < 90) return 'updated just now'
+  if (s < 90) return 'just now'
   const m = Math.round(s / 60)
-  if (m < 90) return `updated ${m} minutes ago`
+  if (m < 90) return `${m} minutes ago`
   const h = Math.round(m / 60)
-  if (h < 36) return `updated ${h} hours ago`
-  return `updated ${Math.round(h / 24)} days ago`
+  if (h < 36) return `${h} hours ago`
+  return `${Math.round(h / 24)} days ago`
+}
+
+export function fetchedText(fetchedAt: string | null, nowMs: number): string {
+  const ago = agoText(fetchedAt, nowMs)
+  return ago ? `updated ${ago}` : 'not fetched yet'
+}
+
+/** What the Marketplace says about Clips Kitty's online list, in one or two
+ *  sentences. `manage` is whether this window can check it (the desktop app
+ *  can; the interface in a plain browser can't, so it isn't sent to a button). */
+export function onlineText(online: OnlineList | undefined, nowMs: number, manage = true): string {
+  const fetched = agoText(online?.fetched_at ?? null, nowMs)
+  const tried = agoText(online?.tried_at ?? null, nowMs)
+  const used = fetched !== null && online?.in_use !== false
+  const shows = used ? `This shows its copy from ${fetched}.` : 'This shows the list that came with Clips Kitty.'
+  if (online?.error) {
+    const when = tried ? `The check for new pipelines ${tried} didn’t work.` : 'The last check for new pipelines didn’t work.'
+    return `${when} ${online.error} ${shows}`
+  }
+  if (used) return `Clips Kitty’s online list, updated ${fetched}.`
+  if (fetched) return 'This shows the list that came with Clips Kitty, which is newer than its online copy.'
+  return `${shows} ${manage ? 'Check for new pipelines to get the online list.' : 'The Clips Kitty desktop app gets the online list.'}`
 }
 
 export function formatBytes(n: number | undefined): string {
@@ -672,14 +882,56 @@ export function formatBytes(n: number | undefined): string {
   return `${Math.max(1, Math.round(n / 1e3))} KB`
 }
 
-/** How the screen names an index: the bundled one, or its address. */
+/** Clips Kitty's own list online: the catalog's index on the project's main
+ *  branch (plugins/registry.py ONLINE_URL; a test keeps the two the same). */
+export const ONLINE_LIST =
+  'https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/awesome-clips-kitty/index.json'
+
+/** Whether a listing came from one of Clips Kitty's own lists (bundled or online). */
+export function isOurList(url: string | undefined): boolean {
+  return url === 'bundled' || url === ONLINE_LIST
+}
+
+/** How the screen names an index: one of Clips Kitty's own, or someone else's by its address. */
 export function indexName(url: string): string {
   if (url === 'bundled') return 'The list that came with Clips Kitty'
+  if (url === ONLINE_LIST) return 'Clips Kitty’s online list'
   try {
-    return new URL(url).host
+    return `A list from ${new URL(url).host} (not Clips Kitty’s)`
   } catch {
     return url
   }
+}
+
+/** Which list a listing is in, and how fresh Clips Kitty's online copy is. */
+export function listedInText(url: string, online: OnlineList | undefined, nowMs: number): string {
+  if (url === 'bundled') return 'In the list that came with Clips Kitty.'
+  if (url === ONLINE_LIST) {
+    const ago = agoText(online?.fetched_at ?? null, nowMs)
+    return ago ? `In Clips Kitty’s online list (updated ${ago}).` : 'In Clips Kitty’s online list.'
+  }
+  try {
+    return `In a list from ${new URL(url).host} (not Clips Kitty’s).`
+  } catch {
+    return `In a list from ${url} (not Clips Kitty’s).`
+  }
+}
+
+/** Where an install comes from, in a few words. The engine's exact line
+ *  (address, folder and commit) goes under Technical details. */
+export function sourceLine(source: Record<string, string> | undefined): string {
+  const listed = source?.listed_in
+  if (listed) {
+    if (isOurList(listed)) return 'From Clips Kitty’s list'
+    try {
+      return `From a list on ${new URL(listed).host} (not Clips Kitty’s)`
+    } catch {
+      return 'From a list that isn’t Clips Kitty’s'
+    }
+  }
+  if (source?.kind === 'folder') return 'From a folder on this PC'
+  if (source?.kind === 'git') return 'From a link'
+  return ''
 }
 
 /** An event or game slug as words: "team_wipe" → "Team wipe". */
@@ -690,10 +942,12 @@ export function slugLabel(slug: string): string {
 
 /** The automated checks an index build ran on a listing (plugins/registry.py). */
 export const CHECK_LABELS: Record<string, string> = {
-  manifest_valid: 'The manifest passed Clips Kitty’s checks',
-  publisher_is_repository_owner: 'The publisher owns the GitHub repository',
-  commit_pinned: 'Each version is pinned to one commit',
-  public_at_commit: 'The files were public at that commit'
+  manifest_valid: 'Its setup file passed Clips Kitty’s checks',
+  publisher_is_repository_owner: 'The developer in its id owns the code’s page on GitHub',
+  official_repository: 'The code’s page on GitHub is the Clips Kitty project’s own',
+  commit_pinned: 'Each version is fixed and can’t change after it was listed',
+  commit_on_branch: 'Each version comes from the developer’s own code, not from someone else’s copy',
+  public_at_commit: 'Anyone could read each version’s code'
 }
 
 /** The checks an index reports for a listing, as lines to show: only the
@@ -704,4 +958,194 @@ export function checkLines(checks: Record<string, unknown> | undefined): { text:
   return Object.entries(CHECK_LABELS)
     .filter(([key]) => checks && key in checks)
     .map(([key, text]) => ({ text, ok: checks?.[key] === true }))
+}
+
+
+// ---- Awesome Clips Kitty: labels, numbers and credits ------------------------------------------
+
+/** The directory's kinds the Marketplace browses besides pipelines
+ *  (plugins/catalog.py DIRECTORY_KINDS). Models are "AI model links" here,
+ *  so the tab isn't taken for the app's own Models page. */
+export const DIRECTORY_KINDS: Record<string, string> = {
+  app: 'Apps',
+  model: 'AI model links',
+  workflow: 'Workflows',
+  integration: 'Integrations',
+  tool: 'Tools'
+}
+
+/** How a project relates to Clips Kitty, in words (plugins/catalog.py RELATIONSHIPS). */
+export const RELATIONSHIP_LABELS: Record<string, string> = {
+  'built-for': 'Built for Clips Kitty',
+  'built-with': 'Built with Clips Kitty',
+  related: 'Related'
+}
+
+/** The catalog's labels as badges. "official" and "community" are the
+ *  plugin's tier for a listing (tierBadge), so `extraOnly` leaves them out. */
+export function catalogBadges(badges: string[] | undefined, extraOnly = false): Badge[] {
+  const out: Badge[] = []
+  for (const b of badges ?? []) {
+    if (b === 'official' && !extraOnly)
+      out.push({ label: '✓ Official', tone: 'ok', title: 'Made and maintained by the Clips Kitty project.' })
+    else if (b === 'community' && !extraOnly)
+      out.push({ label: 'Community', tone: 'info', title: 'Made by someone outside the Clips Kitty project. Nobody at Clips Kitty has read its code.' })
+    else if (b === 'compatible')
+      out.push({
+        label: '✓ Compatible',
+        tone: 'ok',
+        title:
+          'This version passed Clips Kitty’s automated compatibility checks. A technical label, not a security review.'
+      })
+    else if (b === 'featured') out.push({ label: '★ Featured', tone: 'info', title: 'Picked by a Clips Kitty maintainer.' })
+  }
+  return out
+}
+
+/** 1234 → "1.2k", 1200000 → "1.2M". */
+export function shortCount(n: number | undefined): string {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return ''
+  const one = (x: number, unit: string): string => `${(Math.round(x * 10) / 10).toString()}${unit}`
+  if (n >= 1e6) return one(n / 1e6, 'M')
+  if (n >= 1e3) return one(n / 1e3, 'k')
+  return String(Math.round(n))
+}
+
+/** Each number as its own line, never added to another. */
+export function metricLines(metrics: Metrics | undefined): { text: string; tone: Tone }[] {
+  const out: { text: string; tone: Tone }[] = []
+  if (!metrics) return out
+  if (typeof metrics.installs === 'number')
+    out.push({
+      text: `${metrics.installs.toLocaleString('en-US')} Clips Kitty ${metrics.installs === 1 ? 'install' : 'installs'}`,
+      tone: 'info'
+    })
+  const gh = metrics.github
+  if (gh && typeof gh.stars === 'number') out.push({ text: `★ ${shortCount(gh.stars)} on GitHub`, tone: 'info' })
+  if (gh && typeof gh.discussions === 'number' && gh.discussions > 0)
+    out.push({ text: `${gh.discussions} ${gh.discussions === 1 ? 'discussion' : 'discussions'} on GitHub`, tone: 'info' })
+  for (const [id, m] of Object.entries(metrics.models ?? {})) {
+    if (!m || typeof m !== 'object') continue
+    const bits = []
+    if (typeof m.downloads === 'number') bits.push(`${shortCount(m.downloads)} downloads a month`)
+    if (typeof m.likes === 'number') bits.push(`${shortCount(m.likes)} likes`)
+    if (bits.length) out.push({ text: `${id} on Hugging Face: ${bits.join(', ')}`, tone: 'info' })
+  }
+  if (metrics.stale) out.push({ text: `⚠ ${metrics.stale === 'archived' ? 'Archived by its authors' : metrics.stale}`, tone: 'warn' })
+  return out
+}
+
+/** The one link a directory entry's card offers, as a button: its download
+ *  page, its website, its GitHub repository (or folder, or a page of it), its
+ *  Hugging Face page, then any other page (plugins/catalog.py _link keeps the
+ *  same order). `label` is translated on screen; `host` follows it when there is one. */
+export function entryLink(
+  entry: Pick<CatalogEntry, 'source'>
+): { url: string; label: string; host: string | null } | null {
+  const s = entry.source ?? {}
+  const download = safeLink(s.download)
+  if (download)
+    return { url: download, label: 'Download from', host: new URL(download).hostname.replace(/^www\./, '') }
+  const homepage = safeLink(s.homepage)
+  if (homepage) return { url: homepage, label: 'Website', host: null }
+  if (s.github) {
+    let url = safeLink(s.github)
+    const page = safeLink(s.url)
+    if (url && s.path) url = safeLink(`${s.github.replace(/\/+$/, '')}/tree/HEAD/${s.path.replace(/^\/+|\/+$/g, '')}`)
+    else if (url && page && (page.startsWith(`${s.github}#`) || page.startsWith(`${s.github}/`))) url = page
+    return url ? { url, label: 'Code page on GitHub', host: null } : null
+  }
+  if (s.huggingface && /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s.huggingface))
+    return { url: `https://huggingface.co/${s.huggingface}`, label: 'Model page on Hugging Face', host: null }
+  const url = safeLink(s.url)
+  return url ? { url, label: 'Website', host: null } : null
+}
+
+const BASED_ON_HOW: Record<string, string> = {
+  runs: 'runs it as a separate program',
+  'includes-code': 'includes its code',
+  port: 'is a rewrite of it'
+}
+
+/** The projects a plugin credits, for "Built on" (https links only). */
+export function basedOnLines(items: BasedOn[] | undefined): { name: string; url: string | null; text: string }[] {
+  return (items ?? [])
+    .filter((b) => b && typeof b.name === 'string')
+    .map((b) => ({
+      name: b.name,
+      url: safeLink(b.url),
+      text: `${b.license} · ${BASED_ON_HOW[b.how] ? `this pipeline ${BASED_ON_HOW[b.how]}` : b.how}`
+    }))
+}
+
+const RANGE_PART = /^\s*(>=|<=|==|!=|>|<|~=)?\s*(\d+(?:\.\d+){0,2})\s*$/
+
+/** A version range from a manifest in words, the way
+ *  manifest.version_satisfies reads it: ">=2.0" → "2.0 and newer",
+ *  ">=2.0, <3" → "2.0 up to, not including, 3". Null when there is none or
+ *  it isn't a range. */
+export function rangeText(range: string | undefined | null): string | null {
+  if (typeof range !== 'string' || !range.trim()) return null
+  let from = ''
+  let to = ''
+  const also: string[] = []
+  for (const part of range.split(',')) {
+    const m = RANGE_PART.exec(part)
+    if (!m) return null
+    const [, op = '==', v] = m
+    if (op === '>=') from = v
+    else if (op === '>') from = `newer than ${v}`
+    else if (op === '<') to = `up to, not including, ${v}`
+    else if (op === '<=') to = `up to ${v}`
+    else if (op === '!=') also.push(`except ${v}`)
+    else if (op === '==') also.push(`${v} only`)
+    else {
+      // ~=2.1 is >=2.1 and <3; ~=2.1.0 is >=2.1.0 and <2.2
+      const upper = v.split('.').map(Number)
+      upper.splice(Math.max(1, upper.length - 1))
+      upper[upper.length - 1] += 1
+      from = v
+      to = `up to, not including, ${upper.join('.')}`
+    }
+  }
+  const span = from && to ? `${from} ${to}` : from ? (from.startsWith('newer') ? from : `${from} and newer`) : to
+  return [span, ...also].filter(Boolean).join(', ')
+}
+
+/** One sentence for a version's compatibility record, or null when it has none. */
+export function compatibilityText(record: CompatibilityRecord | undefined | null): { text: string; tone: Tone } | null {
+  if (!record) return null
+  const when = String(record.checked_at || '').slice(0, 10)
+  if (record.passed)
+    return {
+      text: `✓ Compatible: version ${record.version} passed the automated checks on Clips Kitty ${record.app_version}${when ? ` (${when})` : ''}. A technical check, not a security review.`,
+      tone: 'ok'
+    }
+  return {
+    text: `Version ${record.version} didn’t pass the automated checks on Clips Kitty ${record.app_version}${record.note ? `: ${record.note}` : ''}.`,
+    tone: 'warn'
+  }
+}
+
+/** Entries grouped by their kind's sections, in the catalog's order. An
+ *  entry in a section the list doesn't know goes under "Other". In each
+ *  section, the ones that need technical setup come after the others. */
+export function groupBySection(
+  entries: CatalogEntry[],
+  sections: CatalogSection[] | undefined
+): { id: string; title: string; description?: string; entries: CatalogEntry[] }[] {
+  const out: { id: string; title: string; description?: string; entries: CatalogEntry[] }[] = []
+  const known = new Set<string>()
+  const easyFirst = (list: CatalogEntry[]): CatalogEntry[] => [
+    ...list.filter((e) => e.setup !== 'technical'),
+    ...list.filter((e) => e.setup === 'technical')
+  ]
+  for (const s of sections ?? []) {
+    known.add(s.id)
+    const own = entries.filter((e) => e.section === s.id)
+    if (own.length) out.push({ id: s.id, title: s.title, description: s.description, entries: easyFirst(own) })
+  }
+  const rest = entries.filter((e) => !known.has(e.section))
+  if (rest.length) out.push({ id: '', title: 'Other', entries: easyFirst(rest) })
+  return out
 }

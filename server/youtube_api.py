@@ -96,6 +96,9 @@ class RenderFirst(BaseModel):
     start: float | None = None
     end: float | None = None
     render_opts: dict | None = None
+    # The edits plugins suggested that this render puts in the clip, as for
+    # POST /clips/{id}/render (server/api.py RenderIn).
+    suggestions: dict | None = None
 
 
 class PublishIn(BaseModel):
@@ -449,6 +452,10 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
                     payload["end"] = body.render_first.end
                 if body.render_first.render_opts:
                     payload["render_opts"] = body.render_first.render_opts
+                if body.render_first.suggestions is not None:
+                    from server.api import used_suggestions
+
+                    payload["suggestions"] = used_suggestions(body.render_first.suggestions)
                 after_job_id = d.add_job("render", json.dumps(payload))
             elif not (clip["path"] and Path(clip["path"]).exists()):
                 raise HTTPException(

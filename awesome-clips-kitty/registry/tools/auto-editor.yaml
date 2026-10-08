@@ -1,0 +1,12 @@
+name: Auto-Editor
+description: Removes dead air and silent parts from video or audio based on loudness, motion or subtitle matches. Renders the edit or exports a timeline for Premiere, DaVinci Resolve, Final Cut Pro, Shotcut or Kdenlive.
+section: editing
+relationship: related
+license: Unlicense
+license_note: Without a paid key from app.auto-editor.com, renders above 3200x1800 are downscaled and multi-source timeline export and the 'add' action are locked. The README says release binaries may be under other open-source licences.
+source:
+  github: https://github.com/WyattBlue/auto-editor
+runs: local
+tags: [silence removal, premiere, davinci resolve, final cut pro, timeline]
+added: 2026-10-07
+checked: 2026-10-07

@@ -1,0 +1,184 @@
+# The table of contents: each kind's sections, in the order README.md and the
+# Marketplace show them. An entry names one section id. A section with
+# "relationship" only takes entries with that relationship. A section with no
+# entries is left out of README.md. "wanted" lists niches nobody has filled
+# yet: ideas for developers, shown as such, never as projects that exist.
+
+app:
+  sections:
+    - id: built-with
+      title: Built with Clips Kitty
+      description: Complete applications that use the Clips Kitty API or SDK.
+      relationship: built-with
+    - id: works-with
+      title: Work with Clips Kitty
+      description: Existing applications that have a Clips Kitty adapter, so they can run through Clips Kitty.
+      relationship: related
+    - id: companion
+      title: Companion apps
+      description: Apps that go well with Clips Kitty, such as editors and recorders.
+      relationship: related
+    - id: video-clipping
+      title: Open-source video clipping
+      description: Open-source apps that turn long videos into short clips. Not connected to Clips Kitty yet; the ones with a licence and design that allow it are candidates for adapters.
+      relationship: related
+    - id: video-ai
+      title: Open-source video AI
+      description: Open-source apps for captions, dubbing, reframing and other video AI work.
+      relationship: related
+    - id: gaming
+      title: Gaming
+      description: Open-source apps for game clips and highlights.
+      relationship: related
+    - id: sports
+      title: Sports
+      description: Open-source apps for sports highlights and match analysis.
+      relationship: related
+    - id: automation
+      title: Automation
+      description: Apps that run steps on their own, such as posting a clip once it is ready.
+      relationship: related
+
+pipeline:
+  sections:
+    - id: general
+      title: General
+      description: Pipelines for any kind of video.
+    - id: gaming
+      title: Gaming
+    - id: gaming/generic
+      title: Any game
+    - id: gaming/world-of-warcraft
+      title: World of Warcraft
+    - id: gaming/marvel-rivals
+      title: Marvel Rivals
+    - id: gaming/minecraft
+      title: Minecraft
+    - id: gaming/valorant
+      title: Valorant
+    - id: gaming/league-of-legends
+      title: League of Legends
+    - id: gaming/counter-strike
+      title: Counter-Strike
+    - id: gaming/rocket-league
+      title: Rocket League
+    - id: gaming/fortnite
+      title: Fortnite
+    - id: sports
+      title: Sports
+    - id: sports/soccer
+      title: Soccer
+    - id: sports/basketball
+      title: Basketball
+    - id: sports/hockey
+      title: Ice hockey
+    - id: sports/american-football
+      title: American football
+    - id: creators
+      title: Creators
+      description: Vlogs, IRL streams, reactions and just-chatting.
+    - id: podcasts
+      title: Podcasts and talk
+  wanted:
+    - section: gaming/generic
+      idea: Game events for genres the big clipping apps barely cover, such as fighting games, racing, strategy, card games, MMOs, and retro or emulated games.
+    - section: gaming/world-of-warcraft
+      idea: PvP, Mythic+ and raid highlights, each knowing what a great moment looks like in that mode.
+    - section: gaming/marvel-rivals
+      idea: Team fights, multi-kills and ultimates.
+    - section: gaming/minecraft
+      idea: Builds, near-deaths and boss fights.
+    - section: gaming/valorant
+      idea: Clutches and aces.
+    - section: gaming/league-of-legends
+      idea: Team fights and objective steals.
+    - section: gaming/rocket-league
+      idea: Goals, saves and aerials.
+    - section: sports/hockey
+      idea: Goals, saves and fights from NHL-style broadcasts.
+
+plugin:
+  sections:
+    - id: detection
+      title: Detection
+    - id: captions
+      title: Captions and styles
+    - id: export
+      title: Export and publishing
+    - id: sources
+      title: Sources
+    - id: utilities
+      title: Utilities
+
+model:
+  sections:
+    - id: speech
+      title: Speech to text
+    - id: audio-events
+      title: Sound and audio events
+    - id: vision
+      title: Detection and tracking
+    - id: scenes
+      title: Scenes and shots
+    - id: moments
+      title: Moment and highlight detection
+    - id: ocr
+      title: Reading text on screen
+    - id: vision-language
+      title: Describing images and video
+    - id: speakers
+      title: Speakers and voice activity
+    - id: language
+      title: Language models
+
+workflow:
+  sections:
+    - id: comfyui
+      title: ComfyUI
+    - id: automation
+      title: Automation
+
+integration:
+  sections:
+    - id: streaming
+      title: Streaming
+    - id: ai-assistants
+      title: AI assistants
+    - id: publishing
+      title: Publishing
+    - id: community
+      title: Chat and community
+    - id: games
+      title: Games
+      description: Live data from a game, such as kills and rounds, as they happen.
+
+tool:
+  sections:
+    - id: developer
+      title: For developers
+    - id: clipping
+      title: Finding moments
+      description: Libraries and command-line tools that pick the best moments in a video.
+    - id: transcription
+      title: Transcription
+    - id: captions
+      title: Captions and subtitles
+    - id: translation
+      title: Translation and dubbing
+    - id: media
+      title: Audio and video processing
+    - id: scenes
+      title: Scene detection
+    - id: vision
+      title: Detection and tracking
+    - id: editing
+      title: Automatic editing
+    - id: games
+      title: Game replays and events
+      description: Read what happened in a game, with exact times, from its replay or demo files.
+    - id: sports
+      title: Sports analysis
+    - id: streams
+      title: Stream recording and downloads
+    - id: local-ai
+      title: Running AI locally

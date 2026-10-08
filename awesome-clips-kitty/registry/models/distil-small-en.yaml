@@ -1,0 +1,11 @@
+name: distil-small.en
+description: The smallest English-only distilled Whisper model, for transcription on machines with very little memory; its own card points most users to larger distil models.
+section: speech
+relationship: related
+license: MIT
+source:
+  huggingface: distil-whisper/distil-small.en
+runs: local
+tags: [transcription, english, low memory]
+added: 2026-10-07
+checked: 2026-10-07

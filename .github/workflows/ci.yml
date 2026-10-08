@@ -87,10 +87,11 @@ jobs:
               print('\n'.join(bad)); sys.exit(1)
           PY
 
-      - name: Plugin registry index is current
-        # registry/index.json is generated from registry/plugins/ and the block
-        # list; a listing that fails its checks fails here. With no listings
-        # it needs no network.
+      - name: Awesome Clips Kitty index and README are current
+        # awesome-clips-kitty/index.json and the generated part of its
+        # README.md come from awesome-clips-kitty/registry/ and stats/; an
+        # entry or listing that fails its checks fails here. Listed manifests
+        # are fetched from GitHub at their commits as plain text, never run.
         run: python scripts/build_registry_index.py --check
 
       - name: No accidental secrets in config
@@ -123,11 +124,42 @@ jobs:
           "PyYAML>=6.0.3,<7" "fastapi>=0.141.1,<1" "opencv-python-headless>=4.14.0.94,<5"
           "yt-dlp>=2026.8.19" "defusedxml>=0.7.1,<1"
 
-      - name: FFmpeg, for the example pipeline's end-to-end test
+      - name: FFmpeg, for the example pipeline's end-to-end test and the compatibility check
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
 
       - name: Platform tests
-        run: python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py tests/test_example_pipeline.py
+        run: >-
+          python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py
+          tests/test_example_pipeline.py tests/test_catalog.py
+
+  sdk-windows:
+    name: SDK (Windows)
+    runs-on: windows-latest
+    # The SDK's own tests on Windows, where Clips Kitty runs, with Clips
+    # Kitty's Python (3.11) and nothing but pytest and PyYAML: the files
+    # named tests/test_plugin_sdk_*.py import nothing from the engine
+    # (test_plugin_sdk_package.py checks). This runner has no FFmpeg, so the
+    # tests that need it skip here and run in the Plugin platform job.
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install what these tests need
+        run: pip install --quiet pytest "PyYAML>=6.0.3,<7"
+
+      - name: Build the SDK's wheel, for the wheel test
+        shell: bash
+        run: |
+          pip wheel --quiet --no-deps sdk/python -w dist
+          echo "CLIPSKITTY_SDK_WHEEL=$(ls dist/*.whl)" >> "$GITHUB_ENV"
+
+      - name: SDK tests
+        # bash, because PowerShell doesn't expand a glob for a program it starts.
+        shell: bash
+        run: python -m pytest -q --tb=short tests/test_plugin_sdk_*.py
 
   ui:
     name: Desktop app

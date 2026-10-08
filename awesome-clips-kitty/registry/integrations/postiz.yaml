@@ -1,0 +1,13 @@
+name: Postiz
+description: Self-hostable social media scheduler that posts videos to YouTube, TikTok, Instagram, X and other networks, with a public API for sending finished clips from other tools.
+section: publishing
+relationship: related
+license: AGPL-3.0
+source:
+  github: https://github.com/gitroomhq/postiz-app
+platforms: [web]
+runs: both
+tags: [scheduling, social media, publishing, tiktok, youtube]
+warning: Uploads your clips to the social accounts you connect, either from your own server or through the hosted Postiz Cloud.
+added: 2026-10-07
+checked: 2026-10-07

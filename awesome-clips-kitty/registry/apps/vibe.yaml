@@ -1,0 +1,13 @@
+name: Vibe
+description: Desktop app that transcribes audio and video offline with Whisper, Parakeet or Nemotron models and exports SRT or VTT, with caption lengths suited to reels.
+section: video-ai
+relationship: related
+license: MIT
+source:
+  github: https://github.com/thewh1teagle/vibe
+platforms: [windows, macos, linux]
+runs: both
+tags: [transcription, subtitles, whisper, offline]
+warning: Sends anonymous usage analytics to Aptabase by default (can be turned off in Settings); can fetch audio from YouTube and other sites, whose terms may not allow it.
+added: 2026-10-07
+checked: 2026-10-07

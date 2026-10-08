@@ -11,7 +11,7 @@ description: >
   sports/), one play per clip. The AI runs where you chose in Settings.
 author: {name: Clips Kitty}
 repository: https://github.com/ColinGPT9/clips-studio
-license: AGPL-3.0-only
+license: AGPL-3.0-or-later
 requires: {clips_kitty: ">=2.0", plugin_api: 1}
 run: builtin
 execution: local
