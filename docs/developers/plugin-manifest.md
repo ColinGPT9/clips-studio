@@ -170,7 +170,7 @@ based_on:
 | `license` | the other project's licence, as an SPDX identifier like `license` above |
 | `how` | `runs` (your plugin starts it as a separate program), `includes-code` (your plugin contains its code) or `port` (your plugin is a rewrite of it) |
 
-All four are required in each entry; any other key is ignored with a warning. Naming a project here does not settle what its licence asks of you: keep its notices, and if you include its code, use a licence compatible with it ([Licences](../../awesome-clips-kitty/CONTRIBUTING.md#licences)). Examples: `valid/based-on.yaml` and `invalid/bad-based-on.yaml` in [`tests/fixtures/plugins/manifests/`](../../tests/fixtures/plugins/manifests/).
+All four are required in each entry; any other key is ignored with a warning. Naming a project here does not settle what its licence asks of you: keep its notices, and if you include its code, use a licence compatible with it ([Licences](https://github.com/ColinGPT9/awesome-clips-kitty/blob/main/CONTRIBUTING.md#licences)). Examples: `valid/based-on.yaml` and `invalid/bad-based-on.yaml` in [`tests/fixtures/plugins/manifests/`](../../tests/fixtures/plugins/manifests/).
 
 ## The official modes
 

@@ -1,8 +1,8 @@
 # Built with Clips Kitty
 
 Projects built with or for Clips Kitty are listed in
-**[Awesome Clips Kitty](awesome-clips-kitty/README.md)**, a curated directory of
-apps, pipelines, plugins, models, workflows, integrations and tools. It includes
+**[Awesome Clips Kitty](https://github.com/ColinGPT9/awesome-clips-kitty)**, a curated list of
+pipelines, plugins, integrations, apps and tools, in its own repository. It includes
 the official ones: the Clips Kitty OBS Plugin, the MCP server and agent skill,
 and the Python SDK. The Clips Kitty Marketplace shows the same list.
 
@@ -13,7 +13,7 @@ the clips it made. Start with [docs/API.md](docs/API.md).
 ## Add your project
 
 Add one small YAML file with a pull request.
-[CONTRIBUTING.md](awesome-clips-kitty/CONTRIBUTING.md) has the format and the
+[CONTRIBUTING.md](https://github.com/ColinGPT9/awesome-clips-kitty/blob/main/CONTRIBUTING.md) has the format and the
 inclusion criteria. A separate app or tool that uses the API or the SDK is
 "built with Clips Kitty"; a pipeline that runs inside Clips Kitty is a listing,
 installed from the Marketplace

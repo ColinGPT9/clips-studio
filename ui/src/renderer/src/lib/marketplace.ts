@@ -882,10 +882,11 @@ export function formatBytes(n: number | undefined): string {
   return `${Math.max(1, Math.round(n / 1e3))} KB`
 }
 
-/** Clips Kitty's own list online: the catalog's index on the project's main
- *  branch (plugins/registry.py ONLINE_URL; a test keeps the two the same). */
+/** Clips Kitty's own list online: index.json on the main branch of the
+ *  catalog's repository (plugins/registry.py ONLINE_URL; a test keeps the two
+ *  the same). */
 export const ONLINE_LIST =
-  'https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/awesome-clips-kitty/index.json'
+  'https://raw.githubusercontent.com/ColinGPT9/awesome-clips-kitty/main/index.json'
 
 /** Whether a listing came from one of Clips Kitty's own lists (bundled or online). */
 export function isOurList(url: string | undefined): boolean {

@@ -1,4 +1,0 @@
-# Versions of plugins that must not be installed or run (severity: blocked),
-# or that still run but are no longer listed (severity: delisted).
-# Format: CONTRIBUTING.md ("Blocking"). Empty: nothing has been blocked.
-[]

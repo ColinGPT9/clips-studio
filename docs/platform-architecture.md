@@ -333,7 +333,7 @@ The brief's `video.write` collapses into `clips.write` (the only way a pipeline 
 
 **Hybrid registry** (research Q12): one official static index built by CI from one listing file per plugin in a public Git repository, reviewed by pull request; installs from any GitHub URL, labelled "not listed"; and a setting to add other index URLs. The app never needs a Clips Kitty server.
 
-**In this repository first** (`DECISIONS.md` D5): `registry/` held the format and tooling until the owner picks a public home. On 2026-10-07 it became Awesome Clips Kitty, a curated directory in `awesome-clips-kitty/` (`DECISIONS.md` D20); its `CONTRIBUTING.md` is the reference for the layout and formats.
+**In this repository first** (`DECISIONS.md` D5): `registry/` held the format and tooling until the owner picks a public home. On 2026-10-07 it became Awesome Clips Kitty, a curated directory in `awesome-clips-kitty/` (`DECISIONS.md` D20); its `CONTRIBUTING.md` is the reference for the layout and formats. On 2026-10-08 it moved to its own repository, [ColinGPT9/awesome-clips-kitty](https://github.com/ColinGPT9/awesome-clips-kitty) (`DECISIONS.md` D36); the paths on this page are as they were in this one.
 
 ```text
 awesome-clips-kitty/

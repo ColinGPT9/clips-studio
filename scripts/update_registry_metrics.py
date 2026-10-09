@@ -1,4 +1,4 @@
-"""Refresh the numbers Awesome Clips Kitty shows: awesome-clips-kitty/stats/metrics.json.
+"""Refresh the numbers Awesome Clips Kitty shows: stats/metrics.json in the catalog.
 
     python scripts/update_registry_metrics.py              # read every number, write metrics.json
     python scripts/update_registry_metrics.py --dry-run    # print what would be written

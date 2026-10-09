@@ -1,7 +1,8 @@
 """The registry: the index format, the index build, and the app's client.
 
-The index is one JSON file built from the Awesome Clips Kitty catalog
-(awesome-clips-kitty/, see plugins/catalog.py and its CONTRIBUTING.md):
+The index is one JSON file built from the Awesome Clips Kitty catalog, which
+is its own repository (github.com/ColinGPT9/awesome-clips-kitty; see
+plugins/catalog.py and that repository's CONTRIBUTING.md):
 
     {"format": 1,
      "plugins": [{"id": "example-dev/example-plugin", "name": ..., "latest": "1.1.0",
@@ -26,9 +27,10 @@ of index, caches the last good copy of each fetched one under
 <data_dir>/plugins/cache/, works offline from that cache, and searches
 locally:
 
-- the copy bundled with the app (awesome-clips-kitty/index.json);
-- Clips Kitty's online list (ONLINE_URL): that same file on the main branch
-  of the project's repository, which changes when a change to the catalog is
+- the copy bundled with the app (plugins/catalog_index.json: the catalog's
+  index.json as scripts/sync_catalog_index.py last fetched it, before a release);
+- Clips Kitty's online list (ONLINE_URL): index.json on the main branch of
+  the catalog's repository, which changes when a change to the catalog is
   merged there (and with the weekly numbers). The app fetches it when the
   Marketplace opens, or the app starts with a pipeline installed, and its copy
   is a day old (a switch in the Marketplace turns that off), or when the
@@ -93,7 +95,7 @@ _ONLINE_LOCK = threading.RLock()
 
 # Clips Kitty's online list: the catalog's index on the project's main branch
 # (D29). It answers once the catalog is merged there.
-ONLINE_URL = "https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/awesome-clips-kitty/index.json"
+ONLINE_URL = "https://raw.githubusercontent.com/ColinGPT9/awesome-clips-kitty/main/index.json"
 CHECKS_FILE = "listing-checks.json"  # the person's switch and the last check, in <data_dir>/plugins/
 CHECK_EVERY = 24 * 3600              # an automatic check when the copy is older than this
 RETRY_AFTER = 3600                   # and no check was tried for this long (offline: not on every open)
@@ -455,18 +457,23 @@ def index_text(index: dict) -> str:
 # ---- the client: reading indexes --------------------------------------------------------
 
 
-CATALOG_FOLDER = "awesome-clips-kitty"
+# The catalog is its own repository; the app ships a copy of its index.
+CATALOG_REPOSITORY = "ColinGPT9/awesome-clips-kitty"
+BUNDLED_INDEX = "plugins/catalog_index.json"
 
 
 def catalog_path() -> Path:
-    """The Awesome Clips Kitty folder in a source checkout (or the frozen app's bundle)."""
-    bundle = getattr(sys, "_MEIPASS", None)
-    base = Path(bundle) if bundle else Path(__file__).resolve().parent.parent
-    return base / CATALOG_FOLDER
+    """A checkout of the catalog's repository beside this one: where the build
+    scripts look when --catalog isn't given."""
+    return Path(__file__).resolve().parent.parent.parent / CATALOG_REPOSITORY.split("/")[1]
 
 
 def bundled_path() -> Path:
-    return catalog_path() / "index.json"
+    """The copy of the catalog's index that ships with the app, in a source
+    checkout or the frozen app's bundle."""
+    bundle = getattr(sys, "_MEIPASS", None)
+    base = Path(bundle) if bundle else Path(__file__).resolve().parent.parent
+    return base / BUNDLED_INDEX
 
 
 def _clean_entry(e, *, ours: bool) -> dict | None:

@@ -154,9 +154,10 @@ datas += [
     (str(ROOT / "sdk" / "python" / "LICENSE"), "sdk/python"),
     # The official modes' manifests (plugins/builtin/), listed beside plugins.
     (str(ROOT / "plugins" / "builtin"), "plugins/builtin"),
-    # The registry index as of this build (plugins/registry.py): the
-    # Marketplace's listings and the block list, until an index address exists.
-    (str(ROOT / "awesome-clips-kitty" / "index.json"), "awesome-clips-kitty"),
+    # The copy of Awesome Clips Kitty's index that ships with the app
+    # (plugins/registry.py bundled_path): the Marketplace's listings and the
+    # block list before the app has been online, and the copy it trusts.
+    (str(ROOT / "plugins" / "catalog_index.json"), "plugins"),
     # The sound tagger's 527 class names, in its output order (analysis/panns.py).
     (str(ROOT / "config" / "audioset_labels.txt"), "config"),
     # The three-second clip a voice model is checked with before it is used

@@ -14,6 +14,7 @@ it.
 import ast
 import builtins
 import datetime
+import json
 import os
 import re
 import shutil
@@ -556,8 +557,7 @@ def test_template_licence_and_gitignore_are_written(tmp_path, capsys):
 
 
 def test_no_template_carries_a_badge_or_a_real_game():
-    yaml = pytest.importorskip("yaml")
-    sections = yaml.safe_load((ROOT / "awesome-clips-kitty" / "registry" / "sections.yaml").read_text(encoding="utf-8"))
+    sections = json.loads((ROOT / "plugins" / "catalog_index.json").read_text(encoding="utf-8"))["sections"]
     games = [s for s in sections["pipeline"]["sections"] if s["id"].startswith("gaming/") and s["id"] != "gaming/generic"]
     assert games, "sections.yaml lists no games to check against"
     real = {s["title"].lower() for s in games} | {s["id"].split("/", 1)[1] for s in games}

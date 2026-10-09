@@ -630,7 +630,8 @@ def main(argv: list[str] | None = None) -> int:
                          "(it only reads git: it never pushes or fetches)")
     lst.add_argument("plugin", help="the plugin's folder (the one holding clipskitty.yaml), committed and pushed")
     lst.add_argument("--section", metavar="SECTION",
-                     help="the catalog section, such as gaming/generic (awesome-clips-kitty/registry/sections.yaml)")
+                     help="the catalog section, such as gaming/generic (registry/sections.yaml of "
+                          "ColinGPT9/awesome-clips-kitty)")
     lst.add_argument("--alias", action="extend", nargs="+", metavar="WORDS",
                      help="a word or short phrase people may search for (quote one with spaces); up to "
                           f"{listing.MAX_ALIASES}")
