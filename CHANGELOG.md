@@ -162,6 +162,14 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Changed
 
+- **The Microsoft Store version tells you when the Store has a newer one.** It used to
+  say only that the Store keeps it up to date, even when the Store hadn't got to it yet.
+  Now **Check for updates**, and a quiet check at start, ask the Store which version it
+  offers. When that is newer than yours, a bar at the top and Settings say which version
+  is there and which you have, with an **Open the Microsoft Store** button; press Update
+  on that page. The app still downloads and installs nothing itself in a Store copy, and
+  the request carries only the app's Store ID.
+
 - **A watched channel's re-sends keep its first choice of clips.** Retry failed and the
   re-send of posts a platform rejected now send only clips the video's first publish
   chose, even if processing the video again changed the scores or made new clips in

@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('studio', {
       ipcRenderer.invoke('update:skip', version),
     prefs: (patch?: { channel?: string }): Promise<{ channel: string; skipped?: string }> =>
       ipcRenderer.invoke('update:prefs', patch),
+    /** Clips Kitty's page in the Microsoft Store app (a Store copy's update button). */
+    openStore: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('update:openStore'),
     /** Subscribe to update state. Returns an unsubscribe function. */
     onState: (fn: (s: Record<string, unknown>) => void): (() => void) => {
       const handler = (_e: unknown, s: Record<string, unknown>): void => fn(s)

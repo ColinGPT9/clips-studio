@@ -62,7 +62,7 @@
             service you have connected. This page explains exactly what is stored, what can
             leave your machine, and what triggers it.
           </p>
-          <p><strong>Last updated:</strong> 7 October 2026</p>
+          <p><strong>Last updated:</strong> 8 October 2026</p>
         </div>
       </div>
 
@@ -112,7 +112,7 @@
 
           <h3>On its own, and you can switch it off</h3>
           <ul>
-            <li><strong>Checking for updates.</strong> The desktop app asks a static file on Hugging Face whether a newer version exists. This is a plain file fetch with no identifier attached, and it can be turned off in Settings. Copies installed from the Microsoft Store do not do this at all, because the Store handles updates.</li>
+            <li><strong>Checking for updates.</strong> The desktop app asks a static file on Hugging Face whether a newer version exists. This is a plain file fetch with no identifier attached, and it can be turned off in Settings. Copies installed from the Microsoft Store ask Microsoft's Store catalog instead which version the Store offers, when the app starts and when you press Check for updates: one plain request that carries the app's Store ID and nothing about you or your computer. The Store itself downloads and installs the update.</li>
             <li><strong>Checking for new pipelines.</strong> When you open the Marketplace, or start Clips Kitty with a pipeline installed, and the app's copy of the list of pipelines is more than a day old, the app downloads Clips Kitty's current list: one file from raw.githubusercontent.com, where GitHub serves the files of Clips Kitty's public code. It brings new pipelines and warnings about pipelines found to be harmful. This is a plain file fetch with no identifier attached; nothing about what you browse, search or have installed is sent. It can be switched off at the bottom of the Marketplace's Browse tab, and the Check for new pipelines button there fetches the list when you press it.</li>
           </ul>
 

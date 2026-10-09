@@ -386,7 +386,7 @@ reality:
 
 | | Standalone | Store |
 |---|---|---|
-| Updates | electron-updater, Hugging Face feed | the Store |
+| Updates | electron-updater, Hugging Face feed | the Store installs them; the app asks the Store's catalog which version it offers and, when this copy is behind, says so with a button to the Store page (`ui/src/main/storeVersion.ts`) |
 | Donate button | PayPal in a locked-down in-app window | PayPal in the system browser |
 
 Everything else (the engine, the models, the pipeline, the data directory) is

@@ -433,7 +433,11 @@ function UpdateCard(): JSX.Element {
       case 'dev':
         return 'Updates are disabled while running from source.'
       case 'store':
-        return 'Installed from the Microsoft Store, which keeps Clips Kitty up to date for you.'
+        if (state.behind)
+          return `Version ${state.version} is in the Microsoft Store. This copy is ${state.current}.`
+        if (state.version)
+          return `You're on the latest version (${state.current}). The Microsoft Store installs new versions for you.`
+        return `Couldn't check the Microsoft Store just now. This copy is ${state.current}, and the Store keeps it up to date for you.`
       case 'error':
         return `Could not check: ${state.message ?? 'unknown error'}`
       default:
@@ -456,6 +460,14 @@ function UpdateCard(): JSX.Element {
         >
           {state?.state === 'checking' ? 'Checking…' : t('Check for updates')}
         </button>
+        {state?.state === 'store' && (
+          <button
+            className={`${state.behind ? 'btn-accent' : 'btn-ghost'} !py-1.5`}
+            onClick={() => void window.studio.update.openStore()}
+          >
+            {t('Open the Microsoft Store')}
+          </button>
+        )}
         <label className="flex items-center gap-2 text-xs text-muted">
           {t('Release channel')}
           <select

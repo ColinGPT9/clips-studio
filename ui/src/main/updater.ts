@@ -13,11 +13,12 @@
 // payload is too big for a release asset, so it lives on Hugging Face. See the
 // publish block in electron-builder.yml.
 
-import { app, ipcMain, type BrowserWindow } from 'electron'
+import { app, ipcMain, net, shell, type BrowserWindow } from 'electron'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { isMicrosoftStore } from './distribution'
+import { STORE_CATALOG, STORE_PAGE, isNewer, storeVersionOf } from './storeVersion'
 
 /** Which releases this install is offered. Alpha sees everything, stable
  *  only sees finished releases. Read from the same file the renderer writes,
@@ -156,24 +157,64 @@ function stopPackageWatch(): void {
 export function setupUpdater(win: BrowserWindow): void {
   mainWindow = win
 
+  // Clips Kitty's page in the Store app. Only a Store copy shows the button.
+  ipcMain.handle('update:openStore', async () => {
+    await shell.openExternal(STORE_PAGE)
+    return { ok: true }
+  })
+
   // A Store copy is updated by the Store. electron-updater is not merely
   // unnecessary there, it is wrong: it would fetch the NSIS installer and try
   // to run it over a package Windows itself manages. So it is never wired up
-  // at all — no listeners, no startup check — and the handlers below answer
-  // honestly instead of pretending to check.
+  // at all, and nothing is ever downloaded or installed from here.
+  //
+  // What a Store copy does do is ask the Store's catalog which version it
+  // offers (storeVersion.ts) and say so when that is newer than this one: the
+  // Store updates when it chooses to, and "the Store keeps this up to date"
+  // told somebody three versions behind nothing at all.
   if (isMicrosoftStore()) {
-    const storeState = (): void => send('update:state', { state: 'store' })
-    ipcMain.handle('update:check', async () => {
-      storeState()
-      return { ok: false, reason: 'store' }
-    })
+    let last: Record<string, unknown> = { state: 'store', current: app.getVersion() }
+    const tell = (): void =>
+      send('update:state', { ...last, skipped: last.behind === true && loadPrefs().skipped === last.version })
+
+    const storeCheck = async (): Promise<{ ok: boolean; reason?: string }> => {
+      send('update:state', { state: 'checking' })
+      const current = app.getVersion()
+      let offered: string | null = null
+      try {
+        const r = await net.fetch(STORE_CATALOG, { signal: AbortSignal.timeout(15000) })
+        if (r.ok) offered = storeVersionOf(await r.json())
+      } catch {
+        // Offline, or the catalog answered differently: `offered` stays null
+        // and the screen says the check didn't work.
+      }
+      last = {
+        state: 'store',
+        current,
+        version: offered ?? undefined,
+        behind: offered !== null && isNewer(offered, current)
+      }
+      tell()
+      return { ok: offered !== null, reason: 'store' }
+    }
+
+    ipcMain.handle('update:check', storeCheck)
     ipcMain.handle('update:download', async () => ({ ok: false }))
     ipcMain.handle('update:install', () => ({ ok: false }))
-    ipcMain.handle('update:skip', () => ({ ok: false }))
+    // Hides the bar for that version; Settings still says it is there.
+    ipcMain.handle('update:skip', (_e, version: unknown) => {
+      if (typeof version !== 'string') return { ok: false }
+      savePrefs({ ...loadPrefs(), skipped: version })
+      tell()
+      return { ok: true }
+    })
     // Channel is still readable and writable so the screen renders, but it
     // decides nothing here.
     ipcMain.handle('update:prefs', () => loadPrefs())
-    storeState()
+    // One quiet check once the app is responsive, as the standalone copy does.
+    setTimeout(() => {
+      storeCheck().catch(() => undefined)
+    }, 8000)
     return
   }
 

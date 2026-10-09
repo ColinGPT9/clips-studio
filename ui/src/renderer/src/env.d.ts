@@ -12,8 +12,14 @@ declare module '*.png' {
 /** What the main process reports about updates. */
 interface UpdateState {
   // 'store': installed from the Microsoft Store, which updates the app itself.
+  // `version` is then what the Store offers (absent when it couldn't be asked).
   state: 'checking' | 'available' | 'none' | 'downloading' | 'ready' | 'error' | 'dev' | 'store'
   version?: string
+  /** 'store' only: the version running, whether the Store has a newer one,
+   *  and whether the user chose to skip that one (the bar stays hidden). */
+  current?: string
+  behind?: boolean
+  skipped?: boolean
   notes?: string
   date?: string
   /** A web-installer update downloads twice: the small setup, then the app
@@ -74,6 +80,7 @@ interface Window {
       install: () => Promise<{ ok: boolean }>
       skip: (version: string) => Promise<{ ok: boolean }>
       prefs: (patch?: { channel?: string }) => Promise<{ channel: string; skipped?: string }>
+      openStore: () => Promise<{ ok: boolean }>
       onState: (fn: (s: UpdateState) => void) => () => void
     }
   }

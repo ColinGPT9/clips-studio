@@ -49,14 +49,39 @@ export default function UpdateBanner(): JSX.Element | null {
     return updater.onState(setS)
   }, [])
 
-  // Nothing to say when there's no update, we're mid-check, we're in dev, or
-  // the Store is handling updates and there is nothing for us to offer.
-  if (!s || s.state === 'none' || s.state === 'checking' || s.state === 'dev' || s.state === 'store')
-    return null
+  // Nothing to say when there's no update, we're mid-check or we're in dev.
+  if (!s || s.state === 'none' || s.state === 'checking' || s.state === 'dev') return null
   // A failed background check is not the user's problem; Settings shows it.
   if (s.state === 'error') return null
 
   const bar = 'w-full px-4 py-2.5 flex items-center gap-3 text-sm border-b'
+
+  // A Store copy: the Store installs updates, on its own schedule. When it has
+  // a newer version than this one, say so and offer the way there. Nothing is
+  // downloaded here.
+  if (s.state === 'store') {
+    if (!s.behind || s.skipped) return null
+    return (
+      <div className={`${bar} bg-accent/10 border-accent/30`}>
+        <span className="font-medium">Version {s.version} is in the Microsoft Store.</span>
+        <span className="text-xs text-muted">This copy is {s.current}.</span>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <button
+            className="text-xs text-muted hover:text-ink"
+            onClick={() => void window.studio.update.skip(s.version ?? '')}
+          >
+            Skip this version
+          </button>
+          <button
+            className="btn-accent !py-1"
+            onClick={() => void window.studio.update.openStore()}
+          >
+            Open the Microsoft Store
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (s.state === 'downloading') {
     // Two downloads: the small setup, then the app files. Between them the

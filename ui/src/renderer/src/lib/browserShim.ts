@@ -77,6 +77,7 @@ export function installBrowserShim(): void {
       install: async () => ({ ok: false }),
       skip: async () => ({ ok: false }),
       prefs: async () => ({ channel: 'stable' }),
+      openStore: async () => ({ ok: false }),
       // No updates in a browser, and no listener to clean up.
       onState: () => () => undefined
     }

@@ -303,7 +303,8 @@ Running from source needs the things the installer would otherwise bundle for yo
 **The easiest way is the [Microsoft Store](https://apps.microsoft.com/detail/9NB6XT7DSQZZ).**
 One click, it updates itself, and Windows raises no security prompt. Microsoft
 certified and signed the package, so the SmartScreen warning described below
-does not appear at all.
+does not appear at all. The Store installs new versions when it gets to them; to have
+one at once, open Clips Kitty's page in the Microsoft Store and press **Update**.
 
 **Or grab the installer.** The latest **Web Setup** from
 [Releases](../../releases) and run it. It carries the app, the Python engine, every
