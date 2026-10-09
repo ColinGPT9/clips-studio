@@ -1651,8 +1651,8 @@ Collected because each one has cost somebody time:
 
 ## Building something?
 
-- **Get it listed:** add it to [Awesome Clips Kitty](../awesome-clips-kitty/README.md)
-  with a pull request ([how](../awesome-clips-kitty/CONTRIBUTING.md)), so people
+- **Get it listed:** add it to [Awesome Clips Kitty](https://github.com/ColinGPT9/awesome-clips-kitty)
+  with a pull request ([how](https://github.com/ColinGPT9/awesome-clips-kitty/blob/main/CONTRIBUTING.md)), so people
   can find it there and in the Marketplace.
 - **Need an internal endpoint?** Open an issue saying what you are building. The
   fastest way to get one promoted to supported is for somebody to need it.

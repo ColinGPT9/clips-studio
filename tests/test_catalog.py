@@ -706,9 +706,8 @@ def test_installs_arent_counted_while_the_privacy_policy_says_no_telemetry():
     """The website and the Store answers promise no telemetry. Setting the
     counter's address turns counting on for everyone who installs from the
     catalog, so they must say so first."""
-    settings, problems = catalog.read_settings(ROOT / "awesome-clips-kitty")
-    assert problems == []
-    if not (settings.get("counter") or {}).get("install"):
+    counter = json.loads(registry.bundled_path().read_text(encoding="utf-8")).get("counter") or {}
+    if not counter.get("install"):
         return
     for rel in ("site/privacy.html", "docs/msstore-submission-sheet.md"):
         text = (ROOT / rel).read_text(encoding="utf-8")

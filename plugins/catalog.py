@@ -1,8 +1,8 @@
 """Awesome Clips Kitty: the catalog of apps, pipelines, plugins, models,
 workflows, integrations and tools around Clips Kitty.
 
-The catalog is a folder (awesome-clips-kitty/ in this repository, meant to
-become a repository of its own) with three kinds of files:
+The catalog is its own repository (github.com/ColinGPT9/awesome-clips-kitty),
+with three kinds of files:
 
     registry/catalog.yaml              catalog-wide settings (the install counter's address)
     registry/sections.yaml             the sections of each kind, in order, and the niches wanted

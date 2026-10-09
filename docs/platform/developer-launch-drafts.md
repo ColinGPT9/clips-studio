@@ -194,7 +194,7 @@ Discussions is already on for the repository. GitHub's page on categories (https
 
 **Show your plugin:** GitHub's default categories include "Show and tell" ("Creations, experiments, or tests relevant to the project", open-ended). If the repository still has it, use it instead of a new category.
 
-**Wanted pipelines:** link the Wanted list from the description or a pinned post: https://github.com/ColinGPT9/clips-studio/blob/main/awesome-clips-kitty/README.md#wanted
+**Wanted pipelines:** link the Wanted list from the description or a pinned post: https://github.com/ColinGPT9/awesome-clips-kitty/blob/main/README.md#wanted
 
 ## The template repository
 
@@ -304,7 +304,7 @@ It applies D20 (in `docs/platform/DECISIONS.md`) to contributions. [`CONTRIBUTIN
 
 The sentence:
 
-> Contributions to `sdk/python/` and the MIT examples are under MIT, and to `awesome-clips-kitty/` under CC0-1.0; everything else is AGPL-3.0-or-later.
+> Contributions to `sdk/python/` and the MIT examples are under MIT; everything else is AGPL-3.0-or-later.
 
 - The MIT examples are `examples/pipelines/scene-cut-highlights` and `examples/pipelines/keyword-rater`. `examples/pipelines/transcript-highlights` is AGPL-3.0-or-later.
 - "or-later" matches [`NOTICE`](../../NOTICE), which says "either version 3 of the License, or (at your option) any later version", and the root [`CHANGELOG.md`](../../CHANGELOG.md), which says the app stays AGPL-3.0-or-later. The Licence section today says only "AGPL-3.0".
@@ -316,7 +316,7 @@ For publishing `clipskitty-sdk` to PyPI with Trusted Publishing (https://docs.py
 
 What it does: a tag like `sdk-v1.2.0` starts it, and nothing else does. The build job checks that the tag names the version in `sdk/python`, then builds the wheel and the source archive. The publish job, in a GitHub environment called `pypi`, uploads them. The app's release tags (`v*`, which `.github/workflows/docker-image.yml` builds on) don't start it.
 
-**Action versions.** `actions/checkout` and `actions/setup-python` are pinned to the same commits as in this repository's workflows that can write (`.github/workflows/catalog-numbers.yml`). This repository uses no `upload-artifact`, `download-artifact` or `gh-action-pypi-publish` yet, so their versions are the ones the PyPA guide shows. Because the publish job can write to PyPI, those are pinned by commit too, the way this repository's workflows with write access pin theirs. Each `<commit of …>` is looked up in that action's own repository when Colin approves; none is filled in here.
+**Action versions.** `actions/checkout` and `actions/setup-python` are pinned to the same commits as in the workflow that commits to the Awesome Clips Kitty repository (its `.github/workflows/catalog.yml`). This repository uses no `upload-artifact`, `download-artifact` or `gh-action-pypi-publish` yet, so their versions are the ones the PyPA guide shows. Because the publish job can write to PyPI, those are pinned by commit too, the way this repository's workflows with write access pin theirs. Each `<commit of …>` is looked up in that action's own repository when Colin approves; none is filled in here.
 
 **Once, before the first tag:**
 1. On PyPI, add a pending publisher (https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/) for the project `clipskitty-sdk`: owner `ColinGPT9`, repository `clips-studio`, workflow `sdk-release.yml`, environment `pypi`. That page warns: "A "pending" publisher does not create a project or reserve a project's name until it is actually used to publish." PyPI's JSON API had no project called `clipskitty-sdk` on 2026-10-08, which doesn't prove the name will still be free.

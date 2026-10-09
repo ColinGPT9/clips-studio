@@ -14,6 +14,7 @@ an engine test, not one of the SDK's own (tests/test_plugin_sdk_*.py).
 """
 
 import fnmatch
+import json
 import re
 import sys
 import unicodedata
@@ -37,11 +38,13 @@ TUTORIAL = ROOT / "docs" / "developers" / "first-game-pipeline.md"
 REPO = "https://github.com/ColinGPT9/clips-studio"
 DRAFT_LINE = ("**DRAFT. Nothing here is posted, published or created. Each item needs Colin's approval "
               "(see the SDK plan's approval list).**")
-LICENCE_SENTENCE = ("Contributions to `sdk/python/` and the MIT examples are under MIT, and to "
-                    "`awesome-clips-kitty/` under CC0-1.0; everything else is AGPL-3.0-or-later.")
+LICENCE_SENTENCE = ("Contributions to `sdk/python/` and the MIT examples are under MIT; everything else is "
+                    "AGPL-3.0-or-later.")
 
 # Pages outside this repository that the drafts may link, each fetched (HTTP 200) and read on 2026-10-08.
 CONFIRMED = {
+    # Awesome Clips Kitty's Wanted list, in its own repository since D36.
+    "https://github.com/ColinGPT9/awesome-clips-kitty/blob/main/README.md#wanted",
     "https://news.ycombinator.com/showhn.html",
     "https://news.ycombinator.com/newsguidelines.html",
     "https://dev.to/t/showdev",
@@ -313,7 +316,7 @@ def _norm(value: str) -> str:
 
 def real_games() -> set[str]:
     """Names and short names of real games: the catalog's game sections and the search's aliases."""
-    sections = yaml.safe_load((ROOT / "awesome-clips-kitty" / "registry" / "sections.yaml").read_text(encoding="utf-8"))
+    sections = json.loads((ROOT / "plugins" / "catalog_index.json").read_text(encoding="utf-8"))["sections"]
     names = set()
 
     def walk(node):

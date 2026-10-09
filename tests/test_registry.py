@@ -372,8 +372,8 @@ def test_an_sdk_listing_passes_check_listing(tmp_path, monkeypatch):
     assert listing.run(folder, to=out, **quiet) == 0, quiet["stderr"].getvalue()
 
     data = yaml.safe_load(out.read_text(encoding="utf-8"))
-    sections, found = catalog.read_sections(ROOT / "awesome-clips-kitty")
-    assert found == []
+    sections = json.loads(registry.bundled_path().read_text(encoding="utf-8"))["sections"]
+    assert catalog.check_sections(sections) == []
     assert registry.check_listing(data, f"{owner}/{name}.yaml", folder="pipelines", sections=sections) == []
     assert [v["version"] for v in data["versions"]] == ["1.0.0", "1.1.0"] and data["path"] == path
 
@@ -381,7 +381,7 @@ def test_an_sdk_listing_passes_check_listing(tmp_path, monkeypatch):
     catalog_dir = tmp_path / "catalog"
     (catalog_dir / "registry" / "pipelines" / owner).mkdir(parents=True)
     (catalog_dir / "registry" / "blocklist.yaml").write_text("[]\n")
-    shutil.copy(ROOT / "awesome-clips-kitty" / "registry" / "sections.yaml", catalog_dir / "registry")
+    (catalog_dir / "registry" / "sections.yaml").write_text(yaml.safe_dump(sections), encoding="utf-8")
     shutil.copy(out, catalog_dir / "registry" / "pipelines" / owner / f"{name}.yaml")
 
     def fetch(url):
@@ -412,42 +412,20 @@ def test_an_sdk_listing_passes_check_listing(tmp_path, monkeypatch):
             "aliases: at most 10 words or short phrases"]
 
 
-def _this_repository(url):
-    """The project's own listings point at commits of this repository. Read
-    each manifest at its own commit with git, so the test needs no network.
-    A shallow clone without that commit skips: CI's build step
-    (build_registry_index.py --check) reads the real commits from GitHub."""
-    m = re.match(r"https://raw\.githubusercontent\.com/ColinGPT9/clips-studio/([0-9a-f]{40})/(.+)$", url)
-    if not m:
-        raise AssertionError(f"the committed catalog should need no fetch: {url}")
-    commit, path = m.groups()
-    shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{commit}:{path}"], capture_output=True,
-                           text=True, encoding="utf-8")
-    if shown.returncode != 0:
-        pytest.skip(f"commit {commit[:7]} is not in this clone; CI's --check step reads it from GitHub")
-    return shown.stdout
-
-
-def _in_this_repository(owner, repo, commit):
-    """The branch check, for the same commits: this clone has them (the
-    --check step makes the real check, against GitHub's branches)."""
-    assert (owner, repo) == ("ColinGPT9", "clips-studio"), f"the committed catalog lists {owner}/{repo}"
-    if subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"],
-                      capture_output=True).returncode != 0:
-        pytest.skip(f"commit {commit[:7]} is not in this clone; CI's --check step checks it on GitHub")
-    return True
-
-
-def test_the_committed_catalog_is_up_to_date():
-    from scripts.build_registry_index import readme_for
-
-    folder = ROOT / "awesome-clips-kitty"
-    index, problems = registry.build_index(folder, fetch=_this_repository, on_branch=_in_this_repository)
-    assert problems == []
-    hint = "run python scripts/build_registry_index.py"
-    assert (folder / "index.json").read_text(encoding="utf-8") == registry.index_text(index), hint
-    readme = (folder / "README.md").read_text(encoding="utf-8")
-    assert readme_for(index, readme) == readme, hint
+def test_the_list_that_ships_with_the_app_is_one_the_app_reads_whole():
+    """The catalog is its own repository (github.com/ColinGPT9/awesome-clips-kitty),
+    which checks and builds itself. What stays here is the copy of its index
+    the app ships with (scripts/sync_catalog_index.py fetches it): the app
+    must keep all of it, and it must be the build's own text."""
+    text = registry.bundled_path().read_text(encoding="utf-8")
+    raw = json.loads(text)
+    assert registry.index_text(raw) == text, "run python scripts/sync_catalog_index.py"
+    kept = registry.check_index(raw, ours=True)
+    assert [p["id"] for p in kept["plugins"]] == [p["id"] for p in raw["plugins"]] != []
+    assert [e["id"] for e in kept["catalog"]] == [e["id"] for e in raw["catalog"]] != []
+    assert catalog.check_sections(raw["sections"]) == []
+    # Only what is built with Clips Kitty (D35).
+    assert {e["relationship"] for e in raw["catalog"]} == {"built-with"}
 
 
 # ---- search --------------------------------------------------------------------------------
@@ -872,11 +850,17 @@ def test_the_online_list_is_checked_once_a_day_retried_hourly_and_can_be_switche
 
 
 def test_the_online_list_is_the_catalogs_index_on_the_main_branch():
-    """The address is the committed index's own place on the project's main
-    branch, so what it serves is exactly what was merged (D29)."""
-    assert registry.ONLINE_URL == ("https://raw.githubusercontent.com/ColinGPT9/clips-studio/main/"
-                                   + registry.CATALOG_FOLDER + "/index.json")
-    assert registry.bundled_path().relative_to(ROOT).as_posix() == registry.CATALOG_FOLDER + "/index.json"
+    """The address is the index's own place on the main branch of the
+    catalog's repository, so what it serves is exactly what was merged there
+    (D29, D36). The copy the app ships with is a file of this repository."""
+    assert registry.ONLINE_URL == f"https://raw.githubusercontent.com/{registry.CATALOG_REPOSITORY}/main/index.json"
+    import importlib
+
+    from plugins._sdk import clipskitty_sdk  # the SDK, on the path the engine puts it on
+
+    listing = importlib.import_module(clipskitty_sdk.__name__ + ".listing")
+    assert registry.CATALOG_REPOSITORY == listing.CATALOG_REPOSITORY == "ColinGPT9/awesome-clips-kitty"
+    assert registry.bundled_path().relative_to(ROOT).as_posix() == "plugins/catalog_index.json"
     assert registry.index_urls({"plugins": {"registry_urls": [registry.ONLINE_URL]}}) == []
 
 

@@ -260,6 +260,14 @@ in `ui/electron-builder.yml`, and turning it back on is documented there.
 Version lives in `ui/package.json` only. Bump it, commit, then build. The
 artifact names and `latest.yml` follow from it.
 
+## The Marketplace's list
+
+The app ships a copy of [Awesome Clips Kitty](https://github.com/ColinGPT9/awesome-clips-kitty)'s index,
+`plugins/catalog_index.json`: what the Marketplace shows before the app has been
+online, and the copy it takes labels from. Before building, run
+`python scripts/sync_catalog_index.py` and commit the file if it changed, so the
+release carries the list as it is then.
+
 ## The other two channels
 
 Everything above is the standalone installer, which is the primary channel and

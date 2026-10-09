@@ -385,7 +385,7 @@ def _norm(text: str) -> str:
 
 def real_games() -> set[str]:
     """Names and short names of real games: the catalog's game sections and the search's aliases."""
-    sections = yaml.safe_load((ROOT / "awesome-clips-kitty" / "registry" / "sections.yaml").read_text(encoding="utf-8"))
+    sections = json.loads((ROOT / "plugins" / "catalog_index.json").read_text(encoding="utf-8"))["sections"]
     names = set()
 
     def walk(node):

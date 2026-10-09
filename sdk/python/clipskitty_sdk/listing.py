@@ -48,8 +48,8 @@ from . import devrun, samples, scaffold
 from .manifest import MANIFEST_FILE, line_marks, validate_folder, yaml_data
 
 # The catalog: the repository that holds it, and the folder a pipeline's listing goes in.
-CATALOG_REPOSITORY = "ColinGPT9/clips-studio"
-CATALOG_FOLDER = "awesome-clips-kitty/registry/pipelines"
+CATALOG_REPOSITORY = "ColinGPT9/awesome-clips-kitty"
+CATALOG_FOLDER = "registry/pipelines"
 # The catalog's own rules (plugins/catalog.py SECTION_RE and OFFICIAL_OWNERS, and
 # plugins/registry.py check_listing); tests/test_registry.py checks they match.
 SECTION_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$"
@@ -73,13 +73,13 @@ NOT_THE_OWNER = "the id's publisher is {p}, but the repository's owner is {o}: t
 PLACEHOLDER = "the plugin still has the template's placeholder {word}: a catalog listing is for your real plugin"
 ALREADY_LISTED = "version {v} is already listed; a listed version never changes"
 NO_TAG = "no tag v{version} at this commit; the listing names the commit only"
-CHECK_SECTION = "check that {section} is in awesome-clips-kitty/registry/sections.yaml"
-NEXT = """Next, in a copy of ColinGPT9/clips-studio:
-  1. {first}
-  2. run: python scripts/build_registry_index.py   (it needs PyYAML and the network)
-  3. open a pull request with the file and the updated awesome-clips-kitty/index.json and README.md.
-CI checks that index.json and README.md match the listings, so a pull request with the file alone fails.
-Once merged, Clips Kitty versions with the Marketplace see it after Check for new pipelines."""
+CHECK_SECTION = f"check that {{section}} is in registry/sections.yaml of {CATALOG_REPOSITORY}"
+NEXT = f"""Next, in a copy of {CATALOG_REPOSITORY}:
+  1. {{first}}
+  2. open a pull request with that one file.
+Its check builds the catalog with your file and says why if it is refused. Leave index.json and README.md
+alone: a job rebuilds both after the merge.
+Once that is done, Clips Kitty versions with the Marketplace see it after Check for new pipelines."""
 ADD_AS = "add this file as {where}"
 REPLACE = "put this file in place of {where}"
 IN_PLACE = "the file is already {where}"
@@ -96,9 +96,9 @@ NOT_GITHUB = ("this folder's git remote is {b}, which isn't a GitHub repository:
               "https://github.com/<owner>/<repo>")
 GIT_FAILED = "git {command} failed: {why}"
 GIT_SUGGESTS = "{failed}. Git says to run: {command}"
-NO_SECTION = ("--section is needed: a pipeline section id from awesome-clips-kitty/registry/sections.yaml, "
+NO_SECTION = (f"--section is needed: a pipeline section id from registry/sections.yaml of {CATALOG_REPOSITORY}, "
               "such as gaming/generic")
-BAD_SECTION = ("--section must be a section id from awesome-clips-kitty/registry/sections.yaml, such as "
+BAD_SECTION = (f"--section must be a section id from registry/sections.yaml of {CATALOG_REPOSITORY}, such as "
                "gaming/generic")
 BAD_ALIASES = (f"--alias: at most {MAX_ALIASES} words or short phrases, each up to {MAX_ALIAS_LENGTH} "
                "characters on one line")
@@ -393,7 +393,7 @@ def _entry_lines(entry: dict, indent: str = "  ", gap: str = " ") -> list[str]:
 
 
 def listing_text(manifest: dict, where: dict, *, section: str, aliases=(), added: str) -> str:
-    """A new listing, in the catalog's format (awesome-clips-kitty/CONTRIBUTING.md)."""
+    """A new listing, in the catalog's format (CONTRIBUTING.md in its repository)."""
     lines = [f"id: {_scalar(manifest['id'])}", f"repository: {_scalar(where['repository'])}",
              f"path: {_scalar(where['path'])}", f"section: {_scalar(section)}"]
     if aliases:

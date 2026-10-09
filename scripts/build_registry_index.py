@@ -4,8 +4,10 @@
     python scripts/build_registry_index.py --check          # fail if either is out of date or an entry is refused
     python scripts/build_registry_index.py --sources DIR    # read manifests from DIR instead of GitHub
 
-The catalog is awesome-clips-kitty/ (CONTRIBUTING.md there says what an entry
-must pass). Each listed version's manifest is fetched at its commit as plain
+The catalog is its own repository, github.com/ColinGPT9/awesome-clips-kitty
+(CONTRIBUTING.md there says what an entry must pass), and its jobs run this
+script from a checkout of this repository. --catalog names the catalog's
+folder; without it, a checkout beside this repository is used. Each listed version's manifest is fetched at its commit as plain
 text from GitHub (raw.githubusercontent.com) and checked with the validator
 the app uses. Each commit must also be on a branch or tag of the listed
 repository, because GitHub serves a fork's commits under the parent's address

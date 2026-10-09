@@ -22,8 +22,6 @@ import sys
 import unicodedata
 from pathlib import Path
 
-import yaml
-
 ROOT = Path(__file__).resolve().parent.parent
 SDK = ROOT / "sdk" / "python"
 for path in (str(ROOT), str(SDK), str(ROOT / "scripts")):
@@ -282,7 +280,7 @@ def _norm(text: str) -> str:
 
 def real_games() -> set[str]:
     """Names and short names of real games: the catalog's game sections and the search's aliases."""
-    sections = yaml.safe_load((ROOT / "awesome-clips-kitty" / "registry" / "sections.yaml").read_text(encoding="utf-8"))
+    sections = json.loads((ROOT / "plugins" / "catalog_index.json").read_text(encoding="utf-8"))["sections"]
     names = set()
 
     def walk(node):
@@ -344,9 +342,19 @@ def _md_target_ok(rel: str, anchor: str) -> bool:
     return not anchor or path.suffix != ".md" or anchor in md_anchors(path)
 
 
+# Awesome Clips Kitty is its own repository (D36), so this checkout can't
+# back its pages: its front page, its Wanted list, its sections file and its
+# contributing page, each fetched (HTTP 200) on 2026-10-08.
+CATALOG = "https://github.com/ColinGPT9/awesome-clips-kitty"
+CATALOG_PAGES = {CATALOG, f"{CATALOG}/blob/main/README.md#wanted", f"{CATALOG}/blob/main/registry/sections.yaml",
+                 f"{CATALOG}/blob/main/CONTRIBUTING.md"}
+
+
 def check_url(url: str) -> str | None:
     """Why `url` isn't one this checkout backs, or None when it is."""
     if url == "https://schema.org":
+        return None
+    if url in CATALOG_PAGES:
         return None
     if url == "https://paypal.me/clipsstudio":
         return None  # the donate link every page already has

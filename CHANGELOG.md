@@ -19,7 +19,9 @@ were often broken in a way that only showed up on somebody else's machine.
   to confirm before anything is installed. Nothing changes until you install something.
   The Marketplace also shows **Awesome Clips Kitty**, the list of integrations, apps and
   tools that other people have built with Clips Kitty. It lists only what runs in Clips
-  Kitty or uses it: a link to another project is not an entry. Labels: ✓ Official (made by this project), ✓ Compatible (passed
+  Kitty or uses it: a link to another project is not an entry. The list is its own
+  repository, github.com/ColinGPT9/awesome-clips-kitty, where a developer adds a pipeline
+  with a pull request of one file. Labels: ✓ Official (made by this project), ✓ Compatible (passed
   automated checks; not a security review), ★ Featured and Community. Installs from the
   Marketplace can be counted anonymously, with a switch to turn it off; nothing is counted
   yet. The developer kit is now MIT-licensed; the app stays AGPL-3.0-or-later.

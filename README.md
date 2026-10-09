@@ -810,11 +810,11 @@ key, which the MCP client never sees). An agent skill for clients that support t
 
 ### Built with Clips Kitty
 
-Projects that run on this API are listed in **[Awesome Clips Kitty](awesome-clips-kitty/)**,
+Projects that run on this API are listed in **[Awesome Clips Kitty](https://github.com/ColinGPT9/awesome-clips-kitty)**,
 the list of pipelines, plugins, integrations, apps and tools built with Clips Kitty. The
 first is the [Clips Kitty OBS Plugin](https://github.com/ColinGPT9/clips-kitty-obs-plugin),
 an OBS Studio dock that hands your stream to Clips Kitty after it ends. Built one?
-Add it with a pull request ([how](awesome-clips-kitty/CONTRIBUTING.md)), and give your
+Add it with a pull request ([how](https://github.com/ColinGPT9/awesome-clips-kitty/blob/main/CONTRIBUTING.md)), and give your
 repository the `clips-kitty` topic.
 
 ## Architecture
@@ -905,7 +905,7 @@ Three parts are licensed separately, so that building on Clips Kitty stays easy:
 | Clips Kitty (the app, its engine, this repository) | AGPL-3.0-or-later |
 | The plugin SDK, [`sdk/python/`](sdk/python/) | MIT ([sdk/python/LICENSE](sdk/python/LICENSE)) |
 | The example plugins, [`examples/pipelines/scene-cut-highlights/`](examples/pipelines/scene-cut-highlights/) and [`examples/pipelines/keyword-rater/`](examples/pipelines/keyword-rater/) | MIT |
-| The Awesome Clips Kitty catalog, [`awesome-clips-kitty/`](awesome-clips-kitty/) | CC0-1.0 |
+| The copy of the Awesome Clips Kitty list that ships with the app, `plugins/catalog_index.json` (the list is [its own repository](https://github.com/ColinGPT9/awesome-clips-kitty)) | CC0-1.0 |
 
 Plugins, pipelines and apps made by other people keep whatever licence their authors
 chose; the Marketplace shows it on every listing. Using the SDK does not put a

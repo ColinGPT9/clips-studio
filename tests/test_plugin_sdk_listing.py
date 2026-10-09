@@ -70,12 +70,12 @@ if __name__ == "__main__":
     run(main)
 """
 NEXT = [
-    "Next, in a copy of ColinGPT9/clips-studio:",
-    f"  1. add this file as awesome-clips-kitty/registry/pipelines/{PLUGIN_ID}.yaml",
-    "  2. run: python scripts/build_registry_index.py   (it needs PyYAML and the network)",
-    "  3. open a pull request with the file and the updated awesome-clips-kitty/index.json and README.md.",
-    "CI checks that index.json and README.md match the listings, so a pull request with the file alone fails.",
-    "Once merged, Clips Kitty versions with the Marketplace see it after Check for new pipelines.",
+    "Next, in a copy of ColinGPT9/awesome-clips-kitty:",
+    f"  1. add this file as registry/pipelines/{PLUGIN_ID}.yaml",
+    "  2. open a pull request with that one file.",
+    "Its check builds the catalog with your file and says why if it is refused. Leave index.json and README.md",
+    "alone: a job rebuilds both after the merge.",
+    "Once that is done, Clips Kitty versions with the Marketplace see it after Check for new pipelines.",
 ]
 
 
@@ -173,7 +173,7 @@ def test_listing_writes_the_catalog_format(repo, capsys):
         "versions": [{"version": "1.0.0", "commit": commit}]}
     assert out.splitlines() == [f"wrote {NAME}.yaml: {PLUGIN_ID} 1.0.0 at commit {commit[:7]}", *NEXT]
     assert err.splitlines() == ["note: no tag v1.0.0 at this commit; the listing names the commit only",
-                                "note: check that gaming/generic is in awesome-clips-kitty/registry/sections.yaml"]
+                                "note: check that gaming/generic is in registry/sections.yaml of ColinGPT9/awesome-clips-kitty"]
 
     # A tag v{version} at the commit is listed; another tag isn't.
     git(repo.root, "tag", "v0.9.0")
@@ -437,7 +437,7 @@ def test_listing_to_appends_a_version_and_refuses_a_duplicate(repo, capsys):
     assert yaml.safe_load(after)["versions"] == [{"version": "1.0.0", "commit": first},
                                                  {"version": "1.1.0", "commit": second, "tag": "v1.1.0"}]
     assert out.splitlines()[0] == f"wrote {path}: {PLUGIN_ID} 1.1.0 at commit {second[:7]}"
-    assert out.splitlines()[2] == f"  1. put this file in place of awesome-clips-kitty/registry/pipelines/{PLUGIN_ID}.yaml"
+    assert out.splitlines()[2] == f"  1. put this file in place of registry/pipelines/{PLUGIN_ID}.yaml"
     assert "check that" not in err  # the section is the listing's own
 
     # A listed version never changes.
@@ -467,7 +467,7 @@ def test_listing_to_keeps_the_rest_of_a_hand_written_listing(repo, capsys):
     after = path.read_bytes().decode("utf-8")
     assert after == text.replace("  date: 2026-09-01\r\n", f"  date: 2026-09-01\r\n- version: 1.2.0\r\n  commit: "
                                                          f"{third}\r\n")
-    assert out.splitlines()[2] == f"  1. the file is already awesome-clips-kitty/registry/pipelines/{PLUGIN_ID}.yaml"
+    assert out.splitlines()[2] == f"  1. the file is already registry/pipelines/{PLUGIN_ID}.yaml"
 
     # Not another plugin's listing, nor one whose code is elsewhere.
     other = repo.root.parent / "other.yaml"
@@ -544,20 +544,22 @@ def test_listing_runs_no_git_command_that_writes(repo, capsys, monkeypatch):
     assert callers == ["_git"]
 
 
-def test_listing_says_to_rebuild_the_index(repo, capsys):
+def test_listing_says_where_the_file_goes_and_who_rebuilds_the_index(repo, capsys):
+    """The catalog is its own repository, whose jobs check a pull request and
+    rebuild index.json and README.md after the merge (D36). So the pull
+    request is the one file, and neither the SDK nor the docs send anyone to
+    this repository or to a build script."""
     code, out, err = _listing(capsys, NAME, "--section", "gaming/generic")
     assert code == 0, err
     text = "\n".join(out.splitlines()[1:])
     assert text == "\n".join(NEXT)
-    for name in ("build_registry_index.py", "index.json", "README.md"):
-        assert name in text
+    assert "ColinGPT9/awesome-clips-kitty" in text and "clips-studio" not in text
+    assert "build_registry_index.py" not in text
 
     docs = (ROOT / "docs" / "developers" / "marketplace-publishing.md").read_text(encoding="utf-8")
-    assert "adding one file" not in docs
-    for words in ("python -m clipskitty_sdk listing", "python scripts/build_registry_index.py",
-                  "the updated `awesome-clips-kitty/index.json` and `README.md`", "with the file alone fails",
-                  "merged with the rebuilt `index.json`"):
+    for words in ("python -m clipskitty_sdk listing", "https://github.com/ColinGPT9/awesome-clips-kitty",
+                  "open a pull request with that one file", "a job rebuilds `index.json` and `README.md`"):
         assert words in docs, words
-    contributing = (ROOT / "awesome-clips-kitty" / "CONTRIBUTING.md").read_text(encoding="utf-8")
-    assert "Open a pull request adding" not in contributing
-    assert "python scripts/build_registry_index.py" in contributing and "clipskitty_sdk listing" in contributing
+    for gone in ("with the file alone fails", "the updated `awesome-clips-kitty/index.json`", "In a copy of this repository"):
+        assert gone not in docs, gone
+    assert not (ROOT / "awesome-clips-kitty").exists(), "the catalog is its own repository, not a folder here"

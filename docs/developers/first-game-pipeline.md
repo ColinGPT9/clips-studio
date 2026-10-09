@@ -330,7 +330,7 @@ cd ..
 python -m clipskitty_sdk listing quarkbloom-bursts --section gaming/generic
 ```
 
-`listing` checks that everything is committed and pushed and that your GitHub name owns the repository, writes the listing file, and says what to do next: add it to Awesome Clips Kitty, the catalog the Marketplace reads, with the catalog's index rebuilt, in one pull request. Use your game's own section if `awesome-clips-kitty/registry/sections.yaml` has one. [Marketplace publishing](marketplace-publishing.md) has the rest.
+`listing` checks that everything is committed and pushed and that your GitHub name owns the repository, writes the listing file, and says what to do next: add it to [Awesome Clips Kitty](https://github.com/ColinGPT9/awesome-clips-kitty), the catalog the Marketplace reads, in a pull request with that one file. Use your game's own section if the catalog's `registry/sections.yaml` has one. [Marketplace publishing](marketplace-publishing.md) has the rest.
 
 ## What it doesn't do
 
