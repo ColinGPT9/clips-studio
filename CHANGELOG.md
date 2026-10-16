@@ -12,6 +12,13 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **YouTube cookies, for when YouTube keeps saying "confirm you're not a bot".** Under
+  **Settings → Advanced settings**, choose **From Firefox** (signed in to YouTube there)
+  or a cookies.txt file exported from a browser signed in to YouTube. Clips Kitty uses it
+  only when YouTube has refused a download both the ordinary way and over IPv4; every
+  other download stays signed out. Chrome and Edge lock their cookies on Windows, so they
+  are not offered. (#136)
+
 - **A Marketplace, and Awesome Clips Kitty.** Other developers can now write their own
   "find the best moments" step (a pipeline) and list it; you install one from the new
   **Marketplace** screen and switch it on for a video with the **Pipeline** option. Every
@@ -185,6 +192,20 @@ were often broken in a way that only showed up on somebody else's machine.
   was (#121).
 
 ### Fixed
+
+- **Cloud AI keys save again.** In 2.0.0, saving a key for OpenRouter, Gemini, OpenAI or
+  Anthropic failed with an error, because part of the cloud AI support was left out of
+  the installed app. (#135)
+- **Adding a watermark to a clip that is open in the editor works.** It failed with
+  "Access is denied", and **Update preview** with "file in use", because the clip or its
+  last preview was still playing. (#137)
+- **A clip made with captions off stays without them when you edit it.** Its first edit
+  used to burn the captions back in. The editor's **Captions** tab also has a
+  **Captions** on/off switch for each clip now. (#128)
+- **The Generate row remembers the rest of its settings.** The caption style, the
+  **Longform output** you picked from the list, the **Pipeline** and the **Rate &
+  understand** plugins now carry over to the next video and survive a restart, like the
+  other switches already did. (#138)
 
 - **Processing a video again keeps your edits.** **Process again** made every clip it
   found again from the start: cuts, mutes, a layout, captions you fixed, colours,
