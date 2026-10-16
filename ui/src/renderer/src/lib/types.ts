@@ -782,7 +782,6 @@ export interface Settings {
   translation_model: string // local model used for translation ('' = the main one)
   outro: boolean // append the Clips Kitty end card to each clip (clips.outro)
   min_score: number // clips.min_score: clips scoring below it are dropped (0-100)
-  youtube_cookies: string // '' none, 'firefox', or a cookies.txt path (#136)
 }
 
 /** Events arriving over the WebSocket. */

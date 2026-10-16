@@ -45,30 +45,6 @@ _ipv4_only = False
 # Only YouTube answers like this. A Twitch or Kick link is asked for the way
 # it always was, whatever YouTube has been doing.
 _YOUTUBE = re.compile(r"(?:^|//|\.)(?:youtube\.com|youtu\.be|youtube-nocookie\.com)(?:[/:?#]|$)", re.I)
-# A signed-in session to fall back on, set in Settings → Advanced settings
-# (#136): "" for none, "firefox" for that browser's, or a cookies.txt file.
-# Asked with only after YouTube has refused both ways: every other request
-# stays anonymous, as it always was. Chrome and Edge keep theirs locked on
-# Windows, so they aren't offered.
-_cookies = ""
-
-
-def set_cookies(value) -> None:
-    """The YouTube cookies setting (config `youtube_cookies`), as saved."""
-    global _cookies
-    _cookies = str(value or "").strip().strip('"')
-
-
-def cookies() -> str:
-    return _cookies
-
-
-def _with_cookies(opts: dict) -> dict:
-    if _cookies.lower() == "firefox":
-        return {**opts, "cookiesfrombrowser": ("firefox",)}
-    if not Path(_cookies).is_file():
-        raise ValueError(f"The YouTube cookies file set in Settings is not there any more: {_cookies}")
-    return {**opts, "cookiefile": _cookies}
 
 
 def is_bot_check(error) -> bool:
@@ -82,9 +58,7 @@ def extract_info(url: str, opts: dict, *, download: bool = False, process: bool 
 
     A request that works is made exactly as before, once. Any other failure,
     and a second refusal, is raised as it is. Nobody signs in: this only
-    changes which of the PC's own addresses the request leaves from. Unless
-    the person set YouTube cookies in Settings: then a second refusal is
-    asked a third time, with them.
+    changes which of the PC's own addresses the request leaves from.
     """
     global _ipv4_only
     import yt_dlp
@@ -112,15 +86,11 @@ def extract_info(url: str, opts: dict, *, download: bool = False, process: bool 
     try:
         info = ask(other)
     except yt_dlp.utils.DownloadError as e:
-        if not is_bot_check(e):
-            # The other way failed for a reason of its own (no such route, a
-            # timeout). The refusal is what stands in the way, and what is said.
-            raise refused from e
-        if not _cookies:
+        if is_bot_check(e):
             raise
-        print("      (YouTube refused the request both ways; asking again with "
-              "the YouTube cookies set in Settings)")
-        return ask(_with_cookies(opts))
+        # The other way failed for a reason of its own (no such route, a
+        # timeout). The refusal is what stands in the way, and what is said.
+        raise refused from e
     # yt-dlp has already printed its refusal, cookie advice and all: say what
     # became of it, so the log does not read as a failure.
     print("      (YouTube took the request for a bot; asked again "
