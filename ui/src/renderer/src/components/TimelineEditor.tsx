@@ -1459,6 +1459,7 @@ export default function TimelineEditor({
               setGaming(storedGaming)
               setRememberGaming(false)
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
+              setCaptionsOn(storedCaptionsOn)
               setHeadline(storedHeadline)
               setSubline(storedSubline)
               setWatermark(clip.render_opts?.watermark ?? null)

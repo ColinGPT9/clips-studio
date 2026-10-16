@@ -190,7 +190,8 @@ export default function EditorView({
         bakedKeep: liveOverlay?.bakedKeep,
         keep: liveOverlay?.keep ?? [],
         burned:
-          clip.render_opts?.captions !== false && translated.source.length > 0
+          (clip.render_opts?.captions ?? clip.render_opts?.job_captions ?? true) !== false &&
+          translated.source.length > 0
             ? { lines: translated.source, style: captionStyle }
             : null,
         burnedHook: null

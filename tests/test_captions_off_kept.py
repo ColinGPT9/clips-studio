@@ -100,3 +100,19 @@ def test_the_editor_sends_its_switch_on_apply_and_preview():
     assert "captionsDirty ? captionsOn : undefined" in editor
     assert "clip.render_opts?.captions ?? clip.render_opts?.job_captions ?? true" in editor
     assert "captions: captions ?? null" in API_TS.read_text(encoding="utf-8")
+
+
+def test_a_clips_own_switch_from_an_earlier_run_is_not_saved_over_a_captions_off_run(render):
+    # "Make it again with my edits" with captions off carries a clip's
+    # captions:true; the file burns none, so neither may what is saved.
+    saved, ass = render(captions=False, opts={"captions": True})
+    assert ass is None and "captions" not in saved and saved["job_captions"] is False
+    _resaved, ass = render(captions=True, opts=saved)
+    assert ass is None
+
+
+def test_reset_and_the_translation_preview_read_the_same_switch():
+    editor = EDITOR.read_text(encoding="utf-8")
+    assert "setCaptionsOn(storedCaptionsOn)" in editor            # Reset puts it back
+    modal = (EDITOR.parent / "EditorModal.tsx").read_text(encoding="utf-8")
+    assert "clip.render_opts?.captions ?? clip.render_opts?.job_captions ?? true" in modal

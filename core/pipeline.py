@@ -1645,6 +1645,10 @@ def _render_files(
     # none: never ones left over from an earlier render.
     opts = {k: v for k, v in opts.items() if k != "speaker_turns"}
     job_captions = bool(config["clips"].get("captions", True)) and opts.get("job_captions", True)
+    # A run with captions off burns none, whatever a clip had switched on in
+    # an earlier one: saved, that switch would put them back at its next edit.
+    if not config["clips"].get("captions", True) and opts.get("captions"):
+        opts = {k: v for k, v in opts.items() if k != "captions"}
     render_opts_json = json.dumps(
         {
             **opts,
