@@ -56,6 +56,10 @@ hiddenimports += collect_submodules("sports")
 # Plugins (plugins/): imported inside functions only when a job names a
 # pipeline plugin, so name them all rather than rely on the analyser.
 hiddenimports += collect_submodules("plugins")
+# Cloud AI adapters (llm/providers/adapters/): adapter_for imports each by the
+# name its provider spec gives, which the analyser can't follow. 2.0.0 shipped
+# without them and saving any cloud key failed with a 500 (#135).
+hiddenimports += collect_submodules("llm.providers.adapters")
 hiddenimports += [
     "uvicorn.logging",
     "uvicorn.loops.auto",

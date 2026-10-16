@@ -79,6 +79,20 @@ def test_the_spec_bundles_the_sports():
     assert '"sports.yaml"' in text, "the spec no longer bundles config/sports.yaml"
 
 
+def test_the_spec_bundles_every_cloud_ai_adapter():
+    """adapter_for imports each provider's adapter by name: 2.0.0 shipped
+    without them, and saving a cloud key answered 500 (#135). Every adapter
+    a provider names exists, and the spec collects the package."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert 'collect_submodules("llm.providers.adapters")' in text, "the spec no longer bundles the AI adapters"
+    names = set()
+    for path in (ROOT / "llm" / "providers").glob("*.py"):
+        names |= set(re.findall(r'adapter="([a-z_]+)"', path.read_text(encoding="utf-8")))
+    assert names, "no provider names an adapter any more"
+    for name in sorted(names):
+        assert importlib.util.find_spec(f"llm.providers.adapters.{name}") is not None, name
+
+
 def test_the_spec_bundles_the_plugin_runner_and_the_sdk():
     """process_video imports plugins/ only when a job names a pipeline, and a
     plugin process imports the SDK from files, so both must ship explicitly."""
