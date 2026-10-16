@@ -459,7 +459,7 @@ def test_a_truly_unwritable_clip_is_left_alone(clip_factory, cfg, monkeypatch, c
     assert appended is False
     assert _packets(clip) == before
     assert _video_hash(clip, before) == digest
-    assert "outro skipped" in capsys.readouterr().out
+    assert "End card skipped" in capsys.readouterr().out
 
 
 def test_stale_build_dirs_are_swept(tmp_path):

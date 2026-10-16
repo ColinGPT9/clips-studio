@@ -1136,7 +1136,7 @@ def _overwrite_in_place(src: Path, dst: Path) -> bool:
     return False
 
 
-def _replace_with_retry(src: Path, dst: Path, budget: float = REPLACE_BUDGET) -> bool:
+def _replace_with_retry(src: Path, dst: Path, budget: float = REPLACE_BUDGET, label: str = "End card") -> bool:
     """Put `src` in `dst`'s place, against whatever is holding the file.
 
     Two strategies, because two different things block this and they need
@@ -1156,7 +1156,8 @@ def _replace_with_retry(src: Path, dst: Path, budget: float = REPLACE_BUDGET) ->
     nothing except a minute of stalling per held clip.
 
     Returns False rather than raising: the caller then leaves the clip exactly
-    as it was, which is the right outcome either way.
+    as it was, which is the right outcome either way. `label` names the step
+    in the log (the watermark and the editor's preview use this too, #137).
     """
     started = time.monotonic()
     delay = 0.1
@@ -1165,7 +1166,7 @@ def _replace_with_retry(src: Path, dst: Path, budget: float = REPLACE_BUDGET) ->
             src.replace(dst)
             waited = time.monotonic() - started
             if waited > 0.5:
-                print(f"      End card: {dst.name} was locked for "
+                print(f"      {label}: {dst.name} was locked for "
                       f"{waited:.1f}s — added anyway")
             return True
         except PermissionError:
@@ -1177,14 +1178,14 @@ def _replace_with_retry(src: Path, dst: Path, budget: float = REPLACE_BUDGET) ->
     # Still held after the rename budget: almost certainly a preview open in
     # the app rather than a scan, so stop waiting and write through it.
     if _overwrite_in_place(src, dst):
-        print(f"      End card: {dst.name} was open elsewhere — written in "
+        print(f"      {label}: {dst.name} was open elsewhere — written in "
               f"place instead")
         return True
 
     # Both refused, which a memory-mapped file will do. Say so: a clip that
     # quietly comes out without an end card and no reason in the log is how
     # this went unexplained for days.
-    print(f"  outro skipped: {dst.name} could not be replaced or written "
+    print(f"  {label} skipped: {dst.name} could not be replaced or written "
           f"({time.monotonic() - started:.0f}s)")
     return False
 

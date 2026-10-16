@@ -269,4 +269,11 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
     if result.returncode != 0:
         discard(tmp)
         raise RuntimeError(f"watermark overlay failed:\n{result.stderr[-1500:]}")
-    tmp.replace(video_path)
+    # The clip is often open in the editor's player: Windows refuses a rename
+    # over it (WinError 5, #137) but allows writing into it.
+    from video.outro import _replace_with_retry
+
+    placed = _replace_with_retry(tmp, video_path, label="Watermark")
+    discard(tmp)
+    if not placed:
+        raise RuntimeError(f"watermark: {video_path.name} is open elsewhere and could not be written")
