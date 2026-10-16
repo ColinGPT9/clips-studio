@@ -162,7 +162,7 @@ function savedStyle(): Required<CaptionStyle> {
   try {
     return {
       ...DEFAULT_CAPTION_STYLE,
-      ...JSON.parse(localStorage.getItem('generate-caption-style') ?? '{}')
+      ...JSON.parse(localStorage.getItem(PREF.caption_style) ?? '{}')
     }
   } catch {
     return { ...DEFAULT_CAPTION_STYLE } // a corrupt saved style must not block the list
@@ -186,16 +186,21 @@ const PREF = {
   longform: 'generate-longform',
   longform_mode: 'generate-longform-mode',
   longform_shorts: 'generate-longform-shorts',
-  // The Suggest edits plugins last chosen, as a list of choices.
-  edit: 'generate-edit'
+  caption_style: 'generate-caption-style',
+  // The plugins last chosen, each as a list of choices: Suggest edits, the
+  // Pipeline (a list of one) and Rate & understand's two steps (#138).
+  edit: 'generate-edit',
+  pipeline: 'generate-pipeline',
+  rate: 'generate-rate',
+  understand: 'generate-understand'
 } as const
 
-/** The Suggest edits plugins last chosen in the Generate bar, or null. They
+/** The plugins last chosen under `key` in the Generate bar, or null. They
  *  start this bar's rows only: once the installed plugins are known, one
  *  that has gone is dropped and settings are fitted, as for a draft. */
-function rememberedEdit(): PipelineChoice[] | null {
+function rememberedChoices(key: string): PipelineChoice[] | null {
   try {
-    const raw = JSON.parse(localStorage.getItem(PREF.edit) ?? 'null')
+    const raw = JSON.parse(localStorage.getItem(key) ?? 'null')
     if (!Array.isArray(raw)) return null
     const list = raw
       .filter((c) => c && typeof c.id === 'string' && c.id)
@@ -211,23 +216,39 @@ function rememberedEdit(): PipelineChoice[] | null {
   }
 }
 
-/** Remember the Suggest edits plugins for the next video; none forgets them. */
-function rememberEdit(list: PipelineChoice[] | null | undefined): void {
+/** Remember plugins under `key` for the next video; none forgets them. */
+function rememberChoices(key: string, list: PipelineChoice[] | null | undefined): void {
   try {
-    if (list?.length) localStorage.setItem(PREF.edit, JSON.stringify(list))
-    else localStorage.removeItem(PREF.edit)
+    if (list?.length) localStorage.setItem(key, JSON.stringify(list))
+    else localStorage.removeItem(key)
   } catch {
     // Not remembered for next time; this video still gets it.
   }
 }
 
+/** Remember the plugins a row has now: its Pipeline and its Rate &
+ *  understand steps, for the next video. */
+function rememberPlugins(o: JobOptions): void {
+  rememberChoices(PREF.pipeline, o.pipeline ? [o.pipeline] : null)
+  for (const step of MOMENT_STEPS) rememberChoices(PREF[step], o[step])
+}
+
 /** A new row's options in this bar: the remembered settings, with the
- *  Suggest edits plugins last chosen (never with Longform). */
+ *  plugins last chosen. None with Longform, which picks and writes its clips
+ *  its own way; a Pipeline not with Sports or Gaming scoring either, which
+ *  pick the moments themselves. */
 function startingOptions(): JobOptions {
   const o = seedOptions()
-  const edit = rememberedEdit()
-  if (edit && !o.longform) o.edit = edit
-  return o
+  if (o.longform) return o
+  const edit = rememberedChoices(PREF.edit)
+  if (edit) o.edit = edit
+  const pipeline = rememberedChoices(PREF.pipeline)?.[0]
+  if (pipeline && !o.sport && !o.gaming_scoring) o.pipeline = pipeline
+  for (const step of MOMENT_STEPS) {
+    const list = rememberedChoices(PREF[step])
+    if (list) o[step] = list
+  }
+  return withoutPipelineInSteps(o)
 }
 
 /** A step's chosen plugins that can still do it, each with its settings
@@ -551,7 +572,8 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
 
   /** This video's Pipeline choice. A plugin it names that is also in a Rate
    *  or Understand row leaves that row. */
-  const patchPipeline = (key: string, pipeline: PipelineChoice): void =>
+  const patchPipeline = (key: string, pipeline: PipelineChoice): void => {
+    rememberChoices(PREF.pipeline, [pipeline])
     setSlots((prev) =>
       prev.map((s) =>
         s.key === key
@@ -559,12 +581,13 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
           : s
       )
     )
+  }
 
   /** One Rate & understand step's plugins for this video, or its Suggest
    *  edits plugins. An empty list leaves the step to Clips Kitty; with no
    *  plugin left, the switch is off. */
   const setStep = (key: string, step: JobStep, list: PipelineChoice[]): void => {
-    if (step === 'edit') rememberEdit(list)
+    rememberChoices(PREF[step], list)
     setSlots((prev) =>
       prev.map((s) => {
         if (s.key !== key) return s
@@ -584,8 +607,16 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   })
   const setSlotStyle =
     (slot: Slot) =>
-    <K extends keyof CaptionStyle>(k: K, v: CaptionStyle[K]): void =>
-      patchOptions(slot.key, { caption_style: { ...slotStyle(slot), [k]: v } })
+    <K extends keyof CaptionStyle>(k: K, v: CaptionStyle[K]): void => {
+      // Remembered for the next video, which starts from it (#138).
+      const style = { ...slotStyle(slot), [k]: v }
+      try {
+        localStorage.setItem(PREF.caption_style, JSON.stringify(style))
+      } catch {
+        // Not remembered for next time; this video still gets it.
+      }
+      patchOptions(slot.key, { caption_style: style })
+    }
   /** Every output of this video is 16:9 (Longform with no 9:16 Shorts),
    *  where a post style draws nothing. */
   const longformOnly = (slot: Slot): boolean =>
@@ -728,8 +759,10 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       remember('edit', false)
     }
     remember(key, on && (key !== 'sport' || Boolean(next.sport)), next.longform?.mode)
-    if (key === 'edit' && on) rememberEdit(next.edit)
-    return withoutPipelineInSteps(next)
+    if (key === 'edit' && on) rememberChoices(PREF.edit, next.edit)
+    const done = withoutPipelineInSteps(next)
+    if (key === 'pipeline' || key === 'steps' || key === 'sport' || key === 'longform') rememberPlugins(done)
+    return done
   }
 
   /** Longform's "Also make 9:16 Shorts": both formats from one run (#98). */
@@ -764,6 +797,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
       next.gaming_scoring = true
       delete next.pipeline // gaming scoring picks the moments: not with a pipeline
     } else delete next.gaming_scoring
+    rememberPlugins(next)
     try {
       localStorage.setItem(PREF.gaming_scoring, String(content === 'gaming'))
     } catch {
@@ -1113,9 +1147,14 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
                 <select
                   className="input !w-64"
                   value={slot.options.longform.mode}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     patchOptions(slot.key, { longform: { ...slot.options.longform, mode: e.target.value } })
-                  }
+                    try {
+                      localStorage.setItem(PREF.longform_mode, e.target.value)
+                    } catch {
+                      // Not remembered for next time; this video still gets it.
+                    }
+                  }}
                   aria-label={`Longform output type for video ${n + 1}`}
                 >
                   <option value="short_clips">Short Clips (up to 60s, horizontal)</option>
