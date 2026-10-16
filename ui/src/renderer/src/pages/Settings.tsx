@@ -643,6 +643,73 @@ function MinScoreSetting(): JSX.Element {
   )
 }
 
+/** YouTube cookies (#136): asked with only when YouTube takes this PC for a
+ *  bot and has refused it both ways (sources/ytdlp_common.py); every other
+ *  download stays signed out. */
+function YouTubeCookiesSetting(): JSX.Element {
+  const [saved, setSaved] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api
+      .settings()
+      .then((s) => setSaved(s.youtube_cookies ?? ''))
+      .catch(() => {})
+  }, [])
+
+  const save = async (value: string): Promise<void> => {
+    setError('')
+    try {
+      await api.patchSettings({ youtube_cookies: value })
+      setSaved(value)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+  const pickFile = async (): Promise<void> => {
+    const path = await window.studio.pickCookiesFile()
+    if (path) await save(path)
+  }
+  const kind = !saved ? 'off' : saved === 'firefox' ? 'firefox' : 'file'
+
+  return (
+    <div className="space-y-1">
+      <label
+        className="flex items-center gap-3 text-sm"
+        title={t(
+          'Only if YouTube keeps refusing downloads with "Sign in to confirm you\'re not a bot". Clips Kitty then asks once more as you, with your YouTube sign-in. Firefox: sign in to YouTube in Firefox. A cookies.txt file: export one from a browser signed in to YouTube with a cookies.txt extension. Chrome and Edge lock theirs while open, so they are not offered. Every other download stays signed out.'
+        )}
+      >
+        <span>{t('YouTube cookies')}</span>
+        <select
+          className="input !w-48 !py-1"
+          value={kind}
+          disabled={saved === null}
+          onChange={(e) => {
+            const v = e.target.value
+            if (v === 'off') void save('')
+            else if (v === 'firefox') void save('firefox')
+            else void pickFile()
+          }}
+        >
+          <option value="off">{t('Off')}</option>
+          <option value="firefox">{t('From Firefox')}</option>
+          <option value="file">{t('A cookies.txt file')}</option>
+        </select>
+      </label>
+      {kind === 'file' && (
+        <p className="text-xs text-muted break-all">
+          {saved}{' '}
+          <button type="button" className="text-accent hover:underline" onClick={() => void pickFile()}>
+            {t('Change')}
+          </button>
+        </p>
+      )}
+      {error && <p className="text-xs text-error">{error}</p>}
+    </div>
+  )
+}
+
 function BrandingCard(): JSX.Element {
   const [outro, setOutro] = useState(true)
 
@@ -713,6 +780,7 @@ export default function Settings(): JSX.Element {
       <div className="card space-y-3">
         <h3 className="font-semibold">{t('Advanced settings')}</h3>
         <MinScoreSetting />
+        <YouTubeCookiesSetting />
         <p className="text-xs text-muted border-t border-raised/60 pt-3">{t('For multi-PC setups')}</p>
         <RemoteRenderCard />
       </div>

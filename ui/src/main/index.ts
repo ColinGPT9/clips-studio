@@ -435,6 +435,19 @@ ipcMain.handle('pick-thumbnail-image', async () => {
   }
 })
 
+// YouTube cookies (#136): a cookies.txt exported from a signed-in browser.
+ipcMain.handle('pick-cookies-file', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Choose a cookies.txt file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Cookies file', extensions: ['txt'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
 ipcMain.handle('pick-image-file', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Choose a logo image',

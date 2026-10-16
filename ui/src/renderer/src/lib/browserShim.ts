@@ -51,6 +51,10 @@ export function installBrowserShim(): void {
       unavailable('Choosing an image')
       return null
     },
+    pickCookiesFile: async () => {
+      unavailable('Choosing a cookies file')
+      return null
+    },
     pickFolder: async () => {
       unavailable('Choosing a folder')
       return null
