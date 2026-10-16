@@ -338,6 +338,9 @@ class SettingsPatch(BaseModel):
     translation_model: str | None = None  # local model used for translation
     outro: bool | None = None  # append the Clips Kitty end card (clips.outro)
     min_score: int | None = None  # clips.min_score: the quality bar, 0-100
+    # "" none, "firefox", or a cookies.txt path: asked with only when YouTube
+    # takes the PC for a bot (sources/ytdlp_common.py, #136)
+    youtube_cookies: str | None = None
 
 
 class TranslateIn(BaseModel):
@@ -661,6 +664,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     from server import feedback as feedback_mod
 
     feedback_mod.install_log_capture()  # pipeline prints -> bug-report log tail
+    from sources import ytdlp_common
+
+    ytdlp_common.set_cookies(config.get("youtube_cookies"))  # Settings → Advanced (#136)
     app = FastAPI(title="Clips Kitty API", version="0.1")
     app.add_middleware(
         CORSMiddleware,
@@ -3056,6 +3062,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             # toggle shows the state an upgrading user actually gets.
             "outro": config.get("clips", {}).get("outro", True),
             "min_score": int(config.get("clips", {}).get("min_score", 55)),
+            "youtube_cookies": config.get("youtube_cookies") or "",
         }
 
     @app.patch("/settings")
@@ -3103,6 +3110,21 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if n == 0:
                 raise HTTPException(400, "no 'clips:' section in settings.yaml")
             config.setdefault("clips", {})["min_score"] = body.min_score
+        if body.youtube_cookies is not None:
+            from sources import ytdlp_common
+
+            value = body.youtube_cookies.strip().strip('"')
+            if value.lower() == "firefox":
+                value = "firefox"
+            elif value and not Path(value).is_file():
+                raise HTTPException(400, f"no file at {value}")
+            # Single-quoted: a Windows path's backslashes stay as they are.
+            line = "youtube_cookies: '" + value.replace("'", "''") + "'"
+            text, n = re.subn(r"(?m)^youtube_cookies:.*$", lambda _m: line, text, count=1)
+            if n == 0:
+                text = text.rstrip("\n") + "\n" + line + "\n"
+            config["youtube_cookies"] = value
+            ytdlp_common.set_cookies(value)
 
         edits = {
             "model": body.model,

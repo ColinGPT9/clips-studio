@@ -18,7 +18,7 @@ import yt_dlp
 from defusedxml import ElementTree as ET
 
 from core.models import DownloadedVideo
-from sources.ytdlp_common import extract_info, games_from_info, is_bot_check, progress_opts
+from sources.ytdlp_common import cookies, extract_info, games_from_info, is_bot_check, progress_opts
 
 RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 _ATOM_NS = {
@@ -146,12 +146,22 @@ def _friendly_message(error: str) -> str | None:
     # well as IPv6) and refused both, so it is the network as a whole. A
     # signed-in session would get through; Clips Kitty does not have one.
     if is_bot_check(error):
+        if cookies():
+            return (
+                "YouTube is treating this network as a bot and refused the "
+                "video even with the YouTube cookies set in Settings. Export "
+                "a fresh cookies.txt while signed in to YouTube, or wait an "
+                "hour and try again. Twitch, Kick and local files are not "
+                "affected."
+            )
         return (
             "YouTube is treating this network as a bot and will not serve the "
             "video to it. The link is fine, and Clips Kitty has already asked "
             "a second way. It usually clears on its own: wait an hour and try "
             "again, switch off a VPN if you have one on, or try a different "
-            "network. Twitch, Kick and local files are not affected."
+            "network. If it keeps happening, set YouTube cookies under "
+            "Settings → Advanced settings. Twitch, Kick and local files are "
+            "not affected."
         )
     return None
 
