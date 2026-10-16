@@ -4,6 +4,10 @@ watermark now puts its result in place the way the end card does: retry the
 rename, then write into the open file."""
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("numpy", reason="video.outro draws the end card with numpy, which CI does not install")
+
 from video import outro
 from video_editor import watermark
 
