@@ -7,17 +7,17 @@
   </picture>
 </a>
 
-[![Latest release](https://img.shields.io/github/v/release/ColinGPT9/clips-studio?label=release)](https://github.com/ColinGPT9/clips-studio/releases)
+[![Latest release](https://badgen.net/github/tag/ColinGPT9/clips-studio?label=release)](https://github.com/ColinGPT9/clips-studio/releases)
 [![Downloads](https://img.shields.io/github/downloads/ColinGPT9/clips-studio/total?label=downloads)](https://github.com/ColinGPT9/clips-studio/releases)
 [![Licence](https://img.shields.io/github/license/ColinGPT9/clips-studio)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/ColinGPT9/clips-studio?style=flat)](https://github.com/ColinGPT9/clips-studio/stargazers)
+[![Stars](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars)](https://github.com/ColinGPT9/clips-studio/stargazers)
 [![Open source](https://img.shields.io/badge/open%20source-yes-brightgreen)](https://github.com/ColinGPT9/clips-studio)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](docs/DOCKER.md)
 
 ### Star and share Clips Kitty ⭐ Goal: 125
 
-[![Stars so far](https://img.shields.io/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&style=for-the-badge&color=0969da)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 125**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 125**
 
 **Please star the repo and share it.** It costs you nothing, and there is no
 marketing budget behind this, so word of mouth is the only way the next small
