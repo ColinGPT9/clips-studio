@@ -52,3 +52,14 @@ def test_the_plugins_last_chosen_start_the_next_row():
     # Written where they are chosen.
     assert "rememberChoices(PREF.pipeline, [pipeline])" in text
     assert "rememberChoices(PREF[step], list)" in text
+
+
+def test_a_remembered_plugin_that_has_gone_is_forgotten_too():
+    # Dropped from the rows only, it came back on the row made after Generate,
+    # and the server refused it.
+    text = _source()
+    assert "function forgetGone" in text
+    for call in ("forgetGone(PREF.pipeline, pipelines)",
+                 "forgetGone(PREF[step], usableFor(stepPlugins, step))",
+                 "forgetGone(PREF.edit, editPlugins)"):
+        assert call in text, call

@@ -226,6 +226,14 @@ function rememberChoices(key: string, list: PipelineChoice[] | null | undefined)
   }
 }
 
+/** Forget remembered plugins under `key` that are gone or can no longer do
+ *  the step, and fit the settings of the rest, as for a row: a new row made
+ *  after Generate starts from these, and the server refuses a missing one. */
+function forgetGone(key: string, able: InstalledPlugin[]): void {
+  const list = rememberedChoices(key)
+  if (list) rememberChoices(key, fittedChoices(list, able))
+}
+
 /** Remember the plugins a row has now: its Pipeline and its Rate &
  *  understand steps, for the next video. */
 function rememberPlugins(o: JobOptions): void {
@@ -458,6 +466,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   // Generate over something the form doesn't show.
   useEffect(() => {
     if (!pipelines) return
+    forgetGone(PREF.pipeline, pipelines)
     setSlots((prev) =>
       prev.map((s) => {
         const choice = s.options.pipeline
@@ -481,6 +490,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   // installed version.
   useEffect(() => {
     if (!stepPlugins) return
+    for (const step of MOMENT_STEPS) forgetGone(PREF[step], usableFor(stepPlugins, step))
     setSlots((prev) =>
       prev.map((s) => {
         if (!hasSteps(s.options)) return s
@@ -501,6 +511,7 @@ export default function AddVideos({ onAdded }: { onAdded?: () => void }): JSX.El
   // And for Suggest edits, whose rows may name the video's own Pipeline.
   useEffect(() => {
     if (!editPlugins) return
+    forgetGone(PREF.edit, editPlugins)
     setSlots((prev) =>
       prev.map((s) => {
         const list = s.options.edit
