@@ -375,6 +375,9 @@ export interface Word {
 export interface RenderOpts {
   crop?: 'track' | 'center' | 'bias_left' | 'bias_right' | 'letterbox'
   captions?: boolean
+  /** False when the job that made the clip had captions off (#128); the
+   *  clip's own `captions` wins over it. */
+  job_captions?: boolean
   caption_style?: CaptionStyle
   caption_lines?: CaptionLine[]
   /** Saved by a render whose caption style has second_speaker on. */

@@ -299,6 +299,11 @@ export default function TimelineEditor({
     ...(clip.render_opts?.caption_style ?? {})
   }
   const [captionStyle, setCaptionStyle] = useState<Required<CaptionStyle>>(storedStyle)
+  // Whether this clip burns captions: its own switch, else the choice of the
+  // job that made it (core/pipeline.py captions_on, #128).
+  const storedCaptionsOn =
+    (clip.render_opts?.captions ?? clip.render_opts?.job_captions ?? true) !== false
+  const [captionsOn, setCaptionsOn] = useState(storedCaptionsOn)
   // The Highlights title card's two lines (video/post_style.py), saved with
   // the clip; a 16:9 clip never draws one.
   const highlights = isHighlights(captionStyle, isLandscape)
@@ -754,7 +759,7 @@ export default function TimelineEditor({
   // Offered only on a clip rendered with the option on that still has it on:
   // until a render has listened there is nothing to put right.
   const speakerOn =
-    burnedCaptionStyle(captionStyle, isLandscape).second_speaker && clip.render_opts?.captions !== false
+    burnedCaptionStyle(captionStyle, isLandscape).second_speaker && captionsOn
   const speakerWas = burnedCaptionStyle(storedStyle, isLandscape).second_speaker
   // A clip whose caption text was saved keeps those lines, and the render
   // colours each of them whole: there a click switches a whole caption.
@@ -844,6 +849,7 @@ export default function TimelineEditor({
   const layoutDirty = layout !== storedCrop
   const gamingDirty = JSON.stringify(gaming) !== JSON.stringify(storedGaming)
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
+  const captionsDirty = captionsOn !== storedCaptionsOn
   // Card words count only while a card is drawn: a clip switched back to
   // Standard keeps its saved ones, unused.
   const cardDirty = highlights && (headline !== storedHeadline || subline !== storedSubline)
@@ -853,6 +859,7 @@ export default function TimelineEditor({
     gamingDirty ||
     (rememberGaming && !!gaming) ||
     styleDirty ||
+    captionsDirty ||
     cardDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
@@ -864,6 +871,7 @@ export default function TimelineEditor({
       l: layout,
       g: gaming,
       s: captionStyle,
+      o: captionsOn,
       c: highlights ? [headline, subline] : null,
       w: wordEdits,
       m: watermark,
@@ -936,7 +944,7 @@ export default function TimelineEditor({
         speakerDirty ||
         edit.muted_words.length > (baked?.muted_words?.length ?? 0)
       let captions: LiveOverlay['captions'] = null
-      if (capsDirty && captionBase && captionBase.length > 0) {
+      if (capsDirty && captionsOn && captionBase && captionBase.length > 0) {
         let base = captionBase
         const n = Math.max(1, captionStyle.words_per_caption)
         // Drawn as it will burn in: on a Highlights clip, in that style's
@@ -968,7 +976,7 @@ export default function TimelineEditor({
         // Old text already burned into the preview file — the overlay blurs
         // it out underneath the pending text so it doesn't ghost through.
         const captionsBurned =
-          clip.render_opts?.captions !== false && (captionBase?.length ?? 0) > 0
+          storedCaptionsOn && (captionBase?.length ?? 0) > 0
         payload = {
           hook: hookPending,
           captions,
@@ -1004,7 +1012,8 @@ export default function TimelineEditor({
         wmDirty ? (watermark ?? {}) : undefined,
         gamingDirty ? gaming : undefined,
         cardDirty ? { headline, subline } : undefined,
-        speakerDirty ? pendingSpeakerEdits() : undefined
+        speakerDirty ? pendingSpeakerEdits() : undefined,
+        captionsDirty ? captionsOn : undefined
       )
       setDraftEditJson(pendingJson())
       onPreview(res.url)
@@ -1103,6 +1112,7 @@ export default function TimelineEditor({
     // null turns the split off for this clip; settings turn it on or change it.
     if (gamingDirty) renderOpts.gaming = gaming
     if (styleDirty) renderOpts.caption_style = captionStyle
+    if (captionsDirty) renderOpts.captions = captionsOn
     if (cardDirty) {
       renderOpts.headline = headline
       renderOpts.subline = subline
@@ -1665,7 +1675,8 @@ export default function TimelineEditor({
       <div className="flex gap-0.5 border-b border-raised/60 text-xs overflow-x-auto" role="tablist">
         {tabs.map((t) => {
           const changed =
-            (t.id === 'captions' && (styleDirty || cardDirty || wordEdits.length > 0 || speakerDirty)) ||
+            (t.id === 'captions' &&
+              (styleDirty || captionsDirty || cardDirty || wordEdits.length > 0 || speakerDirty)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
               ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || gamingDirty))
@@ -1880,6 +1891,17 @@ export default function TimelineEditor({
       {/* caption font & style for this clip */}
       {activeTab === 'captions' && (
         <div className="border border-raised/60 rounded-lg p-3">
+          <label
+            className="flex items-center gap-1.5 cursor-pointer text-xs mb-2"
+            title="Burn captions into this clip. Off keeps the clip without captions when you edit it; Apply or Update preview to see it."
+          >
+            <input
+              type="checkbox"
+              checked={captionsOn}
+              onChange={(e) => setCaptionsOn(e.target.checked)}
+            />
+            Captions
+          </label>
           <p className="label mb-2">Caption font &amp; style</p>
           <CaptionStyleControls
             idPrefix={`clip-${clip.id}`}

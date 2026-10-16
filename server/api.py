@@ -193,6 +193,8 @@ class PreviewIn(BaseModel):
     # pending hand fixes of who is talking (video/captions.py paint_turns);
     # None keeps the clip's saved ones, an empty list previews it with none
     speaker_edits: list | None = None
+    # pending Captions on/off switch; None keeps the clip's saved choice
+    captions: bool | None = None
 
 
 class CreatorGamingLayoutIn(BaseModel):
@@ -1736,7 +1738,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 "end": row["end_s"],
                 "duration": round(row["end_s"] - row["start_s"], 1),
                 "crop": opts.get("crop", "track"),
-                "captions_enabled": opts.get("captions", True),
+                "captions_enabled": opts.get("captions", opts.get("job_captions", True)),
                 "caption_style": opts.get("caption_style", {}),
             }
 
@@ -1851,6 +1853,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             opts["subline"] = body.subline
         if body.speaker_edits is not None:
             opts["speaker_edits"] = body.speaker_edits
+        if body.captions is not None:
+            opts["captions"] = body.captions
 
         candidate = ClipCandidate(
             start=row["start_s"], end=row["end_s"],

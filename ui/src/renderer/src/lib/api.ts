@@ -355,7 +355,9 @@ export const api = {
     card?: { headline: string; subline: string },
     /** Pending hand fixes of who is talking; undefined = the clip's saved
      *  ones, an empty list = none. */
-    speakerEdits?: SpeakerTurn[]
+    speakerEdits?: SpeakerTurn[],
+    /** The pending Captions switch; undefined = the clip's saved choice. */
+    captions?: boolean
   ) =>
     request<{ url: string }>(`/clips/${clipId}/preview`, {
       method: 'POST',
@@ -369,7 +371,8 @@ export const api = {
         gaming: gaming ?? null,
         gaming_off: gaming === null,
         ...(card ?? {}),
-        speaker_edits: speakerEdits ?? null
+        speaker_edits: speakerEdits ?? null,
+        captions: captions ?? null
       })
     }),
   /** A frame of the clip's SOURCE video, `at` (0-1) of the way through, to

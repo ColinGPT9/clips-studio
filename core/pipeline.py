@@ -856,11 +856,21 @@ _BY_HAND = ("edit", "crop", "caption_lines", "speaker_edits", "adjust", "caption
 # What the job decides for every clip, whatever a clip saved: Longform's
 # profile, Podcast, Vertical Live, the sport, and who is heard talking,
 # which every render hears again.
-_JOB_DECIDES = ("profile", "podcast", "vertical_live", "sport", "speaker_turns")
+_JOB_DECIDES = ("profile", "podcast", "vertical_live", "sport", "speaker_turns", "job_captions")
 # A webcam a person chose for the whole job (gaming/run.py TRUSTED): set up
 # for this video before processing, or remembered for the creator.
 _JOB_PERSON = ("user", "creator")
 _WEBCAMS = ("cam", "cam2")
+
+
+def captions_on(config: dict, opts: dict) -> bool:
+    """Whether a clip burns captions. The clip's own switch (the editor's
+    Captions tab) wins; without one, the choice of the job that made it,
+    saved with the clip as `job_captions` (#128: a clip made with captions
+    off got them back at its first edit). Not `captions` itself, which only
+    a person sets and which marks the clip as edited by hand."""
+    return bool(config["clips"].get("captions", True)
+                and opts.get("captions", opts.get("job_captions", True)))
 
 
 def _window(candidate) -> tuple[float, float]:
@@ -1414,7 +1424,7 @@ def _render_files(
     # Where someone other than the main speaker talks, when the caption style
     # asks for them in a second colour (#126). Empty for every other clip.
     turns: list = []
-    if config["clips"].get("captions", True) and opts.get("captions", True):
+    if captions_on(config, opts):
         lines = opts.get("caption_lines")  # user-corrected caption text, if any
         if _wants_second_speaker(config, opts):
             from video.captions import DEFAULT_STYLE, build_caption_lines, paint_turns, tag_lines, words_of
@@ -1634,6 +1644,7 @@ def _render_files(
     # The other speaker's turns are the ones this file was burned with, or
     # none: never ones left over from an earlier render.
     opts = {k: v for k, v in opts.items() if k != "speaker_turns"}
+    job_captions = bool(config["clips"].get("captions", True)) and opts.get("job_captions", True)
     render_opts_json = json.dumps(
         {
             **opts,
@@ -1658,8 +1669,11 @@ def _render_files(
             **({"watermark": wm_cfg} if wm_cfg else {}),
             # The sport, so a re-render frames the ball again, not a face.
             **({"sport": sport_name} if sport_name else {}),
+            # A job run with captions off, so an edit doesn't bring them back.
+            **({"job_captions": False} if not job_captions else {}),
         }
-    ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live or sport_name) else ""
+    ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live or sport_name
+          or not job_captions) else ""
     return final_path, render_opts_json
 
 
@@ -1667,7 +1681,7 @@ def _wants_second_speaker(config: dict, opts: dict) -> bool:
     """Whether a clip's captions burn the other speaker in a second colour:
     captions on, the option ticked in its caption style, and not the
     Highlights look, which has a colour of its own."""
-    if not (config["clips"].get("captions", True) and opts.get("captions", True)):
+    if not captions_on(config, opts):
         return False
     from video import post_style as _post_style
 
