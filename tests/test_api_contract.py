@@ -331,7 +331,8 @@ def test_jobs_are_listed_and_read_one_at_a_time(client):
     assert client.get("/jobs/999999").status_code == 404
     assert client.get("/jobs/not-a-number").status_code == 422
     assert set(client.get(f"/jobs/{job_id}/log").json()) == {"log", "missing"}
-    assert client.delete(f"/jobs/{job_id}").json() == {"deleted": job_id}
+    deleted = client.delete(f"/jobs/{job_id}")
+    assert deleted.json() == {"deleted": job_id}
 
 
 def test_cancel_needs_a_video(client):

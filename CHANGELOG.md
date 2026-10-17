@@ -14,9 +14,10 @@ were often broken in a way that only showed up on somebody else's machine.
 
 - **YouTube cookies, for when YouTube keeps saying "confirm you're not a bot".** Under
   **Settings → Advanced settings**, choose **From Firefox** (signed in to YouTube there)
-  or a cookies.txt file exported from a browser signed in to YouTube. Clips Kitty uses it
-  only when YouTube has refused a download both the ordinary way and over IPv4; every
-  other download stays signed out. Signed in, YouTube's player needs its JavaScript run,
+  or a cookies.txt file exported from a browser signed in to YouTube. The file is copied
+  into Clips Kitty's data folder, so moving the original doesn't break it, and turning the
+  setting off deletes that copy. Clips Kitty uses it only when YouTube has refused a
+  download both the ordinary way and over IPv4; every other download stays signed out. Signed in, YouTube's player needs its JavaScript run,
   so the app now carries QuickJS (2 MB) for that one request. Chrome and Edge lock their
   cookies on Windows, so they are not offered. (#136)
 

@@ -195,7 +195,7 @@ def test_a_friend_who_sounds_alike_is_told_apart_by_being_known_to_the_video(np,
 
 def test_no_video_no_models_no_turns(np, library, monkeypatch, capsys):
     monkeypatch.setattr(vt, "available", lambda: False)
-    monkeypatch.setattr(vt, "_told_missing", False)
+    monkeypatch.setattr(vt, "_told", {"missing": False})
     source, config = library
     clip = ClipCandidate(start=240.0, end=270.0, score=0)
     segments = Video(np, _talk()).segments()

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   DEFAULT_APPEARANCE,
   FONTS,
@@ -6,8 +6,8 @@ import {
   saveAppearance,
   type Appearance
 } from '../lib/appearance'
-import { api } from '../lib/api'
-import type { Preflight } from '../lib/types'
+import { api, errorText } from '../lib/api'
+import type { Preflight, Settings as SavedSettings } from '../lib/types'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import {
   notifyOnFinish,
@@ -647,8 +647,11 @@ function MinScoreSetting(): JSX.Element {
  *  bot and has refused it both ways (sources/ytdlp_common.py); every other
  *  download stays signed out. */
 function YouTubeCookiesSetting(): JSX.Element {
-  const [saved, setSaved] = useState<string | null>(null)
+  const [saved, setSaved] = useState<SavedSettings['youtube_cookies'] | null>(null)
   const [error, setError] = useState('')
+  // The file's text is sent and the engine keeps its own copy in the data
+  // folder: no path goes to the engine, and moving the original doesn't break it.
+  const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     api
@@ -657,20 +660,32 @@ function YouTubeCookiesSetting(): JSX.Element {
       .catch(() => {})
   }, [])
 
-  const save = async (value: string): Promise<void> => {
+  const save = async (
+    patch: Parameters<typeof api.patchSettings>[0],
+    value: SavedSettings['youtube_cookies']
+  ): Promise<void> => {
     setError('')
     try {
-      await api.patchSettings({ youtube_cookies: value })
+      await api.patchSettings(patch)
       setSaved(value)
     } catch (e) {
-      setError(String(e))
+      setError(errorText(e))
     }
   }
-  const pickFile = async (): Promise<void> => {
-    const path = await window.studio.pickCookiesFile()
-    if (path) await save(path)
+  const pickFile = (): void => fileInput.current?.click()
+  const fileChosen = async (file: File | undefined): Promise<void> => {
+    if (fileInput.current) fileInput.current.value = '' // the same file can be chosen again
+    if (!file) return
+    let text: string
+    try {
+      text = await file.text()
+    } catch {
+      setError(t("Couldn't read that file. Close anything that has it open and choose it again."))
+      return
+    }
+    await save({ youtube_cookies_text: text }, 'file')
   }
-  const kind = !saved ? 'off' : saved === 'firefox' ? 'firefox' : 'file'
+  const kind = !saved ? 'off' : saved
 
   return (
     <div className="space-y-1">
@@ -687,9 +702,9 @@ function YouTubeCookiesSetting(): JSX.Element {
           disabled={saved === null}
           onChange={(e) => {
             const v = e.target.value
-            if (v === 'off') void save('')
-            else if (v === 'firefox') void save('firefox')
-            else void pickFile()
+            if (v === 'off') void save({ youtube_cookies: '' }, '')
+            else if (v === 'firefox') void save({ youtube_cookies: 'firefox' }, 'firefox')
+            else pickFile()
           }}
         >
           <option value="off">{t('Off')}</option>
@@ -697,10 +712,18 @@ function YouTubeCookiesSetting(): JSX.Element {
           <option value="file">{t('A cookies.txt file')}</option>
         </select>
       </label>
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".txt,text/plain"
+        className="hidden"
+        aria-label={t('Choose a cookies.txt file')}
+        onChange={(e) => void fileChosen(e.target.files?.[0])}
+      />
       {kind === 'file' && (
-        <p className="text-xs text-muted break-all">
-          {saved}{' '}
-          <button type="button" className="text-accent hover:underline" onClick={() => void pickFile()}>
+        <p className="text-xs text-muted">
+          {t('Your cookies.txt is saved.')}{' '}
+          <button type="button" className="text-accent hover:underline" onClick={pickFile}>
             {t('Change')}
           </button>
         </p>

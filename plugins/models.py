@@ -287,7 +287,10 @@ def status(data_dir, ref: dict, *, ollama: list[dict] | None = None, bundled=_bu
         try:
             path = target_path(data_dir, ref, file)
         except ModelError as e:
-            out["note"] = str(e)
+            # Said in our own words: what the error says goes to the log.
+            log.warning("%s of %s has no place in the model folder: %s", file, ref["id"], e)
+            out["note"] = (f"{file} can't be kept in Clips Kitty's model folder: the pipeline lists it "
+                           "wrongly. Ask the pipeline's developer.")
             out["files_status"].append({"file": file, "installed": False, "path": None, "size": None})
             continue
         entry = index["files"].get(_key(ref, file)) or {}
@@ -385,7 +388,7 @@ def hub_info(ref: dict, *, fetch_json=get_json) -> dict:
         if "gated" in info:
             out["gated"] = bool(info["gated"])
     except (OSError, ValueError, ModelError, AttributeError):
-        pass
+        pass  # the licence and gating are left out, as the docstring says
     folders = sorted({str(PurePosixPath(f).parent) for f in ref["files"]})
     for folder in folders:
         suffix = "" if folder == "." else "/" + urllib.parse.quote(folder)

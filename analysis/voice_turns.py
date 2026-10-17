@@ -91,7 +91,7 @@ _SENTENCE_END = re.compile(r"[.!?…。！？]['\")\]]*$")   # as transcription/
 _sessions: dict = {}
 _load_lock = threading.Lock()
 _run_lock = threading.Lock()       # one inference at a time: this never takes a second core
-_told_missing = False
+_told = {"missing": False}   # the missing models are said once a session
 _profiles: dict[str, tuple] = {}   # video id -> (source fingerprint, profile)
 _profile_locks: dict[str, threading.Lock] = {}
 _locks_lock = threading.Lock()
@@ -644,12 +644,11 @@ def turns_for(source: Path, candidate, segments: list, config: dict, *,
 
     `embed`, `segment` and `pcm` stand in for the models and the decoder in
     tests."""
-    global _told_missing
     from video.captions import _words_in_window
 
     if (embed is None or segment is None) and not available():
-        if not _told_missing:
-            _told_missing = True
+        if not _told["missing"]:
+            _told["missing"] = True
             print("      (the voice models are missing: captions stay one colour. "
                   "Run scripts/fetch_voice_model.py)")
         return []

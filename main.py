@@ -211,7 +211,7 @@ def main() -> int:
     # command line and the daemon as the app's engine sets it (server/api.py).
     from sources import ytdlp_common
 
-    ytdlp_common.set_cookies(config.get("youtube_cookies"))
+    ytdlp_common.set_cookies(config.get("youtube_cookies"), config["paths"]["data_dir"])
     db = StateDB(Path(config["paths"]["data_dir"]) / "state.db")
 
     try:

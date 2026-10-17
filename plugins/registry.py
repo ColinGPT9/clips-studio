@@ -860,7 +860,7 @@ def indexes(data_dir, urls: list[str], *, bundled: Path | None = None) -> list[d
         ours = check_index(json.loads(path.read_text(encoding="utf-8")), ours=True)
         out.append({"url": "bundled", "kind": "bundled", "fetched_at": None, "index": ours})
     except (OSError, ValueError):
-        pass
+        pass  # no readable list ships with this build: the online one is all there is
     online = _cached(data_dir, ONLINE_URL)
     if online and ours and _older(online["index"], ours):
         online = None  # a copy from before this release's list adds nothing to it

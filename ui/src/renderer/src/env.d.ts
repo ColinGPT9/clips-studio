@@ -40,8 +40,6 @@ interface Window {
     /** Multi-select, for queueing a batch of local files at once. */
     pickVideoFiles: () => Promise<string[]>
     pickImageFile: () => Promise<string | null>
-    /** A cookies.txt for YouTube (Settings → Advanced settings, #136). */
-    pickCookiesFile: () => Promise<string | null>
     pickThumbnailImage: () => Promise<
       { name: string; data: string } | { error: string } | null
     >

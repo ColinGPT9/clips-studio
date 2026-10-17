@@ -9,6 +9,7 @@ Python or the filesystem directly.
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import threading
@@ -24,7 +25,7 @@ from pydantic import BaseModel
 
 from core import queue
 from core.binaries import ffmpeg, ffprobe
-from core.paths import picked_file, safe_name
+from core.paths import discard, picked_file, safe_name
 from core.state import StateDB
 from server.events import broadcaster
 from server.jobs import Worker
@@ -338,9 +339,11 @@ class SettingsPatch(BaseModel):
     translation_model: str | None = None  # local model used for translation
     outro: bool | None = None  # append the Clips Kitty end card (clips.outro)
     min_score: int | None = None  # clips.min_score: the quality bar, 0-100
-    # "" none, "firefox", or a cookies.txt path: asked with only when YouTube
-    # takes the PC for a bot (sources/ytdlp_common.py, #136)
+    # "" none or "firefox": asked with only when YouTube takes the PC for a
+    # bot (sources/ytdlp_common.py, #136). A cookies.txt comes as its text in
+    # youtube_cookies_text, kept in the data folder, and the setting is "file".
     youtube_cookies: str | None = None
+    youtube_cookies_text: str | None = None
 
 
 class TranslateIn(BaseModel):
@@ -666,7 +669,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     feedback_mod.install_log_capture()  # pipeline prints -> bug-report log tail
     from sources import ytdlp_common
 
-    ytdlp_common.set_cookies(config.get("youtube_cookies"))  # Settings → Advanced (#136)
+    ytdlp_common.set_cookies(config.get("youtube_cookies"), config["paths"]["data_dir"])  # #136
     app = FastAPI(title="Clips Kitty API", version="0.1")
     app.add_middleware(
         CORSMiddleware,
@@ -1868,7 +1871,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         )
         prev_dir = data_dir / "previews"
         prev_dir.mkdir(parents=True, exist_ok=True)
-        out = prev_dir / f"clip_{clip_id}.mp4"
+        # clip_id is a number, so this is always inside previews/; checked as
+        # a path all the same, since the file is overwritten in place below.
+        named = os.path.normpath(os.path.join(prev_dir, f"clip_{int(clip_id)}.mp4"))
+        if not named.startswith(os.path.join(os.path.normpath(prev_dir), "")):
+            raise HTTPException(400, "not a clip")
+        out = Path(named)
         try:
             from transcription.transcriber import detected_language
 
@@ -3062,7 +3070,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             # toggle shows the state an upgrading user actually gets.
             "outro": config.get("clips", {}).get("outro", True),
             "min_score": int(config.get("clips", {}).get("min_score", 55)),
-            "youtube_cookies": config.get("youtube_cookies") or "",
+            "youtube_cookies": ytdlp_common.cookies(),  # as the engine uses it: "", "firefox" or "file"
         }
 
     @app.patch("/settings")
@@ -3110,21 +3118,31 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
             if n == 0:
                 raise HTTPException(400, "no 'clips:' section in settings.yaml")
             config.setdefault("clips", {})["min_score"] = body.min_score
-        if body.youtube_cookies is not None:
+        if body.youtube_cookies is not None or body.youtube_cookies_text is not None:
             from sources import ytdlp_common
 
-            value = body.youtube_cookies.strip().strip('"')
-            if value.lower() == "firefox":
-                value = "firefox"
-            elif value and not Path(value).is_file():
-                raise HTTPException(400, f"no file at {value}")
-            # Single-quoted: a Windows path's backslashes stay as they are.
-            line = "youtube_cookies: '" + value.replace("'", "''") + "'"
+            # The file is always the data folder's own copy, never a path the
+            # request names: it keeps working if the original is moved.
+            jar = Path(config["paths"]["data_dir"]) / ytdlp_common.COOKIES_FILE
+            if body.youtube_cookies_text is not None:
+                if not ytdlp_common.cookies_text_ok(body.youtube_cookies_text):
+                    raise HTTPException(400, "That file isn't a cookies.txt: export one with a "
+                                             "cookies.txt extension from a browser signed in to YouTube.")
+                jar.parent.mkdir(parents=True, exist_ok=True)
+                jar.write_text(body.youtube_cookies_text.lstrip("﻿"), encoding="utf-8",
+                               newline="")  # as exported, less a byte-order mark yt-dlp would trip on
+                value = "file"
+            else:
+                value = body.youtube_cookies.strip().lower()
+                if value not in ("", "firefox"):
+                    raise HTTPException(400, "youtube_cookies must be '' or 'firefox'")
+                discard(jar)        # a sign-in is not kept once it's turned off
+            line = f"youtube_cookies: '{value}'"
             text, n = re.subn(r"(?m)^youtube_cookies:.*$", lambda _m: line, text, count=1)
             if n == 0:
                 text = text.rstrip("\n") + "\n" + line + "\n"
             config["youtube_cookies"] = value
-            ytdlp_common.set_cookies(value)
+            ytdlp_common.set_cookies(value, config["paths"]["data_dir"])
 
         edits = {
             "model": body.model,

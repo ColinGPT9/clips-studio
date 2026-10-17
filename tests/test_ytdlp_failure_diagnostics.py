@@ -133,9 +133,12 @@ def test_a_deleted_kick_vod_keeps_the_apps_own_words(_ytdlp):
     Those already say what happened, so nothing is appended to them."""
     from sources import kick
 
+    def deleted():
+        raise _ytdlp.utils.DownloadError("ERROR: HTTP Error 404: Unable to download JSON metadata")
+
     with pytest.raises(ValueError) as caught:
         with kick._gone_or_raise():
-            raise _ytdlp.utils.DownloadError("ERROR: HTTP Error 404: Unable to download JSON metadata")
+            deleted()
 
     assert "no longer exists" in str(caught.value)
     assert ytdlp_common.installed_version() not in str(caught.value)

@@ -12,7 +12,6 @@ contextBridge.exposeInMainWorld('studio', {
   pickVideoFiles: (): Promise<string[]> => ipcRenderer.invoke('pick-video-files'),
   // Native image-file picker (watermark logo upload).
   pickImageFile: (): Promise<string | null> => ipcRenderer.invoke('pick-image-file'),
-  pickCookiesFile: (): Promise<string | null> => ipcRenderer.invoke('pick-cookies-file'),
   /** A thumbnail as base64 data rather than a path — the backend never sees a
    *  filename, so it never has to trust one. */
   pickThumbnailImage: (): Promise<

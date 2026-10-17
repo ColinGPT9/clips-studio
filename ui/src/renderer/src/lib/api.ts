@@ -604,7 +604,8 @@ export const api = {
   brandingAssetUrl: (name: string) => `${API_BASE}/branding/asset/${name}`,
 
   settings: () => request<Settings>('/settings'),
-  patchSettings: (patch: Partial<Settings>) =>
+  // youtube_cookies_text: a cookies.txt's contents, kept by the engine in the data folder (#136)
+  patchSettings: (patch: Partial<Settings> & { youtube_cookies_text?: string }) =>
     request<{ ok: boolean }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   // ---- YouTube publishing ----

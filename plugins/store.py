@@ -36,6 +36,7 @@ understand or rate).
 from __future__ import annotations
 
 import functools
+import importlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,7 +60,7 @@ def load(data_dir) -> dict:
         if isinstance(data, dict) and isinstance(data.get("plugins"), dict):
             return data
     except (OSError, ValueError):
-        pass
+        pass  # missing or unreadable: an empty store, as the docstring says
     return {"format": 1, "plugins": {}}
 
 
@@ -189,8 +190,8 @@ def installed_choice(data_dir, choice: dict, step: str = "find") -> Installed:
     problem = compatibility_problem(plugin.manifest)
     if problem:
         raise ChoiceProblem(f"the pipeline {plugin.name} can't run here: {problem}", "incompatible")
-    from plugins import registry
-
+    # registry imports this module, so it is looked up here, when a choice is checked.
+    registry = importlib.import_module("plugins.registry")
     hit = registry.blocked_check(data_dir)(plugin.id, plugin.version)
     if hit and hit.get("severity") == "blocked":
         reason = hit.get("reason")

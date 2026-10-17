@@ -120,8 +120,9 @@ def asked(monkeypatch, tmp_path):
             return {"id": "aB3dEfGhIjK", "title": "A video", "duration": 12.0, "channel": "Some Channel"}
 
     monkeypatch.setattr(youtube.yt_dlp, "YoutubeDL", Standin)
-    monkeypatch.setattr(ytdlp_common, "_ipv4_only", False)
+    monkeypatch.setattr(ytdlp_common, "_session", {"ipv4_only": False})
     monkeypatch.setattr(ytdlp_common, "_cookies", "")
+    monkeypatch.setattr(ytdlp_common, "_cookie_file", None)
     made.options = []                   # every request's options, for the cookies
     real = Standin.extract_info
 
@@ -172,11 +173,11 @@ def test_ipv4_is_not_kept_once_it_is_the_one_refused(asked):
 
     asked.refuses = lambda options: "source_address" not in options
     ytdlp_common.extract_info(LINK, {"quiet": True})
-    assert asked == [None, "0.0.0.0"] and ytdlp_common._ipv4_only
+    assert asked == [None, "0.0.0.0"] and ytdlp_common._session["ipv4_only"]
 
     asked.refuses = lambda options: "source_address" in options
     ytdlp_common.extract_info(LINK, {"quiet": True})
-    assert asked[2:] == ["0.0.0.0", None] and not ytdlp_common._ipv4_only
+    assert asked[2:] == ["0.0.0.0", None] and not ytdlp_common._session["ipv4_only"]
 
     asked.refuses = lambda options: False
     ytdlp_common.extract_info(LINK, {"quiet": True})
@@ -211,7 +212,7 @@ def test_a_twitch_link_is_asked_for_the_way_it_always_was(asked):
     vod = "https://www.twitch.tv/videos/123456789"
     asked.refuses = lambda options: "source_address" not in options
     ytdlp_common.extract_info(LINK, {})
-    assert ytdlp_common._ipv4_only
+    assert ytdlp_common._session["ipv4_only"]
 
     asked.refuses = lambda options: False
     ytdlp_common.extract_info(vod, {})
@@ -230,13 +231,13 @@ def test_any_other_failure_over_ipv4_puts_the_session_back(asked):
 
     asked.refuses = lambda options: "source_address" not in options
     ytdlp_common.extract_info(LINK, {})
-    assert ytdlp_common._ipv4_only
+    assert ytdlp_common._session["ipv4_only"]
 
     asked.refuses = lambda options: True
     asked.failure = "ERROR: Unable to download API page: timed out"
     with pytest.raises(yt_dlp.utils.DownloadError, match="timed out"):
         ytdlp_common.extract_info(LINK, {})
-    assert asked[2:] == ["0.0.0.0"] and not ytdlp_common._ipv4_only
+    assert asked[2:] == ["0.0.0.0"] and not ytdlp_common._session["ipv4_only"]
 
     asked.refuses = lambda options: False
     ytdlp_common.extract_info(LINK, {})
@@ -280,9 +281,9 @@ def _cookie_opts(options: dict) -> dict:
 def test_cookies_set_are_not_used_while_youtube_serves_without_them(asked, tmp_path, monkeypatch):
     from sources import ytdlp_common
 
-    jar = tmp_path / "cookies.txt"
+    jar = tmp_path / ytdlp_common.COOKIES_FILE
     jar.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
-    monkeypatch.setattr(ytdlp_common, "_cookies", str(jar))
+    ytdlp_common.set_cookies("file", tmp_path)
     asked.refuses = lambda options: "source_address" not in options     # IPv4 gets through
 
     youtube.download(LINK, tmp_path)
@@ -293,9 +294,9 @@ def test_cookies_set_are_not_used_while_youtube_serves_without_them(asked, tmp_p
 def test_refused_both_ways_it_asks_once_more_with_the_cookies_file(asked, tmp_path, monkeypatch):
     from sources import ytdlp_common
 
-    jar = tmp_path / "cookies.txt"
+    jar = tmp_path / ytdlp_common.COOKIES_FILE
     jar.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
-    monkeypatch.setattr(ytdlp_common, "_cookies", str(jar))
+    ytdlp_common.set_cookies("file", tmp_path)
     asked.refuses = lambda options: "cookiefile" not in options
 
     seen = []
@@ -345,10 +346,10 @@ def test_refused_even_with_cookies_it_says_so(asked, tmp_path, monkeypatch):
     assert len(asked.options) == 3
 
 
-def test_a_cookies_file_gone_since_says_where_it_was(asked, tmp_path, monkeypatch):
+def test_a_cookies_file_gone_since_says_to_choose_it_again(asked, tmp_path, monkeypatch):
     from sources import ytdlp_common
 
-    monkeypatch.setattr(ytdlp_common, "_cookies", str(tmp_path / "gone.txt"))
+    ytdlp_common.set_cookies("file", tmp_path)          # nothing saved there
     asked.refuses = lambda options: True
 
     with pytest.raises(yt_dlp.utils.DownloadError, match="not there any more"):
@@ -373,4 +374,37 @@ def test_the_cookies_are_tried_when_the_other_way_fails_for_its_own_reason(asked
 
 def test_the_command_line_reads_the_cookies_setting_too():
     text = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-    assert 'ytdlp_common.set_cookies(config.get("youtube_cookies"))' in text
+    assert 'ytdlp_common.set_cookies(config.get("youtube_cookies"), config["paths"]["data_dir"])' in text
+
+
+@pytest.mark.parametrize("value, data_dir, kind, file", [
+    ("file", "D:/data", "file", Path("D:/data") / "youtube_cookies.txt"),
+    ("Firefox", "D:/data", "firefox", Path("D:/data") / "youtube_cookies.txt"),
+    # A path is never taken as the file: only the one in the data folder is.
+    ("C:/Users/me/cookies.txt", "D:/data", "", Path("D:/data") / "youtube_cookies.txt"),
+    (None, None, "", None),
+])
+def test_the_setting_names_a_kind_never_a_path(value, data_dir, kind, file, monkeypatch):
+    from sources import ytdlp_common
+
+    monkeypatch.setattr(ytdlp_common, "_cookies", "")
+    monkeypatch.setattr(ytdlp_common, "_cookie_file", None)
+    ytdlp_common.set_cookies(value, data_dir)
+    assert ytdlp_common.cookies() == kind and ytdlp_common._cookie_file == file
+
+
+@pytest.mark.parametrize("text, ok", [
+    ("# Netscape HTTP Cookie File\n", True),
+    ("# HTTP Cookie File\r\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\r\n", True),
+    # yt-dlp reads the first line for the header: without it there, it refuses the file.
+    (".youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n", False),
+    ("\n# Netscape HTTP Cookie File\n", False),
+    ("﻿# Netscape HTTP Cookie File\n", True),
+    ("SID=x; HSID=y\n", False),
+    ("", False),
+    ("# Netscape HTTP Cookie File\n" + "x" * (1024 * 1024), False),
+], ids=["header", "header-crlf", "no-header", "blank-first", "bom", "cookie-header", "empty", "too-big"])
+def test_only_a_cookies_txt_is_taken(text, ok):
+    from sources import ytdlp_common
+
+    assert ytdlp_common.cookies_text_ok(text) is ok

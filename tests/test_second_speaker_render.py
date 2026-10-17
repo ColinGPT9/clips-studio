@@ -12,6 +12,7 @@ not do:
 The listening itself is tests/test_voice_turns.py; here it is stood in for.
 """
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -119,7 +120,7 @@ def _events(ass: str) -> list[str]:
 
 
 def test_a_clip_without_the_option_never_loads_the_voice_models(pipeline, monkeypatch, tmp_path):
-    import analysis
+    analysis = importlib.import_module("analysis")
 
     monkeypatch.delitem(sys.modules, "analysis.voice_turns", raising=False)
     monkeypatch.delattr(analysis, "voice_turns", raising=False)
@@ -464,6 +465,7 @@ def test_the_editor_sends_its_fixes_whole_and_an_empty_list_means_none(pipeline,
     assert handed["speaker_edits"] == [[5.0, 6.0, 0]] and _saved(db)["speaker_edits"] == [[5.0, 6.0, 0]]
 
     handed = _rerender(pipeline, monkeypatch, db, tmp_path, {"render_opts": {"crop": "center"}})   # not sent: kept
+    assert handed["speaker_edits"] == [[5.0, 6.0, 0]]
     assert _saved(db)["speaker_edits"] == [[5.0, 6.0, 0]] and _saved(db)["crop"] == "center"
 
     handed = _rerender(pipeline, monkeypatch, db, tmp_path, {"render_opts": {"speaker_edits": []}})

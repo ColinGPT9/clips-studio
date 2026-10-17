@@ -43,29 +43,46 @@ def _ffmpeg_dir() -> str | None:
 # is served over the other a second later.
 _BOT_CHECK = "not a bot"
 _IPV4 = "0.0.0.0"       # yt-dlp's --force-ipv4
-# Set once a request only got through over IPv4. The rest of the session's
-# YouTube requests start there, rather than being refused again at every step
-# of a video.
-_ipv4_only = False
+# "ipv4_only" is set once a request only got through over IPv4. The rest of
+# the session's YouTube requests start there, rather than being refused again
+# at every step of a video.
+_session = {"ipv4_only": False}
 # Only YouTube answers like this. A Twitch or Kick link is asked for the way
 # it always was, whatever YouTube has been doing.
 _YOUTUBE = re.compile(r"(?:^|//|\.)(?:youtube\.com|youtu\.be|youtube-nocookie\.com)(?:[/:?#]|$)", re.I)
 # A signed-in session to fall back on, set in Settings → Advanced settings
-# (#136): "" for none, "firefox" for that browser's, or a cookies.txt file.
+# (#136): "" for none, "firefox" for that browser's, or "file" for the
+# cookies.txt the person chose, kept in the data folder as COOKIES_FILE.
 # Asked with only after YouTube has refused both ways: every other request
 # stays anonymous, as it always was. Chrome and Edge keep theirs locked on
 # Windows, so they aren't offered.
+COOKIES = ("", "firefox", "file")
+COOKIES_FILE = "youtube_cookies.txt"
+COOKIES_MAX = 1024 * 1024       # a YouTube sign-in is a few KB
 _cookies = ""
+_cookie_file: Path | None = None
 
 
-def set_cookies(value) -> None:
-    """The YouTube cookies setting (config `youtube_cookies`), as saved."""
-    global _cookies
-    _cookies = str(value or "").strip().strip('"')
+def set_cookies(value, data_dir) -> None:
+    """The YouTube cookies setting (config `youtube_cookies`), as saved. Any
+    other value is off: the file is always the one in `data_dir`."""
+    global _cookies, _cookie_file
+    value = str(value or "").strip().lower()
+    _cookies = value if value in COOKIES else ""
+    _cookie_file = Path(data_dir) / COOKIES_FILE if data_dir else None
 
 
 def cookies() -> str:
     return _cookies
+
+
+def cookies_text_ok(text: str) -> bool:
+    """Whether `text` is a cookies.txt yt-dlp will load: its very first line
+    is the Netscape header (yt-dlp refuses a file without it). A byte-order
+    mark is let through here and left off when the file is kept."""
+    if len(text.encode("utf-8")) > COOKIES_MAX:
+        return False
+    return re.match(r"#( Netscape)? HTTP Cookie File", text.lstrip("﻿")) is not None
 
 
 @contextmanager
@@ -82,16 +99,17 @@ def _signed_in(opts: dict):
 
     qjs = quickjs()
     signed = {**opts, "js_runtimes": {"quickjs": {"path": qjs} if Path(qjs).is_file() else {}}}
-    if _cookies.lower() == "firefox":
+    if _cookies == "firefox":
         yield {**signed, "cookiesfrombrowser": ("firefox",)}
         return
-    if not Path(_cookies).is_file():
+    if _cookie_file is None or not _cookie_file.is_file():
         raise yt_dlp.utils.DownloadError(
-            f"The YouTube cookies file set in Settings is not there any more: {_cookies}")
+            "The YouTube cookies file set in Settings is not there any more: choose it again "
+            "in Settings → Advanced settings")
     handle, copy = tempfile.mkstemp(prefix="clips-cookies-", suffix=".txt")
     os.close(handle)
     try:
-        shutil.copyfile(_cookies, copy)
+        shutil.copyfile(_cookie_file, copy)
         yield {**signed, "cookiefile": copy}
     finally:
         discard(Path(copy))
@@ -112,7 +130,6 @@ def extract_info(url: str, opts: dict, *, download: bool = False, process: bool 
     the person set YouTube cookies in Settings: then a second refusal is
     asked a third time, with them.
     """
-    global _ipv4_only
     import yt_dlp
 
     # Asked as each caller used to ask: `process` only where one turned it off.
@@ -125,13 +142,13 @@ def extract_info(url: str, opts: dict, *, download: bool = False, process: bool 
     if "source_address" in opts or not _YOUTUBE.search(url):
         return ask(opts)        # an address the caller chose, or not YouTube: as it always was
     ipv4 = {**opts, "source_address": _IPV4}
-    first, other = (ipv4, opts) if _ipv4_only else (opts, ipv4)
+    first, other = (ipv4, opts) if _session["ipv4_only"] else (opts, ipv4)
     try:
         return ask(first)
     except yt_dlp.utils.DownloadError as e:
         # Starting on IPv4 is a habit of this session, not a need: after a
         # failure of any kind the next request starts the ordinary way.
-        _ipv4_only = False
+        _session["ipv4_only"] = False
         if not is_bot_check(e):
             raise
         refused = e
@@ -155,7 +172,7 @@ def extract_info(url: str, opts: dict, *, download: bool = False, process: bool 
     # became of it, so the log does not read as a failure.
     print("      (YouTube took the request for a bot; asked again "
           f"{'over IPv4' if other is ipv4 else 'the ordinary way'} and was served)")
-    _ipv4_only = other is ipv4
+    _session["ipv4_only"] = other is ipv4
     return info
 
 

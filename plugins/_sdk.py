@@ -8,6 +8,7 @@ PYTHONPATH. In a source checkout it is next to this package; in the frozen
 build it ships as data (clips-studio.spec) under the bundle's sdk/python.
 """
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -23,6 +24,9 @@ if str(sdk_dir()) not in sys.path:
     sys.path.insert(0, str(sdk_dir()))
 
 import clipskitty_sdk  # noqa: E402
-from clipskitty_sdk import contract, host, manifest  # noqa: E402
+
+contract = importlib.import_module("clipskitty_sdk.contract")
+host = importlib.import_module("clipskitty_sdk.host")
+manifest = importlib.import_module("clipskitty_sdk.manifest")
 
 __all__ = ["clipskitty_sdk", "contract", "host", "manifest", "sdk_dir"]
