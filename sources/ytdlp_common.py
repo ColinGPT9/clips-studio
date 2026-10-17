@@ -15,6 +15,7 @@ from pathlib import Path
 
 from core import cancel, progress
 from core.binaries import ffmpeg
+from core.paths import discard
 
 
 def _ffmpeg_dir() -> str | None:
@@ -93,7 +94,7 @@ def _signed_in(opts: dict):
         shutil.copyfile(_cookies, copy)
         yield {**signed, "cookiefile": copy}
     finally:
-        Path(copy).unlink(missing_ok=True)
+        discard(Path(copy))
 
 
 def is_bot_check(error) -> bool:
