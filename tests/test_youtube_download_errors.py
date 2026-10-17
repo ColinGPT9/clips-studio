@@ -4,6 +4,8 @@ yt-dlp's text is written for people passing command-line flags. What reaches
 the window has to be written for someone who pasted a link.
 """
 
+from pathlib import Path
+
 import pytest
 
 yt_dlp = pytest.importorskip("yt_dlp")
@@ -296,10 +298,26 @@ def test_refused_both_ways_it_asks_once_more_with_the_cookies_file(asked, tmp_pa
     monkeypatch.setattr(ytdlp_common, "_cookies", str(jar))
     asked.refuses = lambda options: "cookiefile" not in options
 
+    seen = []
+    real_refuses = asked.refuses
+
+    def refuses(options):
+        if "cookiefile" in options:   # what the file holds while yt-dlp has it
+            seen.append(Path(options["cookiefile"]).read_text(encoding="utf-8"))
+        return real_refuses(options)
+
+    asked.refuses = refuses
     video = youtube.download(LINK, tmp_path)
 
     assert video.path.exists()
-    assert [_cookie_opts(o) for o in asked.options[:3]] == [{}, {}, {"cookiefile": str(jar)}]
+    assert [_cookie_opts(o) for o in asked.options[:2]] == [{}, {}]
+    signed = asked.options[2]
+    # A copy, gone afterwards: yt-dlp writes its cookie jar back to the file it is given.
+    copy = Path(signed["cookiefile"])
+    assert copy != jar and copy.name.startswith("clips-cookies-") and not copy.exists()
+    assert seen[0] == "# Netscape HTTP Cookie File\n" and jar.read_text(encoding="utf-8") == seen[0]
+    # Over IPv4, both ways having been refused; and with QuickJS to run YouTube's player.
+    assert signed["source_address"] == "0.0.0.0" and "quickjs" in signed["js_runtimes"]
 
 
 def test_firefox_is_asked_for_its_own_cookies(asked, monkeypatch):
@@ -333,5 +351,26 @@ def test_a_cookies_file_gone_since_says_where_it_was(asked, tmp_path, monkeypatc
     monkeypatch.setattr(ytdlp_common, "_cookies", str(tmp_path / "gone.txt"))
     asked.refuses = lambda options: True
 
-    with pytest.raises(ValueError, match="not there any more"):
+    with pytest.raises(yt_dlp.utils.DownloadError, match="not there any more"):
         ytdlp_common.extract_info(LINK, {"quiet": True})
+
+
+def test_the_cookies_are_tried_when_the_other_way_fails_for_its_own_reason(asked, monkeypatch):
+    # The ordinary request is refused as a bot, and IPv4 then times out (or
+    # the reverse, on a PC whose IPv6 to YouTube stalls): the refusal is what
+    # stands in the way, so the cookies are tried the way that reached YouTube.
+    from sources import ytdlp_common
+
+    monkeypatch.setattr(ytdlp_common, "_cookies", "firefox")
+    asked.refuses = lambda options: "cookiesfrombrowser" not in options
+    asked.failure = lambda options: "Read timed out" if options.get("source_address") else BOT
+
+    ytdlp_common.extract_info(LINK, {"quiet": True})
+
+    assert len(asked.options) == 3 and "source_address" not in asked.options[2]
+    assert _cookie_opts(asked.options[2]) == {"cookiesfrombrowser": ("firefox",)}
+
+
+def test_the_command_line_reads_the_cookies_setting_too():
+    text = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+    assert 'ytdlp_common.set_cookies(config.get("youtube_cookies"))' in text

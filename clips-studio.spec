@@ -39,7 +39,7 @@ hiddenimports = []
 #   nvidia.cublas — cuBLAS 12 (cublas64_12.dll), loaded by name by
 #                  CTranslate2 at its first GPU run; PyTorch's CUDA 13 build
 #                  only has cuBLAS 13 (transcription/transcriber.py, #111)
-for package in ("yt_dlp", "ultralytics", "faster_whisper", "ctranslate2",
+for package in ("yt_dlp", "yt_dlp_ejs", "ultralytics", "faster_whisper", "ctranslate2",
                 "curl_cffi", "piper", "onnxruntime", "rapidocr_onnxruntime",
                 "shapely", "pyclipper", "nvidia.cublas"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
@@ -245,6 +245,15 @@ if vendor_ffmpeg.exists():
     for binary in vendor_ffmpeg.iterdir():
         if binary.is_file():
             datas += [(str(binary), "ffmpeg")]
+
+# QuickJS-ng, fetched by scripts/fetch_quickjs.py: runs YouTube's player
+# JavaScript for the YouTube cookies fallback only. core.binaries.quickjs looks
+# for a quickjs/ folder next to the executable.
+vendor_quickjs = ROOT / "vendor" / "quickjs"
+if vendor_quickjs.exists():
+    for binary in vendor_quickjs.iterdir():
+        if binary.is_file():
+            datas += [(str(binary), "quickjs")]
 
 # The Ollama runtime, fetched by scripts/fetch_ollama.py. Bundled so a creator
 # never has to install a second program before they can make a clip.

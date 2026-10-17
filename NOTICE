@@ -100,6 +100,11 @@ significant ones, with their licences:
   PyTorch                   BSD-3-Clause tensor runtime, CUDA libraries
   OpenCV (opencv-python)    Apache-2.0   frame decoding and analysis
   yt-dlp                    Unlicense    downloading source videos
+  yt-dlp-ejs                Unlicense,   YouTube player solver scripts, for the
+                            MIT, ISC     YouTube cookies fallback only
+  QuickJS-ng                MIT          runs those scripts; bundled unmodified
+                                         and fetched at build time by
+                                         scripts/fetch_quickjs.py
   FFmpeg                    see below    all encoding, decoding and muxing
   FastAPI / Uvicorn         MIT          the local API the desktop app talks to
   Electron                  MIT          the desktop shell

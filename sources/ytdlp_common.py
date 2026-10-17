@@ -6,7 +6,11 @@ Without a progress hook the UI's bar sits still during a long VOD download
 aborts promptly if the video is cancelled.
 """
 
+import os
 import re
+import shutil
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from core import cancel, progress
@@ -63,12 +67,33 @@ def cookies() -> str:
     return _cookies
 
 
-def _with_cookies(opts: dict) -> dict:
+@contextmanager
+def _signed_in(opts: dict):
+    """`opts` asking as the person signed in to YouTube: Firefox's cookies, or
+    a copy of their cookies.txt (yt-dlp writes its cookie jar back to the file
+    it was given, which would rewrite the person's own, or fail on a read-only
+    one). Signed in, YouTube's players need their JavaScript run, so yt-dlp is
+    pointed at the bundled QuickJS (core.binaries.quickjs); no other request
+    runs any. A cookies file that is gone is a download error, said as such."""
+    import yt_dlp
+
+    from core.binaries import quickjs
+
+    qjs = quickjs()
+    signed = {**opts, "js_runtimes": {"quickjs": {"path": qjs} if Path(qjs).is_file() else {}}}
     if _cookies.lower() == "firefox":
-        return {**opts, "cookiesfrombrowser": ("firefox",)}
+        yield {**signed, "cookiesfrombrowser": ("firefox",)}
+        return
     if not Path(_cookies).is_file():
-        raise ValueError(f"The YouTube cookies file set in Settings is not there any more: {_cookies}")
-    return {**opts, "cookiefile": _cookies}
+        raise yt_dlp.utils.DownloadError(
+            f"The YouTube cookies file set in Settings is not there any more: {_cookies}")
+    handle, copy = tempfile.mkstemp(prefix="clips-cookies-", suffix=".txt")
+    os.close(handle)
+    try:
+        shutil.copyfile(_cookies, copy)
+        yield {**signed, "cookiefile": copy}
+    finally:
+        Path(copy).unlink(missing_ok=True)
 
 
 def is_bot_check(error) -> bool:
@@ -112,15 +137,19 @@ def extract_info(url: str, opts: dict, *, download: bool = False, process: bool 
     try:
         info = ask(other)
     except yt_dlp.utils.DownloadError as e:
-        if not is_bot_check(e):
+        if not _cookies:
+            if is_bot_check(e):
+                raise
             # The other way failed for a reason of its own (no such route, a
             # timeout). The refusal is what stands in the way, and what is said.
             raise refused from e
-        if not _cookies:
-            raise
-        print("      (YouTube refused the request both ways; asking again with "
-              "the YouTube cookies set in Settings)")
-        return ask(_with_cookies(opts))
+        # Asked signed in the way that reached YouTube: over IPv4 when both
+        # were refused (a PC's IPv6 to YouTube can stall), else the way that
+        # was refused while the other failed for a reason of its own.
+        print("      (YouTube took the request for a bot; asking again with the "
+              "YouTube cookies set in Settings)")
+        with _signed_in(ipv4 if is_bot_check(e) else first) as signed:
+            return ask(signed)
     # yt-dlp has already printed its refusal, cookie advice and all: say what
     # became of it, so the log does not read as a failure.
     print("      (YouTube took the request for a bot; asked again "

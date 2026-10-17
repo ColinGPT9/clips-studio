@@ -81,6 +81,14 @@ def ffprobe() -> str:
     return _resolve("ffprobe", "ffmpeg")
 
 
+def quickjs() -> str:
+    """Path to the QuickJS-ng runtime (scripts/fetch_quickjs.py) that the YouTube
+    cookies fallback hands yt-dlp: signed in, YouTube's players need their
+    JavaScript run, and a creator has no Node 22 or Deno. Only that request
+    uses it (sources/ytdlp_common.py)."""
+    return _resolve("qjs", "quickjs")
+
+
 def ollama() -> str:
     """Path to the Ollama runtime this install should use.
 

@@ -147,6 +147,7 @@ def ensure_vendored() -> None:
     # (label, marker that proves it is already there, fetch script)
     wanted = [
         ("FFmpeg", ROOT / "vendor" / "ffmpeg" / "ffprobe.exe", "fetch_ffmpeg.py"),
+        ("QuickJS", ROOT / "vendor" / "quickjs" / "qjs.exe", "fetch_quickjs.py"),
         ("Ollama", ROOT / "vendor" / "ollama" / "ollama.exe", "fetch_ollama.py"),
         ("Whisper weights", ROOT / "vendor" / "whisper", "fetch_whisper.py"),
         ("Game-sound model", ROOT / "models" / "panns_mobilenetv1.pth", "fetch_panns.py"),

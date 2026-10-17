@@ -16,6 +16,10 @@
 # Extractors break whenever a site changes, so this is the one dependency
 # you always want newest. No ceiling.
 yt-dlp>=2026.8.19
+# YouTube's player JavaScript solver scripts for the YouTube cookies fallback
+# (run by the bundled QuickJS, scripts/fetch_quickjs.py). Bump with yt-dlp: it
+# expects the version in yt_dlp/extractor/youtube/jsc/_builtin/vendor/_info.py.
+yt-dlp-ejs==0.8.0
 
 # ---- transcription and vision --------------------------------------------
 # MFCC features for the active-speaker model. Tiny and pure Python; the

@@ -207,6 +207,11 @@ def main() -> int:
 
     args = parser.parse_args()
     config = load_config(args.config)
+    # The YouTube cookies fallback (Settings → Advanced settings), for the
+    # command line and the daemon as the app's engine sets it (server/api.py).
+    from sources import ytdlp_common
+
+    ytdlp_common.set_cookies(config.get("youtube_cookies"))
     db = StateDB(Path(config["paths"]["data_dir"]) / "state.db")
 
     try:

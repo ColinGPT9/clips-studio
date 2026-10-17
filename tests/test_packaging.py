@@ -212,3 +212,25 @@ def test_ci_tests_the_sdk_on_clips_kittys_python():
     versions = [step["with"]["python-version"] for step in job["steps"]
                 if str(step.get("uses", "")).startswith("actions/setup-python")]
     assert versions == [".".join(map(str, APP_PYTHON))]
+
+
+def test_the_spec_bundles_quickjs_and_the_youtube_solver_scripts():
+    # The YouTube cookies fallback needs YouTube's player JavaScript run (#136):
+    # the solver scripts (yt-dlp-ejs) and QuickJS-ng to run them.
+    text = SPEC.read_text(encoding="utf-8")
+    assert '"yt_dlp_ejs"' in text, "the spec no longer collects yt-dlp-ejs"
+    assert 'vendor_quickjs = ROOT / "vendor" / "quickjs"' in text and '(str(binary), "quickjs")' in text
+    installer = (ROOT / "scripts" / "build_installer.py").read_text(encoding="utf-8")
+    assert '"fetch_quickjs.py"' in installer
+    fetch = (ROOT / "scripts" / "fetch_quickjs.py").read_text(encoding="utf-8")
+    assert re.search(r'SHA256 = "[0-9a-f]{64}"', fetch) and re.search(r'VERSION = "v\d+\.\d+\.\d+"', fetch)
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    pinned = re.search(r"^yt-dlp-ejs==(\S+)", requirements, re.M)
+    assert pinned, "yt-dlp-ejs is no longer pinned"
+    # It must be the version this yt-dlp expects, or yt-dlp ignores the scripts.
+    info = importlib.util.find_spec("yt_dlp")
+    if info is not None:
+        expected = (Path(info.origin).parent / "extractor" / "youtube" / "jsc" / "_builtin" / "vendor" / "_info.py")
+        if expected.exists():
+            version = re.search(r"VERSION = '([^']+)'", expected.read_text(encoding="utf-8")).group(1)
+            assert pinned.group(1) == version, f"yt-dlp {version} expects yt-dlp-ejs {version}"

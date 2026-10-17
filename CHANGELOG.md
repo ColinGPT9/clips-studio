@@ -12,6 +12,14 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
+- **YouTube cookies, for when YouTube keeps saying "confirm you're not a bot".** Under
+  **Settings → Advanced settings**, choose **From Firefox** (signed in to YouTube there)
+  or a cookies.txt file exported from a browser signed in to YouTube. Clips Kitty uses it
+  only when YouTube has refused a download both the ordinary way and over IPv4; every
+  other download stays signed out. Signed in, YouTube's player needs its JavaScript run,
+  so the app now carries QuickJS (2 MB) for that one request. Chrome and Edge lock their
+  cookies on Windows, so they are not offered. (#136)
+
 - **A Marketplace, and Awesome Clips Kitty.** Other developers can now write their own
   "find the best moments" step (a pipeline) and list it; you install one from the new
   **Marketplace** screen and switch it on for a video with the **Pipeline** option. Every
