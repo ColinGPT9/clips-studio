@@ -240,7 +240,7 @@ export default function QueueItemSettings({
         )}
         {toggle(
           'Longform',
-          '(16:9)',
+          '(16:9 clips)',
           longform,
           (on) => {
             setLongform(on)
@@ -252,11 +252,11 @@ export default function QueueItemSettings({
               setEditKept(false)
             }
           },
-          'Horizontal 1920x1080 outputs using the same AI.'
+          'Makes 16:9 clips for YouTube and X. Leave it off for 9:16 Shorts, from any video.'
         )}
         {toggle(
           'Vertical Live',
-          '(9:16)',
+          '(already-vertical video)',
           verticalLive,
           (on) => {
             // Keeps the live's own 9:16 layout, so the options that reframe
@@ -268,7 +268,7 @@ export default function QueueItemSettings({
               setGaming(false)
             }
           },
-          'A livestream that was already vertical when it was streamed: keeps its own 9:16 layout, no face tracking or reframing. For a watched channel, videos with no vertical version are skipped.'
+          'Only for a video that is already vertical (9:16); leave it off to make 9:16 Shorts from a normal 16:9 video. A livestream that was already vertical when it was streamed: keeps its own 9:16 layout, no face tracking or reframing. For a watched channel, videos with no vertical version are skipped.'
         )}
         {toggle(
           'Podcast',

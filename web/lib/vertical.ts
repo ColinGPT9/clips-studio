@@ -22,7 +22,7 @@ export const VERTICAL_MIN = 0.5;
 export const VERTICAL_MAX = 0.6;
 
 export const MISMATCH =
-	"This video is not a vertical 9:16 source. Vertical Live mode expects a vertically composed video.";
+	"This video is not a vertical 9:16 source. Vertical Live is only for videos that are already vertical: untick it, and a 16:9 video makes 9:16 Shorts.";
 
 export const NO_VERTICAL_VERSION =
 	"This VOD has no vertical version. Twitch keeps the vertical version of a Dual Format stream for 7 days after it ends. If you have the vertical recording as a file, choose A file instead.";

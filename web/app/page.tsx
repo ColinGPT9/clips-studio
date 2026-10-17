@@ -896,8 +896,9 @@ function VerticalHint({
 	if (on && shape !== "vertical") {
 		return (
 			<p className="mt-2 text-xs" style={{ color: "var(--cs-warn)" }}>
-				This video is {size.width}×{size.height}, not 9:16. Vertical Live
-				expects a vertically composed video, so it would be refused.
+				This video is {size.width}×{size.height}, not 9:16. Vertical Live is
+				only for videos that are already vertical: untick it to make 9:16 Shorts
+				from this one.
 			</p>
 		);
 	}

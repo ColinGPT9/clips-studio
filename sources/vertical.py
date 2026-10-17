@@ -32,17 +32,21 @@ HLS_FORMAT = "best[aspect_ratio<1][ext=mp4]/best[aspect_ratio<1]"
 
 
 def no_vertical_version(platform: str) -> str:
-    """What to say when a video has no vertical version to download."""
+    """What to say when a video has no vertical version to download: Vertical
+    Live ticked for a normal video, most often, by someone who wanted 9:16
+    Shorts from it (#131), so every message ends by saying so."""
+    untick = (" Vertical Live is only for videos that were streamed vertically: untick it to "
+              "make 9:16 Shorts from this video.")
     if platform == "youtube":
         return ("YouTube has no vertical version of this video. If the vertical live was a "
                 "separate stream (its title often ends in \"-vert\"), use that video's link, "
-                "or download the vertical MP4 and add it as a file.")
+                "or download the vertical MP4 and add it as a file." + untick)
     if platform == "twitch":
         return ("Twitch didn't offer a vertical version of this VOD. Twitch keeps the vertical "
                 "version of a Dual Format stream for 7 days after it ends. If you have the "
-                "vertical recording as an MP4, add it as a file.")
+                "vertical recording as an MP4, add it as a file." + untick)
     return (f"{platform.title()} didn't offer a vertical version of this video. If you have the "
-            "vertical recording as an MP4, add it as a file.")
+            "vertical recording as an MP4, add it as a file." + untick)
 
 
 def is_missing_format(error: str) -> bool:

@@ -37,9 +37,9 @@ It can't be combined with Podcast (which reframes a multi-camera set) or
 Longform (which makes 16:9 video).
 
 If the video isn't actually 9:16, it is refused before any work, with
-"This video is not a vertical 9:16 source. Vertical Live mode expects a
-vertically composed video." Press **Use standard processing** to clip it the
-normal way.
+"This video is not a vertical 9:16 source. Vertical Live is only for videos that
+are already vertical: untick it, and a 16:9 video makes 9:16 Shorts." Press
+**Use standard processing** to clip it the normal way.
 
 ## Where the vertical video comes from
 

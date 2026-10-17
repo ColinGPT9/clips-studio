@@ -255,7 +255,7 @@ def test_the_watch_editor_sends_kept_steps_back_and_clears_them_when_off(tmp_pat
     panel = (UI / "components" / "queue" / "QueueItemSettings.tsx").read_text(encoding="utf-8")
     assert "stepsPatch(s, stepsKept, Boolean(channel))" in panel
     # turning Longform on turns these off, as it does Pipeline
-    longform = re.search(r"'Longform',\s*'\(16:9\)',\s*longform,\s*\(on\) => \{(.*?)\n          \},", panel, re.S)
+    longform = re.search(r"'Longform',\s*'\(16:9 clips\)',\s*longform,\s*\(on\) => \{(.*?)\n          \},", panel, re.S)
     assert longform and "setStepsKept(false)" in longform.group(1)
     card = (UI / "components" / "watch" / "WatchCard.tsx").read_text(encoding="utf-8")
     assert "mode: watch.publish.mode" in card and "max_posts: watch.publish.max_posts" in card
@@ -283,7 +283,7 @@ def test_the_watch_editor_sends_kept_edit_plugins_back_and_clears_them_when_off(
     panel = (UI / "components" / "queue" / "QueueItemSettings.tsx").read_text(encoding="utf-8")
     assert "const edits = editPatch(s, editKept, Boolean(channel))" in panel
     # turning Longform on turns Suggest edits off too
-    longform = re.search(r"'Longform',\s*'\(16:9\)',\s*longform,\s*\(on\) => \{(.*?)\n          \},", panel, re.S)
+    longform = re.search(r"'Longform',\s*'\(16:9 clips\)',\s*longform,\s*\(on\) => \{(.*?)\n          \},", panel, re.S)
     assert longform and "setEditKept(false)" in longform.group(1)
 
 

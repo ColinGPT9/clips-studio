@@ -27,8 +27,8 @@ TARGET = (1080, 1920)
 VERTICAL_MIN = 0.50
 VERTICAL_MAX = 0.60
 
-MISMATCH = ("This video is not a vertical 9:16 source. Vertical Live mode expects a "
-            "vertically composed video.")
+MISMATCH = ("This video is not a vertical 9:16 source. Vertical Live is only for videos that are "
+            "already vertical: untick it, and a 16:9 video makes 9:16 Shorts.")
 
 
 class NotVerticalError(Exception):

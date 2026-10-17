@@ -96,16 +96,16 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string; title: string }[] 
   {
     key: 'longform',
     label: 'Longform',
-    hint: '(16:9)',
+    hint: '(16:9 clips)',
     title:
-      'Horizontal 1920x1080 outputs (YouTube, X/Twitter) using the same AI — the vertical Shorts workflow is unchanged.'
+      'Makes 16:9 clips for YouTube and X. Leave it off for 9:16 Shorts, from any video: a normal 16:9 video makes 9:16 Shorts with this off. Horizontal 1920x1080 outputs using the same AI.'
   },
   {
     key: 'vertical_live',
     label: 'Vertical Live',
-    hint: '(9:16)',
+    hint: '(already-vertical video)',
     title:
-      'For a livestream that was already vertical when it was streamed (a YouTube vertical live, the vertical feed of a Twitch or Streamlabs dual-format stream, or a downloaded Instagram/TikTok live). Keeps the stream’s own 9:16 layout: no face tracking or reframing. The moments are still picked the usual way.'
+      'Only for a video that is already vertical (9:16). Leave it off to make 9:16 Shorts from a normal 16:9 video: that is the default. For a livestream that was already vertical when it was streamed (a YouTube vertical live, the vertical feed of a Twitch or Streamlabs dual-format stream, or a downloaded Instagram/TikTok live). Keeps the stream’s own 9:16 layout: no face tracking or reframing. The moments are still picked the usual way.'
   },
   {
     key: 'podcast',
@@ -1395,7 +1395,7 @@ function VerticalHint({ slot, onUse }: { slot: Slot; onUse: () => void }): JSX.E
     return (
       <p className="text-xs text-amber-400 mt-1">
         ⚠ {t('This video is')} {shape.width}×{shape.height},{' '}
-        {t('not 9:16. Vertical Live expects a vertically composed video, so it would be refused.')}
+        {t('not 9:16. Vertical Live is only for videos that are already vertical: untick it to make 9:16 Shorts from this one.')}
       </p>
     )
   }

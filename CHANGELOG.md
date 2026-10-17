@@ -162,6 +162,10 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Changed
 
+- **The shape options say which shape they are about.** **Longform (16:9 clips)** makes
+  16:9 clips; **Vertical Live (already-vertical video)** is only for a video that is
+  already vertical. With both off, a normal 16:9 video makes 9:16 Shorts, as it always
+  did. Ticking Vertical Live for a normal video now says to untick it. (#131)
 - **The Microsoft Store version tells you when the Store has a newer one.** It used to
   say only that the Store keeps it up to date, even when the Store hadn't got to it yet.
   Now **Check for updates**, and a quiet check at start, ask the Store which version it
