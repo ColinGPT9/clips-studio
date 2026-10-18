@@ -10,6 +10,8 @@
 
 > Этот README переведён с помощью ИИ с [английского README](../../README.md), который является
 > эталоном и обновляется первым. Исправления от носителей языка очень приветствуются.
+>
+> 🌐 [Страница сайта на русском](https://colingpt9.github.io/clips-studio/ru.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

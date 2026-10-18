@@ -10,6 +10,8 @@
 
 > README này được AI dịch từ [README tiếng Anh](../../README.md), là bản gốc và luôn được
 > cập nhật trước. Rất hoan nghênh người bản ngữ góp ý chỉnh sửa.
+>
+> 🌐 [Trang web bằng tiếng Việt](https://colingpt9.github.io/clips-studio/vi.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

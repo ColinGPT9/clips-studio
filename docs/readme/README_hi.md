@@ -10,6 +10,8 @@
 
 > यह README AI ने [अंग्रेज़ी README](../../README.md) से अनुवाद किया है, जो मूल संदर्भ है और
 > सबसे पहले अपडेट होता है। हिन्दी बोलने वालों के सुधारों का दिल से स्वागत है।
+>
+> 🌐 [वेबसाइट हिन्दी में](https://colingpt9.github.io/clips-studio/hi.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

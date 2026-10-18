@@ -10,6 +10,8 @@
 
 > Este README fue traducido por IA a partir del [README en inglés](../../README.md), que es la
 > referencia y se actualiza primero. Las correcciones de hablantes nativos son muy bienvenidas.
+>
+> 🌐 [El sitio web en español](https://colingpt9.github.io/clips-studio/es.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

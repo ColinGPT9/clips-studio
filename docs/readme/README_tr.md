@@ -10,6 +10,8 @@
 
 > Bu README, referans kabul edilen ve her zaman ilk güncellenen [İngilizce README](../../README.md)'den
 > yapay zekâ ile çevrildi. Anadili Türkçe olanların düzeltmelerini memnuniyetle bekliyoruz.
+>
+> 🌐 [Web sitesinin Türkçe sayfası](https://colingpt9.github.io/clips-studio/tr.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

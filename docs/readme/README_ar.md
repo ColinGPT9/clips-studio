@@ -12,6 +12,8 @@
 
 > تُرجم ملف README هذا بالذكاء الاصطناعي من [ملف README الإنجليزي](../../README.md)، وهو
 > المرجع ويُحدَّث أولًا. نرحّب كثيرًا بتصحيحات المتحدثين الأصليين للغة.
+>
+> 🌐 [صفحة الموقع بالعربية](https://colingpt9.github.io/clips-studio/ar.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

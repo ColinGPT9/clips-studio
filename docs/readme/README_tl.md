@@ -10,6 +10,8 @@
 
 > Isinalin ng AI ang README na ito mula sa [README sa English](../../README.md), na siyang
 > batayan at unang ina-update. Malugod naming tinatanggap ang mga pagwawasto mula sa mga native speaker.
+>
+> 🌐 [Ang website sa Filipino](https://colingpt9.github.io/clips-studio/tl.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

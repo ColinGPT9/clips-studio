@@ -9,6 +9,8 @@
 # Clips Kitty: ทางเลือกแทน Opus Clip ที่ฟรีและเป็นโอเพนซอร์ส ทำงานบนพีซีของคุณเอง
 
 > README นี้แปลโดย AI จาก [README ภาษาอังกฤษ](../../README.md) ซึ่งเป็นฉบับอ้างอิงและจะได้รับการอัปเดตก่อนเสมอ ยินดีอย่างยิ่งหากเจ้าของภาษาช่วยแก้ไขให้
+>
+> 🌐 [หน้าเว็บไซต์ภาษาไทย](https://colingpt9.github.io/clips-studio/th.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

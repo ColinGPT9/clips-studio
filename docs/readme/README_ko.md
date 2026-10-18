@@ -9,6 +9,8 @@
 # Clips Kitty: 내 PC에서 돌아가는 무료 오픈 소스 Opus Clip 대안
 
 > 이 README는 [영어 README](../../README.md)를 AI로 번역한 것입니다. 기준이 되는 문서는 영어 README이며, 항상 영어판이 먼저 업데이트됩니다. 원어민분들의 수정 제안을 언제든 환영합니다.
+>
+> 🌐 [웹사이트 한국어 페이지](https://colingpt9.github.io/clips-studio/ko.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

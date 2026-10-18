@@ -10,6 +10,8 @@
 
 > README ini diterjemahkan oleh AI dari [README bahasa Inggris](../../README.md), yang menjadi
 > acuan dan selalu diperbarui lebih dulu. Koreksi dari penutur asli sangat dinantikan.
+>
+> 🌐 [Situs web dalam Bahasa Indonesia](https://colingpt9.github.io/clips-studio/id.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

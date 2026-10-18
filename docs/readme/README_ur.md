@@ -12,6 +12,8 @@
 
 > یہ README، [انگریزی README](../../README.md) سے AI نے ترجمہ کیا ہے، جو اصل حوالہ ہے اور سب سے
 > پہلے اپ ڈیٹ ہوتا ہے۔ اہلِ زبان کی طرف سے اصلاحات کا دل سے خیرمقدم ہے۔
+>
+> 🌐 [ویب سائٹ اردو میں](https://colingpt9.github.io/clips-studio/ur.html)
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>
