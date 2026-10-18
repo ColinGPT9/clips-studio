@@ -927,3 +927,15 @@ your clips are yours.
 point: improvements to a tool built for creators stay available to those creators.
 
 Still built to be modified: swap models, tune prompts, add platforms.
+
+## Star history
+
+Thank you to everyone who stars, shares, reports bugs and translates Clips Kitty.
+
+<a href="https://www.star-history.com/#ColinGPT9/clips-studio&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ColinGPT9/clips-studio&amp;type=date&amp;theme=dark&amp;legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ColinGPT9/clips-studio&amp;type=date&amp;legend=top-left" />
+    <img alt="Clips Kitty GitHub star history" src="https://api.star-history.com/chart?repos=ColinGPT9/clips-studio&amp;type=date" />
+  </picture>
+</a>
