@@ -27,6 +27,8 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](../../docs/DOCKER.md)
 
+<a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/bd14bf3f-f35b-4a6c-adce-40d9e0cb85f0" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
+
 <a id="star-and-share-clips-kitty--goal-125"></a>
 
 ### 为 Clips Kitty 点星并分享 ⭐ 目标：125

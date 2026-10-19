@@ -21,6 +21,8 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Docker](https://img.shields.io/badge/docker-compose%20up-2496ED?logo=docker&logoColor=white)](docs/DOCKER.md)
 
+<a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/bd14bf3f-f35b-4a6c-adce-40d9e0cb85f0" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
+
 ### Star and share Clips Kitty ⭐ Goal: 125
 
 [![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 125**
