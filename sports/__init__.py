@@ -48,8 +48,9 @@ def sound_groups(name: str) -> dict:
 
 
 def available() -> list[dict]:
-    """The sports the app offers, with their highlight and period choices,
-    for the Sports toggle's menus."""
+    """The sports the app offers, with their highlight, period and footage
+    choices, for the Sports toggle's menus. The Sport row offers no period:
+    every sport clips the whole match or game there."""
     out = []
     for name in SPORTS:
         s = spec(name)
@@ -62,9 +63,9 @@ def available() -> list[dict]:
                            for k, v in (s.get("highlights_choices") or {}).items()],
             "periods": [{"id": k, "label": v} for k, v in (s.get("periods") or {}).items()],
             "footage": [{"id": k, "label": v} for k, v in (s.get("footage_choices") or {}).items()],
-            # Whether the app's Sport row offers the period (basketball's
-            # quarters), and what it calls it. Soccer always clips the whole match.
-            **({"period_menu": str(s.get("period_menu"))} if s.get("period_menu") else {}),
+            # The Crop choice: only a sport whose framing keeps out of the apps' text has one.
+            **({"screens": [{"id": k, "label": v} for k, v in s["screen_choices"].items()]}
+               if s.get("screen_choices") else {}),
         })
     return out
 
@@ -87,15 +88,28 @@ def clean(raw) -> dict:
         raise ValueError(f"highlights must be one of: {', '.join(choices)}")
     periods = s.get("periods") or {}
     period = str(raw.get("period") or "full")
+    # A period the sport no longer offers (basketball's quarters) was saved
+    # with a job, a watch or an assistant call from before: it clips the
+    # whole game, so they keep working as Sports jobs.
+    if period in (s.get("legacy_periods") or ()):
+        period = "full"
     if period not in periods:
         raise ValueError(f"period must be one of: {', '.join(periods)}")
     footage_choices = s.get("footage_choices") or {"auto": "Automatic"}
     footage = str(raw.get("footage") or "auto")
     if footage not in footage_choices:
         raise ValueError(f"footage must be one of: {', '.join(footage_choices)}")
+    # The phone screen the crop fills (basketball's Crop): "safe", the default,
+    # isn't written, so a job from before reads exactly as it did.
+    screens = s.get("screen_choices") or {}
+    screen = str(raw.get("screen") or "safe")
+    if screens and screen not in screens:
+        raise ValueError(f"screen must be one of: {', '.join(screens)}")
     out = {"name": name, "highlights": highlights, "period": period}
     if footage != "auto":
         out["footage"] = footage
+    if screens and screen != "safe":
+        out["screen"] = screen
     teams = " ".join(str(raw.get("teams") or "").split())[:TEAMS_MAX]
     if teams:
         out["teams"] = teams
@@ -171,14 +185,20 @@ def profile_for(config: dict, video=None):
     return module.profile(config, opt, video)
 
 
-def framing(name: str, clip_path, config: dict) -> dict | None:
+def framing(name: str, clip_path, config: dict, hints: dict | None = None) -> dict | None:
     """The sport's crop path for one clip ({"mode": "track", "path": ...}),
-    or None when the sport has no framing of its own."""
+    or None when the sport has no framing of its own. `hints` (the clip's
+    render_opts["sport_moment"]) go only to a sport whose module declares
+    FRAMING_HINTS; the others are called exactly as before."""
     if name not in SPORTS:
         return None
     module = importlib.import_module(SPORTS[name])
     frame = getattr(module, "framing", None)
-    return frame(clip_path, config) if frame is not None else None
+    if frame is None:
+        return None
+    if getattr(module, "FRAMING_HINTS", False):
+        return frame(clip_path, config, hints=hints)
+    return frame(clip_path, config)
 
 
 def prepass(config: dict, video_path, duration: float) -> dict:

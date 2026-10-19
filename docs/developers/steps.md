@@ -536,7 +536,7 @@ A layout (`crop`) is offered only for clips that use one the same way the editor
 | Vertical Live, including a Sports match filmed 9:16 | none: the clip keeps the stream's own 9:16 picture |
 | A job with vertical clips turned off | none: the whole frame is used |
 
-Cuts, mutes, volume, fades, speed and the hook title work on every kind. A hook title on a Highlights clip moves its title card to the lower third, and the card says so before Use. With `run`, `--layout` picks the kind of clip: `standard` (the default) gives the three layouts, and `podcast`, `sports`, `gaming`, `vertical-live` and `whole-frame` give none.
+Cuts, mutes, volume, fades, speed and the hook title work on every kind. With `run`, `--layout` picks the kind of clip: `standard` (the default) gives the three layouts, and `podcast`, `sports`, `gaming`, `vertical-live` and `whole-frame` give none.
 
 ## Time limits and job folders
 

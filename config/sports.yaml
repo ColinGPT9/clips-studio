@@ -399,11 +399,18 @@ basketball:
   sounds: {gunfire: 0.0, explosion: 0.1, crash: 0.1, crowd: 1.0, whistle: 0.6, buzzer: 0.7, scream: 0.5,
            laughter: 0.2}
 
-  # The 9:16 framing's detector (sports/basketball/action.py). Measured on
-  # three NBA games, 1280 px found the real ball in 14%, 40% and 33% of wide
-  # samples, against 9%, 39% and 18% at 960. hide_scoreboard leaves the TV
-  # scoreboard out of the crop (zooming in a little) rather than cut it in half.
-  framing: {model: yolov8n.pt, imgsz: 1280, hide_scoreboard: true}
+  # The 9:16 framing (sports/basketball/crop, planned for the whole clip).
+  # sources: the detectors. On 256 hand-checked frames of an NBA broadcast,
+  # E-BARD (a YOLOv8n trained on NBA frames: ball, hoop, players; fetched by
+  # scripts/fetch_basketball_model.py) at 960 px found the ball in 84% of
+  # them and the hoop in 99%, against 1-3% (ball) and no hoop for the COCO
+  # model; on 32 clips the planned crop then held the ball in 95% of them
+  # and the rim and backboard in all where the ball was at the rim. Without
+  # its weights the COCO model and the rim finder stand in. hide_scoreboard
+  # leaves the TV scoreboard out of the crop rather than cut it in half (the
+  # owner's choice: in view, it "messes it up").
+  # model: the COCO person detector the reactions and clip starts look with.
+  framing: {model: yolov8n.pt, hide_scoreboard: true, sources: {ball: ebard, hoop: ebard, people: ebard}}
 
   # Telling a cutaway (the crowd, the bench, courtside) from the court
   # (sports/basketball/reactions.py), measured on three NBA games: a shot
@@ -474,8 +481,8 @@ basketball:
     - ["fans", fan_reaction]
 
   highlights_choices:
-    best:                {label: Best moments,         events: all}
-    plays_reactions:     {label: Best plays + reactions, events: all, post_extra: 6}
+    best:                {label: Best moments,         events: all, moments_only: true}
+    plays_reactions:     {label: Best plays + reactions, events: all, post_extra: 6, moments_only: true}
     scoring:             {label: All scoring,          events: [made_2, made_3, dunk, alley_oop, and_one, putback, tip_in, poster_dunk, fast_break_score, buzzer_beater, game_winner, game_tying, go_ahead, clutch_shot, corner_three, deep_three, step_back, fadeaway, pull_up, isolation_score, difficult_finish, euro_step, layup]}
     dunks:               {label: Dunks,                events: [dunk, alley_oop, poster_dunk, putback]}
     threes:              {label: Threes,               events: [made_3, corner_three, deep_three]}
@@ -491,17 +498,20 @@ basketball:
 
   periods:
     full: Entire game
-    q1:   1st quarter
-    q2:   2nd quarter
-    q3:   3rd quarter
-    q4:   4th quarter
-    ot:   Overtime
-  # The app's Sport row offers the quarter (soccer's doesn't offer its halves).
-  period_menu: Quarter
-  period_word: quarter
+  # Basketball always clips the whole game. A job, watch or assistant call
+  # saved with a quarter from before is read as the whole game.
+  legacy_periods: [q1, q2, q3, q4, ot]
   listed_hint: Add the baskets' times in Ask Clips Kitty to clip each one
 
   footage_choices:
     auto:      Automatic
     broadcast: TV broadcast
     sideline:  Gym or phone
+
+  # The phone screen the crop fills (the Sports row's Crop, sports/basketball/action.bands).
+  # "safe" keeps the picture between the apps' top bar and the caption, username and music
+  # line at the bottom (gaming/layouts.json's "all" safe zone: TikTok, Reels and Shorts),
+  # with blurred bands above and below it; "full" fills the whole screen.
+  screen_choices:
+    safe: Clear of app text
+    full: Full screen

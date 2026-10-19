@@ -713,10 +713,19 @@ class Worker(threading.Thread):
         edited timestamps and/or render options (crop mode, caption style).
         The clip's user-visible metadata survives the re-render."""
         import json as _json
+        from types import SimpleNamespace
 
         from analysis.metadata import ClipMetadata
         from core.models import ClipCandidate, Segment
-        from core.pipeline import _register_clip, _render_files, _safe_name
+        from core.pipeline import (
+            _drop_post_style,
+            _register_clip,
+            _render_files,
+            _safe_name,
+            _shift_sport_moment,
+            _sport_moment,
+            _stop_by,
+        )
 
         clip = db.get_clip(payload["clip_id"])
         if clip is None:
@@ -747,6 +756,9 @@ class Worker(threading.Thread):
             merged_style = {**render_opts.get("caption_style", {}), **(incoming["caption_style"] or {})}
             render_opts["caption_style"] = merged_style
         render_opts.update({k: v for k, v in incoming.items() if k != "caption_style"})
+        # A clip saved with the removed Highlights post style is made, and
+        # saved, without it.
+        render_opts = _drop_post_style(render_opts)
         if render_opts.get("caption_lines"):
             # Saved caption text is timed for the clip as it was saved: carried
             # to the clip as it is now, and the seconds it gained captioned (#120).
@@ -769,6 +781,26 @@ class Worker(threading.Thread):
             )
         if not render_opts.get("speaker_edits"):
             render_opts.pop("speaker_edits", None)     # an empty list is "none"
+        # A basketball clip's play, which its framing plans around: worked out
+        # again for the clip as it is now from its scores (the play's second
+        # of the video), so a trim that left it out and a clip grown back over
+        # it find it again; else the saved one, carried to where the start is
+        # now. Dropped while the play is outside the clip.
+        moment = (_sport_moment(candidate, SimpleNamespace(name="basketball"))
+                  if render_opts.get("sport") == "basketball" else None)
+        if moment is None and "sport_moment" in render_opts:
+            moment = _shift_sport_moment(render_opts["sport_moment"], float(clip["start_s"]), start, end - start)
+        if moment is None:
+            render_opts.pop("sport_moment", None)
+        else:
+            render_opts["sport_moment"] = moment
+        # Where the next shot starts after a sport clip's end (its scores),
+        # for the render's pad to stop at: from the clip as it is now.
+        stop = _stop_by(candidate)
+        if stop is None:
+            render_opts.pop("stop_by", None)
+        else:
+            render_opts["stop_by"] = stop
         if render_opts.get("reel"):
             # A match's story reel is joined from its clips (sports/core/reels.py),
             # not cut from one stretch of the video: rendering it from the
@@ -821,6 +853,12 @@ class Worker(threading.Thread):
             render_opts["speaker_turns"] = heard
         else:
             render_opts.pop("speaker_turns", None)
+        # How sure a sport's framing of this file was: this render's, or none.
+        framing = _json.loads(rendered_opts).get("framing") if rendered_opts else None
+        if framing:
+            render_opts["framing"] = framing
+        else:
+            render_opts.pop("framing", None)
         _mark_suggestions(candidate, payload, saved_opts, render_opts,
                           (float(clip["start_s"]), float(clip["end_s"])), (start, end))
 

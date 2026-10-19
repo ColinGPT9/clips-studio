@@ -8,6 +8,7 @@ reprocessed, and the clips table's UNIQUE constraint blocks duplicates.
 """
 
 import json
+import math
 import re
 import threading
 from pathlib import Path
@@ -470,6 +471,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
                if sport_profile is not None else {}),
             **({"intent": intent} if intent is not None else {}),
         )
+        candidates = _refine_windows(sport_profile, candidates, video, segments, config)
     step_report = []
     if steps_chosen and candidates:
         candidates, rejections, step_report = plugin_steps.after_finding(
@@ -549,26 +551,20 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # Titles/descriptions/hashtags for ALL clips in a few batched LLM calls
     # (one call per clip made long streams crawl through analysis).
     print(f"      Writing titles & hashtags for {len(candidates)} clip(s) (batched)...")
-    from video import post_style as _post_style
-
-    post_style = _post_style.resolve(config["clips"].get("caption_style"))
     # A sport's own rules for its clips' titles (basketball: which player to name).
     title_rules = getattr(sport_profile, "title_rules", None) if sport_profile is not None else None
     metas = generate_metadata_batch(
         candidates, segments, video.title, llm,
         creator_context=(creator_ctx.summary if creator_ctx else ""),
-        style=post_style,
         **({"rules": title_rules()} if title_rules is not None else {}),
     )
     # ...and its check of them against the game (basketball: who scored, who
     # leads): the ones that get it wrong are written again with these rules.
     check_titles = getattr(sport_profile, "check_titles", None) if sport_profile is not None else None
     if check_titles is not None:
-        # The same post style, so a rewritten Highlights clip keeps its card lines.
         metas = check_titles(candidates, metas, lambda clips, rules: generate_metadata_batch(
             clips, segments, video.title, llm,
-            creator_context=(creator_ctx.summary if creator_ctx else ""), rules=rules,
-            style=post_style))
+            creator_context=(creator_ctx.summary if creator_ctx else ""), rules=rules))
 
     # Hashtags the request insisted on (chat: "put #creatorname on all of
     # them"). Appended after generation rather than asked of the model: a
@@ -640,15 +636,6 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     # exactly the argument every render has always been given.
     gaming_opts = _gaming_prepare(video.path, candidates, clip_dir, config) if modes.is_gaming(config) else None
 
-    def _clip_opts(meta) -> dict | None:
-        """One clip's render options: the job's, plus its title card when the
-        post style draws one (written for that style above)."""
-        if post_style != _post_style.HIGHLIGHTS:
-            return gaming_opts
-        return {**(gaming_opts or {}),
-                "headline": meta.headline or _post_style.headline_from_title(meta.title),
-                "subline": meta.subline}
-
     # A clip the creator edited, found again by this run, is made with what
     # they saved (D33), as "Make it again with my edits" makes it; a match
     # keeps the job's look. Read here: the renders run in worker threads,
@@ -657,13 +644,21 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
     again = sum(bool(choices.get(_window(c))) for c in candidates)
     if again:
         print(f"      {again} clip(s) you edited are made again with your edits"
-              + (" (caption style, colours, branding and title card as this job sets them)"
+              + (" (caption style, colours and branding as this job sets them)"
                  if modes.sport(config) else ""))
 
     def _opts_for(candidate, meta) -> dict | None:
-        """One clip's render options: the job's (_clip_opts), with the
-        creator's saved choices over them when the clip has some."""
-        return _with_choices(_clip_opts(meta), choices.get(_window(candidate)))
+        """One clip's render options: the job's, with the creator's saved
+        choices over them when the clip has some, and a basketball clip's
+        play (its moment and kind) for its framing."""
+        opts = _with_choices(gaming_opts, choices.get(_window(candidate)))
+        moment = _sport_moment(candidate, sport_profile)
+        if moment is not None:
+            opts = {**(opts or {}), "sport_moment": moment}
+        stop = _stop_by(candidate)
+        if stop is not None:
+            opts = {**(opts or {}), "stop_by": stop}
+        return opts
 
     def _finish(candidate, meta, get_result) -> None:
         nonlocal done_count, last_failure, repeated_failures
@@ -685,7 +680,7 @@ def process_video(url: str, config: dict, db: StateDB, force: bool = False) -> l
             return
         made_seconds[str(final_path)] = _made_seconds(candidate, render_opts_json)
         clip = _register_clip(db, video.video_id, candidate, final_path, meta,
-                              render_opts_json, config, edited=_window(candidate) in choices)
+                              render_opts_json, config)
         if clip:
             rendered.append(clip)
         made.append(clip or RenderedClip(source_video_id=video.video_id, candidate=candidate, path=final_path))
@@ -856,7 +851,7 @@ _BY_HAND = ("edit", "crop", "caption_lines", "speaker_edits", "adjust", "caption
 # What the job decides for every clip, whatever a clip saved: Longform's
 # profile, Podcast, Vertical Live, the sport, and who is heard talking,
 # which every render hears again.
-_JOB_DECIDES = ("profile", "podcast", "vertical_live", "sport", "speaker_turns", "job_captions")
+_JOB_DECIDES = ("profile", "podcast", "vertical_live", "sport", "speaker_turns", "job_captions", "stop_by")
 # A webcam a person chose for the whole job (gaming/run.py TRUSTED): set up
 # for this video before processing, or remembered for the creator.
 _JOB_PERSON = ("user", "creator")
@@ -1308,6 +1303,41 @@ def _safe_name(name: str, fallback: str) -> str:
     return cleaned[:60].strip() or fallback
 
 
+# What the Highlights post style (#125, removed) saved with a clip: its title
+# card's words in the render options, and its look in the caption style.
+_OLD_CARD_KEYS = ("headline", "subline")
+_OLD_STYLE_KEYS = ("post_style", "card_position")
+
+
+def _plain_caption_style(style):
+    """A caption style without the removed Highlights post style's keys:
+    the person's own caption settings, as they always were."""
+    if not isinstance(style, dict) or not any(k in style for k in _OLD_STYLE_KEYS):
+        return style
+    return {k: v for k, v in style.items() if k not in _OLD_STYLE_KEYS}
+
+
+def _drop_post_style(opts: dict) -> dict:
+    """A clip's render options without what the removed Highlights post
+    style saved: no title card words, and a caption style with no post style
+    or card position (one left empty goes, so the job's style applies).
+    The same dict when it had none of them."""
+    style = opts.get("caption_style")
+    plain = _plain_caption_style(style)
+    if plain is style and not any(k in opts for k in _OLD_CARD_KEYS):
+        return opts
+    out = {k: v for k, v in opts.items() if k not in _OLD_CARD_KEYS}
+    if plain is not style:
+        if plain:
+            out["caption_style"] = plain
+        else:
+            del out["caption_style"]
+    return out
+
+
+END_PAD = 0.4            # a clip's render runs this far past its end: Whisper's word ends run early
+
+
 def _render_files(
     source: Path,
     candidate: ClipCandidate,
@@ -1334,7 +1364,9 @@ def _render_files(
     # the worker is actively processing has been cancelled.
     cancel.check_active()
 
-    opts = render_opts or {}
+    # A clip saved with the removed Highlights post style renders with the
+    # person's own caption style and no title card, and is saved without it.
+    opts = _drop_post_style(render_opts or {})
     # Deterministic timestamp-based name: re-runs overwrite instead of piling up.
     stem = f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}"
     final_path = clip_dir / f"{stem}.mp4"
@@ -1376,6 +1408,12 @@ def _render_files(
     # A match (the Sports toggle, sports/): framed by the ball and the play.
     # From the job or the clip's saved options, so re-renders keep it.
     sport_name = modes.sport(opts) or modes.sport(config)
+    # The phone screen a sport's crop fills (the Sports row's Crop): the
+    # clip's own, else the job's. Only "full" is ever written; absent is the
+    # default, the picture kept clear of the apps' text.
+    job_sport = (config.get("clips") or {}).get("sport")
+    sport_screen = (opts.get("sport_screen")
+                    or (job_sport.get("screen") if isinstance(job_sport, dict) else None)) if sport_name else None
     # Gaming / Split-Screen (gaming/): opt-in, per video or per clip. Tried
     # first inside the tracked branch; anything it declines or fails at goes
     # on to the standard layout below. Off -> never imported.
@@ -1385,6 +1423,7 @@ def _render_files(
               and (modes.is_gaming(opts)
                    or (modes.is_gaming(config) and not ("gaming" in opts and opts["gaming"] is None))))
     gaming_kept = None
+    framing_quality = None   # the sport framing's quality, saved with the clip
     canvas = (1920, 1080) if landscape else (1080, 1920)
 
     # Color: preset filter (per-clip wins over job/config default) + manual
@@ -1414,13 +1453,7 @@ def _render_files(
 
     ass_path = None
     # Per-clip style wins; otherwise the job/config default chosen at generate time.
-    caption_style = opts.get("caption_style") or config["clips"].get("caption_style")
-    # Post style (video/post_style.py), chosen with the caption style. The
-    # highlights look keeps the clip's framing and adds its captions and
-    # title card on top; vertical clips only.
-    from video import post_style as _post_style
-
-    highlights = not landscape and _post_style.resolve(caption_style) == _post_style.HIGHLIGHTS
+    caption_style = _plain_caption_style(opts.get("caption_style") or config["clips"].get("caption_style"))
     # Where someone other than the main speaker talks, when the caption style
     # asks for them in a second colour (#126). Empty for every other clip.
     turns: list = []
@@ -1455,7 +1488,7 @@ def _render_files(
             lines = remap_lines(lines, edit)
         ass_path = build_captions(
             segments, candidate, clip_dir / f"{stem}.ass",
-            style=_post_style.caption_style_for(caption_style) if highlights else caption_style,
+            style=caption_style,
             lines=lines,
             canvas=canvas,
             language=content_language,
@@ -1488,10 +1521,17 @@ def _render_files(
     # being spoken, so a cut exactly at the last word's end clips its audio —
     # the caption shows the word but the voice cuts out. Pad the cut a beat
     # past the transcript end. Captions were already built above from the
-    # unpadded window, so no extra words appear on screen.
+    # unpadded window, so no extra words appear on screen. Never past
+    # render_opts["stop_by"] (_stop_by): a sport clip's end is put just before
+    # the next shot, and the pad showed 0.4 s of it, then the end. A stop the
+    # end was moved past by hand is out of date: the pad is as ever then.
     from dataclasses import replace
 
-    padded = replace(candidate, end=candidate.end + 0.4)
+    pad = END_PAD
+    stop = opts.get("stop_by")
+    if isinstance(stop, (int, float)) and float(stop) >= candidate.duration - 0.01:
+        pad = max(0.0, min(pad, float(stop) - candidate.duration))
+    padded = replace(candidate, end=candidate.end + pad)
 
     # Staging files for this render. Cleaned in a finally: a failed render, a
     # crash mid-tracking or a cancel used to leave its multi-hundred-MB
@@ -1553,9 +1593,20 @@ def _render_files(
                 from video.tracker import compute_tracking  # lazy: imports torch
 
                 crop_mode = opts.get("crop", "track")
-                sport_framing = (_sport_framing(intermediate, config, sport_name)
+                # The play's moment, for a sport that frames around it; not
+                # once cuts or a speed change have moved the clip's timeline
+                # (the camera's scale stands).
+                hints = opts.get("sport_moment") if isinstance(opts.get("sport_moment"), dict) else None
+                if hints is not None and edit is not None and (edit.keep is not None
+                                                               or abs(edit.speed - 1) >= 0.01):
+                    hints = {k: v for k, v in hints.items() if k == "scale"} or None
+                sport_framing = (_sport_framing(intermediate,
+                                                {**config, "sport_screen": sport_screen} if sport_screen else config,
+                                                sport_name, hints)
                                  if sport_name and crop_mode in ("track", "bias_left", "bias_right")
                                  else None)
+                if sport_framing is not None:
+                    framing_quality = sport_framing.pop("quality", None)
                 if crop_mode == "center":
                     tracking = {"mode": "track", "path": [(0.0, 0.5)]}
                 elif sport_framing is not None:
@@ -1612,19 +1663,6 @@ def _render_files(
     if ass_path is not None:
         discard(ass_path)
 
-    # Highlights title card: one overlay pass on the finished clip, like the
-    # image watermark below (which then sits on top of it). The text is saved
-    # with the clip (opts["headline"], opts["subline"]), so a re-render keeps
-    # it and the editor can change it.
-    if highlights and (opts.get("headline") or opts.get("subline")):
-        # The editor's hook title is burned at the top in the pass above, and
-        # a card laid over it there would hide it. A clip with a hook keeps
-        # its card in the lower third instead.
-        position = _post_style.card_position(caption_style)
-        if position == "top" and edit is not None and edit.hook:
-            position = "lower"
-        _title_card(render_path, opts, position, clip_dir / f"{stem}.card.png", content_language)
-
     # Image watermark: one overlay pass on the finished clip (only when set).
     if wm_cfg and _wm.has_image(wm_cfg, wm_assets):
         _wm.apply_image(render_path, wm_cfg, canvas, wm_assets)
@@ -1643,7 +1681,7 @@ def _render_files(
         opts = {k: v for k, v in opts.items() if k != "gaming"}
     # The other speaker's turns are the ones this file was burned with, or
     # none: never ones left over from an earlier render.
-    opts = {k: v for k, v in opts.items() if k != "speaker_turns"}
+    opts = {k: v for k, v in opts.items() if k not in ("speaker_turns", "framing")}
     job_captions = bool(config["clips"].get("captions", True)) and opts.get("job_captions", True)
     # A run with captions off burns none, whatever a clip had switched on in
     # an earlier one: saved, that switch would put them back at its next edit.
@@ -1675,6 +1713,11 @@ def _render_files(
             **({"sport": sport_name} if sport_name else {}),
             # A job run with captions off, so an edit doesn't bring them back.
             **({"job_captions": False} if not job_captions else {}),
+            # The screen it filled, when not the default: a re-render keeps it.
+            **({"sport_screen": sport_screen} if sport_name and sport_screen == "full" else {}),
+            # How sure the sport's framing was (tracked, assisted, wide or
+            # uncertain, and what that rests on): this render's, never an old one.
+            **({"framing": framing_quality} if framing_quality else {}),
         }
     ) if (opts or caption_style or filter_name != "none" or wm_cfg or vertical_live or sport_name
           or not job_captions) else ""
@@ -1683,15 +1726,10 @@ def _render_files(
 
 def _wants_second_speaker(config: dict, opts: dict) -> bool:
     """Whether a clip's captions burn the other speaker in a second colour:
-    captions on, the option ticked in its caption style, and not the
-    Highlights look, which has a colour of its own."""
+    captions on (captions_on) and the option ticked in its caption style."""
     if not captions_on(config, opts):
         return False
-    from video import post_style as _post_style
-
     style = opts.get("caption_style") or config["clips"].get("caption_style")
-    if not opts.get("profile") and _post_style.resolve(style) == _post_style.HIGHLIGHTS:
-        style = _post_style.caption_style_for(style)
     return bool((style or {}).get("second_speaker"))
 
 
@@ -1718,42 +1756,88 @@ def _speaker_turns(
         return []
 
 
-def _title_card(clip: Path, opts: dict, position: str, png: Path, language: str) -> None:
-    """Lay the highlights title card over a rendered clip, at `position`
-    ("lower" or "top"). Never raises: a card that cannot be drawn leaves the
-    clip as it was rendered."""
-    from core import modes
-    from video import post_style
+def _sport_moment(candidate, sport_profile) -> dict | None:
+    """Where a basketball clip's play is, seconds into the clip, and its kind
+    (from the clip's selection), for its framing to plan around, and how
+    tall the game camera shows the players when it isn't as a national
+    broadcast does (its scores' `sport_scale`: sports/basketball/reactions.
+    people_scale): saved in its render options, so a re-render and a render
+    PC have it too. None for other sports and for clips with neither."""
+    if sport_profile is None or getattr(sport_profile, "name", "") != "basketball":
+        return None
+    scores = getattr(candidate, "subscores", None) or {}
+    out: dict = {}
+    t, kind = scores.get("sport_t"), scores.get("sport_event")
+    if isinstance(t, (int, float)) and kind:
+        rel = float(t) - float(candidate.start)
+        if 0 <= rel <= float(candidate.end) - float(candidate.start) + 1.0:
+            out = {"t": round(rel, 2), "kind": str(kind)}
+    scale = scores.get("sport_scale")
+    if isinstance(scale, (int, float)) and scale != 1.0:
+        out["scale"] = float(scale)
+    return out or None
 
+
+def _stop_by(candidate) -> float | None:
+    """The latest a clip may run to, seconds from its start, when the next
+    shot starts just after its end (its scores' `sport_stop`, from a sport's
+    look at its footage: sports/basketball/leadin.py): the render's pad stops
+    there. Saved in its render options, so a re-render and a render PC have
+    it too. None for every other clip."""
+    stop = (getattr(candidate, "subscores", None) or {}).get("sport_stop")
+    if not isinstance(stop, (int, float)):
+        return None
+    rel = math.floor((float(stop) - float(candidate.start)) * 100 + 1e-6) / 100
+    return rel if 0 < rel <= float(candidate.end) - float(candidate.start) + 1.0 else None
+
+
+def _shift_sport_moment(moment: dict | None, old_start: float, new_start: float, length: float) -> dict | None:
+    """A clip's sport_moment (_sport_moment) after an edit moved its start:
+    still the same second of the video, now timed from the new start. None
+    when there was none, or when the edit left the play outside the clip."""
+    if not isinstance(moment, dict):
+        return None
+    camera = {"scale": moment["scale"]} if isinstance(moment.get("scale"), (int, float)) else {}
+    if not isinstance(moment.get("t"), (int, float)):
+        return camera or None
+    rel = float(moment["t"]) + float(old_start) - float(new_start)
+    if not 0 <= rel <= float(length) + 1.0:
+        return camera or None
+    return {**moment, "t": round(rel, 2)}
+
+
+def _refine_windows(sport_profile, candidates: list, video, segments, config: dict) -> list:
+    """A sport's last word on its clips' windows, right after they're chosen
+    and before anything is built on them: titles, captions, plugins, the
+    database (basketball moves a start off a TV cutaway onto the court,
+    sports/basketball/leadin.py). Sports without it, and every other job,
+    never get here. A failure keeps the windows as they were found."""
+    refine = getattr(sport_profile, "refine_windows", None)
+    if refine is None or not candidates:
+        return candidates
+    found = [(c.start, c.end) for c in candidates]
     try:
-        size = modes.probe_size(clip)
-        if not all(size):
-            size = (1080, 1920)
-        card = post_style.render_card(
-            str(opts.get("headline") or ""), str(opts.get("subline") or ""), size, png,
-            position=position, language=language,
-        )
-        if card is None:
-            # Its words were only hashtags, or nothing here can draw them: no
-            # face has their script, or right-to-left text has no layout
-            # engine to shape it. Said, so a missing card is not a mystery.
-            print("      (Title card skipped: nothing on it could be drawn)")
-        else:
-            post_style.apply_card(clip, card)
+        out = refine(candidates, video.path, segments, config)
+        return out if isinstance(out, list) else candidates
+    except cancel.CancelledError:
+        raise
     except Exception as e:
-        print(f"      (Title card skipped: {e})")
-    finally:
-        discard(png)
+        for c, (start, end) in zip(candidates, found):
+            c.start, c.end = start, end      # it edits in place: undo a half-done pass
+        print(f"      (clip starts kept as found: {e})")
+        return candidates
 
 
-def _sport_framing(clip_path: Path, config: dict, sport_name: str) -> dict | None:
+def _sport_framing(clip_path: Path, config: dict, sport_name: str, hints: dict | None = None) -> dict | None:
     """The sport's own framing for a clip (sports/), or None to use the face
     tracker as always: a sport without framing, or a failure, never stops a
-    clip from rendering."""
+    clip from rendering. `hints`: the clip's render_opts["sport_moment"]."""
     try:
         import sports
 
-        return sports.framing(sport_name, clip_path, config)
+        return sports.framing(sport_name, clip_path, config, hints)
+    except cancel.CancelledError:
+        raise
     except Exception as e:
         print(f"      ({sport_name} framing failed: {e}; framing it the usual way)")
         return None
@@ -1767,7 +1851,6 @@ def _register_clip(
     meta: ClipMetadata,
     render_opts_json: str,
     config: dict | None = None,
-    edited: bool = False,
 ) -> RenderedClip | None:
     """DB write for one rendered clip. Main thread only (sqlite connections
     are not shareable across threads).
@@ -1778,9 +1861,6 @@ def _register_clip(
     longform.assemble and never call _render_files at all, so hooking the
     renderer silently left two of the four longform profiles with no end card.
     Hooking the funnel means a mode added later cannot miss it either.
-
-    `edited`: the creator made this clip again by hand (D33), so a run never
-    replaces its saved caption style or card words.
     """
     clip_id = db.add_clip(
         video_id,
@@ -1804,12 +1884,15 @@ def _register_clip(
             (video_id, round(candidate.start, 2), round(candidate.end, 2)),
         ).fetchone()
         if row:
-            from video import post_style as _post_style
-
             fresh = {"path": str(final_path), "scores": json.dumps(candidate.subscores or {})}
             rendered = json.loads(render_opts_json) if render_opts_json else {}
             existing = db.get_clip(row["id"])
             kept = json.loads(existing["render_opts"]) if existing and existing["render_opts"] else {}
+            if isinstance(kept, dict) and _drop_post_style(kept) is not kept:
+                # Saved with the removed Highlights post style: this file was
+                # made without it, and the row loses it too.
+                kept = _drop_post_style(kept)
+                fresh["render_opts"] = json.dumps(kept)
             # A Marketplace plugin's rating (plugins/steps.py), now or on the
             # run before: the score posting orders by follows it, or goes
             # back to the unrated one. The title and metadata stay.
@@ -1846,48 +1929,17 @@ def _register_clip(
                 # was rendered with, or the editor starts from a stale one.
                 kept = {**kept, "gaming": rendered["gaming"]}
                 fresh["render_opts"] = json.dumps(kept)
-            if _post_style.HIGHLIGHTS in (_post_style.resolve(kept.get("caption_style")),
-                                          _post_style.resolve(rendered.get("caption_style"))):
-                # Highlights, in this render or the saved one: the row's title
-                # card must be the one this file was rendered with. The editor
-                # and its re-renders start from the row, so a stale one drops
-                # the new card on the next edit, or brings an old one back.
-                card = _with_card_of(kept, rendered)
-                if edited:
-                    # A clip the creator edited keeps its own caption style and
-                    # card words; this run's card is added only where it had
-                    # none (D33). Outside Sports its file was made with them; a
-                    # Sports job made it in the job's look.
-                    card.update({k: kept[k] for k in ("caption_style", "headline", "subline") if k in kept})
-                fresh["render_opts"] = json.dumps(card)
+            for key in ("sport_moment", "framing"):
+                # A basketball clip's play and how sure its framing was: this
+                # file's, so a re-render plans around the same play.
+                if rendered.get(key) != kept.get(key):
+                    kept = {k: v for k, v in kept.items() if k != key}
+                    if rendered.get(key):
+                        kept[key] = rendered[key]
+                    fresh["render_opts"] = json.dumps(kept)
             db.set_clip(row["id"], **fresh)
         print(f"      Re-rendered (kept existing metadata): {final_path.name}")
         return None
 
     print(f"      -> {final_path}  ({meta.title})")
     return RenderedClip(source_video_id=video_id, candidate=candidate, path=final_path)
-
-
-def _with_card_of(kept: dict, rendered: dict) -> dict:
-    """A clip's saved options with the highlights title card set to the one
-    a fresh render was made with: its post style and card position, and its
-    headline and subline (gone when that render drew no card). The rest of
-    the saved caption style stays the clip's, as on any re-run."""
-    out = dict(kept)
-    new_style = rendered.get("caption_style") or {}
-    style = dict(kept.get("caption_style") or new_style)
-    for key in ("post_style", "card_position"):
-        if key in new_style:
-            style[key] = new_style[key]
-        else:
-            style.pop(key, None)
-    if style:
-        out["caption_style"] = style
-    else:
-        out.pop("caption_style", None)
-    for key in ("headline", "subline"):
-        if key in rendered:
-            out[key] = rendered[key]
-        else:
-            out.pop(key, None)
-    return out

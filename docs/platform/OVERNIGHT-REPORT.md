@@ -4,7 +4,7 @@ Branch `claude/open-platform-w4eh9g`, from `main` at 1d13723. Brief: [BRIEF.md](
 
 ## Where things stand
 
-Every phase in the brief is done. Clips Kitty can now install community pipelines from a folder, a GitHub commit or a registry listing, run them as one step of its normal job, show and manage them in a Marketplace screen, and download the models they name into one folder every plugin shares. Nothing existing was replaced: the same API, engine, job queue and pipeline, with one new optional job field (`pipeline`) and new routes, all labelled experimental. The code for Soccer, Basketball, Gaming and the House of Highlights style was not changed; the one change in the shared pipeline (`core/pipeline.py`) is a branch taken only when a video has a pipeline chosen.
+Every phase in the brief is done. Clips Kitty can now install community pipelines from a folder, a GitHub commit or a registry listing, run them as one step of its normal job, show and manage them in a Marketplace screen, and download the models they name into one folder every plugin shares. Nothing existing was replaced: the same API, engine, job queue and pipeline, with one new optional job field (`pipeline`) and new routes, all labelled experimental. The code for Soccer, Basketball, Gaming and the Highlights post style (since removed) was not changed; the one change in the shared pipeline (`core/pipeline.py`) is a branch taken only when a video has a pipeline chosen.
 
 Two things are not true yet and matter most:
 

@@ -14,6 +14,10 @@ already has:
   NBA games, that told 90 of 90 hand-labelled frames apart, where the
   floor's colour couldn't: the lower half of a court shot is the front
   rows. Without the detector, the colour and edge test (`looks`) stands in.
+  A camera that shows the floor closer (a team's own network: its players
+  stood 1.8 times as tall as on the national broadcasts) scales that bar,
+  and every other height test of the clips' shots and framing, by how tall
+  its floor players stand (`people_scale`).
   A run of shots that aren't the court, between two that are, is a
   cutaway (an advert break or a studio segment runs far longer and is left
   out). A frame with no one in it (a stat card, a fade, a replay's wipe)
@@ -48,6 +52,16 @@ AFTER_REACTION = 1.5     # seconds a merged clip runs past the end of the reacti
 REACTION_GAP = 1.0       # a play's clip holds a reaction shot starting at most this long after the clip's end...
 REACTION_MOST = 4.0      # ...and at most this much of it...
 REACTION_START = 5.0     # ...when it starts at most this long after the play
+# How tall a broadcast's game camera shows the floor players, against the NBA
+# broadcasts the height tests were set on: the 3rd-tallest person of each
+# keyframe with SCALE_PEOPLE people or more, its median over the game (on a
+# condensed game most keyframes are the game camera; a close-up's third person
+# is a small one behind). An NBA Finals broadcast measured 0.213, a team's own
+# network 0.393, its players 0.37-0.49 of the height on its wide shots.
+SCALE_PEOPLE = 3
+SCALE_FLOOR = 0.22       # ...this on the broadcasts the bars were set on (scale 1)
+SCALE_MAX = 2.5          # ...and never scaled more than this
+SCALE_FRAMES = 30        # the fewest such keyframes to measure it from
 
 # Words a lower-third writes that aren't a person's name.
 NOT_NAMES = {"live", "replay", "timeout", "time", "out", "quarter", "half", "halftime", "final", "overtime",
@@ -132,11 +146,25 @@ def cutaways(shots: list[tuple[float, str]], video_end: float) -> list[Cutaway]:
     return out
 
 
+def people_scale(heights: list[list[float]]) -> float:
+    """How much taller this broadcast's game camera shows the floor players
+    than the ones the height tests were set on (SCALE_FLOOR), from each
+    keyframe's people's heights (shares of the frame's height): 1.0 when it
+    shows them no taller, or when too few keyframes show enough people."""
+    import statistics
+
+    thirds = [sorted(h, reverse=True)[SCALE_PEOPLE - 1] for h in heights if len(h) >= SCALE_PEOPLE]
+    if len(thirds) < SCALE_FRAMES:
+        return 1.0
+    return round(min(SCALE_MAX, max(1.0, statistics.median(thirds) / SCALE_FLOOR)), 3)
+
+
 def read_shots(path, duration: float, court_share: float, crowd_edges: float, cancel=None,
-               tall: float | None = None, model_name: str = "yolov8n.pt") -> list:
+               tall: float | None = None, model_name: str = "yolov8n.pt") -> tuple[list, float]:
     """(time, shot_kind() or looks()) for every keyframe of the video, in
-    one pass: the detector's people when `tall` is given and the detector
-    loads, else the colour and edges of a small thumbnail."""
+    one pass, and the camera's people_scale (the bar for a shot of people,
+    `tall`, scaled by it): the detector's people when `tall` is given and the
+    detector loads, else the colour and edges of a small thumbnail (scale 1)."""
     from core.modes import probe_size
     from sports.basketball import keyframes
     from sports.core.scorebug import keyframe_crops
@@ -150,12 +178,12 @@ def read_shots(path, duration: float, court_share: float, crowd_edges: float, ca
         except Exception as e:                               # no ultralytics, no weights
             print(f"      (cutaways: the detector isn't available ({e}), telling shots by colour)")
     kinds: dict[int, str] = {}
+    found: dict[int, list] = {}
     if model is not None:
         from sports.soccer.ball import detect
 
         def on_frame(i, img):
-            _balls, people = detect(model, img, DETECT_WIDTH)
-            kinds[i] = shot_kind(people, tall)
+            _balls, found[i] = detect(model, img, DETECT_WIDTH)
 
     else:
         def on_frame(i, img):
@@ -164,8 +192,11 @@ def read_shots(path, duration: float, court_share: float, crowd_edges: float, ca
     with keyframes.listing(path) as own:
         times = own(keyframe_crops(path, (0.0, 0.0, 1.0, 1.0), probe_size(path), on_frame, cancel,
                                    scale_width=DETECT_WIDTH if model is not None else THUMB_WIDTH))
+    scale = people_scale([[p[3] for p in people] for people in found.values()]) if found else 1.0
+    for i, people in found.items():
+        kinds[i] = shot_kind(people, tall * scale)
     # By their own times, two keyframes can swap places.
-    return sorted(((t, kinds[i]) for i, t in enumerate(times) if i in kinds), key=lambda shot: shot[0])
+    return sorted(((t, kinds[i]) for i, t in enumerate(times) if i in kinds), key=lambda shot: shot[0]), scale
 
 
 # ---- a name, only from the broadcast's own caption --------------------------------

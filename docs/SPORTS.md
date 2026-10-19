@@ -20,7 +20,6 @@ and none of its code runs.
 - **A video or file**: tick **Sports** in the Generate bar. A row appears under
   the video:
   - **Sport**: ⚽ Soccer / Football or 🏀 Basketball. Cricket is listed under them as coming soon.
-  - **Quarter** (Basketball only): the entire game, one quarter, or overtime.
   - **Highlights**: which moments become clips (below). Hover a choice in the
     list to see what it keeps.
   - **Teams or players** (optional): clips where the commentary names them get
@@ -284,8 +283,8 @@ How they're made:
   already is the match's recap.
 - **Processing a match again** makes each clip you edited with your cuts,
   layout, caption fixes, speaker fixes and colour adjustments. The caption
-  style, colour preset, branding and title card are this job's, the same as
-  every other clip of the match. A change you made to those on one clip stays
+  style, colour preset and branding are this job's, the same as every other
+  clip of the match. A change you made to those on one clip stays
   saved on it: **Re-render** in its clip panel, with the start and end as they
   are, makes it with them.
 - **Changing a reel.** A reel isn't re-rendered on its own: change its clips
@@ -333,7 +332,7 @@ league.
 
 | Choice | What becomes a clip |
 |---|---|
-| **Best moments** | Everything, best first, each play with its reaction when it fits |
+| **Best moments** | Every play and reaction, best first, each play with its reaction when it fits |
 | **Best plays + reactions** | The same with 6 more seconds after each play |
 | **All scoring** | Every basket (dunks, threes, layups, putbacks...) |
 | **Dunks** | Dunks, alley-oops, posters and putback slams |
@@ -343,6 +342,11 @@ league.
 | **Fan reactions** | Every reaction: the crowd, the bench, courtside, a coach |
 | **Celebrity reactions** | Courtside reactions, named only when the broadcast captions them |
 | **Crowd reactions** / **Bench reactions** | Those reactions |
+
+Best moments and Best plays + reactions keep only windows with a moment in them:
+on a team's own network, 20 of 87 clips were the analysts talking over play or a
+stoppage, with no basket in them. (Soccer's Best moments keeps its talk.) A plain
+free throw is none of a game's best moments either.
 
 **Teams or players** works as for soccer ("Lakers", "Curry"): clips where the
 commentary names them get extra points, and nobody is guessed. Ask Clips Kitty
@@ -405,7 +409,11 @@ OCR on each, and more on two. A score
 up by 1, 2 or 3 on one side, seen on two readings, is a free throw, a basket or
 a three, and which team scored. The commentary's name for it stands when the points agree (a dunk is 2,
 never 3), and the crowd dates it. A jump of more than 3 at once (two baskets
-between readings) isn't called a basket.
+between readings) isn't called a basket. A jump of 2 with the game clock reading
+the same on both sides of it, 2 s or more apart, is two free throws read as one
+change: a basket is scored with the clock running, and it stands still through a
+trip to the line (on a team's own network one was titled as a basket putting
+the home team "Up 3", up 2 after it).
 
 **Each keyframe at its own time.** Decoding only the keyframes, ffmpeg dates a
 picture by the next keyframe's packet once one comes out of the decoder out of
@@ -415,6 +423,19 @@ showed and an older one could follow it. ffprobe, decoding the same keyframes
 alongside, lists each picture's own time beside the one ffmpeg gave it; when the
 two lists match, the reader (and the cutaways) take the own times
 (`sports/basketball/keyframes.py`; soccer's reader is unchanged).
+
+**A bug that moves.** A fan's upload of a whole game can be two broadcasts
+joined: on a preseason game, one network's feed for the first 17 minutes, its bug
+bottom right, then the home network's, its bug bottom left. The box found reads
+nothing of the other, so a stretch of 5 minutes or more with no bug read is
+looked at again for a bug somewhere else. One that shows at least two baskets
+there is read there, and its box is the bug's for that stretch (a replay is still
+told by the bug going away). Where the two broadcasts overlap (the second rewound
+50 s), a basket both show is counted once, and a network that lists the teams
+the other way round, or by another code ("LA" for "LAL"), is put in the first
+one's order. On that game, 26 baskets were read in the first broadcast and 67 more
+in the second, where none had been read. A full broadcast's halftime, with no bug
+anywhere, costs a look at a few frames.
 
 **Dated by the score bug.** On an NBA game the bug showed the new score 1.3-2.6 s
 after the ball went in, all ten times, while the crowd's loudest moment put four
@@ -543,21 +564,66 @@ wipe; without the detector, a dark frame) neither starts a cutaway nor ends one.
 
 ### Framing
 
-The 9:16 crop follows, in order: a close-up or a reaction shot (someone a third
-of the frame's height or more: the biggest of them, not where the court was),
-the ball with the players around it (the ball handler and the defenders),
-leaning toward the rim as the ball heads for it, and the players on the floor
-when the ball is lost (not the stands: people under half the tallest one's height). Same detector as soccer (YOLOv8n at 1280 px). A "ball" in the bottom
-fifth of the frame or at a player's feet is dropped: on real broadcasts those
-were the front rows, the score bug and bright shoes. Cuts snap, never pan; a cut
-is the picture's colours changing as well as its pixels, since the camera
-whipping across the court changes the pixels too. A game filmed 9:16 (1080×1920,
-720×1280, 1440×2560) keeps its own picture.
+The 9:16 crop is planned for the whole clip before a frame is rendered
+(`sports/basketball/crop/`), around the play:
+
+- **The ball first.** A basketball-trained detector (E-BARD's YOLOv8n: the ball,
+  the hoop, players and referees; see [NOTICE](../NOTICE)) finds the ball. Its
+  detections are linked into short tracks across frames, with the camera's own
+  movement taken out, and one plausible path is kept for each camera shot. A gap
+  is bridged only as far as a ball goes (0.6 s in flight, 1.5 s carried, 0.4 s
+  predicted), never across a cut.
+- **The play's phases.** Possession, a pass, the release, the flight, the rim,
+  the result, a drive, a rebound. On a pass the crop reaches the receiver before
+  the catch; on a shot it follows the ball's flight.
+- **The basket only when they shoot.** During the play the basket may be out of
+  view. From just before the ball reaches the rim until the result, the crop
+  holds the rim, the net and the backboard, its edge past the backboard. When the
+  board isn't seen, it is taken to reach 1.3 rim widths past the rim, plus a
+  margin: on 32 clips of an NBA broadcast the boards reached 0.85 rim widths past
+  the rim in the median and 1.47 at most.
+- **It pans, it never zooms.** The crop keeps one size from the first frame to
+  the last, as on a House of Highlights clip: 9:16 with **Full screen**, and
+  wider than that by the bands with the default Crop (below). The band the
+  scoreboard leaves, below, is the clip's own, set once.
+  When the shooter and the basket can't both fit, it keeps the side the ball is
+  on and pans with the ball to the rim. It used to widen there (4:5, 1:1 or the
+  whole frame over a blurred copy) and narrow again after; on a team's own
+  network, whose camera shows the players closer, that zoomed in and out on
+  nearly every clip. On the 32 clips of an NBA broadcast the ball stayed in the
+  crop in 162 of 172 checked frames and the rim and backboard in all 47 as the
+  ball reached the rim, as with the zooms (163 and 47).
+- **Clear of the apps' text (Crop).** By default the picture sits between the
+  apps' top bar and their caption, username and music line at the bottom, with a
+  blurred band above and below it: the tallest of TikTok, Reels and Shorts at each
+  end (`gaming/layouts.json`'s `all`, 250 and 420 of the screen's 1920 pixels), so
+  the basket near the top of the picture and the players' feet near the bottom are
+  never behind them. The apps' buttons down the right side still sit over the
+  picture's right edge (no band can move them): the crop keeps the rim left of
+  them, as it always has. The picture is that much shorter, so the crop is wider than
+  9:16 and shows more of the court. The Sports row's **Crop** offers **Full
+  screen** instead: the picture fills the phone and the apps' text covers its top
+  and bottom. A clip keeps its choice when it is re-rendered from the editor.
+- **Smooth, and exact at cuts.** The path is smoothed within each camera shot
+  and never moves faster than a camera operator would; at a cut it moves with the
+  picture, never panning across it. Cuts are found on every frame.
+- **Close-ups follow the person.** A close-up or a crowd shot (a player after
+  the basket, the bench) follows the person the camera is on: the biggest, the
+  nearer the middle the better (the biggest alone was often a blurred shoulder
+  in front, the crop on an ear or the back of a head), as smoothly as the play,
+  so someone walking off isn't cut in half.
+- **Without the ball, the play.** When the ball can be followed for less than
+  40% of the play, the crop follows the players around the play and where the
+  broadcast's camera points (it follows the ball), at the same size; with no players
+  to follow, where the camera points. Each clip's framing (tracked, assisted,
+  wide or uncertain) is logged and saved with the clip.
+
+A game filmed 9:16 (1080×1920, 720×1280, 1440×2560) keeps its own picture.
 
 The TV scoreboard is left out rather than cut in half: a bug is wider than a
 9:16 crop, so half of it showed along the bottom of nearly every clip. When the
-crop comes near the bug, the rows from the bug's top edge down are left out and
-the crop zooms in that much (on copies of the three NBA games' bugs, 15-25% of
+crop comes near the bug anywhere in the clip, the rows from the bug's top edge
+down are left out of the whole clip, and its crop is that much closer (on copies of the three NBA games' bugs, 15-25% of
 the height). The bug is found as the score reader finds it, its text taken
 where most looks show it: the reader's box grows to every look's block of text,
 a caption joined to the bug on one look included, and on an NBA game cutting
@@ -573,6 +639,123 @@ edge in four windows of ten, and the margin cut 20-24% of the height where 16%
 leaves the bar out. A bug that would take more than 27% of the height stays in;
 `hide_scoreboard: false` under `framing` keeps every bug.
 
+### Where a clip starts and ends
+
+A clip's window is set a fixed time around the basket the score bug confirms.
+In a condensed broadcast its start often holds another moment of the game
+spliced in ahead of the play, or a close-up, the crowd or a replay, and its end
+runs on into the next play, a replay or another game, or stops before the
+announcer is done with the play. Right after the clips are chosen, each clip's
+footage is looked at, from its start to 5 s past its end (about 5 s a clip):
+the camera's cuts, and what each shot is (the court, a close-up, the crowd, a
+graphic, or a replay, told by the score bug going away). A condensed broadcast
+often jumps from one wide shot of the court to another of a later possession
+from nearly the same camera; the frame-difference test misses those, so a frame
+far more different than the frames around it, with the camera's motion broken
+(phase correlation), counts as a cut too, and during a camera pan, where that
+test is unsure, when the game clock on the score bug jumps across it. A fast
+pan that ends on a hard cut is no dissolve: the picture changes at the cut (one
+taken for a 0.8 s dissolve ended clips before the announcer's last words).
+
+A shot is told by how tall its people stand and how much of its lower middle is
+the floor's colour, bars set on national broadcasts, where a player on the
+court stands at most a third of the picture's height. A team's own network
+shoots the floor closer: on a preseason game its players stood 0.37 to 0.49 of
+the height on its wide shots, and nearly every frame read as a close-up or the
+crowd (763 of 785 keyframes; no cutaway found, starts moved past the play's own
+possession, the ball followed 0% of the play). So the whole game's keyframes,
+read for the cutaways, measure how tall the game camera shows the players: each
+keyframe's third-tallest person, its median over the game (0.21 on an NBA Finals
+broadcast, 0.39 on that network). Every height test of the shots, the cutaways
+and the framing's floor players is scaled by it (1.8 there, 1 on the national
+broadcasts), and each clip keeps it for a re-render. The floor's colour is every
+tone that makes up 15% of the clip's wide shots, not only the commonest: that
+arena's floor, a light wood with a darker painted key, read 12% floor on its
+lighter half. Neither changed a start or an end of the 105 NBA Finals clips.
+
+- **The start** stays where the job put it: the play's own lead-up, as the
+  broadcast shows it. It moves later only past a cut the game clock jumps across
+  (another moment of the game spliced in ahead: on an NBA compilation the clock
+  jumped 10 to 82 s at each of the 45 starts that moved so; a camera change
+  within the possession, the clock reading on, keeps its lead-up), then past a
+  close-up, the crowd, a graphic or a replay it would open on. Never before the
+  previous basket + 1 s, and onto the end of a word when one is being said.
+- **The end follows the camera.** The play is over at the first cut at least
+  1.5 s after it that goes back to the court after the reaction, starts a replay
+  or a graphic, or, after a basket, moves on to another wide court shot (the
+  score bug dates a basket to about 0.65 s either way, and the jump to the next
+  possession came 1.97 to 2.8 s after its time). A cut to what looks like a
+  reaction that the game clock jumps across (read off the bug each side of it)
+  is a jump to another moment too: a courtside shot of the next possession read
+  as a close-up. The clip runs to that cut, ending 0.05 s before it (the look and
+  the render agree to about a frame), and keeps everything the announcer says
+  before it: on an NBA compilation every sentence begun before the cut was about
+  the play ("We're tied again.", "It's back to three.", the latest 6.3 s after
+  it). A sentence still going at the cut is cut there; one the cut would leave
+  less than half said is left out, and a last word at least half said at the cut
+  stays (the transcript's word ends run long).
+- **In one court shot** the next possession starts with no cut: a sentence he
+  begins on the court more than 5.5 s after the play (2.5 s after a block or a
+  steal, when the other team has the ball at once) is his next thought, and the
+  clip ends after his last sentence before it, by 4 s after that (or 1 s more
+  for a sentence under way then). Said over a cutaway, it is still about the
+  play. With no cut and nothing more said, the play is over 2 s after it. After
+  a basket, the camera ends it sooner when it leaves for the next possession:
+  where its pan (phase correlation between frames) last sat in the range it held
+  over the 1.5 s after the basket, before it went 0.25 of the picture's width
+  past it. On a team's own network the camera never cut after a basket and the
+  announcer never stopped: six clips ran 5 to 9 s into the other team's
+  possession, and now end 1.5 to 3.8 s after the basket. His sentence under way
+  as the camera leaves finishes when it ends within 1.5 s, and one barely begun
+  is left out. On the NBA Finals compilation it ended 9 of the 105 clips sooner,
+  1.5 to 4.5 s after the basket instead of 4.5 to 10.3 s (the figures below were
+  measured before it); what they lose is mostly the analysts' side talk.
+- **A replay's stinger is the replay.** A network's stinger before a replay (its
+  logo growing in the middle of the live picture, held there while the game goes
+  on around it, then filling the screen) is 0.8 to 1 s the cut test never sees:
+  four clips of a team's own network ended on the logo. Before a cut, the middle
+  of the picture turning near white (from 0.00-0.03 to 0.3-0.45) where something
+  appeared there and then held still while the edges moved starts the replay, and
+  the clip ends before it. A white jersey turning into the middle of a close-up
+  moves with the player, and one filling the frame is white throughout.
+- **A trip to the free-throw line is one play.** Between the attempts the
+  broadcast shows the shooter and cuts back, or jumps straight to the next
+  attempt, so the camera can't say when it is over; the game clock can. It stays
+  stopped through the trip: the clip runs through every attempt and ends at the
+  broadcast's first cut after the clock was last read stopped, where it runs
+  again (when two readings agree it is running), or before the first thing the
+  announcer says after it was last read stopped. Without the clock, 2 s after the
+  free throw drops.
+- **The last picture.** A shot after the play shown for under 0.6 s at the end
+  (a glimpse of a close-up, the crowd or the next possession) is left out; a
+  reaction shown longer stays. The end is never inside a word, unless the word
+  is all but said at the cut.
+- **The render.** Every clip is rendered 0.4 s past its end, so the last word
+  isn't clipped (Whisper's word ends run early). On a basketball clip that stops
+  before the next shot and before the next word: it used to show 0.4 s of the
+  next shot on every clip, then end, and play the first word of what was left
+  out. Where the clip must stop is kept with it (`sport_stop` in its scores,
+  `stop_by` in its render options), so a re-render and a render PC stop there.
+- **A clip under the job's shortest length** goes back in its court shot first (a
+  free throw onto its shooter at the line); its end goes on only to the cut, and
+  never into the announcer's next thought. Still short, it stays a little under:
+  better than starting the next play.
+
+Reactions, big moments, a game-winner and the basket that ends the game (the
+last one read, with 3 s or less left in the last period; their celebration),
+gym or phone footage and Vertical Live keep their windows; only where the next
+shot starts after their end is looked for (`sports/basketball/leadin.py`,
+`crop/shots.py`). A play the commentary named but the scoreboard couldn't
+confirm (a block, a steal) ends with its own window, not with a longer one
+around it.
+
+On the 105 clips of an NBA Finals compilation, 49 of the 88 with a play start
+later and 85 end differently. They ended a median 5.5 s after the play, 31 s at
+most, often in the next play or the announcer's next sentence; now a median
+3.8 s, 11.3 s at most (the game-tying free throws, both of them). The clips run
+a median 10.9 s, 34 of the 95 under the job's 10 s shortest length. Reviewed
+frame by frame as rendered, every start shows the play's own possession and no clip ends on the next scene or a glimpse of it; a few lose the announcer's last words where the transcript splits or joins his sentences wrongly, and 3 hold no basket at all (the scoreboard paired the play with the wrong score change).
+
 ### Measured on NBA games
 
 The values were set on three NBA broadcasts from the league's own channel (two
@@ -582,13 +765,14 @@ kept as a test fixture (`tests/fixtures/basketball_bugs.json`, text only).
 | What | Value | Measured |
 |---|---|---|
 | Court or people | tallest person 0.36 of the height | court 0.18-0.33, people 0.40-0.98; 90 of 90 frames |
-| A cut | gray difference over 25 and colour distance over 0.31 | 52 of 52 cuts, at most 3 false alarms in 108 pans and steady play |
+| The game camera's scale | each keyframe's 3rd-tallest person, its median, over 0.22 | 0.21 on an NBA Finals broadcast (1), 0.39 on a team's own network (1.8) |
 | A reaction's play | within 10 s | a playoff game: the scorer's close-ups 2-5 s after a basket, the next play's cutaways 13-16 s after |
 | A basket's time | the bug read 5 times a second between keyframes | keyframes 2-8 s apart; the bug showed the new score 1.3-2.6 s after the ball |
-| Detector size | 1280 px | the real ball in 14%, 40%, 33% of wide samples (960 px: 9%, 39%, 18%) |
-| Ball memory, jump | 1.5 s, 0.25 of the width | covers 76-97% of gaps; above the ball's 90th-percentile move |
-| Players around the ball | 0.15 of the width | half the crop is 0.16 |
-| Toward the rim | within 0.4 of an edge | the far rim sits up to 0.40 from the edge |
+| The framing's detector | E-BARD's YOLOv8n at 960 px | on 256 hand-checked frames the ball in 84% and the hoop in 99%; the general detector found the ball in 1-3% and no hoop |
+| The ball in the crop | planned for the whole clip | 163 of 172 checked frames (95%) on 32 clips; the first crop 79 (46%) |
+| The rim and the backboard at the shot | the backboard 1.3 rim widths past the rim when unseen, plus a margin | 47 of 47 frames as the ball reached the rim; the first crop 22 (47%) and 15 (32%) |
+| A clip's start | the play's own possession: later only past a cut the game clock jumps across, or a cutaway | 49 of 88 moved, 45 of them past a clock jump of 10-82 s; every start on its play's possession, checked frame by frame |
+| A clip's end | the cut that ends the play, with all he says before it | a median 3.8 s after it (was 5.5), 11.3 s at most (was 31), with nothing of the next scene as rendered |
 
 Three full high-school games from the Internet Archive (local cable TV and a 1995
 VHS tape, freely licensed) checked the rest: a bug the OCR runs together into one
@@ -602,8 +786,12 @@ measured.
 - Goals in club and phone footage with no score box or commentary, unless
   their times are added as match events.
 - Tackles, dribbles, assists and key passes aren't named.
-- Basketball: shot trajectory, a hoop detector, player tracking and shirt numbers
-  aren't read; moves like a crossover are named only from the commentary.
+- Basketball: shirt numbers aren't read, and moves like a crossover are named only
+  from the commentary. The framing's detector was trained on NBA broadcasts:
+  college, international and phone footage haven't been measured. On a team's
+  own network, whose camera is closer, it found the ball in 3 of 12 frames
+  checked (nearly all on a national broadcast), so the crop follows the players
+  and widens more often there.
 
 ## The API
 
@@ -619,10 +807,13 @@ channel's options take `sport` (`"name": "soccer"` or `"basketball"`):
   `plays_reactions`, `scoring`, `dunks`, `threes`, `blocks`, `steals`, `assists`,
   `clutch`, `fan_reactions`, `celebrity_reactions`, `crowd_reactions`,
   `bench_reactions`, `custom`.
-- `period`: soccer `full`, `first_half`, `second_half`, `extra_time`; basketball
-  `full`, `q1`, `q2`, `q3`, `q4`, `ot`.
+- `period`: soccer `full`, `first_half`, `second_half`, `extra_time`. Basketball
+  always clips the whole game: `full`, and a `q1` to `q4` or `ot` saved before
+  is read as `full`.
 - `footage` (optional): `auto` (the default), `broadcast` or `sideline` (club
   or phone footage).
+- `screen` (optional, basketball): `safe` (the default, the picture clear of the
+  apps' text) or `full` (full screen). See the Crop above.
 - `events` (optional): the match's events as text, one per line, up to 4000
   characters (see [Match events](#match-events-the-goals-as-you-have-them)).
   Refused only when no line has both a time and a kind of moment.
@@ -684,7 +875,12 @@ sports/
     scoreboard.py      reading the score bug: points, quarter, game clock
     reactions.py       cutaways from the court, tied to the play before them
     look.py            who a reaction shot shows, by the local model
-    action.py          following the ball, the play and the rim, for the framing
+    action.py          a clip's framing: the TV scoreboard left out, then the plan
+    leadin.py          where a clip starts: on the court, not on a cutaway
+    crop/              the crop planned for the whole clip: what the detectors
+                       saw (observe, sources), cuts and shot kinds (shots), the
+                       ball's path (ball), players, the baskets (basket), the
+                       play's phases, the planner and its checks (validate)
 ```
 
 A new sport needs:
@@ -693,7 +889,11 @@ A new sport needs:
 2. A `sports/<name>/` package with a `profile(config, option, video)` function.
    `framing(clip_path, config)` and `prepass(video_path, duration)` are
    optional: without them the clips are framed the standard way, and nothing
-   is read before scoring.
+   is read before scoring. A package that sets `FRAMING_HINTS = True` gets
+   `framing(clip_path, config, hints)`, the clip's play as `{"t": seconds into
+   the clip, "kind": its moment}`. A profile with a `refine_windows(candidates,
+   video_path, segments, config)` method may move its clips' windows once
+   they are chosen, before anything is built on them (basketball's clip starts).
 3. A line in `SPORTS` in `sports/__init__.py`.
 
 The app then offers it in the Sport menu, with its own highlight and period

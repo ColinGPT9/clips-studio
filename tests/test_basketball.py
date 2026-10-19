@@ -73,12 +73,13 @@ def _named(moments):
 # ---- registration and the way in ------------------------------------------------------
 
 
-def test_basketball_is_offered_beside_soccer_with_its_quarters():
+def test_basketball_is_offered_beside_soccer_for_the_whole_game():
     offered = {s["id"]: s for s in sports.available()}
     assert list(offered) == ["soccer", "basketball"]
     ball = offered["basketball"]
-    assert ball["period_menu"] == "Quarter" and "period_menu" not in offered["soccer"]
-    assert [p["id"] for p in ball["periods"]] == ["full", "q1", "q2", "q3", "q4", "ot"]
+    # No Quarter menu: the Sport row offers no period for either sport.
+    assert "period_menu" not in ball and "period_menu" not in offered["soccer"]
+    assert [p["id"] for p in ball["periods"]] == ["full"]
     for choice in ("best", "scoring", "dunks", "threes", "blocks", "steals", "assists", "clutch",
                    "fan_reactions", "celebrity_reactions", "crowd_reactions", "plays_reactions", "custom"):
         assert choice in {h["id"] for h in ball["highlights"]}
@@ -128,8 +129,12 @@ def test_the_taxonomy_is_data_and_every_choice_names_real_events():
 
 
 def test_the_option_is_cleaned():
-    assert sports.clean({"name": "Basketball", "highlights": "threes", "period": "q4", "teams": " Curry "}) == {
-        "name": "basketball", "highlights": "threes", "period": "q4", "teams": "Curry"}
+    assert sports.clean({"name": "Basketball", "highlights": "threes", "teams": " Curry "}) == {
+        "name": "basketball", "highlights": "threes", "period": "full", "teams": "Curry"}
+    # A quarter saved by a job, a watch or an assistant call from before the
+    # Quarter menu went clips the whole game, and stays a Sports job.
+    for saved in ("q1", "q2", "q3", "q4", "ot"):
+        assert sports.clean({"name": "basketball", "period": saved})["period"] == "full"
     # A reactions choice takes words ("fans reacting to the dunks"); soccer's goals don't.
     assert sports.clean({"name": "basketball", "highlights": "fan_reactions",
                          "request": "the biggest dunks"})["request"] == "the biggest dunks"
@@ -155,7 +160,13 @@ def test_the_assistant_is_told_about_basketball():
     from server.mcp import SPORT_PARAM
 
     text = str(SPORT_PARAM)
-    assert "basketball" in text and "fan_reactions" in text and "q4" in text
+    assert "basketball" in text and "fan_reactions" in text and "q4" not in text
+    assert "Basketball always clips the whole game" in text
+    # The Crop: the assistant can ask for full screen, and the engine takes what it sends.
+    assert SPORT_PARAM["properties"]["screen"]["enum"] == ["safe", "full"]
+    import sports
+
+    assert sports.clean({"name": "basketball", "screen": "full"})["screen"] == "full"
 
 
 # ---- the score bug ---------------------------------------------------------------------
@@ -199,6 +210,27 @@ def test_the_clock_and_quarter_are_read_for_each_moment():
     assert board.period_at(100) == "q4" and board.when(100) == "Q4 10:00"
     assert _board([], period=5).period_at(10) == "ot"
     assert board.minute_at(100) is None
+
+
+def test_the_clock_says_when_a_trip_to_the_line_is_over():
+    """Stopped through the free throws: the last reading still stopped, and
+    where it ran again, back by the time it has run since."""
+    def board(clocks):
+        return bb.Scoreboard(readings=[bb.Reading(t=float(t), clock=c) for t, c in clocks])
+
+    # Stopped at 30.3 from 100 s to 108 s, 27.3 left at 112 s: it ran from 109 s.
+    trip = board([(96, 30.3), (100, 30.3), (104, 30.3), (108, 30.3), (112, 27.3), (116, 23.3)])
+    assert trip.clock_stopped(101.0) == (108.0, 109.0, 112.0)
+    # The broadcast cut to a later possession (8.0 left): only that it changed by then.
+    jump = board([(100, 30.3), (104, 30.3), (108, 8.0)])
+    assert jump.clock_stopped(101.0) == (104.0, 104.0, 108.0)
+    # After a missed second attempt it ran a moment for the rebound and stopped again
+    # (7.5 left, read again and again): that it changed by 108 s, not when it ran.
+    again = board([(100, 9.5), (104, 9.5), (108, 7.5), (112, 7.5), (116, 7.5)])
+    assert again.clock_stopped(101.0) == (104.0, 104.0, 108.0)
+    # Not read near the free throw, or still stopped half a minute on: unknown.
+    assert board([(90, 30.3), (140, 30.3)]).clock_stopped(101.0) is None
+    assert board([(100, 30.3), (120, 30.3), (140, 30.3)]).clock_stopped(101.0) is None
 
 
 # Real NBA bugs aren't one tight line (measured on three games): two rows
@@ -479,6 +511,86 @@ def test_a_box_that_hasnt_changed_is_not_read_again(monkeypatch):
     board = bb.read_video("game.mp4", 22.0)
     assert read == [0, 1, bb.FULL_EVERY + 2]
     assert len(board.readings) == len(boxes)
+
+
+def test_a_bug_that_moved_is_read_where_it_moved_to(monkeypatch):
+    # A fan's upload of a whole game, two broadcasts joined: one network's bug
+    # bottom right until 400 s, the other's bottom left after, rewound to just
+    # before the first's last basket. The box found reads nothing after 400 s;
+    # the stretch is looked at again, the bug found where it moved to, and its
+    # baskets added but the one shown twice.
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    import contextlib
+
+    from sports.core import scorebug
+
+    first, second = (0.74, 0.82, 0.99, 0.99), (0.08, 0.81, 0.37, 0.97)
+    times = [2.0 * i for i in range(500)]
+
+    def score(t, steps):
+        return next(s for at, s in reversed(steps) if t >= at)
+
+    def shown(box, t):
+        if box == first and t < 400:
+            return score(t, [(0, (0, 0)), (100, (0, 2)), (200, (3, 2)), (300, (3, 4)), (380, (5, 4))])
+        if box == second and t >= 400:
+            return score(t, [(400, (3, 4)), (440, (5, 4)), (600, (5, 6)), (800, (6, 6))])
+        return None
+
+    looked = []
+
+    def crops(path, box, size, on_frame, cancel=None, scale_width=None):
+        for i, t in enumerate(times):
+            on_frame(i, (box, t))
+        return list(times)
+
+    class Reader:
+        def __init__(self, ocr, rec):
+            pass
+
+        def read(self, img):
+            looked.append(img)
+            got = shown(*img)
+            return [((0.1, 0.2, 0.25, 0.8), str(got[0])), ((0.6, 0.2, 0.75, 0.8), str(got[1]))] if got else []
+
+    @contextlib.contextmanager
+    def capture(path, required=True):
+        yield object()
+
+    monkeypatch.setattr("video.capture.video_capture", capture)
+    monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
+    monkeypatch.setattr(bb, "find_box", lambda grab, duration, ocr: first if duration >= 1000 else second)
+    monkeypatch.setattr(bb, "BoxReader", Reader)
+    monkeypatch.setattr(bb, "_box_frames", lambda *a, **k: iter(()))
+    monkeypatch.setattr(scorebug, "keyframe_crops", crops)
+    board = bb.read_video("game.mp4", 1000.0)
+    assert [c.after for c in board.changes] == [(0, 2), (3, 2), (3, 4), (5, 4), (5, 6), (6, 6)]
+    assert board.changes[3].hi < 400                     # the basket both showed: the first's
+    assert board.spans == [(398.0, 1000.0, second)]
+    assert (board.box_at(100.0), board.box_at(700.0)) == (first, second)
+    # The second pass reads only the stretch's keyframes.
+    assert sum(box == second for box, _t in looked) == sum(t >= 398 for t in times)
+
+
+def test_a_moved_bug_joins_in_the_boards_order_and_codes():
+    # The other network lists the teams the other way round, and one by
+    # another code ("LA" against "LAL"): its scores and codes are turned to
+    # the board's, and the basket both broadcasts showed is counted once.
+    def board(steps, teams, t0, box):
+        return bb.from_readings([bb.Reading(t=float(t), score=next(s for at, s in reversed(steps) if t >= at),
+                                            teams=teams, visible=True) for t in range(t0, t0 + 100, 2)], box)
+
+    mine = board([(0, (0, 0)), (20, (0, 2)), (50, (3, 2))], ("LA", "BOS"), 0, (0.7, 0.8, 1.0, 1.0))
+    other = board([(100, (2, 0)), (110, (2, 3)), (150, (4, 3))], ("BOS", "LAL"), 100, (0.0, 0.8, 0.3, 1.0))
+    assert bb._join(mine, other, 98.0, 200.0) == 1
+    assert [c.after for c in mine.changes] == [(0, 2), (3, 2), (3, 4)]
+    last = mine.changes[-1]
+    assert (last.before, last.side, last.team, last.other, last.points) == ((3, 2), 1, "BOS", "LA", 2)
+    assert next(r for r in mine.readings if r.t == 160).score == (3, 4)
+    assert {r.teams for r in mine.readings} == {("LA", "BOS")}
+    assert mine.spans == [(98.0, 200.0, (0.0, 0.8, 0.3, 1.0))]
+    assert bb._no_bug(mine.readings, 600.0) == [(198.0, 600.0)]
 
 
 def test_only_the_pieces_that_changed_are_read_again(monkeypatch):
@@ -1011,16 +1123,52 @@ def test_shots_are_read_by_the_detector_and_by_colour_without_it(monkeypatch):
     monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
     monkeypatch.setattr(ball, "_model", lambda name: "model")
     monkeypatch.setattr(ball, "detect", lambda model, img, imgsz: ([], people[int(img[0, 0, 0])]))
-    shots = reactions.read_shots("game.mp4", 12.0, 0.2, 0.255, tall=0.36)
+    shots, scale = reactions.read_shots("game.mp4", 12.0, 0.2, 0.255, tall=0.36)
     assert shots == [(0.0, "court"), (4.0, "people"), (8.0, "court")] and widths == [reactions.DETECT_WIDTH]
+    assert scale == 1.0                                  # too few keyframes with three people to measure
 
     def no_model(name):
         raise ImportError("no ultralytics")
 
     monkeypatch.setattr(ball, "_model", no_model)
     monkeypatch.setattr(reactions, "looks", lambda img, share, edges: "court")
-    assert [k for _t, k in reactions.read_shots("game.mp4", 12.0, 0.2, 0.255, tall=0.36)] == ["court"] * 3
+    shots, scale = reactions.read_shots("game.mp4", 12.0, 0.2, 0.255, tall=0.36)
+    assert [k for _t, k in shots] == ["court"] * 3 and scale == 1.0
     assert widths[-1] == reactions.THUMB_WIDTH
+
+
+def test_a_closer_camera_scales_the_bar_for_a_shot_of_people(monkeypatch):
+    # A team's own network shot the floor closer than the national broadcasts
+    # the bar was set on: its players stood 0.37-0.49 of the height on its
+    # wide shots, and at 0.36 every one of them read as a shot of people (763
+    # of 785 keyframes; no cutaway found). The players' height on the game
+    # camera (each keyframe's 3rd-tallest person, its median) scales the bar.
+    np = pytest.importorskip("numpy")
+    from sports.core import scorebug
+    from sports.soccer import ball
+
+    national = [[0.27, 0.23, 0.21, 0.2, 0.18]] * 40
+    assert reactions.people_scale(national) == 1.0
+    assert reactions.people_scale([[0.9, 0.2]] * 40 + national) == 1.0      # close-ups say nothing
+    home = [[0.49, 0.44, 0.39, 0.37, 0.3]] * 40
+    assert reactions.people_scale(home) == pytest.approx(0.39 / reactions.SCALE_FLOOR, abs=0.01)
+    assert reactions.people_scale(home[:10]) == 1.0                          # too few to measure
+    wide = [(0.5, 0.6, 0.05, h) for h in (0.49, 0.44, 0.39, 0.37, 0.3)]
+    close = [(0.5, 0.5, 0.4, 0.95), (0.2, 0.4, 0.05, 0.2)]
+    frames = [wide] * 40 + [close]
+
+    def crops(path, box, size, on_frame, cancel=None, scale_width=None):
+        for i in range(len(frames)):
+            on_frame(i, np.full((9, 16, 3), i, dtype=np.uint8))
+        return [2.0 * i for i in range(len(frames))]
+
+    monkeypatch.setattr(scorebug, "keyframe_crops", crops)
+    monkeypatch.setattr("core.modes.probe_size", lambda path: (1920, 1080))
+    monkeypatch.setattr(ball, "_model", lambda name: "model")
+    monkeypatch.setattr(ball, "detect", lambda model, img, imgsz: ([], frames[int(img[0, 0, 0])]))
+    shots, scale = reactions.read_shots("game.mp4", 82.0, 0.2, 0.255, tall=0.36)
+    assert scale > 1.7
+    assert [k for _t, k in shots] == ["court"] * 40 + ["people"]
 
 
 def test_cutaways_are_the_shots_between_court_shots():
@@ -2172,104 +2320,208 @@ def test_the_local_model_never_names_anyone():
 # ---- framing ----------------------------------------------------------------------------
 
 
-def _sample(t, balls=(), people=(), cut=False):
-    return {"t": t, "cut": cut, "balls": list(balls), "people": list(people)}
-
-
-def test_the_crop_follows_the_ball_and_the_players_around_it():
-    pytest.importorskip("cv2")      # video/framing.py's HoldMove
-    from sports.basketball import action
-
-    # Mid-court, away from either rim.
-    samples = [_sample(i / 5, balls=[(0.42 + i * 0.005, 0.6, 0.8)], people=[(0.44 + i * 0.005, 0.6, 0.05, 0.2)])
-               for i in range(30)]
-    path, led = action.plan(samples, 0.316)
-    assert led["ball"] > 20 and abs(path[-1][1] - 0.57) < 0.08
-
-
-def test_the_crop_leans_toward_the_rim_on_a_drive():
-    pytest.importorskip("cv2")      # video/framing.py's HoldMove
-    from sports.basketball import action
-
-    drive = [_sample(i / 5, balls=[(min(0.9, 0.3 + i * 0.03), 0.5, 0.8)]) for i in range(30)]
-    path, led = action.plan(drive, 0.316)
-    assert led["rim"] > 0 and path[-1][1] >= 0.8          # as far right as the crop goes, the rim in it
-
-
-def test_the_crop_moves_to_the_reaction_shot():
-    pytest.importorskip("cv2")      # video/framing.py's HoldMove
-    from sports.basketball import action
-
-    court = [_sample(i / 5, balls=[(0.3, 0.6, 0.8)]) for i in range(10)]
-    fans = [(0.1 + k * 0.05, 0.5, 0.05, 0.15) for k in range(7)] + [(0.8, 0.5, 0.2, 0.4)]
-    cutaway = [_sample(2 + i / 5, people=fans, cut=(i == 0)) for i in range(10)]
-    path, led = action.plan(court + cutaway, 0.316)
-    assert led["close-up"] >= 9 and path[-1][1] > 0.7          # on the biggest reacting person
-
-
-def test_without_the_ball_the_crop_follows_the_players_not_the_stands():
-    pytest.importorskip("cv2")      # video/framing.py's HoldMove
-    from sports.basketball import action
-
-    players = [(0.75, 0.6, 0.06, 0.28), (0.8, 0.62, 0.06, 0.3), (0.85, 0.6, 0.05, 0.26)]
-    stands = [(0.1 + k * 0.04, 0.2, 0.02, 0.08) for k in range(14)]
-    path, led = action.plan([_sample(i / 5, people=players + stands) for i in range(15)], 0.316)
-    assert led["players"] == 15 and path[-1][1] > 0.7       # at the free throw, not mid-court
-
-
-def test_a_close_up_is_framed_on_the_player():
-    pytest.importorskip("cv2")      # video/framing.py's HoldMove
-    from sports.basketball import action
-
-    path, led = action.plan([_sample(i / 5, people=[(0.25, 0.5, 0.3, 0.8)]) for i in range(10)], 0.316)
-    assert led["close-up"] == 10 and path[-1][1] < 0.35
-
-
-def test_a_ball_in_the_front_rows_or_at_a_players_feet_is_not_followed():
-    from sports.basketball import action
-
-    player = (0.5, 0.5, 0.06, 0.3)                           # from y 0.35 to 0.65
-    balls = [(0.3, 0.4, 0.9), (0.6, 0.9, 0.9), (0.51, 0.64, 0.9), (0.51, 0.45, 0.9)]
-    # Kept: the ball in the air and the one in the player's hands; dropped:
-    # the front rows' and the shoe's.
-    assert action.real_balls(balls, [player]) == [(0.3, 0.4, 0.9), (0.51, 0.45, 0.9)]
-
-
-def test_a_pan_across_the_court_is_no_cut_but_another_camera_is():
-    np = pytest.importorskip("numpy")
-    pytest.importorskip("cv2")
-    from sports.basketball import action
-    from video.framing import is_cut as pixels_changed
-    from video.framing import small_gray
-
-    rng = np.random.default_rng(1)
-    # The court: the stands above a wood floor with players on it, the
-    # camera whipping across it between two samples.
-    court = np.zeros((360, 1920, 3), dtype=np.uint8)
-    court[:, :] = (60, 120, 190)
-    court[:150] = rng.integers(0, 255, (150, 1920, 3), dtype=np.uint8)
-    for x in range(0, 1920, 160):
-        court[180:330, x:x + 60] = (230, 230, 230) if (x // 160) % 2 else (20, 20, 120)
-    before, after = court[:, :640].copy(), court[:, 80:720].copy()
-    # Another camera: a fan in a dark top against a blue wall.
-    fan = np.zeros((360, 640, 3), dtype=np.uint8)
-    fan[:, :] = (150, 60, 20)
-    fan[60:360, 200:440] = (30, 30, 30)
-
-    def cut(a, b):
-        return action.is_cut(small_gray(a), small_gray(b), action.colours(a), action.colours(b))
-
-    assert pixels_changed(small_gray(before), small_gray(after))      # the shared test calls the pan a cut
-    assert not cut(before, after) and not cut(before, before)
-    assert cut(before, fan)
-
-
 def test_the_framing_hook_reaches_the_basketball_follower(monkeypatch):
     from sports.basketball import action
 
-    monkeypatch.setattr(action, "compute", lambda path, model_name, imgsz, hide_scoreboard: {
-        "mode": "track", "path": [(0.0, 0.4)], "led": {"ball": 1}})
-    assert sports.framing("basketball", "clip.mp4", {}) == {"mode": "track", "path": [(0.0, 0.4)]}
+    got: dict = {}
+
+    def planned(path, settings, hints):
+        got.update(path=path, hints=hints, sources=settings.get("sources"))
+        return {"mode": "track", "path": [(0.0, 0.4)], "quality": {"status": "tracked", "ball": 0.9, "basket": 1.0}}
+
+    monkeypatch.setattr(action, "compute_offline", planned)
+    moment = {"t": 8.1, "kind": "made_3"}
+    assert sports.framing("basketball", "clip.mp4", {}, moment) == {
+        "mode": "track", "path": [(0.0, 0.4)], "quality": {"status": "tracked", "ball": 0.9, "basket": 1.0}}
+    # The clip's play reaches the planner, and the detectors are the basketball ones.
+    assert got == {"path": "clip.mp4", "hints": moment, "sources": {"ball": "ebard", "hoop": "ebard", "people": "ebard"}}
+
+
+def test_a_sport_without_hints_is_called_as_before(monkeypatch):
+    """Soccer's framing doesn't take hints (it doesn't declare FRAMING_HINTS):
+    sports.framing calls it with the clip and the config only, as always."""
+    import sports.soccer as soccer
+
+    seen: list = []
+    monkeypatch.setattr(soccer, "framing", lambda path, config: seen.append((path, config)) or {"mode": "track"},
+                        raising=False)
+    assert not getattr(soccer, "FRAMING_HINTS", False)
+    sports.framing("soccer", "clip.mp4", {"x": 1}, {"t": 3.0, "kind": "goal"})
+    assert seen == [("clip.mp4", {"x": 1})]
+
+
+
+def test_a_play_the_commentary_named_ends_with_the_play():
+    """A block or a steal the scoreboard can't confirm: the scorer's window
+    may start earlier, for the build-up, but it ends with the play, not at
+    the end of the commentator's sentence about the next one."""
+    from types import SimpleNamespace
+
+    profile = _profile()
+    play = SimpleNamespace(start=100.0, end=108.0, confirmed=False)
+    assert profile.clip_span(SimpleNamespace(start=95.0, end=130.0), play) == (95.0, 108.0)
+    play.confirmed = True
+    assert profile.clip_span(SimpleNamespace(start=95.0, end=130.0), play) == (100.0, 108.0)
+
+def test_a_basketball_clip_carries_its_play_for_the_framing():
+    pytest.importorskip("numpy")    # core/pipeline.py imports analysis/fusion.py
+    from types import SimpleNamespace
+
+    import core.pipeline as pipeline
+
+    profile = SimpleNamespace(name="basketball")
+    clip = SimpleNamespace(start=100.0, end=114.0, subscores={"sport_t": 108.4, "sport_event": "made_3"})
+    assert pipeline._sport_moment(clip, profile) == {"t": 8.4, "kind": "made_3"}
+    # Not for soccer, not without a moment, not with a moment outside the clip.
+    assert pipeline._sport_moment(clip, SimpleNamespace(name="soccer")) is None
+    assert pipeline._sport_moment(SimpleNamespace(start=0.0, end=9.0, subscores={}), profile) is None
+    assert pipeline._sport_moment(SimpleNamespace(start=0.0, end=9.0, subscores={"sport_t": 30.0,
+                                                                                  "sport_event": "dunk"}), profile) is None
+    assert pipeline._sport_moment(clip, None) is None
+    # A camera that shows the players taller than a national broadcast's: its
+    # scale goes with the play, and alone when the clip has none (a reaction).
+    clip.subscores["sport_scale"] = 1.8
+    assert pipeline._sport_moment(clip, profile) == {"t": 8.4, "kind": "made_3", "scale": 1.8}
+    assert pipeline._sport_moment(SimpleNamespace(start=0.0, end=9.0, subscores={"sport_scale": 1.8}),
+                                  profile) == {"scale": 1.8}
+    assert pipeline._shift_sport_moment({"t": 8.4, "kind": "made_3", "scale": 1.8}, 100.0, 110.0, 4.0) == {
+        "scale": 1.8}
+
+
+def test_an_edit_that_moves_the_start_moves_the_play_with_it(db, tmp_path, monkeypatch):
+    """The editor's re-render (server/jobs.py): the play stays the same second
+    of the video, timed from the start the clip has now, and leaves the
+    clip's options when the edit leaves it outside the clip."""
+    pytest.importorskip("numpy")    # core/pipeline.py imports analysis/fusion.py
+    from types import SimpleNamespace
+
+    import core.pipeline as pipeline
+    from server.jobs import Worker
+
+    assert pipeline._shift_sport_moment({"t": 8.4, "kind": "made_3"}, 100.0, 103.0, 11.0) == {
+        "t": 5.4, "kind": "made_3"}
+    assert pipeline._shift_sport_moment({"t": 8.4, "kind": "made_3"}, 100.0, 110.0, 4.0) is None
+    assert pipeline._shift_sport_moment(None, 100.0, 103.0, 11.0) is None
+
+    db.conn.execute("INSERT INTO videos (video_id, title, status, created_at, updated_at) "
+                    "VALUES ('v1', 't', 'done', '2026-01-01', '2026-01-01')")
+    db.conn.execute("INSERT INTO clips (video_id, start_s, end_s, score, render_opts, created_at) "
+                    "VALUES ('v1', 100.0, 114.0, 90, ?, '2026-01-01')",
+                    (json.dumps({"sport_moment": {"t": 8.4, "kind": "made_3"}}),))
+    db.conn.commit()
+    clip_id = db.conn.execute("SELECT id FROM clips").fetchone()["id"]
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "v1.mp4").write_bytes(b"source")
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / "v1.json").write_text(json.dumps({"segments": []}), encoding="utf-8")
+    seen: list = []
+
+    def capture(_source, candidate, _segments, _clip_dir, _config, render_opts, _lang):
+        seen.append(((candidate.start, candidate.end), render_opts.get("sport_moment")))
+        raise RuntimeError("stop before any file is made")
+
+    monkeypatch.setattr(pipeline, "_render_files", capture)
+    job = SimpleNamespace(config={"paths": {"data_dir": str(tmp_path)}})
+    for edit in ({"start": 103.0}, {"start": 110.0}):
+        with pytest.raises(RuntimeError, match="stop before"):
+            Worker._rerender_clip(job, db, {"clip_id": clip_id, **edit})
+    assert seen == [((103.0, 114.0), {"t": 5.4, "kind": "made_3"}), ((110.0, 114.0), None)]
+
+    # A basketball clip saved without its play (trimmed off it once, or made
+    # before plays were saved) finds it again from its scores when it covers it.
+    db.conn.execute("INSERT INTO clips (video_id, start_s, end_s, score, scores, render_opts, created_at) "
+                    "VALUES ('v1', 200.0, 214.0, 90, ?, ?, '2026-01-01')",
+                    (json.dumps({"sport_t": 208.4, "sport_event": "dunk"}), json.dumps({"sport": "basketball"})))
+    db.conn.commit()
+    other = db.conn.execute("SELECT id FROM clips WHERE start_s = 200.0").fetchone()["id"]
+    seen.clear()
+    for edit in ({"end": 206.0}, {"end": 214.0}):
+        with pytest.raises(RuntimeError, match="stop before"):
+            Worker._rerender_clip(job, db, {"clip_id": other, **edit})
+    assert seen == [((200.0, 206.0), None), ((200.0, 214.0), {"t": 8.4, "kind": "dunk"})]
+
+
+def test_a_render_never_pads_past_the_next_shot(db, tmp_path, monkeypatch):
+    """Every render runs 0.4 s past a clip's end (Whisper's word ends run
+    early). A basketball clip ends just before the next shot, and the pad
+    showed 0.4 s of it, then the end: it stops there (render_opts["stop_by"],
+    from the scores' sport_stop), in the job and on a re-render. An end moved
+    past the stop by hand pads as ever."""
+    pytest.importorskip("numpy")    # core/pipeline.py imports analysis/fusion.py
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import core.pipeline as pipeline
+    from server.jobs import Worker
+
+    assert pipeline._stop_by(SimpleNamespace(start=100.0, end=110.0, subscores={"sport_stop": 110.25})) == 10.25
+    assert pipeline._stop_by(SimpleNamespace(start=100.0, end=110.0, subscores={})) is None
+    assert pipeline._stop_by(SimpleNamespace(start=100.0, end=110.0, subscores={"sport_stop": 99.0})) is None
+
+    cut: list = []
+    monkeypatch.setattr(pipeline, "cut_clip",
+                        lambda _s, c, output, **_k: cut.append(round(c.end, 2)) or Path(output).write_bytes(b"cut"))
+    config = {"clips": {"captions": False, "outro": False, "vertical": False}, "paths": {"data_dir": str(tmp_path)}}
+    for opts in (None, {"stop_by": 10.25}, {"stop_by": 10.0}, {"stop_by": 8.0}):
+        pipeline._render_files(tmp_path / "source.mp4", ClipCandidate(start=100.0, end=110.0, score=80),
+                               [], tmp_path / "clips", config, opts)
+    assert cut == [110.4, 110.25, 110.0, 110.4]
+
+    # The editor's re-render works the stop out again for the clip as it is now.
+    db.conn.execute("INSERT INTO videos (video_id, title, status, created_at, updated_at) "
+                    "VALUES ('v1', 't', 'done', '2026-01-01', '2026-01-01')")
+    db.conn.execute("INSERT INTO clips (video_id, start_s, end_s, score, scores, render_opts, created_at) "
+                    "VALUES ('v1', 100.0, 110.0, 90, ?, ?, '2026-01-01')",
+                    (json.dumps({"sport_t": 104.0, "sport_event": "dunk", "sport_stop": 110.25}),
+                     json.dumps({"sport": "basketball", "stop_by": 10.25})))
+    db.conn.commit()
+    clip_id = db.conn.execute("SELECT id FROM clips").fetchone()["id"]
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "v1.mp4").write_bytes(b"source")
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / "v1.json").write_text(json.dumps({"segments": []}), encoding="utf-8")
+    seen: list = []
+
+    def capture(_source, candidate, _segments, _clip_dir, _config, render_opts, _lang):
+        seen.append(((candidate.start, candidate.end), render_opts.get("stop_by")))
+        raise RuntimeError("stop before any file is made")
+
+    monkeypatch.setattr(pipeline, "_render_files", capture)
+    job = SimpleNamespace(config={"paths": {"data_dir": str(tmp_path)}})
+    for edit in ({"start": 103.0}, {"end": 109.9}, {"end": 105.0}):
+        with pytest.raises(RuntimeError, match="stop before"):
+            Worker._rerender_clip(job, db, {"clip_id": clip_id, **edit})
+    # Trimmed well short of the next shot, the pad can't reach it: no stop.
+    assert seen == [((103.0, 110.0), 7.25), ((100.0, 109.9), 10.25), ((100.0, 105.0), None)]
+
+
+def test_a_rerun_saves_the_play_and_the_framing_its_file_was_made_with(db, tmp_path):
+    """A job run again over a clip already in the library (the same window)
+    keeps the row's title, and its play and framing quality become the new
+    file's: a later re-render plans around the same play."""
+    pytest.importorskip("numpy")    # core/pipeline.py imports analysis/fusion.py
+    import core.pipeline as pipeline
+    from analysis.metadata import ClipMetadata
+
+    db.conn.execute("INSERT INTO videos (video_id, title, status, created_at, updated_at)"
+                    " VALUES ('v', 'A game', 'done', 'x', 'x')")
+    db.conn.commit()
+    clip = ClipCandidate(start=100.0, end=116.0, score=80, hook="h",
+                         subscores={"sport_t": 111.0, "sport_event": "made_3"})
+    meta = ClipMetadata(title="first", description="", hashtags=[])
+
+    def register(name, opts):
+        pipeline._register_clip(db, "v", clip, tmp_path / f"{name}.mp4", meta, json.dumps(opts))
+        row = db.conn.execute("SELECT title, render_opts FROM clips WHERE video_id = 'v'").fetchone()
+        return row["title"], json.loads(row["render_opts"] or "{}")
+
+    register("old", {"sport": "basketball"})                   # made before plays were saved
+    moment, quality = {"t": 11.0, "kind": "made_3"}, {"status": "tracked", "ball": 0.9}
+    title, opts = register("new", {"sport": "basketball", "sport_moment": moment, "framing": quality})
+    assert title == "first" and opts == {"sport": "basketball", "sport_moment": moment, "framing": quality}
+    # A run whose framing fell back to the usual way says nothing about it.
+    title, opts = register("again", {"sport": "basketball", "sport_moment": moment})
+    assert opts == {"sport": "basketball", "sport_moment": moment}
 
 
 # ---- the TV scoreboard, left out of the crop --------------------------------------------
@@ -2428,6 +2680,9 @@ def test_the_crop_leaves_the_scoreboard_out_when_it_would_cut_it(monkeypatch):
     assert top == 0.0 and 200 / 270 - action.BUG_SLACK - 1 / 270 <= bottom <= 200 / 270 - action.BUG_SLACK + 1 / 270
     # A crop that stays far from it shows none of it, so nothing is left out...
     assert action.hidden_rows(looks, 30.0, [(t / 5, 0.12) for t in range(50)], 0.2) is None
+    # ...unless it widens toward it for a while (a pass held over a blurred background).
+    widening = [(t / 5, 0.12) for t in range(40)] + [(t / 5, 0.2, 0.4) for t in range(40, 50)]
+    assert action.hidden_rows(looks, 30.0, widening, 0.2) is not None
     # ...nor when no scoreboard is found (gym or phone footage).
     _hide(monkeypatch, np, None)
     assert action.hidden_rows(looks, 30.0, middle, 0.316) is None
@@ -2445,29 +2700,41 @@ def test_a_scoreboard_too_tall_to_leave_out_is_left_in(monkeypatch):
 def test_with_the_scoreboard_left_out_the_crop_is_narrower_and_says_so(monkeypatch, tmp_path):
     np = pytest.importorskip("numpy")
     cv2 = pytest.importorskip("cv2")
-    import sports.soccer.ball as ball
+    from basketball_scene import scene
+
     from sports.basketball import action
+    from sports.basketball.crop import observe
 
     clip = tmp_path / "clip.mp4"
     out = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (480, 270))
     for frame in _looks(np, n=40):
         out.write(np.repeat(frame[:, :, None], 3, axis=2))
     out.release()
-    monkeypatch.setattr(ball, "_model", lambda name: None)
-    monkeypatch.setattr(ball, "detect", lambda model, frame, imgsz: ([], []))
+    # What the detectors saw: a synthetic broadcast, in place of running them.
+    built = scene(duration=4, seed=5).players(6).basket("right").build()
+    monkeypatch.setattr(observe, "observe", lambda *_a, **_k: built.obs)
+    box = (0.1, 0.8, 0.9, 0.95)
+    monkeypatch.setattr(action, "find_bug_text", lambda looks, duration: (box, box))
     seen = {}
 
-    def rows(looks, duration, path, crop_frac):
-        seen.update(looks=len(looks), duration=duration, crop_frac=crop_frac)
+    def rows(looks, found, path, crop_frac):
+        seen.update(looks=len(looks), found=found, crop_frac=crop_frac, path=len(path))
         return (0.0, 0.75)
 
-    monkeypatch.setattr(action, "hidden_rows", rows)
-    tracking = action.compute(clip)
-    assert tracking["rows"] == (0.0, 0.75) and seen["looks"] == 14 and seen["duration"] == pytest.approx(4.0)
-    # 9:16 of three quarters of the height: the crop's path keeps inside a narrower crop.
-    assert seen["crop_frac"] == pytest.approx(270 * 9 / 16 / 480)
-    assert all(0.75 * seen["crop_frac"] / 2 - 1e-6 <= x for _, x in tracking["path"])
-    assert "rows" not in action.compute(clip, hide_scoreboard=False)
+    monkeypatch.setattr(action, "rows_for", rows)
+    # The picture between the apps' top bar and their caption (action.bands): wider than 9:16.
+    built.obs.geometry.picture = action.picture_share({})
+    base = built.obs.geometry.base
+    tracking = action.compute_offline(clip)
+    top, bottom = action.bands({})
+    assert tracking["band_top"] == pytest.approx(top) and tracking["band_bottom"] == pytest.approx(bottom)
+    assert tracking["rows"] == (0.0, 0.75) and seen["looks"] == 14 and seen["found"] == (box, box)
+    assert seen["crop_frac"] == pytest.approx(base) and seen["path"] > 0
+    # Planned again on three quarters of the height: 9:16 of that is narrower.
+    assert built.obs.geometry.rows == (0.0, 0.75) and built.obs.geometry.base == pytest.approx(0.75 * base)
+    assert tracking["quality"]["status"]
+    built.obs.geometry.rows = None
+    assert "rows" not in action.compute_offline(clip, {"hide_scoreboard": False})
 
 
 def test_the_vertical_crop_keeps_only_the_rows_it_is_given(monkeypatch, tmp_path):
@@ -2568,7 +2835,7 @@ def test_a_16x9_game_is_framed_by_the_play_not_a_face(monkeypatch, tmp_path):
 
     monkeypatch.setattr(pipeline, "cut_clip", lambda _s, _c, output, **_k: Path(output).write_bytes(b"cut"))
     monkeypatch.setattr(modes, "probe_size", lambda _p: (1920, 1080))
-    monkeypatch.setattr(sports, "framing", lambda name, path, config: {"mode": "track", "path": [(0.0, 0.7)]})
+    monkeypatch.setattr(sports, "framing", lambda name, path, config, hints=None: {"mode": "track", "path": [(0.0, 0.7)]})
     monkeypatch.setattr(cropper, "render_vertical", render)
     monkeypatch.setattr(tracker, "compute_tracking", no_faces)
     config = {"clips": {"captions": False, "outro": False, "vertical": True, "sport": {"name": "basketball"}},
@@ -2591,14 +2858,17 @@ def test_a_basketball_clip_card_carries_the_clock_and_the_situation():
     assert c.subscores["sport_when"].startswith("Q4") and c.subscores["sport_context"]
 
 
-def test_the_quarter_choice_keeps_its_quarter():
+def test_a_saved_quarter_choice_clips_the_whole_game():
+    """A job saved with the Quarter menu's "4th quarter" keeps a 3rd-quarter
+    dunk: there is no Quarter choice any more, and the whole game is clipped."""
     profile = _profile("best", "q4")
+    assert profile.option["period"] == "full"
     board = _board([(304, 0, 2)], period=3)
     m = _moments(profile, said={300: "what a dunk"}, board=board, curves=_curves(roars=[(301, 6)]))
     candidate = ClipCandidate(start=290.0, end=320.0, score=60)
     attached = clips.attach(m, [candidate])
     kept, dropped, _notes = clips.choose(profile, [candidate], attached, min_score=40, max_len=60)
-    assert not kept and dropped[0][1] == "other_period"
+    assert kept == [candidate] and not any(why == "other_period" for _c, why in dropped)
 
 
 def test_typed_events_use_basketballs_words():
@@ -2832,3 +3102,49 @@ def test_whisper_is_given_the_names_only_when_there_are_some(tmp_path):
                                hotwords="Victor Wembanyama")
         transcriber.transcribe(tmp_path / "v.mp4", "b", tmp_path, model_size="small", device="cpu")
     assert calls[0]["hotwords"] == "Victor Wembanyama" and "hotwords" not in calls[1]
+
+
+def test_best_moments_keeps_plays_and_reactions_not_the_talk_between():
+    # A team's own network: 20 of 87 clips were the analysts talking over play
+    # or a stoppage, with no basket in them. Basketball's Best moments keeps
+    # only windows with a moment; soccer's keeps its talk (and a match with no
+    # moment at all keeps its best windows).
+    from types import SimpleNamespace
+
+    from core.models import ClipCandidate
+    from sports.core import clips as sport_clips
+
+    play = ClipCandidate(start=100.0, end=112.0, score=70.0, subscores={})
+    talk = ClipCandidate(start=300.0, end=320.0, score=80.0, subscores={})
+    dunk = SimpleNamespace(group=1, is_replay=False, type="dunk", period="", confidence=1.0, signals=[],
+                           start=101.0, end=111.0, t=106.0, confirmed=True, importance=60, label="Dunk")
+    for highlights in ("best", "plays_reactions"):
+        kept, dropped, _ = sport_clips.choose(_profile(highlights), [play, talk], {id(play): dunk},
+                                              min_score=55, max_len=60)
+        assert kept == [play] and (talk, "no_moment") in dropped
+    kept, _, _ = sport_clips.choose(_profile(), [play, talk], {}, min_score=55, max_len=60)
+    assert kept == [play, talk]
+    soccer = sports.profile_for({"clips": {"sport": {"name": "soccer", "highlights": "best", "period": "full"}}})
+    kept, _, _ = sport_clips.choose(soccer, [play, talk], {id(play): dunk}, min_score=55, max_len=60)
+    assert talk in kept
+
+
+def test_two_free_throws_read_as_one_change_of_two_are_free_throws():
+    # Read between two keyframes, a trip to the line is one change of 2. A
+    # basket is scored with the game clock running; it stands still through
+    # free throws: a "bucket" that put the home team "Up 3" was two of them.
+    readings = [bb.Reading(t=float(t), score=(4, 4) if t < 20 else (4, 6), clock=567.0, visible=True)
+                for t in range(0, 40, 4)]
+    board = bb.from_readings(readings, box=(0.0, 0.0, 0.3, 0.1))
+    (change,) = board.changes
+    assert change.points == 2 and board.from_the_line(change)
+    profile = _profile()
+    profile.board = board
+    assert profile.confirmed_type(change, None) == "free_throw"
+    running = [bb.Reading(t=float(t), score=(4, 4) if t < 20 else (4, 6), clock=600.0 - t, visible=True)
+               for t in range(0, 40, 4)]
+    board = bb.from_readings(running, box=(0.0, 0.0, 0.3, 0.1))
+    (change,) = board.changes
+    assert not board.from_the_line(change)
+    profile.board = board
+    assert profile.confirmed_type(change, None) == "made_2"

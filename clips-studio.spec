@@ -224,6 +224,13 @@ _asd = ROOT / "models" / "pretrain_TalkSet.model"
 if _asd.exists():
     datas += [(str(_asd), ".")]
 
+# The basketball detector (E-BARD's YOLOv8n, 6 MB), fetched by
+# scripts/fetch_basketball_model.py, for sports/basketball/crop. Without it a
+# basketball clip is framed with the COCO model and the rim finder.
+_bball = ROOT / "models" / "BODD_yolov8n_0001.pt"
+if _bball.exists():
+    datas += [(str(_bball), ".")]
+
 # Game-sound weights (PANNs MobileNetV1, 24 MB), fetched by
 # scripts/fetch_panns.py. Without them a gaming stream is scored on chat and
 # the streamer's voice only.

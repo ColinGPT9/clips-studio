@@ -62,13 +62,7 @@ import {
   YouTube as YouTubeIcon,
   Zap
 } from './icons'
-import CaptionStyleControls, {
-  DEFAULT_CAPTION_STYLE,
-  PostStyleControls,
-  burnedCaptionStyle,
-  headlineFromTitle,
-  isHighlights
-} from './CaptionStyleControls'
+import CaptionStyleControls, { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 import UploadPostPanel from './UploadPostPanel'
@@ -304,21 +298,6 @@ export default function TimelineEditor({
   const storedCaptionsOn =
     (clip.render_opts?.captions ?? clip.render_opts?.job_captions ?? true) !== false
   const [captionsOn, setCaptionsOn] = useState(storedCaptionsOn)
-  // The Highlights title card's two lines (video/post_style.py), saved with
-  // the clip; a 16:9 clip never draws one.
-  const highlights = isHighlights(captionStyle, isLandscape)
-  const storedHeadline = clip.render_opts?.headline ?? ''
-  const storedSubline = clip.render_opts?.subline ?? ''
-  const [headline, setHeadline] = useState(storedHeadline)
-  const [subline, setSubline] = useState(storedSubline)
-  const setStyleField = <K extends keyof CaptionStyle>(key: K, value: CaptionStyle[K]): void => {
-    setCaptionStyle((s) => ({ ...s, [key]: value }))
-    // Switched to Highlights with no card words yet: start from the title,
-    // as the pipeline does when the model wrote none.
-    if (key === 'post_style' && value === 'highlights' && !headline && !subline) {
-      setHeadline(headlineFromTitle(clip.title ?? ''))
-    }
-  }
   // Which editing panel is open (CapCut-style tabs replace the old stack).
   const [activeTab, setActiveTab] = useState<Tab>('captions')
   // Read synchronously from the localStorage mirror so the FIRST paint is
@@ -393,8 +372,6 @@ export default function TimelineEditor({
     setGamingOpen(false)
     setRememberGaming(false)
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
-    setHeadline(clip.render_opts?.headline ?? '')
-    setSubline(clip.render_opts?.subline ?? '')
     setWordEdits([])
     setEditingWord(null)
     setSpeakerEdits(null)
@@ -758,9 +735,8 @@ export default function TimelineEditor({
   //
   // Offered only on a clip rendered with the option on that still has it on:
   // until a render has listened there is nothing to put right.
-  const speakerOn =
-    burnedCaptionStyle(captionStyle, isLandscape).second_speaker && captionsOn
-  const speakerWas = burnedCaptionStyle(storedStyle, isLandscape).second_speaker
+  const speakerOn = captionStyle.second_speaker && captionsOn
+  const speakerWas = storedStyle.second_speaker
   // A clip whose caption text was saved keeps those lines, and the render
   // colours each of them whole: there a click switches a whole caption.
   const savedLines = (clip.render_opts?.caption_lines?.length ?? 0) > 0
@@ -850,9 +826,6 @@ export default function TimelineEditor({
   const gamingDirty = JSON.stringify(gaming) !== JSON.stringify(storedGaming)
   const styleDirty = JSON.stringify(captionStyle) !== JSON.stringify(storedStyle)
   const captionsDirty = captionsOn !== storedCaptionsOn
-  // Card words count only while a card is drawn: a clip switched back to
-  // Standard keeps its saved ones, unused.
-  const cardDirty = highlights && (headline !== storedHeadline || subline !== storedSubline)
   const wmDirty = JSON.stringify(watermark) !== JSON.stringify(storedWatermark)
   const dirty =
     layoutDirty ||
@@ -860,7 +833,6 @@ export default function TimelineEditor({
     (rememberGaming && !!gaming) ||
     styleDirty ||
     captionsDirty ||
-    cardDirty ||
     wmDirty ||
     wordEdits.length > 0 ||
     speakerDirty ||
@@ -872,7 +844,6 @@ export default function TimelineEditor({
       g: gaming,
       s: captionStyle,
       o: captionsOn,
-      c: highlights ? [headline, subline] : null,
       w: wordEdits,
       m: watermark,
       k: speakerDirty ? currentEdits : null
@@ -947,9 +918,6 @@ export default function TimelineEditor({
       if (capsDirty && captionsOn && captionBase && captionBase.length > 0) {
         let base = captionBase
         const n = Math.max(1, captionStyle.words_per_caption)
-        // Drawn as it will burn in: on a Highlights clip, in that style's
-        // own font, colour and place, not the ones in its caption style.
-        const burnStyle = burnedCaptionStyle(captionStyle, isLandscape)
         if (speakerOn) {
           // The second speaker's colour goes by what the last render heard,
           // with any hand fix laid over it (a clip never rendered with the
@@ -970,7 +938,7 @@ export default function TimelineEditor({
           // same way the render does (captionBase kept the old grouping).
           base = groupWords(words, n)
         }
-        captions = { lines: applyTextEdits(base), style: burnStyle }
+        captions = { lines: applyTextEdits(base), style: captionStyle }
       }
       if (hookPending || captions) {
         // Old text already burned into the preview file — the overlay blurs
@@ -984,7 +952,7 @@ export default function TimelineEditor({
           keep,
           burned:
             captions && captionsBurned && captionBase
-              ? { lines: captionBase, style: burnedCaptionStyle(storedStyle, isLandscape) }
+              ? { lines: captionBase, style: storedStyle }
               : null,
           burnedHook: hookPending && baked?.hook?.text ? { seconds: baked.hook.seconds } : null
         }
@@ -1011,7 +979,6 @@ export default function TimelineEditor({
         styleDirty ? captionStyle : null,
         wmDirty ? (watermark ?? {}) : undefined,
         gamingDirty ? gaming : undefined,
-        cardDirty ? { headline, subline } : undefined,
         speakerDirty ? pendingSpeakerEdits() : undefined,
         captionsDirty ? captionsOn : undefined
       )
@@ -1113,10 +1080,6 @@ export default function TimelineEditor({
     if (gamingDirty) renderOpts.gaming = gaming
     if (styleDirty) renderOpts.caption_style = captionStyle
     if (captionsDirty) renderOpts.captions = captionsOn
-    if (cardDirty) {
-      renderOpts.headline = headline
-      renderOpts.subline = subline
-    }
     if (wmDirty) renderOpts.watermark = watermark
     const lines = pendingCaptionLines()
     if (lines) renderOpts.caption_lines = lines
@@ -1143,8 +1106,7 @@ export default function TimelineEditor({
     },
     // A layout is never set where the Layout buttons don't show, nor on a
     // split: another layout there would switch the split off.
-    noLayout: isLandscape ? 'landscape' : isVerticalLive ? 'vertical_live' : gaming ? 'gaming' : undefined,
-    highlights
+    noLayout: isLandscape ? 'landscape' : isVerticalLive ? 'vertical_live' : gaming ? 'gaming' : undefined
   }
   const suggestionView = useMemo(
     () => suggestionCards(suggestions, { edit, layout }, uses, suggestionClip),
@@ -1158,7 +1120,6 @@ export default function TimelineEditor({
       words,
       wordsRead,
       gaming,
-      highlights,
       isLandscape,
       isVerticalLive,
       clip.start_s,
@@ -1460,8 +1421,6 @@ export default function TimelineEditor({
               setRememberGaming(false)
               setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
               setCaptionsOn(storedCaptionsOn)
-              setHeadline(storedHeadline)
-              setSubline(storedSubline)
               setWatermark(clip.render_opts?.watermark ?? null)
               setWordEdits([])
               setEditingWord(null)
@@ -1676,8 +1635,7 @@ export default function TimelineEditor({
       <div className="flex gap-0.5 border-b border-raised/60 text-xs overflow-x-auto" role="tablist">
         {tabs.map((t) => {
           const changed =
-            (t.id === 'captions' &&
-              (styleDirty || captionsDirty || cardDirty || wordEdits.length > 0 || speakerDirty)) ||
+            (t.id === 'captions' && (styleDirty || captionsDirty || wordEdits.length > 0 || speakerDirty)) ||
             (t.id === 'watermark' && wmDirty) ||
             (t.id === 'motion' &&
               ((edit.speed ?? 1) !== 1 || !!edit.hook || !!edit.music || layoutDirty || gamingDirty))
@@ -1859,36 +1817,6 @@ export default function TimelineEditor({
         </div>
       )}
 
-      {/* this clip's post style, and the words on its Highlights title card
-          (vertical clips only: a 16:9 clip never draws a post style) */}
-      {activeTab === 'captions' && !isLandscape && (
-        <div className="border border-raised/60 rounded-lg p-3 space-y-3">
-          <PostStyleControls idPrefix={`clip-${clip.id}`} style={captionStyle} onChange={setStyleField} />
-          {highlights && (
-            <div className="space-y-2">
-              <p className="label">Title card words</p>
-              <input
-                className="input !py-1 text-sm"
-                aria-label="Title card headline"
-                placeholder="BIG LINE ON BLACK"
-                maxLength={60}
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
-              />
-              <input
-                className="input !py-1 text-sm"
-                aria-label="Title card second line"
-                placeholder="Second line on yellow (optional)"
-                maxLength={70}
-                value={subline}
-                onChange={(e) => setSubline(e.target.value)}
-              />
-              <p className="text-[11px] text-muted/70">Leave both empty for no card.</p>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* caption font & style for this clip */}
       {activeTab === 'captions' && (
         <div className="border border-raised/60 rounded-lg p-3">
@@ -1907,8 +1835,7 @@ export default function TimelineEditor({
           <CaptionStyleControls
             idPrefix={`clip-${clip.id}`}
             style={captionStyle}
-            onChange={setStyleField}
-            landscape={isLandscape}
+            onChange={(key, value) => setCaptionStyle((s) => ({ ...s, [key]: value }))}
           />
         </div>
       )}
@@ -1922,9 +1849,6 @@ export default function TimelineEditor({
             clipId={clip.id}
             videoId={clip.video_id}
             onPreview={onTranslationPreview}
-            // The saved style, not a pending one: the export burns the clip
-            // as it was last applied.
-            middleOnly={isHighlights(storedStyle, isLandscape)}
           />
         </FeatureBoundary>
       )}

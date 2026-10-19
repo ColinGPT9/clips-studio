@@ -130,7 +130,7 @@ Represented per **genre** in `config/gaming.yaml` (prose highlights, callouts, s
 | transcription (`:390-407`) | OCR of banners/menus (`analysis/game_text.py`) |
 | audio/visual signals thread, LLM backend creation (`:431`) | vision-LLM look at frames (`analysis/game_vision.py`) |
 | candidate finding, dedupe, rejection logging (`:437-460`, `analysis/highlights.py`, `analysis/fusion.py`) | webcam detection (`gaming/detect.py`), panels (`gaming/panels.py`) |
-| metadata, title cards, cutting, edits, captions `.ass`, colour filters (`:1123-1330`) | layout geometry (`gaming/layout.py`, `layouts.json`, `gaming/framing.py`) |
+| metadata, cutting, edits, captions `.ass`, colour filters (`:1123-1330`) | layout geometry (`gaming/layout.py`, `layouts.json`, `gaming/framing.py`) |
 | outro, watermark, render-opts persistence, DB registration, exports/publishing (`:1445-1480`, `_register_clip`) | the FFmpeg composition of the frame (`gaming/compose.py`) |
 | progress/cancel, remote rendering dispatch (`:612-658`) | editor helpers: suggest/snap/people/panels endpoints call into `gaming/` (`server/api.py:1795-1933`) |
 

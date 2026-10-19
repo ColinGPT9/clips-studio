@@ -100,8 +100,8 @@ class RemoteRenderer:
                    config: dict, render_opts: dict | None, language: str, workers: int, local=None,
                    opts_for=None):
         """opts_for(candidate, meta), when given, is each clip's own render
-        options (its title card, video/post_style.py; on a re-run, the
-        creator's saved choices, D33) in place of render_opts."""
+        options (on a re-run, the creator's saved choices, D33) in place of
+        render_opts."""
         per_clip = {id(c): opts_for(c, m) for c, m in items} if opts_for else {}
 
         def opts_of(c):

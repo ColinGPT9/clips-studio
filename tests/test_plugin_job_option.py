@@ -799,7 +799,7 @@ def _rated(start, found, score):
 
 
 def test_a_forced_rerun_updates_a_rated_clips_score_but_keeps_its_title(db, tmp_path):
-    pytest.importorskip("PIL")  # video.post_style draws title cards
+    pytest.importorskip("numpy")    # core/pipeline.py imports analysis/fusion.py
     from core.models import ClipCandidate
 
     _video_row(db)

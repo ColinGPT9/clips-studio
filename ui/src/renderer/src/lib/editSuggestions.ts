@@ -88,8 +88,6 @@ export interface ClipContext {
   /** Why a suggested layout can't be used here: a Gaming / Reaction split,
    *  a Vertical Live, or a 16:9 clip. Absent when the Layout buttons show. */
   noLayout?: 'gaming' | 'vertical_live' | 'landscape'
-  /** A Highlights clip: its title card moves lower for a hook title. */
-  highlights?: boolean
 }
 
 /** What one Use added to the editor's edit, in seconds of the clip: the
@@ -836,8 +834,6 @@ export function suggestionCards(
         card.notes.push(noLayoutNote(ctx, tr))
         if (onlyLayout(entry.edit)) card.useOff = tr('Nothing in this suggestion can be used on this clip.')
       }
-      if (hookOf(entry.edit.title_overlay) && ctx.highlights)
-        card.notes.push(tr('The title card moves lower to make room for the hook title.'))
       card.actions = ['use', 'hide']
     }
     cards.push(card)

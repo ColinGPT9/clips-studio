@@ -5,7 +5,7 @@ that clip again by hand (its saved options hold something only a person
 sets on one clip), the run renders it with what they saved, as "Make it
 again with my edits" does, less what the job decides for every clip. A
 Sports job keeps its own look. Every other clip, and every new window,
-renders with exactly the job's options, as before (_clip_opts(meta)).
+renders with exactly the job's options, as before.
 
 These tests run process_video and Longform's clip mode with download,
 transcription, analysis, the title writer and the render stubbed out, on
@@ -45,23 +45,23 @@ USED = _RENDER["take_it_back"]["entries"][0]
 # A split set up before processing, as a first run saves it on every clip it makes (gaming/run.py render()).
 SETUP = {"by": "user", "cam": [0.7, 0, 0.3, 0.3], "preset": "split", "panels": [], "layout": "split",
          "used_preset": "split", "used_cam": [0.7, 0, 0.3, 0.3]}
-# A first run's snapshot of the job's look, in a Highlights job.
-LOOK = {"caption_style": {"font": "Georgia", "post_style": "highlights"}, "filter": "warm",
-        "watermark": {"text": "@quarkbloom"}, "headline": "OLD", "subline": "QUARKBLOOM"}
-HIGHLIGHTS = {"caption_style": {"post_style": "highlights"}}
+# A first run's snapshot of the job's look.
+LOOK = {"caption_style": {"font": "Georgia"}, "filter": "warm", "watermark": {"text": "@quarkbloom"}}
+# A job with a caption style of its own: it reaches each clip through the
+# job's config, never as the clip's options.
+STYLED = {"caption_style": {"font": "Georgia"}}
 SOCCER = {"sport": {"name": "soccer"}}
 # Two of the creator's own cuts.
 E = {"keep": [[0, 12], [14, 20]], "fade_out": 0.3}
 E2 = {"keep": [[0, 8]], "speed": 1.5}
-# The creator's whole hand edit of one clip, look and card words included.
+# The creator's whole hand edit of one clip, look included.
 HAND = {"edit": WITH_IT["edit"], "crop": "center",
         "caption_lines": [{"start": 0.0, "end": 2.0, "text": "Quark burst!"}],
-        "caption_style": {"font": "Georgia", "post_style": "highlights"}, "filter": "warm",
-        "adjust": {"brightness": 0.1, "saturation": 1.2}, "watermark": {"text": "@quarkbloom"},
-        "headline": "MY CARD", "subline": "MINE"}
+        "caption_style": {"font": "Georgia"}, "filter": "warm",
+        "adjust": {"brightness": 0.1, "saturation": 1.2}, "watermark": {"text": "@quarkbloom"}}
 STARTS = (10.0, 100.0, 200.0, 300.0)
 EDITED_LINE = "1 clip(s) you edited are made again with your edits"
-SPORTS_NOTE = "(caption style, colours, branding and title card as this job sets them)"
+SPORTS_NOTE = "(caption style, colours and branding as this job sets them)"
 
 
 def _cand(start, score=80, length=20.0):
@@ -71,11 +71,6 @@ def _cand(start, score=80, length=20.0):
 
 def _found(starts=STARTS, length=20.0):
     return [_cand(s, 90 - i, length) for i, s in enumerate(starts)]
-
-
-def _card(start: float) -> dict:
-    """The Highlights card _clip_opts(meta) gives the clip at `start`."""
-    return {"headline": f"AT {start:g}", "subline": "QUARKBLOOM"}
 
 
 def _parsed(raw):
@@ -138,8 +133,7 @@ def rerun(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(pipeline, "find_clips", lambda *_a, **_k: ([copy.deepcopy(c) for c in found], []))
 
     def titles(candidates, *_a, **_k):
-        return [ClipMetadata(title=f"Clip at {c.start:g}", description="", hashtags=[],
-                             headline=f"AT {c.start:g}", subline="QUARKBLOOM") for c in candidates]
+        return [ClipMetadata(title=f"Clip at {c.start:g}", description="", hashtags=[]) for c in candidates]
 
     def render(source, candidate, segments, clip_dir, config, render_opts=None, content_language="en"):
         """What the real render saves, as far as _register_clip reads it: the
@@ -195,14 +189,14 @@ def rerun(monkeypatch, tmp_path, capsys):
 
 
 def test_a_window_with_no_row_renders_with_exactly_the_jobs_options(rerun):
-    """The pin: a window with no clip yet renders with _clip_opts(meta), byte
-    for byte, whatever the video's other clips hold."""
+    """The pin: a window with no clip yet renders with the job's options,
+    byte for byte, whatever the video's other clips hold."""
     import core.pipeline as pipeline
 
     fresh = {"by": "video", "cam": [0.1, 0.1, 0.2, 0.2]}
     elsewhere = [(500.0, 520.0, HAND)]
     for clips, options in (({}, [None] * 4),
-                           (HIGHLIGHTS, [_card(s) for s in STARTS]),
+                           (STYLED, [None] * 4),
                            ({"gaming": True}, [{"gaming": fresh}] * 4)):
         got = rerun(_found(), rows=elsewhere, fresh=fresh, **clips)
         assert json.dumps(got.renders) == json.dumps([((s, s + 20.0), o) for s, o in zip(STARTS, options)])
@@ -222,36 +216,47 @@ def test_clips_nobody_edited_render_as_the_job_says_after_a_set_up_split(rerun):
     fresh = {"by": "user", "cam": [0.5, 0.5, 0.2, 0.2], "preset": "split", "panels": []}
     for split in (SETUP, {**SETUP, "by": "creator"}):
         rows = [(s, s + 20.0, {**LOOK, "gaming": split}) for s in STARTS]
-        for clips, options in (({"gaming": True, **HIGHLIGHTS}, [{"gaming": fresh, **_card(s)} for s in STARTS]),
-                               (HIGHLIGHTS, [_card(s) for s in STARTS]),
-                               ({**SOCCER, **HIGHLIGHTS}, [_card(s) for s in STARTS])):
+        for clips, options in (({"gaming": True, **STYLED}, [{"gaming": fresh}] * 4),
+                               (STYLED, [None] * 4),
+                               ({**SOCCER, **STYLED}, [None] * 4)):
             got = rerun(_found(), rows=rows, fresh=fresh, **clips)
             assert got.renders == [((s, s + 20.0), o) for s, o in zip(STARTS, options)], (split["by"], clips)
             assert "you edited" not in got.out
     # Two runs on the same library: the second renders as the first did.
     first = rerun(_found(), rows=[(s, s + 20.0, {**LOOK, "gaming": SETUP}) for s in STARTS], fresh=fresh,
-                  gaming=True, **HIGHLIGHTS)
+                  gaming=True, **STYLED)
     second = first.again()
     assert json.dumps(second.renders) == json.dumps(first.renders)
     assert "you edited" not in second.out
 
 
 def test_a_clip_nobody_edited_is_made_as_the_job_says(rerun):
-    got = rerun(_found(), rows=[(100.0, 120.0, LOOK)], **HIGHLIGHTS)
-    assert dict(got.renders)[(100.0, 120.0)] == _card(100.0)
-    # Its Highlights card words are this run's, as before; the rest of its options stay.
-    assert got.rows[(100.0, 120.0)]["render_opts"] == {**LOOK, "headline": "AT 100"}
+    got = rerun(_found(), rows=[(100.0, 120.0, LOOK)], **STYLED)
+    assert dict(got.renders)[(100.0, 120.0)] is None
+    # Its saved options stay.
+    assert got.rows[(100.0, 120.0)]["render_opts"] == LOOK
     assert "you edited" not in got.out
+
+
+def test_a_rerun_drops_the_removed_highlights_post_style_from_a_clip(rerun):
+    """A clip saved with the Highlights post style (#125, removed): made
+    again, its row keeps its own look without the post style, the card
+    position or the card's words."""
+    old = {**LOOK, "caption_style": {"font": "Georgia", "post_style": "highlights", "card_position": "top"},
+           "headline": "OLD", "subline": "QUARKBLOOM"}
+    got = rerun(_found(), rows=[(100.0, 120.0, old)])
+    assert dict(got.renders)[(100.0, 120.0)] is None
+    assert got.rows[(100.0, 120.0)]["render_opts"] == LOOK
 
 
 # ---- what a clip the creator edited gets ----------------------------------------------------
 
 
 def test_a_rerun_makes_a_clip_the_creator_edited_with_their_choices(rerun):
-    got = rerun(_found(), rows=[(100.0, 120.0, HAND, {"status": "uploaded"})], **HIGHLIGHTS)
+    got = rerun(_found(), rows=[(100.0, 120.0, HAND, {"status": "uploaded"})], **STYLED)
     renders = dict(got.renders)
-    assert renders[(100.0, 120.0)] == {**_card(100.0), **HAND}
-    assert [renders[(s, s + 20.0)] for s in (10.0, 200.0, 300.0)] == [_card(s) for s in (10.0, 200.0, 300.0)]
+    assert renders[(100.0, 120.0)] == HAND
+    assert [renders[(s, s + 20.0)] for s in (10.0, 200.0, 300.0)] == [None] * 3
     row = got.rows[(100.0, 120.0)]
     assert row["render_opts"] == HAND
     assert (row["title"], row["status"]) == ("Creator title", "uploaded")
@@ -271,16 +276,16 @@ def test_a_soccer_rerun_keeps_the_jobs_sport_framing_and_look(rerun):
     assert f"{EDITED_LINE} {SPORTS_NOTE}" in got.out
 
 
-def test_a_soccer_highlights_rerun_gives_an_edited_clip_this_runs_card(rerun):
-    """In a match, an edited clip's file gets this run's card words and the
-    job's caption style, colours and branding. The clip keeps the creator's
-    saved ones: a run never replaces them."""
+def test_a_soccer_rerun_gives_edited_clips_the_jobs_look_and_keeps_theirs(rerun):
+    """In a match, an edited clip's file gets the job's caption style,
+    colours and branding. The clip keeps the creator's saved ones: a run
+    never replaces them."""
     a = {**LOOK, "edit": E}
-    b = {**LOOK, "edit": E2, "headline": "MY CARD", "subline": "MINE"}
-    got = rerun(_found(), rows=[(100.0, 120.0, a), (200.0, 220.0, b)], **SOCCER, **HIGHLIGHTS)
+    b = {**LOOK, "edit": E2, "caption_style": {"font": "Verdana"}}
+    got = rerun(_found(), rows=[(100.0, 120.0, a), (200.0, 220.0, b)], **SOCCER, **STYLED)
     renders = dict(got.renders)
-    assert renders[(100.0, 120.0)] == {**_card(100.0), "edit": E}
-    assert renders[(200.0, 220.0)] == {**_card(200.0), "edit": E2}
+    assert renders[(100.0, 120.0)] == {"edit": E}
+    assert renders[(200.0, 220.0)] == {"edit": E2}
     assert got.rows[(100.0, 120.0)]["render_opts"] == a
     assert got.rows[(200.0, 220.0)]["render_opts"] == b
     assert f"2 clip(s) you edited are made again with your edits {SPORTS_NOTE}" in got.out
@@ -575,13 +580,12 @@ def test_a_longform_rerun_makes_an_edited_16x9_clip_with_its_edits(monkeypatch, 
     assert got.saved == saved
 
 
-def test_a_longform_match_keeps_an_edited_clips_card_words_and_made_length(monkeypatch, tmp_path):
+def test_a_longform_match_keeps_an_edited_clips_look_and_made_length(monkeypatch, tmp_path):
     """A match's 16:9 clip the creator edited is made with their cut in the
-    job's look, keeps the card words saved on it, and reaches the reels with
-    the length its edit keeps."""
+    job's look, keeps the look saved on it, and reaches the reels with the
+    length its edit keeps."""
     asked = _match_with_reels(monkeypatch)
-    saved = {"profile": "short_clips", "edit": E, "caption_style": {"post_style": "highlights"},
-             "headline": "MY CARD", "subline": "MINE"}
+    saved = {"profile": "short_clips", "edit": E, "caption_style": {"font": "Georgia"}}
     got = _longform(monkeypatch, tmp_path, saved, **SOCCER)
     assert got.renders == {_lf(s): {"profile": "short_clips", **({"edit": E} if s == 100.0 else {})}
                            for s in STARTS}
@@ -595,7 +599,7 @@ def test_a_longform_match_keeps_an_edited_clips_card_words_and_made_length(monke
 def test_a_render_pc_gets_an_edited_clip_with_its_choices(rerun, monkeypatch):
     """Sent to a render PC, as when made here: the clip the creator edited
     goes with its saved choices over the job's options, and each window
-    with no clip yet with exactly the job's (_clip_opts(meta))."""
+    with no clip yet with exactly the job's."""
     import core.pipeline as pipeline
 
     new = [0.5, 0.5, 0.2, 0.2]
@@ -612,12 +616,12 @@ def test_a_render_pc_gets_an_edited_clip_with_its_choices(rerun, monkeypatch):
     assert Path(got.rows[(100.0, 120.0)]["path"]).name == "clip_00100-00120.mp4"
     assert EDITED_LINE in got.out
 
-    # A Highlights job: each clip's own card, and the edited clip's choices over it.
+    # A job with a caption style of its own: the edited clip's choices, and none for the rest.
     pc = _RenderPC()
     monkeypatch.setattr(pipeline, "_remote_renderer", pc.renderer_for)
-    got = rerun(_found(), rows=[(100.0, 120.0, HAND)], **HIGHLIGHTS)
+    got = rerun(_found(), rows=[(100.0, 120.0, HAND)], **STYLED)
     assert pc.job_opts is None
-    assert pc.sent == {(s, s + 20.0): {**_card(s), **HAND} if s == 100.0 else _card(s) for s in STARTS}
+    assert pc.sent == {(s, s + 20.0): HAND if s == 100.0 else None for s in STARTS}
     assert got.rows[(100.0, 120.0)]["render_opts"] == HAND
 
 

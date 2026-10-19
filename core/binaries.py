@@ -164,7 +164,9 @@ def yolo_weights(name: str) -> str:
     # The repo root too: a checkout keeps these beside the code, and resolving
     # them absolutely means `python main.py` works from any directory rather
     # than only from the repo root.
-    roots = [*_search_roots("weights"), Path(__file__).resolve().parent.parent]
+    repo = Path(__file__).resolve().parent.parent
+    # models/ too: weights a fetch script keeps there (scripts/fetch_basketball_model.py).
+    roots = [*_search_roots("weights"), repo, repo / "models"]
     for root in roots:
         candidate = root / filename
         if candidate.exists():

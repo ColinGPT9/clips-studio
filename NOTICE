@@ -76,6 +76,16 @@ significant ones, with their licences:
                                          class names (config/
                                          audioset_labels.txt) are CC BY 4.0,
                                          Google
+  E-BARD detection models   CC BY 4.0    the basketball, the hoop and the
+  (Gabriele Giudici)                     players, for basketball's 9:16 framing
+                                         (sports/basketball/crop/sources.py);
+                                         the YOLOv8n weights (huggingface.co/
+                                         GabrieleGiudici/E-BARD-detection-
+                                         models, revision 3f4789c), unmodified,
+                                         fetched by scripts/
+                                         fetch_basketball_model.py. Trained
+                                         with ultralytics, so its AGPL-3.0
+                                         terms apply as to the YOLOv8 weights
   pyannote segmentation-3.0 MIT          who is talking when, for the second
                                          speaker's caption colour (analysis/
                                          voice_turns.py); (c) 2022 CNRS, the

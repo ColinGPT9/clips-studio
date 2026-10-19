@@ -181,7 +181,7 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
             return
         made_seconds[str(final_path)] = _made_seconds(candidate, render_opts_json)
         clip = _register_clip(db, video.video_id, candidate, final_path, meta,
-                              render_opts_json, config, edited=_window(candidate) in choices)
+                              render_opts_json, config)
         made.append(clip or RenderedClip(source_video_id=video.video_id, candidate=candidate, path=final_path))
 
     # Remote rendering, when on (Settings -> Advanced settings); else local as always.

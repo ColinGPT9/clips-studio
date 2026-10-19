@@ -110,6 +110,10 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
     highlights = profile.option.get("highlights", "best")
     period = profile.option.get("period", "full")
     types = select.event_types(spec, highlights)
+    # A choice of moments only (basketball's Best moments): no window the
+    # commentary alone was scored for. On a team's own network, 20 of 87 clips
+    # were the analysts talking over play or a stoppage, with no basket in them.
+    moments_only = bool(((spec.get("highlights_choices") or {}).get(highlights) or {}).get("moments_only"))
     board = getattr(profile, "board", None)
     kept, dropped, notes = [], [], []
     # Club or phone footage where nothing confirmed the chosen kind of moment
@@ -143,6 +147,9 @@ def choose(profile, candidates, attached: dict, *, min_score: int, max_len: floa
             continue
         if types is not None and (e is None or e.type not in types):
             dropped.append((c, "not_in_highlights"))
+            continue
+        if moments_only and e is None and attached:
+            dropped.append((c, "no_moment"))
             continue
         if period and period != "full":
             half = e.period if e is not None and e.period else (

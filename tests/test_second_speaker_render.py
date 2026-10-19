@@ -145,11 +145,37 @@ def test_turns_left_by_an_earlier_render_go_when_the_option_is_off(pipeline, mon
     assert "\\1c" not in ass and heard.calls == 0
 
 
-def test_the_highlights_look_keeps_its_own_colour(pipeline, monkeypatch, tmp_path, heard):
-    ass, saved = _render(pipeline, monkeypatch, tmp_path, {**ON, "post_style": "highlights"})
+def test_a_saved_post_style_is_ignored_and_the_second_colour_still_burns(pipeline, monkeypatch, tmp_path, heard):
+    """The Highlights post style (#125) is gone: a clip saved with it burns
+    the other speaker in the second colour, as its caption style asks, and
+    is saved without the post style."""
+    ass, saved = _render(pipeline, monkeypatch, tmp_path,
+                         opts={"caption_style": {**ON, "post_style": "highlights", "card_position": "top"}})
 
-    assert heard.calls == 0 and "speaker_turns" not in saved
-    assert SECOND not in ass
+    assert heard.calls == 1 and saved["speaker_turns"] == TURNS
+    assert saved["caption_style"] == ON
+    assert f"{{\\1c{SECOND}}}W24 W25 W26" in _events(ass)
+
+
+def test_a_clip_saved_with_the_highlights_post_style_renders_in_its_own_style(pipeline, monkeypatch, tmp_path):
+    """A clip saved with the removed Highlights post style (its post style
+    and card position in the caption style, its title card's words in the
+    options) renders with the person's own caption style, gets no title
+    card pass, and is saved without any of it."""
+    own = {"font": "Georgia", "uppercase": False, "position": "bottom"}
+    saved_opts = {"caption_style": {**own, "post_style": "highlights", "card_position": "top"},
+                  "headline": "LOGO THREE", "subline": "HE CALLED GAME", "crop": "track"}
+
+    ass, saved = _render(pipeline, monkeypatch, tmp_path, opts=saved_opts)
+
+    # The person's own look: their font and lower case, not Impact in capitals.
+    assert ",Georgia," in ass and "Impact" not in ass
+    assert _events(ass)[0] == "w20 w21 w22"
+    # One encode wrote the clip (stood in for above): no card was laid over it.
+    assert (tmp_path / "clips" / "clip_00010-00020.mp4").read_bytes() == b"clip"
+    assert not list((tmp_path / "clips").glob("*.png"))
+    # Saved without the post style, the card position or the card's words.
+    assert saved == {"caption_style": own, "crop": "track", "vertical_live": True}
 
 
 # ---- on -----------------------------------------------------------------------------

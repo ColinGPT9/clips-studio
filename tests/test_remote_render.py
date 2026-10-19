@@ -424,8 +424,8 @@ def _completing(q, wid, tmp, specs: list, count: int):
 
 
 def test_each_clip_goes_with_its_own_options(dispatching):
-    """opts_for(candidate, meta): each clip's own options, its title card or,
-    on a re-run, the creator's saved choices (D33), travel with its job."""
+    """opts_for(candidate, meta): each clip's own options, like the
+    creator's saved choices on a re-run (D33), travel with its job."""
     dispatch, gw, tmp = dispatching
     q = gw.queue
     wid, _s = _paired(q)
@@ -433,7 +433,7 @@ def test_each_clip_goes_with_its_own_options(dispatching):
     t = _completing(q, wid, tmp, specs, 2)
 
     def opts_for(candidate, meta):
-        return {"headline": meta, **({"edit": {"keep": [[0, 8]]}} if candidate.start == 10.0 else {})}
+        return {"marker": meta, **({"edit": {"keep": [[0, 8]]}} if candidate.start == 10.0 else {})}
 
     calls = []
     got = [c.start for c, _m, _get in dispatch.RemoteRenderer(gw, "auto", tmp).render_all(
@@ -442,7 +442,7 @@ def test_each_clip_goes_with_its_own_options(dispatching):
     t.join(5)
     assert calls == [] and sorted(got) == [10.0, 50.0]
     assert sorted((s["start"], s["render_opts"]) for s in specs) == [
-        (10.0, {"headline": "m1", "edit": {"keep": [[0, 8]]}}), (50.0, {"headline": "m2"})]
+        (10.0, {"marker": "m1", "edit": {"keep": [[0, 8]]}}), (50.0, {"marker": "m2"})]
 
 
 def test_a_clip_with_music_from_this_pc_renders_here(dispatching, capsys):

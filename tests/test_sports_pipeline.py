@@ -298,7 +298,7 @@ def test_a_16x9_match_is_framed_by_the_ball_not_a_face(monkeypatch, tmp_path):
 
     monkeypatch.setattr(pipeline, "cut_clip", lambda _s, _c, output, **_k: Path(output).write_bytes(b"cut"))
     monkeypatch.setattr(modes, "probe_size", lambda _p: (1920, 1080))
-    monkeypatch.setattr(sports, "framing", lambda name, path, config: {"mode": "track", "path": [(0.0, 0.3)]})
+    monkeypatch.setattr(sports, "framing", lambda name, path, config, hints=None: {"mode": "track", "path": [(0.0, 0.3)]})
     monkeypatch.setattr(cropper, "render_vertical", render)
     monkeypatch.setattr(tracker, "compute_tracking", no_faces)
     config = {"clips": {"captions": False, "outro": False, "vertical": True, "sport": {"name": "soccer"}},
@@ -307,3 +307,145 @@ def test_a_16x9_match_is_framed_by_the_ball_not_a_face(monkeypatch, tmp_path):
                                               [], tmp_path / "clips", config)
     assert final.exists() and rendered["tracking"]["path"] == [(0.0, 0.3)]
     assert json.loads(opts_json)["sport"] == "soccer"
+
+
+# ---- a sport's last word on its clips' windows (basketball: where a clip starts) ---------
+
+
+class _MovesStarts:
+    """A sport that moves its clips' starts once they're found, as basketball
+    does (sports/basketball/leadin.py), stubbed: 3 s later. `fail` raises
+    after moving them, as a look that breaks halfway would."""
+
+    name = "basketball"
+    option = None
+
+    def __init__(self, order: list, fail: bool = False):
+        self.order, self.fail = order, fail
+
+    def refine_windows(self, candidates, video_path, segments, config):
+        self.order.append("refine")
+        for c in candidates:
+            c.start += 3.0
+        if self.fail:
+            raise RuntimeError("the look broke halfway")
+        return candidates
+
+
+class _KeepsThem:
+    """A sport with nothing to say about its windows (soccer)."""
+
+    name = "soccer"
+    option = None
+
+
+def _game_job(monkeypatch, tmp_path, profile, order: list, **clips) -> dict:
+    """process_video on a game whose match reading gives `profile`, from the
+    download to the clip rows, with everything around them stubbed. Returns
+    what each step saw: the windows the plugin steps, the titles and the
+    renders were handed, the clip rows, and each render's options."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    pytest.importorskip("PIL")  # the end card (video/outro.py)
+    import core.pipeline as pipeline
+    from analysis.metadata import ClipMetadata
+    from core import modes
+    from core.models import ClipCandidate, DownloadedVideo
+    from core.state import StateDB
+    from main import BUNDLED_CONFIG, load_config
+    from plugins import steps as plugin_steps
+
+    source = tmp_path / "game.mp4"
+    source.write_bytes(b"not really a video")
+    video = DownloadedVideo(video_id="local_game", title="A game", path=source, duration=600.0)
+    monkeypatch.setattr(pipeline, "_cached_or_download", lambda *_a, **_k: video)
+    monkeypatch.setattr(pipeline, "transcribe", lambda *_a, **_k: [])
+    monkeypatch.setattr("transcription.transcriber.detected_language", lambda *_a, **_k: "en")
+    monkeypatch.setattr("video.encoding.source_codec", lambda _p: "h264")
+    monkeypatch.setattr("analysis.audio_features.extract_audio_features", lambda _p: {})
+    monkeypatch.setattr("analysis.visual_features.extract_visual_features", lambda _p: {})
+    monkeypatch.setattr("analysis.hype.audience_signals", lambda *_a, **_k: (None, None))
+    monkeypatch.setattr(pipeline, "_with_usable_model", lambda cfg: cfg)
+    monkeypatch.setattr(pipeline, "create_backend", lambda cfg: object())
+    monkeypatch.setattr(pipeline, "clip_direction", lambda *_a, **_k: None)
+    monkeypatch.setattr(pipeline, "_share_the_cpu", lambda workers: None)
+    monkeypatch.setattr(pipeline, "_listening_for", lambda *_a, **_k: None)
+    monkeypatch.setattr(modes, "probe_size", lambda _p: (1920, 1080))
+    seen: dict = {"renders": []}
+
+    class Reading:
+        def __init__(self, config, video):
+            pass
+
+        def finish(self, hype_out=None):
+            return profile, None, None
+
+    def find(*_a, **_k):
+        order.append("find")
+        return [ClipCandidate(start=100.0, end=116.0, score=80, hook="A three from the wing",
+                              subscores={"sport_t": 111.0, "sport_event": "made_3"})], []
+
+    def after_finding(candidates, rejections, **_k):
+        order.append("steps")
+        seen["steps"] = [(c.start, c.end) for c in candidates]
+        return candidates, rejections, []
+
+    def titles(candidates, *_a, **_k):
+        order.append("titles")
+        seen["titles"] = [(c.start, c.end) for c in candidates]
+        return [ClipMetadata(title="A three", description="", hashtags=[]) for _ in candidates]
+
+    def render(source, candidate, segments, clip_dir, config, render_opts=None, content_language="en"):
+        seen["renders"].append(((candidate.start, candidate.end), render_opts))
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        out = clip_dir / f"clip_{int(candidate.start):05d}-{int(candidate.end):05d}.mp4"
+        out.write_bytes(b"a clip")
+        return out, json.dumps(render_opts) if render_opts else ""
+
+    monkeypatch.setattr(pipeline, "MatchReading", Reading)
+    monkeypatch.setattr(pipeline, "find_clips", find)
+    monkeypatch.setattr(plugin_steps, "shortlist_config", lambda cfg: cfg)
+    monkeypatch.setattr(plugin_steps, "after_finding", after_finding)
+    monkeypatch.setattr(pipeline, "generate_metadata_batch", titles)
+    monkeypatch.setattr(pipeline, "_render_files", render)
+    config = load_config(BUNDLED_CONFIG)
+    config["paths"]["data_dir"] = str(tmp_path)
+    config["clips"].update({"captions": False, "min_duration": 10, "max_duration": 60, "min_score": 0,
+                            "max_clips_per_video": 0, "sport": {"name": profile.name}, **clips})
+    db = StateDB(tmp_path / "state.db")
+    try:
+        pipeline.process_video("local:game", config, db, force=True)
+        seen["rows"] = [(r["start_s"], r["end_s"]) for r in db.conn.execute(
+            "SELECT start_s, end_s FROM clips WHERE video_id = 'local_game' ORDER BY start_s")]
+    finally:
+        db.conn.close()
+    return seen
+
+
+def test_a_games_clips_are_moved_before_anything_is_built_on_them(monkeypatch, tmp_path):
+    order: list = []
+    seen = _game_job(monkeypatch, tmp_path, _MovesStarts(order), order, rate=["fixture-dev/rater"])
+    # Found, then moved, then rated: the plugin steps, the titles, the render
+    # and the clip's row all have the start it really has.
+    assert order == ["find", "refine", "steps", "titles"]
+    assert seen["steps"] == seen["titles"] == seen["rows"] == [(103.0, 116.0)]
+    ((window, opts),) = seen["renders"]
+    # The play is timed from the clip's new start, for its framing.
+    assert window == (103.0, 116.0) and opts["sport_moment"] == {"t": 8.0, "kind": "made_3"}
+
+
+def test_a_sport_without_its_own_word_keeps_its_windows(monkeypatch, tmp_path):
+    order: list = []
+    seen = _game_job(monkeypatch, tmp_path, _KeepsThem(), order)
+    assert order == ["find", "titles"] and seen["rows"] == [(100.0, 116.0)]
+    ((window, opts),) = seen["renders"]
+    assert window == (100.0, 116.0) and "sport_moment" not in (opts or {})
+
+
+def test_a_move_that_breaks_halfway_leaves_the_windows_as_found(monkeypatch, tmp_path):
+    order: list = []
+    seen = _game_job(monkeypatch, tmp_path, _MovesStarts(order, fail=True), order)
+    assert order == ["find", "refine", "titles"]
+    assert seen["titles"] == seen["rows"] == [(100.0, 116.0)]
+    ((window, opts),) = seen["renders"]
+    assert opts["sport_moment"] == {"t": 11.0, "kind": "made_3"}

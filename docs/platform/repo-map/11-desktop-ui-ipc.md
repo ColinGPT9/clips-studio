@@ -157,7 +157,7 @@ Two stores, split by kind (inferred from the code below):
 
 The Settings page itself (`ui/src/renderer/src/pages/Settings.tsx:667-719`) is a vertical stack in `max-w-xl`: `LanguageCard`, `AppearanceCard`, `NotificationsCard`, `ExportFolderCard`, `StorageCard`, `VideoStorageCard`, `AICard`, `SetupCard`, `UpdateCard`, `WoopSocialCard`, `YouTubeCard`, `UploadPostCard`, an "Advanced settings" card (`MinScoreSetting`, `RemoteRenderCard`), a note that advanced options live in `config/settings.yaml`, and `BrandingCard` last. Each card is a `function XCard(): JSX.Element` returning `<section className="card space-y-3"><h3 className="font-semibold">…` and does its own `useEffect` fetch + immediate `api.patch…` on change (e.g. `Settings.tsx:43-100,577-632`).
 
-### Where Sports / Gaming / Post style are presented
+### Where Sports / Gaming are presented
 They are **not** in Settings. They are per-video job options on the Generate bar (`components/queue/AddVideos.tsx`) and the per-queued-job editor (`components/queue/QueueItemSettings.tsx`), plus per-watched-channel options (`components/watch/WatchPlatformOptions.tsx`, inferred from name). See §9.
 
 ## 8. UI conventions a Marketplace page should follow
@@ -190,7 +190,7 @@ They are **not** in Settings. They are per-video job options on the Generate bar
 
 There is **no single mode dropdown**. A video's processing mode is a set of **per-video toggles** on the Generate bar, with exclusivity rules enforced in the UI:
 
-- Definition: `TOGGLES` array `{key,label,hint,title}` in `ui/src/renderer/src/components/queue/AddVideos.tsx:71-121`: `long_clips` "60s+", `longform` "Longform (16:9)", `vertical_live` "Vertical Live (9:16)", `podcast` "Podcast (multi-cam)", `gaming` "Gaming / Reaction (split-screen)", `sport` "Sports (match)", `watermark` "Watermark (branding)". Captions is rendered separately with a "Caption style"/"Post style" button (`AddVideos.tsx:632-658`).
+- Definition: `TOGGLES` array `{key,label,hint,title}` in `ui/src/renderer/src/components/queue/AddVideos.tsx:71-121`: `long_clips` "60s+", `longform` "Longform (16:9)", `vertical_live` "Vertical Live (9:16)", `podcast` "Podcast (multi-cam)", `gaming` "Gaming / Reaction (split-screen)", `sport` "Sports (match)", `watermark` "Watermark (branding)". Captions is rendered separately with a "Caption style" button (`AddVideos.tsx:632-658`).
 - `LAYOUT_MODES = ['podcast','vertical_live','gaming','longform']` — only one layout mode at a time (`AddVideos.tsx:66`, exclusivity in `toggle()` `:369-445`).
 - Each toggle is a checkbox `<label className="flex items-center gap-2 text-sm …" title={tg.title}><input type="checkbox" className="size-4 accent-[#38BDF8]"/>{t(tg.label)} <span className="text-muted">{t(tg.hint)}</span></label>` (`AddVideos.tsx:661-705`).
 - Conditional sub-rows appear under a toggle: `SportFields` (sport, highlights via `ExplainedSelect`, period, teams, reels) when `options.sport` (`AddVideos.tsx:722-731`, `components/SportFields.tsx`); "Vertical Live content" select (`:734-757`); "Longform output" select (`:759+`); gaming opens `GamingLayoutEditor` (`:689-691`).

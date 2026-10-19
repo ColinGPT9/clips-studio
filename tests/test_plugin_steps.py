@@ -716,7 +716,9 @@ def test_a_stored_window_is_rounded_like_the_clip_row(data_dir, video, add_trimm
 
 # ---- Suggest edits in process_video -----------------------------------------------------
 
-HIGHLIGHTS = {"caption_style": {"post_style": "highlights"}}
+# A job with a caption style of its own: it reaches each clip through the
+# job's config, never as the clip's options.
+STYLED = {"caption_style": {"font": "Georgia"}}
 
 
 @pytest.fixture
@@ -758,8 +760,7 @@ def made(monkeypatch, tmp_path, data_dir):
 
     def titles(candidates, *_a, **_k):
         titled.extend((c.start, c.end, c.score) for c in candidates)
-        return [ClipMetadata(title=f"Clip at {c.start:g}", description="", hashtags=[],
-                             headline=f"AT {c.start:g}", subline="QUARKBLOOM") for c in candidates]
+        return [ClipMetadata(title=f"Clip at {c.start:g}", description="", hashtags=[]) for c in candidates]
 
     def render(source, candidate, segments, clip_dir, config, render_opts=None, content_language="en"):
         renders.append(((candidate.start, candidate.end), copy.deepcopy(render_opts)))
@@ -797,16 +798,11 @@ def _found():
     return [_cand(10, 60), _cand(100, 90), _cand(200, 75), _cand(300, 70)]
 
 
-def _card(start: float) -> dict:
-    """The Highlights card _clip_opts(meta) gives the clip at `start`."""
-    return {"headline": f"AT {start:g}", "subline": "QUARKBLOOM"}
-
-
 def test_suggestions_are_kept_on_the_clip_never_in_its_render_options(made, add_trimmer):
     add_trimmer()
-    for style, options in (({}, [None] * 4), (HIGHLIGHTS, [_card(s) for s in (10, 100, 200, 300)])):
+    for style, options in (({}, [None] * 4), (STYLED, [None] * 4)):
         rows, renders, _titled, outcome = made(_found(), edit=[_trim(edits={"*": TRIM})], **style)
-        # Every clip renders with exactly the options it gets without the plugin: _clip_opts(meta).
+        # Every clip renders with exactly the options it gets without the plugin: the job's.
         assert renders == [((s, s + 20.0), o) for s, o in zip((10.0, 100.0, 200.0, 300.0), options)]
         for row, opts in zip(rows, options, strict=True):
             assert row["render_opts"] == (json.dumps(opts) if opts else "")
@@ -817,7 +813,7 @@ def test_suggestions_are_kept_on_the_clip_never_in_its_render_options(made, add_
 
 def test_a_job_naming_only_edit_makes_the_same_clips(made, add_trimmer):
     add_trimmer()
-    for style in ({}, HIGHLIGHTS):
+    for style in ({}, STYLED):
         plain = made(_found(), **style)
         edited = made(_found(), edit=[_trim(edits={"*": TRIM})], **style)
         # The same windows, scores, titles and order, rendered with byte-identical options.
@@ -853,7 +849,7 @@ def test_edit_plugins_see_only_the_clips_that_are_made(made, add_trimmer, tmp_pa
 
 def test_a_job_without_edit_never_reaches_the_edit_step_and_renders_as_before(made, monkeypatch):
     """A job that names no edit plugin renders every clip with the options it
-    always did (_clip_opts(meta), byte for byte). With no step at all,
+    always did, byte for byte. With no step at all,
     plugins.steps is never imported; with Rate & understand alone, its edit
     step is never called."""
     plugins = importlib.import_module("plugins")
@@ -862,9 +858,9 @@ def test_a_job_without_edit_never_reaches_the_edit_step_and_renders_as_before(ma
         m.setitem(sys.modules, "plugins.steps", None)  # importing it now fails
         m.delattr(plugins, "steps", raising=False)
         bare = made(found)
-        card = made(found, **HIGHLIGHTS)
+        styled = made(found, **STYLED)
     assert json.dumps(bare[1]) == json.dumps([((s, s + 20.0), None) for s in (10.0, 100.0, 200.0, 300.0)])
-    assert json.dumps(card[1]) == json.dumps([((s, s + 20.0), _card(s)) for s in (10.0, 100.0, 200.0, 300.0)])
+    assert json.dumps(styled[1]) == json.dumps(bare[1])
     assert all(r["render_opts"] == "" for r in bare[0])
 
     from plugins import steps

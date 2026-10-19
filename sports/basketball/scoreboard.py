@@ -86,6 +86,9 @@ WIDEN = 0.6              # a piece whose digits changed is read again this many 
 SAME_ROW = 0.7           # a piece sits where one sat before: over its columns, sharing this much of their rows
 PINPOINT_RATE = 5        # a basket's new score is looked for this many times a second between its two keyframes...
 PINPOINT_WITHIN = 10.0   # ...when they are at most this far apart (further, the bug was hidden: a replay, a break)
+STILL_FOR = 2.0          # readings at least this far apart showing the same game clock: it stood still between them
+MOVED_GAP = 300.0        # a stretch this long with no bug read is looked at for one elsewhere (another broadcast)...
+MOVED_BASKETS = 2        # ...and read there when it shows this many baskets there
 
 
 @dataclass
@@ -125,6 +128,10 @@ class ScoreChange:
         return f"score {self.after[0]}-{self.after[1]}{who}, +{self.points}"
 
 
+RUN_CHECK = 8.0          # the clock is taken to be running when the next reading, within this...
+RUN_SLACK = 0.6          # ...shows it ran as long as the video did, to this
+
+
 @dataclass
 class Scoreboard:
     box: tuple | None = None
@@ -132,6 +139,11 @@ class Scoreboard:
     changes: list = field(default_factory=list)
     halftime: float | None = None    # (soccer's; unused)
     places: tuple | None = None      # where the two scores sit in the box (score_places)
+    spans: list = field(default_factory=list)   # (from, to, box): where the bug sat instead (_moved)
+
+    def box_at(self, t: float) -> tuple | None:
+        """The bug's box at t: where it moved to in a span that holds t, else box."""
+        return next((box for lo, hi, box in self.spans if lo <= t <= hi), self.box)
 
     def seen_twice(self) -> list:
         """The readings whose score the reading before or after it (of those
@@ -176,9 +188,8 @@ class Scoreboard:
         return r.period if r is not None else None
 
     def period_at(self, t: float) -> str:
-        """q1-q4 or ot (the Quarter choices), or "" when the bug's period
-        wasn't read near t, or the game is played in halves (college): a half
-        is no quarter, so a Quarter choice keeps it and says so."""
+        """q1-q4 or ot, or "" when the bug's period wasn't read near t, or
+        the game is played in halves (college)."""
         n = self.period_number(t)
         if n is None:
             return ""
@@ -208,6 +219,49 @@ class Scoreboard:
                 left = max(left, min(after, key=lambda r: r.t).clock)
             return left
         return min(after, key=lambda r: r.t).clock
+
+    def from_the_line(self, change: ScoreChange) -> bool:
+        """Whether a change of 2 was two free throws, not a basket: the game
+        clock read the same on the last reading of the old score and the first
+        of the new, STILL_FOR or more apart (a basket is scored with the clock
+        running; it stands still through a trip to the line). Read between two
+        keyframes, a trip's two free throws are one change of 2: on a team's
+        own network one was titled as a basket putting the home team "Up 3"."""
+        if change.points != 2 or change.last_old is None or change.hi - change.last_old < STILL_FOR:
+            return False
+        at = {r.t: r.clock for r in self.readings if r.clock is not None}
+        old, new = at.get(change.last_old), at.get(change.hi)
+        return old is not None and new is not None and abs(old - new) < 0.05
+
+    def clock_stopped(self, t: float, within: float = 30.0) -> tuple[float, float, float] | None:
+        """The game clock stopped at t (a free throw): (the last reading after
+        t still showing that time, when it runs again, the first reading
+        showing another time). It runs again where that reading says it
+        started, back by the time that has run, never before the last reading
+        still stopped, and only when the reading after it agrees it was
+        running (after a missed free throw it ran a moment for the rebound and
+        stopped again); else "when it runs again" is the last reading still
+        stopped. That holds only when the broadcast didn't cut away in between
+        (shots.clip_end looks): on an NBA compilation 27.2 left after a jump
+        past the inbound "ran" from before the second free throw. None when the
+        clock isn't read within 3 s of t, or is still stopped `within` after
+        it."""
+        here = self._near(t, 3.0, lambda r: r.clock is not None)
+        if here is None:
+            return None
+        stopped, still = here.clock, here.t
+        later = sorted((r for r in self.readings if r.clock is not None and here.t < r.t), key=lambda r: r.t)
+        for k, r in enumerate(later):
+            if r.t > t + within:
+                break
+            if abs(r.clock - stopped) < 0.05:
+                still = r.t
+                continue
+            after = later[k + 1] if k + 1 < len(later) else None
+            running = (r.clock < stopped and after is not None and after.t - r.t <= RUN_CHECK
+                       and abs((r.clock - after.clock) - (after.t - r.t)) <= RUN_SLACK)
+            return still, max(still, r.t - (stopped - r.clock)) if running else still, r.t
+        return None
 
     def score_before(self, t: float) -> tuple | None:
         prior = [r for r in self.seen_twice() if r.t < t]
@@ -997,8 +1051,8 @@ def read(grab, duration: float, find_ocr=None, every: float = EVERY, cancel=None
 
 def read_video(path, duration: float, cancel=None) -> Scoreboard:
     """read() on a video file: the box found on a few sought frames, then every
-    keyframe's crop read piece by piece in one pass; seeking when keyframes
-    are too sparse."""
+    keyframe's crop read piece by piece in one pass, and read again where the
+    bug moved to (_moved); seeking when keyframes are too sparse."""
     import cv2
 
     from core.modes import probe_size
@@ -1018,29 +1072,113 @@ def read_video(path, duration: float, cancel=None) -> Scoreboard:
         box = find_box(grab, duration, _ocr)
         if box is None:
             return Scoreboard()
-        found: dict[int, list] = {}
-        reader = BoxReader(_ocr, recognise)
-
-        def on_frame(i: int, img) -> None:
-            found[i] = reader.read(img)
-
         size = probe_size(path)
-        try:
-            with keyframes.listing(path) as own:
-                times = own(scorebug.keyframe_crops(path, box, size, on_frame, cancel))
-        except OSError:
-            times = []
+        readings, times = _keyframe_readings(path, box, size, cancel)
         # A basket is a few seconds of play: keyframes further apart than
         # EVERY * 2 on average would merge baskets, so those are sought instead.
         if len(times) >= max(10, duration / (EVERY * 2)):
-            readings = []
-            for i, t in enumerate(times):
-                if i in found:
-                    r = parse_pieces(found[i])
-                    r.t = t
-                    readings.append(r)
             board = from_readings(readings, box)
             # ...and each basket's new score found between its two keyframes.
             pinpoint_all(board, lambda lo, hi: _box_frames(path, box, size, lo, hi), recognise, cancel)
+            _moved(board, path, grab, size, times, duration, cancel)
             return board
         return read(grab, duration, find_ocr=_ocr, cancel=cancel)
+
+
+def _keyframe_readings(path, box: tuple, size: tuple[int, int], cancel=None, times: list | None = None,
+                       lo: float = 0.0, hi: float = float("inf")) -> tuple[list, list]:
+    """Every keyframe's crop of `box` read piece by piece (BoxReader), as
+    readings, and the keyframes' times. Given `times` (an earlier pass's),
+    only the keyframes from lo to hi are read."""
+    from analysis.game_text import _ocr
+
+    found: dict[int, list] = {}
+    reader = BoxReader(_ocr, recognise)
+
+    def on_frame(i: int, img) -> None:
+        if times is None or (i < len(times) and lo <= times[i] <= hi):
+            found[i] = reader.read(img)
+
+    try:
+        if times is not None:
+            scorebug.keyframe_crops(path, box, size, on_frame, cancel)
+        else:
+            with keyframes.listing(path) as own:
+                times = own(scorebug.keyframe_crops(path, box, size, on_frame, cancel))
+    except OSError:
+        times = []
+    readings = []
+    for i, t in enumerate(times):
+        if i in found:
+            r = parse_pieces(found[i])
+            r.t = t
+            readings.append(r)
+    return readings, times
+
+
+def _no_bug(readings: list[Reading], duration: float) -> list[tuple[float, float]]:
+    """The stretches of MOVED_GAP or more with no reading of the bug (no
+    score, clock or period), from the video's start to its end."""
+    seen = [r.t for r in readings if r.score is not None or r.clock is not None or r.period is not None]
+    edges = [0.0, *seen, duration]
+    return [(a, b) for a, b in zip(edges, edges[1:]) if b - a >= MOVED_GAP]
+
+
+def _moved(board: Scoreboard, path, grab, size: tuple[int, int], times: list, duration: float,
+           cancel=None) -> None:
+    """The bug read where it moved to. A fan's upload of a whole game can be
+    two broadcasts joined (one network's for most of the first quarter, the
+    other's after), each with its bug in its own place, and the box found
+    reads nothing of the other: on that game, nothing after 17 of its 60
+    minutes. Each stretch of MOVED_GAP or more with no bug read is looked at
+    for a bug elsewhere (find_box over the stretch); one that shows
+    MOVED_BASKETS baskets or more there is read there, a second pass over
+    the keyframes reading only the stretch's. Its readings and baskets join
+    the board's (_join) and its box is the bug's in the stretch (box_at). A
+    stretch with no bug elsewhere (a full broadcast's halftime) costs the
+    look at a few frames."""
+    from analysis.game_text import _ocr
+
+    for lo, hi in _no_bug(board.readings, duration):
+        if cancel is not None:
+            cancel()
+        box = find_box(lambda t, lo=lo: grab(lo + t), hi - lo, _ocr)
+        if box is None or board.box is None or _overlap(box, board.box) >= 0.3:
+            continue
+        readings, _times = _keyframe_readings(path, box, size, cancel, times, lo, hi)
+        other = from_readings(readings, box)
+        if len(other.changes) < MOVED_BASKETS:
+            continue
+        pinpoint_all(other, lambda a, b, box=box: _box_frames(path, box, size, a, b), recognise, cancel)
+        added = _join(board, other, lo, hi)
+        print(f"      Scoreboard: the score box moved from {lo:.0f}s to {hi:.0f}s (another broadcast), "
+              f"{added} more basket(s) read there")
+
+
+def _join(board: Scoreboard, other: Scoreboard, lo: float, hi: float) -> int:
+    """`other` (the bug where it moved, read from lo to hi) joined into
+    `board`: its scores put in the board's order when it lists the teams the
+    other way round (a team code both name, on the other side), its codes
+    the board's ("LA" on one network is "LAL" on the other), its readings
+    added, and its baskets but those the board has (the two broadcasts
+    overlap where they are joined: the second rewound to 50 s before the
+    first left off). The number of baskets added."""
+    mine, theirs = board.teams(), other.teams()
+    if mine and theirs:
+        if any(mine.index(x) != theirs.index(x) for x in set(mine) & set(theirs)):
+            theirs = theirs[::-1]
+            for r in other.readings:
+                r.score = r.score[::-1] if r.score else r.score
+            for c in other.changes:
+                c.before, c.after, c.side = c.before[::-1], c.after[::-1], 1 - c.side
+        names = dict(zip(theirs, mine))
+        for r in other.readings:
+            r.teams = mine if r.teams else r.teams
+        for c in other.changes:
+            c.team, c.other = names.get(c.team, c.team), names.get(c.other, c.other)
+    have = {(c.before, c.after) for c in board.changes}
+    new = [c for c in other.changes if (c.before, c.after) not in have]
+    board.readings = sorted(board.readings + other.readings, key=lambda r: r.t)
+    board.changes = sorted(board.changes + new, key=lambda c: c.hi)
+    board.spans.append((lo, hi, other.box))
+    return len(new)

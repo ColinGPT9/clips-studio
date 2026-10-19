@@ -351,8 +351,6 @@ export const api = {
     captionStyle?: CaptionStyle | null,
     watermark?: WatermarkConfig | Record<string, never>,
     gaming?: GamingSettings | null,
-    /** Pending Highlights title card words; undefined = the clip's saved ones. */
-    card?: { headline: string; subline: string },
     /** Pending hand fixes of who is talking; undefined = the clip's saved
      *  ones, an empty list = none. */
     speakerEdits?: SpeakerTurn[],
@@ -370,7 +368,6 @@ export const api = {
         // undefined = unchanged, null = preview without the split
         gaming: gaming ?? null,
         gaming_off: gaming === null,
-        ...(card ?? {}),
         speaker_edits: speakerEdits ?? null,
         captions: captions ?? null
       })

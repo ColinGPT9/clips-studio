@@ -55,7 +55,8 @@ def test_the_option_is_cleaned_and_unknown_values_refused():
     assert custom["request"] == "the saves"
     assert "request" not in sports.clean({"name": "soccer", "highlights": "goals", "request": "the saves"})
     for bad in ({"name": "curling"}, {"name": "soccer", "highlights": "dunks"},
-                {"name": "soccer", "period": "third_half"}, {"name": "soccer", "footage": "drone"}, 42):
+                {"name": "soccer", "period": "third_half"}, {"name": "soccer", "period": "q4"},
+                {"name": "soccer", "footage": "drone"}, 42):
         with pytest.raises(ValueError):
             sports.clean(bad)
 

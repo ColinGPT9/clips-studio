@@ -36,7 +36,7 @@ Queue Manager (core/queue.py)
 
 `subscores` keys seen in the pipeline: `text`, `audio`, `visual`, `reaction`, `engagement` (`core/models.py:52-54`, printed at `core/pipeline.py:484-491`), plus `intent`, `intent_why`, `required` (`core/pipeline.py:489-490`), `reaction_measured` (`core/outcome.py:63`), `game` (`analysis/fusion.py:666`).
 
-`ClipMetadata` (`analysis/metadata.py:60-67`): `title: str`, `description: str`, `hashtags: list[str] = []`, `headline: str = ""`, `subline: str = ""`.
+`ClipMetadata` (`analysis/metadata.py:60-67`): `title: str`, `description: str`, `hashtags: list[str] = []`.
 
 ---
 
@@ -247,10 +247,10 @@ Other tables (names only; `:50-60, 78-330`): `uploads`, `channels`, `creators` (
 Migrations are additive `ALTER TABLE ... ADD COLUMN` guarded by `PRAGMA table_info` (`:366-560`); no schema version number exists (inferred: no `user_version` or version table in `core/state.py`).
 
 ### 9.3 What a clip is
-On disk: one MP4 at `clips.path`, 1080x1920 (standard/vertical-live/gaming/podcast/sports) or 1920x1080 (longform), captions burned from a temporary ASS, optional title card, image watermark and end card concatenated (`core/pipeline.py:1426-1446`).
+On disk: one MP4 at `clips.path`, 1080x1920 (standard/vertical-live/gaming/podcast/sports) or 1920x1080 (longform), captions burned from a temporary ASS, optional image watermark and end card concatenated (`core/pipeline.py:1426-1446`).
 In the DB: the `clips` row written by `_register_clip` (`core/pipeline.py:1582-1596`): `start_s, end_s, score, hook, path, status="queued", title, description, hashtags(json), scores(json subscores), render_opts(json)`. On a re-run the existing row is pointed at the fresh file and `_register_clip` returns `None` (`:1597-1633`).
 
-`render_opts` keys written by `_render_files` (`core/pipeline.py:1456-1481`) and read back on re-render: `captions`, `caption_style`, `caption_lines`, `crop` (`track|center|letterbox|bias_left|bias_right`), `filter`, `adjust`, `edit` (`video_editor.timeline.EditList`), `watermark`, `headline`, `subline`, `speaker_edits`, `speaker_turns`, `normalize_audio`, `podcast`, `vertical_live`, `gaming` (dict), `sport`, `profile` (longform), `reel`.
+`render_opts` keys written by `_render_files` (`core/pipeline.py:1456-1481`) and read back on re-render: `captions`, `caption_style`, `caption_lines`, `crop` (`track|center|letterbox|bias_left|bias_right`), `filter`, `adjust`, `edit` (`video_editor.timeline.EditList`), `watermark`, `speaker_edits`, `speaker_turns`, `normalize_audio`, `podcast`, `vertical_live`, `gaming` (dict), `sport`, `profile` (longform), `reel`.
 
 ### 9.4 The run log
 `server/feedback.py`: `install_log_capture()` wraps `sys.stdout`/`sys.stderr` in `_Tee` (`:75-80`), called in `create_app` (`server/api.py:575`). `_Tee.write` appends each line to a 400-line ring (`_LOG_LINES`, `:36-37`) and, when a job sink is open, writes and flushes it to the file (`:47-69`). `open_job_log(path)` opens `data/logs/job_<id>.log` in append mode (`:83-104`); `close_job_log()` closes it (`:107-113`); `recent_log(lines)` returns the ring (`:116-119`). The pipeline "logs" by `print()`. `GET /jobs/{id}/log?tail=300` reads the file (`server/api.py:1181-1199`).
@@ -298,7 +298,7 @@ Yes, the separation exists and is clean, and it is already crossed by two other 
 candidates: list[ClipCandidate]   # kept, ordered best first (analysis/fusion.py:627-629)
 rejections: list[Rejection]       # audit only
 ```
-Each `ClipCandidate`: `start`, `end` (seconds in the source), `score` (0-100 int), `hook` (str), `reason` (str), `source` (`"transcript"|"signal"`), `engagement`, `trending`, `subscores` (dict). Then, still before any file work, `metas: list[ClipMetadata]` is produced in lockstep (`:514-519`): `title`, `description`, `hashtags`, `headline`, `subline`.
+Each `ClipCandidate`: `start`, `end` (seconds in the source), `score` (0-100 int), `hook` (str), `reason` (str), `source` (`"transcript"|"signal"`), `engagement`, `trending`, `subscores` (dict). Then, still before any file work, `metas: list[ClipMetadata]` is produced in lockstep (`:514-519`): `title`, `description`, `hashtags`.
 
 **Renderer input**, `_render_files(source: Path, candidate: ClipCandidate, segments: list[Segment], clip_dir: Path, config: dict, render_opts: dict | None = None, content_language: str = "en") -> tuple[Path, str]` (`core/pipeline.py:1123-1131`). Its contract, stated in its docstring: "Pure file work: cut, track, crop, captions, color. NO database access and NO LLM call" (`:1132-1139`). It needs:
 - the source file and the candidate window;

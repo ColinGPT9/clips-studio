@@ -22,6 +22,7 @@ CLOSE = 5                # a margin this small is a close game
 BLOWOUT = 20             # ...this big, a blowout
 GARBAGE = 13             # ...and this big, late on, the game is decided
 BUZZER_AT = 0.6          # the buzzer curve's bar
+GAME_OVER = 3.0          # the last basket with this little left of the last period ends the game
 EDGE_SENTENCE = 1.5      # a clip starts at its sentence's start, and ends at its end, this close to them
 # A basket by its score bug. On an NBA game the bug showed the new score 1.3-2.6 s
 # after the ball went in, all ten times, and the ball went in 1.0 s before to
@@ -242,6 +243,8 @@ class BasketballProfile(SportProfile):
         points = int(getattr(change, "points", 0) or 0)
         kind = {3: "made_3", 2: "made_2", 1: "free_throw"}.get(points, "made_2")
         board = getattr(self, "board", None)
+        if board is not None and change is not None and board.from_the_line(change):
+            kind = "free_throw"             # two of them, read as one change of 2
         if board is not None:
             situation = self._situation(board, change, e, shown_at(change, e.t))
             if situation and self.importance(situation) > self.importance(kind):
@@ -295,7 +298,12 @@ class BasketballProfile(SportProfile):
         posted on its own is one play."""
         if getattr(event, "confirmed", False):
             return event.start, event.end
-        return super().clip_span(candidate, event)
+        # A play the commentary named (a block, a steal): the scorer's window
+        # may start earlier, for the build-up, but it ends with the play. Its
+        # own end ran on to the end of the commentator's sentence, about the
+        # next play, on an NBA compilation 21 s past a block.
+        start, _ = super().clip_span(candidate, event)
+        return start, event.end
 
     def guidance(self, kind: str = "clips", start: float | None = None, end: float | None = None) -> str:
         """What the scoring prompts are told a basketball game is (the
@@ -369,9 +377,11 @@ class BasketballProfile(SportProfile):
         self._name_sides()
         points = int(getattr(change, "points", 0) or 0)
         kind = event.type if event is not None else ""
-        if not _fits(kind, points):
-            kind = {3: "made_3", 2: "made_2", 1: "free_throw"}.get(points, "made_2")
         board = getattr(self, "board", None)
+        if board is not None and change is not None and board.from_the_line(change):
+            kind = "free_throw"             # two of them, read as one change of 2
+        elif not _fits(kind, points):
+            kind = {3: "made_3", 2: "made_2", 1: "free_throw"}.get(points, "made_2")
         if event is not None and board is not None and points:
             self._changes[id(event)] = change
             # The quarter and the clock where the bug changed: a basket dated
@@ -487,6 +497,49 @@ class BasketballProfile(SportProfile):
         from sports.basketball import titles
 
         return titles.check(self, candidates, metas, rewrite)
+
+    def refine_windows(self, candidates: list, video_path, segments, config: dict) -> list:
+        """Each clip's start and end set on its play's own footage (its
+        possession, and the cut that ends the play), once the clips are
+        chosen (sports/basketball/leadin.py; core/pipeline._refine_windows).
+        Not for gym or phone footage, one camera with no cutaways, nor for
+        Vertical Live, whose source is framed already."""
+        from core import modes
+
+        if self.footage == "sideline" or modes.is_vertical_live(config):
+            return candidates
+        from sports.basketball import leadin
+
+        board = getattr(self, "board", None)
+        model = str((sports.spec("basketball").get("framing") or {}).get("model") or "yolov8n.pt")
+        # How tall the game camera shows the players (the prepass's measure):
+        # kept in each clip's scores, so its framing, a re-render's too, tells
+        # the floor players and the close-ups apart by it as well.
+        scale = float(getattr(self, "people_scale", 1.0) or 1.0)
+        if scale != 1.0:
+            for c in candidates:
+                if getattr(c, "subscores", None) is not None:
+                    c.subscores["sport_scale"] = scale
+        # Each free throw with its trip to the line: the clock stopped through it.
+        ones = [(float(e.t), board.clock_stopped(float(e.t)) if board is not None else None)
+                for e in self._baskets if int(getattr(self._changes.get(id(e)), "points", 0) or 0) == 1]
+        return leadin.refine_windows(candidates, video_path, segments, config, [float(e.t) for e in self._baskets],
+                                     bug_box=board.box_at if board is not None and board.box else None,
+                                     model_name=model, free_throws=ones, final=self._final(board),
+                                     people_scale=scale)
+
+    def _final(self, board) -> list[float]:
+        """The basket that ends the game, whose clip keeps its end (the
+        celebration): the last one read, unless the clock says the game went
+        on (on an NBA Finals video the last one read came with 16 s left, and
+        its clip ran on into the next possession). With no clock read, the last."""
+        last = max((float(e.t) for e in self._baskets), default=None)
+        if last is None or board is None:
+            return []
+        period, left = board.period_number(last), board.clock_at(last)
+        if period is None or left is None or (period >= board.last_period() and left <= GAME_OVER):
+            return [last]
+        return []
 
     def _situation(self, board, change, event, at: float) -> str:
         """A situational kind for this basket, or ""."""

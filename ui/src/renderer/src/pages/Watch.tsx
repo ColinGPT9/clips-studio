@@ -454,6 +454,7 @@ export default function Watch({
                 value={addClip.sport}
                 sports={offeredSports}
                 onChange={(sport) => setAddClip({ ...addClip, sport })}
+                noCrop={Boolean(addClip.vertical_live)}
               />
             </div>
           )}

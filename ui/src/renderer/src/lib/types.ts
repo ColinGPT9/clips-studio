@@ -287,11 +287,6 @@ export interface CaptionStyle {
   /** Another colour for whoever isn't the main speaker (#126). */
   second_speaker?: boolean
   second_speaker_color?: string
-  /** The clip's whole look (video/post_style.py): 'highlights' is the
-   *  sports highlight-page look, a stacked title card and yellow captions. */
-  post_style?: 'default' | 'highlights'
-  /** Where the highlights title card sits. */
-  card_position?: 'lower' | 'top'
 }
 
 export type FilterName =
@@ -396,10 +391,6 @@ export interface RenderOpts {
   watermark?: WatermarkConfig | null
   /** A Sports job's clip: its sport, so a re-render frames the ball again. */
   sport?: string
-  /** The highlights post style's title card: its big line and the smaller
-   *  one under it (video/post_style.py). */
-  headline?: string
-  subline?: string
 }
 
 /** Normalized [x, y, width, height] of a region of the SOURCE frame. */
@@ -549,6 +540,8 @@ export interface SportOption {
   events?: string
   /** Story reels to join from the match's clips: 'recap', 'teams', 'players'. */
   reels?: string[]
+  /** The phone screen the crop fills: absent is 'safe' (between the apps' top bar and caption), or 'full'. */
+  screen?: string
 }
 
 /** One sport the engine offers (GET /sports), with its menus. */
@@ -559,8 +552,8 @@ export interface SportChoice {
   periods: { id: string; label: string }[]
   /** Automatic, TV broadcast, Club or phone; absent from an engine that predates it. */
   footage?: { id: string; label: string }[]
-  /** What the Sport row calls the period when it offers it (basketball: "Quarter"). */
-  period_menu?: string
+  /** The Crop choice (basketball): clear of the apps' text, or full screen. Absent when the sport has none. */
+  screens?: { id: string; label: string }[]
 }
 
 /** A queue row: the job, plus the video it is about. `display_title` comes

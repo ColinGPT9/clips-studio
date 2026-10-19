@@ -124,9 +124,8 @@ were often broken in a way that only showed up on somebody else's machine.
   option off. Works best with clear audio and voices that differ: two people who sound
   alike talking over each other outdoors are often left one colour. In a video where
   the streamer says less than what they are watching, the colours can be the other way
-  round. Not for the Highlights post style, which has its own colour, or for translated
-  subtitles. Runs on this PC (two small voice models, about 20 seconds once per video
-  and a couple per clip). (#126)
+  round. Not for translated subtitles. Runs on this PC (two small voice models, about 20
+  seconds once per video and a couple per clip). (#126)
 
   **Where it gets a caption wrong, fix it by hand.** In the clip editor's Captions tab,
   **Fix speakers** marks the other speaker's words. Click a word to switch who says it
@@ -149,25 +148,35 @@ were often broken in a way that only showed up on somebody else's machine.
   than a first-quarter one. The broadcast's cutaways to the crowd, the bench and
   courtside are found too: merged into the play's clip, or clipped on their own with
   **Fan reactions**, **Celebrity reactions**, **Crowd reactions** or **Bench reactions**.
-  A person is named only when the broadcast captions them. A **Quarter** menu picks part
-  of the game, the 9:16 crop follows the ball, the play around it and the rim, and a game
-  filmed 9:16 keeps its picture. It runs on the same Whisper and AI model as everything
-  else. Measured on three NBA broadcasts: the score bug is read piece by piece (two-row
-  bugs, logos beside bare scores), court and crowd shots are told apart by how big the
-  people in them are, and the crop no longer snaps when the camera pans. See
+  A person is named only when the broadcast captions them. The whole game is clipped, and
+  each clip's vertical crop is planned around its play: the ball and whoever has it, the
+  receiver of a pass before the catch, and the shot followed to the basket with the rim,
+  the net and the backboard in the picture. The crop is one picture that pans with the
+  play and never zooms in or out, like a House of Highlights clip, the TV scoreboard left
+  out. It sits clear of the apps' text, between TikTok's, Reels' and Shorts' top bar and
+  the caption at the bottom with a blurred band above and below it, so neither hides the
+  basket or the floor (the buttons down the right still sit over its edge, and the crop
+  keeps the rim left of them); **Crop** in the Sports row makes it full screen instead.
+  When the shooter and the basket don't both fit, it stays on
+  the ball's side and pans with it to the rim, and when the ball can't be seen it follows
+  the player who last had it, or the play. A close-up stays on the person the camera is
+  on, not a blurred shoulder in front. A clip starts
+  on the court, not on a close-up, the crowd or an earlier play left over from a condensed
+  broadcast, and ends when the play is over: before the broadcast cuts to the next
+  possession, a replay (the network's replay logo included) or another quarter, or before
+  the camera follows the other team up the court, with everything the announcer says about
+  the play before then and no glimpse of the next shot as it ends. A trip to the free-throw
+  line stays in one clip, every attempt of it. A clip can come out a little under your
+  shortest length rather than show the next play. **Best moments** keeps plays and
+  reactions, not the commentators talking between them, and two free throws are never
+  called a basket. A whole game joined from two
+  broadcasts, each with its score in its own place, is read in both, and a team's own
+  network, whose camera shows the players closer, is told court from crowd as well as a
+  national broadcast. A game filmed 9:16 keeps its picture. It runs on the same Whisper and AI
+  model as everything else. Measured on an NBA Finals broadcast: the ball stayed in the
+  crop in 95% of the frames checked (46% with the first crop), and the rim and the
+  backboard in all of them as the ball reached the rim (47% and 32%). See
   [docs/SPORTS.md](docs/SPORTS.md#basketball).
-
-- **A Highlights post style.** Pick **Post style → Highlights** with the caption
-  settings (it stays there with captions off) and Shorts come out looking like the big
-  sports highlight pages' reels. The clip is framed full screen as usual. Over it goes
-  their stacked title card: a big yellow headline on a black box and a smaller line on a
-  yellow box under it, with the emoji in colour. Captions turn yellow and ALL CAPS in
-  the middle of the frame. Titles, card lines and hashtags are written in that voice
-  too, and names only appear when they are said in the clip or in the video title. The
-  card can sit in the lower third or at the top (a clip with a hook title keeps it in
-  the lower third), and you can change its words, or switch a clip's style, in the clip
-  editor. 16:9 videos keep the standard look. Add your own handle or logo with a
-  watermark. The standard look stays the default.
 
 ### Changed
 
@@ -214,21 +223,21 @@ were often broken in a way that only showed up on somebody else's machine.
   other switches already did. (#138)
 
 - **Processing a video again keeps your edits.** **Process again** made every clip it
-  found again from the start: cuts, mutes, a layout, captions you fixed, colours,
-  branding and title-card words you had applied in the editor stayed in the editor but
-  were missing from the clip's file, and a channel that posts automatically could post
-  that file. A clip you edited is now made again with your edits, on this computer or a
-  render PC, and goes into a match's story reels with them. Clips you never edited, and
-  new ones, are made with the settings you chose, as before, even when you set up a
-  Gaming / Reaction split before processing. A clip you edited keeps its own look. In a
-  Gaming / Reaction job it keeps its own split, and a split that was found automatically
-  or remembered for the creator takes a webcam you set up or remembered for this run. A
-  split you set up before an earlier run or drew for that clip stays as it is, even with
-  Gaming / Reaction off (not in a match): change it in the clip editor. A split you turned
-  off for a clip stays off. In a match, your cuts, layout, caption fixes and colour
-  adjustments are kept, and the caption style, colours, branding and title card are the
-  job's; **Re-render** a clip to make it with its own. 16:9 Longform clips too. A clip
-  with music you added renders on this computer even when a render PC is chosen.
+  found again from the start: cuts, mutes, a layout, captions you fixed, colours and
+  branding you had applied in the editor stayed in the editor but were missing from the
+  clip's file, and a channel that posts automatically could post that file. A clip you
+  edited is now made again with your edits, on this computer or a render PC, and goes
+  into a match's story reels with them. Clips you never edited, and new ones, are made
+  with the settings you chose, as before, even when you set up a Gaming / Reaction split
+  before processing. A clip you edited keeps its own look. In a Gaming / Reaction job it
+  keeps its own split, and a split that was found automatically or remembered for the
+  creator takes a webcam you set up or remembered for this run. A split you set up
+  before an earlier run or drew for that clip stays as it is, even with Gaming /
+  Reaction off (not in a match): change it in the clip editor. A split you turned off
+  for a clip stays off. In a match, your cuts, layout, caption fixes and colour
+  adjustments are kept, and the caption style, colours and branding are the job's;
+  **Re-render** a clip to make it with its own. 16:9 Longform clips too. A clip with
+  music you added renders on this computer even when a render PC is chosen.
 - **A model download that failed no longer says it finished.** When Ollama could not
   fetch a model (no connection, a name that does not exist, a full disk), the Models
   page, setup and the box above all showed the download as done, with nothing installed.

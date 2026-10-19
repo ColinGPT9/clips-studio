@@ -183,11 +183,9 @@ def problems(play: Play, meta, names=None) -> list[str]:
     out: list[str] = []
     title = str(getattr(meta, "title", "") or "")
     description = str(getattr(meta, "description", "") or "")
-    # The highlights post style's title card (video/post_style.py), when the job has one.
-    card = " ".join(str(getattr(meta, k, "") or "") for k in ("headline", "subline")).strip()
     if not description.strip():
         out.append("Write a title and a description for it.")
-    fields = [f for f in (title, description, card) if f]
+    fields = [f for f in (title, description) if f]
     text = "\n".join(fields)
     if play.team and play.other:
         out += _state(play, text)
@@ -203,10 +201,10 @@ def problems(play: Play, meta, names=None) -> list[str]:
         out.append("It didn't win or seal the game.")
     if OTHER_PLAY.search(title) and not SCORE_WORDS.search(title):
         out.append(f"Title it for the {play.shot or 'basket'}, not for the play before it.")
-    if names is not None and _wrong_names(play, (title, card), description, names):
+    if names is not None and _wrong_names(play, (title,), description, names):
         out.append(f"The commentary says {play.scorer} scored it: name only {play.scorer}, or no one."
                    if play.scorer else "The commentary doesn't say who scored it: name no player.")
-    elif names is not None and _added_name(play, (title, card), description, names):
+    elif names is not None and _added_name(play, (title,), description, names):
         out.append(f"The commentary calls the scorer {play.scorer}: name the scorer only that way, "
                    "with no first name it doesn't give.")
     out += _time(play, text)
@@ -513,11 +511,7 @@ def written(play: Play, meta, index: int = 0):
     title = _title(play, index)
     description = _description(play)
     hashtags = list(getattr(meta, "hashtags", None) or []) or _hashtags(play)
-    fields = {"title": title, "description": description, "hashtags": hashtags}
-    for card in ("headline", "subline"):        # the highlights title card: made again from the title
-        if hasattr(meta, card):
-            fields[card] = ""
-    return replace(meta, **fields)
+    return replace(meta, title=title, description=description, hashtags=hashtags)
 
 
 def _title(play: Play, index: int) -> str:

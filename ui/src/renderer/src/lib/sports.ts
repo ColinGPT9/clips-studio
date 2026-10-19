@@ -46,29 +46,33 @@ export function useSports(): SportChoice[] | null {
 
 /** An option made valid against what the engine offers: a highlights
  *  choice it doesn't have falls back to its first. Null when the sport itself
- *  isn't offered. The footage is told apart by itself, so it isn't sent, and
- *  the whole match is clipped unless the sport offers its periods (basketball's
- *  quarters); Custom isn't offered either (the box at the bottom says what the
- *  clips should be about, in words). Text is kept as typed (trimmed on the
- *  engine), so a space between two words survives the keystroke. */
+ *  isn't offered. The whole match is always clipped and the footage is told
+ *  apart by itself, so neither is sent; Custom isn't offered either (the box
+ *  at the bottom says what the clips should be about, in words). Text is kept
+ *  as typed (trimmed on the engine), so a space between two words survives
+ *  the keystroke. */
 export function fitSport(o: SportOption, list: SportChoice[]): SportOption | null {
   const sport = list.find((s) => s.id === o.name)
   if (!sport) return null
   const offered = sport.highlights.filter((h) => h.id !== 'custom')
   const highlights = offered.some((h) => h.id === o.highlights) ? o.highlights : offered[0]?.id
   const reels = REELS.map((r) => r.id).filter((id) => (o.reels ?? []).includes(id))
-  const period =
-    sport.period_menu && o.period && o.period !== 'full' && sport.periods.some((p) => p.id === o.period)
-      ? o.period
-      : undefined
+  // The Crop: only a sport that offers it, and only when it isn't the default.
+  const screen = o.screen && o.screen !== 'safe' && (sport.screens ?? []).some((s) => s.id === o.screen) ? o.screen : ''
   return {
     name: sport.id,
     ...(highlights ? { highlights } : {}),
-    ...(period ? { period } : {}),
     ...(o.teams ? { teams: o.teams } : {}),
     ...(o.events && o.events.trim() ? { events: o.events } : {}),
-    ...(reels.length ? { reels } : {})
+    ...(reels.length ? { reels } : {}),
+    ...(screen ? { screen } : {})
   }
+}
+
+/** What each Crop choice does, shown under its name in the list. */
+export const SCREEN_HINTS: Record<string, string> = {
+  safe: 'The game sits between the apps’ top bar and the caption at the bottom, with a blurred band above and below, so neither hides the basket or the floor. The buttons on the right still sit over the edge',
+  full: 'The game fills the whole phone screen. The apps’ top bar, caption and buttons may cover the top of the picture and the floor'
 }
 
 /** What each Highlights choice keeps, shown under its name in the list. */
@@ -131,8 +135,8 @@ export const REELS: { id: string; label: string; title: string }[] = [
 
 const LAST = 'generate-sport-choice'
 
-/** The sport, highlights and reels last chosen on the Generate list. Teams
- *  and match events belong to one match, so they aren't kept. */
+/** The sport, highlights, reels and Crop last chosen on the Generate list.
+ *  Teams and match events belong to one match, so they aren't kept. */
 export function lastSport(): SportOption | null {
   try {
     const raw = JSON.parse(localStorage.getItem(LAST) ?? 'null')
@@ -140,7 +144,8 @@ export function lastSport(): SportOption | null {
       ? {
           name: raw.name,
           highlights: raw.highlights,
-          ...(Array.isArray(raw.reels) && raw.reels.length ? { reels: raw.reels.map(String) } : {})
+          ...(Array.isArray(raw.reels) && raw.reels.length ? { reels: raw.reels.map(String) } : {}),
+          ...(typeof raw.screen === 'string' ? { screen: raw.screen } : {})
         }
       : null
   } catch {
@@ -150,7 +155,10 @@ export function lastSport(): SportOption | null {
 
 export function rememberSport(o: SportOption): void {
   try {
-    localStorage.setItem(LAST, JSON.stringify({ name: o.name, highlights: o.highlights, reels: o.reels }))
+    localStorage.setItem(
+      LAST,
+      JSON.stringify({ name: o.name, highlights: o.highlights, reels: o.reels, screen: o.screen })
+    )
   } catch {
     // Not remembered for next time; this video still gets it.
   }
@@ -187,17 +195,17 @@ export function sportForVertical(value: string, current: SportOption | null | un
   return fitSport(last?.name === id ? last : { name: id }, list)
 }
 
-/** "Sports · Soccer / Football · All goals · 2nd half · Team A", for the queue's chip. */
+/** "Sports · Soccer / Football · All goals · Team A", for the queue's chip. */
 export function describeSport(o: SportOption): string {
   const sport = offered?.find((s) => s.id === o.name)
   const named = (id: string, from: { id: string; label: string }[] | undefined): string =>
     from?.find((x) => x.id === id)?.label ?? titled(id)
   const parts = ['Sports', sport ? sportName(sport) : titled(o.name)]
   if (o.highlights) parts.push(named(o.highlights, sport?.highlights))
-  if (o.period && o.period !== 'full') parts.push(named(o.period, sport?.periods))
   if (o.teams) parts.push(o.teams.length > 30 ? `${o.teams.slice(0, 30)}…` : o.teams)
   if (o.events) parts.push('match events')
   for (const reel of REELS) if (o.reels?.includes(reel.id)) parts.push(reel.label.toLowerCase())
+  if (o.screen && o.screen !== 'safe') parts.push(named(o.screen, sport?.screens).toLowerCase())
   return parts.join(' · ')
 }
 

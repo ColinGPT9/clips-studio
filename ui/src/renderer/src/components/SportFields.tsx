@@ -1,11 +1,19 @@
 import { t } from '../lib/i18n'
-import { COMING_SOON, HIGHLIGHT_HINTS, REELS, SPORT_ICONS, fitSport, rememberSport, sportName } from '../lib/sports'
+import {
+  COMING_SOON,
+  HIGHLIGHT_HINTS,
+  REELS,
+  SCREEN_HINTS,
+  SPORT_ICONS,
+  fitSport,
+  rememberSport,
+  sportName
+} from '../lib/sports'
 import type { SportChoice, SportOption } from '../lib/types'
 import ExplainedSelect from './ExplainedSelect'
 
 /** The Sports toggle's choices, under a video or a watched channel: which
- *  sport, which moments to keep, the period when the sport offers it
- *  (basketball's quarters), who to favour and the story reels to make.
+ *  sport, which moments to keep, who to favour and the story reels to make.
  *  Each explains itself in a tooltip. The match's own events are typed in Ask
  *  Clips Kitty. The whole match is always clipped, and a club recording is
  *  told apart from a TV broadcast by itself. Rendered into the caller's row,
@@ -15,7 +23,8 @@ export default function SportFields({
   sports,
   onChange,
   remember = false,
-  name
+  name,
+  noCrop = false
 }: {
   value: SportOption
   sports: SportChoice[]
@@ -24,6 +33,8 @@ export default function SportFields({
   remember?: boolean
   /** Tells the controls apart when there are several rows ("video 2"). */
   name?: string
+  /** Vertical Live: the video is already 9:16 and nothing is cropped, so there's no Crop to choose. */
+  noCrop?: boolean
 }): JSX.Element {
   const sport = sports.find((s) => s.id === value.name)
   const suffix = name ? ` ${name}` : ''
@@ -36,13 +47,18 @@ export default function SportFields({
   const highlights = (sport?.highlights ?? [])
     .filter((h) => h.id !== 'custom')
     .map((h) => ({ id: h.id, label: t(h.label), hint: HIGHLIGHT_HINTS[h.id] ? t(HIGHLIGHT_HINTS[h.id]) : '' }))
+  const screens = (sport?.screens ?? []).map((s) => ({
+    id: s.id,
+    label: t(s.label),
+    hint: SCREEN_HINTS[s.id] ? t(SCREEN_HINTS[s.id]) : ''
+  }))
   return (
     <>
       <span className="label shrink-0">{t('Sport')}</span>
       <select
         className="input !w-48"
         value={value.name}
-        onChange={(e) => set({ name: e.target.value, highlights: undefined, period: undefined })}
+        onChange={(e) => set({ name: e.target.value, highlights: undefined })}
         aria-label={`${t('Sport')}${suffix}`}
       >
         {sports.map((s) => (
@@ -65,22 +81,16 @@ export default function SportFields({
         onChange={(id) => set({ highlights: id })}
         label={`${t('Highlights')}${suffix}`}
       />
-      {sport?.period_menu && (
+      {screens.length > 0 && !noCrop && (
         <>
-          <span className="label shrink-0">{t(sport.period_menu)}</span>
-          <select
-            className="input !w-40"
-            value={value.period ?? 'full'}
-            onChange={(e) => set({ period: e.target.value })}
-            aria-label={`${t(sport.period_menu)}${suffix}`}
-            title={t('Only the moments of this part of the game. A moment whose part couldn’t be read off the score bug is kept, and the clip page says so.')}
-          >
-            {sport.periods.map((p) => (
-              <option key={p.id} value={p.id}>
-                {t(p.label)}
-              </option>
-            ))}
-          </select>
+          <span className="label shrink-0">{t('Crop')}</span>
+          <ExplainedSelect
+            className="w-56"
+            value={value.screen ?? 'safe'}
+            options={screens}
+            onChange={(id) => set({ screen: id })}
+            label={`${t('Crop')}${suffix}`}
+          />
         </>
       )}
       <input
