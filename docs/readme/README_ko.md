@@ -4,9 +4,9 @@
 
 </div>
 
-<a id="clips-kitty-the-free-open-source-opus-clip-alternative-that-runs-on-your-own-pc"></a>
+<a id="clips-kitty-the-free-open-source-opus-clip-alternative-for-chatting-gaming-and-sports-on-your-own-pc"></a>
 
-# Clips Kitty: 내 PC에서 돌아가는 무료 오픈 소스 Opus Clip 대안
+# Clips Kitty: 내 PC에서 돌아가는 토크, 게임, 스포츠용 무료 오픈 소스 Opus Clip 대안
 
 > 이 README는 [영어 README](../../README.md)를 AI로 번역한 것입니다. 기준이 되는 문서는 영어 README이며, 항상 영어판이 먼저 업데이트됩니다. 원어민분들의 수정 제안을 언제든 환영합니다.
 >

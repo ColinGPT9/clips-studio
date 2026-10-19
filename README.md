@@ -4,7 +4,7 @@
 
 </div>
 
-# Clips Kitty: the free, open-source Opus Clip alternative that runs on your own PC
+# Clips Kitty: the free, open-source Opus Clip alternative for chatting, gaming and sports, on your own PC
 
 <a href="https://apps.microsoft.com/detail/9NB6XT7DSQZZ">
   <picture>

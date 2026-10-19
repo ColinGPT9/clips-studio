@@ -6,9 +6,9 @@
 
 <div dir="rtl">
 
-<a id="clips-kitty-the-free-open-source-opus-clip-alternative-that-runs-on-your-own-pc"></a>
+<a id="clips-kitty-the-free-open-source-opus-clip-alternative-for-chatting-gaming-and-sports-on-your-own-pc"></a>
 
-# Clips Kitty: البديل المجاني مفتوح المصدر لـ Opus Clip الذي يعمل على حاسوبك الشخصي
+# Clips Kitty: البديل المجاني مفتوح المصدر لـ Opus Clip لمحتوى الدردشة والألعاب والرياضة، يعمل على حاسوبك الشخصي
 
 > تُرجم ملف README هذا بالذكاء الاصطناعي من [ملف README الإنجليزي](../../README.md)، وهو
 > المرجع ويُحدَّث أولًا. نرحّب كثيرًا بتصحيحات المتحدثين الأصليين للغة.
