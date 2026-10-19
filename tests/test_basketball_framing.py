@@ -578,6 +578,34 @@ def test_a_second_and_a_half_hidden_goes_missing_with_short_predictions():
     assert max(p.t for p in gap if p.status == "predicted" and p.t < 2.75) - last_seen <= 0.4
 
 
+def test_a_still_decoy_does_not_take_the_ball_that_turns_up_far_off():
+    # A 2019 game-winner: the ball hid in the net long enough for its tracklet to end,
+    # a decoy at the frame's edge stood still for two samples, and the decoy's tracklet
+    # took the ball back at the rim a pass-length away: the crop swung to the edge and
+    # back. A tracklet that has stood still reaches only GATE_SLOW x dt; a passed ball
+    # starts its own tracklet, which the chain links.
+    from sports.basketball.crop.model import BallCand
+
+    dt = 1 / 6
+    samples, gated = [], []
+    for k in range(12):
+        t = round(k * dt, 4)
+        cands = []
+        if k in (3, 4):
+            cands.append(BallCand(x=0.17, y=0.6, w=0.02, h=0.035, conf=0.5, score=0.55))   # the decoy
+        if k >= 6:                                                                        # the ball, 0.33 s on
+            cands.append(BallCand(x=0.45, y=0.55 - 0.01 * (k - 6), w=0.02, h=0.035, conf=0.8, score=0.8))
+        samples.append(Sample(i=k, frame=round(t * FPS), t=t, balls=cands))
+        gated.append(cands)
+    aspect = 16 / 9
+    jump = ((0.45 - 0.17) * aspect, 0.05)
+    assert (jump[0] ** 2 + jump[1] ** 2) ** 0.5 <= ball.GATE_R + 0.5 * ball.V_MAX * 2 * dt   # the old gate took it
+    tracks = ball.tracklets(samples, gated, aspect)
+    decoy = [tr for tr in tracks if any(c.x == 0.17 for _, c in tr)]
+    assert len(decoy) == 1 and all(c.x == 0.17 for _, c in decoy[0])
+    assert any(len(tr) == 6 and all(c.x == 0.45 for _, c in tr) for tr in tracks)
+
+
 def test_a_jump_no_ball_can_make_restarts_the_chain_and_is_never_bridged():
     # Player 0's dribble, then, 0.1 s later, player 1's half a frame away.
     homes = [(0.2, 0.7), (0.7, 0.7), *ACROSS[2:]]

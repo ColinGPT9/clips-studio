@@ -42,7 +42,12 @@ SHOT_REACH = 2.2         # seconds: the ball reaches the rim zone at most this l
 RISE = 0.6               # frame heights per second upward: a ball leaving the hands this fast is going up
 RIM_LEAD = 0.35          # seconds before the ball reaches the rim zone that the basket must be in the crop
                          # (0.5 made a long three's ball and the basket need a wider crop, on job 210's clips)
-RESULT = 1.5             # seconds the result lasts after the ball reaches the rim
+RESULT = 1.5             # seconds the result lasts after the ball reaches the rim...
+RESULT_HOLD = 0.6        # ...of which this much holds the basket whatever the camera does; after it, the
+PAN_AWAY = 0.05          # camera panned this far (frame widths) away from the basket since the result began
+                         # has left it to follow the players, and the result ends there. On a 2019 game-winner
+                         # the broadcast panned after the scorer as the ball dropped through, and the crop,
+                         # still holding the rim, slid the other way off the celebration.
 RELEASE_BEFORE = 0.3     # the release phase: this long before the ball leaves the hands...
 RELEASE_AFTER = 0.2      # ...to this long after
 ATTACK_X = 0.08          # frame widths: a handler this close to the rim's centre is attacking it...
@@ -211,6 +216,28 @@ def _transitions(samples: list[Sample]) -> list[tuple[str, float, float, list[in
     return out
 
 
+def _until_camera_leaves(iv, samples: list[Sample], rel: list[Basket | None]):
+    """A result interval, ended where the broadcast's camera leaves its basket:
+    after RESULT_HOLD, the first sample where the camera has panned PAN_AWAY
+    or more since the result began, in the direction that takes the basket
+    toward the frame's edge. A camera panning toward the basket keeps it."""
+    kind, t0, t1, actors = iv
+    k0 = next((k for k, s in enumerate(samples) if s.t >= t0), None)
+    if k0 is None:
+        return iv
+    for k in range(k0, len(samples)):
+        s = samples[k]
+        if s.t >= t1:
+            break
+        b = rel[k] or rel[k0]
+        if s.t < t0 + RESULT_HOLD or b is None:
+            continue
+        moved = s.pan[0] - samples[k0].pan[0]
+        if abs(moved) >= PAN_AWAY and moved * (0.5 - (b.rim[0] + b.rim[2]) / 2) > 0:
+            return kind, t0, s.t, actors
+    return iv
+
+
 def _hinted(shot: Shot, hints: Hints | None) -> list[tuple[str, float, float, list[int]]]:
     """The shot's phases from the moment alone, when the ball didn't show them."""
     if hints is None or hints.moment_t is None or not shot.t0 <= hints.moment_t < shot.t1 + HINT_RIM:
@@ -250,6 +277,7 @@ def phases(shot: Shot, samples: list[Sample], points: list[BallPoint], rows: lis
             intervals += hinted
             for k, *_ in hinted:
                 conf[k] = HINT_CONF
+    intervals = [_until_camera_leaves(iv, samples, rel) if iv[0] == "result" else iv for iv in intervals]
     intervals += _passes(samples, points, hand, [(t0, t1) for k, t0, t1, _ in intervals])
     intervals += _transitions(samples)
     # Possession and loose, sample by sample.

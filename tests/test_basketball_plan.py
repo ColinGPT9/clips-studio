@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from basketball_scene import scene
 
 from sports.basketball.crop import (
+    phases,
     plan_clip,
     planner,
     validate,
@@ -339,6 +340,35 @@ def test_the_rim_stays_left_of_the_right_rail_where_the_crop_can():
     got, w, rim_x, unit = _basket_phase("result", ball_x=0.62)
     focus = (2 * 0.62 + (unit[0] + unit[1]) / 2) / 3
     assert all(abs(cx - focus) < 0.005 for cx in got["cx"][30:])
+
+
+def _results(built):
+    working: dict = {}
+    plan_clip(built.obs, Hints(moment_t=8.6, kind="made_3"), debug=working)
+    return [p for d in working["shots"] for p in d.phases if p.kind == "result"]
+
+
+def test_the_basket_is_let_go_once_the_camera_leaves_it_after_the_make():
+    # A 2019 game-winner: the ball dropped through and the broadcast panned
+    # after the scorer; the crop, still holding the rim for the whole result,
+    # slid the other way off the celebration. The camera leaving the basket
+    # ends the result, after the RESULT_HOLD every make keeps.
+    def three(*camera):
+        return (scene(duration=15, seed=3).players(10).camera(*camera).basket("right")
+                .ball_dribble(3.0, 6.0, player=2).ball_pass(6.0, 6.6, frm=2, to=5)
+                .ball_shot(7.4, 8.6, shooter=5, basket="right").ball_detection(0.6).build())
+
+    still = _results(three((0.0, 0.0)))
+    assert still
+    rim_t = still[0].t0                    # the ball reaching the rim zone
+    assert max(p.t1 for p in still) >= rim_t + phases.RESULT - 0.1
+    # Panning left after the make takes the right basket toward the edge: let go.
+    away = _results(three((0.0, 0.0), (8.8, 0.0), (10.0, -0.2)))
+    assert away and max(p.t1 for p in away) < rim_t + phases.RESULT - 0.2, [(p.t0, p.t1) for p in away]
+    assert min(p.t1 for p in away) >= rim_t + phases.RESULT_HOLD - 0.1
+    # Panning right, toward the basket, keeps it.
+    toward = _results(three((0.0, 0.0), (8.8, 0.0), (10.0, 0.1)))
+    assert toward and max(p.t1 for p in toward) >= rim_t + phases.RESULT - 0.1
 
 
 def test_the_plan_keeps_its_invariants():

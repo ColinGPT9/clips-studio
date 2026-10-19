@@ -81,7 +81,13 @@ _SCALE: contextvars.ContextVar[float] = contextvars.ContextVar("ball_scale", def
 
 V_MAX = 3.0              # frame heights per second: faster than any pass
 GATE_R = 0.03            # a tracklet takes a candidate within this (frame heights) of its prediction,
-#                          plus V_MAX x dt (half that once it has two points and so a speed)
+#                          plus V_MAX x dt (half that once it has two points and so a speed)...
+GATE_SLOW = 1.0          # ...and, once it has a speed, no more than this or twice its own speed x dt: a
+#                          tracklet that has stood still doesn't take a ball that turns up far off. On a 2019
+#                          game-winner a decoy at the frame's edge, still for two samples, took the ball
+#                          back at the rim 0.63 frame heights away (the ball's own tracklet had ended
+#                          while it hid in the net), and the crop swung to the edge and back. A held
+#                          ball that is passed starts a new tracklet, and the chain links the two.
 END_AFTER = 0.35         # a tracklet ends once unmatched for longer than this...
 END_SKIPS = 2            # ...and at least this many samples
 LINE_N = 3               # constant velocity from the last this many points
@@ -456,7 +462,8 @@ def tracklets(samples: list[Sample], gated: list[list[BallCand]], aspect: float 
     """Short tracks of candidates, [(Sample.i, BallCand), ...] each, in world
     coordinates. `gated[k]` are the candidates of samples[k] that passed the
     gate. Each tracklet takes a candidate within GATE_R + V_MAX x dt of its
-    prediction (half the speed term once it has a speed), greedily by
+    prediction (once it has a speed: half V_MAX, or less for a slow one, see
+    GATE_SLOW), greedily by
     distance plus ASSIGN_SCORE x (1 - score); one candidate per tracklet. A
     candidate nobody takes starts a tracklet. A tracklet ends unmatched for
     END_AFTER s and END_SKIPS samples. Returned in order of their first sample,
@@ -476,8 +483,12 @@ def tracklets(samples: list[Sample], gated: list[list[BallCand]], aspect: float 
         pairs = []
         for a, tr in enumerate(live):
             dt = s.t - tr.path[-1][0]
-            px, py, _, _ = predict(tr.path, s.t)
-            r = (GATE_R + V_MAX * dt * (0.5 if len(tr.path) >= 2 else 1.0)) * k_scale
+            px, py, vx, vy = predict(tr.path, s.t)
+            if len(tr.path) < 2:
+                reach = V_MAX * k_scale
+            else:
+                reach = min(0.5 * V_MAX * k_scale, max(GATE_SLOW * k_scale, 2 * math.hypot(vx, vy)))
+            r = GATE_R * k_scale + reach * dt
             for b, (x, y) in enumerate(spots):
                 dist = math.hypot(x - px, y - py)
                 if dist <= r:
