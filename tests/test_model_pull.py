@@ -5,7 +5,8 @@ shows up in /api/tags. Before this, a stream that stopped short (Ollama quit
 while it checked the download) was announced as done, and setup could then
 select a model that wasn't there, so every job failed with a 404. Each
 download's state is also kept for GET /models/pulls, so a window that missed
-the last WebSocket event can still find out how it ended.
+the last WebSocket event can still find out how it ended, and llm.pulls says
+which are running, for a job that needs the model being fetched.
 """
 
 import json
@@ -30,11 +31,14 @@ FINISHED = [*PROGRESS, {"status": "success"}]
 
 
 class Stream:
-    """What requests.post(..., stream=True) gives back: Ollama's lines."""
+    """What requests.post(..., stream=True) gives back: Ollama's lines, and
+    then, if `cut` is given, the error requests raises when the stream is cut
+    off instead of ending."""
 
-    def __init__(self, lines, gate=None):
+    def __init__(self, lines, gate=None, cut=None):
         self.lines = lines
         self.gate = gate
+        self.cut = cut
 
     def __enter__(self):
         return self
@@ -47,6 +51,8 @@ class Stream:
             if self.gate is not None and i == 2:
                 self.gate.wait(5)  # hold the download part-way, as a real one is
             yield json.dumps(line).encode()
+        if self.cut is not None:
+            raise self.cut
 
 
 class Tags:
@@ -63,16 +69,19 @@ class Tags:
 class Ollama:
     """Stands in for Ollama: the lines a pull streams and what it then lists."""
 
-    def __init__(self, lines, listed, gate=None):
+    def __init__(self, lines, listed, gate=None, cut=None):
         self.lines = lines
         self.listed = listed
         self.gate = gate
+        self.cut = cut
         self.pulls = []
 
     def post(self, url, json=None, **kw):
         assert url.endswith("/api/pull"), url
         self.pulls.append(json["model"])
-        return Stream(self.lines, self.gate)
+        if self.lines is None:
+            raise self.cut  # never got as far as a stream
+        return Stream(self.lines, self.gate, self.cut)
 
     def get(self, url, **kw):
         assert url.endswith("/api/tags"), url
@@ -101,10 +110,10 @@ def api(tmp_path, monkeypatch):
     # No `with`: startup never runs, so no worker thread starts.
     client = TestClient(app, base_url="http://127.0.0.1")
 
-    def ollama(lines, listed, gate=None):
+    def ollama(lines, listed, gate=None, cut=None):
         import requests
 
-        fake = Ollama(lines, listed, gate)
+        fake = Ollama(lines, listed, gate, cut)
         monkeypatch.setattr(requests, "post", fake.post)
         monkeypatch.setattr(requests, "get", fake.get)
         return fake
@@ -154,8 +163,7 @@ def test_a_finished_download_leaves_a_usable_choice_alone(api):
 
 
 def test_a_stream_that_stops_before_success_is_an_error(api):
-    # Ollama quit while it checked the download: the stream ends on the step
-    # it was on, with every byte counted.
+    # The stream ends cleanly on the step it was on, with every byte counted.
     client, config, settings, events, ollama = api
     before = settings.read_text(encoding="utf-8")
     ollama(PROGRESS[:4], listed=[])
@@ -167,6 +175,37 @@ def test_a_stream_that_stops_before_success_is_an_error(api):
     assert not any(e["status"] == "done" for e in events)
     assert config["llm"]["backend"] == "ollama/gemma:7b"
     assert settings.read_text(encoding="utf-8") == before
+
+
+def test_a_stream_cut_off_part_way_says_to_try_again(api):
+    # Ollama quit or crashed while it checked the download, or the connection
+    # dropped: requests raises from iter_lines instead of the stream ending.
+    import requests
+
+    client, config, settings, events, ollama = api
+    before = settings.read_text(encoding="utf-8")
+    ollama(PROGRESS[:4], listed=[], cut=requests.exceptions.ChunkedEncodingError("Response ended prematurely"))
+    _pull(client)
+    state = _finished(client)
+    assert state["status"] == "error"
+    assert state["error"] == (
+        "The download didn't finish (last step: verifying sha256 digest). Try again; it carries on where it stopped."
+    )
+    assert events[-1]["status"] == "error" and events[-1]["error"] == state["error"]
+    assert not any(e["status"] == "done" for e in events)
+    assert config["llm"]["backend"] == "ollama/gemma:7b"
+    assert settings.read_text(encoding="utf-8") == before
+
+
+def test_ollama_not_answering_at_all_says_so(api):
+    import requests
+
+    client, config, settings, events, ollama = api
+    ollama(None, listed=[], cut=requests.exceptions.ConnectionError("connection refused"))
+    _pull(client)
+    state = _finished(client)
+    assert state["status"] == "error"
+    assert "(last step: connecting to Ollama)" in state["error"] and "carries on where it stopped" in state["error"]
 
 
 def test_success_with_the_model_missing_from_ollama_is_an_error(api):
@@ -225,6 +264,34 @@ def test_the_state_of_a_running_download_can_be_read_back(api):
     }
 
 
+def _until(condition, what):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if condition():
+            return
+        time.sleep(0.01)
+    raise AssertionError(what)
+
+
+@pytest.mark.parametrize("lines", [FINISHED, PROGRESS[:4]], ids=["success", "error"])
+def test_a_job_can_tell_a_download_is_running(api, lines):
+    # The job's model check asks llm.pulls, so a job queued while its model
+    # downloads isn't failed for a model that is minutes away.
+    from llm import pulls
+
+    client, config, settings, events, ollama = api
+    gate = threading.Event()
+    ollama(lines, listed=[TAG], gate=gate)
+    try:
+        _pull(client)
+        # From the moment the POST returns, not from when the thread gets going.
+        assert TAG in pulls.running()
+    finally:
+        gate.set()
+    _finished(client)
+    _until(lambda: TAG not in pulls.running(), f"{TAG} still counted as downloading after it ended")
+
+
 def test_asking_again_while_it_downloads_starts_nothing(api):
     client, config, settings, events, ollama = api
     gate = threading.Event()
@@ -252,14 +319,17 @@ def _node() -> str:
     return node
 
 
-def _ui(tmp_path, body: str):
+MODEL_PULL = ROOT / "ui" / "src" / "renderer" / "src" / "lib" / "modelPull.ts"
+STALE_PARTIALS = ROOT / "ui" / "src" / "main" / "stalePartials.ts"
+
+
+def _ui(tmp_path, body: str, lib: Path = MODEL_PULL):
     """Run `body` (JavaScript, `m` is the module) and return what it logs as JSON."""
     import subprocess
 
-    lib = ROOT / "ui" / "src" / "renderer" / "src" / "lib" / "modelPull.ts"
     # Copied out of ui/ so ui/package.json doesn't decide how Node loads it.
-    (tmp_path / "modelPull.ts").write_text(lib.read_text(encoding="utf-8"), encoding="utf-8")
-    script = f"const m = await import({json.dumps((tmp_path / 'modelPull.ts').as_uri())}); console.log(JSON.stringify({body}));"
+    (tmp_path / lib.name).write_text(lib.read_text(encoding="utf-8"), encoding="utf-8")
+    script = f"const m = await import({json.dumps((tmp_path / lib.name).as_uri())}); console.log(JSON.stringify({body}));"
     r = subprocess.run([_node(), "--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", script],
                        capture_output=True, text=True, encoding="utf-8", timeout=120)
     if r.returncode != 0 and "strip-types" in r.stderr:
@@ -300,3 +370,39 @@ def test_the_engines_record_fills_in_what_the_events_missed(tmp_path):
     assert out[1] == {"b:1": failed}
     assert out[2] == {"b:1": failed}
     assert out[3] == {"c:1": {"tag": "c:1", "status": "error", "completed": None, "total": None, "error": "gone", "done": True}}
+
+
+# ---- unfinished downloads kept for resuming (ui/src/main/stalePartials.ts, under Node) --
+
+
+def test_downloads_untouched_for_a_week_are_cleared_before_ollama_starts(tmp_path):
+    # OLLAMA_NOPRUNE keeps an unfinished download so a retry carries on, which
+    # also kept the ones nobody retried, for good. A week untouched is given up.
+    import os
+
+    blobs = tmp_path / "models" / "blobs"
+    blobs.mkdir(parents=True)
+    week = 7 * 24 * 3600
+    now = time.time()
+    ages = {
+        # Given up on: the data file and its progress record, both old.
+        "sha256-aaaa-partial": week + 60,
+        "sha256-aaaa-partial-0": week + 60,
+        # Tried again yesterday: one recent piece keeps the whole download.
+        "sha256-bbbb-partial": week + 60,
+        "sha256-bbbb-partial-1": 24 * 3600,
+        # Stopped an hour ago.
+        "sha256-cccc-partial": 3600,
+        # A finished layer, however old, is part of an installed model.
+        "sha256-dddd": 10 * week,
+    }
+    for name, age in ages.items():
+        (blobs / name).write_bytes(b"x")
+        os.utime(blobs / name, (now - age, now - age))
+    dropped = _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'models'))})", lib=STALE_PARTIALS)
+    assert sorted(Path(p).name for p in dropped) == ["sha256-aaaa-partial", "sha256-aaaa-partial-0"]
+    assert sorted(p.name for p in blobs.iterdir()) == [
+        "sha256-bbbb-partial", "sha256-bbbb-partial-1", "sha256-cccc-partial", "sha256-dddd",
+    ]
+    # No models folder yet (a first start): nothing to do, and no error.
+    assert _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'none'))})", lib=STALE_PARTIALS) == []

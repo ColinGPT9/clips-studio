@@ -51,6 +51,15 @@ function savePrefs(prefs: UpdatePrefs): void {
 
 let mainWindow: BrowserWindow | null = null
 
+/** True once an update is being installed: the app quits so the installer can
+ *  replace it, and index.ts's before-quit must not stop that to ask about a
+ *  model download. */
+let installing = false
+
+export function isInstallingUpdate(): boolean {
+  return installing
+}
+
 function send(channel: string, payload: unknown): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
 }
@@ -298,6 +307,7 @@ export function setupUpdater(win: BrowserWindow): void {
   // Quits and runs the installer. Anything mid-render is lost, so the
   // renderer asks first.
   ipcMain.handle('update:install', () => {
+    installing = true
     autoUpdater.quitAndInstall(false, true)
     return { ok: true }
   })

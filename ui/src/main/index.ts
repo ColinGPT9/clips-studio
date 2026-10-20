@@ -25,8 +25,9 @@ import {
   writeSync
 } from 'node:fs'
 import { basename, join } from 'node:path'
-import { setupUpdater } from './updater'
+import { isInstallingUpdate, setupUpdater } from './updater'
 import { isMicrosoftStore } from './distribution'
+import { dropStalePartials } from './stalePartials'
 
 const API_PORT = 8765
 
@@ -60,8 +61,9 @@ const SESSION_SECRET = process.env.CLIPS_KITTY_SESSION_SECRET || randomBytes(32)
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
-/** True once a real quit is under way: from the tray, the updater, Windows
- *  shutting down. Then closing the window closes it instead of hiding it. */
+/** True once a real quit is under way: agreed to in before-quit (or with
+ *  nothing to ask about), the updater installing, Windows shutting down. Then
+ *  closing the window closes it instead of hiding it or asking. */
 let quitting = false
 let keepInTray = false
 let toldAboutTray = false
@@ -102,16 +104,8 @@ async function ensureTray(): Promise<void> {
     Menu.buildFromTemplate([
       { label: 'Open Clips Kitty', click: showWindow },
       { type: 'separator' },
-      {
-        label: 'Quit Clips Kitty',
-        click: () => {
-          void confirmQuit(null).then((quit) => {
-            if (!quit) return
-            quitting = true
-            app.quit()
-          })
-        }
-      }
+      // before-quit asks first if a model is downloading.
+      { label: 'Quit Clips Kitty', click: () => app.quit() }
     ])
   )
   tray.on('click', showWindow)
@@ -167,7 +161,10 @@ async function confirmQuit(parent: BrowserWindow | null): Promise<boolean> {
     cancelId: 1,
     title: 'Clips Kitty',
     message: 'A model is still downloading. Quit anyway?',
-    detail: 'It will carry on next time.'
+    // Nothing starts it again by itself: the engine forgets its downloads
+    // when it stops. Started again, it carries on rather than starting over
+    // (OLLAMA_NOPRUNE below).
+    detail: 'Start it again from the Models page and it carries on where it stopped.'
   }
   if (parent && !parent.isDestroyed()) {
     if (!parent.isVisible()) parent.show() // hidden on the way to the tray
@@ -245,9 +242,22 @@ function startOllama(): void {
   const kittyModels = join(localAppData, 'Clips Kitty', 'data', 'models')
   const models = existsSync(join(kittyModels, 'manifests')) ? kittyModels : join(dataDir, 'models')
 
-  // Ollama's own output goes to a file beside the job logs. It used to go
-  // nowhere, so a download that failed inside Ollama left nothing to read.
+  // Unfinished downloads kept for resuming (OLLAMA_NOPRUNE below) that have
+  // sat untouched for a week are deleted first, while Ollama isn't running.
+  const dropped = dropStalePartials(models)
+
+  // Ollama's own output goes to %LOCALAPPDATA%\Clips Studio\data\logs\ollama.log,
+  // the default data folder's logs. A data_dir set in settings.yaml moves the
+  // job logs but not this file. It used to go nowhere, so a download that
+  // failed inside Ollama left nothing to read.
   const log = openOllamaLog(join(dataDir, 'logs'))
+  if (log !== null && dropped.length > 0) {
+    try {
+      writeSync(log, `Deleted ${dropped.length} file(s) of model downloads untouched for a week\n`)
+    } catch {
+      // Only a note: why a download given up on long ago starts from nothing.
+    }
+  }
   const stdio: StdioOptions = log === null ? 'ignore' : ['ignore', log, log]
   ollama = spawn(exe, ['serve'], {
     stdio,
@@ -259,6 +269,7 @@ function startOllama(): void {
       // got as far as its manifest. Quitting while it checked a model several
       // gigabytes in size, a long silent step, meant fetching all of it again
       // next time (#148, #150). Kept, the download carries on where it stopped.
+      // The ones nobody comes back to are cleared by dropStalePartials above.
       OLLAMA_NOPRUNE: '1'
     },
     windowsHide: true
@@ -369,20 +380,23 @@ function createWindow(): void {
   setupUpdater(win)
 
   // With "keep watching" on and channels actually being watched, closing
-  // hides the window and the backend keeps running. With nothing to watch
-  // it closes as usual, after asking first if a model is downloading. A real
-  // quit sets `quitting` first, so it is never intercepted.
-  let closeChecked = false
+  // hides the window and the backend keeps running. Otherwise closing quits,
+  // by way of before-quit, which asks first if a model is downloading. Once a
+  // quit is under way `quitting` is set and the window simply closes.
   let asking = false
   win.on('close', (event) => {
-    if (quitting || closeChecked) return
+    if (quitting) return
     event.preventDefault()
+    if (!keepInTray) {
+      app.quit()
+      return
+    }
     if (asking) return // a second click while the first is still being answered
     asking = true
-    if (keepInTray) win.hide() // at once: asking the engine can take a moment
+    win.hide() // at once: asking the engine can take a moment
     void (async () => {
       try {
-        if (keepInTray && (await isWatching())) {
+        if (await isWatching()) {
           if (win.isDestroyed()) return
           void ensureTray()
           if (!toldAboutTray && Notification.isSupported()) {
@@ -394,11 +408,7 @@ function createWindow(): void {
           }
           return
         }
-        // This close quits the app, and Ollama with it.
-        const quit = await confirmQuit(win)
-        if (!quit || win.isDestroyed()) return
-        closeChecked = true
-        win.close()
+        app.quit()
       } finally {
         asking = false
       }
@@ -785,6 +795,9 @@ ipcMain.handle('pick-folder', async () => {
 // the window hidden in the tray it would look like the app had not started at
 // all. Now it brings the running one forward instead.
 if (!app.requestSingleInstanceLock()) {
+  // Nothing to ask: a download the engine reports belongs to the Clips Kitty
+  // already running, which carries on.
+  quitting = true
   app.quit()
 } else {
   app.on('second-instance', showWindow)
@@ -811,12 +824,40 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-// Also covers the routes that skip window-all-closed — notably the updater's
-// quitAndInstall, which must not leave an Ollama holding the install folder
-// open while the installer tries to replace it. It fires before any window is
-// asked to close, so marking the quit here is what lets the updater through a
-// window that would otherwise hide itself in the tray.
-app.on('before-quit', () => {
+// Every quit comes through here: closing the window, the tray's Quit, File >
+// Exit in the menu Alt shows, the updater. Ollama goes down with the app, so a
+// quit that would stop a model download asks first (#148, #150). Two are let
+// straight through: the updater's quitAndInstall, whose installer is already
+// running and needs the app gone, and Windows ending the session, which sets
+// `quitting` from the window's session-end (before-quit is mostly skipped
+// then anyway).
+let askingToQuit = false
+app.on('before-quit', (event) => {
+  if (!quitting && !isInstallingUpdate()) {
+    event.preventDefault()
+    if (askingToQuit) return // quit asked for again while the question is up
+    askingToQuit = true
+    // A window hidden in the tray stays hidden, and keeping the download
+    // leaves everything as it was. One hidden on its way to closing is shown
+    // with the question, or keeping the download would leave nothing on screen.
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+    const parent = win && (win.isVisible() || !tray) ? win : null
+    // confirmQuit waits at most 2 s for the engine, then quits without asking.
+    void confirmQuit(parent)
+      .catch(() => true)
+      .then((quit) => {
+        askingToQuit = false
+        if (!quit) return
+        quitting = true
+        app.quit()
+      })
+    return
+  }
+  // Also covers the routes that skip window-all-closed, notably the updater's
+  // quitAndInstall, which must not leave an Ollama holding the install folder
+  // open while the installer tries to replace it. It fires before any window
+  // is asked to close, so marking the quit here is what lets the updater
+  // through a window that would otherwise hide itself in the tray.
   quitting = true
   dropTray()
   stopChildren()

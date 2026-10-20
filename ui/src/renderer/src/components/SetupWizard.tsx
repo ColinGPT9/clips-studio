@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { isChecking, pullPercent, pullStep } from '../lib/modelPull'
 import { useEvents } from '../lib/useEvents'
-import type { Preflight, PreflightCheck, SystemStats } from '../lib/types'
+import type { ModelPull, Preflight, PreflightCheck, SystemStats } from '../lib/types'
 import OpenRouterPrompt from './OpenRouterPrompt'
 
 const DONE_KEY = 'setup-wizard-done'
@@ -121,6 +121,10 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
   // asked for one" is not something the render state can be trusted for —
   // re-entering the step would queue a second download of the same model.
   const pullStarted = useRef(false)
+  // True once the engine has said it is running the download: its POST
+  // returned, or its record listed it. Only then does a record gone missing
+  // mean the download stopped; before, a look can simply have beaten the POST.
+  const pullKnown = useRef(false)
 
   const failed = useCallback((text: string): void => {
     setPullStatus(text)
@@ -128,6 +132,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
     setPullRunning(false)
     setCanRetry(true)
     pullStarted.current = false // so Try again actually tries again
+    pullKnown.current = false
   }, [])
 
   // One download's state, from an event or from the engine's own record. Only
@@ -140,6 +145,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
         setPullPct(100)
         setPullRunning(false)
         pullStarted.current = false
+        pullKnown.current = false
         // "done" means Ollama has the model, so setup should now find one it
         // can run. If it still doesn't, the download didn't really finish,
         // and saying "Downloaded" over a missing model is the bug this is
@@ -174,14 +180,34 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
   // while the download runs.
   const catchUp = useCallback(async (): Promise<void> => {
     if (!recModel) return
+    let mine: ModelPull | undefined
     try {
       const { pulls } = await api.pullStatus()
-      const mine = pulls.find((p) => p.tag === recModel)
-      if (mine) showPull(mine)
+      mine = pulls.find((p) => p.tag === recModel)
     } catch {
-      // engine not answering: the next look, or an event, will say
+      return // engine not answering: the next look, or an event, will say
     }
-  }, [recModel, showPull])
+    if (mine) {
+      if (!mine.done) pullKnown.current = true
+      showPull(mine)
+      return
+    }
+    if (!pullKnown.current) return
+    // The engine has no record of a download it said it was running: it was
+    // restarted, and its downloads went with it. The Models page drops such a
+    // download; here the bar sat at its last percentage, asking every few
+    // seconds, for good. Unless the model got in first, it stopped.
+    const latest = await refresh()
+    if (!latest) return // not answering now: the next look tries again
+    const model = latest.checks.find((c) => c.name === 'model')
+    if (model && !model.ok) {
+      failed('The download stopped. Try again; it carries on where it stopped.')
+    } else {
+      setPullRunning(false)
+      pullStarted.current = false
+      pullKnown.current = false
+    }
+  }, [recModel, showPull, refresh, failed])
 
   useEffect(() => {
     void catchUp()
@@ -200,11 +226,16 @@ export default function SetupWizard({ onClose }: { onClose: () => void }): JSX.E
     setPullRunning(true)
     setPullStatus(pullStep('starting'))
     setPullPct(null)
+    pullKnown.current = false
     try {
       await api.pullModel(rec.model)
     } catch (e) {
       failed(`Could not start: ${errorText(e)}`)
+      return
     }
+    // Unless it has already ended: a "done" or "error" in before the POST
+    // came back has settled it, and a missing record then means nothing.
+    if (pullStarted.current) pullKnown.current = true
   }, [rec, failed])
 
   // Start the download the moment the setup step opens. Nobody installs a

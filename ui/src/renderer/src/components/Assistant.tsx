@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import { CHECKING, isChecking, pullPercent } from '../lib/modelPull'
 import type { PublishPlanItem } from '../lib/types'
 import { useEvents } from '../lib/useEvents'
 import { seedOptions } from './queue/AddVideos'
@@ -48,7 +49,14 @@ export default function Assistant(): JSX.Element | null {
   const [install, setInstall] = useState<{ model: string; size_gb: number } | null>(null)
   const [pulling, setPulling] = useState(false)
   const [pullPct, setPullPct] = useState<number | null>(null)
+  // Ollama's step, for the checking text once the bytes are in.
+  const [pullStatus, setPullStatus] = useState('')
   const [pullError, setPullError] = useState('')
+  // Where the download stands with the engine: 'asking' while the POST is on
+  // its way, 'running' once the engine has said it is running it (the POST
+  // came back, or its record listed it). Only a 'running' download whose
+  // record goes missing has stopped; an 'asking' one may not have landed yet.
+  const pullStage = useRef<'idle' | 'asking' | 'running'>('idle')
 
   const checkStatus = useCallback((): void => {
     api
@@ -66,38 +74,94 @@ export default function Assistant(): JSX.Element | null {
     checkStatus()
   }, [checkStatus])
 
+  // One download's state, from an event or from the engine's record. Worded
+  // as the Models page and setup word it (lib/modelPull): never 100% before
+  // the model is installed, and the checking step says to keep the app open.
+  const showPull = useCallback(
+    (p: { status?: string; completed?: number | null; total?: number | null; error?: string | null }): void => {
+      if (p.status === 'done') {
+        setPulling(false)
+        setPullPct(null)
+        pullStage.current = 'idle'
+        checkStatus()
+      } else if (p.status === 'error') {
+        setPulling(false)
+        setPullPct(null)
+        setPullError(p.error || 'unknown error')
+        pullStage.current = 'idle'
+      } else {
+        setPulling(true)
+        setPullError('')
+        setPullStatus(p.status ?? '')
+        setPullPct(isChecking(p.status) ? null : pullPercent(p.completed, p.total))
+      }
+    },
+    [checkStatus]
+  )
+
   // A download runs in the engine and outlives this component, so its state is
   // read from the events rather than remembered from the click: leave the
   // dashboard mid-download and come back, and the next event puts the
   // percentage back on the button.
   useEvents((e) => {
     if (e.type !== 'model_pull' || !install || e.tag !== install.model) return
-    if (e.status === 'done') {
-      setPulling(false)
-      setPullPct(null)
-      checkStatus()
-    } else if (e.status === 'error') {
-      setPulling(false)
-      setPullPct(null)
-      setPullError(e.error ?? 'unknown error')
-    } else {
-      setPulling(true)
-      setPullError('')
-      setPullPct(e.completed && e.total ? Math.round((e.completed / e.total) * 100) : null)
-    }
+    showPull(e)
   })
+
+  // The events can miss the one that matters (a reconnect, a window that fell
+  // behind), which left the button at its last percentage for good. So the
+  // engine's record is read when the box opens and every few seconds while it
+  // downloads, as the Models page does.
+  const installTag = install?.model
+  const catchUp = useCallback(async (): Promise<void> => {
+    if (!installTag) return
+    const server = await api
+      .pullStatus()
+      .then((r) => r.pulls)
+      .catch(() => null)
+    if (!server) return // engine not answering: the next look, or an event, will say
+    const mine = server.find((p) => p.tag === installTag)
+    if (mine) {
+      if (!mine.done) pullStage.current = 'running'
+      showPull(mine)
+    } else if (pullStage.current === 'running') {
+      // Gone from the engine's record while it ran: the engine restarted,
+      // and the download with it.
+      pullStage.current = 'idle'
+      setPulling(false)
+      setPullPct(null)
+      setPullError('The download stopped. Try again; it carries on where it stopped.')
+      checkStatus()
+    }
+  }, [installTag, showPull, checkStatus])
+
+  useEffect(() => {
+    void catchUp()
+  }, [catchUp])
+
+  useEffect(() => {
+    if (!pulling) return
+    const timer = setInterval(() => void catchUp(), 3000)
+    return () => clearInterval(timer)
+  }, [pulling, catchUp])
 
   const startInstall = async (): Promise<void> => {
     if (!install || pulling) return
     setPulling(true)
     setPullPct(null)
+    setPullStatus('')
     setPullError('')
+    pullStage.current = 'asking'
     try {
       await api.pullModel(install.model)
     } catch (e) {
+      pullStage.current = 'idle'
       setPulling(false)
       setPullError(e instanceof Error ? e.message : String(e))
+      return
     }
+    // Unless a "done" or "error" came in first and settled it.
+    if (pullStage.current === 'asking') pullStage.current = 'running'
   }
 
   useEffect(() => {
@@ -228,7 +292,9 @@ export default function Assistant(): JSX.Element | null {
                 onClick={startInstall}
               >
                 {pulling
-                  ? `${t('Downloading')}${pullPct === null ? '…' : ` ${pullPct}%`}`
+                  ? isChecking(pullStatus)
+                    ? t(CHECKING)
+                    : `${t('Downloading')}${pullPct === null ? '…' : ` ${pullPct}%`}`
                   : t('Install Gemma 4')}
               </button>
               <span className="text-xs text-muted">

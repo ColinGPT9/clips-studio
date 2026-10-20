@@ -3012,6 +3012,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.post("/models/pull")
     def pull_model(body: ModelIn):
+        from llm import pulls as running_pulls
+
         tag = body.tag
         with pulls_lock:
             running = pulls.get(tag)
@@ -3028,33 +3030,43 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         def _pull():
             last = ""
             try:
-                with _requests.post(
-                    f"{ollama_host}/api/pull", json={"model": tag}, stream=True, timeout=3600
-                ) as resp:
-                    for line in resp.iter_lines():
-                        if not line:
-                            continue
-                        info = json.loads(line)
-                        # Ollama reports a failed pull (no such model, no
-                        # network, disk full) as a line carrying "error", on a
-                        # stream that then simply ends. Unchecked, the download
-                        # was announced as done with nothing on disk.
-                        if info.get("error"):
-                            raise RuntimeError(info["error"])
-                        last = info.get("status") or last
-                        _pull_event(
-                            {
-                                "type": "model_pull",
-                                "tag": tag,
-                                "status": info.get("status", ""),
-                                "completed": info.get("completed"),
-                                "total": info.get("total"),
-                            }
-                        )
+                try:
+                    with _requests.post(
+                        f"{ollama_host}/api/pull", json={"model": tag}, stream=True, timeout=3600
+                    ) as resp:
+                        for line in resp.iter_lines():
+                            if not line:
+                                continue
+                            info = json.loads(line)
+                            # Ollama reports a failed pull (no such model, no
+                            # network, disk full) as a line carrying "error", on
+                            # a stream that then simply ends. Unchecked, the
+                            # download was announced as done with nothing on disk.
+                            if info.get("error"):
+                                raise RuntimeError(info["error"])
+                            last = info.get("status") or last
+                            _pull_event(
+                                {
+                                    "type": "model_pull",
+                                    "tag": tag,
+                                    "status": info.get("status", ""),
+                                    "completed": info.get("completed"),
+                                    "total": info.get("total"),
+                                }
+                            )
+                except _requests.exceptions.RequestException as e:
+                    # Ollama quitting or crashing part-way (while it checks a
+                    # big download, say), or the connection dropping, cuts the
+                    # stream off, and requests raises from iter_lines. Its own
+                    # words ("Response ended prematurely") don't say that
+                    # trying again carries on rather than starting over.
+                    raise RuntimeError(
+                        f"The download didn't finish (last step: {last or 'connecting to Ollama'}). "
+                        "Try again; it carries on where it stopped."
+                    ) from e
                 # Ollama ends a pull that worked with "success". A stream that
-                # stops before it (Ollama quit while it was checking the
-                # download, the connection dropped) is not a download, however
-                # far the percentage got.
+                # ends cleanly before it is not a download either, however far
+                # the percentage got.
                 if last != "success":
                     step = f"last step: {last}" if last else "Ollama sent nothing back"
                     raise RuntimeError(
@@ -3068,6 +3080,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 _pull_event({"type": "model_pull", "tag": tag, "status": "done"})
             except Exception as e:
                 _pull_event({"type": "model_pull", "tag": tag, "status": "error", "error": str(e) or type(e).__name__})
+            finally:
+                running_pulls.finished(tag)
 
         def _listed(tag: str) -> bool:
             """Whether Ollama now lists the model. Checked before the download
@@ -3112,6 +3126,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 # is on disk either way, and the Models page can still select it.
                 pass
 
+        # Recorded before the thread starts, not in it: a job queued the moment
+        # this returns (setup says to carry on while the model downloads) must
+        # already see that its model is on the way.
+        running_pulls.started(tag)
         threading.Thread(target=_pull, daemon=True).start()
         return {"started": tag}
 
