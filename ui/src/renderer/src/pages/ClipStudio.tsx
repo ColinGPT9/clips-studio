@@ -136,6 +136,21 @@ export default function ClipStudio({
       }
     }
     if (e.type === 'job' && e.status === 'done' && activeVideo) refreshClips(activeVideo)
+    // A re-render puts the clip back under a new id (server/jobs.py
+    // _rerender_clip). The open editor and the selected card follow it:
+    // looked for by the old one, the editor lost its clip as soon as the
+    // list was read again (#147). They move with the list that has the new
+    // id, in the same update; moved first, the editor would look for its
+    // clip in the old list and close until the new one came.
+    if (e.type === 'clip_replaced' && activeVideo) {
+      const from = e.old
+      const to = e.new
+      if (from === undefined || to === undefined) return
+      void refreshClips(activeVideo).then(() => {
+        setEditingClipId((id) => (id === from ? to : id))
+        setSelectedClip((id) => (id === from ? to : id))
+      })
+    }
   })
 
   // Same reason as the Dashboard: the terminal event can be dropped for a

@@ -13,8 +13,12 @@ pressing "Apply edits" failed the render job with
 
 for a reason the user could not have guessed at. Publishing a clip and then
 editing it would have done the same thing through uploads.clip_id.
+
+The app holds the id too: the editor open on the clip, and the draft preview
+filed under it. Those are at the end.
 """
 
+import json
 import sqlite3
 
 import pytest
@@ -170,3 +174,92 @@ def test_a_rerender_that_fails_leaves_the_clip_where_it_was(db, tmp_path, monkey
     assert db.get_clip(clip_id) is not None
     assert db.conn.execute("SELECT COUNT(*) FROM clip_translations WHERE clip_id = ?",
                            (clip_id,)).fetchone()[0] == 1
+
+
+# ---- what holds the old id ------------------------------------------------------------
+
+
+def test_a_rerender_drops_the_old_draft_and_says_where_the_clip_went(db, tmp_path, monkeypatch):
+    """#147: the editor had the clip open by its old id, so after Apply it lost
+    the clip, and the draft preview of the edits before stayed on disk under
+    an id nothing would ask for again. Now the draft goes, and the app is told
+    the new id to follow."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from types import SimpleNamespace
+
+    from core import pipeline
+    from server import jobs
+
+    _video(db)
+    clip_id = _clip(db)
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "v1.mp4").write_bytes(b"source")
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / "v1.json").write_text('{"segments": []}', encoding="utf-8")
+    (tmp_path / "previews").mkdir()
+    draft = tmp_path / "previews" / f"clip_{clip_id}.mp4"
+    draft.write_bytes(b"draft")
+    another = tmp_path / "previews" / f"clip_{clip_id + 1}.mp4"     # another clip's draft
+    another.write_bytes(b"draft")
+
+    def render(_source, _candidate, _segments, clip_dir, _config, render_opts, _lang):
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        (clip_dir / "clip.mp4").write_bytes(b"clip")
+        return clip_dir / "clip.mp4", json.dumps(render_opts)
+
+    monkeypatch.setattr(pipeline, "_render_files", render)
+    events = []
+    monkeypatch.setattr(jobs.broadcaster, "publish", events.append)
+    job = SimpleNamespace(config={"paths": {"data_dir": str(tmp_path)}, "clips": {"outro": False}})
+
+    jobs.Worker._rerender_clip(job, db, {"clip_id": clip_id, "start": 2.0})
+
+    new_id = db.conn.execute("SELECT id FROM clips").fetchone()["id"]
+    assert new_id != clip_id
+    assert not draft.exists()
+    assert another.exists()
+    assert [e for e in events if e["type"] == "clip_replaced"] == [
+        {"type": "clip_replaced", "old": clip_id, "new": new_id, "video_id": "v1"}
+    ]
+
+
+@pytest.fixture
+def api(db, tmp_path):
+    """The API over the same data folder as `db`, with no worker running."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    pytest.importorskip("yaml")
+    pytest.importorskip("numpy")
+    pytest.importorskip("yt_dlp")  # sources.dispatch imports the YouTube source
+    import shutil
+
+    from fastapi.testclient import TestClient
+
+    from main import BUNDLED_CONFIG, load_config
+    from server.api import create_app
+
+    settings = tmp_path / "settings.yaml"
+    shutil.copy(BUNDLED_CONFIG, settings)
+    config = load_config(BUNDLED_CONFIG)
+    config["paths"]["data_dir"] = str(tmp_path)
+    # No `with`: startup never runs, so no worker thread starts.
+    return TestClient(create_app(config, settings), base_url="http://127.0.0.1")
+
+
+def test_the_editor_is_never_shown_a_video_from_the_cache(api, db, tmp_path):
+    """A clip's file and its draft are both written again in place, so a
+    cached copy is one from before (#147)."""
+    _video(db)
+    clip_id = _clip(db)
+    (tmp_path / "clips").mkdir()
+    (tmp_path / "clips" / "clip.mp4").write_bytes(b"clip")
+    db.conn.execute("UPDATE clips SET path = ? WHERE id = ?", (str(tmp_path / "clips" / "clip.mp4"), clip_id))
+    db.conn.commit()
+    (tmp_path / "previews").mkdir()
+    (tmp_path / "previews" / f"clip_{clip_id}.mp4").write_bytes(b"draft")
+
+    for route in (f"/media/{clip_id}", f"/media/preview/{clip_id}"):
+        r = api.get(route)
+        assert r.status_code == 200, route
+        assert r.headers["cache-control"] == "no-store", route

@@ -797,8 +797,12 @@ export interface StudioEvent {
   /** 'queue' is a bare ping meaning "the queue changed, re-read it".
    *  'publish' is a YouTube upload. It is deliberately NOT 'job': jobProgress
    *  resets the global processing bar on any 'job' event, and an upload has
-   *  nothing to do with the video pipeline's progress. */
-  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish' | 'automation'
+   *  nothing to do with the video pipeline's progress.
+   *  'clip_replaced' is a re-render done: the clip is back under a new id. */
+  type: 'progress' | 'job' | 'model_pull' | 'queue' | 'publish' | 'automation' | 'clip_replaced'
+  /** clip_replaced only: the clip's id before the re-render, and after it. */
+  old?: number
+  new?: number
   job_id?: number
   /** Present on 'job' events: lets the queue ignore re-renders. */
   job_type?: 'process' | 'render' | 'translate'

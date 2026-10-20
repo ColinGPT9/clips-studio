@@ -38,6 +38,7 @@ import {
   type UseDelta,
   type UseMark
 } from '../lib/editSuggestions'
+import { applyTextEdits, type WordEdit } from '../lib/captionEdits'
 import { PRESETS } from '../lib/gamingLayout'
 import { compactEdits, fixSpeakers, groupWords, paintTurns, tagLines } from '../lib/speakerTurns'
 import MultilingualExport from './MultilingualExport'
@@ -118,13 +119,6 @@ const UPLOADPOST_TAB: { id: Tab; label: string; icon: JSX.Element } = {
  *  of a suggested edit is one step: it also holds the layout as it was, and
  *  the Use mark Undo drops or puts back (lib/editSuggestions.ts). */
 type Past = { edit: EditData; layout?: string; suggestion?: UseMark } | { speakers: SpeakerTurn[] | null }
-
-/** A user text correction for one transcript word (misheard by Whisper). */
-interface WordEdit {
-  start: number
-  from: string
-  to: string
-}
 
 /** Shorts finishing editor: trim / split / delete sections, mute sections or
  *  single words, volume + fades — all non-destructive. Edits are stored with
@@ -340,6 +334,9 @@ export default function TimelineEditor({
   const [wordMode, setWordMode] = useState<'mute' | 'text' | 'speaker'>('mute')
   const [wordEdits, setWordEdits] = useState<WordEdit[]>([])
   const [editingWord, setEditingWord] = useState<{ i: number; value: string } | null>(null)
+  // Whether the open word box has already been closed, kept or not: the
+  // blur that can follow as it goes must not keep the word a second time.
+  const wordBoxDone = useRef(false)
   // Fix speakers: what a person has said about who is talking, as the list
   // of statements the render lays over what it heard (speaker_edits).
   // null = as the clip was saved.
@@ -373,6 +370,8 @@ export default function TimelineEditor({
     setRememberGaming(false)
     setCaptionStyle({ ...DEFAULT_CAPTION_STYLE, ...(clip.render_opts?.caption_style ?? {}) })
     setWordEdits([])
+    // A box left open on the clip before keeps nothing on this one.
+    wordBoxDone.current = true
     setEditingWord(null)
     setSpeakerEdits(null)
     lastSpeakerWord.current = null
@@ -690,6 +689,27 @@ export default function TimelineEditor({
 
   const toggleWord = (w: Word): void => push(toggledWord(edit, w, duration))
 
+  // The word box keeps what was typed however it closes, by Enter or by a
+  // click anywhere else: a fix typed and then clicked away from used to be
+  // dropped without a word (#147). Escape alone closes it keeping nothing.
+  const openWordBox = (i: number, value: string): void => {
+    wordBoxDone.current = false
+    setEditingWord({ i, value })
+  }
+  const keepWord = (w: Word, typed: string): void => {
+    wordBoxDone.current = true
+    const to = typed.trim()
+    setWordEdits((prev) => [
+      ...prev.filter((x) => x.start !== w.start),
+      ...(to && to !== w.word ? [{ start: w.start, from: w.word, to }] : [])
+    ])
+    setEditingWord(null)
+  }
+  const dropWord = (): void => {
+    wordBoxDone.current = true
+    setEditingWord(null)
+  }
+
   // Trim handles: drag the outer edges of the first/last kept segment. Global
   // listeners are attached ONCE (they read live state via refs), so dragging
   // doesn't churn subscriptions.
@@ -850,40 +870,9 @@ export default function TimelineEditor({
     })
   const draftStale = draftActive && draftEditJson !== pendingJson()
 
-  // Word mutes also CENSOR the word in the burned captions (f**k), so
-  // platform moderation can't read it from the screen either. Recomputed
-  // from the base lines every time, so un-muting restores the real text.
-  // Whisper words often carry punctuation ("word," / "word.") — matching
-  // uses the stripped core so the caption is always found and replaced.
-  const censorMatch = (matched: string): string =>
-    matched.length <= 2 ? '**' : matched[0] + '*'.repeat(matched.length - 2) + matched[matched.length - 1]
-
-  const applyTextEdits = (base: CaptionLine[]): CaptionLine[] => {
-    const coreRe = (word: string): RegExp | null => {
-      const core = word.replace(/[^a-zA-Z0-9']/g, '')
-      if (!core) return null
-      return new RegExp(`\\b${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-    }
-    return base.map((line) => {
-      let text = line.text
-      // Text corrections first (double-clicked words) …
-      for (const e of wordEdits) {
-        if (e.start >= line.start - 0.05 && e.start < line.end + 0.05) {
-          const re = coreRe(e.from)
-          if (re) text = text.replace(re, e.to)
-        }
-      }
-      // … then censoring of muted words.
-      for (const m of edit.muted_words) {
-        if (m.end > line.start && m.start < line.end) {
-          const re = coreRe(m.word)
-          if (re) text = text.replace(re, censorMatch)
-        }
-      }
-      return { ...line, text }
-    })
-  }
-
+  // Retyped words replace the misheard ones in the captions, and word mutes
+  // also CENSOR the word there (f**k): lib/captionEdits.ts, from the base
+  // lines every time, so un-muting restores the real text.
   const pendingCaptionLines = (): CaptionLine[] | null => {
     const hasMutes = edit.muted_words.length > 0 || (baked?.muted_words?.length ?? 0) > 0
     if (!captionBase || (!hasMutes && wordEdits.length === 0)) return null
@@ -892,7 +881,7 @@ export default function TimelineEditor({
     // speaker changes; the render then colours each line whole.
     const base = (speakerOn && fixing.given(saidTurns)) || captionBase
     // Who says a line is worked out afresh at every render, never saved on it.
-    return applyTextEdits(base).map(({ speaker: _speaker, ...line }) => line)
+    return applyTextEdits(base, wordEdits, edit.muted_words).map(({ speaker: _speaker, ...line }) => line)
   }
 
   // ---- live text overlay ---------------------------------------------------
@@ -938,7 +927,7 @@ export default function TimelineEditor({
           // same way the render does (captionBase kept the old grouping).
           base = groupWords(words, n)
         }
-        captions = { lines: applyTextEdits(base), style: captionStyle }
+        captions = { lines: applyTextEdits(base, wordEdits, edit.muted_words), style: captionStyle }
       }
       if (hookPending || captions) {
         // Old text already burned into the preview file — the overlay blurs
@@ -1213,6 +1202,11 @@ export default function TimelineEditor({
         }
       }
       await api.rerenderClip(clip.id, undefined, renderOpts, usedSuggestions())
+      // Off the draft and back on the clip: the draft is a file of the edits
+      // as they were, and left up it went on showing the old text after the
+      // re-render had burned the new (#147). The clip itself is replaced
+      // when the render is done, and the editor follows it.
+      backToOriginal()
       setNotice(
         (cleared ? 'Restoring original — re-rendering…' : 'Applying edits — re-rendering…') + remembered
       )
@@ -1743,17 +1737,12 @@ export default function TimelineEditor({
                     value={editingWord.value}
                     onChange={(e) => setEditingWord({ i, value: e.target.value })}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const to = editingWord.value.trim()
-                        setWordEdits((prev) => [
-                          ...prev.filter((x) => x.start !== w.start),
-                          ...(to && to !== w.word ? [{ start: w.start, from: w.word, to }] : [])
-                        ])
-                        setEditingWord(null)
-                      }
-                      if (e.key === 'Escape') setEditingWord(null)
+                      if (e.key === 'Enter') keepWord(w, editingWord.value)
+                      if (e.key === 'Escape') dropWord()
                     }}
-                    onBlur={() => setEditingWord(null)}
+                    onBlur={() => {
+                      if (!wordBoxDone.current) keepWord(w, editingWord.value)
+                    }}
                     className="text-xs mr-1 w-24 bg-raised border border-accent rounded px-1"
                     aria-label={`Correct the word ${w.word}`}
                   />
@@ -1773,7 +1762,7 @@ export default function TimelineEditor({
                     mode === 'speaker'
                       ? clickSpeaker(i, e.shiftKey)
                       : mode === 'text'
-                        ? setEditingWord({ i, value: corrected?.to ?? w.word })
+                        ? openWordBox(i, corrected?.to ?? w.word)
                         : toggleWord(w)
                   }
                   className={`text-xs mr-1 rounded px-0.5 ${

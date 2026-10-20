@@ -1884,7 +1884,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
             if not _replace_with_retry(rendered, out, label="Preview"):
                 raise RuntimeError(f"{out.name} is open elsewhere and could not be written")
-            rendered.unlink(missing_ok=True)
+            # Moved into place, or written into it with the old draft still
+            # playing: what is left is scratch, and on Windows deleting a file
+            # something still holds raises, which would fail a good preview.
+            discard(rendered)
         except Exception as e:
             raise HTTPException(500, f"preview render failed: {str(e)[:400]}")
         import time as _time
@@ -2090,7 +2093,9 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         path = (data_dir / "previews" / f"clip_{clip_id}.mp4").resolve()
         if not path.exists():
             raise HTTPException(404, "no draft preview")
-        return FileResponse(path, media_type="video/mp4")
+        # Never from the cache: every draft of a clip is written to the same
+        # file, so a cached one is the draft before (#147).
+        return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "no-store"})
 
     @app.get("/clips/{clip_id}/words")
     def clip_words(clip_id: int):
@@ -2124,7 +2129,10 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         path = Path(row["path"]).resolve()
         if not path.exists() or data_dir not in path.parents:
             raise HTTPException(404, "clip file missing")
-        return FileResponse(path, media_type="video/mp4")
+        # Never from the cache, like the frames: a clip's file can be written
+        # again in place (an end card added later), and what the editor shows
+        # must be the file as it is now (#147).
+        return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "no-store"})
 
     # ---- multilingual publishing (separate pipeline; see multilingual/) ----
 

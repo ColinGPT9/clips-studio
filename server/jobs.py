@@ -931,6 +931,14 @@ class Worker(threading.Thread):
                   "dependent row(s)")
         if rendered and old_path and old_path.exists() and old_path != rendered.path:
             discard(old_path)
+        # The editor's draft of the clip (POST /clips/{id}/preview) is filed
+        # under the old id, which nothing will ask for again.
+        discard(data_dir / "previews" / f"clip_{int(clip['id'])}.mp4")
+        if new_row:
+            # The editor has the clip open by its old id; told the new one, it
+            # follows the clip instead of losing it (#147).
+            broadcaster.publish({"type": "clip_replaced", "old": clip["id"], "new": new_row["id"],
+                                 "video_id": video_id})
 
 
 def _mark_suggestions(candidate, payload: dict, saved: dict, rendered: dict, window: tuple,

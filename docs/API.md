@@ -1516,7 +1516,7 @@ An agent skill for clients that support them is in [`skills/clips-kitty/`](../sk
 ws://127.0.0.1:8765/ws
 ```
 
-Connect and listen. The server never expects a message from you. Six event
+Connect and listen. The server never expects a message from you. Seven event
 types:
 
 ```json
@@ -1526,6 +1526,7 @@ types:
 {"type": "model_pull", "tag": "gemma3:12b", "status": "done"}
 {"type": "publish", "publish_job": 4, "clip_id": 812, "stage": "publish", "phase": "upload", "fraction": 0.42, "message": "Uploading to YouTube"}
 {"type": "automation"}
+{"type": "clip_replaced", "old": 812, "new": 845, "video_id": "aB3dEfGhIjK"}
 ```
 
 - **`queue`** carries no data. It means "something changed, re-fetch
@@ -1547,6 +1548,9 @@ types:
 - **`model_pull`** is download progress for `POST /models/pull`.
 - **`automation`** carries no data, like `queue`: a watch found something or
   moved a video along. Re-fetch `GET /automation/items`.
+- **`clip_replaced`** is a clip rendered again with new edits or times. It is
+  back under a new id (`new`; `old` is gone), with its title, translations and
+  uploads moved over to it. Anything holding the old id should follow it.
 - **`publish`** is a YouTube upload. `phase` moves through `prepare`, `upload`,
   `metadata`, then one of `done` / `failed` / `cancelled`. The terminal one
   also sets `terminal` to the same value, and `done` carries `youtube_id`,
