@@ -123,13 +123,13 @@ def check_ollama(host: str, model: str) -> list[Check]:
     # reviewer watched gemma3:4b reach 100% and still be told gemma:7b was
     # missing. "The recommended model is absent" and "there is no AI at all"
     # are completely different situations and only the second is a failure.
-    from llm.manager import model_is_installed, resolve_usable_model
+    #
+    # The name shown is the one a job will load, from the list just fetched:
+    # with "gemma3" in settings and gemma3:12b pulled, that is gemma3:12b, not
+    # the bare family, which Ollama would read as gemma3:latest (#149).
+    from llm.manager import usable_model_in
 
-    usable = (
-        model.split("/")[-1]
-        if model and model_is_installed(model, installed)
-        else resolve_usable_model(host, model)
-    )
+    usable = usable_model_in(model, installed)
     checks.append(Check(
         name="model",
         ok=bool(usable),

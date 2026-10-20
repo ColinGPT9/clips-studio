@@ -161,23 +161,30 @@ def installed_as(tag: str, installed: list[str]) -> str | None:
     A family is not a model Ollama can load: it reads a bare "gemma3" as
     gemma3:latest, and answers 404 when only gemma3:12b was pulled. So the
     name handed back is always one Ollama listed: the exact one, then the
-    family's ":latest", then the first of the family in Ollama's own order.
+    family's ":latest", then a member of the family.
     """
     wanted = tag.split("/")[-1]
     if wanted in installed:
         return wanted
     if f"{wanted}:latest" in installed:
         return f"{wanted}:latest"
-    return next(
-        (m for m in installed if m.startswith(f"{wanted}:") or m.split(":")[0] == wanted),
-        None,
-    )
+    family = [m for m in installed if m.startswith(f"{wanted}:") or m.split(":")[0] == wanted]
+    # Ollama lists the most recently pulled first, so its order says only
+    # which came last: with gemma3:27b and gemma3:4b both pulled, a small card
+    # got the 27b whenever it was pulled second. RECOMMENDATIONS runs smallest
+    # first, so the member taken is the one that runs on the most machines. A
+    # family it doesn't list keeps Ollama's order.
+    for _hardware, recommended, _note in RECOMMENDATIONS:
+        if recommended in family:
+            return recommended
+    return family[0] if family else None
 
 
 def missing_model(model: str) -> LLMError:
     """The error for a local model Ollama doesn't have, in words a creator
-    can act on. The queue row offers the Models page on "isn't downloaded"
-    (QueueItem.tsx), so the two are changed together."""
+    can act on. The queue row offers the Models page on "isn't downloaded.
+    Download it on the Models page" (QueueItem.tsx), so the two are changed
+    together."""
     named = f"The AI model {model}" if model else "The AI model"
     return LLMError(
         "model_unavailable",

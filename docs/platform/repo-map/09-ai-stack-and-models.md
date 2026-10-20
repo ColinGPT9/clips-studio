@@ -68,9 +68,11 @@ Docs: `docs/AI-BACKENDS.md` sections 1 local, 2 OpenRouter, 3 direct APIs, plan 
 - `RECOMMENDATIONS: list[(hardware, tag, note)]` (`llm/manager.py:31-43`): CPU/iGPU -> `gemma3:4b`; <6 GB -> `gemma4:e2b`; 6 GB -> `gemma4:e4b`; 8 GB -> `gemma:7b`; 10-12 GB -> `gemma3:12b`; 16-24 GB -> `gemma3:27b`.
 - `OTHER_MODELS: list[(purpose, tags, note)]` (`:66-84`): qwen3:8b/14b, mistral-nemo:12b/phi4:14b, llama3.1:8b/qwen2.5:14b, deepseek-r1:8b/14b, gpt-oss:20b, nemotron-3-nano:4b. Licence notes are free text in the note column (`:52-65`).
 - `recommend_for(vram_gb: float | None) -> {"model", "reason"}` (`:87-133`): thresholds >=16 -> gemma3:27b, >=10 -> gemma3:12b, >=7 -> gemma:7b, >=6 -> gemma4:e4b, else gemma4:e2b, None/0 -> gemma3:4b.
-- `installed_models(host) -> [{"name","size_gb"}]` = GET `{host}/api/tags` (`:136-143`).
-- `model_is_installed(tag, installed)` matches `"gemma:7b"`, `"ollama/gemma:7b"` or family (`:146-156`).
-- `resolve_usable_model(host, configured) -> str | None` (`:159-189`): configured if installed, else first RECOMMENDATIONS tag installed, else `installed[0]`.
+- `installed_models(host, timeout=15) -> [{"name","size_gb"}]` = GET `{host}/api/tags` (`:138-145`).
+- `model_is_installed(tag, installed)` matches `"gemma:7b"`, `"ollama/gemma:7b"` or family (`:148-154`); it is `installed_as(...) is not None`.
+- `installed_as(tag, installed) -> str | None` (`:157-180`): the name Ollama lists `tag` under, never a bare family (Ollama reads `"gemma3"` as `gemma3:latest` and answers 404 when only `gemma3:12b` was pulled, #149): the exact name, then `<family>:latest`, then the family member that comes first in RECOMMENDATIONS (smallest first, so the result doesn't depend on Ollama listing the most recently pulled first), then the family's first in Ollama's order.
+- `missing_model(model) -> LLMError("model_unavailable", "The AI model <model> isn't downloaded. Download it on the Models page, or choose a model you have.")` (`:183-192`); `OllamaBackend` raises it on a 404, and the queue row's `MODEL_NOT_DOWNLOADED` (`ui/src/renderer/src/components/queue/QueueItem.tsx`) matches its wording to offer Open Models.
+- `resolve_usable_model(host, configured) -> str | None` (`:195-213`) asks Ollama, then `usable_model_in(configured, installed)` (`:216-233`) answers from the list: `installed_as(configured)` if installed, else the first RECOMMENDATIONS tag installed, else `installed[0]`; None only for an empty list (or, for `resolve_usable_model`, Ollama not answering). The name returned is always one Ollama listed.
 - `switch_model(settings_path, model_tag) -> str` rewrites the `model:` line in settings.yaml via regex (`:192-202`).
 
 Ollama HTTP calls used across the engine: `GET /api/tags` (`llm/manager.py:138`, `core/preflight.py:101`), `POST /api/generate` (`llm/ollama_backend.py:110`), `POST /api/show` (`llm/ollama_backend.py:167`), `POST /api/pull` streamed with `{"model": tag}` (`server/api.py:2862-2863`), `DELETE /api/delete` (`server/api.py:2922`).
@@ -115,7 +117,9 @@ Frozen build (PyInstaller one-dir + Electron): `_search_roots` = exe dir, `exe/<
 
 Docker: `CLIPS_STUDIO_OLLAMA_HOST`, `CLIPS_STUDIO_DATA_DIR` env (`main.py:97-108`).
 
-Preflight (`core/preflight.py:298-331 run(config)`): `check_ffmpeg`, `check_ollama(host, model)` (GET /api/tags + `resolve_usable_model`), `check_cloud_ai`, `check_cloud_transcription`, `check_whisper(configured)` (non-blocking: "faster-whisper can still fetch them from Hugging Face", `:200-204`), `check_gpu`, `check_disk`.
+Job-start check (`server/jobs.py:692-736 Worker._check_local_model(db, vid, llm_cfg, payload)`): for a process job on a local backend, before this video's prefetch is waited on or the next one's started, the worker asks Ollama (GET /api/tags, 5 s timeout) and raises `missing_model` only when `usable_model_in` finds nothing at all. It lets the job run when Ollama doesn't answer, when another model is installed (`_with_usable_model` swaps it in later), when a model download is in flight in this process (`llm/pulls.py running()`; Ollama lists a model only once its pull is complete), for a Shorts-only plugin pipeline, and for a Shorts job whose Shorts were made before (`db.shorts_made`) without `force`.
+
+Preflight (`core/preflight.py:298-331 run(config)`): `check_ffmpeg`, `check_ollama(host, model)` (GET /api/tags + `usable_model_in` on that list, reporting the name a job will load), `check_cloud_ai`, `check_cloud_transcription`, `check_whisper(configured)` (non-blocking: "faster-whisper can still fetch them from Hugging Face", `:200-204`), `check_gpu`, `check_disk`.
 
 ## 6. What a shared model manager would have to index, and what already exists
 

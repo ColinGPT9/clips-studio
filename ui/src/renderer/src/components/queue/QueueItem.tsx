@@ -15,8 +15,11 @@ import OpenRouterPrompt from '../OpenRouterPrompt'
 const LOCAL_AI_FAILURE = /\/api\/(generate|chat)|:1143[45]\b|ollama/i
 
 /** The local model the job needs was never downloaded (llm/manager.py
- *  missing_model). A local AI failure too, but one the Models page fixes. */
-const MODEL_NOT_DOWNLOADED = /isn.t downloaded/i
+ *  missing_model). A local AI failure too, but one the Models page fixes.
+ *  Its own wording, not just "isn't downloaded": a plugin's model that
+ *  isn't here says that too (plugins/models.py), and neither the Models page
+ *  nor a cloud key gets a plugin its model. */
+const MODEL_NOT_DOWNLOADED = /isn.t downloaded\. Download it on the Models page/i
 
 /** Vertical Live refused the source as not 9:16 (core/modes.py MISMATCH). */
 const NOT_VERTICAL = /is not a vertical 9:16 source/

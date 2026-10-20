@@ -229,16 +229,32 @@ def test_any_other_refusal_ends_the_job_at_once_with_what_ollama_said(monkeypatc
     assert e.value.message == "Ollama refused the request (400): invalid options: num_ctx"
 
 
-def test_the_queue_row_offers_the_models_page_for_a_missing_model():
+def test_the_queue_row_offers_the_models_page_for_a_missing_model(tmp_path):
     """The queue row reads the job's error to offer Open Models, and the cloud
     suggestion beside it (QueueItem.tsx). Reworded on one side only, both
-    would quietly disappear."""
+    would quietly disappear.
+
+    A plugin's own model that isn't here also "isn't downloaded yet", and the
+    plugin's job fails with that sentence. Neither the Models page nor a cloud
+    key gets a plugin its model, so the row offers neither for it."""
+    from plugins import models as plugin_models
+
     row = (Path(__file__).resolve().parent.parent / "ui" / "src" / "renderer" / "src"
            / "components" / "queue" / "QueueItem.tsx").read_text(encoding="utf-8")
     pattern = re.search(r"^const MODEL_NOT_DOWNLOADED = /(.+)/i$", row, re.M).group(1)
     for model in ("gemma9", ""):
         assert re.search(pattern, missing_model(model).message, re.I)
     assert not re.search(pattern, "404 Client Error: Not Found for url: http://127.0.0.1:11435/api/generate", re.I)
+
+    plugin = {"models": [
+        {"name": "weights", "source": "url", "id": "https://example.com/w.onnx", "sha256": "c" * 64,
+         "size_bytes": 52_428_800},
+        {"name": "helper", "source": "ollama", "id": "example-helper:7b"}]}
+    _handed, missing = plugin_models.for_job(tmp_path, plugin, ollama_host="http://localhost:11434",
+                                             fetch_json=lambda url: {"models": []})
+    assert len(missing) == 2 and all("isn't downloaded" in m for m in missing)  # both of its sentences
+    for message in missing:
+        assert not re.search(pattern, message, re.I), message
 
 
 def test_a_look_at_frames_ollama_cuts_off_is_asked_again_too(monkeypatch):

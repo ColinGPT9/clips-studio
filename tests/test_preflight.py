@@ -222,6 +222,32 @@ def test_the_model_resolved_is_always_one_ollama_listed(monkeypatch, configured,
     assert resolve_usable_model("http://localhost:11434", configured) == expected
 
 
+@pytest.mark.parametrize("installed", [["gemma3:27b", "gemma3:4b"], ["gemma3:4b", "gemma3:27b"]])
+def test_a_family_takes_its_smallest_recommended_member_whatever_was_pulled_last(monkeypatch, installed):
+    """Ollama lists the most recently pulled first. Taking its first member of
+    the family gave a small card the 27b whenever that was pulled second."""
+    from llm.manager import resolve_usable_model
+
+    _ollama_with(monkeypatch, installed)
+    assert resolve_usable_model("http://localhost:11434", "gemma3") == "gemma3:4b"
+
+
+def test_a_family_the_recommendations_dont_list_still_loads_a_member(monkeypatch):
+    from llm.manager import resolve_usable_model
+
+    _ollama_with(monkeypatch, ["mistral-nemo:12b", "qwen3:14b", "qwen3:8b"])
+    assert resolve_usable_model("http://localhost:11434", "qwen3") in ("qwen3:14b", "qwen3:8b")
+
+
+def test_the_check_names_the_model_a_job_will_load(monkeypatch):
+    """With a family in settings the check said "gemma3 installed", while a
+    job loaded gemma3:12b, and before #149 that same bare name was the 404."""
+    _ollama_with(monkeypatch, ["gemma3:12b"])
+    model = preflight.check_ollama("http://localhost:11434", "gemma3")[1]
+    assert model.ok is True
+    assert model.detail == "gemma3:12b installed"
+
+
 @pytest.mark.parametrize(
     "installed, expected",
     [
