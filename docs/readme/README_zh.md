@@ -29,11 +29,11 @@
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
-<a id="star-and-share-clips-kitty--goal-125"></a>
+<a id="star-and-share-clips-kitty--goal-150"></a>
 
-### 为 Clips Kitty 点星并分享 ⭐ 目标：125
+### 为 Clips Kitty 点星并分享 ⭐ 目标：150
 
-[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **/ 目标 125**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **/ 目标 150**
 
 **请给仓库点个星，并分享出去。** 这不花你一分钱。这个项目背后没有任何营销预算，口口相传是让下一位小 YouTuber 或主播知道还有免费选择的唯一途径。
 

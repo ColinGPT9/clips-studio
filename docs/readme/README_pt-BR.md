@@ -30,11 +30,11 @@
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
-<a id="star-and-share-clips-kitty--goal-125"></a>
+<a id="star-and-share-clips-kitty--goal-150"></a>
 
-### Dê uma estrela e compartilhe o Clips Kitty ⭐ Meta: 125
+### Dê uma estrela e compartilhe o Clips Kitty ⭐ Meta: 150
 
-[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **de 125**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **de 150**
 
 **Por favor, dê uma estrela no repositório e compartilhe.** Não custa nada, e não
 existe orçamento de marketing por trás disso, então o boca a boca é a única forma

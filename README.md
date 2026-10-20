@@ -23,9 +23,9 @@
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
-### Star and share Clips Kitty ⭐ Goal: 125
+### Star and share Clips Kitty ⭐ Goal: 150
 
-[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 125**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **of 150**
 
 **Please star the repo and share it.** It costs you nothing, and there is no
 marketing budget behind this, so word of mouth is the only way the next small

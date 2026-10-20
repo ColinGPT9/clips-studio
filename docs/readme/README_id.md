@@ -30,11 +30,11 @@
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
-<a id="star-and-share-clips-kitty--goal-125"></a>
+<a id="star-and-share-clips-kitty--goal-150"></a>
 
-### Beri bintang dan bagikan Clips Kitty ⭐ Target: 125
+### Beri bintang dan bagikan Clips Kitty ⭐ Target: 150
 
-[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **dari 125**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **dari 150**
 
 **Tolong beri bintang pada repo ini dan bagikan.** Tidak ada biayanya untukmu, dan tidak ada
 anggaran pemasaran di baliknya, jadi cerita dari mulut ke mulut adalah satu-satunya cara
