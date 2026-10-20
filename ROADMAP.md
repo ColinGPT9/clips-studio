@@ -52,8 +52,8 @@ AI improvements and performance work. Start with
 
 None of this delays the alpha.
 
-- **More sports**: the most-watched sports online after Soccer, Basketball and
-  Cricket first (the Sport menu already lists them as coming soon)
+- **More sports**: Soccer and Basketball are in; Cricket is next (the Sport menu
+  already lists it as coming soon)
 - **Text updates when things finish**: a text message when a video's clips are
   ready, when they're posted, and when something fails
 - **Reaction videos that understand the video being reacted to**, not just the

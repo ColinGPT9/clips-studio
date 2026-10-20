@@ -226,11 +226,20 @@ through Ollama.
   YouTube vertical live, Twitch Dual Format, Streamlabs Dual Output, a downloaded
   Instagram or TikTok live). Keeps the stream's own 9:16 layout, skips face tracking, and
   still picks the moments the usual way. See [docs/VERTICAL-LIVE.md](docs/VERTICAL-LIVE.md).
-- **Sports (Soccer first)**: goals, saves, cards and big chances from a match, one clip
-  per moment with its build-up and reaction. Goals are read off the score box and dated
-  by the crowd, and the 9:16 crop follows the ball. Pick All goals, Best saves, Cards and
-  more, and have the moments joined into a match recap and team or player reels. See
-  [docs/SPORTS.md](docs/SPORTS.md).
+- **Sports: Soccer and Basketball**: every big moment of a match or game as its own clip,
+  with its build-up and reaction.
+  - **Soccer**: goals, saves, cards and big chances. Goals are read off the score box and
+    dated by the crowd, and the 9:16 crop follows the ball. Pick All goals, Best saves,
+    Cards and more, and have the moments joined into a match recap and team or player reels.
+  - **Basketball**: dunks, threes, blocks, steals and game winners. The score bug confirms
+    every basket and its points, and the quarter and the clock make a game winner count for
+    far more than a first-quarter basket. The crowd, bench and courtside reactions are found
+    too. Each clip's 9:16 crop is planned around its play: the ball and whoever has it, the
+    receiver of a pass, and the shot followed to the basket with the rim and backboard in
+    the picture. It pans with the play and never zooms. The ball is found by the E-BARD
+    detection model (credited under [License](#license)).
+
+  See [docs/SPORTS.md](docs/SPORTS.md).
 - **Editable burned-in captions**: word-synced, and styled how you like (colour, size,
   position, words per line, casing, or off). Fix a transcription mistake line by line
   before export. With two people talking, the second speaker's captions can take
@@ -267,7 +276,7 @@ or less thinking than the feature list suggests, so nothing comes as a surprise:
 |---|---|
 | **IRL, just chatting, podcasts, vlogs, interviews** | What it's tuned for and what gets tested on real streams before release |
 | **Gaming and reactions** | With **Gaming / Reaction** switched on: the webcam in one half, the game or the reacted-to video in the other, checked on the video's own frames before processing ([docs/GAMING.md](docs/GAMING.md)). The streamer is whoever is talking, never the biggest face. Without the switch, framing can follow a character inside the game. People on camera only, no VTubers |
-| **Sports matches** | With **Sports** switched on: made for broadcasts with a score box and commentary, where goals are certain. Club or phone footage usually has neither: its clips follow the ball, and its goals come from the match events you paste, such as a club app's goal tags ([docs/SPORTS.md](docs/SPORTS.md)) |
+| **Sports matches** | With **Sports** switched on: made for broadcasts with a score box and commentary, where goals and baskets are certain. Club or phone footage usually has neither: its clips follow the ball, and its goals come from the match events you paste, such as a club app's goal tags ([docs/SPORTS.md](docs/SPORTS.md)) |
 | **What a reaction is reacting to** | Clips are still chosen from what's *said*, so a moment in the watched video that nobody comments on is invisible to it |
 
 Clip selection is transcript-and-signal driven. When the funny thing is *visual only*
@@ -883,9 +892,8 @@ calls is below, because "why not yet" is usually more useful than "not yet".
    vertical live is already framed for a phone screen, so the app keeps the stream's
    own layout and only has to find the moments, with no face tracking or reframing.
    Twitch, Kick and local video files only, to comply with Play Store policy.
-2. **More sports**: Soccer is the first. The most-watched sports online come next,
-   Basketball and Cricket first (the Sport menu already lists them as coming soon),
-   each as its own module the way Soccer is (see
+2. **More sports**: Soccer and Basketball are in. Cricket is next (the Sport menu
+   already lists it as coming soon), as its own module the way the others are (see
    [docs/SPORTS.md](docs/SPORTS.md#adding-a-sport)).
 3. **Text updates when things finish**: a text message when a video's clips are
    ready, when they're posted, and when something fails, so a hands-off channel can
@@ -906,6 +914,15 @@ calls is below, because "why not yet" is usually more useful than "not yet".
 
 **GNU AGPL-3.0-or-later**. See [LICENSE](LICENSE), and [NOTICE](NOTICE) for what that means
 in practice and what the installer bundles.
+
+Basketball's ball, hoop and player detection is the
+[E-BARD detection model](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) by Gabriele Giudici ([code](https://github.com/GabrieleGiudic/E-BARD),
+[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), used unmodified
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD extends BARD
+(Giudici, Maurino and Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Thank you for
+publishing it openly. Every other bundled component and its licence is in [NOTICE](NOTICE).
 
 Three parts are licensed separately, so that building on Clips Kitty stays easy:
 

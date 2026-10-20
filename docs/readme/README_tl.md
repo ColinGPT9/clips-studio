@@ -264,12 +264,22 @@ GPU sa pamamagitan ng Ollama.
   TikTok). Pinapanatili ang sariling 9:16 na layout ng stream, nilalaktawan ang face
   tracking, at pumipili pa rin ng mga moment sa karaniwang paraan. Tingnan ang
   [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Sports (Soccer muna)**: mga goal, save, card at malalaking tsansa mula sa isang laro,
-  isang clip kada moment kasama ang build-up at reaksyon. Binabasa ang mga goal mula sa
-  score box at tinutukoy ang oras ayon sa ingay ng crowd, at sinusundan ng 9:16 na crop ang
-  bola. Piliin ang All goals, Best saves, Cards at iba pa, at ipagdugtong ang mga moment
-  para maging match recap at reel ng team o player. Tingnan ang
-  [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Sports: Soccer at Basketball**: bawat malaking moment ng isang laro bilang sariling clip,
+  kasama ang build-up at reaksyon.
+  - **Soccer**: mga goal, save, card at malalaking tsansa. Binabasa ang mga goal mula sa
+    score box at tinutukoy ang oras ayon sa ingay ng crowd, at sinusundan ng 9:16 na crop ang
+    bola. Piliin ang All goals, Best saves, Cards at iba pa, at ipagdugtong ang mga moment
+    para maging match recap at reel ng team o player.
+  - **Basketball**: mga dunk, three, block, steal at game winner. Kinukumpirma ng score box
+    ang bawat basket at ang puntos nito, at dahil sa quarter at sa orasan, di-hamak na mas malaki ang
+    halaga ng isang game winner kaysa sa basket sa unang quarter. Nahahanap din ang reaksyon
+    ng crowd, ng bench at ng mga nasa courtside. Pinaplano ang 9:16 na crop ng bawat clip
+    ayon sa play nito: ang bola at ang may hawak nito, ang tatanggap ng pasa, at ang tira na
+    sinusundan hanggang sa basket na kita ang rim at backboard. Sumasabay ang crop sa play at hindi
+    kailanman nagzu-zoom. Ang bola ay hinahanap ng E-BARD detection model (nakakredito sa
+    [Lisensya](#license)).
+
+  Tingnan ang [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Nae-edit na burned-in captions**: sabay sa bawat salita, at naka-style ayon sa gusto mo
   (kulay, laki, posisyon, dami ng salita kada linya, malaki o maliit na titik, o naka-off).
   Ayusin ang mali sa transcription linya kada linya bago mag-export. Kapag dalawang tao ang
@@ -313,7 +323,7 @@ sorpresa:
 |---|---|
 | **IRL, just chatting, podcast, vlog, interview** | Ito ang pinag-tune-an nito at ang tine-test sa totoong stream bago ang bawat release |
 | **Gaming at reaction** | Kapag naka-on ang **Gaming / Reaction**: ang webcam sa isang kalahati, ang game o ang video na nire-react-an sa kabila, sinusuri sa sariling frames ng video bago iproseso ([docs/GAMING.md](../../docs/GAMING.md)). Ang streamer ay kung sino ang nagsasalita, hindi kailanman ang pinakamalaking mukha. Kapag naka-off, puwedeng sundan ng framing ang isang character sa loob ng game. Para lang sa mga taong nasa camera, walang VTuber |
-| **Mga laban sa sports** | Kapag naka-on ang **Sports**: ginawa para sa broadcast na may score box at commentary, kung saan sigurado ang mga goal. Kadalasan walang ganoon ang footage mula sa club o phone: sinusundan ng clips nito ang bola, at ang mga goal nito ay mula sa mga match event na ipe-paste mo, gaya ng goal tags mula sa app ng club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Mga laban sa sports** | Kapag naka-on ang **Sports**: ginawa para sa broadcast na may score box at commentary, kung saan sigurado ang mga goal at basket. Kadalasan walang ganoon ang footage mula sa club o phone: sinusundan ng clips nito ang bola, at ang mga goal nito ay mula sa mga match event na ipe-paste mo, gaya ng goal tags mula sa app ng club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Ang nire-react-an ng isang reaction** | Pinipili pa rin ang clips mula sa *sinasabi*, kaya hindi nito nakikita ang moment sa pinapanood na video na walang nagkomento |
 
 Ang pagpili ng clip ay batay sa transcript at mga signal. Kapag ang nakakatawa ay *puro
@@ -997,9 +1007,8 @@ sa "hindi pa".
    para sa screen ng phone ang vertical live, kaya pinapanatili ng app ang sariling layout ng
    stream at kailangan lang hanapin ang mga moment, nang walang face tracking o reframing.
    Twitch, Kick at mga local na video file lang, para sumunod sa patakaran ng Play Store.
-2. **Mas maraming sports**: Soccer ang una. Susunod ang mga sport na pinakapinapanood online,
-   Basketball at Cricket muna (nakalista na sila sa menu na Sport bilang coming soon), bawat
-   isa bilang sariling module gaya ng Soccer (tingnan ang
+2. **Mas maraming sports**: Kasama na ang Soccer at Basketball. Susunod ang Cricket (nakalista
+   na ito sa menu na Sport bilang coming soon), bilang sariling module gaya ng iba (tingnan ang
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **Text update kapag may natapos**: isang text message kapag handa na ang clips ng isang
    video, kapag na-post na ang mga ito, at kapag may pumalya, para tumakbo ang isang automatic
@@ -1023,6 +1032,16 @@ sa "hindi pa".
 
 **GNU AGPL-3.0-or-later**. Tingnan ang [LICENSE](../../LICENSE), at ang [NOTICE](../../NOTICE)
 para sa kahulugan nito sa praktika at kung ano ang kasama sa installer.
+
+Ang pag-detect ng bola, ring at mga player sa Basketball ay ang
+[E-BARD detection model](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) ni Gabriele Giudici ([code](https://github.com/GabrieleGiudic/E-BARD),
+[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), na ginagamit nang
+walang binago sa ilalim ng [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Pinalalawak
+ng E-BARD ang BARD (Giudici, Maurino at Zuccolotto, *Computer Vision and Image Understanding*,
+2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Salamat
+sa paglalathala nito nang bukas. Nasa [NOTICE](../../NOTICE) ang bawat iba pang kasamang
+component at ang lisensya nito.
 
 Tatlong bahagi ang hiwalay ang lisensya, para manatiling madali ang pagbuo sa ibabaw ng
 Clips Kitty:

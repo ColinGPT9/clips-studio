@@ -266,12 +266,23 @@ le GPU via Ollama.
   Instagram ou TikTok téléchargé). Il conserve la mise en page 9:16 du stream, saute le
   suivi des visages et choisit quand même les moments de la manière habituelle. Voir
   [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Sport (le football d'abord)** : buts, arrêts, cartons et grosses occasions d'un match,
-  un clip par moment avec l'action qui y mène et la réaction. Les buts sont lus sur le
-  tableau d'affichage à l'écran et situés dans le temps grâce au public, et le recadrage
-  9:16 suit le ballon. Choisissez All goals (tous les buts), Best saves (meilleurs arrêts),
-  Cards (cartons) et d'autres, et faites assembler les moments en résumé du match et en
-  compilations par équipe ou par joueur. Voir [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Sport : football et basket** : chaque grand moment d'un match dans son propre clip,
+  avec l'action qui y mène et la réaction.
+  - **Football** : buts, arrêts, cartons et grosses occasions. Les buts sont lus sur le
+    tableau d'affichage à l'écran et situés dans le temps grâce au public, et le recadrage
+    9:16 suit le ballon. Choisissez All goals (tous les buts), Best saves (meilleurs arrêts),
+    Cards (cartons) et d'autres, et faites assembler les moments en résumé du match et en
+    compilations par équipe ou par joueur.
+  - **Basket** : dunks, paniers à trois points, contres, interceptions et paniers de la
+    victoire. Le tableau d'affichage à l'écran confirme chaque panier et ses points, et le
+    quart-temps et le chrono donnent à un panier de la victoire bien plus de poids qu'à un
+    panier du premier quart-temps. Les réactions du public, du banc et du bord du terrain sont
+    repérées aussi. Le recadrage 9:16 de chaque clip est planifié autour de son action : le
+    ballon et celui qui l'a, le receveur d'une passe, et le tir suivi jusqu'au panier avec le
+    cercle et la planche dans l'image. Il suit l'action en panoramique et ne zoome jamais. Le
+    ballon est repéré par le modèle de détection E-BARD (crédité dans [Licence](#license)).
+
+  Voir [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Sous-titres incrustés modifiables** : synchronisés au mot et stylés comme vous le
   souhaitez (couleur, taille, position, mots par ligne, casse, ou désactivés). Corrigez une
   erreur de transcription ligne par ligne avant l'export. Quand deux personnes parlent, les
@@ -317,7 +328,7 @@ rien ne vous surprenne :
 |---|---|
 | **IRL, just chatting, podcasts, vlogs, interviews** | Ce pour quoi il est réglé, et ce qui est testé sur de vrais streams avant chaque version |
 | **Gaming et réactions** | Avec **Gaming / Reaction** activé : la webcam dans une moitié, le jeu ou la vidéo commentée dans l'autre, vérifié sur les images mêmes de la vidéo avant le traitement ([docs/GAMING.md](../../docs/GAMING.md)). Le streamer est la personne qui parle, jamais le plus grand visage. Sans cette option, le cadrage peut suivre un personnage dans le jeu. Uniquement des personnes filmées, pas de VTubers |
-| **Matchs de sport** | Avec **Sports** activé : conçu pour les retransmissions avec tableau d'affichage et commentaires, où les buts sont certains. Les images de club ou de téléphone n'ont généralement ni l'un ni l'autre : leurs clips suivent le ballon, et leurs buts proviennent des événements du match que vous collez, comme les tags de buts de l'application d'un club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Matchs de sport** | Avec **Sports** activé : conçu pour les retransmissions avec tableau d'affichage et commentaires, où les buts et les paniers sont certains. Les images de club ou de téléphone n'ont généralement ni l'un ni l'autre : leurs clips suivent le ballon, et leurs buts proviennent des événements du match que vous collez, comme les tags de buts de l'application d'un club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Ce à quoi une réaction réagit** | Les clips sont toujours choisis d'après ce qui est *dit* : un moment de la vidéo regardée que personne ne commente lui reste invisible |
 
 La sélection des clips repose sur la transcription et les signaux. Quand le moment drôle
@@ -1018,9 +1029,8 @@ généralement plus utile que « pas encore ».
    la mise en page du stream et n'a qu'à trouver les moments, sans suivi des visages ni
    recadrage. Twitch, Kick et fichiers vidéo locaux uniquement, pour respecter les règles
    du Play Store.
-2. **Plus de sports** : le football est le premier. Les sports les plus regardés en ligne
-   viennent ensuite, à commencer par le basket et le cricket (le menu Sport les affiche déjà
-   comme à venir), chacun dans son propre module comme le football (voir
+2. **Plus de sports** : le football et le basket sont là. Le cricket est le suivant (le menu
+   Sport l'affiche déjà comme à venir), dans son propre module comme les autres (voir
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **Des SMS quand quelque chose se termine** : un message quand les clips d'une vidéo
    sont prêts, quand ils sont publiés et quand quelque chose échoue, pour qu'une chaîne en
@@ -1045,6 +1055,16 @@ généralement plus utile que « pas encore ».
 
 **GNU AGPL-3.0-or-later**. Voir [LICENSE](../../LICENSE), et [NOTICE](../../NOTICE) pour ce que
 cela signifie en pratique et ce que l'installateur inclut.
+
+La détection du ballon, du panier et des joueurs au basket est le
+[modèle de détection E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) de Gabriele Giudici ([code](https://github.com/GabrieleGiudic/E-BARD),
+[jeu de données](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), utilisé sans
+modification sous [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD étend BARD
+(Giudici, Maurino et Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Merci de l'avoir
+publié ouvertement. Tous les autres composants inclus et leur licence figurent dans
+[NOTICE](../../NOTICE).
 
 Trois parties sont sous une licence distincte, pour qu'il reste facile de bâtir sur Clips Kitty :
 

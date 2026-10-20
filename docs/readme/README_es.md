@@ -257,12 +257,23 @@ y el LLM en la GPU a través de Ollama.
   vivo de Instagram o TikTok descargado). Conserva el diseño 9:16 propio del stream, omite
   el seguimiento de rostros y aun así elige los momentos de la forma habitual. Consulta
   [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Deportes (primero el fútbol)**: goles, atajadas, tarjetas y ocasiones claras de un
-  partido, un clip por momento con su jugada previa y la reacción. Los goles se leen del
-  marcador en pantalla y se ubican en el tiempo por la reacción del público, y el recorte
-  9:16 sigue el balón. Elige All goals (todos los goles), Best saves (mejores atajadas), Cards
-  (tarjetas) y más, y une los momentos en un resumen del partido y en reels por equipo o por
-  jugador. Consulta [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Deportes: fútbol y básquetbol**: cada gran momento de un partido como su propio clip,
+  con su jugada previa y la reacción.
+  - **Fútbol**: goles, atajadas, tarjetas y ocasiones claras. Los goles se leen del
+    marcador en pantalla y se ubican en el tiempo por la reacción del público, y el recorte
+    9:16 sigue el balón. Elige All goals (todos los goles), Best saves (mejores atajadas),
+    Cards (tarjetas) y más, y une los momentos en un resumen del partido y en reels por
+    equipo o por jugador.
+  - **Básquetbol**: clavadas, triples, tapones, robos y canastas ganadoras. El marcador en
+    pantalla confirma cada canasta y sus puntos, y el cuarto y el reloj hacen que una canasta
+    ganadora valga mucho más que una del primer cuarto. También se detectan las reacciones del
+    público, de la banca y de la gente junto a la cancha. El recorte 9:16 de cada clip se
+    planifica en torno a su jugada: el balón y quien lo tiene, el receptor de un pase y el
+    tiro seguido hasta la canasta, con el aro y el tablero en la imagen. Se desplaza con la
+    jugada y nunca hace zoom. El balón lo encuentra el modelo de detección E-BARD
+    (acreditado en [Licencia](#license)).
+
+  Consulta [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Subtítulos incrustados editables**: sincronizados por palabra y con el estilo que
   quieras (color, tamaño, posición, palabras por línea, mayúsculas o desactivados). Corrige
   un error de transcripción línea por línea antes de exportar. Cuando hablan dos personas,
@@ -306,7 +317,7 @@ menos de lo que sugiere la lista de funciones, para que nada te tome por sorpres
 |---|---|
 | **IRL, just chatting, podcasts, vlogs, entrevistas** | Para lo que está ajustado y lo que se prueba en streams reales antes de cada versión |
 | **Gaming y reacciones** | Con **Gaming / Reaction** activado: la webcam en una mitad y el juego o el video al que se reacciona en la otra, comprobado sobre los propios fotogramas del video antes de procesar ([docs/GAMING.md](../../docs/GAMING.md)). El streamer es quien está hablando, nunca el rostro más grande. Sin esa opción, el encuadre puede seguir a un personaje dentro del juego. Solo personas en cámara, no VTubers |
-| **Partidos deportivos** | Con **Sports** activado: hecho para transmisiones con marcador en pantalla y narración, donde los goles son seguros. El material de clubes o de teléfono normalmente no tiene ninguna de las dos cosas: sus clips siguen el balón, y sus goles salen de los eventos del partido que pegues, como las etiquetas de gol de la app de un club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Partidos deportivos** | Con **Sports** activado: hecho para transmisiones con marcador en pantalla y narración, donde los goles y las canastas son seguros. El material de clubes o de teléfono normalmente no tiene ninguna de las dos cosas: sus clips siguen el balón, y sus goles salen de los eventos del partido que pegues, como las etiquetas de gol de la app de un club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Aquello a lo que se reacciona** | Los clips se siguen eligiendo por lo que se *dice*, así que un momento del video que se está viendo y que nadie comenta es invisible para la app |
 
 La selección de clips se basa en la transcripción y en las señales. Cuando lo gracioso es
@@ -989,9 +1000,8 @@ decisiones más difíciles está abajo, porque "por qué todavía no" suele ser 
    el diseño propio del stream y solo tiene que encontrar los momentos, sin seguimiento de
    rostros ni reencuadre. Solo Twitch, Kick y archivos de video locales, para cumplir la
    política de Play Store.
-2. **Más deportes**: el fútbol es el primero. Siguen los deportes más vistos en internet,
-   empezando por el básquetbol y el críquet (el menú Sport ya los muestra como próximamente),
-   cada uno como su propio módulo, igual que el fútbol (consulta
+2. **Más deportes**: el fútbol y el básquetbol ya están disponibles. Sigue el críquet (el
+   menú Sport ya lo muestra como próximamente), como su propio módulo, igual que los demás (consulta
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **Avisos por mensaje de texto cuando algo termina**: un mensaje cuando los clips de un
    video están listos, cuando se publican y cuando algo falla, para que un canal automático
@@ -1014,6 +1024,16 @@ decisiones más difíciles está abajo, porque "por qué todavía no" suele ser 
 
 **GNU AGPL-3.0-or-later**. Consulta [LICENSE](../../LICENSE), y [NOTICE](../../NOTICE) para saber
 qué significa eso en la práctica y qué incluye el instalador.
+
+La detección del balón, el aro y los jugadores en el básquetbol es el
+[modelo de detección E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) de Gabriele Giudici ([código](https://github.com/GabrieleGiudic/E-BARD),
+[conjunto de datos](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), usado sin
+modificaciones bajo [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD amplía BARD
+(Giudici, Maurino y Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Gracias por
+publicarlo de forma abierta. Todos los demás componentes incluidos y sus licencias están en
+[NOTICE](../../NOTICE).
 
 Tres partes tienen una licencia aparte, para que construir sobre Clips Kitty siga siendo fácil:
 

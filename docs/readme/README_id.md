@@ -247,11 +247,20 @@ melalui Ollama.
   vertikal YouTube, Twitch Dual Format, Streamlabs Dual Output, live Instagram atau TikTok
   yang diunduh). Mempertahankan tata letak 9:16 milik stream itu sendiri, melewati pelacakan wajah, dan
   tetap memilih momen dengan cara yang biasa. Lihat [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Olahraga (Sepak bola lebih dulu)**: gol, penyelamatan, kartu, dan peluang besar dari sebuah pertandingan, satu klip
-  per momen beserta proses terjadinya dan reaksinya. Gol dibaca dari kotak skor dan waktunya dipastikan
-  lewat sorakan penonton, dan crop 9:16 mengikuti bola. Pilih All goals, Best saves, Cards, dan
-  lainnya, lalu gabungkan momen-momen itu menjadi rekap pertandingan dan reel tim atau pemain. Lihat
-  [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Olahraga: Sepak bola dan Bola basket**: setiap momen besar dari sebuah pertandingan menjadi klipnya sendiri,
+  beserta proses terjadinya dan reaksinya.
+  - **Sepak bola**: gol, penyelamatan, kartu, dan peluang besar. Gol dibaca dari kotak skor dan waktunya
+    dipastikan lewat sorakan penonton, dan crop 9:16 mengikuti bola. Pilih All goals, Best saves, Cards, dan
+    lainnya, lalu gabungkan momen-momen itu menjadi rekap pertandingan dan reel tim atau pemain.
+  - **Bola basket**: dunk, tembakan tiga angka, blok, steal, dan tembakan penentu kemenangan. Grafis skor di layar
+    memastikan setiap tembakan yang masuk beserta poinnya, dan kuarter serta jam pertandingan membuat tembakan penentu kemenangan
+    jauh lebih berbobot daripada tembakan masuk di kuarter pertama. Reaksi penonton, bangku cadangan, dan pinggir lapangan
+    juga ditemukan. Crop 9:16 setiap klip direncanakan mengikuti permainannya: bola dan siapa pun yang memegangnya,
+    penerima umpan, dan tembakan yang diikuti sampai ke keranjang dengan ring dan papan pantul tetap di dalam gambar.
+    Crop bergeser mengikuti permainan dan tidak pernah zoom. Bola ditemukan oleh model deteksi E-BARD (kreditnya
+    ada di bagian [Lisensi](#license)).
+
+  Lihat [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Caption tertanam yang bisa diedit**: sinkron per kata, dan bergaya sesuai seleramu (warna, ukuran,
   posisi, jumlah kata per baris, huruf besar/kecil, atau dimatikan). Perbaiki kesalahan transkripsi baris demi baris
   sebelum ekspor. Saat dua orang berbicara, caption pembicara kedua bisa memakai
@@ -290,7 +299,7 @@ atau lebih sedikit daripada yang tersirat dari daftar fitur, supaya tidak ada ya
 |---|---|
 | **IRL, just chatting, podcast, vlog, wawancara** | Inilah fokus penyetelannya dan yang diuji pada stream sungguhan sebelum setiap rilis |
 | **Gaming dan reaksi** | Dengan **Gaming / Reaction** dinyalakan: webcam di satu bagian, game atau video yang direaksikan di bagian lain, diperiksa pada frame video itu sendiri sebelum diproses ([docs/GAMING.md](../../docs/GAMING.md)). Streamer adalah siapa pun yang sedang bicara, bukan wajah yang paling besar. Tanpa sakelar itu, framing bisa mengikuti karakter di dalam game. Hanya orang di depan kamera, bukan VTuber |
-| **Pertandingan olahraga** | Dengan **Sports** dinyalakan: dibuat untuk siaran dengan kotak skor dan komentator, di mana gol bisa dipastikan. Rekaman klub atau ponsel biasanya tidak punya keduanya: klipnya mengikuti bola, dan golnya berasal dari peristiwa pertandingan yang kamu tempel, seperti tag gol dari aplikasi klub ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Pertandingan olahraga** | Dengan **Sports** dinyalakan: dibuat untuk siaran dengan kotak skor dan komentator, di mana gol dan tembakan masuk basket bisa dipastikan. Rekaman klub atau ponsel biasanya tidak punya keduanya: klipnya mengikuti bola, dan golnya berasal dari peristiwa pertandingan yang kamu tempel, seperti tag gol dari aplikasi klub ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Apa yang sedang direaksikan** | Klip tetap dipilih dari apa yang *diucapkan*, jadi momen dalam video yang ditonton yang tidak dikomentari siapa pun tidak akan terlihat olehnya |
 
 Pemilihan klip digerakkan oleh transkrip dan sinyal. Saat hal lucunya *hanya visual*
@@ -960,9 +969,8 @@ yang lebih sulit ada di bawah, karena "kenapa belum" biasanya lebih berguna dari
    vertikal sudah dibingkai untuk layar ponsel, jadi aplikasi mempertahankan tata letak
    stream itu sendiri dan hanya perlu menemukan momennya, tanpa pelacakan wajah atau pembingkaian ulang.
    Hanya Twitch, Kick, dan file video lokal, agar sesuai dengan kebijakan Play Store.
-2. **Lebih banyak olahraga**: Sepak bola adalah yang pertama. Olahraga yang paling banyak ditonton secara online menyusul,
-   dimulai dari Bola basket dan Kriket (menu Sport sudah mencantumkannya sebagai segera hadir),
-   masing-masing sebagai modulnya sendiri seperti Sepak bola (lihat
+2. **Lebih banyak olahraga**: Sepak bola dan Bola basket sudah ada. Kriket berikutnya (menu Sport
+   sudah mencantumkannya sebagai segera hadir), sebagai modulnya sendiri seperti yang lain (lihat
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **Pesan teks saat proses selesai**: SMS saat klip sebuah video
    siap, saat klipnya sudah diposting, dan saat ada yang gagal, sehingga channel yang berjalan otomatis bisa
@@ -985,6 +993,15 @@ yang lebih sulit ada di bawah, karena "kenapa belum" biasanya lebih berguna dari
 
 **GNU AGPL-3.0-or-later**. Lihat [LICENSE](../../LICENSE), dan [NOTICE](../../NOTICE) untuk apa artinya
 dalam praktik dan apa saja yang dibundel oleh installer.
+
+Deteksi bola, ring, dan pemain untuk Bola basket memakai
+[model deteksi E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) karya Gabriele Giudici ([kode](https://github.com/GabrieleGiudic/E-BARD),
+[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), dipakai tanpa modifikasi
+di bawah [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD memperluas BARD
+(Giudici, Maurino dan Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Terima kasih telah
+memublikasikannya secara terbuka. Semua komponen lain yang dibundel beserta lisensinya ada di [NOTICE](../../NOTICE).
 
 Tiga bagian dilisensikan secara terpisah, agar membangun di atas Clips Kitty tetap mudah:
 

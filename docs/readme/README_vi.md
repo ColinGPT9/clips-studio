@@ -250,12 +250,22 @@ bằng phần cứng qua NVENC/AMF/QSV (tự phát hiện, có dự phòng CPU),
   YouTube, Twitch Dual Format, Streamlabs Dual Output, một buổi live Instagram hoặc TikTok đã
   tải về). Giữ nguyên bố cục 9:16 của buổi stream, bỏ qua theo dõi khuôn mặt, và vẫn chọn
   khoảnh khắc theo cách thông thường. Xem [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Sports (bắt đầu với bóng đá)**: bàn thắng, pha cứu thua, thẻ phạt và cơ hội lớn trong
-  một trận đấu, mỗi khoảnh khắc một clip kèm diễn biến dẫn đến và phản ứng sau đó. Bàn thắng
-  được đọc từ bảng tỉ số và xác định thời điểm nhờ tiếng khán giả, còn khung 9:16 đi theo quả
-  bóng. Chọn Tất cả bàn thắng, Pha cứu thua hay nhất, Thẻ phạt và hơn nữa, rồi ghép các khoảnh
-  khắc thành video tóm tắt trận đấu và video về đội hoặc cầu thủ. Xem
-  [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Sports: bóng đá và bóng rổ**: mỗi khoảnh khắc lớn của một trận đấu thành một clip riêng,
+  kèm diễn biến dẫn đến và phản ứng sau đó.
+  - **Bóng đá**: bàn thắng, pha cứu thua, thẻ phạt và cơ hội lớn. Bàn thắng được đọc từ bảng
+    tỉ số và xác định thời điểm nhờ tiếng khán giả, còn khung 9:16 đi theo quả bóng. Chọn Tất
+    cả bàn thắng, Pha cứu thua hay nhất, Thẻ phạt và hơn nữa, rồi ghép các khoảnh khắc thành
+    video tóm tắt trận đấu và video về đội hoặc cầu thủ.
+  - **Bóng rổ**: úp rổ, ném ba điểm, chắn bóng, cướp bóng và cú ném quyết định trận đấu. Bảng
+    tỉ số trên màn hình xác nhận từng pha ghi điểm và số điểm của nó, còn hiệp đấu và đồng hồ
+    khiến một cú ném quyết định được tính nặng hơn nhiều so với một pha ghi điểm ở hiệp một.
+    Phản ứng của khán giả, băng ghế dự bị và bên đường biên cũng được tìm ra. Khung 9:16 của
+    mỗi clip được lên kế hoạch quanh pha bóng: quả bóng và người đang giữ bóng, người nhận
+    đường chuyền, và cú ném được theo đến tận rổ với vành rổ và bảng rổ trong khung hình. Khung
+    lia theo pha bóng và không bao giờ phóng to. Quả bóng được tìm bằng mô hình nhận diện
+    E-BARD (ghi công trong phần [Giấy phép](#license)).
+
+  Xem [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Phụ đề gắn cứng chỉnh sửa được**: khớp theo từng từ, và định dạng theo ý bạn (màu, cỡ,
   vị trí, số từ mỗi dòng, chữ hoa/thường, hoặc tắt). Sửa lỗi chuyển giọng nói thành văn bản
   từng dòng trước khi xuất. Khi có hai người nói, phụ đề của người thứ hai có thể dùng màu
@@ -296,7 +306,7 @@ nghĩ" nhiều hơn hoặc ít hơn so với danh sách tính năng gợi ý, đ
 |---|---|
 | **IRL, just chatting, podcast, vlog, phỏng vấn** | Đây là thứ nó được tinh chỉnh cho và được thử trên các buổi stream thật trước mỗi bản phát hành |
 | **Game và video reaction** | Khi bật **Gaming / Reaction** (Game / Reaction): webcam ở một nửa, game hoặc video được reaction ở nửa kia, được kiểm tra trên chính khung hình của video trước khi xử lý ([docs/GAMING.md](../../docs/GAMING.md)). Streamer là người đang nói, không bao giờ là khuôn mặt to nhất. Nếu không bật, khung hình có thể đi theo một nhân vật trong game. Chỉ dành cho người thật trên camera, không hỗ trợ VTuber |
-| **Trận đấu thể thao** | Khi bật **Sports** (Thể thao): làm cho các buổi phát sóng có bảng tỉ số và bình luận, nơi bàn thắng được xác định chắc chắn. Cảnh quay của câu lạc bộ hoặc bằng điện thoại thường không có cả hai: clip của chúng đi theo quả bóng, còn bàn thắng lấy từ các sự kiện trận đấu bạn dán vào, ví dụ thẻ bàn thắng từ ứng dụng của câu lạc bộ ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Trận đấu thể thao** | Khi bật **Sports** (Thể thao): làm cho các buổi phát sóng có bảng tỉ số và bình luận, nơi bàn thắng và các pha ghi điểm bóng rổ được xác định chắc chắn. Cảnh quay của câu lạc bộ hoặc bằng điện thoại thường không có cả hai: clip của chúng đi theo quả bóng, còn bàn thắng lấy từ các sự kiện trận đấu bạn dán vào, ví dụ thẻ bàn thắng từ ứng dụng của câu lạc bộ ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Thứ mà video reaction đang phản ứng** | Clip vẫn được chọn dựa trên những gì được *nói ra*, nên một khoảnh khắc trong video được xem mà không ai bình luận thì nó không thấy được |
 
 Việc chọn clip dựa trên bản ghi lời thoại và tín hiệu. Khi điều buồn cười *chỉ nằm ở hình
@@ -955,9 +965,8 @@ Bản ngắn gọn có trong [ROADMAP.md](../../ROADMAP.md). Lý do đằng sau 
    dọc vốn đã được đóng khung cho màn hình điện thoại, nên ứng dụng giữ nguyên bố cục của buổi
    stream và chỉ cần tìm khoảnh khắc, không cần theo dõi khuôn mặt hay đóng khung lại. Chỉ hỗ
    trợ Twitch, Kick và tệp video trên máy, để tuân thủ chính sách của Play Store.
-2. **Thêm môn thể thao**: bóng đá là môn đầu tiên. Tiếp theo là những môn được xem nhiều nhất
-   trên mạng, trước tiên là bóng rổ và cricket (menu Sport đã liệt kê chúng là sắp ra mắt), mỗi
-   môn là một module riêng giống như bóng đá (xem
+2. **Thêm môn thể thao**: bóng đá và bóng rổ đã có. Tiếp theo là cricket (menu Sport đã liệt
+   kê nó là sắp ra mắt), là một module riêng giống như các môn khác (xem
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **Tin nhắn thông báo khi xong việc**: một tin nhắn khi clip của một video đã sẵn sàng, khi
    chúng đã được đăng, và khi có gì đó thất bại, để một kênh chạy tự động có thể hoạt động mà
@@ -980,6 +989,16 @@ Bản ngắn gọn có trong [ROADMAP.md](../../ROADMAP.md). Lý do đằng sau 
 
 **GNU AGPL-3.0-or-later**. Xem [LICENSE](../../LICENSE), và [NOTICE](../../NOTICE) để biết điều
 đó có ý nghĩa gì trong thực tế và bộ cài đặt đóng gói những gì.
+
+Phần nhận diện bóng, rổ và cầu thủ của bóng rổ là
+[mô hình nhận diện E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) của Gabriele Giudici ([mã nguồn](https://github.com/GabrieleGiudic/E-BARD),
+[bộ dữ liệu](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), được dùng
+nguyên bản, không chỉnh sửa, theo [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+E-BARD mở rộng BARD (Giudici, Maurino và Zuccolotto, *Computer Vision and Image Understanding*,
+2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Cảm ơn
+vì đã công bố mô hình một cách mở. Mọi thành phần đi kèm khác và giấy phép của chúng đều có
+trong [NOTICE](../../NOTICE).
 
 Ba phần được cấp phép riêng, để việc xây dựng dựa trên Clips Kitty luôn dễ dàng:
 

@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Soccer highlight clips from a full match, automatically | Clips Kitty</title>
+    <title>Soccer and basketball highlight clips from a full game, automatically | Clips Kitty</title>
     <meta
       name="description"
-      content="Turn a full soccer match into clips of every goal, save and card, framed on the ball, with a match recap and team or player reels. Free, open source, and it runs on your own Windows PC."
+      content="Turn a full soccer match or basketball game into clips of every goal, save, dunk and three, framed on the ball, with a match recap and team or player reels. Free, open source, and it runs on your own Windows PC."
     />
     <link rel="canonical" href="https://colingpt9.github.io/clips-studio/sports.html" />
     <link rel="icon" href="assets/mascot.png" />
@@ -14,10 +14,10 @@
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="Clips Kitty" />
     <meta property="og:url" content="https://colingpt9.github.io/clips-studio/sports.html" />
-    <meta property="og:title" content="Soccer highlight clips from a full match, made on your PC" />
+    <meta property="og:title" content="Soccer and basketball highlight clips from a full game, made on your PC" />
     <meta
       property="og:description"
-      content="Every goal, save and card as its own clip, found from the score box, the crowd and the commentary, and framed on the ball. Free and open source."
+      content="Every goal, save, dunk and three as its own clip, found from the scoreboard, the crowd and the commentary, and framed on the ball. Free and open source."
     />
     <meta property="og:image" content="https://colingpt9.github.io/clips-studio/assets/mascot.png" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -27,12 +27,12 @@
         "@graph": [
           {
             "@type": "WebPage",
-            "name": "Soccer highlight clips from a full match, made on your PC",
+            "name": "Soccer and basketball highlight clips from a full game, made on your PC",
             "url": "https://colingpt9.github.io/clips-studio/sports.html",
-            "description": "Turn a full soccer match into clips of every goal, save and card, framed on the ball, with a match recap and team or player reels. Free, open source, and it runs on your own Windows PC.",
+            "description": "Turn a full soccer match or basketball game into clips of every goal, save, dunk and three, framed on the ball, with a match recap and team or player reels. Free, open source, and it runs on your own Windows PC.",
             "inLanguage": "en",
             "datePublished": "2026-10-01",
-            "dateModified": "2026-10-01",
+            "dateModified": "2026-10-20",
             "about": {
               "@type": "SoftwareApplication",
               "name": "Clips Kitty",
@@ -55,7 +55,7 @@
               {
                 "@type": "ListItem",
                 "position": 2,
-                "name": "Soccer highlight clips",
+                "name": "Soccer and basketball highlight clips",
                 "item": "https://colingpt9.github.io/clips-studio/sports.html"
               }
             ]
@@ -100,7 +100,7 @@
                 "name": "Which sports are supported?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Soccer, also called football, is the first. Basketball and cricket are next on the roadmap."
+                  "text": "Soccer, also called football, and basketball. Cricket is next on the roadmap."
                 }
               },
               {
@@ -150,16 +150,17 @@
     <main>
       <div class="hero">
         <div class="wrap">
-          <span class="eyebrow">Sports · Soccer / Football</span>
-          <h1>Soccer highlight clips from a full match, made on your PC</h1>
+          <span class="eyebrow">Sports · Soccer / Football · Basketball</span>
+          <h1>Soccer and basketball highlight clips from a full game, made on your PC</h1>
           <p class="lead">
-            Tick Sports and a match's goals, saves, cards and big chances each become their own
-            clip, with the build-up and the reaction, framed to follow the ball.
+            Tick Sports and a soccer match's goals, saves, cards and big chances, or a basketball
+            game's dunks, threes, blocks and game winners, each become their own clip, with the
+            build-up and the reaction, framed to follow the ball.
           </p>
           <p class="lead">
             A match isn't a stream: nobody on screen is the streamer, and the moment that
-            matters is over in two seconds. Sports reads a video as a match, and soccer is the
-            first sport. Basketball and cricket are next.
+            matters is over in two seconds. Sports reads a video as a match: soccer and
+            basketball now, cricket next.
           </p>
         </div>
       </div>
@@ -302,6 +303,48 @@
         </div>
       </section>
 
+      <section id="basketball">
+        <div class="wrap">
+          <h2>Basketball</h2>
+          <p class="section-lead">
+            Choose <strong>🏀 Basketball</strong> in the Sports row and a game's dunks, threes,
+            blocks, steals and game winners each become a clip, with the possession before them
+            and the reaction after.
+          </p>
+          <ul class="ticks">
+            <li>
+              <strong>The score bug.</strong> Every basket and its points are confirmed on the
+              scoreboard, and the quarter and the clock make a game winner count for far more
+              than a first-quarter basket.
+            </li>
+            <li>
+              <strong>The reactions.</strong> The broadcast's cutaways to the crowd, the bench and
+              courtside are found too: in the play's clip, or clipped on their own.
+            </li>
+            <li>
+              <strong>A crop planned around the play.</strong> The ball and whoever has it, the
+              receiver of a pass, and the shot followed to the basket with the rim and the
+              backboard in the picture. It pans with the play and never zooms. Measured on 32
+              clips of an NBA Finals broadcast, the ball stayed in the 9:16 crop in 94% of the
+              frames checked, and the rim in 98% of them as the ball reached it.
+            </li>
+          </ul>
+          <p class="note">
+            Basketball's ball, hoop and player detection is the
+            <a href="https://huggingface.co/GabrieleGiudici/E-BARD-detection-models" target="_blank" rel="noopener noreferrer">E-BARD detection model</a>
+            (YOLOv8n) by Gabriele Giudici
+            (<a href="https://github.com/GabrieleGiudic/E-BARD" target="_blank" rel="noopener noreferrer">code</a>,
+            <a href="https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection" target="_blank" rel="noopener noreferrer">dataset</a>),
+            used unmodified under
+            <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>.
+            E-BARD extends BARD (Giudici, Maurino and Zuccolotto,
+            <em>Computer Vision and Image Understanding</em>, 2026,
+            <a href="https://doi.org/10.1016/j.cviu.2026.104713" target="_blank" rel="noopener noreferrer">doi:10.1016/j.cviu.2026.104713</a>).
+            Thank you for publishing it openly.
+          </p>
+        </div>
+      </section>
+
       <section>
         <div class="wrap">
           <h2>What it doesn't do yet</h2>
@@ -315,7 +358,7 @@
               own.
             </li>
             <li class="weak">
-              <strong>Other sports.</strong> Soccer is the first; basketball and cricket are next.
+              <strong>Other sports.</strong> Soccer and basketball are in; cricket is next.
             </li>
           </ul>
           <p class="note">
@@ -358,8 +401,7 @@
 
           <h3>Which sports are supported?</h3>
           <p>
-            Soccer, also called football, is the first. Basketball and cricket are next on the
-            roadmap.
+            Soccer, also called football, and basketball. Cricket is next on the roadmap.
           </p>
 
           <h3>Is it free?</h3>

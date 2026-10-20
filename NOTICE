@@ -85,7 +85,8 @@ significant ones, with their licences:
                                          fetched by scripts/
                                          fetch_basketball_model.py. Trained
                                          with ultralytics, so its AGPL-3.0
-                                         terms apply as to the YOLOv8 weights
+                                         terms apply as to the YOLOv8 weights;
+                                         full attribution below
   pyannote segmentation-3.0 MIT          who is talking when, for the second
                                          speaker's caption colour (analysis/
                                          voice_turns.py); (c) 2022 CNRS, the
@@ -124,6 +125,18 @@ significant ones, with their licences:
   Lucide                    ISC          a few icon shapes in the same preview;
                                          both notices are in
                                          third_party/icons/NOTICE.md
+
+The E-BARD detection model is by Gabriele Giudici and is licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0,
+https://creativecommons.org/licenses/by/4.0/). Clips Kitty uses its YOLOv8n
+weights unmodified:
+  model    https://huggingface.co/GabrieleGiudici/E-BARD-detection-models
+  code     https://github.com/GabrieleGiudic/E-BARD
+  dataset  https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection
+E-BARD extends BARD: G. Giudici, A. Maurino and P. Zuccolotto, "BARD: A
+Basketball Action Recognition Dataset for multi-label classification",
+Computer Vision and Image Understanding 267 (2026) 104713,
+https://doi.org/10.1016/j.cviu.2026.104713.
 
 FFmpeg is fetched at build time by scripts/fetch_ffmpeg.py rather than kept
 in this repository. The builds used are LGPL-2.1-or-later, or GPL-2.0-or-later

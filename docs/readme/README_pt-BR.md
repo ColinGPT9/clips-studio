@@ -253,11 +253,21 @@ GPU através do Ollama.
   vertical do YouTube, Twitch Dual Format, Streamlabs Dual Output, uma live do Instagram ou do
   TikTok baixada). Mantém o próprio layout 9:16 da transmissão, pula o rastreamento de rosto e
   continua escolhendo os momentos do jeito de sempre. Veja [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Esportes (futebol primeiro)**: gols, defesas, cartões e grandes chances de uma partida, um
-  clipe por momento com a construção da jogada e a reação. Os gols são lidos do placar na tela
-  e datados pela torcida, e o recorte 9:16 segue a bola. Escolha All goals (todos os gols), Best
-  saves (melhores defesas), Cards (cartões) e mais, e junte os momentos num resumo da partida e
-  em compilados de time ou de jogador. Veja [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Esportes: futebol e basquete**: cada grande momento de uma partida ou jogo como um clipe
+  próprio, com a construção da jogada e a reação.
+  - **Futebol**: gols, defesas, cartões e grandes chances. Os gols são lidos do placar na tela
+    e datados pela torcida, e o recorte 9:16 segue a bola. Escolha All goals (todos os gols),
+    Best saves (melhores defesas), Cards (cartões) e mais, e junte os momentos num resumo da
+    partida e em compilados de time ou de jogador.
+  - **Basquete**: enterradas, bolas de três, tocos, roubos de bola e cestas da vitória. O placar
+    na tela confirma cada cesta e seus pontos, e o quarto e o relógio fazem uma cesta da vitória
+    valer muito mais do que uma cesta do primeiro quarto. As reações da torcida, do banco e da
+    beira da quadra também são encontradas. O recorte 9:16 de cada clipe é planejado em torno
+    da jogada: a bola e quem está com ela, quem recebe um passe e o arremesso acompanhado até a
+    cesta, com o aro e a tabela na imagem. Ele acompanha a jogada com panorâmicas e nunca dá
+    zoom. A bola é encontrada pelo modelo de detecção E-BARD (creditado em [Licença](#license)).
+
+  Veja [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Legendas gravadas no vídeo e editáveis**: sincronizadas palavra por palavra e com o estilo que
   você quiser (cor, tamanho, posição, palavras por linha, maiúsculas/minúsculas, ou desligadas).
   Corrija um erro de transcrição linha por linha antes de exportar. Com duas pessoas falando, as
@@ -298,7 +308,7 @@ menos do que a lista de recursos sugere, para que nada seja uma surpresa:
 |---|---|
 | **IRL, just chatting, podcasts, vlogs, entrevistas** | É para isso que ele está ajustado e é isso que é testado em lives reais antes de cada lançamento |
 | **Games e reacts** | Com **Gaming / Reaction** ligado: a webcam numa metade, o jogo ou o vídeo reagido na outra, conferido nos próprios quadros do vídeo antes do processamento ([docs/GAMING.md](../../docs/GAMING.md)). O streamer é quem está falando, nunca o maior rosto. Sem essa opção, o enquadramento pode seguir um personagem dentro do jogo. Só pessoas na câmera, sem VTubers |
-| **Partidas esportivas** | Com **Sports** ligado: feito para transmissões com placar na tela e narração, em que os gols são certos. Gravações de clube ou de celular normalmente não têm nenhum dos dois: os clipes delas seguem a bola, e os gols vêm dos eventos da partida que você colar, como as marcações de gol do app de um clube ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Partidas esportivas** | Com **Sports** ligado: feito para transmissões com placar na tela e narração, em que os gols e as cestas são certos. Gravações de clube ou de celular normalmente não têm nenhum dos dois: os clipes delas seguem a bola, e os gols vêm dos eventos da partida que você colar, como as marcações de gol do app de um clube ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Aquilo a que um react está reagindo** | Os clipes continuam sendo escolhidos pelo que é *dito*, então um momento do vídeo assistido que ninguém comenta fica invisível para ele |
 
 A seleção de clipes é guiada pela transcrição e pelos sinais. Quando a graça é *só visual* e
@@ -956,9 +966,8 @@ difíceis está abaixo, porque "por que ainda não" costuma ser mais útil do qu
    vem enquadrada para a tela do celular, então o app mantém o próprio layout da transmissão e só
    precisa encontrar os momentos, sem rastreamento de rosto nem reenquadramento. Só Twitch, Kick e
    arquivos de vídeo locais, para cumprir as políticas da Play Store.
-2. **Mais esportes**: o futebol é o primeiro. Os esportes mais assistidos na internet vêm a seguir,
-   basquete e críquete primeiro (o menu Sport já os lista como em breve), cada um como seu próprio
-   módulo, do jeito que o futebol é (veja
+2. **Mais esportes**: futebol e basquete já estão aqui. O próximo é o críquete (o menu Sport já o
+   lista como em breve), como seu próprio módulo, do jeito que os outros são (veja
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **Avisos por SMS quando as coisas terminam**: uma mensagem de texto quando os clipes de um vídeo
    estiverem prontos, quando forem postados e quando algo falhar, para que um canal sem
@@ -981,6 +990,16 @@ difíceis está abaixo, porque "por que ainda não" costuma ser mais útil do qu
 
 **GNU AGPL-3.0-or-later**. Veja [LICENSE](../../LICENSE), e [NOTICE](../../NOTICE) para o que isso
 significa na prática e o que o instalador inclui.
+
+A detecção da bola, da cesta e dos jogadores no basquete é o
+[modelo de detecção E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) de Gabriele Giudici ([código](https://github.com/GabrieleGiudic/E-BARD),
+[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), usado sem modificações
+sob [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). O E-BARD estende o BARD
+(Giudici, Maurino e Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Obrigado por
+publicá-lo abertamente. Todos os outros componentes incluídos e suas licenças estão no
+[NOTICE](../../NOTICE).
 
 Três partes têm licença separada, para que construir em cima do Clips Kitty continue fácil:
 

@@ -248,11 +248,19 @@ solange das noch geht. Ein Glossar schützt Kanalnamen, Sponsoren und Insider-Wi
   YouTube-Livestream, Twitch Dual Format, Streamlabs Dual Output, ein heruntergeladener Instagram- oder
   TikTok-Livestream). Behält das eigene 9:16-Layout des Streams, überspringt die Gesichtsverfolgung und
   wählt die Momente trotzdem wie gewohnt aus. Siehe [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Sport (zuerst Fußball)**: Tore, Paraden, Karten und große Chancen aus einem Spiel, ein Clip
-  pro Moment mit Vorlauf und Reaktion. Tore werden aus der Spielstandanzeige gelesen und über das
-  Publikum zeitlich eingeordnet, und der 9:16-Zuschnitt folgt dem Ball. Wähle All goals, Best saves, Cards
-  und mehr, und lass die Momente zu einer Spielzusammenfassung sowie zu Team- oder Spieler-Reels zusammenfügen. Siehe
-  [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Sport: Fußball und Basketball**: jeder große Moment eines Spiels als eigener Clip,
+  mit Vorlauf und Reaktion.
+  - **Fußball**: Tore, Paraden, Karten und große Chancen. Tore werden aus der Spielstandanzeige gelesen und über das
+    Publikum zeitlich eingeordnet, und der 9:16-Zuschnitt folgt dem Ball. Wähle All goals, Best saves, Cards
+    und mehr, und lass die Momente zu einer Spielzusammenfassung sowie zu Team- oder Spieler-Reels zusammenfügen.
+  - **Basketball**: Dunks, Dreier, Blocks, Steals und Game Winner. Die Spielstandanzeige bestätigt jeden Korb und
+    seine Punkte, und durch Viertel und Spieluhr zählt ein Game Winner weit mehr als ein Korb im ersten Viertel.
+    Auch die Reaktionen von Publikum, Bank und Spielfeldrand werden gefunden. Der 9:16-Zuschnitt jedes Clips wird um
+    seinen Spielzug herum geplant: der Ball und wer ihn hat, der Empfänger eines Passes und der Wurf, verfolgt bis
+    zum Korb, mit Ring und Brett im Bild. Er schwenkt mit dem Spiel mit und zoomt nie. Den Ball findet das
+    E-BARD-Erkennungsmodell (genannt unter [Lizenz](#license)).
+
+  Siehe [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Bearbeitbare eingebrannte Untertitel**: wortgenau und gestaltet, wie du willst (Farbe, Größe,
   Position, Wörter pro Zeile, Groß-/Kleinschreibung oder aus). Korrigiere einen Transkriptionsfehler Zeile für
   Zeile vor dem Export. Wenn zwei Leute reden, können die Untertitel der zweiten Person eine andere Farbe
@@ -291,7 +299,7 @@ oder weniger mitdenkt, als die Funktionsliste vermuten lässt, damit dich nichts
 |---|---|
 | **IRL, Just Chatting, Podcasts, Vlogs, Interviews** | Darauf ist es abgestimmt, und das wird vor jedem Release an echten Streams getestet |
 | **Gaming und Reaktionen** | Mit eingeschaltetem **Gaming / Reaction**: die Webcam in der einen Hälfte, das Spiel oder das Video, auf das reagiert wird, in der anderen, vor der Verarbeitung an den eigenen Frames des Videos geprüft ([docs/GAMING.md](../../docs/GAMING.md)). Der Streamer ist, wer gerade spricht, nie das größte Gesicht. Ohne den Schalter kann der Bildausschnitt einer Figur im Spiel folgen. Nur Menschen vor der Kamera, keine VTuber |
-| **Sportspiele** | Mit eingeschaltetem **Sports**: gemacht für Übertragungen mit Spielstandanzeige und Kommentar, bei denen Tore eindeutig sind. Vereins- oder Handyaufnahmen haben meist beides nicht: Ihre Clips folgen dem Ball, und ihre Tore kommen aus den Spielereignissen, die du einfügst, etwa den Tor-Markierungen einer Vereins-App ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Sportspiele** | Mit eingeschaltetem **Sports**: gemacht für Übertragungen mit Spielstandanzeige und Kommentar, bei denen Tore und Körbe eindeutig sind. Vereins- oder Handyaufnahmen haben meist beides nicht: Ihre Clips folgen dem Ball, und ihre Tore kommen aus den Spielereignissen, die du einfügst, etwa den Tor-Markierungen einer Vereins-App ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Worauf eine Reaktion reagiert** | Clips werden weiterhin anhand dessen ausgewählt, was *gesagt* wird. Ein Moment im angeschauten Video, den niemand kommentiert, bleibt für es unsichtbar |
 
 Die Clip-Auswahl basiert auf Transkript und Signalen. Wenn das Lustige *nur im Bild* passiert
@@ -961,9 +969,8 @@ Entscheidungen steht unten, weil „warum noch nicht“ meistens nützlicher ist
    vertikaler Livestream ist schon für einen Handybildschirm gerahmt, also behält die App das eigene
    Layout des Streams und muss nur die Momente finden, ohne Gesichtsverfolgung oder Neuzuschnitt.
    Nur Twitch, Kick und lokale Videodateien, um die Richtlinien des Play Store einzuhalten.
-2. **Mehr Sportarten**: Fußball ist die erste. Als Nächstes kommen die online meistgeschauten Sportarten,
-   zuerst Basketball und Cricket (das Sport-Menü listet sie schon als „demnächst“),
-   jede als eigenes Modul, so wie Fußball (siehe
+2. **Mehr Sportarten**: Fußball und Basketball sind drin. Als Nächstes kommt Cricket (das Sport-Menü
+   listet es schon als „demnächst“), als eigenes Modul, so wie die anderen (siehe
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **SMS-Benachrichtigungen, wenn etwas fertig ist**: eine Textnachricht, wenn die Clips eines Videos
    fertig sind, wenn sie gepostet wurden und wenn etwas fehlschlägt, damit ein automatisch laufender Kanal
@@ -986,6 +993,15 @@ Entscheidungen steht unten, weil „warum noch nicht“ meistens nützlicher ist
 
 **GNU AGPL-3.0-or-later**. Siehe [LICENSE](../../LICENSE) und [NOTICE](../../NOTICE) dazu, was das
 in der Praxis bedeutet und was der Installer mitbringt.
+
+Die Ball-, Korb- und Spielererkennung im Basketball ist das
+[E-BARD-Erkennungsmodell](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) von Gabriele Giudici ([Code](https://github.com/GabrieleGiudic/E-BARD),
+[Datensatz](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), unverändert verwendet
+unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD erweitert BARD
+(Giudici, Maurino und Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Danke, dass es offen
+veröffentlicht wurde. Alle anderen mitgelieferten Komponenten und ihre Lizenzen stehen in [NOTICE](../../NOTICE).
 
 Drei Teile sind separat lizenziert, damit das Aufbauen auf Clips Kitty einfach bleibt:
 

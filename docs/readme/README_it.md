@@ -247,11 +247,19 @@ tramite Ollama.
   live verticale di YouTube, Twitch Dual Format, Streamlabs Dual Output, una live di Instagram o TikTok
   scaricata). Mantiene il layout 9:16 originale della live, salta il tracciamento del volto e
   sceglie comunque i momenti nel solito modo. Vedi [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Sport (a partire dal calcio)**: gol, parate, cartellini e grandi occasioni di una partita, una clip
-  per momento con l'azione che lo precede e la reazione. I gol vengono letti dal riquadro del punteggio e collocati nel tempo
-  grazie al boato del pubblico, e il ritaglio 9:16 segue il pallone. Scegli All goals, Best saves, Cards e
-  altro ancora, e fai unire i momenti in un riassunto della partita e in reel di squadra o di giocatore. Vedi
-  [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Sport: calcio e basket**: ogni grande momento di una partita in una clip a sé,
+  con l'azione che lo precede e la reazione.
+  - **Calcio**: gol, parate, cartellini e grandi occasioni. I gol vengono letti dal riquadro del punteggio e collocati nel tempo
+    grazie al boato del pubblico, e il ritaglio 9:16 segue il pallone. Scegli All goals, Best saves, Cards e
+    altro ancora, e fai unire i momenti in un riassunto della partita e in reel di squadra o di giocatore.
+  - **Basket**: schiacciate, triple, stoppate, palle rubate e canestri della vittoria. Il riquadro del punteggio conferma
+    ogni canestro e i suoi punti, e il quarto e il cronometro fanno valere un canestro della vittoria molto più di un canestro
+    del primo quarto. Vengono trovate anche le reazioni del pubblico, della panchina e quelle a bordo campo. Il ritaglio 9:16 di
+    ogni clip è pianificato attorno alla sua azione: il pallone e chi lo ha, chi riceve un passaggio e il tiro seguito fino
+    al canestro, con ferro e tabellone nell'inquadratura. Segue l'azione in panoramica e non zooma mai. Il pallone viene
+    trovato dal modello di rilevamento E-BARD (citato in [Licenza](#license)).
+
+  Vedi [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Sottotitoli impressi modificabili**: sincronizzati parola per parola e con lo stile che preferisci (colore, dimensione,
   posizione, parole per riga, maiuscole/minuscole, o disattivati). Correggi un errore di trascrizione riga per riga
   prima dell'esportazione. Con due persone che parlano, i sottotitoli del secondo parlante possono avere
@@ -290,7 +298,7 @@ o di meno di quanto lasci intendere l'elenco delle funzionalità, così niente t
 |---|---|
 | **IRL, just chatting, podcast, vlog, interviste** | È ciò per cui è ottimizzato e ciò che viene testato su live reali prima di ogni rilascio |
 | **Gaming e reaction** | Con **Gaming / Reaction** attivo: la webcam in una metà, il gioco o il video a cui si reagisce nell'altra, verificato sui fotogrammi del video stesso prima dell'elaborazione ([docs/GAMING.md](../../docs/GAMING.md)). Lo streamer è chi sta parlando, mai il volto più grande. Senza l'opzione, l'inquadratura può seguire un personaggio all'interno del gioco. Solo persone in camera, niente VTuber |
-| **Partite sportive** | Con **Sports** attivo: pensato per le trasmissioni con riquadro del punteggio e telecronaca, dove i gol sono certi. Le riprese di un club o fatte col telefono di solito non hanno né l'uno né l'altra: le loro clip seguono il pallone, e i gol arrivano dagli eventi della partita che incolli, come i tag dei gol dell'app di un club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Partite sportive** | Con **Sports** attivo: pensato per le trasmissioni con riquadro del punteggio e telecronaca, dove i gol e i canestri sono certi. Le riprese di un club o fatte col telefono di solito non hanno né l'uno né l'altra: le loro clip seguono il pallone, e i gol arrivano dagli eventi della partita che incolli, come i tag dei gol dell'app di un club ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Ciò a cui si sta reagendo** | Le clip vengono comunque scelte in base a ciò che viene *detto*, quindi un momento del video guardato che nessuno commenta gli resta invisibile |
 
 La selezione delle clip si basa su trascrizione e segnali. Quando la cosa divertente è *solo visiva*
@@ -960,9 +968,8 @@ più difficili è qui sotto, perché "perché non ancora" di solito è più util
    live verticale è già inquadrata per lo schermo di un telefono, quindi l'app mantiene il layout originale
    della live e deve solo trovare i momenti, senza tracciamento del volto né reinquadratura.
    Solo Twitch, Kick e file video locali, per rispettare le norme del Play Store.
-2. **Più sport**: il calcio è il primo. Seguiranno gli sport più seguiti online,
-   a partire da basket e cricket (il menu Sport li elenca già come in arrivo),
-   ognuno come modulo a sé, come il calcio (vedi
+2. **Più sport**: calcio e basket ci sono già. Il prossimo è il cricket (il menu Sport
+   lo elenca già come in arrivo), come modulo a sé, come gli altri (vedi
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **SMS quando le cose finiscono**: un messaggio quando le clip di un video sono
    pronte, quando sono state pubblicate e quando qualcosa va storto, così un canale in automatico può
@@ -985,6 +992,15 @@ più difficili è qui sotto, perché "perché non ancora" di solito è più util
 
 **GNU AGPL-3.0-or-later**. Vedi [LICENSE](../../LICENSE), e [NOTICE](../../NOTICE) per cosa significa
 in pratica e cosa include l'installer.
+
+Il rilevamento di pallone, canestro e giocatori nel basket è il
+[modello di rilevamento E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) di Gabriele Giudici ([codice](https://github.com/GabrieleGiudic/E-BARD),
+[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), usato senza modifiche
+secondo la licenza [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD estende BARD
+(Giudici, Maurino e Zuccolotto, *Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Grazie per averlo
+pubblicato apertamente. Ogni altro componente incluso e la sua licenza sono in [NOTICE](../../NOTICE).
 
 Tre parti hanno una licenza separata, così costruire su Clips Kitty resta semplice:
 

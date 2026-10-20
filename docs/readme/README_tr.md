@@ -256,12 +256,22 @@ donanımsal video kodlama (otomatik algılanır, CPU yedeğiyle) ve Ollama üzer
   indirilmiş bir Instagram ya da TikTok canlı yayını). Yayının kendi 9:16 düzenini korur,
   yüz takibini atlar ve anları yine her zamanki gibi seçer. Bkz.
   [docs/VERTICAL-LIVE.md](../../docs/VERTICAL-LIVE.md).
-- **Sports** (spor, önce futbol): bir maçtaki goller, kurtarışlar, kartlar ve büyük
-  fırsatlar; her an için hazırlığı ve tepkisiyle birlikte bir klip. Goller skor
-  kutusundan okunur, zamanları seyircinin tepkisinden belirlenir ve 9:16 kırpma topu
-  izler. All goals, Best saves, Cards ve diğerlerini seçin; anları bir maç özetinde ve
-  takım ya da oyuncu derlemelerinde birleştirin. Bkz.
-  [docs/SPORTS.md](../../docs/SPORTS.md).
+- **Sports** (spor: futbol ve basketbol): bir maçın her büyük anı, hazırlığı ve tepkisiyle
+  birlikte kendi klibi olarak.
+  - **Futbol**: goller, kurtarışlar, kartlar ve büyük fırsatlar. Goller skor kutusundan
+    okunur, zamanları seyircinin tepkisinden belirlenir ve 9:16 kırpma topu izler. All
+    goals, Best saves, Cards ve diğerlerini seçin; anları bir maç özetinde ve takım ya da
+    oyuncu derlemelerinde birleştirin.
+  - **Basketbol**: smaçlar, üçlükler, bloklar, top çalmalar ve galibiyet basketleri.
+    Skor kutusu her basketi ve kaç sayı olduğunu doğrular; çeyrek ve süre sayesinde bir
+    galibiyet basketi, ilk çeyrekteki bir basketten çok daha fazla değer taşır.
+    Seyircinin, yedek kulübesinin ve saha kenarının tepkileri de bulunur. Her klibin 9:16
+    kırpması kendi oyununa göre planlanır: top ve topu tutan oyuncu, pası alan oyuncu ve
+    çember ile panya kadrajda kalacak şekilde potaya kadar izlenen şut. Kırpma oyunla
+    birlikte kayar ve asla yakınlaştırmaz. Top, E-BARD algılama modeliyle bulunur
+    ([Lisans](#license) bölümünde atfı yapılmıştır).
+
+  Bkz. [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Düzenlenebilir gömülü altyazılar**: kelimelerle senkronize ve istediğiniz gibi
   biçimlendirilir (renk, boyut, konum, satır başına kelime, büyük/küçük harf ya da
   kapalı). Dışa aktarmadan önce transkripsiyon hatalarını satır satır düzeltin. İki kişi
@@ -310,7 +320,7 @@ olmasın diye:
 |---|---|
 | **IRL, just chatting, podcast'ler, vlog'lar, röportajlar** | Asıl ayarlandığı içerik budur; sürümden önce gerçek yayınlarda test edilen de budur |
 | **Oyun ve tepki videoları** | **Gaming / Reaction** açıkken: bir yarıda webcam, diğer yarıda oyun ya da tepki verilen video; işlemeden önce videonun kendi kareleri üzerinde kontrol edilir ([docs/GAMING.md](../../docs/GAMING.md)). Yayıncı en büyük yüz değil, konuşan kişidir. Bu anahtar kapalıyken çerçeveleme oyunun içindeki bir karakteri izleyebilir. Yalnızca kamerada görünen gerçek kişiler; VTuber desteklenmez |
-| **Spor maçları** | **Sports** açıkken: skor kutusu ve spiker anlatımı olan, gollerin kesin olduğu yayınlar için yapıldı. Kulüp ya da telefon görüntülerinde genellikle ikisi de yoktur: bu görüntülerin klipleri topu izler, golleri ise yapıştırdığınız maç olaylarından gelir; örneğin bir kulüp uygulamasının gol etiketleri ([docs/SPORTS.md](../../docs/SPORTS.md)) |
+| **Spor maçları** | **Sports** açıkken: skor kutusu ve spiker anlatımı olan, gollerin ve basketlerin kesin olduğu yayınlar için yapıldı. Kulüp ya da telefon görüntülerinde genellikle ikisi de yoktur: bu görüntülerin klipleri topu izler, golleri ise yapıştırdığınız maç olaylarından gelir; örneğin bir kulüp uygulamasının gol etiketleri ([docs/SPORTS.md](../../docs/SPORTS.md)) |
 | **Tepki videosunun neye tepki verdiği** | Klipler yine *söylenenlere* göre seçilir; bu yüzden izlenen videoda kimsenin yorum yapmadığı bir an uygulama için görünmezdir |
 
 Klip seçimi transkripte ve sinyallere dayanır. Komik olan şey *yalnızca görselse* ve kimse
@@ -999,9 +1009,8 @@ aşağıda, çünkü "neden henüz değil" genellikle "henüz değil"den daha fa
    yayının kendi düzenini korur ve yalnızca anları bulması gerekir; yüz takibi ya da yeniden
    çerçeveleme gerekmez. Play Store politikasına uymak için yalnızca Twitch, Kick ve yerel
    video dosyaları.
-2. **Daha fazla spor**: futbol ilki. Sırada internette en çok izlenen sporlar var; önce
-   basketbol ve kriket (Sport menüsü bunları zaten "yakında" olarak listeliyor), her biri
-   futbol gibi kendi modülü olarak (bkz.
+2. **Daha fazla spor**: futbol ve basketbol eklendi. Sırada kriket var (Sport menüsü onu
+   zaten "yakında" olarak listeliyor), diğerleri gibi kendi modülü olarak (bkz.
    [docs/SPORTS.md](../../docs/SPORTS.md#adding-a-sport)).
 3. **İşler bittiğinde SMS bildirimi**: bir videonun klipleri hazır olduğunda, paylaşıldığında
    ve bir şey başarısız olduğunda bir kısa mesaj; böylece otomatik işleyen bir kanal, kimse
@@ -1025,6 +1034,17 @@ aşağıda, çünkü "neden henüz değil" genellikle "henüz değil"den daha fa
 
 **GNU AGPL-3.0-or-later**. Bkz. [LICENSE](../../LICENSE); bunun pratikte ne anlama
 geldiği ve kurulum programının neleri paketlediği için de [NOTICE](../../NOTICE).
+
+Basketbolda top, pota ve oyuncu algılama, Gabriele Giudici'nin
+[E-BARD algılama modeli](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+(YOLOv8n) ile yapılır ([kod](https://github.com/GabrieleGiudic/E-BARD),
+[veri kümesi](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)); model
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) kapsamında değiştirilmeden
+kullanılır. E-BARD, BARD'ı genişletir (Giudici, Maurino ve Zuccolotto,
+*Computer Vision and Image Understanding*, 2026,
+[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Herkese açık
+olarak yayımlandığı için teşekkürler. Paketlenen diğer her bileşen ve lisansı [NOTICE](../../NOTICE)
+içinde yer alır.
 
 Clips Kitty üzerine inşa etmek kolay kalsın diye üç parça ayrı lisanslanmıştır:
 

@@ -39,6 +39,7 @@ models:
   - google/gemma-7b-it
   - Systran/faster-whisper-small
   - dropbox-dash/faster-whisper-large-v3-turbo
+  - GabrieleGiudici/E-BARD-detection-models
 ---
 
 # Clips Kitty

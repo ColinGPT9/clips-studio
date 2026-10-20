@@ -323,7 +323,9 @@ watched channels and publishing, and the same Whisper and AI model. What it adds
 is in `sports/basketball/` and its entry in `config/sports.yaml`. The design takes
 its ideas from public descriptions of WSC Sports (the NBA's automated highlights,
 which use crowd reaction to find big moments), BARD's multi-label basketball
-actions, basketball_event_tracking's split of ball, players and possession, and
+actions (Giudici, Maurino and Zuccolotto, *Computer Vision and Image
+Understanding*, 2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)),
+basketball_event_tracking's split of ball, players and possession, and
 LumenSport's separate finding, scoring and editing. Nothing is copied from them,
 and no NBA tracking data is assumed: it works on any game, from the NBA to a rec
 league.
@@ -567,8 +569,11 @@ wipe; without the detector, a dark frame) neither starts a cutaway nor ends one.
 The 9:16 crop is planned for the whole clip before a frame is rendered
 (`sports/basketball/crop/`), around the play:
 
-- **The ball first.** A basketball-trained detector (E-BARD's YOLOv8n: the ball,
-  the hoop, players and referees; see [NOTICE](../NOTICE)) finds the ball. Its
+- **The ball first.** A basketball-trained detector (the
+  [E-BARD detection model](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
+  by Gabriele Giudici, a YOLOv8n: the ball, the hoop, players and referees; used
+  unmodified under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), see
+  [NOTICE](../NOTICE)) finds the ball. Its
   detections are linked into short tracks across frames, with the camera's own
   movement taken out, and one plausible path is kept for each camera shot. A gap
   is bridged only as far as a ball goes (0.6 s in flight, 1.5 s carried, 0.4 s

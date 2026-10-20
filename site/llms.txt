@@ -44,8 +44,9 @@ themselves.
 - **Reframes** to 9:16 with YOLO pose tracking and active-speaker detection, so
   the person talking stays in shot and it cuts between speakers rather than
   zooming out to hold both.
-- **Frames matches and game streams**: a soccer match follows the ball (the
-  Sports toggle); Gaming / Reaction puts the webcam and the game together in one
+- **Frames matches and game streams**: a soccer match or a basketball game
+  follows the ball, a basketball shot with the rim in the picture (the Sports
+  toggle); Gaming / Reaction puts the webcam and the game together in one
   of eleven layouts; a stream that was 9:16 all along keeps its own layout
   (Vertical Live).
 - **Watches channels**: new videos on a YouTube, Twitch or Kick channel are
@@ -65,9 +66,10 @@ themselves.
 - **Good at:** IRL, just chatting, podcasts, vlogs, interviews. That is what it
   is tuned for and tested on.
 - **Also does:** game streams and reaction videos (Gaming / Reaction), and
-  soccer matches (Sports), with goals read from the score box, the crowd and the
-  commentary.
-- **Not yet:** basketball and cricket, next on the roadmap. VTubers are not
+  soccer matches and basketball games (Sports), with goals and baskets read from
+  the scoreboard, the crowd and the commentary. Basketball's ball detection is
+  the E-BARD detection model by Gabriele Giudici (CC BY 4.0).
+- **Not yet:** cricket, next on the roadmap. VTubers are not
   supported: the framing needs a real person on camera.
 
 ## Requirements
@@ -123,7 +125,7 @@ first release that includes it; until that is out, run Clips Kitty from source.
 - [Kick clip generator: Kick VODs into TikTok clips, Shorts and Reels](https://colingpt9.github.io/clips-studio/kick.html)
 - [Clipping YouTube](https://colingpt9.github.io/clips-studio/youtube.html)
 - [Game stream clips](https://colingpt9.github.io/clips-studio/gaming.html)
-- [Soccer highlight clips](https://colingpt9.github.io/clips-studio/sports.html)
+- [Soccer and basketball highlight clips](https://colingpt9.github.io/clips-studio/sports.html)
 - [Local vs cloud clipping](https://colingpt9.github.io/clips-studio/local-vs-cloud.html)
 - [Opus Clip alternative](https://colingpt9.github.io/clips-studio/opus-clip-alternative.html)
 - [Descript alternative](https://colingpt9.github.io/clips-studio/descript-alternative.html)
