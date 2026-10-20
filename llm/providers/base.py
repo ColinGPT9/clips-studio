@@ -16,7 +16,7 @@ class LLMError(Exception):
         "invalid_key",        # the provider refused the key
         "no_credits",         # out of credit, or over a spending limit
         "rate_limited",       # too many requests for now
-        "model_unavailable",  # the model is not offered to this key
+        "model_unavailable",  # the model is not offered to this key, or not downloaded (Ollama)
         "provider_down",      # 5xx, overloaded, timed out
         "network",            # could not reach the provider at all
         "rejected",           # the provider refused this particular request

@@ -202,6 +202,52 @@ def test_an_installed_model_is_left_alone(monkeypatch):
     assert _with_usable_model(cfg)["backend"] == "ollama/gemma3:12b"
 
 
+@pytest.mark.parametrize(
+    "configured, installed, expected",
+    [
+        ("gemma3", ["gemma3:12b"], "gemma3:12b"),
+        ("ollama/gemma3", ["gemma3:12b"], "gemma3:12b"),
+        ("gemma3", ["gemma3:12b", "gemma3:latest"], "gemma3:latest"),  # what Ollama loads for "gemma3"
+        ("gemma3:12b", ["gemma3:4b", "gemma3:12b"], "gemma3:12b"),
+        ("ollama/gemma:7b", ["qwen3:8b", "gemma:7b"], "gemma:7b"),
+    ],
+)
+def test_the_model_resolved_is_always_one_ollama_listed(monkeypatch, configured, installed, expected):
+    """#149: a family in settings ("gemma3") came back as itself, the bare
+    family. Ollama reads that as gemma3:latest, which wasn't pulled, and the
+    job ended in a 404 after the download and the transcription."""
+    from llm.manager import resolve_usable_model
+
+    _ollama_with(monkeypatch, installed)
+    assert resolve_usable_model("http://localhost:11434", configured) == expected
+
+
+@pytest.mark.parametrize(
+    "installed, expected",
+    [
+        (["qwen3:8b", "gemma3:12b", "gemma3:4b"], "gemma3:4b"),  # first in RECOMMENDATIONS
+        (["qwen3:8b", "mistral-nemo:12b"], "qwen3:8b"),          # none of them: Ollama's first
+        ([], None),
+    ],
+)
+def test_a_missing_choice_still_falls_back_as_before(monkeypatch, installed, expected):
+    from llm.manager import resolve_usable_model
+
+    _ollama_with(monkeypatch, installed)
+    assert resolve_usable_model("http://localhost:11434", "gemma:7b") == expected
+
+
+def test_a_family_in_settings_loads_the_model_ollama_has(monkeypatch):
+    pytest.importorskip("numpy", reason="core.pipeline imports numpy, which CI does not install")
+    from core.pipeline import _with_usable_model
+
+    monkeypatch.setattr(
+        "llm.manager.installed_models",
+        lambda host: [{"name": "gemma3:12b", "size_gb": 8.1}],
+    )
+    assert _with_usable_model({"backend": "ollama/gemma3"})["backend"] == "ollama/gemma3:12b"
+
+
 def test_absent_whisper_weights_warn_without_blocking(monkeypatch):
     """The silent failure this check exists for. faster-whisper can still
     fetch the weights and produce a correct transcript, so refusing to run

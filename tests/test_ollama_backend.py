@@ -7,11 +7,15 @@ These tests pin both halves: the extra fields reach reasoning models, and
 nothing changes for the models that already work.
 """
 
+import re
+from pathlib import Path
+
 import pytest
 import requests
 
-from llm.manager import RECOMMENDATIONS
+from llm.manager import RECOMMENDATIONS, missing_model
 from llm.ollama_backend import OllamaBackend
+from llm.providers.base import LLMError
 
 
 class _Response:
@@ -200,12 +204,41 @@ def test_another_server_error_every_time_still_ends_the_job(monkeypatch):
     assert len(sent) == 3
 
 
-def test_any_other_error_ends_the_job_at_once(monkeypatch):
-    """A model Ollama doesn't have (404) won't appear on a second try."""
-    sent = _answers(monkeypatch, _Failed(404, "model 'gemma9' not found"))
-    with pytest.raises(requests.HTTPError):
+def test_a_model_ollama_doesnt_have_ends_the_job_in_plain_words(monkeypatch, capsys):
+    """#149: the queue said "404 Client Error: Not Found for url:
+    http://127.0.0.1:11435/api/generate", after the download and the
+    transcription. A model that was never downloaded won't appear on a second
+    try, so it is asked once, and the job says what to do about it."""
+    sent = _answers(monkeypatch, _Failed(404, "model 'gemma9' not found, try pulling it first"))
+    with pytest.raises(LLMError) as e:
         OllamaBackend("gemma9").generate("p")
     assert len(sent) == 1
+    assert e.value.kind == "model_unavailable"
+    assert e.value.message == ("The AI model gemma9 isn't downloaded. "
+                               "Download it on the Models page, or choose a model you have.")
+    assert "model 'gemma9' not found" in capsys.readouterr().out  # the log keeps Ollama's own words
+
+
+def test_any_other_refusal_ends_the_job_at_once_with_what_ollama_said(monkeypatch):
+    """Not "400 Client Error" and an address: what Ollama said was wrong."""
+    sent = _answers(monkeypatch, _Failed(400, "invalid options: num_ctx"))
+    with pytest.raises(LLMError) as e:
+        OllamaBackend("gemma3:4b").generate("p", json_mode=True)
+    assert len(sent) == 1
+    assert e.value.kind == "rejected"
+    assert e.value.message == "Ollama refused the request (400): invalid options: num_ctx"
+
+
+def test_the_queue_row_offers_the_models_page_for_a_missing_model():
+    """The queue row reads the job's error to offer Open Models, and the cloud
+    suggestion beside it (QueueItem.tsx). Reworded on one side only, both
+    would quietly disappear."""
+    row = (Path(__file__).resolve().parent.parent / "ui" / "src" / "renderer" / "src"
+           / "components" / "queue" / "QueueItem.tsx").read_text(encoding="utf-8")
+    pattern = re.search(r"^const MODEL_NOT_DOWNLOADED = /(.+)/i$", row, re.M).group(1)
+    for model in ("gemma9", ""):
+        assert re.search(pattern, missing_model(model).message, re.I)
+    assert not re.search(pattern, "404 Client Error: Not Found for url: http://127.0.0.1:11435/api/generate", re.I)
 
 
 def test_a_look_at_frames_ollama_cuts_off_is_asked_again_too(monkeypatch):

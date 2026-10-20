@@ -192,6 +192,7 @@ class Worker(threading.Thread):
                     # microseconds against an hour of video work.
                     cfg = copy.deepcopy(self.config)
                     self._check_plan(db, cfg, payload)
+                    self._check_local_model(cfg["llm"], payload)
                     if payload.get("podcast"):
                         # Multi-cam podcast: letterbox every clip, no tracking.
                         cfg["clips"]["podcast"] = True
@@ -306,8 +307,11 @@ class Worker(threading.Thread):
                 # A cloud provider's error is already written without the key;
                 # this is the net for anything else that might echo one.
                 from core.scrub import scrub_secrets
+                from llm.providers.base import LLMError
 
-                message = scrub_secrets(str(e))
+                # An AI failure is already in words a creator can act on, so
+                # its message is stored as it is, as /agent/chat shows it.
+                message = scrub_secrets(e.message if isinstance(e, LLMError) else str(e))
                 db.finish_job(job["id"], "failed", message[:2000])
                 self._announce(db, job, "failed", message[:500])
             finally:
@@ -673,6 +677,37 @@ class Worker(threading.Thread):
             return
         cfg["llm"]["plan_automation"] = db.get_flag(signin.AUTOMATION_FLAG + plan.id) == "1"
         plan.check_job(cfg["llm"])
+
+    @staticmethod
+    def _check_local_model(llm_cfg: dict, payload: dict) -> None:
+        """A job on a local model is checked before anything is downloaded:
+        if Ollama answers and has no model at all to run it on, the job ends
+        now, saying so, rather than after the download and the transcription
+        with Ollama's bare 404 (#149). Raises LLMError in plain words then.
+
+        Nothing else stops a job here. Ollama not answering (or still
+        starting) is reported where it always was, and a configured model
+        that's missing while another is installed is swapped for that one by
+        core.pipeline._with_usable_model, as it always was."""
+        from llm.manager import installed_models, missing_model, usable_model_in
+        from llm.spec import is_local
+
+        if payload.get("pipeline") and not payload.get("longform"):
+            # A plugin pipeline finds the Shorts' moments itself. The AI only
+            # writes their titles, and those fall back to plain ones without
+            # it: such a job finishes with no model at all.
+            return
+        spec = llm_cfg.get("backend") or ""
+        if not is_local(spec):
+            return
+        try:
+            installed = [m["name"] for m in installed_models(
+                llm_cfg.get("ollama_host", "http://localhost:11434"), timeout=5)]
+        except Exception:
+            return
+        configured = spec.split("/")[-1]
+        if usable_model_in(configured, installed) is None:
+            raise missing_model(configured)
 
     def _span(self, job_id: int) -> tuple[float, float] | None:
         with self._progress_lock:

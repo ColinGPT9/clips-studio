@@ -525,6 +525,9 @@ def test_the_worker_copies_steps_only_when_given(tmp_path, monkeypatch):
     config["paths"]["data_dir"] = str(tmp_path)
     worker = jobs.Worker(config)
     worker.prefetch = types.SimpleNamespace(wait_for=lambda _vid: None, maybe_start=lambda _db: None)
+    # These jobs are about their steps, whatever Ollama this PC has (the check
+    # of its models is tests/test_job_model_check.py).
+    monkeypatch.setattr(jobs.Worker, "_check_local_model", staticmethod(lambda llm_cfg, payload: None))
     seen: list = []
 
     def process_video(url, cfg, db, force=False):

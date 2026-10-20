@@ -14,6 +14,10 @@ import OpenRouterPrompt from '../OpenRouterPrompt'
  *  alternative worth suggesting; a download or render failure is not this. */
 const LOCAL_AI_FAILURE = /\/api\/(generate|chat)|:1143[45]\b|ollama/i
 
+/** The local model the job needs was never downloaded (llm/manager.py
+ *  missing_model). A local AI failure too, but one the Models page fixes. */
+const MODEL_NOT_DOWNLOADED = /isn.t downloaded/i
+
 /** Vertical Live refused the source as not 9:16 (core/modes.py MISMATCH). */
 const NOT_VERTICAL = /is not a vertical 9:16 source/
 
@@ -81,6 +85,9 @@ export default function QueueItem({
   const waiting = job.status === 'queued'
   const eta = running && live ? etaSeconds(live, now) : null
   const took = ranFor(job)
+  const notDownloaded = !!job.error && MODEL_NOT_DOWNLOADED.test(job.error)
+  // A model never downloaded keeps the cloud suggestion beside the Models page.
+  const localFailure = notDownloaded || (!!job.error && LOCAL_AI_FAILURE.test(job.error))
 
   return (
     <div className={`rounded-lg border px-3 py-2.5 ${running ? 'border-accent/40 bg-accent/5' : 'border-raised/60'}`}>
@@ -148,7 +155,16 @@ export default function QueueItem({
               {t('Use standard processing')}
             </button>
           )}
-          {job.error && localAI && LOCAL_AI_FAILURE.test(job.error) && (
+          {notDownloaded && (
+            <button
+              className="btn-ghost !py-0.5 !px-2 text-xs mt-1.5"
+              onClick={() => window.dispatchEvent(new Event('open-models'))}
+              title={t('Download a model, or choose one you have')}
+            >
+              {t('Open Models')}
+            </button>
+          )}
+          {localAI && localFailure && (
             <OpenRouterPrompt
               className="mt-1.5"
               title={t('Having trouble running AI locally?')}

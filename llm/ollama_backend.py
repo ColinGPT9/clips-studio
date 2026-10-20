@@ -6,7 +6,8 @@ import time
 import requests
 
 from llm.base import LLMBackend
-from llm.manager import RECOMMENDATIONS
+from llm.manager import RECOMMENDATIONS, missing_model
+from llm.providers.base import LLMError
 
 # The models setup installs that cannot think, run against real streams with the
 # request below exactly as it is. Handling reasoning models must not change what
@@ -105,9 +106,20 @@ class OllamaBackend(LLMBackend):
         server error is asked again, _TRIES times in all and without `format`
         from the second (the prompts ask for JSON themselves). An answer Ollama
         still cuts off for repeating itself is "": one the caller can't read.
-        Any other error ends the job, as it always has."""
+        Any other error ends the job, as it always has, in words: a model
+        Ollama doesn't have says so and where to get it (#149)."""
         for attempt in range(1, _TRIES + 1):
             response = requests.post(f"{self.host}/api/generate", json=payload, timeout=self.timeout)
+            if 400 <= response.status_code < 500:
+                # Asking again won't change a refusal. raise_for_status() kept
+                # only "404 Client Error ... /api/generate", which is what the
+                # queue showed for a model that was never downloaded, and lost
+                # what Ollama said; the log keeps that, the job the plain words.
+                said = _error(response)
+                print(f"      (Ollama answered {response.status_code}: {said})")
+                if response.status_code == 404:
+                    raise missing_model(self.model)
+                raise LLMError("rejected", f"Ollama refused the request ({response.status_code}): {said}")
             if response.status_code < 500:
                 break
             said = _error(response)

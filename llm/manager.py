@@ -9,6 +9,8 @@ from pathlib import Path
 
 import requests
 
+from llm.providers.base import LLMError
+
 # Rough VRAM guide for Ollama default (4-bit) quantizations.
 #
 # ONE axis: what the machine can hold. Every row answers "how much VRAM do you
@@ -133,9 +135,9 @@ def recommend_for(vram_gb: float | None) -> dict:
     }
 
 
-def installed_models(host: str) -> list[dict]:
+def installed_models(host: str, timeout: float = 15) -> list[dict]:
     """Models currently pulled in Ollama: [{"name", "size_gb"}]."""
-    response = requests.get(f"{host.rstrip('/')}/api/tags", timeout=15)
+    response = requests.get(f"{host.rstrip('/')}/api/tags", timeout=timeout)
     response.raise_for_status()
     return [
         {"name": m["name"], "size_gb": m.get("size", 0) / 1e9}
@@ -149,10 +151,37 @@ def model_is_installed(tag: str, installed: list[str]) -> bool:
     Ollama reports "gemma:7b"; a config may say "gemma:7b", "ollama/gemma:7b",
     or just the family. All three have to match the same model.
     """
+    return installed_as(tag, installed) is not None
+
+
+def installed_as(tag: str, installed: list[str]) -> str | None:
+    """The name Ollama lists `tag` under, matched as model_is_installed
+    matches it, or None.
+
+    A family is not a model Ollama can load: it reads a bare "gemma3" as
+    gemma3:latest, and answers 404 when only gemma3:12b was pulled. So the
+    name handed back is always one Ollama listed: the exact one, then the
+    family's ":latest", then the first of the family in Ollama's own order.
+    """
     wanted = tag.split("/")[-1]
-    return any(
-        m == wanted or m.startswith(f"{wanted}:") or m.split(":")[0] == wanted
-        for m in installed
+    if wanted in installed:
+        return wanted
+    if f"{wanted}:latest" in installed:
+        return f"{wanted}:latest"
+    return next(
+        (m for m in installed if m.startswith(f"{wanted}:") or m.split(":")[0] == wanted),
+        None,
+    )
+
+
+def missing_model(model: str) -> LLMError:
+    """The error for a local model Ollama doesn't have, in words a creator
+    can act on. The queue row offers the Models page on "isn't downloaded"
+    (QueueItem.tsx), so the two are changed together."""
+    named = f"The AI model {model}" if model else "The AI model"
+    return LLMError(
+        "model_unavailable",
+        f"{named} isn't downloaded. Download it on the Models page, or choose a model you have.",
     )
 
 
@@ -174,18 +203,26 @@ def resolve_usable_model(host: str, configured: str) -> str | None:
         installed = [m["name"] for m in installed_models(host)]
     except Exception:
         return None  # Ollama unreachable; the runtime check reports that
+    return usable_model_in(configured, installed)
 
+
+def usable_model_in(configured: str, installed: list[str]) -> str | None:
+    """resolve_usable_model's answer from a list Ollama has already given:
+    None only when the list is empty."""
     if not installed:
         return None
-    if configured and model_is_installed(configured, installed):
-        return configured.split("/")[-1]
+    if configured:
+        name = installed_as(configured, installed)
+        if name:
+            return name  # what Ollama listed, never the bare family (#149)
 
     # Nothing selected that can be used, so pick for them rather than stopping.
     # Preferring the recommendation order means the choice matches what the
     # Models page would have suggested, instead of whatever Ollama lists first.
     for _hardware, tag, _note in RECOMMENDATIONS:
-        if model_is_installed(tag, installed):
-            return tag
+        name = installed_as(tag, installed)
+        if name:
+            return name
     return installed[0]
 
 
