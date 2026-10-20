@@ -13,7 +13,7 @@
 // payload is too big for a release asset, so it lives on Hugging Face. See the
 // publish block in electron-builder.yml.
 
-import { app, ipcMain, net, shell, type BrowserWindow } from 'electron'
+import { app, autoUpdater as nativeUpdater, ipcMain, net, shell, type BrowserWindow } from 'electron'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
@@ -59,6 +59,14 @@ let installing = false
 export function isInstallingUpdate(): boolean {
   return installing
 }
+
+// Set only when the installer has really started: electron-updater announces
+// it this way just before it quits for the installer. Setting it on the click
+// instead left it set when the install failed and the app stayed open, and
+// every later quit then skipped the model download question.
+nativeUpdater.on('before-quit-for-update', () => {
+  installing = true
+})
 
 function send(channel: string, payload: unknown): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
@@ -307,7 +315,6 @@ export function setupUpdater(win: BrowserWindow): void {
   // Quits and runs the installer. Anything mid-render is lost, so the
   // renderer asks first.
   ipcMain.handle('update:install', () => {
-    installing = true
     autoUpdater.quitAndInstall(false, true)
     return { ok: true }
   })

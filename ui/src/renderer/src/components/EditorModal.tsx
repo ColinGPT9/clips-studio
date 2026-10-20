@@ -136,6 +136,9 @@ function WatermarkOverlay({
   )
 }
 
+/** Input types that are controls, not somewhere text is typed. */
+const NOT_TYPING = new Set(['range', 'checkbox', 'radio', 'color', 'button', 'submit', 'reset', 'file'])
+
 /** Full-page editing workspace. */
 export default function EditorView({
   clip,
@@ -207,9 +210,15 @@ export default function EditorView({
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       // Not while typing: Escape in a text field gives up what is being
-      // typed there, never the whole editor and every edit made in it.
+      // typed there, never the whole editor and every edit made in it. Only
+      // fields that take text count: a slider or a checkbox keeps focus once
+      // clicked, and Escape from there still leaves the editor as it always did.
       const t = e.target as HTMLElement | null
-      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      const typing =
+        !!t &&
+        (t.tagName === 'TEXTAREA' ||
+          t.isContentEditable ||
+          (t instanceof HTMLInputElement && !NOT_TYPING.has(t.type)))
       if (e.key === 'Escape' && !typing) onClose()
     }
     window.addEventListener('keydown', onKey)

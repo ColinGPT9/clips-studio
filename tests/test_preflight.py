@@ -236,7 +236,8 @@ def test_a_family_the_recommendations_dont_list_still_loads_a_member(monkeypatch
     from llm.manager import resolve_usable_model
 
     _ollama_with(monkeypatch, ["mistral-nemo:12b", "qwen3:14b", "qwen3:8b"])
-    assert resolve_usable_model("http://localhost:11434", "qwen3") in ("qwen3:14b", "qwen3:8b")
+    # Not in the recommendations: the first one Ollama lists, as the docstring says.
+    assert resolve_usable_model("http://localhost:11434", "qwen3") == "qwen3:14b"
 
 
 def test_the_check_names_the_model_a_job_will_load(monkeypatch):

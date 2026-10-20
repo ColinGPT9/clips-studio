@@ -34,13 +34,33 @@ export interface WordEdit {
  *  Devanagari and Thai a vowel is one. */
 const AROUND_A_WORD = /^[^\p{L}\p{M}\p{N}'’]+|[^\p{L}\p{M}\p{N}'’]+$/gu
 
+/** As written: the dots in "U.S." are dots, not any character. */
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** The first place `word` stands on its own in a line, any case. */
 function wordPattern(word: string): RegExp | null {
   const core = word.replace(AROUND_A_WORD, '')
   if (!core) return null
-  // As written: the dots in "U.S." are dots, not any character.
-  const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escaped}(?![\\p{L}\\p{M}\\p{N}])`, 'iu')
+  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escape(core)}(?![\\p{L}\\p{M}\\p{N}])`, 'iu')
+}
+
+/** What was typed for `from`, without the punctuation `from` itself had at
+ *  either end. Only the letters are replaced in the line, and the line keeps
+ *  its own punctuation around them; the box opens on Whisper's word
+ *  ("ciao,"), so what is typed back carries that comma too, and putting it
+ *  in as typed left the line reading "ciao,,". Punctuation that was typed
+ *  differently from the word's own is kept. */
+function typedLetters(from: string, to: string): string {
+  const core = from.replace(AROUND_A_WORD, '')
+  const at = from.indexOf(core)
+  const lead = from.slice(0, at)
+  const trail = from.slice(at + core.length)
+  let out = to
+  if (lead && out.startsWith(lead)) out = out.slice(lead.length)
+  if (trail && out.endsWith(trail)) out = out.slice(0, out.length - trail.length)
+  return out || to
 }
 
 /** A muted word as the caption shows it: its first and last letters kept. */
@@ -63,7 +83,8 @@ export function applyTextEdits(
         const re = wordPattern(e.from)
         // A function, so a $ in what was typed stays as typed: in a
         // replacement string "$&" would put the old word back.
-        if (re) text = text.replace(re, () => e.to)
+        const to = typedLetters(e.from, e.to)
+        if (re) text = text.replace(re, () => to)
       }
     }
     for (const m of mutedWords) {

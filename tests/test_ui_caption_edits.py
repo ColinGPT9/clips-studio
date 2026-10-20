@@ -72,6 +72,9 @@ def _fix(word: str, to: str, start: float = 0.5) -> dict:
     ("in città oggi", "città", "citta", "in citta oggi"),            # and from one
     ("Città vuota", "città", "Paese", "Paese vuota"),                # any case
     ("ciao, come stai", "ciao,", "salve", "salve, come stai"),       # Whisper's comma, the line's comma
+    # The box opens on Whisper's word, comma and all: typed back, it isn't doubled.
+    ("ciao, come stai", "ciao,", "ciaoo,", "ciaoo, come stai"),
+    ("¿que pasa?", "¿que", "¿qué", "¿qué pasa?"),
     ("ciao l'amico mio", "l'amico", "l'amica", "ciao l'amica mio"),  # an apostrophe in the word
     ("ciao l’amico mio", "l’amico", "l’amica", "ciao l’amica mio"),  # a typographic one
     ("नमस्ते दोस्तों", "नमस्ते", "नमस्कार", "नमस्कार दोस्तों"),      # a vowel sign is part of a word
@@ -154,8 +157,12 @@ def test_escape_in_the_word_box_drops_that_word_and_leaves_the_editor_open():
     editor = _source("components/TimelineEditor.tsx")
     assert re.search(r"if \(e\.key === 'Escape'\) \{\n(\s*//.*\n)*\s*e\.stopPropagation\(\)\n\s*dropWord\(\)", editor)
     modal = _source("components/EditorModal.tsx")
-    assert re.search(r"const typing = !!t && \(t\.tagName === 'INPUT' \|\| t\.tagName === 'TEXTAREA' "
-                     r"\|\| t\.isContentEditable\)\n\s*if \(e\.key === 'Escape' && !typing\) onClose\(\)", modal)
+    assert re.search(r"t\.tagName === 'TEXTAREA' \|\|\s*t\.isContentEditable \|\|\s*"
+                     r"\(t instanceof HTMLInputElement && !NOT_TYPING\.has\(t\.type\)\)\)\s*"
+                     r"if \(e\.key === 'Escape' && !typing\) onClose\(\)", modal)
+    # A slider or a checkbox isn't typing: Escape from one still leaves the editor.
+    kinds = re.search(r"const NOT_TYPING = new Set\(\[([^\]]*)\]\)", modal)
+    assert kinds and {"'range'", "'checkbox'"} <= {k.strip() for k in kinds.group(1).split(",")}
 
 
 def test_apply_leaves_the_draft_and_the_clip_list_follows_the_new_id():

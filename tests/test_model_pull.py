@@ -395,14 +395,37 @@ def test_downloads_untouched_for_a_week_are_cleared_before_ollama_starts(tmp_pat
         "sha256-cccc-partial": 3600,
         # A finished layer, however old, is part of an installed model.
         "sha256-dddd": 10 * week,
+        "sha256-eeee": 10 * week,
+        # Whole files no model lists: what a quit during "verifying" leaves
+        # (#150). Gone after a week; a recent one may still be resumed.
+        "sha256-ffff": week + 60,
+        "sha256-gggg": 3600,
     }
     for name, age in ages.items():
         (blobs / name).write_bytes(b"x")
         os.utime(blobs / name, (now - age, now - age))
+    manifest = tmp_path / "models" / "manifests" / "registry.ollama.ai" / "library" / "gemma3" / "4b"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"config": {"digest": "sha256:dddd"}, "layers": [{"digest": "sha256:eeee"}]}))
     dropped = _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'models'))})", lib=STALE_PARTIALS)
-    assert sorted(Path(p).name for p in dropped) == ["sha256-aaaa-partial", "sha256-aaaa-partial-0"]
+    assert sorted(Path(p).name for p in dropped) == ["sha256-aaaa-partial", "sha256-aaaa-partial-0", "sha256-ffff"]
     assert sorted(p.name for p in blobs.iterdir()) == [
-        "sha256-bbbb-partial", "sha256-bbbb-partial-1", "sha256-cccc-partial", "sha256-dddd",
+        "sha256-bbbb-partial", "sha256-bbbb-partial-1", "sha256-cccc-partial", "sha256-dddd", "sha256-eeee",
+        "sha256-gggg",
     ]
+    # A manifest that can't be read: no whole file is touched, since it might
+    # be one of that model's.
+    (blobs / "sha256-hhhh").write_bytes(b"x")
+    os.utime(blobs / "sha256-hhhh", (now - 2 * week, now - 2 * week))
+    (manifest.parent / "12b").write_text("{not json")
+    assert _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'models'))})", lib=STALE_PARTIALS) == []
+    # No manifests folder at all: no model was ever installed, so an old whole
+    # file belongs to nothing.
+    lone = tmp_path / "lone" / "blobs"
+    lone.mkdir(parents=True)
+    (lone / "sha256-iiii").write_bytes(b"x")
+    os.utime(lone / "sha256-iiii", (now - 2 * week, now - 2 * week))
+    dropped = _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'lone'))})", lib=STALE_PARTIALS)
+    assert [Path(p).name for p in dropped] == ["sha256-iiii"]
     # No models folder yet (a first start): nothing to do, and no error.
     assert _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'none'))})", lib=STALE_PARTIALS) == []

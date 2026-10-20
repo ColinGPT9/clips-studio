@@ -216,8 +216,22 @@ were often broken in a way that only showed up on somebody else's machine.
   Quitting during a download asks first. A download that stopped short now says so, with
   **Try again**, which carries on where it stopped instead of starting over; before, it
   could be called done, and even chosen as your AI model, with nothing there. The Models
-  page and setup also catch up on how a download ended if they missed it. Ollama's own
-  log is kept as `logs/ollama.log` in the data folder. (#148, #150)
+  page and setup also catch up on how a download ended if they missed it. A download
+  nobody has carried on with for a week is cleared from disk when the app starts. Ollama's
+  own log is kept in `%LOCALAPPDATA%\Clips Studio\data\logs\ollama.log`. (#148, #150)
+- **A job on an AI model that isn't downloaded stops at once and says so.** It used to
+  download and transcribe the video first and then fail with "404 Client Error: Not Found
+  for url: http://127.0.0.1:11435/api/generate". It now ends before anything is
+  downloaded with "The AI model … isn't downloaded. Download it on the Models page, or
+  choose a model you have.", and the queue row has an **Open Models** button. A job queued
+  while setup is still downloading the model carries on as before, and when another model
+  is installed the job still uses that one. (#149)
+- **A word you correct in the captions is burned into the clip.** A correction to a word
+  with an accent ("perché", "città"), a hyphen or an apostrophe, or in a non-Latin script,
+  was never found in the caption line, so the clip kept the old word. A correction is also
+  kept when you click away from the word instead of pressing Enter, and after **Apply**
+  the editor shows the re-rendered clip instead of the earlier preview, staying open on
+  it. Escape in the word box now cancels that word only, not the whole editor. (#147)
 - **Cloud AI keys save again.** In 2.0.0, saving a key for OpenRouter, Gemini, OpenAI or
   Anthropic failed with an error, because part of the cloud AI support was left out of
   the installed app. (#135)

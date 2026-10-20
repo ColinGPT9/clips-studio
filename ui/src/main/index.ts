@@ -408,6 +408,10 @@ function createWindow(): void {
           }
           return
         }
+        // Nothing is watched, so the tray has no job left. Dropped before the
+        // quit, before-quit shows this hidden window with its question rather
+        // than leaving it hidden behind a tray that says it's still watching.
+        dropTray()
         app.quit()
       } finally {
         asking = false
