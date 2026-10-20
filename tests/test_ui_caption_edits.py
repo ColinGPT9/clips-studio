@@ -75,6 +75,13 @@ def _fix(word: str, to: str, start: float = 0.5) -> dict:
     ("ciao l'amico mio", "l'amico", "l'amica", "ciao l'amica mio"),  # an apostrophe in the word
     ("ciao l’amico mio", "l’amico", "l’amica", "ciao l’amica mio"),  # a typographic one
     ("नमस्ते दोस्तों", "नमस्ते", "नमस्कार", "नमस्कार दोस्तों"),      # a vowel sign is part of a word
+    # What is inside a word is the word's own: only its ends are punctuation.
+    ("c'est peut-etre vrai", "peut-etre", "peut-être", "c'est peut-être vrai"),
+    ("donc c'est-a-dire demain", "c'est-a-dire,", "c'est-à-dire", "donc c'est-à-dire demain"),
+    ("mon e-mail est", "e-mail", "email", "mon email est"),
+    ("il fait 3,5 degrés", "3,5", "3,8", "il fait 3,8 degrés"),
+    ("made in the U.S. today", "U.S.", "U.K", "made in the U.K. today"),
+    ("من می\u200cخواهم بروم", "می\u200cخواهم", "می\u200cخواستم", "من می\u200cخواستم بروم"),  # a ZWNJ inside
 ])
 def test_a_fixed_word_is_fixed_in_its_line(tmp_path, text, word, to, after):
     assert _texts(tmp_path, [_line(text)], [_fix(word, to)]) == [after]
@@ -84,6 +91,8 @@ def test_a_fixed_word_is_fixed_in_its_line(tmp_path, text, word, to, after):
     ("ma perche no", _fix("domani", "dopodomani")),   # a word the line doesn't have
     ("ma perché no", _fix("perch", "X")),             # never a piece of a longer word
     ("ma perche no", _fix("perche", "perché", start=3.0)),  # a word said after the line
+    ("il fait 13,5 degrés", _fix("3,5", "X")),        # nor of a longer number
+    ("made by UAS today", _fix("U.S.", "X")),         # a dot is a dot, not any character
 ])
 def test_a_fix_that_is_not_in_the_line_leaves_it_alone(tmp_path, text, fix):
     assert _texts(tmp_path, [_line(text)], [fix]) == [text]
@@ -104,6 +113,11 @@ def test_a_muted_word_is_still_censored(tmp_path):
     assert _texts(tmp_path, [_line("ma perché, damn, no")], mutes=mutes) == ["ma p****é, d**n, no"]
     # Only in a line it is heard in.
     assert _texts(tmp_path, [_line("damn it", 3.0, 5.0)], mutes=mutes) == ["damn it"]
+
+
+def test_a_muted_word_with_a_hyphen_is_censored(tmp_path):
+    mutes = [{"start": 0.4, "end": 0.9, "word": "peut-être,"}]
+    assert _texts(tmp_path, [_line("c'est peut-être, oui")], mutes=mutes) == ["c'est p*******e, oui"]
 
 
 def test_a_fix_and_a_mute_in_one_line_both_show(tmp_path):
@@ -130,8 +144,18 @@ def test_the_editor_draws_and_sends_the_lines_this_module_makes():
 def test_a_word_typed_and_clicked_away_from_is_kept():
     editor = _source("components/TimelineEditor.tsx")
     assert re.search(r"if \(e\.key === 'Enter'\) keepWord\(w, editingWord\.value\)", editor)
-    assert re.search(r"if \(e\.key === 'Escape'\) dropWord\(\)", editor)
     assert re.search(r"onBlur=\{\(\) => \{\s*if \(!wordBoxDone\.current\) keepWord\(w, editingWord\.value\)", editor)
+
+
+def test_escape_in_the_word_box_drops_that_word_and_leaves_the_editor_open():
+    # EditorModal closes the editor on Escape, from a listener on the window
+    # that the word box's Escape used to reach: one word given up closed the
+    # editor with every edit in it.
+    editor = _source("components/TimelineEditor.tsx")
+    assert re.search(r"if \(e\.key === 'Escape'\) \{\n(\s*//.*\n)*\s*e\.stopPropagation\(\)\n\s*dropWord\(\)", editor)
+    modal = _source("components/EditorModal.tsx")
+    assert re.search(r"const typing = !!t && \(t\.tagName === 'INPUT' \|\| t\.tagName === 'TEXTAREA' "
+                     r"\|\| t\.isContentEditable\)\n\s*if \(e\.key === 'Escape' && !typing\) onClose\(\)", modal)
 
 
 def test_apply_leaves_the_draft_and_the_clip_list_follows_the_new_id():
@@ -139,6 +163,12 @@ def test_apply_leaves_the_draft_and_the_clip_list_follows_the_new_id():
     assert re.search(r"await api\.rerenderClip\(clip\.id, undefined, renderOpts, usedSuggestions\(\)\)\n"
                      r"(\s*//.*\n)*\s*backToOriginal\(\)", editor)
     studio = _source("pages/ClipStudio.tsx")
-    assert "e.type === 'clip_replaced'" in studio
-    assert "setEditingClipId((id) => (id === from ? to : id))" in studio
-    assert "setSelectedClip((id) => (id === from ? to : id))" in studio
+    # Noted as the event comes, before any list is read...
+    assert re.search(r"e\.type === 'clip_replaced'\) \{\n.*\n\s*moved\.current\.set\(e\.old, e\.new\)\n"
+                     r"\s*if \(activeVideo\) void refreshClips\(activeVideo\)", studio)
+    # ...and followed by every refresh, in the update that brings the list
+    # (the job's own 'done' can bring it first), to an id that list has.
+    refresh = studio[studio.index("const refreshClips"):studio.index("useEffect(", studio.index("const refreshClips"))]
+    assert re.search(r"setClips\(c\)\n(\s*//.*\n)*\s*const follow = ", refresh)
+    assert "return to !== undefined && c.some((x) => x.id === to) ? to : id" in refresh
+    assert "setEditingClipId(follow)" in refresh and "setSelectedClip(follow)" in refresh

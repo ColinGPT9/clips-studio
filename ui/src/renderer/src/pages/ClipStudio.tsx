@@ -47,6 +47,8 @@ export default function ClipStudio({
   const [exportingAll, setExportingAll] = useState(false)
   const [exportNotice, setExportNotice] = useState<string | null>(null)
   const pendingClip = useRef<number | null>(null)
+  // A re-rendered clip's old id and its new one (clip_replaced, below).
+  const moved = useRef(new Map<number, number>())
   const lastEventAt = useRef(Date.now())
   // Only while something is in flight, so an idle page never polls.
   const busy = videos.some((v) => v.status !== 'done' && v.status !== 'failed')
@@ -85,6 +87,18 @@ export default function ClipStudio({
     try {
       const c = await api.clips(videoId)
       setClips(c)
+      // A re-rendered clip (clip_replaced, below): the open editor and the
+      // selected card move to its new id with the list that has it, in the
+      // same update. Every refresh does it, as the job's own 'done' can
+      // bring that list before the one clip_replaced asked for; moved by
+      // that one alone, the editor looked for its clip by the old id in
+      // the new list and closed until it came.
+      const follow = (id: number | null): number | null => {
+        const to = id === null ? undefined : moved.current.get(id)
+        return to !== undefined && c.some((x) => x.id === to) ? to : id
+      }
+      setEditingClipId(follow)
+      setSelectedClip(follow)
       if (pendingClip.current !== null) {
         if (c.some((x) => x.id === pendingClip.current)) setSelectedClip(pendingClip.current)
         pendingClip.current = null
@@ -139,17 +153,14 @@ export default function ClipStudio({
     // A re-render puts the clip back under a new id (server/jobs.py
     // _rerender_clip). The open editor and the selected card follow it:
     // looked for by the old one, the editor lost its clip as soon as the
-    // list was read again (#147). They move with the list that has the new
-    // id, in the same update; moved first, the editor would look for its
-    // clip in the old list and close until the new one came.
-    if (e.type === 'clip_replaced' && activeVideo) {
-      const from = e.old
-      const to = e.new
-      if (from === undefined || to === undefined) return
-      void refreshClips(activeVideo).then(() => {
-        setEditingClipId((id) => (id === from ? to : id))
-        setSelectedClip((id) => (id === from ? to : id))
-      })
+    // list was read again (#147). The move is noted at once: the event
+    // comes ahead of the job's 'done', so whichever refresh brings the new
+    // list first moves them with it (refreshClips). Moved here, before any
+    // list has the new id, the editor would close until one did.
+    if (e.type === 'clip_replaced') {
+      if (e.old === undefined || e.new === undefined) return
+      moved.current.set(e.old, e.new)
+      if (activeVideo) void refreshClips(activeVideo)
     }
   })
 

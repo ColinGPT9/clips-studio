@@ -25,15 +25,20 @@ export interface WordEdit {
   to: string
 }
 
-/** A word's own characters. Whisper words often carry punctuation ("word,"
- *  / "word.") that the caption may not, so a word is matched by these alone;
- *  marks stay, since in Devanagari and Thai a vowel is one. */
-const NOT_IN_A_WORD = /[^\p{L}\p{M}\p{N}'’]/gu
+/** Punctuation at either end of a word. Whisper words often carry it
+ *  ("word," / "word.") where the caption may not, so a word is matched
+ *  without it. Only the ends: what is inside is the word's own, and the
+ *  caption has it too (the hyphen in "peut-être", the comma in "3,5", the
+ *  dots in "U.S.", the zero-width non-joiner inside a Persian word), so
+ *  taking it out too left the word never found. Marks stay, since in
+ *  Devanagari and Thai a vowel is one. */
+const AROUND_A_WORD = /^[^\p{L}\p{M}\p{N}'’]+|[^\p{L}\p{M}\p{N}'’]+$/gu
 
 /** The first place `word` stands on its own in a line, any case. */
 function wordPattern(word: string): RegExp | null {
-  const core = word.replace(NOT_IN_A_WORD, '')
+  const core = word.replace(AROUND_A_WORD, '')
   if (!core) return null
+  // As written: the dots in "U.S." are dots, not any character.
   const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escaped}(?![\\p{L}\\p{M}\\p{N}])`, 'iu')
 }

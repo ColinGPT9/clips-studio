@@ -1738,7 +1738,13 @@ export default function TimelineEditor({
                     onChange={(e) => setEditingWord({ i, value: e.target.value })}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') keepWord(w, editingWord.value)
-                      if (e.key === 'Escape') dropWord()
+                      if (e.key === 'Escape') {
+                        // This word's box only. Let through, it reached
+                        // EditorModal's Escape too and closed the editor with
+                        // every edit in it.
+                        e.stopPropagation()
+                        dropWord()
+                      }
                     }}
                     onBlur={() => {
                       if (!wordBoxDone.current) keepWord(w, editingWord.value)

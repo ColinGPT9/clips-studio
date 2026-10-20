@@ -193,6 +193,7 @@ def test_a_rerender_drops_the_old_draft_and_says_where_the_clip_went(db, tmp_pat
 
     _video(db)
     clip_id = _clip(db)
+    other_id = _clip(db, start=10.0, end=14.0)
     (tmp_path / "downloads").mkdir()
     (tmp_path / "downloads" / "v1.mp4").write_bytes(b"source")
     (tmp_path / "transcripts").mkdir()
@@ -200,8 +201,10 @@ def test_a_rerender_drops_the_old_draft_and_says_where_the_clip_went(db, tmp_pat
     (tmp_path / "previews").mkdir()
     draft = tmp_path / "previews" / f"clip_{clip_id}.mp4"
     draft.write_bytes(b"draft")
-    another = tmp_path / "previews" / f"clip_{clip_id + 1}.mp4"     # another clip's draft
-    another.write_bytes(b"draft")
+    # The video's other clip has a draft too: only the re-rendered clip's
+    # own draft goes.
+    others_draft = tmp_path / "previews" / f"clip_{other_id}.mp4"
+    others_draft.write_bytes(b"draft")
 
     def render(_source, _candidate, _segments, clip_dir, _config, render_opts, _lang):
         clip_dir.mkdir(parents=True, exist_ok=True)
@@ -215,10 +218,11 @@ def test_a_rerender_drops_the_old_draft_and_says_where_the_clip_went(db, tmp_pat
 
     jobs.Worker._rerender_clip(job, db, {"clip_id": clip_id, "start": 2.0})
 
-    new_id = db.conn.execute("SELECT id FROM clips").fetchone()["id"]
-    assert new_id != clip_id
+    ids = {row["id"] for row in db.conn.execute("SELECT id FROM clips")}
+    assert clip_id not in ids and other_id in ids
+    (new_id,) = ids - {other_id}
     assert not draft.exists()
-    assert another.exists()
+    assert others_draft.exists()
     assert [e for e in events if e["type"] == "clip_replaced"] == [
         {"type": "clip_replaced", "old": clip_id, "new": new_id, "video_id": "v1"}
     ]
