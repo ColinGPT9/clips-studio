@@ -179,3 +179,14 @@ def test_apply_leaves_the_draft_and_the_clip_list_follows_the_new_id():
     assert re.search(r"setClips\(c\)\n(\s*//.*\n)*\s*const follow = ", refresh)
     assert "return to !== undefined && c.some((x) => x.id === to) ? to : id" in refresh
     assert "setEditingClipId(follow)" in refresh and "setSelectedClip(follow)" in refresh
+
+
+def test_a_word_both_corrected_and_muted_is_censored_as_corrected(tmp_path):
+    # Looked for by Whisper's spelling after the fix had replaced it, the mute
+    # found nothing and the corrected word went out uncensored.
+    fixes = [_fix("fuk", "fuck", start=0.5)]
+    mutes = [{"start": 0.4, "end": 0.9, "word": "fuk"}]
+    assert _texts(tmp_path, [_line("fuk this")], fixes, mutes) == ["f**k this"]
+    # A fix to another word in the line leaves the mute as it was.
+    fixes = [_fix("this", "that", start=1.2)]
+    assert _texts(tmp_path, [_line("fuk this")], fixes, mutes) == ["f*k that"]

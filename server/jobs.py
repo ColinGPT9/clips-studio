@@ -712,6 +712,14 @@ class Worker(threading.Thread):
         spec = llm_cfg.get("backend") or ""
         if not is_local(spec):
             return
+        longform = payload.get("longform") or {}
+        if longform.get("mode") == "edited_stream":
+            # Edited Stream only cuts the silence and the AFK stretches, with a
+            # fixed title (longform/process.py): no AI at all. Only its "also
+            # make 9:16 Shorts" needs one, and not when they were made before.
+            made = vid and not payload.get("force") and db.shorts_made(vid)
+            if not longform.get("shorts") or made:
+                return
         if (vid and not payload.get("longform") and not payload.get("force")
                 and db.shorts_made(vid)):
             # Its Shorts were made before and nobody asked for them again:

@@ -321,6 +321,8 @@ def _node() -> str:
 
 MODEL_PULL = ROOT / "ui" / "src" / "renderer" / "src" / "lib" / "modelPull.ts"
 STALE_PARTIALS = ROOT / "ui" / "src" / "main" / "stalePartials.ts"
+# What the bundled Ollama writes for each model (stalePartials.ts reads only this).
+MANIFEST_V2 = "application/vnd.docker.distribution.manifest.v2+json"
 
 
 def _ui(tmp_path, body: str, lib: Path = MODEL_PULL):
@@ -406,7 +408,8 @@ def test_downloads_untouched_for_a_week_are_cleared_before_ollama_starts(tmp_pat
         os.utime(blobs / name, (now - age, now - age))
     manifest = tmp_path / "models" / "manifests" / "registry.ollama.ai" / "library" / "gemma3" / "4b"
     manifest.parent.mkdir(parents=True)
-    manifest.write_text(json.dumps({"config": {"digest": "sha256:dddd"}, "layers": [{"digest": "sha256:eeee"}]}))
+    manifest.write_text(json.dumps({"schemaVersion": 2, "mediaType": MANIFEST_V2,
+                                    "config": {"digest": "sha256:dddd"}, "layers": [{"digest": "sha256:eeee"}]}))
     dropped = _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'models'))})", lib=STALE_PARTIALS)
     assert sorted(Path(p).name for p in dropped) == ["sha256-aaaa-partial", "sha256-aaaa-partial-0", "sha256-ffff"]
     assert sorted(p.name for p in blobs.iterdir()) == [
@@ -429,3 +432,45 @@ def test_downloads_untouched_for_a_week_are_cleared_before_ollama_starts(tmp_pat
     assert [Path(p).name for p in dropped] == ["sha256-iiii"]
     # No models folder yet (a first start): nothing to do, and no error.
     assert _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(tmp_path / 'none'))})", lib=STALE_PARTIALS) == []
+
+
+@pytest.mark.parametrize("layout", ["manifests-v2", "a manifest list", "another media type"])
+def test_a_layout_other_than_the_bundled_ollamas_keeps_every_whole_file(tmp_path, layout):
+    """Newer Ollama keeps manifests in manifests-v2/ (as blobs) and can list
+    manifests in a manifest. Read as the bundled Ollama's layout, its models'
+    files would look like orphans and be deleted under it: then no whole file
+    goes, only the old partials."""
+    import os
+
+    models = tmp_path / "models"
+    blobs = models / "blobs"
+    blobs.mkdir(parents=True)
+    old = time.time() - 30 * 24 * 3600
+    for name in ("sha256-1111", "sha256-2222-partial"):
+        (blobs / name).write_bytes(b"x")
+        os.utime(blobs / name, (old, old))
+    if layout == "manifests-v2":
+        (models / "manifests-v2" / "registry.ollama.ai").mkdir(parents=True)
+    else:
+        body = ({"schemaVersion": 2, "mediaType": MANIFEST_V2, "manifests": [{"digest": "sha256:1111"}],
+                 "config": {"digest": "sha256:3333"}} if layout == "a manifest list"
+                else {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                      "config": {"digest": "sha256:3333"}, "layers": []})
+        manifest = models / "manifests" / "registry.ollama.ai" / "library" / "x" / "1b"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps(body))
+    dropped = _ui(tmp_path, f"m.dropStalePartials({json.dumps(str(models))})", lib=STALE_PARTIALS)
+    assert [Path(p).name for p in dropped] == ["sha256-2222-partial"]
+    assert (blobs / "sha256-1111").exists()
+
+
+def test_the_cleanup_is_checked_again_when_the_bundled_ollama_changes():
+    """dropStalePartials reads v0.32.6's manifest layout. A newer Ollama
+    stores models differently; bumping it must come with a look at that
+    file, or a real model's files could be taken for an abandoned download."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("fetch_ollama", ROOT / "scripts" / "fetch_ollama.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.OLLAMA_VERSION == "v0.32.6", "check ui/src/main/stalePartials.ts against the new layout"

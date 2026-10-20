@@ -68,6 +68,11 @@ export function censorMatch(matched: string): string {
   return matched.length <= 2 ? '**' : matched[0] + '*'.repeat(matched.length - 2) + matched[matched.length - 1]
 }
 
+/** Whether two spellings are the same word, punctuation at the ends and case aside. */
+function sameWord(a: string, b: string): boolean {
+  return a.replace(AROUND_A_WORD, '').toLowerCase() === b.replace(AROUND_A_WORD, '').toLowerCase()
+}
+
 /** The lines with every fix applied, then every mute. A fix changes the
  *  first place its word stands in each line it starts in (give or take
  *  0.05 s), a mute each line its word is heard in. */
@@ -89,7 +94,11 @@ export function applyTextEdits(
     }
     for (const m of mutedWords) {
       if (m.end > line.start && m.start < line.end) {
-        const re = wordPattern(m.word)
+        // A muted word that was also corrected reads as corrected by now:
+        // looked for by Whisper's spelling it was never found, and the
+        // corrected word went out uncensored.
+        const fix = wordEdits.find((e) => e.start >= m.start - 0.05 && e.start < m.end && sameWord(e.from, m.word))
+        const re = wordPattern(fix ? typedLetters(fix.from, fix.to) : m.word)
         if (re) text = text.replace(re, censorMatch)
       }
     }

@@ -201,3 +201,17 @@ def test_a_video_made_before_still_finishes_as_done_without_a_model(tmp_path, mo
     (job,), started, _fetched = _run_worker(tmp_path, monkeypatch, ["plain"], [], made=["plain"])
     assert job["status"] == "done"
     assert started == ["local:plain"]
+
+
+def test_an_edited_stream_needs_no_model(monkeypatch):
+    """Edited Stream cuts silence and AFK stretches with a fixed title: it
+    finished with no model installed before the check, and still does."""
+    _ollama_has(monkeypatch, [])
+    _check(longform={"mode": "edited_stream"})
+    # Its "also make 9:16 Shorts" does need one ...
+    with pytest.raises(LLMError):
+        _check(longform={"mode": "edited_stream", "shorts": True})
+    # ... unless those Shorts were made before and aren't asked for again.
+    _check(made=True, longform={"mode": "edited_stream", "shorts": True})
+    with pytest.raises(LLMError):
+        _check(made=True, force=True, longform={"mode": "edited_stream", "shorts": True})

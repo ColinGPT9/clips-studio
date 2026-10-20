@@ -4,11 +4,27 @@ import { join } from 'node:path'
 /** How long an unfinished model download is kept without being touched. */
 const KEEP_MS = 7 * 24 * 60 * 60 * 1000
 
+/** The only manifest this reads: what the bundled Ollama (v0.32.6,
+ *  scripts/fetch_ollama.py) writes under manifests/, listing a config and its
+ *  layers. */
+const MANIFEST_V2 = 'application/vnd.docker.distribution.manifest.v2+json'
+
 /** Every blob digest an installed model uses, as blob file names
- *  ("sha256-…"), or null when a manifest can't be read, in which case nothing
- *  that might belong to a model is deleted. No manifests folder at all means
- *  no model was ever installed here: nothing is referenced. */
+ *  ("sha256-…"), or null when that can't be known for certain, in which case
+ *  nothing that might belong to a model is deleted: a manifest that can't be
+ *  read, or one in a shape other than MANIFEST_V2's. Newer Ollama keeps its
+ *  manifests in manifests-v2/, as blobs themselves, and can list other
+ *  manifests; read with this, a model it downloaded would look like orphans,
+ *  so any sign of that layout stops it. No manifests folder at all (and no
+ *  manifests-v2) means no model was ever installed here: nothing is
+ *  referenced. */
 function referencedBlobs(modelsDir: string): Set<string> | null {
+  try {
+    statSync(join(modelsDir, 'manifests-v2'))
+    return null
+  } catch {
+    // Not there: the layout this understands.
+  }
   const used = new Set<string>()
   const walk = (dir: string): boolean => {
     let entries: Dirent[]
@@ -25,10 +41,19 @@ function referencedBlobs(modelsDir: string): Set<string> | null {
       }
       try {
         const manifest = JSON.parse(readFileSync(path, 'utf8')) as {
+          mediaType?: string
           config?: { digest?: string }
           layers?: { digest?: string }[]
+          manifests?: unknown
         }
-        for (const digest of [manifest.config?.digest, ...(manifest.layers ?? []).map((l) => l.digest)]) {
+        if (
+          manifest.mediaType !== MANIFEST_V2 ||
+          manifest.manifests !== undefined ||
+          typeof manifest.config?.digest !== 'string'
+        ) {
+          return false
+        }
+        for (const digest of [manifest.config.digest, ...(manifest.layers ?? []).map((l) => l.digest)]) {
           if (digest) used.add(digest.replace(':', '-'))
         }
       } catch {

@@ -166,10 +166,15 @@ def _with_usable_model(llm_config: dict) -> dict:
     usable = resolve_usable_model(
         llm_config.get("ollama_host", "http://localhost:11434"), configured
     )
-    if not usable or usable == configured:
+    # A bare family name is what Ollama itself loads as ":latest": the same model.
+    if not usable or usable == configured or usable == f"{configured}:latest":
         return llm_config
 
-    print(f"      AI model: '{configured}' is not installed — using '{usable}'")
+    if ":" not in configured and usable.split(":")[0] == configured:
+        # Settings name the family; this is the member that is installed.
+        print(f"      AI model: '{configured}' is loaded as '{usable}', the one installed")
+    else:
+        print(f"      AI model: '{configured}' is not installed — using '{usable}'")
     return {**llm_config, "backend": f"ollama/{usable}"}
 
 

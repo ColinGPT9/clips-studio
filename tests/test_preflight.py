@@ -275,6 +275,18 @@ def test_a_family_in_settings_loads_the_model_ollama_has(monkeypatch):
     assert _with_usable_model({"backend": "ollama/gemma3"})["backend"] == "ollama/gemma3:12b"
 
 
+def test_a_family_installed_as_latest_is_left_as_it_is(monkeypatch, capsys):
+    """Ollama loads a bare family name as ":latest": the same model, so the
+    job's log doesn't say it isn't installed."""
+    pytest.importorskip("numpy", reason="core.pipeline imports numpy, which CI does not install")
+    from core.pipeline import _with_usable_model
+
+    monkeypatch.setattr("llm.manager.installed_models", lambda host: [{"name": "gemma3:latest", "size_gb": 3.3}])
+    cfg = {"backend": "ollama/gemma3"}
+    assert _with_usable_model(cfg) is cfg
+    assert "not installed" not in capsys.readouterr().out
+
+
 def test_absent_whisper_weights_warn_without_blocking(monkeypatch):
     """The silent failure this check exists for. faster-whisper can still
     fetch the weights and produce a correct transcript, so refusing to run
