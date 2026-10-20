@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import traceback
 import urllib.error
 from pathlib import Path
@@ -2968,12 +2969,59 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         config["llm"]["backend"] = spec  # live config follows the file
         return {"active": spec}
 
+    # Each download's latest state, by tag. The WebSocket events are the live
+    # view, but a window can miss the one that matters: the broadcaster drops
+    # events for a client whose queue is full, and a reconnect leaves a gap.
+    # With nothing to catch up from, a download that had finished or failed
+    # sat at 100% for good (#148, #150). A finished one is kept for a while so
+    # a window can still read how it ended, then forgotten.
+    pulls: dict[str, dict] = {}
+    pulls_lock = threading.Lock()
+    pull_kept_seconds = 600
+
+    def _pull_event(event: dict) -> None:
+        """Send a model_pull event, and keep it as that download's state."""
+        with pulls_lock:
+            state = pulls.get(event["tag"])
+            if state is not None:
+                state["status"] = event["status"]
+                state["completed"] = event.get("completed")
+                state["total"] = event.get("total")
+                if event["status"] in ("done", "error"):
+                    state["done"] = True
+                    state["error"] = event.get("error")
+                    state["ended"] = time.monotonic()
+        broadcaster.publish(event)
+
+    @app.get("/models/pulls")
+    def model_pulls():
+        """Downloads running now, and how the recent ones ended."""
+        now = time.monotonic()
+        with pulls_lock:
+            for tag in [t for t, s in pulls.items() if s["done"] and now - s["ended"] > pull_kept_seconds]:
+                del pulls[tag]
+            return {"pulls": [{k: v for k, v in s.items() if k != "ended"} for s in pulls.values()]}
+
     @app.post("/models/pull")
     def pull_model(body: ModelIn):
+        tag = body.tag
+        with pulls_lock:
+            running = pulls.get(tag)
+            if running is not None and not running["done"]:
+                # A second click, or setup and the Models page both asking for
+                # the model: a second thread would only fetch the same files
+                # again alongside the first.
+                return {"started": tag, "already": True}
+            pulls[tag] = {
+                "tag": tag, "status": "starting", "completed": None, "total": None,
+                "error": None, "done": False,
+            }
+
         def _pull():
+            last = ""
             try:
                 with _requests.post(
-                    f"{ollama_host}/api/pull", json={"model": body.tag}, stream=True, timeout=3600
+                    f"{ollama_host}/api/pull", json={"model": tag}, stream=True, timeout=3600
                 ) as resp:
                     for line in resp.iter_lines():
                         if not line:
@@ -2985,19 +3033,48 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                         # was announced as done with nothing on disk.
                         if info.get("error"):
                             raise RuntimeError(info["error"])
-                        broadcaster.publish(
+                        last = info.get("status") or last
+                        _pull_event(
                             {
                                 "type": "model_pull",
-                                "tag": body.tag,
+                                "tag": tag,
                                 "status": info.get("status", ""),
                                 "completed": info.get("completed"),
                                 "total": info.get("total"),
                             }
                         )
-                _select_if_nothing_usable(body.tag)
-                broadcaster.publish({"type": "model_pull", "tag": body.tag, "status": "done"})
+                # Ollama ends a pull that worked with "success". A stream that
+                # stops before it (Ollama quit while it was checking the
+                # download, the connection dropped) is not a download, however
+                # far the percentage got.
+                if last != "success":
+                    step = f"last step: {last}" if last else "Ollama sent nothing back"
+                    raise RuntimeError(
+                        f"The download didn't finish ({step}). Try again; it carries on where it stopped."
+                    )
+                if not _listed(tag):
+                    raise RuntimeError(
+                        f"Ollama said the download finished, but {tag} isn't in its list of models. Try again."
+                    )
+                _select_if_nothing_usable(tag)
+                _pull_event({"type": "model_pull", "tag": tag, "status": "done"})
             except Exception as e:
-                broadcaster.publish({"type": "model_pull", "tag": body.tag, "status": "error", "error": str(e)})
+                _pull_event({"type": "model_pull", "tag": tag, "status": "error", "error": str(e) or type(e).__name__})
+
+        def _listed(tag: str) -> bool:
+            """Whether Ollama now lists the model. Checked before the download
+            is called done, because a tag that isn't there, once selected,
+            fails every job with a 404 from Ollama."""
+            from llm.manager import installed_models, model_is_installed
+
+            try:
+                names = [m["name"] for m in installed_models(ollama_host)]
+            except Exception:
+                return False
+            # model_is_installed drops everything up to the last "/", which is
+            # right for "ollama/gemma:7b" but not for a tag such as
+            # "hf.co/user/repo:Q4_K_M", which Ollama lists in full.
+            return tag in names or f"{tag}:latest" in names or model_is_installed(tag, names)
 
         def _select_if_nothing_usable(tag: str) -> None:
             """Make the download count as a choice when nothing else can run.
@@ -3028,7 +3105,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
                 pass
 
         threading.Thread(target=_pull, daemon=True).start()
-        return {"started": body.tag}
+        return {"started": tag}
 
     @app.delete("/models/{tag:path}")
     def delete_model(tag: str):

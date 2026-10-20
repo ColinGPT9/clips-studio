@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, errorText } from '../lib/api'
+import { foldPullEvent, mergePulls, pullText } from '../lib/modelPull'
 import { speedNote } from '../lib/modelSpeed'
 import { useEvents } from '../lib/useEvents'
-import type { ModelsInfo } from '../lib/types'
+import type { ModelPull, ModelsInfo } from '../lib/types'
 import OpenRouterPrompt from '../components/OpenRouterPrompt'
 
 export default function Models(): JSX.Element {
   const [info, setInfo] = useState<ModelsInfo | null>(null)
   const [offline, setOffline] = useState(false)
   const [pullTag, setPullTag] = useState('')
-  const [pullStatus, setPullStatus] = useState<string | null>(null)
+  // Every download on screen, by tag: two can run at once, and a single line
+  // showed whichever had spoken last.
+  const [pulls, setPulls] = useState<Record<string, ModelPull>>({})
+  const pullsRef = useRef(pulls)
+  pullsRef.current = pulls
   const [busy, setBusy] = useState<string | null>(null)
   // For the "won't fit your card" warning — the one speed difference big
   // enough that people report it as the app being broken.
@@ -36,14 +41,14 @@ export default function Models(): JSX.Element {
     </div>
   )
 
-  const refresh = async (): Promise<void> => {
+  const refresh = useCallback(async (): Promise<void> => {
     try {
       setInfo(await api.models())
       setOffline(false)
     } catch {
       setOffline(true)
     }
-  }
+  }, [])
 
   useEffect(() => {
     refresh()
@@ -57,16 +62,36 @@ export default function Models(): JSX.Element {
 
   useEvents((e) => {
     if (e.type !== 'model_pull') return
-    if (e.status === 'done') {
-      setPullStatus(null)
-      refresh()
-    } else if (e.status === 'error') {
-      setPullStatus(`Download failed: ${e.error ?? 'unknown error'}`)
-    } else {
-      const pct = e.completed && e.total ? ` ${Math.round((e.completed / e.total) * 100)}%` : ''
-      setPullStatus(`${e.tag}: ${e.status}${pct}`)
-    }
+    if (e.status === 'done') void refresh()
+    setPulls((shown) => foldPullEvent(shown, e))
   })
+
+  // The events can miss the one that matters: the engine drops them for a
+  // window that falls behind, and a reconnect leaves a gap. Missing "done" or
+  // "error" left a download at its last percentage for good, so the engine's
+  // own record is read on opening the page and every few seconds while
+  // anything is downloading.
+  const catchUp = useCallback(async (): Promise<void> => {
+    const server = await api
+      .pullStatus()
+      .then((r) => r.pulls)
+      .catch(() => null)
+    if (!server) return // engine not answering: the next look, or an event, will say
+    const before = pullsRef.current
+    if (server.some((p) => p.status === 'done' && before[p.tag] && !before[p.tag].done)) void refresh()
+    setPulls((shown) => mergePulls(shown, server))
+  }, [refresh])
+
+  useEffect(() => {
+    void catchUp()
+  }, [catchUp])
+
+  const downloading = Object.values(pulls).some((p) => !p.done)
+  useEffect(() => {
+    if (!downloading) return
+    const timer = setInterval(() => void catchUp(), 3000)
+    return () => clearInterval(timer)
+  }, [downloading, catchUp])
 
   const activate = async (tag: string): Promise<void> => {
     setBusy(tag)
@@ -88,11 +113,30 @@ export default function Models(): JSX.Element {
     }
   }
 
+  const startPull = async (tag: string): Promise<void> => {
+    try {
+      await api.pullModel(tag)
+    } catch (e) {
+      // Shown, rather than lost in an unhandled promise with the button
+      // looking as if it did nothing.
+      setPulls((shown) => ({
+        ...shown,
+        [tag]: { tag, status: 'error', completed: null, total: null, error: errorText(e), done: true }
+      }))
+      return
+    }
+    if (tag === pullTag.trim()) setPullTag('')
+    // Its first event may already be in; that is fresher than "starting".
+    setPulls((shown) =>
+      shown[tag] && !shown[tag].done
+        ? shown
+        : { ...shown, [tag]: { tag, status: 'starting', completed: null, total: null, error: null, done: false } }
+    )
+  }
+
   const pull = async (): Promise<void> => {
-    if (!pullTag.trim()) return
-    setPullStatus(`${pullTag}: starting…`)
-    await api.pullModel(pullTag.trim())
-    setPullTag('')
+    const tag = pullTag.trim()
+    if (tag) await startPull(tag)
   }
 
   if (offline) {
@@ -182,7 +226,18 @@ export default function Models(): JSX.Element {
             Download
           </button>
         </div>
-        {pullStatus && <p className="text-sm text-accent">{pullStatus}</p>}
+        {Object.values(pulls).map((p) => (
+          <div key={p.tag} className="flex items-center gap-3">
+            <p className={`flex-1 text-sm ${p.status === 'error' ? 'text-red-400' : 'text-accent'}`}>
+              {p.tag}: {p.status === 'error' ? `Download failed: ${p.error || 'unknown error'}` : pullText(p)}
+            </p>
+            {p.status === 'error' && (
+              <button className="btn-ghost !py-1.5" onClick={() => void startPull(p.tag)}>
+                Try again
+              </button>
+            )}
+          </div>
+        ))}
         {/* Two tables, because there are two different questions. This one
             answers "what will my machine run"; every row is a VRAM tier. */}
         {/* The middle column is only as wide as a model tag, and the heading

@@ -210,6 +210,14 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Fixed
 
+- **Model downloads no longer reach 100% and then do nothing.** The bar stays below
+  100% until the model is really installed, and while Ollama checks a big download,
+  which can take minutes, it says **Checking the download… keep Clips Kitty open**.
+  Quitting during a download asks first. A download that stopped short now says so, with
+  **Try again**, which carries on where it stopped instead of starting over; before, it
+  could be called done, and even chosen as your AI model, with nothing there. The Models
+  page and setup also catch up on how a download ended if they missed it. Ollama's own
+  log is kept as `logs/ollama.log` in the data folder. (#148, #150)
 - **Cloud AI keys save again.** In 2.0.0, saving a key for OpenRouter, Gemini, OpenAI or
   Anthropic failed with an error, because part of the cloud AI support was left out of
   the installed app. (#135)

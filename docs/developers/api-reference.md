@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-196 routes: **60 stable**, **25 experimental**, 111 internal.
+197 routes: **60 stable**, **25 experimental**, 112 internal.
 
 | Label | Promise |
 |---|---|
@@ -195,7 +195,7 @@ Everything else. Grouped by the first part of the path; the module is where it i
 | `/feedback` | `GET /feedback/diagnostics`<br>`POST /feedback/submit` | `server.api` |
 | `/jobs` | `POST /jobs/{job_id}/move` | `server.api` |
 | `/media` | `GET /media/preview/{clip_id}` | `server.api` |
-| `/models` | `DELETE /models/{tag:path}` | `server.api` |
+| `/models` | `GET /models/pulls`<br>`DELETE /models/{tag:path}` | `server.api` |
 | `/publish` | `POST /publish/{job_id}/cancel` | `server.youtube_api` |
 | `/queue` | `POST /queue/clear` | `server.api` |
 | `/remote-render` | `GET /remote-render`<br>`PUT /remote-render`<br>`POST /remote-render/jobs/{job_id}/retry`<br>`POST /remote-render/pairing-code`<br>`PUT /remote-render/this-pc`<br>`POST /remote-render/this-pc/unpair`<br>`POST /remote-render/videos/{video_id}/render-locally`<br>`DELETE /remote-render/workers/{worker_id}`<br>`POST /remote-render/workers/{worker_id}/hold` | `remote_render.service` |

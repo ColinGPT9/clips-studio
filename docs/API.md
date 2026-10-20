@@ -702,7 +702,10 @@ Ollama serves works. The app has no allow-list.
 
 Downloads a model. Returns immediately; **progress arrives on the WebSocket**
 as `{"type": "model_pull", "tag": …, "status": "done"}` (or `"error"`). A 12 GB model
-on a slow connection is not an HTTP request you want to hold open.
+on a slow connection is not an HTTP request you want to hold open. `"done"` comes only
+once Ollama has said the pull succeeded and lists the model; a download that stopped
+short is an `"error"`. Asking for a tag that is already downloading starts nothing and
+returns `{"started": tag, "already": true}`.
 
 ### Where the AI runs: `/ai`
 

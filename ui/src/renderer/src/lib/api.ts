@@ -16,6 +16,7 @@ import type {
   GamingSettings,
   Job,
   JobOptions,
+  ModelPull,
   ModelsInfo,
   Preflight,
   PublishPlanItem,
@@ -536,8 +537,12 @@ export const api = {
     }),
   activateModel: (tag: string) =>
     request<{ active: string }>('/models/activate', { method: 'POST', body: JSON.stringify({ tag }) }),
+  /** `already` when that tag was downloading anyway: nothing new is started. */
   pullModel: (tag: string) =>
-    request<{ started: string }>('/models/pull', { method: 'POST', body: JSON.stringify({ tag }) }),
+    request<{ started: string; already?: boolean }>('/models/pull', { method: 'POST', body: JSON.stringify({ tag }) }),
+  /** Downloads running now and how the recent ones ended, to catch up on
+   *  model_pull events a window missed. */
+  pullStatus: () => request<{ pulls: ModelPull[] }>('/models/pulls'),
   deleteModel: (tag: string) => request<{ deleted: string }>(`/models/${tag}`, { method: 'DELETE' }),
 
   creators: () =>

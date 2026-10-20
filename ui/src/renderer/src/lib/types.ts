@@ -744,6 +744,20 @@ export interface ModelsInfo {
   recommended?: { model: string; reason: string }
 }
 
+/** One local model download as GET /models/pulls keeps it. The model_pull
+ *  events say the same live; this is for a window that missed some of them. */
+export interface ModelPull {
+  tag: string
+  /** "starting", one of Ollama's own steps ("pulling manifest", "verifying
+   *  sha256 digest"…), then "done" or "error". */
+  status: string
+  completed: number | null
+  total: number | null
+  error: string | null
+  /** The download has ended, either way: `error` says whether it failed. */
+  done: boolean
+}
+
 export interface GpuStats {
   name: string
   vram_used: number

@@ -11,9 +11,19 @@ import {
   shell,
   type IpcMainInvokeEvent
 } from 'electron'
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess, type StdioOptions } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+  writeSync
+} from 'node:fs'
 import { basename, join } from 'node:path'
 import { setupUpdater } from './updater'
 import { isMicrosoftStore } from './distribution'
@@ -95,8 +105,11 @@ async function ensureTray(): Promise<void> {
       {
         label: 'Quit Clips Kitty',
         click: () => {
-          quitting = true
-          app.quit()
+          void confirmQuit(null).then((quit) => {
+            if (!quit) return
+            quitting = true
+            app.quit()
+          })
         }
       }
     ])
@@ -125,6 +138,44 @@ async function isWatching(): Promise<boolean> {
   }
 }
 
+/** True only when the engine says a model download is running. An engine
+ *  that is down or slow to answer counts as no: quitting is never held up
+ *  waiting for it. */
+async function isDownloadingModel(): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${API_PORT}/models/pulls`, {
+      signal: AbortSignal.timeout(2000)
+    })
+    if (!res.ok) return false
+    const body = (await res.json()) as { pulls?: unknown }
+    return Array.isArray(body.pulls) && body.pulls.some((p: { done?: unknown } | null) => p?.done === false)
+  } catch {
+    return false
+  }
+}
+
+/** Ask before quitting in the middle of a model download: Ollama goes down
+ *  with the app, so quitting stops it. The bar can sit near 100% for minutes
+ *  while Ollama checks a big download, which reads as finished (#148, #150).
+ *  True to quit. */
+async function confirmQuit(parent: BrowserWindow | null): Promise<boolean> {
+  if (!(await isDownloadingModel())) return true
+  const options = {
+    type: 'warning' as const,
+    buttons: ['Quit anyway', 'Keep downloading'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Clips Kitty',
+    message: 'A model is still downloading. Quit anyway?',
+    detail: 'It will carry on next time.'
+  }
+  if (parent && !parent.isDestroyed()) {
+    if (!parent.isVisible()) parent.show() // hidden on the way to the tray
+    return (await dialog.showMessageBox(parent, options)).response === 0
+  }
+  return (await dialog.showMessageBox(options)).response === 0
+}
+
 ipcMain.handle('tray:get', () => ({ keepInTray }))
 
 ipcMain.handle('tray:set', (_event, on: unknown) => {
@@ -137,6 +188,33 @@ ipcMain.handle('tray:set', (_event, on: unknown) => {
   if (!keepInTray) dropTray()
   return { keepInTray }
 })
+
+/** Open Ollama's log for adding to, or null when it can't be written: the
+ *  runtime then starts with its output thrown away, as it always used to.
+ *  Ollama writes to the file itself rather than through a pipe this process
+ *  reads, so a burst of output can never stall it or the app. */
+function openOllamaLog(dir: string): number | null {
+  try {
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, 'ollama.log')
+    // Ollama logs every request it serves, so the file would grow for as long
+    // as the app is installed. Past 10 MB it is set aside and a new one begun.
+    try {
+      if (statSync(file).size > 10 * 1024 * 1024) renameSync(file, join(dir, 'ollama.old.log'))
+    } catch {
+      // No log yet.
+    }
+    const fd = openSync(file, 'a')
+    try {
+      writeSync(fd, `\n--- ${new Date().toISOString()} Clips Kitty started Ollama ---\n`)
+    } catch {
+      // Only a marker between runs; the log works without it.
+    }
+    return fd
+  } catch {
+    return null
+  }
+}
 
 /** Start the Ollama runtime that ships inside the app.
  *
@@ -158,21 +236,35 @@ function startOllama(): void {
   // in core/paths.py, or the engine and the runtime disagree about what is
   // downloaded.
   const localAppData = process.env.LOCALAPPDATA ?? join(app.getPath('home'), 'AppData', 'Local')
+  const dataDir = join(localAppData, 'Clips Studio', 'data')
   // The 1.1.3 rename (d708b34) moved this folder to "Clips Kitty" while
   // core/paths.py rightly kept the data folder at "Clips Studio", so the two
   // stopped matching: models from earlier versions were stranded and fetched
   // again. Keep whichever folder already holds models, so 1.1.3 and 1.1.4
   // installs keep theirs; otherwise use the data folder's own name.
   const kittyModels = join(localAppData, 'Clips Kitty', 'data', 'models')
-  const models = existsSync(join(kittyModels, 'manifests'))
-    ? kittyModels
-    : join(localAppData, 'Clips Studio', 'data', 'models')
+  const models = existsSync(join(kittyModels, 'manifests')) ? kittyModels : join(dataDir, 'models')
 
+  // Ollama's own output goes to a file beside the job logs. It used to go
+  // nowhere, so a download that failed inside Ollama left nothing to read.
+  const log = openOllamaLog(join(dataDir, 'logs'))
+  const stdio: StdioOptions = log === null ? 'ignore' : ['ignore', log, log]
   ollama = spawn(exe, ['serve'], {
-    stdio: 'ignore',
-    env: { ...process.env, OLLAMA_HOST, OLLAMA_MODELS: models },
+    stdio,
+    env: {
+      ...process.env,
+      OLLAMA_HOST,
+      OLLAMA_MODELS: models,
+      // When it starts, Ollama deletes the pieces of any download that never
+      // got as far as its manifest. Quitting while it checked a model several
+      // gigabytes in size, a long silent step, meant fetching all of it again
+      // next time (#148, #150). Kept, the download carries on where it stopped.
+      OLLAMA_NOPRUNE: '1'
+    },
     windowsHide: true
   })
+  // The child has its own handle on the file now.
+  if (log !== null) closeSync(log)
   ollama.on('error', (e) => console.error(`bundled Ollama could not start: ${e.message}`))
   ollama.on('exit', (code) => {
     if (code !== 0 && code !== null) console.error(`Ollama exited with code ${code}`)
@@ -278,29 +370,39 @@ function createWindow(): void {
 
   // With "keep watching" on and channels actually being watched, closing
   // hides the window and the backend keeps running. With nothing to watch
-  // it closes as usual. A real quit sets `quitting` first, so it is never
-  // intercepted.
+  // it closes as usual, after asking first if a model is downloading. A real
+  // quit sets `quitting` first, so it is never intercepted.
   let closeChecked = false
+  let asking = false
   win.on('close', (event) => {
-    if (quitting || !keepInTray || closeChecked) return
+    if (quitting || closeChecked) return
     event.preventDefault()
-    win.hide() // at once: asking the engine can take a moment
-    void isWatching().then((watching) => {
-      if (win.isDestroyed()) return
-      if (!watching) {
+    if (asking) return // a second click while the first is still being answered
+    asking = true
+    if (keepInTray) win.hide() // at once: asking the engine can take a moment
+    void (async () => {
+      try {
+        if (keepInTray && (await isWatching())) {
+          if (win.isDestroyed()) return
+          void ensureTray()
+          if (!toldAboutTray && Notification.isSupported()) {
+            toldAboutTray = true
+            new Notification({
+              title: 'Clips Kitty is still watching',
+              body: 'It keeps running in the system tray. Quit it from the tray icon.'
+            }).show()
+          }
+          return
+        }
+        // This close quits the app, and Ollama with it.
+        const quit = await confirmQuit(win)
+        if (!quit || win.isDestroyed()) return
         closeChecked = true
         win.close()
-        return
+      } finally {
+        asking = false
       }
-      void ensureTray()
-      if (!toldAboutTray && Notification.isSupported()) {
-        toldAboutTray = true
-        new Notification({
-          title: 'Clips Kitty is still watching',
-          body: 'It keeps running in the system tray. Quit it from the tray icon.'
-        }).show()
-      }
-    })
+    })()
   })
   // Windows logging off or shutting down skips before-quit, so say it here.
   win.on('session-end', () => {
