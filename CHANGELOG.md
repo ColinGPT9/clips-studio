@@ -232,6 +232,12 @@ were often broken in a way that only showed up on somebody else's machine.
   kept when you click away from the word instead of pressing Enter, and after **Apply**
   the editor shows the re-rendered clip instead of the earlier preview, staying open on
   it. Escape in the word box now cancels that word only, not the whole editor. (#147)
+- **New Kick VODs download again.** Kick has started giving new VODs ids that the
+  downloader's Kick support doesn't know, so a public VOD that played fine on Kick was
+  reported as "That Kick VOD no longer exists". Clips Kitty now looks the VOD up the way
+  Kick's own site does and downloads its recording, at up to 1080p60. Paste the link from
+  the channel's Videos tab (kick.com/channel/videos/…); that message now only shows for a
+  VOD Kick has really deleted. (#161)
 - **Cloud AI keys save again.** In 2.0.0, saving a key for OpenRouter, Gemini, OpenAI or
   Anthropic failed with an error, because part of the cloud AI support was left out of
   the installed app. (#135)

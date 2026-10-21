@@ -9,6 +9,7 @@ kick.com/<channel>/videos/<uuid>). Ids are stored prefixed as `kick_<uuid>`
 so they can never collide with YouTube or Twitch ids anywhere in the app.
 """
 
+import json
 import re
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,9 +20,17 @@ from core.models import DownloadedVideo
 from sources.urlmatch import host_matches
 from sources.ytdlp_common import games_from_info, progress_opts
 
-_VOD_RE = re.compile(
-    r"kick\.com/(?:video/|[\w.-]+/videos/)([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})",
-    re.IGNORECASE,
+_UUID = r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
+_VOD_RE = re.compile(rf"kick\.com/(?:video/|[\w.-]+/videos/)({_UUID})", re.IGNORECASE)
+# A link that names its channel: the only kind Kick's newer video API can
+# answer for (_from_web_api).
+_CHANNEL_VOD_RE = re.compile(rf"kick\.com/([\w-]+)/videos/({_UUID})", re.IGNORECASE)
+
+_GONE = (
+    "That Kick VOD no longer exists. Kick deletes VODs after a while, "
+    "so a link that worked before can stop working without notice. "
+    "Open the channel's Videos tab and pick one that is still listed "
+    "— Kick itself is working."
 )
 
 
@@ -70,12 +79,58 @@ def _gone_or_raise():
     except yt_dlp.utils.DownloadError as e:
         if "404" not in str(e):
             raise
-        raise ValueError(
-            "That Kick VOD no longer exists. Kick deletes VODs after a while, "
-            "so a link that worked before can stop working without notice. "
-            "Open the channel's Videos tab and pick one that is still listed "
-            "— Kick itself is working."
-        ) from e
+        raise ValueError(_GONE) from e
+
+
+def _get_json(ydl, url: str):
+    """Kick's answer to `url` as JSON, or None when it says there is no such
+    thing (400 or 404). Through yt-dlp's own requests, as Chrome, for the
+    same Cloudflare reason as _impersonation()."""
+    from yt_dlp.networking import Request
+    from yt_dlp.networking.exceptions import HTTPError
+
+    try:
+        with ydl.urlopen(Request(url, headers={"Accept": "application/json"},
+                                 extensions=_impersonation())) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as e:
+        if getattr(e, "status", None) in (400, 404):
+            return None
+        raise
+
+
+def _from_web_api(ydl, url: str) -> dict | None:
+    """A VOD that yt-dlp's Kick extractor can't find, from the API Kick's own
+    site reads, as the fields download() uses; None if that has no such VOD
+    either.
+
+    Kick gives new VODs ids in a newer form (version 7 UUIDs), and the API
+    yt-dlp asks, kick.com/api/v1/video/<id>, answers 404 for every one of
+    them: a public VOD that played on Kick was reported as deleted (#161).
+    The site reads web.kick.com/api/v1/channels/<channel id>/videos/<id>,
+    and that needs the channel's number, so only a link that names its
+    channel can be looked up this way."""
+    m = _CHANNEL_VOD_RE.search(url)
+    if not m:
+        return None
+    slug, uuid = m.group(1).lower(), m.group(2).lower()
+    channel = _get_json(ydl, f"https://kick.com/api/v2/channels/{slug}")
+    channel_id = channel.get("id") if isinstance(channel, dict) else None
+    if not isinstance(channel_id, int):
+        return None
+    got = _get_json(ydl, f"https://web.kick.com/api/v1/channels/{channel_id}/videos/{uuid}")
+    data = got.get("data") if isinstance(got, dict) else None
+    if not isinstance(data, dict) or not data.get("recording_url"):
+        return None
+    category = (data.get("category") or {}).get("name")
+    return {
+        "url": str(data["recording_url"]),
+        "title": data.get("title") or "",
+        "duration": float(data.get("duration") or 0),
+        "uploader": (data.get("channel") or {}).get("username") or slug,
+        "categories": [category] if category else [],
+        "is_live": bool(data.get("is_live")),
+    }
 
 
 def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVideo:
@@ -90,13 +145,23 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Both calls below go through _gone_or_raise: a deleted VOD fails at
+    # Both calls below turn a 404 into "deleted": a deleted VOD fails at
     # whichever one reaches Kick's API first, which is the probe, not the
     # download. Handling only the download would have left the real failure
-    # path untouched.
+    # path untouched. The probe's 404 is only "deleted" once Kick's newer API
+    # hasn't got the VOD either (_from_web_api); when it has, its recording
+    # is what is downloaded, and its title and length are the video's.
+    web = None
     with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, **_impersonation()}) as probe:
-        with _gone_or_raise():
+        try:
             info = probe.extract_info(url, download=False)
+        except yt_dlp.utils.DownloadError as e:
+            if "404" not in str(e):
+                raise
+            web = _from_web_api(probe, url)
+            if web is None:
+                raise ValueError(_GONE) from e
+            info = web
     if info.get("is_live"):
         raise ValueError("This VOD is still being streamed — wait until the broadcast ends.")
 
@@ -119,7 +184,9 @@ def download(url: str, output_dir: Path, vertical: bool = False) -> DownloadedVi
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             with _gone_or_raise():
-                info = ydl.extract_info(url, download=True)
+                got = ydl.extract_info(web["url"] if web else url, download=True)
+        # A recording's own metadata is a playlist's ("master", no game).
+        info = web or got
     except yt_dlp.utils.DownloadError as e:
         if vertical and vertical_src.is_missing_format(str(e)):
             raise ValueError(vertical_src.no_vertical_version("kick")) from e
