@@ -4,7 +4,11 @@ No version is on PyPI yet. Clips Kitty bundles the SDK from the commit it is bui
 
 The installed app puts its own SDK on the plugin's path, and it wins over one installed with pip. A plugin that uses a module added in a later SDK sets `requires.clips_kitty` to the first release that bundles it ([Versioning](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/versioning.md)).
 
-## 1.3.0 (not released yet)
+## Unreleased
+
+- `media.jpeg` says "there is no frame at … s in the video: is it that long?" for a time past the end with FFmpeg 7 and later too. Those end the read with an error ("received no packets") where older FFmpeg wrote nothing, so the plugin was told FFmpeg couldn't read the video.
+
+## 1.3.0 (in Clips Kitty 2.1.0)
 
 - The edit step. A plugin with `edits` in its outputs and `moments` in its inputs suggests edits for the clips Clips Kitty is about to make, in a run of its own (`steps: ["edit"]`). Clips Kitty keeps each suggestion for the creator, who can use it in the editor; it changes no clip by itself. `contract.STEPS` gains `edit`, `contract.PLANNED_STEPS` is `("export",)`, `manifest.OUTPUTS` gains `edits`, and `manifest.PLANNED_OUTPUTS` is `("clips",)`. `job.wants("edit")` is True in an edit run.
 - The validator: `edits` in outputs without `moments` in inputs is refused with "edits are suggested for the clips Clips Kitty makes from moments: add moments to inputs", and a plugin given moments may answer with `edits` ("add ratings, context or edits to outputs"). A manifest still gets at most one of these errors. `step_problem` says "can't suggest edits for clips: its manifest needs moments in inputs and edits in outputs", and points a plugin that only edits to Suggest edits rather than Rate & understand.
@@ -18,7 +22,7 @@ The installed app puts its own SDK on the plugin's path, and it wins over one in
 - `new --template editor`, a sixth template: it suggests edits for the clips Clips Kitty makes, by the words said in them. It mutes the words the creator lists in `mute_words`, cuts the wait after "respawn timer" and adds the hook title "Quark burst!" where "quark burst" is said, for Quarkbloom Arena (a made-up game). Like the other templates it has its own tests and workflow, and it needs no FFmpeg.
 - [Steps](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/steps.md#suggest-edits-the-edit-step) explains the edit step: what a plugin may suggest, how Clips Kitty fits it and what each `changed:` and `ignored:` line means, with an editor that the SDK's documentation tests run as written. A plugin that suggests edits needs 1.3.0: don't ship an older copy of the SDK inside a plugin, which comes first on the path and has no `job.suggest_edit`.
 
-## 1.2.0 (not released yet)
+## 1.2.0 (in Clips Kitty 2.1.0)
 
 - `python -m clipskitty_sdk --version` prints the SDK's version and the plugin contract it follows: `clipskitty-sdk 1.2.0 (plugin contract 1)`.
 - Installed with pip, the SDK adds a `clipskitty-sdk` command, the same as `python -m clipskitty_sdk`.

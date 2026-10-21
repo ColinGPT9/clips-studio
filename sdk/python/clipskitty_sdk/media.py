@@ -304,8 +304,12 @@ def jpeg(job, t: float, max_side: int = 896) -> bytes:
         done = subprocess.run(command, capture_output=True)
     except OSError as e:
         raise MediaError(f"FFmpeg couldn't start ({e})") from e
-    if done.returncode != 0:
-        raise MediaError(f"FFmpeg couldn't read the video: {_last_line(done.stderr.decode('utf-8', 'replace'))}")
+    errors = done.stderr.decode("utf-8", "replace")
+    # A time past the end: FFmpeg 7 and later fail with "Nothing was written into output file, because at least
+    # one of its streams received no packets", where older ones wrote nothing and succeeded.
+    past_the_end = not done.stdout and "received no packets" in errors
+    if done.returncode != 0 and not past_the_end:
+        raise MediaError(f"FFmpeg couldn't read the video: {_last_line(errors)}")
     if not done.stdout.startswith(b"\xff\xd8"):
         raise MediaError(f"there is no frame at {float(t):g} s in the video: is it that long?")
     return done.stdout

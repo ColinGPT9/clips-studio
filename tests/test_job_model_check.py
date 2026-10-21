@@ -129,6 +129,8 @@ def _run_worker(tmp_path, monkeypatch, videos, installed, made=()):
     is left, with Ollama listing `installed` and the Shorts of `made` already
     made. Returns the finished jobs, the videos process_video was started on,
     and every call to the prefetcher, in order."""
+    # The worker's pipeline imports numpy, which CI's light install doesn't have.
+    pytest.importorskip("numpy")
     from core import progress, queue
     from core.state import StateDB
     from main import BUNDLED_CONFIG, load_config
