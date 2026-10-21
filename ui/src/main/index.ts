@@ -16,11 +16,11 @@ import { randomBytes } from 'node:crypto'
 import {
   closeSync,
   existsSync,
-  fstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync,
   writeSync
 } from 'node:fs'
@@ -186,28 +186,24 @@ ipcMain.handle('tray:set', (_event, on: unknown) => {
   return { keepInTray }
 })
 
+/** The folder Ollama's log is in, once startOllama has opened it there. */
+let ollamaLogDir: string | null = null
+
 /** Open Ollama's log for adding to, or null when it can't be written: the
  *  runtime then starts with its output thrown away, as it always used to.
  *  Ollama writes to the file itself rather than through a pipe this process
- *  reads, so a burst of output can never stall it or the app. */
+ *  reads, so a burst of output can never stall it or the app.
+ *
+ *  Opened without looking at it first: its size is seen to on the way out
+ *  (setAsideBigOllamaLog). Looked at by its name and then opened by that name,
+ *  the name can come to mean another file in between, which is what code
+ *  scanning flags (js/file-system-race), and Windows won't let a file opened
+ *  for adding to be emptied instead. */
 function openOllamaLog(dir: string): number | null {
   try {
     mkdirSync(dir, { recursive: true })
-    const file = join(dir, 'ollama.log')
-    // Ollama logs every request it serves, so the file would grow for as long
-    // as the app is installed. Past 10 MB it is set aside and a new one begun.
-    // The size is read from the open file, not by its name before opening it:
-    // between a look by name and the open, the name can point somewhere else.
-    let fd = openSync(file, 'a')
-    if (fstatSync(fd).size > 10 * 1024 * 1024) {
-      closeSync(fd)
-      try {
-        renameSync(file, join(dir, 'ollama.old.log'))
-      } catch {
-        // Held open by an Ollama still running: it is added to instead.
-      }
-      fd = openSync(file, 'a')
-    }
+    const fd = openSync(join(dir, 'ollama.log'), 'a')
+    ollamaLogDir = dir
     try {
       writeSync(fd, `\n--- ${new Date().toISOString()} Clips Kitty started Ollama ---\n`)
     } catch {
@@ -317,6 +313,22 @@ function stopChildren(): void {
   killTree(ollama)
   backend = null
   ollama = null
+  setAsideBigOllamaLog()
+}
+
+/** Ollama logs every request it serves, so its log would grow for as long as
+ *  the app is installed. Past 10 MB it is set aside as ollama.old.log, after
+ *  Ollama has been stopped, and the next start begins a new one. Until then
+ *  it is added to, so the run before a restart is still in ollama.log, where
+ *  anyone looking into a problem would look. */
+function setAsideBigOllamaLog(): void {
+  if (ollamaLogDir === null) return
+  const file = join(ollamaLogDir, 'ollama.log')
+  try {
+    if (statSync(file).size > 10 * 1024 * 1024) renameSync(file, join(ollamaLogDir, 'ollama.old.log'))
+  } catch {
+    // No log, or it can't be moved just now: the next quit tries again.
+  }
 }
 
 function startBackend(): void {
