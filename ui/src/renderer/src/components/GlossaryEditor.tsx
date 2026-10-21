@@ -68,7 +68,7 @@ export default function GlossaryEditor({ clipId }: { clipId: number }): JSX.Elem
               disabled={busy}
               onClick={() => rule(term, 'ignore')}
               className="px-2 py-0.5 rounded-full text-[11px] border border-accent/50 text-accent hover:line-through disabled:opacity-50"
-              title="Click to let this word be translated normally"
+              title={t('Click to let this word be translated normally')}
             >
               {term}
             </button>

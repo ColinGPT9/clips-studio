@@ -1,4 +1,5 @@
 import type { FilterName } from '../lib/types'
+import { t } from '../lib/i18n'
 
 /** CSS approximations of the FFmpeg color presets (video/filters.py is the
  *  source of truth for the real render). Used two ways:
@@ -56,7 +57,7 @@ export default function FilterPicker({
   onChange: (f: FilterName) => void
 }): JSX.Element {
   return (
-    <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Color filter">
+    <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label={t('Color filter')}>
       {FILTER_NAMES.map((name) => (
         <button
           key={name}
@@ -73,7 +74,7 @@ export default function FilterPicker({
             aria-hidden
           />
           <p className={`px-2 py-1 text-xs ${value === name ? 'text-accent' : 'text-muted'}`}>
-            {LABELS[name]}
+            {t(LABELS[name])}
           </p>
         </button>
       ))}

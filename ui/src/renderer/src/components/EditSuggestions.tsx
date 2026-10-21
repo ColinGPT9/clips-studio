@@ -1,4 +1,5 @@
 import type { SuggestionCard } from '../lib/editSuggestions'
+import { t } from '../lib/i18n'
 
 /** The edits Marketplace plugins suggested for this clip, above the
  *  timeline: one card per suggestion in the order the plugins ran, with
@@ -34,7 +35,7 @@ export default function EditSuggestions({
   if (cards.length === 0 && hidden === 0) return null
   const button = 'bg-raised px-2.5 py-1 rounded-md hover:bg-raised/70 disabled:opacity-40'
   return (
-    <section className="space-y-2" aria-label="Suggested edits">
+    <section className="space-y-2" aria-label={t('Suggested edits')}>
       {cards.map((card) => (
         <div key={card.id} className="border border-raised/60 rounded-lg p-2.5 space-y-1 text-xs">
           <p className="font-medium text-ink">{card.title}</p>

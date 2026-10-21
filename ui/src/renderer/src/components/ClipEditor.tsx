@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { getExportFolder, pickExportFolder, setExportFolder } from '../lib/exportFolder'
 import { Folder, Scissors } from './icons'
 import type { Clip, PluginNote } from '../lib/types'
+import { t } from '../lib/i18n'
 import { sportMoment } from '../lib/sports'
 import { suggestionLine } from '../lib/editSuggestions'
 
@@ -257,7 +258,7 @@ export default function ClipEditor({
             setFolder(e.target.value)
             setExportFolder(e.target.value)
           }}
-          placeholder="export folder"
+          placeholder={t('export folder')}
           title={folder}
         />
         <button
@@ -266,13 +267,13 @@ export default function ClipEditor({
             const chosen = await pickExportFolder()
             if (chosen) setFolder(chosen)
           }}
-          title="Choose where exported clips are saved"
-          aria-label="Choose export folder"
+          title={t('Choose where exported clips are saved')}
+          aria-label={t('Choose export folder')}
         >
           <Folder />
         </button>
         <button className="btn-ghost" onClick={exportOne} disabled={busy !== null}>
-          {busy === 'export' ? 'Exporting…' : 'Export'}
+          {busy === 'export' ? t('Exporting…') : t('Export')}
         </button>
         {/* Beside Export rather than only on the card in the grid: Export
             writes this one clip to a folder, and Publish is the same scope
@@ -282,7 +283,7 @@ export default function ClipEditor({
             than acting on the click, exactly like Publish all. */}
         {onPublish && (
           <button className="btn-ghost" onClick={onPublish} disabled={busy !== null}>
-            Publish ↗
+            {t('Publish ↗')}
           </button>
         )}
       </div>

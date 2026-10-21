@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { Clip } from '../lib/types'
+import { t } from '../lib/i18n'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -75,7 +76,7 @@ export default function EditChat({
           ))}
           {busy && (
             <p className="text-xs text-muted mr-6 px-3">
-              Thinking… (the local AI can take up to a minute)
+              {t('Thinking… (the local AI can take up to a minute)')}
             </p>
           )}
         </div>
@@ -84,15 +85,15 @@ export default function EditChat({
       <div className="flex gap-2">
         <input
           className="input flex-1"
-          placeholder="Describe what to change…"
-          aria-label="Describe what to change about this clip"
+          placeholder={t('Describe what to change…')}
+          aria-label={t('Describe what to change about this clip')}
           value={input}
           disabled={busy}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && send()}
         />
         <button className="btn-accent shrink-0" onClick={send} disabled={busy || !input.trim()}>
-          Send
+          {t('Send')}
         </button>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { api } from '../lib/api'
 import { CAPTION_FONTS } from './CaptionStyleControls'
 import { Folder, Rotate } from './icons'
 import type { WatermarkConfig } from '../lib/types'
+import { t } from '../lib/i18n'
 
 const POSITIONS: {
   id: NonNullable<WatermarkConfig['position']>
@@ -75,7 +76,7 @@ function Preview({ config, landscape }: { config: WatermarkConfig; landscape?: b
       className={`relative mx-auto rounded-lg overflow-hidden bg-gradient-to-br from-slate-600 to-slate-800 ${
         landscape ? 'aspect-video w-full max-w-[220px]' : 'aspect-[9/16] max-h-52'
       }`}
-      aria-label="Watermark preview"
+      aria-label={t('Watermark preview')}
     >
       {moving && (
         <style>{`@keyframes wm-side {

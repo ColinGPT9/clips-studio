@@ -201,7 +201,7 @@ export default function FeedbackHub(): JSX.Element {
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Feedback Hub"
+          aria-label={t('Feedback Hub')}
         >
           <div
             className="bg-surface border border-raised/60 rounded-2xl p-5 w-full max-w-xl max-h-[85vh] overflow-y-auto space-y-4"
@@ -214,7 +214,7 @@ export default function FeedbackHub(): JSX.Element {
               <button
                 className="text-muted hover:text-ink text-lg leading-none px-1"
                 onClick={() => setOpen(false)}
-                aria-label="Close"
+                aria-label={t('Close')}
               >
                 ✕
               </button>
@@ -413,7 +413,7 @@ export default function FeedbackHub(): JSX.Element {
                       <button
                         className="hover:text-error"
                         onClick={() => setImages((im) => im.filter((_, j) => j !== i))}
-                        aria-label="Remove screenshot"
+                        aria-label={t('Remove screenshot')}
                       >
                         ✕
                       </button>

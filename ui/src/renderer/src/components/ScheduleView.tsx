@@ -84,7 +84,7 @@ export default function ScheduleView({ onClose }: { onClose: () => void }): JSX.
       className="fixed inset-0 z-50 bg-base/80 backdrop-blur-sm grid place-items-center p-6"
       role="dialog"
       aria-modal="true"
-      aria-label="Posting schedule"
+      aria-label={t('Posting schedule')}
       onClick={onClose}
     >
       <div

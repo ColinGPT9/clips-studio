@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CaptionStyle } from '../lib/types'
+import { t } from '../lib/i18n'
 
 export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
   font: 'Arial',
@@ -48,7 +49,7 @@ function CaptionExample({ style }: { style: Required<CaptionStyle> }): JSX.Eleme
   return (
     <div
       className={`relative rounded-lg bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 aspect-[9/16] max-h-44 mx-auto w-auto flex ${align} justify-center overflow-hidden`}
-      aria-label="Caption style example"
+      aria-label={t('Caption style example')}
     >
       <p
         className="text-center px-2 py-4 leading-tight"
@@ -206,7 +207,7 @@ export default function CaptionStyleControls({
         {style.highlight && (
           <input
             type="color"
-            aria-label="Highlight colour"
+            aria-label={t('Highlight colour')}
             className="h-7 w-10 rounded-md bg-raised cursor-pointer shrink-0"
             value={style.highlight_color}
             onChange={(e) => onChange('highlight_color', e.target.value.toUpperCase())}
@@ -218,7 +219,9 @@ export default function CaptionStyleControls({
         <div className="flex items-center gap-3">
           <label
             className="flex items-center gap-2 cursor-pointer text-sm"
-            title="When two people talk in a clip, the main speaker keeps the text colour and the other person's captions take this one. A clip with one voice looks the same as always."
+            title={t(
+              "When two people talk in a clip, the main speaker keeps the text colour and the other person's captions take this one. A clip with one voice looks the same as always."
+            )}
           >
             <input
               type="checkbox"
@@ -231,7 +234,7 @@ export default function CaptionStyleControls({
           {style.second_speaker && (
             <input
               type="color"
-              aria-label="Second speaker's colour"
+              aria-label={t("Second speaker's colour")}
               className="h-7 w-10 rounded-md bg-raised cursor-pointer shrink-0"
               value={style.second_speaker_color}
               onChange={(e) => onChange('second_speaker_color', e.target.value.toUpperCase())}

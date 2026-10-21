@@ -171,7 +171,7 @@ export default function PublishAllDialog({
       className="fixed inset-0 z-50 bg-base/80 backdrop-blur-sm grid place-items-center p-6"
       role="dialog"
       aria-modal="true"
-      aria-label="Publish all clips"
+      aria-label={t('Publish all clips')}
       onClick={onClose}
     >
       <div
@@ -259,7 +259,7 @@ export default function PublishAllDialog({
                     className="input !py-1 text-sm !w-16"
                     value={perDay}
                     onChange={(e) => setPerDay(Math.max(1, Number(e.target.value) || 1))}
-                    aria-label="Posts per day"
+                    aria-label={t('Posts per day')}
                   />
                   <span className="text-muted text-xs">{t('a day,')}</span>
                   <input
@@ -269,7 +269,7 @@ export default function PublishAllDialog({
                     className="input !py-1 text-sm !w-16"
                     value={gapHours}
                     onChange={(e) => setGapHours(Math.max(0.5, Number(e.target.value) || 1))}
-                    aria-label="Hours between posts"
+                    aria-label={t('Hours between posts')}
                   />
                   <span className="text-muted text-xs">{t('hours apart')}</span>
                 </div>

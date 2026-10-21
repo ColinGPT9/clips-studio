@@ -6,6 +6,7 @@ import LiveTextOverlay from './LiveTextOverlay'
 import TimelineEditor from './TimelineEditor'
 import { DEFAULT_CAPTION_STYLE } from './CaptionStyleControls'
 import { youtubeEnabledSync } from '../lib/youtube'
+import { t } from '../lib/i18n'
 
 /** Live, draggable watermark preview over the editor video. Shows the
  *  text/logo where it will burn in, updates as the controls change, and
@@ -127,7 +128,7 @@ function WatermarkOverlay({
           onPointerDown={startDrag}
           onPointerMove={onMove}
           onPointerUp={() => (dragging.current = false)}
-          title="Drag to reposition"
+          title={t('Drag to reposition')}
         >
           <Mark />
         </div>
@@ -263,7 +264,7 @@ export default function EditorView({
               controls
               autoPlay
               className="absolute inset-0 w-full h-full object-contain rounded-xl bg-base"
-              aria-label="Editing preview"
+              aria-label={t('Editing preview')}
             />
             {/* Live watermark overlay — hidden while a baked draft is shown. */}
             {watermark && !previewSrc && (

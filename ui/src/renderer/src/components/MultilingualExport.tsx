@@ -375,7 +375,7 @@ export default function MultilingualExport({
             const chosen = await pickExportFolder()
             if (chosen) setFolder(chosen)
           }}
-          aria-label="Choose export folder"
+          aria-label={t('Choose export folder')}
         >
           <Folder />
         </button>
@@ -622,7 +622,7 @@ export default function MultilingualExport({
                 <button
                   className="px-2 py-0.5 rounded-md bg-raised text-muted hover:text-ink disabled:opacity-50"
                   onClick={() => play(c, voiceFor[c] || undefined)}
-                  title="Hear this voice"
+                  title={t('Hear this voice')}
                 >
                   ▶ {t('Listen')}
                 </button>
@@ -643,7 +643,7 @@ export default function MultilingualExport({
               <button
                 className="text-muted hover:text-ink px-1"
                 onClick={() => setPlayer(null)}
-                aria-label="Close preview"
+                aria-label={t('Close preview')}
               >
                 ✕
               </button>

@@ -3,6 +3,7 @@ import { applyEvent, emptyProgress, etaSeconds, formatEta, progressStore } from 
 import { api } from '../lib/api'
 import { useEvents } from '../lib/useEvents'
 import { useJobWatch } from '../lib/useJobWatch'
+import { t } from '../lib/i18n'
 
 /** Live progress for the running job: stage label, percent bar, an estimated
  *  time remaining that ticks down, and a Cancel button. Hidden when idle. */
@@ -96,7 +97,7 @@ export default function ProcessingBar(): JSX.Element | null {
             onClick={cancel}
             disabled={cancelling || !progress.videoId}
           >
-            {cancelling ? 'Cancelling…' : 'Cancel'}
+            {cancelling ? t('Cancelling…') : t('Cancel')}
           </button>
         </div>
       </div>
@@ -106,7 +107,7 @@ export default function ProcessingBar(): JSX.Element | null {
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label="Video processing progress"
+        aria-label={t('Video processing progress')}
       >
         <div
           className="h-full bg-accent rounded-full transition-[width] duration-700"
