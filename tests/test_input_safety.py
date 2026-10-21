@@ -348,13 +348,11 @@ def test_unlink_stays_inside_the_data_folder(tmp_path):
     that the file is inside the data folder. Every caller checks too; this is
     the check that has to hold when a caller stops checking, because being
     wrong here costs somebody footage they cannot get back."""
-    import pathlib
-
     # Import the helper alone: server.api pulls in FastAPI, which CI does not
     # install, and the point of this test is one function.
     api = Path(__file__).resolve().parent.parent / "server" / "api.py"
     src = api.read_text(encoding="utf-8")
-    ns = {"Path": pathlib.Path}
+    ns = {"Path": Path}
     exec(compile(src[src.index("def _unlink_best_effort"):src.index("def create_app")],
                  "api.py", "exec"), ns)
     unlink = ns["_unlink_best_effort"]

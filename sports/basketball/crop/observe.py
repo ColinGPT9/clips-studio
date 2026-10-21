@@ -390,14 +390,13 @@ def find_bug(looks: dict, duration: float) -> tuple[float, float, float, float] 
         return None
     from analysis.game_text import _ocr
     from sports.basketball import scoreboard
-    from sports.basketball.action import _OCR
 
     times = sorted(looks)
 
     def grab(t: float):
         return looks[min(times, key=lambda x: abs(x - t))]
 
-    with _OCR:
+    with scoreboard.OCR:
         found = scoreboard.find_text(grab, duration, _ocr)
     if found is None:
         return None
@@ -520,7 +519,7 @@ def observe(clip_path, sources: dict | None = None, moment_t: float | None = Non
         cpu = time.thread_time()
         try:
             a1["sig"] = frame_signals(clip_path, fps, width, height, stop, cancel)
-        except BaseException as e:  # re-raised in the caller's thread
+        except Exception as e:  # re-raised in the caller's thread
             a1["error"] = e
         a1["wall"], a1["cpu"] = time.perf_counter() - t, time.thread_time() - cpu
 

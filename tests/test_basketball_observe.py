@@ -147,10 +147,15 @@ def _bench_clip():
     if not meta_path.exists():
         pytest.skip("no basketball bench data on this machine")
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    for cid, entry in sorted(meta.get("clips", {}).items(), key=lambda kv: kv[1].get("duration", 1e9)):
-        if entry.get("sport_t") is not None and (BENCH / entry["path"]).exists():
-            return cid, entry
-    pytest.skip("no bench clip with a basket time")
+    found = next(
+        ((cid, entry)
+         for cid, entry in sorted(meta.get("clips", {}).items(), key=lambda kv: kv[1].get("duration", 1e9))
+         if entry.get("sport_t") is not None and (BENCH / entry["path"]).exists()),
+        None,
+    )
+    if found is None:
+        pytest.skip("no bench clip with a basket time")
+    return found
 
 
 def test_a_bench_clip_with_the_coco_detector():

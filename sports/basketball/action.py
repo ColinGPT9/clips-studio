@@ -20,11 +20,6 @@ The output is the crop path video/cropper.py renders for everything else,
 with its "zoom" and "rows".
 """
 
-import threading
-
-# Clips render a few at a time; the OCR reads one frame at a time.
-_OCR = threading.Lock()
-
 # The scoreboard left out. On copies of the three NBA games' bugs over a
 # moving picture, the graphic reached 0.03-0.06 of the height past its text.
 BUG_WIDTH = 480          # frames are looked at this wide, in gray, for the graphic's edge
@@ -118,7 +113,7 @@ def find_bug_text(looks: dict, duration: float) -> tuple[tuple, tuple] | None:
     def grab(t: float):
         return looks[min(times, key=lambda x: abs(x - t))]
 
-    with _OCR:
+    with scoreboard.OCR:
         return scoreboard.find_text(grab, duration, _ocr)
 
 

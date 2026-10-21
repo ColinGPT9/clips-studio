@@ -25,11 +25,17 @@ readable bug (a gym camera, a phone in the stands) is scored without one.
 """
 
 import re
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 
 from sports.basketball import keyframes
 from sports.core import scorebug
+
+# Clips render a few at a time; the OCR reads one frame at a time. Held around
+# find_text by the crop's scoreboard look (action.py, crop/observe.py), here
+# so that neither has to import the other for it.
+OCR = threading.Lock()
 
 # The period: "1ST", "2ND QTR", "Q3", "4TH", "OT", "2OT", "OT2", "1ST HALF", "H2".
 PERIOD = re.compile(r"(?<![A-Z0-9])(?:([1-4])\s?(?:ST|ND|RD|TH)(?:\s*(QTR|QUARTER|HALF|HLF))?|Q([1-4])|([1-4])Q"

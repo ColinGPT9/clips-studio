@@ -2090,7 +2090,17 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     @app.get("/media/preview/{clip_id}")
     def media_preview(clip_id: int):
-        path = (data_dir / "previews" / f"clip_{clip_id}.mp4").resolve()
+        # Named from the clip's id as the database has it rather than from
+        # the request's: the same number, but a path built from the request
+        # is one code scanning has to take on trust.
+        d = db()
+        try:
+            row = d.get_clip(clip_id)
+        finally:
+            d.close()
+        if row is None:
+            raise HTTPException(404, "no such clip")
+        path = (data_dir / "previews" / f"clip_{int(row['id'])}.mp4").resolve()
         if not path.exists():
             raise HTTPException(404, "no draft preview")
         # Never from the cache: every draft of a clip is written to the same

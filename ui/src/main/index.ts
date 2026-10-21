@@ -16,11 +16,11 @@ import { randomBytes } from 'node:crypto'
 import {
   closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
-  statSync,
   writeFileSync,
   writeSync
 } from 'node:fs'
@@ -196,12 +196,18 @@ function openOllamaLog(dir: string): number | null {
     const file = join(dir, 'ollama.log')
     // Ollama logs every request it serves, so the file would grow for as long
     // as the app is installed. Past 10 MB it is set aside and a new one begun.
-    try {
-      if (statSync(file).size > 10 * 1024 * 1024) renameSync(file, join(dir, 'ollama.old.log'))
-    } catch {
-      // No log yet.
+    // The size is read from the open file, not by its name before opening it:
+    // between a look by name and the open, the name can point somewhere else.
+    let fd = openSync(file, 'a')
+    if (fstatSync(fd).size > 10 * 1024 * 1024) {
+      closeSync(fd)
+      try {
+        renameSync(file, join(dir, 'ollama.old.log'))
+      } catch {
+        // Held open by an Ollama still running: it is added to instead.
+      }
+      fd = openSync(file, 'a')
     }
-    const fd = openSync(file, 'a')
     try {
       writeSync(fd, `\n--- ${new Date().toISOString()} Clips Kitty started Ollama ---\n`)
     } catch {

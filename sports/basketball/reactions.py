@@ -183,7 +183,7 @@ def read_shots(path, duration: float, court_share: float, crowd_edges: float, ca
         from sports.soccer.ball import detect
 
         def on_frame(i, img):
-            _balls, found[i] = detect(model, img, DETECT_WIDTH)
+            found[i] = detect(model, img, DETECT_WIDTH)[1]
 
     else:
         def on_frame(i, img):

@@ -164,8 +164,6 @@ def test_the_assistant_is_told_about_basketball():
     assert "Basketball always clips the whole game" in text
     # The Crop: the assistant can ask for full screen, and the engine takes what it sends.
     assert SPORT_PARAM["properties"]["screen"]["enum"] == ["safe", "full"]
-    import sports
-
     assert sports.clean({"name": "basketball", "screen": "full"})["screen"] == "full"
 
 
@@ -1107,8 +1105,8 @@ def test_a_stat_card_after_a_play_is_no_cutaway():
 
 def test_shots_are_read_by_the_detector_and_by_colour_without_it(monkeypatch):
     np = pytest.importorskip("numpy")
+    import sports.soccer.ball as ball
     from sports.core import scorebug
-    from sports.soccer import ball
 
     people = {0: [(0.5, 0.5, 0.05, 0.25)], 1: [(0.5, 0.5, 0.3, 0.7)], 2: [(0.5, 0.5, 0.05, 0.25)]}
     widths = []
@@ -1144,8 +1142,8 @@ def test_a_closer_camera_scales_the_bar_for_a_shot_of_people(monkeypatch):
     # of 785 keyframes; no cutaway found). The players' height on the game
     # camera (each keyframe's 3rd-tallest person, its median) scales the bar.
     np = pytest.importorskip("numpy")
+    import sports.soccer.ball as ball
     from sports.core import scorebug
-    from sports.soccer import ball
 
     national = [[0.27, 0.23, 0.21, 0.2, 0.18]] * 40
     assert reactions.people_scale(national) == 1.0
