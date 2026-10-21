@@ -257,7 +257,7 @@ tramite Ollama.
     del primo quarto. Vengono trovate anche le reazioni del pubblico, della panchina e quelle a bordo campo. Il ritaglio 9:16 di
     ogni clip è pianificato attorno alla sua azione: il pallone e chi lo ha, chi riceve un passaggio e il tiro seguito fino
     al canestro, con ferro e tabellone nell'inquadratura. Segue l'azione in panoramica e non zooma mai. Il pallone viene
-    trovato dal modello di rilevamento E-BARD (citato in [Licenza](#license)).
+    trovato dal modello di rilevamento [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) (citato in [Licenza](#license)).
 
   Vedi [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Sottotitoli impressi modificabili**: sincronizzati parola per parola e con lo stile che preferisci (colore, dimensione,

@@ -280,7 +280,7 @@ le GPU via Ollama.
     repérées aussi. Le recadrage 9:16 de chaque clip est planifié autour de son action : le
     ballon et celui qui l'a, le receveur d'une passe, et le tir suivi jusqu'au panier avec le
     cercle et la planche dans l'image. Il suit l'action en panoramique et ne zoome jamais. Le
-    ballon est repéré par le modèle de détection E-BARD (crédité dans [Licence](#license)).
+    ballon est repéré par le modèle de détection [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) (crédité dans [Licence](#license)).
 
   Voir [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Sous-titres incrustés modifiables** : synchronisés au mot et stylés comme vous le

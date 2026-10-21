@@ -258,7 +258,7 @@ solange das noch geht. Ein Glossar schützt Kanalnamen, Sponsoren und Insider-Wi
     Auch die Reaktionen von Publikum, Bank und Spielfeldrand werden gefunden. Der 9:16-Zuschnitt jedes Clips wird um
     seinen Spielzug herum geplant: der Ball und wer ihn hat, der Empfänger eines Passes und der Wurf, verfolgt bis
     zum Korb, mit Ring und Brett im Bild. Er schwenkt mit dem Spiel mit und zoomt nie. Den Ball findet das
-    E-BARD-Erkennungsmodell (genannt unter [Lizenz](#license)).
+    [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme)-Erkennungsmodell (genannt unter [Lizenz](#license)).
 
   Siehe [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Bearbeitbare eingebrannte Untertitel**: wortgenau und gestaltet, wie du willst (Farbe, Größe,

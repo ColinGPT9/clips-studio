@@ -268,7 +268,7 @@ donanımsal video kodlama (otomatik algılanır, CPU yedeğiyle) ve Ollama üzer
     Seyircinin, yedek kulübesinin ve saha kenarının tepkileri de bulunur. Her klibin 9:16
     kırpması kendi oyununa göre planlanır: top ve topu tutan oyuncu, pası alan oyuncu ve
     çember ile panya kadrajda kalacak şekilde potaya kadar izlenen şut. Kırpma oyunla
-    birlikte kayar ve asla yakınlaştırmaz. Top, E-BARD algılama modeliyle bulunur
+    birlikte kayar ve asla yakınlaştırmaz. Top, [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) algılama modeliyle bulunur
     ([Lisans](#license) bölümünde atfı yapılmıştır).
 
   Bkz. [docs/SPORTS.md](../../docs/SPORTS.md).

@@ -236,7 +236,7 @@ through Ollama.
     far more than a first-quarter basket. The crowd, bench and courtside reactions are found
     too. Each clip's 9:16 crop is planned around its play: the ball and whoever has it, the
     receiver of a pass, and the shot followed to the basket with the rim and backboard in
-    the picture. It pans with the play and never zooms. The ball is found by the E-BARD
+    the picture. It pans with the play and never zooms. The ball is found by the [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme)
     detection model (credited under [License](#license)).
 
   See [docs/SPORTS.md](docs/SPORTS.md).

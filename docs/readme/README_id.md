@@ -257,7 +257,7 @@ melalui Ollama.
     jauh lebih berbobot daripada tembakan masuk di kuarter pertama. Reaksi penonton, bangku cadangan, dan pinggir lapangan
     juga ditemukan. Crop 9:16 setiap klip direncanakan mengikuti permainannya: bola dan siapa pun yang memegangnya,
     penerima umpan, dan tembakan yang diikuti sampai ke keranjang dengan ring dan papan pantul tetap di dalam gambar.
-    Crop bergeser mengikuti permainan dan tidak pernah zoom. Bola ditemukan oleh model deteksi E-BARD (kreditnya
+    Crop bergeser mengikuti permainan dan tidak pernah zoom. Bola ditemukan oleh model deteksi [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) (kreditnya
     ada di bagian [Lisensi](#license)).
 
   Lihat [docs/SPORTS.md](../../docs/SPORTS.md).

@@ -276,7 +276,7 @@ GPU sa pamamagitan ng Ollama.
     ng crowd, ng bench at ng mga nasa courtside. Pinaplano ang 9:16 na crop ng bawat clip
     ayon sa play nito: ang bola at ang may hawak nito, ang tatanggap ng pasa, at ang tira na
     sinusundan hanggang sa basket na kita ang rim at backboard. Sumasabay ang crop sa play at hindi
-    kailanman nagzu-zoom. Ang bola ay hinahanap ng E-BARD detection model (nakakredito sa
+    kailanman nagzu-zoom. Ang bola ay hinahanap ng [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) detection model (nakakredito sa
     [Lisensya](#license)).
 
   Tingnan ang [docs/SPORTS.md](../../docs/SPORTS.md).

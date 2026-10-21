@@ -263,7 +263,7 @@ bằng phần cứng qua NVENC/AMF/QSV (tự phát hiện, có dự phòng CPU),
     mỗi clip được lên kế hoạch quanh pha bóng: quả bóng và người đang giữ bóng, người nhận
     đường chuyền, và cú ném được theo đến tận rổ với vành rổ và bảng rổ trong khung hình. Khung
     lia theo pha bóng và không bao giờ phóng to. Quả bóng được tìm bằng mô hình nhận diện
-    E-BARD (ghi công trong phần [Giấy phép](#license)).
+    [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) (ghi công trong phần [Giấy phép](#license)).
 
   Xem [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Phụ đề gắn cứng chỉnh sửa được**: khớp theo từng từ, và định dạng theo ý bạn (màu, cỡ,

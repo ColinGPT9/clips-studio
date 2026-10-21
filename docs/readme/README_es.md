@@ -270,7 +270,7 @@ y el LLM en la GPU a través de Ollama.
     público, de la banca y de la gente junto a la cancha. El recorte 9:16 de cada clip se
     planifica en torno a su jugada: el balón y quien lo tiene, el receptor de un pase y el
     tiro seguido hasta la canasta, con el aro y el tablero en la imagen. Se desplaza con la
-    jugada y nunca hace zoom. El balón lo encuentra el modelo de detección E-BARD
+    jugada y nunca hace zoom. El balón lo encuentra el modelo de detección [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme)
     (acreditado en [Licencia](#license)).
 
   Consulta [docs/SPORTS.md](../../docs/SPORTS.md).

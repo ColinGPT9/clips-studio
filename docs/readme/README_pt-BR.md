@@ -265,7 +265,7 @@ GPU através do Ollama.
     beira da quadra também são encontradas. O recorte 9:16 de cada clipe é planejado em torno
     da jogada: a bola e quem está com ela, quem recebe um passe e o arremesso acompanhado até a
     cesta, com o aro e a tabela na imagem. Ele acompanha a jogada com panorâmicas e nunca dá
-    zoom. A bola é encontrada pelo modelo de detecção E-BARD (creditado em [Licença](#license)).
+    zoom. A bola é encontrada pelo modelo de detecção [E-BARD](https://github.com/GabrieleGiudic/E-BARD#readme) (creditado em [Licença](#license)).
 
   Veja [docs/SPORTS.md](../../docs/SPORTS.md).
 - **Legendas gravadas no vídeo e editáveis**: sincronizadas palavra por palavra e com o estilo que
