@@ -43,7 +43,7 @@ Tags:
   - open-source
   - content-creation
 ReleaseNotesUrl: https://github.com/ColinGPT9/clips-studio/releases/tag/v2.1.0
-Documentation:
+Documentations:
   - DocumentLabel: Known issues
     DocumentUrl: https://github.com/ColinGPT9/clips-studio/blob/main/KNOWN-ISSUES.md
   - DocumentLabel: Changelog
