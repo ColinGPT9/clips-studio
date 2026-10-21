@@ -992,12 +992,8 @@ più difficili è qui sotto, perché "perché non ancora" di solito è più util
 in pratica e cosa include l'installer.
 
 Il rilevamento di pallone, canestro e giocatori nel basket è il
-[modello di rilevamento E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) di Gabriele Giudici ([codice](https://github.com/GabrieleGiudic/E-BARD),
-[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), usato senza modifiche
-secondo la licenza [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD estende BARD
-(Giudici, Maurino e Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Grazie per averlo
+modello di rilevamento [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n), usato senza modifiche
+secondo la licenza CC BY 4.0. Grazie per averlo
 pubblicato apertamente. Ogni altro componente incluso e la sua licenza sono in [NOTICE](../../NOTICE).
 
 Tre parti hanno una licenza separata, così costruire su Clips Kitty resta semplice:

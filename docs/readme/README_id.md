@@ -992,13 +992,9 @@ yang lebih sulit ada di bawah, karena "kenapa belum" biasanya lebih berguna dari
 **GNU AGPL-3.0-or-later**. Lihat [LICENSE](../../LICENSE), dan [NOTICE](../../NOTICE) untuk apa artinya
 dalam praktik dan apa saja yang dibundel oleh installer.
 
-Deteksi bola, ring, dan pemain untuk Bola basket memakai
-[model deteksi E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) karya Gabriele Giudici ([kode](https://github.com/GabrieleGiudic/E-BARD),
-[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), dipakai tanpa modifikasi
-di bawah [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD memperluas BARD
-(Giudici, Maurino dan Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Terima kasih telah
+Deteksi bola, ring, dan pemain untuk Bola basket memakai model deteksi
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n), dipakai tanpa modifikasi
+di bawah CC BY 4.0. Terima kasih telah
 memublikasikannya secara terbuka. Semua komponen lain yang dibundel beserta lisensinya ada di [NOTICE](../../NOTICE).
 
 Tiga bagian dilisensikan secara terpisah, agar membangun di atas Clips Kitty tetap mudah:

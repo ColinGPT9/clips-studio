@@ -68,8 +68,8 @@ themselves.
 - **Also does:** game streams and reaction videos (Gaming / Reaction), and
   soccer matches and basketball games (Sports), with goals and baskets read from
   the scoreboard, the crowd and the commentary. Basketball's ball detection is
-  the E-BARD detection model by Gabriele Giudici (CC BY 4.0), open source at
-  https://github.com/GabrieleGiudic/E-BARD, where anyone can help improve it.
+  the E-BARD detection model (CC BY 4.0), open source at
+  https://github.com/GabrieleGiudic/E-BARD, so anyone can build on it.
 - **Not yet:** cricket, next on the roadmap. VTubers are not
   supported: the framing needs a real person on camera.
 

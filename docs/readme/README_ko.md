@@ -656,7 +656,7 @@ claude mcp add clips-kitty -- python main.py mcp
 
 **GNU AGPL-3.0-or-later**입니다. [LICENSE](../../LICENSE)를 참고하시고, 실제로 무엇을 뜻하는지와 설치 프로그램에 무엇이 포함되는지는 [NOTICE](../../NOTICE)를 참고하세요.
 
-농구의 공, 골대, 선수 감지에는 Gabriele Giudici의 [E-BARD 감지 모델](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)(YOLOv8n)([코드](https://github.com/GabrieleGiudic/E-BARD), [데이터셋](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection))을 수정 없이 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)에 따라 사용합니다. E-BARD는 BARD(Giudici, Maurino 및 Zuccolotto, *Computer Vision and Image Understanding*, 2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713))를 확장한 것입니다. 공개적으로 배포해 주셔서 감사합니다. 그 밖에 포함된 모든 구성 요소와 각각의 라이선스는 [NOTICE](../../NOTICE)에 있습니다.
+농구의 공, 골대, 선수 감지에는 [E-BARD](https://github.com/GabrieleGiudic/E-BARD) 감지 모델(YOLOv8n)을 수정 없이 CC BY 4.0에 따라 사용합니다. 공개적으로 배포해 주셔서 감사합니다. 그 밖에 포함된 모든 구성 요소와 각각의 라이선스는 [NOTICE](../../NOTICE)에 있습니다.
 
 Clips Kitty 위에 무언가를 만들기 쉽도록, 세 부분은 따로 라이선스가 적용됩니다.
 

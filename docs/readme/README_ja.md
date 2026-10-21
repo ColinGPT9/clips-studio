@@ -656,7 +656,7 @@ MCP サーバーは `127.0.0.1:8765` で動いているエンジンと通信す�
 
 **GNU AGPL-3.0-or-later** です。[LICENSE](../../LICENSE) と、それが実際に何を意味するか、インストーラーに何が同梱されているかを説明した [NOTICE](../../NOTICE) をご覧ください。
 
-バスケットボールのボール、リング、選手の検出には、Gabriele Giudici による [E-BARD 検出モデル](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)（YOLOv8n）（[コード](https://github.com/GabrieleGiudic/E-BARD)、[データセット](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)）を、改変せずに [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) のもとで使っています。E-BARD は BARD（Giudici、Maurino、Zuccolotto、*Computer Vision and Image Understanding*、2026、[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)）を拡張したものです。オープンに公開してくださったことに感謝します。そのほかの同梱コンポーネントとそのライセンスはすべて [NOTICE](../../NOTICE) に載っています。
+バスケットボールのボール、リング、選手の検出には、[E-BARD](https://github.com/GabrieleGiudic/E-BARD) 検出モデル（YOLOv8n）を、改変せずに CC BY 4.0 のもとで使っています。オープンに公開してくださったことに感謝します。そのほかの同梱コンポーネントとそのライセンスはすべて [NOTICE](../../NOTICE) に載っています。
 
 Clips Kitty を土台にした開発が手軽なままであるよう、3 つの部分は別のライセンスになっています。
 

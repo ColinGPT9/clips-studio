@@ -178,8 +178,8 @@ other languages.
   broadcasts, each with its score in its own place, is read in both, and a team's own
   network, whose camera shows the players closer, is told court from crowd as well as a
   national broadcast. A game filmed 9:16 keeps its picture. It runs on the same Whisper and AI
-  model as everything else, and finds the ball, the hoop and the players with the E-BARD
-  detection model by Gabriele Giudici (CC BY 4.0, credited in the README and NOTICE).
+  model as everything else, and finds the ball, the hoop and the players with the [E-BARD](https://github.com/GabrieleGiudic/E-BARD)
+  detection model (CC BY 4.0, credited in the README and NOTICE).
   Measured on 32 clips of an NBA Finals broadcast: the ball stayed in the crop in 94% of
   the frames checked (49% with the first crop), the rim in 98% of them as the ball reached
   it (43%) and the backboard in 96% (32%). See

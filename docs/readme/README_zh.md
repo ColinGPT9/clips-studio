@@ -656,7 +656,7 @@ claude mcp add clips-kitty -- python main.py mcp
 
 **GNU AGPL-3.0-or-later**。参见 [LICENSE](../../LICENSE)，以及 [NOTICE](../../NOTICE)，后者说明了这在实践中意味着什么，以及安装程序打包了哪些东西。
 
-篮球的球、篮筐和球员检测使用的是 Gabriele Giudici 的 [E-BARD 检测模型](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)（YOLOv8n）（[代码](https://github.com/GabrieleGiudic/E-BARD)、[数据集](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)），未经修改，按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 使用。E-BARD 是对 BARD 的扩展（Giudici、Maurino 和 Zuccolotto，*Computer Vision and Image Understanding*，2026，[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)）。感谢作者将它公开发布。其他所有打包的组件及其许可证都列在 [NOTICE](../../NOTICE) 中。
+篮球的球、篮筐和球员检测使用的是 [E-BARD](https://github.com/GabrieleGiudic/E-BARD) 检测模型（YOLOv8n），未经修改，按 CC BY 4.0 使用。感谢作者将它公开发布。其他所有打包的组件及其许可证都列在 [NOTICE](../../NOTICE) 中。
 
 有三个部分单独授权，好让在 Clips Kitty 之上构建依然轻松：
 

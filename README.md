@@ -914,12 +914,8 @@ calls is below, because "why not yet" is usually more useful than "not yet".
 in practice and what the installer bundles.
 
 Basketball's ball, hoop and player detection is the
-[E-BARD detection model](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) by Gabriele Giudici ([code](https://github.com/GabrieleGiudic/E-BARD),
-[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), used unmodified
-under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD extends BARD
-(Giudici, Maurino and Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Thank you for
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) detection model (YOLOv8n), used unmodified
+under CC BY 4.0. Thank you for
 publishing it openly. Every other bundled component and its licence is in [NOTICE](NOTICE).
 
 Three parts are licensed separately, so that building on Clips Kitty stays easy:

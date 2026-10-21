@@ -1032,12 +1032,8 @@ sa "hindi pa".
 para sa kahulugan nito sa praktika at kung ano ang kasama sa installer.
 
 Ang pag-detect ng bola, ring at mga player sa Basketball ay ang
-[E-BARD detection model](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) ni Gabriele Giudici ([code](https://github.com/GabrieleGiudic/E-BARD),
-[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), na ginagamit nang
-walang binago sa ilalim ng [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Pinalalawak
-ng E-BARD ang BARD (Giudici, Maurino at Zuccolotto, *Computer Vision and Image Understanding*,
-2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Salamat
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) detection model (YOLOv8n), na ginagamit nang
+walang binago sa ilalim ng CC BY 4.0. Salamat
 sa paglalathala nito nang bukas. Nasa [NOTICE](../../NOTICE) ang bawat iba pang kasamang
 component at ang lisensya nito.
 

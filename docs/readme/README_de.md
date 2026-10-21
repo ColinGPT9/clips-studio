@@ -993,12 +993,8 @@ Entscheidungen steht unten, weil „warum noch nicht“ meistens nützlicher ist
 in der Praxis bedeutet und was der Installer mitbringt.
 
 Die Ball-, Korb- und Spielererkennung im Basketball ist das
-[E-BARD-Erkennungsmodell](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) von Gabriele Giudici ([Code](https://github.com/GabrieleGiudic/E-BARD),
-[Datensatz](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), unverändert verwendet
-unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD erweitert BARD
-(Giudici, Maurino und Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Danke, dass es offen
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD)-Erkennungsmodell (YOLOv8n), unverändert verwendet
+unter CC BY 4.0. Danke, dass es offen
 veröffentlicht wurde. Alle anderen mitgelieferten Komponenten und ihre Lizenzen stehen in [NOTICE](../../NOTICE).
 
 Drei Teile sind separat lizenziert, damit das Aufbauen auf Clips Kitty einfach bleibt:

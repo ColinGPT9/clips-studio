@@ -1055,12 +1055,8 @@ généralement plus utile que « pas encore ».
 cela signifie en pratique et ce que l'installateur inclut.
 
 La détection du ballon, du panier et des joueurs au basket est le
-[modèle de détection E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) de Gabriele Giudici ([code](https://github.com/GabrieleGiudic/E-BARD),
-[jeu de données](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), utilisé sans
-modification sous [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD étend BARD
-(Giudici, Maurino et Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Merci de l'avoir
+modèle de détection [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n), utilisé sans
+modification sous CC BY 4.0. Merci de l'avoir
 publié ouvertement. Tous les autres composants inclus et leur licence figurent dans
 [NOTICE](../../NOTICE).
 

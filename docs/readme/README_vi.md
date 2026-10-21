@@ -988,13 +988,9 @@ Bản ngắn gọn có trong [ROADMAP.md](../../ROADMAP.md). Lý do đằng sau 
 **GNU AGPL-3.0-or-later**. Xem [LICENSE](../../LICENSE), và [NOTICE](../../NOTICE) để biết điều
 đó có ý nghĩa gì trong thực tế và bộ cài đặt đóng gói những gì.
 
-Phần nhận diện bóng, rổ và cầu thủ của bóng rổ là
-[mô hình nhận diện E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) của Gabriele Giudici ([mã nguồn](https://github.com/GabrieleGiudic/E-BARD),
-[bộ dữ liệu](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), được dùng
-nguyên bản, không chỉnh sửa, theo [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-E-BARD mở rộng BARD (Giudici, Maurino và Zuccolotto, *Computer Vision and Image Understanding*,
-2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Cảm ơn
+Phần nhận diện bóng, rổ và cầu thủ của bóng rổ là mô hình nhận diện
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n), được dùng
+nguyên bản, không chỉnh sửa, theo CC BY 4.0. Cảm ơn
 vì đã công bố mô hình một cách mở. Mọi thành phần đi kèm khác và giấy phép của chúng đều có
 trong [NOTICE](../../NOTICE).
 

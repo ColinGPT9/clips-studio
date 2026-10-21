@@ -988,12 +988,8 @@ Space-এ। দেখুন [docs/MIRRORS.md](../../docs/MIRRORS.md)। **ক�
 ইনস্টলারে কী কী থাকে, তার জন্য [NOTICE](../../NOTICE)।
 
 Basketball-এ বল, হুপ আর খেলোয়াড় শনাক্ত করে
-[E-BARD ডিটেকশন মডেল](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n), যেটা বানিয়েছেন Gabriele Giudici ([কোড](https://github.com/GabrieleGiudic/E-BARD),
-[ডেটাসেট](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), আর এটা কোনো পরিবর্তন
-ছাড়াই [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)-এর অধীনে ব্যবহার করা হয়। E-BARD
-হলো BARD-এর সম্প্রসারণ (Giudici, Maurino আর Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713))। এটা উন্মুক্তভাবে
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) ডিটেকশন মডেল (YOLOv8n), আর এটা কোনো পরিবর্তন
+ছাড়াই CC BY 4.0-এর অধীনে ব্যবহার করা হয়। এটা উন্মুক্তভাবে
 প্রকাশ করার জন্য ধন্যবাদ। বাকি প্রতিটি অন্তর্ভুক্ত উপাদান আর তার লাইসেন্স আছে [NOTICE](../../NOTICE)-এ।
 
 তিনটি অংশ আলাদা লাইসেন্সে, যাতে Clips Kitty-র ওপর কিছু বানানো সহজ থাকে:

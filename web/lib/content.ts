@@ -10,7 +10,7 @@
  *  hands every visitor a failed install.
  */
 
-export const VERSION = "2.0.0";
+export const VERSION = "2.1.0";
 
 /** The public address this tool lives at, and the single switch that turns
  *  search-engine indexing on.

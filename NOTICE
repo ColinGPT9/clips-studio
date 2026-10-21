@@ -77,7 +77,7 @@ significant ones, with their licences:
                                          audioset_labels.txt) are CC BY 4.0,
                                          Google
   E-BARD detection models   CC BY 4.0    the basketball, the hoop and the
-  (Gabriele Giudici)                     players, for basketball's 9:16 framing
+                                         players, for basketball's 9:16 framing
                                          (sports/basketball/crop/sources.py);
                                          the YOLOv8n weights (huggingface.co/
                                          GabrieleGiudici/E-BARD-detection-
@@ -126,7 +126,7 @@ significant ones, with their licences:
                                          both notices are in
                                          third_party/icons/NOTICE.md
 
-The E-BARD detection model is by Gabriele Giudici and is licensed under
+The E-BARD detection model (https://github.com/GabrieleGiudic/E-BARD) is licensed under
 Creative Commons Attribution 4.0 International (CC BY 4.0,
 https://creativecommons.org/licenses/by/4.0/). Clips Kitty uses its YOLOv8n
 weights unmodified:

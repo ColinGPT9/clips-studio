@@ -956,12 +956,8 @@ skill) للعملاء الذين يدعمونها في [skills/clips-kitty/](../
 ذلك عمليًا وما يتضمنه المثبّت.
 
 كشف الكرة والحلقة واللاعبين في كرة السلة يقوم به
-[نموذج الكشف E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) من إعداد Gabriele Giudici ([الشيفرة](https://github.com/GabrieleGiudic/E-BARD)،
-[مجموعة البيانات](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection))، ويُستخدم دون
-تعديل بموجب [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). يُعدّ E-BARD امتدادًا لـ BARD
-(Giudici، Maurino وZuccolotto، *Computer Vision and Image Understanding*، 2026،
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). شكرًا على
+نموذج الكشف [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n)، ويُستخدم دون
+تعديل بموجب CC BY 4.0. شكرًا على
 نشره بشكل مفتوح. كل مكوّن آخر مضمَّن وترخيصه موجود في [NOTICE](../../NOTICE).
 
 ثلاثة أجزاء مرخّصة بشكل منفصل، كي يظل البناء على Clips Kitty سهلًا:

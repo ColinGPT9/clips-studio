@@ -1024,12 +1024,8 @@ decisiones más difíciles está abajo, porque "por qué todavía no" suele ser 
 qué significa eso en la práctica y qué incluye el instalador.
 
 La detección del balón, el aro y los jugadores en el básquetbol es el
-[modelo de detección E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) de Gabriele Giudici ([código](https://github.com/GabrieleGiudic/E-BARD),
-[conjunto de datos](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), usado sin
-modificaciones bajo [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). E-BARD amplía BARD
-(Giudici, Maurino y Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Gracias por
+modelo de detección [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n), usado sin
+modificaciones bajo CC BY 4.0. Gracias por
 publicarlo de forma abierta. Todos los demás componentes incluidos y sus licencias están en
 [NOTICE](../../NOTICE).
 

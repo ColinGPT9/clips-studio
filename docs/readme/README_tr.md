@@ -1033,14 +1033,10 @@ aşağıda, çünkü "neden henüz değil" genellikle "henüz değil"den daha fa
 **GNU AGPL-3.0-or-later**. Bkz. [LICENSE](../../LICENSE); bunun pratikte ne anlama
 geldiği ve kurulum programının neleri paketlediği için de [NOTICE](../../NOTICE).
 
-Basketbolda top, pota ve oyuncu algılama, Gabriele Giudici'nin
-[E-BARD algılama modeli](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) ile yapılır ([kod](https://github.com/GabrieleGiudic/E-BARD),
-[veri kümesi](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)); model
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) kapsamında değiştirilmeden
-kullanılır. E-BARD, BARD'ı genişletir (Giudici, Maurino ve Zuccolotto,
-*Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Herkese açık
+Basketbolda top, pota ve oyuncu algılama, [E-BARD](https://github.com/GabrieleGiudic/E-BARD)
+algılama modeli (YOLOv8n) ile yapılır; model
+CC BY 4.0 kapsamında değiştirilmeden
+kullanılır. Herkese açık
 olarak yayımlandığı için teşekkürler. Paketlenen diğer her bileşen ve lisansı [NOTICE](../../NOTICE)
 içinde yer alır.
 

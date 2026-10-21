@@ -656,7 +656,7 @@ claude mcp add clips-kitty -- python main.py mcp
 
 **GNU AGPL-3.0-or-later** ดู [LICENSE](../../LICENSE) และ [NOTICE](../../NOTICE) ว่าในทางปฏิบัติหมายความว่าอย่างไร และตัวติดตั้งรวมอะไรไว้บ้าง
 
-การตรวจจับลูกบอล ห่วง และผู้เล่นของบาสเกตบอลใช้ [โมเดลตรวจจับ E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models) (YOLOv8n) โดย Gabriele Giudici ([โค้ด](https://github.com/GabrieleGiudic/E-BARD), [ชุดข้อมูล](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)) ใช้โดยไม่ได้แก้ไข ภายใต้ [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) E-BARD ต่อยอดจาก BARD (Giudici, Maurino และ Zuccolotto, *Computer Vision and Image Understanding*, 2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)) ขอบคุณที่เผยแพร่อย่างเปิดกว้าง ส่วนประกอบอื่นทุกตัวที่รวมมาและสัญญาอนุญาตของแต่ละตัวอยู่ใน [NOTICE](../../NOTICE)
+การตรวจจับลูกบอล ห่วง และผู้เล่นของบาสเกตบอลใช้โมเดลตรวจจับ [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n) โดยไม่ได้แก้ไข ภายใต้ CC BY 4.0 ขอบคุณที่เผยแพร่อย่างเปิดกว้าง ส่วนประกอบอื่นทุกตัวที่รวมมาและสัญญาอนุญาตของแต่ละตัวอยู่ใน [NOTICE](../../NOTICE)
 
 มีสามส่วนที่ใช้สัญญาอนุญาตแยกต่างหาก เพื่อให้การต่อยอดจาก Clips Kitty ยังง่ายอยู่:
 

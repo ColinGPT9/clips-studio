@@ -997,12 +997,8 @@ Studio dock जो आपकी स्ट्रीम ख़त्म होन�
 और इंस्टॉलर में क्या-क्या शामिल है, इसके लिए [NOTICE](../../NOTICE)।
 
 Basketball में गेंद, हूप और खिलाड़ियों की पहचान
-[E-BARD डिटेक्शन मॉडल](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) करता है, जिसे Gabriele Giudici ने बनाया है ([कोड](https://github.com/GabrieleGiudic/E-BARD),
-[डेटासेट](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), और यह बिना किसी
-बदलाव के [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) के तहत इस्तेमाल होता है। E-BARD,
-BARD का विस्तार है (Giudici, Maurino और Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713))। इसे खुले तौर पर
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) डिटेक्शन मॉडल (YOLOv8n) करता है, और यह बिना किसी
+बदलाव के CC BY 4.0 के तहत इस्तेमाल होता है। इसे खुले तौर पर
 प्रकाशित करने के लिए धन्यवाद। बाकी हर शामिल घटक और उसका लाइसेंस [NOTICE](../../NOTICE) में है।
 
 तीन हिस्से अलग लाइसेंस में हैं, ताकि Clips Kitty पर कुछ बनाना आसान बना रहे:

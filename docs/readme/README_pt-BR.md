@@ -990,12 +990,8 @@ difíceis está abaixo, porque "por que ainda não" costuma ser mais útil do qu
 significa na prática e o que o instalador inclui.
 
 A detecção da bola, da cesta e dos jogadores no basquete é o
-[modelo de detecção E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) de Gabriele Giudici ([código](https://github.com/GabrieleGiudic/E-BARD),
-[dataset](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)), usado sem modificações
-sob [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). O E-BARD estende o BARD
-(Giudici, Maurino e Zuccolotto, *Computer Vision and Image Understanding*, 2026,
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Obrigado por
+modelo de detecção [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n), usado sem modificações
+sob CC BY 4.0. Obrigado por
 publicá-lo abertamente. Todos os outros componentes incluídos e suas licenças estão no
 [NOTICE](../../NOTICE).
 

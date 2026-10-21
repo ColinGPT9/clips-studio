@@ -30,7 +30,7 @@
  *  pin moves to 1.2.0. Not before — this app redeploys on push, so bumping it
  *  ahead of the upload puts a broken download in front of people within seconds.
  */
-export const VERSION = "2.0.0";
+export const VERSION = "2.1.0";
 
 export const LINKS = {
 	/** Straight to the installer for VERSION, so a clipper gets one click

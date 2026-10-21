@@ -982,12 +982,8 @@ issues چھوٹے اور واضح دائرے والے ہیں۔
 پر اس کا کیا مطلب ہے اور انسٹالر میں کیا شامل ہے۔
 
 Basketball میں گیند، ہوپ اور کھلاڑیوں کی پہچان
-[E-BARD ڈیٹیکشن ماڈل](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) کرتا ہے، جسے Gabriele Giudici نے بنایا ہے ([کوڈ](https://github.com/GabrieleGiudic/E-BARD)،
-[ڈیٹاسیٹ](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection))، اور یہ بغیر کسی
-تبدیلی کے [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) کے تحت استعمال ہوتا ہے۔ E-BARD،
-BARD کی توسیع ہے (Giudici، Maurino اور Zuccolotto، *Computer Vision and Image Understanding*، 2026،
-[doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713))۔ اسے کھلے عام
+[E-BARD](https://github.com/GabrieleGiudic/E-BARD) ڈیٹیکشن ماڈل (YOLOv8n) کرتا ہے، اور یہ بغیر کسی
+تبدیلی کے CC BY 4.0 کے تحت استعمال ہوتا ہے۔ اسے کھلے عام
 شائع کرنے کا شکریہ۔ باقی ہر شامل کردہ جزو اور اس کا لائسنس [NOTICE](../../NOTICE) میں ہے۔
 
 تین حصوں کا لائسنس الگ ہے، تاکہ Clips Kitty کے اوپر بنانا آسان رہے:

@@ -1012,13 +1012,9 @@ claude mcp add clips-kitty -- python main.py mcp
 означает на практике и что включено в установщик.
 
 Распознавание мяча, кольца и игроков в баскетболе выполняет
-[модель детекции E-BARD](https://huggingface.co/GabrieleGiudici/E-BARD-detection-models)
-(YOLOv8n) автора Gabriele Giudici ([код](https://github.com/GabrieleGiudic/E-BARD),
-[датасет](https://huggingface.co/datasets/GabrieleGiudici/E-BARD-detection)); модель
-используется без изменений по лицензии [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-E-BARD расширяет BARD (Giudici, Maurino и Zuccolotto, *Computer Vision and Image Understanding*,
-2026, [doi:10.1016/j.cviu.2026.104713](https://doi.org/10.1016/j.cviu.2026.104713)). Спасибо за
-открытую публикацию. Все остальные поставляемые компоненты и их лицензии перечислены в
+модель детекции [E-BARD](https://github.com/GabrieleGiudic/E-BARD) (YOLOv8n); модель
+используется без изменений по лицензии CC BY 4.0.
+Спасибо за открытую публикацию. Все остальные поставляемые компоненты и их лицензии перечислены в
 [NOTICE](../../NOTICE).
 
 Три части лицензированы отдельно, чтобы разрабатывать на основе Clips Kitty было легко:
