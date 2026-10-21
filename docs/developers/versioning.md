@@ -14,17 +14,15 @@ Every version number in the platform, where it lives, and what it promises.
 
 ## Which release runs plugins
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 
-Clips Kitty bundles the SDK from the commit it is built from, so the release that first runs plugins brings the SDK of that commit. Running from source is in the README: [From source](../../README.md#from-source).
+Clips Kitty bundles the SDK from the commit it is built from, so each release brings the SDK of its commit: 2.1.0 brings SDK 1.3.0. For an SDK newer than the latest release, run Clips Kitty from source: [From source](../../README.md#from-source).
 
 ## The edit step and older Clips Kitty
 
 The edit step ([Steps](steps.md#suggest-edits-the-edit-step)) is new in the same plugin contract, 1, with SDK 1.3.0. A Clips Kitty without it refuses to install a plugin with `outputs: [edits]`, saying "output 'edits' is planned, not supported by plugin API 1" (or calling it an unknown output, in a copy from before SDK 1.2.0). It checks the manifest before the app version, so that is what it says, not that it needs a newer Clips Kitty, and an old copy can't be changed to say otherwise. Clips Kitty's online list can still show your editor to it. Say in your plugin's description which Clips Kitty it needs.
 
-Which `requires.clips_kitty` an editor declares follows the release order:
-- No Clips Kitty release runs plugins yet. If the first release that does also has the edit step, every Clips Kitty that can install a plugin can run an editor, and `">=2.0"`, as every template has, is right.
-- If a release that runs plugins comes out before one with the edit step, an editor sets `requires.clips_kitty` to the first release with it, and the templates' `">=2.0"` is raised to match.
+Which `requires.clips_kitty` an editor declares: 2.1.0, the first release that runs plugins, has the edit step, so every Clips Kitty that can install a plugin can run an editor, and `">=2.0"`, as every template has, is right.
 
 ## `requires.clips_kitty`
 

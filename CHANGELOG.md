@@ -8,7 +8,12 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
-## Unreleased
+## 2.1.0: Basketball, and a Marketplace for new pipelines
+
+Basketball joins Soccer under Sports, and the new Marketplace installs pipelines and
+plugins that other people build for Clips Kitty. This release also fixes model downloads
+that stopped at 100%, new Kick VODs that read as deleted, and caption corrections in
+other languages.
 
 ### Added
 

@@ -5,7 +5,7 @@
 manifest_version: 1
 id: clipskitty/shorts
 name: Shorts
-version: 2.0.0
+version: 2.1.0
 kind: pipeline
 capability: highlight_detection
 description: >

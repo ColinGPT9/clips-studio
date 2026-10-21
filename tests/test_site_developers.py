@@ -429,14 +429,12 @@ def test_llms_txt_and_the_sitemap_list_it():
 
 def test_it_says_which_release_runs_plugins():
     sentence = release_sentence()
-    assert sentence.startswith("No Clips Kitty release runs plugins yet.")
+    assert sentence.startswith("Clips Kitty 2.1.0 is the first release that runs plugins")
     text = page()
     for where, part in (("hero", hero(text)), ("quickstart", section(text, "quickstart")),
                         ("faq", section(text, "faq"))):
         assert sentence in visible(part), where
     assert sentence.removesuffix(".") in flat(readme_section())
-    assert "([From source](#from-source))" in readme_section()
-    assert f"{REPO}#from-source" in section(text, "faq")
 
 
 def test_each_building_block_states_its_own_needs():

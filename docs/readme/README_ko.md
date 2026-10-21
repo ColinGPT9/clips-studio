@@ -541,7 +541,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-아직 플러그인을 실행하는 Clips Kitty 릴리스는 없습니다. SDK 1.2.0으로 만든 플러그인은 이 기능이 포함된 첫 릴리스가 필요합니다. 그 릴리스가 나오기 전까지는 Clips Kitty를 소스에서 실행하세요([소스에서 설치](#from-source)).
+Clips Kitty 2.1.0은 플러그인을 실행하는 첫 릴리스이며, SDK 1.3.0이 함께 제공됩니다.
 
 그다음은 **[첫 게임 파이프라인 만들기](../../docs/developers/first-game-pipeline.md)** 가이드가 단계별로 이어서, Clips Kitty에 설치되고 Marketplace에 등록되는 플러그인까지 안내합니다. [Signals 쿡북](../../docs/developers/signals-cookbook.md)에는 게임 영상을 읽는 레시피가, [SDK 레퍼런스](../../docs/developers/sdk.md)에는 모든 명령과 호출이, [개발자 문서](../../docs/developers/README.md)에는 그 밖의 모든 것이 있습니다. 웹사이트의 [Clips Kitty SDK](https://colingpt9.github.io/clips-studio/developers.html) 페이지는 짧은 요약판입니다.
 

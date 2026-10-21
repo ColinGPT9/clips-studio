@@ -24,7 +24,7 @@ The channels' rules quoted below were read on 2026-10-08, from the pages linked 
 
 - **Already readable; merging waits.** This branch is public and has been pushed, as Colin's brief asks after every commit (`docs/platform/BRIEF.md`), so this file, the source of the developers page (`site/developers.html`), the root README's SDK section and the developer docs can already be read on it. Nothing is posted anywhere, and the site isn't deployed. Merging it deploys `site/` to GitHub Pages (`.github/workflows/pages.yml`), and the Hugging Face Space mirror too when its secrets are set (`.github/workflows/mirror.yml`). Merging waits for Colin.
 - **What works only after the merge.** `main` doesn't have `sdk/python/pyproject.toml` yet. Until this branch is merged, the `pip install … @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python` line fails, the `blob/main` links below go to pages `main` doesn't have, and a template's own GitHub workflow can't install the SDK. Post nothing before the merge.
-- **Which release runs plugins.** No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source. A developer can try the SDK on its own (`new`, `run --sample`) as soon as the merge is in, but putting a plugin into Clips Kitty needs a source run until then. Show HN asks for work that people can try (below), so the best time to post is once a release runs plugins.
+- **Which release runs plugins.** Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0. With 2.1.0 out, a plugin installs into a downloaded Clips Kitty, which is the kind of work Show HN asks people to be able to try (below).
 - **Windows.** Every PowerShell command here was written to the docs' rules (`py -m`, commas quoted, no `&&`) but none has been run on Windows. Run the three Quickstart commands on a Windows PC first.
 - **WoopSocial.** The drafts name [WoopSocial](https://woopsocial.com/?via=clipskitty) where they say how clips get posted. <sub>Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</sub> The drafted posts name it in plain text: before publishing one, add the link and that note, where the channel allows affiliate links.
 - **The made-up game.** Search the web for "Quarkbloom Arena" again before posting, to check it is still nobody's real game.
@@ -56,7 +56,7 @@ HN's submit form needs an account, so how long a title it takes wasn't checked. 
 - **What it runs on.** Clips Kitty runs plugins on its own Python 3.11, with the standard library (minus a few modules the app leaves out) and the SDK. It can't install other packages yet.
 - **Licences.** The SDK is MIT, so a plugin can use any licence. Clips Kitty itself is AGPL-3.0-or-later.
 - **Not sandboxed.** Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty doesn't sandbox it. The install screen says what it declares.
-- **Which release.** No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
+- **Which release.** Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 
 ## DEV
 
@@ -144,7 +144,7 @@ The test video has a red banner from 22 to 27 seconds and a loud sound at the sa
 
 ## Its limits
 
-- No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
+- Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 - Plugins run on Clips Kitty's own Python 3.11, with the standard library (minus a few modules the app leaves out) and the SDK. Clips Kitty can't install other packages yet. A few happen to be inside the app, numpy and OpenCV among them, and can be imported, but they aren't promised and may change with an app update.
 - Every plugin runs on the creator's PC with their rights, like any program; Clips Kitty doesn't sandbox it. The install screen says what it declares.
 - Plugins don't post: Clips Kitty posts clips itself. Edit plugins suggest edits that wait for the creator in the editor; Clips Kitty doesn't put a suggestion into a clip until the creator uses it there and applies their edits.

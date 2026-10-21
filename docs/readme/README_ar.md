@@ -777,9 +777,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-لا يوجد إصدار من Clips Kitty يشغّل الإضافات بعد. تحتاج الإضافات المصنوعة بـ SDK 1.2.0 إلى أول
-إصدار يتضمنها؛ وإلى أن يصدر، شغّل Clips Kitty من الشيفرة المصدرية
-([من الشيفرة المصدرية](#from-source)).
+Clips Kitty 2.1.0 هو أول إصدار يشغّل الإضافات، ويأتي مع SDK 1.3.0.
 
 **[أول مسار معالجة للعبتك](../../docs/developers/first-game-pipeline.md)** يكمل من هناك، خطوة
 بخطوة، حتى تصل إلى إضافة مثبّتة في Clips Kitty ومدرجة في متجر الإضافات (Marketplace) الخاص به.

@@ -802,9 +802,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-Nenhuma versão lançada do Clips Kitty roda plugins ainda. Plugins feitos com o SDK 1.2.0 precisam
-da primeira versão que o inclua; até ela sair, rode o Clips Kitty a partir do código-fonte
-([A partir do código-fonte](#from-source)).
+O Clips Kitty 2.1.0 é a primeira versão lançada que roda plugins, e já vem com o SDK 1.3.0.
 
 **[Seu primeiro pipeline de jogo](../../docs/developers/first-game-pipeline.md)** segue a partir
 daí, passo a passo, até um plugin instalado no Clips Kitty e listado no Marketplace dele. O

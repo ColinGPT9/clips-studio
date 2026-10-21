@@ -801,9 +801,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-Belum ada rilis Clips Kitty yang menjalankan plugin. Plugin yang dibuat dengan SDK 1.2.0 membutuhkan rilis
-pertama yang menyertakannya; sampai rilis itu keluar, jalankan Clips Kitty dari kode sumber
-([Dari kode sumber](#from-source)).
+Clips Kitty 2.1.0 adalah rilis pertama yang menjalankan plugin, dan hadir bersama SDK 1.3.0.
 
 **[Pipeline game pertamamu](../../docs/developers/first-game-pipeline.md)** melanjutkan dari
 situ, langkah demi langkah, hingga plugin terpasang di Clips Kitty dan tercantum di Marketplace-nya.

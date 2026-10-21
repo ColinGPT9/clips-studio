@@ -819,9 +819,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-Ни один релиз Clips Kitty пока не запускает плагины. Плагинам, созданным с SDK 1.2.0, нужен
-первый релиз, который его включает; пока он не вышел, запускайте Clips Kitty из исходного
-кода ([Из исходного кода](#from-source)).
+Clips Kitty 2.1.0 — первый релиз, который запускает плагины, и вместе с ним выходит SDK 1.3.0.
 
 **[Ваш первый игровой конвейер](../../docs/developers/first-game-pipeline.md)** продолжает
 с этого места, шаг за шагом, до плагина, установленного в Clips Kitty и размещённого в его

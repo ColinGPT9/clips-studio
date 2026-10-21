@@ -8,10 +8,19 @@
    ],
    "checked": "2026-10-07",
    "description": "Lets Claude, Cursor or any MCP client make clips from a link or a file, follow the job and read back the clips, through Clips Kitty's local API. Its tools can also post clips through the accounts connected in Clips Kitty. Ships with Clips Kitty.",
+   "discussions_url": "https://github.com/ColinGPT9/clips-studio/discussions",
    "id": "integrations/clips-kitty-mcp-server",
    "kind": "integration",
    "license": "AGPL-3.0-or-later",
-   "metrics": {},
+   "metrics": {
+    "github": {
+     "archived": false,
+     "discussions": 1,
+     "has_discussions": true,
+     "pushed_at": "2026-10-19",
+     "stars": 121
+    }
+   },
    "name": "Clips Kitty MCP server and agent skill",
    "platforms": [
     "windows",
@@ -44,7 +53,14 @@
    "id": "integrations/clips-kitty-obs-plugin",
    "kind": "integration",
    "license": "GPL-2.0-or-later",
-   "metrics": {},
+   "metrics": {
+    "github": {
+     "archived": false,
+     "has_discussions": false,
+     "pushed_at": "2026-09-14",
+     "stars": 0
+    }
+   },
    "name": "Clips Kitty OBS Plugin",
    "platforms": [
     "windows"
@@ -72,10 +88,19 @@
    ],
    "checked": "2026-10-07",
    "description": "Write, check and test Clips Kitty plugins - the manifest validator, a local test host, and a client for the local API. MIT-licensed, so using it puts no licence on your plugin.",
+   "discussions_url": "https://github.com/ColinGPT9/clips-studio/discussions",
    "id": "tools/clips-kitty-sdk",
    "kind": "tool",
    "license": "MIT",
-   "metrics": {},
+   "metrics": {
+    "github": {
+     "archived": false,
+     "discussions": 1,
+     "has_discussions": true,
+     "pushed_at": "2026-10-19",
+     "stars": 121
+    }
+   },
    "name": "Clips Kitty SDK for Python",
    "platforms": [
     "windows",
@@ -100,7 +125,7 @@
   }
  ],
  "format": 1,
- "metrics_at": "2026-10-07",
+ "metrics_at": "2026-10-19",
  "plugins": [
   {
    "added": "2026-10-07",
@@ -123,6 +148,7 @@
     "public_at_commit": true
    },
    "description": "An example pipeline. It finds stretches that are clearly louder than the rest of the video and starts each clip on the nearest scene cut before it, using FFmpeg only. It knows nothing about what is happening on screen: loud is not always interesting, and quiet highlights are missed.\n",
+   "discussions_url": "https://github.com/ColinGPT9/clips-studio/discussions",
    "events": [
     "loud"
    ],
@@ -134,7 +160,15 @@
    "kind": "pipeline",
    "latest": "1.0.0",
    "license": "MIT",
-   "metrics": {},
+   "metrics": {
+    "github": {
+     "archived": false,
+     "discussions": 1,
+     "has_discussions": true,
+     "pushed_at": "2026-10-19",
+     "stars": 121
+    }
+   },
    "name": "Loud moments, cut on scene changes (example)",
    "network": [],
    "outputs": [
@@ -344,6 +378,10 @@
      "title": "Fortnite"
     },
     {
+     "id": "gaming/grand-theft-auto",
+     "title": "Grand Theft Auto"
+    },
+    {
      "id": "sports",
      "title": "Sports"
     },
@@ -401,6 +439,10 @@
     {
      "idea": "Goals, saves and aerials.",
      "section": "gaming/rocket-league"
+    },
+    {
+     "idea": "Police chases, heists and role-play moments.",
+     "section": "gaming/grand-theft-auto"
     },
     {
      "idea": "Goals, saves and fights from NHL-style broadcasts.",

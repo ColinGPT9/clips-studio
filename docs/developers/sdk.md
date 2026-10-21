@@ -26,7 +26,7 @@ bash:
 python -m pip install "clipskitty-sdk[yaml,test] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
 ```
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0 ([Versioning](versioning.md#which-release-runs-plugins)).
 
 Or point `PYTHONPATH` at a Clips Kitty checkout. PowerShell:
 
@@ -334,7 +334,7 @@ python -m clipskitty_sdk install my-plugin
 python -m clipskitty_sdk install my-plugin --watch
 ```
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([From source](../../README.md#from-source)).
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 
 `install` puts the plugin into the Clips Kitty running on this PC, as **For developers** in Marketplace › Browse does. It checks the plugin as `validate` does, asks Clips Kitty what installing it would do, prints Clips Kitty's own install screen as text, and asks `Install it? [y/N]`. Exit code 0 means installed, 1 not installed (Clips Kitty refused it, the answer was no, or `--yes` or `--watch` found something new), 2 that it stopped before asking for Clips Kitty's plan (a folder or manifest it refuses, Clips Kitty not running or too old, no session file).
 

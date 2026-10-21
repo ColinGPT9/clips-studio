@@ -541,7 +541,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-プラグインを実行できる Clips Kitty のリリースはまだありません。SDK 1.2.0 で作ったプラグインには、それを含む最初のリリースが必要です。それが出るまでは、Clips Kitty をソースから実行してください（[ソースから](#from-source)）。
+Clips Kitty 2.1.0 はプラグインを実行できる最初のリリースで、SDK 1.3.0 が同梱されています。
 
 **[はじめてのゲームパイプライン](../../docs/developers/first-game-pipeline.md)** は、ここから先を一歩ずつ進め、Clips Kitty にインストールされて Marketplace に掲載されるプラグインまで案内します。[シグナルのクックブック](../../docs/developers/signals-cookbook.md)にはゲーム映像を読み取るためのレシピが、[SDK リファレンス](../../docs/developers/sdk.md)にはすべてのコマンドと呼び出しが、[開発者向けドキュメント](../../docs/developers/README.md)にはそれ以外のすべてがあります。ウェブサイトの [Clips Kitty SDK](https://colingpt9.github.io/clips-studio/developers.html) ページはその短縮版です。
 

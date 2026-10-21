@@ -626,7 +626,7 @@ def test_powershell_blocks_use_py():
 
 def test_the_tutorial_and_cookbook_say_which_release_runs_plugins():
     sentence = release_sentence()
-    assert sentence.startswith("No Clips Kitty release runs plugins yet.")
+    assert sentence.startswith("Clips Kitty 2.1.0 is the first release that runs plugins")
     said = sentence.removesuffix(".")  # a page may end it with a link in brackets
     for page in (TUTORIAL, COOKBOOK, DEV_DOCS / "getting-started.md", DEV_DOCS / "sdk.md", DEV_DOCS / "README.md",
                  SDK / "README.md", ROOT / "CONTRIBUTING.md"):

@@ -30,10 +30,9 @@ REPO = "https://github.com/ColinGPT9/clips-studio"
 # The one sentence that says which Clips Kitty runs plugins. It lives under
 # "Which release runs plugins" in versioning.md; other pages repeat it word
 # for word.
-RELEASE_SENTENCE = ("No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first "
-                    "release that includes it; until that is out, run Clips Kitty from source.")
+RELEASE_SENTENCE = "Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0."
 # The newest release in CHANGELOG.md when that sentence was written.
-NEWEST_RELEASE_WHEN_WRITTEN = "2.0.0"
+NEWEST_RELEASE_WHEN_WRITTEN = "2.1.0"
 CHANGELOG_TOP = ("No version is on PyPI yet. Clips Kitty bundles the SDK from the commit it is built from, "
                  "so a plugin always runs with the SDK of the Clips Kitty it runs in.")
 # The SDK imports only the standard library, apart from these lazy imports,

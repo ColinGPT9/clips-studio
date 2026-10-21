@@ -800,9 +800,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-Clips Kitty-র কোনো রিলিজ এখনো প্লাগইন চালায় না। SDK 1.2.0 দিয়ে বানানো প্লাগইনের জন্য সেই প্রথম
-রিলিজটা লাগবে যাতে এটা আছে; সেটা না আসা পর্যন্ত Clips Kitty সোর্স থেকে চালান
-([সোর্স থেকে](#from-source))।
+Clips Kitty 2.1.0 হলো প্রথম রিলিজ যা প্লাগইন চালায়, আর এর সঙ্গে আসে SDK 1.3.0।
 
 **[আপনার প্রথম গেম পাইপলাইন](../../docs/developers/first-game-pipeline.md)** সেখান থেকে ধাপে
 ধাপে এগিয়ে নিয়ে যায় এমন একটা প্লাগইন পর্যন্ত, যা Clips Kitty-তে ইনস্টল হয় আর তার Marketplace-এ

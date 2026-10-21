@@ -541,7 +541,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-ยังไม่มี Clips Kitty เวอร์ชันที่ออกแล้วตัวไหนรันปลั๊กอินได้ ปลั๊กอินที่สร้างด้วย SDK 1.2.0 ต้องใช้เวอร์ชันแรกที่รวมมันไว้ ระหว่างที่ยังไม่ออก ให้รัน Clips Kitty จากซอร์สโค้ด ([จากซอร์สโค้ด](#from-source))
+Clips Kitty 2.1.0 เป็นเวอร์ชันแรกที่รันปลั๊กอินได้ และมาพร้อมกับ SDK 1.3.0
 
 **[ไปป์ไลน์เกมแรกของคุณ](../../docs/developers/first-game-pipeline.md)** จะพาต่อจากตรงนั้นทีละขั้น ไปจนถึงปลั๊กอินที่ติดตั้งใน Clips Kitty และอยู่ใน Marketplace [Signals cookbook](../../docs/developers/signals-cookbook.md) มีสูตรสำหรับอ่านวิดีโอของเกม [ข้อมูลอ้างอิง SDK](../../docs/developers/sdk.md) มีทุกคำสั่งและทุกการเรียก และ [เอกสารสำหรับนักพัฒนา](../../docs/developers/README.md) มีทุกอย่างที่เหลือ หน้า [Clips Kitty SDK](https://colingpt9.github.io/clips-studio/developers.html) บนเว็บไซต์คือฉบับย่อ
 

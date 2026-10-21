@@ -2,7 +2,7 @@
 
 Small recipes for reading a game's video: what is on one part of the screen, how bright or loud it is, where the scenes cut, what is said, and what the creator's local model sees. Each recipe is a whole `src/main.py` that runs as written, and each says what it found on the SDK's sample video, how long that took, and how it fails.
 
-> No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
+> Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 
 Every recipe here **needs SDK 1.2.0**, which added `media`, `signals`, `text` and `local_model` ([changelog](../../sdk/python/CHANGELOG.md)).
 

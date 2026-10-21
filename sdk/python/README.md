@@ -18,7 +18,7 @@ bash (macOS, Linux):
 python -m pip install "clipskitty-sdk[yaml] @ git+https://github.com/ColinGPT9/clips-studio#subdirectory=sdk/python"
 ```
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source.
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 
 How to run it from source: [From source](https://github.com/ColinGPT9/clips-studio#from-source). Which release runs plugins: [Versioning](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/versioning.md#which-release-runs-plugins).
 

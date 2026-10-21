@@ -102,8 +102,7 @@ with the creator's rights, like any program: Clips Kitty doesn't sandbox it,
 and its install screen shows what the plugin declares. The templates and
 tutorial use Quarkbloom Arena, a made-up game.
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the
-first release that includes it; until that is out, run Clips Kitty from source.
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0.
 
 - [Clips Kitty SDK](https://colingpt9.github.io/clips-studio/developers.html)
 - [Your first game pipeline](https://github.com/ColinGPT9/clips-studio/blob/main/docs/developers/first-game-pipeline.md)

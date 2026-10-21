@@ -833,9 +833,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-Henüz eklenti çalıştıran bir Clips Kitty sürümü yok. SDK 1.2.0 ile yapılan eklentiler,
-onu içeren ilk sürümü gerektirir; o çıkana kadar Clips Kitty'yi kaynaktan çalıştırın
-([Kaynaktan](#from-source)).
+Clips Kitty 2.1.0, eklenti çalıştıran ilk sürümdür ve SDK 1.3.0 ile birlikte gelir.
 
 **[İlk oyun işlem hattınız](../../docs/developers/first-game-pipeline.md)** buradan
 devam eder ve sizi adım adım Clips Kitty'ye kurulmuş, Marketplace'te listelenmiş bir

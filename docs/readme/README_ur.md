@@ -795,9 +795,7 @@ python -m clipskitty_sdk new quarkbloom-bursts --template game-events --publishe
 python -m clipskitty_sdk run quarkbloom-bursts --sample
 ```
 
-ابھی Clips Kitty کی کوئی ریلیز پلگ اِنز نہیں چلاتی۔ SDK 1.2.0 سے بنے پلگ اِنز کو وہ پہلی
-ریلیز چاہیے جس میں یہ شامل ہو؛ جب تک وہ نہیں آتی، Clips Kitty کو سورس سے چلائیں
-([سورس سے](#from-source))۔
+Clips Kitty 2.1.0 پہلی ریلیز ہے جو پلگ اِنز چلاتی ہے، اور یہ SDK 1.3.0 کے ساتھ آتی ہے۔
 
 **[آپ کی پہلی گیم پائپ لائن](../../docs/developers/first-game-pipeline.md)** وہاں سے آگے قدم بہ
 قدم ایک ایسے پلگ اِن تک لے جاتی ہے جو Clips Kitty میں انسٹال ہو اور اس کے Marketplace میں درج

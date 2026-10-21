@@ -52,7 +52,7 @@ Creator / Social Platform  posts when the creator clicks Publish, or on a schedu
 - Posting isn't a plugin step: Clips Kitty posts clips itself, and through [WoopSocial](https://woopsocial.com/?via=clipskitty) it can post to many sites at once on the creator's own account ([Publish to every platform at once](../../README.md#publish-to-every-platform-at-once)). `kind: publisher` is refused: plugins don't post.
   <sub>Affiliate link - Clips Kitty may earn a commission if you sign up through it, at no extra cost to you.</sub>
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the first release that includes it; until that is out, run Clips Kitty from source ([Versioning](versioning.md#which-release-runs-plugins)).
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0 ([Versioning](versioning.md#which-release-runs-plugins)).
 
 ## What a pipeline is
 

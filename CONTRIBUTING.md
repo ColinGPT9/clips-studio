@@ -110,9 +110,7 @@ python -m clipskitty_sdk new my-plugin --template game-events --publisher your-g
 python -m clipskitty_sdk run my-plugin --sample
 ```
 
-No Clips Kitty release runs plugins yet. Plugins made with SDK 1.2.0 need the
-first release that includes it; until that is out, run Clips Kitty from
-source. The walk-through is
+Clips Kitty 2.1.0 is the first release that runs plugins, and it comes with SDK 1.3.0. The walk-through is
 [docs/developers/first-game-pipeline.md](docs/developers/first-game-pipeline.md),
 and everything else for plugin developers is in
 [docs/developers/](docs/developers/README.md). The SDK is MIT, so your plugin

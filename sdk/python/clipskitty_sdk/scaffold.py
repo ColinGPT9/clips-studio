@@ -47,11 +47,12 @@ TEMPLATES = {
 # templates import media, signals and text, which arrive with SDK 1.2.0, and
 # the editor calls job.suggest_edit, which arrives with SDK 1.3.0, so this is
 # right only while the first release that runs plugins includes SDK 1.3.0:
-# 2.0.0 itself can't install any plugin. FLOOR_REVIEWED_AT is the
-# newest release in CHANGELOG.md when this was last checked;
+# 2.0.0 itself can't install any plugin, and 2.1.0, the first that can,
+# bundles the whole SDK of its commit, 1.3.0 (clips-studio.spec). FLOOR_REVIEWED_AT
+# is the newest release in CHANGELOG.md when this was last checked;
 # tests/test_plugin_sdk_new.py fails when a newer release is added there.
 TEMPLATE_REQUIRES = ">=2.0"
-FLOOR_REVIEWED_AT = "2.0.0"
+FLOOR_REVIEWED_AT = "2.1.0"
 
 # What a plugin made where nobody can be asked gets.
 DEFAULT_PUBLISHER = "your-github-name"
