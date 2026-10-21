@@ -626,10 +626,10 @@ Full walkthrough, per-platform support and limits:
 
 ## GPU acceleration
 
-**Video encoding** is hardware-accelerated automatically on all three vendors: NVIDIA
-(NVENC), AMD (AMF), and Intel (QSV). The engine test-encodes a frame with each at
-startup and uses the first that actually works, falling back to CPU. Force a choice
-with `video.encoder` in `config/settings.yaml`.
+**Video encoding** is hardware-accelerated automatically across NVIDIA (NVENC),
+AMD (AMF), Intel (QSV), and Apple Silicon (VideoToolbox). The engine test-encodes a frame
+with each at startup and uses the first that actually works, falling back to CPU. Force
+a choice with `video.encoder` in `config/settings.yaml`.
 
 **Detection and transcription** are fastest with CUDA. Out of the box `pip install
 torch` gives you the **CPU-only** build. For NVIDIA:
