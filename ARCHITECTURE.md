@@ -493,6 +493,59 @@ knows nothing about transcripts, scores, or publishing.
    is what removes jitter and the "drunk camera" effect.
 6. **Fall back** to a static centre crop when there are no detections.
 
+**Shot-aware framing** (`tracking.shot_aware: true`; off by default, and off is exactly the
+behaviour above). By default, cuts are looked for only on the sample grid, at a threshold
+many real cuts never reach, and are placed on the sample after the cut. A cut also only
+resets the challenger: the subject on camera stays the target, at their old position, until
+they have been unseen for a second, so the new shot opens framed on someone who is not in
+it. With the setting on:
+
+- **Cuts are found to the frame** (`video/cuts.py`). A sample pair whose thumbnails differ
+  by 18 or more (the default bar is 55) is a candidate. Only the frames around it are
+  decoded, with a capture of their own, and a frame is a cut by the hard-cut rules of
+  `sports/basketball/crop/shots.py`: a gray change, a colour change, and standing out from
+  the motion around it, with camera flashes rejected. A handheld pan changes the picture a
+  lot but not its colours, so it is no cut.
+- **The subject is chosen again at a cut** when the one on camera is not in the new shot (who
+  the shot plan says is talking, else the most prominent). A subject still on screen keeps
+  the camera. The framing is the median of the subject's position over the new shot's first
+  0.5 s, taken from the new shot only. The old framing holds to the frame before the cut, and
+  the new one starts on the cut's own frame.
+- **A shot with nobody detected at first** opens on the centre, or keeps the old framing with
+  `tracking.shot_aware_no_subject: hold` (default `center`), and cuts to the first credible
+  person who appears: detector confidence 0.6 or more, with a pose head or a box at least
+  half the frame's height. Anything fainter seen meanwhile (on road-trip footage: a burning
+  car, a cartoon, a dashboard, a rear-view mirror) leaves the shot as it opened. While the
+  shot plan's speaker is on screen below that bar, the shot waits even for someone credible,
+  because the plan would take the camera straight to its speaker on the next sample. Letting
+  the plan's speaker through the bar instead would have opened two road-trip shots on a
+  cartoon and a dashboard, each handed across the cut the id of somebody the plan names (a
+  third opens on a tray of food under either rule: waiting puts it off one sample, and then
+  the tray clears the bar). The cost: a real speaker the detector only finds faintly leaves
+  such a shot on the centre (or the old framing, with `hold`) until they clear the bar or
+  leave. The rule only sees the plan's speaker on the current sample: if the detector misses
+  a faint speaker the plan names on exactly the sample where somebody credible first appears,
+  the shot opens on that person, and the plan's speaker can take the camera on the next
+  sample, a one-sample shot. That never happened on the footage the mode was validated on. A
+  first shot with nobody in it keeps the centre up to the cut: no shot's framing reaches
+  across a cut into another.
+- A track's first sighting after a cut starts its averages (head offset, width, prominence)
+  from that sighting. A pose head is trusted from it. A Haar face counts as one hit, as on a
+  new track, so a single face found on a hand or a bottle cannot move the crop. That is a
+  deliberate trade-off against single false faces: a real face only the cascade finds is
+  trusted just as gradually, so the shot opens between the body and the face, eases back
+  toward the body, and reaches the face about a second after the cut.
+- The "subject gone" test reads when each track was last seen as of the sample being framed,
+  not at the end of the clip. The exception is the speaker the shot plan names when their
+  track is seen again within 2 s, before the next cut: a faint speaker the detector loses for
+  a moment on handheld footage keeps the camera, instead of losing it to someone else and
+  taking it back a moment later. A sighting after the next cut does not count, since the id
+  can belong to someone else by then.
+
+The whole-clip decisions (letterbox, facecam layout, `face_y`) and TalkNet's shot plan work
+as before. `tests/test_tracker_cuts.py` checks that with the setting off, the output is
+exactly what it was.
+
 ### 5.1 Who the camera follows
 
 **TalkNet active-speaker detection** (`video/asd.py`, model vendored in

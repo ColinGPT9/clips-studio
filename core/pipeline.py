@@ -1627,6 +1627,9 @@ def _render_files(
                         model_name=tracking_cfg["detector"],
                         sample_fps=tracking_cfg["sample_fps"],
                         force_fit_blur=(crop_mode == "letterbox"),
+                        # Off unless set (ARCHITECTURE.md §5, video/cuts.py).
+                        shot_aware=tracking_cfg.get("shot_aware", False),
+                        no_subject=tracking_cfg.get("shot_aware_no_subject", "center"),
                     )
                     if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
                         # USER-forced letterbox means "show me the WHOLE frame" —
