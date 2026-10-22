@@ -266,10 +266,9 @@ _ON = ("true", "yes", "on", "1")
 def shot_aware_on(tracking) -> bool:
     """tracking.shot_aware from a run's tracking settings (config["tracking"]):
     on only for true, the integer 1, or the text "true", "yes", "on" or "1" in
-    any case, spaces around it ignored. Anything else is off, as
-    analysis/highlights.py's selection_version reads scoring.selection: no
-    setting, and a quoted "false", "no", "off" or "0", which a plain truth
-    test would have read as on."""
+    any case, spaces around it ignored. Anything else is off: no setting, a
+    number other than the integer 1 (1.0 included), and a quoted "false",
+    "no", "off" or "0", which a plain truth test would have read as on."""
     value = tracking.get("shot_aware") if isinstance(tracking, dict) else None
     if isinstance(value, bool):
         return value

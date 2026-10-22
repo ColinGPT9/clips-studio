@@ -394,8 +394,8 @@ Reaction, or Vertical Live's Gaming / reaction choice) or a Sports match
 - A clip's start never moves past the line it was picked on, or the line its hook quotes.
   When that line carries on a sentence (the line before it has no sentence end, and the
   pause is at most 2 s), the start goes back to the sentence's first line, if that is at
-  most 8 s earlier and the clip stays within `clips.max_duration`. A transcript with no
-  sentence ends at all moves no start. A signal window gets up to 6 s of complete
+  most 8 s earlier and the clip stays within `clips.max_duration`. In a transcript with no
+  sentence ends at all, this rule moves no start. A signal window gets up to 6 s of complete
   sentences before it. The end rules are unchanged.
 
 Longform keeps selection 1 unless `scoring.longform_selection: 2`. The constants, and why

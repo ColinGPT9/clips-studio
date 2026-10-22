@@ -13,10 +13,10 @@ run against the code were read-only Python imports of `core.paths`, `core.binari
 
 Clips Kitty (called Clips Studio until 1.1.3; `README.md:31`) is a local-first AI
 clipping app: an Electron + React + TypeScript desktop shell (`ui/`) that is only a
-client of a local FastAPI engine (`server/api.py:1-8`, `ARCHITECTURE.md:851-853`).
+client of a local FastAPI engine (`server/api.py:1-8`, `ARCHITECTURE.md:928-930`).
 Licence AGPL-3.0 (`LICENSE`, `NOTICE`, `ui/package.json` `"license": "AGPL-3.0-only"`).
 **The app ships for Windows 10/11 only** (`README.md` Requirements table, "Windows
-only for the app"; `ARCHITECTURE.md:947` "Windows packaging"); the engine "should run on
+only for the app"; `ARCHITECTURE.md:1028` "Windows packaging"); the engine "should run on
 Linux/macOS" but no Mac build exists (`README.md`, issue #62 reference). A Docker image
 exists for contributors, not users (`Dockerfile:1-12`, `docker-compose.yml:1-7`).
 Three distribution channels, all built from one `ui/package.json` version: a Web Setup
@@ -37,22 +37,22 @@ totals). Purpose column cites the file that says so.
 | `main.py` | CLI entry; subcommands `process`, `run`, `status`, `outro-backfill`, `auth`, `upload`, `serve`, `mcp`, `channels`, `models`, `render-worker`; `load_config()`; forces UTF-8 I/O | 16.7 KB | `main.py` |
 | `config/` | `settings.yaml` (the one config file), `prompts/*.txt` (12 LLM prompts), `gaming.yaml`, `sports.yaml`, `audioset_labels.txt` | — | `ARCHITECTURE.md:148-152`, `ls config` |
 | `core/` | pipeline orchestration, SQLite state, models, progress, cancel, modes, preflight, binaries, queue, prefetch, housekeeping, scheduler, paths, secrets, scrub, outcome | 18 files / 5,884 lines | `ARCHITECTURE.md:153-166` |
-| `server/` | FastAPI app (`api.py`, 86 routes + ws), jobs worker, events, feedback, ai_api, automation, agent, mcp, integrations, webhooks, publisher + per-provider `*_api.py`/`*_service.py` | 18 / 11,595 | `ARCHITECTURE.md:238-250` |
+| `server/` | FastAPI app (`api.py`, 86 routes + ws), jobs worker, events, feedback, ai_api, automation, agent, mcp, integrations, webhooks, publisher + per-provider `*_api.py`/`*_service.py` | 18 / 11,595 | `ARCHITECTURE.md:239-251` |
 | `analysis/` | the clip engine: audio/visual features, hype, gaming, fusion, highlights, metadata, clip_edit, tighten, voice_turns, panns, intent | 17 / 5,583 | `ARCHITECTURE.md:184-201` |
-| `video/` | tracking (YOLOv8), ASD (TalkNet adapter), framing, cropper, captions, cutter, filters, encoding, outro | 15 / 6,771 | `ARCHITECTURE.md:208-217` |
-| `video_editor/` | non-destructive edit model and export | 8 / 715 | `ARCHITECTURE.md:218-225` |
+| `video/` | tracking (YOLOv8), ASD (TalkNet adapter), framing, cropper, captions, cutter, filters, encoding, outro | 15 / 6,771 | `ARCHITECTURE.md:208-218` |
+| `video_editor/` | non-destructive edit model and export | 8 / 715 | `ARCHITECTURE.md:219-226` |
 | `sources/` | one module per platform + `dispatch.py` (URL → module) | 11 / 1,556 | `ARCHITECTURE.md:167-174` |
 | `transcription/` | faster-whisper + cloud STT; `assets/probe.mp3` | 3 / 619 | `ARCHITECTURE.md:175-177` |
 | `llm/` | `base.py` interface, `ollama_backend.py`, `registry.py`, `manager.py`, `spec.py`, `providers/` (cloud, catalog, adapters, keys, oauth), `signin/` (ChatGPT plan) | 27 / 2,756 | `ARCHITECTURE.md:178-183` |
 | `creator/` | creator profiles / learning | 6 / 974 | `ARCHITECTURE.md:202-207` |
-| `gaming/` | Gaming / Reaction layouts; `layouts.json` data | 7 / 1,840 | `ARCHITECTURE.md:226-232` |
-| `sports/` | registry in `__init__.py`; `core/`; `soccer/`; `basketball/` | 25 / 6,327 | `ARCHITECTURE.md:233-237`, `sports/__init__.py:26` |
-| `longform/` | 16:9 profiles registry and assembly | 7 / 776 | `ARCHITECTURE.md:252-257` |
-| `multilingual/` | translate, subtitles, burn, dub (Piper), voices | 10 / 1,405 | `ARCHITECTURE.md:258-267` |
-| `publish/` | `base.py` Publisher ABC, YouTube, WoopSocial, Upload-Post, metadata, quota, schedule, oauth | 12 / 2,943 | `ARCHITECTURE.md:251` |
-| `remote_render/` | second-PC rendering: settings, protocol, tls, gateway, queue, worker, service | 10 / 2,051 | `ARCHITECTURE.md:252` |
+| `gaming/` | Gaming / Reaction layouts; `layouts.json` data | 7 / 1,840 | `ARCHITECTURE.md:227-233` |
+| `sports/` | registry in `__init__.py`; `core/`; `soccer/`; `basketball/` | 25 / 6,327 | `ARCHITECTURE.md:234-238`, `sports/__init__.py:26` |
+| `longform/` | 16:9 profiles registry and assembly | 7 / 776 | `ARCHITECTURE.md:253-258` |
+| `multilingual/` | translate, subtitles, burn, dub (Piper), voices | 10 / 1,405 | `ARCHITECTURE.md:259-268` |
+| `publish/` | `base.py` Publisher ABC, YouTube, WoopSocial, Upload-Post, metadata, quota, schedule, oauth | 12 / 2,943 | `ARCHITECTURE.md:252` |
+| `remote_render/` | second-PC rendering: settings, protocol, tls, gateway, queue, worker, service | 10 / 2,051 | `ARCHITECTURE.md:253` |
 | `third_party/` | vendored TalkNet-ASD (MIT) + icon notices; must never be edited | 9 / 522 | `third_party/talknet/README.md`, `.github/CODEOWNERS` |
-| `models/` | **absent in a checkout**; created by `scripts/fetch_asd_model.py`, `fetch_panns.py`, `fetch_voice_model.py` | — | `ls models` fails; `ARCHITECTURE.md:254` |
+| `models/` | **absent in a checkout**; created by `scripts/fetch_asd_model.py`, `fetch_panns.py`, `fetch_voice_model.py` | — | `ls models` fails; `ARCHITECTURE.md:255` |
 | `vendor/` | **absent in a checkout, gitignored**; `ffmpeg/`, `ollama/`, `whisper/` written by `scripts/fetch_*.py` | — | `.gitignore` `/vendor/`; `scripts/fetch_ffmpeg.py:36` |
 | `scripts/` | build/fetch/sign/sitemap scripts (not packaged) | 14 / 2,019 | `clips-studio.spec` comment "scripts/, which is not packaged at all" |
 | `tests/` | pytest, deterministic only | 105 / 26,427 | `tests/README.md` |
@@ -122,7 +122,7 @@ http://127.0.0.1:8765; style-src 'self' 'unsafe-inline'`
 | Pinned Ollama runtime | `OLLAMA_VERSION = "v0.32.6"` (`VERSION.txt` stamp in `vendor/ollama/`) | `scripts/fetch_ollama.py` | build only |
 | Electron / builder | `electron ^31.0.0`, `electron-builder ^24.13.3`, `electron-updater ^6.8.9`, `overrides.tar ^7.5.22` | `ui/package.json` | `docs/DEPENDENCY-SECURITY.md` explains the pins |
 | Schema version | **none**: SQLite migrations are additive `ALTER TABLE … ADD COLUMN` guarded by `PRAGMA table_info` | `core/state.py:366-392` `_migrate()` | — |
-| Changelog | `## Unreleased`, `## 2.0.0`, `1.2.0`, `1.1.4`, `1.1.3`, `0.1.2 (2026-08-10)`, `0.1.1`, `0.1.0`; written for creators; Added/Changed/Fixed subsections; `(#NNN)` issue refs | `CHANGELOG.md:1-30,109,574,710,788,856-907` | release notes in-app (`ui/build/release-notes.md`) |
+| Changelog | `## Unreleased`, `## 2.0.0`, `1.2.0`, `1.1.4`, `1.1.3`, `0.1.2 (2026-08-10)`, `0.1.1`, `0.1.0`; written for creators; Added/Changed/Fixed subsections; `(#NNN)` issue refs | `CHANGELOG.md:1-59,138,603,739,817,885-936` | release notes in-app (`ui/build/release-notes.md`) |
 
 The website download buttons and `whop-app/lib/content.ts` / `web/lib/content.ts`
 `VERSION` carry the version too and must be bumped by hand (`docs/RELEASING.md` "The
@@ -166,7 +166,7 @@ website's download buttons name the version").
 
 | Section / key | Default | Note for an SDK |
 |---|---|---|
-| `model` | `gemma:7b` | Ollama tag, or `provider/model` for cloud (`ARCHITECTURE.md:909-910`) |
+| `model` | `gemma:7b` | Ollama tag, or `provider/model` for cloud (`ARCHITECTURE.md:986-987`) |
 | `channel` | `""` | watched channel handle |
 | `content_language` | `auto` | ISO code or auto |
 | `auto_upload`, `privacy` | `false`, `public` | CLI daemon only |
@@ -189,7 +189,7 @@ website's download buttons name the version").
 provider keys/settings, YouTube credentials. Those live in the credential store (§5.4).
 `config/gaming.yaml` and `config/sports.yaml` are data read at runtime
 (`sports/__init__.py:19-31` `knowledge()`), and `config/prompts/*.txt` are the LLM
-prompts ("Prompts are data, not code", `ARCHITECTURE.md:940-944`).
+prompts ("Prompts are data, not code", `ARCHITECTURE.md:1021-1025`).
 
 ### 5.3 How settings are written
 
@@ -209,7 +209,7 @@ the YAML text** to preserve the user's comments:
 
 | Store | Location | Contents | Cited |
 |---|---|---|---|
-| SQLite `state.db` | `<data_dir>/state.db` | videos, clips, jobs, uploads, creators, …, `app_state` key/value (`get_flag`/`set_flag`), `streams` | `core/state.py:251,366,1402-1406`; `ARCHITECTURE.md:882-900` |
+| SQLite `state.db` | `<data_dir>/state.db` | videos, clips, jobs, uploads, creators, …, `app_state` key/value (`get_flag`/`set_flag`), `streams` | `core/state.py:251,366,1402-1406`; `ARCHITECTURE.md:959-977` |
 | Credential store | `<data_dir>/credentials/<name>.bin` (Windows DPAPI, entropy `clips-kitty/publish/v1`) or `<name>.secret.json` 0600 elsewhere | names seen: `youtube_token`, `youtube_client` (`server/youtube_*`), `ai_key_<provider>` (`llm/providers/keys.py:15` `PREFIX = "ai_key_"`), `remote_render` (`remote_render/settings.py` `NAME`), Upload-Post key via `server/uploadpost_service.py:82-95` (name not read), ChatGPT sign-in (`llm/signin/chatgpt.py`) | `core/secrets.py` `_DIR = "credentials"`, `backend_name()`, `save/load/wipe/has/migrate_plaintext` |
 | Electron userData | `%APPDATA%\clips-studio\` (derived from package.json `name`) | renderer localStorage (caption style, toggles, UI language), `update-prefs.json` (`channel`, `skipped`), `tray.json` (`keepInTray`) | `ui/electron-builder.yml:10-20` comment; `ui/src/main/updater.ts` `PREFS_FILE`; `ui/src/main/index.ts` `trayPrefsPath` |
 | Per-job options | `jobs.payload` JSON in SQLite | `JobIn`/`JobPatch` fields | `server/api.py:38-60`, `core/queue.py` |
@@ -281,7 +281,7 @@ cuBLAS 12 `nvidia/cublas/bin` (`transcription/transcriber.py:32-42`), the sport
 knowledge `config/sports.yaml` resolved relative to `sports/__init__.py`
 (`sports/__init__.py:22`), `gaming/layouts.json` beside `gaming/framing.py`
 (`clips-studio.spec` comment). Each has an `available()` gate so a missing file degrades
-the feature instead of crashing (`ARCHITECTURE.md:968-972`).
+the feature instead of crashing (`ARCHITECTURE.md:1049-1053`).
 `core/preflight.py` turns this into the seven checks served at `GET /health/preflight`
 (`ffmpeg`, `ffprobe`, `ollama`, `model`, `whisper`, `gpu`, `disk`;
 `docs/API.md:178-201`; `Check(name, ok, detail, fix, blocking)` dataclass
@@ -423,7 +423,7 @@ https://huggingface.co/ColinGPT9/clips-studio-releases/resolve/main, channel lat
 An `appx:` block (identity `ClipsStudio.ClipsStudio`, publisher
 `CN=82A1C822-…`, `applicationId: ClipsStudio`, `runFullTrust` only) is used only when
 `scripts/build_msix.py` passes `--win appx` explicitly. Plain `nsis` is impossible:
-32-bit `makensis` dies ~2 GB (`CONTRIBUTING.md`, `ARCHITECTURE.md:957-966`).
+32-bit `makensis` dies ~2 GB (`CONTRIBUTING.md`, `ARCHITECTURE.md:1038-1047`).
 
 ### 9.4 Fetch scripts (build inputs, never committed)
 
@@ -553,7 +553,7 @@ Grep (`plugin|extension|marketplace|registry|provider`, case-insensitive) over
 * **No plugin loader, no entry points, no dynamic discovery, no sandbox** exists.
   "Plugin architecture and community extensions" is listed under **Later** in
   `ROADMAP.md:63`. The only prior art in writing is `docs/platform/BRIEF.md` (the
-  brief for this project) and `ARCHITECTURE.md:1004` "`sources/` and `publish/` are
+  brief for this project) and `ARCHITECTURE.md:1085` "`sources/` and `publish/` are
   plugin folders. Adding a platform means adding one file".
 * "Plugin" in code means the external **OBS plugin** (a separate repo) that uses the
   HTTP integrations API (`server/integrations.py:3`, `server/api.py:680,713`,
@@ -576,7 +576,7 @@ in-process, all compiled into the freeze):
 | Colour presets | `video/filters.py` "Preset names are validated against this registry everywhere" | | `video/filters.py:8` |
 | Integration presets | `server/integrations.py` `PRESETS = {"standard": …}`; `PLATFORMS = ("twitch","youtube","kick")` | | `server/integrations.py:27-40` |
 | Signals ("bring your own model") | a numpy array over the timeline appended to `peak_signals` in `analysis/fusion.py`; `hype.audience_curve(url, video_id, duration) -> np.ndarray | None` is the shape to copy | | `docs/EXTENDING.md` "Bring your own model" |
-| Prompts / knowledge as data | `config/prompts/*.txt`, `config/gaming.yaml`, `config/sports.yaml`, `gaming/layouts.json` | | `ARCHITECTURE.md:940-944` |
+| Prompts / knowledge as data | `config/prompts/*.txt`, `config/gaming.yaml`, `config/sports.yaml`, `gaming/layouts.json` | | `ARCHITECTURE.md:1021-1025` |
 | Agent skill | `skills/clips-kitty/SKILL.md` (YAML front matter `name`, `description`) describing the MCP tools `queue_video`, `queue_local_file`, `job_status`, `list_clips`, `export_clip`, `list_videos`, `queue_status` | | `skills/clips-kitty/SKILL.md` |
 | External integrations | OBS plugin over `POST /integrations/streams`; webhooks; MCP over stdio; `examples/drive_the_api.py` | | `docs/API.md:806-975`; `server/webhooks.py`; `server/mcp.py` |
 | Electron allow-list | `EXTERNAL_ALLOWED` host regexes: "A provider added there needs its hosts added here, or its 'Get a key' link does nothing" | a UI-visible link from any new provider/plugin needs an Electron change | `ui/src/main/index.ts` `EXTERNAL_ALLOWED` |
