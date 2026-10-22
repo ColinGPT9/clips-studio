@@ -338,8 +338,9 @@ def test_selection_1_peak_windows_are_exactly_as_before():
 
 
 def test_selection_2_spends_the_same_budget_on_the_strongest():
-    for before, after, x in zip(peak_windows(), peak_windows(strongest_first=True),
-                                [x for x in curves() for _p in (85, 90) for _d in (1, 2)]):
+    # peak_windows() gives four results per curve: two percentiles, two duration ranges
+    each = [y for x in curves() for y in [x] * 4]
+    for before, after, x in zip(peak_windows(), peak_windows(strongest_first=True), each):
         assert len(after) == len(before) and after == sorted(after)
         budget = max(12, x.size // 300)
         assert len(after) <= budget

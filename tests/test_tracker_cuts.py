@@ -49,8 +49,7 @@ import pytest
 np = pytest.importorskip("numpy")
 cv2 = pytest.importorskip("cv2")
 
-from video import cuts, tracker  # noqa: E402
-from video.cropper import _interpolate  # noqa: E402
+from video import cropper, cuts, tracker  # noqa: E402
 
 W, H = 320, 180          # 16:9, small so a whole clip runs in a fraction of a second
 FPS = 29.97              # sample_fps 8 -> one sample every 4 frames, as on real footage
@@ -358,7 +357,7 @@ TODAY = {
 
 def at(result, frame):
     """The crop centre the renderer uses on this frame (video/cropper.py)."""
-    return _interpolate(result["path"], frame / FPS)
+    return cropper._interpolate(result["path"], frame / FPS)
 
 
 def frames_of(result):
@@ -401,7 +400,6 @@ def test_the_pipeline_passes_the_settings_and_they_default_to_off(settings, pass
     from pathlib import Path
 
     import core.pipeline as pipeline
-    import video.cropper as cropper
     from core import modes
     from core.models import ClipCandidate
 
