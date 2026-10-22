@@ -563,9 +563,11 @@ it. With the setting on:
   taking it back a moment later. A sighting after the next cut does not count, since the id
   can belong to someone else by then.
 
-The whole-clip decisions (letterbox, facecam layout, `face_y`) and TalkNet's shot plan work
-as before. `tests/test_tracker_cuts.py` checks that with the setting off, the output is
-exactly what it was.
+TalkNet's shot plan is computed as before. The whole-clip decisions (letterbox, facecam
+layout, `face_y`) use the same rules, but with the setting on they read the subject the
+shot-aware pass ended on (for the automatic letterbox, the subject on each sample) and the
+averages restarted at each cut, so their result can differ. `tests/test_tracker_cuts.py`
+checks that with the setting off, the output is exactly what it was.
 
 ### 5.1 Who the camera follows
 

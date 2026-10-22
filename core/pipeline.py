@@ -1594,8 +1594,8 @@ def _render_files(
                     vf_extra=vf_extra, normalize=normalize,
                 )
             else:
+                from video import cuts, tracker  # lazy: tracker imports torch
                 from video.cropper import render_vertical
-                from video.tracker import compute_tracking  # lazy: imports torch
 
                 crop_mode = opts.get("crop", "track")
                 # The play's moment, for a sport that frames around it; not
@@ -1622,13 +1622,13 @@ def _render_files(
                         tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
                 else:
                     tracking_cfg = config["tracking"]
-                    tracking = compute_tracking(
+                    tracking = tracker.compute_tracking(
                         intermediate,
                         model_name=tracking_cfg["detector"],
                         sample_fps=tracking_cfg["sample_fps"],
                         force_fit_blur=(crop_mode == "letterbox"),
                         # Off unless set (ARCHITECTURE.md §5, video/cuts.py).
-                        shot_aware=tracking_cfg.get("shot_aware", False),
+                        shot_aware=cuts.shot_aware_on(tracking_cfg),
                         no_subject=tracking_cfg.get("shot_aware_no_subject", "center"),
                     )
                     if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":

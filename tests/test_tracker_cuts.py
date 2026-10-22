@@ -391,6 +391,11 @@ def test_t7_with_the_setting_off_the_output_is_exactly_as_before(name, monkeypat
 @pytest.mark.parametrize("settings, passed", [
     ({}, (False, "center")),       # settings.yaml as it ships: no such keys
     ({"shot_aware": True, "shot_aware_no_subject": "hold"}, (True, "hold")),
+    # Quoted, the value is text, and any text but "" is true to a plain truth
+    # test: only the words that mean on turn it on (cuts.shot_aware_on).
+    ({"shot_aware": "false"}, (False, "center")),
+    ({"shot_aware": "off"}, (False, "center")),
+    ({"shot_aware": " Yes "}, (True, "center")),
 ])
 def test_the_pipeline_passes_the_settings_and_they_default_to_off(settings, passed, monkeypatch, tmp_path):
     from pathlib import Path
@@ -419,7 +424,7 @@ def test_the_pipeline_passes_the_settings_and_they_default_to_off(settings, pass
               "tracking": {"detector": "yolov8n-pose.pt", "sample_fps": 8, **settings}}
     pipeline._render_files(tmp_path / "source.mp4", ClipCandidate(start=10.0, end=40.0, score=80),
                            [], tmp_path / "clips", config)
-    assert (seen["shot_aware"], seen["no_subject"]) == passed
+    assert seen["shot_aware"] is passed[0] and seen["no_subject"] == passed[1]
 
 
 # ---- T1-T6 -----------------------------------------------------------------------------------

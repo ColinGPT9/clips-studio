@@ -4,10 +4,10 @@ The tracker decodes one frame in every frame_step (four at 29.97 fps and the
 default 8 samples a second) and, by default, calls a cut only when a sample
 pair's thumbnails differ by more than 55. On edited road-trip footage, real
 cuts scored mostly 39-58 across a sample pair and some as low as about 17-30,
-so that missed 105 of 216 of them, and placed 87 of the 111 it caught 1-3
-frames late, on the sample after the cut. Handheld motion tripped it 87
-times. Differencing every frame instead fires on 4-13% of ordinary frames and
-costs 58% more time, so that is not the fix either.
+so that missed 104 of 223 of them, placed 89 of the 119 it caught 1-3 frames
+late, on the sample after the cut, and called 76 cuts where there were none.
+Differencing every frame instead fires on 4-13% of ordinary frames and costs
+58% more time, so that is not the fix either.
 
 So it is done in two steps. A sample pair that changes by CANDIDATE_DIFF or
 more is only a candidate. The frames around it, and only those, are then
@@ -256,3 +256,25 @@ def _same(a, b) -> bool:
     import numpy as np
 
     return a.shape == b.shape and float(np.abs(a - b).mean()) <= ANCHOR_TOL
+
+
+# ---- the setting ---------------------------------------------------------------------------
+
+_ON = ("true", "yes", "on", "1")
+
+
+def shot_aware_on(tracking) -> bool:
+    """tracking.shot_aware from a run's tracking settings (config["tracking"]):
+    on only for true, the integer 1, or the text "true", "yes", "on" or "1" in
+    any case, spaces around it ignored. Anything else is off, as
+    analysis/highlights.py's selection_version reads scoring.selection: no
+    setting, and a quoted "false", "no", "off" or "0", which a plain truth
+    test would have read as on."""
+    value = tracking.get("shot_aware") if isinstance(tracking, dict) else None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in _ON
+    return False
