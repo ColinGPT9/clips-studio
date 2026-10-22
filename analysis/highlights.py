@@ -36,7 +36,11 @@ WINDOWS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "promp
 #
 #   scoring.selection: 1 (the default) or 2. Selection 1 chooses clips as they
 #     always have been chosen. Selection 2 changes four things on a standard
-#     run, never on a gaming stream or a match (analysis/fusion.py decides):
+#     run. A run scored as gaming (core.modes.gaming_scoring: Gaming /
+#     Reaction, or Vertical Live's Gaming / reaction choice) and a Sports
+#     match keep selection 1 whatever this says; any other run is a standard
+#     one, a gaming VOD on the standard layout included (analysis/fusion.py
+#     decides). The four:
 #       - the signal-peak and clip-direction windows are scored WINDOW_BATCH at
 #         a time, each answer matched to its window by time, and a window left
 #         at the neutral 50 is reported. One request for 36-84 windows ran past
@@ -243,8 +247,10 @@ def _score_window_batch(segments, llm, windows, events, guidance, events_title, 
     raw = _generate_with_retry(llm, prompt, WINDOWS_SCHEMA)
     parsed = _parse_clips_json(raw)
     if warn and parsed is None:
-        print(f"  Warning: the model's answer for {len(windows)} window(s) "
-              f"({windows[0][0]:.0f}-{windows[-1][1]:.0f}s) couldn't be read; they stay at a neutral 50")
+        # Fusion hands the windows over signal by signal, not in time order.
+        span = f"{min(s for s, _e in windows):.0f}-{max(e for _s, e in windows):.0f}s"
+        print(f"  Warning: the model's answer for {len(windows)} window(s) ({span}) couldn't be read; "
+              "they stay at a neutral 50")
     if parsed is None:
         # Model failed — keep the windows anyway with neutral text scores;
         # their audio/visual signals still let strong moments compete.

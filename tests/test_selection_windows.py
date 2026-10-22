@@ -142,6 +142,18 @@ def test_t8_a_batch_the_model_cut_off_is_a_warning_not_a_silent_50(capsys):
     assert said.count("Warning") == 3 and "couldn't be read" in said
 
 
+def test_t8_the_warning_spans_the_windows_whatever_their_order(capsys):
+    """Fusion hands the windows over signal by signal, not in time order, so
+    the first window's start and the last one's end could make a span that
+    runs backwards (216-167s). The warning gives the earliest start and the
+    latest end instead, and the windows keep the order they came in."""
+    wins = [(216.0, 241.0), (30.0, 55.0), (142.0, 167.0)]
+    got = highlights.score_windows(segments_for(wins), Model(limit=10), wins, **highlights.window_options(2))
+    assert outcome(got) == [(a, b, 50, NEUTRAL) for a, b in wins]
+    said = capsys.readouterr().out
+    assert "3 window(s) (30-241s) couldn't be read" in said and "216-167s" not in said
+
+
 # ---- T9: an answer that skips and reverses ---------------------------------------
 
 
