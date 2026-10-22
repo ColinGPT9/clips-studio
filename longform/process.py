@@ -110,6 +110,11 @@ def process_longform(url: str, config: dict, db: StateDB, options: dict) -> None
     cfg = copy.deepcopy(config)
     cfg["clips"]["min_duration"] = profile["min_duration"]
     cfg["clips"]["max_duration"] = profile["max_duration"]
+    # Clip selection 2 (scoring.selection, analysis/highlights.py) is tried on
+    # the Shorts first: these clips keep selection 1 unless
+    # scoring.longform_selection says 2.
+    scoring = cfg.setdefault("scoring", {})
+    scoring["selection"] = scoring.get("longform_selection", 1)
     # The installed model when the one in settings isn't downloaded, as the
     # Shorts path does: otherwise Ollama answers 404 and the run fails (#118).
     llm = create_backend(_with_usable_model(config["llm"]))

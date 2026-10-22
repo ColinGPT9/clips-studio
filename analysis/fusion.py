@@ -80,6 +80,10 @@ def find_clips(
         # on-screen text, event windows, the capped bonus) runs with the
         # sport's data in it.
         gaming = sport
+    # Clip selection (scoring.selection, analysis/highlights.py): 2 changes how
+    # a standard run's candidates are found, scored and fitted. A gaming stream
+    # and a match keep their own path, whatever it says.
+    selection = highlights.selection_version(config) if gaming is None and sport is None else 1
     if gaming is not None:
         # The standard weights (analysis/gaming.py): talk is judged as on any
         # stream, and the game adds on top (the game bonus below).
@@ -174,6 +178,7 @@ def find_clips(
         long_video_threshold_seconds=analysis_cfg["long_video_threshold_seconds"],
         events=events,
         **({"guidance": guidance, "events_title": events_title} if gaming is not None else {}),
+        **({"selection": 2} if selection == 2 else {}),
     )
 
     # Candidate windows from signal peaks — detected PER MODALITY, not just
@@ -186,6 +191,11 @@ def find_clips(
     pk_pct = scoring_cfg.get("signal_peak_percentile", 90)
     peak_windows: list[tuple[float, float]] = []
     seen = list(candidates)
+    if selection == 2:
+        # Only a pick that can make the cut covers its moment: one the model
+        # scored near zero no longer hides a hot moment it overlaps. The picks
+        # are already scored here; min_score is the run's own bar.
+        seen = [c for c in candidates if c.score >= clips_cfg["min_score"]]
     # Audience hype (chat density / most-replayed) is a first-class peak
     # source: a moment chat exploded over is a candidate even if the
     # transcript and A/V signals missed it.
@@ -210,6 +220,7 @@ def find_clips(
             existing=seen,
             **({"video_end": max(segments[-1].end if segments else 0.0, float(sig.size))}
                if gaming is not None else {}),
+            **({"strongest_first": True} if selection == 2 else {}),
         ):
             peak_windows.append(win)
             seen.append(ClipCandidate(start=win[0], end=win[1], score=0))
@@ -223,13 +234,15 @@ def find_clips(
                            for i, (s0, e0) in enumerate(peak_windows) if gaming.game_at(s0, e0)[0]},
                 "batch": 8}
                if gaming is not None else {}),
+            **highlights.window_options(selection),
         )
         # Signal peaks are seeded tight around the hot moment — grow them to a
         # full ~25s clip on sentence boundaries so action moments aren't tiny.
         if gaming is None:
             signal_cands = [
                 highlights._fit_to_segments(
-                    c, segments, clips_cfg["min_duration"], clips_cfg["max_duration"], target_duration=25.0
+                    c, segments, clips_cfg["min_duration"], clips_cfg["max_duration"], target_duration=25.0,
+                    **highlights.start_rules(selection, c, lead_in=highlights.LEAD_IN_SECONDS),
                 )
                 for c in signal_cands
             ]
@@ -256,12 +269,14 @@ def find_clips(
         wanted = clip_intent.windows(intent, candidates, end_of_video)
         if wanted:
             print(f"  Clip direction: {len(wanted)} window(s) where what was asked for comes up")
-            asked = highlights.score_windows(segments, llm, wanted, events=events)
+            asked = highlights.score_windows(segments, llm, wanted, events=events,
+                                             **highlights.window_options(selection))
             for c in asked:
                 c.source = "direction"
             candidates += [
                 highlights._fit_to_segments(c, segments, clips_cfg["min_duration"],
-                                            clips_cfg["max_duration"], target_duration=30.0)
+                                            clips_cfg["max_duration"], target_duration=30.0,
+                                            **highlights.start_rules(selection, c))
                 for c in asked
             ]
             intent.added = len(asked)
@@ -957,10 +972,14 @@ def _signal_peak_windows(
     max_duration: float,
     existing: list[ClipCandidate],
     video_end: float | None = None,
+    *,
+    strongest_first: bool = False,
 ) -> list[tuple[float, float]]:
     """Windows around signal peaks that no transcript candidate already covers.
     `video_end`: where the video ends when the transcript stops before it (the
-    gaming profile passes the signals' length); by default the transcript's end."""
+    gaming profile passes the signals' length); by default the transcript's end.
+    `strongest_first` (selection 2): the budget goes to the strongest peaks
+    rather than the earliest (_strongest_peak_windows)."""
     if combined.size == 0:
         return []
     cutoff = np.percentile(combined, percentile)
@@ -976,6 +995,8 @@ def _signal_peak_windows(
 
     if video_end is None:
         video_end = segments[-1].end if segments else float(combined.size)
+    if strongest_first:
+        return _strongest_peak_windows(combined, windows, min_duration, max_duration, existing, video_end)
     result = []
     for lo, hi in windows:
         # Pad to minimum duration around the peak, clamp into the video.
@@ -991,6 +1012,38 @@ def _signal_peak_windows(
     # Scale the window budget with video length: ~1 per 5 minutes, min 12.
     # Long streams (esp. low-speech workouts) need more action candidates.
     return result[: max(12, combined.size // 300)]
+
+
+def _strongest_peak_windows(
+    signal: np.ndarray,
+    windows: list[list[float]],
+    min_duration: float,
+    max_duration: float,
+    existing: list[ClipCandidate],
+    video_end: float,
+) -> list[tuple[float, float]]:
+    """Selection 2's window budget for _signal_peak_windows: the same windows,
+    padded and checked the same way, but taken strongest peak first, so the
+    budget isn't spent before a long video's later peaks are reached (signal
+    candidates by quarter of the video ran 131/62/18/1). Handed back in time
+    order."""
+    budget = max(12, signal.size // 300)
+    strength = [float(signal[int(lo):int(hi) + 1].max()) for lo, hi in windows]
+    result = []
+    for i in sorted(range(len(windows)), key=lambda i: -strength[i]):  # stable: ties in time order
+        lo, hi = windows[i]
+        pad = max(0.0, (min_duration - (hi - lo)) / 2)
+        start, end = max(0.0, lo - pad), min(video_end, hi + pad + 1)
+        if end - start < min_duration:
+            continue
+        end = min(end, start + max_duration)
+        c = ClipCandidate(start=start, end=end, score=0)
+        if any(c.overlap_ratio(e) > 0.3 for e in existing):
+            continue  # the transcript pool already found this moment
+        result.append((start, end))
+        if len(result) >= budget:
+            break
+    return sorted(result)
 
 
 # ---- rerank ------------------------------------------------------------------
