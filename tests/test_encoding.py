@@ -2,6 +2,7 @@
 
 import unittest
 from unittest.mock import patch
+
 import pytest
 
 from video.encoding import (
@@ -9,8 +10,6 @@ from video.encoding import (
     CPU_ARGS,
     _probe,
     _select,
-    using_hardware_encoder,
-    video_encoder_args,
 )
 
 
