@@ -34,7 +34,7 @@ Queue Manager (core/queue.py)
 | `Rejection` | `candidate: ClipCandidate`, `reason: str` (`timestamp_overlap | transcript_similarity | segment_reuse | below_min_score | over_limit`), `kept: ClipCandidate|None = None` | `core/models.py:78-84` |
 | `RenderedClip` | `source_video_id: str`, `candidate: ClipCandidate`, `path: Path` | `core/models.py:87-92` |
 
-`subscores` keys seen in the pipeline: `text`, `audio`, `visual`, `reaction`, `engagement` (`core/models.py:52-54`, printed at `core/pipeline.py:484-491`), plus `intent`, `intent_why`, `required` (`core/pipeline.py:489-490`), `reaction_measured` (`core/outcome.py:63`), `game` (`analysis/fusion.py:666`).
+`subscores` keys seen in the pipeline: `text`, `audio`, `visual`, `reaction`, `engagement` (`core/models.py:52-54`, printed at `core/pipeline.py:484-491`), plus `intent`, `intent_why`, `required` (`core/pipeline.py:489-490`), `reaction_measured` (`core/outcome.py:63`), `game` (`analysis/fusion.py:681`).
 
 `ClipMetadata` (`analysis/metadata.py:60-67`): `title: str`, `description: str`, `hashtags: list[str] = []`.
 
@@ -97,7 +97,7 @@ Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot
 ### 3.5 Retries, interruption, crash
 - No automatic retry. `retry()` is explicit; `attempts` is only incremented by crash recovery (`core/state.py:1396`).
 - Crash: on next start, `running` jobs return to `queued` with `interrupted = 1` (`core/state.py:1384-1400`); the log file is keyed by job id, so the second attempt appends to the same `job_N.log` (`core/queue.py:220-222`, `server/feedback.py:90`: opened with mode `"a"`).
-- Resume: `process_video` re-enters from the top; the download is skipped when `data/downloads/<id>.mp4` exists (`_cached_or_download`, `core/pipeline.py:1010-1113`), and the transcript is reused when `data/transcripts/<id>.json` exists (`transcription/transcriber.py:210-219`). Analysis and rendering always re-run (inferred: no cache of candidates exists; `_register_clip` tolerates the UNIQUE clash on re-run, `core/pipeline.py:1599-1633`).
+- Resume: `process_video` re-enters from the top; the download is skipped when `data/downloads/<id>.mp4` exists (`_cached_or_download`, `core/pipeline.py:1010-1113`), and the transcript is reused when `data/transcripts/<id>.json` exists (`transcription/transcriber.py:210-219`). Analysis and rendering always re-run (inferred: no cache of candidates exists; `_register_clip` tolerates the UNIQUE clash on re-run, `core/pipeline.py:1599-1636`).
 - "Already processed" guard: `db.shorts_made(video_id)` (`core/state.py:829-854`) short-circuits a Shorts run unless `force` (`core/pipeline.py:301-303`).
 - Daemon mode (`core/scheduler.py:_process_queue`, `:93-103`) reprocesses videos with status `queued|downloaded|transcribed|analyzed` and marks `failed` on exception.
 
@@ -108,7 +108,7 @@ Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot
 - Module state: `_cancelled: set[str]`, `_active: str|None` (`core/cancel.py:13-16`).
 - `set_active(video_id)`, `active_video()`, `request_cancel(video_id)`, `is_cancelled(video_id)`, `check(video_id)` (raise at stage boundaries), `check_active()` (raise if the running video is cancelled, for deep code without a video id), `clear(video_id)`, `wait(thread, timeout=None, video_id=None)` (a join that aborts on cancel), `run(cmd)` (a Popen that kills the process on cancel) (`core/cancel.py:19-122`).
 - `class CancelledError(Exception)` (`:36`).
-- Pipeline check points: `cancel.clear` at start (`core/pipeline.py:231`); `cancel.check` after download (`:305`) and after transcription (`:422`); `cancel.wait` on the prepass threads (`:428-431`); `cancel.check_active()` on every completed render future (`:650`) and on entry to `_render_files` (`:1147`). Inside stages: transcriber loop (`transcription/transcriber.py`, test at `tests/test_cancel.py:84-113`), LLM chunk loop (`analysis/highlights.py`, test `:124-147`), rerank batches (`analysis/fusion.py:617`), yt-dlp progress hook (`sources/ytdlp_common.py:34-36`).
+- Pipeline check points: `cancel.clear` at start (`core/pipeline.py:231`); `cancel.check` after download (`:305`) and after transcription (`:422`); `cancel.wait` on the prepass threads (`:428-431`); `cancel.check_active()` on every completed render future (`:650`) and on entry to `_render_files` (`:1147`). Inside stages: transcriber loop (`transcription/transcriber.py`, test at `tests/test_cancel.py:84-113`), LLM chunk loop (`analysis/highlights.py`, test `:124-147`), rerank batches (`analysis/fusion.py:632`), yt-dlp progress hook (`sources/ytdlp_common.py:34-36`).
 - HTTP: `POST /cancel {video_id | url}` -> `cancel.request_cancel(vid)` (`server/api.py:1201-1214`).
 - The worker converts `CancelledError` to job status `cancelled` (`server/jobs.py:299-302`).
 - A cancel flag is sticky until `clear()`; the worker clears it at job start (`server/jobs.py:174-181`).
@@ -128,16 +128,16 @@ Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot
 | `downloaded` | `video_id, title, duration` | `core/pipeline.py:208` |
 | `converting source to H.264` | `video_id` | `core/pipeline.py:188` |
 | `transcribe` | `video_id, title`; then `fraction` | `core/pipeline.py:390`; `transcription/transcriber.py:182`; `transcription/cloud.py:78,98` |
-| `signals` | | `analysis/fusion.py:96` |
-| `analyze` | `video_id`; then `current, total` (chunks) | `core/pipeline.py:424`; `analysis/highlights.py:71,132,138` |
-| `reactions` | `current, total` | `analysis/fusion.py:359` |
-| `ranking` | `current, total` | `analysis/fusion.py:620` |
+| `signals` | | `analysis/fusion.py:100` |
+| `analyze` | `video_id`; then `current, total` (chunks) | `core/pipeline.py:424`; `analysis/highlights.py:157,223,229` |
+| `reactions` | `current, total` | `analysis/fusion.py:374` |
+| `ranking` | `current, total` | `analysis/fusion.py:635` |
 | `render` | `video_id, clip, total` | `core/pipeline.py:612-614` |
 | `done` | `video_id, clips, seconds` | `core/pipeline.py:674-676` |
 | `multilingual` | `message, fraction, clip, total` | `server/jobs.py:426-433` |
 | `prefetch` (+ `prefetch=True`) | restamped by thread tags | `core/prefetch.py:120` |
 
-Longform emits the same stage names (`longform/process.py:57-209`).
+Longform emits the same stage names (`longform/process.py:57-216`).
 
 ### 5.3 Percentage folding (server/jobs.py)
 `_STAGES = {stage: (base, weight, label)}` (`server/jobs.py:30-39`): download 0.00/0.15 "Downloading video"; downloaded 0.15/0; transcribe 0.15/0.25 "Transcribing speech"; signals 0.40/0.05; analyze 0.45/0.20 "Finding the best moments"; ranking 0.65/0.05; reactions 0.70/0.08; render 0.78/0.22 "Rendering clips". Stated as "kept identical to the UI's STAGES in ui/src/renderer/src/lib/jobProgress.ts" (`:25-27`). Within-stage fraction: `event["fraction"]`, else `(clip-1)/total`, else `(current-1)/total`, else 0.5 (`:323-336`). Never moves backwards; capped at 0.99; a `span=(lo,hi)` scales both-format jobs (`:338-345`, `:746-754`). Unknown stages (`done`, `publish`) do not move the figure (`:325-326`).
@@ -209,7 +209,7 @@ Modes are flags in `config["clips"]` read through `core/modes.py` predicates: `i
 | Sports | `payload.sport` -> `clips.sport` (`{name, highlights, period, teams,...}` cleaned by `sports.clean`) (`server/jobs.py:222-224`; `server/api.py:480-486`); Teams/players become `clips.focus` (`server/jobs.py:230-239`) | vertical source -> `clips.vertical_live = True` (`:223-229`); `MatchReading` prepass (`:387`, `:872-930`); hotwords `_listening_for` (`:395-400`); `match.finish` -> `_sport_inputs` -> `sports.profile_for(config, video)` (`:433-434`, `:933-992`); `find_clips(sport=...)`; `title_rules`/`check_titles` (`:513-528`); `outcome["sport"]` (`:469-471`) | `_sport_framing(intermediate, config, sport_name)` -> `sports.framing(name, clip_path, config)` replaces face tracking (`:1365-1374`, `:1550-1560`); reels `_sport_reels` (`:668-669`) |
 | Podcast | `payload.podcast` -> `clips.podcast = True` (`server/jobs.py:197-199`) | no scoring change (inferred: nothing in `process_video` reads `podcast`) | `podcast = opts.podcast or clips.podcast` (`:1180`); `video.podcast.analyze(intermediate, model_name, sample_fps) -> decision`; editor crop overrides; `podcast_mod.render_clip(intermediate, render_path, decision, ass_path, vf_extra, normalize)` (`:1336-1359`) |
 | Vertical Live | `payload.vertical_live` -> `clips.vertical_live = True` (`server/jobs.py:200`); own download copy `sources.vertical.SUFFIX` (`:1019-1024`; `core/prefetch.py:62-68`) | `NotVerticalError` precheck (`:217-220`); scoring unchanged; `needs_framing` false skips `_share_the_cpu` (`:585-588`) | `vertical_live` (`:1187`) takes the single-encode branch: `modes.fit_filter(*probe_size)` + `cut_clip(source, padded, render_path, ass_path, vf_extra, normalize)` (`:1217-1221`, `:1399-1413`); persisted as `render_opts.vertical_live = True` (`:1470-1474`) |
-| Longform (16:9) | `payload.longform = {"mode": short_clips|clips_140|highlights|edited_stream, "shorts"?}` (`server/api.py:50`) | separate entry `longform.process.process_longform(url, config, db, options)` (`longform/process.py:28`) reusing `_cached_or_download`, `convert_slow_source`, `MatchReading`, `transcribe`, `clip_direction`, `find_clips` with profile durations (`:62-128`), `_render_files` with `render_opts={"profile": mode}` (`:150-190`), `_register_clip`; `highlights`/`edited_stream` use `longform.assemble` (`:131-133`, `:231-365`) | `landscape = bool(opts.get("profile"))` -> canvas 1920x1080, scale+pad filter, no tracking (`:1173`, `:1201-1208`, `:1399-1413`) |
+| Longform (16:9) | `payload.longform = {"mode": short_clips|clips_140|highlights|edited_stream, "shorts"?}` (`server/api.py:50`) | separate entry `longform.process.process_longform(url, config, db, options)` (`longform/process.py:28`) reusing `_cached_or_download`, `convert_slow_source`, `MatchReading`, `transcribe`, `clip_direction`, `find_clips` with profile durations (`:62-135`), `_render_files` with `render_opts={"profile": mode}` (`:157-197`), `_register_clip`; `highlights`/`edited_stream` use `longform.assemble` (`:138-140`, `:238-372`) | `landscape = bool(opts.get("profile"))` -> canvas 1920x1080, scale+pad filter, no tracking (`:1173`, `:1201-1208`, `:1399-1413`) |
 
 Both-formats job: `Worker._both_formats` runs `process_video` then `process_longform` with progress spans 0-0.5 / 0.5-1 (`server/jobs.py:756-775`).
 
@@ -224,7 +224,7 @@ Both-formats job: `Worker._both_formats` runs `process_video` then `process_long
 | `data/state.db` | `StateDB(data_dir / "state.db")` (`server/jobs.py:46`, `main.py:201`) | SQLite, WAL, foreign keys on (`core/state.py:356-364`) |
 | `data/downloads/<video_id>.mp4` (or `<video_id><SUFFIX>.mp4` for Vertical Live) | `sources.dispatch.download` / prefetch | reused by `cached_source` (`core/pipeline.py:1019-1026`); re-render source path `data/downloads/{video_id}.mp4` (`server/jobs.py:789`) |
 | `data/transcripts/<video_id>.json` | `transcribe()` (`transcription/transcriber.py:244-256`) | `{"video_id", "language", "segments": [vars(Segment)]}`; read back by `detected_language`, `_rerender_clip`, `_caption_lines_for` |
-| `data/clips/<channel>/<title> [<video_id>]/clip_SSSSS-EEEEE.mp4` | `_render_files` (`core/pipeline.py:501-505`, `:1150-1152`) | stem `clip_{int(start):05d}-{int(end):05d}`; scratch `*.source.mp4`, `*.edited.mp4`, `*.plain.mp4`, `*.pre-card.mp4`, `*.ass`, `*.card.png` are discarded (`:1309-1424`); longform adds `/<profile subdir>` (`longform/process.py:146-150`) |
+| `data/clips/<channel>/<title> [<video_id>]/clip_SSSSS-EEEEE.mp4` | `_render_files` (`core/pipeline.py:501-505`, `:1150-1152`) | stem `clip_{int(start):05d}-{int(end):05d}`; scratch `*.source.mp4`, `*.edited.mp4`, `*.plain.mp4`, `*.pre-card.mp4`, `*.ass`, `*.card.png` are discarded (`:1309-1424`); longform adds `/<profile subdir>` (`longform/process.py:153-157`) |
 | `data/logs/job_<id>.log` | `feedback.open_job_log` (`server/jobs.py:159-164`) | see 9.3 |
 | `data/branding/assets/` | watermark images (`core/pipeline.py:1288`) | |
 | `data/remote_render/pieces/` | remote rendering (`remote_render/dispatch.py:82`) | |
@@ -248,7 +248,7 @@ Migrations are additive `ALTER TABLE ... ADD COLUMN` guarded by `PRAGMA table_in
 
 ### 9.3 What a clip is
 On disk: one MP4 at `clips.path`, 1080x1920 (standard/vertical-live/gaming/podcast/sports) or 1920x1080 (longform), captions burned from a temporary ASS, optional image watermark and end card concatenated (`core/pipeline.py:1426-1446`).
-In the DB: the `clips` row written by `_register_clip` (`core/pipeline.py:1582-1596`): `start_s, end_s, score, hook, path, status="queued", title, description, hashtags(json), scores(json subscores), render_opts(json)`. On a re-run the existing row is pointed at the fresh file and `_register_clip` returns `None` (`:1597-1633`).
+In the DB: the `clips` row written by `_register_clip` (`core/pipeline.py:1582-1596`): `start_s, end_s, score, hook, path, status="queued", title, description, hashtags(json), scores(json subscores), render_opts(json)`. On a re-run the existing row is pointed at the fresh file and `_register_clip` returns `None` (`:1598-1636`).
 
 `render_opts` keys written by `_render_files` (`core/pipeline.py:1456-1481`) and read back on re-render: `captions`, `caption_style`, `caption_lines`, `crop` (`track|center|letterbox|bias_left|bias_right`), `filter`, `adjust`, `edit` (`video_editor.timeline.EditList`), `watermark`, `speaker_edits`, `speaker_turns`, `normalize_audio`, `podcast`, `vertical_live`, `gaming` (dict), `sport`, `profile` (longform), `reel`.
 
@@ -272,7 +272,7 @@ In the DB: the `clips` row written by `_register_clip` (`core/pipeline.py:1582-1
 |---|---|---|---|
 | Whisper | `whisper.model` (`auto` or a size), `whisper.device` (`auto|cuda|cpu`) | `transcription/transcriber.py:_load_model` (`:90-131`): `auto` -> `large-v3-turbo` then `small` on CUDA, `small` on CPU; weights path via `core.binaries.whisper_model(size)` (bundled dir or bare name for HF download, `core/binaries.py:115-128`) | GPU failure at first encode -> retried on CPU (`transcription/transcriber.py:233-242`); cloud STT when `transcription.backend != local` (`:221-226`, `core/pipeline.py:109-118`) |
 | LLM | `llm.backend` (`ollama/<tag>` or `provider/model`), `llm.ollama_host` | `llm.registry.create_backend(llm_config)` (`llm/registry.py:14-`); `_with_usable_model` swaps a missing local tag for an installed one via `llm.manager.resolve_usable_model` (`core/pipeline.py:141-172`) | cloud providers via `llm/providers`, signed-in plans via `llm/signin` |
-| YOLO pose weights | `tracking.detector` (`yolov8n-pose.pt`), `tracking.sample_fps` | `video/tracker.py:_get_model` (`:94-108`) -> `core.binaries.yolo_weights(name)` (bundled `weights/` dir, repo root, or bare name for ultralytics download, `core/binaries.py:131-164`); loaded once per process and shared across render threads (`video/tracker.py:82-83`); device from `core.gpu.torch_device()` (`:1298-1305`) | |
+| YOLO pose weights | `tracking.detector` (`yolov8n-pose.pt`), `tracking.sample_fps` | `video/tracker.py:_get_model` (`:94-108`) -> `core.binaries.yolo_weights(name)` (bundled `weights/` dir, repo root, or bare name for ultralytics download, `core/binaries.py:131-164`); loaded once per process and shared across render threads (`video/tracker.py:83-84`); device from `core.gpu.torch_device()` (`:1357-1364`) | |
 | PANNs sound tagger | none (optional) | `analysis.panns.available()` (`core/pipeline.py:371-373`, `:900-902`) | scored without it |
 | FFmpeg/ffprobe | none | `core.binaries.ffmpeg()/ffprobe()` (bundled or PATH) | preflight blocks when absent (`core/preflight.py:71-86`) |
 
@@ -295,7 +295,7 @@ Yes, the separation exists and is clean, and it is already crossed by two other 
 
 **Detection output** (what exists right before rendering), at `core/pipeline.py:439-451`:
 ```
-candidates: list[ClipCandidate]   # kept, ordered best first (analysis/fusion.py:627-629)
+candidates: list[ClipCandidate]   # kept, ordered best first (analysis/fusion.py:642-644)
 rejections: list[Rejection]       # audit only
 ```
 Each `ClipCandidate`: `start`, `end` (seconds in the source), `score` (0-100 int), `hook` (str), `reason` (str), `source` (`"transcript"|"signal"`), `engagement`, `trending`, `subscores` (dict). Then, still before any file work, `metas: list[ClipMetadata]` is produced in lockstep (`:514-519`): `title`, `description`, `hashtags`.
@@ -312,7 +312,7 @@ It returns the finished MP4 path and the `render_opts` JSON to persist.
 
 **The remote-render precedent** shows what a renderer plugin would receive: `RemoteRenderer.render_all(video_id, source, items=[(candidate, meta)], segments, clip_dir, config, render_opts, language, workers, local=None, opts_for=None)` yields `(candidate, meta, get_result)` where `get_result() -> (clip_path, render_opts_json)` or raises (`remote_render/dispatch.py:5-12`, `:90-100`). It serialises a candidate with `dataclasses.asdict` minus `subscores` (`:51-55`), the segments within +-2 s of the window (`:58-65`), and `render_config(config)` (`protocol.py:22-24`). The worker side rebuilds `ClipCandidate(**c)` and `Segment(...)` and calls `_render_files` on the piece (`remote_render/worker.py:366-380`).
 
-**Where a detection plugin would plug in**: `find_clips` is one call with one return shape (`analysis/fusion.py:54-69`); every mode (gaming, sports, intent) enters it as optional keyword profiles rather than as separate code paths, and longform calls the same function with different durations (`longform/process.py:116-121`). The three mode hooks are themselves objects with a small duck-typed surface: a sport profile exposes `weights`, `genre_track`, `sound_weights`, `sound_curves`, `curves`, `board`, `option`, `title_rules`, `check_titles`, `report_data`, `look`, `one_play_per_clip` (`core/pipeline.py:933-992`, `:513-528`; `analysis/fusion.py:77-86, 540-593`); a gaming profile exposes `weights`, `genre_track` (`core/pipeline.py:851-866`).
+**Where a detection plugin would plug in**: `find_clips` is one call with one return shape (`analysis/fusion.py:54-69`); every mode (gaming, sports, intent) enters it as optional keyword profiles rather than as separate code paths, and longform calls the same function with different durations (`longform/process.py:123-128`). The three mode hooks are themselves objects with a small duck-typed surface: a sport profile exposes `weights`, `genre_track`, `sound_weights`, `sound_curves`, `curves`, `board`, `option`, `title_rules`, `check_titles`, `report_data`, `look`, `one_play_per_clip` (`core/pipeline.py:933-992`, `:513-528`; `analysis/fusion.py:77-90, 555-608`); a gaming profile exposes `weights`, `genre_track` (`core/pipeline.py:851-866`).
 
 **What is NOT separated**: `process_video` is one 490-line function; stage boundaries are marked by `db.set_video_status` and `progress.emit` calls, not by returning intermediate objects, so a plugin cannot today replace only "download" or only "transcribe" without editing this function (`core/pipeline.py:192-682`). Rendering options are passed as an untyped `dict` whose keys are documented only in comments (`:1136-1139`, `:1456-1481`).
 

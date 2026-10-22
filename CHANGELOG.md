@@ -13,7 +13,10 @@ were often broken in a way that only showed up on somebody else's machine.
 ### Experimental: off unless you turn it on
 
 Two changes to how clips are framed and chosen. Each stays off until you add its setting
-to `settings.yaml`, so clips come out exactly as before unless you do.
+to your settings file (`%LOCALAPPDATA%\Clips Studio\settings.yaml` in the installed app)
+and restart Clips Kitty, so clips come out exactly as before unless you do.
+`tracking.shot_aware: true` means a line `shot_aware: true` under `tracking:`, and likewise
+for the others.
 
 - **Framing that follows the cut** (`tracking.shot_aware: true`). In an edited video, a
   new shot could open framed on where the last shot's person stood, and move to the new
@@ -21,15 +24,18 @@ to `settings.yaml`, so clips come out exactly as before unless you do.
   With the setting on, cuts are found to the frame, and the crop moves to the person in the
   new shot on the cut itself. A shot with nobody in it opens on the centre (or keeps the
   last framing, with `tracking.shot_aware_no_subject: hold`) until someone clearly visible
-  appears. Framing takes a little longer on videos with many cuts.
-- **Clip selection 2** (`scoring.selection: 2`). The moments found from the sound and the
-  picture get a real score from your AI model instead of a flat 50 (a local model ran out
-  of room scoring them all at once), a long video's later moments are no longer crowded out
-  by its first half, and a weak transcript pick no longer hides a stronger moment next to
-  it. A clip's start no longer skips past the line it was picked for, and a clip that would
-  start partway into a sentence goes back to where the sentence begins, up to 8 seconds
-  earlier. Gaming streams and sports matches keep the current selection, and so does
-  Longform unless `scoring.longform_selection: 2`.
+  appears. Framing takes longer with it on: about a third longer on a video with many cuts,
+  and a little longer on handheld footage. It changes the standard crop only: Podcast, the
+  Gaming / Reaction layouts and Sports frame clips their own way and are unchanged.
+- **Clip selection 2** (`scoring.selection: 2`). The moments found from the sound, the
+  picture and chat are scored by your AI model eight at a time, so they no longer all fall
+  back to a flat 50 when a local model runs out of room scoring them at once. A long video's
+  later moments are no longer crowded out by its first half, and a transcript pick scored
+  below your minimum score no longer hides a moment it overlaps. A clip's start no longer
+  skips past the line it was picked for, and a clip that would start partway into a
+  sentence goes back to where the sentence begins, up to 8 seconds earlier. Videos scored as
+  gaming (Gaming / Reaction, or Vertical Live's Gaming / reaction choice) and Sports matches
+  keep the current selection, and so does Longform unless `scoring.longform_selection: 2`.
 
 ## 2.1.0: Basketball, and a Marketplace for new pipelines
 

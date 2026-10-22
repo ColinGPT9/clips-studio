@@ -381,7 +381,8 @@ Two independent pools feed the same scorer:
    describes blandly or not at all.
 
 **Selection 2** (`scoring.selection: 2`; off by default, and 1 is exactly the behaviour
-above) changes four things on a standard run, never on a game stream or a match
+above) changes four things on a standard run, never on a run scored as gaming (Gaming /
+Reaction, or Vertical Live's Gaming / reaction choice) or a Sports match
 (`analysis/fusion.py` decides):
 
 - Signal-peak and clip-direction windows are scored eight at a time, each answer matched
