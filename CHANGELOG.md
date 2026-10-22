@@ -8,6 +8,29 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ---
 
+## Unreleased
+
+### Experimental: off unless you turn it on
+
+Two changes to how clips are framed and chosen. Each stays off until you add its setting
+to `settings.yaml`, so clips come out exactly as before unless you do.
+
+- **Framing that follows the cut** (`tracking.shot_aware: true`). In an edited video, a
+  new shot could open framed on where the last shot's person stood, and move to the new
+  person only about a second later, and many cuts were missed or caught a few frames late.
+  With the setting on, cuts are found to the frame, and the crop moves to the person in the
+  new shot on the cut itself. A shot with nobody in it opens on the centre (or keeps the
+  last framing, with `tracking.shot_aware_no_subject: hold`) until someone clearly visible
+  appears. Framing takes a little longer on videos with many cuts.
+- **Clip selection 2** (`scoring.selection: 2`). The moments found from the sound and the
+  picture get a real score from your AI model instead of a flat 50 (a local model ran out
+  of room scoring them all at once), a long video's later moments are no longer crowded out
+  by its first half, and a weak transcript pick no longer hides a stronger moment next to
+  it. A clip's start no longer skips past the line it was picked for, and a clip that would
+  start partway into a sentence goes back to where the sentence begins, up to 8 seconds
+  earlier. Gaming streams and sports matches keep the current selection, and so does
+  Longform unless `scoring.longform_selection: 2`.
+
 ## 2.1.0: Basketball, and a Marketplace for new pipelines
 
 Basketball joins Soccer under Sports, and the new Marketplace installs pipelines and

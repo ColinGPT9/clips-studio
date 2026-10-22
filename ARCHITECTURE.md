@@ -210,6 +210,7 @@ clips-studio/
 │   ├── tracker.py              # YOLOv8 pose tracking, speaker-aware
 │   ├── asd.py                  # TalkNet active-speaker detection
 │   ├── framing.py              # crop-path smoothing and shot logic
+│   ├── cuts.py                 # frame-exact cuts for shot-aware framing (§5)
 │   ├── podcast.py              # multi-cam shot detection, per-shot framing
 │   ├── cropper.py              # 9:16 render
 │   ├── captions.py             # word-synced ASS captions
@@ -378,6 +379,26 @@ Two independent pools feed the same scorer:
    `scoring.signal_peak_percentile`, snapped to sentence boundaries and duration
    enforced. This is what catches the laugh or the clutch moment that the transcript
    describes blandly or not at all.
+
+**Selection 2** (`scoring.selection: 2`; off by default, and 1 is exactly the behaviour
+above) changes four things on a standard run, never on a game stream or a match
+(`analysis/fusion.py` decides):
+
+- Signal-peak and clip-direction windows are scored eight at a time, each answer matched
+  to its window by time, and a window left at the neutral 50 is reported. One request for
+  every window ran past a local model's output budget, so all of them fell back to 50.
+- Each signal pass's window budget goes to its strongest peaks, not its earliest, so a
+  long video's late peaks can become candidates.
+- Only a transcript pick at or above `clips.min_score` hides a signal peak it overlaps.
+- A clip's start never moves past the line it was picked on, or the line its hook quotes.
+  When that line carries on a sentence (the line before it has no sentence end, and the
+  pause is at most 2 s), the start goes back to the sentence's first line, if that is at
+  most 8 s earlier and the clip stays within `clips.max_duration`. A transcript with no
+  sentence ends at all moves no start. A signal window gets up to 6 s of complete
+  sentences before it. The end rules are unchanged.
+
+Longform keeps selection 1 unless `scoring.longform_selection: 2`. The constants, and why
+each change was made, are at the top of `analysis/highlights.py`.
 
 ### 4.3 Fusion
 
@@ -989,6 +1010,10 @@ transcription:
   backend: local         # or a cloud provider on the user's own account
   model: ""              # that provider's voice model
 ```
+
+Two experimental choices are not in the file, and stay off until they are added:
+`tracking.shot_aware: true` (§5), with `tracking.shot_aware_no_subject: center` or `hold`,
+and `scoring.selection: 2` (§4.2), with `scoring.longform_selection: 2` for Longform.
 
 Prompts are data, not code: every LLM prompt lives in `config/prompts/` as plain text,
 so the rating system can be tuned without touching Python. `config/gaming.yaml` (kinds of
