@@ -21,13 +21,13 @@ Kitty after you change it.
   a new shot could open framed on where the last shot's person stood, and move to the new
   person only about a second later, and many cuts were missed or caught a few frames late.
   Now cuts are found to the frame, and the crop moves to the person in the new shot on the
-  cut itself. A clip opens on the person's face, where it used to open on their body and
-  slide over to the face during the first second. A shot with nobody in it opens on the
-  centre (or keeps the last framing, with the line `shot_aware_no_subject: hold` under
-  `tracking:`) until someone clearly visible appears. Framing takes longer: about a third longer on a video
-  with many cuts, and a little longer on handheld footage. It changes the standard crop
-  only: Podcast, the Gaming / Reaction layouts and Sports frame clips their own way and are
-  unchanged. To frame clips as before, add the line `shot_aware: false` under `tracking:`.
+  cut itself. A clip usually opens on the person's face, where it used to open on their
+  body and slide over to the face during the first second. A shot with nobody in it opens
+  on the centre (or keeps the last framing, with `shot_aware_no_subject: hold` under
+  `tracking:`) until someone clearly visible appears. Framing takes about a third longer
+  on a video with many cuts, and a little longer on handheld footage. It changes the
+  standard crop only: Podcast, Gaming / Reaction layouts and Sports frame their own way and
+  are unchanged. To frame as before, add the line `shot_aware: false` under `tracking:`.
 - **Clip selection 2.** The moments found from the sound, the picture and chat are scored
   by your AI model eight at a time, so they no longer all fall back to a flat 50 when a
   local model runs out of room scoring them at once. A long video's later moments are no

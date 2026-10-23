@@ -564,9 +564,9 @@ first sample's centre, the body box, and eases to the head over about a second. 
 - **The clip's opening** is framed like a shot after a cut, without the keys: on the first
   sample anyone is seen on, the framing is the median of the subject's position over the
   next 0.5 s, and there is nothing before it to hold or snap from. So a clip opens on the
-  head the pose model finds, where it used to open on the body box and ease to the head, and
-  a first detection that is off its subject does not set where the clip opens. A first shot
-  with nobody in it still keeps the centre up to the cut.
+  head the pose model finds, where it used to open on the body box and ease to the head. An
+  off first detection without a head no longer sets the opening (one with a pose head is
+  trusted, as after a cut). A first shot with nobody in it still keeps the centre to the cut.
 - The "subject gone" test reads when each track was last seen as of the sample being framed,
   not at the end of the clip. The exception is the speaker the shot plan names when their
   track is seen again within 2 s, before the next cut: a faint speaker the detector loses for
