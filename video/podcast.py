@@ -238,8 +238,9 @@ def _kept_turns(v: list, turn_frames: int) -> list | None:
     A turn with under turn_frames of its speaker's own speech is dropped (its verdicts
     ignored, the smallest first, the turns worked out again) until every turn has that
     much or one is left. Its frames go to the speaker before it, or at the shot's start
-    to the one after. A shot whose verdicts never add up to a full turn ends with the
-    one that had the most."""
+    to the one after. When no turn reaches turn_frames, the turn left after those drops
+    takes the shot. That is usually, but not always, the candidate with the most speech:
+    drops go turn by turn, so speech split over several short turns can lose to one turn."""
     v = list(v)
     runs = _turns(v)
     if not runs:

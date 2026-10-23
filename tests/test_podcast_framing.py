@@ -335,7 +335,8 @@ def test_turns_under_a_second_are_dropped_smallest_first():
     # Silence holds the last speaker; the shot opens on the first one.
     v = [None] * 10 + [1] * 40 + [None] * 20 + [2] * 40
     assert kept(v, 30) == [(0, 70, 1), (70, 110, 2)]
-    # No full turn anywhere: the one with the most speech ends up with the shot.
+    # No full turn anywhere: the turn left after the smallest-first drops takes the shot. Here
+    # that is the candidate with the most speech, as it usually (not always) is.
     assert kept([1] * 5 + [2] * 9 + [1] * 3, 30) == [(0, 17, 2)]
     assert kept([None] * 20, 30) is None
 

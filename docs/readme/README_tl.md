@@ -255,10 +255,10 @@ GPU sa pamamagitan ng Ollama.
   nagsasalita, **lilipat** agad ang framing sa kanya sa halip na mag-pan, gaya ng gagawin ng
   isang editor. Crop lang ang framing: hindi kailanman binabanat, hindi kailanman
   binabaluktot.
-- **Podcast mode**: para sa footage na maraming camera, may sariling steady na crop sa
-  iisang tao ang bawat shot, kaya tumatama ang mga cut sa mukha nang walang pan. Sa loob ng
-  isang shot, pinipili ang subject ayon sa galaw ng bibig, at kung hindi, ang
-  pinakakapansin-pansing mukha.
+- **Podcast mode**: para sa footage na maraming camera, may sariling steady na crop ang
+  bawat shot sa taong naririnig ng TalkNet na nagsasalita, at nagbabago ito sa mismong frame
+  ng cut ng camera, nang walang pan. Sa mahabang shot, lilipat ito sa bagong taong
+  nagsasalita nang isang segundo o higit pa; hindi ito gagalaw sa maikling tawa.
 - **Vertical Live**: para sa livestream na vertical na noong ini-stream (YouTube vertical
   live, Twitch Dual Format, Streamlabs Dual Output, o na-download na live sa Instagram o
   TikTok). Pinapanatili ang sariling 9:16 na layout ng stream, nilalaktawan ang face

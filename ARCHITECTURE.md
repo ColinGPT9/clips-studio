@@ -613,12 +613,12 @@ If the weights are absent or scoring fails, the render falls back to motion-base
 prominence rather than failing. A bad clip must never fail a render.
 
 **Podcast mode** (`video/podcast.py`) is a separate, opt-in path for multi-camera
-footage. It detects hard cuts on a sample grid, then frames each shot independently,
-one steady static crop per shot, punched in tight on **one** person and snapping at each
-cut, so cuts land directly on a face with no panning and no split screens. Within a
-shot the subject is chosen by mouth-motion talk rate, falling back to the most prominent
-face; it does **not** use TalkNet (that was tried and reverted). Applying this path to
-single-camera footage would be strictly worse, hence opt-in.
+footage. It finds the camera's cuts to the frame (`video/cuts.py`, as shot-aware tracking
+does), then frames each shot on its own: one static crop, punched in tight on **one**
+person, the one TalkNet hears talking in that shot. In a long shot, a new speaker with a
+second or more of speech gets the crop from the first frame of their turn. Every change
+is a one-frame snap: no panning, no split screens, and no short shot slid across.
+Applying this path to single-camera footage would be strictly worse, hence opt-in.
 
 **The output contract is non-negotiable**: crop windows are exactly 9:16, only
 repositioned and never reshaped, then uniformly scaled to 1080×1920. Distortion is

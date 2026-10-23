@@ -73,11 +73,12 @@ from video.cuts import ShotCuts
 # detection, "commit to one subject", and hold-then-move all apply here too.
 from video.framing import HoldMove, is_cut, small_gray, stable_target
 
-# Cut threshold for SAMPLE-grid detection. Adjacent frames barely move so the
-# podcast path uses the shared default (~25); across a sample gap ordinary
-# motion is much larger (a fast stream pan peaks near 40), so streams need a
-# higher bar to avoid false cuts — only a genuine hard scene change (75+)
-# should snap the crop and reset the talking detector.
+# Cut threshold for SAMPLE-grid detection. Adjacent frames barely move (the
+# shared default, video/framing.py's CUT_DIFF, is ~25); across a sample gap
+# ordinary motion is much larger (a fast stream pan peaks near 40), so streams
+# need a higher bar to avoid false cuts — only a genuine hard scene change
+# (75+) should snap the crop and reset the talking detector. Shot-aware
+# framing and video/podcast.py use it only as ShotCuts' fallback.
 _CUT_DIFF_SAMPLED = 55.0
 
 _model = None  # loaded once per process; YOLO init is expensive

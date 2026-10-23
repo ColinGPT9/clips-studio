@@ -240,9 +240,9 @@ tramite Ollama.
   dal movimento. Quando cambia chi parla, l'inquadratura **stacca** su di lui invece di
   fare una panoramica, come farebbe un montatore. Inquadratura solo tramite ritaglio: mai stirata, mai
   distorta.
-- **Modalità podcast**: per le riprese multicamera, ogni inquadratura ha il suo ritaglio fisso su una
-  persona, così gli stacchi cadono su un volto senza panoramiche. All'interno di un'inquadratura il soggetto viene scelto in base al
-  movimento della bocca, ripiegando sul volto più in evidenza.
+- **Modalità podcast**: per le riprese multicamera, ogni inquadratura ha il suo ritaglio fisso sulla
+  persona che TalkNet sente parlare, e il ritaglio cambia esattamente sul fotogramma dello stacco, senza panoramiche. In
+  un'inquadratura lunga stacca su una nuova persona che parla per almeno un secondo; una risata breve non lo sposta.
 - **Vertical Live**: per una live che era già verticale quando è stata trasmessa (una
   live verticale di YouTube, Twitch Dual Format, Streamlabs Dual Output, una live di Instagram o TikTok
   scaricata). Mantiene il layout 9:16 originale della live, salta il tracciamento del volto e

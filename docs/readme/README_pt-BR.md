@@ -247,8 +247,8 @@ GPU através do Ollama.
   vez de deslizar pela cena, como faria um editor. Enquadramento só por recorte: nunca
   esticado, nunca distorcido.
 - **Modo podcast**: em gravações com várias câmeras, cada plano ganha seu próprio recorte
-  estável em uma pessoa, então os cortes caem num rosto sem panorâmica. Dentro de um plano,
-  a pessoa é escolhida pelo movimento da boca, recorrendo ao rosto mais em destaque.
+  estável em quem o TalkNet ouve falando, e o recorte muda no quadro exato do corte da câmera, sem panorâmica.
+  Num plano longo, ele corta para outra pessoa que fale por um segundo ou mais; uma risada rápida não o move.
 - **Vertical Live**: para uma live que já era vertical quando foi transmitida (uma live
   vertical do YouTube, Twitch Dual Format, Streamlabs Dual Output, uma live do Instagram ou do
   TikTok baixada). Mantém o próprio layout 9:16 da transmissão, pula o rastreamento de rosto e

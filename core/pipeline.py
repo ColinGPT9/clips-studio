@@ -1398,9 +1398,9 @@ def _render_files(
     landscape = bool(opts.get("profile"))
     # Loudness: on unless this clip opted out (see settings/editor).
     normalize = bool(opts.get("normalize_audio", True))
-    # Podcast: opt-in, per video. Multi-cam/multi-person footage renders as a
-    # steady full-frame letterbox instead of tracking a subject (see
-    # video/podcast.py). Read from the job config or a persisted per-clip flag.
+    # Podcast: opt-in, per video. Multi-cam footage is framed shot by shot, one
+    # steady crop on whoever is talking in each (see video/podcast.py). Read
+    # from the job config or a persisted per-clip flag.
     # When false the tracking path below is entered exactly as before.
     podcast = bool(opts.get("podcast") or config["clips"].get("podcast"))
     # Vertical Live (core/modes.py): the source is already a finished 9:16
@@ -1570,11 +1570,11 @@ def _render_files(
             if gaming_kept is not None:
                 pass  # rendered in the gaming layout (split or game only)
             elif podcast:
-                # Separate podcast path (video/podcast.py): tracked crop for a
-                # single speaker, 50/50 split when two speakers can't share one
-                # crop, tight-region letterbox only as a last resort — and cuts
-                # SNAP instead of panning across the set. video/tracker.py is
-                # never modified; the stream branch below is untouched.
+                # Separate podcast path (video/podcast.py): per shot, one static
+                # crop on the person TalkNet hears talking, moving to a new
+                # speaker inside a long shot; every change SNAPS on its frame,
+                # with no split screen or letterbox. It reuses the tracker's
+                # helpers and score_faces; the stream branch below is untouched.
                 from video import podcast as podcast_mod
 
                 tracking_cfg = config["tracking"]

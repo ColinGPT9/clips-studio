@@ -25,9 +25,9 @@ Kitty after you change it.
   body and slide over to the face during the first second. A shot with nobody in it opens
   on the centre (or keeps the last framing, with `shot_aware_no_subject: hold` under
   `tracking:`) until someone clearly visible appears. Framing takes about a third longer
-  on a video with many cuts, and a little longer on handheld footage. It changes the
-  standard crop only: Podcast, Gaming / Reaction layouts and Sports frame their own way and
-  are unchanged. To frame as before, add the line `shot_aware: false` under `tracking:`.
+  on a video with many cuts, and a little longer on handheld footage. Only the standard
+  crop changes: Podcast (which has its own entry below), Gaming / Reaction layouts and Sports
+  frame their own way. To frame as before, add the line `shot_aware: false` under `tracking:`.
 - **Clip selection 2.** The moments found from the sound, the picture and chat are scored
   by your AI model eight at a time, so they no longer all fall back to a flat 50 when a
   local model runs out of room scoring them at once. A long video's later moments are no

@@ -81,8 +81,8 @@ Built by `core/pipeline.py:832-870 _gaming_scoring_inputs(config, video, db, gam
 
 | Model | Used for | Loaded in | Gate / install |
 |---|---|---|---|
-| YOLOv8n-pose (ultralytics) | person/head tracks for webcam detection, `people_on`, `head_in_box` | shared `video/tracker.py:83-109 _get_model()` (single process-wide instance, lock), imported read-only by `gaming/detect.py:46-58` | `config/settings.yaml:125-129 tracking.detector/sample_fps`; weights via `core.binaries.yolo_weights` (`video/tracker.py:101`); `requirements.txt:31` |
-| TalkNet (active speaker) | who the streamer is (`speaking_scores`, `judge`) | shared `video/tracker.py` helpers (`_mouth_patch`, `_clip_pcm`, ...) reused by `gaming/detect.py:46-58`; TalkNet itself in `video/asd.py` (imported at `video/tracker.py:502,548`) | part of the standard tracker |
+| YOLOv8n-pose (ultralytics) | person/head tracks for webcam detection, `people_on`, `head_in_box` | shared `video/tracker.py:84-110 _get_model()` (single process-wide instance, lock), imported read-only by `gaming/detect.py:46-58` | `config/settings.yaml:125-129 tracking.detector/sample_fps`; weights via `core.binaries.yolo_weights` (`video/tracker.py:102`); `requirements.txt:31` |
+| TalkNet (active speaker) | who the streamer is (`speaking_scores`, `judge`) | shared `video/tracker.py` helpers (`_mouth_patch`, `_clip_pcm`, ...) reused by `gaming/detect.py:46-58`; TalkNet itself in `video/asd.py` (imported at `video/tracker.py:512,565`) | part of the standard tracker |
 | faster-whisper | transcript | shared `transcription/transcriber.py:188 transcribe(...)` called by `core/pipeline.py:398` | `config.whisper.model/device`; `requirements.txt:25` |
 | PANNs MobileNetV1 (torch) | game sounds | `analysis/panns.py:114 load()` (cached), `:142 tag(windows)`; weights `models/panns_mobilenetv1.pth` (`:33,46-50`), labels `config/audioset_labels.txt` | `analysis/panns.py:53 available()` (torch + weights file); fetched by `scripts/fetch_panns.py` (`analysis/panns.py:24-25`) |
 | RapidOCR (onnxruntime) | on-screen banners/menus | `analysis/game_text.py:103-110 _ocr()` lazy singleton | `analysis/game_text.py:57 available()`; `requirements.txt:38,42` |
@@ -112,7 +112,7 @@ Built by `core/pipeline.py:832-870 _gaming_scoring_inputs(config, video, db, gam
 - PANNs: ~600x realtime on GPU, 120x on CPU, 24 MB weights, runs beside Whisper in a thread, decode in 60-s chunks (`docs/GAMING.md:333-342`, `analysis/game_audio.py:17-19,29`); 900-s join cap (`core/pipeline.py:432`).
 - OCR: 0.4-0.8 s/frame CPU, ≤160 frames, ≤120 s per video (`docs/GAMING.md:343-350`, `analysis/game_text.py:34-35`).
 - Vision LLM: 4 frames at 896 px per clip, ≤12 clips, ≤240 s per video, ~10 s/clip on GPU (`analysis/game_vision.py:25-31`, `docs/GAMING.md:359-373`).
-- Webcam detection: YOLO + TalkNet on up to 8 × 40-s probes per video and again per clip at `sample_fps` 8 (2 fps quick look for trusted layouts) (`gaming/run.py:50-56`); shares the single YOLO instance and its lock (`video/tracker.py:83-87`), so parallel render workers serialise on it (inferred).
+- Webcam detection: YOLO + TalkNet on up to 8 × 40-s probes per video and again per clip at `sample_fps` 8 (2 fps quick look for trusted layouts) (`gaming/run.py:50-56`); shares the single YOLO instance and its lock (`video/tracker.py:84-88`), so parallel render workers serialise on it (inferred).
 - Compose: a single FFmpeg encode per clip, no frames through Python (`gaming/compose.py:1`).
 - Chat fetch: ≤800 pages, 180-s budget (`analysis/hype.py:42-43`).
 
@@ -144,7 +144,7 @@ Represented per **genre** in `config/gaming.yaml` (prose highlights, callouts, s
 | chat replay messages + audience curve (`analysis/hype.py:64`) | its own per-second signal curves + `(sec, "KIND: text")` events (`chat_moments.chat_signal`, `game_audio.sound_signal`, `game_text.read_screen`) |
 | prompt-guidance + events injection into scoring (`analysis/highlights.py:117,192` `guidance`, `events`, `events_title`), the scoring-profile duck type (`weights`, `guidance()`, `game_at()`, `genre_track()`, `spec`) | the guidance text and callouts (`GamingProfile.guidance`) |
 | fusion hooks: extra subscore keys and capped bonuses (`analysis/fusion.py:391-445`, `_fuse game=`), signal-peak windows as candidates (`:205-213`) | which curves count, thresholds, witness logic |
-| shared models: YOLO/TalkNet tracker (`video/tracker.py:83`), PANNs tagger (`analysis/panns.py:114,142`), OCR (`analysis/game_text.py:103`), LLM `generate/generate_json/look/sees_images` (`llm/base.py:30-71`) | model-specific post-processing (`gaming/detect.py:360 judge`, banner lexicons) |
+| shared models: YOLO/TalkNet tracker (`video/tracker.py:84`), PANNs tagger (`analysis/panns.py:114,142`), OCR (`analysis/game_text.py:103`), LLM `generate/generate_json/look/sees_images` (`llm/base.py:30-71`) | model-specific post-processing (`gaming/detect.py:360 judge`, banner lexicons) |
 | frame grabbing (`video.capture.video_capture`, `server/api.py:1874-1920`), clip cutting (`video.cutter.cut_clip`), `probe_size` (`core/modes.py:189`) | prepass per video (`gaming/run.py:prepare`) |
 | render hook per clip with `intermediate, output, opts, config, ass_path, vf_extra, normalize` and a `None`-means-decline contract (`core/pipeline.py:817-829`) | the layout plan + FFmpeg filter graph (`gaming/layout.py:368`, `gaming/compose.py:65,85`) |
 | encoder/audio args, captions `.ass`, outro, watermark, canvas size (`video.encoding`, `core/pipeline.py:1445`) | safe zones/presets (`gaming/layouts.json`) |

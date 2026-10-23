@@ -244,8 +244,8 @@ bằng phần cứng qua NVENC/AMF/QSV (tự phát hiện, có dự phòng CPU),
   động. Khi người nói thay đổi, khung hình **cắt** sang họ thay vì lia ngang, đúng như một
   người dựng video sẽ làm. Chỉ cắt khung: không bao giờ kéo giãn, không bao giờ méo hình.
 - **Chế độ podcast**: với cảnh quay nhiều camera, mỗi cảnh có khung cắt ổn định riêng trên
-  một người, nên các lần chuyển cảnh rơi đúng vào khuôn mặt mà không cần lia. Trong một cảnh,
-  nhân vật được chọn theo chuyển động miệng, nếu không được thì chọn khuôn mặt nổi bật nhất.
+  người mà TalkNet nghe thấy đang nói, và khung cắt đổi đúng tại khung hình camera chuyển cảnh, không lia.
+  Trong một cảnh dài, khung cắt chuyển sang người nói mới nếu họ nói từ một giây trở lên; một tiếng cười ngắn thì không.
 - **Vertical Live** (Live dọc): cho buổi livestream vốn đã ở dạng dọc khi phát (live dọc của
   YouTube, Twitch Dual Format, Streamlabs Dual Output, một buổi live Instagram hoặc TikTok đã
   tải về). Giữ nguyên bố cục 9:16 của buổi stream, bỏ qua theo dõi khuôn mặt, và vẫn chọn

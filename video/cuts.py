@@ -34,7 +34,7 @@ decision is what most needs testing. ShotCuts, which decodes and measures,
 imports both when it runs.
 
 Nothing here changes video/framing.py's is_cut, small_gray, refine_cuts or
-CUT_DIFF, which the podcast and soccer paths use as they are.
+CUT_DIFF, which soccer uses as they are; the podcast path runs ShotCuts too.
 """
 
 from __future__ import annotations
