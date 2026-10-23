@@ -38,6 +38,8 @@ Kitty after you change it.
   or Vertical Live's Gaming / reaction choice) and Sports matches choose clips as before,
   and so does Longform unless you add `longform_selection: 2` under `scoring:`. To choose
   clips as before, add the line `selection: 1` under `scoring:`.
+- Podcast mode now frames whoever is talking in each shot (not the person moving their
+  mouth most), follows a new speaker in a long shot, and snaps on every camera cut.
 
 ## 2.1.0: Basketball, and a Marketplace for new pipelines
 
