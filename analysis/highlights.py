@@ -34,13 +34,13 @@ WINDOWS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "promp
 #
 # Two settings, read with defaults (config/settings.yaml doesn't list them):
 #
-#   scoring.selection: 1 (the default) or 2. Selection 1 chooses clips as they
-#     always have been chosen. Selection 2 changes four things on a standard
-#     run. A run scored as gaming (core.modes.gaming_scoring: Gaming /
-#     Reaction, or Vertical Live's Gaming / reaction choice) and a Sports
-#     match keep selection 1 whatever this says; any other run is a standard
-#     one, a gaming VOD on the standard layout included (analysis/fusion.py
-#     decides). The four:
+#   scoring.selection: 2 (the default) or 1. Selection 1 chooses clips as they were
+#     chosen before selection 2; `selection: 1`, or a value it doesn't know, brings it back.
+#     Selection 2 changes four things on a standard run. A run scored as
+#     gaming (core.modes.gaming_scoring: Gaming / Reaction, or Vertical Live's
+#     Gaming / reaction choice) and a Sports match keep selection 1 whatever
+#     this says; any other run is a standard one, a gaming VOD on the standard
+#     layout included (analysis/fusion.py decides). The four:
 #       - the signal-peak and clip-direction windows are scored WINDOW_BATCH at
 #         a time, each answer matched to its window by time, and a window left
 #         at the neutral 50 is reported. One request for 36-84 windows ran past
@@ -56,8 +56,8 @@ WINDOWS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "promp
 #         SENTENCE_REACH_SECONDS earlier and within max_duration; and a signal
 #         window gets up to LEAD_IN_SECONDS of complete sentences before it
 #         (_fit_to_segments). End rules are unchanged.
-#   scoring.longform_selection: the same choice for Longform's 16:9 clips,
-#     which keep 1 until this says 2 (longform/process.py).
+#   scoring.longform_selection: the same choice for Longform's 16:9 clips, which
+#     keep 1 until this says 2, whatever scoring.selection is (longform/process.py).
 WINDOW_BATCH = 8
 LEAD_IN_SECONDS = 6.0
 # A line runs on from the one before it when that one has no sentence end and
@@ -85,9 +85,9 @@ NEUTRAL_HOOK = "High-energy moment"  # a window's hook when the model gave it no
 
 
 def selection_version(config) -> int:
-    """scoring.selection from a run's settings: 2 when it says 2, else 1."""
+    """scoring.selection from a run's settings: 2 when absent or 2; anything else (1, a blank) is 1."""
     try:
-        version = (config.get("scoring") or {}).get("selection", 1)
+        version = ((config or {}).get("scoring") or {}).get("selection", 2)
         return 2 if not isinstance(version, bool) and float(version) == 2 else 1
     except (AttributeError, TypeError, ValueError):
         return 1

@@ -1,8 +1,9 @@
-"""Clip selection 2 (scoring.selection: 2) in the scorer, analysis/fusion.py.
+"""Clip selection 2 (scoring.selection: 2, the default) in the scorer, analysis/fusion.py.
 
-Selection 1 builds a standard run's signal-peak windows in time order and
-keeps the first max(12, length/300) of each pass, so on a long video the late
-peaks never become candidates however strong they are. Every transcript pick
+Selection 1 (scoring.selection: 1, the choice before selection 2 existed)
+builds a standard run's signal-peak windows in time order and keeps the
+first max(12, length/300) of each pass, so on a long video the late peaks
+never become candidates however strong they are. Every transcript pick
 counts as covering its moment, even one the model scored near zero, so a hot
 moment it overlaps is never proposed. Selection 2 keeps the strongest peaks
 (and hands them on in time order), lets only picks at or above min_score hide
@@ -139,7 +140,7 @@ LATE_PICKS = [(0, 30, 62), (400, 430, 64), (800, 830, 61)]
 HOT_PICKS = [(0, 30, 62), (100, 130, 64), (290, 320, 5)]
 
 # Selection 1's results, recorded from the unchanged code (5c3fb52) before
-# selection 2 existed. They are today's behaviour, faults included.
+# selection 2 existed, faults included: what scoring.selection: 1 gives.
 V1_T10_WINDOWS = [
     (32.0, 43.0), (52.0, 63.0), (65.0, 76.0), (87.0, 98.0), (94.0, 105.0), (102.0, 113.0), (110.0, 121.0),
     (116.0, 127.0), (129.0, 140.0), (147.5, 158.5), (158.5, 169.5), (176.5, 187.5), (193.0, 204.0),
@@ -167,18 +168,24 @@ def test_t10_the_strongest_late_peaks_become_candidates(monkeypatch):
 
 
 def test_t10_selection_1_is_unchanged_late_peaks_are_never_candidates(monkeypatch):
-    """Today's behaviour, recorded: every pass fills its budget of 12 from the
+    """Selection 1's behaviour, recorded: every pass fills its budget of 12 from the
     start of the video, so none of the five strongest peaks is a candidate."""
     run = scorer(monkeypatch, LATE_PICKS)
-    kept, _rejected, asked = run(config(), chatter(LONG), late_peaks())
+    kept, _rejected, asked = run(config(selection=1), chatter(LONG), late_peaks())
     signal = asked[0][0]
     assert plain(signal) == V1_T10_WINDOWS and key(kept) == V1_T10_KEPT
     assert not any(covers(signal, t + 1) for t in STRONGEST)
     assert quarters(signal) == [27, 9, 0, 0]
     assert asked[0][1] == {}  # one request for them all, as always
-    # selection 1 written out is the same run
-    kept_1, _r, asked_1 = run(config(selection=1), chatter(LONG), late_peaks())
-    assert asked_1 == asked and key(kept_1) == key(kept)
+
+
+def test_with_nothing_set_a_standard_run_uses_selection_2(monkeypatch):
+    run = scorer(monkeypatch, LATE_PICKS)
+    kept, _rejected, asked = run(config(), chatter(LONG), late_peaks())
+    kept_2, _r, asked_2 = run(config(selection=2), chatter(LONG), late_peaks())
+    assert asked == asked_2 and key(kept) == key(kept_2)
+    assert all(covers(asked[0][0], t + 1) for t in STRONGEST)
+    assert asked[0][1] == {"batch": 8, "warn": True}
 
 
 # ---- T11: a pick scored near zero doesn't hide a hot moment ---------------------------
@@ -199,7 +206,7 @@ def test_t11_a_pick_at_the_bar_still_covers_its_moment(monkeypatch):
 
 def test_t11_selection_1_is_unchanged_the_hot_moment_is_hidden(monkeypatch):
     run = scorer(monkeypatch, HOT_PICKS)
-    kept, _rejected, asked = run(config(), chatter(600), hot_moment())
+    kept, _rejected, asked = run(config(selection=1), chatter(600), hot_moment())
     assert plain(asked[0][0]) == V1_T11_WINDOWS and key(kept) == V1_T11_KEPT
     assert not covers(asked[0][0], 305)
 
@@ -222,10 +229,11 @@ def test_clip_direction_windows_are_scored_in_batches_matched_by_time_too(monkey
         return asked[-1]  # the direction's windows are scored after the signal peaks
 
     windows_2, options_2 = direction_call(2)
-    windows_1, options_1 = direction_call(None)
+    windows_1, options_1 = direction_call(1)
     assert windows_2 and all(480 <= a and b <= 590 for a, b in windows_2)
     assert options_2 == {"batch": 8, "warn": True}
     assert windows_1 and options_1 == {}  # selection 1: one request, as always
+    assert direction_call(None) == (windows_2, options_2)  # nothing set: selection 2
 
 
 # ---- T13 through the scorer: a signal window's setup ---------------------------------
@@ -247,7 +255,7 @@ def test_a_signal_window_gets_its_setup_through_the_scorer(monkeypatch):
     kept, rejected, _asked = run(config(selection=2), segs, hot_moment())
     moment = signal_at(kept, rejected, 305)
     assert moment and moment[0].start == 294.5
-    kept, rejected, _asked = run(config(), segs, hot_moment())
+    kept, rejected, _asked = run(config(selection=1), segs, hot_moment())
     moment = signal_at(kept, rejected, 305)
     assert moment and moment[0].start == 300.5  # selection 1: from the laugh
 
@@ -293,9 +301,9 @@ def test_t8_through_the_scorer_no_signal_window_is_a_silent_50(monkeypatch, caps
 
 
 def test_t8_through_the_scorer_selection_1_is_unchanged(monkeypatch):
-    """Today's behaviour: one request for all the windows (and its retry), cut
+    """Selection 1's behaviour: one request for all the windows (and its retry), cut
     off, so every signal window is a neutral 50."""
-    signal, prompts = scored(monkeypatch, None)
+    signal, prompts = scored(monkeypatch, 1)
     assert len(prompts) == 2 and len(prompts[0]) == len(signal) > 20
     assert all(c.subscores["text"] == 50 and c.hook == NEUTRAL for c in signal)
 
@@ -354,9 +362,10 @@ def test_a_gaming_stream_is_scored_the_same_with_selection_2(monkeypatch):
 
     run = scorer(monkeypatch, LATE_PICKS)
     profile = gaming.profile_for({"clips": {"gaming_scoring": True}}, [{"name": "VALORANT"}], "")
-    one = run(config(), chatter(LONG), late_peaks(), gaming=profile)
+    one = run(config(selection=1), chatter(LONG), late_peaks(), gaming=profile)
     two = run(config(selection=2), chatter(LONG), late_peaks(), gaming=profile)
-    assert two[2] == one[2] and key(two[0]) == key(one[0])
+    unset = run(config(), chatter(LONG), late_peaks(), gaming=profile)
+    assert two[2] == one[2] == unset[2] and key(two[0]) == key(one[0]) == key(unset[0])
     assert all(k == {"batch": 8} for _w, k in one[2])  # the gaming path's own batches, no warning
 
 
@@ -377,5 +386,5 @@ def test_a_match_is_scored_the_same_with_selection_2(monkeypatch):
         segs[90] = Segment(start=450.0, end=455.0, text="GOOOAL! what a goal, into the back of the net")
         return run(cfg, segs, hot_moment(), sport=sport)
 
-    one, two = match(None), match(2)
-    assert two[2] == one[2] and key(two[0]) == key(one[0])
+    one, two, unset = match(1), match(2), match(None)
+    assert two[2] == one[2] == unset[2] and key(two[0]) == key(one[0]) == key(unset[0])

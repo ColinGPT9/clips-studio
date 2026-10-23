@@ -1627,7 +1627,7 @@ def _render_files(
                         model_name=tracking_cfg["detector"],
                         sample_fps=tracking_cfg["sample_fps"],
                         force_fit_blur=(crop_mode == "letterbox"),
-                        # Off unless set (ARCHITECTURE.md §5, video/cuts.py).
+                        # On unless set off (ARCHITECTURE.md §5, video/cuts.py).
                         shot_aware=cuts.shot_aware_on(tracking_cfg),
                         no_subject=tracking_cfg.get("shot_aware_no_subject", "center"),
                     )

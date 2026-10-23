@@ -380,10 +380,10 @@ Two independent pools feed the same scorer:
    enforced. This is what catches the laugh or the clutch moment that the transcript
    describes blandly or not at all.
 
-**Selection 2** (`scoring.selection: 2`; off by default, and 1 is exactly the behaviour
-above) changes four things on a standard run, never on a run scored as gaming (Gaming /
-Reaction, or Vertical Live's Gaming / reaction choice) or a Sports match
-(`analysis/fusion.py` decides):
+**Selection 2** (`scoring.selection`; on by default, and `scoring.selection: 1` turns it
+off, which is exactly the behaviour above) changes four things on a standard run, never on
+a run scored as gaming (Gaming / Reaction, or Vertical Live's Gaming / reaction choice) or a
+Sports match (`analysis/fusion.py` decides):
 
 - Signal-peak and clip-direction windows are scored eight at a time, each answer matched
   to its window by time, and a window left at the neutral 50 is reported. One request for
@@ -398,8 +398,10 @@ Reaction, or Vertical Live's Gaming / reaction choice) or a Sports match
   sentence ends at all, this rule moves no start. A signal window gets up to 6 s of complete
   sentences before it. The end rules are unchanged.
 
-Longform keeps selection 1 unless `scoring.longform_selection: 2`. The constants, and why
-each change was made, are at the top of `analysis/highlights.py`.
+Longform keeps selection 1 unless `scoring.longform_selection: 2`, whatever
+`scoring.selection` says: `longform/process.py` pins it on Longform's own copy of the
+settings, so that copy never takes the Shorts' default. The constants, and why each change
+was made, are at the top of `analysis/highlights.py`.
 
 ### 4.3 Fusion
 
@@ -515,15 +517,16 @@ knows nothing about transcripts, scores, or publishing.
    is what removes jitter and the "drunk camera" effect.
 6. **Fall back** to a static centre crop when there are no detections.
 
-**Shot-aware framing** (`tracking.shot_aware: true`; off by default, and off is exactly the
-behaviour above). By default, cuts are looked for only on the sample grid, at a threshold
-many real cuts never reach, and are placed on the sample after the cut. A cut also only
-resets the challenger: the subject on camera stays the target, at their old position, until
-they have been unseen for a second, so the new shot opens framed on someone who is not in
-it. With the setting on:
+**Shot-aware framing** (`tracking.shot_aware`; on by default, and
+`tracking.shot_aware: false` turns it off, which is exactly the behaviour above). With it
+off, cuts are looked for only on the sample grid, at a threshold many real cuts never reach,
+and are placed on the sample after the cut. A cut also only resets the challenger: the
+subject on camera stays the target, at their old position, until they have been unseen for
+a second, so the new shot opens framed on someone who is not in it. And a clip opens on its
+first sample's centre, the body box, and eases to the head over about a second. With it on:
 
 - **Cuts are found to the frame** (`video/cuts.py`). A sample pair whose thumbnails differ
-  by 18 or more (the default bar is 55) is a candidate. Only the frames around it are
+  by 18 or more (with it off, the bar is 55) is a candidate. Only the frames around it are
   decoded, with a capture of their own, and a frame is a cut by the hard-cut rules of
   `sports/basketball/crop/shots.py`: a gray change, a colour change, and standing out from
   the motion around it, with camera flashes rejected. A handheld pan changes the picture a
@@ -551,12 +554,19 @@ it. With the setting on:
   sample, a one-sample shot. That never happened on the footage the mode was validated on. A
   first shot with nobody in it keeps the centre up to the cut: no shot's framing reaches
   across a cut into another.
-- A track's first sighting after a cut starts its averages (head offset, width, prominence)
-  from that sighting. A pose head is trusted from it. A Haar face counts as one hit, as on a
-  new track, so a single face found on a hand or a bottle cannot move the crop. That is a
-  deliberate trade-off against single false faces: a real face only the cascade finds is
-  trusted just as gradually, so the shot opens between the body and the face, eases back
-  toward the body, and reaches the face about a second after the cut.
+- A track's first sighting in a shot, from the clip's first sample on and again after each
+  cut, starts its averages (head offset, width, prominence) from that sighting. A pose head
+  is trusted from it. A Haar face counts as one hit, as on a new track, so a single face
+  found on a hand or a bottle cannot move the crop. That is a deliberate trade-off against
+  single false faces: a real face only the cascade finds is trusted just as gradually, so
+  the shot opens between the body and the face, eases back toward the body, and reaches the
+  face about a second after the cut (or the clip's start).
+- **The clip's opening** is framed like a shot after a cut, without the keys: on the first
+  sample anyone is seen on, the framing is the median of the subject's position over the
+  next 0.5 s, and there is nothing before it to hold or snap from. So a clip opens on the
+  head the pose model finds, where it used to open on the body box and ease to the head, and
+  a first detection that is off its subject does not set where the clip opens. A first shot
+  with nobody in it still keeps the centre up to the cut.
 - The "subject gone" test reads when each track was last seen as of the sample being framed,
   not at the end of the clip. The exception is the speaker the shot plan names when their
   track is seen again within 2 s, before the next cut: a faint speaker the detector loses for
@@ -567,7 +577,7 @@ it. With the setting on:
 TalkNet's shot plan is computed as before. The whole-clip decisions (letterbox, facecam
 layout, `face_y`) use the same rules, but with the setting on they read the subject the
 shot-aware pass ended on (for the automatic letterbox, the subject on each sample) and the
-averages restarted at each cut, so their result can differ. `tests/test_tracker_cuts.py`
+averages started afresh in each shot, so their result can differ. `tests/test_tracker_cuts.py`
 checks that with the setting off, the output is exactly what it was.
 
 ### 5.1 Who the camera follows
@@ -1014,9 +1024,11 @@ transcription:
   model: ""              # that provider's voice model
 ```
 
-Two experimental choices are not in the file, and stay off until they are added:
-`tracking.shot_aware: true` (§5), with `tracking.shot_aware_no_subject: center` or `hold`,
-and `scoring.selection: 2` (§4.2), with `scoring.longform_selection: 2` for Longform.
+Two choices are not in the file and are on by default: shot-aware framing (§5) and clip
+selection 2 (§4.2). A line in the file turns either off: `shot_aware: false` under
+`tracking:`, or `selection: 1` under `scoring:`. `tracking.shot_aware_no_subject` (`center`,
+the default, or `hold`) is what a shot with nobody in it opens on, and Longform keeps
+selection 1 unless `scoring.longform_selection: 2`.
 
 Prompts are data, not code: every LLM prompt lives in `config/prompts/` as plain text,
 so the rating system can be tuned without touching Python. `config/gaming.yaml` (kinds of

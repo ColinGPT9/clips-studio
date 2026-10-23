@@ -1,7 +1,9 @@
-"""Clip selection 2 (scoring.selection: 2): scoring a standard run's windows.
+"""Clip selection 2 (scoring.selection: 2, the default): scoring a standard
+run's windows.
 
-Selection 1, the default, asks the model about every signal-peak window of a
-standard run in one request. A local model's answer stops at its output
+Selection 1 (scoring.selection: 1, the choice before selection 2 existed)
+asks the model about every signal-peak window of a standard run in one
+request. A local model's answer stops at its output
 budget (Ollama's num_predict is 1024 tokens, about 4096 characters), so with
 36 windows the JSON never closes, the retry stops the same way, and every
 window silently falls back to a neutral 50. A partial answer is matched by
@@ -71,7 +73,7 @@ def skip_the_third_and_reverse(shown):
 
 
 # Selection 1's answers, recorded from the unchanged code (5c3fb52) before
-# selection 2 existed. They are today's behaviour, faults included.
+# selection 2 existed, faults included: what scoring.selection: 1 gives.
 V1_T9 = [
     (30.0, 55.0, 82, "what happens at 280 seconds"), (80.0, 105.0, 69, "what happens at 230 seconds"),
     (130.0, 155.0, 93, "what happens at 180 seconds"), (180.0, 205.0, 67, "what happens at 80 seconds"),
@@ -82,21 +84,29 @@ V1_T9 = [
 # ---- the setting -------------------------------------------------------------
 
 
-def test_selection_is_1_unless_the_settings_say_2():
-    assert highlights.selection_version({}) == 1
-    assert highlights.selection_version({"scoring": {}}) == 1
-    assert highlights.selection_version({"scoring": {"selection": 1}}) == 1
-    assert highlights.selection_version({"scoring": {"selection": 2}}) == 2
-    assert highlights.selection_version({"scoring": {"selection": "2"}}) == 2
-    for odd in (None, 0, 3, "two", [], {}, True):
+def test_selection_is_2_when_the_settings_do_not_set_it():
+    # settings.yaml as it ships has a scoring block without the key.
+    assert highlights.selection_version({"scoring": {"rerank_pool": 8}}) == 2
+    assert highlights.selection_version({"scoring": {}}) == 2
+    assert highlights.selection_version({"scoring": None}) == 2   # `scoring:` with nothing under it
+    assert highlights.selection_version({}) == 2
+    assert highlights.selection_version(None) == 2
+
+
+def test_set_it_is_2_only_when_it_says_2_and_1_turns_it_off():
+    for two in (2, 2.0, "2", " 2 "):
+        assert highlights.selection_version({"scoring": {"selection": two}}) == 2, two
+    for one in (1, 1.0, "1"):
+        assert highlights.selection_version({"scoring": {"selection": one}}) == 1, one
+    # Any value it doesn't know is read as it always was: 1, clips chosen the old way. A blank
+    # (`selection:` with nothing after it) is one of them.
+    for odd in (None, 0, 3, "two", "", [], {}, True, False):
         assert highlights.selection_version({"scoring": {"selection": odd}}) == 1, odd
-    assert highlights.selection_version({"scoring": None}) == 1
-    assert highlights.selection_version(None) == 1
 
 
 def test_selection_1_adds_no_keywords_to_any_call():
     """Every call selection 2 changes only gains these keywords, and for
-    selection 1 there are none: its calls are exactly today's."""
+    selection 1 there are none: its calls are exactly as before."""
     hooked = ClipCandidate(start=10.0, end=40.0, score=70, hook="a hook from the transcript")
     assert highlights.window_options(1) == {}
     assert highlights.start_rules(1, hooked) == {}
@@ -124,7 +134,7 @@ def test_t8_36_windows_are_asked_8_at_a_time_and_none_falls_back_to_50(capsys):
 
 
 def test_t8_selection_1_is_unchanged_one_request_cut_off_and_all_50(capsys):
-    """Today's behaviour, recorded: one request shows all 36 windows (and its
+    """Selection 1's behaviour, recorded: one request shows all 36 windows (and its
     retry the same), the answer is cut off, and every window is a silent 50."""
     wins = windows()
     model = Model()
@@ -172,7 +182,7 @@ def test_t9_each_hook_is_matched_to_its_own_window_by_time(capsys):
 
 
 def test_t9_selection_1_is_unchanged_matched_by_position():
-    """Today's behaviour, recorded: answers matched by their place in the
+    """Selection 1's behaviour, recorded: answers matched by their place in the
     list, so after the skip and the reversal the hooks land on other windows."""
     wins = windows(count=6)
     got = highlights.score_windows(segments_for(wins), Model(pick=skip_the_third_and_reverse), wins)

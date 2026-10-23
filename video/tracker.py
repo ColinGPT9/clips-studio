@@ -787,8 +787,8 @@ class _Moment:
     n_centers: int
     last_t: float      # when the track was last seen; the "subject gone" test reads it.
     #                    Replayed only in shot-aware mode (tracking.shot_aware): restoring
-    #                    it changes when a subject counts as gone, so by default the
-    #                    framing still reads the final value, exactly as before.
+    #                    it changes when a subject counts as gone, so with the setting
+    #                    off the framing still reads the final value, exactly as before.
 
 
 @dataclass
@@ -826,7 +826,9 @@ def compute_tracking(
                                       # tight to the subject like the automatic one
     *,
     shot_aware: bool = False,         # tracking.shot_aware: cuts found to the frame and
-                                      # the subject chosen afresh at each (_ShotReplay)
+                                      # the subject chosen afresh at each (_ShotReplay).
+                                      # The pipeline passes video/cuts.py's shot_aware_on:
+                                      # on unless the settings turn it off
     no_subject: str = "center",       # tracking.shot_aware_no_subject: a new shot nobody
                                       # is seen in opens on the centre, or "hold"s the old x
     _cuts: ShotCuts | None = None,    # internal: the cut reader the wrapper below opens
@@ -883,7 +885,10 @@ def compute_tracking(
         frame_idx = 0
         if shot_aware:
             cut_at: dict[int, int] = {}       # sample index -> first frame of the shot it opens
-            seen_in_shot: set | None = None   # ids seen since the last cut; None before one
+            # Ids seen in the shot so far: from the clip's first sample, then from
+            # each cut, so a track's first sighting in any shot, the first one
+            # included, starts its averages (_seed_from_sighting).
+            seen_in_shot: set = set()
 
         while True:
             ok = cap.grab()
@@ -984,9 +989,10 @@ def compute_tracking(
                     else:
                         tr.face_rate = 0.8 * tr.face_rate  # detection unreliable
                         tr.speak *= 0.9  # no visible face: talking evidence fades
-                if shot_aware and seen_in_shot is not None and tid not in seen_in_shot:
-                    # This id's first sighting since a cut: its averages start
-                    # from what is in front of the camera now (_seed_from_sighting).
+                if shot_aware and tid not in seen_in_shot:
+                    # This id's first sighting in the shot (the clip's first, or
+                    # the one after a cut): its averages start from what is in
+                    # front of the camera now (_seed_from_sighting).
                     seen_in_shot.add(tid)
                     _seed_from_sighting(tr, conf * area_frac, body_cx, head,
                                         faces_here.get(tid) if head is None else None, w)
@@ -1057,9 +1063,9 @@ def compute_tracking(
         # to know which sample is being replayed.
         tr.centers = all_centers[tid][:m.n_centers]
         if shot_aware:
-            # Left at its final value, as it is by default, a subject who
-            # comes back later in the clip never counts as gone before then,
-            # and the framing waits on them instead of moving on.
+            # Left at its final value, as it is with the setting off, a subject
+            # who comes back later in the clip never counts as gone before
+            # then, and the framing waits on them instead of moving on.
             tr.last_t = m.last_t
 
     if shot_aware:
@@ -1547,7 +1553,7 @@ def _detect_facecam_layout(tracks: dict, active_id: int | None, n_samples: int) 
     return {"mode": "split", "webcam_box": (x, y, bw, bh)}
 
 
-# ---- shot-aware framing (tracking.shot_aware, off by default) ------------------
+# ---- shot-aware framing (tracking.shot_aware, on by default) -------------------
 
 _OPENING = 0.5   # seconds: a new shot is framed on the median of where its subject is over this long
 _OPEN_CONF = 0.6  # a shot that opened with nobody in it cuts to a newcomer only this confidently a
@@ -1558,16 +1564,18 @@ _DROPOUT = 2.0    # seconds: the speaker the shot plan names keeps the camera wh
 
 
 def _seed_from_sighting(tr: _Track, strength: float, body_cx: float, head, face, w: int) -> None:
-    """Start a track's averages from one sighting: its first since a cut.
+    """Start a track's averages from one sighting: its first in the shot,
+    from the clip's first sample on, and again after each cut.
 
     They are moving averages, so left alone they start from zero (a new id)
     or from the person in the shot before (an id _assign carried across the
     cut because the new person's box overlapped the old one). Either way the
-    new shot's first centres come out wrong. From zero, the head offset is 30%
-    of the real one and the head counts as found only from the second
-    sighting, so the first centre is the body's. Carried over, they are
-    another person's head offset and width, which took about 0.67 s to wash
-    out, and the crop snapped up to 0.1 of a frame off the new face.
+    shot's first centres come out wrong. From zero, the head offset is 30% of
+    the real one and the head counts as found only from the second sighting,
+    so the first centre is the body's: with the setting off, a clip opens on
+    the body box and eases to the head over about a second. Carried over,
+    they are another person's head offset and width, which took about 0.67 s
+    to wash out, and the crop snapped up to 0.1 of a frame off the new face.
 
     A pose head is trusted from that one sighting. A Haar face is not: the
     cascade also fires on hands, bottles and whoever stands behind, and on
@@ -1578,12 +1586,12 @@ def _seed_from_sighting(tr: _Track, strength: float, body_cx: float, head, face,
     0.45).
 
     That is a deliberate trade-off against single false faces, and a real
-    face that only the cascade finds pays for it: the new shot opens between
-    the body and the face (the median of its first 0.5 s), eases back toward
-    the body while the trailing median is still the body's, and reaches the
-    face about a second after the cut. With the body at 0.60 and the face at
-    0.72: 0.66 on the cut, 0.62 two samples on, within 0.01 of the face 28
-    frames on (tests/test_tracker_cuts.py).
+    face that only the cascade finds pays for it: the shot opens between the
+    body and the face (the median of its first 0.5 s), eases back toward the
+    body while the trailing median is still the body's, and reaches the face
+    about a second after the cut (or the clip's start). With the body at 0.60
+    and the face at 0.72: 0.66 on the cut, 0.62 two samples on, within 0.01
+    of the face 28 frames on (tests/test_tracker_cuts.py).
 
     `strength` is confidence x area, `head` the pose head (or None), `face`
     the Haar face box when pose found no head (or None).
@@ -1616,13 +1624,14 @@ def _credible(s: _Sample, tid: int) -> bool:
 class _ShotReplay:
     """What the framing pass knows about shots, in shot-aware mode.
 
-    By default a cut only resets the challenger. The subject on camera stays
-    on camera even when the new shot does not show them: they count as gone
-    a second after they were last seen, and until then the target is the
-    median of where they were in the shot before. On road-trip footage that
-    held the old framing over the new shot for 28-31 frames at 15 cuts. And
-    the freeze and snap keys at a cut were only written when somebody was
-    visible on the first sample after it, so the crop could ease across it.
+    With the setting off, a cut only resets the challenger. The subject on
+    camera stays on camera even when the new shot does not show them: they
+    count as gone a second after they were last seen, and until then the
+    target is the median of where they were in the shot before. On road-trip
+    footage that held the old framing over the new shot for 28-31 frames at
+    15 cuts. And the freeze and snap keys at a cut were only written when
+    somebody was visible on the first sample after it, so the crop could
+    ease across it.
 
     Here, at each cut:
       * every track's centres are cut back to the shot it is in, so no target
@@ -1663,6 +1672,16 @@ class _ShotReplay:
         before: on the same footage those included real people below the
         bar, a driver among them.
 
+    The clip's opening gets the same median. On the first sample anyone is
+    seen on, while nothing has been framed yet, each track there is aimed at
+    the median of its centres over the next _OPENING seconds, with no freeze
+    or snap key: there is no framing before it to hold. First sightings are
+    seeded from the clip's first sample too, not only after a cut
+    (_seed_from_sighting). Until then a clip opened on its first sample's
+    centre: the body box, easing to the head over about a second as the
+    averages grew, or wherever a first detection off its subject put it. A
+    first shot with nobody in it keeps the centre up to the cut, as above.
+
     And within a shot, the speaker the shot plan names keeps the camera
     while out of sight for a moment (dropout): when their track is seen
     again before the next cut, within _DROPOUT seconds of when it was last
@@ -1688,14 +1707,19 @@ class _ShotReplay:
 
     def before(self, s_idx: int, at_cut: bool, frame_idx: int, active_id, tracks: dict,
                pan: HoldMove, path: list, named=None) -> tuple:
-        """Before sample s_idx is framed. Returns (at_cut, frame_idx, active_id,
-        visible) for the framing below: at_cut is also true on the sample where
-        a shot that was waiting first shows somebody credible, frame_idx is the
-        frame the freeze key goes before, active_id is None where the subject
-        has to be chosen afresh, and visible is who may be framed: everyone on
-        the sample, except in a shot that is waiting, where it is only the
-        credible, so nobody until one appears, and nobody at all while the
-        shot plan's speaker here (named) is on the sample below the bar."""
+        """Before sample s_idx is framed. Each visible track's centres are cut
+        back to its shot, and on the sample a shot opens on (a cut, a waiting
+        shot's first credible sighting, or the clip's first sample with anyone
+        on it) set to the median over the shot's first _OPENING seconds.
+
+        Returns (at_cut, frame_idx, active_id, visible) for the framing below:
+        at_cut is also true on the sample where a shot that was waiting first
+        shows somebody credible, frame_idx is the frame the freeze key goes
+        before, active_id is None where the subject has to be chosen afresh,
+        and visible is who may be framed: everyone on the sample, except in a
+        shot that is waiting, where it is only the credible, so nobody until
+        one appears, and nobody at all while the shot plan's speaker here
+        (named) is on the sample below the bar."""
         s = self.samples[s_idx]
         self.key = None
         if at_cut:
@@ -1711,6 +1735,13 @@ class _ShotReplay:
                 # Opened on anyone else, the shot would go to the plan's speaker
                 # on the very next sample (best_voice), a shot one sample long.
                 visible = []
+        if pan.x is None and visible and not at_cut:
+            # The clip's opening: nothing framed yet, so nothing to hold and no
+            # key to write. Aimed at the median of the first _OPENING seconds,
+            # like a shot after a cut, not at this one sample's centre.
+            for tid in visible:
+                tracks[tid].centers = [self._opening(tid, s_idx, s.t)]
+            return at_cut, frame_idx, active_id, visible
         if not (at_cut or (self.waiting and visible)):
             return at_cut, frame_idx, active_id, visible
 

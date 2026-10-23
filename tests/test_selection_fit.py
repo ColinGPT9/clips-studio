@@ -93,7 +93,7 @@ def reaction_window():
 
 
 # Selection 1's results, recorded from the unchanged code (5c3fb52) before
-# selection 2 existed. They are today's behaviour, faults included.
+# selection 2 existed, faults included: what scoring.selection: 1 gives.
 V1_T12 = (84.5, 103.0)
 V1_HOOK = (14.5, 26.0)
 V1_T13 = (300.5, 327.0)
@@ -114,7 +114,7 @@ def test_t12_the_payoff_line_the_pick_starts_on_stays_in_the_clip():
 
 
 def test_t12_selection_1_is_unchanged_the_payoff_line_is_cut():
-    """Today's behaviour, recorded: the line before the pause has no full stop,
+    """Selection 1's behaviour, recorded: the line before the pause has no full stop,
     so the start moves past the payoff line to the next fresh sentence."""
     assert span(_fit_to_segments(payoff_pick(), payoff_after_a_pause(), MIN, MAX)) == V1_T12
     assert V1_T12[0] > 84.0
@@ -365,7 +365,7 @@ def mid_sentence_cases():
 
 
 # Selection 1's results, recorded from the unchanged code (5c3fb52) before
-# selection 2 existed. They are today's behaviour, faults included.
+# selection 2 existed, faults included: what scoring.selection: 1 gives.
 V1_MID_SENTENCE = {
     "a breath": (108.2, 125.2),
     "a 1.5 s pause": (109.5, 126.5),
@@ -549,7 +549,7 @@ def test_the_start_rule_reads_these_sentence_ends_and_the_end_rules_do_not(mark)
 
 
 def test_mid_sentence_selection_1_is_unchanged():
-    """Today's behaviour on these transcripts, recorded: the start moves in past
+    """Selection 1's behaviour on these transcripts, recorded: the start moves in past
     the pick's line, and past the hook's, to the next fresh sentence."""
     for name, (c, segs, cap) in mid_sentence_cases().items():
         rules = highlights.start_rules(1, c, lead_in=highlights.LEAD_IN_SECONDS)
@@ -598,7 +598,7 @@ def test_t13_selection_1_is_unchanged():
     assert span(got) == V1_T13_SHORT_CAP
 
 
-# ---- selection 1 is today's, on many transcripts ------------------------------------------
+# ---- selection 1 is as it was, on many transcripts ----------------------------------------
 
 LINES = [
     "That was close.", "and then we", "Really?", "no way", "We did it!", "so anyway",

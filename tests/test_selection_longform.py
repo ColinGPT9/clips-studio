@@ -1,7 +1,9 @@
-"""Clip selection 2 is tried on Shorts first: Longform keeps selection 1
-whatever scoring.selection says, unless scoring.longform_selection asks for
-2 (longform/process.py pins it on its own copy of the settings). With
-neither setting there is nothing to pin, and the copy is left as it is.
+"""Clip selection 2 is the default for Shorts, not for Longform: Longform keeps
+selection 1 whatever scoring.selection says, its default of 2 included,
+unless scoring.longform_selection asks for 2. longform/process.py pins it on
+its own copy of the settings every time, making a scoring block for the copy
+when there is none, so the copy never inherits the Shorts' default; the
+settings themselves are left as they are.
 
 Download, transcription and the scorer are stubbed; numpy and OpenCV because
 the Longform path imports the scorer, so this runs locally like the other
@@ -22,7 +24,8 @@ class _Says:
 
 def _run(monkeypatch, tmp_path, db, scoring):
     """What Longform hands the scorer: its copy's scoring block (ABSENT when
-    there is none) and the selection that copy asks for; and the settings."""
+    there is none) and the selection that copy asks for; and the settings.
+    `scoring` is the settings' scoring block, or ABSENT for none."""
     pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     import analysis.fusion as fusion
@@ -50,7 +53,7 @@ def _run(monkeypatch, tmp_path, db, scoring):
     monkeypatch.setattr(fusion, "find_clips", find)
     config = {"clips": {"captions": False}, "paths": {"data_dir": str(tmp_path)},
               "whisper": {"model": "tiny", "device": "cpu"}, "llm": {}}
-    if scoring is not None:
+    if scoring is not ABSENT:
         config["scoring"] = scoring
     longform.process_longform("local:talk", config, db, {"mode": "short_clips"})
     return seen, config
@@ -72,10 +75,16 @@ def test_longform_uses_selection_2_only_when_asked(scoring, monkeypatch, tmp_pat
     assert seen["scoring"] == {**scoring, "selection": 2} and seen["selection"] == 2
 
 
-@pytest.mark.parametrize("scoring", [None, {"rerank_pool": 8}])
-def test_without_either_setting_longform_leaves_its_copy_alone(scoring, monkeypatch, tmp_path, db):
-    # No scoring block is made, and nothing is added to one: selection 1 is
-    # the default, as it was before the pin existed.
+@pytest.mark.parametrize("scoring, pinned", [
+    (ABSENT, {"selection": 1}),                                # no scoring block: one is made
+    (None, {"selection": 1}),                                  # `scoring:` with nothing under it
+    ({"rerank_pool": 8}, {"rerank_pool": 8, "selection": 1}),  # settings.yaml as it ships
+])
+def test_with_nothing_set_longform_is_selection_1_and_shorts_are_2(scoring, pinned, monkeypatch, tmp_path, db):
+    from analysis import highlights
+
     seen, config = _run(monkeypatch, tmp_path, db, copy.deepcopy(scoring))
-    assert seen["scoring"] == (ABSENT if scoring is None else scoring) and seen["selection"] == 1
-    assert config.get("scoring", ABSENT) == seen["scoring"]
+    assert seen["scoring"] == pinned and seen["selection"] == 1
+    # The settings are left as they are, and for Shorts they mean selection 2.
+    assert config.get("scoring", ABSENT) == scoring
+    assert highlights.selection_version(config) == 2

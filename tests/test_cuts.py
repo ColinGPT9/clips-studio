@@ -6,9 +6,9 @@ what ShotCuts would measure around a candidate: entry i compares frame i with
 frame i-1 (gray: the small_gray difference, 0..255; col: the hue/saturation
 Bhattacharyya distance, 0..1) and luma is each frame's brightness.
 
-How the setting itself is read (shot_aware_on) is tested here too. The last
-test reads video/tracker.py's source rather than importing it, for the same
-reason.
+How the setting itself is read (shot_aware_on: on unless the settings turn
+it off) is tested here too. The last test reads video/tracker.py's source
+rather than importing it, for the same reason.
 """
 
 import ast
@@ -168,25 +168,32 @@ def test_without_brightness_a_quick_change_back_is_a_flash():
 # ---- the setting ----------------------------------------------------------------------------
 
 
+def test_no_setting_turns_it_on():
+    # settings.yaml as it ships has a tracking block without the key.
+    assert cuts.shot_aware_on({"detector": "yolov8n-pose.pt", "sample_fps": 8}) is True
+    assert cuts.shot_aware_on({}) is True
+    assert cuts.shot_aware_on(None) is True                # no tracking block
+    assert cuts.shot_aware_on({"shot_aware": None}) is True   # `shot_aware:` with nothing after it
+
+
 @pytest.mark.parametrize("value", [True, 1, "true", "TRUE", "Yes", " yes ", "on", "ON\n", "1", " 1 "])
-def test_the_setting_turns_the_mode_on(value):
+def test_the_setting_keeps_the_mode_on(value):
     assert cuts.shot_aware_on({"shot_aware": value}) is True
 
 
 @pytest.mark.parametrize("value", [
+    False, 0,
     "false", "no", "off", "0",          # quoted in settings.yaml: text, which a truth test reads as on
     "False", " NO ", "Off", " 0 ",
-    False, 0, None, 2, "", "enabled", [], {},
 ])
-def test_anything_else_leaves_it_off(value):
+def test_the_setting_turns_the_mode_off(value):
     assert cuts.shot_aware_on({"shot_aware": value}) is False
 
 
-def test_no_setting_leaves_it_off():
-    # settings.yaml as it ships has a tracking block without the key.
-    assert cuts.shot_aware_on({}) is False
-    assert cuts.shot_aware_on({"detector": "yolov8n-pose.pt", "sample_fps": 8}) is False
-    assert cuts.shot_aware_on(None) is False
+@pytest.mark.parametrize("value", [2, -1, 1.0, 0.0, "", "enabled", "ture", [], ["true"], {}])
+def test_any_other_value_is_off_too(value):
+    # The safe reading of a value nobody can be sure about: the framing as before the mode.
+    assert cuts.shot_aware_on({"shot_aware": value}) is False
 
 
 # ---- the replay's snapshot -----------------------------------------------------------------

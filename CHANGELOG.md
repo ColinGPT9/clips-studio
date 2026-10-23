@@ -10,32 +10,34 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ## Unreleased
 
-### Experimental: off unless you turn it on
+Clips are framed and chosen in two new ways, on for everyone. Either can be turned off
+with one line in your settings file: `%LOCALAPPDATA%\Clips Studio\settings.yaml` in the
+installed app (`config/settings.yaml` if you run Clips Kitty from its code). Restart Clips
+Kitty after you change it.
 
-Two changes to how clips are framed and chosen. Each stays off until you add its setting
-to your settings file (`%LOCALAPPDATA%\Clips Studio\settings.yaml` in the installed app)
-and restart Clips Kitty, so clips come out exactly as before unless you do.
-`tracking.shot_aware: true` means a line `shot_aware: true` under `tracking:`, and likewise
-for the others.
+### Changed
 
-- **Framing that follows the cut** (`tracking.shot_aware: true`). In an edited video, a
-  new shot could open framed on where the last shot's person stood, and move to the new
+- **Framing follows the cut, and a clip opens on the person's face.** In an edited video,
+  a new shot could open framed on where the last shot's person stood, and move to the new
   person only about a second later, and many cuts were missed or caught a few frames late.
-  With the setting on, cuts are found to the frame, and the crop moves to the person in the
-  new shot on the cut itself. A shot with nobody in it opens on the centre (or keeps the
-  last framing, with `tracking.shot_aware_no_subject: hold`) until someone clearly visible
-  appears. Framing takes longer with it on: about a third longer on a video with many cuts,
-  and a little longer on handheld footage. It changes the standard crop only: Podcast, the
-  Gaming / Reaction layouts and Sports frame clips their own way and are unchanged.
-- **Clip selection 2** (`scoring.selection: 2`). The moments found from the sound, the
-  picture and chat are scored by your AI model eight at a time, so they no longer all fall
-  back to a flat 50 when a local model runs out of room scoring them at once. A long video's
-  later moments are no longer crowded out by its first half, and a transcript pick scored
-  below your minimum score no longer hides a moment it overlaps. A clip's start no longer
-  skips past the line it was picked for, and a clip that would start partway into a
-  sentence goes back to where the sentence begins, up to 8 seconds earlier. Videos scored as
-  gaming (Gaming / Reaction, or Vertical Live's Gaming / reaction choice) and Sports matches
-  keep the current selection, and so does Longform unless `scoring.longform_selection: 2`.
+  Now cuts are found to the frame, and the crop moves to the person in the new shot on the
+  cut itself. A clip opens on the person's face, where it used to open on their body and
+  slide over to the face during the first second. A shot with nobody in it opens on the
+  centre (or keeps the last framing, with the line `shot_aware_no_subject: hold` under
+  `tracking:`) until someone clearly visible appears. Framing takes longer: about a third longer on a video
+  with many cuts, and a little longer on handheld footage. It changes the standard crop
+  only: Podcast, the Gaming / Reaction layouts and Sports frame clips their own way and are
+  unchanged. To frame clips as before, add the line `shot_aware: false` under `tracking:`.
+- **Clip selection 2.** The moments found from the sound, the picture and chat are scored
+  by your AI model eight at a time, so they no longer all fall back to a flat 50 when a
+  local model runs out of room scoring them at once. A long video's later moments are no
+  longer crowded out by its first half, and a transcript pick scored below your minimum
+  score no longer hides a moment it overlaps. A clip's start no longer skips past the line
+  it was picked for, and a clip that would start partway into a sentence goes back to where
+  the sentence begins, up to 8 seconds earlier. Videos scored as gaming (Gaming / Reaction,
+  or Vertical Live's Gaming / reaction choice) and Sports matches choose clips as before,
+  and so does Longform unless you add `longform_selection: 2` under `scoring:`. To choose
+  clips as before, add the line `selection: 1` under `scoring:`.
 
 ## 2.1.0: Basketball, and a Marketplace for new pipelines
 

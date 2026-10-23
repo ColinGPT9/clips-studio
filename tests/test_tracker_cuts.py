@@ -1,7 +1,8 @@
-"""Shot-aware reframing (tracking.shot_aware), on synthetic clips.
+"""Shot-aware reframing (tracking.shot_aware, on by default), on synthetic clips.
 
-By default the framing pass handles a camera cut badly, in ways measured on
-edited road-trip footage (video/cuts.py and tracker._ShotReplay say more):
+With the setting off, the framing pass handles a camera cut badly, in ways
+measured on edited road-trip footage (video/cuts.py and tracker._ShotReplay
+say more):
 
   * the subject on camera before a cut stays the target after it, at their
     old position, until they have been unseen for a second: 28-31 frames of
@@ -22,6 +23,12 @@ a waiting shot opened on somebody credible while the plan's speaker was on
 screen below the bar, and the plan took the camera to that speaker on the
 next sample; and what F2 costs a real face only the cascade finds.
 
+The clip's opening shot is framed like a shot after a cut (O1-O3): first
+sightings start the averages from the clip's first sample, and the first
+framing is the median of the first 0.5 s. With the setting off a clip opens
+on the body box and eases toward the head, and opens wherever its first
+detection is, even one off its subject.
+
 The clips here are synthetic, and nothing in them is a real person:
   * video_capture -> a fake capture of flat-colour shots (one colour per
     shot, so the colour change sets the cut's strength) or a rolled texture;
@@ -30,12 +37,13 @@ The clips here are synthetic, and nothing in them is a real person:
     unless a test stands in for TalkNet (talking_left) or for the Haar
     cascade (haar).
 
-T7 is the guard: with shot_aware off, which is the default, compute_tracking
-returns EXACTLY what it returned before this mode existed, on every scene in
-SCENES.
+T7 is the guard: with shot_aware set off (tracking.shot_aware: false, or
+compute_tracking(shot_aware=False)), compute_tracking returns EXACTLY what it
+returned before this mode existed, on every scene in SCENES.
 TODAY holds those outputs, recorded from the code before the change (the
 parent of the commit that added this file), as (frame, x) keys: every key
-time the tracker writes is a frame number over the clip's fps.
+time the tracker writes is a frame number over the clip's fps. "Off" in the
+tests below is that output too: the framing before this mode existed.
 
 numpy and OpenCV are needed: pytest.importorskip, as CI's light install has
 neither. The decision itself is also tested there, in tests/test_cuts.py.
@@ -58,7 +66,7 @@ N = 150                  # frames per clip (5 s)
 
 # Flat shot colours (BGR). Their gray levels through video.framing.small_gray
 # are A 79, B 200 (121 from A: a strong cut) and WEAK 119 (40 from A: a cut
-# the default sample-grid threshold of 55 never sees). Every pair changes hue.
+# the setting off's sample-grid threshold of 55 never sees). Every pair changes hue.
 A = (150, 90, 30)
 B = (40, 210, 240)
 WEAK = (70, 80, 215)
@@ -191,7 +199,7 @@ SCENES = {
     "nobody": Scene(_cut_at(60, A, B), lambda i: (
         [person(0.30)] if i < 60 else [] if i < 68 else [person(0.70)])),
     # T6: a fast handheld pan, 12 px a frame: about 57 gray across a sample
-    # pair (the default grid test fires on it) and no change of colour.
+    # pair (the grid test of the setting off fires on it) and no change of colour.
     "handheld": Scene(None, lambda i: [person(0.5)],
                       picture=lambda i, _t=_texture(): np.roll(_t, -12 * i, axis=1)),
     # No cut at all: a subject drifting across the frame.
@@ -369,18 +377,20 @@ def shot_aware(name, monkeypatch, **kw):
     return run(SCENES[name], monkeypatch.setattr, shot_aware=True, **kw)
 
 
-def default(name, monkeypatch):
-    return run(SCENES[name], monkeypatch.setattr)[0]
+def off(name, monkeypatch):
+    """The output with the setting off: as before this mode existed (TODAY)."""
+    return run(SCENES[name], monkeypatch.setattr, shot_aware=False)[0]
 
 
-# ---- T7: off by default, and off means unchanged ------------------------------------------
+# ---- T7: off means unchanged ----------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", list(SCENES))
 def test_t7_with_the_setting_off_the_output_is_exactly_as_before(name, monkeypatch):
     want = TODAY[name]
     want = {"mode": want["mode"], "path": [(f / FPS, x) for f, x in want["keys"]], "face_y": want["face_y"]}
-    for kw in ({}, {"shot_aware": False}, {"shot_aware": False, "no_subject": "hold"}):
+    # Set off explicitly: the setting is on unless the settings say off (cuts.shot_aware_on).
+    for kw in ({"shot_aware": False}, {"shot_aware": False, "no_subject": "hold"}):
         result, opened = run(SCENES[name], monkeypatch.setattr, **kw)
         assert result == want
         # and nothing extra is decoded: one capture, the tracker's own
@@ -388,7 +398,9 @@ def test_t7_with_the_setting_off_the_output_is_exactly_as_before(name, monkeypat
 
 
 @pytest.mark.parametrize("settings, passed", [
-    ({}, (False, "center")),       # settings.yaml as it ships: no such keys
+    ({}, (True, "center")),        # settings.yaml as it ships: no such keys, so on
+    ({"shot_aware": None}, (True, "center")),    # the key left empty: on as well
+    ({"shot_aware": False}, (False, "center")),  # how to turn it off
     ({"shot_aware": True, "shot_aware_no_subject": "hold"}, (True, "hold")),
     # Quoted, the value is text, and any text but "" is true to a plain truth
     # test: only the words that mean on turn it on (cuts.shot_aware_on).
@@ -396,7 +408,7 @@ def test_t7_with_the_setting_off_the_output_is_exactly_as_before(name, monkeypat
     ({"shot_aware": "off"}, (False, "center")),
     ({"shot_aware": " Yes "}, (True, "center")),
 ])
-def test_the_pipeline_passes_the_settings_and_they_default_to_off(settings, passed, monkeypatch, tmp_path):
+def test_the_pipeline_passes_the_settings_and_they_default_to_on(settings, passed, monkeypatch, tmp_path):
     from pathlib import Path
 
     import core.pipeline as pipeline
@@ -434,9 +446,9 @@ def test_t1_the_new_shot_is_framed_on_its_own_subject(monkeypatch):
     assert first_after == pytest.approx(0.75, abs=0.01)
     assert at(result, 59) == 0.25                       # the old framing to the end of its shot
     assert all(at(result, f) == pytest.approx(0.75, abs=0.01) for f in range(60, N))
-    # Today: the old subject's 0.25 until f88.
-    today = default("ghost", monkeypatch)
-    assert at(today, 87) == 0.25 and at(today, 88) == 0.75
+    # Off: the old subject's 0.25 until f88.
+    old = off("ghost", monkeypatch)
+    assert at(old, 87) == 0.25 and at(old, 88) == 0.75
 
 
 def test_t2_nothing_before_a_return_depends_on_it(monkeypatch):
@@ -444,9 +456,9 @@ def test_t2_nothing_before_a_return_depends_on_it(monkeypatch):
     back, _ = shot_aware("ghost_returns", monkeypatch)
     assert [k for k in gone["path"] if k[0] < 104 / FPS] == [k for k in back["path"] if k[0] < 104 / FPS]
     assert [at(gone, f) for f in range(104)] == [at(back, f) for f in range(104)]
-    # Today the subject who comes back holds the camera, unseen, from f60 to f104.
-    today_gone, today_back = default("ghost", monkeypatch), default("ghost_returns", monkeypatch)
-    assert [at(today_gone, f) for f in range(104)] != [at(today_back, f) for f in range(104)]
+    # Off, the subject who comes back holds the camera, unseen, from f60 to f104.
+    old_gone, old_back = off("ghost", monkeypatch), off("ghost_returns", monkeypatch)
+    assert [at(old_gone, f) for f in range(104)] != [at(old_back, f) for f in range(104)]
 
 
 def test_r5_a_subject_counts_as_gone_whether_or_not_they_come_back(monkeypatch):
@@ -455,21 +467,21 @@ def test_r5_a_subject_counts_as_gone_whether_or_not_they_come_back(monkeypatch):
     back, _ = shot_aware("leaves_returns", monkeypatch)
     assert [at(gone, f) for f in range(88)] == [at(back, f) for f in range(88)]
     assert at(back, 67) == 0.3 and at(back, 68) == pytest.approx(0.7, abs=0.01)
-    # Today the replay read when each track was last seen in the whole clip,
-    # so the person who comes back at f88 never counted as gone before it.
-    today_back = default("leaves_returns", monkeypatch)
-    assert all(at(today_back, f) == 0.3 for f in range(88))
+    # Off, the replay reads when each track was last seen in the whole clip,
+    # so the person who comes back at f88 never counts as gone before it.
+    old_back = off("leaves_returns", monkeypatch)
+    assert all(at(old_back, f) == 0.3 for f in range(88))
 
 
 def test_t3_an_id_carried_across_the_cut_snaps_to_the_new_face(monkeypatch):
     new_face = 0.58 - 0.02
     result, _ = shot_aware("revival", monkeypatch)
-    assert at(result, 59) == 0.5
+    assert at(result, 59) == pytest.approx(0.50 + 0.03)    # the old face, from the clip's start (O1)
     assert at(result, 60) == pytest.approx(new_face, abs=0.02)
     assert all(at(result, f) == pytest.approx(new_face, abs=0.02) for f in range(60, N))
-    # Today: the old face's position (0.5298), and it parks there.
-    today = default("revival", monkeypatch)
-    assert abs(at(today, 60) - new_face) > 0.02 and abs(at(today, N - 1) - new_face) > 0.02
+    # Off: the old face's position (0.5298), and it parks there.
+    old = off("revival", monkeypatch)
+    assert abs(at(old, 60) - new_face) > 0.02 and abs(at(old, N - 1) - new_face) > 0.02
 
 
 @pytest.mark.parametrize("name", ["late", "weak"])
@@ -478,10 +490,10 @@ def test_t4_the_snap_lands_on_the_cut_s_own_frame(name, monkeypatch):
     assert [at(result, f) for f in range(61)] == [0.25] * 61     # no drift before it
     assert at(result, 61) == pytest.approx(0.75, abs=0.01)
     assert 61 in frames_of(result)
-    # Today: f64, still on the old subject ("late"), or not at all ("weak").
-    today = default(name, monkeypatch)
-    assert at(today, 61) == 0.25 and at(today, 64) == 0.25
-    assert (63 in frames_of(today)) == (name == "late")
+    # Off: f64, still on the old subject ("late"), or not at all ("weak").
+    old = off(name, monkeypatch)
+    assert at(old, 61) == 0.25 and at(old, 64) == 0.25
+    assert (63 in frames_of(old)) == (name == "late")
 
 
 def test_the_cut_s_frame_is_found_wherever_it_falls_between_two_samples(monkeypatch):
@@ -507,8 +519,8 @@ def test_a_first_shot_with_nobody_in_it_keeps_the_centre(monkeypatch):
     result, _ = shot_aware("empty_start", monkeypatch)
     assert [at(result, f) for f in range(60)] == [0.5] * 60
     assert all(at(result, f) == pytest.approx(0.7, abs=0.01) for f in range(60, N))
-    # Today the first framing found holds from the clip's first frame.
-    assert at(default("empty_start", monkeypatch), 0) == 0.7
+    # Off, the first framing found holds from the clip's first frame.
+    assert at(off("empty_start", monkeypatch), 0) == 0.7
 
 
 def test_any_other_word_for_no_subject_means_the_centre(monkeypatch):
@@ -530,16 +542,16 @@ def test_t6_a_fast_handheld_pan_is_no_cut(monkeypatch):
     assert reader.retrieved > 0                       # the pairs were candidates, and were looked at
     assert found and not any(found)
     assert all(f % STEP == 0 for f in frames_of(result))     # no freeze or snap keys
-    # Today: a cut on every sample, each with its freeze key.
-    assert sum(f % STEP != 0 for f in frames_of(default("handheld", monkeypatch))) > 30
+    # Off: a cut on every sample, each with its freeze key.
+    assert sum(f % STEP != 0 for f in frames_of(off("handheld", monkeypatch))) > 30
 
 
 def test_a_flash_is_no_cut(monkeypatch):
     result, _ = shot_aware("flash", monkeypatch)
     assert all(f % STEP == 0 for f in frames_of(result))
     assert {x for _, x in result["path"]} == {0.4}
-    # Today: the flash and the picture coming back are two cuts.
-    assert {63, 67} <= set(frames_of(default("flash", monkeypatch)))
+    # Off: the flash and the picture coming back are two cuts.
+    assert {63, 67} <= set(frames_of(off("flash", monkeypatch)))
 
 
 def test_the_subject_on_camera_keeps_it_across_a_cut_they_are_still_in(monkeypatch):
@@ -549,10 +561,17 @@ def test_the_subject_on_camera_keeps_it_across_a_cut_they_are_still_in(monkeypat
     assert all(at(result, f) == pytest.approx(0.4, abs=0.01) for f in range(N))
 
 
-def test_with_no_cut_nothing_changes(monkeypatch):
+def test_with_no_cut_the_clip_opens_on_the_median_of_its_first_half_second(monkeypatch):
+    # A subject drifting across the frame, and no cut.
     result, opened = shot_aware("steady", monkeypatch)
-    assert result == default("steady", monkeypatch)
-    assert opened[0].retrieved == 0               # no pair was even a candidate
+    assert opened[0].retrieved == 0               # no pair was even a candidate: no cut decoded
+    assert all(f % STEP == 0 for f in frames_of(result))     # no freeze or snap key
+    first = [0.30 + 0.30 * f / N for f in range(0, N, STEP) if f / FPS <= tracker._OPENING]
+    assert len(first) == 4                        # f0-f12
+    t0, x0 = result["path"][0]
+    assert t0 == 0.0 and x0 == pytest.approx(float(np.median(first)), abs=1e-9)   # 0.312
+    # Off: the first sample's centre.
+    assert off("steady", monkeypatch)["path"][0] == (0.0, 0.3)
 
 
 def test_the_reader_seeks_across_a_long_stretch_and_still_lands_on_the_frame(monkeypatch):
@@ -782,11 +801,11 @@ def test_f3_the_speaker_keeps_the_camera_while_out_of_sight_for_a_moment(back, m
     scene = _two_with_a_dropout(back)
     result, _ = run(scene, monkeypatch.setattr, asd=talking_left, shot_aware=True)
     assert all(at(result, f) == pytest.approx(0.33, abs=0.01) for f in range(N))
-    # Today, by default, no flick either: the replay reads when they were last seen in the
-    # whole clip, and the grid rule takes this pan for a cut on every sample, which starts
-    # the prominence contest over each time.
-    today, _ = run(scene, monkeypatch.setattr, asd=talking_left)
-    assert all(at(today, f) == pytest.approx(0.33, abs=0.01) for f in range(N))
+    # Off, no flick either: the replay reads when they were last seen in the whole clip,
+    # and the grid rule takes this pan for a cut on every sample, which starts the
+    # prominence contest over each time.
+    old, _ = run(scene, monkeypatch.setattr, asd=talking_left, shot_aware=False)
+    assert all(at(old, f) == pytest.approx(0.33, abs=0.01) for f in range(N))
 
 
 def test_f3_a_speaker_not_seen_again_that_soon_still_counts_as_gone(monkeypatch):
@@ -810,6 +829,68 @@ def test_m1_a_sighting_after_the_next_cut_does_not_count_for_a_dropout(monkeypat
     monkeypatch.setattr(tracker._ShotReplay, "dropout", lambda *_a: False)
     without_the_rule, _ = run(scene, monkeypatch.setattr, asd=talking_left, shot_aware=True)
     assert [at(result, f) for f in range(N)] == [at(without_the_rule, f) for f in range(N)]
+
+
+# ---- O1-O3: the clip's opening shot --------------------------------------------------------
+
+OPENING = {
+    # O1: one person, the head 0.08 right of the body's centre, and no cut.
+    "opening_head": Scene(lambda i: A, lambda i: [person(0.40, head_dx=0.08)]),
+    # O2: a close-up the pose model finds no head on, detected at 0.2 on the first sample (a
+    # box off the person) and at 0.6 from then on. The boxes are wide, so they overlap enough
+    # (IoU 0.33) for _assign to keep one id.
+    "opening_outlier": Scene(lambda i: A, lambda i: [
+        person(0.20 if i == 0 else 0.60, width=0.8, head=False)]),
+    # O3: a person at 0.6 the pose model finds no head on (the cascade's answers are the
+    # test's: haar).
+    "opening_haar": Scene(lambda i: A, lambda i: [person(0.60, head=False)]),
+}
+
+
+def test_o1_the_clip_opens_on_the_head_and_stays_there(monkeypatch):
+    result, _ = run(OPENING["opening_head"], monkeypatch.setattr, shot_aware=True)
+    xs = [x for _, x in result["path"]]
+    assert xs[0] == pytest.approx(0.48) and len(set(xs)) == 1
+    # Off: the body box first, the head counted only from the second sighting, then a pan
+    # toward it as the averages grow, which parks short of it (0.460).
+    old, _ = run(OPENING["opening_head"], monkeypatch.setattr, shot_aware=False)
+    assert [at(old, f) for f in (0, 12)] == [pytest.approx(0.40)] * 2
+    assert at(old, 28) > 0.45 and abs(at(old, N - 1) - 0.48) > 0.015
+
+
+def test_o2_a_first_detection_off_its_subject_does_not_open_the_clip(monkeypatch):
+    monkeypatch.setattr(tracker, "_face_box", haar([]))
+    result, _ = run(OPENING["opening_outlier"], monkeypatch.setattr, shot_aware=True)
+    assert at(result, 0) == pytest.approx(0.60)      # the median of 0.2, 0.6, 0.6, 0.6
+    # On the next sample the trailing median still holds the first detection (0.4, the
+    # median of 0.2 and 0.6), as on the sample after a cut: a dip to 0.56, then 0.593.
+    assert all(abs(at(result, f) - 0.60) <= 0.05 for f in range(N))
+    # Off: it opens on 0.2, and takes over a second to pan across to 0.6.
+    old, _ = run(OPENING["opening_outlier"], monkeypatch.setattr, shot_aware=False)
+    assert at(old, 0) == pytest.approx(0.20) and at(old, 32) < 0.55
+
+
+def test_o3_one_haar_face_on_the_first_sample_does_not_move_the_crop(monkeypatch):
+    # The cascade answers on the clip's first sample only, 0.15 off the body (a face found on
+    # a hand). Seeded from that sighting, it counts as one hit, as after a cut (F2).
+    monkeypatch.setattr(tracker, "_face_box", haar([(0.75, 0.06)]))
+    result, _ = run(OPENING["opening_haar"], monkeypatch.setattr, shot_aware=True)
+    assert all(at(result, f) == pytest.approx(0.60, abs=1e-9) for f in range(N))
+
+
+def test_o3_a_face_the_cascade_keeps_finding_steers_the_crop_from_about_a_second_in(monkeypatch):
+    # F2's cost at the clip's start: the opening is the median of two body centres (0.60) and
+    # two face centres (0.7203), the crop dips back toward the body while the trailing median
+    # is the body's, then reaches the face 28 frames in. Off, it eases from the body and parks
+    # 0.02 short of the face.
+    monkeypatch.setattr(tracker, "_face_box", haar(itertools.repeat((0.72, 0.06))))
+    result, _ = run(OPENING["opening_haar"], monkeypatch.setattr, shot_aware=True)
+    xs = [at(result, f) for f in range(N)]
+    assert xs[0] == pytest.approx(0.660, abs=0.001)
+    assert min(xs) == at(result, 8) == pytest.approx(0.618, abs=0.001)
+    assert all(abs(x - 0.72) <= 0.01 for x in xs[28:])
+    old, _ = run(OPENING["opening_haar"], monkeypatch.setattr, shot_aware=False)
+    assert at(old, 0) == pytest.approx(0.60) and abs(at(old, N - 1) - 0.72) > 0.015
 
 
 # ---- the reader ------------------------------------------------------------------------------
