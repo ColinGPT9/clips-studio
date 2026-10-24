@@ -7,6 +7,7 @@ import {
   describeState,
   localInputToIso,
   localZone,
+  mergeRows,
   missingRequired,
   nextPollDelay,
   platformLabel,
@@ -14,6 +15,8 @@ import {
   type Overrides,
   platformsFor,
   PROVIDER_LABEL,
+  rowProvider,
+  stillOnItsWay,
   type PlatformRow,
   type Provider,
   type UploadPostStatus
@@ -90,18 +93,6 @@ export default function UploadPostPanel({
   useEffect(() => {
     alive.current = true
     api
-      .clipUploadPostRows(clip.id)
-      .then((got) => {
-        if (!alive.current) return
-        setRows(got.platforms)
-        // Pick the fan-out back up if one is still running from last time.
-        const live = got.platforms.find((r) => r.request_id)
-        if (live) setRequestId(live.request_id)
-      })
-      .catch(() => {
-        /* nothing published yet */
-      })
-    api
       .uploadPostCapabilities()
       .then((got) => alive.current && setCaps(got.platforms))
       .catch(() => {
@@ -145,7 +136,7 @@ export default function UploadPostPanel({
         .refresh(id)
         .then((got) => {
           if (!alive.current) return
-          setRows(got.platforms)
+          setRows((shown) => mergeRows(shown, got.platforms))
           if (!got.done) schedulePoll(id)
         })
         .catch(() => {
@@ -154,6 +145,35 @@ export default function UploadPostPanel({
         })
     }, nextPollDelay(attempts.current))
   }
+
+  // Where it went, from every provider and the direct YouTube upload, so it
+  // still shows with Upload-Post switched off. Fetched again when the
+  // provider switches: only a request this panel's provider sent means
+  // anything to its refresh and retry, so the fan-out to pick back up, and
+  // keep polling while it is still on its way, is one of those.
+  useEffect(() => {
+    let current = true
+    api
+      .clipPosts(clip.id)
+      .then((got) => {
+        if (!current || !alive.current) return
+        setRows(got.posts)
+        const mine = got.posts.filter((r) => r.request_id && rowProvider(r) === provider)
+        const pick = mine.find((r) => stillOnItsWay(r)) ?? mine[0]
+        setRequestId(pick ? pick.request_id : '')
+        if (pick && stillOnItsWay(pick)) {
+          attempts.current = 0
+          schedulePoll(pick.request_id)
+        }
+      })
+      .catch(() => {
+        /* nothing published yet */
+      })
+    return () => {
+      current = false
+      if (timer.current) clearTimeout(timer.current)
+    }
+  }, [clip.id, provider])
 
   const publish = async (): Promise<void> => {
     if (busy || !platforms.length || !title.trim()) return
@@ -182,7 +202,7 @@ export default function UploadPostPanel({
         scheduled_date: when === 'schedule' ? localInputToIso(at) : '',
         timezone: when === 'schedule' ? localZone() : '',
       })
-      setRows(got.platforms)
+      setRows((shown) => mergeRows(shown, got.platforms))
       setRequestId(got.request_id)
       if (!got.done) schedulePoll(got.request_id)
     } catch (e) {
@@ -200,7 +220,7 @@ export default function UploadPostPanel({
     try {
       if (!backend.retry) return
       const got = await backend.retry(requestId)
-      setRows(got.platforms)
+      setRows((shown) => mergeRows(shown, got.platforms))
       if (!got.done) schedulePoll(requestId)
     } catch (e) {
       setError(String(e).replace(/^Error:\s*/, ''))
@@ -230,7 +250,8 @@ export default function UploadPostPanel({
   const inFlight = rows.some(
     (r) => r.state === 'queued' || r.state === 'processing' || r.state === 'sending'
   )
-  const anyFailed = rows.some((r) => r.state === 'failed')
+  // Only this provider's: its retry cannot re-send another provider's post.
+  const anyFailed = rows.some((r) => r.state === 'failed' && rowProvider(r) === provider)
   const lacking = missingRequired(platforms, caps, overrides)
   // Everything they have linked that can take a video. Falls back to the
   // full list before the connection check has answered.
@@ -593,43 +614,56 @@ export default function UploadPostPanel({
       {rows.length > 0 && (
         <div className="space-y-1.5 border-t border-raised/60 pt-3">
           <p className="label">{t('Where it went')}</p>
-          {rows.map((row) => (
-            <div key={row.platform} className="flex items-center justify-between gap-3 text-xs">
-              <span className="flex items-center gap-2 min-w-0">
-                <span aria-hidden>
-                  {row.state === 'published'
-                    ? '✓'
-                    : row.state === 'failed'
-                      ? '✗'
-                      : row.state === 'skipped'
-                        ? '○'
-                        : '⏳'}
+          {rows.map((row) => {
+            const via = rowProvider(row)
+            return (
+              <div
+                key={`${row.provider}:${row.platform}`}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <span aria-hidden>
+                    {row.state === 'published'
+                      ? '✓'
+                      : row.state === 'failed'
+                        ? '✗'
+                        : row.state === 'skipped' || row.state === 'private'
+                          ? '○'
+                          : '⏳'}
+                  </span>
+                  <span className="shrink-0">{platformLabel(row.platform)}</span>
+                  {/* The same platform can appear twice, once through a
+                      provider and once uploaded straight to YouTube. */}
+                  {via && via !== provider && (
+                    <span className="shrink-0 text-muted">
+                      · {via === 'youtube' ? t('direct upload') : PROVIDER_LABEL[via]}
+                    </span>
+                  )}
+                  <span
+                    className={`truncate ${
+                      row.state === 'failed'
+                        ? 'text-error'
+                        : row.state === 'published'
+                          ? 'text-success'
+                          : 'text-muted'
+                    }`}
+                  >
+                    {describeState(row)}
+                  </span>
                 </span>
-                <span className="shrink-0">{platformLabel(row.platform)}</span>
-                <span
-                  className={`truncate ${
-                    row.state === 'failed'
-                      ? 'text-error'
-                      : row.state === 'published'
-                        ? 'text-success'
-                        : 'text-muted'
-                  }`}
-                >
-                  {describeState(row)}
-                </span>
-              </span>
-              {/* Only when the provider actually returned one. A link that
-                  goes nowhere is worse than no link. */}
-              {row.post_url && (
-                <button
-                  className="text-accent hover:underline shrink-0"
-                  onClick={open(row.post_url)}
-                >
-                  {t('Open')} ↗
-                </button>
-              )}
-            </div>
-          ))}
+                {/* Only when the provider actually returned one. A link that
+                    goes nowhere is worse than no link. */}
+                {row.post_url && (
+                  <button
+                    className="text-accent hover:underline shrink-0"
+                    onClick={open(row.post_url)}
+                  >
+                    {t('Open')} ↗
+                  </button>
+                )}
+              </div>
+            )
+          })}
           {/* Only the platforms that failed, through Upload-Post's own retry —
               the clip is not sent again, so the ones that worked cannot end
               up posted twice. */}

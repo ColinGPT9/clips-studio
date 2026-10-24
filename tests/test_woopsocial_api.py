@@ -477,3 +477,32 @@ def test_a_status_check_changes_only_what_it_learned(client, monkeypatch, tmp_pa
         "published", "https://www.youtube.com/shorts/abcdefghijk")
     assert (row["start_s"], row["caption"], row["scheduled_for"]) == (
         0, "As sent", "2026-10-02T09:00:00Z")
+
+
+def test_a_check_of_an_older_request_leaves_a_re_sent_platform_alone(client, monkeypatch, tmp_path):
+    """post-1 went to YouTube and TikTok; TikTok failed and went again alone as
+    post-2. Asking about post-1 still reports TikTok's old failure, which must
+    not put the re-send back to failed."""
+    _ready(client, monkeypatch)
+    clip_id = _a_clip(client, tmp_path)
+    d = StateDB(client.db_path)
+    d.record_clip_publish(clip_id, "youtube", {
+        "provider": "woopsocial", "state": "processing", "request_id": "post-1"})
+    d.record_clip_publish(clip_id, "tiktok", {
+        "provider": "woopsocial", "state": "processing", "request_id": "post-2"})
+    d.close()
+
+    from publish import uploadpost as up
+    from publish import woopsocial as ws
+
+    monkeypatch.setattr(
+        ws.WoopSocialPublisher, "check",
+        lambda self, request_id: up.FanOutResult(request_id=request_id, outcomes=[
+            up.PlatformOutcome(platform="tiktok", state="failed", error="rate limited"),
+            up.PlatformOutcome(platform="youtube", state="published")]),
+    )
+    got = client.post("/woopsocial/refresh/post-1")
+
+    rows = {r["platform"]: r for r in got.json()["platforms"]}
+    assert (rows["tiktok"]["state"], rows["tiktok"]["request_id"]) == ("processing", "post-2")
+    assert rows["youtube"]["state"] == "published"

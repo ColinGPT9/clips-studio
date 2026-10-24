@@ -413,3 +413,24 @@ def test_each_privacy_override_is_recorded_in_one_vocabulary(provider, platform,
     from server import posts
 
     assert posts.requested_visibility(provider, platform, {platform: override}) == expected
+
+
+def test_a_send_written_down_before_it_goes_starts_the_clock_again(db, tmp_path, woop):
+    """A clip sent again 20 days after a failure is due from this send: the
+    "sending" row is the one reconcile_sending later adopts, so it carries the
+    send's time, not the first one's."""
+    ids = clips(db, tmp_path, 1)
+    woop.fail_before_upload = PublishError("Not connected")
+    publish(db, tmp_path, ids, once=True)
+    db.conn.execute("UPDATE clip_publishes SET created_at = '2026-01-01T08:00:00'")
+    db.conn.commit()
+
+    woop.fail_before_upload = None
+    timeout = PublishError("WoopSocial did not respond in time.")
+    timeout.retryable = True
+    woop.fail_after_upload = timeout
+    publish(db, tmp_path, ids, once=True)
+
+    row = rows(db)["youtube"]
+    assert row["state"] == "sending"
+    assert row["created_at"] > "2026-01-02"

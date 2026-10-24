@@ -765,6 +765,12 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker=publish_worker,
     )
 
+    # Where a clip went, across every provider and the direct YouTube upload,
+    # behind no provider's switch.
+    from server import posts_api
+
+    posts_api.install(app, db=db)
+
     # Settings → AI: local Ollama (the default) or a cloud model on the
     # user's own key. Its own module, the same way the publishers are.
     from server import ai_api

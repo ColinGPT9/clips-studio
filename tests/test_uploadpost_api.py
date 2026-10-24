@@ -777,3 +777,68 @@ def test_a_retry_changes_only_what_it_learned(client, monkeypatch, tmp_path):
     assert got.status_code == 200
     row = _rows(client)["tiktok"]
     assert (row["state"], row["caption"], row["visibility"]) == ("processing", "As sent", "default")
+
+
+def test_a_check_of_an_older_request_leaves_a_re_sent_platform_alone(client, monkeypatch, tmp_path):
+    _enable(client)
+    clip_id = _a_rendered_clip(client, tmp_path)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    d = StateDB(client.db_path)
+    d.record_clip_publish(clip_id, "youtube", {
+        "provider": "upload_post", "state": "processing", "request_id": "req-1"})
+    # TikTok failed in req-1 and went again alone as req-2.
+    d.record_clip_publish(clip_id, "tiktok", {
+        "provider": "upload_post", "state": "processing", "request_id": "req-2"})
+    d.close()
+
+    from publish import uploadpost as up
+
+    monkeypatch.setattr(
+        up.UploadPostPublisher, "check",
+        lambda self, request_id: up.FanOutResult(request_id=request_id, outcomes=[
+            up.PlatformOutcome(platform="tiktok", state="failed", error="rate limited"),
+            up.PlatformOutcome(platform="youtube", state="published")]),
+    )
+    got = client.post("/uploadpost/refresh/req-1")
+
+    assert got.status_code == 200
+    rows = _rows(client)
+    assert (rows["tiktok"]["state"], rows["tiktok"]["request_id"]) == ("processing", "req-2")
+    assert rows["youtube"]["state"] == "published"
+
+
+def test_a_retried_platform_is_due_from_the_retry(client, monkeypatch, tmp_path):
+    """A retry sends the failed platform again: its clock starts again, as a
+    publish's does, so one retried 20 days after its first send is followed.
+    The platform that had gone out keeps its own."""
+    _enable(client)
+    clip_id = _a_rendered_clip(client, tmp_path)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    d = StateDB(client.db_path)
+    for platform, state in (("youtube", "published"), ("tiktok", "failed")):
+        d.record_clip_publish(clip_id, platform, {
+            "provider": "upload_post", "state": state, "request_id": "req-7"})
+    d.conn.execute("UPDATE clip_publishes SET created_at = '2026-01-01T08:00:00'")
+    d.conn.commit()
+    d.close()
+
+    from publish import uploadpost as up
+
+    monkeypatch.setattr(
+        up.UploadPostPublisher, "retry",
+        lambda self, request_id: up.FanOutResult(request_id=request_id, outcomes=[
+            up.PlatformOutcome(platform="tiktok", state="processing"),
+            up.PlatformOutcome(platform="youtube", state="published")]),
+    )
+    assert client.post("/uploadpost/retry/req-7").status_code == 200
+
+    rows = _rows(client)
+    assert rows["tiktok"]["created_at"] > "2026-01-02"
+    assert rows["youtube"]["created_at"] == "2026-01-01T08:00:00"
+    d = StateDB(client.db_path)
+    try:
+        assert service.due_requests(d, last_checked={}) == ["req-7"]
+    finally:
+        d.close()

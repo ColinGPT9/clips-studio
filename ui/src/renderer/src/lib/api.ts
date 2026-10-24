@@ -776,6 +776,10 @@ export const api = {
     }>('/uploadpost/batch', { method: 'POST', body: JSON.stringify(body) }),
   clipUploadPostRows: (clipId: number) =>
     request<{ platforms: PlatformRow[] }>(`/uploadpost/clips/${clipId}`),
+  /** Where a clip went, through any provider and the direct YouTube upload.
+   *  Answers whichever providers are switched on. */
+  clipPosts: (clipId: number) =>
+    request<{ clip_id: number; posts: PlatformRow[] }>(`/clips/${clipId}/posts`),
 
   // ---- WoopSocial: the second provider ----
   // Same job as Upload-Post, different account. Routes mirror each other so

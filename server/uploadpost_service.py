@@ -182,7 +182,8 @@ def record_refresh(db, clip_id: int, result, *, known=None) -> int:
     The row may by now hang off a re-rendered clip with another window, so the
     post's identity, caption and time are never rewritten here. With `known`,
     the request's rows as stored, an outcome that only repeats its row is not
-    written (server/posts.py news). Returns how many were.
+    written, nor one for a platform sent again since under a newer request
+    (server/posts.py news). Returns how many were.
     """
     outcomes = result.outcomes if known is None else posts.news(known, result)
     for outcome in outcomes:
@@ -193,6 +194,42 @@ def record_refresh(db, clip_id: int, result, *, known=None) -> int:
             "error": outcome.error,
             "request_id": result.request_id,
         })
+    return len(outcomes)
+
+
+def record_retry(db, clip_id: int, result, rows) -> int:
+    """Write what Upload-Post's retry of a request answered.
+
+    `rows` are the request's rows as stored. A retry sends the platforms that
+    failed again, so each of those starts its clock again (created_at), as a
+    publish-time write does: retried 20 days after its first send, a post is
+    due now and followed, not 20 days late. The platforms that had already
+    gone out keep theirs. Otherwise this is a status check (record_refresh
+    with `known`): identity, caption and time are never rewritten, and a
+    platform sent again under a newer request is left alone. An answer with
+    no per-platform detail puts the failed rows back in flight, so the poller
+    picks the real states up. Returns how many rows were written.
+    """
+    failed = {r["platform"] for r in rows if r["state"] == "failed"}
+    sent = posts.sent_stamp()
+    if not result.outcomes:
+        for platform in sorted(failed):
+            db.record_clip_publish(
+                clip_id, platform, {"state": "queued", "error": "", "created_at": sent}
+            )
+        return len(failed)
+    outcomes = posts.news(rows, result)
+    for outcome in outcomes:
+        fields = {
+            "state": outcome.state,
+            "post_id": outcome.post_id,
+            "post_url": outcome.post_url,
+            "error": outcome.error,
+            "request_id": result.request_id,
+        }
+        if outcome.platform in failed:
+            fields["created_at"] = sent
+        db.record_clip_publish(clip_id, outcome.platform, fields)
     return len(outcomes)
 
 

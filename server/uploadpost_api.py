@@ -482,7 +482,9 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 raise _fail(e) from e
 
             if result.outcomes:
-                service.record_refresh(d, clip_id, result)
+                # With the request's rows, so a platform sent again since
+                # under a newer request keeps that request's row.
+                service.record_refresh(d, clip_id, result, known=rows)
             return _publish_payload(d, clip_id, request_id)
         finally:
             d.close()
@@ -514,17 +516,11 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             except PublishError as e:
                 raise _fail(e) from e
 
-            if result.outcomes:
-                service.record_refresh(d, clip_id, result)
-            else:
-                # Their retry can answer with an acknowledgement rather than
-                # fresh per-platform detail. Put the failed rows back into
-                # flight so the poller picks the real states up.
-                for row in rows:
-                    if row["state"] == "failed":
-                        d.record_clip_publish(
-                            clip_id, row["platform"], {"state": "queued", "error": ""}
-                        )
+            # A re-send of the failed platforms: their clocks start again. Their
+            # retry can answer with an acknowledgement rather than fresh
+            # per-platform detail; then the failed rows go back into flight so
+            # the poller picks the real states up (uploadpost_service.record_retry).
+            service.record_retry(d, clip_id, result, rows)
             return _publish_payload(d, clip_id, request_id)
         finally:
             d.close()

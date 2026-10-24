@@ -621,3 +621,78 @@ def test_missing_links_are_checked_on_their_own_slower_timer(monkeypatch, tmp_pa
 
     assert asked == ["woop", "up"], "one failing does not stop the other; not again within 15 min"
     assert "woopsocial is down" in capsys.readouterr().out
+
+
+# ---- a platform sent again under a newer request -------------------------------
+
+
+def _resent(db, provider, youtube_state):
+    """R1 went to YouTube and TikTok six hours ago; TikTok failed and went
+    again alone as R2 (automation re-sends only the platform that failed)."""
+    _post(db, 1, "youtube", provider=provider, state=youtube_state, request_id="R1",
+          created=NOW - timedelta(hours=6))
+    _post(db, 1, "tiktok", provider=provider, state="failed", request_id="R1",
+          created=NOW - timedelta(hours=6))
+    _post(db, 1, "tiktok", provider=provider, state="processing", request_id="R2",
+          created=NOW - timedelta(hours=1))
+
+
+@pytest.mark.parametrize("service, provider", [(woop, "woopsocial"), (up, "upload_post")])
+@pytest.mark.parametrize("how", ["missing link", "in flight"])
+def test_a_check_of_the_older_request_leaves_the_re_sent_platform_alone(
+        db, tmp_path, monkeypatch, service, provider, how):
+    url = "https://www.youtube.com/shorts/abcdefghijk"
+    asked = _learns(monkeypatch, service, [
+        PlatformOutcome(platform="tiktok", state="failed", error="rate limited"),
+        PlatformOutcome(platform="youtube", state="published", post_id="abcdefghijk", post_url=url),
+    ])
+    if how == "missing link":
+        _resent(db, provider, "published")
+        service.refresh_missing_urls(db, tmp_path, now=NOW)
+    else:
+        _resent(db, provider, "processing")
+        service.refresh_in_flight(db, tmp_path, ids=["R1"], now=NOW)
+
+    assert asked == ["R1"]
+    tiktok = _row(db, 1, "tiktok")
+    assert (tiktok["state"], tiktok["request_id"], tiktok["error"]) == ("processing", "R2", "")
+    assert _row(db, 1, "youtube")["post_url"] == url
+
+
+# ---- an Upload-Post retry is a send ---------------------------------------------
+
+
+def _failed_and_published(db, request_id="R1"):
+    long_ago = datetime.now(timezone.utc) - timedelta(days=20)
+    _up(db, 1, request_id, state="failed", created=long_ago)
+    db.record_clip_publish(1, "tiktok", {
+        "provider": "upload_post", "state": "published", "request_id": request_id})
+    _backdate(db, 1, long_ago)
+    return db.publishes_for_request(request_id)
+
+
+def test_a_retry_starts_the_clock_again_for_the_platform_it_sends_again(db):
+    rows = _failed_and_published(db)
+    before = _row(db, 1, "tiktok")["created_at"]
+
+    up.record_retry(db, 1, FanOutResult(request_id="R1", outcomes=[
+        PlatformOutcome(platform="youtube", state="processing"),
+        PlatformOutcome(platform="tiktok", state="published"),
+    ]), rows)
+
+    assert _row(db, 1, "youtube")["created_at"] > before
+    assert _row(db, 1, "tiktok")["created_at"] == before, "it went out before; not sent again"
+    assert up.due_requests(db, now=datetime.now(timezone.utc) + timedelta(seconds=5),
+                           last_checked={}) == ["R1"]
+
+
+def test_a_retry_with_no_detail_puts_the_failed_one_back_in_flight_from_now(db):
+    rows = _failed_and_published(db)
+    before = _row(db, 1, "tiktok")["created_at"]
+
+    up.record_retry(db, 1, FanOutResult(request_id="R1", outcomes=[]), rows)
+
+    youtube = _row(db, 1, "youtube")
+    assert (youtube["state"], youtube["error"]) == ("queued", "")
+    assert youtube["created_at"] > before
+    assert _row(db, 1, "tiktok")["state"] == "published"

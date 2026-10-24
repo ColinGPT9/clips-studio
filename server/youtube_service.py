@@ -15,7 +15,10 @@ YouTube has no YouTube anything.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
+
+from server import posts
 
 SETTINGS_KEY = "youtube"
 QUOTA_KEY = "youtube_quota"
@@ -271,3 +274,72 @@ def status_payload(db, config: dict, data_dir: Path) -> dict:
 def remember_channel(db, channel: dict | None) -> None:
     """Cache the connected channel so the UI can name it without a quota call."""
     db.set_flag("youtube_channel", json.dumps(channel) if channel else "")
+
+
+# ---- scheduled uploads going live ------------------------------------------
+#
+# A scheduled upload goes up private with a time on it, and YouTube makes it
+# public at that time. The only read-back was in memory a minute after the
+# upload, so here it stayed private for good, and a restart lost even that.
+# These ask a few times after the time (server/posts.py LIVE_CHECK_STEPS), one
+# quota unit each, and the answers live in the uploads row.
+
+#: How long after its time a scheduled upload is still asked about at all.
+LIVE_CHECK_DAYS = 7
+
+
+def due_live_checks(db, now=None, limit: int = 10, *, last_tried: dict | None = None) -> list:
+    """The scheduled uploads due a check that they went live, at most `limit`.
+
+    Uploaded with a time, that time two minutes or more ago and no more than
+    seven days ago, not yet read back public or unlisted, and due by the step
+    schedule (posts.next_live_check). Never-tried first, then the ones tried
+    longest ago, oldest-due among equals: `last_tried` maps clip id to the unix
+    time of its last try, so uploads whose check keeps failing take turns with
+    the rest instead of filling every pass. Entries no longer due are dropped.
+    """
+    current = posts.as_utc(now)
+    tried = last_tried if last_tried is not None else {}
+    rows = db.conn.execute(
+        "SELECT * FROM uploads WHERE publish_at != '' AND state = 'uploaded' "
+        "AND youtube_id != '' AND actual_privacy NOT IN ('public', 'unlisted')"
+    ).fetchall()
+    oldest = current - timedelta(days=LIVE_CHECK_DAYS)
+    due = []
+    for row in rows:
+        at = posts.next_live_check(row)
+        publish_at = posts.due_time(row, now=current)
+        if at is None or at > current or publish_at < oldest:
+            continue
+        due.append((float(tried.get(row["clip_id"], 0.0)), at, row["clip_id"], row))
+    keep = {clip_id for _, _, clip_id, _ in due}
+    for gone in [c for c in tried if c not in keep]:
+        tried.pop(gone, None)
+    due.sort(key=lambda item: item[:3])
+    return [row for *_, row in due[:limit]]
+
+
+def live_check_fields(status: dict, *, checked_at: str) -> dict:
+    """What one check of a scheduled upload writes (StateDB.set_upload_check).
+
+    Always when it was checked. The privacy YouTube reports: public or
+    unlisted is live, still private leaves the next step due. A rejection or a
+    processing failure is the row's state and error, as the read-back after an
+    upload records them. Nothing returned means only the time is written.
+    """
+    fields: dict = {"checked_at": checked_at}
+    if not status:
+        return fields
+    if status.get("privacy"):
+        fields["actual_privacy"] = status["privacy"]
+    if status.get("upload_status") == "rejected":
+        fields["state"] = "rejected"
+        fields["error"] = (
+            f"YouTube rejected this video: {status.get('rejection_reason') or 'unknown'}."
+        )
+    elif status.get("upload_status") == "failed":
+        fields["state"] = "failed"
+        fields["error"] = (
+            f"YouTube could not process this video: {status.get('failure_reason') or 'unknown'}."
+        )
+    return fields

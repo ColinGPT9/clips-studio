@@ -440,7 +440,9 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             except PublishError as e:
                 raise _fail(e) from e
             if result.outcomes:
-                service.record_refresh(d, clip_id, result)
+                # With the request's rows, so a platform sent again since
+                # under a newer request keeps that request's row.
+                service.record_refresh(d, clip_id, result, known=rows)
             return _payload(d, clip_id, post_id)
         finally:
             d.close()

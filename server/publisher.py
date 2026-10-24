@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from core.state import StateDB
+from server import posts
 from server import youtube_service as service
 from server.events import broadcaster
 
@@ -53,6 +54,10 @@ class PublishWorker(threading.Thread):
         # memory only: after a restart each due request is asked once and its
         # cadence carries on (uploadpost_service.due_requests).
         self._uploadpost_checked: dict[str, float] = {}
+        # When to next look for scheduled YouTube uploads whose time came, and
+        # clip id -> unix time each was last tried (youtube_service.due_live_checks).
+        self._next_youtube_check = 0.0
+        self._youtube_tried: dict[int, float] = {}
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -77,6 +82,7 @@ class PublishWorker(threading.Thread):
                 self._run_due_verifications(db)
                 self._refresh_provider_posts(db)
                 self._refresh_missing_urls(db)
+                self._check_scheduled_youtube(db)
                 job = db.claim_next_publish_job()
                 if job is None:
                     self._wake.wait(timeout=2.0)
@@ -197,6 +203,54 @@ class PublishWorker(threading.Thread):
                     print(f"  {name} links: {out['updated']} post(s) updated.")
             except Exception as e:
                 print(f"  Could not check {name} links: {e}")
+
+    #: How often to look for scheduled YouTube uploads whose time has come.
+    YOUTUBE_LIVE_CHECK_SECONDS = 10 * 60
+
+    def _check_scheduled_youtube(self, db: StateDB, *, now=None) -> None:
+        """Ask YouTube whether scheduled uploads went live once their time came.
+
+        A scheduled upload goes up private, and the only read-back was the one
+        a minute after the upload, in memory, so here it stayed private for
+        good. Each one is asked a few times after its time, one quota unit
+        each (youtube_service.due_live_checks), through the channel it went up
+        on. Contained and quiet like the provider checks: a read must never
+        disturb the uploads this worker is here to run.
+        """
+        mono = time.monotonic()
+        if mono < getattr(self, "_next_youtube_check", 0.0):
+            return
+        self._next_youtube_check = mono + self.YOUTUBE_LIVE_CHECK_SECONDS
+        try:
+            if not service.is_enabled(db):
+                return
+            tried = getattr(self, "_youtube_tried", None)
+            if tried is None:
+                tried = self._youtube_tried = {}
+            current = posts.as_utc(now)
+            stamp = current.isoformat().replace("+00:00", "Z")
+            unreachable = 0
+            for row in service.due_live_checks(db, current, last_tried=tried):
+                clip_id, video_id = row["clip_id"], row["youtube_id"]
+                tried[clip_id] = current.timestamp()
+                try:
+                    publisher = service.make_publisher(
+                        self.config, self.data_dir, channel_id=row["channel_id"] or None
+                    )
+                    status = publisher.video_status(video_id)
+                except Exception:
+                    # Not counted as a check: the next pass tries it again.
+                    unreachable += 1
+                    continue
+                fields = service.live_check_fields(status, checked_at=stamp)
+                db.set_upload_check(clip_id, **fields)
+                if fields.get("state") in ("rejected", "failed"):
+                    self._emit(0, clip_id, phase="checked", fraction=1.0, message=fields["error"],
+                               terminal="checked", state=fields["state"], youtube_id=video_id)
+            if unreachable:
+                print(f"  Could not check {unreachable} scheduled YouTube upload(s).")
+        except Exception as e:
+            print(f"  Could not check scheduled YouTube uploads: {e}")
 
     # ---- one job ---------------------------------------------------------
 

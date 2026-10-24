@@ -22,7 +22,10 @@ export type UploadPostStatus = {
 }
 
 /** sending | queued | processing | published | failed | skipped. 'sending' is
- *  written before the request goes out, by background publishing only. */
+ *  written before the request goes out, by background publishing only.
+ *  scheduled | checking | private come only from a direct YouTube upload
+ *  (GET /clips/{id}/posts): not live yet, past its time but not yet read back
+ *  as public, and still not public after the last check. */
 export type PublishState =
   | 'sending'
   | 'queued'
@@ -30,16 +33,25 @@ export type PublishState =
   | 'published'
   | 'failed'
   | 'skipped'
+  | 'scheduled'
+  | 'checking'
+  | 'private'
 
 export type PlatformRow = {
   clip_id: number
   platform: string
+  /** As the engine writes it: 'upload_post', 'woopsocial', or 'youtube' for a
+   *  direct upload. rowProvider() turns it into the panel's name. */
   provider: string
   state: PublishState
   post_id: string
   post_url: string
   error: string
   request_id: string
+  /** When the post is due (UTC), '' for straight away. */
+  scheduled_for: string
+  /** Published with a link to open. Only on GET /clips/{id}/posts rows. */
+  live?: boolean
   created_at: string
   updated_at: string
 }
@@ -156,6 +168,12 @@ export function describeState(row: PlatformRow): string {
       return 'Processing'
     case 'sending':
       return 'Sending'
+    case 'scheduled':
+      return 'Scheduled'
+    case 'checking':
+      return 'Checking it went live'
+    case 'private':
+      return row.error || 'Private'
     default:
       return 'Queued'
   }
@@ -198,4 +216,43 @@ export function platformsFor(provider: Provider): typeof PLATFORMS {
 export const PROVIDER_LABEL: Record<Provider, string> = {
   uploadpost: 'Upload-Post',
   woopsocial: 'WoopSocial'
+}
+
+/** Which way a row's post went, in the panel's names: the engine writes
+ *  'upload_post' where the panel says 'uploadpost'. 'youtube' is a direct
+ *  upload; '' a row that does not say. */
+export function rowProvider(row: Pick<PlatformRow, 'provider'>): Provider | 'youtube' | '' {
+  switch (row.provider) {
+    case 'upload_post':
+      return 'uploadpost'
+    case 'woopsocial':
+      return 'woopsocial'
+    case 'youtube':
+      return 'youtube'
+    default:
+      return ''
+  }
+}
+
+/** Rows a publish, refresh or retry answered with, put in what the panel
+ *  shows. Those answers carry only this clip's provider rows, so the direct
+ *  YouTube upload (another table) and posts found by the clip's window stay.
+ *  A provider row is one per clip and platform, so a fresh one replaces the
+ *  shown row of its clip and platform whichever provider that was, and the
+ *  same provider's row for that platform. */
+export function mergeRows(shown: PlatformRow[], fresh: PlatformRow[]): PlatformRow[] {
+  const stale = (r: PlatformRow): boolean =>
+    r.provider !== 'youtube' &&
+    fresh.some((f) => f.platform === r.platform && (f.provider === r.provider || f.clip_id === r.clip_id))
+  return [...fresh, ...shown.filter((r) => !stale(r))].sort(
+    (a, b) => a.platform.localeCompare(b.platform) || a.provider.localeCompare(b.provider)
+  )
+}
+
+/** A post still on its way and already due, so worth asking about now. One
+ *  scheduled ahead has nothing to tell yet. */
+export function stillOnItsWay(row: PlatformRow, now: number = Date.now()): boolean {
+  if (row.state !== 'queued' && row.state !== 'processing') return false
+  const due = row.scheduled_for ? Date.parse(row.scheduled_for) : NaN
+  return Number.isNaN(due) || due <= now
 }

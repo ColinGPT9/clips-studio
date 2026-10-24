@@ -670,6 +670,13 @@ const EXTERNAL_ALLOWED = [
   // embedded webview with disallowed_useragent, and offers no way to opt out.
   /^https:\/\/accounts\.google\.com\//,
   /^https:\/\/www\.youtube\.com\/watch\?v=/,
+  // A short uploaded straight to YouTube links to its Shorts page.
+  /^https:\/\/(www\.|m\.)?youtube\.com\/shorts\/[\w-]{11}$/,
+  // Discord: a campaign's submission channel (or a message in it), opened
+  // for the user to submit there, and Discord's own sign-in page. Never
+  // discord.com/api/: a webhook's URL carries its token.
+  /^https:\/\/discord\.com\/channels\/\d{17,20}(\/\d{17,20}){0,2}$/,
+  /^https:\/\/discord\.com\/oauth2\/authorize\?/,
   // A watched channel's videos, opened from the Watch page.
   /^https:\/\/www\.twitch\.tv\/videos\/\d+$/,
   /^https:\/\/kick\.com\/[\w-]+\/videos\/[0-9a-fA-F-]{36}$/,

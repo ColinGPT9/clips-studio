@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-197 routes: **60 stable**, **25 experimental**, 112 internal.
+198 routes: **60 stable**, **25 experimental**, 113 internal.
 
 | Label | Promise |
 |---|---|
@@ -190,7 +190,7 @@ Everything else. Grouped by the first part of the path; the module is where it i
 | `/agent` | `POST /agent/chat`<br>`GET /agent/status` | `server.api` |
 | `/ai` | `GET /ai/providers/{provider_id}/callback/{state}`<br>`POST /ai/providers/{provider_id}/connect`<br>`POST /ai/providers/{provider_id}/stt-check`<br>`GET /ai/signin/{provider_id}`<br>`POST /ai/signin/{provider_id}/automation`<br>`POST /ai/signin/{provider_id}/cancel`<br>`GET /ai/signin/{provider_id}/models`<br>`POST /ai/signin/{provider_id}/sign-out`<br>`POST /ai/signin/{provider_id}/start`<br>`POST /ai/signin/{provider_id}/test` | `server.ai_api` |
 | `/branding` | `GET /branding`<br>`POST /branding`<br>`POST /branding/asset`<br>`GET /branding/asset/{name}`<br>`DELETE /branding/{profile_id}`<br>`PUT /branding/{profile_id}` | `server.api` |
-| `/clips` | `DELETE /clips/{clip_id}`<br>`POST /clips/{clip_id}/ai-edit`<br>`PUT /clips/{clip_id}/captions`<br>`GET /clips/{clip_id}/creator-gaming-layout`<br>`PUT /clips/{clip_id}/creator-gaming-layout`<br>`GET /clips/{clip_id}/frame`<br>`GET /clips/{clip_id}/glossary`<br>`POST /clips/{clip_id}/glossary`<br>`GET /clips/{clip_id}/panels`<br>`GET /clips/{clip_id}/people`<br>`POST /clips/{clip_id}/preview`<br>`POST /clips/{clip_id}/render`<br>`GET /clips/{clip_id}/snap`<br>`GET /clips/{clip_id}/source-frame`<br>`POST /clips/{clip_id}/tighten`<br>`GET /clips/{clip_id}/translations`<br>`DELETE /clips/{clip_id}/translations/{language}`<br>`PUT /clips/{clip_id}/translations/{language}` | `server.api`, `server.youtube_api` |
+| `/clips` | `DELETE /clips/{clip_id}`<br>`POST /clips/{clip_id}/ai-edit`<br>`PUT /clips/{clip_id}/captions`<br>`GET /clips/{clip_id}/creator-gaming-layout`<br>`PUT /clips/{clip_id}/creator-gaming-layout`<br>`GET /clips/{clip_id}/frame`<br>`GET /clips/{clip_id}/glossary`<br>`POST /clips/{clip_id}/glossary`<br>`GET /clips/{clip_id}/panels`<br>`GET /clips/{clip_id}/people`<br>`GET /clips/{clip_id}/posts`<br>`POST /clips/{clip_id}/preview`<br>`POST /clips/{clip_id}/render`<br>`GET /clips/{clip_id}/snap`<br>`GET /clips/{clip_id}/source-frame`<br>`POST /clips/{clip_id}/tighten`<br>`GET /clips/{clip_id}/translations`<br>`DELETE /clips/{clip_id}/translations/{language}`<br>`PUT /clips/{clip_id}/translations/{language}` | `server.api`, `server.posts_api`, `server.youtube_api` |
 | `/creators` | `GET /creators`<br>`POST /creators/merge`<br>`POST /creators/split/{account_id}`<br>`DELETE /creators/{creator_id}`<br>`GET /creators/{creator_id}`<br>`POST /creators/{creator_id}/accounts`<br>`POST /creators/{creator_id}/branding`<br>`DELETE /creators/{creator_id}/knowledge`<br>`DELETE /creators/{creator_id}/knowledge/{knowledge_id}`<br>`POST /creators/{creator_id}/learning`<br>`DELETE /creators/{creator_id}/memory` | `server.api` |
 | `/feedback` | `GET /feedback/diagnostics`<br>`POST /feedback/submit` | `server.api` |
 | `/jobs` | `POST /jobs/{job_id}/move` | `server.api` |

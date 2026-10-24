@@ -1155,6 +1155,24 @@ class StateDB:
             "SELECT * FROM uploads WHERE clip_id = ?", (clip_id,)
         ).fetchone()
 
+    def set_upload_check(self, clip_id: int, *, checked_at: str, actual_privacy: str | None = None,
+                         state: str | None = None, error: str | None = None) -> None:
+        """Write what reading an upload back from YouTube found, and nothing
+        else: a field left None is left as it is.
+
+        A plain UPDATE, not record_publish, which stamps uploaded_at afresh and
+        would make a video uploaded on Monday read as uploaded at the check.
+        """
+        fields = {"checked_at": checked_at}
+        for name, value in (("actual_privacy", actual_privacy), ("state", state), ("error", error)):
+            if value is not None:
+                fields[name] = value
+        sets = ", ".join(f"{name} = ?" for name in fields)
+        self.conn.execute(
+            f"UPDATE uploads SET {sets} WHERE clip_id = ?", (*fields.values(), clip_id)
+        )
+        self.conn.commit()
+
     def recent_uploads(self, limit: int = 50) -> list[sqlite3.Row]:
         return self.conn.execute(
             "SELECT u.*, c.hook FROM uploads u LEFT JOIN clips c ON c.id = u.clip_id "

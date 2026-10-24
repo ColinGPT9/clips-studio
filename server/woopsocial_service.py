@@ -182,7 +182,8 @@ def record_refresh(db, clip_id: int, result, *, known=None) -> int:
     identity, caption or time: those describe the post that went out.
 
     With `known`, the request's rows as stored, an outcome that only repeats
-    its row is not written (server/posts.py news). Returns how many were.
+    its row is not written, nor one for a platform sent again since under a
+    newer request (server/posts.py news). Returns how many were.
     """
     outcomes = result.outcomes if known is None else posts.news(known, result)
     for outcome in outcomes:
