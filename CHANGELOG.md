@@ -48,11 +48,6 @@ Kitty after you change it.
   fade, and the crop kept the wide shot's framing over it until the "fade" ended.
 - A basketball close-up no longer slides off the player onto a fan or the empty seats at
   the side of the picture.
-
----
-
-### Fixed
-
 - **Clips no longer open with a black moment on Reels, TikTok, Shorts and other apps,**
   and story reels no longer flash a frame of the end card between moments.
 
