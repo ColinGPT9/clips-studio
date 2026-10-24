@@ -25,6 +25,7 @@ import {
 } from '../lib/i18n'
 import AICard from '../components/AICard'
 import UploadPostCard from '../components/UploadPostCard'
+import DiscordCard from '../components/DiscordCard'
 import WoopSocialCard from '../components/WoopSocialCard'
 import YouTubeCard from '../components/YouTubeCard'
 import RemoteRenderCard from '../components/RemoteRenderCard'
@@ -796,6 +797,9 @@ export default function Settings(): JSX.Element {
       <WoopSocialCard />
       <YouTubeCard />
       <UploadPostCard />
+      {/* Clipping campaigns: submitting the posts above to Discord
+          communities. After the publishers, since it follows them. */}
+      <DiscordCard />
 
       {/* For the few with more than one PC, near the bottom: most people
           never need it, and nothing it controls shows anywhere else until

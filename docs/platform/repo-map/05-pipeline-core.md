@@ -109,7 +109,7 @@ Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot
 - `set_active(video_id)`, `active_video()`, `request_cancel(video_id)`, `is_cancelled(video_id)`, `check(video_id)` (raise at stage boundaries), `check_active()` (raise if the running video is cancelled, for deep code without a video id), `clear(video_id)`, `wait(thread, timeout=None, video_id=None)` (a join that aborts on cancel), `run(cmd)` (a Popen that kills the process on cancel) (`core/cancel.py:19-122`).
 - `class CancelledError(Exception)` (`:36`).
 - Pipeline check points: `cancel.clear` at start (`core/pipeline.py:231`); `cancel.check` after download (`:305`) and after transcription (`:422`); `cancel.wait` on the prepass threads (`:428-431`); `cancel.check_active()` on every completed render future (`:650`) and on entry to `_render_files` (`:1147`). Inside stages: transcriber loop (`transcription/transcriber.py`, test at `tests/test_cancel.py:84-113`), LLM chunk loop (`analysis/highlights.py`, test `:215-238`), rerank batches (`analysis/fusion.py:632`), yt-dlp progress hook (`sources/ytdlp_common.py:34-36`).
-- HTTP: `POST /cancel {video_id | url}` -> `cancel.request_cancel(vid)` (`server/api.py:1207-1220`).
+- HTTP: `POST /cancel {video_id | url}` -> `cancel.request_cancel(vid)` (`server/api.py:1213-1226`).
 - The worker converts `CancelledError` to job status `cancelled` (`server/jobs.py:299-302`).
 - A cancel flag is sticky until `clear()`; the worker clears it at job start (`server/jobs.py:174-181`).
 
@@ -145,7 +145,7 @@ Longform emits the same stage names (`longform/process.py:57-216`).
 `Worker.progress_snapshot(job_id) -> {stage, label, percent, eta_seconds, elapsed_seconds} | None` (`:347-366`); ETA only above 6 %.
 
 ### 5.4 Fan-out
-`server/events.py:Broadcaster.publish(event)` is thread-safe (`call_soon_threadsafe`), subscribers are asyncio queues (maxsize 200, drops on full) (`server/events.py:11-41`); `GET /ws` streams them (`server/api.py:1434-1445`). Event types published by the worker: `progress`, `job` (`job_id, job_type, status, title, remaining, video_id?, clips?, error?`), `queue` (`server/jobs.py:131-134, 165-166, 368-396`). Webhook: when `payload["webhook_url"]` is set, `webhooks.deliver(url, webhooks.body_for(event), secret)` on every terminal state (`:398-413`).
+`server/events.py:Broadcaster.publish(event)` is thread-safe (`call_soon_threadsafe`), subscribers are asyncio queues (maxsize 200, drops on full) (`server/events.py:11-41`); `GET /ws` streams them (`server/api.py:1440-1451`). Event types published by the worker: `progress`, `job` (`job_id, job_type, status, title, remaining, video_id?, clips?, error?`), `queue` (`server/jobs.py:131-134, 165-166, 368-396`). Webhook: when `payload["webhook_url"]` is set, `webhooks.deliver(url, webhooks.body_for(event), secret)` on every terminal state (`:398-413`).
 
 Tests: `tests/test_job_progress.py` (weights, monotonic, ETA, render label).
 
@@ -253,7 +253,7 @@ In the DB: the `clips` row written by `_register_clip` (`core/pipeline.py:1582-1
 `render_opts` keys written by `_render_files` (`core/pipeline.py:1456-1481`) and read back on re-render: `captions`, `caption_style`, `caption_lines`, `crop` (`track|center|letterbox|bias_left|bias_right`), `filter`, `adjust`, `edit` (`video_editor.timeline.EditList`), `watermark`, `speaker_edits`, `speaker_turns`, `normalize_audio`, `podcast`, `vertical_live`, `gaming` (dict), `sport`, `profile` (longform), `reel`.
 
 ### 9.4 The run log
-`server/feedback.py`: `install_log_capture()` wraps `sys.stdout`/`sys.stderr` in `_Tee` (`:75-80`), called in `create_app` (`server/api.py:575`). `_Tee.write` appends each line to a 400-line ring (`_LOG_LINES`, `:36-37`) and, when a job sink is open, writes and flushes it to the file (`:47-69`). `open_job_log(path)` opens `data/logs/job_<id>.log` in append mode (`:83-104`); `close_job_log()` closes it (`:107-113`); `recent_log(lines)` returns the ring (`:116-119`). The pipeline "logs" by `print()`. `GET /jobs/{id}/log?tail=300` reads the file (`server/api.py:1187-1205`).
+`server/feedback.py`: `install_log_capture()` wraps `sys.stdout`/`sys.stderr` in `_Tee` (`:75-80`), called in `create_app` (`server/api.py:575`). `_Tee.write` appends each line to a 400-line ring (`_LOG_LINES`, `:36-37`) and, when a job sink is open, writes and flushes it to the file (`:47-69`). `open_job_log(path)` opens `data/logs/job_<id>.log` in append mode (`:83-104`); `close_job_log()` closes it (`:107-113`); `recent_log(lines)` returns the ring (`:116-119`). The pipeline "logs" by `print()`. `GET /jobs/{id}/log?tail=300` reads the file (`server/api.py:1193-1211`).
 
 ---
 
@@ -285,7 +285,7 @@ In the DB: the `clips` row written by `_register_clip` (`core/pipeline.py:1582-1
 - Preflight (`core/preflight.py:run(config) -> Preflight`): checks `ffmpeg`, `ffprobe`, `ollama` + `model` (or `ai` for cloud), `whisper` (or `transcription` for cloud), `gpu`, `disk` (`MIN_FREE_GB = 20`); `Check(name, ok, detail, fix, blocking)`; `Preflight.ready` ignores non-blocking checks (`:30-52`, `:306-331`). Exposed at `GET /health/preflight` (`server/api.py:718`).
 - CPU sharing: `_share_the_cpu(workers)` sets OpenCV and torch threads to `(cores-2)//workers`, latched once per process (`core/pipeline.py:66-106`).
 - Concurrency: one worker thread; renders in a `ThreadPoolExecutor(max_workers=video.parallel_renders)` (`:584`, `:637`); SQLite writes stay on the worker thread (`:580-582`); prefetch of the next download in one background thread (`core/prefetch.py`, join timeout 20 min, `:23-25`, `:76-105`).
-- Housekeeping: `core/housekeeping.py:survey(db, data_dir)`, `clean(db, data_dir)`, `orphan_clip_dirs` (`:33, :102, :129`); endpoints `GET /storage`, `POST /storage/cleanup` (`server/api.py:1248, 1330`).
+- Housekeeping: `core/housekeeping.py:survey(db, data_dir)`, `clean(db, data_dir)`, `orphan_clip_dirs` (`:33, :102, :129`); endpoints `GET /storage`, `POST /storage/cleanup` (`server/api.py:1254, 1336`).
 
 ---
 
@@ -322,7 +322,7 @@ It returns the finished MP4 path and the `render_opts` JSON to persist.
 
 | Capability | Python import | HTTP | CLI | MCP (`server/mcp.py`) |
 |---|---|---|---|---|
-| Run the full pipeline on one URL | `core.pipeline.process_video(url, config, db, force)` | `POST /jobs` (`server/api.py:809`), `POST /jobs/batch` (`:1124`), `POST /videos/local` (`:873`) | `python main.py process <url> [--force]` (`main.py:149, 203`) | `queue_video`, `queue_local_file` (`server/mcp.py:953, 1098`) |
+| Run the full pipeline on one URL | `core.pipeline.process_video(url, config, db, force)` | `POST /jobs` (`server/api.py:815`), `POST /jobs/batch` (`:1130`), `POST /videos/local` (`:879`) | `python main.py process <url> [--force]` (`main.py:149, 203`) | `queue_video`, `queue_local_file` (`server/mcp.py:953, 1098`) |
 | Queue control | `core.queue.*` | `GET /queue`, `POST /queue/pause|resume|clear`, `POST /jobs/{id}/move|retry`, `DELETE /jobs/{id}`, `GET /jobs`, `GET /jobs/{id}` (`:977-1118`) | | `queue_status`, `job_status` (`:1150, 1139`) |
 | Progress | `core.progress.set_handler` | `GET /ws` events; `GET /jobs/{id}` (snapshot, inferred from `progress_snapshot`); webhooks (`payload.webhook_url`) | stdout | |
 | Cancel | `core.cancel.request_cancel(video_id)` | `POST /cancel` (`:1201`) | Ctrl+C | |
@@ -344,7 +344,7 @@ Existing docs: `docs/API.md` (the HTTP surface, with a "Supported and internal" 
 
 1. Should the plugin contract be at `find_clips` (replace detection wholesale) or at the profile objects it already accepts (`gaming=`, `sport=`, `intent=`), which are duck-typed and undocumented (`analysis/fusion.py:63-68`)?
 2. `_render_files` and `_register_clip` are underscore-private but are imported by `longform/process.py:36-38`, `server/jobs.py:783`, `remote_render/worker.py:366`. Promoting them to public names is a rename, not a redesign; is that in scope?
-3. `render_opts` has no schema (dict with ~20 keys, `core/pipeline.py:1456-1481`); the API cleans only `gaming` (`server/api.py:1698`, `core/modes.py:clean_gaming`). A plugin writing render options needs a typed contract.
+3. `render_opts` has no schema (dict with ~20 keys, `core/pipeline.py:1456-1481`); the API cleans only `gaming` (`server/api.py:1704`, `core/modes.py:clean_gaming`). A plugin writing render options needs a typed contract.
 4. No schema version in `core/state.py`; plugins that need their own tables have no migration hook (inferred).
 5. Progress stage names are a closed set folded by `server/jobs.py:_STAGES` and mirrored in the UI; a plugin stage would need a registration path or it is silently ignored (`server/jobs.py:325-326`).
 6. The worker holds one config dict and deep-copies per job (`server/jobs.py:189-196`); plugin settings would ride in `jobs.payload` (per job) or `settings.yaml` (global); which?

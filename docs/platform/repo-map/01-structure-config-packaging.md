@@ -160,7 +160,7 @@ website's download buttons name the version").
   backend: 'ollama/gemma:7b', data_dir}`.
 * The server gets `create_app(config, settings_path)` (`server/api.py:572`) and keeps
   the dict in memory for the process lifetime; the `/settings` PATCH says "restart serve
-  to apply pipeline-level changes" (`server/api.py:3026`).
+  to apply pipeline-level changes" (`server/api.py:3032`).
 
 ### 5.2 `config/settings.yaml` top-level sections (whole file read)
 
@@ -196,10 +196,10 @@ prompts ("Prompts are data, not code", `ARCHITECTURE.md:1021-1025`).
 There is no generic "save config" function. Every writer does a **regex rewrite of
 the YAML text** to preserve the user's comments:
 * `llm/manager.py:192-201` `switch_model(settings_path, tag)` rewrites the `model:` line.
-* `server/api.py:2961-3026` `PATCH /settings` rewrites `model`, `channel`, `auto_upload`,
+* `server/api.py:2967-3032` `PATCH /settings` rewrites `model`, `channel`, `auto_upload`,
   `privacy`, `content_language` (top-level, anchored at column 0) and the nested
   `llm.translation_model`, `clips.outro`, `clips.min_score` (inserting a line under
-  `clips:` if missing). `GET /settings` (`server/api.py:2946`) returns only those eight.
+  `clips:` if missing). `GET /settings` (`server/api.py:2952`) returns only those eight.
 * `server/ai_api.py:92-101` `write_transcription()` replaces or appends the whole
   `transcription:` block.
 * `core/queue.py:238` `update_settings(db, job_id, payload)` is per-job options in
@@ -304,7 +304,7 @@ the feature instead of crashing (`ARCHITECTURE.md:1049-1053`).
   400-line ring (`_LOG_LINES = 400`, lines truncated to 500 chars) and, while a job runs,
   appends to that job's file. `server/jobs.py:150-152`: `data/logs/job_<id>.log`, path
   stored on the job row (`core/state.py:582` `log_path` column), served by
-  `GET /jobs/{id}/log` (`server/api.py:1198`, `docs/API.md:389`), pruned to the newest
+  `GET /jobs/{id}/log` (`server/api.py:1204`, `docs/API.md:389`), pruned to the newest
   50 (`server/jobs.py:31` `_KEEP_LOGS = 50`).
 * In a **packaged** build the engine's stdout is discarded by Electron (`stdio:
   'ignore'`), so the per-job files and the ring are the only persistent engine logs;
@@ -613,7 +613,7 @@ in-process, all compiled into the freeze):
 | Completion callback | webhook POST signed with HMAC | `server/webhooks.py` | HTTP |
 | Results | `GET /videos`, `GET /videos/{id}/clips` (scores breakdown), `GET /media/{clip_id}`, captions/words endpoints, `POST /clips/{id}/export`, `POST /export/batch` | `server/api.py` | HTTP |
 | Readiness / environment | `GET /health` (`app_version`, `api_version`), `GET /health/preflight`, `GET /system/stats` (GPU, disk) | `server/api.py:711-740`, `core/preflight.py` | HTTP |
-| Job logs | `GET /jobs/{id}/log`, files `data/logs/job_N.log` | `server/api.py:1198`, `server/jobs.py:150` | HTTP / file |
+| Job logs | `GET /jobs/{id}/log`, files `data/logs/job_N.log` | `server/api.py:1204`, `server/jobs.py:150` | HTTP / file |
 | FFmpeg / ffprobe | bundled binaries path | `core/binaries.py` `ffmpeg()`, `ffprobe()` | python import; `CLIPS_STUDIO_FFMPEG` env for overrides; **not** exposed over HTTP |
 | Ollama runtime | bundled `ollama.exe` on `127.0.0.1:11435` (packaged) / `11434` (dev); model list/pull/activate/delete over the API | `ui/src/main/index.ts`; `GET /models`, `POST /models/pull`, `POST /models/activate`, `DELETE /models/{tag}` | HTTP (model mgmt); Ollama's own HTTP API on the port (inferred: it is a plain Ollama server) |
 | LLM (local or cloud, user's key) | `create_backend(config["llm"])` → `generate/chat/look`; `/ai` routes for provider/key/model management | `llm/registry.py`, `llm/base.py`, `server/ai_api.py` | python import; HTTP for management only (no "run a prompt" endpoint seen; `POST /agent/chat` is the assistant, `server/agent.py`) |
@@ -622,7 +622,7 @@ in-process, all compiled into the freeze):
 | GPU info / encoder choice | `video/encoding.py` auto-detect; `GET /system/stats` gpu | `video/encoding.py`, `server/api.py` | python import; HTTP (read-only) |
 | Data dir / library DB | `resolve_data_dir(config)`, `StateDB(data_dir/"state.db")` | `core/paths.py`, `core/state.py` | python import (internal; `PROJECTS.md` says do not read the DB/data folder directly) |
 | Secrets storage | `core.secrets.save/load/wipe(data_dir, name, dict)` DPAPI-backed | `core/secrets.py` | python import |
-| Settings | `GET/PATCH /settings` (8 keys); YAML regex writers | `server/api.py:2946-3026` | HTTP (subset) |
+| Settings | `GET/PATCH /settings` (8 keys); YAML regex writers | `server/api.py:2952-3032` | HTTP (subset) |
 | Config knowledge data | prompts, `gaming.yaml`, `sports.yaml`, `layouts.json` | `config/`, `gaming/` | file (bundled, read-only when frozen) |
 | Publishing | YouTube / Upload-Post / WoopSocial routes; `Publisher` ABC | `server/youtube_api.py`, `server/uploadpost_api.py`, `server/woopsocial_api.py`, `publish/base.py` | HTTP; python import |
 | Streams hand-over | `POST /integrations/streams` + presets | `server/integrations.py` | HTTP (supported) |
@@ -646,7 +646,7 @@ in-process, all compiled into the freeze):
 * The remote-render worker is a working out-of-process execution precedent with an allow-listed config slice and a stable `PROTOCOL` (`remote_render/protocol.py:16-27`; `remote_render/worker.py:82-87`).
 
 **Needs abstraction**
-* Settings persistence is five regex rewriters of YAML text with no schema or generic read/write; a plugin settings surface needs one (`server/api.py:2961-3026`; `llm/manager.py:192-201`; `server/ai_api.py:92-101`).
+* Settings persistence is five regex rewriters of YAML text with no schema or generic read/write; a plugin settings surface needs one (`server/api.py:2967-3032`; `llm/manager.py:192-201`; `server/ai_api.py:92-101`).
 * "Which Whisper/FFmpeg/Ollama/weights do I have" is only reachable by Python import (`core/binaries.py`) and `GET /health/preflight`; an SDK capability API must wrap it (`core/binaries.py`; `core/preflight.py`).
 * The in-process registries (`SPORTS`, `PROVIDERS`, `PROFILES`, `dispatch.py` branches) are hard-coded dicts with no discovery step; a plugin registration layer must sit beside them without replacing them (`sports/__init__.py:26`; `llm/providers/catalog.py:144`; `longform/profiles.py`; `sources/dispatch.py`).
 * Transcription and LLM calls exist only as Python functions, not as HTTP capabilities a separate-process plugin could call (`transcription/transcriber.py`; `llm/registry.py`).

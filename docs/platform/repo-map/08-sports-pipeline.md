@@ -243,7 +243,7 @@ Job config keys: `config["clips"]["sport"]`, `config["clips"]["min_duration"/"ma
 What already looks like a plugin system:
 - A registry keyed by id -> module path, lazy-imported (`sports/__init__.py:24,170`).
 - A documented, mostly data-driven contract (`SportProfile` + 6 optional module hooks), where every hook is optional except `profile()` and failures degrade gracefully (section 8).
-- The engine never imports `sports.soccer` / `sports.basketball` by name: `core/pipeline.py`, `analysis/fusion.py`, `server/api.py` import only `sports` and `sports.core.*` (`analysis/fusion.py:35-41`, `core/pipeline.py:898,910,922,939,1001,1555`, `server/api.py:483,2940`). `analysis/fusion.py:35-41` even tolerates the whole `sports` package being absent (`sport_clips = sport_detect = sport_select = None`), and `GET /sports` returns `[]` on ImportError (`server/api.py:2939-2943`).
+- The engine never imports `sports.soccer` / `sports.basketball` by name: `core/pipeline.py`, `analysis/fusion.py`, `server/api.py` import only `sports` and `sports.core.*` (`analysis/fusion.py:35-41`, `core/pipeline.py:898,910,922,939,1001,1555`, `server/api.py:483,2946`). `analysis/fusion.py:35-41` even tolerates the whole `sports` package being absent (`sport_clips = sport_detect = sport_select = None`), and `GET /sports` returns `[]` on ImportError (`server/api.py:2945-2949`).
 - The UI is data-driven from `GET /sports` for the sport list, highlights, periods and footage (`ui/src/renderer/src/lib/sports.ts:5-46`, `SportFields.tsx:28-80`).
 - Tests show a sport can be swapped by monkeypatching `sports.profile_for` / `sports.framing` / `pipeline.MatchReading` (`tests/test_sports_pipeline.py:85,201,271,301`).
 

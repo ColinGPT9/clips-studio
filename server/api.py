@@ -782,7 +782,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     # that change what is installed need the desktop app's session secret.
     from plugins import api as plugins_api
 
-    plugins_api.install(app, data_dir=data_dir, config=config, app_version=app_version)
+    session_secret = plugins_api.install(app, data_dir=data_dir, config=config, app_version=app_version)
+
+    # Settings → Discord (campaigns/): sign-in and webhook destinations for
+    # clipping campaigns. Its changing routes take the same session secret.
+    from server import discord_api
+
+    discord_api.install(app, db=db, data_dir=data_dir, session_secret=session_secret)
 
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.

@@ -46,7 +46,7 @@ export function takeMarketplaceTab(): MarketplaceTab | null {
 
 let secret: Promise<string> | null = null
 
-function sessionSecret(): Promise<string> {
+export function sessionSecret(): Promise<string> {
   secret ??= (window.studio?.pluginSession?.() ?? Promise.resolve('')).catch(() => '')
   return secret
 }
