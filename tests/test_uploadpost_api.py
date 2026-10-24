@@ -718,6 +718,41 @@ def test_a_spaced_batch_records_each_posts_time_and_caption(client, monkeypatch,
     assert {r["visibility"] for r in rows.values()} == {"private"}
 
 
+def test_a_status_check_changes_only_what_it_learned(client, monkeypatch, tmp_path):
+    """The panel's refresh is a status check: the row may hang off a clip
+    trimmed since, and the post it describes did not move with it."""
+    _enable(client)
+    clip_id = _a_rendered_clip(client, tmp_path)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    d = StateDB(client.db_path)
+    d.record_clip_publish(clip_id, "youtube", {
+        "provider": "upload_post", "video_id": "vid1", "start_s": 0, "end_s": 10,
+        "state": "queued", "request_id": "req-7", "caption": "As sent",
+        "visibility": "unlisted", "scheduled_for": "2026-10-02T09:00:00Z",
+    })
+    d.conn.execute("UPDATE clips SET start_s = 2, title = 'New title' WHERE id = ?", (clip_id,))
+    d.conn.commit()
+    d.close()
+
+    from publish import uploadpost as up
+
+    monkeypatch.setattr(
+        up.UploadPostPublisher, "check",
+        lambda self, request_id: up.FanOutResult(request_id=request_id, outcomes=[
+            up.PlatformOutcome(platform="youtube", state="published", post_id="abcdefghijk",
+                               post_url="https://www.youtube.com/shorts/abcdefghijk")]),
+    )
+    got = client.post("/uploadpost/refresh/req-7")
+
+    assert got.status_code == 200
+    row = _rows(client)["youtube"]
+    assert (row["state"], row["post_url"]) == (
+        "published", "https://www.youtube.com/shorts/abcdefghijk")
+    assert (row["start_s"], row["caption"], row["visibility"], row["scheduled_for"]) == (
+        0, "As sent", "unlisted", "2026-10-02T09:00:00Z")
+
+
 def test_a_retry_changes_only_what_it_learned(client, monkeypatch, tmp_path):
     _enable(client)
     clip_id = _a_rendered_clip(client, tmp_path)

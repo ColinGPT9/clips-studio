@@ -152,10 +152,14 @@ def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "",
     due ('' for now, or a time Upload-Post picks from its queue), the text
     that went out and the visibility asked for. `caption` and `visibility`
     may be one value or {platform: value}. Status checks use record_refresh.
+    This is a send, so the row's clock starts again (created_at): a clip sent
+    again to a platform is due from this send, not the first one.
     """
+    sent = posts.sent_stamp()
     for outcome in result.outcomes:
         fields = {
             "provider": "upload_post",
+            "created_at": sent,
             "state": outcome.state,
             "post_id": outcome.post_id,
             "post_url": outcome.post_url,
@@ -172,13 +176,16 @@ def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "",
         db.record_clip_publish(clip_id, outcome.platform, fields)
 
 
-def record_refresh(db, clip_id: int, result) -> None:
+def record_refresh(db, clip_id: int, result, *, known=None) -> int:
     """Write what a status check or a retry learned, and nothing else.
 
     The row may by now hang off a re-rendered clip with another window, so the
-    post's identity, caption and time are never rewritten here.
+    post's identity, caption and time are never rewritten here. With `known`,
+    the request's rows as stored, an outcome that only repeats its row is not
+    written (server/posts.py news). Returns how many were.
     """
-    for outcome in result.outcomes:
+    outcomes = result.outcomes if known is None else posts.news(known, result)
+    for outcome in outcomes:
         db.record_clip_publish(clip_id, outcome.platform, {
             "state": outcome.state,
             "post_id": outcome.post_id,
@@ -186,6 +193,7 @@ def record_refresh(db, clip_id: int, result) -> None:
             "error": outcome.error,
             "request_id": result.request_id,
         })
+    return len(outcomes)
 
 
 def in_flight(db) -> list[str]:
@@ -201,7 +209,7 @@ def in_flight(db) -> list[str]:
 #: How far ahead of its time a post is already worth asking about.
 DUE_AHEAD_SECONDS = 120
 #: After this long past its due time a request is no longer followed.
-FOLLOW_DAYS = 14
+FOLLOW_DAYS = posts.FOLLOW_DAYS
 #: Leeway on each interval, so a check on the worker's three-minute beat is
 #: not pushed to the next beat by a second of drift.
 CHECK_SLACK_SECONDS = 5
@@ -248,11 +256,8 @@ def due_requests(db, *, now=None, last_checked: dict | None = None, limit: int =
         due = posts.due_time(row, now=current)
         if request_id not in earliest or due < earliest[request_id]:
             earliest[request_id] = due
-        try:
-            if row["scheduled_for"]:
-                timed.add(request_id)
-        except (IndexError, KeyError):
-            pass
+        if "scheduled_for" in row.keys() and row["scheduled_for"]:
+            timed.add(request_id)
     for gone in [r for r in checked if r not in earliest]:
         checked.pop(gone, None)
 
@@ -305,8 +310,9 @@ def refresh_in_flight(db, data_dir: Path, *, ids=None, limit: int = 60, now=None
         except Exception:
             failed += 1
             continue
-        if result.outcomes:
-            record_refresh(db, clip_id, result)
+        # Only what changed is written: a check that repeats the rows leaves
+        # updated_at alone (server/posts.py news).
+        if result.outcomes and record_refresh(db, clip_id, result, known=rows):
             updated += 1
 
     return {

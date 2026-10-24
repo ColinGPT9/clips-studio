@@ -12,6 +12,10 @@ installed.
 
 from datetime import datetime, timedelta, timezone
 
+#: After this long past its due time a post still on its way is no longer
+#: followed in the background. The manual refresh and the open panel still ask.
+FOLLOW_DAYS = 14
+
 
 def as_utc(now=None) -> datetime:
     """`now` as an aware UTC datetime. None is the current time, a number is a
@@ -23,6 +27,13 @@ def as_utc(now=None) -> datetime:
     if now.tzinfo is None:
         return now.replace(tzinfo=timezone.utc)
     return now.astimezone(timezone.utc)
+
+
+def sent_stamp() -> str:
+    """Now, the way core/state.py writes created_at (local, no zone, to the
+    second). A publish-time write passes it as `created_at`, so a clip sent
+    again to a platform is due from this send, not the first one."""
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def _parse(text, *, naive_is_local: bool) -> datetime | None:
@@ -105,6 +116,35 @@ def missing_url_requests(db, provider: str, *, now=None, within_hours: float = 2
     return [r for r, _ in sorted(earliest.items(), key=lambda item: (item[1], item[0]))]
 
 
+#: What a status check can change on a row.
+REFRESHED = ("state", "post_id", "post_url", "error")
+
+
+def news(rows, result) -> list:
+    """The outcomes of a status check that say something the stored rows do not.
+
+    `rows` are the request's rows as stored. A check that only repeats them is
+    not written, so updated_at keeps meaning "last changed": committed_times()
+    reads a published post's day from it, and asking again for a link all day
+    must not move yesterday's post into today's allowance.
+    """
+    def text(value) -> str:
+        return str(value or "")
+
+    stored = {_field(r, "platform"): r for r in rows}
+    out = []
+    for outcome in result.outcomes:
+        row = stored.get(outcome.platform)
+        same = (
+            row is not None
+            and text(_field(row, "request_id")) == text(result.request_id)
+            and all(text(_field(row, k)) == text(getattr(outcome, k, "")) for k in REFRESHED)
+        )
+        if not same:
+            out.append(outcome)
+    return out
+
+
 # ---- the visibility a post asked for ---------------------------------------
 
 # Which override key carries the privacy, per provider and platform. Every other
@@ -112,7 +152,7 @@ def missing_url_requests(db, provider: str, *, now=None, within_hours: float = 2
 # public explicitly, publish/woopsocial.py build_post).
 PRIVACY_KEYS = {
     "woopsocial": {"youtube": "privacy", "tiktok": "privacyLevel"},
-    "upload_post": {"youtube": "privacy", "tiktok": "privacy"},
+    "upload_post": {"youtube": "privacy", "tiktok": "privacy", "linkedin": "visibility"},
 }
 
 _VISIBILITY = {

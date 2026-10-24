@@ -1171,22 +1171,30 @@ class StateDB:
         raising, so a platform that returns no post URL does not have to
         invent one. Called once per platform per fan-out, and again on every
         status poll as a platform moves queued -> processing -> published.
+
+        created_at marks when the clip was last sent to this platform. A
+        status poll leaves it alone. A write that sends the clip again passes
+        `created_at` (the publish-time writers do), so a post's waiting windows
+        count from this send rather than the first one (server/posts.py
+        due_time).
         """
         allowed = {r["name"] for r in self.conn.execute("PRAGMA table_info(clip_publishes)")}
         row = {
-            k: v for k, v in fields.items() if k in allowed and k not in ("clip_id", "platform")
+            k: v for k, v in fields.items()
+            if k in allowed and k not in ("clip_id", "platform", "created_at")
         }
         row["updated_at"] = _now()
+        sent = str(fields.get("created_at") or "")
 
         columns = ", ".join(["clip_id", "platform", "created_at", *row])
         placeholders = ", ".join("?" for _ in range(len(row) + 3))
-        # created_at is left alone on conflict: it marks when the clip was
-        # first sent to this platform, not when it was last polled.
-        updates = ", ".join(f"{k} = excluded.{k}" for k in row)
+        updates = [f"{k} = excluded.{k}" for k in row]
+        if sent:
+            updates.append("created_at = excluded.created_at")
         self.conn.execute(
             f"INSERT INTO clip_publishes ({columns}) VALUES ({placeholders}) "
-            f"ON CONFLICT(clip_id, platform) DO UPDATE SET {updates}",
-            (clip_id, platform, _now(), *row.values()),
+            f"ON CONFLICT(clip_id, platform) DO UPDATE SET {', '.join(updates)}",
+            (clip_id, platform, sent or _now(), *row.values()),
         )
         self.conn.commit()
 

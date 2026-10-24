@@ -209,7 +209,7 @@ the YAML text** to preserve the user's comments:
 
 | Store | Location | Contents | Cited |
 |---|---|---|---|
-| SQLite `state.db` | `<data_dir>/state.db` | videos, clips, jobs, uploads, creators, …, `app_state` key/value (`get_flag`/`set_flag`), `streams` | `core/state.py:251,366,1432-1436`; `ARCHITECTURE.md:959-977` |
+| SQLite `state.db` | `<data_dir>/state.db` | videos, clips, jobs, uploads, creators, …, `app_state` key/value (`get_flag`/`set_flag`), `streams` | `core/state.py:251,366,1440-1444`; `ARCHITECTURE.md:959-977` |
 | Credential store | `<data_dir>/credentials/<name>.bin` (Windows DPAPI, entropy `clips-kitty/publish/v1`) or `<name>.secret.json` 0600 elsewhere | names seen: `youtube_token`, `youtube_client` (`server/youtube_*`), `ai_key_<provider>` (`llm/providers/keys.py:15` `PREFIX = "ai_key_"`), `remote_render` (`remote_render/settings.py` `NAME`), Upload-Post key via `server/uploadpost_service.py:84-97` (name not read), ChatGPT sign-in (`llm/signin/chatgpt.py`) | `core/secrets.py` `_DIR = "credentials"`, `backend_name()`, `save/load/wipe/has/migrate_plaintext` |
 | Electron userData | `%APPDATA%\clips-studio\` (derived from package.json `name`) | renderer localStorage (caption style, toggles, UI language), `update-prefs.json` (`channel`, `skipped`), `tray.json` (`keepInTray`) | `ui/electron-builder.yml:10-20` comment; `ui/src/main/updater.ts` `PREFS_FILE`; `ui/src/main/index.ts` `trayPrefsPath` |
 | Per-job options | `jobs.payload` JSON in SQLite | `JobIn`/`JobPatch` fields | `server/api.py:38-60`, `core/queue.py` |

@@ -60,9 +60,9 @@ From `server/jobs.py:7-11` and the dispatch at `server/jobs.py:270-294`:
 ### 3.3 The worker loop (who claims jobs)
 `Worker.run()` (`server/jobs.py:95-321`):
 1. Opens its own `StateDB` (sqlite, one connection per thread) (`:96`).
-2. Startup recovery: `db.recover_interrupted_jobs()` re-queues rows left `running` with `interrupted = 1, attempts = attempts + 1` (`core/state.py:1414-1430`); `db.recover_stuck_videos()` marks videos in `downloaded|transcribed|analyzed` as `failed` (`core/state.py:587-597`); creator backfill (`server/jobs.py:97-112`).
+2. Startup recovery: `db.recover_interrupted_jobs()` re-queues rows left `running` with `interrupted = 1, attempts = attempts + 1` (`core/state.py:1422-1438`); `db.recover_stuck_videos()` marks videos in `downloaded|transcribed|analyzed` as `failed` (`core/state.py:587-597`); creator backfill (`server/jobs.py:97-112`).
 3. Installs the progress handler `progress.set_handler(on_progress)` (`:121-134`): tags each event with the current job id (except `prefetch` events), records a per-job snapshot, and broadcasts `{"type": "progress", "job_id", ...event}`.
-4. Loop: if `queue.is_paused(db)` wait 2 s (`:142-145`); else `job = db.claim_next_job()` (`:146`), which selects `status = 'queued' ORDER BY position, id LIMIT 1` and sets `running` + `started_at` (`core/state.py:1355-1370`). `Worker.notify()` wakes the loop early (`:65-69`).
+4. Loop: if `queue.is_paused(db)` wait 2 s (`:142-145`); else `job = db.claim_next_job()` (`:146`), which selects `status = 'queued' ORDER BY position, id LIMIT 1` and sets `running` + `started_at` (`core/state.py:1363-1378`). `Worker.notify()` wakes the loop early (`:65-69`).
 5. Opens `data/logs/job_<id>.log` (`feedback.open_job_log`) and stores `jobs.log_path` (`:162-164`); broadcasts `{"type":"job","status":"running"}` and `{"type":"queue"}` (`:165-166`).
 6. For `process`: `identify(payload["url"])` -> `vid`; `db.set_job(id, video_id=vid)`; `cancel.set_active(vid)`; `cancel.clear(vid)`; `self.prefetch.wait_for(vid)` (`:167-186`). Then `self.prefetch.maybe_start(db)` for the next queued video (`:187`).
 7. `cfg = copy.deepcopy(self.config)`, `_check_plan(db, cfg, payload)` (signed-in AI plan gate, `:730-744`), then the payload-to-config merge (section 8) (`:197-269`).
@@ -70,7 +70,7 @@ From `server/jobs.py:7-11` and the dispatch at `server/jobs.py:270-294`:
 9. Terminal: `db.finish_job(id, "done")`, `_run_follow_up(db, job, payload)` (the `then: {"action": "publish"}` intent, `:683-728`), `_announce(db, job, "done")` (`:295-298`). `CancelledError` -> `finish_job(id, "cancelled", "Cancelled by user")` (`:299-302`). Any `Exception` -> `traceback.print_exc()`, `scrub_secrets(str(e))`, `finish_job(id, "failed", message[:2000])`, `_announce(..., "failed", message[:500])` (`:303-313`).
 10. `finally`: clears current job id and progress entry, `cancel.set_active(None)`, `feedback.close_job_log()`, `_prune_logs()` (keeps newest `_KEEP_LOGS = 50`) (`:314-321`, `:28`, `:78-87`).
 
-`finish_job` writes `status, error, interrupted = 0, finished_at, updated_at` (`core/state.py:1342-1353`).
+`finish_job` writes `status, error, interrupted = 0, finished_at, updated_at` (`core/state.py:1350-1361`).
 
 Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot; stopping never deletes; a failure is contained to its own video.
 
@@ -92,11 +92,11 @@ Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot
 | `estimate(db) -> {queued_seconds, per_video_seconds, samples, confident}` | median of `process_seconds/duration` over the last 20 done videos; `COLD_START_SECONDS = 3600` | `:277-330` |
 | `snapshot(db, history_limit=50) -> {processing, queued, completed, failed, paused, estimate, capacity, max_active}` | the read model; each item carries `url` and `settings` lifted out of payload | `:337-382` |
 
-`add_job` ordering: `process` jobs go to `MAX(position)+1`; `render`/`translate` jobs take the position of the first queued process job and shift the rest back by one (`core/state.py:1305-1340`).
+`add_job` ordering: `process` jobs go to `MAX(position)+1`; `render`/`translate` jobs take the position of the first queued process job and shift the rest back by one (`core/state.py:1313-1348`).
 
 ### 3.5 Retries, interruption, crash
-- No automatic retry. `retry()` is explicit; `attempts` is only incremented by crash recovery (`core/state.py:1426`).
-- Crash: on next start, `running` jobs return to `queued` with `interrupted = 1` (`core/state.py:1414-1430`); the log file is keyed by job id, so the second attempt appends to the same `job_N.log` (`core/queue.py:220-222`, `server/feedback.py:90`: opened with mode `"a"`).
+- No automatic retry. `retry()` is explicit; `attempts` is only incremented by crash recovery (`core/state.py:1434`).
+- Crash: on next start, `running` jobs return to `queued` with `interrupted = 1` (`core/state.py:1422-1438`); the log file is keyed by job id, so the second attempt appends to the same `job_N.log` (`core/queue.py:220-222`, `server/feedback.py:90`: opened with mode `"a"`).
 - Resume: `process_video` re-enters from the top; the download is skipped when `data/downloads/<id>.mp4` exists (`_cached_or_download`, `core/pipeline.py:1010-1113`), and the transcript is reused when `data/transcripts/<id>.json` exists (`transcription/transcriber.py:210-219`). Analysis and rendering always re-run (inferred: no cache of candidates exists; `_register_clip` tolerates the UNIQUE clash on re-run, `core/pipeline.py:1599-1636`).
 - "Already processed" guard: `db.shorts_made(video_id)` (`core/state.py:859-884`) short-circuits a Shorts run unless `force` (`core/pipeline.py:301-303`).
 - Daemon mode (`core/scheduler.py:_process_queue`, `:93-103`) reprocesses videos with status `queued|downloaded|transcribed|analyzed` and marks `failed` on exception.

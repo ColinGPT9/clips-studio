@@ -403,6 +403,10 @@ def test_a_send_written_down_before_it_goes_carries_its_caption(db, tmp_path, wo
     ("upload_post", "tiktok", {"privacy": "SELF_ONLY"}, "private"),
     ("upload_post", "tiktok", {"privacy": "MUTUAL_FOLLOW_FRIENDS"}, "friends"),
     ("upload_post", "tiktok", {}, "default"),
+    # LinkedIn's is "visibility"; a value outside the vocabulary is kept as
+    # it came, so a connections-only post is never read as public.
+    ("upload_post", "linkedin", {"visibility": "PUBLIC"}, "public"),
+    ("upload_post", "linkedin", {"visibility": "CONNECTIONS"}, "connections"),
     ("upload_post", "facebook", {"privacy": "private"}, "default"),
 ])
 def test_each_privacy_override_is_recorded_in_one_vocabulary(provider, platform, override, expected):

@@ -359,20 +359,22 @@ def test_a_refresh_after_a_rerender_keeps_the_posts_window_and_caption(db, provi
     assert row["provider"] == provider
 
 
-def test_refreshing_a_deleted_clips_post_keeps_its_identity(db):
-    from server import woopsocial_service
+@pytest.mark.parametrize("provider", ["woopsocial", "upload_post"])
+def test_refreshing_a_deleted_clips_post_keeps_its_identity(db, provider):
+    from server import uploadpost_service, woopsocial_service
 
+    service = woopsocial_service if provider == "woopsocial" else uploadpost_service
     _video(db)
     clip_id = _clip(db)
-    _sent(db, clip_id)
+    _sent(db, clip_id, provider=provider)
     db.delete_clip(clip_id)
 
-    woopsocial_service.record_refresh(db, clip_id, _learned())
+    service.record_refresh(db, clip_id, _learned())
     # Nor does a publish-time write with the clip row gone: identity is
     # written only while the row exists (it used to be blanked to '', 0, 0).
     from publish.uploadpost import FanOutResult, PlatformOutcome
 
-    woopsocial_service.record_outcomes(
+    service.record_outcomes(
         db, clip_id, None,
         FanOutResult(request_id="req-1", outcomes=[PlatformOutcome(platform="tiktok", state="published")]),
     )

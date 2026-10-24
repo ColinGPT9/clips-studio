@@ -108,8 +108,8 @@ server/ai_api.py: KeyIn:59, TestIn:63, ActivateIn:67, SttCheckIn:72, Transcripti
 server/youtube_api.py: PlanIn:40, PlanItemIn:51, PlanExecuteIn:58, YouTubeSettingsPatch:64, CredentialsIn:75,
 ConnectIn:80, DisconnectIn:87, DefaultAccountIn:91, RenderFirst:95, PublishIn:101, ThumbnailIn:125.
 server/integrations.py: StreamIn:76, LinkIn:86. server/automation.py: PublishSettings:89, AutomationPatch:120,
-WatchIn:127, WatchPatch:140. server/uploadpost_api.py: KeyIn:26, SettingsIn:30, PublishIn:39, BatchIn:57, ConnectIn:69.
-server/woopsocial_api.py: KeyIn:26, SettingsIn:30, ConnectIn:37, BatchIn:41, PublishIn:63.
+WatchIn:127, WatchPatch:140. server/uploadpost_api.py: KeyIn:27, SettingsIn:31, PublishIn:40, BatchIn:58, ConnectIn:70.
+server/woopsocial_api.py: KeyIn:27, SettingsIn:31, ConnectIn:38, BatchIn:42, PublishIn:64.
 (Several names repeat across modules — KeyIn, ConnectIn, PublishIn, BatchIn, SettingsIn — so the live openapi
 component names for those would be disambiguated by FastAPI; no response models are declared via `response_model`
 in the decorators I listed, so response schemas would be untyped.)

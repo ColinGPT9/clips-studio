@@ -170,6 +170,89 @@ def test_a_link_that_arrives_after_publishing_is_filled_in(db, tmp_path, monkeyp
     assert row["caption"] == "As sent", "a refresh never rewrites what the post said"
 
 
+@pytest.mark.parametrize("service, provider", [(woop, "woopsocial"), (up, "upload_post")])
+def test_asking_again_for_a_link_that_is_still_missing_changes_nothing(db, tmp_path, monkeypatch,
+                                                                       service, provider):
+    """committed_times() counts a published post's day from updated_at, so a
+    re-check that rewrote the row all day moved yesterday's post into today's
+    allowance."""
+    asked = _learns(monkeypatch, service, [PlatformOutcome(platform="tiktok", state="published")])
+    _post(db, 1, "tiktok", provider=provider, state="published", request_id="r1",
+          created=datetime.now(timezone.utc) - timedelta(hours=20))
+    db.conn.execute("UPDATE clip_publishes SET updated_at = '2026-01-01T08:00:00'")
+    db.conn.commit()
+
+    out = service.refresh_missing_urls(db, tmp_path)
+
+    assert asked == ["r1"]
+    assert (out["checked"], out["updated"]) == (1, 0)
+    assert _row(db, 1, "tiktok")["updated_at"] == "2026-01-01T08:00:00"
+    assert woop.committed_times(db) == []
+
+
+# ---- a clip sent again ---------------------------------------------------------
+
+
+def _send(service, db, clip_id, request_id, state):
+    """A publish-time write, as the publishers make it, with no time on it."""
+    service.record_outcomes(db, clip_id, None, FanOutResult(
+        request_id=request_id, outcomes=[PlatformOutcome(platform="youtube", state=state)]))
+
+
+def _backdate(db, clip_id, moment):
+    db.conn.execute("UPDATE clip_publishes SET created_at = ? WHERE clip_id = ?",
+                    (_local(moment), clip_id))
+    db.conn.commit()
+
+
+def _due_in_flight(service, db, at):
+    if service is up:
+        return up.due_requests(db, now=at, last_checked={})
+    return woop.due_in_flight(db, now=at)
+
+
+@pytest.mark.parametrize("service, provider", [(woop, "woopsocial"), (up, "upload_post")])
+def test_a_clip_sent_again_is_due_from_this_send_not_the_first(db, service, provider):
+    """The row is one per clip and platform, so a re-send lands on the first
+    send's row. Its windows count from this send: kept from the first, a post
+    re-sent 20 days later was past every window the moment it went out."""
+    now = datetime.now(timezone.utc)
+    _send(service, db, 1, "first", "published")  # live, link still to come
+    _send(service, db, 2, "first-q", "queued")
+    _backdate(db, 1, now - timedelta(days=20))
+    _backdate(db, 2, now - timedelta(days=20))
+    assert posts.missing_url_requests(db, provider, now=now) == []
+    assert _due_in_flight(service, db, now) == []
+
+    _send(service, db, 1, "again", "published")
+    _send(service, db, 2, "again-q", "queued")
+
+    later = now + timedelta(seconds=5)
+    assert posts.missing_url_requests(db, provider, now=later) == ["again"]
+    assert _due_in_flight(service, db, later) == ["again-q"]
+
+    # A status check is not a send: the clock stays where the send set it.
+    _backdate(db, 2, now - timedelta(hours=1))
+    before = _row(db, 2)["created_at"]
+    service.record_refresh(db, 2, FanOutResult(
+        request_id="again-q", outcomes=[PlatformOutcome(platform="youtube", state="processing")]))
+    assert _row(db, 2)["created_at"] == before
+
+
+@pytest.mark.parametrize("service, provider", [(woop, "woopsocial"), (up, "upload_post")])
+def test_publishing_the_edited_clip_again_is_due_from_then(db, service, provider):
+    """Applying edits moves the posts to the clip's new id (follow_clip_id),
+    so publishing the edited clip again writes over the moved row."""
+    now = datetime.now(timezone.utc)
+    _send(service, db, 1, "first", "published")
+    _backdate(db, 1, now - timedelta(days=3))
+    db.follow_clip_id(1, 2)
+
+    _send(service, db, 2, "again", "published")  # live, link still to come
+
+    assert posts.missing_url_requests(db, provider, now=now + timedelta(seconds=5)) == ["again"]
+
+
 # ---- WoopSocial: only its own requests, due ones first ------------------------
 
 
@@ -228,6 +311,73 @@ def test_due_requests_come_oldest_due_first(db):
     _post(db, 6, "tiktok", request_id="m", created=NOW - timedelta(hours=5))
 
     assert woop.due_in_flight(db, now=NOW) == ["m", "a", "b", "c", "soon"]
+
+
+def test_woopsocial_stops_following_a_request_14_days_after_it_was_due(db):
+    _post(db, 1, request_id="old", created=NOW - timedelta(days=15))
+    _post(db, 2, request_id="planned", created=NOW - timedelta(days=20),
+          scheduled=_utc(NOW - timedelta(days=13)))
+    assert woop.due_in_flight(db, now=NOW) == ["planned"]
+    # The refresh button still reaches it.
+    assert "old" in woop.in_flight(db)
+
+
+def test_requests_that_never_resolve_do_not_crowd_out_a_new_one(db, tmp_path, monkeypatch):
+    """A post deleted on WoopSocial answers 404 for good, so its row stays in
+    flight. With 60 of those, an oldest-first pick asked about them alone,
+    every pass, and never about a post that came due after them."""
+    from publish.errors import NotConnected
+
+    asked: list[str] = []
+
+    class Publisher:
+        def __init__(self, client, project):
+            pass
+
+        def check(self, request_id):
+            asked.append(request_id)
+            if request_id.startswith("gone-"):
+                raise NotConnected("That post is not there any more.")
+            return FanOutResult(request_id=request_id, outcomes=[])
+
+    monkeypatch.setattr("publish.woopsocial.WoopSocialPublisher", Publisher)
+    monkeypatch.setattr(woop, "make_client", lambda _d: object())
+    monkeypatch.setattr(woop, "resolve_project", lambda _db, _c: "proj")
+    gone = [f"gone-{i:02d}" for i in range(60)]
+    for i, request_id in enumerate(gone):
+        _post(db, 100 + i, request_id=request_id, created=NOW - timedelta(days=2))
+    checked: dict = {}
+
+    out = woop.refresh_in_flight(db, tmp_path, now=NOW, last_checked=checked)
+    assert (out["checked"], out["failed"]) == (60, 60)
+
+    # A post comes due after them: the next pass asks about it first.
+    _post(db, 1, request_id="fresh", created=NOW + timedelta(minutes=1))
+    asked.clear()
+    out = woop.refresh_in_flight(db, tmp_path, now=NOW + timedelta(minutes=3), last_checked=checked)
+    assert asked[0] == "fresh"
+    assert out["checked"] == 60
+    (left_out,) = set(gone) - set(asked)
+
+    # And the one that pass had no room for goes first on the one after.
+    asked.clear()
+    woop.refresh_in_flight(db, tmp_path, now=NOW + timedelta(minutes=6), last_checked=checked)
+    assert asked[0] == left_out
+
+
+def test_the_background_refresh_keeps_its_own_check_times(db, tmp_path, woop_checks, monkeypatch):
+    """The worker calls refresh_in_flight(db, data_dir) and nothing else, so
+    the check times live in the module when none are passed."""
+    monkeypatch.setattr(woop, "_last_checked", {"finished": 1.0})
+    _post(db, 1, request_id="w1", created=NOW - timedelta(minutes=5))
+
+    woop.refresh_in_flight(db, tmp_path, now=NOW)
+
+    assert woop_checks == ["w1"]
+    assert woop._last_checked == {"w1": NOW.timestamp()}, "finished requests are forgotten"
+    # A caller naming its ids is not the background pass: it stamps nothing.
+    woop.refresh_in_flight(db, tmp_path, ids=["w1"], now=NOW + timedelta(minutes=1))
+    assert woop._last_checked == {"w1": NOW.timestamp()}
 
 
 def test_the_refresh_button_still_checks_the_newest_60(tmp_path, monkeypatch, woop_checks):

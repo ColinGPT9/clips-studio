@@ -149,11 +149,15 @@ def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "",
     the one asked for; either may be one value or {platform: value}.
 
     A later status check goes through record_refresh, which learns states and
-    links and leaves all of this alone.
+    links and leaves all of this alone. This is a send, so the row's clock
+    starts again (created_at): a clip sent again to a platform is due from
+    this send, not the first one.
     """
+    sent = posts.sent_stamp()
     for outcome in result.outcomes:
         fields = {
             "provider": "woopsocial",
+            "created_at": sent,
             "state": outcome.state,
             "post_id": outcome.post_id,
             "post_url": outcome.post_url,
@@ -170,14 +174,18 @@ def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "",
         db.record_clip_publish(clip_id, outcome.platform, fields)
 
 
-def record_refresh(db, clip_id: int, result) -> None:
+def record_refresh(db, clip_id: int, result, *, known=None) -> int:
     """Write what a status check learned: state, ids, link and error only.
 
     The row's clip_id may by now be a re-rendered clip with a different
     window (StateDB.follow_clip_id), so a refresh must never write the post's
     identity, caption or time: those describe the post that went out.
+
+    With `known`, the request's rows as stored, an outcome that only repeats
+    its row is not written (server/posts.py news). Returns how many were.
     """
-    for outcome in result.outcomes:
+    outcomes = result.outcomes if known is None else posts.news(known, result)
+    for outcome in outcomes:
         db.record_clip_publish(clip_id, outcome.platform, {
             "state": outcome.state,
             "post_id": outcome.post_id,
@@ -185,6 +193,7 @@ def record_refresh(db, clip_id: int, result) -> None:
             "error": outcome.error,
             "request_id": result.request_id,
         })
+    return len(outcomes)
 
 
 def committed_times(db) -> list[str]:
@@ -485,7 +494,9 @@ def publish_clips(
         if once:
             for platform in wanted:
                 db.record_clip_publish(clip_id, platform, {
-                    "provider": "woopsocial", "video_id": clip["video_id"] or "",
+                    # A send: the row's clock starts again (record_outcomes).
+                    "provider": "woopsocial", "created_at": posts.sent_stamp(),
+                    "video_id": clip["video_id"] or "",
                     "start_s": clip["start_s"] or 0, "end_s": clip["end_s"] or 0,
                     "state": "sending", "post_id": "", "post_url": "", "error": "",
                     "request_id": "", "media_id": "", "scheduled_for": when,
@@ -622,7 +633,8 @@ def due_in_flight(db, *, now=None, provider: str = "woopsocial") -> list[str]:
     due last: checking those first left a day-one post unchecked for a week.
     A request is due at the earliest due time of its rows (server/posts.py);
     one due more than two minutes from now is left out, since there is
-    nothing to learn about a post that has not gone out yet.
+    nothing to learn about a post that has not gone out yet, and so is one
+    due more than 14 days ago, as Upload-Post's are (posts.FOLLOW_DAYS).
     """
     current = posts.as_utc(now)
     rows = db.conn.execute(
@@ -637,11 +649,19 @@ def due_in_flight(db, *, now=None, provider: str = "woopsocial") -> list[str]:
         if request_id not in earliest or due < earliest[request_id]:
             earliest[request_id] = due
     horizon = current + timedelta(seconds=DUE_AHEAD_SECONDS)
-    due_now = [(due, rid) for rid, due in earliest.items() if due <= horizon]
+    oldest = current - timedelta(days=posts.FOLLOW_DAYS)
+    due_now = [(due, rid) for rid, due in earliest.items() if oldest <= due <= horizon]
     return [rid for _, rid in sorted(due_now)]
 
 
-def refresh_in_flight(db, data_dir: Path, *, limit: int = 60, ids=None, now=None) -> dict:
+#: Request id -> unix time the background refresh last asked about it. In
+#: memory only, like the worker's Upload-Post check times: after a restart
+#: every due request is new again.
+_last_checked: dict[str, float] = {}
+
+
+def refresh_in_flight(db, data_dir: Path, *, limit: int = 60, ids=None, now=None,
+                      last_checked: dict | None = None) -> dict:
     """Ask WoopSocial what became of everything still in the air.
 
     Nothing did this before, so a batch stayed at "processing" forever: the
@@ -649,8 +669,14 @@ def refresh_in_flight(db, data_dir: Path, *, limit: int = 60, ids=None, now=None
     again, which left no way to tell a slow queue from a failure. That is the
     whole reason this exists.
 
-    Without `ids` it checks the requests that are due, oldest first
-    (due_in_flight); a caller that wants particular ones names them.
+    Without `ids` it checks the requests that are due (due_in_flight), the
+    ones never asked about first, oldest-due first, then the ones asked about
+    longest ago. Requests whose check keeps failing (a post deleted on
+    WoopSocial answers 404 for good) stay in flight, and with more than
+    `limit` of them a plain oldest-first pick would ask only about those,
+    every pass, and never about a post that came due after them. The check
+    times live in `last_checked` (the module's own when not given). A caller
+    that wants particular requests names them in `ids`.
 
     Failures are counted, not raised. A refresh is a read; one unreachable
     request must not stop the rest being updated.
@@ -658,8 +684,17 @@ def refresh_in_flight(db, data_dir: Path, *, limit: int = 60, ids=None, now=None
     from publish.errors import PublishError
     from publish.woopsocial import WoopSocialPublisher
 
+    current = posts.as_utc(now)
+    checked = None
     if ids is None:
-        ids = due_in_flight(db, now=now)
+        checked = _last_checked if last_checked is None else last_checked
+        due = due_in_flight(db, now=current)
+        keep = set(due)
+        for gone in [r for r in list(checked) if r not in keep]:
+            checked.pop(gone, None)
+        # sorted() is stable: among requests asked about equally long ago,
+        # due_in_flight's oldest-due order stands.
+        ids = sorted(due, key=lambda r: checked.get(r, 0.0))
     ids = list(ids)[:limit]
     if not ids:
         return {"checked": 0, "updated": 0, "still_waiting": 0, "failed": 0}
@@ -669,6 +704,8 @@ def refresh_in_flight(db, data_dir: Path, *, limit: int = 60, ids=None, now=None
 
     updated = failed = 0
     for request_id in ids:
+        if checked is not None:
+            checked[request_id] = current.timestamp()
         rows = db.publishes_for_request(request_id)
         if not rows:
             continue
@@ -681,8 +718,9 @@ def refresh_in_flight(db, data_dir: Path, *, limit: int = 60, ids=None, now=None
         except Exception:
             failed += 1
             continue
-        if result.outcomes:
-            record_refresh(db, clip_id, result)
+        # Only what changed is written: a check that repeats the rows leaves
+        # updated_at alone (server/posts.py news).
+        if result.outcomes and record_refresh(db, clip_id, result, known=rows):
             updated += 1
 
     return {
