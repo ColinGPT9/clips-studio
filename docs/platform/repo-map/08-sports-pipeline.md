@@ -23,7 +23,7 @@ A sport is NOT a pipeline of its own. `sports/__init__.py:9-12` states it: "It a
 | `sports/soccer/__init__.py` | 48 | `profile()`, `framing()`, `prepass()` |
 | `sports/soccer/profile.py` | 23 | `SoccerProfile(SportProfile)`: overrides `classify` only |
 | `sports/soccer/scoreboard.py` | 352 | `Reading`, `ScoreChange`, `Scoreboard` dataclasses; `read_video(path, duration, cancel=None) -> Scoreboard` |
-| `sports/soccer/ball.py` | 165 | YOLO ball/person detector `_model(name)`, `detect(model, frame, imgsz)`, `plan()`, `compute(clip_path, model_name, imgsz, ...)` |
+| `sports/soccer/ball.py` | 320 | YOLO ball/person detector `_model(name)`, `detect(model, frame, imgsz)`, `plan()`, `compute(clip_path, model_name, imgsz, ...)` |
 | `sports/basketball/__init__.py` | 110 | `READS_DESCRIPTION=True`, `profile()`, `hotwords()`, `framing()`, `prepass_wait()`, `prepass()` |
 | `sports/basketball/profile.py` | 618 | `BasketballProfile(SportProfile)`: many overrides (section 5) |
 | `sports/basketball/scoreboard.py` | 1046 | Own `Reading`/`ScoreChange`/`Scoreboard` (two-row bug, quarter, clock) on top of `sports/core/scorebug.py` |
@@ -54,7 +54,7 @@ A sport is NOT a pipeline of its own. `sports/__init__.py:9-12` states it: "It a
 | `footage` | `str` = `"broadcast"` / `"sideline"` | `resolve_footage()` | `profile.py:38` |
 | *(dynamic)* `curves` | `dict[str, np.ndarray]` set by `core/pipeline.py:961-976` (`_sport_inputs`): one 0..1 curve per `sound_curves()` name plus `"crowd_heard"` | pipeline | `core/pipeline.py:955-976` |
 | *(dynamic)* `board`, `shots`, `cutaways`, ... | whatever keys the sport's `prepass()` returns are `setattr`'d onto the profile | pipeline | `core/pipeline.py:942-944` |
-| *(dynamic)* `report_data` | dict from `sports.core.clips.report()` | fusion | `analysis/fusion.py:545` |
+| *(dynamic)* `report_data` | dict from `sports.core.clips.report()` | fusion | `analysis/fusion.py:560` |
 | *(dynamic)* `listed_report` | dict set by `detect._with_listed` (`clips.py:208` `getattr(profile, "listed_report", None)`) | detect | `sports/core/clips.py:208-215` |
 
 Methods and properties, grouped as the file groups them:
@@ -72,7 +72,7 @@ Methods and properties, grouped as the file groups them:
 | `genre_track(self, seconds) -> list[str]` | `[name] * seconds` | `profile.py:70-71` |
 | `spec_for(self, genre) -> dict` | `{"label": "<label> match", "highlights": yaml highlights}` for `analysis/game_vision.py` | `profile.py:73-76` |
 | `reads_screen -> bool` | yaml `read_screen` (default True; both sports set `false`) | `profile.py:78-82`, `config/sports.yaml:122,389` |
-| `screen_lexicon -> dict` | `{"events": {"generic": [], name: yaml screen_text}, "menu": []}` for `analysis/game_text.py` | `profile.py:84-88`, used `analysis/fusion.py:895` |
+| `screen_lexicon -> dict` | `{"events": {"generic": [], name: yaml screen_text}, "menu": []}` for `analysis/game_text.py` | `profile.py:84-88`, used `analysis/fusion.py:910` |
 | `sound_weights(self) -> dict` | `{name: yaml sounds}` for `game_audio.sound_signal` | `profile.py:90-92` |
 | `guidance(self, kind="clips", start=None, end=None) -> str` | prompt text built from yaml `highlights` + `callouts`; `kind="rerank"` shorter | `profile.py:94-117` |
 
@@ -108,13 +108,13 @@ Methods and properties, grouped as the file groups them:
 
 | Attribute | Probed at | Used for |
 |---|---|---|
-| `look(finalists, video_path, llm) -> int` | `analysis/fusion.py:593-602` | vision check of finalists (basketball reactions) |
+| `look(finalists, video_path, llm) -> int` | `analysis/fusion.py:608-617` | vision check of finalists (basketball reactions) |
 | `title_rules() -> str` | `core/pipeline.py:512-519` | extra rules to `generate_metadata_batch` |
 | `check_titles(candidates, metas, rewrite) -> list` | `core/pipeline.py:520-528` | re-write wrong titles |
-| `report_data` | `core/pipeline.py:470-472`, `longform/process.py:122-123` | outcome `"sport"` |
-| `one_play_per_clip` | `analysis/fusion.py:287,565`, `sports/core/detect.py:241` | grouping / dedupe |
-| `board` | `analysis/fusion.py:280`, `core/pipeline.py:978`, `sports/core/clips.py:112,141,156` | scoreboard |
-| `curves` | `analysis/fusion.py:277` | sound curves |
+| `report_data` | `core/pipeline.py:470-472`, `longform/process.py:129-130` | outcome `"sport"` |
+| `one_play_per_clip` | `analysis/fusion.py:302,580`, `sports/core/detect.py:241` | grouping / dedupe |
+| `board` | `analysis/fusion.py:295`, `core/pipeline.py:978`, `sports/core/clips.py:112,141,156` | scoreboard |
+| `curves` | `analysis/fusion.py:292` | sound curves |
 | `footage` | `sports/core/detect.py:137`, `sports/core/clips.py:119,226` | sideline vs broadcast |
 | `resolve_footage` | `core/pipeline.py:987-990` | |
 | `scoring_types` | `core/pipeline.py:982-983` | log word for a score |
@@ -168,7 +168,7 @@ Basketball reuses soccer code directly: `from sports.soccer.ball import _model, 
 
 Entry: `POST /jobs` etc. -> `server/api.py:480-488` `payload["sport"] = sports.clean(body.sport)` (400 on `ValueError`); mode clash check `server/api.py:541-544`. Queue worker `server/jobs.py:215-218` copies it to `cfg["clips"]["sport"]`; `server/jobs.py:223-231` turns `sports.direction(payload["sport"])` (teams/request) into `cfg["clips"]["focus"]` (the clip-direction feature). `core/modes.sport(config)` (`core/modes.py:82-93`) reads `config["clips"]["sport"]["name"]`.
 
-Then in `core/pipeline.py` (Shorts path; `longform/process.py:82-123,200-228` mirrors it):
+Then in `core/pipeline.py` (Shorts path; `longform/process.py:82-130,207-235` mirrors it):
 
 | # | Stage | Function / line | Sport-specific part |
 |---|---|---|---|
@@ -177,12 +177,12 @@ Then in `core/pipeline.py` (Shorts path; `longform/process.py:82-123,200-228` mi
 | 2 | transcribe | `core/pipeline.py:389-412` | `hint = _listening_for(config, video, url)` (`:993-1007`) -> Whisper `hotwords=` |
 | 3 | wait prepasses, build profile | `match.finish(hype_out)` `core/pipeline.py:434`, `:916-930`; `_sport_inputs` `:933-990` | `cancel.wait(thread, 900 or prepass_wait)`; `profile = sports.profile_for(config, video)`; `setattr(profile, key, value)` for each prepass key; `profile.curves[...] = sound_signal(...)` per `sound_curves()`; `resolve_footage(board)` |
 | 4 | score | `find_clips(..., sport=sport_profile, chat=chat, sounds=sounds)` `core/pipeline.py:437-452` -> `analysis/fusion.py:68,77-82` | `gaming = sport`; weights = `sport.weights` |
-| 4a | moments | `analysis/fusion.py:269-298` | `sport_detect.moments(...)`; `sport_clips.windows_to_add(...)`; `highlights.score_windows(..., guidance=sport.guidance("windows"))`; `c.source = "sport"` |
-| 4b | attach + bonus | `analysis/fusion.py:392-393, 510-518` | `sport_clips.attach`, `sport_clips.bonus`, `sport_clips.mark` -> `subscores["sport_*"]` |
-| 4c | choose | `analysis/fusion.py:538-547` | `sport_clips.choose(...)` -> kept/dropped/notes; `sport.report_data = sport_clips.report(...)` |
-| 4d | one-play dedupe | `analysis/fusion.py:560-580` | `one_play_per_clip` |
-| 4e | look | `analysis/fusion.py:593-602` | `sport.look(finalists, video_path, llm)` |
-| 4f | on-screen text | `analysis/fusion.py:894-897` | `gaming.screen_lexicon` (sport's words) |
+| 4a | moments | `analysis/fusion.py:284-313` | `sport_detect.moments(...)`; `sport_clips.windows_to_add(...)`; `highlights.score_windows(..., guidance=sport.guidance("windows"))`; `c.source = "sport"` |
+| 4b | attach + bonus | `analysis/fusion.py:407-408, 525-533` | `sport_clips.attach`, `sport_clips.bonus`, `sport_clips.mark` -> `subscores["sport_*"]` |
+| 4c | choose | `analysis/fusion.py:553-562` | `sport_clips.choose(...)` -> kept/dropped/notes; `sport.report_data = sport_clips.report(...)` |
+| 4d | one-play dedupe | `analysis/fusion.py:575-595` | `one_play_per_clip` |
+| 4e | look | `analysis/fusion.py:608-617` | `sport.look(finalists, video_path, llm)` |
+| 4f | on-screen text | `analysis/fusion.py:909-912` | `gaming.screen_lexicon` (sport's words) |
 | 5 | outcome | `core/pipeline.py:470-473` | `outcome["sport"] = sport_profile.report_data`; `db.set_outcome` |
 | 6 | titles | `core/pipeline.py:512-528` | `title_rules()`, `check_titles()` |
 | 7 | render | `core/pipeline.py:1188-1190, 1365-1376, 1550-1560` | `_sport_framing` -> `sports.framing(name, clip, config)`; fallback to face tracker on failure; `opts["sport"]` persisted for re-renders (`:1478-1479`) |
@@ -196,7 +196,7 @@ Then in `core/pipeline.py` (Shorts path; `longform/process.py:82-123,200-228` mi
 
 **`SportEvent`** (`sports/core/events.py:14-32`): `type, t, confidence, importance, start, end, team, player, period, minute, signals: list[str], is_replay, group, confirmed, when, context, person`; methods `overlaps()`, `why()`.
 
-**Candidate subscores written by `sports.core.clips.mark`** (`sports/core/clips.py:78-105`): `sport_event, sport_label, sport_t, sport_group, sport_why, sport_team?, sport_player?, sport_period?, sport_minute?, sport_when?, sport_context?, sport_person?, sport_replay?, sport_bonus?`; `choose()` adds `required` and `sport_lift` (`clips.py:173-175,191-193`). Reels add `sport_reel, sport_label, sport_parts` (`core/pipeline.py:733`). Candidate `source = "sport"` (`analysis/fusion.py:296`). UI reads them in `types.ts:78-99` and `ui/src/renderer/src/lib/sports.ts:207` `sportMoment()`; `analysis/metadata.py:190-230` reads `sport_when/sport_label/sport_team/sport_context/sport_why/sport_player` for titles.
+**Candidate subscores written by `sports.core.clips.mark`** (`sports/core/clips.py:78-105`): `sport_event, sport_label, sport_t, sport_group, sport_why, sport_team?, sport_player?, sport_period?, sport_minute?, sport_when?, sport_context?, sport_person?, sport_replay?, sport_bonus?`; `choose()` adds `required` and `sport_lift` (`clips.py:173-175,191-193`). Reels add `sport_reel, sport_label, sport_parts` (`core/pipeline.py:733`). Candidate `source = "sport"` (`analysis/fusion.py:311`). UI reads them in `types.ts:78-99` and `ui/src/renderer/src/lib/sports.ts:207` `sportMoment()`; `analysis/metadata.py:190-230` reads `sport_when/sport_label/sport_team/sport_context/sport_why/sport_player` for titles.
 
 **Report** (`sports/core/clips.py:report`, `clips.py:198-230`): `{sport, highlights, period, found: {label: n}, big_moments, replays_grouped, score, scoreboard: bool, footage, clips, notes: [..]}` -> `outcome["sport"]`; UI `SportReport` `types.ts:21`, rendered by `ui/src/renderer/src/components/SportsNote.tsx`.
 
@@ -206,10 +206,10 @@ Then in `core/pipeline.py` (Shorts path; `longform/process.py:82-123,200-228` mi
 
 ## 8. Progress, errors, logging, cancellation
 
-- Logging is `print()` with 6-space indentation inside stages (e.g. `sports/soccer/__init__.py:36,43-46`, `core/pipeline.py:978-990`, `analysis/fusion.py:289-290,540`). No logger object.
+- Logging is `print()` with 6-space indentation inside stages (e.g. `sports/soccer/__init__.py:36,43-46`, `core/pipeline.py:978-990`, `analysis/fusion.py:304-305,555`). No logger object.
 - Progress events: `core/progress.py:30 def emit(**event)`; the pipeline emits `stage="transcribe"|"analyze"|"done"` (`core/pipeline.py:390,417,676`). A sport emits no progress of its own; its work is invisible between stages except via prints (inferred from grep: no `progress.emit` in `sports/`).
-- Errors: every sport hook is wrapped so failure degrades, never aborts: prepass thread `core/pipeline.py:908-914` (`except Exception` -> print), sounds `:898-906`, framing `_sport_framing` `:1550-1560` -> None -> face tracker, `look` `analysis/fusion.py:598-602`, reels `core/pipeline.py:717-722`, basketball cutaways `sports/basketball/__init__.py:104-110`. Missing OCR -> `game_text.available()` False -> skip with a note (`sports/soccer/__init__.py:33-36`). Missing PANNs -> `panns.available()` False (`core/pipeline.py:900-902`).
-- Cancellation: `core.cancel` — `cancel.check_active` passed into readers (`sports/soccer/__init__.py:42`, `sports/basketball/__init__.py:69,87`), `cancel.wait(thread, seconds, video_id)` (`core/pipeline.py:925`), `cancel.CancelledError` re-raised (`sports/basketball/__init__.py:107`, `analysis/fusion.py:598`).
+- Errors: every sport hook is wrapped so failure degrades, never aborts: prepass thread `core/pipeline.py:908-914` (`except Exception` -> print), sounds `:898-906`, framing `_sport_framing` `:1550-1560` -> None -> face tracker, `look` `analysis/fusion.py:613-617`, reels `core/pipeline.py:717-722`, basketball cutaways `sports/basketball/__init__.py:104-110`. Missing OCR -> `game_text.available()` False -> skip with a note (`sports/soccer/__init__.py:33-36`). Missing PANNs -> `panns.available()` False (`core/pipeline.py:900-902`).
+- Cancellation: `core.cancel` — `cancel.check_active` passed into readers (`sports/soccer/__init__.py:42`, `sports/basketball/__init__.py:69,87`), `cancel.wait(thread, seconds, video_id)` (`core/pipeline.py:925`), `cancel.CancelledError` re-raised (`sports/basketball/__init__.py:107`, `analysis/fusion.py:613`).
 - Timeouts: sounds thread 900 s; sport prepass `sports.prepass_wait` (`core/pipeline.py:924`); result dropped with a note if still running (`:926-929`).
 
 ## 9. Model dependencies and where they load
@@ -219,10 +219,10 @@ Then in `core/pipeline.py` (Shorts path; `longform/process.py:82-123,200-228` mi
 | PANNs (AudioSet tagger, `panns_mobilenetv1.pth`) | crowd / whistle / buzzer curves: `game_audio.listen` from `MatchReading._listen` (`core/pipeline.py:894-906`) | `analysis/panns.py` (`_model` global `:43`) | `analysis/panns.py:53-60` `available()`: torch importable + `models/panns_mobilenetv1.pth` (or `sys._MEIPASS`); labels `config/audioset_labels.txt` |
 | RapidOCR (PaddleOCR models on onnxruntime) | score bug (`sports/core/scorebug.py`, both scoreboards), basketball cutaway names, on-screen text | `analysis/game_text.py:103-110` `_ocr` lazy `RapidOCR()` global `_engine`; sports import the private `_ocr` (`sports/basketball/scoreboard.py:980,1016`, `sports/basketball/action.py:261`) | `analysis/game_text.py:57-60` `available()` |
 | E-BARD YOLOv8n (ultralytics, `models/BODD_yolov8n_0001.pt`, CC BY 4.0, fetched by `scripts/fetch_basketball_model.py`; classes basketball, hoop, player, referee) | basketball framing (`sports/basketball/crop/sources.py`; without it the COCO model and `crop/rim_finder.py`) | `ultralytics.YOLO(yolo_weights(...))`, `core/binaries.yolo_weights` also searches `models/` | `config/sports.yaml` basketball `framing.sources` |
-| YOLOv8n (ultralytics, `yolov8n.pt`, classes person+ball) | soccer framing (`sports/soccer/ball.py`), basketball reactions (`reactions.read_shots` -> `ball.detect`) and clip starts (`leadin.probe`) | `sports/soccer/ball._model(name)` `sports/soccer/ball.py:92-107`: own cache, `core.binaries.yolo_weights(name)` (`core/binaries.py:131`), `core.gpu.cuda_usable()`, shared `video.tracker._infer_lock` | model name from yaml `framing.model` (`config/sports.yaml:140,406`) |
+| YOLOv8n (ultralytics, `yolov8n.pt`, classes person+ball) | soccer framing (`sports/soccer/ball.py`), basketball reactions (`reactions.read_shots` -> `ball.detect`) and clip starts (`leadin.probe`) | `sports/soccer/ball._model(name)` `sports/soccer/ball.py:183-198`: own cache, `core.binaries.yolo_weights(name)` (`core/binaries.py:131`), `core.gpu.cuda_usable()`, shared `video.tracker._infer_lock` | model name from yaml `framing.model` (`config/sports.yaml:140,406`) |
 | Whisper | transcription with `hotwords=` (`core/pipeline.py:396-412`) | `transcription.transcriber.transcribe` | `config["whisper"]["model"/"device"]` |
-| LLM (any provider) | `highlights.score_windows` with `sport.guidance("windows")` (`analysis/fusion.py:292-294`), titles (`core/pipeline.py:514-528`), `look` via `analysis/game_vision` (`sports/basketball/look.py:58,86`) | `create_backend(_with_usable_model(config["llm"]))` `core/pipeline.py:431` | |
-| ffmpeg / ffprobe | keyframe crops (`sports/core/scorebug.py:218`), keyframe listing (`sports/basketball/keyframes.py:59`), reel joins (`sports/core/reels.py:172`), bug detection (`sports/basketball/scoreboard.py:783`) | `core.binaries.ffmpeg/ffprobe` | |
+| LLM (any provider) | `highlights.score_windows` with `sport.guidance("windows")` (`analysis/fusion.py:307-309`), titles (`core/pipeline.py:514-528`), `look` via `analysis/game_vision` (`sports/basketball/look.py:58,86`) | `create_backend(_with_usable_model(config["llm"]))` `core/pipeline.py:431` | |
+| ffmpeg / ffprobe | keyframe crops (`sports/core/scorebug.py:218`), keyframe listing (`sports/basketball/keyframes.py:59`), reel joins (`sports/core/reels.py:255`), bug detection (`sports/basketball/scoreboard.py:783`) | `core.binaries.ffmpeg/ffprobe` | |
 | OpenCV | frame grabs (`video.capture.video_capture`, `cv2`) | `sports/soccer/scoreboard.py:318-321`, `sports/basketball/look.py:68-70` | |
 
 Resource notes from the code: score-bug read ~1.2 s/keyframe, 25 min on a 79-min NBA game (`sports/basketball/__init__.py:52-58`); soccer 1,510 crops in 19 s + ~16 ms recogniser each (`sports/core/scorebug.py:7-13`); YOLO at imgsz 1280 (`config/sports.yaml:140,402-406`). All prepasses run on daemon threads concurrently with Whisper (`core/pipeline.py:889-895`).
@@ -236,7 +236,7 @@ Resource notes from the code: score-bug read ~1.2 s/keyframe, 25 min on a 79-min
 
 `config/sports.yaml` per-sport keys read by the core: `label, highlights, crowd_lag_seconds, replay_within_seconds, replay_words, events{type:{label,importance,pre,post}}, callouts{type:[words]}, patterns{type:[regex]}, read_screen, screen_text, sounds, sound_groups, curves, scoring_events, celebration_seconds, framing{model,imgsz (soccer),hide_scoreboard,sources (basketball)}, highlights_choices{id:{label,events|all,post_extra?,focus?,takes_request?}}, periods{id:label}, legacy_periods, period_word, footage_choices{id:label}, listed_hint, listed_words, match_minutes, reaction_events, reactions{...}` (sites: `sports/core/profile.py`, `sports/__init__.py:46-134`, `sports/core/select.py`, `sports/core/clips.py:110-124,165`, `sports/basketball/__init__.py:36-40,88-96`, `sports/core/events_import.py:64`).
 
-Job config keys: `config["clips"]["sport"]`, `config["clips"]["min_duration"/"max_duration"/"min_score"/"focus"/"vertical_live"]`, `config["scoring"]["profiles"]["sports"]["weights"]` or `config["scoring"]["weights"]` (`sports/core/profile.py:247-255`), `config["scoring"]["look_at_game"]` (`analysis/fusion.py:596`), `config["whisper"]`, `config["llm"]`.
+Job config keys: `config["clips"]["sport"]`, `config["clips"]["min_duration"/"max_duration"/"min_score"/"focus"/"vertical_live"]`, `config["scoring"]["profiles"]["sports"]["weights"]` or `config["scoring"]["weights"]` (`sports/core/profile.py:247-255`), `config["scoring"]["look_at_game"]` (`analysis/fusion.py:611`), `config["whisper"]`, `config["llm"]`.
 
 ## 12. How close to a plugin system, and what stops a sport living outside the repo
 
@@ -256,7 +256,7 @@ What stops a sport living OUTSIDE the repository today:
 | Registry is a literal dict; no discovery (entry points, directory scan, env var) | `sports/__init__.py:24` | hard |
 | Single yaml at a hard-coded path, cached once; a sport's data must be a top-level key in the repo's file | `sports/__init__.py:21,29-33` | hard |
 | Module path must be importable as `sports.<name>` from the engine's `sys.path`; the frozen (PyInstaller) build bundles exactly `collect_submodules("sports")` as hidden imports and copies `config/sports.yaml` into `config/` (`clips-studio.spec:51-53,115-116`); weights resolve via `sys._MEIPASS` (`analysis/panns.py:46-50`, `core/binaries.py:131-145`) | `sports/__init__.py:170`, `clips-studio.spec:51-53` | hard for the packaged app: an external sport has no import path and no bundled data |
-| Sport code imports private engine internals: `analysis.game_text._ocr` (`sports/basketball/scoreboard.py:980,1016`, `action.py:261`), `analysis.game_vision._jpeg` (`look.py:86`), `video.tracker._infer_lock` (`sports/soccer/ball.py:113`), `video.framing.{is_cut,small_gray,HoldMove,stable_target}` (`ball.py:137`, `action.py:112,123,301`), `video.capture.video_capture`, `core.binaries.{yolo_weights,ffmpeg,ffprobe}`, `core.gpu.{cuda_usable,torch_device}`, `core.cancel`, `core.modes.probe_size`, `analysis.gaming.knowledge` (`sports/__init__.py:44`), `sports.core.scorebug.*` | listed in section 5 and above | medium: needs an SDK surface for OCR, detector, frame grab, cancel, binaries |
+| Sport code imports private engine internals: `analysis.game_text._ocr` (`sports/basketball/scoreboard.py:980,1016`, `action.py:261`), `analysis.game_vision._jpeg` (`look.py:86`), `video.tracker._infer_lock` (`sports/soccer/ball.py:204`), `video.framing.{is_cut,small_gray,HoldMove,stable_target}` (`ball.py:137`, `action.py:112,123,301`), `video.capture.video_capture`, `core.binaries.{yolo_weights,ffmpeg,ffprobe}`, `core.gpu.{cuda_usable,torch_device}`, `core.cancel`, `core.modes.probe_size`, `analysis.gaming.knowledge` (`sports/__init__.py:44`), `sports.core.scorebug.*` | listed in section 5 and above | medium: needs an SDK surface for OCR, detector, frame grab, cancel, binaries |
 | Cross-sport import: basketball imports `sports.soccer.ball._model/detect` | `sports/basketball/action.py:299`, `reactions.py:147,154` | medium: the detector belongs in core |
 | Profile is a dataclass subclass, and engine code probes ad-hoc attributes (`board`, `curves`, `look`, `title_rules`, `check_titles`, `report_data`, `listed_report`, `footage`) by `getattr` | section 3D | medium: contract is implicit |
 | Scoreboard object protocol is implicit (`changes`, `box`, `readings`, `final()`, `teams()`, `period_at()`, `minute_at()`, `hidden()`, `period_number()`) | `sports/core/detect.py:168-197`, `clips.py:141-160`, `core/pipeline.py:978-983` | medium |
@@ -273,13 +273,13 @@ What stops a sport living OUTSIDE the repository today:
 |---|---|---|---|
 | Registry / discovery: register `name -> module` and a yaml/JSON data entry; `available()`, `clean()` option validation | `sports/__init__.py:24,50-134` | A data spec: `events`, `callouts`, `patterns`, `highlights_choices`, `periods`, `footage_choices`, `sounds`, `screen_text`, `replay_words`, windows | `config/sports.yaml` |
 | `SportProfile` base class with the gaming-path interface and the data-driven defaults (`classify`, `callouts_in`, `importance`, `window_of`, `guidance`, ...) | `sports/core/profile.py` | Subclass overrides: `classify` combos, `confirmed_type`, `context_weight`, `extra_moments`, `clip_span`, `one_play_per_clip`, `guidance`, `importance` | `sports/soccer/profile.py`, `sports/basketball/profile.py` |
-| Moment detection (`detect.moments`), windows, grouping, bonus, choose, report (`sports/core/{detect,windows,events,clips,select}.py`) | `analysis/fusion.py:269-298,392,510-547` | Optional `extra_moments` sources (reactions, cutaways) | `sports/basketball/reactions.py` |
+| Moment detection (`detect.moments`), windows, grouping, bonus, choose, report (`sports/core/{detect,windows,events,clips,select}.py`) | `analysis/fusion.py:284-313,407,525-562` | Optional `extra_moments` sources (reactions, cutaways) | `sports/basketball/reactions.py` |
 | Sound curves per group (PANNs via `game_audio.listen/sound_signal`), `sound_groups` merge | `core/pipeline.py:894-906,955-976` | Which curves (`curves`) and extra AudioSet classes (`sound_groups: buzzer`) | `config/sports.yaml:396-398` |
 | Score-bug finder/reader primitives: `find_box`, `cluster`, `pieces`, `rec_line`, `keyframe_crops`, plus the OCR engine itself (`game_text._ocr` should become public) | `sports/core/scorebug.py`, `analysis/game_text.py:103` | `parse`/`clock` of the bug's text, `Scoreboard` semantics (periods, minutes, points) | `sports/soccer/scoreboard.py`, `sports/basketball/scoreboard.py` |
-| Object detector (YOLO person/ball) with weight resolution, GPU selection and the shared inference lock; frame grabbing (`video.capture`), cut detection (`video.framing`) | `sports/soccer/ball.py:92-130`, `core/binaries.py:131`, `core/gpu` | `framing(clip_path, config)`: how to plan the crop path from detections (ball vs rim vs reaction, hide bug rows) | `sports/soccer/ball.plan`, `sports/basketball/crop/planner.plan`, `sports/basketball/action.rows_for` |
+| Object detector (YOLO person/ball) with weight resolution, GPU selection and the shared inference lock; frame grabbing (`video.capture`), cut detection (`video.framing`) | `sports/soccer/ball.py:183-221`, `core/binaries.py:131`, `core/gpu` | `framing(clip_path, config)`: how to plan the crop path from detections (ball vs rim vs reaction, hide bug rows) | `sports/soccer/ball.plan`, `sports/basketball/crop/planner.plan`, `sports/basketball/action.rows_for` |
 | Prepass scheduling: threads, `prepass_wait`, `cancel.check_active`, `cancel.wait`, degrade-on-failure | `core/pipeline.py:871-930` | `prepass(video_path, duration) -> dict` and `prepass_wait(duration)` | `sports/*/__init__.py` |
 | Transcription hotwords and video metadata (title/description fetch via `sources.dispatch.description`) | `core/pipeline.py:993-1007` | `hotwords(option, video)`, `READS_DESCRIPTION` | `sports/basketball/__init__.py:13,24-30`, `names.py` |
-| LLM access: `score_windows(guidance=...)`, `generate_metadata_batch(rules=...)`, vision (`game_vision`) | `analysis/fusion.py:292`, `core/pipeline.py:514-528`, `sports/basketball/look.py` | Prompt guidance text, `title_rules()`, `check_titles()`, `look()` | `sports/basketball/profile.py:300-331,420-490` |
+| LLM access: `score_windows(guidance=...)`, `generate_metadata_batch(rules=...)`, vision (`game_vision`) | `analysis/fusion.py:307`, `core/pipeline.py:514-528`, `sports/basketball/look.py` | Prompt guidance text, `title_rules()`, `check_titles()`, `look()` | `sports/basketball/profile.py:300-331,420-490` |
 | Clip subscore vocabulary `sport_*`, `required`, `sport_lift`, `source="sport"`, the outcome `report` schema and the UI that renders them | `sports/core/clips.py:78-105,198-230`, `SportsNote.tsx`, `ClipCard.tsx:38` | Values for `team/player/when/context/person` | `SportEvent` fields |
 | Reels (`plan/join/chapters`) and `events_import` (user-listed moments) | `sports/core/reels.py`, `sports/core/events_import.py` | `listed_words`, `match_minutes`, `listed_hint` | `config/sports.yaml:426-430,502` |
 | Logging/progress primitives (`print` convention, `core/progress.emit`) | `core/progress.py:30` | human-readable notes (`notes` in report) | `sports/core/clips.py:123-127` |
@@ -294,13 +294,13 @@ What stops a sport living OUTSIDE the repository today:
 - `analysis/panns.py`: `available()` `:53`, `load()` `:114`, `tag(windows, batch=32)` `:142`, `weights_path()` `:46`.
 - Basketball `Scoreboard` methods beyond soccer's: `seen_twice()`, `halves()`, `last_period()`, `period_number(t)`, `clock_at(t)`, `score_before(t)`, `when(t)` (`sports/basketball/scoreboard.py:136-226`).
 - `sports/basketball/reactions.py:245 def moments(profile, events, found, *, curves, video_end, min_len, max_len, react_within, focus) -> list[SportEvent]`.
-- Only four engine files import `sports`: `server/jobs.py`, `server/api.py`, `analysis/fusion.py`, `core/pipeline.py` (grep `import sports|from sports` outside `sports/` and `tests/`), plus `longform/process.py` which reaches it through `core.pipeline.MatchReading` / `_sport_reels` (`longform/process.py:88,201`).
+- Only four engine files import `sports`: `server/jobs.py`, `server/api.py`, `analysis/fusion.py`, `core/pipeline.py` (grep `import sports|from sports` outside `sports/` and `tests/`), plus `longform/process.py` which reaches it through `core.pipeline.MatchReading` / `_sport_reels` (`longform/process.py:88,208`).
 
 ## 15. Open questions for the platform design
 
 1. Should `config/sports.yaml` be split so each sport ships its own data file (the profile already reads everything through `sports.spec(name)`, `sports/__init__.py:36-38`), with `knowledge()`'s single `lru_cache` replaced by a per-sport loader?
 2. The implicit `Scoreboard` protocol (`changes`, `box`, `readings`, `final()`, `teams()`, `period_at()`, `minute_at()`, `hidden()`, and basketball's `period_number()` reached from `BasketballProfile.context_weight`) needs a declared base class or Protocol before a third sport can rely on it (inferred).
 3. `detect.moments` is soccer-shaped (goals, score changes, replays); for sports without a scoreboard or a crowd (e.g. esports-like or individual sports) the only extension points are `classify`, `extra_moments`, `confirmed_type` (inferred from `sports/core/detect.py:94-241`).
-4. Private helpers the sports import (`analysis.game_text._ocr`, `analysis.game_vision._jpeg`, `video.tracker._infer_lock`, `sports.soccer.ball._model`) need public SDK names; which module owns the shared YOLO detector (currently `sports/soccer/ball.py:92-107`)?
+4. Private helpers the sports import (`analysis.game_text._ocr`, `analysis.game_vision._jpeg`, `video.tracker._infer_lock`, `sports.soccer.ball._model`) need public SDK names; which module owns the shared YOLO detector (currently `sports/soccer/ball.py:183-198`)?
 5. The option schema in `sports.clean` (`sports/__init__.py:72-134`) is closed; should a sport declare extra option fields in its data, and how would the UI (`SportFields.tsx`) and MCP (`server/mcp.py:225-234`) render them?
 6. Progress: sports print only; should the SDK give a sport `progress.emit(stage="sport-prepass", ...)` so the UI can show the 25-minute score-bug read (`sports/basketball/__init__.py:52-58`)?

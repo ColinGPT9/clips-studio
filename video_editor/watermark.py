@@ -31,7 +31,7 @@ from pathlib import Path
 
 from core.binaries import ffmpeg
 from core.paths import discard, safe_name
-from video.encoding import video_encoder_args
+from video.encoding import final_movflags, video_encoder_args
 
 # ASS numpad alignment per named position (7 8 9 / 4 5 6 / 1 2 3).
 _ALIGN = {
@@ -262,7 +262,8 @@ def apply_image(video_path: Path, cfg: dict, canvas: tuple[int, int], asset_dir:
         "-map", "0:a?",   # keep audio untouched
         *video_encoder_args(),
         "-c:a", "copy",
-        "-movflags", "+faststart",
+        # It replaces the clip: its first frame at 0 with or without the edit list.
+        *final_movflags(),
         str(tmp.resolve()),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)

@@ -248,9 +248,9 @@ donanımsal video kodlama (otomatik algılanır, CPU yedeğiyle) ve Ollama üzer
   ile sesi birlikte değerlendiren TalkNet aktif konuşmacı tespiti karar verir. Konuşmacı
   değiştiğinde çerçeve, kaydırarak geçmek yerine bir editörün yapacağı gibi o kişiye
   **keser**. Yalnızca kırpma ile çerçeveleme: asla esnetilmez, asla bozulmaz.
-- **Podcast modu**: çok kameralı görüntülerde her çekim, tek bir kişi üzerinde kendi sabit
-  kırpmasını alır; böylece kesmeler kaydırma olmadan doğrudan bir yüze denk gelir. Bir
-  çekim içinde kişi ağız hareketine göre seçilir; olmazsa en belirgin yüz seçilir.
+- **Podcast modu**: çok kameralı görüntülerde her çekim, TalkNet'in konuştuğunu duyduğu kişi
+  üzerinde kendi sabit kırpmasını alır; kırpma, kaydırma olmadan tam kameranın kestiği karede değişir.
+  Uzun bir çekimde bir saniye ya da daha uzun konuşan yeni kişiye keser; kısa bir gülüşte kıpırdamaz.
 - **Vertical Live** (dikey canlı yayın): yayınlandığı sırada zaten dikey olan canlı
   yayınlar için (YouTube dikey canlı yayını, Twitch Dual Format, Streamlabs Dual Output,
   indirilmiş bir Instagram ya da TikTok canlı yayını). Yayının kendi 9:16 düzenini korur,

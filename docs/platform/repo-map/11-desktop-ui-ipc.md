@@ -122,7 +122,7 @@ ui/src/renderer/src/env.d.ts          window.studio + UpdateState types
 | `models` | Models | `ui/src/renderer/src/pages/Models.tsx` | Ollama models: installed list, pull box, recommendation tables |
 | `settings` | Settings | `ui/src/renderer/src/pages/Settings.tsx` | stack of `*Card` components (see §7) |
 
-Sources: `ui/src/renderer/src/App.tsx:20-35` (Page type + NAV), `:143-240` (render). ARCHITECTURE.md §11 (`ARCHITECTURE.md:849-858`) lists the same pages except Watch (doc slightly behind the code).
+Sources: `ui/src/renderer/src/App.tsx:20-35` (Page type + NAV), `:143-240` (render). ARCHITECTURE.md §11 (`ARCHITECTURE.md:926-935`) lists the same pages except Watch (doc slightly behind the code).
 
 ### Navigation mechanics
 - `const [page, setPage] = useState<Page>('dashboard')` in `App.tsx:43`; sidebar buttons call `setPage(item.id)` (`App.tsx:166-189`); the main area renders `{page === 'x' && <X/>}` (`App.tsx:218-230`).
@@ -209,7 +209,7 @@ There is **no single mode dropdown**. A video's processing mode is a set of **pe
 4. `ui/src/renderer/src/components/marketplace/*.tsx` — cards/rows if the page grows (pattern: `components/queue/`, `components/watch/`).
 5. Locales: nothing required for English; optional keys in `locales/*.json`.
 6. `ui/src/main/index.ts` `EXTERNAL_ALLOWED` — only if the page opens non-allow-listed hosts via `openExternal`.
-7. No router, no registry of routes elsewhere, no tests to update (there is no UI test suite). `ARCHITECTURE.md:855-858` lists pages in prose and could be updated.
+7. No router, no registry of routes elsewhere, no tests to update (there is no UI test suite). `ARCHITECTURE.md:932-935` lists pages in prose and could be updated.
 
 CSP note: the renderer cannot `fetch()` GitHub directly (`index.html:8`), so registry data must be fetched by the engine (`127.0.0.1:8765`) and exposed over its API (inferred).
 
@@ -228,14 +228,14 @@ Only `components/queue/AddVideos.tsx` calls `api.createJobsBatch` (`:543`) and `
 `pages/Models.tsx` is the nearest thing to a marketplace today: an "Installed" section of rows with Use/Remove buttons and an "active" badge (`:125-169`), a "Download a model" input + button driven by `POST /models/pull` with progress from `model_pull` events (`:171-185`), and recommendation tables from the engine (`:195-250`). It also shows the offline pattern (`:98-108`). `components/AICard.tsx` (1306 lines) is the provider-catalog precedent: `ProviderPanel`, `TierRow`, `ModelPicker`, `KeyField` sub-components inside one `card space-y-5` (`AICard.tsx:86,279,342,1087,1237`).
 
 ### docs/API.md on the UI's relationship to the engine
-"The desktop window is one client of it … The service has 86 HTTP endpoints and a WebSocket" (`docs/API.md:3-13`); `ARCHITECTURE.md:851-853`: "The renderer never touches Python or the filesystem directly: context isolation on, no node integration, everything through the local API."
+"The desktop window is one client of it … The service has 86 HTTP endpoints and a WebSocket" (`docs/API.md:3-13`); `ARCHITECTURE.md:928-930`: "The renderer never touches Python or the filesystem directly: context isolation on, no node integration, everything through the local API."
 
 ## 12. Open questions / risks for the Marketplace work
 
-1. **Registry fetch path**: the renderer CSP (`ui/src/renderer/index.html:8`) only allows `127.0.0.1:8765`, so GitHub registry reads must be proxied by the engine (new endpoints) or by the main process over IPC. The code base's stance ("everything through the local API", `ARCHITECTURE.md:851-853`) points to the engine (inferred).
+1. **Registry fetch path**: the renderer CSP (`ui/src/renderer/index.html:8`) only allows `127.0.0.1:8765`, so GitHub registry reads must be proxied by the engine (new endpoints) or by the main process over IPC. The code base's stance ("everything through the local API", `ARCHITECTURE.md:928-930`) points to the engine (inferred).
 2. **Opening plugin repo pages**: `EXTERNAL_ALLOWED` only allows `github.com/ColinGPT9/clips-studio` (`ui/src/main/index.ts:509`); other GitHub URLs are refused silently with a console warning (`:562-570`). Needs a widened regex or an engine-side redirect.
 3. **i18n coverage**: `Models.tsx` is untranslated while `Settings`/`Queue` are; decide whether the Marketplace page uses `t()` from the start (the locale files are hand-maintained, `docs/TRANSLATING.md`).
 4. **No UI tests**: nothing to extend; CI only typechecks and builds (`.github/workflows/ci.yml:100-123`). The Python side has a test that keeps `multilingual/languages.py` and the locale folder in step (`docs/EXTENDING.md:36-37`), which a new locale would hit.
 5. **Where plugin-provided modes surface**: `TOGGLES` in `AddVideos.tsx:71-121` is a static array; the Sports toggle (`GET /sports` gating, `AddVideos.tsx:663-665`) is the only engine-discovered toggle. Making modes plugin-driven means generalising that gate (inferred).
 6. **Settings persistence is regex-on-YAML** (`server/api.py:2955-3017`); plugin settings should probably not extend `PATCH /settings` but use their own endpoint/`app_state` JSON as Upload-Post/WoopSocial do (`server/uploadpost_service.py:6-7`) (inferred).
-7. **ARCHITECTURE.md §11 is slightly stale**: it omits the Watch page (`ARCHITECTURE.md:855-858` vs `App.tsx:24-35`).
+7. **ARCHITECTURE.md §11 is slightly stale**: it omits the Watch page (`ARCHITECTURE.md:932-935` vs `App.tsx:24-35`).

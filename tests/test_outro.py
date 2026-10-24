@@ -21,7 +21,7 @@ pytest.importorskip("numpy", reason="the end card is drawn with numpy, which CI 
 pytest.importorskip("PIL", reason="the end card is drawn with Pillow, which CI does not install")
 
 from core import binaries
-from video import outro
+from video import encoding, outro
 
 ROOT = Path(__file__).resolve().parent.parent
 SHIPPED = ROOT / "assets" / "outro"
@@ -306,13 +306,15 @@ def test_all_four_longform_profiles_reach_the_funnel():
 # ---------------------------------------------------------------- end to end
 @pytest.fixture
 def clip_factory(tmp_path):
-    def make(name="clip.mp4", w=1080, h=1920, fps=30, secs=3):
+    # preset "veryfast" is the CPU renderer's, which uses B-frames;
+    # "ultrafast" has none.
+    def make(name="clip.mp4", w=1080, h=1920, fps=30, secs=3, preset="ultrafast"):
         p = tmp_path / name
         subprocess.run([
             binaries.ffmpeg(), "-y", "-v", "error",
             "-f", "lavfi", "-i", f"testsrc2=s={w}x{h}:r={fps}:d={secs}",
             "-f", "lavfi", "-i", f"sine=f=220:r=48000:d={secs}",
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32",
+            "-c:v", "libx264", "-preset", preset, "-crf", "32",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
             "-movflags", "+faststart", str(p)], check=True, capture_output=True)
         return p
@@ -335,6 +337,46 @@ def _video_hash(path: Path, frames: int) -> str:
         "-frames:v", str(frames), "-c", "copy", "-bsf:v", "h264_mp4toannexb",
         "-f", "h264", "-"], capture_output=True)
     return hashlib.md5(r.stdout).hexdigest()
+
+
+def _first_frame(path: Path, edit_list: bool = True) -> float:
+    """When the first video frame is shown, in seconds: as the MP4's edit
+    list says, or (edit_list=False) as an app that ignores edit lists shows it."""
+    out = subprocess.run([
+        binaries.ffprobe(), "-v", "error", *([] if edit_list else ["-ignore_editlist", "1"]),
+        "-select_streams", "v:0",
+        "-read_intervals", "%+#5", "-show_entries", "frame=pts_time",
+        "-of", "csv=p=0", str(path)], capture_output=True, text=True).stdout
+    return min(float(x.strip(",")) for x in out.split())
+
+
+def _edits(path: Path, kind: str) -> list[int]:
+    """The media time of each edit on the file's `kind` track ("video" or
+    "audio"), from the MP4's edit list. -1 is an empty edit: time before the
+    first frame, which a phone shows as black."""
+    index = subprocess.run([
+        binaries.ffprobe(), "-v", "error", "-select_streams", kind[0],
+        "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True).stdout.split()[0].strip(",")
+    trace = subprocess.run([binaries.ffprobe(), "-v", "trace", "-i", str(path)],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace").stderr
+    return [int(m.group(1)) for m in re.finditer(
+        rf"Processing st: {index}, edit list \d+ - media time: (-?\d+)", trace)]
+
+
+def _starts_at_zero(path: Path) -> None:
+    """The video's first frame at 0 with no empty edit before it, whether
+    the edit list is read or not, and the AAC priming kept as the audio's
+    edit (1024 samples) rather than played."""
+    assert abs(_first_frame(path)) < 0.0005, f"the video starts at {_first_frame(path):.6f}s"
+    ignored = _first_frame(path, edit_list=False)
+    assert abs(ignored) < 0.0005, f"without the edit list the video starts at {ignored:.6f}s"
+    video = _edits(path, "video")
+    assert video, "no edit list read from the trace"
+    assert -1 not in video, "an empty edit before the first frame"
+    assert video == [0], f"the first frame is at 0 only through the edit list: {video}"
+    assert _edits(path, "audio") == [1024], "the audio's priming is no longer an edit"
 
 
 @pytest.fixture
@@ -835,3 +877,98 @@ def test_longform_joins_the_card_as_a_part():
     join = src.index("listfile.write_text")
     assert src.index("parts.append(outro.ensure_outro(") < join, (
         "the card must be added BEFORE the concat list is written")
+
+
+# ===========================================================================
+# The video starts at 0. The join used to let FFmpeg line the start up with
+# the audio's AAC priming, which put the first frame 10-23 ms late behind an
+# empty edit: the black blink at the start of a clip on a phone. And a clip's
+# B-frames left its first frame two frames in, at 0 only through the edit
+# list, which an app that ignores edit lists shows as black.
+# ===========================================================================
+@needs_ffmpeg
+@pytest.mark.parametrize("preset", ["ultrafast", "veryfast"])
+def test_finish_starts_the_video_at_0(clip_factory, cfg, tmp_path, preset):
+    """The render path, with and without B-frames ("veryfast" is the CPU
+    renderer's preset). The card is still there and the clip is not
+    re-encoded: only the timestamps the join writes changed."""
+    src = clip_factory("pre-card.mp4", preset=preset)
+    frames = _packets(src)
+    original = _video_hash(src, frames)
+    dst = tmp_path / "final.mp4"
+
+    assert outro.finish(src, dst, cfg) is True
+    _starts_at_zero(dst)
+    assert encoding._video_starts_late(dst) is None
+    assert outro._video_falls_short(dst) is None, "the card lost its video"
+    assert _packets(dst) == frames + round(30 * outro.DURATION)
+    assert _video_hash(dst, frames) == original, "the clip was re-encoded"
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("preset", ["ultrafast", "veryfast"])
+def test_append_starts_the_video_at_0(clip_factory, cfg, preset):
+    clip = clip_factory(preset=preset)
+    frames = _packets(clip)
+    original = _video_hash(clip, frames)
+
+    appended = outro.append(clip, cfg)
+    assert appended is True
+    _starts_at_zero(clip)
+    assert outro._video_falls_short(clip) is None, "the card lost its video"
+    assert _packets(clip) == frames + round(30 * outro.DURATION)
+    assert _video_hash(clip, frames) == original, "the clip was re-encoded"
+
+
+@needs_ffmpeg
+def test_b_frames_alone_put_the_first_frame_behind_the_edit_list(clip_factory):
+    """What the joins are checked against: a B-frame clip written with plain
+    +faststart, as every clip was, starts at 0 only through its edit list,
+    two frames in for an app that ignores it."""
+    clip = clip_factory(preset="veryfast")
+    assert abs(_first_frame(clip)) < 0.0005
+    assert abs(_first_frame(clip, edit_list=False) - 2 / 30) < 0.001
+    assert abs(encoding._video_starts_late(clip) - 2 / 30) < 0.001
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize(("preset", "late_before"), [("ultrafast", 0.0213), ("veryfast", 2 / 30)])
+def test_a_clip_that_already_starts_late_keeps_the_join_that_starts_soonest(
+        clip_factory, cfg, tmp_path, preset, late_before):
+    """Never worse than before. A clip carded before this fix opens on the
+    gap already, and keeping its timestamps keeps the gap; the join without
+    -copyts is made beside it, and whichever starts its video sooner is the
+    one kept, byte for byte (this one on a tie). Neither starts later than
+    the clip did."""
+    clip = clip_factory(preset=preset)
+    card = outro.ensure_outro(outro.probe(clip), cfg)
+
+    def join(first: Path, out: Path, *args: str) -> Path:
+        listing = tmp_path / f"{out.stem}.txt"
+        listing.write_text(f"file '{first.as_posix()}'\nfile '{card.as_posix()}'\n", encoding="utf-8")
+        subprocess.run([binaries.ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                        "-i", str(listing), *args, str(out)], check=True, capture_output=True)
+        return out
+
+    made_before = join(clip, tmp_path / "made-before.mp4", "-c", "copy", "-movflags", "+faststart")
+    late = encoding._video_starts_late(made_before)
+    # 21.3 ms behind the empty edit at 48 kHz; with B-frames, two frames
+    # without the edit list, which is the later of the two.
+    assert late is not None and abs(late - late_before) < 0.003, late
+
+    final = ["-c", "copy", "-movflags", "+faststart+negative_cts_offsets"]
+    kept_times = join(made_before, tmp_path / "copyts.mp4", "-copyts", *final)
+    as_before = join(made_before, tmp_path / "as-before.mp4", *final)
+    starts = {p: encoding._video_start(p) for p in (kept_times, as_before)}
+    soonest = as_before if starts[as_before] < starts[kept_times] - encoding.LATE_TOLERANCE else kept_times
+
+    listing = tmp_path / "again.txt"
+    listing.write_text(f"file '{made_before.as_posix()}'\nfile '{card.as_posix()}'\n", encoding="utf-8")
+    joined = tmp_path / "again.mp4"
+    assert outro.concat(listing, joined).returncode == 0
+    assert joined.read_bytes() == soonest.read_bytes(), starts
+    # The gap the clip came with stays (only a re-render removes it), and
+    # nothing is added to it.
+    assert encoding._video_start(joined) <= late + 0.001
+    assert abs(_first_frame(joined, edit_list=False)) < 0.0005
+    assert not list(tmp_path.glob(".again.*")), "the other join was left behind"

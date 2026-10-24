@@ -249,7 +249,7 @@ values in `config/settings.yaml`:
 | `captions` | bool | burn captions in (default true) |
 | `caption_style` | object | font, size, colour, position, `words_per_caption`; `second_speaker` (bool) with `second_speaker_color` burns anyone but the main speaker in another colour |
 | `long_clips` | bool | 61–180s clips, for TikTok monetisation |
-| `podcast` | bool | multi-camera: letterbox, no subject tracking |
+| `podcast` | bool | multi-camera: each shot gets a steady crop on whoever is talking |
 | `longform` | object | `{"mode": ...}`: `short_clips`, `clips_140`, `highlights` or `edited_stream`; add `"shorts": true` to make the 9:16 Shorts in the same job |
 | `focus` | string | what the clips should be about, in plain words (up to 600 characters): a topic, a moment, a time range ("1:35-1:55", "near the end") or a style (funny, laughing, hype, reactions). It only adds points to what matches and never removes a clip; a must-have that was never said is reported in the video's `outcome.intent`, never invented |
 | `sport` | object | a match: `{"name": "soccer", "highlights": "goals", "period": "full", "teams": "Team A"}`. `highlights` is `best`, `goals`, `goals_celebrations`, `saves`, `chances`, `attacking`, `cards`, `penalties` or `custom` (with `request`, the moments in words); `period` is `full`, `first_half`, `second_half` or `extra_time`; `footage` is `auto` (the default), `broadcast` or `sideline` (club or phone footage); `events` is the match's events as text, one per line ("18:16 Goal", "45+2' yellow card"); `reels` is any of `recap`, `teams` and `players`, the story reels to join from the clips; `teams` is optional. `GET /sports` lists them. Not with `gaming` or `podcast`. See [SPORTS.md](SPORTS.md) |
@@ -1033,7 +1033,7 @@ Removes a queued job, or cancels a running one, and marks the stream
 ```json
 [
   {"id": "standard", "name": "Standard", "description": "Vertical clips with captions.", "options": {}},
-  {"id": "podcast", "name": "Podcast", "description": "Letterboxed framing for multi-camera podcasts, without subject tracking.", "options": {"podcast": true}},
+  {"id": "podcast", "name": "Podcast", "description": "For multi-camera podcasts: each shot gets a steady crop on whoever is talking.", "options": {"podcast": true}},
   {"id": "long_clips", "name": "Long clips", "description": "Clips between 61 and 180 seconds long.", "options": {"long_clips": true}},
   {"id": "highlights", "name": "Stream highlights", "description": "A horizontal highlights video of the stream.", "options": {"longform": {"mode": "highlights"}}}
 ]

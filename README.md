@@ -219,9 +219,9 @@ through Ollama.
   from movement. When the speaker changes the framing **cuts** to them instead of
   panning across, the way an editor would. Crop-only framing: never stretched, never
   distorted.
-- **Podcast mode**: for multi-camera footage, each shot gets its own steady crop on one
-  person, so cuts land on a face with no panning. Within a shot the subject is chosen by
-  mouth motion, falling back to the most prominent face.
+- **Podcast mode**: for multi-camera footage, each shot gets its own steady crop on whoever
+  TalkNet hears talking, changing on the very frame the camera cuts, with no panning. In a
+  long shot it cuts to a new speaker who talks for a second or more; a quick laugh doesn't.
 - **Vertical Live**: for a livestream that was already vertical when it was streamed (a
   YouTube vertical live, Twitch Dual Format, Streamlabs Dual Output, a downloaded
   Instagram or TikTok live). Keeps the stream's own 9:16 layout, skips face tracking, and

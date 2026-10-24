@@ -48,6 +48,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from core.paths import discard, resolve_data_dir
 from video import mascot_art as art
+from video.encoding import concat, final_movflags
 
 # --------------------------------------------------------------------------
 # The design, in reference coordinates. Everything scales uniformly from here,
@@ -1224,11 +1225,7 @@ def append(clip: Path, config: dict) -> bool:
             f"file '{clip.as_posix()}'\nfile '{outro.as_posix()}'\n",
             encoding="utf-8")
         try:
-            r = subprocess.run([
-                _ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
-                "-i", str(listing), "-c", "copy", "-movflags", "+faststart",
-                str(joined),
-            ], capture_output=True, text=True)
+            r = concat(listing, joined)
             if r.returncode != 0 or not joined.exists() or joined.stat().st_size == 0:
                 print(f"  outro skipped: {r.stderr.strip()[-200:] or 'concat failed'}")
                 _tally["skipped"] += 1
@@ -1417,8 +1414,11 @@ def finish(src: Path, dst: Path, config: dict) -> bool:
     stalling on locks it could never win. Producing the file cannot hit that
     operation at all.
 
-    Never loses the clip: three attempts, each of which WRITES `dst` rather
-    than replacing it, so the lock cannot block any of them.
+    Never loses the clip: three attempts (the join, a remux, a copy), each of
+    which WRITES `dst` rather than replacing it, so the lock cannot block any
+    of them. The one move: when the join's video starts late, as a part's
+    own does, a sooner join made beside it is moved into place, or, if the
+    clip is held open, written into `dst` instead (video/encoding.py concat()).
     """
     src = Path(src).resolve()
     dst = Path(dst).resolve()
@@ -1434,11 +1434,7 @@ def finish(src: Path, dst: Path, config: dict) -> bool:
                 f"file '{src.as_posix()}'\nfile '{card.as_posix()}'\n",
                 encoding="utf-8")
             try:
-                r = subprocess.run([
-                    _ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
-                    "-i", str(listing), "-c", "copy", "-movflags", "+faststart",
-                    str(dst),
-                ], capture_output=True, text=True)
+                r = concat(listing, dst)
             finally:
                 discard(listing)
             if r.returncode == 0 and dst.exists() and dst.stat().st_size > 0:
@@ -1455,8 +1451,10 @@ def finish(src: Path, dst: Path, config: dict) -> bool:
     # and both fallbacks WRITE it, so a held file cannot block them either.
     _tally["skipped"] += 1
     try:
+        # The clip's own flags (final_movflags): a plain remux would write its
+        # first frame back behind the edit list.
         r = subprocess.run([_ffmpeg(), "-y", "-v", "error", "-i", str(src),
-                            "-c", "copy", "-movflags", "+faststart", str(dst)],
+                            "-c", "copy", *final_movflags(), str(dst)],
                            capture_output=True, text=True)
         if r.returncode == 0 and dst.exists() and dst.stat().st_size > 0:
             discard(src)
