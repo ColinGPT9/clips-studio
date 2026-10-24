@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from publish.errors import PublishError
+from server import posts
 from server import woopsocial_service as service
 from server.feedback import redact
 
@@ -248,7 +249,12 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             except PublishError as e:
                 raise _fail(e) from e
 
-            _record(d, clip_id, clip, result)
+            # Publish time: the post's identity, its time, its text and the
+            # visibility asked for. With no time the post is due now.
+            service.record_outcomes(
+                d, clip_id, clip, result, scheduled_for=when, caption=text,
+                visibility=posts.visibilities("woopsocial", body.platforms, body.overrides),
+            )
             service.save_settings(d, {"platforms": body.platforms})
             return _payload(d, clip_id, result.request_id)
         finally:
@@ -389,7 +395,9 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         try:
             _guard(d)
             try:
-                return service.refresh_in_flight(d, data_path)
+                # The newest 60 in flight, as this has always checked; the
+                # background refresh is the one that picks the due ones.
+                return service.refresh_in_flight(d, data_path, ids=service.in_flight(d)[:60])
             except PublishError as e:
                 raise _fail(e) from e
         finally:
@@ -425,7 +433,6 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             if not rows:
                 raise HTTPException(404, "no such publish")
             clip_id = int(rows[0]["clip_id"])
-            clip = d.get_clip(clip_id)
             client = _client()
             publisher = WoopSocialPublisher(client, _project(d, client))
             try:
@@ -433,28 +440,10 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             except PublishError as e:
                 raise _fail(e) from e
             if result.outcomes:
-                _record(d, clip_id, clip, result)
+                service.record_refresh(d, clip_id, result)
             return _payload(d, clip_id, post_id)
         finally:
             d.close()
-
-    def _record(d, clip_id: int, clip, result) -> None:
-        for outcome in result.outcomes:
-            d.record_clip_publish(
-                clip_id,
-                outcome.platform,
-                {
-                    "provider": "woopsocial",
-                    "video_id": (clip["video_id"] if clip is not None else "") or "",
-                    "start_s": (clip["start_s"] if clip is not None else 0) or 0,
-                    "end_s": (clip["end_s"] if clip is not None else 0) or 0,
-                    "state": outcome.state,
-                    "post_id": outcome.post_id,
-                    "post_url": outcome.post_url,
-                    "error": outcome.error,
-                    "request_id": result.request_id,
-                },
-            )
 
     def _payload(d, clip_id: int, request_id: str) -> dict:
         rows = [dict(r) for r in d.clip_publishes(clip_id)]

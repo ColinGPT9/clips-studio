@@ -338,3 +338,74 @@ def test_an_old_clip_with_run_together_hashtags_posts_them_separately(db, tmp_pa
     db.conn.commit()
     publish(db, tmp_path, ids)
     assert woop.posts[0]["text"].splitlines()[-1] == "#creatorname #drama #apology"
+
+
+# ---- what each post said, and who could see it ------------------------------------
+#
+# A campaign's rules are about the post: a hashtag it has to carry, and that it
+# is public. Neither could be checked while the caption was thrown away and the
+# requested visibility was never written down.
+
+
+def rows(db):
+    return {r["platform"]: r for r in db.conn.execute("SELECT * FROM clip_publishes")}
+
+
+def test_the_caption_and_the_visibility_asked_for_are_kept(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 1)
+    publish(db, tmp_path, ids, platforms=("youtube", "tiktok", "instagram"),
+            overrides={"youtube": {"privacy": "unlisted"},
+                       "tiktok": {"privacyLevel": "SELF_ONLY"}})
+    got = rows(db)
+    assert {p: r["caption"] for p, r in got.items()} == dict.fromkeys(
+        ("youtube", "tiktok", "instagram"), woop.posts[0]["text"])
+    assert {p: r["visibility"] for p, r in got.items()} == {
+        "youtube": "unlisted", "tiktok": "private", "instagram": "default"}
+
+
+def test_a_spread_run_records_each_posts_time(db, tmp_path, woop):
+    ids = clips(db, tmp_path, 2)
+    out = publish(db, tmp_path, ids, once=True, per_day=5)
+    times = {s["clip_id"]: s["scheduled_for"] for s in out["started"]}
+    recorded = {r["clip_id"]: r["scheduled_for"]
+                for r in db.conn.execute("SELECT clip_id, scheduled_for FROM clip_publishes")}
+    assert recorded == times and all(times.values())
+
+
+def test_a_send_written_down_before_it_goes_carries_its_caption(db, tmp_path, woop):
+    """So a post reconcile_sending adopts after a stop still says what it said."""
+    ids = clips(db, tmp_path, 1)
+    woop.crash_after_create = True
+    with pytest.raises(Crash):
+        publish(db, tmp_path, ids, once=True,
+                overrides={"youtube": {"privacy": "private"}})
+    service.reconcile_sending(db, tmp_path, older_than=0)
+    row = rows(db)["youtube"]
+    assert (row["state"], row["request_id"]) == ("queued", "p1")
+    assert row["caption"] == woop.posts[0]["text"]
+    assert row["visibility"] == "private"
+    assert (row["video_id"], row["start_s"], row["end_s"]) == ("vid", 0.0, 8.0)
+
+
+@pytest.mark.parametrize("provider, platform, override, expected", [
+    ("woopsocial", "youtube", {"privacy": "public"}, "public"),
+    ("woopsocial", "youtube", {"privacy": "unlisted"}, "unlisted"),
+    ("woopsocial", "youtube", {"privacy": "private"}, "private"),
+    ("woopsocial", "tiktok", {"privacyLevel": "PUBLIC_TO_EVERYONE"}, "public"),
+    ("woopsocial", "tiktok", {"privacyLevel": "MUTUAL_FOLLOW_FRIENDS"}, "friends"),
+    ("woopsocial", "tiktok", {"privacyLevel": "FOLLOWER_OF_CREATOR"}, "friends"),
+    ("woopsocial", "tiktok", {"privacyLevel": "SELF_ONLY"}, "private"),
+    # Not WoopSocial's TikTok field, so it was never sent.
+    ("woopsocial", "tiktok", {"privacy": "SELF_ONLY"}, "default"),
+    ("woopsocial", "youtube", {}, "default"),
+    ("woopsocial", "instagram", {"privacy": "private"}, "default"),
+    ("upload_post", "youtube", {"privacy": "unlisted"}, "unlisted"),
+    ("upload_post", "tiktok", {"privacy": "SELF_ONLY"}, "private"),
+    ("upload_post", "tiktok", {"privacy": "MUTUAL_FOLLOW_FRIENDS"}, "friends"),
+    ("upload_post", "tiktok", {}, "default"),
+    ("upload_post", "facebook", {"privacy": "private"}, "default"),
+])
+def test_each_privacy_override_is_recorded_in_one_vocabulary(provider, platform, override, expected):
+    from server import posts
+
+    assert posts.requested_visibility(provider, platform, {platform: override}) == expected

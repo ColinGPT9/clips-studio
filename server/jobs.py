@@ -955,6 +955,9 @@ class Worker(threading.Thread):
             restore["render_opts"] = _json.dumps(render_opts)
             db.set_clip(new_row["id"], **restore)
             db.reattach_clip_rows(new_row["id"], detached)
+            # Its posts on other platforms follow it too, so "Where it went"
+            # still shows them after the edits are applied.
+            db.follow_clip_id(clip["id"], new_row["id"])
             # A watched video's first publish kept the windows it chose
             # (server/automation.py publish): a trimmed clip is still one of them.
             db.follow_chosen_clip(video_id, (clip["start_s"], clip["end_s"]), (start, end))

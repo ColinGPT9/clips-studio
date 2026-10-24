@@ -886,6 +886,36 @@ def test_a_post_going_live_links_to_the_post(env):
     assert activity(env)["events"][0]["url"] == "https://www.youtube.com/watch?v=posted0001"
 
 
+def test_a_post_is_announced_once_even_after_its_clip_is_re_rendered(env):
+    """Applying edits gives the clip a new id and its posts follow it there
+    (StateDB.follow_clip_id). The post is the same one, so it is not
+    announced as going live a second time."""
+    publishing_watch(env)
+    finished_with_clips(env)
+    env.later(5)
+
+    def land(d):
+        clip = d.clips_for_video("newnewnew01")[0]
+        d.record_clip_publish(clip["id"], "youtube", {
+            "provider": "woopsocial", "video_id": "newnewnew01", "start_s": clip["start_s"],
+            "end_s": clip["end_s"], "state": "published",
+            "post_url": "https://www.youtube.com/watch?v=posted0001"})
+        return clip["id"], clip["start_s"], clip["end_s"]
+    old_id, start, end = env.run(land)
+    env.later(5)
+
+    def rerender(d):
+        d.conn.execute("DELETE FROM clips WHERE id = ?", (old_id,))
+        d.conn.commit()
+        new_id = d.add_clip("newnewnew01", start + 1, end, 90, "hook 0")
+        d.follow_clip_id(old_id, new_id)
+    env.run(rerender)
+    env.later(5)
+
+    posted = [e for e in activity(env)["events"] if e["text"].startswith("Posted ")]
+    assert len(posted) == 1
+
+
 # ---- only full videos and finished streams -----------------------------------
 
 

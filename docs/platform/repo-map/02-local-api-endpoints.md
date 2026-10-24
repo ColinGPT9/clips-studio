@@ -31,7 +31,7 @@ Branch `claude/open-platform-w4eh9g` (== main). Read-only survey. Every claim ci
 | Ollama host | `ollama_host = config["llm"].get("ollama_host", "http://localhost:11434")` (closure var used by `/models*`, `/agent*`) | `server/api.py:2809` |
 | Return | `return app` | `server/api.py:3019` |
 
-Pattern worth copying for an SDK/plugin host: every optional feature is a module exposing `install(app, *, config, db, data_dir, ...)` that registers closures on the app and optionally returns a thread to start/stop (`server/youtube_api.py:148`, `server/uploadpost_api.py:63`, `server/woopsocial_api.py:39`, `server/ai_api.py` (install near line 120, inferred from test usage `tests/test_ai_api.py:55`), `server/integrations.py:210`, `server/automation.py:955`, `remote_render/service.py:148`). The docstrings state the rule "a switched-off feature 404s and `/<feature>/status` returns `{"enabled": false}`" (`server/youtube_api.py:10-12`, `server/uploadpost_api.py:6-9`, `server/woopsocial_api.py:9-11`).
+Pattern worth copying for an SDK/plugin host: every optional feature is a module exposing `install(app, *, config, db, data_dir, ...)` that registers closures on the app and optionally returns a thread to start/stop (`server/youtube_api.py:148`, `server/uploadpost_api.py:64`, `server/woopsocial_api.py:40`, `server/ai_api.py` (install near line 120, inferred from test usage `tests/test_ai_api.py:55`), `server/integrations.py:210`, `server/automation.py:955`, `remote_render/service.py:148`). The docstrings state the rule "a switched-off feature 404s and `/<feature>/status` returns `{"enabled": false}`" (`server/youtube_api.py:10-12`, `server/uploadpost_api.py:6-9`, `server/woopsocial_api.py:9-11`).
 
 ## 2. Serving: host, port, process
 
@@ -99,11 +99,11 @@ Not refused but notable: `sport` + `longform` and `sport` + `vertical_live` are 
 
 ### 5.1 `jobs` table (`core/state.py:62-70` + migrations `core/state.py:412-437`)
 
-Columns: `id`, `type` (`process|render|translate`, `server/jobs.py:8-11`, `297-302`), `payload` (JSON text), `status` (`queued|running|done|failed|cancelled`, `server/jobs.py:285-299`), `error`, `created_at`, `updated_at`, `position`, `video_id`, `title`, `interrupted`, `started_at`, `finished_at`, `attempts`, `log_path`. Index `idx_jobs_queue(status, position, id)` (`core/state.py:435`). Claim = `SELECT … WHERE status='queued' ORDER BY position, id LIMIT 1` then set `running` (`core/state.py:1325-1340`). Render/translate jobs are inserted **ahead** of waiting process jobs (`core/state.py:1275-1305`).
+Columns: `id`, `type` (`process|render|translate`, `server/jobs.py:8-11`, `297-302`), `payload` (JSON text), `status` (`queued|running|done|failed|cancelled`, `server/jobs.py:285-299`), `error`, `created_at`, `updated_at`, `position`, `video_id`, `title`, `interrupted`, `started_at`, `finished_at`, `attempts`, `log_path`. Index `idx_jobs_queue(status, position, id)` (`core/state.py:435`). Claim = `SELECT … WHERE status='queued' ORDER BY position, id LIMIT 1` then set `running` (`core/state.py:1355-1370`). Render/translate jobs are inserted **ahead** of waiting process jobs (`core/state.py:1305-1335`).
 
 ### 5.2 Payload shapes
 
-- `process`: `{"url": str, "force": bool, ...options from _process_options...}` — keys possible: `max_clips, caption_style, captions, long_clips, podcast, vertical_live, gaming, gaming_scoring, gaming_layout, gaming_remember, longform, sport, focus, watermark_profile_id, filter, min_score, hashtags, then, webhook_url, webhook_secret` (`server/api.py:446-528`), plus `origin: "stream"` when queued by an integration (`server/integrations.py:146`) or `"watch"` (inferred from `server/jobs.py:645`, which reads `payload.get("origin") in ("watch","stream")`), plus `preset` for watches (`server/automation.py:1121`). Local imports use `url = "local:<video_id>"` (`server/api.py:970`).
+- `process`: `{"url": str, "force": bool, ...options from _process_options...}` — keys possible: `max_clips, caption_style, captions, long_clips, podcast, vertical_live, gaming, gaming_scoring, gaming_layout, gaming_remember, longform, sport, focus, watermark_profile_id, filter, min_score, hashtags, then, webhook_url, webhook_secret` (`server/api.py:446-528`), plus `origin: "stream"` when queued by an integration (`server/integrations.py:146`) or `"watch"` (inferred from `server/jobs.py:645`, which reads `payload.get("origin") in ("watch","stream")`), plus `preset` for watches (`server/automation.py:1131`). Local imports use `url = "local:<video_id>"` (`server/api.py:970`).
 - `render`: `{"clip_id": int, "start"?: float, "end"?: float, "render_opts"?: dict}` (`server/api.py:1683-1692`, `1569`, `1646-1653`; `server/youtube_api.py:433-440` for `render_first`).
 - `translate`: `{"clip_ids":[≤50], "languages":[...], "stage":"translate|export", "folder", "include_video", "burn", "dub", "subtitles", "post_text", "voices":{}, "style":{}}` (`server/api.py:2108-2121`).
 
@@ -111,7 +111,7 @@ Columns: `id`, `type` (`process|render|translate`, `server/jobs.py:8-11`, `297-3
 
 ### 5.3 Worker loop (`server/jobs.py:49-340`)
 
-`Worker(threading.Thread)`; `notify()` wakes it (`server/jobs.py:65-69`); `run()` recovers interrupted jobs (`core/state.py:1384-1399`), installs the progress handler (`server/jobs.py:109-123`), then loops: if `queue.is_paused(db)` wait (`server/jobs.py:125-134`; the queue **defaults to paused**, `core/queue.py:59-66`), else `claim_next_job`, open `data/logs/job_<id>.log` (`server/jobs.py:145-150`), publish `{"type":"job","status":"running"}` + `{"type":"queue"}` (`153-154`), set `cancel.set_active(vid)` (`163`), deep-copy config and translate payload keys onto `cfg["clips"][...]` (`server/jobs.py:187-262`: `podcast, vertical_live, gaming_scoring, gaming(+gaming_layout, gaming_remember), captions, min_score, sport, focus (+sports.direction), long_clips→min/max_duration 61/180, filter, hashtags→required_hashtags, max_clips→max_clips_per_video & scoring.rerank_pool, caption_style, watermark_profile_id→clips.watermark`), then dispatch: `longform.shorts` → `_both_formats` (`server/jobs.py:272-273`, `673-695`), `longform` → `longform.process.process_longform(url, cfg, db, payload["longform"])` (`274-279`), else `core.pipeline.process_video(url, cfg, db, force=...)` (`280-281`); `render` → `_rerender_clip` (`283`, `697-820`); `translate` → `_translate_clips` (`285`, `386-540`). On success `finish_job(id,"done")`, `_run_follow_up` (the `then` action, WoopSocial only, `server/jobs.py:561-620`), `_announce(db, job, "done")` (`288-291`). `CancelledError` → `cancelled`; any other exception → `failed` with `scrub_secrets(str(e))[:2000]` (`292-310`).
+`Worker(threading.Thread)`; `notify()` wakes it (`server/jobs.py:65-69`); `run()` recovers interrupted jobs (`core/state.py:1414-1429`), installs the progress handler (`server/jobs.py:109-123`), then loops: if `queue.is_paused(db)` wait (`server/jobs.py:125-134`; the queue **defaults to paused**, `core/queue.py:59-66`), else `claim_next_job`, open `data/logs/job_<id>.log` (`server/jobs.py:145-150`), publish `{"type":"job","status":"running"}` + `{"type":"queue"}` (`153-154`), set `cancel.set_active(vid)` (`163`), deep-copy config and translate payload keys onto `cfg["clips"][...]` (`server/jobs.py:187-262`: `podcast, vertical_live, gaming_scoring, gaming(+gaming_layout, gaming_remember), captions, min_score, sport, focus (+sports.direction), long_clips→min/max_duration 61/180, filter, hashtags→required_hashtags, max_clips→max_clips_per_video & scoring.rerank_pool, caption_style, watermark_profile_id→clips.watermark`), then dispatch: `longform.shorts` → `_both_formats` (`server/jobs.py:272-273`, `673-695`), `longform` → `longform.process.process_longform(url, cfg, db, payload["longform"])` (`274-279`), else `core.pipeline.process_video(url, cfg, db, force=...)` (`280-281`); `render` → `_rerender_clip` (`283`, `697-820`); `translate` → `_translate_clips` (`285`, `386-540`). On success `finish_job(id,"done")`, `_run_follow_up` (the `then` action, WoopSocial only, `server/jobs.py:561-620`), `_announce(db, job, "done")` (`288-291`). `CancelledError` → `cancelled`; any other exception → `failed` with `scrub_secrets(str(e))[:2000]` (`292-310`).
 
 Everything the pipeline needs is passed as `config` dict + `StateDB`; the pipeline's public entry is `process_video(url: str, config: dict, db: StateDB, force: bool=False) -> list[RenderedClip]` (`core/pipeline.py:192`).
 
@@ -134,8 +134,8 @@ Stage weights used both by the worker's `progress_snapshot(job_id) -> {"stage","
 | `job` | running: `{"type":"job","job_id","status":"running"}`; terminal: `{"type":"job","job_id","job_type","status":done\|failed\|cancelled,"title","remaining", "video_id"?, "clips"?, "error"?}` | `server/jobs.py:153`, `_announce` `server/jobs.py:361-383` |
 | `progress` | `{"type":"progress","job_id":int\|None, "stage":str, ...}` where stage-specific keys are: `download`: `message` or `fraction, video_id, downloaded, total`; `downloaded`: `video_id, title, duration`; `converting source to H.264`: `video_id`; `transcribe`: `video_id, title` then `fraction`; `signals`; `analyze`: `video_id` then `current,total`; `ranking`: `current,total`; `reactions`: `current,total`; `render`: `video_id, clip, total`; `done`: `video_id, clips, seconds`; `multilingual`: `message, fraction, clip, total`; optional `span:[lo,hi]`; `prefetch` tagged events carry `job_id: null` | `server/jobs.py:121` + emit sites above |
 | `model_pull` | `{"type":"model_pull","tag","status","completed"?,"total"?}` then `status:"done"` or `status:"error","error"` | `server/api.py:2875-2887` |
-| `publish` | `{"type":"publish","publish_job":int,"clip_id":int,"stage":"publish", "phase": prepare\|upload\|metadata\|done\|failed\|cancelled\|checked, "fraction"?, "message"?, "terminal"?, "youtube_id"?, "url"?, "warnings"?, "state"?}` | `server/publisher.py:330-348` (`_emit`) |
-| `automation` | `{"type":"automation"}` or `{"type":"automation","activity":{...}}` / `{"doing": str}` | `server/automation.py:438,445,451,538,652,708,831,1031,1141,1174,1185,1251,1266` |
+| `publish` | `{"type":"publish","publish_job":int,"clip_id":int,"stage":"publish", "phase": prepare\|upload\|metadata\|done\|failed\|cancelled\|checked, "fraction"?, "message"?, "terminal"?, "youtube_id"?, "url"?, "warnings"?, "state"?}` | `server/publisher.py:400-418` (`_emit`) |
+| `automation` | `{"type":"automation"}` or `{"type":"automation","activity":{...}}` / `{"doing": str}` | `server/automation.py:438,445,451,538,652,708,831,1041,1151,1184,1195,1261,1276` |
 
 The UI's `StudioEvent` type mirrors this union (`ui/src/renderer/src/lib/types.ts:642-680`). `docs/API.md:1218-1262` documents six types. Note `examples/drive_the_api.py:131-137` claims "events carry no job id" and "there is no failure event" — both are out of date versus `server/jobs.py:121` and `_announce` (`server/jobs.py:361-383`), which do carry `job_id` and do emit `status:"failed"`.
 
@@ -171,7 +171,7 @@ Legend — **API.md**: `S` = listed in `docs/API.md` as something to build on; `
 | POST | `/jobs` | `create_job` | 803 | queue one URL (identify → dup guards → `_process_options` → `d.add_job("process", json, video_id)` → `worker.notify()` → `queue` event) | `JobIn`; stray query `status_code` (a def-arg wart, `docs/API.md:290`) | `{"job_id":int}` or `{"job_id":null,"already_processed":true,"video_id"}` or `{"job_id":null,"already_queued":true,"video_id","queued_job_id"}`; HTTP 200 | 409 queue full (`queue.MAX_ACTIVE=5`, `core/queue.py:42`); 400 option errors; 422 | S | UI, MCP:316, EX:73, AGENT |
 | GET | `/videos/local/shape` | `local_video_shape` | 854 | probe a local file's size/orientation before import | query `path: str` | `{"width","height","orientation"}` | 400 not a video | I | UI |
 | POST | `/videos/local` | `add_local_video` | 867 | import a local file (ffprobe check, `video.encoding.import_local_source` to `data/downloads/<vid>.mp4`, `vid="local_"+md5[:12]`), upsert video row, tag creator, queue `process` with `url="local:<vid>"` | `LocalVideoIn` | `{"job_id":int,"video_id":str}` or already_processed shape | 400 bad file/convert; 409 full | S | UI, MCP:352, EX:76 |
-| GET | `/jobs` | `jobs` | 977 | job rows | — | bare array of job rows (`d.list_jobs()` → **newest 50, id DESC**, `core/state.py:1365-1376`) | — | S | UI |
+| GET | `/jobs` | `jobs` | 977 | job rows | — | bare array of job rows (`d.list_jobs()` → **newest 50, id DESC**, `core/state.py:1395-1406`) | — | S | UI |
 | GET | `/jobs/{job_id}` | `job` | 985 | one job row | path int | job row dict (columns in 5.1, `payload` as JSON string) | 404 | S | UI, MCP:359, EX:141 |
 | GET | `/queue` | `queue_snapshot` | 1001 | grouped queue view (`core.queue.snapshot`) | — | `{processing,queued,completed,failed:[item],paused,estimate:{queued_seconds,per_video_seconds,samples,confident},capacity,max_active}`; items add `display_title, channel, source_seconds, video_status, url, settings` (`core/queue.py:343-385`) | — | S | UI, MCP:372 |
 | POST | `/queue/pause` | `queue_pause` | 1009 | `queue.set_paused(True)` | — | `{"paused":true}` | — | S | UI |
@@ -290,41 +290,41 @@ Legend — **API.md**: `S` = listed in `docs/API.md` as something to build on; `
 | GET | `/clips/{clip_id}/thumbnail/generated/{index}` | `generated_thumbnail` | 715 | one candidate | — | image/jpeg | 404 | S-ish | UI (api.ts:677) |
 | POST | `/clips/{clip_id}/thumbnail` | `choose_thumbnail` | 723 | choose by base64 `image`, `t`, or `generated` index | `ThumbnailIn` | `{"thumbnail":path}` | 400; 404 | D-int | UI |
 
-### 8.7 `server/uploadpost_api.py` (`install(app, *, config, db, data_dir, publish_worker=None)` :63) — all but `/uploadpost/status`, `/uploadpost/settings`, `/uploadpost/key`, `/uploadpost/capabilities` 404 when off (`_guard` :67-69).
+### 8.7 `server/uploadpost_api.py` (`install(app, *, config, db, data_dir, publish_worker=None)` :64) — all but `/uploadpost/status`, `/uploadpost/settings`, `/uploadpost/key`, `/uploadpost/capabilities` 404 when off (`_guard` :68-70).
 
 | Method | Path | Handler | Line | Purpose | Request | Response | API.md | Deps |
 |---|---|---|---|---|---|---|---|---|
-| GET | `/uploadpost/status` | `uploadpost_status` | 95 | status (`enabled`, `has_key`, key tail…) | — | dict | I | UI, MCP:467 |
-| PATCH | `/uploadpost/settings` | `uploadpost_settings` | 103 | settings | `SettingsIn{enabled, profile, platforms, common_description, first_comment, affiliate_url}` | status | I | UI |
-| PUT | `/uploadpost/key` | `put_key` | 115 | store + validate key | `KeyIn{api_key}` | status + `plan`, `email` | I | UI |
-| DELETE | `/uploadpost/key` | `delete_key` | 144 | wipe | — | `{"removed",...status}` | I | UI |
-| GET | `/uploadpost/profiles` | `profiles` | 155 | provider profiles | — | `{"profiles"}` | I | UI |
-| GET | `/uploadpost/connections` | `connections` | 167 | linked platforms | — | `{"profile","connected"}` | I | UI |
-| POST | `/uploadpost/connect` | `connect` | 187 | hosted link page | `ConnectIn{username}` | `{"url","expires_hours":48,"profile"}` | I | UI |
-| POST | `/uploadpost/clips/{clip_id}/publish` | `publish_clip` | 226 | fan-out one clip | `PublishIn{platforms,title,description,tags,first_comment,thumbnail:bool,overrides,scheduled_date,timezone,add_to_queue}` | `{"clip_id","request_id","platforms":[rows],"done"}` | I | UI, MCP:508 |
-| POST | `/uploadpost/batch` | `publish_batch` | 327 | many clips, spaced | `BatchIn{clip_ids,platforms,overrides,every_hours,start_at,timezone,add_to_queue}` | `{"started","skipped"}` | I | UI |
-| POST | `/uploadpost/refresh/{request_id}` | `refresh` | 443 | poll a fan-out | — | publish payload | I | UI |
-| POST | `/uploadpost/retry/{request_id}` | `retry` | 470 | retry failed platforms | — | publish payload | I | UI |
-| GET | `/uploadpost/capabilities` | `capabilities` | 513 | per-platform field support (`publish.uploadpost.PLATFORM_FIELDS`) | — | `{"platforms":{name:{description,first_comment,ai_disclosure,thumbnail,requires,extra}}}` | I | UI |
+| GET | `/uploadpost/status` | `uploadpost_status` | 96 | status (`enabled`, `has_key`, key tail…) | — | dict | I | UI, MCP:467 |
+| PATCH | `/uploadpost/settings` | `uploadpost_settings` | 104 | settings | `SettingsIn{enabled, profile, platforms, common_description, first_comment, affiliate_url}` | status | I | UI |
+| PUT | `/uploadpost/key` | `put_key` | 116 | store + validate key | `KeyIn{api_key}` | status + `plan`, `email` | I | UI |
+| DELETE | `/uploadpost/key` | `delete_key` | 145 | wipe | — | `{"removed",...status}` | I | UI |
+| GET | `/uploadpost/profiles` | `profiles` | 156 | provider profiles | — | `{"profiles"}` | I | UI |
+| GET | `/uploadpost/connections` | `connections` | 168 | linked platforms | — | `{"profile","connected"}` | I | UI |
+| POST | `/uploadpost/connect` | `connect` | 188 | hosted link page | `ConnectIn{username}` | `{"url","expires_hours":48,"profile"}` | I | UI |
+| POST | `/uploadpost/clips/{clip_id}/publish` | `publish_clip` | 227 | fan-out one clip | `PublishIn{platforms,title,description,tags,first_comment,thumbnail:bool,overrides,scheduled_date,timezone,add_to_queue}` | `{"clip_id","request_id","platforms":[rows],"done"}` | I | UI, MCP:508 |
+| POST | `/uploadpost/batch` | `publish_batch` | 338 | many clips, spaced | `BatchIn{clip_ids,platforms,overrides,every_hours,start_at,timezone,add_to_queue}` | `{"started","skipped"}` | I | UI |
+| POST | `/uploadpost/refresh/{request_id}` | `refresh` | 464 | poll a fan-out | — | publish payload | I | UI |
+| POST | `/uploadpost/retry/{request_id}` | `retry` | 490 | retry failed platforms | — | publish payload | I | UI |
+| GET | `/uploadpost/capabilities` | `capabilities` | 532 | per-platform field support (`publish.uploadpost.PLATFORM_FIELDS`) | — | `{"platforms":{name:{description,first_comment,ai_disclosure,thumbnail,requires,extra}}}` | I | UI |
 | GET | `/uploadpost/clips/{clip_id}` | `clip_publishes` | 581 | per-platform state | — | `{"platforms":[rows]}` | I | UI, MCP:520 |
 
-### 8.8 `server/woopsocial_api.py` (`install(app, *, config, db, data_dir, publish_worker=None)` :39) — same guard pattern (:43-45).
+### 8.8 `server/woopsocial_api.py` (`install(app, *, config, db, data_dir, publish_worker=None)` :40) — same guard pattern (:44-46).
 
 | Method | Path | Handler | Line | Purpose | Request | Response | API.md | Deps |
 |---|---|---|---|---|---|---|---|---|
-| GET | `/woopsocial/status` | `woopsocial_status` | 110 | status | — | dict | I | UI, MCP:533 |
-| PATCH | `/woopsocial/settings` | `woopsocial_settings` | 118 | settings | `SettingsIn{enabled, platforms, common_description, affiliate_url}` | status | I | UI |
-| PUT | `/woopsocial/key` | `put_key` | 131 | store + validate | `KeyIn` | status + `projects` | I | UI |
-| DELETE | `/woopsocial/key` | `delete_key` | 153 | wipe | — | `{"removed",...}` | I | UI |
-| GET | `/woopsocial/connections` | `connections` | 164 | connected platforms | — | `{"connected"}` | I | UI |
-| POST | `/woopsocial/connect` | `connect` | 177 | per-platform connect link | `ConnectIn{platform}` | `{"url","platform"}` | I | UI |
-| POST | `/woopsocial/clips/{clip_id}/publish` | `publish_clip` | 204 | one clip | `PublishIn{platforms,title,description,tags,overrides,scheduled_date}` | payload | I | UI |
-| POST | `/woopsocial/batch/plan` | `plan_batch` | 257 | plan, creates nothing | `BatchIn{clip_ids,platforms,overrides,every_hours,start_at,hashtags,exclude,per_day,gap_hours}` | `{"provider","platforms","every_hours","per_day","gap_hours","hashtags","items":[{clip_id,title,publish_at}],"warnings"}` | I | MCP:576, AGENT |
-| POST | `/woopsocial/batch` | `publish_batch` | 338 | execute (`service.publish_clips`) | `BatchIn` | `{"started","skipped"}` | I | UI, MCP:652 |
-| POST | `/woopsocial/refresh` | `refresh_all` | 380 | refresh all in flight | — | dict | I | UI |
-| GET | `/woopsocial/schedule` | `schedule` | 398 | upcoming posts | — | `{"posts"}` | I | UI |
-| GET | `/woopsocial/in-flight` | `in_flight_count` | 408 | request ids in flight | — | `{"request_ids"}` | I | — (no UI/MCP hit) |
-| POST | `/woopsocial/refresh/{post_id}` | `refresh` | 417 | refresh one | — | payload | I | UI |
+| GET | `/woopsocial/status` | `woopsocial_status` | 111 | status | — | dict | I | UI, MCP:533 |
+| PATCH | `/woopsocial/settings` | `woopsocial_settings` | 119 | settings | `SettingsIn{enabled, platforms, common_description, affiliate_url}` | status | I | UI |
+| PUT | `/woopsocial/key` | `put_key` | 132 | store + validate | `KeyIn` | status + `projects` | I | UI |
+| DELETE | `/woopsocial/key` | `delete_key` | 154 | wipe | — | `{"removed",...}` | I | UI |
+| GET | `/woopsocial/connections` | `connections` | 165 | connected platforms | — | `{"connected"}` | I | UI |
+| POST | `/woopsocial/connect` | `connect` | 178 | per-platform connect link | `ConnectIn{platform}` | `{"url","platform"}` | I | UI |
+| POST | `/woopsocial/clips/{clip_id}/publish` | `publish_clip` | 205 | one clip | `PublishIn{platforms,title,description,tags,overrides,scheduled_date}` | payload | I | UI |
+| POST | `/woopsocial/batch/plan` | `plan_batch` | 263 | plan, creates nothing | `BatchIn{clip_ids,platforms,overrides,every_hours,start_at,hashtags,exclude,per_day,gap_hours}` | `{"provider","platforms","every_hours","per_day","gap_hours","hashtags","items":[{clip_id,title,publish_at}],"warnings"}` | I | MCP:576, AGENT |
+| POST | `/woopsocial/batch` | `publish_batch` | 344 | execute (`service.publish_clips`) | `BatchIn` | `{"started","skipped"}` | I | UI, MCP:652 |
+| POST | `/woopsocial/refresh` | `refresh_all` | 386 | refresh all in flight | — | dict | I | UI |
+| GET | `/woopsocial/schedule` | `schedule` | 406 | upcoming posts | — | `{"posts"}` | I | UI |
+| GET | `/woopsocial/in-flight` | `in_flight_count` | 416 | request ids in flight | — | `{"request_ids"}` | I | — (no UI/MCP hit) |
+| POST | `/woopsocial/refresh/{post_id}` | `refresh` | 425 | refresh one | — | payload | I | UI |
 
 ### 8.9 `server/ai_api.py` (`install(app, config=, db=, data_dir=, settings_path=)`; tested standalone in `tests/test_ai_api.py:54-57`)
 
@@ -424,7 +424,7 @@ The **render gateway** (`remote_render/gateway.py:50`, separate app on a separat
 ## 12. Doc-vs-code discrepancies spotted (worth fixing before an SDK freezes them)
 
 1. `docs/API.md:11` "86 HTTP endpoints" vs 176 route decorators across modules (§0).
-2. `docs/API.md:405-407` says `GET /jobs` returns "every job, newest last"; code uses `d.list_jobs()` with default `limit=50, ORDER BY id DESC` (`core/state.py:1365-1376`) → newest **first**, capped at 50.
+2. `docs/API.md:405-407` says `GET /jobs` returns "every job, newest last"; code uses `d.list_jobs()` with default `limit=50, ORDER BY id DESC` (`core/state.py:1395-1406`) → newest **first**, capped at 50.
 3. `docs/API.md:419` lists job `status` as `queued, running, done, failed`; `cancelled` also exists (`server/jobs.py:293`, `core/queue.py:50`).
 4. `docs/API.md:441` "DELETE /jobs/{id} … Also works on a running one"; code returns 409 for running (`server/api.py:1094-1095`).
 5. `docs/API.md:1181` "Thirteen tools" vs 19 in `server/mcp.py:722-1212`.

@@ -19,6 +19,7 @@ there, and the user is told to check their channel rather than have the app
 guess.
 """
 
+import importlib
 import json
 import threading
 import time
@@ -46,6 +47,12 @@ class PublishWorker(threading.Thread):
         self._verify: list[tuple[float, int, str]] = []  # (due_at, clip_id, video_id)
         # When to next ask a provider what became of the posts it accepted.
         self._next_provider_check = 0.0
+        # When to next ask about posts published without a link.
+        self._next_url_check = 0.0
+        # Upload-Post request id -> unix time it was last asked about. In
+        # memory only: after a restart each due request is asked once and its
+        # cadence carries on (uploadpost_service.due_requests).
+        self._uploadpost_checked: dict[str, float] = {}
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -69,6 +76,7 @@ class PublishWorker(threading.Thread):
             while not self._stop.is_set():
                 self._run_due_verifications(db)
                 self._refresh_provider_posts(db)
+                self._refresh_missing_urls(db)
                 job = db.claim_next_publish_job()
                 if job is None:
                     self._wake.wait(timeout=2.0)
@@ -97,11 +105,17 @@ class PublishWorker(threading.Thread):
 
         Contained and quiet: this is a read, and a provider being unreachable
         must never disturb the uploads this worker is actually here to run.
+        Each provider is contained on its own, so one failing, or having
+        nothing to ask about, never stops the other being asked.
         """
         now = time.monotonic()
         if now < self._next_provider_check:
             return
         self._next_provider_check = now + self.PROVIDER_CHECK_SECONDS
+        self._refresh_woopsocial(db)
+        self._refresh_uploadpost(db)
+
+    def _refresh_woopsocial(self, db: StateDB) -> None:
         try:
             from server import woopsocial_service as woop
 
@@ -129,6 +143,60 @@ class PublishWorker(threading.Thread):
                 )
         except Exception as e:
             print(f"  Could not check publish status: {e}")
+
+    def _refresh_uploadpost(self, db: StateDB) -> None:
+        """Follow Upload-Post publishes in the background, as the open panel
+        does in the foreground: only requests that are due, on a cadence that
+        slows as they age (uploadpost_service.due_requests)."""
+        try:
+            from server import uploadpost_service as up
+
+            if not up.is_enabled(db) or not up.has_key(self.data_dir):
+                return
+            checked = getattr(self, "_uploadpost_checked", None)
+            if checked is None:
+                checked = self._uploadpost_checked = {}
+            now = datetime.now(timezone.utc)
+            ids = up.due_requests(db, now=now, last_checked=checked)
+            if not ids:
+                return
+            out = up.refresh_in_flight(db, self.data_dir, ids=ids, now=now, last_checked=checked)
+            if out.get("updated"):
+                print(
+                    f"  Upload-Post status: {out['updated']} updated, "
+                    f"{out['still_waiting']} still waiting."
+                )
+        except Exception as e:
+            print(f"  Could not check Upload-Post status: {e}")
+
+    #: How often to ask again about posts published without a link. Slower
+    #: than the status check: these are live already, only the link is late.
+    URL_CHECK_SECONDS = 15 * 60
+
+    def _refresh_missing_urls(self, db: StateDB) -> None:
+        """Ask again about posts a provider called published without a link.
+
+        The status check above follows only posts still on their way, so a
+        link that came after the post went live was never fetched. Each one is
+        asked about for a day after it was due. Its own timer, and each
+        provider contained on its own.
+        """
+        mono = time.monotonic()
+        if mono < getattr(self, "_next_url_check", 0.0):
+            return
+        self._next_url_check = mono + self.URL_CHECK_SECONDS
+        now = datetime.now(timezone.utc)
+        for name, module in (("WoopSocial", "woopsocial_service"),
+                             ("Upload-Post", "uploadpost_service")):
+            try:
+                provider = importlib.import_module(f"server.{module}")
+                if not provider.is_enabled(db) or not provider.has_key(self.data_dir):
+                    continue
+                out = provider.refresh_missing_urls(db, self.data_dir, now=now)
+                if out.get("updated"):
+                    print(f"  {name} links: {out['updated']} post(s) updated.")
+            except Exception as e:
+                print(f"  Could not check {name} links: {e}")
 
     # ---- one job ---------------------------------------------------------
 
@@ -219,6 +287,8 @@ class PublishWorker(threading.Thread):
             "start_s": clip["start_s"],
             "end_s": clip["end_s"],
             "title": request.title,
+            # As it went up, hashtags included (_describe above).
+            "description": request.description,
             "privacy": result.requested_privacy,
             "actual_privacy": result.actual_privacy,
             "publish_at": result.publish_at or "",

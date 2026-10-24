@@ -209,8 +209,8 @@ the YAML text** to preserve the user's comments:
 
 | Store | Location | Contents | Cited |
 |---|---|---|---|
-| SQLite `state.db` | `<data_dir>/state.db` | videos, clips, jobs, uploads, creators, …, `app_state` key/value (`get_flag`/`set_flag`), `streams` | `core/state.py:251,366,1402-1406`; `ARCHITECTURE.md:959-977` |
-| Credential store | `<data_dir>/credentials/<name>.bin` (Windows DPAPI, entropy `clips-kitty/publish/v1`) or `<name>.secret.json` 0600 elsewhere | names seen: `youtube_token`, `youtube_client` (`server/youtube_*`), `ai_key_<provider>` (`llm/providers/keys.py:15` `PREFIX = "ai_key_"`), `remote_render` (`remote_render/settings.py` `NAME`), Upload-Post key via `server/uploadpost_service.py:82-95` (name not read), ChatGPT sign-in (`llm/signin/chatgpt.py`) | `core/secrets.py` `_DIR = "credentials"`, `backend_name()`, `save/load/wipe/has/migrate_plaintext` |
+| SQLite `state.db` | `<data_dir>/state.db` | videos, clips, jobs, uploads, creators, …, `app_state` key/value (`get_flag`/`set_flag`), `streams` | `core/state.py:251,366,1432-1436`; `ARCHITECTURE.md:959-977` |
+| Credential store | `<data_dir>/credentials/<name>.bin` (Windows DPAPI, entropy `clips-kitty/publish/v1`) or `<name>.secret.json` 0600 elsewhere | names seen: `youtube_token`, `youtube_client` (`server/youtube_*`), `ai_key_<provider>` (`llm/providers/keys.py:15` `PREFIX = "ai_key_"`), `remote_render` (`remote_render/settings.py` `NAME`), Upload-Post key via `server/uploadpost_service.py:84-97` (name not read), ChatGPT sign-in (`llm/signin/chatgpt.py`) | `core/secrets.py` `_DIR = "credentials"`, `backend_name()`, `save/load/wipe/has/migrate_plaintext` |
 | Electron userData | `%APPDATA%\clips-studio\` (derived from package.json `name`) | renderer localStorage (caption style, toggles, UI language), `update-prefs.json` (`channel`, `skipped`), `tray.json` (`keepInTray`) | `ui/electron-builder.yml:10-20` comment; `ui/src/main/updater.ts` `PREFS_FILE`; `ui/src/main/index.ts` `trayPrefsPath` |
 | Per-job options | `jobs.payload` JSON in SQLite | `JobIn`/`JobPatch` fields | `server/api.py:38-60`, `core/queue.py` |
 | Ollama models | `%LOCALAPPDATA%\Clips Studio\data\models` (packaged) via `OLLAMA_MODELS` env | GGUF weights | `ui/src/main/index.ts` `startOllama` |
@@ -685,7 +685,7 @@ in-process, all compiled into the freeze):
 2. Is `sys._MEIPASS` exactly `resources\backend\_internal` in the shipped build? Code tolerates both `exe_dir` and `_internal`; Electron hard-codes `_internal/ollama` (`core/binaries.py:47-52`; `ui/src/main/index.ts` `startOllama`). (inferred yes)
 3. Can an MSIX (Store) install execute code from `%LOCALAPPDATA%`, and does `runFullTrust` cover spawning a plugin interpreter? Only `runFullTrust` is declared (`ui/electron-builder.yml` appx comment).
 4. Is there any endpoint to run transcription or an LLM prompt on its own over HTTP? None seen in the 86 + installed routes (`server/api.py` route list; `server/ai_api.py`); `POST /agent/chat` is the assistant, not a raw completion.
-5. The credential-store name used by `server/uploadpost_service.py:82-95` was not read; and `server/woopsocial_api.py` key storage was not opened.
+5. The credential-store name used by `server/uploadpost_service.py:84-97` was not read; and `server/woopsocial_api.py` key storage was not opened.
 6. Which `hiddenimports`/`collect_all` entries are still necessary vs. historical (e.g. `polars` exclusion must be re-checked after an ultralytics upgrade, `clips-studio.spec` comment).
 7. `docs/DOCKER.md`, `docs/AI-BACKENDS.md`, `docs/GAMING.md`, `docs/SPORTS.md` were not read in this pass (outside the area); they may hold more extension-point detail.
 8. `FastAPI(version="0.1")` in `server/api.py:576` disagrees with every other version number; decide whether `/openapi.json` should carry `API_VERSION`.

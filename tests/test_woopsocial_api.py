@@ -387,3 +387,93 @@ def test_a_daily_plan_shows_the_slots_that_will_be_used(client, monkeypatch, tmp
     assert (times[1] - times[0]).total_seconds() == 3600
     assert (times[2] - times[0]).total_seconds() == 24 * 3600
     assert (times[3] - times[2]).total_seconds() == 3600
+
+
+def test_a_single_publish_records_its_time_caption_and_visibility(client, monkeypatch, tmp_path):
+    """Without its time an editor-scheduled post looked due the moment it was
+    sent, and without its caption and visibility no rule about the post
+    could be checked."""
+    from datetime import datetime, timedelta, timezone
+
+    _ready(client, monkeypatch)
+    clip_id = _a_clip(client, tmp_path)
+
+    from publish import uploadpost as up
+    from publish import woopsocial as ws
+
+    seen = {}
+
+    def fake_start(self, video, **kwargs):
+        seen.update(kwargs)
+        return up.FanOutResult(
+            request_id="post-1",
+            outcomes=[up.PlatformOutcome(platform=p) for p in kwargs["platforms"]],
+        )
+
+    monkeypatch.setattr(ws.WoopSocialPublisher, "start", fake_start)
+    when = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat().replace("+00:00", "Z")
+
+    got = client.post(
+        f"/woopsocial/clips/{clip_id}/publish",
+        json={"platforms": ["youtube", "tiktok"], "title": "T", "description": "Body",
+              "tags": ["gaming"], "scheduled_date": when,
+              "overrides": {"youtube": {"privacy": "private"}}},
+    )
+
+    assert got.status_code == 200
+    rows = {p["platform"]: p for p in got.json()["platforms"]}
+    assert {p: r["scheduled_for"] for p, r in rows.items()} == {"youtube": when, "tiktok": when}
+    assert {p: r["caption"] for p, r in rows.items()} == {
+        "youtube": seen["text"], "tiktok": seen["text"]}
+    assert {p: r["visibility"] for p, r in rows.items()} == {
+        "youtube": "private", "tiktok": "default"}
+    assert {(r["video_id"], r["start_s"], r["end_s"]) for r in rows.values()} == {("v1", 0, 8)}
+
+
+def test_a_publish_now_records_no_time(client, monkeypatch, tmp_path):
+    _ready(client, monkeypatch)
+    clip_id = _a_clip(client, tmp_path)
+
+    from publish import uploadpost as up
+    from publish import woopsocial as ws
+
+    monkeypatch.setattr(
+        ws.WoopSocialPublisher, "start",
+        lambda self, v, **k: up.FanOutResult(
+            request_id="post-1", outcomes=[up.PlatformOutcome(platform="youtube")]),
+    )
+    got = client.post(f"/woopsocial/clips/{clip_id}/publish",
+                      json={"platforms": ["youtube"], "title": "T"})
+    assert got.json()["platforms"][0]["scheduled_for"] == ""
+
+
+def test_a_status_check_changes_only_what_it_learned(client, monkeypatch, tmp_path):
+    _ready(client, monkeypatch)
+    clip_id = _a_clip(client, tmp_path)
+    d = StateDB(client.db_path)
+    d.record_clip_publish(clip_id, "youtube", {
+        "provider": "woopsocial", "video_id": "v1", "start_s": 0, "end_s": 8,
+        "state": "processing", "request_id": "post-1", "caption": "As sent",
+        "visibility": "default", "scheduled_for": "2026-10-02T09:00:00Z",
+    })
+    # The clip was trimmed since: a new window under the same id.
+    d.conn.execute("UPDATE clips SET start_s = 2 WHERE id = ?", (clip_id,))
+    d.conn.commit()
+    d.close()
+
+    from publish import uploadpost as up
+    from publish import woopsocial as ws
+
+    monkeypatch.setattr(
+        ws.WoopSocialPublisher, "check",
+        lambda self, request_id: up.FanOutResult(request_id=request_id, outcomes=[
+            up.PlatformOutcome(platform="youtube", state="published", post_id="abcdefghijk",
+                               post_url="https://www.youtube.com/shorts/abcdefghijk")]),
+    )
+    got = client.post("/woopsocial/refresh/post-1")
+
+    (row,) = got.json()["platforms"]
+    assert (row["state"], row["post_url"]) == (
+        "published", "https://www.youtube.com/shorts/abcdefghijk")
+    assert (row["start_s"], row["caption"], row["scheduled_for"]) == (
+        0, "As sent", "2026-10-02T09:00:00Z")

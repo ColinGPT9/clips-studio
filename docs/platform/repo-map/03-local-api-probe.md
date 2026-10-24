@@ -94,8 +94,8 @@ Counts (command: `grep -c -E '@app\.(get|post|put|delete|patch|websocket)\(' <fi
 "86 HTTP endpoints and a WebSocket"; that matches `server/api.py` alone, not the whole app.
 
 Tags: NO route decorator passes `tags=`. A `grep -n "tags="` over the eight modules hits only unrelated function
-kwargs (`server/uploadpost_api.py:301` `tags=body.tags`, `:415` `tags=_tags_of(clip)`, `server/automation.py:763-764`
-`lead_hashtags=`/`ai_hashtags=`, `server/woopsocial_api.py:367` `hashtags=`), so every path in a live openapi.json
+kwargs (`server/uploadpost_api.py:302` `tags=body.tags`, `:429` `tags=tags`, `server/automation.py:763-764`
+`lead_hashtags=`/`ai_hashtags=`, `server/woopsocial_api.py:373` `hashtags=`), so every path in a live openapi.json
 would sit under the single implicit "default" tag.
 
 Request schema names (pydantic `BaseModel` subclasses, `grep -n -E "^class \w+\(.*BaseModel\)"`):
@@ -134,16 +134,16 @@ Full path list (path, then METHOD (module:line) for each method), from `probe/ro
     /ai/signin/{provider_id}/start  POST (server/ai_api.py:376)
     /ai/signin/{provider_id}/test  POST (server/ai_api.py:426)
     /ai/transcription  POST (server/ai_api.py:440)
-    /automation  GET (server/automation.py:1011)  PATCH (server/automation.py:1019)
-    /automation/activity  GET (server/automation.py:1034)
-    /automation/items  GET (server/automation.py:1199)
-    /automation/items/{item_id}/publish  POST (server/automation.py:1232)
-    /automation/items/{item_id}/queue  POST (server/automation.py:1208)
-    /automation/items/{item_id}/skip  POST (server/automation.py:1254)
-    /automation/slots  GET (server/automation.py:1077)
-    /automation/watches  GET (server/automation.py:1101)  POST (server/automation.py:1109)
-    /automation/watches/{watch_id}  PATCH (server/automation.py:1144)  DELETE (server/automation.py:1177)
-    /automation/watches/{watch_id}/check  POST (server/automation.py:1188)
+    /automation  GET (server/automation.py:1021)  PATCH (server/automation.py:1029)
+    /automation/activity  GET (server/automation.py:1044)
+    /automation/items  GET (server/automation.py:1209)
+    /automation/items/{item_id}/publish  POST (server/automation.py:1242)
+    /automation/items/{item_id}/queue  POST (server/automation.py:1218)
+    /automation/items/{item_id}/skip  POST (server/automation.py:1264)
+    /automation/slots  GET (server/automation.py:1087)
+    /automation/watches  GET (server/automation.py:1111)  POST (server/automation.py:1119)
+    /automation/watches/{watch_id}  PATCH (server/automation.py:1154)  DELETE (server/automation.py:1187)
+    /automation/watches/{watch_id}/check  POST (server/automation.py:1198)
     /branding  GET (server/api.py:2274)  POST (server/api.py:2283)
     /branding/asset  POST (server/api.py:2312)
     /branding/asset/{name}  GET (server/api.py:2343)
@@ -228,18 +228,18 @@ Full path list (path, then METHOD (module:line) for each method), from `probe/ro
     /storage/videos  GET (server/api.py:1255)
     /system/stats  GET (server/api.py:731)
     /translate  POST (server/api.py:2091)
-    /uploadpost/batch  POST (server/uploadpost_api.py:327)
-    /uploadpost/capabilities  GET (server/uploadpost_api.py:513)
+    /uploadpost/batch  POST (server/uploadpost_api.py:338)
+    /uploadpost/capabilities  GET (server/uploadpost_api.py:532)
     /uploadpost/clips/{clip_id}  GET (server/uploadpost_api.py:581)
-    /uploadpost/clips/{clip_id}/publish  POST (server/uploadpost_api.py:226)
-    /uploadpost/connect  POST (server/uploadpost_api.py:187)
-    /uploadpost/connections  GET (server/uploadpost_api.py:167)
-    /uploadpost/key  PUT (server/uploadpost_api.py:115)  DELETE (server/uploadpost_api.py:144)
-    /uploadpost/profiles  GET (server/uploadpost_api.py:155)
-    /uploadpost/refresh/{request_id}  POST (server/uploadpost_api.py:443)
-    /uploadpost/retry/{request_id}  POST (server/uploadpost_api.py:470)
-    /uploadpost/settings  PATCH (server/uploadpost_api.py:103)
-    /uploadpost/status  GET (server/uploadpost_api.py:95)
+    /uploadpost/clips/{clip_id}/publish  POST (server/uploadpost_api.py:227)
+    /uploadpost/connect  POST (server/uploadpost_api.py:188)
+    /uploadpost/connections  GET (server/uploadpost_api.py:168)
+    /uploadpost/key  PUT (server/uploadpost_api.py:116)  DELETE (server/uploadpost_api.py:145)
+    /uploadpost/profiles  GET (server/uploadpost_api.py:156)
+    /uploadpost/refresh/{request_id}  POST (server/uploadpost_api.py:464)
+    /uploadpost/retry/{request_id}  POST (server/uploadpost_api.py:490)
+    /uploadpost/settings  PATCH (server/uploadpost_api.py:104)
+    /uploadpost/status  GET (server/uploadpost_api.py:96)
     /videos  GET (server/api.py:1443)
     /videos/local  POST (server/api.py:867)
     /videos/local/shape  GET (server/api.py:854)
@@ -247,18 +247,18 @@ Full path list (path, then METHOD (module:line) for each method), from `probe/ro
     /videos/{video_id}/clips  GET (server/api.py:1470)
     /voices  GET (server/api.py:2043)
     /voices/preview  GET (server/api.py:2057)
-    /woopsocial/batch  POST (server/woopsocial_api.py:338)
-    /woopsocial/batch/plan  POST (server/woopsocial_api.py:257)
-    /woopsocial/clips/{clip_id}/publish  POST (server/woopsocial_api.py:204)
-    /woopsocial/connect  POST (server/woopsocial_api.py:177)
-    /woopsocial/connections  GET (server/woopsocial_api.py:164)
-    /woopsocial/in-flight  GET (server/woopsocial_api.py:408)
-    /woopsocial/key  PUT (server/woopsocial_api.py:131)  DELETE (server/woopsocial_api.py:153)
-    /woopsocial/refresh  POST (server/woopsocial_api.py:380)
-    /woopsocial/refresh/{post_id}  POST (server/woopsocial_api.py:417)
-    /woopsocial/schedule  GET (server/woopsocial_api.py:398)
-    /woopsocial/settings  PATCH (server/woopsocial_api.py:118)
-    /woopsocial/status  GET (server/woopsocial_api.py:110)
+    /woopsocial/batch  POST (server/woopsocial_api.py:344)
+    /woopsocial/batch/plan  POST (server/woopsocial_api.py:263)
+    /woopsocial/clips/{clip_id}/publish  POST (server/woopsocial_api.py:205)
+    /woopsocial/connect  POST (server/woopsocial_api.py:178)
+    /woopsocial/connections  GET (server/woopsocial_api.py:165)
+    /woopsocial/in-flight  GET (server/woopsocial_api.py:416)
+    /woopsocial/key  PUT (server/woopsocial_api.py:132)  DELETE (server/woopsocial_api.py:154)
+    /woopsocial/refresh  POST (server/woopsocial_api.py:386)
+    /woopsocial/refresh/{post_id}  POST (server/woopsocial_api.py:425)
+    /woopsocial/schedule  GET (server/woopsocial_api.py:406)
+    /woopsocial/settings  PATCH (server/woopsocial_api.py:119)
+    /woopsocial/status  GET (server/woopsocial_api.py:111)
     /ws  WEBSOCKET (server/api.py:1428)
     /youtube/categories  GET (server/youtube_api.py:355)
     /youtube/connect  POST (server/youtube_api.py:238)  GET (server/youtube_api.py:265)
@@ -371,7 +371,7 @@ but the engine owns every stage.
 - *Live progress of a running job over plain HTTP:* `GET /jobs/{id}` returns the DB row only (`server/api.py:985-994`;
   fields at `docs/API.md:370-381`, no stage/percent). The worker's `progress_snapshot()` (`server/jobs.py:333-352`:
   stage, label, percent, eta_seconds) is surfaced only via `/integrations/streams/{session_id}`
-  (`server/integrations.py:122`) and `/automation/items` (`server/automation.py:254`, `:1057`); otherwise only WS
+  (`server/integrations.py:122`) and `/automation/items` (`server/automation.py:254`, `:1067`); otherwise only WS
   `progress` events (`docs/API.md:1241`, `:1252-1256`), which are dropped for slow clients (`docs/API.md:1268-1271`).
 - *Operational limits an outside process inherits:* no authentication at all (`docs/API.md:77-83`); loopback only
   with a strict `Host` allowlist (`server/api.py:589`); one worker, one video at a time (`docs/API.md:1356-1358`);

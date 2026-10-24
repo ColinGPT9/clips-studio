@@ -43,9 +43,14 @@ def test_uploads_gains_its_new_columns(db):
     for expected in (
         "video_id", "start_s", "end_s", "title", "privacy", "actual_privacy",
         "publish_at", "channel_id", "channel_title", "thumbnail_set",
-        "playlist_id", "state", "error", "checked_at",
+        "playlist_id", "state", "error", "checked_at", "description",
     ):
         assert expected in columns, f"uploads is missing {expected}"
+
+
+def test_clip_publishes_keeps_the_caption_and_the_visibility(db):
+    columns = {r["name"] for r in db.conn.execute("PRAGMA table_info(clip_publishes)")}
+    assert {"caption", "visibility"} <= columns
 
 
 def test_opening_the_same_database_twice_is_safe(db, tmp_path):
@@ -101,6 +106,42 @@ def test_unknown_fields_are_ignored_rather_than_raising(db):
     clip_id = _clip(db)
     db.record_publish(clip_id, {"youtube_id": "a", "not_a_column": "x"})
     assert db.get_upload(clip_id)["youtube_id"] == "a"
+
+
+def test_an_upload_keeps_the_description_it_went_up_with(db, tmp_path, monkeypatch):
+    """Hashtags included: they are added on the way out (publisher._describe),
+    so the request's own description is not what YouTube shows."""
+    from publish.base import PublishResult
+    from server import publisher
+
+    _video(db)
+    clip_file = tmp_path / "clip.mp4"
+    clip_file.write_bytes(b"video")
+    clip_id = _clip(db, path=str(clip_file))
+    db.conn.execute("UPDATE clips SET hashtags = ? WHERE id = ?", ('["#gaming"]', clip_id))
+    db.conn.commit()
+    sent = {}
+
+    class FakeYouTube:
+        def publish(self, request, on_progress=None, should_cancel=None):
+            sent["description"] = request.description
+            return PublishResult(video_id="abcdefghijk",
+                                 url="https://www.youtube.com/watch?v=abcdefghijk",
+                                 requested_privacy="public", actual_privacy="public")
+
+    monkeypatch.setattr(service, "make_publisher", lambda *_a, **_k: FakeYouTube())
+    monkeypatch.setattr(publisher.broadcaster, "publish", lambda _event: None)
+    db.add_publish_job(clip_id, json.dumps({"title": "T", "description": "Body",
+                                            "privacy": "public"}))
+    job = db.claim_next_publish_job()
+    worker = publisher.PublishWorker.__new__(publisher.PublishWorker)
+    worker.config, worker.data_dir, worker._cancelled, worker._verify = {}, tmp_path, set(), []
+
+    worker._publish(db, job)
+
+    row = db.get_upload(clip_id)
+    assert row["description"] == sent["description"]
+    assert row["description"].startswith("Body") and "#gaming" in row["description"]
 
 
 # ---- the job queue ---------------------------------------------------------

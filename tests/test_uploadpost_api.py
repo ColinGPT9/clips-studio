@@ -620,3 +620,125 @@ def test_a_batch_carries_each_clips_own_hashtags(client, monkeypatch, tmp_path):
     tags = [v for k, v in sent["fields"] if k == "tags[]"]
     # The leading # is stripped; the API takes bare tags.
     assert tags == ["gaming", "clips"]
+
+
+# ---- what each post said, when it is due, who could see it ------------------
+
+
+def _rows(client):
+    d = StateDB(client.db_path)
+    try:
+        return {r["platform"]: dict(r) for r in d.conn.execute("SELECT * FROM clip_publishes")}
+    finally:
+        d.close()
+
+
+def test_a_publish_records_its_time_caption_and_visibility(client, monkeypatch, tmp_path):
+    from datetime import datetime, timedelta
+    from datetime import timezone as tz
+
+    _enable(client)
+    clip_id = _a_rendered_clip(client, tmp_path)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    _mock_start(monkeypatch)
+    when = (datetime.now(tz.utc) + timedelta(days=2)).isoformat().replace("+00:00", "Z")
+
+    got = client.post(
+        f"/uploadpost/clips/{clip_id}/publish",
+        json={"platforms": ["youtube", "tiktok", "instagram"], "title": "My clip",
+              "description": "Body", "tags": ["gaming"], "scheduled_date": when,
+              "timezone": "UTC",
+              "overrides": {"tiktok": {"title": "TikTok words", "privacy": "SELF_ONLY"},
+                            "youtube": {"privacy": "unlisted"},
+                            # Instagram has no description field: never sent.
+                            "instagram": {"description": "not sent"}}},
+    )
+
+    assert got.status_code == 200
+    rows = _rows(client)
+    assert {p: r["scheduled_for"] for p, r in rows.items()} == {
+        "youtube": when, "tiktok": when, "instagram": when}
+    assert rows["youtube"]["caption"] == "My clip\n\nBody\n\n#gaming"
+    assert rows["tiktok"]["caption"] == "TikTok words\n\nBody\n\n#gaming"
+    assert rows["instagram"]["caption"] == "My clip\n\nBody\n\n#gaming"
+    assert {p: r["visibility"] for p, r in rows.items()} == {
+        "youtube": "unlisted", "tiktok": "private", "instagram": "default"}
+    assert {(r["video_id"], r["start_s"], r["end_s"]) for r in rows.values()} == {("vid1", 0, 10)}
+
+
+def test_a_queued_publish_has_no_time_of_its_own(client, monkeypatch, tmp_path):
+    _enable(client)
+    clip_id = _a_rendered_clip(client, tmp_path)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    _mock_start(monkeypatch)
+    client.post(f"/uploadpost/clips/{clip_id}/publish",
+                json={"platforms": ["youtube"], "title": "T", "add_to_queue": True})
+    assert _rows(client)["youtube"]["scheduled_for"] == ""
+
+
+def test_a_spaced_batch_records_each_posts_time_and_caption(client, monkeypatch, tmp_path):
+    import json as _json
+    from datetime import datetime, timedelta
+    from datetime import timezone as tz
+
+    _enable(client)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    ids = _clips(client, tmp_path, 2)
+    d = StateDB(client.db_path)
+    d.conn.execute("UPDATE clips SET title = 'Title', description = 'Words', hashtags = ? "
+                   "WHERE id = ?", (_json.dumps(["#gaming"]), ids[0]))
+    d.conn.commit()
+    d.close()
+
+    from publish import uploadpost as up
+
+    def fake_start(self, video, *, platforms, fields, thumbnail=None, idempotency_key=""):
+        return up.FanOutResult(request_id=f"r{video.name}",
+                               outcomes=[up.PlatformOutcome(platform=p) for p in platforms])
+
+    monkeypatch.setattr(up.UploadPostPublisher, "start", fake_start)
+    start = (datetime.now(tz.utc) + timedelta(days=1)).replace(microsecond=0)
+
+    got = client.post("/uploadpost/batch", json={
+        "clip_ids": ids, "platforms": ["youtube"], "every_hours": 24,
+        "start_at": start.isoformat(),
+        "overrides": {"youtube": {"privacy": "private"}},
+    })
+
+    assert got.status_code == 200
+    d = StateDB(client.db_path)
+    rows = {r["clip_id"]: dict(r) for r in d.conn.execute("SELECT * FROM clip_publishes")}
+    d.close()
+    assert rows[ids[0]]["scheduled_for"] == start.isoformat()
+    assert rows[ids[1]]["scheduled_for"] == (start + timedelta(hours=24)).isoformat()
+    assert rows[ids[0]]["caption"] == "Title\n\nWords\n\n#gaming"
+    assert {r["visibility"] for r in rows.values()} == {"private"}
+
+
+def test_a_retry_changes_only_what_it_learned(client, monkeypatch, tmp_path):
+    _enable(client)
+    clip_id = _a_rendered_clip(client, tmp_path)
+    monkeypatch.setattr(service, "has_key", lambda _p: True)
+    monkeypatch.setattr(service, "make_client", lambda _p: object())
+    d = StateDB(client.db_path)
+    d.record_clip_publish(clip_id, "tiktok", {
+        "provider": "upload_post", "video_id": "vid1", "start_s": 0, "end_s": 10,
+        "state": "failed", "request_id": "req-7", "caption": "As sent", "visibility": "default",
+    })
+    d.close()
+
+    from publish import uploadpost as up
+
+    monkeypatch.setattr(
+        up.UploadPostPublisher, "retry",
+        lambda self, request_id: up.FanOutResult(request_id=request_id, outcomes=[
+            up.PlatformOutcome(platform="tiktok", state="processing")]),
+    )
+    got = client.post("/uploadpost/retry/req-7")
+
+    assert got.status_code == 200
+    row = _rows(client)["tiktok"]
+    assert (row["state"], row["caption"], row["visibility"]) == ("processing", "As sent", "default")

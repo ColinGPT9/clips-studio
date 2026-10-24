@@ -468,6 +468,9 @@ class StateDB:
             ("state", "TEXT NOT NULL DEFAULT 'uploaded'"),
             ("error", "TEXT NOT NULL DEFAULT ''"),
             ("checked_at", "TEXT NOT NULL DEFAULT ''"),
+            # The description as it went up, hashtags included, so a rule about
+            # what a post has to say can be checked against what it said.
+            ("description", "TEXT NOT NULL DEFAULT ''"),
         ):
             if column not in upload_cols:
                 self.conn.execute(f"ALTER TABLE uploads ADD COLUMN {column} {decl}")
@@ -490,6 +493,19 @@ class StateDB:
             self.conn.execute(
                 "ALTER TABLE clip_publishes ADD COLUMN media_id TEXT NOT NULL DEFAULT ''"
             )
+        for column in (
+            # The caption as it was sent, so a hashtag or a mention a post has
+            # to carry can be checked against the post itself.
+            "caption",
+            # The visibility that was asked for: public | unlisted | private |
+            # friends | default (no override, so the provider's own, public).
+            # '' means the row was written before this was kept.
+            "visibility",
+        ):
+            if column not in publish_cols:
+                self.conn.execute(
+                    f"ALTER TABLE clip_publishes ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                )
         creator_cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(creators)")}
         if "default_branding_id" not in creator_cols:
             self.conn.execute("ALTER TABLE creators ADD COLUMN default_branding_id INTEGER")
@@ -673,6 +689,20 @@ class StateDB:
                     )
                 except sqlite3.Error as e:
                     print(f"Could not restore {table} row for clip {new_clip_id}: {e}")
+        self.conn.commit()
+
+    def follow_clip_id(self, old_id: int, new_id: int) -> None:
+        """A re-rendered clip keeps its posts: clip_publishes rows move to the
+        new id. Not a foreign key, so they were never in the way of the delete,
+        and they used to stay behind on an id nothing asks for again.
+
+        Only the id moves. video_id, start_s and end_s describe the post that
+        went out, and a re-render that moved the window did not move the post.
+        A platform the new id already has a row for keeps that row."""
+        self.conn.execute(
+            "UPDATE OR IGNORE clip_publishes SET clip_id = ? WHERE clip_id = ?",
+            (int(new_id), int(old_id)),
+        )
         self.conn.commit()
 
     def follow_chosen_clip(self, video_id: str, old: tuple[float, float], new: tuple[float, float]) -> None:

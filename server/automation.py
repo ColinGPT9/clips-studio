@@ -478,7 +478,7 @@ class ChannelWatcher(threading.Thread):
         self._activity: deque[dict] = deque(maxlen=ACTIVITY_KEEP)
         self._activity_lock = threading.Lock()
         self._doing = ""
-        self._published_seen: set[tuple[int, str]] | None = None
+        self._published_seen: set[tuple] | None = None
 
     @property
     def interval_seconds(self) -> float:
@@ -961,16 +961,26 @@ class ChannelWatcher(threading.Thread):
 
         The publish worker is what learns it, from WoopSocial. This only
         compares what it saw last time, so the panel can show each post
-        landing. The first look just remembers what was already there."""
+        landing. The first look just remembers what was already there.
+
+        Keyed on the post's identity (video, window, platform), not the clip
+        id: a re-render moves the row to the clip's new id, and the post it
+        describes is the same one, so it is not announced again."""
         rows = d.conn.execute(
-            "SELECT p.clip_id, p.platform, p.post_url, c.title, c.hook FROM clip_publishes p "
+            "SELECT p.video_id, p.start_s, p.end_s, p.platform, p.post_url, c.title, c.hook "
+            "FROM clip_publishes p "
             "JOIN watch_items w ON w.video_id = p.video_id "
             "LEFT JOIN clips c ON c.id = p.clip_id WHERE p.state = 'published'"
         ).fetchall()
-        seen = {(int(r["clip_id"]), r["platform"]) for r in rows}
+
+        def key(r) -> tuple:
+            return (r["video_id"], round(float(r["start_s"] or 0), 2),
+                    round(float(r["end_s"] or 0), 2), r["platform"])
+
+        seen = {key(r) for r in rows}
         if self._published_seen is not None:
             for r in rows:
-                if (int(r["clip_id"]), r["platform"]) not in self._published_seen:
+                if key(r) not in self._published_seen:
                     self._say(f"Posted {_quoted(r['title'] or r['hook'] or '')} "
                               f"to {_label(r['platform'])}", "posted", r["post_url"] or "")
         self._published_seen = seen

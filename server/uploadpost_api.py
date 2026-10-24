@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from publish.errors import PublishError
+from server import posts
 from server import uploadpost_service as service
 from server.feedback import redact
 
@@ -318,7 +319,17 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             except PublishError as e:
                 raise _fail(e) from e
 
-            _record(d, clip_id, clip, result)
+            # Publish time: identity, when it is due ('' when it goes now or
+            # Upload-Post picks the time from its queue), the text each
+            # platform was sent and the visibility asked for.
+            service.record_outcomes(
+                d, clip_id, clip, result, scheduled_for=when,
+                caption=service.captions(
+                    body.platforms, title=body.title, description=description,
+                    tags=body.tags, overrides=body.overrides,
+                ),
+                visibility=posts.visibilities("upload_post", body.platforms, body.overrides),
+            )
             service.save_settings(d, {"platforms": body.platforms})
             return _publish_payload(d, clip_id, result.request_id)
         finally:
@@ -399,20 +410,23 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                     description = f"{description}\n\n{standing}".strip()
 
                 timing: list = []
+                when = ""
                 if body.add_to_queue:
                     timing = schedule_fields(add_to_queue=True)
                 elif body.every_hours or body.start_at:
                     at = start + timedelta(hours=body.every_hours * index)
+                    when = at.isoformat()
                     timing = schedule_fields(
-                        scheduled_date=at.isoformat(), timezone=body.timezone
+                        scheduled_date=when, timezone=body.timezone
                     )
+                tags = _tags_of(clip)
 
                 fields = (
                     build_fields(
                         title=title,
                         description=description,
                         # Stored as a JSON list, not a space-separated string.
-                        tags=_tags_of(clip),
+                        tags=tags,
                         first_comment=settings.get("first_comment") or "",
                     )
                     + overrides
@@ -432,7 +446,14 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                     skipped.append({"clip_id": clip_id, "reason": e.message})
                     continue
 
-                _record(d, clip_id, clip, result)
+                service.record_outcomes(
+                    d, clip_id, clip, result, scheduled_for=when,
+                    caption=service.captions(
+                        body.platforms, title=title, description=description,
+                        tags=tags, overrides=body.overrides,
+                    ),
+                    visibility=posts.visibilities("upload_post", body.platforms, body.overrides),
+                )
                 started.append({"clip_id": clip_id, "request_id": result.request_id})
 
             service.save_settings(d, {"platforms": body.platforms})
@@ -452,7 +473,6 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             if not rows:
                 raise HTTPException(404, "no such publish")
             clip_id = int(rows[0]["clip_id"])
-            clip = d.get_clip(clip_id)
 
             settings = service.load_settings(d)
             publisher = UploadPostPublisher(_client(), settings.get("profile") or "")
@@ -462,7 +482,7 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 raise _fail(e) from e
 
             if result.outcomes:
-                _record(d, clip_id, clip, result)
+                service.record_refresh(d, clip_id, result)
             return _publish_payload(d, clip_id, request_id)
         finally:
             d.close()
@@ -487,7 +507,6 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 raise HTTPException(400, "Nothing failed on that publish.")
 
             clip_id = int(rows[0]["clip_id"])
-            clip = d.get_clip(clip_id)
             settings = service.load_settings(d)
             publisher = UploadPostPublisher(_client(), settings.get("profile") or "")
             try:
@@ -496,7 +515,7 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 raise _fail(e) from e
 
             if result.outcomes:
-                _record(d, clip_id, clip, result)
+                service.record_refresh(d, clip_id, result)
             else:
                 # Their retry can answer with an acknowledgement rather than
                 # fresh per-platform detail. Put the failed rows back into
@@ -545,25 +564,6 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         except (TypeError, ValueError):
             return []
         return [str(t).lstrip("#") for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
-
-    def _record(d, clip_id: int, clip, result) -> None:
-        """Write one row per destination, keeping each platform's own state."""
-        for outcome in result.outcomes:
-            d.record_clip_publish(
-                clip_id,
-                outcome.platform,
-                {
-                    "provider": "upload_post",
-                    "video_id": (clip["video_id"] if clip is not None else "") or "",
-                    "start_s": (clip["start_s"] if clip is not None else 0) or 0,
-                    "end_s": (clip["end_s"] if clip is not None else 0) or 0,
-                    "state": outcome.state,
-                    "post_id": outcome.post_id,
-                    "post_url": outcome.post_url,
-                    "error": outcome.error,
-                    "request_id": result.request_id,
-                },
-            )
 
     def _publish_payload(d, clip_id: int, request_id: str) -> dict:
         rows = [dict(r) for r in d.clip_publishes(clip_id)]

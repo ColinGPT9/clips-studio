@@ -17,9 +17,11 @@ no network calls to it.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 from core import secrets
+from server import posts
 
 SETTINGS_KEY = "uploadpost"
 KEY_SECRET = "uploadpost_key"
@@ -110,6 +112,216 @@ def make_client(data_dir: Path):
     from publish.uploadpost import UploadPostClient
 
     return UploadPostClient(load_key(data_dir))
+
+
+def caption_for(platform: str, *, title: str, description: str = "", tags=None,
+                overrides: dict | None = None) -> str:
+    """The text one platform was sent: its title, its description and the
+    hashtags, with that platform's own wording when it was given one. An
+    override the platform has no field for is never sent
+    (publish/uploadpost.py platform_overrides), so it is not counted either."""
+    from publish.uploadpost import PLATFORM_FIELDS
+
+    spec = PLATFORM_FIELDS.get(platform) or {}
+    mine = (overrides or {}).get(platform)
+    mine = mine if isinstance(mine, dict) else {}
+    own_title = mine.get("title") if spec.get("title") else ""
+    own_description = mine.get("description") if spec.get("description") else ""
+    parts = [
+        str(own_title or title or "").strip(),
+        str(own_description or description or "").strip(),
+        " ".join("#" + str(t).lstrip("#").strip() for t in (tags or []) if str(t).strip("# ")),
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+def captions(platforms, **kwargs) -> dict[str, str]:
+    """caption_for each platform."""
+    return {p: caption_for(p, **kwargs) for p in platforms}
+
+
+# ---- what became of a publish ------------------------------------------------
+
+
+def record_outcomes(db, clip_id: int, clip, result, *, scheduled_for: str = "",
+                    caption="", visibility="") -> None:
+    """Write one row per destination for a fan-out that was just sent.
+
+    Publish time only: this is what the post IS, so it carries the clip's
+    identity (only while the clip row exists, never blanked), when the post is
+    due ('' for now, or a time Upload-Post picks from its queue), the text
+    that went out and the visibility asked for. `caption` and `visibility`
+    may be one value or {platform: value}. Status checks use record_refresh.
+    """
+    for outcome in result.outcomes:
+        fields = {
+            "provider": "upload_post",
+            "state": outcome.state,
+            "post_id": outcome.post_id,
+            "post_url": outcome.post_url,
+            "error": outcome.error,
+            "request_id": result.request_id,
+            "scheduled_for": scheduled_for or "",
+            "caption": posts.for_platform(caption, outcome.platform),
+            "visibility": posts.for_platform(visibility, outcome.platform),
+        }
+        if clip is not None:
+            fields["video_id"] = clip["video_id"] or ""
+            fields["start_s"] = clip["start_s"] or 0
+            fields["end_s"] = clip["end_s"] or 0
+        db.record_clip_publish(clip_id, outcome.platform, fields)
+
+
+def record_refresh(db, clip_id: int, result) -> None:
+    """Write what a status check or a retry learned, and nothing else.
+
+    The row may by now hang off a re-rendered clip with another window, so the
+    post's identity, caption and time are never rewritten here.
+    """
+    for outcome in result.outcomes:
+        db.record_clip_publish(clip_id, outcome.platform, {
+            "state": outcome.state,
+            "post_id": outcome.post_id,
+            "post_url": outcome.post_url,
+            "error": outcome.error,
+            "request_id": result.request_id,
+        })
+
+
+def in_flight(db) -> list[str]:
+    """Upload-Post request ids with a destination still unfinished, newest first."""
+    rows = db.conn.execute(
+        "SELECT DISTINCT request_id FROM clip_publishes "
+        "WHERE request_id != '' AND state IN ('queued', 'processing') "
+        "AND provider = 'upload_post' ORDER BY created_at DESC"
+    ).fetchall()
+    return [r["request_id"] for r in rows]
+
+
+#: How far ahead of its time a post is already worth asking about.
+DUE_AHEAD_SECONDS = 120
+#: After this long past its due time a request is no longer followed.
+FOLLOW_DAYS = 14
+#: Leeway on each interval, so a check on the worker's three-minute beat is
+#: not pushed to the next beat by a second of drift.
+CHECK_SLACK_SECONDS = 5
+
+
+def check_interval(age_seconds: float, *, has_time: bool) -> float:
+    """How long to wait between checks of a request this long past its due time.
+
+    Every 3 minutes in the first hour (what the open panel already does), then
+    every 30 minutes until a day has passed, then every 3 hours. A request with
+    no time on it, which is what "add to queue" sends (Upload-Post picks the
+    time), starts at the 30-minute step: its due time says nothing about when
+    it will actually go out.
+    """
+    if age_seconds < 3600 and has_time:
+        return 3 * 60
+    if age_seconds < 24 * 3600:
+        return 30 * 60
+    return 3 * 3600
+
+
+def due_requests(db, *, now=None, last_checked: dict | None = None, limit: int = 60) -> list[str]:
+    """The Upload-Post requests worth asking about now, oldest-due first.
+
+    Still queued or processing, due (no more than two minutes ahead), due less
+    than 14 days ago, and not checked within their interval (check_interval).
+    Every window counts from the due time (server/posts.py), so a post
+    scheduled 20 days out is followed once it comes due. `last_checked` maps
+    request id to the unix time of its last check; requests no longer in
+    flight are dropped from it.
+    """
+    current = posts.as_utc(now)
+    stamp = current.timestamp()
+    checked = last_checked if last_checked is not None else {}
+    rows = db.conn.execute(
+        "SELECT request_id, created_at, scheduled_for FROM clip_publishes "
+        "WHERE request_id != '' AND state IN ('queued', 'processing') "
+        "AND provider = 'upload_post'"
+    ).fetchall()
+    earliest: dict = {}
+    timed: set[str] = set()
+    for row in rows:
+        request_id = row["request_id"]
+        due = posts.due_time(row, now=current)
+        if request_id not in earliest or due < earliest[request_id]:
+            earliest[request_id] = due
+        try:
+            if row["scheduled_for"]:
+                timed.add(request_id)
+        except (IndexError, KeyError):
+            pass
+    for gone in [r for r in checked if r not in earliest]:
+        checked.pop(gone, None)
+
+    horizon = current + timedelta(seconds=DUE_AHEAD_SECONDS)
+    oldest = current - timedelta(days=FOLLOW_DAYS)
+    out = []
+    for request_id, due in earliest.items():
+        if due > horizon or due < oldest:
+            continue
+        last = checked.get(request_id)
+        if last is not None:
+            age = (current - due).total_seconds()
+            wait = check_interval(age, has_time=request_id in timed)
+            if stamp - float(last) < wait - CHECK_SLACK_SECONDS:
+                continue
+        out.append((due, request_id))
+    return [request_id for _, request_id in sorted(out)][:limit]
+
+
+def refresh_in_flight(db, data_dir: Path, *, ids=None, limit: int = 60, now=None,
+                      last_checked: dict | None = None) -> dict:
+    """Ask Upload-Post what became of publishes still in the air.
+
+    Before this only the open panel asked (POST /uploadpost/refresh/{id}), so
+    a scheduled post never got its link. Without `ids` it asks about
+    due_requests; each request asked about is stamped in `last_checked`.
+    Failures are counted, not raised: one unreachable request must not stop
+    the rest being updated.
+    """
+    from publish.uploadpost import UploadPostPublisher
+
+    current = posts.as_utc(now)
+    if ids is None:
+        ids = due_requests(db, now=current, last_checked=last_checked, limit=limit)
+    ids = list(ids)[:limit]
+    if not ids:
+        return {"checked": 0, "updated": 0, "still_waiting": 0, "failed": 0}
+
+    publisher = UploadPostPublisher(make_client(data_dir), load_settings(db).get("profile") or "")
+    updated = failed = 0
+    for request_id in ids:
+        if last_checked is not None:
+            last_checked[request_id] = current.timestamp()
+        rows = db.publishes_for_request(request_id)
+        if not rows:
+            continue
+        clip_id = int(rows[0]["clip_id"])
+        try:
+            result = publisher.check(request_id)
+        except Exception:
+            failed += 1
+            continue
+        if result.outcomes:
+            record_refresh(db, clip_id, result)
+            updated += 1
+
+    return {
+        "checked": len(ids),
+        "updated": updated,
+        "still_waiting": len(in_flight(db)),
+        "failed": failed,
+    }
+
+
+def refresh_missing_urls(db, data_dir: Path, *, now=None) -> dict:
+    """Ask again about posts Upload-Post called published without a link, for
+    a day after each one was due (server/posts.py missing_url_requests)."""
+    ids = posts.missing_url_requests(db, "upload_post", now=now)
+    return refresh_in_flight(db, data_dir, ids=ids, now=now)
 
 
 def status_payload(db, data_dir: Path) -> dict:
