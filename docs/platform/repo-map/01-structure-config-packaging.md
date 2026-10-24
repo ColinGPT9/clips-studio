@@ -122,7 +122,7 @@ http://127.0.0.1:8765; style-src 'self' 'unsafe-inline'`
 | Pinned Ollama runtime | `OLLAMA_VERSION = "v0.32.6"` (`VERSION.txt` stamp in `vendor/ollama/`) | `scripts/fetch_ollama.py` | build only |
 | Electron / builder | `electron ^31.0.0`, `electron-builder ^24.13.3`, `electron-updater ^6.8.9`, `overrides.tar ^7.5.22` | `ui/package.json` | `docs/DEPENDENCY-SECURITY.md` explains the pins |
 | Schema version | **none**: SQLite migrations are additive `ALTER TABLE … ADD COLUMN` guarded by `PRAGMA table_info` | `core/state.py:366-392` `_migrate()` | — |
-| Changelog | `## Unreleased`, `## 2.0.0`, `1.2.0`, `1.1.4`, `1.1.3`, `0.1.2 (2026-08-10)`, `0.1.1`, `0.1.0`; written for creators; Added/Changed/Fixed subsections; `(#NNN)` issue refs | `CHANGELOG.md:1-59,138,603,739,817,885-936` | release notes in-app (`ui/build/release-notes.md`) |
+| Changelog | `## Unreleased`, `## 2.0.0`, `1.2.0`, `1.1.4`, `1.1.3`, `0.1.2 (2026-08-10)`, `0.1.1`, `0.1.0`; written for creators; Added/Changed/Fixed subsections; `(#NNN)` issue refs | `CHANGELOG.md:1-71,150,615,751,829,897-948` | release notes in-app (`ui/build/release-notes.md`) |
 
 The website download buttons and `whop-app/lib/content.ts` / `web/lib/content.ts`
 `VERSION` carry the version too and must be bumped by hand (`docs/RELEASING.md` "The

@@ -41,6 +41,16 @@ Kitty after you change it.
 - Podcast mode now frames whoever is talking in each shot (not the person moving their
   mouth most), follows a new speaker in a long shot, and snaps on every camera cut.
 
+### Fixed
+
+- **Basketball clips that cut to a close-up no longer start the close-up off-centre and
+  jump onto the player.** A close-up that moved fast from its first frame was taken for a
+  fade, and the crop kept the wide shot's framing over it until the "fade" ended.
+- A basketball close-up no longer slides off the player onto a fan or the empty seats at
+  the side of the picture.
+
+---
+
 ## 2.1.0: Basketball, and a Marketplace for new pipelines
 
 Basketball joins Soccer under Sports, and the new Marketplace installs pipelines and

@@ -39,6 +39,8 @@ TRANS_GRAY = 120.0       # the window's summed gray change...
 TRANS_COL = 0.35         # ...and summed colour change, with no hard cut in it
 TRANS_EDGE = 6.0         # a transition's first and last frames change at least this much (quiet frames trimmed)
 MIN_SHOT = 0.3           # seconds; a cut closer than this to the previous one merges into a transition
+MOVES_AFTER_CUT = 2      # frames; steady change from this soon after a strong hard cut is the new shot moving (a
+#                          fast close-up), not a dissolve: the cut stays
 
 # ---- shot kinds -------------------------------------------------------------------------------
 
@@ -223,11 +225,22 @@ def _merge_short(cuts: list[Cut], fps: float, gray: list[float] | None = None) -
     then the cut, and the picture changes at the cut. A dissolve ends with
     the picture all but the new shot's, never with a jump (on an NBA
     compilation a pan over the crowd was taken for a 0.8 s dissolve, and the
-    clip ending before it lost the announcer's last words)."""
+    clip ending before it lost the announcer's last words). And steady change
+    that starts within MOVES_AFTER_CUT frames after a strong hard cut: that
+    is the new shot moving, a fast close-up, and the picture changed at the
+    cut. The cut stays and the change is no transition: a dissolve starts
+    from the old shot's picture, never just after a jump (on a game's
+    broadcast the first 0.9 s of a close-up were taken for a dissolve after
+    its cut, and framed as the wide shot before it)."""
     out: list[Cut] = []
     for c in cuts:
         if out and _first_changed(c) - out[-1].frame < MIN_SHOT * fps:
             prev = out.pop()
+            if (gray is not None and prev.kind == "hard" and c.kind == "transition"
+                    and _at(gray, prev.frame) >= CUT_GRAY_STRONG
+                    and 0 < _first_changed(c) - prev.frame <= MOVES_AFTER_CUT):
+                out.append(prev)
+                continue
             frame = max(prev.frame, c.frame)
             hard = next((x for x in (prev, c) if x.kind == "hard" and x.frame == frame), None)
             other = c if hard is prev else prev
