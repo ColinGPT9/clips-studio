@@ -240,9 +240,9 @@ melalui Ollama.
   dari gerakan. Saat pembicara berganti, framing **langsung berpindah** ke orang itu alih-alih
   bergeser perlahan, seperti yang dilakukan seorang editor. Framing hanya dengan crop: tidak pernah ditarik, tidak pernah
   terdistorsi.
-- **Mode podcast**: untuk rekaman multi-kamera, setiap shot mendapat crop stabilnya sendiri pada satu
-  orang, sehingga setiap potongan langsung jatuh pada wajah tanpa panning. Dalam satu shot, subjek dipilih berdasarkan
-  gerakan mulut, dengan wajah yang paling menonjol sebagai cadangan.
+- **Mode podcast**: untuk rekaman multi-kamera, setiap shot mendapat crop stabilnya sendiri pada orang
+  yang didengar TalkNet sedang bicara, dan crop itu berganti tepat pada frame potongan kamera, tanpa panning. Dalam
+  shot yang panjang, crop pindah ke pembicara baru yang bicara satu detik atau lebih; tawa singkat tidak menggesernya.
 - **Vertical Live**: untuk livestream yang sudah vertikal saat disiarkan (live
   vertikal YouTube, Twitch Dual Format, Streamlabs Dual Output, live Instagram atau TikTok
   yang diunduh). Mempertahankan tata letak 9:16 milik stream itu sendiri, melewati pelacakan wajah, dan

@@ -12,6 +12,7 @@ from core.models import ClipCandidate
 from video.encoding import (
     CPU_ARGS,
     audio_filter_args,
+    final_movflags,
     hwaccel_input_args,
     using_hardware_encoder,
     video_encoder_args,
@@ -25,10 +26,15 @@ def cut_clip(
     ass_path: Path | None = None,
     vf_extra: str = "",
     normalize: bool = False,
+    final: bool = False,
 ) -> Path:
     """normalize: loudness-normalise the audio. Only for a FINAL clip — this
     also cuts the staging file the tracked path crops from, and normalising
-    that would just be undone (and doubled) by the real encode."""
+    that would just be undone (and doubled) by the real encode.
+
+    final: this cut IS the clip (horizontal and Vertical Live clips, which
+    take one encode): written with final_movflags(), so its first frame is at
+    0 in every app. Not tied to `normalize`, which a clip can switch off."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Absolute paths: cwd may be changed for the subtitles filter, which
@@ -46,7 +52,7 @@ def cut_clip(
         *audio_filter_args(normalize),     # sync, and loudness for a final clip
         *video_encoder_args(),  # NVENC when available, libx264 otherwise
         "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart",
+        *(final_movflags() if final else ["-movflags", "+faststart"]),
     ]
     vf_parts = [p for p in (vf_extra,) if p]
     if ass_path is not None:

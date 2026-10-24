@@ -77,6 +77,42 @@ def test_a_fast_pan_ending_on_a_hard_cut_is_no_dissolve():
     assert [(c.kind, c.span is not None) for c in shots.find_cuts(sig)] == [("transition", True)]
 
 
+def test_a_fast_closeup_right_after_a_strong_hard_cut_is_no_dissolve():
+    # A hard cut (78) to a close-up that moves fast from its first frame (14 a frame for 28 frames):
+    # the picture changes at the cut, so the close-up starts there, not where its "dissolve" would
+    # end (the crop held the wide shot's framing over the close-up's first half second). A weak cut
+    # (30) with the same motion after it stays one transition, and so do two hard cuts 0.15 s apart,
+    # or 2 frames apart: the cut is kept only before a transition's change, never another cut's.
+    n = 150
+
+    def found(gray, col):
+        sig = FrameSignals(fps=FPS, width=48, height=27, d_gray=gray, d_col=col, luma=[100.0] * n)
+        return [(c.frame, c.kind, c.span) for c in shots.find_cuts(sig)]
+
+    gray, col = [2.0] * n, [0.02] * n
+    for f in range(61, 89):
+        gray[f], col[f] = 14.0, 0.05
+    gray[60], col[60] = 78.0, 0.59
+    assert found(gray, col) == [(60, "hard", None)]
+    gray[61] = 2.0                  # the motion begins 2 frames after the cut: still the close-up's own
+    assert found(gray, col) == [(60, "hard", None)]
+    gray[62] = 2.0                  # 3 frames after: one transition, as before
+    assert found(gray, col) == [(89, "transition", (60, 88))]
+    gray[61], gray[62] = 14.0, 14.0
+    gray[60], col[60] = 30.0, 0.25  # a weak cut
+    assert shots._is_hard(gray, col, 60)    # still a hard cut, so its merge is what keeps it a transition
+    assert found(gray, col) == [(89, "transition", (60, 88))]
+    gray, col = [2.0] * n, [0.02] * n
+    second = 60 + round(0.15 * FPS)
+    for f in (60, second):
+        gray[f], col[f] = 78.0, 0.59
+    assert found(gray, col) == [(second, "transition", (60, second - 1))]
+    gray, col = [2.0] * n, [0.02] * n
+    for f in (60, 62):              # luma steady, so no flash either
+        gray[f], col[f] = 78.0, 0.59
+    assert found(gray, col) == [(62, "transition", (60, 61))]
+
+
 # ---- shot kinds -------------------------------------------------------------------------------
 
 

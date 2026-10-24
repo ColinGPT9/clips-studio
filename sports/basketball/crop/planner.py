@@ -131,6 +131,13 @@ BALL_NEAR = 1.0          # seconds: with no usable ball now, the crop aims at th
 # and whoever leaned in, and the crop kept correcting.
 SUBJECT_KEEP = 0.2
 HOLD_SPREAD = 0.12
+# In a shot where the pose model finds faces, a box cut off by the frame's side (within SIDE_EDGE
+# of it) with no face found, a fan or the bench, is never taken for the subject, and from a subject
+# whose face was found the follow takes a box with no face only where it covers that face (his own
+# body, the head missed): on a close-up after a basket the chain slid off the scorer onto such
+# boxes and held the crop on empty seats for over a second. With no face found in the shot, boxes
+# alone, every box counts as before.
+SIDE_EDGE = 0.01
 
 SHOT_PHASES = {"release", "flight", "rim", "result", "attack", "rebound"}
 NO_NARROWING = {"release", "flight", "rim"}   # the crop never narrows while a shot is in the air
@@ -584,6 +591,8 @@ def _person_shot(data: ShotData, fps: float, levels: list[float]) -> tuple[list[
     nearer the middle the better (SUBJECT_MIDDLE), centred on his head
     (Person.head_x) when the pose model found it, else on his box."""
     n = data.shot.f1 - data.shot.f0
+    samples = data.samples
+    faces = any(p.head_x is not None for s in samples for p in s.people)
 
     def subject(people):
         return max(people, key=lambda p: p.w * p.h * (SUBJECT_MIDDLE - abs(p.x - 0.5)))
@@ -591,26 +600,41 @@ def _person_shot(data: ShotData, fps: float, levels: list[float]) -> tuple[list[
     def where(p):
         return p.head_x if p.head_x is not None else p.x      # the face, when the pose model found it
 
+    def side(p):
+        # Cut off by the frame's side with no face found, in a shot where faces are found: a fan or
+        # the bench, never the subject (SIDE_EDGE).
+        return faces and p.head_x is None and (p.x - p.w / 2 <= SIDE_EDGE or p.x + p.w / 2 >= 1 - SIDE_EDGE)
+
     # The subject is chosen once, as the one the camera is on most of the shot (the median of who
     # looks it sample by sample), and followed from there both ways: on each sample the person
     # nearest to where he last was (SUBJECT_KEEP), else he is taken to be still there. A sample
-    # where someone else leans in bigger doesn't hand the close-up to him.
-    seen = [(k, s) for k, s in enumerate(data.samples) if s.people]
+    # where someone else leans in bigger doesn't hand the close-up to him, a side box (`side`) is
+    # never him, and once his face is found a box with no face is him only where it covers it.
+    seen = [(k, s) for k, s in enumerate(samples) if s.people]
     xs: dict[int, float] = {}
     if seen:
-        picks = {k: where(subject(s.people)) for k, s in seen}
-        usual = statistics.median(picks.values())
-        k0 = min(picks, key=lambda k: abs(picks[k] - usual))
-        xs[k0] = picks[k0]
-        for order in (range(k0 + 1, len(data.samples)), range(k0 - 1, -1, -1)):
-            last = xs[k0]
+        picks = {k: subject(s.people) for k, s in seen}
+        usual = statistics.median(where(p) for p in picks.values())
+        k0 = min(picks, key=lambda k: abs(where(picks[k]) - usual))
+        first = picks[k0]
+        if side(first):
+            # The one picked is a side box: the nearest person whose face is found instead, on the
+            # nearest sample that has one (there is one: `faces`).
+            t0, x0 = samples[k0].t, where(first)
+            k0 = min((k for k, s in seen if any(p.head_x is not None for p in s.people)),
+                     key=lambda k: abs(samples[k].t - t0))
+            first = min((p for p in samples[k0].people if p.head_x is not None), key=lambda p: abs(p.head_x - x0))
+        xs[k0] = where(first)
+        for order in (range(k0 + 1, len(samples)), range(k0 - 1, -1, -1)):
+            last, face = xs[k0], first.head_x is not None
             for k in order:
-                people = data.samples[k].people
-                near = min(people, key=lambda p: abs(where(p) - last), default=None)
+                near = min((p for p in samples[k].people
+                            if not side(p) and (p.head_x is not None or not face or abs(p.x - last) <= p.w / 2)),
+                           key=lambda p: abs(where(p) - last), default=None)
                 if near is not None and abs(where(near) - last) <= SUBJECT_KEEP:
-                    last = where(near)
+                    last, face = where(near), near.head_x is not None
                 xs[k] = last
-    keys = [(data.samples[k].frame - data.shot.f0, xs[k]) for k in sorted(xs)]
+    keys = [(samples[k].frame - data.shot.f0, xs[k]) for k in sorted(xs)]
     base = levels[0]
     if not keys:
         return [min(max(0.5, base / 2), 1 - base / 2)] * n, [base] * n

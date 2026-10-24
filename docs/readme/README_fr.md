@@ -258,9 +258,9 @@ le GPU via Ollama.
   **coupe** vers elle au lieu de faire un panoramique, comme le ferait un monteur.
   Recadrage uniquement : jamais étiré, jamais déformé.
 - **Mode podcast** : pour les tournages multicaméras, chaque plan reçoit son propre
-  recadrage fixe sur une personne, si bien que les coupes tombent sur un visage sans
-  panoramique. Dans un plan, la personne est choisie selon le mouvement de la bouche, ou à
-  défaut selon le visage le plus visible.
+  recadrage fixe sur la personne que TalkNet entend parler ; il change à l'image près, sur
+  la coupe de la caméra, sans panoramique. Dans un plan long, il passe à une nouvelle
+  personne qui parle une seconde ou plus ; un rire bref ne le fait pas bouger.
 - **Vertical Live** (live vertical) : pour un live qui était déjà vertical lors de sa
   diffusion (un live vertical YouTube, Twitch Dual Format, Streamlabs Dual Output, un live
   Instagram ou TikTok téléchargé). Il conserve la mise en page 9:16 du stream, saute le
