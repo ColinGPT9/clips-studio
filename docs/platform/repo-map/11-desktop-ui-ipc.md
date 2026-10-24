@@ -180,7 +180,7 @@ They are **not** in Settings. They are per-video job options on the Generate bar
 | Live updates | `useEvents((e) => { if (e.type === '…') refresh() })` + a slow `setInterval` poll as belt-and-braces | `Queue.tsx:55-75`, `Models.tsx:58-69` |
 | Error / offline | `offline` state → `<div className="card text-warn">…`; errors in `<div className="card border-error/40 text-error text-sm">` | `Models.tsx:98-108`, `Queue.tsx:236` |
 | Loading | `<p className="text-sm text-muted">{t('Loading…')}</p>` | `Queue.tsx:257`, `Models.tsx:110` |
-| Error text | `errorText(e)` in `lib/api.ts:946-955` extracts FastAPI `detail` from the thrown `Error` message; used by newer components (`WatchCard.tsx:2`) | `ui/src/renderer/src/lib/api.ts:946-955` |
+| Error text | `errorText(e)` in `lib/api.ts:971-981` extracts FastAPI `detail` from the thrown `Error` message; used by newer components (`WatchCard.tsx:2`) | `ui/src/renderer/src/lib/api.ts:971-981` |
 | Error isolation | wrap optional panels in `FeatureBoundary name="…"`; `AppBoundary` at root | `components/FeatureBoundary.tsx`, `main.tsx:20-22` |
 | External links | `window.studio.openExternal(url)` (host must be allow-listed in main) — not `<a target=_blank>` except the GitHub footer link | `App.tsx:198-205`, `ui/src/main/index.ts:487-570` |
 | Accessibility | `aria-label` on inputs/selects, `aria-expanded` on toggles, `:focus-visible` outline, reduced-motion | `theme.css:22-38`, `AddVideos.tsx:654-656` |

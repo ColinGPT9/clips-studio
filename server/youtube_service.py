@@ -284,19 +284,28 @@ def remember_channel(db, channel: dict | None) -> None:
 # These ask a few times after the time (server/posts.py LIVE_CHECK_STEPS), one
 # quota unit each, and the answers live in the uploads row.
 
-#: How long after its time a scheduled upload is still asked about at all.
+#: How long after its time a failing check of a scheduled upload is tried
+#: again on every pass. Past it, an upload with a step left is tried once.
 LIVE_CHECK_DAYS = 7
 
 
 def due_live_checks(db, now=None, limit: int = 10, *, last_tried: dict | None = None) -> list:
     """The scheduled uploads due a check that they went live, at most `limit`.
 
-    Uploaded with a time, that time two minutes or more ago and no more than
-    seven days ago, not yet read back public or unlisted, and due by the step
-    schedule (posts.next_live_check). Never-tried first, then the ones tried
-    longest ago, oldest-due among equals: `last_tried` maps clip id to the unix
-    time of its last try, so uploads whose check keeps failing take turns with
-    the rest instead of filling every pass. Entries no longer due are dropped.
+    Uploaded with a time, that time two minutes or more ago, not yet read back
+    public or unlisted, and due by the step schedule (posts.next_live_check).
+    Never-tried first, then the ones tried longest ago, oldest-due among
+    equals: `last_tried` maps clip id to the unix time of its last try, so
+    uploads whose check keeps failing take turns with the rest instead of
+    filling every pass. Entries no longer due are dropped.
+
+    One whose time is more than LIVE_CHECK_DAYS ago with a step still left
+    (it went up before these checks, the app was closed, or YouTube publishing
+    was off) is due only until it has been tried: that one check comes after
+    the last step, so whatever YouTube answers ends its schedule and it reads
+    live or private, never "checking" for good. If the check fails, it waits
+    for the next start of the app. Among the never-tried, these come after the
+    uploads still inside their week, so a backlog never holds up a new one.
     """
     current = posts.as_utc(now)
     tried = last_tried if last_tried is not None else {}
@@ -305,17 +314,20 @@ def due_live_checks(db, now=None, limit: int = 10, *, last_tried: dict | None = 
         "AND youtube_id != '' AND actual_privacy NOT IN ('public', 'unlisted')"
     ).fetchall()
     oldest = current - timedelta(days=LIVE_CHECK_DAYS)
-    due = []
+    due, keep = [], set()
     for row in rows:
         at = posts.next_live_check(row)
-        publish_at = posts.due_time(row, now=current)
-        if at is None or at > current or publish_at < oldest:
+        if at is None or at > current:
             continue
-        due.append((float(tried.get(row["clip_id"], 0.0)), at, row["clip_id"], row))
-    keep = {clip_id for _, _, clip_id, _ in due}
+        clip_id = row["clip_id"]
+        keep.add(clip_id)
+        late = posts.due_time(row, now=current) < oldest
+        if late and clip_id in tried:
+            continue
+        due.append((float(tried.get(clip_id, 0.0)), late, at, clip_id, row))
     for gone in [c for c in tried if c not in keep]:
         tried.pop(gone, None)
-    due.sort(key=lambda item: item[:3])
+    due.sort(key=lambda item: item[:4])
     return [row for *_, row in due[:limit]]
 
 

@@ -5,6 +5,7 @@ import type { Clip } from '../lib/types'
 import {
   MAX_POLLS,
   describeState,
+  holdsPublish,
   localInputToIso,
   localZone,
   mergeRows,
@@ -13,6 +14,7 @@ import {
   platformLabel,
   type Capabilities,
   type Overrides,
+  pickRequest,
   platformsFor,
   PROVIDER_LABEL,
   rowProvider,
@@ -89,6 +91,9 @@ export default function UploadPostPanel({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const attempts = useRef(0)
   const alive = useRef(true)
+  // Requests this panel sent or retried while open: their rows lock Publish
+  // until they are done, whenever they are due (holdsPublish).
+  const sentHere = useRef(new Set<string>())
 
   useEffect(() => {
     alive.current = true
@@ -158,8 +163,7 @@ export default function UploadPostPanel({
       .then((got) => {
         if (!current || !alive.current) return
         setRows(got.posts)
-        const mine = got.posts.filter((r) => r.request_id && rowProvider(r) === provider)
-        const pick = mine.find((r) => stillOnItsWay(r)) ?? mine[0]
+        const pick = pickRequest(got.posts, provider)
         setRequestId(pick ? pick.request_id : '')
         if (pick && stillOnItsWay(pick)) {
           attempts.current = 0
@@ -202,6 +206,7 @@ export default function UploadPostPanel({
         scheduled_date: when === 'schedule' ? localInputToIso(at) : '',
         timezone: when === 'schedule' ? localZone() : '',
       })
+      if (got.request_id) sentHere.current.add(got.request_id)
       setRows((shown) => mergeRows(shown, got.platforms))
       setRequestId(got.request_id)
       if (!got.done) schedulePoll(got.request_id)
@@ -220,6 +225,7 @@ export default function UploadPostPanel({
     try {
       if (!backend.retry) return
       const got = await backend.retry(requestId)
+      sentHere.current.add(requestId)
       setRows((shown) => mergeRows(shown, got.platforms))
       if (!got.done) schedulePoll(requestId)
     } catch (e) {
@@ -247,9 +253,7 @@ export default function UploadPostPanel({
     )
 
   const open = (url: string) => () => void window.studio.openExternal(url)
-  const inFlight = rows.some(
-    (r) => r.state === 'queued' || r.state === 'processing' || r.state === 'sending'
-  )
+  const inFlight = rows.some((r) => holdsPublish(r, sentHere.current))
   // Only this provider's: its retry cannot re-send another provider's post.
   const anyFailed = rows.some((r) => r.state === 'failed' && rowProvider(r) === provider)
   const lacking = missingRequired(platforms, caps, overrides)

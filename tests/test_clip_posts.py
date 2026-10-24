@@ -69,6 +69,21 @@ def test_every_provider_and_the_direct_upload_in_one_list(db):
         "published", True, "abcdefghijk", "https://www.youtube.com/shorts/abcdefghijk")
 
 
+def test_the_direct_upload_keeps_its_upload_time_and_needs_an_id(db):
+    """Its times are local like the provider rows', so not checked_at (UTC);
+    an uploads row that never got a video id is no post at all."""
+    clip_id, failed = _clip(db), _clip(db, 40, 70)
+    db.record_publish(clip_id, {"youtube_id": "abcdefghijk", "actual_privacy": "public",
+                                "checked_at": "2026-10-01T11:00:00Z"})
+    db.record_publish(failed, {"youtube_id": "", "state": "failed"})
+
+    direct = posts.posts_for_clip(db, clip_id, now=NOW)[0]
+
+    uploaded = db.get_upload(clip_id)["uploaded_at"]
+    assert (direct["created_at"], direct["updated_at"]) == (uploaded, uploaded)
+    assert posts.posts_for_clip(db, failed, now=NOW) == []
+
+
 def test_a_published_post_with_no_link_yet_is_not_live(db):
     clip_id = _clip(db)
     _post(db, clip_id, "tiktok", "woopsocial")
@@ -132,10 +147,43 @@ def test_one_row_per_provider_and_platform_the_newest(db):
         ("woopsocial", "tiktok", "again"), ("upload_post", "youtube", "again-up")]
 
 
+def test_on_a_tie_the_clips_own_row_wins(db):
+    old_id = _clip(db)
+    _post(db, old_id, "tiktok", "woopsocial", state="failed", request_id="first")
+    db.conn.execute("DELETE FROM clips WHERE id = ?", (old_id,))
+    new_id = db.add_clip("vid", 0.0, 30.0, 90, "hook", path="clip2.mp4")
+    _post(db, new_id, "tiktok", "woopsocial", state="queued", request_id="again")
+    db.conn.execute("UPDATE clip_publishes SET created_at = '2026-09-02T08:00:00', "
+                    "updated_at = '2026-09-02T08:00:00'")
+    db.conn.commit()
+
+    found = posts.posts_for_clip(db, new_id, now=NOW)
+
+    assert [p["request_id"] for p in found] == ["again"]
+
+
 def test_another_clip_of_the_same_video_is_not_mixed_in(db):
     mine, other = _clip(db, 0, 30), _clip(db, 40, 70)
     _post(db, other, "tiktok", "woopsocial")
     assert posts.posts_for_clip(db, mine, now=NOW) == []
+
+
+def test_a_bare_upload_from_before_privacy_was_recorded_is_live(db):
+    clip_id = _clip(db)
+    db.record_publish(clip_id, {"youtube_id": "abcdefghijk"})
+    direct = posts.posts_for_clip(db, clip_id, now=NOW)[0]
+    assert (direct["state"], direct["live"], direct["post_url"]) == (
+        "published", True, "https://www.youtube.com/shorts/abcdefghijk")
+
+
+def test_the_link_follows_the_window_that_went_out_not_the_clips_new_one(db):
+    """Uploaded as a 4-minute video, then trimmed to 30 s: the post that went
+    out is still a watch page."""
+    clip_id = _clip(db)
+    db.record_publish(clip_id, {"youtube_id": "abcdefghijk", "video_id": "vid",
+                                "start_s": 0.0, "end_s": 240.0, "actual_privacy": "public"})
+    assert posts.posts_for_clip(db, clip_id, now=NOW)[0]["post_url"] == (
+        "https://www.youtube.com/watch?v=abcdefghijk")
 
 
 # ---- the route --------------------------------------------------------------------
@@ -177,6 +225,22 @@ def test_the_route_answers_with_every_provider_switched_off(client):
         ("woopsocial", "tiktok", True)]
     assert client.get(f"/clips/{empty}/posts").json() == {"clip_id": empty, "posts": []}
     assert client.get("/clips/999/posts").status_code == 404
+
+
+def test_the_route_still_answers_for_a_deleted_clip_with_posts(client):
+    d = StateDB(client.db_path)
+    try:
+        clip_id = _clip(d)
+        _post(d, clip_id, "tiktok", "woopsocial")
+        d.conn.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+        d.conn.commit()
+    finally:
+        d.close()
+
+    got = client.get(f"/clips/{clip_id}/posts")
+
+    assert got.status_code == 200
+    assert [p["platform"] for p in got.json()["posts"]] == ["tiktok"]
 
 
 # ---- what the panel makes of the rows (Node) ---------------------------------------
@@ -246,3 +310,40 @@ def test_an_answer_from_a_provider_keeps_the_direct_upload_in_the_list(tmp_path)
         ("woopsocial", "tiktok", "queued"),
         ("youtube", "youtube", "published"),
     ]
+
+
+def test_a_post_scheduled_days_ahead_does_not_lock_publish(tmp_path):
+    """Reopening a clip with a post scheduled for next week lists it but
+    leaves Publish free; a send under way, a request this panel sent and a
+    post already due still lock it."""
+    rows = [
+        {"state": "queued", "request_id": "w1", "scheduled_for": "2026-10-09T09:00:00Z"},
+        {"state": "queued", "request_id": "mine", "scheduled_for": "2026-10-09T09:00:00Z"},
+        {"state": "processing", "request_id": "w2", "scheduled_for": ""},
+        {"state": "queued", "request_id": "w3", "scheduled_for": "2026-10-01T09:00:00Z"},
+        {"state": "sending", "request_id": "", "scheduled_for": ""},
+        {"state": "published", "request_id": "mine", "scheduled_for": ""},
+        {"state": "checking", "request_id": "", "scheduled_for": "2026-10-01T09:00:00Z"},
+    ]
+    now = "Date.parse('2026-10-02T09:00:00Z')"
+    got = _panel(tmp_path, f"return data.map((row) => m.holdsPublish(row, new Set(['mine']), {now}))",
+                 rows)
+    assert got == [False, True, True, True, True, False, False]
+
+
+def test_the_panel_picks_up_a_request_it_can_retry(tmp_path):
+    """Nothing on its way: the request with a failed platform, so "Retry the
+    ones that failed" is not sent to one with nothing failed."""
+    rows = [
+        {"provider": "upload_post", "platform": "instagram", "state": "published", "request_id": "R2",
+         "scheduled_for": ""},
+        {"provider": "upload_post", "platform": "tiktok", "state": "failed", "request_id": "R1",
+         "scheduled_for": ""},
+        {"provider": "woopsocial", "platform": "x", "state": "failed", "request_id": "W1",
+         "scheduled_for": ""},
+    ]
+    now = "Date.parse('2026-10-02T09:00:00Z')"
+    body = f"return [m.pickRequest(data, 'uploadpost', {now})?.request_id, " \
+           f"m.pickRequest(data.slice(0, 1), 'uploadpost', {now})?.request_id, " \
+           f"m.pickRequest(data, 'woopsocial', {now})?.request_id]"
+    assert _panel(tmp_path, body, rows) == ["R1", "R2", "W1"]

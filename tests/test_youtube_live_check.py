@@ -65,6 +65,9 @@ def test_checking_until_it_is_read_back(db):
 
     assert _view(db, clip_id, T + timedelta(minutes=30))["state"] == "checking"
     assert _view(db, clip_id, T + timedelta(hours=30))["state"] == "checking"
+    # And while it reads checking, a check is on its way, however late.
+    for later in (timedelta(minutes=30), timedelta(hours=30), timedelta(days=60)):
+        assert [r["clip_id"] for r in service.due_live_checks(db, T + later)] == [clip_id]
 
 
 def test_a_scheduled_upload_is_not_live_on_what_was_asked_for(db):
@@ -136,6 +139,8 @@ def test_private_at_the_first_check_and_public_at_the_second_is_live(db, tmp_pat
                     "post_url": "https://www.youtube.com/shorts/abcdefghijk"}
     assert youtube["asked"] == [("UC-mine", "abcdefghijk")] * 2, "through its own channel"
     assert service.due_live_checks(db, T + timedelta(days=2)) == [], "live: never asked again"
+    left = service.due_live_checks(db, T + timedelta(days=2), last_tried=w._youtube_tried)
+    assert (left, w._youtube_tried) == ([], {}), "its try is forgotten once it is not due"
 
 
 @pytest.mark.parametrize("checked, expected", [
@@ -171,15 +176,71 @@ def test_due_checks_follow_the_steps_and_stop_after_the_last(db):
     assert due(T + timedelta(days=3)) == [], "after the +24 h check, never again"
 
 
-def test_an_upload_due_more_than_a_week_ago_is_not_asked_about(db):
+@pytest.mark.parametrize("answer, state, live", [
+    ({"privacy": "public", "upload_status": "processed"}, "published", True),
+    ({"privacy": "private", "upload_status": "processed"}, "private", False),
+])
+def test_an_upload_a_month_past_its_time_is_asked_once_and_settles(db, tmp_path, youtube,
+                                                                    answer, state, live):
+    """Uploaded before these checks existed (its only read-back the one a
+    minute after the upload), or the app closed all week: it is asked once,
+    and the answer ends its schedule instead of reading "checking" for good."""
+    clip_id = _clip(db)
+    _upload(db, clip_id, checked=T - timedelta(days=2))
+    late = T + timedelta(days=30)
+    assert [r["clip_id"] for r in service.due_live_checks(db, late)] == [clip_id]
+    youtube["answers"].append(answer)
+
+    _check(_worker(tmp_path), db, late)
+
+    assert youtube["asked"] == [(None, "abcdefghijk")]
+    assert _view(db, clip_id, late + timedelta(minutes=1))["state"] == state
+    assert _view(db, clip_id, late + timedelta(days=365))["live"] is live
+    assert service.due_live_checks(db, late + timedelta(days=1)) == [], "asked once"
+
+
+def test_the_app_closed_between_two_checks_for_over_a_week(db, tmp_path, youtube):
+    clip_id = _clip(db)
+    _upload(db, clip_id, checked=T + timedelta(minutes=2, seconds=30))  # +2 min: private
+    youtube["answers"].append({"privacy": "private", "upload_status": "processed"})
+
+    _check(_worker(tmp_path), db, T + timedelta(days=8))
+
+    assert _view(db, clip_id, T + timedelta(days=8, minutes=1))["state"] == "private"
+
+
+def test_a_late_check_that_fails_waits_for_the_next_start(db, tmp_path, youtube):
+    """Past its week a failing check is not tried on every pass, only once
+    each time the app starts (a new worker, so a new memory of tries)."""
     clip_id = _clip(db)
     _upload(db, clip_id)
-    assert service.due_live_checks(db, T + timedelta(days=8)) == []
+    youtube["answers"].append(RuntimeError("token revoked"))
+    w = _worker(tmp_path)
+    late = T + timedelta(days=9)
+
+    _check(w, db, late)
+    _check(w, db, late + timedelta(minutes=10))
+    _check(w, db, late + timedelta(minutes=20))
+
+    assert youtube["asked"] == [(None, "abcdefghijk")]
+    assert w._youtube_tried == {clip_id: late.timestamp()}, "remembered, not pruned"
+    assert _view(db, clip_id, late)["state"] == "checking"
+    assert [r["clip_id"] for r in service.due_live_checks(db, late, last_tried={})] == [clip_id]
+
+
+def test_a_backlog_of_late_uploads_does_not_hold_up_a_new_one(db):
+    ids = [_clip(db, start=i * 40.0, end=i * 40.0 + 30) for i in range(11)]
+    for clip_id in ids[:10]:
+        _upload(db, clip_id, publish_at=T - timedelta(days=20))
+    _upload(db, ids[10])
+    due = service.due_live_checks(db, T + timedelta(minutes=3))
+    assert len(due) == 10 and due[0]["clip_id"] == ids[10]
 
 
 def test_only_scheduled_uploads_not_yet_public_are_asked_about(db):
-    ids = [_clip(db, start=i * 40.0, end=i * 40.0 + 30) for i in range(4)]
+    ids = [_clip(db, start=i * 40.0, end=i * 40.0 + 30) for i in range(5)]
     _upload(db, ids[0])
+    _upload(db, ids[4], video="")                               # never got an id
     _upload(db, ids[1], publish_at=None, actual="public")       # not scheduled
     _upload(db, ids[2], actual="public")                        # already read back
     _upload(db, ids[3], state="rejected")

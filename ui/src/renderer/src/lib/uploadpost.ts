@@ -256,3 +256,33 @@ export function stillOnItsWay(row: PlatformRow, now: number = Date.now()): boole
   const due = row.scheduled_for ? Date.parse(row.scheduled_for) : NaN
   return Number.isNaN(due) || due <= now
 }
+
+/** Whether a row keeps the Publish button locked, so the clip is not sent
+ *  twice while a send is under way: one going out right now, one of a request
+ *  this panel sent (`sentHere`) still on its way, or one already due. A post
+ *  found on reopening that is scheduled days ahead is listed but does not
+ *  lock: nothing is going out yet, and the button would read "Publishing…"
+ *  until its day. */
+export function holdsPublish(
+  row: PlatformRow,
+  sentHere: ReadonlySet<string>,
+  now: number = Date.now()
+): boolean {
+  if (row.state === 'sending') return true
+  if (row.state !== 'queued' && row.state !== 'processing') return false
+  return (row.request_id !== '' && sentHere.has(row.request_id)) || stillOnItsWay(row, now)
+}
+
+/** The request of this panel's provider to pick back up on reopening: one
+ *  still on its way, else one with a platform that failed (what "Retry the
+ *  ones that failed" re-sends), else any. */
+export function pickRequest(
+  rows: PlatformRow[],
+  provider: Provider,
+  now: number = Date.now()
+): PlatformRow | undefined {
+  const mine = rows.filter((r) => r.request_id && rowProvider(r) === provider)
+  return (
+    mine.find((r) => stillOnItsWay(r, now)) ?? mine.find((r) => r.state === 'failed') ?? mine[0]
+  )
+}

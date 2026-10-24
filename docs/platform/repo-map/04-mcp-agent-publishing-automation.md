@@ -159,9 +159,9 @@ Webhooks (sibling surface, `server/webhooks.py`): `JobIn.webhook_url` / `webhook
 - `publish/` is "deliberately stdlib-only" (`publish/base.py:6-9`, `publish/uploadpost.py:9-11`).
 
 ### 6b. The upload worker — `server/publisher.py`
-- `PublishWorker(threading.Thread)(config, db_path, data_dir)`: `notify()`, `stop()`, `cancel(publish_job_id)`, `run()` claims `db.claim_next_publish_job()` (`:38-90`). Own table with opposite crash recovery ("interrupted", never re-run) (`:16-20`).
-- `_publish` builds `PublishRequest` and always uses `youtube_service.make_publisher(config, data_dir, channel_id=...)` (`:203-240`) — the worker is **YouTube-only**; WoopSocial/Upload-Post posts are started synchronously inside their routes and only *refreshed* by the worker (`_refresh_provider_posts` 98-116, every `PROVIDER_CHECK_SECONDS=180`: `_refresh_woopsocial` 118 checks due requests oldest first, `_refresh_uploadpost` 147 on a 3 min / 30 min / 3 h cadence; `_refresh_missing_urls` 176, every `URL_CHECK_SECONDS=900`, asks again about published posts with no link for a day after they were due).
-- Emits progress via `server.events.broadcaster` (`_emit` 404).
+- `PublishWorker(threading.Thread)(config, db_path, data_dir)`: `notify()`, `stop()`, `cancel(publish_job_id)`, `run()` claims `db.claim_next_publish_job()` (`:39-96`). Own table with opposite crash recovery ("interrupted", never re-run) (`:16-20`).
+- `_publish` builds `PublishRequest` and always uses `youtube_service.make_publisher(config, data_dir, channel_id=...)` (`:257-294`) — the worker is **YouTube-only**; WoopSocial/Upload-Post posts are started synchronously inside their routes and only *refreshed* by the worker (`_refresh_provider_posts` 104-122, every `PROVIDER_CHECK_SECONDS=180`: `_refresh_woopsocial` 124 checks due requests oldest first, `_refresh_uploadpost` 153 on a 3 min / 30 min / 3 h cadence; `_refresh_missing_urls` 182, every `URL_CHECK_SECONDS=900`, asks again about published posts with no link for a day after they were due; `_check_scheduled_youtube` 210, every `YOUTUBE_LIVE_CHECK_SECONDS=600`, asks YouTube whether scheduled direct uploads went live).
+- Emits progress via `server.events.broadcaster` (`_emit` 458).
 
 ### 6c. Provider route modules (`server/<provider>_api.py` + `server/<provider>_service.py`)
 Each provider is a pair: `*_service.py` = settings blob + secret + client factory + `status_payload`; `*_api.py` = `install(app, ...)` with `_guard` (404 when disabled), `_fail` (redacted 400), `_client()`.

@@ -696,3 +696,33 @@ def test_a_retry_with_no_detail_puts_the_failed_one_back_in_flight_from_now(db):
     assert (youtube["state"], youtube["error"]) == ("queued", "")
     assert youtube["created_at"] > before
     assert _row(db, 1, "tiktok")["state"] == "published"
+
+
+def test_a_retry_that_brings_news_of_a_platform_that_had_gone_out_keeps_its_clock(db):
+    """The retry re-sends only what failed: a platform that was already out
+    gets its new link written, but it was not sent again."""
+    rows = _failed_and_published(db)
+    before = _row(db, 1, "tiktok")["created_at"]
+    url = "https://www.tiktok.com/@someone/video/7300000000000000001"
+
+    up.record_retry(db, 1, FanOutResult(request_id="R1", outcomes=[
+        PlatformOutcome(platform="youtube", state="processing"),
+        PlatformOutcome(platform="tiktok", state="published", post_url=url),
+    ]), rows)
+
+    tiktok = _row(db, 1, "tiktok")
+    assert (tiktok["post_url"], tiktok["created_at"]) == (url, before)
+
+
+def test_a_retry_of_the_older_request_leaves_the_re_sent_platform_alone(db):
+    _resent(db, "upload_post", "failed")
+    re_sent = dict(_row(db, 1, "tiktok"))
+
+    written = up.record_retry(db, 1, FanOutResult(request_id="R1", outcomes=[
+        PlatformOutcome(platform="youtube", state="processing"),
+        PlatformOutcome(platform="tiktok", state="failed", error="rate limited"),
+    ]), db.publishes_for_request("R1"))
+
+    assert written == 1
+    assert dict(_row(db, 1, "tiktok")) == re_sent
+    assert _row(db, 1, "youtube")["state"] == "processing"
