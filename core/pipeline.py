@@ -1654,10 +1654,13 @@ def _render_files(
                 plain = clip_dir / f"{stem}.plain.mp4"
                 scratch.append(plain)
                 cut_clip(source, padded, plain, vf_extra=vf_extra)
-                apply_edits(plain, edit, render_path, ass_path=ass_path, normalize=normalize)
+                # final: this pass writes the clip (or what the card joins),
+                # with its first frame at 0 in every app.
+                apply_edits(plain, edit, render_path, ass_path=ass_path, normalize=normalize,
+                            final=True)
             else:
                 cut_clip(source, padded, render_path, ass_path=ass_path, vf_extra=vf_extra,
-                         normalize=normalize)
+                         normalize=normalize, final=True)
     finally:
         # NEVER raise from here. This runs in a `finally`, so an exception
         # would REPLACE whatever the render actually failed with — and the

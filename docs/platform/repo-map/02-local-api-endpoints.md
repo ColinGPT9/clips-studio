@@ -44,7 +44,7 @@ Pattern worth copying for an SDK/plugin host: every optional feature is a module
 
 ## 3. API version and app version
 
-- `API_VERSION = 1` — `server/api.py:34`, comment: "Bumped only when a supported endpoint changes shape, never for additions." Returned by `GET /health` (`server/api.py:716`). `server/integrations.py:10-11` repeats the rule ("an incompatible change bumps API_VERSION in server/api.py"). `CHANGELOG.md:700` records when `app_version`/`api_version` were added. The MCP `engine_status` tool prints it (`server/mcp.py:444`). No test asserts the value (grep over `tests/` found no `API_VERSION`).
+- `API_VERSION = 1` — `server/api.py:34`, comment: "Bumped only when a supported endpoint changes shape, never for additions." Returned by `GET /health` (`server/api.py:716`). `server/integrations.py:10-11` repeats the rule ("an incompatible change bumps API_VERSION in server/api.py"). `CHANGELOG.md:702` records when `app_version`/`api_version` were added. The MCP `engine_status` tool prints it (`server/mcp.py:444`). No test asserts the value (grep over `tests/` found no `API_VERSION`).
 - `app_version` comes from `ui/package.json` `version` (`server/feedback.py:260-297`).
 - The FastAPI `version="0.1"` string (`server/api.py:576`) is independent of both and appears only in `/openapi.json` (inferred).
 

@@ -51,6 +51,13 @@ Kitty after you change it.
 
 ---
 
+### Fixed
+
+- **Clips no longer open with a black moment on Reels, TikTok, Shorts and other apps,**
+  and story reels no longer flash a frame of the end card between moments.
+
+---
+
 ## 2.1.0: Basketball, and a Marketplace for new pipelines
 
 Basketball joins Soccer under Sports, and the new Marketplace installs pipelines and

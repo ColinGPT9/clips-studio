@@ -22,7 +22,7 @@ from pathlib import Path
 
 from core.binaries import ffmpeg
 from gaming.layout import OUT_H, OUT_W, Element, Plan
-from video.encoding import audio_filter_args, video_encoder_args
+from video.encoding import audio_filter_args, final_movflags, video_encoder_args
 
 
 def _blur_fill(label: str, w: int, h: int) -> str:
@@ -93,7 +93,8 @@ def render(clip_path: Path, output_path: Path, p: Plan, ass_path: Path | None = 
         "-c:a", "aac", "-b:a", "128k",
         *audio_filter_args(normalize),
         "-fps_mode", "cfr",
-        "-movflags", "+faststart",
+        # The clip itself: its first frame at 0 with or without the edit list.
+        *final_movflags(),
         "-shortest",
         str(output_path.resolve()),
     ]

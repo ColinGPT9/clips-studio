@@ -82,11 +82,11 @@ def _render(pipeline, monkeypatch, tmp_path, style=None, opts=None, source=None,
     framed). Returns (the caption file as it was burned, the saved options)."""
     burned = {}
 
-    def fake_cut(_source, _candidate, output, ass_path=None, vf_extra="", normalize=True):
+    def fake_cut(_source, _candidate, output, ass_path=None, vf_extra="", normalize=True, final=False):
         burned["ass"] = Path(ass_path).read_text(encoding="utf-8") if ass_path else None
         Path(output).write_bytes(b"clip")
 
-    def fake_edits(_input, _edit, output, ass_path=None, normalize=False):
+    def fake_edits(_input, _edit, output, ass_path=None, normalize=False, final=False):
         # A clip with editor cuts is cut plain first, and captioned here.
         burned["ass"] = Path(ass_path).read_text(encoding="utf-8") if ass_path else None
         Path(output).write_bytes(b"clip")

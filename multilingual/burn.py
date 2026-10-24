@@ -75,7 +75,7 @@ def burn(
     """One language: translated captions burned into `base_video`."""
     from core.models import ClipCandidate
     from video.captions import build_captions
-    from video.encoding import video_encoder_args
+    from video.encoding import final_movflags, video_encoder_args
 
     canvas = _canvas_of(base_video)
     ass_path = out_path.with_suffix(f".{language}.ass")
@@ -92,7 +92,8 @@ def burn(
         "-vf", f"subtitles={built.name}",
         "-c:a", "copy",
         *video_encoder_args(config),
-        "-movflags", "+faststart",
+        # A language's own clip, posted as it is: first frame at 0 either way.
+        *final_movflags(),
         str(out_path.resolve()),
     ]
     try:

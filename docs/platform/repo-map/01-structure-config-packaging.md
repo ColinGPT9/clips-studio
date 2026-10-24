@@ -122,7 +122,7 @@ http://127.0.0.1:8765; style-src 'self' 'unsafe-inline'`
 | Pinned Ollama runtime | `OLLAMA_VERSION = "v0.32.6"` (`VERSION.txt` stamp in `vendor/ollama/`) | `scripts/fetch_ollama.py` | build only |
 | Electron / builder | `electron ^31.0.0`, `electron-builder ^24.13.3`, `electron-updater ^6.8.9`, `overrides.tar ^7.5.22` | `ui/package.json` | `docs/DEPENDENCY-SECURITY.md` explains the pins |
 | Schema version | **none**: SQLite migrations are additive `ALTER TABLE … ADD COLUMN` guarded by `PRAGMA table_info` | `core/state.py:366-392` `_migrate()` | — |
-| Changelog | `## Unreleased`, `## 2.0.0`, `1.2.0`, `1.1.4`, `1.1.3`, `0.1.2 (2026-08-10)`, `0.1.1`, `0.1.0`; written for creators; Added/Changed/Fixed subsections; `(#NNN)` issue refs | `CHANGELOG.md:1-71,150,615,751,829,897-948` | release notes in-app (`ui/build/release-notes.md`) |
+| Changelog | `## Unreleased`, `## 2.0.0`, `1.2.0`, `1.1.4`, `1.1.3`, `0.1.2 (2026-08-10)`, `0.1.1`, `0.1.0`; written for creators; Added/Changed/Fixed subsections; `(#NNN)` issue refs | `CHANGELOG.md:1-73,152,617,753,831,899-950` | release notes in-app (`ui/build/release-notes.md`) |
 
 The website download buttons and `whop-app/lib/content.ts` / `web/lib/content.ts`
 `VERSION` carry the version too and must be bumped by hand (`docs/RELEASING.md` "The
@@ -276,7 +276,7 @@ Other bundled data found by their own module, all via `sys._MEIPASS` when frozen
 `<repo>/models/` otherwise: TalkNet weights `pretrain_TalkSet.model`
 (`video/asd.py:80-85`), PANNs `panns_mobilenetv1.pth` (`analysis/panns.py:46-50`),
 voice models `pyannote_segmentation_3.onnx` / `wespeaker_resnet34_lm.onnx`
-(`analysis/voice_turns.py:103-107`), end cards `assets/outro` (`video/outro.py:972-982`),
+(`analysis/voice_turns.py:103-107`), end cards `assets/outro` (`video/outro.py:973-983`),
 cuBLAS 12 `nvidia/cublas/bin` (`transcription/transcriber.py:32-42`), the sport
 knowledge `config/sports.yaml` resolved relative to `sports/__init__.py`
 (`sports/__init__.py:22`), `gaming/layouts.json` beside `gaming/framing.py`

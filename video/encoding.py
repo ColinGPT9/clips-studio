@@ -368,3 +368,189 @@ def import_local_source(src, dest, codec: str) -> bool:
             return False
         finally:
             discard(tmp)
+
+
+# The MP4 muxer's flags for a file someone posts: a finished clip (with or
+# without the end card), a story reel, a Longform video.
+#
+# +faststart puts the index at the front, so a player starts before the whole
+# file has arrived.
+#
+# +negative_cts_offsets puts the first frame at 0 in the file itself. The
+# H.264 encoders use B-frames: some frames are decoded before frames shown
+# ahead of them, so decoding starts a few frames before the first is shown.
+# Without this flag the MP4 says the first frame is shown two or three
+# frames in (0.07-0.1 s) and leans on an edit list to pull it back to 0.
+# Phones and browsers read edit lists; an app or upload step that ignores
+# them shows black for those frames while the sound starts at 0. With it, the
+# order of the frames is written with offsets that may go below zero (the
+# standard's version 1 "ctts"), the edit list starts at 0, and the first
+# frame is at 0 whether the edit list is read or not. The coded video is the
+# same, frame for frame.
+FINAL_MOVFLAGS = "+faststart+negative_cts_offsets"
+
+
+def final_movflags() -> list[str]:
+    """`-movflags` for an MP4 that is posted as it is: every FINAL write.
+
+    Staging files (the cut a vertical render crops from, a converted source)
+    keep plain +faststart: they are read only by this app, which follows edit
+    lists, and nothing about them should change for this.
+    """
+    return ["-movflags", FINAL_MOVFLAGS]
+
+
+# ---- Joining finished video without re-encoding ------------------------------
+#
+# Here, not in video/outro.py, which draws the end card with numpy and Pillow:
+# Longform's assembly and the story reels join with this too, and need
+# neither to do it.
+
+# How late a first frame may be and still count as at 0: rounding, not a gap.
+LATE_TOLERANCE = 0.002
+
+
+def concat(listing, dst) -> subprocess.CompletedProcess:
+    """Join the files in a concat `listing` into `dst`, without re-encoding.
+
+    Every stream-copy join of finished video goes through here: the end card
+    in video/outro.py's append() and finish(), Longform's parts
+    (longform/assemble.py) and the story reels (sports/core/reels.py).
+
+    Two things put the first video frame at 0, in every app:
+
+    - `-copyts`. A clip's audio opens with the AAC encoder's priming, 1024
+      samples the file keeps BEFORE 0 behind an edit so that nothing plays
+      them. Without the flag FFmpeg moves the whole join until that priming
+      starts at 0, which pushed the first video frame 10.7, 21.3 or 23.2 ms
+      late (96, 48 or 44.1 kHz) behind an empty edit -- a black first frame
+      on phones and on the platforms, measured in 985 of 1,064 clips -- and
+      the priming was played. With it the timestamps stay where the clip had
+      them: the video starts at 0, the priming stays an edit, every packet of
+      the clip keeps the exact timestamp it had, and in each stream the card
+      follows the clip exactly as it did before.
+    - final_movflags(). The clip's B-frames otherwise leave its first frame
+      two or three frames in, pulled back to 0 only by the edit list, so an
+      app that ignores edit lists opens on black.
+
+    If the video still starts late, as the edit list shows it or as an app
+    that ignores it does, a part already did (a clip made before this, one
+    whose own video starts late). Joining it as before -copyts can then be
+    later still: it moves the clip's audio priming to 0 as well (a clip
+    whose video starts 33 ms late came out 54 ms late). So that join is made
+    beside this one and kept only when its video starts sooner; otherwise
+    this one stays. If this join fails, it is made as before instead, and
+    should that fail too, exactly as before, flags and all. A join is always
+    made: one not made at all would cost the clip its card. Returns FFmpeg's
+    run for the caller to check, as before.
+    """
+    from pathlib import Path
+
+    dst = Path(dst)
+
+    def join(to: Path, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run([
+            ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
+            "-i", str(listing), *args, str(to),
+        ], capture_output=True, text=True)
+
+    def made(r: subprocess.CompletedProcess, to: Path) -> bool:
+        return r.returncode == 0 and to.exists() and to.stat().st_size > 0
+
+    final = ["-c", "copy", *final_movflags()]
+    r = join(dst, "-copyts", *final)
+    if not made(r, dst):
+        # Whatever made it fail, the join as it was made before is the one to
+        # fall back on: a join not made at all is worse than one that starts late.
+        print(f"      Join: {dst.name} failed with its timestamps kept "
+              f"({' '.join((r.stderr or '').split())[-120:] or 'no output'}); "
+              f"joined as before instead")
+        r = join(dst, *final)
+        return r if made(r, dst) else join(dst, "-c", "copy", "-movflags", "+faststart")
+
+    late = _video_starts_late(dst)
+    if late is None:
+        return r
+    before = dst.with_name(f".{dst.stem}.before{dst.suffix}")
+    try:
+        other = join(before, *final)
+        start = _video_start(before) if made(other, before) else None
+        # Sooner by more than rounding, or this join stays.
+        if start is None:
+            print(f"      Join: {dst.name} starts its video {late * 1000:.0f} ms late, as a "
+                  f"part does; the join as before could not be made or read, so it is kept")
+            return r
+        if start > late - LATE_TOLERANCE:
+            print(f"      Join: {dst.name} starts its video {late * 1000:.0f} ms late, as a "
+                  f"part does; joined as before it would be no sooner, so it is kept")
+            return r
+        print(f"      Join: {dst.name} would start its video {late * 1000:.0f} ms late; "
+              f"joined as before instead ({start * 1000:.0f} ms)")
+        try:
+            before.replace(dst)
+            return other
+        except OSError:
+            # `dst` is open in a reader that lets it be written but not
+            # replaced (a clip previewed in the app, video/outro.py finish()):
+            # FFmpeg writes it, and if that fails, writes this join back.
+            r = join(dst, *final)
+            return r if made(r, dst) else join(dst, "-copyts", *final)
+    finally:
+        discard(before)
+
+
+def _video_starts_late(path, tolerance: float = LATE_TOLERANCE) -> float | None:
+    """How late the video's first frame is, in seconds, or None.
+
+    A finished clip shows its first frame at 0, read either way an app reads
+    an MP4: following its edit list, as phones and browsers do, or ignoring
+    it, as some apps and upload steps do. One that starts later in either
+    view opens on black there, the blink at the start of a posted clip:
+
+    - behind an empty edit (the old join): late as the edit list shows it;
+    - at 0 only because the edit list pulls it back (B-frames written without
+      final_movflags()): late as an app that ignores it shows it.
+
+    So both are read and the later one counts (_video_start). Only the first
+    few packets are read, so this costs two quick ffprobes, not a pass over
+    the clip.
+
+    Returns None when it cannot tell (a view that cannot be read says
+    nothing). Like video/outro.py's _video_falls_short, it must never be the
+    reason a clip is thrown away: all it decides is whether concat() tries
+    the join as it was made before.
+    """
+    first = _video_start(path)
+    return first if first is not None and first > tolerance else None
+
+
+def _video_start(path) -> float | None:
+    """When the video's first frame is shown, in seconds: the later of the
+    two views (with and without the edit list). None when neither can be read."""
+    try:
+        firsts = [first for first in (_first_video_frame(path, edit_list=True),
+                                      _first_video_frame(path, edit_list=False))
+                  if first is not None]
+    except Exception:
+        return None
+    return max(firsts) if firsts else None
+
+
+def _first_video_frame(path, edit_list: bool = True) -> float | None:
+    """When the video's first frame is shown, in seconds, or None when that
+    cannot be read. edit_list=False reads the file as an app that ignores
+    the MP4's edit list does (`ffprobe -ignore_editlist 1`)."""
+    r = subprocess.run(
+        [ffprobe(), "-v", "error", *([] if edit_list else ["-ignore_editlist", "1"]),
+         "-select_streams", "v:0", "-read_intervals", "%+#5",
+         "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True)
+    stamps = []
+    for line in r.stdout.splitlines():
+        try:
+            stamps.append(float(line.split(",")[0].strip()))
+        except ValueError:
+            continue  # "N/A", a blank or a warning: says nothing
+    # Frames come out in the order they are shown, so this is the first
+    # one; the smallest is taken in case a decoder ever disagrees.
+    return min(stamps) if stamps else None

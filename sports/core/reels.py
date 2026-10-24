@@ -13,10 +13,13 @@ reel. What each reel holds:
 A reel needs two moments or more: one is the clip itself.
 """
 
+import json
+import math
 import re
 import subprocess
 import unicodedata
 import zlib
+from fractions import Fraction
 from pathlib import Path
 from typing import NamedTuple
 
@@ -162,33 +165,115 @@ def duration(path) -> float:
 def lengths(paths: list, trims: list[float] | None = None) -> list[float]:
     """Each clip's length in a reel: its own, less the `trims[i]` seconds
     (its end card, when it has one) left off."""
-    kept = []
-    for p, trim in zip(paths, trims or [0.0] * len(paths)):
-        whole = duration(p)
-        kept.append(max(0.5, whole - trim) if trim else whole)
-    return kept
+    return [_cut(p, trim)[0] for p, trim in zip(paths, trims or [0.0] * len(paths))]
+
+
+# How far from `trim` seconds before the video's end the card's keyframe may
+# be. A card is 2.9 s rounded to its frames and can lose its last one to its
+# sound (86 frames at 29.97 fps, 173 at 59.94): a frame or two, never 0.1 s.
+CARD_SLACK = Fraction(1, 10)
+
+
+def _cut(path, trim: float) -> tuple[float, str | None]:
+    """(the length kept, the listing's outpoint or None) for a clip with its
+    last `trim` seconds, its end card, left off.
+
+    On a whole frame: the cut is the time the clip's last frame ends,
+    exactly (_clip_end), and the next clip starts there. The concat demuxer
+    ends a file at the first packet, of any stream, whose decoding time
+    reaches the outpoint, so every frame of the clip is in and none of the
+    card. (When the card follows the clip at once, its first sound packet,
+    the encoder's 1024 samples of silence just before it, still goes in, as
+    it always did.)
+
+    The cut used to be the file's length less `trim`, to the millisecond.
+    That is a frame or two off: a clip's sound can run past its last frame,
+    and the card is 2.9 s only to its nearest frame. So a reel could show a
+    frame of the card at a seam, or hold a frame too long, or overlap the
+    next clip's first frame by a fraction of a millisecond.
+
+    When the card can't be found (a clip whose card was skipped) or the file
+    can't be read, the cut is made as before.
+    """
+    whole = duration(path)
+    if not trim:
+        return whole, None
+    end = _clip_end(path, trim)
+    if end is None:
+        keep = max(0.5, whole - trim)
+        return keep, f"{keep:.3f}"
+    # Down to the microsecond the listing is read in, so the cut is never
+    # past the end of the clip's last frame.
+    us = math.floor(end * 1_000_000)
+    return us / 1_000_000, f"{us // 1_000_000}.{us % 1_000_000:06d}"
+
+
+def _clip_end(path, trim: float) -> Fraction | None:
+    """When the clip's last frame ends in `path`, before its end card,
+    exactly. None when the card can't be found or the packets can't be read.
+
+    The card was joined on without re-encoding, so it starts on a keyframe:
+    the latest one within CARD_SLACK of `trim` seconds before the video
+    ends. The clip's last frame is the one shown before it, and it ends one
+    frame step later or where the card starts, whichever is sooner. (A clip
+    whose sound runs past its last frame has its card joined on after the
+    sound, so a little after its last frame ends.)"""
+    from core.binaries import ffprobe
+
+    try:
+        r = subprocess.run([ffprobe(), "-v", "error", "-select_streams", "v:0",
+                            "-show_entries", "stream=time_base:packet=pts,duration,flags",
+                            "-of", "json", str(path)], capture_output=True, text=True, timeout=120)
+        data = json.loads(r.stdout)
+        base = Fraction(data["streams"][0]["time_base"])
+        packets = [(int(p["pts"]), int(p.get("duration") or 0), "K" in str(p.get("flags", "")))
+                   for p in data.get("packets", []) if isinstance(p.get("pts"), int)]
+    except (OSError, ValueError, KeyError, IndexError, TypeError, ZeroDivisionError, subprocess.SubprocessError):
+        return None
+    keys = [pts * base for pts, _d, key in packets if key]
+    if not keys:
+        return None
+    should = max(pts + dur for pts, dur, _k in packets) * base - Fraction(trim)
+    # Not the file's last keyframe: a clip has keyframes of its own (at its
+    # cuts), and a card could have one more than its first. Nor the nearest:
+    # a card a frame short puts `should` a frame before it, where the clip's
+    # own last frame can be a keyframe (a cut on it, or a periodic one). The
+    # latest near it is the card's first: the card is libx264's, which makes
+    # no keyframe within 25 frames of the one before, and the shipped cards
+    # have only the one.
+    near = [key for key in keys if abs(key - should) <= CARD_SLACK]
+    if not near:
+        return None
+    card = max(near)
+    shown = sorted(pts * base for pts, _d, _k in packets if pts * base < card)
+    if not shown:
+        return None                     # nothing of the clip before it
+    step = shown[-1] - shown[-2] if len(shown) > 1 else 0
+    return min(card, shown[-1] + step) if step > 0 else card
 
 
 def join(paths: list, out: Path, trims: list[float] | None = None) -> list[float]:
     """The clips joined into `out` without re-encoding, each with its last
-    `trims[i]` seconds left off. Returns each part's length as it went in."""
-    from core.binaries import ffmpeg
+    `trims[i]` seconds (its end card) left off, cut on a whole frame
+    (_cut). Returns each part's length as it went in."""
     from core.paths import discard
+    from video.encoding import concat
 
     out.parent.mkdir(parents=True, exist_ok=True)
     listing = out.with_suffix(".txt")
     trims = trims or [0.0] * len(paths)
-    kept = lengths(paths, trims)
     rows = []
-    for p, trim, keep in zip(paths, trims, kept):
+    kept = []
+    for p, trim in zip(paths, trims):
+        keep, outpoint = _cut(p, trim)
+        kept.append(keep)
         rows.append(f"file '{Path(p).resolve().as_posix()}'")
-        if trim:
-            rows.append(f"outpoint {keep:.3f}")
+        if outpoint is not None:
+            rows.append(f"outpoint {outpoint}")
     listing.write_text("\n".join(rows) + "\n", encoding="utf-8")
     try:
-        r = subprocess.run([ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
-                            "-i", str(listing), "-c", "copy", "-movflags", "+faststart", str(out)],
-                           capture_output=True, text=True)
+        # The end card's join, so the reel's video starts at 0.
+        r = concat(listing, out)
         if r.returncode != 0 or not out.exists():
             raise RuntimeError(r.stderr.strip()[-300:] or "the join failed")
     finally:
