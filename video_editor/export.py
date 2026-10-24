@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 from core.binaries import ffmpeg
-from video.encoding import LOUDNORM, video_encoder_args
+from video.encoding import LOUDNORM, final_movflags, video_encoder_args
 from video_editor.audio import master_filter, mute_filter
 from video_editor.cuts import concat_graph
 from video_editor.timeline import EditList
@@ -23,6 +23,7 @@ def apply_edits(
     output_path: Path,
     ass_path: Path | None = None,
     normalize: bool = False,
+    final: bool = False,
 ) -> Path:
     """normalize: loudness-normalise the voice. Only for a FINAL clip — the
     vertical path runs this on a staging file that the cropper encodes
@@ -30,7 +31,11 @@ def apply_edits(
 
     It is applied to the source audio BEFORE volume and fades: loudnorm's
     single pass rides the gain, so running it after a fade-out would fight
-    the fade and flatten it."""
+    the fade and flatten it.
+
+    final: this pass IS the clip (horizontal and Vertical Live clips with
+    edits): written with final_movflags(), so its first frame is at 0 in
+    every app."""
     graph_parts = []
     audio_label = "0:a"
 
@@ -98,7 +103,7 @@ def apply_edits(
         *video_encoder_args(),
         "-c:a", "aac", "-b:a", "128k",
         "-fps_mode", "cfr",
-        "-movflags", "+faststart",
+        *(final_movflags() if final else ["-movflags", "+faststart"]),
         str(output_path.resolve()),
     ]
     workdir = ass_path.parent if ass_path is not None else None

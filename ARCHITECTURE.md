@@ -210,6 +210,7 @@ clips-studio/
 │   ├── tracker.py              # YOLOv8 pose tracking, speaker-aware
 │   ├── asd.py                  # TalkNet active-speaker detection
 │   ├── framing.py              # crop-path smoothing and shot logic
+│   ├── cuts.py                 # frame-exact cuts for shot-aware framing (§5)
 │   ├── podcast.py              # multi-cam shot detection, per-shot framing
 │   ├── cropper.py              # 9:16 render
 │   ├── captions.py             # word-synced ASS captions
@@ -379,6 +380,29 @@ Two independent pools feed the same scorer:
    enforced. This is what catches the laugh or the clutch moment that the transcript
    describes blandly or not at all.
 
+**Selection 2** (`scoring.selection`; on by default, and `scoring.selection: 1` turns it
+off, which is exactly the behaviour above) changes four things on a standard run, never on
+a run scored as gaming (Gaming / Reaction, or Vertical Live's Gaming / reaction choice) or a
+Sports match (`analysis/fusion.py` decides):
+
+- Signal-peak and clip-direction windows are scored eight at a time, each answer matched
+  to its window by time, and a window left at the neutral 50 is reported. One request for
+  every window ran past a local model's output budget, so all of them fell back to 50.
+- Each signal pass's window budget goes to its strongest peaks, not its earliest, so a
+  long video's late peaks can become candidates.
+- Only a transcript pick at or above `clips.min_score` hides a signal peak it overlaps.
+- A clip's start never moves past the line it was picked on, or the line its hook quotes.
+  When that line carries on a sentence (the line before it has no sentence end, and the
+  pause is at most 2 s), the start goes back to the sentence's first line, if that is at
+  most 8 s earlier and the clip stays within `clips.max_duration`. In a transcript with no
+  sentence ends at all, this rule moves no start. A signal window gets up to 6 s of complete
+  sentences before it. The end rules are unchanged.
+
+Longform keeps selection 1 unless `scoring.longform_selection: 2`, whatever
+`scoring.selection` says: `longform/process.py` pins it on Longform's own copy of the
+settings, so that copy never takes the Shorts' default. The constants, and why each change
+was made, are at the top of `analysis/highlights.py`.
+
 ### 4.3 Fusion
 
 ```
@@ -493,6 +517,69 @@ knows nothing about transcripts, scores, or publishing.
    is what removes jitter and the "drunk camera" effect.
 6. **Fall back** to a static centre crop when there are no detections.
 
+**Shot-aware framing** (`tracking.shot_aware`; on by default, and
+`tracking.shot_aware: false` turns it off, which is exactly the behaviour above). With it
+off, cuts are looked for only on the sample grid, at a threshold many real cuts never reach,
+and are placed on the sample after the cut. A cut also only resets the challenger: the
+subject on camera stays the target, at their old position, until they have been unseen for
+a second, so the new shot opens framed on someone who is not in it. And a clip opens on its
+first sample's centre, the body box, and eases to the head over about a second. With it on:
+
+- **Cuts are found to the frame** (`video/cuts.py`). A sample pair whose thumbnails differ
+  by 18 or more (with it off, the bar is 55) is a candidate. Only the frames around it are
+  decoded, with a capture of their own, and a frame is a cut by the hard-cut rules of
+  `sports/basketball/crop/shots.py`: a gray change, a colour change, and standing out from
+  the motion around it, with camera flashes rejected. A handheld pan changes the picture a
+  lot but not its colours, so it is no cut.
+- **The subject is chosen again at a cut** when the one on camera is not in the new shot (who
+  the shot plan says is talking, else the most prominent). A subject still on screen keeps
+  the camera. The framing is the median of the subject's position over the new shot's first
+  0.5 s, taken from the new shot only. The old framing holds to the frame before the cut, and
+  the new one starts on the cut's own frame.
+- **A shot with nobody detected at first** opens on the centre, or keeps the old framing with
+  `tracking.shot_aware_no_subject: hold` (default `center`), and cuts to the first credible
+  person who appears: detector confidence 0.6 or more, with a pose head or a box at least
+  half the frame's height. Anything fainter seen meanwhile (on road-trip footage: a burning
+  car, a cartoon, a dashboard, a rear-view mirror) leaves the shot as it opened. While the
+  shot plan's speaker is on screen below that bar, the shot waits even for someone credible,
+  because the plan would take the camera straight to its speaker on the next sample. Letting
+  the plan's speaker through the bar instead would have opened two road-trip shots on a
+  cartoon and a dashboard, each handed across the cut the id of somebody the plan names (a
+  third opens on a tray of food under either rule: waiting puts it off one sample, and then
+  the tray clears the bar). The cost: a real speaker the detector only finds faintly leaves
+  such a shot on the centre (or the old framing, with `hold`) until they clear the bar or
+  leave. The rule only sees the plan's speaker on the current sample: if the detector misses
+  a faint speaker the plan names on exactly the sample where somebody credible first appears,
+  the shot opens on that person, and the plan's speaker can take the camera on the next
+  sample, a one-sample shot. That never happened on the footage the mode was validated on. A
+  first shot with nobody in it keeps the centre up to the cut: no shot's framing reaches
+  across a cut into another.
+- A track's first sighting in a shot, from the clip's first sample on and again after each
+  cut, starts its averages (head offset, width, prominence) from that sighting. A pose head
+  is trusted from it. A Haar face counts as one hit, as on a new track, so a single face
+  found on a hand or a bottle cannot move the crop. That is a deliberate trade-off against
+  single false faces: a real face only the cascade finds is trusted just as gradually, so
+  the shot opens between the body and the face, eases back toward the body, and reaches the
+  face about a second after the cut (or the clip's start).
+- **The clip's opening** is framed like a shot after a cut, without the keys: on the first
+  sample anyone is seen on, the framing is the median of the subject's position over the
+  next 0.5 s, and there is nothing before it to hold or snap from. So a clip opens on the
+  head the pose model finds, where it used to open on the body box and ease to the head. An
+  off first detection without a head no longer sets the opening (one with a pose head is
+  trusted, as after a cut). A first shot with nobody in it still keeps the centre to the cut.
+- The "subject gone" test reads when each track was last seen as of the sample being framed,
+  not at the end of the clip. The exception is the speaker the shot plan names when their
+  track is seen again within 2 s, before the next cut: a faint speaker the detector loses for
+  a moment on handheld footage keeps the camera, instead of losing it to someone else and
+  taking it back a moment later. A sighting after the next cut does not count, since the id
+  can belong to someone else by then.
+
+TalkNet's shot plan is computed as before. The whole-clip decisions (letterbox, facecam
+layout, `face_y`) use the same rules, but with the setting on they read the subject the
+shot-aware pass ended on (for the automatic letterbox, the subject on each sample) and the
+averages started afresh in each shot, so their result can differ. `tests/test_tracker_cuts.py`
+checks that with the setting off, the output is exactly what it was.
+
 ### 5.1 Who the camera follows
 
 **TalkNet active-speaker detection** (`video/asd.py`, model vendored in
@@ -526,12 +613,12 @@ If the weights are absent or scoring fails, the render falls back to motion-base
 prominence rather than failing. A bad clip must never fail a render.
 
 **Podcast mode** (`video/podcast.py`) is a separate, opt-in path for multi-camera
-footage. It detects hard cuts on a sample grid, then frames each shot independently,
-one steady static crop per shot, punched in tight on **one** person and snapping at each
-cut, so cuts land directly on a face with no panning and no split screens. Within a
-shot the subject is chosen by mouth-motion talk rate, falling back to the most prominent
-face; it does **not** use TalkNet (that was tried and reverted). Applying this path to
-single-camera footage would be strictly worse, hence opt-in.
+footage. It finds the camera's cuts to the frame (`video/cuts.py`, as shot-aware tracking
+does), then frames each shot on its own: one static crop, punched in tight on **one**
+person, the one TalkNet hears talking in that shot. In a long shot, a new speaker with a
+second or more of speech gets the crop from the first frame of their turn. Every change
+is a one-frame snap: no panning, no split screens, and no short shot slid across.
+Applying this path to single-camera footage would be strictly worse, hence opt-in.
 
 **The output contract is non-negotiable**: crop windows are exactly 9:16, only
 repositioned and never reshaped, then uniformly scaled to 1080×1920. Distortion is
@@ -936,6 +1023,12 @@ transcription:
   backend: local         # or a cloud provider on the user's own account
   model: ""              # that provider's voice model
 ```
+
+Two choices are not in the file and are on by default: shot-aware framing (§5) and clip
+selection 2 (§4.2). A line in the file turns either off: `shot_aware: false` under
+`tracking:`, or `selection: 1` under `scoring:`. `tracking.shot_aware_no_subject` (`center`,
+the default, or `hold`) is what a shot with nobody in it opens on, and Longform keeps
+selection 1 unless `scoring.longform_selection: 2`.
 
 Prompts are data, not code: every LLM prompt lives in `config/prompts/` as plain text,
 so the rating system can be tuned without touching Python. `config/gaming.yaml` (kinds of

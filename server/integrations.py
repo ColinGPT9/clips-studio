@@ -42,7 +42,7 @@ PRESETS = {
     },
     "podcast": {
         "name": "Podcast",
-        "description": "Letterboxed framing for multi-camera podcasts, without subject tracking.",
+        "description": "For multi-camera podcasts: each shot gets a steady crop on whoever is talking.",
         "options": {"podcast": True},
     },
     "long_clips": {

@@ -30,6 +30,90 @@ PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "s
 WINDOWS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "config" / "prompts" / "score_windows.txt"
 
 
+# ---- clip selection (scoring.selection) --------------------------------------
+#
+# Two settings, read with defaults (config/settings.yaml doesn't list them):
+#
+#   scoring.selection: 2 (the default) or 1. Selection 1 chooses clips as they were
+#     chosen before selection 2; `selection: 1`, or a value it doesn't know, brings it back.
+#     Selection 2 changes four things on a standard run. A run scored as
+#     gaming (core.modes.gaming_scoring: Gaming / Reaction, or Vertical Live's
+#     Gaming / reaction choice) and a Sports match keep selection 1 whatever
+#     this says; any other run is a standard one, a gaming VOD on the standard
+#     layout included (analysis/fusion.py decides). The four:
+#       - the signal-peak and clip-direction windows are scored WINDOW_BATCH at
+#         a time, each answer matched to its window by time, and a window left
+#         at the neutral 50 is reported. One request for 36-84 windows ran past
+#         a local model's output budget, so every window fell back to 50, and
+#         a partial answer matched by position put hooks on the wrong clips;
+#       - each signal pass's window budget goes to its strongest peaks, not to
+#         its earliest, so a long video's late peaks can become candidates;
+#       - only a transcript pick scored at or above min_score hides a signal
+#         peak it overlaps;
+#       - a clip's start never moves past the line it was picked on, or the
+#         line its hook quotes; a start that would come in mid-sentence goes
+#         back to the line the sentence starts on, when that is at most
+#         SENTENCE_REACH_SECONDS earlier and within max_duration; and a signal
+#         window gets up to LEAD_IN_SECONDS of complete sentences before it
+#         (_fit_to_segments). End rules are unchanged.
+#   scoring.longform_selection: the same choice for Longform's 16:9 clips, which
+#     keep 1 until this says 2, whatever scoring.selection is (longform/process.py).
+WINDOW_BATCH = 8
+LEAD_IN_SECONDS = 6.0
+# A line runs on from the one before it when that one has no sentence end and
+# the pause between them is at most SENTENCE_PAUSE_SECONDS; a longer pause
+# ends the sentence, full stop or not (going back over it would put that
+# silence in the clip's first seconds). A start on a line that runs on goes
+# back to the line its sentence starts on, at most SENTENCE_REACH_SECONDS. On
+# a talking-head stream that reached 8 of the 11 picks whose kept line came in
+# mid-sentence; the other 3 sentences ran on over 4-8 lines without a sentence
+# end (8.5-16 s).
+#
+# A sentence end, for this rule (_ends_sentence_for_start), is one the end
+# rules read (_ends_sentence: . ! ? and the ellipsis, Chinese and Japanese
+# full-width ones, also inside closing quotes or brackets) or a mark they
+# don't read that a language in multilingual/languages.py ends sentences with
+# (_MORE_SENTENCE_ENDS): the danda and double danda (Hindi, Bengali), the
+# Arabic full stop (Urdu) and question mark (Arabic, Urdu), and the full-width
+# and half-width full stops (Chinese, Japanese). A transcript with none of
+# them at all (speech recognition that left the punctuation out, or Thai,
+# written without any) can't show where a sentence starts, so there the rule
+# moves no start.
+SENTENCE_REACH_SECONDS = 8.0
+SENTENCE_PAUSE_SECONDS = 2.0
+NEUTRAL_HOOK = "High-energy moment"  # a window's hook when the model gave it none
+
+
+def selection_version(config) -> int:
+    """scoring.selection from a run's settings: 2 when absent or 2; anything else (1, a blank) is 1."""
+    try:
+        version = ((config or {}).get("scoring") or {}).get("selection", 2)
+        return 2 if not isinstance(version, bool) and float(version) == 2 else 1
+    except (AttributeError, TypeError, ValueError):
+        return 1
+
+
+def window_options(selection: int) -> dict:
+    """score_windows' keywords for a standard run's windows: none for
+    selection 1 (one request for them all, as always); for selection 2,
+    WINDOW_BATCH at a time, matched by time, with a warning for any window
+    left at the neutral 50."""
+    return {"batch": WINDOW_BATCH, "warn": True} if selection == 2 else {}
+
+
+def start_rules(selection: int, c: ClipCandidate, lead_in: float = 0.0) -> dict:
+    """_fit_to_segments' keywords for candidate `c`: none for selection 1; for
+    selection 2, its start keeps the line it was picked on and the line its
+    hook quotes, goes back to the start of its sentence when it would come in
+    mid-sentence (up to SENTENCE_REACH_SECONDS), and up to `lead_in` seconds
+    of setup may come before it."""
+    if selection != 2:
+        return {}
+    hook = c.hook if c.hook and c.hook != NEUTRAL_HOOK else ""
+    return {"keep_own_start": True, "hook": hook, "lead_in": lead_in,
+            "sentence_reach": SENTENCE_REACH_SECONDS}
+
+
 def find_highlights(
     segments: list[Segment],
     llm: LLMBackend,
@@ -47,12 +131,14 @@ def find_highlights(
     events: list[tuple[float, str]] | None = None,
     guidance="",  # str, or (start, end) -> str for the part of the video a chunk covers
     events_title: str | None = None,
+    selection: int = 1,  # scoring.selection; 2: start_rules for the picks (analysis/fusion.py says)
 ) -> tuple[list[ClipCandidate], list[Rejection]]:
     """Returns (selected clips, rejected candidates with reasons).
     `events` is an optional multimodal timeline [(second, description)] shown
     to the model alongside each chunk's transcript. `guidance` is extra
     instruction for one kind of video (the gaming profile's, analysis/gaming.py);
-    empty, the prompt is exactly the standard one."""
+    empty, the prompt is exactly the standard one. `selection` 2 fits each
+    pick with start_rules; 1, the default, fits them as always."""
     if not segments:
         return [], []
 
@@ -88,7 +174,8 @@ def find_highlights(
         candidates.extend(parsed)
 
     candidates = [c for c in candidates if _valid_range(c, video_end)]
-    candidates = [_fit_to_segments(c, segments, min_duration, max_duration) for c in candidates]
+    candidates = [_fit_to_segments(c, segments, min_duration, max_duration, **start_rules(selection, c))
+                  for c in candidates]
     candidates = [c for c in candidates if c.duration >= min_duration - 1]
 
     return _select_unique(
@@ -111,15 +198,19 @@ def score_windows(
     events_title: str | None = None,
     labels: dict | None = None,  # window index -> a note shown with it (the game there)
     batch: int = 0,
+    warn: bool = False,
 ) -> list[ClipCandidate]:
     """Score specific time windows (signal peaks fusion found) in one LLM
     call, so signal candidates get real text/engagement scores and grounded
     hooks instead of placeholders.
 
-    `batch` (the gaming profile): at most this many windows a call, each
-    answer matched to its window by time. One call for 45 windows ran past
-    the model's output budget, and a cut-off answer left every window at a
-    neutral 50."""
+    `batch` (the gaming profile, and selection 2's windows): at most this many
+    windows a call, each answer matched to its window by time. One call for 45
+    windows ran past the model's output budget, and a cut-off answer left
+    every window at a neutral 50.
+
+    `warn` (selection 2): say so when a window is left at the neutral 50, so
+    a fallback is never silent."""
     if not windows:
         return []
     # One call for all the windows, but on CPU that single call can take
@@ -133,15 +224,15 @@ def score_windows(
             part = windows[i:i + batch]
             part_labels = {j - i: labels[j] for j in range(i, i + len(part)) if labels and labels.get(j)}
             results += _score_window_batch(segments, llm, part, events, guidance, events_title,
-                                           part_labels, by_time=True)
+                                           part_labels, by_time=True, warn=warn)
         return results
     progress.emit(stage="analyze", current=1, total=1)
     return _score_window_batch(segments, llm, windows, events, guidance, events_title, labels,
-                               by_time=bool(batch))
+                               by_time=bool(batch), warn=warn)
 
 
 def _score_window_batch(segments, llm, windows, events, guidance, events_title, labels,
-                        by_time: bool) -> list[ClipCandidate]:
+                        by_time: bool, *, warn: bool = False) -> list[ClipCandidate]:
     template = WINDOWS_PROMPT_PATH.read_text(encoding="utf-8")
 
     blocks = []
@@ -155,6 +246,11 @@ def _score_window_batch(segments, llm, windows, events, guidance, events_title, 
 
     raw = _generate_with_retry(llm, prompt, WINDOWS_SCHEMA)
     parsed = _parse_clips_json(raw)
+    if warn and parsed is None:
+        # Fusion hands the windows over signal by signal, not in time order.
+        span = f"{min(s for s, _e in windows):.0f}-{max(e for _s, e in windows):.0f}s"
+        print(f"  Warning: the model's answer for {len(windows)} window(s) ({span}) couldn't be read; "
+              "they stay at a neutral 50")
     if parsed is None:
         # Model failed — keep the windows anyway with neutral text scores;
         # their audio/visual signals still let strong moments compete.
@@ -185,6 +281,11 @@ def _score_window_batch(segments, llm, windows, events, guidance, events_title, 
         else:
             results.append(ClipCandidate(start=start, end=end, score=50,
                                          hook="High-energy moment", source="signal"))
+    if warn:
+        missed = [w for i, w in enumerate(windows) if by_index.get(i) is None]
+        if missed:
+            print(f"  Warning: the model didn't answer {len(missed)} of {len(windows)} window(s) "
+                  f"({', '.join(f'{s:.0f}s' for s, _e in missed)}); they stay at a neutral 50")
     return results
 
 
@@ -428,6 +529,11 @@ def _fit_to_segments(
     min_duration: float,
     max_duration: float,
     target_duration: float | None = None,
+    *,
+    keep_own_start: bool = False,
+    hook: str = "",
+    lead_in: float = 0.0,
+    sentence_reach: float = 0.0,
 ) -> ClipCandidate:
     """Fit a candidate to whole-sentence boundaries with a NATURAL length.
 
@@ -437,6 +543,24 @@ def _fit_to_segments(
     good 30s stays ~30s) but never less than a sensible clip length — this is
     what stops everything collapsing to the bare minimum. Landing on sentence
     edges gives varied natural lengths across the 10-60s range.
+
+    Selection 2's keywords (start_rules gives them; at their defaults nothing
+    below changes). The move to a fresh thought at the start skips segments
+    that follow one without a full stop, and Whisper often leaves the line
+    before a pause without one, so the move could skip the line the clip was
+    picked for:
+      keep_own_start: the move never passes the segment the candidate starts in;
+      hook: nor the segment its hook is quoted from, when it quotes one;
+      sentence_reach: a start on a segment that runs on from the one before it
+        (no sentence end there, a pause of at most SENTENCE_PAUSE_SECONDS), as
+        the segments above often do, goes back to the segment its sentence
+        starts on, when that is at most this many seconds earlier and the clip
+        stays within max_duration; otherwise the start stays where it is, as
+        it does in a transcript with no sentence end at all;
+      lead_in: then up to this many seconds of complete sentences before the
+        candidate's start come first (a signal window's setup), within
+        max_duration.
+    The end is chosen exactly as without them.
     """
     if not segments:
         return c
@@ -491,6 +615,11 @@ def _fit_to_segments(
             if k > lo and (segments[k].end - segments[lo].start) >= min_duration:
                 hi = k
 
+    # Selection 2: the furthest in the move below may take the start.
+    limit = None
+    if keep_own_start or hook:
+        limit = _start_limit(segments, idxs[0] if keep_own_start else None, lo, hi, hook)
+
     # Start on a fresh thought too, but only by moving INWARD: growing
     # backwards would pull in unrelated talk just to find a full stop.
     if lo > 0 and not _ends_sentence(segments[lo - 1]):
@@ -499,6 +628,13 @@ def _fit_to_segments(
             k += 1
         if k < hi and (segments[hi].end - segments[k].start) >= min_duration:
             lo = k
+
+    if limit is not None and lo > limit:
+        lo = limit
+    if sentence_reach > 0:
+        lo = _sentence_start(segments, lo, hi, sentence_reach, max_duration)
+    if lead_in > 0:
+        lo = _lead_in_start(segments, lo, hi, c.start, lead_in, max_duration)
 
     start = segments[lo].start
     end = segments[hi].end
@@ -536,3 +672,109 @@ def _fit_to_segments(
     c.start = round(start, 2)
     c.end = round(end, 2)
     return c
+
+
+# ---- selection 2's start rules (_fit_to_segments' keywords) -------------------
+
+# A hook's words, with each Chinese or Japanese character a word of its own:
+# written without spaces, a whole clause is otherwise a single \w+ "word".
+_CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+_HOOK_WORD = re.compile(rf"[{_CJK}]|[^\W{_CJK}]+")
+
+
+def _hook_words(text: str) -> list[str]:
+    return _HOOK_WORD.findall((text or "").casefold())
+
+
+def _start_limit(segments: list[Segment], own: int | None, lo: int, hi: int, hook: str) -> int | None:
+    """The furthest segment the start may move in to: `own` (the one the
+    candidate starts in), or the one of segments[lo..hi] its hook is quoted
+    from if that comes first. None when neither applies."""
+    quoted = _hook_segment(segments, hook, lo, hi) if hook else None
+    limits = [i for i in (own, quoted) if i is not None]
+    return min(limits) if limits else None
+
+
+def _hook_segment(segments: list[Segment], hook: str, lo: int, hi: int) -> int | None:
+    """The first of segments[lo..hi] the hook quotes: where a run of its words
+    (at least 3, and at least a third of them) is said in a row. None when it
+    quotes none of them: a paraphrase, or too short to tell."""
+    words = _hook_words(hook)
+    need = max(3, -(-len(words) // 3))
+    if len(words) < need:
+        return None
+    said = [(w, i) for i in range(lo, hi + 1) for w in _hook_words(segments[i].text)]
+    for p in range(len(said) - need + 1):
+        for q in range(len(words) - need + 1):
+            if all(said[p + n][0] == words[q + n] for n in range(need)):
+                return said[p][1]
+    return None
+
+
+# The sentence ends the start rule reads besides _ends_sentence's: the ones the
+# languages in multilingual/languages.py end sentences with that it doesn't
+# read. _ends_sentence keeps its own: the end rules, and selection 1, use it.
+_MORE_SENTENCE_ENDS = (
+    "\N{DEVANAGARI DANDA}",  # Hindi, Bengali
+    "\N{DEVANAGARI DOUBLE DANDA}",  # Hindi, Bengali
+    "\N{ARABIC FULL STOP}",  # Urdu
+    "\N{ARABIC QUESTION MARK}",  # Arabic, Urdu
+    "\N{FULLWIDTH FULL STOP}",  # Chinese, Japanese
+    "\N{HALFWIDTH IDEOGRAPHIC FULL STOP}",  # Japanese
+)
+
+
+def _ends_sentence_for_start(seg) -> bool:
+    """seg ends a sentence, as the start rule reads it (see SENTENCE_REACH_SECONDS):
+    _ends_sentence, or one of _MORE_SENTENCE_ENDS, also inside the closing
+    quotes and brackets _ends_sentence looks past."""
+    if _ends_sentence(seg):
+        return True
+    text = (getattr(seg, "text", "") or "").strip().rstrip("\"')]»”’」』）】》〉")
+    return text.endswith(_MORE_SENTENCE_ENDS)
+
+
+def _runs_on(segments: list[Segment], j: int) -> bool:
+    """segments[j] carries on the sentence of the segment before it: that one
+    has no sentence end (_ends_sentence_for_start), and segments[j] follows it
+    within SENTENCE_PAUSE_SECONDS."""
+    return (j > 0 and not _ends_sentence_for_start(segments[j - 1])
+            and segments[j].start - segments[j - 1].end <= SENTENCE_PAUSE_SECONDS)
+
+
+def _sentence_start(segments: list[Segment], lo: int, hi: int, reach: float, max_duration: float) -> int:
+    """Where the sentence segments[lo] is part of starts: back over each
+    segment that runs on from the one before it (_runs_on). That segment when
+    it is at most `reach` seconds before segments[lo] and segments[it..hi]
+    stays within max_duration; otherwise `lo`, as when segments[lo] starts its
+    sentence itself. Never a segment part of the way back: a start there would
+    still come in mid-sentence. Also `lo` when no segment of the transcript
+    ends a sentence: unpunctuated, every line runs on from the one before it
+    unless a long pause comes between, and where a sentence starts can't be
+    told."""
+    j = lo
+    while _runs_on(segments, j):
+        j -= 1
+        too_far = segments[lo].start - segments[j].start > reach
+        if too_far or segments[hi].end - segments[j].start > max_duration:
+            return lo
+    if j < lo and not any(_ends_sentence_for_start(s) for s in segments):
+        return lo
+    return j
+
+
+def _lead_in_start(segments: list[Segment], lo: int, hi: int, start: float, lead_in: float,
+                   max_duration: float) -> int:
+    """The earliest segment before `lo` that begins a complete sentence (the
+    first one, or one after a sentence end) no more than `lead_in` seconds
+    before `start`, keeping segments[it..hi] within max_duration; `lo` when
+    there is none."""
+    best = lo
+    j = lo - 1
+    while j >= 0 and segments[j].start >= start - lead_in:
+        if segments[hi].end - segments[j].start > max_duration:
+            break
+        if j == 0 or _ends_sentence(segments[j - 1]):
+            best = j
+        j -= 1
+    return best

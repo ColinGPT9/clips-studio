@@ -44,7 +44,7 @@ Pattern worth copying for an SDK/plugin host: every optional feature is a module
 
 ## 3. API version and app version
 
-- `API_VERSION = 1` — `server/api.py:34`, comment: "Bumped only when a supported endpoint changes shape, never for additions." Returned by `GET /health` (`server/api.py:716`). `server/integrations.py:10-11` repeats the rule ("an incompatible change bumps API_VERSION in server/api.py"). `CHANGELOG.md:659` records when `app_version`/`api_version` were added. The MCP `engine_status` tool prints it (`server/mcp.py:444`). No test asserts the value (grep over `tests/` found no `API_VERSION`).
+- `API_VERSION = 1` — `server/api.py:34`, comment: "Bumped only when a supported endpoint changes shape, never for additions." Returned by `GET /health` (`server/api.py:716`). `server/integrations.py:10-11` repeats the rule ("an incompatible change bumps API_VERSION in server/api.py"). `CHANGELOG.md:707` records when `app_version`/`api_version` were added. The MCP `engine_status` tool prints it (`server/mcp.py:444`). No test asserts the value (grep over `tests/` found no `API_VERSION`).
 - `app_version` comes from `ui/package.json` `version` (`server/feedback.py:260-297`).
 - The FastAPI `version="0.1"` string (`server/api.py:576`) is independent of both and appears only in `/openapi.json` (inferred).
 
@@ -119,7 +119,7 @@ Everything the pipeline needs is passed as `config` dict + `StateDB`; the pipeli
 
 ### 6.1 Path of a progress event
 
-1. Pipeline stages call `core.progress.emit(**event)` (`core/progress.py:30-39`): a process-wide settable callback, thread-local `set_thread_tags` lets the prefetcher restamp its events (`core/progress.py:23-27`). Emit sites: `core/pipeline.py:188,205,208,390,424,612,674`; `longform/process.py:57,60,91,105,165,209,270,301,322,347,365`; `transcription/transcriber.py:182`; `transcription/cloud.py:78,98`; `analysis/highlights.py:71,132,138`; `analysis/fusion.py:96,359,620`; `sources/ytdlp_common.py:42`; `remote_render/dispatch.py:205`; `server/jobs.py:444` (translate).
+1. Pipeline stages call `core.progress.emit(**event)` (`core/progress.py:30-39`): a process-wide settable callback, thread-local `set_thread_tags` lets the prefetcher restamp its events (`core/progress.py:23-27`). Emit sites: `core/pipeline.py:188,205,208,390,424,612,674`; `longform/process.py:57,60,91,105,172,216,277,308,329,354,372`; `transcription/transcriber.py:182`; `transcription/cloud.py:78,98`; `analysis/highlights.py:157,223,229`; `analysis/fusion.py:100,374,635`; `sources/ytdlp_common.py:42`; `remote_render/dispatch.py:205`; `server/jobs.py:444` (translate).
 2. The worker's `on_progress` (`server/jobs.py:109-123`) stamps `job_id` (None for `prefetch` events), adds `span` for both-formats jobs, records it (`_record_progress`, `server/jobs.py:312-337`) and publishes `{"type":"progress","job_id":…, **event}` to the broadcaster (`server/jobs.py:121`).
 3. `server/events.py:11-41`: `Broadcaster.publish(event)` from any thread via `loop.call_soon_threadsafe`; each `/ws` client has an `asyncio.Queue(maxsize=200)`; a full queue **drops** events (`server/events.py:25-30`, pinned by `tests/test_event_delivery.py:307-331`).
 4. `@app.websocket("/ws")` (`server/api.py:1428-1440`): accept, `broadcaster.subscribe()`, `send_json` forever; the server never reads from the client.

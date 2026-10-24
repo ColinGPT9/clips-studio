@@ -1398,9 +1398,9 @@ def _render_files(
     landscape = bool(opts.get("profile"))
     # Loudness: on unless this clip opted out (see settings/editor).
     normalize = bool(opts.get("normalize_audio", True))
-    # Podcast: opt-in, per video. Multi-cam/multi-person footage renders as a
-    # steady full-frame letterbox instead of tracking a subject (see
-    # video/podcast.py). Read from the job config or a persisted per-clip flag.
+    # Podcast: opt-in, per video. Multi-cam footage is framed shot by shot, one
+    # steady crop on whoever is talking in each (see video/podcast.py). Read
+    # from the job config or a persisted per-clip flag.
     # When false the tracking path below is entered exactly as before.
     podcast = bool(opts.get("podcast") or config["clips"].get("podcast"))
     # Vertical Live (core/modes.py): the source is already a finished 9:16
@@ -1570,11 +1570,11 @@ def _render_files(
             if gaming_kept is not None:
                 pass  # rendered in the gaming layout (split or game only)
             elif podcast:
-                # Separate podcast path (video/podcast.py): tracked crop for a
-                # single speaker, 50/50 split when two speakers can't share one
-                # crop, tight-region letterbox only as a last resort — and cuts
-                # SNAP instead of panning across the set. video/tracker.py is
-                # never modified; the stream branch below is untouched.
+                # Separate podcast path (video/podcast.py): per shot, one static
+                # crop on the person TalkNet hears talking, moving to a new
+                # speaker inside a long shot; every change SNAPS on its frame,
+                # with no split screen or letterbox. It reuses the tracker's
+                # helpers and score_faces; the stream branch below is untouched.
                 from video import podcast as podcast_mod
 
                 tracking_cfg = config["tracking"]
@@ -1594,8 +1594,8 @@ def _render_files(
                     vf_extra=vf_extra, normalize=normalize,
                 )
             else:
+                from video import cuts, tracker  # lazy: tracker imports torch
                 from video.cropper import render_vertical
-                from video.tracker import compute_tracking  # lazy: imports torch
 
                 crop_mode = opts.get("crop", "track")
                 # The play's moment, for a sport that frames around it; not
@@ -1622,11 +1622,14 @@ def _render_files(
                         tracking["path"] = [(t, x + shift) for t, x in tracking["path"]]
                 else:
                     tracking_cfg = config["tracking"]
-                    tracking = compute_tracking(
+                    tracking = tracker.compute_tracking(
                         intermediate,
                         model_name=tracking_cfg["detector"],
                         sample_fps=tracking_cfg["sample_fps"],
                         force_fit_blur=(crop_mode == "letterbox"),
+                        # On unless set off (ARCHITECTURE.md §5, video/cuts.py).
+                        shot_aware=cuts.shot_aware_on(tracking_cfg),
+                        no_subject=tracking_cfg.get("shot_aware_no_subject", "center"),
                     )
                     if crop_mode == "letterbox" and tracking["mode"] == "fit_blur":
                         # USER-forced letterbox means "show me the WHOLE frame" —
@@ -1651,10 +1654,13 @@ def _render_files(
                 plain = clip_dir / f"{stem}.plain.mp4"
                 scratch.append(plain)
                 cut_clip(source, padded, plain, vf_extra=vf_extra)
-                apply_edits(plain, edit, render_path, ass_path=ass_path, normalize=normalize)
+                # final: this pass writes the clip (or what the card joins),
+                # with its first frame at 0 in every app.
+                apply_edits(plain, edit, render_path, ass_path=ass_path, normalize=normalize,
+                            final=True)
             else:
                 cut_clip(source, padded, render_path, ass_path=ass_path, vf_extra=vf_extra,
-                         normalize=normalize)
+                         normalize=normalize, final=True)
     finally:
         # NEVER raise from here. This runs in a `finally`, so an exception
         # would REPLACE whatever the render actually failed with — and the

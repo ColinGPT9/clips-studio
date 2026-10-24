@@ -28,6 +28,7 @@ from pathlib import Path
 
 from core.binaries import ffmpeg, ffprobe
 from core.paths import discard
+from video.encoding import final_movflags
 
 # Default voice per language; creators pick a different one in the UI.
 # Languages absent from Piper's catalogue simply aren't in here.
@@ -314,7 +315,9 @@ def dub(
         "-filter_complex", ";".join(chains),
         "-map", "0:v", "-map", "[aout]",
         "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
-        "-shortest", "-movflags", "+faststart",
+        # A language's own clip, posted as it is: its first frame at 0 with or
+        # without the edit list (a plain remux puts the B-frames' delay back).
+        "-shortest", *final_movflags(),
         str(out_path.resolve()),
     ]
     # errors="replace": ffmpeg's stderr is bytes, and the locale codec has

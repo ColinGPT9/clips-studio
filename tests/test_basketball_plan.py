@@ -205,6 +205,154 @@ def test_a_closeup_follows_the_person_who_walks_across_it():
     assert cx == [0.5] * n
 
 
+CLOSE_BASE = 0.3164        # a 9:16 crop of a 16:9 frame
+
+
+def _closeup(people_at, seconds: float = 3.0, fps: float = 30.0, every: int = 3):
+    """A close-up `seconds` long sampled every `every` frames: people_at(k, t) is what the
+    detectors (and the pose model, head_x) found on sample k."""
+    from sports.basketball.crop.model import Sample, Shot
+
+    n = round(seconds * fps)
+    shot = Shot(id=0, f0=0, f1=n, t0=0.0, t1=seconds, kind="closeup")
+    samples = [Sample(i=k, frame=f, t=f / fps, people=people_at(k, f / fps))
+               for k, f in enumerate(range(0, n, every))]
+    data = planner.ShotData(shot=shot, samples=samples)
+    cx, w = planner._person_shot(data, fps, [CLOSE_BASE])
+    assert len(cx) == n and w == [CLOSE_BASE] * n
+    return data, cx
+
+
+def test_a_closeup_never_follows_its_player_onto_a_box_at_the_side():
+    from sports.basketball.crop.model import Person
+
+    # The player, face found, right of the middle and all but still. From 1 s someone is cut off
+    # by the frame's right side with no face found (a fan, the bench) and drifts out; for 0.4 s the
+    # player himself is not found. Following whoever was nearest slid onto the box at the side
+    # while he was hidden and rode it out of the picture: the crop sat on the seats.
+    def people_at(k, t):
+        found = []
+        if not 12 <= k <= 15:
+            found.append(Person(0.66, 0.5, 0.32, 0.95, head_x=0.70))
+        if k >= 10:
+            found.append(Person(0.86 + 0.004 * (k - 10), 0.5, 0.28, 0.9))
+        return found
+
+    _data, cx = _closeup(people_at)
+    assert all(abs(x - 0.70) < 0.01 for x in cx)
+
+    # The same nearer the side, where the box at the side covers where his face was: it is still
+    # never him.
+    def near_the_side(k, t):
+        found = []
+        if not 12 <= k <= 15:
+            found.append(Person(0.80, 0.5, 0.22, 0.95, head_x=0.80))
+        if k >= 10:
+            found.append(Person(0.90 + 0.004 * (k - 10), 0.5, 0.22, 0.9))
+        return found
+
+    _data, cx = _closeup(near_the_side)
+    assert all(abs(x - 0.80) < 0.01 for x in cx)
+
+
+def test_a_closeup_never_jumps_from_its_players_face_onto_a_box_with_none():
+    from sports.basketball.crop.model import Person
+
+    # The player, face found, left of the middle and still. For 0.8 s someone walks past in front
+    # of him: he is not found, and the one passing is, without a face, a little to his right.
+    # Following whoever was nearest jumped onto the passer and back, and the crop left the player.
+    def people_at(k, t):
+        if 10 <= k <= 17:
+            return [Person(0.57, 0.5, 0.12, 0.9)]
+        return [Person(0.42, 0.5, 0.22, 0.95, head_x=0.40)]
+
+    _data, cx = _closeup(people_at)
+    assert all(abs(x - 0.40) < 0.01 for x in cx)
+
+
+def test_a_closeup_never_opens_on_a_box_at_the_side():
+    from sports.basketball.crop.model import Person
+
+    # A big blurred shoulder in front, cut off by the frame's left side with no face found, is
+    # the most prominent box on every sample; the player behind it, face found, is smaller. The
+    # close-up is on the player, never the shoulder.
+    def people_at(k, t):
+        return [Person(0.15, 0.5, 0.30, 1.0), Person(0.60, 0.5, 0.20, 0.7, head_x=0.60)]
+
+    _data, cx = _closeup(people_at)
+    assert all(abs(x - 0.60) < 0.01 for x in cx)
+    # With no face found in the shot, boxes alone, a box at the side counts as before.
+    _data, cx = _closeup(lambda k, t: [Person(0.15, 0.5, 0.30, 1.0)])
+    assert all(abs(x - CLOSE_BASE / 2) < 1e-9 for x in cx)
+
+
+def test_a_closeup_player_who_turns_away_is_still_followed():
+    from sports.basketball.crop.model import Person
+
+    # His face is found for 2 s; then he turns his back (no face found, his box still is) and
+    # walks right, with a team-mate's face across the frame. His box, over where his face was, is
+    # still him: following faces only left him behind.
+    def x(t):
+        return 0.40 + 0.3 * max(0.0, t - 2.0)
+
+    def people_at(k, t):
+        return [Person(x(t), 0.5, 0.30, 0.95, head_x=0.40 if t < 2.0 else None),
+                Person(0.85, 0.5, 0.16, 0.6, head_x=0.85)]
+
+    data, cx = _closeup(people_at)
+    assert all(abs(cx[s.frame] - x(s.t)) < CLOSE_BASE / 2 for s in data.samples)
+
+
+def test_a_cutaway_stays_on_who_the_camera_is_centred_on():
+    from sports.basketball.crop.model import Person
+
+    # A cutaway to someone in the crowd: him in the middle, biggest, his face not found for its
+    # first 0.4 s (turned away, a hand in front); fans either side whose faces are found all
+    # along. The close-up is on him (the people's centre, as a director frames a cutaway), not on
+    # the first face found.
+    def people_at(k, t):
+        return [Person(0.52, 0.5, 0.34, 0.95, head_x=0.50 if k >= 4 else None),
+                Person(0.22, 0.5, 0.18, 0.6, head_x=0.22), Person(0.80, 0.5, 0.16, 0.55, head_x=0.80)]
+
+    _data, cx = _closeup(people_at)
+    assert all(abs(x - 0.50) < 0.011 for x in cx)
+
+
+def test_a_closeup_keeps_up_with_a_face_that_moves_fast():
+    from sports.basketball.crop.model import Person
+
+    # He stands, then crosses half the frame in 0.45 s (the camera left behind), then stands
+    # again, with someone at the side all along.
+    def face(t):
+        u = min(1.0, max(0.0, (t - 0.9) / 0.45))
+        return 0.25 + 0.5 * (3 * u * u - 2 * u ** 3)
+
+    def people_at(k, t):
+        return [Person(face(t), 0.5, 0.30, 0.95, head_x=face(t)), Person(0.05, 0.5, 0.10, 0.6, head_x=0.05)]
+
+    _data, cx = _closeup(people_at, seconds=2.4, every=2)
+    # His face never leaves the picture, and the crop ends on him (within its dead zone).
+    assert all(abs(x - face(f / 30.0)) < CLOSE_BASE / 2 for f, x in enumerate(cx))
+    assert abs(cx[0] - 0.25) < 0.01 and abs(cx[-1] - 0.75) <= planner.DEAD_ZONE * CLOSE_BASE
+
+
+def test_a_still_closeup_player_is_held_still():
+    from sports.basketball.crop.model import Person
+
+    # He hardly moves, but his face wanders 0.08 of the width from sample to sample, more than
+    # the smoothing lets pass (DEAD_ZONE); a smaller team-mate at the side all along, and someone
+    # bigger leaning in for a moment: the crop holds still on him, as a camera operator would.
+    def people_at(k, t):
+        found = [Person(0.42 + 0.04 * (k % 3), 0.5, 0.30, 0.95, head_x=0.42 + 0.04 * (k % 3)),
+                 Person(0.90, 0.5, 0.20, 0.8, head_x=0.90)]
+        if k in (5, 6, 12):
+            found.append(Person(0.62, 0.5, 0.45, 1.0, head_x=0.62))
+        return found
+
+    _data, cx = _closeup(people_at, seconds=2.0)
+    assert max(cx) - min(cx) < 1e-9 and abs(cx[0] - 0.46) <= 0.011
+
+
 def test_the_backboard_note_is_said_only_of_the_plays_own_basket():
     def three(**baskets):
         built = scene(duration=15, seed=3).players(10).closeup(0, 3.0)

@@ -30,7 +30,7 @@ import numpy as np
 
 from core.binaries import ffmpeg
 from video.capture import video_capture
-from video.encoding import audio_filter_args, video_encoder_args
+from video.encoding import audio_filter_args, final_movflags, video_encoder_args
 
 CAM_H = 672    # webcam band height in the 1080x1920 split layout (35%)
 GAME_H = 1248  # gameplay band height (65%)
@@ -59,7 +59,11 @@ def render_vertical(
     """vf_extra: an optional FFmpeg filter fragment (color preset) applied
     after scaling and before captions, so captions stay unfiltered.
     cam_position: 'top' | 'bottom' — which band the facecam occupies in the
-    split (gameplay + webcam) layout. Ignored by the other modes."""
+    split (gameplay + webcam) layout. Ignored by the other modes.
+
+    Every mode writes the clip itself (or what the end card is joined to),
+    so each is written with final_movflags(): the first frame at 0 in every
+    app."""
     if tracking["mode"] == "split":
         return _render_split(
             clip_path, tracking["webcam_box"], output_path, ass_path, vf_extra,
@@ -129,7 +133,7 @@ def _render_fit_blur(
         "-c:a", "aac", "-b:a", "128k",
         *audio_filter_args(normalize),  # sync + loudness normalise (final encode)
         "-fps_mode", "cfr",          # constant output frame rate
-        "-movflags", "+faststart",
+        *final_movflags(),
         "-shortest",
         str(output_path.resolve()),
     ]
@@ -303,7 +307,7 @@ def _render_tracked(
                 "-c:a", "aac", "-b:a", "128k",
                 *audio_filter_args(normalize),
                 "-fps_mode", "cfr",
-                "-movflags", "+faststart",
+                *final_movflags(),
                 "-shortest",
                 str(output_path.resolve()),
             ]
@@ -330,7 +334,7 @@ def _render_tracked(
             "-c:a", "aac", "-b:a", "128k",
             *audio_filter_args(normalize),             # sync + loudness normalise
             "-fps_mode", "cfr",
-            "-movflags", "+faststart",
+            *final_movflags(),
             "-shortest",
             str(output_path.resolve()),
         ]
@@ -522,7 +526,7 @@ def _render_split(
         "-c:a", "aac", "-b:a", "128k",
         *audio_filter_args(normalize),
         "-fps_mode", "cfr",
-        "-movflags", "+faststart",
+        *final_movflags(),
         "-shortest",
         str(output_path.resolve()),
     ]

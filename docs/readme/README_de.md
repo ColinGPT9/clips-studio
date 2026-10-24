@@ -242,8 +242,8 @@ solange das noch geht. Ein Glossar schützt Kanalnamen, Sponsoren und Insider-Wi
   Wechselt der Sprecher, **schneidet** der Bildausschnitt zu ihm, statt hinüberzuschwenken, so wie es ein Cutter
   tun würde. Nur Zuschnitt: nie gestreckt, nie verzerrt.
 - **Podcast-Modus**: Bei Material mit mehreren Kameras bekommt jede Einstellung ihren eigenen ruhigen Zuschnitt
-  auf eine Person, sodass Schnitte ohne Schwenk auf einem Gesicht landen. Innerhalb einer Einstellung wird die
-  Person anhand der Mundbewegung gewählt, ersatzweise das auffälligste Gesicht.
+  auf die Person, die TalkNet sprechen hört. Er wechselt bildgenau mit dem Kameraschnitt, ohne Schwenk. In einer langen
+  Einstellung schneidet er zu einem neuen Sprecher, der mindestens eine Sekunde redet; ein kurzes Lachen bewegt ihn nicht.
 - **Vertical Live**: für einen Livestream, der schon beim Streamen vertikal war (ein vertikaler
   YouTube-Livestream, Twitch Dual Format, Streamlabs Dual Output, ein heruntergeladener Instagram- oder
   TikTok-Livestream). Behält das eigene 9:16-Layout des Streams, überspringt die Gesichtsverfolgung und

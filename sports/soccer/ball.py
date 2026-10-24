@@ -15,10 +15,36 @@ follow the ball, and when it's lost, where the players are. Here:
 - moved by the shared HoldMove controller (video/framing.py), faster than for
   talk because play moves faster, and snapped at cuts, never panned across.
 
+Cuts are found to the frame, the way the standard tracker's shot-aware mode
+finds them (video/cuts.py): a sample pair that changes enough is only a
+candidate, and the frames between the two samples are decoded with a second
+capture to find the new shot's first frame, a camera flash not counted. A
+match needs three of ShotCuts' options on top (measured on a goals
+compilation at 50 fps):
+
+- a colour gate: a match pans fast, so half its sample pairs changed by
+  enough to be decoded frame by frame, and framing took 2-4 times as long. A
+  pair is now a candidate only when its two samples' colours differ by
+  COLOUR_GATE as well, which every cut's pair did (by 0.32 or more) and 9%
+  of all pairs do along with the gray change;
+- the colour-led rule: a cut straight out of a fast pan (gray 31-39, colour
+  0.50-0.84) stood under both of the tracker's rules, and 5 of 60 were missed;
+- dissolves: a replay fades in over 8-10 frames, none of which is a hard cut.
+  The new shot's framing starts on the frame the fade completes.
+
+The framing before the cut is held to the frame before that one, and the new
+shot's starts on it. With one key per sample and the cut called on the
+sample after it, the renderer, which interpolates between keys, slid the
+crop across every cut for about 0.2 s. And the clip and every shot open on
+the median of where the framing aims over their first OPENING seconds, so a
+shot whose ball is confirmed a sample late no longer opens on the players
+and then slides to the ball.
+
 The result is the same crop path video/cropper.py renders for everything
 else, so nothing downstream changes.
 """
 
+import statistics
 import threading
 
 BALL, PERSON = 32, 0
@@ -31,29 +57,101 @@ BALL_MEMORY = 1.0       # seconds a ball position stays usable after it's lost
 MAX_JUMP = 0.3          # share of the frame width the ball can move between samples (not at a cut)
 NEAR_BALL = 0.25        # players this close to the last ball are the play
 CLOSE_UP = 0.45         # a person this tall (share of the frame height) makes a close-up
+OPENING = 0.5           # seconds: the clip and each shot open on the median target over this long
+COLOUR_GATE = 0.2       # a sample pair is checked frame by frame for a cut only when its two
+                        # samples' colours differ this much too (Bhattacharyya distance): video/cuts.py's
+                        # CUT_COL, the least colour change any of its rules takes on the cut's frame
 
 _models: dict = {}
 _models_lock = threading.Lock()
 
 
-def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float]], dict]:
+def plan(samples: list[dict], crop_frac: float, fps: float) -> tuple[list[tuple[float, float]], dict]:
     """The crop path from what each sample saw. Each sample:
     {"t", "cut", "balls": [(x, y, conf)], "people": [(x, y, w, h)]} in frame
-    fractions. Returns ([(t, crop centre x)], how often each source led)."""
+    fractions, and at a cut "cut_frame", the new shot's first frame (the
+    sample's own frame when it is missing). `fps` is the clip's frame rate:
+    the keys at a cut are frame numbers over it, as the renderer times its
+    frames. Returns ([(t, crop centre x)], how often each source led).
+
+    At a cut, the framing before it is held to the frame before the cut's
+    frame (a freeze key) and the new shot's starts on that frame (a snap
+    key), so nothing is interpolated across the cut. The clip and every
+    shot open on the median of their targets over their first OPENING
+    seconds (_opening), then follow as before: a trailing median of the
+    shot's targets, the opening first, moved by HoldMove. A sample that
+    sees nothing holds the last of them, the opening included."""
     from video.framing import HoldMove, stable_target
 
     lo, hi = crop_frac / 2, 1 - crop_frac / 2
+    targets, led = _targets(samples, lo, hi)
     hold = HoldMove(move_trigger=0.05, settle=0.012, smoothing=0.35, max_pan_speed=0.8)
     path: list[tuple[float, float]] = []
-    recent: list[float] = []
+    recent: list[float] = []     # this shot's targets, for the trailing median
+    prev_t = None
+    for i, s in enumerate(samples):
+        t = float(s["t"])
+        snap_t = None
+        if prev_t is None:
+            x = hold.snap(_opening(samples, targets, i))
+            recent = [x]
+        elif s.get("cut"):
+            frame = s.get("cut_frame")
+            cut_t = frame / fps if frame is not None else t
+            freeze_t = (frame - 1) / fps if frame is not None else t - 1.0 / fps
+            if path[-1][0] < freeze_t < cut_t:
+                path.append((freeze_t, path[-1][1]))
+            # The trailing median starts again from the opening, so nothing
+            # from the shot before the cut pulls the new one back.
+            x = hold.snap(_opening(samples, targets, i))
+            recent = [x]
+            if path[-1][0] < cut_t < t:
+                snap_t = cut_t
+        else:
+            recent.append(targets[i] if targets[i] is not None else recent[-1])
+            x = hold.update(stable_target(recent, window=3), t - prev_t)
+        x = round(min(max(x, lo), hi), 4)
+        if snap_t is not None:
+            path.append((snap_t, x))
+        path.append((t, x))
+        prev_t = t
+    return path, led
+
+
+def _opening(samples: list[dict], targets: list[float | None], i: int) -> float:
+    """Where a shot opens: the median of its targets over its first OPENING
+    seconds, from sample i (its first) to before the next cut. Opened on its
+    first sample's target, a shot whose ball was confirmed a sample late
+    opened on the players and then slid to the ball.
+
+    The time is counted from the shot's first sample, not its first frame,
+    which can be up to a sample gap earlier: at SAMPLE_FPS that keeps three
+    samples in it, so one off target is outvoted. Counted from the cut's
+    frame it held only two on a third of cuts, and the median of two is
+    their mean, halfway to the outlier. A sample that saw nothing doesn't
+    count; a shot that sees nothing in that time opens on the centre, as
+    before."""
+    t0 = float(samples[i]["t"])
+    seen = []
+    for j in range(i, len(samples)):
+        if j > i and (samples[j].get("cut") or float(samples[j]["t"]) > t0 + OPENING):
+            break
+        if targets[j] is not None:
+            seen.append(targets[j])
+    return float(statistics.median(seen)) if seen else 0.5
+
+
+def _targets(samples: list[dict], lo: float, hi: float) -> tuple[list[float | None], dict]:
+    """Where each sample's framing aims, inside lo..hi, None where it saw
+    nothing (the framing holds: plan); and how often the ball, the players,
+    a close-up, or nothing (held) led."""
+    targets: list[float | None] = []
     ball: tuple[float, float] | None = None       # (x, when seen)
     led = {"ball": 0, "players": 0, "close-up": 0, "held": 0}
-    prev_t = None
     for s in samples:
         t = float(s["t"])
         if s.get("cut"):
             ball = None
-            recent.clear()
         # The ball: the detection nearest where it was, if it could have got there.
         found = None
         candidates = sorted(s.get("balls") or [], key=lambda b: -b[2])
@@ -75,18 +173,11 @@ def plan(samples: list[dict], crop_frac: float) -> tuple[list[tuple[float, float
             near = [p[0] for p in people if anchor is not None and abs(p[0] - anchor) <= NEAR_BALL]
             xs = sorted(near or [p[0] for p in people])
             target, source = xs[len(xs) // 2], "players"
-        elif recent:
-            target, source = recent[-1], "held"
         else:
-            target, source = 0.5, "held"
+            target, source = None, "held"
         led[source] += 1
-        recent.append(min(max(target, lo), hi))
-        steady = stable_target(recent, window=3)
-        dt = (t - prev_t) if prev_t is not None else 1.0 / SAMPLE_FPS
-        x = hold.snap(steady) if s.get("cut") or prev_t is None else hold.update(steady, dt)
-        path.append((round(t, 3), round(min(max(x, lo), hi), 4)))
-        prev_t = t
-    return path, led
+        targets.append(None if target is None else min(max(target, lo), hi))
+    return targets, led
 
 
 def _model(name: str):
@@ -134,16 +225,23 @@ def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 1280,
     import cv2
 
     from video.capture import video_capture
-    from video.framing import is_cut, small_gray
+    from video.cuts import ShotCuts, colours
+    from video.framing import CUT_DIFF, small_gray
 
     model = _model(model_name)
     samples = []
-    with video_capture(clip_path) as cap:
+    # The cut reader decodes the frames around a candidate cut with a capture
+    # of its own, on a thread of its own (_CutReader). When that capture will
+    # not open, cuts are called on the sample, as before, when the pair changes
+    # by more than CUT_DIFF (and, with the colour gate, by COLOUR_GATE in colour).
+    with video_capture(clip_path) as cap, video_capture(clip_path, required=False) as cut_cap, \
+            _CutReader(ShotCuts(cut_cap, fallback=CUT_DIFF, colour_gate=COLOUR_GATE, colour_led=True,
+                                dissolves=True)) as cuts:
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         width = cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 16
         height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 9
         step = max(1, round(fps / sample_fps))
-        prev_small = None
+        prev_small, prev_index = None, 0
         index = 0
         while True:
             ok = cap.grab()
@@ -154,12 +252,69 @@ def compute(clip_path, model_name: str = "yolov8n.pt", imgsz: int = 1280,
                 if not ok:
                     break
                 small = small_gray(frame)
+                cuts.check(prev_small, small, prev_index, index, colours(frame))
                 balls, people = detect(model, frame, imgsz)
-                samples.append({"t": index / fps, "cut": is_cut(prev_small, small),
-                                "balls": balls, "people": people})
-                prev_small = small
+                samples.append({"t": index / fps, "balls": balls, "people": people})
+                prev_small, prev_index = small, index
             index += 1
+    for s, cut in zip(samples, cuts.found):
+        s["cut"], s["cut_frame"] = cut is not None, cut
     # The share of the source's width a 9:16 crop of its full height takes.
     crop_frac = min(1.0, (height * 9 / 16) / max(width, 1))
-    path, led = plan(samples, crop_frac)
+    path, led = plan(samples, crop_frac, fps)
     return {"mode": "track", "path": path or [(0.0, 0.5)], "led": led}
+
+
+class _CutReader:
+    """ShotCuts.check for every sample, in order, on a thread of its own.
+
+    Finding a cut's frame decodes the clip a second time around each
+    candidate, which the samples' own decoding and the detector (mostly on
+    the GPU) leave cores free for. On a goals compilation (15 windows of
+    25 s at 1080p50), made in turn with them the checks made Soccer's
+    framing take 1.8 times as long as it took with cuts called on the
+    sample grid and no second capture; beside them, 1.26 times (1.47 on the
+    slowest window), and 1.27 times with three clips framed at once. The
+    processor time is 1.6 times either way. The answers are the same: one
+    thread makes every check, in the samples' order, with the same
+    thumbnails and colours.
+
+    The samples never wait for it: each hands over a few kilobytes (its
+    thumbnail and its colours), not its picture. Leaving the `with` block
+    waits for the last check and raises what went wrong on the thread; when
+    the block itself fails, the checks still waiting are dropped. `found`
+    is then each sample's cut frame, None for no cut."""
+
+    def __init__(self, cuts) -> None:
+        import queue
+
+        self._cuts = cuts
+        self._jobs: queue.SimpleQueue = queue.SimpleQueue()
+        self.found: list = []
+        self._error: Exception | None = None
+        self._stopped = False
+        self._thread = threading.Thread(target=self._run, name="soccer-cuts", daemon=True)
+
+    def __enter__(self) -> "_CutReader":
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._stopped = exc_type is not None
+        self._jobs.put(None)
+        self._thread.join()
+        if exc_type is None and self._error is not None:
+            raise self._error
+
+    def check(self, prev_small, small, a: int, b: int, hist) -> None:
+        self._jobs.put((prev_small, small, a, b, hist))
+
+    def _run(self) -> None:
+        while (job := self._jobs.get()) is not None:
+            if self._stopped or self._error is not None:
+                continue            # the rest is dropped
+            prev_small, small, a, b, hist = job
+            try:
+                self.found.append(self._cuts.check(prev_small, small, a, b, colours=hist))
+            except Exception as e:  # raised by __exit__
+                self._error = e

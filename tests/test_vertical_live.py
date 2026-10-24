@@ -145,8 +145,10 @@ def _render(pipeline, monkeypatch, tmp_path, size, config, opts=None):
 
     cuts = []
 
-    def fake_cut(source, candidate, output, ass_path=None, vf_extra="", normalize=True):
-        cuts.append(vf_extra)
+    def fake_cut(source, candidate, output, ass_path=None, vf_extra="", normalize=True, final=False):
+        # The one encode writes the clip itself (final); a staging cut would
+        # show up here as a pair and fail the comparisons below.
+        cuts.append(vf_extra if final else ("staging", vf_extra))
         Path(output).write_bytes(b"clip")
 
     monkeypatch.setattr(pipeline, "cut_clip", fake_cut)

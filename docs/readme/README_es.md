@@ -250,8 +250,8 @@ y el LLM en la GPU a través de Ollama.
   encuadre **corta** a esa persona en vez de hacer un paneo, como lo haría un editor. Solo
   recorta: nunca estira ni deforma la imagen.
 - **Modo podcast**: en material con varias cámaras, cada toma recibe su propio recorte fijo
-  sobre una persona, así que los cortes caen en un rostro sin paneos. Dentro de una toma, la
-  persona se elige por el movimiento de la boca y, si no, por el rostro más prominente.
+  sobre quien TalkNet oye hablar; el recorte cambia en el fotograma exacto del corte, sin paneos.
+  En una toma larga corta a otra persona que hable un segundo o más; una risa breve no lo mueve.
 - **Vertical Live** (vivo vertical): para un livestream que ya era vertical cuando se
   transmitió (un vivo vertical de YouTube, Twitch Dual Format, Streamlabs Dual Output, un
   vivo de Instagram o TikTok descargado). Conserva el diseño 9:16 propio del stream, omite

@@ -51,7 +51,7 @@ def render(pipeline, monkeypatch, tmp_path):
 
     burned = []
 
-    def fake_cut(source, candidate, output, ass_path=None, vf_extra="", normalize=True):
+    def fake_cut(source, candidate, output, ass_path=None, vf_extra="", normalize=True, final=False):
         burned.append(ass_path)
         Path(output).write_bytes(b"clip")
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from core import cancel
 from core.binaries import ffmpeg
 from core.paths import discard
-from video.encoding import video_encoder_args
+from video.encoding import concat, video_encoder_args
 
 _FIT = (
     "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,"
@@ -84,19 +84,12 @@ def assemble(
                 print(f"  end card skipped: {type(exc).__name__}: {exc}")
 
         # Identical codec parameters on every part -> lossless concat join.
+        # The end card's join, so the video starts at 0 here too.
         listfile = segdir / "concat.txt"
         listfile.write_text(
             "".join(f"file '{p.resolve().as_posix()}'\n" for p in parts), encoding="utf-8"
         )
-        r = subprocess.run(
-            [
-                ffmpeg(), "-y", "-f", "concat", "-safe", "0",
-                "-i", str(listfile.resolve()),
-                "-c", "copy", "-movflags", "+faststart",
-                str(output_path.resolve()),
-            ],
-            capture_output=True, text=True,
-        )
+        r = concat(listfile.resolve(), output_path.resolve())
         if r.returncode != 0:
             raise RuntimeError(f"concat join failed:\n{r.stderr[-800:]}")
         return output_path
