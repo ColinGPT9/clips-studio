@@ -50,6 +50,11 @@ Kitty after you change it.
   the side of the picture.
 - **Clips no longer open with a black moment on Reels, TikTok, Shorts and other apps,**
   and story reels no longer flash a frame of the end card between moments.
+- **In Soccer clips the crop now jumps to the new shot on the cut instead of sliding
+  across it**, a cut straight out of a fast pan included, and on a fade into a replay it
+  jumps as the fade completes. A fast pan is no longer taken for a cut, which made the
+  crop jump and start looking for the ball again. Each shot also opens on the play,
+  where it could open beside it and slide over during its first seconds.
 
 ---
 

@@ -33,8 +33,15 @@ frame index out. CI's light install has no numpy or OpenCV, and the
 decision is what most needs testing. ShotCuts, which decodes and measures,
 imports both when it runs.
 
+Soccer's framing (sports/soccer/ball.py) uses ShotCuts too, with options the
+tracker leaves off: a colour gate on the candidates, a colour-led hard-cut
+rule, and dissolves (see "Soccer's additions" below). At their defaults
+find_cut and ShotCuts answer exactly as they did before the options existed.
+
 Nothing here changes video/framing.py's is_cut, small_gray, refine_cuts or
-CUT_DIFF, which soccer uses as they are; the podcast path runs ShotCuts too.
+CUT_DIFF; the podcast path runs ShotCuts too. Soccer uses small_gray and
+CUT_DIFF as they are: its samples' thumbnails, and its fallback (ShotCuts'
+`fallback`).
 """
 
 from __future__ import annotations
@@ -73,13 +80,39 @@ FLASH_JUMP = 12.0        # brightness (0..255) must jump this much on the first 
 FLASH_MATCH = 0.3        # ...and a frame after it be back within this share of the jump
 FLASH_BACK = 0.6         # without brightness: a second change this share of the first, that soon, is a flash
 
+# ---- Soccer's additions (keyword arguments, all off by default) ------------------------------
+#
+# Broadcast football pans fast: at 50 fps the gray thumbnail can move 14-27 a frame for
+# seconds at a time, while its colours barely change (0.09 a frame: the pitch stays green).
+#
+# So half of a match's sample pairs change gray by CANDIDATE_DIFF or more, and decoding the
+# frames around every one of them made Soccer's framing 2-4 times slower. With a colour gate
+# (ShotCuts' colour_gate) a pair is a candidate only when its two samples' colours differ by
+# the gate as well: on a goals compilation every cut's pair changed them by 0.32 or more, and
+# 9% of all pairs passed both bars. A higher gray bar alone would not do: at 25 it still let
+# through a quarter of the pairs, and lost three cuts whose pairs changed gray by 18.9-22.3.
+#
+# A cut out of such a pan changed gray by 31-39 with colour 0.50-0.84: under CUT_GRAY_STRONG,
+# and under CUT_RATIO times a baseline the pan had raised, so 5 of 60 cuts went unseen.
+
+COLOUR_GRAY = 25.0       # colour_led: a gray change this large...
+COLOUR_COL = 0.45        # ...with this much colour change is a cut, whatever the baseline
+
+# Replays fade in over 8-10 frames: no frame changes much, so no hard-cut rule sees them.
+DISSOLVE_GRAY = 25.0     # dissolves: a sample pair that changes more than this in gray...
+DISSOLVE_COL = 0.40      # ...and at least this much in colour (its two samples' histograms, and the
+#                          frames LOOK_BACK before and LOOK_AHEAD after them, which a flash on a
+#                          sample does not reach), with no hard cut between, is a dissolve...
+DISSOLVE_STEP = 0.13     # ...and a frame whose colour changes this much from the one before is still
+#                          part of it (ordinary frames of a match: 0.09, 99% under 0.14)
+
 # The colour measure's picture and histogram, as the basketball observer has them.
 _COL_SIZE = (192, 108)
 _HIST_BINS = [30, 32]    # hue x saturation
 
 
 def find_cut(gray: list[float], col: list[float], luma: list[float] | None,
-             first: int, last: int) -> int | None:
+             first: int, last: int, *, colour_led: bool = False) -> int | None:
     """The first frame of the new shot when a hard cut starts in first..last, else None.
 
     The lists describe a short decoded window, one entry per frame. Entry i
@@ -99,11 +132,15 @@ def find_cut(gray: list[float], col: list[float], luma: list[float] | None,
     basketball scan runs through the whole clip: a flash that began on the
     previous sample is still seen as one, so the frame the picture comes
     back on, inside this gap, is not taken for a cut.
+
+    `colour_led` adds a third hard-cut rule (Soccer turns it on): a gray
+    change of at least COLOUR_GRAY with a colour change of at least
+    COLOUR_COL, whatever the baseline. Off, the result is exactly as before.
     """
     k = 1
     end = min(last, len(gray) - 1)
     while k <= end:
-        if _is_hard(gray, col, k):
+        if _is_hard(gray, col, k, colour_led):
             back = _flash_end(gray, luma, k)
             if back is None:
                 if k >= first:
@@ -122,10 +159,12 @@ def _baseline(gray: list[float], k: int) -> float:
     return max(BASE_FLOOR, statistics.median(around)) if around else BASE_FLOOR
 
 
-def _is_hard(gray: list[float], col: list[float], k: int) -> bool:
+def _is_hard(gray: list[float], col: list[float], k: int, colour_led: bool = False) -> bool:
     g = gray[k]
     c = col[k] if k < len(col) else 0.0
     if g >= CUT_GRAY_STRONG and c >= CUT_COL_STRONG:
+        return True
+    if colour_led and g >= COLOUR_GRAY and c >= COLOUR_COL:
         return True
     return g >= CUT_GRAY and c >= CUT_COL and g >= CUT_RATIO * _baseline(gray, k)
 
@@ -147,6 +186,42 @@ def _flash_end(gray: list[float], luma: list[float] | None, k: int) -> int | Non
     return None
 
 
+def is_dissolve(pair_gray: float, pair_col: float, kept_col: float) -> bool:
+    """Whether a sample pair with no hard cut between its samples is a dissolve.
+
+    `pair_gray` is the small_gray difference of the two samples, `pair_col`
+    the Bhattacharyya distance of their histograms, and `kept_col` the
+    smaller of that distance from the first sample, and from the window's
+    first frame (LOOK_BACK before it), to the window's last frame (LOOK_AHEAD
+    after the second sample). A flash on either sample is over by then; a
+    new shot is still there."""
+    return pair_gray > DISSOLVE_GRAY and pair_col >= DISSOLVE_COL and kept_col >= DISSOLVE_COL
+
+
+def dissolve_span(col: list[float], first: int, last: int) -> tuple[int, int] | None:
+    """A dissolve's first and last frames: the run of frames whose colour
+    changes by DISSOLVE_STEP or more from the one before that holds the
+    steepest such frame in first..last. The dissolve completes on the last:
+    on that frame the new picture is whole. None when no frame in
+    first..last changes that much: a slow change, not one to snap at.
+
+    `col` is the window's list as find_cut takes it. The run can start
+    before `first`, and end past `last`: the change completes after the
+    current sample, or is still going on the window's last frame."""
+    first, end = max(1, first), min(last, len(col) - 1)
+    if end < first:
+        return None
+    k = max(range(first, end + 1), key=col.__getitem__)
+    if col[k] < DISSOLVE_STEP:
+        return None
+    start = k
+    while start > 1 and col[start - 1] >= DISSOLVE_STEP:
+        start -= 1
+    while k + 1 < len(col) and col[k + 1] >= DISSOLVE_STEP:
+        k += 1
+    return start, k
+
+
 # ---- decoding the frames around a candidate ------------------------------------------------
 
 
@@ -158,31 +233,66 @@ class ShotCuts:
     not open. `fallback` is the tracker's own sample-grid threshold, used
     whenever the frames around a candidate cannot be read where they should
     be: the cut is then called the old way, on the sample, when the pair
-    clears it.
+    clears it. With `colour_gate` set, a pair that changes less than the
+    gate in colour is no candidate, so a fallback cut needs the gate's
+    colour change as well.
 
     Candidates come in frame order, so the capture reads forward through the
     clip, keeping the measures of the last few frames for the next window,
     and seeks only across a long stretch with none.
+
+    The options, all off by default (Soccer turns them on):
+
+      * `colour_gate`: a pair is a candidate only when its two samples'
+        histograms are at least this far apart too (Bhattacharyya distance).
+        It needs each sample's colours(frame), passed to check() as
+        `colours`; a pair whose first sample came without them is not gated;
+      * `colour_led`: find_cut's colour-led rule;
+      * `dissolves`: a pair with no hard cut between its samples that
+        is_dissolve calls a dissolve is a cut on the frame the dissolve
+        completes (dissolve_span). When it completes after the current
+        sample, the next pair places it, whatever that pair's own change,
+        from the frames of its own gap like any pair (not the frames before
+        the gap that its window also reads); when it is still changing a
+        pair later, it is placed on that pair's sample. A change that runs
+        on from a dissolve already placed is not a second one.
     """
 
-    def __init__(self, cap, fallback: float) -> None:
+    def __init__(self, cap, fallback: float, *, colour_gate: float | None = None,
+                 colour_led: bool = False, dissolves: bool = False) -> None:
         self._cap = cap
         self._fallback = fallback
+        self._colour_gate = colour_gate
+        self._colour_led = colour_led
+        self._dissolves = dissolves
+        self._dissolving = False            # a dissolve completes after the last sample checked
+        self._placed: int | None = None     # the frame the last dissolve was placed on
+        self._sample: tuple[int, object] | None = None   # (frame, histogram) of the last sample
         self._pos = 0                       # the frame the capture returns next
         self._seen: dict[int, tuple] = {}   # frame -> (thumbnail, histogram, brightness)
         self._broken = cap is None
 
-    def check(self, prev_small, cur_small, a: int, b: int) -> int | None:
+    def check(self, prev_small, cur_small, a: int, b: int, *, colours=None) -> int | None:
         """The first frame of a new shot that starts after frame `a` and at or
         before frame `b`, the previous and the current sample, whose small_gray
         thumbnails are `prev_small` and `cur_small`; None when no cut starts
-        there."""
+        there.
+
+        `colours` is the current sample's colours(frame), for the colour gate,
+        which keeps them for the next pair."""
+        hists = None
+        if self._colour_gate is not None and colours is not None:
+            if self._sample is not None and self._sample[0] == a:
+                hists = (self._sample[1], colours)
+            self._sample = (b, colours)
         if prev_small is None or cur_small is None:
             return None
         import numpy as np
 
         pair = float(np.abs(cur_small - prev_small).mean())
-        if pair < CANDIDATE_DIFF:
+        waiting, self._dissolving = self._dissolving, False
+        if not waiting and (pair < CANDIDATE_DIFF or (
+                hists is not None and _distance(*hists) < self._colour_gate)):
             return None
         lo = max(0, a - LOOK_BACK)
         window = None if self._broken else self._window(lo, b + LOOK_AHEAD)
@@ -203,11 +313,43 @@ class ShotCuts:
         for (t0, h0, _), (t1, h1, _) in zip(window, window[1:]):
             gray.append(float(np.abs(t1 - t0).mean()))
             col.append(float(cv2.compareHist(h0, h1, cv2.HISTCMP_BHATTACHARYYA)))
-        k = find_cut(gray, col, [w[2] for w in window], a + 1 - lo, b - lo)
+        k = find_cut(gray, col, [w[2] for w in window], a + 1 - lo, b - lo, colour_led=self._colour_led)
         # What the next candidate can still need: its window starts no earlier
         # than LOOK_BACK frames before this sample.
         self._seen = {i: m for i, m in self._seen.items() if i >= b - LOOK_BACK}
-        return None if k is None else lo + k
+        if k is not None:
+            return lo + k
+        if not self._dissolves or not (waiting or is_dissolve(
+                pair, _distance(window[a - lo][1], window[b - lo][1]),
+                min(_distance(window[a - lo][1], window[-1][1]), _distance(window[0][1], window[-1][1])))):
+            return None
+        # The run around the steepest frame in this gap, for a dissolve
+        # waiting from the last pair too. The window reaches back past the
+        # last gap at sample steps under LOOK_BACK, to where a cut or a flash
+        # just before the dissolve can change more than any of its frames:
+        # taken for the dissolve's, that run, over before frame a, placed it
+        # mid-change, and the next pair placed it again where it ends. Nor is
+        # it the run that holds frame a + 1: a fade's last frame, the one the
+        # new picture is whole on, can change the most, after a frame that
+        # changes less than DISSOLVE_STEP.
+        span = dissolve_span(col, a + 1 - lo, b - lo)
+        if span is None:
+            return None
+        start, end = lo + span[0], lo + span[1]
+        if not waiting and self._placed is not None and start <= self._placed:
+            return None         # the same change as a dissolve already placed, still going
+        if end <= b:
+            self._placed = end
+            return max(end, a + 1)
+        if waiting:
+            # Still changing a pair later: a long dissolve, whose new picture
+            # has taken over by now. It is placed on the sample.
+            self._placed = b
+            return b
+        # It completes after this sample: the next pair places it, whatever
+        # that pair's own change.
+        self._dissolving = True
+        return None
 
     def _window(self, lo: int, hi: int) -> list | None:
         """Measures of frames lo..hi, as many as the clip has; None when they cannot be read."""
@@ -250,6 +392,25 @@ def _measure(frame) -> tuple:
     cv2.normalize(hist, hist)
     luma = float(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).mean())
     return small_gray(frame), hist, luma
+
+
+def colours(frame):
+    """A sample's colours, for ShotCuts' colour gate: the histogram _measure
+    takes of a frame, made the same way."""
+    import cv2
+
+    small = cv2.resize(frame, _COL_SIZE, interpolation=cv2.INTER_AREA)
+    hist = cv2.calcHist([cv2.cvtColor(small, cv2.COLOR_BGR2HSV)], [0, 1], None, _HIST_BINS,
+                        [0, 180, 0, 256])
+    cv2.normalize(hist, hist)
+    return hist
+
+
+def _distance(h0, h1) -> float:
+    """The Bhattacharyya distance of two of _measure's histograms (0..1)."""
+    import cv2
+
+    return float(cv2.compareHist(h0, h1, cv2.HISTCMP_BHATTACHARYYA))
 
 
 def _same(a, b) -> bool:

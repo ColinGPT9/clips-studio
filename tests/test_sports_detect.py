@@ -1,7 +1,10 @@
-"""Finding a match's moments (sports/core/detect.py, sports/core/clips.py) and
-reading its scoreboard (sports/soccer/scoreboard.py), on synthetic signals and
-on the lines the OCR really read off a 2018 World Cup final's score bug. No
-model runs here."""
+"""Finding a match's moments (sports/core/detect.py, sports/core/clips.py),
+reading its scoreboard (sports/soccer/scoreboard.py) and framing it for 9:16
+(sports/soccer/ball.py), on synthetic signals, synthetic flat-colour and
+textured clips and the lines the OCR really read off a 2018 World Cup final's
+score bug. No model runs here."""
+
+import functools
 
 import pytest
 
@@ -366,6 +369,9 @@ def test_the_report_counts_what_the_match_gave(soccer):
 # ---- framing a match for 9:16 ---------------------------------------------------------
 
 
+FPS = 30.0      # the clips' frame rate in these tests: sample i (5 a second) is frame 6 * i
+
+
 def _frames(n, per=None):
     """n samples at 5 per second; per[i] = dict of what sample i saw."""
     per = per or {}
@@ -377,13 +383,21 @@ def _plan(samples, crop=0.316):
     pytest.importorskip("cv2")
     from sports.soccer.ball import plan
 
-    return plan(samples, crop)
+    return plan(samples, crop, FPS)
+
+
+def _per_frame(path, last):
+    """The crop centre the renderer gives frames 0..last (video/cropper.py interpolates
+    between keys, at frame / fps)."""
+    from video.cropper import _interpolate
+
+    return [_interpolate(path, f / FPS) for f in range(last + 1)]
 
 
 def test_the_crop_follows_the_ball():
     samples = _frames(40, {i: {"balls": [(0.3 + 0.01 * i, 0.5, 0.6)]} for i in range(40)})
     path, led = _plan(samples)
-    assert path[0][1] == pytest.approx(0.3, abs=0.01)
+    assert path[0][1] == pytest.approx(0.31)     # the median of its first 0.5 s: 0.30, 0.31, 0.32
     assert path[-1][1] > 0.6 and led["ball"] == 40
 
 
@@ -422,16 +436,524 @@ def test_a_close_up_frames_the_player():
     assert path[-1][1] > 0.6 and led["close-up"] == 20
 
 
-def test_a_cut_snaps_instead_of_panning():
-    samples = _frames(20, {i: {"balls": [(0.2, 0.5, 0.6)]} for i in range(10)})
-    for i in range(10, 20):
-        samples[i]["balls"] = [(0.8, 0.5, 0.6)]
-    samples[10]["cut"] = True
-    path, _ = _plan(samples)
-    assert path[9][1] < 0.3 and path[10][1] > 0.7
-
-
 def test_the_crop_stays_inside_the_frame():
     samples = _frames(10, {i: {"balls": [(0.01, 0.5, 0.6)]} for i in range(10)})
     path, _ = _plan(samples, crop=0.316)
     assert all(x >= 0.158 for _t, x in path)
+
+
+# ---- cuts and openings ----------------------------------------------------------------
+#
+# The renderer interpolates the crop between keys. With one key per sample and
+# the cut called on the sample after it, the crop slid across every cut for a
+# sample gap (0.2 s); and a shot whose ball was confirmed a sample late opened
+# on the players and slid to the ball over about two seconds.
+
+
+def _cut_scene(cut_frame=57, after=None):
+    """Ball at 0.2, then a cut on cut_frame (between samples 9 and 10, frames 54
+    and 60, or on 60 itself) to a shot whose ball is at 0.8, or to `after`."""
+    samples = _frames(20, {i: {"balls": [(0.2, 0.5, 0.6)]} for i in range(10)})
+    for i in range(10, 20):
+        samples[i].update(after or {"balls": [(0.8, 0.5, 0.6)]})
+    samples[10].update(cut=True, cut_frame=cut_frame)
+    return samples
+
+
+@pytest.mark.parametrize("cut_frame", [55, 57, 60])
+def test_a_cut_holds_the_old_framing_to_the_frame_before_it_and_snaps_on_it(cut_frame):
+    path, _ = _plan(_cut_scene(cut_frame))
+    keys = dict(zip(_key_frames(path), (x for _t, x in path)))
+    # The freeze key (the sample's own when the cut is on the frame after it) and the snap key.
+    assert keys[cut_frame - 1] == 0.2 and keys[cut_frame] == 0.8
+    assert all(t0 < t1 for (t0, _), (t1, _) in zip(path, path[1:]))
+    xs = _per_frame(path, 119)
+    # Nothing in between, on any frame: the old framing to the frame before the cut,
+    # the new one from the cut's own frame.
+    assert all(x == pytest.approx(0.2, abs=1e-9) for x in xs[:cut_frame])
+    assert all(x == pytest.approx(0.8, abs=1e-9) for x in xs[cut_frame:])
+
+
+def test_a_cut_without_its_frame_is_on_its_sample_with_the_freeze_key_before_it():
+    samples = _cut_scene()
+    del samples[10]["cut_frame"]
+    xs = _per_frame(_plan(samples)[0], 119)
+    assert all(x == pytest.approx(0.2, abs=1e-9) for x in xs[:60])
+    assert all(x == pytest.approx(0.8, abs=1e-9) for x in xs[60:])
+
+
+_PLAYERS = [(0.25, 0.5, 0.03, 0.1), (0.3, 0.5, 0.03, 0.1), (0.35, 0.5, 0.03, 0.1)]
+
+
+def test_the_clip_opens_on_the_ball_its_first_samples_agree_on():
+    # On the first sample the ball is only a weak detection, which never starts one,
+    # so that sample frames the players (0.3); from the next the ball is sure (0.7).
+    samples = _frames(20, {0: {"balls": [(0.7, 0.5, 0.2)], "people": _PLAYERS}})
+    for s in samples[1:]:
+        s.update(balls=[(0.7, 0.5, 0.6)], people=_PLAYERS)
+    path, led = _plan(samples)
+    assert led["players"] == 1 and led["ball"] == 19          # what each sample saw is unchanged
+    # The median of the first 0.5 s (0.3, 0.7, 0.7): on the ball from the first frame.
+    # Opened on the first sample, the crop started at 0.3 and was still 0.01 short of
+    # the ball two seconds in.
+    assert all(x == pytest.approx(0.7, abs=1e-9) for x in _per_frame(path, 114))
+
+
+def test_a_shot_opens_on_the_ball_its_first_samples_agree_on():
+    samples = _cut_scene(57, {"balls": [(0.8, 0.5, 0.6)], "people": _PLAYERS})
+    samples[10]["balls"] = [(0.8, 0.5, 0.2)]       # weak on the shot's first sample
+    path, led = _plan(samples)
+    assert led["players"] == 1
+    # Opened on its first sample, the shot started on the players (0.3) and slid
+    # toward the ball (0.787 by the clip's end).
+    xs = _per_frame(path, 114)
+    assert all(x == pytest.approx(0.2, abs=1e-9) for x in xs[:57])
+    assert all(x == pytest.approx(0.8, abs=1e-9) for x in xs[57:])
+
+
+def test_one_sample_off_the_play_does_not_open_the_clip():
+    # A player filling the frame at 0.7 for the first sample only (crossing the
+    # camera), then the play at 0.3: the median of 0.7, 0.3, 0.3. Opened on the first
+    # sample, the crop started at 0.7 and slid back.
+    samples = _frames(20, {i: {"people": _PLAYERS} for i in range(20)})
+    samples[0]["people"] = [*_PLAYERS, (0.7, 0.5, 0.2, 0.8)]
+    path, led = _plan(samples)
+    assert led["close-up"] == 1
+    assert all(x == pytest.approx(0.3, abs=1e-9) for x in _per_frame(path, 114))
+
+
+def test_a_shot_opens_on_what_its_first_half_second_shows():
+    # Nothing is seen on the shot's first two samples, the ball (0.8) from its third
+    # (0.4 s in). Those two samples don't count, and the second one holds the opening.
+    # Opened on its first sample, the shot started on the centre and slid to the ball
+    # from 0.4 s in.
+    samples = _cut_scene(58, {"balls": [(0.8, 0.5, 0.6)]})
+    samples[10]["balls"] = samples[11]["balls"] = []
+    path, led = _plan(samples)
+    assert led["held"] == 2
+    xs = _per_frame(path, 114)
+    assert all(x == pytest.approx(0.2, abs=1e-9) for x in xs[:58])
+    assert all(x == pytest.approx(0.8, abs=1e-9) for x in xs[58:])
+
+
+def test_the_trailing_median_starts_again_at_a_cut():
+    # The new shot's second sample is 0.08 off its opening: with the shot's own
+    # targets only (0.8, 0.72) the median is inside the hold; with the old shot's
+    # 0.2 still in it, it would be 0.72, and the crop would move.
+    samples = _cut_scene(58)
+    samples[11]["balls"] = [(0.72, 0.5, 0.6)]
+    xs = _per_frame(_plan(samples)[0], 114)
+    assert all(x == pytest.approx(0.8, abs=1e-9) for x in xs[58:])
+
+
+def test_the_ball_is_forgotten_at_a_cut():
+    # After the cut a weak detection sits where the old shot's ball was. Followed, it
+    # would hold the crop at 0.3; the cut clears the ball, a weak one never starts
+    # one, and the new shot frames its players (0.8).
+    far = [(0.75, 0.5, 0.03, 0.1), (0.8, 0.5, 0.03, 0.1), (0.85, 0.5, 0.03, 0.1)]
+    samples = _frames(20, {i: {"balls": [(0.3, 0.5, 0.6)]} for i in range(10)})
+    for s in samples[10:]:
+        s.update(balls=[(0.32, 0.5, 0.2)], people=far)
+    samples[10].update(cut=True, cut_frame=58)
+    path, led = _plan(samples)
+    assert led["ball"] == 10 and led["players"] == 10
+    xs = _per_frame(path, 114)
+    assert all(x == pytest.approx(0.3, abs=1e-9) for x in xs[:58])
+    assert all(x == pytest.approx(0.8, abs=1e-9) for x in xs[58:])
+
+
+def test_a_shot_with_no_ball_and_no_players_keeps_the_centre():
+    # As before, a shot nothing is seen in is framed on the centre; it now starts
+    # on its first frame, with the framing before held to the frame before it.
+    samples = _cut_scene(58, {"balls": [], "people": []})
+    path, led = _plan(samples)
+    assert led["held"] == 10
+    xs = _per_frame(path, 114)
+    assert all(x == pytest.approx(0.2, abs=1e-9) for x in xs[:58])
+    assert all(x == pytest.approx(0.5, abs=1e-9) for x in xs[58:])
+    # A clip that opens on nothing opens on the centre and eases to the ball when it
+    # appears (sample 5), exactly as before: these are the keys the code before this
+    # change wrote.
+    samples = _frames(20, {i: {"balls": [(0.7, 0.5, 0.6)]} for i in range(5, 20)})
+    path, _ = _plan(samples)
+    assert [x for _t, x in path] == [0.5] * 6 + [0.57, 0.6155, 0.6451, 0.6643, 0.6768, 0.6849] + [0.6902] * 8
+
+
+# compute(): cuts found to the frame on a synthetic clip. The capture is a fake one
+# of flat-colour frames (one colour per shot) and the detector scripted per frame.
+
+_W, _H = 320, 180
+_A, _B, _WHITE = (150, 90, 30), (40, 210, 240), (255, 255, 255)   # gray 79 and 200: a hard cut
+
+
+class _Clip:
+    """A capture of n frames, colour(i) the flat colour of frame i (BGR), or the frame itself."""
+
+    def __init__(self, colour, n):
+        self.colour, self.n = colour, n
+        self.pos, self.cur, self.released = 0, None, False
+
+    def isOpened(self):
+        return True
+
+    def get(self, prop):
+        import cv2
+
+        return {cv2.CAP_PROP_FPS: FPS, cv2.CAP_PROP_FRAME_WIDTH: float(_W),
+                cv2.CAP_PROP_FRAME_HEIGHT: float(_H), cv2.CAP_PROP_FRAME_COUNT: float(self.n),
+                cv2.CAP_PROP_POS_FRAMES: float(self.pos)}.get(prop, 0.0)
+
+    def set(self, prop, value):
+        import cv2
+
+        if prop != cv2.CAP_PROP_POS_FRAMES:
+            return False
+        self.pos = int(value)
+        return True
+
+    def grab(self):
+        if self.pos >= self.n:
+            return False
+        self.cur, self.pos = self.pos, self.pos + 1
+        return True
+
+    def retrieve(self):
+        import numpy as np
+
+        if self.cur is None:
+            return False, None
+        return True, np.full((_H, _W, 3), self.colour(self.cur), np.uint8)
+
+    def read(self):
+        return self.retrieve() if self.grab() else (False, None)
+
+    def release(self):
+        self.released = True
+
+
+def _compute(monkeypatch, colour, sees, n=150, reader=True):
+    """ball.compute on a synthetic clip; sees(frame) -> (balls, people) on that frame.
+    reader=False: the cut reader's capture will not open. Returns (result, captures)."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    import contextlib
+
+    from sports.soccer import ball
+    from video import capture
+
+    opened = []
+
+    @contextlib.contextmanager
+    def fake(_path, *, required=True):
+        cap = _Clip(colour, n) if required or reader else None
+        opened.append(cap)
+        try:
+            yield cap
+        finally:
+            if cap is not None:
+                cap.release()
+
+    sampled = iter(range(0, n, 6))      # one detector call per sample, in order
+    monkeypatch.setattr(capture, "video_capture", fake)
+    monkeypatch.setattr(ball, "_model", lambda _name: None)
+    monkeypatch.setattr(ball, "detect", lambda _model, _frame, _imgsz: sees(next(sampled)))
+    return ball.compute("clip.mp4"), opened
+
+
+def _key_frames(path):
+    return [round(t * FPS, 6) for t, _x in path]
+
+
+@pytest.mark.parametrize("cut", [61, 62, 64, 66])
+def test_compute_finds_the_cut_on_its_frame_and_nothing_slides_across_it(cut, monkeypatch):
+    result, opened = _compute(
+        monkeypatch, lambda i: _A if i < cut else _B,
+        lambda f: ([(0.3, 0.5, 0.6)] if f < cut else [(0.75, 0.5, 0.6)], []))
+    path = result["path"]
+    assert cut in _key_frames(path)
+    assert all(t0 < t1 for (t0, _), (t1, _) in zip(path, path[1:]))
+    xs = _per_frame(path, 149)
+    assert all(x == pytest.approx(0.3, abs=1e-9) for x in xs[:cut])
+    assert all(x == pytest.approx(0.75, abs=1e-9) for x in xs[cut:])
+    assert len(opened) == 2 and all(c.released for c in opened)
+
+
+def test_compute_a_flash_is_not_a_cut(monkeypatch):
+    # A two-frame flash on the sample at frame 66. After it the ball is only a weak
+    # detection, followed because it is where the ball was. Called a cut (twice, on
+    # the grid: into the flash and out of it), the flash cleared the ball, and the
+    # crop went to the players at 0.8.
+    far = [(0.75, 0.5, 0.03, 0.1), (0.8, 0.5, 0.03, 0.1), (0.85, 0.5, 0.03, 0.1)]
+    result, _ = _compute(
+        monkeypatch, lambda i: _WHITE if i in (66, 67) else _A,
+        lambda f: ([(0.3, 0.5, 0.6 if f < 66 else 0.2)], far))
+    path = result["path"]
+    assert all(f % 6 == 0 for f in _key_frames(path))      # no freeze or snap keys
+    assert all(x == pytest.approx(0.3, abs=1e-9) for _t, x in path)
+    assert result["led"]["ball"] == 25
+
+
+def test_compute_without_the_cut_reader_cuts_on_the_sample_as_before(monkeypatch):
+    # The reader's capture will not open: a cut is called on the sample after it, when
+    # the pair changes by more than 25 (and its colours by the gate's 0.2), as before,
+    # but still with its freeze key.
+    result, opened = _compute(
+        monkeypatch, lambda i: _A if i < 62 else _B,
+        lambda f: ([(0.3, 0.5, 0.6)] if f < 62 else [(0.75, 0.5, 0.6)], []), reader=False)
+    assert opened[1] is None
+    xs = _per_frame(result["path"], 149)
+    assert all(x == pytest.approx(0.3, abs=1e-9) for x in xs[:66])
+    assert all(x == pytest.approx(0.75, abs=1e-9) for x in xs[66:])
+
+
+def test_compute_turns_on_soccer_s_cut_options(monkeypatch):
+    from video import cuts
+
+    seen = {}
+
+    class Spy(cuts.ShotCuts):
+        def __init__(self, cap, fallback, **options):
+            seen.update(options, fallback=fallback)
+            super().__init__(cap, fallback, **options)
+
+    monkeypatch.setattr(cuts, "ShotCuts", Spy)
+    _compute(monkeypatch, lambda i: _A, lambda f: ([], []))
+    assert seen == {"fallback": 25.0, "colour_gate": 0.2, "colour_led": True, "dissolves": True}
+
+
+def test_compute_a_flash_just_after_a_cut_is_not_a_cut(monkeypatch):
+    # A cut on frame 57, then a two-frame flash on the sample at 66. The frames decoded
+    # around the flash reach back past the cut, so the old shot is still at their start:
+    # what the flash test for dissolves compares the end of the window with is the
+    # first sample too, which is the new shot, as the end is once the flash is over.
+    result, _ = _compute(
+        monkeypatch, lambda i: _WHITE if i in (66, 67) else _A if i < 57 else _B,
+        lambda f: ([(0.3, 0.5, 0.6)] if f < 57 else [(0.75, 0.5, 0.6)], []))
+    assert [f for f in _key_frames(result["path"]) if f % 6] == [56, 57]
+
+
+def test_compute_hands_on_an_error_from_the_cut_reader(monkeypatch):
+    # The cut checks run on a thread of their own; what goes wrong there is raised here.
+    from video import cuts
+
+    def broken(self, *args, **kwargs):
+        raise RuntimeError("reader broke")
+
+    monkeypatch.setattr(cuts.ShotCuts, "check", broken)
+    with pytest.raises(RuntimeError, match="reader broke"):
+        _compute(monkeypatch, lambda i: _A, lambda f: ([], []))
+
+
+def test_compute_stops_the_cut_reader_when_it_fails(monkeypatch):
+    import threading
+
+    calls = iter(range(100))
+
+    def sees(_frame):
+        if next(calls) == 5:
+            raise RuntimeError("detector broke")
+        return [], []
+
+    with pytest.raises(RuntimeError, match="detector broke"):
+        _compute(monkeypatch, lambda i: _A, sees)
+    assert not any(t.name == "soccer-cuts" and t.is_alive() for t in threading.enumerate())
+
+
+# Broadcast football pans fast and fades into its replays. These frames are a fixed blocky
+# texture over a flat colour: moved a few pixels a frame, it pans (the thumbnail changes a
+# lot, the colours hardly at all); blended a step a frame into another, it dissolves.
+
+_GREEN, _ORANGE, _PALE = (60, 140, 70), (200, 90, 40), (180, 170, 210)
+
+
+@functools.cache
+def _texture():
+    np = pytest.importorskip("numpy")
+
+    i = np.arange(_H // 8 + 1, dtype=np.int64)[:, None]
+    j = np.arange(3 * _W // 8 + 1, dtype=np.int64)[None, :]
+    blocks = (((i * 73856093) ^ (j * 19349663)) % 81 - 40).astype(np.int16)
+    return np.kron(blocks, np.ones((8, 8), np.int16))[:_H, :3 * _W]
+
+
+def _textured(colour, shift=0):
+    """The texture over `colour`, moved `shift` pixels to the left (it wraps round)."""
+    np = pytest.importorskip("numpy")
+
+    tex = _texture()
+    cols = (np.arange(_W) + shift) % tex.shape[1]
+    return np.clip(np.asarray(colour, np.int16) + tex[:, cols, None], 0, 255).astype(np.uint8)
+
+
+def _pan(step, cut=None):
+    """Frame i of a pan of `step` pixels a frame over the green; from frame `cut`, the
+    orange, still panning."""
+    return lambda i: _textured(_GREEN if cut is None or i < cut else _ORANGE, step * i)
+
+
+def _dissolve(first, last):
+    """The green, mixed into the pale picture over frames first..last-1; `last` is the
+    first frame of the pale one alone. The brightness steps 73 / (last - first + 1) a frame."""
+    np = pytest.importorskip("numpy")
+
+    old, new = _textured(_GREEN).astype(float), _textured(_PALE).astype(float)
+
+    def frame(i):
+        w = min(1.0, max(0.0, (i - first + 1) / (last - first + 1)))
+        return (old * (1 - w) + new * w).round().astype(np.uint8)
+
+    return frame
+
+
+def _reader_cuts(colour, n=150, step=6, **options):
+    """The cuts video/cuts.py's ShotCuts finds in a synthetic clip sampled as compute
+    samples it (every 6th frame at 30 fps; every `step`th), with these options; and its
+    capture."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from video.cuts import ShotCuts, colours
+    from video.framing import small_gray
+
+    cap = _Clip(colour, n)
+    reader = ShotCuts(cap, fallback=25.0, **options)
+    found, prev, a = [], None, 0
+    for b in range(0, n, step):
+        frame = np.full((_H, _W, 3), colour(b), np.uint8)
+        small = small_gray(frame)
+        cut = reader.check(prev, small, a, b, colours=colours(frame))
+        if cut is not None:
+            found.append(cut)
+        prev, a = small, b
+    return found, cap
+
+
+def test_compute_finds_a_cut_out_of_a_fast_pan(monkeypatch):
+    # The pan moves the thumbnail about 21 a frame; the cut at frame 62 changes it by 30,
+    # and every colour. That is under 3x the pan and under 40: no cut at ShotCuts'
+    # defaults, as before, and the crop slid across it. Soccer's colour-led rule finds it.
+    clip = _pan(6, cut=62)
+    assert _reader_cuts(clip)[0] == []
+    assert _reader_cuts(clip, colour_led=True)[0] == [62]
+    result, _ = _compute(monkeypatch, clip,
+                         lambda f: ([(0.3, 0.5, 0.6)] if f < 62 else [(0.75, 0.5, 0.6)], []))
+    xs = _per_frame(result["path"], 149)
+    assert all(x == pytest.approx(0.3, abs=1e-9) for x in xs[:62])
+    assert all(x == pytest.approx(0.75, abs=1e-9) for x in xs[62:])
+
+
+def test_compute_a_fast_pan_is_no_cut_and_is_not_even_decoded(monkeypatch):
+    # 16 pixels a frame: the thumbnail changes by 28 a frame and 27 a sample pair, the
+    # colours by 0.01-0.02. At the defaults every pair is decoded frame by frame and
+    # nothing is a cut; with the colour-led rule nothing is either.
+    clip = _pan(16)
+    found, cap = _reader_cuts(clip)
+    assert found == [] and cap.pos > 0
+    assert _reader_cuts(clip, colour_led=True)[0] == []
+    # Soccer's colour gate: the samples' colours are the same, so no pair is a candidate.
+    found, cap = _reader_cuts(clip, colour_gate=0.2, colour_led=True, dissolves=True)
+    assert found == [] and cap.pos == 0
+    result, opened = _compute(monkeypatch, clip, lambda f: ([(0.4, 0.5, 0.6)], []))
+    assert all(f % 6 == 0 for f in _key_frames(result["path"]))      # no freeze or snap keys
+    assert opened[1].pos == 0
+
+
+@pytest.mark.parametrize("first, last", [(61, 70), (61, 67), (61, 65)])
+def test_compute_snaps_where_a_dissolve_completes(first, last, monkeypatch):
+    # A fade into a replay: no frame changes much, so no frame is a hard cut, and the crop
+    # used to slide (or hold the old ball for a second). 61-70 runs across the sample at
+    # 66, and the pair after it places it; so does 61-67, though that pair changes too
+    # little to be a candidate of its own; 61-65 completes inside one sample gap. The new
+    # framing starts on the first frame of the new picture alone.
+    clip = _dissolve(first, last)
+    assert _reader_cuts(clip)[0] == []                               # the defaults: as before
+    assert _reader_cuts(clip, dissolves=True)[0] == [last]
+    result, _ = _compute(monkeypatch, clip,
+                         lambda f: ([(0.3, 0.5, 0.6)] if f < last else [(0.75, 0.5, 0.6)], []))
+    path = result["path"]
+    assert last in _key_frames(path)
+    xs = _per_frame(path, 149)
+    assert all(x == pytest.approx(0.3, abs=1e-9) for x in xs[:last])
+    assert all(x == pytest.approx(0.75, abs=1e-9) for x in xs[last:])
+
+
+def test_a_long_dissolve_is_placed_once():
+    # From a dark picture to a bright one over 20 frames (61-80): a pair later it is still
+    # changing, so it is placed on that pair's sample (72), where the new picture has taken
+    # over, and the change that runs on after it is not a second dissolve.
+    np = pytest.importorskip("numpy")
+
+    dark, bright = _textured((40, 60, 45)).astype(float), _textured((215, 215, 235)).astype(float)
+
+    def clip(i):
+        w = min(1.0, max(0.0, (i - 60) / 20))
+        return (dark * (1 - w) + bright * w).round().astype(np.uint8)
+
+    assert _reader_cuts(clip, dissolves=True)[0] == [72]
+    assert _reader_cuts(clip)[0] == []
+
+
+_SOCCER = {"colour_gate": 0.2, "colour_led": True, "dissolves": True}
+
+
+def _panning_fade(first, last, before):
+    """A pan of 2 pixels a frame over the green, mixed into the pale picture over
+    first..last-1 as _dissolve mixes them (`last` is the first frame of the pale one
+    alone); frame i is before(i) instead where that is not None."""
+    np = pytest.importorskip("numpy")
+
+    def frame(i):
+        shown = before(i)
+        if shown is not None:
+            return shown
+        w = min(1.0, max(0.0, (i - first + 1) / (last - first + 1)))
+        old, new = _textured(_GREEN, 2 * i).astype(float), _textured(_PALE, 2 * i).astype(float)
+        return (old * (1 - w) + new * w).round().astype(np.uint8)
+
+    return frame
+
+
+def _step(fps):
+    """compute's sample step at this frame rate."""
+    from sports.soccer.ball import SAMPLE_FPS
+
+    return max(1, round(fps / SAMPLE_FPS))
+
+
+# A fade over 62..last-1 that runs past the sample after 60 (65 at 25 fps, 66 at 30), so
+# the pair after that places it. That pair's frames start LOOK_BACK (8) before its first
+# sample, which at these steps reaches back past the last gap, to a change just before the
+# fade that is steeper than any of the fade's frames. Its steepest frame was taken for the
+# fade's: the fade was placed mid-change, on the frame after that pair's first sample (66
+# or 67), and at 25 fps, ending on 71, again on 71, where the pan makes the pair after it
+# a candidate of its own. That pair now places it from its own gap. At 50 fps (a step of
+# 10) the frames never reached back that far. Placed on the sample at 70 is within a frame
+# of 71: a fade still changing a pair later is placed on that pair's sample.
+
+
+@pytest.mark.parametrize("last", [70, 71])
+@pytest.mark.parametrize("fps", [25.0, 30.0, 50.0])
+def test_a_fade_just_after_a_cut_is_placed_once_where_it_ends(fps, last):
+    # The hard cut is on the sample at frame 60, from a dark picture.
+    clip = _panning_fade(62, last, lambda i: _textured((40, 60, 45), 2 * i) if i < 60 else None)
+    found = _reader_cuts(clip, step=_step(fps), **_SOCCER)[0]
+    assert len(found) == 2 and found[0] == 60 and abs(found[1] - last) <= 1, found
+
+
+@pytest.mark.parametrize("last", [70, 71])
+@pytest.mark.parametrize("fps", [25.0, 30.0, 50.0])
+def test_a_fade_just_after_a_flash_is_placed_once_where_it_ends(fps, last):
+    # A one-frame camera flash on frame 59, the picture back on the sample at 60: no cut.
+    clip = _panning_fade(62, last, lambda i: _WHITE if i == 59 else None)
+    found = _reader_cuts(clip, step=_step(fps), **_SOCCER)[0]
+    assert len(found) == 1 and abs(found[0] - last) <= 1, found
+
+
+@pytest.mark.parametrize("cut", [61, 62, 64, 66])
+def test_soccer_s_options_leave_a_plain_cut_and_a_flash_as_they_were(cut):
+    # ShotCuts at its defaults finds the plain hard cut on its frame and no cut in a flash,
+    # as before the options; with every option Soccer passes it finds the same.
+    plain = lambda i: _A if i < cut else _B                  # noqa: E731
+    flash = lambda i: _WHITE if i in (66, 67) else _A        # noqa: E731
+    for options in ({}, {"colour_gate": 0.2, "colour_led": True, "dissolves": True}):
+        assert _reader_cuts(plain, **options)[0] == [cut]
+        assert _reader_cuts(flash, **options)[0] == []

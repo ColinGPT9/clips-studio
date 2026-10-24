@@ -165,6 +165,152 @@ def test_without_brightness_a_quick_change_back_is_a_flash():
     assert cuts.find_cut(gray, col, None, 9, 12) == 10
 
 
+# ---- Soccer's options: a colour-led cut, dissolves (off by default) --------------------------
+
+
+def test_the_options_are_off_unless_asked_for():
+    import inspect
+
+    assert inspect.signature(cuts.find_cut).parameters["colour_led"].default is False
+    reader = inspect.signature(cuts.ShotCuts).parameters
+    assert list(reader) == ["cap", "fallback", "colour_gate", "colour_led", "dissolves"]
+    assert reader["colour_gate"].default is None
+    assert reader["colour_led"].default is False and reader["dissolves"].default is False
+    assert inspect.signature(cuts.ShotCuts.check).parameters["colours"].default is None
+
+
+def test_a_cut_out_of_a_fast_pan_needs_the_colour_led_rule():
+    # A pan moves the thumbnail 20 a frame and barely changes its colours; the cut
+    # out of it changes gray by 35 and the colours by 0.6. That is under the strong
+    # rule's 40 and under 3x the pan's 20, so without the option it is no cut, as
+    # before.
+    gray, col, luma = window(motion=20.0, colour=0.1)
+    cut(gray, col, luma, 10, g=35.0, c=0.6)
+    assert cuts.find_cut(gray, col, luma, 9, 12) is None
+    assert cuts.find_cut(gray, col, luma, 9, 12, colour_led=False) is None
+    assert cuts.find_cut(gray, col, luma, 9, 12, colour_led=True) == 10
+
+
+def test_the_colour_led_rule_s_floors():
+    for g, c, found in ((25.0, 0.45, 10), (24.9, 0.6, None), (38.0, 0.449, None)):
+        gray, col, luma = window(motion=20.0, colour=0.1)
+        cut(gray, col, luma, 10, g=g, c=c)
+        assert cuts.find_cut(gray, col, luma, 9, 12, colour_led=True) == found
+
+
+def test_a_fast_pan_is_still_no_cut_with_the_colour_led_rule():
+    # Every frame changes gray by 30, one by 38, and the colours by 0.1-0.3.
+    gray, col, luma = window(motion=30.0, colour=0.1)
+    gray[10], col[10] = 38.0, 0.3
+    assert cuts.find_cut(gray, col, luma, 9, 12, colour_led=True) is None
+
+
+def test_the_colour_led_rule_still_sees_a_flash():
+    gray, col, luma = window(motion=20.0, colour=0.1)
+    flash(gray, col, luma, 10)
+    col[10] = col[12] = 0.6
+    assert cuts.find_cut(gray, col, luma, 9, 12, colour_led=True) is None
+
+
+@pytest.mark.parametrize("colour_led", [False, True])
+def test_the_existing_windows_answer_the_same_with_the_option(colour_led):
+    # Every window above that the colour-led rule has nothing to add to (no frame with
+    # gray 25-40 and colour 0.45 or more under 3x its baseline) gives the same answer.
+    def answers(**kw):
+        out = []
+        gray, col, luma = window()
+        cut(gray, col, luma, 10)
+        out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        gray, col, luma = window()
+        cut(gray, col, luma, 10, g=60.0, c=0.1)
+        out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        gray, col, luma = window(motion=10.0)
+        cut(gray, col, luma, 10, g=25.0, c=0.22)
+        out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        gray, col, luma = window(motion=30.0, colour=0.1)
+        out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        for k in (5, 13):
+            gray, col, luma = window()
+            cut(gray, col, luma, k)
+            out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        gray, col, luma = window()
+        flash(gray, col, luma, 8)
+        out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        gray, col, luma = window()
+        flash(gray, col, luma, 5)
+        cut(gray, col, luma, 10)
+        out.append(cuts.find_cut(gray, col, luma, 9, 12, **kw))
+        return out
+
+    assert answers(colour_led=colour_led) == answers() == [10, None, None, None, None, None, None, 10]
+
+
+def dissolving(n=24, start=10, length=9, step=0.25, colour=0.09):
+    """col for n frames of a match (colour change `colour` a frame) with a dissolve whose
+    frames start..start+length-1 change the colours by `step` each."""
+    col = [0.0] + [colour] * (n - 1)
+    for k in range(start, min(n, start + length)):
+        col[k] = step
+    return col
+
+
+def test_a_dissolve_completes_on_its_last_changing_frame():
+    col = dissolving(start=10, length=6)                 # frames 10-15 change: 15 is the new picture
+    assert cuts.dissolve_span(col, 9, 18) == (10, 15)
+    col = dissolving(start=6, length=6)                  # it began before the gap
+    assert cuts.dissolve_span(col, 9, 18) == (6, 11)
+
+
+def test_a_dissolve_still_changing_after_the_sample_is_the_next_pair_s():
+    col = dissolving(start=14, length=6)                 # 14-19, the gap ends on 18
+    assert cuts.dissolve_span(col, 9, 18) == (14, 19)
+    col = dissolving(n=22, start=14, length=20)          # still changing on the window's last frame
+    assert cuts.dissolve_span(col, 9, 18) == (14, 21)
+    # Placed by the next pair, from its own gap (9-18 in its window), from wherever it began.
+    assert cuts.dissolve_span(dissolving(start=4, length=6), 9, 18) == (4, 9)
+
+
+def test_the_next_pair_places_a_dissolve_from_its_own_gap():
+    # The next pair's window starts LOOK_BACK frames before its first sample (index 8),
+    # which at 25 or 30 fps (a step of 5 or 6) reaches back past the last gap: here to a
+    # cut three frames before the dissolve, a steeper change than any of the dissolve's
+    # frames, whose run is over before the sample.
+    col = dissolving(start=5, length=8)                  # 5-12
+    col[2] = 0.9                                         # the cut
+    assert cuts.dissolve_span(col, 9, 14) == (5, 12)
+    assert cuts.dissolve_span(col, 1, 14) == (2, 2)      # searched from the window's start
+    # A fade's last frame, the one the new picture is whole on, can change the most, after
+    # a frame under DISSOLVE_STEP: the dissolve completes on it, not where the run that
+    # holds the frame after the sample (9) ends.
+    col = dissolving(start=5, length=6)                  # 5-10
+    col[11], col[12] = 0.12, 0.3
+    assert cuts.dissolve_span(col, 9, 14) == (12, 12)
+    assert cuts.dissolve_span(col, 9, 9) == (5, 10)
+
+
+def test_a_dissolve_is_the_run_around_the_gap_s_steepest_frame():
+    col = dissolving(start=10, length=4)
+    col[17] = 0.2                                        # a lone frame later in the gap
+    col[11] = 0.5                                        # the steepest
+    assert cuts.dissolve_span(col, 9, 18) == (10, 13)
+    # A change before the gap (the last pair's) is not this one's.
+    col = dissolving(start=3, length=4, step=0.6)
+    col[12] = col[13] = 0.2
+    assert cuts.dissolve_span(col, 9, 18) == (12, 13)
+
+
+def test_a_change_with_no_frame_standing_out_is_no_dissolve():
+    assert cuts.dissolve_span(dissolving(step=0.12), 9, 18) is None
+    assert cuts.dissolve_span(dissolving(step=0.13), 9, 18) == (10, 18)
+
+
+def test_what_makes_a_sample_pair_a_dissolve():
+    assert cuts.is_dissolve(25.1, 0.4, 0.4)
+    assert not cuts.is_dissolve(25.0, 0.9, 0.9)          # gray: more than 25
+    assert not cuts.is_dissolve(40.0, 0.39, 0.9)         # the samples' colours
+    assert not cuts.is_dissolve(40.0, 0.9, 0.39)         # gone again a few frames on: a flash
+
+
 # ---- the setting ----------------------------------------------------------------------------
 
 

@@ -24,7 +24,7 @@ Branch `claude/open-platform-w4eh9g`. All paths repo-relative. "(inferred)" mark
 | GPU-decoded frame sampler | `sampled_frames(clip_path, every, width, height, hwaccel=True)` generator of `(frame_index, bgr)` | `video/encoding.py:112` |
 | Safe OpenCV capture | `video_capture(path, *, required=True)` context manager | `video/capture.py:30` |
 | Scene-cut helpers | `is_cut(prev_small, cur_small, threshold=25.0)`, `refine_cuts(clip_path, regions, threshold)`, `pick_focus(...)`, `HoldMove` | `video/framing.py:48,62,102,134` |
-| Frame-exact cuts (shot-aware framing only) | `ShotCuts(cap, fallback).check(prev_small, cur_small, a, b) -> int\|None` (the first frame of a new shot between two samples, checked on the frames around it), `find_cut(gray, col, luma, first, last) -> int\|None` (the pure decision) | `video/cuts.py:153,175,81` |
+| Frame-exact cuts (shot-aware framing only) | `ShotCuts(cap, fallback).check(prev_small, cur_small, a, b) -> int\|None` (the first frame of a new shot between two samples, checked on the frames around it), `find_cut(gray, col, luma, first, last) -> int\|None` (the pure decision) | `video/cuts.py:228,275,114` |
 | Preview frames before processing | `frame(cache_dir, at, *, url=None, path=None) -> Path` (yt-dlp media URL + FFmpeg seek; platform allowlist) | `sources/preview_frames.py:208` |
 | Subtitle files | `write_srt(lines, path)`, `write_vtt(lines, path)` | `multilingual/subtitles.py:21,34` |
 | Translated-caption burn | `clean_base(clip_row, config, data_dir, work_dir) -> Path\|None`, `burn(...)` | `multilingual/burn.py:37,67` |
