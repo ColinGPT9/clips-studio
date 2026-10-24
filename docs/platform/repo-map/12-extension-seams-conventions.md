@@ -41,7 +41,7 @@ repo-relative path; "(inferred)" marks a judgement rather than something the cod
 Supporting facts for the catalogue:
 - Pipeline hook points where opt-in subsystems are consulted by name: `core/pipeline.py:212-227` (mode checks after download), `:257` (creator), `:337-340` (gaming_scoring / sport), `:345-377` (hype, chat, game audio), `:445` (`measure_reaction`), `:585` (`needs_framing`), `:598` (gaming prepare), `:699-700` (sports reels), `:843-862` (gaming profile), `:886-961` (sport prepass/profile class), `:996-1007` (hotwords), `:1181-1195` (render-time mode resolution).
 - API exposes two registries read-only: `GET /sports` (`docs/API.md:347`) and `GET /languages` (`docs/API.md:625`).
-- The frozen build only contains what `clips-studio.spec` lists: `hiddenimports += collect_submodules("sports")` (`:53`), explicit `datas` blocks (`:108-222`), and an `excludes` list (`:240`). Anything imported by name at runtime must be named there (`tests/test_packaging.py:66-82`).
+- The frozen build only contains what `clips-studio.spec` lists: `hiddenimports += collect_submodules("sports")` (`:53`), explicit `datas` blocks (`:108-222`), and an `excludes` list (`:240`). Anything imported by name at runtime must be named there (`tests/test_packaging.py:66-89`).
 
 ## 2. Design rules (ARCHITECTURE.md section 15, `ARCHITECTURE.md:1078-1102`)
 

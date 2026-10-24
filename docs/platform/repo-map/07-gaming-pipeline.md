@@ -35,7 +35,7 @@ Built by `core/pipeline.py:832-870 _gaming_scoring_inputs(config, video, db, gam
 
 | Input | Source | Shape |
 |---|---|---|
-| game metadata | `video.games` from the downloader (`sources/ytdlp_common.py:101-123 games_from_info(info, platform)` → `[{"name","start","end"}, +"hint"]`: Twitch chapters, Kick category, YouTube tags), persisted in `videos.games` (`core/state.py:905-920 set_video_games/video_games`), re-fetched for cached files by `sources/dispatch.py:77 game_info(url)` in the hype thread (`core/pipeline.py:355-359`) | list of dicts |
+| game metadata | `video.games` from the downloader (`sources/ytdlp_common.py:101-123 games_from_info(info, platform)` → `[{"name","start","end"}, +"hint"]`: Twitch chapters, Kick category, YouTube tags), persisted in `videos.games` (`core/state.py:1062-1077 set_video_games/video_games`), re-fetched for cached files by `sources/dispatch.py:77 game_info(url)` in the hype thread (`core/pipeline.py:355-359`) | list of dicts |
 | video title | `video.title` → `analysis/gaming.py:170 profile_for(config, games, title)` (genre fallback from title/hints) | str |
 | chat replay messages | `analysis/hype.py:64 audience_signals(url, video_id, duration)` → `(curve, messages)`; messages kept only when `gaming_scoring or sport_name` (`core/pipeline.py:351-352`) | `[(second, user, text)]` (inferred from `_twitch_chat` return type `analysis/hype.py:117`) |
 | game sound | `analysis/game_audio.py:70 listen(path, groups)` run in a daemon thread beside Whisper (`core/pipeline.py:364-383`), only if `analysis/panns.py:53 available()` | `{group: np.ndarray per second}` |
@@ -96,7 +96,7 @@ Built by `core/pipeline.py:832-870 _gaming_scoring_inputs(config, video, db, gam
 |---|---|
 | `config/gaming.yaml` (`analysis/gaming.py:23,36`) | probe clips `work_dir/gaming_probe_<start>.mp4`, deleted after (`gaming/run.py:118-131`, `core.paths.discard`) |
 | `gaming/layouts.json` (`gaming/framing.py:27`) | rendered clip `output` MP4 (`gaming/compose.py:85`) |
-| `config/prompts/look_at_game.txt` (`analysis/game_vision.py:23`) | DB: `videos.games` (`core/state.py:905`), `creators.gaming_layout` (`core/state.py:812`, column added at `:512-515`), clip `render_opts` JSON with `"gaming"` (`core/pipeline.py:1472`) |
+| `config/prompts/look_at_game.txt` (`analysis/game_vision.py:23`) | DB: `videos.games` (`core/state.py:1062`), `creators.gaming_layout` (`core/state.py:969`, column added at `:669-672`), clip `render_opts` JSON with `"gaming"` (`core/pipeline.py:1472`) |
 | `models/panns_mobilenetv1.pth`, `config/audioset_labels.txt` (`analysis/panns.py:33-34`) | editor preview frames `data_dir/previews/frame_<clip>_<t>.jpg` (`server/api.py:1915`) |
 | source video `data_dir/downloads/<video_id>.mp4` (`server/api.py:1896`); the cut `intermediate` clip (`core/pipeline.py:1331`) | nothing under `gaming/` writes config |
 
@@ -139,7 +139,7 @@ Represented per **genre** in `config/gaming.yaml` (prose highlights, callouts, s
 | Core platform functionality the SDK should expose | Pipeline-specific functionality a developer implements |
 |---|---|
 | job option/flag registration + mutual-exclusion rules (`server/api.py:461-477,532-544`, `server/jobs.py:198-210`, `core/modes.py:55-79`) | the option's name, its settings schema/validator (cf. `core/modes.py:115 clean_gaming`) |
-| source video path, duration, title, platform metadata incl. `games` list (`sources/ytdlp_common.py:101`, `core/state.py:905`) | mapping metadata to its own profile (`analysis/gaming.py:170 profile_for`) |
+| source video path, duration, title, platform metadata incl. `games` list (`sources/ytdlp_common.py:101`, `core/state.py:1062`) | mapping metadata to its own profile (`analysis/gaming.py:170 profile_for`) |
 | transcript `segments` (`transcription/transcriber.py:188`) | per-genre/per-game knowledge files (`config/gaming.yaml`) |
 | chat replay messages + audience curve (`analysis/hype.py:64`) | its own per-second signal curves + `(sec, "KIND: text")` events (`chat_moments.chat_signal`, `game_audio.sound_signal`, `game_text.read_screen`) |
 | prompt-guidance + events injection into scoring (`analysis/highlights.py:117,192` `guidance`, `events`, `events_title`), the scoring-profile duck type (`weights`, `guidance()`, `game_at()`, `genre_track()`, `spec`) | the guidance text and callouts (`GamingProfile.guidance`) |
@@ -148,7 +148,7 @@ Represented per **genre** in `config/gaming.yaml` (prose highlights, callouts, s
 | frame grabbing (`video.capture.video_capture`, `server/api.py:1880-1926`), clip cutting (`video.cutter.cut_clip`), `probe_size` (`core/modes.py:189`) | prepass per video (`gaming/run.py:prepare`) |
 | render hook per clip with `intermediate, output, opts, config, ass_path, vf_extra, normalize` and a `None`-means-decline contract (`core/pipeline.py:817-829`) | the layout plan + FFmpeg filter graph (`gaming/layout.py:368`, `gaming/compose.py:65,85`) |
 | encoder/audio args, captions `.ass`, outro, watermark, canvas size (`video.encoding`, `core/pipeline.py:1445`) | safe zones/presets (`gaming/layouts.json`) |
-| per-clip persisted opts (`render_opts["gaming"]`, `core/pipeline.py:1472`) and per-creator memory (`core/state.py:800-818`) | what to persist |
+| per-clip persisted opts (`render_opts["gaming"]`, `core/pipeline.py:1472`) and per-creator memory (`core/state.py:957-975`) | what to persist |
 | progress/cancel (`core/progress.py:30`, `core/cancel.py:46-80`), job log (stdout) | its own status lines |
 | editor endpoints pattern: frames/people/suggest/snap/panels (`server/api.py:1801-1939`) and UI layout editor (`GamingLayoutEditor.tsx`) | plugin UI panels (today hard-coded TSX) |
 | tests harness with model stand-ins (`grab`, `read`, `tag` params: `analysis/game_text.py:141`, `game_vision.py:108`, `game_audio.py:70`) | its own tests |

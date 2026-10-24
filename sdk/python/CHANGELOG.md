@@ -6,6 +6,7 @@ The installed app puts its own SDK on the plugin's path, and it wins over one in
 
 ## Unreleased
 
+- `lint` knows `campaigns`, Clips Kitty's new package for clipping campaigns, as Clips Kitty's own code: a pipeline that imports it is told it can't, as the app stops a run that tries. A pipeline's own `campaigns` module is still its own.
 - `media.jpeg` says "there is no frame at … s in the video: is it that long?" for a time past the end with FFmpeg 7 and later too. Those end the read with an error ("received no packets") where older FFmpeg wrote nothing, so the plugin was told FFmpeg couldn't read the video.
 
 ## 1.3.0 (in Clips Kitty 2.1.0)

@@ -79,6 +79,13 @@ def test_the_spec_bundles_the_sports():
     assert '"sports.yaml"' in text, "the spec no longer bundles config/sports.yaml"
 
 
+def test_the_spec_bundles_the_campaigns_package():
+    """Every import of campaigns/ sits inside a function, which the analyser
+    can't follow."""
+    text = SPEC.read_text(encoding="utf-8")
+    assert 'collect_submodules("campaigns")' in text, "the spec no longer bundles the campaigns package"
+
+
 def test_the_spec_bundles_every_cloud_ai_adapter():
     """adapter_for imports each provider's adapter by name: 2.0.0 shipped
     without them, and saving a cloud key answered 500 (#135). Every adapter

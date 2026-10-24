@@ -15,6 +15,8 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"),   # an Authorization header, printed
     re.compile(r"gh[pousr]_[0-9A-Za-z]{20,}"),            # GitHub tokens
     re.compile(r"oauth:[0-9a-zA-Z]{10,}"),                # Twitch chat oauth
+    # A Discord webhook's URL: its last part is the token that lets anyone post.
+    re.compile(r"discord(?:app)?\.com/api(?:/v\d+)?/webhooks/\d+/[\w-]+"),
     re.compile(r"eyJ[0-9A-Za-z_\-]{20,}\.[0-9A-Za-z_\-]{10,}\.[0-9A-Za-z_\-]{10,}"),  # JWTs
     re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[=:]\s*\S{8,}"),
     re.compile(r"[A-Za-z0-9+/]{48,}={0,2}"),              # long base64 blobs

@@ -323,6 +323,124 @@ CREATE TABLE IF NOT EXISTS watch_items (
     updated_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_watch_items_watch ON watch_items(watch_id, id);
+
+-- ---- Clipping campaigns (campaigns/) -----------------------------------------
+-- Discord ids are snowflakes kept as TEXT: they overflow JavaScript numbers.
+-- Secrets (OAuth tokens, webhook tokens) are NEVER here: core/secrets only.
+-- No foreign keys: like publish_jobs, a submission outlives a re-render that
+-- deletes its clip row.
+
+CREATE TABLE IF NOT EXISTS campaigns (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                 TEXT NOT NULL,
+    enabled              INTEGER NOT NULL DEFAULT 1,
+    archived             INTEGER NOT NULL DEFAULT 0,
+    method               TEXT NOT NULL DEFAULT 'discord_assisted', -- discord_assisted | discord_webhook | website
+    guild_id             TEXT NOT NULL DEFAULT '',
+    guild_name           TEXT NOT NULL DEFAULT '',
+    channel_id           TEXT NOT NULL DEFAULT '',
+    channel_name         TEXT NOT NULL DEFAULT '',
+    channel_link         TEXT NOT NULL DEFAULT '',                 -- as pasted
+    destination_id       INTEGER NOT NULL DEFAULT 0,               -- discord_destinations.id (discord_webhook)
+    website_url          TEXT NOT NULL DEFAULT '',                 -- https only (website)
+    requirements         TEXT NOT NULL DEFAULT '',                 -- free text, shown at review
+    platforms            TEXT NOT NULL DEFAULT '[]',               -- JSON ["tiktok", ...]; [] = any
+    required_accounts    TEXT NOT NULL DEFAULT '{}',               -- JSON {"tiktok": "handle"} (no @)
+    trust_account        INTEGER NOT NULL DEFAULT 0,               -- 1: an account Clips Kitty can't see passes
+    required_hashtags    TEXT NOT NULL DEFAULT '[]',               -- JSON, no '#'
+    required_mentions    TEXT NOT NULL DEFAULT '[]',               -- JSON, no '@'
+    required_text        TEXT NOT NULL DEFAULT '',                 -- phrase the caption must contain
+    min_seconds          REAL NOT NULL DEFAULT 0,
+    max_seconds          REAL NOT NULL DEFAULT 0,                  -- 0 = no limit
+    deadline             TEXT NOT NULL DEFAULT '',                 -- UTC RFC 3339; '' = none
+    approval_required    INTEGER NOT NULL DEFAULT 1,
+    instructions         TEXT NOT NULL DEFAULT '',
+    command_name         TEXT NOT NULL DEFAULT '',                 -- "submit" (no slash); '' = plain message
+    command_args         TEXT NOT NULL DEFAULT '[]',               -- JSON [{"name","value"}]; value is a template
+    url_argument         TEXT NOT NULL DEFAULT '',                 -- the arg whose value is {url}
+    extra_fields         TEXT NOT NULL DEFAULT '[]',               -- JSON [{"name","label","default","required"}]
+    message_template     TEXT NOT NULL DEFAULT '{url}',
+    thread_name_template TEXT NOT NULL DEFAULT '{title}',          -- forum destinations
+    review_first         INTEGER NOT NULL DEFAULT 0,               -- applied to every new submission (off for new campaigns)
+    filters              TEXT NOT NULL DEFAULT '{}',               -- JSON {"plugins":[],"modes":[],"creator_ids":[]}
+    notes                TEXT NOT NULL DEFAULT '',
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS discord_destinations (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind          TEXT NOT NULL DEFAULT 'webhook',   -- webhook (the only kind)
+    source        TEXT NOT NULL DEFAULT 'pasted',    -- pasted | oauth
+    label         TEXT NOT NULL DEFAULT '',
+    guild_id      TEXT NOT NULL DEFAULT '',
+    guild_name    TEXT NOT NULL DEFAULT '',
+    channel_id    TEXT NOT NULL DEFAULT '',
+    webhook_id    TEXT NOT NULL DEFAULT '',          -- not secret; the token is in core/secrets
+    webhook_name  TEXT NOT NULL DEFAULT '',
+    is_forum      INTEGER NOT NULL DEFAULT 0,
+    thread_id     TEXT NOT NULL DEFAULT '',          -- post into an existing thread
+    state         TEXT NOT NULL DEFAULT 'connected', -- connected | gone | denied
+    last_error    TEXT NOT NULL DEFAULT '',
+    last_sent_at  REAL NOT NULL DEFAULT 0,           -- unix seconds; spacing sends
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS campaign_submissions (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id        INTEGER NOT NULL,
+    -- The post's lasting identity, as in clip_publishes: never changes after insert.
+    video_id           TEXT NOT NULL,
+    start_s            REAL NOT NULL,                 -- round(x, 2), as clips do
+    end_s              REAL NOT NULL,
+    platform           TEXT NOT NULL,
+    clip_id            INTEGER NOT NULL DEFAULT 0,    -- last known id; follows re-renders
+    clip_title         TEXT NOT NULL DEFAULT '',      -- snapshot for lists and {title}
+    provider           TEXT NOT NULL DEFAULT '',      -- woopsocial | upload_post | youtube | manual (copied from the row found)
+    publish_job_id     INTEGER NOT NULL DEFAULT 0,    -- direct YouTube upload being followed
+    origin             TEXT NOT NULL DEFAULT 'editor',-- editor | later | publish_all | watch
+    origin_ref         TEXT NOT NULL DEFAULT '',      -- "watch:3/item:41"
+    method             TEXT NOT NULL DEFAULT 'discord_assisted', -- copied from the campaign; editable
+    destination_id     INTEGER NOT NULL DEFAULT 0,
+    overridden         TEXT NOT NULL DEFAULT '[]',    -- JSON: which of "method", "destination_id" the user set on this row
+    hold               INTEGER NOT NULL DEFAULT 0,    -- 1 = saved for later
+    review_first       INTEGER NOT NULL DEFAULT 0,
+    status             TEXT NOT NULL DEFAULT 'waiting_publication',
+    status_reason      TEXT NOT NULL DEFAULT '',      -- why it is in this state (shown)
+    due_at             TEXT NOT NULL DEFAULT '',      -- UTC; the followed post's due time (posts.due_time / publish_at)
+    post_url           TEXT NOT NULL DEFAULT '',
+    url_source         TEXT NOT NULL DEFAULT '',      -- provider | youtube | manual
+    post_id            TEXT NOT NULL DEFAULT '',      -- provider post id / youtube_id
+    account            TEXT NOT NULL DEFAULT '',      -- posting account when known
+    posted_at          TEXT NOT NULL DEFAULT '',      -- when first seen live (UTC)
+    checks             TEXT NOT NULL DEFAULT '[]',    -- JSON [{"name","result","message"}]
+    message_text       TEXT NOT NULL DEFAULT '',      -- user override of the message or the whole assisted line; '' = render
+    extra_values       TEXT NOT NULL DEFAULT '{}',    -- JSON {extra field name: value}
+    arg_values         TEXT NOT NULL DEFAULT '{}',    -- JSON {command argument name: value}; per-row overrides
+    attempts           INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at    REAL NOT NULL DEFAULT 0,       -- unix seconds: next resolve check (waiting rows) or next send (ready)
+    sending_started_at REAL NOT NULL DEFAULT 0,
+    sent_at            TEXT NOT NULL DEFAULT '',
+    sent_by            TEXT NOT NULL DEFAULT '',      -- webhook | user | '' (not known: an ambiguous send or a restart)
+    discord_message_id TEXT NOT NULL DEFAULT '',
+    discord_channel_id TEXT NOT NULL DEFAULT '',
+    opened_at          TEXT NOT NULL DEFAULT '',
+    confirmed_at       TEXT NOT NULL DEFAULT '',
+    confirmation_note  TEXT NOT NULL DEFAULT '',
+    error              TEXT NOT NULL DEFAULT '',
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    UNIQUE (campaign_id, video_id, start_s, end_s, platform)
+);
+-- One URL is submitted to one campaign once, whatever path created the rows.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_submissions_url
+    ON campaign_submissions(campaign_id, post_url)
+    WHERE post_url != '' AND status NOT IN ('cancelled', 'expired');
+CREATE INDEX IF NOT EXISTS idx_campaign_submissions_status
+    ON campaign_submissions(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_campaign_submissions_clip
+    ON campaign_submissions(video_id, start_s, end_s);
 """
 
 # Columns set_stream() may change. Names are interpolated into SQL, so they come
@@ -343,6 +461,45 @@ WATCH_ITEM_COLUMNS = frozenset({
     "retries", "retry_at", "publish_attempts", "publish_retry_at", "delivery_retries",
     "source_freed", "requested", "orientation", "chosen_clips",
 })
+
+# Same rule for the campaign tables. A submission's identity (campaign, video,
+# window, platform) is left out on purpose: it is the dedupe key, fixed at
+# insert, so no update can move a row onto another post.
+CAMPAIGN_COLUMNS = frozenset({
+    "name", "enabled", "archived", "method", "guild_id", "guild_name", "channel_id",
+    "channel_name", "channel_link", "destination_id", "website_url", "requirements",
+    "platforms", "required_accounts", "trust_account", "required_hashtags",
+    "required_mentions", "required_text", "min_seconds", "max_seconds", "deadline",
+    "approval_required", "instructions", "command_name", "command_args", "url_argument",
+    "extra_fields", "message_template", "thread_name_template", "review_first", "filters",
+    "notes",
+})
+DESTINATION_COLUMNS = frozenset({
+    "kind", "source", "label", "guild_id", "guild_name", "channel_id", "webhook_id",
+    "webhook_name", "is_forum", "thread_id", "state", "last_error", "last_sent_at",
+})
+SUBMISSION_COLUMNS = frozenset({
+    "clip_id", "clip_title", "provider", "publish_job_id", "origin", "origin_ref", "method",
+    "destination_id", "overridden", "hold", "review_first", "status", "status_reason",
+    "due_at", "post_url", "url_source", "post_id", "account", "posted_at", "checks",
+    "message_text", "extra_values", "arg_values", "attempts", "next_attempt_at",
+    "sending_started_at", "sent_at", "sent_by", "discord_message_id", "discord_channel_id",
+    "opened_at", "confirmed_at", "confirmation_note", "error",
+})
+SUBMISSION_IDENTITY = ("campaign_id", "video_id", "start_s", "end_s", "platform")
+
+
+def _cells(fields: dict) -> dict:
+    """Column values as sqlite takes them: a list or dict goes in as JSON, so
+    a caller can pass `platforms=["tiktok"]` as readily as its text."""
+    return {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in fields.items()}
+
+
+def _checked(fields: dict, allowed: frozenset, what: str) -> dict:
+    bad = set(fields) - allowed
+    if bad:
+        raise ValueError(f"unknown {what} columns: {sorted(bad)}")
+    return _cells(fields)
 
 # Video lifecycle:  queued -> downloaded -> transcribed -> analyzed -> done | failed
 # Clip lifecycle:   rendered -> queued -> scheduled -> uploaded | failed
@@ -1659,6 +1816,226 @@ class StateDB:
 
     def get_clip(self, clip_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
+
+    # ---- clipping campaigns (campaigns/) ---------------------------------------
+    #
+    # Plain storage with column allowlists, like the watch tables. The rules
+    # (campaigns.model.clean_campaign) and the status changes
+    # (campaigns.statemachine) live in campaigns/, not here.
+
+    def _insert(self, table: str, row: dict) -> int:
+        now = _now()
+        row = {**row, "created_at": now, "updated_at": now}
+        cur = self.conn.execute(
+            f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+            tuple(row.values()),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def _update(self, table: str, row_id: int, fields: dict) -> bool:
+        if not fields:
+            return False
+        assignments = ", ".join(f"{column} = ?" for column in fields)
+        cur = self.conn.execute(
+            f"UPDATE {table} SET {assignments}, updated_at = ? WHERE id = ?",
+            (*fields.values(), _now(), int(row_id)),
+        )
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def insert_campaign(self, name: str, **fields) -> int:
+        fields = _checked(fields, CAMPAIGN_COLUMNS - {"name"}, "campaign")
+        return self._insert("campaigns", {"name": name, **fields})
+
+    def get_campaign(self, campaign_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM campaigns WHERE id = ?", (int(campaign_id),)
+        ).fetchone()
+
+    def list_campaigns(self, *, archived: bool = False) -> list[sqlite3.Row]:
+        """The campaigns in the order they were made. Archived ones only when
+        `archived` is true, and then with the others."""
+        clause = "" if archived else "WHERE archived = 0 "
+        return self.conn.execute(f"SELECT * FROM campaigns {clause}ORDER BY id").fetchall()
+
+    def set_campaign(self, campaign_id: int, **fields) -> None:
+        self._update("campaigns", campaign_id, _checked(fields, CAMPAIGN_COLUMNS, "campaign"))
+
+    def delete_campaign(self, campaign_id: int) -> str:
+        """Delete a campaign nothing was ever submitted to ("deleted").
+        Otherwise it is archived, so its submissions keep a campaign to
+        belong to ("archived"). "" when there is no such campaign."""
+        if self.get_campaign(campaign_id) is None:
+            return ""
+        used = self.conn.execute(
+            "SELECT 1 FROM campaign_submissions WHERE campaign_id = ? LIMIT 1", (int(campaign_id),)
+        ).fetchone()
+        if used is not None:
+            self.set_campaign(campaign_id, archived=1)
+            return "archived"
+        self.conn.execute("DELETE FROM campaigns WHERE id = ?", (int(campaign_id),))
+        self.conn.commit()
+        return "deleted"
+
+    def insert_destination(self, **fields) -> int:
+        return self._insert(
+            "discord_destinations", _checked(fields, DESTINATION_COLUMNS, "destination")
+        )
+
+    def get_destination(self, destination_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM discord_destinations WHERE id = ?", (int(destination_id),)
+        ).fetchone()
+
+    def list_destinations(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM discord_destinations ORDER BY id").fetchall()
+
+    def set_destination(self, destination_id: int, **fields) -> None:
+        self._update(
+            "discord_destinations", destination_id,
+            _checked(fields, DESTINATION_COLUMNS, "destination"),
+        )
+
+    def delete_destination(self, destination_id: int) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM discord_destinations WHERE id = ?", (int(destination_id),)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def insert_submission(self, campaign_id: int, video_id: str, start_s: float, end_s: float,
+                          platform: str, **fields) -> int | None:
+        """A new submission of one post to one campaign, or None when that
+        post is already submitted to it (the identity clashed).
+
+        Only an identity clash is ignored: ON CONFLICT names the identity, so
+        any other constraint (a NOT NULL, the URL index) still raises. A row
+        always starts without a URL; a URL goes through evaluation, which
+        checks it against the campaign's other rows first.
+        """
+        if "post_url" in fields:
+            raise ValueError("post_url is set through evaluation, never at insert")
+        fields = _checked(fields, SUBMISSION_COLUMNS, "submission")
+        now = _now()
+        row = {
+            "campaign_id": int(campaign_id), "video_id": video_id,
+            "start_s": round(float(start_s), 2), "end_s": round(float(end_s), 2),
+            "platform": platform, **fields, "created_at": now, "updated_at": now,
+        }
+        cur = self.conn.execute(
+            f"INSERT INTO campaign_submissions ({', '.join(row)}) "
+            f"VALUES ({', '.join('?' * len(row))}) "
+            f"ON CONFLICT({', '.join(SUBMISSION_IDENTITY)}) DO NOTHING",
+            tuple(row.values()),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid) if cur.rowcount == 1 else None
+
+    def find_submission(self, campaign_id: int, video_id: str, start_s: float, end_s: float,
+                        platform: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM campaign_submissions WHERE campaign_id = ? AND video_id = ? "
+            "AND start_s = ? AND end_s = ? AND platform = ?",
+            (int(campaign_id), video_id, round(float(start_s), 2), round(float(end_s), 2), platform),
+        ).fetchone()
+
+    def get_submission(self, submission_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM campaign_submissions WHERE id = ?", (int(submission_id),)
+        ).fetchone()
+
+    def active_submission_with_url(self, campaign_id: int, post_url: str, *,
+                                   exclude_id: int = 0) -> sqlite3.Row | None:
+        """Another row of this campaign that holds this URL and still counts
+        (not cancelled or expired): the check before a URL is applied. The
+        partial unique index is the net under it."""
+        if not post_url:
+            return None
+        return self.conn.execute(
+            "SELECT * FROM campaign_submissions WHERE campaign_id = ? AND post_url = ? "
+            "AND status NOT IN ('cancelled', 'expired') AND id != ? ORDER BY id LIMIT 1",
+            (int(campaign_id), post_url, int(exclude_id)),
+        ).fetchone()
+
+    def list_submissions(self, *, statuses: tuple[str, ...] = (), campaign_id: int | None = None,
+                         clip_id: int | None = None, video_id: str | None = None,
+                         limit: int = 200) -> list[sqlite3.Row]:
+        """Newest first, filtered by whichever of these are given."""
+        where, args = [], []
+        if statuses:
+            where.append(f"status IN ({','.join('?' * len(statuses))})")
+            args.extend(statuses)
+        for column, value in (("campaign_id", campaign_id), ("clip_id", clip_id),
+                              ("video_id", video_id)):
+            if value is not None:
+                where.append(f"{column} = ?")
+                args.append(value)
+        clause = f"WHERE {' AND '.join(where)} " if where else ""
+        return self.conn.execute(
+            f"SELECT * FROM campaign_submissions {clause}ORDER BY id DESC LIMIT ?",
+            (*args, int(limit)),
+        ).fetchall()
+
+    def set_submission(self, submission_id: int, *, expect: tuple[str, ...] = (), **fields) -> bool:
+        """Change a submission. With `expect`, only while its status is one of
+        those (compare-and-set), so a route and the background step cannot
+        both win a status change. True when the row changed.
+
+        The identity columns are refused: a row never moves to another post.
+        """
+        fixed = set(fields) & set(SUBMISSION_IDENTITY)
+        if fixed:
+            raise ValueError(f"a submission's identity can't change: {sorted(fixed)}")
+        fields = _checked(fields, SUBMISSION_COLUMNS, "submission")
+        if not fields:
+            return False
+        assignments = ", ".join(f"{column} = ?" for column in fields)
+        guard, args = "", []
+        if expect:
+            guard = f" AND status IN ({','.join('?' * len(expect))})"
+            args = list(expect)
+        cur = self.conn.execute(
+            f"UPDATE campaign_submissions SET {assignments}, updated_at = ? WHERE id = ?{guard}",
+            (*fields.values(), _now(), int(submission_id), *args),
+        )
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def submissions_due(self, statuses: tuple[str, ...], *, now: float, limit: int = 100,
+                        no_url_manual: bool = False) -> list[sqlite3.Row]:
+        """Rows whose next check (or send) is due, the longest-waiting first.
+        `no_url_manual` adds manual rows still without a link, which keep
+        being followed so a post published later still resolves them."""
+        parts, args = [], []
+        if statuses:
+            parts.append(f"status IN ({','.join('?' * len(statuses))})")
+            args.extend(statuses)
+        if no_url_manual:
+            parts.append("(status = 'manual' AND post_url = '')")
+        if not parts:
+            return []
+        return self.conn.execute(
+            f"SELECT * FROM campaign_submissions WHERE ({' OR '.join(parts)}) "
+            "AND next_attempt_at <= ? ORDER BY next_attempt_at, id LIMIT ?",
+            (*args, float(now), int(limit)),
+        ).fetchall()
+
+    def recover_sending_submissions(self, reason: str, *, started_before: float | None = None) -> int:
+        """Rows left `sending` become `awaiting_confirmation` with nobody
+        recorded as the sender, and are never sent again by themselves: the
+        message may have reached Discord, and a webhook has no way to ask.
+        Every such row at startup; with `started_before`, only the ones whose
+        send began before then (the sweep at the start of each pass)."""
+        sql = ("UPDATE campaign_submissions SET status = 'awaiting_confirmation', sent_by = '', "
+               "status_reason = ?, updated_at = ? WHERE status = 'sending'")
+        args: list = [reason, _now()]
+        if started_before is not None:
+            sql += " AND sending_started_at < ?"
+            args.append(float(started_before))
+        cur = self.conn.execute(sql, args)
+        self.conn.commit()
+        return cur.rowcount
 
     # ---- reporting ----------------------------------------------------
 
