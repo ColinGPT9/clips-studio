@@ -212,6 +212,31 @@ def test_one_link_is_submitted_to_one_campaign_once_until_cancelled(db):
         db.set_submission(second, post_url=URL)
 
 
+@pytest.mark.parametrize("refused", [
+    lambda db, c, first, second: db.set_submission(second, post_url=URL),
+    lambda db, c, first, second: _sub(db, c, start=0, end=32, clip_title=None),
+    lambda db, c, first, second: db.insert_campaign(None),
+    lambda db, c, first, second: db.set_campaign(c, name=None),
+])
+def test_a_write_the_database_refuses_leaves_no_transaction_open(db, tmp_path, refused):
+    campaign_id = _campaign(db)
+    first = _sub(db, campaign_id, start=0, end=30)
+    second = _sub(db, campaign_id, start=0, end=31)
+    db.set_submission(first, post_url=URL)
+    with pytest.raises(sqlite3.IntegrityError):
+        refused(db, campaign_id, first, second)
+    open_after = db.conn.in_transaction
+    assert open_after is False
+    # Another connection (another thread's StateDB) can still write at once.
+    other = StateDB(tmp_path / "state.db")
+    try:
+        other.conn.execute("PRAGMA busy_timeout = 0")
+        took = other.set_submission(first, status="cancelled")
+    finally:
+        other.close()
+    assert took is True
+
+
 # ---- compare-and-set, due rows, recovery ------------------------------------------------------
 
 def test_set_submission_compares_the_status_before_it_sets(db):
@@ -225,6 +250,17 @@ def test_set_submission_compares_the_status_before_it_sets(db):
     results = [db.set_submission(sub_id, status_reason="no expectation"), db.set_submission(sub_id),
                db.set_submission(999, status="ready")]
     assert results == [True, False, False]
+
+
+def test_set_submission_can_compare_other_columns_too(db):
+    sub_id = _sub(db, _campaign(db), hold=1)
+    lost = db.set_submission(sub_id, expect=("waiting_publication",), match={"hold": 0}, status="ready")
+    assert lost is False and db.get_submission(sub_id)["status"] == "waiting_publication"
+    won = db.set_submission(sub_id, expect=("waiting_publication",), match={"hold": 1, "opened_at": ""},
+                            status="ready")
+    assert won is True and db.get_submission(sub_id)["status"] == "ready"
+    with pytest.raises(ValueError):
+        db.set_submission(sub_id, match={"bogus": 1}, status="manual")
 
 
 def test_submissions_due_are_the_longest_waiting_first(db):

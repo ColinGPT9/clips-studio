@@ -167,6 +167,22 @@ def test_an_empty_link_or_required_field_needs_filling_in():
     assert formatter.message_checks(campaign, {**VALUES, "goal": "5"}, method="discord_assisted") == []
 
 
+def test_a_command_typed_by_hand_that_leaves_out_the_link_is_stopped():
+    linkless = _campaign(command_name="submit", command_args=[{"name": "platform", "value": "{platform}"}])
+    checks = formatter.message_checks(linkless, VALUES, method="discord_assisted")
+    assert [(c.name, c.result) for c in checks] == [("fields", FAIL)]
+    assert "leaves out the post's link" in checks[0].message
+    # The form's preview says so before the campaign is saved.
+    shown = formatter.preview(linkless, None)
+    assert shown["problems"] == [checks[0].message]
+    # The row's own words replace the command, and a webhook never runs one.
+    assert formatter.message_checks(linkless, VALUES, method="discord_assisted", message_text="{url}") == []
+    assert formatter.message_checks(linkless, VALUES, method="discord_webhook") == []
+    # A command that takes the link, or no argument at all, is fine.
+    assert formatter.message_checks(_command_campaign(), VALUES, method="discord_assisted") == []
+    assert formatter.message_checks(_campaign(command_name="submit"), VALUES, method="discord_assisted") == []
+
+
 def test_a_webhook_message_still_too_long_or_empty_is_stopped():
     long_link = {**VALUES, "url": "https://example.com/" + "x" * 2100}
     checks = formatter.message_checks(_campaign(), long_link, method="discord_webhook")

@@ -49,6 +49,17 @@ _POSTS = {
     "reddit": (r"(?:www\.)?reddit\.com/.+",),
 }
 _POST_RES = {p: tuple(re.compile(rf"^{r}/?$") for r in rs) for p, rs in _POSTS.items()}
+# One spelling per post, so the same post typed or returned two ways is one
+# link to the campaign's duplicate check: the host every one of these opens
+# on (ui/src/main/index.ts EXTERNAL_ALLOWED), and no trailing slash.
+_CANONICAL_HOSTS = {
+    "tiktok.com": "www.tiktok.com", "m.tiktok.com": "www.tiktok.com",
+    "youtube.com": "www.youtube.com", "m.youtube.com": "www.youtube.com",
+    "www.youtu.be": "youtu.be",
+    "instagram.com": "www.instagram.com",
+    "facebook.com": "www.facebook.com", "m.facebook.com": "www.facebook.com",
+    "web.facebook.com": "www.facebook.com",
+}
 _TIKTOK_SHORT = re.compile(r"^(?:vm|vt)\.tiktok\.com/[\w-]+/?$")
 _TIKTOK_HANDLE = re.compile(r"tiktok\.com/(@[\w.]+)/video/", re.IGNORECASE)
 
@@ -95,8 +106,10 @@ def platform_of(url: str) -> str | None:
 
 def validate(platform: str, url: str) -> tuple[str, str]:
     """(normalised_url, problem). The problem is '' when the link is a public
-    post's link on `platform`; it is then given back with its query and
-    fragment removed, except a YouTube watch page's ?v=. https only."""
+    post's link on `platform`; it is then given back in one spelling: its
+    query and fragment removed (except a YouTube watch page's ?v=), no
+    trailing slash, and the www. host for TikTok, YouTube, Instagram and
+    Facebook. https only."""
     text = str(url or "").strip()
     if not text:
         return "", "Enter the post's link"
@@ -115,12 +128,12 @@ def validate(platform: str, url: str) -> tuple[str, str]:
         return "", "Clips Kitty can't tell which platform that link is on"
     if found != platform:
         return "", f"That's a {platform_label(found)} link, not a {platform_label(platform)} one"
-    path = parts.path or "/"
+    host = _CANONICAL_HOSTS.get(host, host)
+    path = parts.path.rstrip("/")
     query = ""
-    if platform == "youtube" and path.rstrip("/") == "/watch":
+    if platform == "youtube" and path == "/watch":
         video = (parse_qs(parts.query).get("v") or [""])[0]
         query = f"?v={video}"
-        path = "/watch"
     normalised = f"https://{host}{path}{query}"
     shape = f"{host}{path}{query}"
     if platform == "tiktok" and _TIKTOK_SHORT.match(shape):
@@ -184,7 +197,9 @@ def resolve(db, sub, *, now=None) -> Resolution:
 def _manual(sub: dict) -> Resolution:
     url = str(sub.get("post_url") or "")
     if not url:
-        return Resolution("not_published", provider="manual", reason="Enter the post's link")
+        # Only the user can give this one its link, so it goes to them now
+        # rather than waiting for a publisher that will never answer.
+        return Resolution("blocked", provider="manual", source="manual", reason="Enter the post's link")
     normalised, problem = validate(sub["platform"], url)
     if problem:
         return Resolution("blocked", url=url, provider="manual", source="manual", reason=problem)

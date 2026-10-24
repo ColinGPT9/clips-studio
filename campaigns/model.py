@@ -257,9 +257,23 @@ FILTER_KEYS = ("plugins", "modes", "creator_ids")
 
 # A new campaign's values, for the rules that look at two fields at once.
 _NEW = {
-    "method": "discord_assisted", "destination_id": 0, "website_url": "", "command_args": [],
-    "url_argument": "", "min_seconds": 0.0, "max_seconds": 0.0, "guild_id": "", "channel_id": "",
+    "method": "discord_assisted", "destination_id": 0, "website_url": "", "command_name": "",
+    "command_args": [], "url_argument": "", "min_seconds": 0.0, "max_seconds": 0.0, "guild_id": "",
+    "channel_id": "",
 }
+
+
+def carries_link(args, url_argument: str) -> bool:
+    """Whether a command's arguments put the post's link in it: the link's
+    argument left blank (it is then filled with the link), or any argument
+    whose value has {url} in it."""
+    for arg in args:
+        if not isinstance(arg, dict):
+            continue
+        value = str(arg.get("value") or "")
+        if "{url}" in value or (url_argument and arg.get("name") == url_argument and not value):
+            return True
+    return False
 
 
 def _text(value, what: str, *, limit: int = 0) -> str:
@@ -553,6 +567,10 @@ def clean_campaign(fields: dict, *, partial: bool, current=None) -> dict:
             if out.get(column) and out[column] != found:
                 raise ValueError("The channel link and the server or channel ID don't match")
             out[column] = found
+        if not link.channel_id and "channel_id" not in out:
+            # A server's link names no channel: the one stored before belongs
+            # to whatever link it came from, maybe another server.
+            out["channel_id"] = ""
 
     base = dict(_NEW)
     if current is not None:
@@ -572,6 +590,13 @@ def clean_campaign(fields: dict, *, partial: bool, current=None) -> dict:
         names = [a.get("name") for a in json_field(view["command_args"], [])]
         if view["url_argument"] not in names:
             raise ValueError("The link's argument must be one of the command's arguments")
+    if knows("command_name", "command_args", "url_argument") and view["command_name"]:
+        # A command with no arguments at all is left alone: its bot may ask
+        # for the link itself, and the link has its own copy button.
+        args = json_field(view["command_args"], [])
+        if args and not carries_link(args, view["url_argument"]):
+            raise ValueError("Pick which argument takes the post's link: leave its value blank "
+                             "or put {url} in it")
     if knows("min_seconds", "max_seconds") and view["max_seconds"] \
             and float(view["min_seconds"]) > float(view["max_seconds"]):
         raise ValueError("The shortest clip can't be longer than the longest")

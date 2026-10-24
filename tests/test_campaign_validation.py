@@ -62,7 +62,7 @@ def test_methods_that_have_what_they_need():
     (f"https://discord.com/channels/{GUILD}/{CHANNEL}/{MESSAGE}", (GUILD, CHANNEL)),
     (f"https://ptb.discord.com/channels/{GUILD}/{CHANNEL}", (GUILD, CHANNEL)),
     (f"https://discordapp.com/channels/{GUILD}/{CHANNEL}", (GUILD, CHANNEL)),
-    (f"https://discord.com/channels/{GUILD}", (GUILD, None)),
+    (f"https://discord.com/channels/{GUILD}", (GUILD, "")),
 ])
 def test_a_channel_link_fills_in_the_server_and_channel(link, ids):
     out = ok({"channel_link": link})
@@ -87,6 +87,12 @@ def test_a_channel_link_and_typed_ids_must_agree():
     link = f"https://discord.com/channels/{GUILD}/{CHANNEL}"
     assert ok({"channel_link": link, "channel_id": CHANNEL})["channel_id"] == CHANNEL
     refused({"channel_link": link, "channel_id": MESSAGE}, "don't match")
+    # A server's link names no channel, so it never keeps another one's.
+    server = f"https://discord.com/channels/{MESSAGE}"
+    stored = {"guild_id": GUILD, "channel_id": CHANNEL}
+    assert clean_campaign({"channel_link": server}, partial=True, current=stored) == {
+        "channel_link": server, "guild_id": MESSAGE, "channel_id": ""}
+    assert ok({"channel_link": server, "channel_id": CHANNEL})["channel_id"] == CHANNEL
     refused({"guild_id": "12345"}, "17 to 20 digits")
     refused({"channel_id": 200000000000000002}, "must be text")
     assert ok({"guild_id": GUILD, "channel_id": CHANNEL})["guild_id"] == GUILD
@@ -139,6 +145,41 @@ def test_the_links_argument_is_one_of_the_arguments():
     with pytest.raises(ValueError, match="one of the command's arguments"):
         clean_campaign({"url_argument": "url"}, partial=True, current=stored)
     assert clean_campaign({"url_argument": "link"}, partial=True, current=stored)["url_argument"] == "link"
+
+
+LINKLESS = "Pick which argument takes the post's link"
+
+
+@pytest.mark.parametrize("args, url_argument, carries", [
+    ([{"name": "link", "value": ""}, {"name": "platform", "value": "{platform}"}], "link", True),
+    ([{"name": "link", "value": "{url}?ref=clips"}], "link", True),
+    ([{"name": "post", "value": "{url}"}, {"name": "platform", "value": "{platform}"}], "", True),
+    # No argument at all: the bot may ask for the link itself after the command.
+    ([], "", True),
+    ([{"name": "platform", "value": "{platform}"}], "", False),
+    ([{"name": "link", "value": ""}], "", False),
+    ([{"name": "link", "value": "{title}"}, {"name": "platform", "value": "{platform}"}], "link", False),
+])
+def test_a_command_with_arguments_takes_the_posts_link_in_one(args, url_argument, carries):
+    fields = {"command_name": "/submit", "command_args": args, "url_argument": url_argument}
+    if carries:
+        assert ok(fields)["command_name"] == "submit"
+    else:
+        refused(fields, LINKLESS)
+    # A campaign posting a plain message has no command to check.
+    assert ok({**fields, "command_name": ""})["command_name"] == ""
+
+
+def test_an_edit_of_the_command_is_checked_against_what_is_stored():
+    stored = {"command_name": "submit", "url_argument": "link",
+              "command_args": json.dumps([{"name": "link", "value": ""}])}
+    with pytest.raises(ValueError, match=LINKLESS):
+        clean_campaign({"command_args": [{"name": "link", "value": "{title}"}]}, partial=True,
+                       current=stored)
+    with pytest.raises(ValueError, match=LINKLESS):
+        clean_campaign({"url_argument": ""}, partial=True, current=stored)
+    edit = {"command_args": [{"name": "link", "value": ""}, {"name": "views", "value": "{views}"}]}
+    assert "command_args" in clean_campaign(edit, partial=True, current=stored)
 
 
 # ---- extra fields and templates -------------------------------------------------------------

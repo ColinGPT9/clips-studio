@@ -1,5 +1,6 @@
 """The submission queue's steps that need no Discord and no background thread
-(DESIGN §5.3): evaluating a submission once its post's link is known.
+(DESIGN §5.3): evaluating a submission once its post's link is known, and
+reopening one without losing a link the user typed.
 
 The attach routes and the background step (DESIGN §6, a later phase) call
 evaluate for a link resolution found and for one the user typed.
@@ -8,7 +9,7 @@ evaluate for a link resolution found and for one the user typed.
 import json
 import sqlite3
 
-from campaigns import eligibility, formatter, statemachine
+from campaigns import eligibility, formatter, statemachine, urls
 from campaigns.model import FAIL, UNKNOWN, cell, json_field, utc_text
 from server import posts
 
@@ -41,9 +42,13 @@ def evaluate(db, sub_id: int, res, *, now, event: str = "url_found", source: dic
     for a typed link, edit or campaign_changed when a change re-evaluates).
     `source` is eligibility.clip_source's answer, looked up here when the
     campaign routes and none is given. Returns the row after it.
+
+    Only a live resolution is taken (a typed link is built as one). A blocked
+    one is the caller's to hand to the user with its reason: its link, if it
+    has one, is for the user to check first.
     """
-    if not res.url:
-        raise ValueError("evaluate needs the post's link")
+    if res.state != "live" or not res.url:
+        raise ValueError("evaluate needs a live post's link")
     found = db.get_submission(sub_id)
     if found is None:
         raise statemachine.NotAllowed(f"Submission #{sub_id} doesn't exist")
@@ -84,6 +89,10 @@ def evaluate(db, sub_id: int, res, *, now, event: str = "url_found", source: dic
     verdict = eligibility.verdict(checks, method=method,
                                   trust_account=bool(int(cell(campaign, "trust_account", 0) or 0)))
     target, reason, extra = _outcome(verdict, checks, row, method, moment.timestamp())
+    if row["status"] == "failed":
+        # Out of failed with a new link or setting: its sends start counting
+        # again, as a retry's do, and the last send's error is no longer news.
+        extra = {"attempts": 0, "error": "", **extra}
     try:
         return statemachine.apply(db, sub_id, event, now=now, to=target, **saved, **extra,
                                   checks=json.dumps([c.as_dict() for c in checks]), status_reason=reason)
@@ -93,6 +102,36 @@ def evaluate(db, sub_id: int, res, *, now, event: str = "url_found", source: dic
         number = f"#{duplicate['id']}" if duplicate is not None else "another submission"
         return statemachine.apply(db, sub_id, event, now=now, to="cancelled", **saved,
                                   status_reason=f"Already submitted to this campaign as {number}")
+
+
+def reopen(db, sub_id: int, *, now, **fields):
+    """Re-attach a cancelled, expired or failed submission (the user's
+    explicit attach or a move, never automation) and return the row after it.
+
+    The state machine's reopen clears the row's link, so the link is checked
+    against the campaign's other rows again like any new one. A provider's
+    link is found again by resolution; a link the user typed is found by
+    nothing, so it is given back here, through evaluation and its duplicate
+    check, at once."""
+    before = db.get_submission(sub_id)
+    if before is None:
+        raise statemachine.NotAllowed(f"Submission #{sub_id} doesn't exist")
+    typed = str(before["post_url"] or "")
+    if before["url_source"] != "manual" and before["provider"] != "manual":
+        typed = ""
+    row = statemachine.apply(db, sub_id, "reopen", now=now, **fields)
+    if not typed:
+        return row
+    url, problem = urls.validate(row["platform"], typed)
+    if problem:
+        return row
+    res = urls.Resolution("live", url=url, source="manual",
+                          account=urls.account_from_url(row["platform"], url))
+    try:
+        return evaluate(db, sub_id, res, now=now, event="set_url")
+    except statemachine.NotAllowed:
+        # The background step moved it on meanwhile: what it did stands.
+        return db.get_submission(sub_id)
 
 
 def _outcome(verdict: str, checks, row: dict, method: str, seconds: float) -> tuple[str, str, dict]:

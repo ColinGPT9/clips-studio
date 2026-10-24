@@ -198,13 +198,20 @@ def webhook_payload(campaign, sub, values: dict, dest) -> dict:
 def message_checks(campaign, values: dict, *, method: str, message_text: str = "",
                    dest=None) -> list[Check]:
     """What stops a submission's words from going out as they are: the link
-    or a required extra field left empty ("Fill in ..."), and for a webhook a
-    message still over 2,000 characters after trimming, or empty. Each one
-    fails, so the verdict stops it for review."""
+    or a required extra field left empty ("Fill in ..."), a command typed by
+    hand whose arguments leave the link out, and for a webhook a message
+    still over 2,000 characters after trimming, or empty. Each one fails, so
+    the verdict stops it for review."""
     campaign = dict(campaign)
     out = []
-    if not str(values.get("url") or ""):
+    url = str(values.get("url") or "")
+    if not url:
         out.append(Check("fields", FAIL, "Fill in the post's link"))
+    elif method != "discord_webhook" and campaign.get("command_name") and not str(message_text or "").strip():
+        args = command(campaign, values)["args"]
+        if args and not any(url in a["value"] for a in args):
+            out.append(Check("fields", FAIL, "The command leaves out the post's link: "
+                                             "pick which argument takes it"))
     for field in json_field(campaign.get("extra_fields"), []):
         if isinstance(field, dict) and field.get("required") and not str(values.get(field.get("name"), "")):
             out.append(Check("fields", FAIL, f"Fill in {field.get('label') or field.get('name')}"))

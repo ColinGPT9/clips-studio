@@ -131,9 +131,14 @@ def test_a_due_send_starts_and_is_stamped(db):
     ("website", "manual", "manual"),
 ])
 def test_approving_and_submitting_follow_the_method(db, method, approved, submitted):
-    review = _row(db, "review", method=method)
+    # Its next check had been pushed an hour out while it waited; approved,
+    # a webhook row is due now, as a submitted one is.
+    review = _row(db, "review", method=method, next_attempt_at=NOW.timestamp() + 3600)
     after = apply(db, review, "approve", now=NOW)
     assert after["status"] == approved
+    if approved == "ready":
+        assert after["next_attempt_at"] == NOW.timestamp()
+        assert statemachine.allowed(after, "send_start", now=NOW)
     held = _row(db, "ready", method=method, hold=1, next_attempt_at=9e9)
     after = apply(db, held, "submit", now=NOW)
     assert (after["status"], after["hold"]) == (submitted, 0)
@@ -277,6 +282,38 @@ def test_a_change_made_meanwhile_wins_and_the_late_one_writes_nothing(db, tmp_pa
         other.close()
     row = db.get_submission(sub_id)
     assert (row["status"], row["status_reason"], row["sending_started_at"]) == ("cancelled", "by the user", 0)
+
+
+@pytest.mark.parametrize("event, status, setup, meanwhile", [
+    # The user saves a due webhook row for later just as its send starts.
+    ("send_start", "ready", {"next_attempt_at": NOW.timestamp()}, {"hold": 1}),
+    # The user opens the Discord channel just as the campaign switches to a
+    # webhook: the by-hand submission must not also be sent.
+    ("campaign_changed", "manual", {"method": "discord_assisted"}, {"opened_at": STAMP}),
+    # Another pass found the link first.
+    ("url_found", "manual", {}, {"post_url": URL}),
+])
+def test_a_guarded_column_changed_meanwhile_stops_the_event(db, tmp_path, event, status, setup, meanwhile):
+    sub_id = _row(db, status, **setup)
+    other = StateDB(tmp_path / "state.db")
+    read = db.get_submission
+
+    def read_then_lose_the_race(row_id):
+        row = read(row_id)
+        other.set_submission(row_id, **meanwhile)
+        db.get_submission = read
+        return row
+
+    db.get_submission = read_then_lose_the_race
+    try:
+        with pytest.raises(Conflict):
+            apply(db, sub_id, event, now=NOW, to="ready" if event != "send_start" else "",
+                  method="discord_webhook")
+    finally:
+        other.close()
+    row = db.get_submission(sub_id)
+    assert row["status"] == status
+    assert {k: row[k] for k in meanwhile} == meanwhile
 
 
 # ---- the statuses and how they are shown ----------------------------------------------------------

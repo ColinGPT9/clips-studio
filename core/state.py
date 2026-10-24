@@ -1823,25 +1823,36 @@ class StateDB:
     # (campaigns.model.clean_campaign) and the status changes
     # (campaigns.statemachine) live in campaigns/, not here.
 
+    def _write(self, sql: str, args) -> sqlite3.Cursor:
+        """One write, committed. A write the database refuses (a NOT NULL,
+        the URL index) is rolled back before the error goes on: sqlite3 had
+        opened a transaction for it, and left open it would hold the write
+        lock and every other connection would read "database is locked"."""
+        try:
+            cur = self.conn.execute(sql, args)
+        except sqlite3.Error:
+            self.conn.rollback()
+            raise
+        self.conn.commit()
+        return cur
+
     def _insert(self, table: str, row: dict) -> int:
         now = _now()
         row = {**row, "created_at": now, "updated_at": now}
-        cur = self.conn.execute(
+        cur = self._write(
             f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
             tuple(row.values()),
         )
-        self.conn.commit()
         return int(cur.lastrowid)
 
     def _update(self, table: str, row_id: int, fields: dict) -> bool:
         if not fields:
             return False
         assignments = ", ".join(f"{column} = ?" for column in fields)
-        cur = self.conn.execute(
+        cur = self._write(
             f"UPDATE {table} SET {assignments}, updated_at = ? WHERE id = ?",
             (*fields.values(), _now(), int(row_id)),
         )
-        self.conn.commit()
         return cur.rowcount == 1
 
     def insert_campaign(self, name: str, **fields) -> int:
@@ -1923,13 +1934,12 @@ class StateDB:
             "start_s": round(float(start_s), 2), "end_s": round(float(end_s), 2),
             "platform": platform, **fields, "created_at": now, "updated_at": now,
         }
-        cur = self.conn.execute(
+        cur = self._write(
             f"INSERT INTO campaign_submissions ({', '.join(row)}) "
             f"VALUES ({', '.join('?' * len(row))}) "
             f"ON CONFLICT({', '.join(SUBMISSION_IDENTITY)}) DO NOTHING",
             tuple(row.values()),
         )
-        self.conn.commit()
         return int(cur.lastrowid) if cur.rowcount == 1 else None
 
     def find_submission(self, campaign_id: int, video_id: str, start_s: float, end_s: float,
@@ -1977,9 +1987,11 @@ class StateDB:
             (*args, int(limit)),
         ).fetchall()
 
-    def set_submission(self, submission_id: int, *, expect: tuple[str, ...] = (), **fields) -> bool:
+    def set_submission(self, submission_id: int, *, expect: tuple[str, ...] = (),
+                       match: dict | None = None, **fields) -> bool:
         """Change a submission. With `expect`, only while its status is one of
-        those (compare-and-set), so a route and the background step cannot
+        those, and with `match`, only while those columns still hold those
+        values (compare-and-set), so a route and the background step cannot
         both win a status change. True when the row changed.
 
         The identity columns are refused: a row never moves to another post.
@@ -1988,6 +2000,7 @@ class StateDB:
         if fixed:
             raise ValueError(f"a submission's identity can't change: {sorted(fixed)}")
         fields = _checked(fields, SUBMISSION_COLUMNS, "submission")
+        match = _checked(match or {}, SUBMISSION_COLUMNS, "submission")
         if not fields:
             return False
         assignments = ", ".join(f"{column} = ?" for column in fields)
@@ -1995,11 +2008,13 @@ class StateDB:
         if expect:
             guard = f" AND status IN ({','.join('?' * len(expect))})"
             args = list(expect)
-        cur = self.conn.execute(
+        for column, value in match.items():
+            guard += f" AND {column} = ?"
+            args.append(value)
+        cur = self._write(
             f"UPDATE campaign_submissions SET {assignments}, updated_at = ? WHERE id = ?{guard}",
             (*fields.values(), _now(), int(submission_id), *args),
         )
-        self.conn.commit()
         return cur.rowcount == 1
 
     def submissions_due(self, statuses: tuple[str, ...], *, now: float, limit: int = 100,

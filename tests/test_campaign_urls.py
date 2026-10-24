@@ -49,22 +49,23 @@ def _post(db, clip_id, *, platform="tiktok", provider="woopsocial", state="publi
 ACCEPTED = [
     ("tiktok", TIKTOK, TIKTOK),
     ("tiktok", "https://m.tiktok.com/@ex.ample_1/video/7300000000000000001/?is_from_webapp=1",
-     "https://m.tiktok.com/@ex.ample_1/video/7300000000000000001/"),
-    ("tiktok", "https://vm.tiktok.com/ZMexample1/", "https://vm.tiktok.com/ZMexample1/"),
+     "https://www.tiktok.com/@ex.ample_1/video/7300000000000000001"),
+    ("tiktok", "https://vm.tiktok.com/ZMexample1/", "https://vm.tiktok.com/ZMexample1"),
     ("tiktok", "https://vt.tiktok.com/ZSexample2", "https://vt.tiktok.com/ZSexample2"),
     ("instagram", "https://www.instagram.com/reel/Cexample_1/?igsh=abc",
-     "https://www.instagram.com/reel/Cexample_1/"),
-    ("instagram", "https://instagram.com/p/Cexample-2", "https://instagram.com/p/Cexample-2"),
-    ("instagram", "https://www.instagram.com/reels/Cexample3/", "https://www.instagram.com/reels/Cexample3/"),
+     "https://www.instagram.com/reel/Cexample_1"),
+    ("instagram", "https://instagram.com/p/Cexample-2", "https://www.instagram.com/p/Cexample-2"),
+    ("instagram", "https://www.instagram.com/reels/Cexample3/", "https://www.instagram.com/reels/Cexample3"),
     ("instagram", "https://www.instagram.com/tv/Cexample4", "https://www.instagram.com/tv/Cexample4"),
     ("youtube", f"https://www.youtube.com/shorts/{YT_ID}?feature=share",
      f"https://www.youtube.com/shorts/{YT_ID}"),
-    ("youtube", f"https://m.youtube.com/watch?v={YT_ID}&t=10s#c", f"https://m.youtube.com/watch?v={YT_ID}"),
-    ("youtube", f"https://youtube.com/watch?list=x&v={YT_ID}", f"https://youtube.com/watch?v={YT_ID}"),
+    ("youtube", f"https://m.youtube.com/watch?v={YT_ID}&t=10s#c", f"https://www.youtube.com/watch?v={YT_ID}"),
+    ("youtube", f"https://youtube.com/watch?list=x&v={YT_ID}", f"https://www.youtube.com/watch?v={YT_ID}"),
     ("youtube", f"https://youtu.be/{YT_ID}?si=abc", f"https://youtu.be/{YT_ID}"),
+    ("youtube", f"https://www.youtu.be/{YT_ID}/", f"https://youtu.be/{YT_ID}"),
     ("facebook", "https://www.facebook.com/reel/123456789", "https://www.facebook.com/reel/123456789"),
-    ("facebook", "https://web.facebook.com/example/videos/1/", "https://web.facebook.com/example/videos/1/"),
-    ("facebook", "https://fb.watch/abcDEF/", "https://fb.watch/abcDEF/"),
+    ("facebook", "https://web.facebook.com/example/videos/1/", "https://www.facebook.com/example/videos/1"),
+    ("facebook", "https://fb.watch/abcDEF/", "https://fb.watch/abcDEF"),
     ("x", "https://x.com/example/status/1800000000000000000?s=20",
      "https://x.com/example/status/1800000000000000000"),
     ("x", "https://twitter.com/example/status/1800000000000000000",
@@ -72,11 +73,11 @@ ACCEPTED = [
     ("threads", "https://www.threads.net/@example/post/Cexample", "https://www.threads.net/@example/post/Cexample"),
     ("threads", "https://threads.com/@example/post/C1", "https://threads.com/@example/post/C1"),
     ("linkedin", "https://www.linkedin.com/posts/example-1", "https://www.linkedin.com/posts/example-1"),
-    ("pinterest", "https://pinterest.com/pin/123/", "https://pinterest.com/pin/123/"),
-    ("pinterest", "https://uk.pinterest.co.uk/pin/123/", "https://uk.pinterest.co.uk/pin/123/"),
+    ("pinterest", "https://pinterest.com/pin/123/", "https://pinterest.com/pin/123"),
+    ("pinterest", "https://uk.pinterest.co.uk/pin/123/", "https://uk.pinterest.co.uk/pin/123"),
     ("bluesky", "https://bsky.app/profile/example.bsky.social/post/3k",
      "https://bsky.app/profile/example.bsky.social/post/3k"),
-    ("reddit", "https://www.reddit.com/r/example/comments/abc/x/", "https://www.reddit.com/r/example/comments/abc/x/"),
+    ("reddit", "https://www.reddit.com/r/example/comments/abc/x/", "https://www.reddit.com/r/example/comments/abc/x"),
 ]
 
 
@@ -84,6 +85,37 @@ ACCEPTED = [
 def test_a_post_link_per_platform_is_accepted_without_its_tracking(platform, given, normalised):
     assert urls.validate(platform, given) == (normalised, "")
     assert urls.platform_of(given) == platform
+
+
+SPELLINGS = {
+    "tiktok": ["https://www.tiktok.com/@example/video/7300000000000000001",
+               "https://www.tiktok.com/@example/video/7300000000000000001/",
+               "https://tiktok.com/@example/video/7300000000000000001?lang=en",
+               "https://m.tiktok.com/@example/video/7300000000000000001/"],
+    "youtube": [f"https://www.youtube.com/shorts/{YT_ID}",
+                f"https://youtube.com/shorts/{YT_ID}?feature=share",
+                f"https://www.youtube.com/shorts/{YT_ID}/",
+                f"https://m.youtube.com/shorts/{YT_ID}"],
+    "youtube_watch": [f"https://www.youtube.com/watch?v={YT_ID}",
+                      f"https://youtube.com/watch?v={YT_ID}",
+                      f"https://m.youtube.com/watch/?v={YT_ID}&t=3"],
+    "instagram": ["https://www.instagram.com/reel/AbC123", "https://www.instagram.com/reel/AbC123/",
+                  "https://instagram.com/reel/AbC123/?igsh=x"],
+    "facebook": ["https://www.facebook.com/reel/123456789", "https://m.facebook.com/reel/123456789/",
+                 "https://facebook.com/reel/123456789", "https://web.facebook.com/reel/123456789"],
+}
+
+
+@pytest.mark.parametrize("key", sorted(SPELLINGS))
+def test_one_post_spelled_several_ways_is_one_link(key):
+    platform = key.split("_")[0]
+    found = {urls.validate(platform, given) for given in SPELLINGS[key]}
+    assert len(found) == 1
+    (normalised, problem), = found
+    assert problem == "" and normalised == SPELLINGS[key][0]
+    # The one spelling is one Clips Kitty can open: the www. host and no
+    # trailing slash (ui/src/main/index.ts EXTERNAL_ALLOWED).
+    assert not normalised.endswith("/") and normalised.startswith("https://www.")
 
 
 REFUSED = [
@@ -350,5 +382,7 @@ def test_a_typed_link_is_taken_on_the_users_word_once_it_checks_out(db):
     assert (res.state, res.url, res.source, res.account) == ("live", TIKTOK, "manual", "@example")
     bad = urls.resolve(db, _sub(0, provider="manual", post_url="https://www.tiktok.com/@example"), now=NOW)
     assert bad.state == "blocked" and "doesn't look like" in bad.reason
+    # No publisher will ever answer for it: it goes to the user at once
+    # instead of waiting 14 days for a post nobody follows.
     none = urls.resolve(db, _sub(0, provider="manual"), now=NOW)
-    assert (none.state, none.reason) == ("not_published", "Enter the post's link")
+    assert (none.state, none.reason, none.url) == ("blocked", "Enter the post's link", "")

@@ -3,9 +3,10 @@
 TRANSITIONS is DESIGN §4.2 as data: for each event, the statuses it may start
 from, the statuses it may lead to, and who causes it (W the background step,
 U the user through a route, A an attach, R startup recovery). apply() checks
-the event against the row as it is now and writes the change compare-and-set,
-so a route and the background step can never both win: the loser gets
-Conflict and nothing is written.
+the event against the row as it is now and writes the change compare-and-set
+(on the status, and on the columns the event's guard read), so a route and
+the background step can never both win: the loser gets Conflict and nothing
+is written.
 
 The event's target is decided here when the row and its campaign say what it
 is (approving a webhook submission makes it ready, an assisted one manual);
@@ -44,6 +45,9 @@ class Rule:
     who: str
     #: Says why the row can't take the event ('' when it can), beyond its status.
     guard: Callable[[dict, float], str] | None = None
+    #: The columns the guard reads. The write compares them as well as the
+    #: status, so a change to one of them made meanwhile stops the event too.
+    watch: tuple[str, ...] = ()
 
 
 def _no_url(row: dict, now: float) -> str:
@@ -83,13 +87,13 @@ TRANSITIONS: dict[str, Rule] = {
     "published_no_url": Rule(("waiting_publication",), ("waiting_url",), "W"),
     "post_failed": Rule(("waiting_publication",), ("manual", "waiting_publication"), "W"),
     "post_skipped": Rule(("waiting_publication",), ("manual",), "W"),
-    "url_found": Rule((*_WAITING, "manual"), EVALUATED, "W", _no_url),
+    "url_found": Rule((*_WAITING, "manual"), EVALUATED, "W", _no_url, ("post_url",)),
     "url_overdue": Rule(("waiting_url",), ("manual",), "W"),
     "stale": Rule(_WAITING, ("manual",), "W"),
     "expire": Rule(PRE_SEND, ("expired",), "W"),
     # Sending by webhook.
-    "send_start": Rule(("ready",), ("sending",), "W", _sendable),
-    "destination_unusable": Rule(("ready",), ("manual",), "W", _webhook),
+    "send_start": Rule(("ready",), ("sending",), "W", _sendable, ("method", "hold", "next_attempt_at")),
+    "destination_unusable": Rule(("ready",), ("manual",), "W", _webhook, ("method",)),
     "send_ok": Rule(("sending",), ("sent", "awaiting_confirmation"), "W"),
     "rate_limited": Rule(("sending",), ("ready",), "W"),
     "send_retry": Rule(("sending",), ("ready", "failed"), "W"),
@@ -103,17 +107,17 @@ TRANSITIONS: dict[str, Rule] = {
     # The user.
     "set_url": Rule((*_WAITING, "review", "manual", "failed"), EVALUATED, "U"),
     "approve": Rule(("review",), ("ready", "manual"), "U"),
-    "submit": Rule(("ready",), ("ready", "manual"), "U", _held),
+    "submit": Rule(("ready",), ("ready", "manual"), "U", _held, ("hold",)),
     "user_submitted": Rule(("manual", "ready", "review", "failed", "awaiting_confirmation"),
                            ("sent", "awaiting_confirmation"), "U"),
     "confirmed": Rule(("sent", "awaiting_confirmation", "manual"), ("confirmed",), "U"),
     "rejected": Rule(("sent", "awaiting_confirmation"), ("rejected",), "U"),
     "retry": Rule(("failed",), ("ready",), "U"),
-    "send_again": Rule(("awaiting_confirmation",), ("ready",), "U", _not_by_user),
+    "send_again": Rule(("awaiting_confirmation",), ("ready",), "U", _not_by_user, ("sent_by",)),
     "cancel": Rule(_CANCELLABLE, ("cancelled",), "U"),
     "move": Rule(_EDITABLE, ("cancelled",), "U"),
     "edit": Rule(_EDITABLE, (SAME, *EVALUATED), "U"),
-    "campaign_changed": Rule(_EDITABLE, (SAME, *EVALUATED), "U", _not_opened),
+    "campaign_changed": Rule(_EDITABLE, (SAME, *EVALUATED), "U", _not_opened, ("opened_at",)),
     # An explicit re-attach by the user (never automation).
     "reopen": Rule(("cancelled", "expired", "failed"), ("waiting_publication",), "A"),
 }
@@ -189,6 +193,9 @@ def _defaults(event: str, row: dict, target: str, now) -> dict:
         out["hold"] = 0
         if target == "ready":
             out["next_attempt_at"] = seconds
+    elif event == "approve":
+        if target == "ready":
+            out["next_attempt_at"] = seconds
     elif event == "send_start":
         out["sending_started_at"] = seconds
     elif event == "send_ok":
@@ -207,7 +214,8 @@ def _defaults(event: str, row: dict, target: str, now) -> dict:
         # A fresh start on the same post: what the user set on the row stays
         # (message, values, method), what happened to it goes. Its link goes
         # too and is found again, so it is checked against the campaign's
-        # other rows like any new link.
+        # other rows like any new link. Nothing can find a link the user
+        # typed, so reopen through queue.reopen, which gives it back.
         out.update(
             attempts=0, error="", next_attempt_at=seconds, post_url="", url_source="",
             checks="[]", sending_started_at=0, sent_at="", sent_by="", discord_message_id="",
@@ -238,6 +246,7 @@ def apply(db, sub_id: int, event: str, *, now, to: str = "", **fields):
         raise NotAllowed(problem)
     target = _target(db, row, event, rule, to)
     changes = {**_defaults(event, row, target, now), **fields, "status": target}
-    if not db.set_submission(sub_id, expect=(row["status"],), **changes):
+    match = {column: row[column] for column in rule.watch}
+    if not db.set_submission(sub_id, expect=(row["status"],), match=match, **changes):
         raise Conflict(f"Submission #{sub_id} changed meanwhile")
     return db.get_submission(sub_id)

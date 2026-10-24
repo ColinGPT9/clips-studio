@@ -242,7 +242,7 @@ Both-formats job: `Worker._both_formats` runs `process_video` then `process_long
 
 `app_state (key PK, value)` (`:251-254`): `queue_paused`, `watches_imported`, plan automation flags.
 
-Other tables (names only; `:50-60, 78-330`): `uploads`, `channels`, `creators` (+ `default_branding_id`, `gaming_layout`), `platform_accounts`, `creator_knowledge`, `creator_events`, `clip_feedback`, `branding_profiles`, `creator_terms`, `clip_translations`, `publish_jobs`, `clip_publishes`, `streams`, `watches`, `watch_items`.
+Other tables (names only; `:50-60, 78-448`): `uploads`, `channels`, `creators` (+ `default_branding_id`, `gaming_layout`), `platform_accounts`, `creator_knowledge`, `creator_events`, `clip_feedback`, `branding_profiles`, `creator_terms`, `clip_translations`, `publish_jobs`, `clip_publishes`, `streams`, `watches`, `watch_items`.
 
 Migrations are additive `ALTER TABLE ... ADD COLUMN` guarded by `PRAGMA table_info` (`:523-717`); no schema version number exists (inferred: no `user_version` or version table in `core/state.py`).
 
