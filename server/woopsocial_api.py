@@ -16,8 +16,9 @@ The two rules that hold everywhere here:
 from pathlib import Path
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from campaigns import post_links
 from publish.errors import PublishError
 from server import posts
 from server import woopsocial_service as service
@@ -40,6 +41,7 @@ class ConnectIn(BaseModel):
 
 
 class BatchIn(BaseModel):
+    discord_destination_id: int | None = Field(default=None, ge=1)
     clip_ids: list[int] = []
     platforms: list[str] = []
     overrides: dict[str, dict] = {}
@@ -62,6 +64,7 @@ class BatchIn(BaseModel):
 
 
 class PublishIn(BaseModel):
+    discord_destination_id: int | None = Field(default=None, ge=1)
     platforms: list[str] = []
     title: str = ""
     description: str = ""
@@ -238,6 +241,11 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             client = _client()
             publisher = WoopSocialPublisher(client, _project(d, client))
             try:
+                post_links.prepare(d, destination_id=body.discord_destination_id, clip_id=clip_id,
+                                   platforms=body.platforms, provider="woopsocial", title=body.title.strip())
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            try:
                 result = publisher.start(
                     Path(clip["path"]),
                     platforms=body.platforms,
@@ -255,6 +263,8 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 d, clip_id, clip, result, scheduled_for=when, caption=text,
                 visibility=posts.visibilities("woopsocial", body.platforms, body.overrides),
             )
+            if body.discord_destination_id is not None:
+                post_links.recover(d, completed_clip=clip_id, provider="woopsocial")
             service.save_settings(d, {"platforms": body.platforms})
             return _payload(d, clip_id, result.request_id)
         finally:
@@ -365,6 +375,10 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         try:
             _guard(d)
             try:
+                post_links.validate_destination(d, body.discord_destination_id)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            try:
                 return service.publish_clips(
                     d,
                     data_path,
@@ -377,6 +391,7 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                     exclude=body.exclude,
                     per_day=body.per_day,
                     gap_hours=body.gap_hours,
+                    discord_destination_id=body.discord_destination_id,
                 )
             except PublishError as e:
                 raise _fail(e) from e

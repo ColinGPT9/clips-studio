@@ -15,6 +15,7 @@ import {
 import YouTubeMetadataForm, { type Metadata } from './YouTubeMetadataForm'
 import YouTubeSchedule from './YouTubeSchedule'
 import YouTubeThumbnail from './YouTubeThumbnail'
+import DiscordDestinationSelect from './DiscordDestinationSelect'
 
 /** Publishing, inside the editor.
  *
@@ -73,6 +74,7 @@ export default function YouTubePanel({
     playlist_id: null
   }))
   const [privacy, setPrivacy] = useState(settings?.privacy ?? 'public')
+  const [discordDestination, setDiscordDestination] = useState<number | null>(null)
   const [scheduledAt, setScheduledAt] = useState('')
   const [thumbnail, setThumbnail] = useState<string | null>(null)
   const accounts: YouTubeAccount[] = status.accounts ?? []
@@ -140,6 +142,7 @@ export default function YouTubePanel({
     setResult(null)
     try {
       const { publish_job_id } = await api.publishClip(clip.id, {
+        discord_destination_id: discordDestination,
         title: metadata.title,
         description: metadata.description,
         tags: metadata.tags,
@@ -296,6 +299,8 @@ export default function YouTubePanel({
         }}
         disabled={busy}
       />
+
+      <DiscordDestinationSelect value={discordDestination} onChange={setDiscordDestination} disabled={busy} />
 
       {pendingRender && (
         <p className="text-[11px] text-warn">

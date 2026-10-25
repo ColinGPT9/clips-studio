@@ -301,10 +301,11 @@ class PublishWorker(threading.Thread):
         self._campaigns_now = False
         self._next_campaign_check = mono + self.CAMPAIGN_CHECK_SECONDS
         try:
-            from campaigns import discord_http, queue
+            from campaigns import discord_http, post_links, queue
             from campaigns.model import SEND_SPACING_SECONDS
 
             http = getattr(self, "campaign_http", None) or discord_http.Http()
+            post_links.recover(db)
             out = queue.advance(db, self.data_dir, now=time.time() if now is None else now, http=http,
                                 emit=self._emit_campaign, paused_until=getattr(self, "_campaign_pause", 0.0))
             self._campaign_pause = out["paused_until"]
@@ -354,6 +355,12 @@ class PublishWorker(threading.Thread):
         # channel_id selects which connected channel's token to publish with;
         # it is not part of the video's metadata, so it comes out here.
         channel_id = request_data.pop("channel_id", None)
+        destination_id = request_data.pop("discord_destination_id", None)
+        if destination_id is not None:
+            from campaigns import post_links
+
+            post_links.prepare(db, destination_id=destination_id, clip_id=clip_id, platforms=["youtube"],
+                               provider="youtube", publish_job_id=job_id, title=request_data.get("title", ""))
         publisher = service.make_publisher(
             self.config, self.data_dir, channel_id=channel_id
         )

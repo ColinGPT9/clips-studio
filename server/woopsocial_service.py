@@ -339,6 +339,7 @@ def publish_clips(
     lead_hashtags: list[str] | None = None,
     ai_hashtags: bool = True,
     day_start: str = "",
+    discord_destination_id: int | None = None,
 ) -> dict:
     """Publish a set of clips, optionally spaced out over time.
 
@@ -490,6 +491,11 @@ def publish_clips(
             when = at.isoformat()
 
         visibility = posts.visibilities("woopsocial", wanted, overrides)
+        if discord_destination_id is not None:
+            from campaigns import post_links
+
+            post_links.prepare(db, destination_id=discord_destination_id, clip_id=clip_id,
+                               platforms=wanted, provider="woopsocial")
         uploaded: list[str] = []
         on_media = None
         if once:
@@ -540,6 +546,8 @@ def publish_clips(
 
         record_outcomes(db, clip_id, clip, result, scheduled_for=when, caption=text,
                         visibility=visibility)
+        if discord_destination_id is not None:
+            post_links.recover(db, completed_clip=clip_id, provider="woopsocial")
         started.append(
             {"clip_id": clip_id, "request_id": result.request_id, "scheduled_for": when}
         )

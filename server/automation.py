@@ -163,8 +163,12 @@ def publish_settings(watch) -> PublishSettings:
 
 
 def _validate_discord_destination(d: StateDB, settings: PublishSettings) -> None:
-    if settings.discord_destination_id is not None and d.get_destination(settings.discord_destination_id) is None:
-        raise HTTPException(400, "That Discord destination doesn't exist.")
+    from campaigns import post_links
+
+    try:
+        post_links.validate_destination(d, settings.discord_destination_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 def watch_options(watch) -> dict:
@@ -560,6 +564,7 @@ class ChannelWatcher(threading.Thread):
 
     def _attach_discord_links(self, d: StateDB, now: float) -> None:
         """Recover attachments from saved posts, including interrupted publishes."""
+        from campaigns import post_links
         from campaigns import queue as campaign_queue
 
         for watch in d.list_watches():
@@ -574,19 +579,8 @@ class ChannelWatcher(threading.Thread):
             ).fetchall()
             if not items:
                 continue
-            # A reserved name identifies the internal campaign across restarts
-            # and across channels sharing a destination. Serialize first use.
-            name = f"Watched channel links: Discord {destination_id}"
             with d.transaction():
-                campaign = d.conn.execute(
-                    "SELECT id FROM campaigns WHERE name = ? AND destination_id = ? "
-                    "AND method = 'discord_webhook' ORDER BY id LIMIT 1",
-                    (name, destination_id),
-                ).fetchone()
-                campaign_id = int(campaign["id"]) if campaign is not None else d.insert_campaign(
-                    name, method="discord_webhook", destination_id=destination_id,
-                    message_template="{title}\n{url}", approval_required=0,
-                )
+                campaign_id = post_links.campaign_for_destination(d, destination_id)
                 for item in items:
                     campaign_queue.attach_for_watch(
                         d, watch=watch, item=item, campaign_ids=[campaign_id], now=now,

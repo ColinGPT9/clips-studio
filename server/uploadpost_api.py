@@ -16,8 +16,9 @@ call from create_app(). The same two rules hold:
 from pathlib import Path
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from campaigns import post_links
 from publish.errors import PublishError
 from server import posts
 from server import uploadpost_service as service
@@ -38,6 +39,7 @@ class SettingsIn(BaseModel):
 
 
 class PublishIn(BaseModel):
+    discord_destination_id: int | None = Field(default=None, ge=1)
     platforms: list[str] = []
     title: str = ""
     description: str = ""
@@ -56,6 +58,7 @@ class PublishIn(BaseModel):
 
 
 class BatchIn(BaseModel):
+    discord_destination_id: int | None = Field(default=None, ge=1)
     clip_ids: list[int] = []
     platforms: list[str] = []
     overrides: dict[str, dict] = {}
@@ -307,6 +310,11 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
             )
 
             try:
+                post_links.prepare(d, destination_id=body.discord_destination_id, clip_id=clip_id,
+                                   platforms=body.platforms, provider="upload_post", title=body.title.strip())
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            try:
                 result = publisher.start(
                     Path(clip["path"]),
                     platforms=body.platforms,
@@ -330,6 +338,8 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 ),
                 visibility=posts.visibilities("upload_post", body.platforms, body.overrides),
             )
+            if body.discord_destination_id is not None:
+                post_links.recover(d, completed_clip=clip_id, provider="upload_post")
             service.save_settings(d, {"platforms": body.platforms})
             return _publish_payload(d, clip_id, result.request_id)
         finally:
@@ -370,6 +380,10 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
         try:
             _guard(d)
             overrides = platform_overrides(body.overrides)
+            try:
+                post_links.validate_destination(d, body.discord_destination_id)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
             lacking = missing_required(body.platforms, dict(overrides))
             if lacking:
                 raise HTTPException(
@@ -434,6 +448,11 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                 )
 
                 try:
+                    post_links.prepare(d, destination_id=body.discord_destination_id, clip_id=clip_id,
+                                       platforms=body.platforms, provider="upload_post", title=title)
+                except ValueError as e:
+                    raise HTTPException(400, str(e)) from e
+                try:
                     result = publisher.start(
                         Path(clip["path"]),
                         platforms=body.platforms,
@@ -454,6 +473,8 @@ def install(app, *, config, db, data_dir, publish_worker=None) -> None:
                     ),
                     visibility=posts.visibilities("upload_post", body.platforms, body.overrides),
                 )
+                if body.discord_destination_id is not None:
+                    post_links.recover(d, completed_clip=clip_id, provider="upload_post")
                 started.append({"clip_id": clip_id, "request_id": result.request_id})
 
             service.save_settings(d, {"platforms": body.platforms})

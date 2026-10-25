@@ -233,7 +233,7 @@ export default function DiscordCard(): JSX.Element {
   const removeOne = (d: Destination): Promise<void> => {
     const used =
       d.campaigns > 0
-        ? `\n\n${d.campaigns} ${t('campaign(s) post to it. Their submissions waiting to be sent will need submitting by hand.')}`
+        ? `\n\n${t('Removing it stops pending link deliveries to this destination.')}`
         : ''
     if (!window.confirm(`${t('Remove the webhook')} “${d.label}”?${used}`)) return Promise.resolve()
     return run(async () => {
@@ -277,7 +277,7 @@ export default function DiscordCard(): JSX.Element {
         <h3 className="font-semibold">{t('Discord')}</h3>
         <p className="text-xs text-muted mt-1 max-w-xl">
           {t(
-            'For clipping campaigns: submit your posted clips to Discord communities. Signing in lets Clips Kitty list your servers. It never posts as you.'
+            'Send the public links of your published clips to a Discord channel. Add a webhook below, then select it when publishing or in Watched channels. Signing in lets Clips Kitty list your servers. It never posts as you.'
           )}
         </p>
       </div>
@@ -291,7 +291,7 @@ export default function DiscordCard(): JSX.Element {
       {state === 'not_set_up' && (
         <p className="text-xs text-muted">
           {t(
-            "Discord sign-in isn't available in this version. Webhooks below and campaigns you submit by hand still work."
+            "Discord sign-in isn't available in this version. You can still add a webhook below."
           )}
         </p>
       )}
@@ -306,7 +306,7 @@ export default function DiscordCard(): JSX.Element {
             {waiting === 'connect' ? t('Waiting for Discord…') : t('Connect Discord')}
           </button>
           <span className="text-[11px] text-muted">
-            {t('Optional: assisted and website campaigns work without it.')}
+            {t('Optional: pasted webhooks work without signing in.')}
           </span>
         </div>
       )}
@@ -526,7 +526,7 @@ export default function DiscordCard(): JSX.Element {
             <input
               className="input w-full !py-1 text-sm"
               value={hookLabel}
-              placeholder={t('Label, like the campaign’s name (optional)')}
+              placeholder={t('Label, like #clips (optional)')}
               onChange={(e) => setHookLabel(e.target.value)}
               aria-label={t('Label')}
             />

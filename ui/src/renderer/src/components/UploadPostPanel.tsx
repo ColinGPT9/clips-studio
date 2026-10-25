@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import DiscordDestinationSelect from './DiscordDestinationSelect'
 import type { Clip } from '../lib/types'
 import {
   MAX_POLLS,
@@ -55,6 +56,7 @@ export default function UploadPostPanel({
     status.platforms.length ? status.platforms : ['youtube']
   )
   const [title, setTitle] = useState(clip.title || clip.hook || '')
+  const [discordDestination, setDiscordDestination] = useState<number | null>(null)
   const [description, setDescription] = useState(clip.description || '')
   // The clip stores hashtags as an array; the field edits them as one line.
   const [hashtags, setHashtags] = useState((clip.hashtags || []).join(' '))
@@ -190,6 +192,7 @@ export default function UploadPostPanel({
         .map((h) => h.replace(/^#/, '').trim())
         .filter(Boolean)
       const got = await backend.publish(clip.id, {
+        discord_destination_id: discordDestination,
         platforms,
         title: title.trim(),
         description,
@@ -431,6 +434,8 @@ export default function UploadPostPanel({
           </label>
         )}
       </div>
+
+      <DiscordDestinationSelect value={discordDestination} onChange={setDiscordDestination} disabled={busy} />
 
       {/* Per-platform overrides, folded away. The common metadata above is
           what almost everyone wants; this is for the person who writes a

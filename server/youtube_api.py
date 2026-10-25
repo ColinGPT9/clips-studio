@@ -20,8 +20,9 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from campaigns import post_links
 from core.paths import within
 from publish.errors import PublishError
 from server import youtube_service as service
@@ -102,6 +103,7 @@ class RenderFirst(BaseModel):
 
 
 class PublishIn(BaseModel):
+    discord_destination_id: int | None = Field(default=None, ge=1)
     title: str
     description: str = ""
     tags: list[str] = []
@@ -409,6 +411,10 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
                 raise HTTPException(404, "no such clip")
             if d.active_publish_job_for_clip(clip_id):
                 raise HTTPException(409, "This clip is already being published.")
+            try:
+                post_links.validate_destination(d, body.discord_destination_id)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
 
             if not body.title.strip():
                 raise HTTPException(400, "A title is required.")
@@ -482,6 +488,8 @@ def install(app, *, config, db, data_dir, worker, publish_worker) -> None:
             # Not part of PublishRequest — it selects which token to publish
             # with, rather than describing the video.
             request["channel_id"] = channel_id
+            if body.discord_destination_id is not None:
+                request["discord_destination_id"] = body.discord_destination_id
             job_id = d.add_publish_job(
                 clip_id,
                 json.dumps(request),

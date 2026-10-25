@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { t } from '../lib/i18n'
+import DiscordDestinationSelect from './DiscordDestinationSelect'
 import type { Clip } from '../lib/types'
 import {
   PROVIDER_LABEL,
@@ -35,6 +36,7 @@ export default function PublishAllDialog({
   onClose: () => void
 }): JSX.Element {
   const [platforms, setPlatforms] = useState<string[]>([])
+  const [discordDestination, setDiscordDestination] = useState<number | null>(null)
   const [connected, setConnected] = useState<string[]>([])
   // A DAILY budget, because that is the shape posting limits take: WoopSocial
   // allows five YouTube posts a day, and sending 37 at once failed 32 of them.
@@ -153,6 +155,7 @@ export default function PublishAllDialog({
           ? { per_day: spread ? perDay : 0, gap_hours: gapHours, exclude }
           : { every_hours: spread ? 24 / Math.max(1, perDay) : 0 }
       const got = await backend.batch({
+        discord_destination_id: discordDestination,
         clip_ids: sending.map((c) => c.id),
         platforms,
         ...daily,
@@ -240,6 +243,8 @@ export default function PublishAllDialog({
                 })}
               </div>
             </div>
+
+            <DiscordDestinationSelect value={discordDestination} onChange={setDiscordDestination} disabled={busy} />
 
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm">
