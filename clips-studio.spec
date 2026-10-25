@@ -319,6 +319,12 @@ excludes = [
     "tensorflow",
     "keras",
 ]
+# keyring keeps Connected Accounts tokens outside Windows only; on Windows they
+# go through core/secrets (DPAPI). requirements.txt doesn't install it there,
+# and connected_accounts/store.py imports it only off Windows, so make sure
+# the analyser never follows that import into the Windows build.
+if sys.platform == "win32":
+    excludes.append("keyring")
 
 a = Analysis(
     [str(ROOT / "main.py")],

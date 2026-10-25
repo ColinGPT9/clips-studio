@@ -38,9 +38,10 @@ from .host import APP_PYTHON
 # them, and the app stops a run that tries (_clipskitty_script_host.py
 # ENGINE_PACKAGES; tests/test_script_host.py checks the two lists agree).
 ENGINE_PACKAGES = frozenset({
-    "analysis", "core", "creator", "gaming", "llm", "longform", "main", "multilingual", "plugins",
-    "publish", "remote_render", "server", "sources", "sports", "third_party", "transcription",
-    "video", "video_editor", "_clipskitty_script_host",
+    "analysis", "connected_accounts", "core", "creator", "gaming", "llm", "longform", "main",
+    "multilingual", "plugins", "publish", "remote_render", "server", "sources", "sports",
+    "stream_workflows", "third_party", "transcription", "video", "video_editor",
+    "_clipskitty_script_host",
 })
 
 # Standard library modules the installed app leaves out on purpose: GUI

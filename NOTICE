@@ -103,11 +103,12 @@ significant ones, with their licences:
                                          Apache-2.0 (PaddlePaddle)
   faster-whisper            MIT          transcription; its model weights are
                                          fetched by scripts/fetch_whisper.py
-  keyring                   MIT          OS-protected Connected Accounts tokens
-                                         on Linux and macOS (Windows uses DPAPI)
-  websockets                BSD-3-Clause  desktop Twitch EventSub connections
                                          and are MIT (Systran/faster-whisper,
                                          converted from OpenAI Whisper)
+  keyring                   MIT          OS-protected Connected Accounts tokens
+                                         on Linux and macOS only; Windows uses
+                                         DPAPI, and keyring isn't installed there
+  websockets                BSD-3-Clause desktop Twitch EventSub connections
   Ollama                    MIT          the local AI runtime, bundled
                                          unmodified and fetched at build time
                                          by scripts/fetch_ollama.py

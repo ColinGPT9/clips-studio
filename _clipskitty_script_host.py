@@ -49,9 +49,10 @@ SCRIPT = "CLIPSKITTY_SCRIPT"  # the running script, for multiprocessing children
 # Clips Kitty's own top-level packages and modules. tests/test_script_host.py
 # checks this against the repository, so a new engine package can't be missed.
 ENGINE_PACKAGES = frozenset({
-    "analysis", "core", "creator", "gaming", "llm", "longform", "main", "multilingual", "plugins",
-    "publish", "remote_render", "server", "sources", "sports", "third_party", "transcription",
-    "video", "video_editor", "_clipskitty_script_host",
+    "analysis", "connected_accounts", "core", "creator", "gaming", "llm", "longform", "main",
+    "multilingual", "plugins", "publish", "remote_render", "server", "sources", "sports",
+    "stream_workflows", "third_party", "transcription", "video", "video_editor",
+    "_clipskitty_script_host",
 })
 
 # Engine commands (main.py). With one of these first, the command line is the
