@@ -190,7 +190,7 @@ class FakeDiscordServer:
                     if fake.webhooks.get(hook_id) != token:
                         return self._send(404, {"message": "Unknown Webhook", "code": 10015})
                     return self._send(200, webhook(id=hook_id, token=token))
-                self._send(404, {"message": "404: Not Found", "code": 0})
+                return self._send(404, {"message": "404: Not Found", "code": 0})
 
             def do_POST(self):
                 parts = urlsplit(self.path)
@@ -239,7 +239,7 @@ class FakeDiscordServer:
                     fake.messages.append({"webhook_id": hook_id, "query": query, "body": body, "id": message_id})
                     return self._send(200, {"id": message_id, "channel_id": query.get("thread_id") or CHANNEL_ID,
                                             "content": body.get("content", "")})
-                self._send(404, {"message": "404: Not Found", "code": 0})
+                return self._send(404, {"message": "404: Not Found", "code": 0})
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self._server.daemon_threads = True

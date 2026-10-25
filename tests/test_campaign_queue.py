@@ -898,16 +898,16 @@ def test_a_read_timeout_may_have_posted_so_it_waits_for_the_user(db, tmp_path):
 
 
 def test_one_send_per_destination_every_two_seconds_and_five_a_pass(db, tmp_path):
-    (a, b), dest = _ready(db, tmp_path, n=2)
+    (a, b), _ = _ready(db, tmp_path, n=2)
     others = [_ready(db, tmp_path)[0][0] for _ in range(5)]
     ok = [(200, {"id": f"60000000000000{i:04d}", "channel_id": CHANNEL_ID}) for i in range(10)]
     http = FakeDiscordHTTP(*ok)
     out = _advance(db, tmp_path, T0, http)
     assert (out["sent"], out["more"]) == (5, True)
     assert db.get_submission(b)["status"] == "ready", "its destination posted a moment ago"
-    out = _advance(db, tmp_path, T0 + timedelta(seconds=1), http)
+    _advance(db, tmp_path, T0 + timedelta(seconds=1), http)
     assert db.get_submission(b)["status"] == "ready"
-    out = _advance(db, tmp_path, T0 + timedelta(seconds=2), http)
+    _advance(db, tmp_path, T0 + timedelta(seconds=2), http)
     statuses = {db.get_submission(i)["status"] for i in (a, b, *others)}
     assert statuses == {"awaiting_confirmation"} and len(http.calls) == 7
 

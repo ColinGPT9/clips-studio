@@ -272,6 +272,8 @@ class PublishWorker(threading.Thread):
 
     #: How often the campaign step runs when nothing asks for it sooner.
     CAMPAIGN_CHECK_SECONDS = 30
+    # Caught Discord errors may carry webhook credentials: these steps log
+    # only which operation failed, never the exception's text.
 
     def _recover_campaign_sends(self, db: StateDB) -> None:
         """At startup, every webhook send a restart cut off becomes
@@ -285,8 +287,8 @@ class PublishWorker(threading.Thread):
             settled = db.recover_sending_submissions(REASONS["restart"])
             if settled:
                 print(f"{settled} campaign send(s) were cut off by a restart: check Discord.")
-        except Exception as e:
-            print(f"Could not settle campaign sends cut off by a restart: {_scrubbed(e)}")
+        except Exception:
+            print("Could not settle campaign sends cut off by a restart.")
 
     def _advance_campaigns(self, db: StateDB, *, now: float | None = None) -> None:
         """Move campaign submissions on (campaigns/queue.py advance): follow
@@ -311,8 +313,8 @@ class PublishWorker(threading.Thread):
             self._campaign_pause = out["paused_until"]
             if out["more"]:
                 self._next_campaign_check = mono + SEND_SPACING_SECONDS
-        except Exception as e:
-            print(f"  Could not move campaign submissions on: {_scrubbed(e)}")
+        except Exception:
+            print("  Could not move campaign submissions on.")
 
     def _emit_campaign(self, event: dict) -> None:
         """A submission changed status: the `campaign` event on /ws."""
@@ -543,13 +545,6 @@ class PublishWorker(threading.Thread):
             "stage": "publish",
             **fields,
         })
-
-
-def _scrubbed(error: Exception) -> str:
-    """An error's text with anything key-shaped (a webhook link) taken out."""
-    from core.scrub import scrub_secrets
-
-    return scrub_secrets(str(error))[:300]
 
 
 def next_reset_local_hint() -> str:

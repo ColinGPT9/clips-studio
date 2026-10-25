@@ -56,9 +56,13 @@ def test_a_pass_sends_and_announces_through_the_broadcaster(db, tmp_path, emitte
         ("campaign", sub_id, "sending", "awaiting_confirmation")]
 
 
-def test_the_step_never_raises_into_the_loop(db, tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("failure_text", [
+    "https://discord.com/api/webhooks/400000000000000001/fake-webhook-token-Abc123_xyz",
+    "private diagnostic that isn't a recognisable token",
+])
+def test_the_step_never_raises_into_the_loop(db, tmp_path, monkeypatch, capsys, failure_text):
     def broken(*args, **kw):
-        raise RuntimeError("https://discord.com/api/webhooks/400000000000000001/fake-webhook-token-Abc123_xyz")
+        raise RuntimeError(failure_text)
 
     monkeypatch.setattr(queue, "advance", broken)
     w = _bare(tmp_path)
@@ -66,6 +70,7 @@ def test_the_step_never_raises_into_the_loop(db, tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Could not move campaign submissions on" in out
     assert "fake-webhook-token" not in out, "a webhook link in an error never reaches the log"
+    assert failure_text not in out, "exception text can contain secrets a pattern doesn't recognise"
 
 
 def test_it_runs_every_thirty_seconds_or_at_once_when_asked(db, tmp_path, monkeypatch):

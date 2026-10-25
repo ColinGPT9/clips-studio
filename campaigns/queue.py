@@ -844,6 +844,8 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
     seconds = moment.timestamp()
     out = {"changed": 0, "sent": 0, "paused_until": float(paused_until or 0), "more": False}
     names: dict[int, str] = {}
+    # Transport exceptions may contain webhook credentials, so diagnostics
+    # below describe the failed step without printing exception text.
 
     def tell(after, previous: str, previous_url: str | None = None) -> None:
         """Announce a status change; with `previous_url`, a row that got its
@@ -860,8 +862,8 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
             names[cid] = str(found["name"]) if found is not None else ""
         try:
             emit(views.event(after, previous, names[cid]))
-        except Exception as e:
-            print(f"  Could not announce a campaign submission: {_safe(e)}")
+        except Exception:
+            print("  Could not announce a campaign submission.")
 
     # 1. A send cut off between its write and its outcome.
     try:
@@ -872,8 +874,8 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
                                            started_before=seconds - SENDING_STALE_SECONDS)
             for row in stale:
                 tell(db.get_submission(int(row["id"])), "sending")
-    except Exception as e:
-        print(f"  Could not settle campaign sends left unfinished: {_safe(e)}")
+    except Exception:
+        print("  Could not settle campaign sends left unfinished.")
 
     # 2. Deadlines.
     try:
@@ -886,8 +888,8 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
                     tell(statemachine.apply(db, int(row["id"]), "expire", now=moment), row["status"])
                 except statemachine.NotAllowed:
                     continue
-    except Exception as e:
-        print(f"  Could not expire campaign submissions: {_safe(e)}")
+    except Exception:
+        print("  Could not expire campaign submissions.")
 
     # 2b. An archived campaign's row that was out sending when it was archived
     # and came back not sent (a rate limit, a retry, a webhook gone): cancelled
@@ -904,14 +906,14 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
                      row["status"])
             except statemachine.NotAllowed:
                 continue
-    except Exception as e:
-        print(f"  Could not cancel an archived campaign's submissions: {_safe(e)}")
+    except Exception:
+        print("  Could not cancel an archived campaign's submissions.")
 
     # 3. Following posts until they are live with a link.
     try:
         due = db.submissions_due(FOLLOWED, now=seconds, limit=100, no_url_manual=True)
-    except Exception as e:
-        print(f"  Could not list campaign submissions to check: {_safe(e)}")
+    except Exception:
+        print("  Could not list campaign submissions to check.")
         due = []
     for row in due:
         try:
@@ -919,13 +921,13 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
             continue
         except statemachine.NotAllowed:
             pass  # a route changed it meanwhile (then the push below changes nothing)
-        except Exception as e:
-            print(f"  Could not check submission #{row['id']}: {_safe(e)}")
+        except Exception:
+            print(f"  Could not check submission #{row['id']}.")
         try:  # a row that can't be looked at is never at the head of every pass
             db.set_submission(int(row["id"]), expect=(row["status"],), match={"post_url": row["post_url"]},
                               next_attempt_at=seconds + CHECK_FAILED_SECONDS)
-        except Exception as e:
-            print(f"  Could not put off submission #{row['id']}: {_safe(e)}")
+        except Exception:
+            print(f"  Could not put off submission #{row['id']}.")
 
     # 4. Sending.
     if seconds < out["paused_until"]:
@@ -933,8 +935,8 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
     try:
         ready = db.submissions_to_send(now=seconds, limit=100)
         user = views.discord_user(db) if ready else ""
-    except Exception as e:
-        print(f"  Could not list campaign submissions to send: {_safe(e)}")
+    except Exception:
+        print("  Could not list campaign submissions to send.")
         ready, user = [], ""
     for row in ready:
         if out["sent"] >= SENDS_PER_PASS or seconds < out["paused_until"]:
@@ -944,17 +946,11 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
             _send(db, data_dir, http, row, moment=moment, user=user, out=out, tell=tell)
         except statemachine.NotAllowed:
             continue  # a route changed it before it was sent
-        except Exception as e:
+        except Exception:
             # Before the `sending` write it simply stays ready; after it, the
             # sweep above settles it as "check Discord" within two minutes.
-            print(f"  Could not send submission #{row['id']}: {_safe(e)}")
+            print(f"  Could not send submission #{row['id']}.")
     return out
-
-
-def _safe(e: BaseException) -> str:
-    from core.scrub import scrub_secrets
-
-    return scrub_secrets(str(e))[:300]
 
 
 # ---- the user's actions ---------------------------------------------------------------------------
