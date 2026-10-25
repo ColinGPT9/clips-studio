@@ -179,19 +179,48 @@ def _local_utc(text) -> str:
 
 def resolve(db, sub, *, now=None) -> Resolution:
     """Where the post a submission follows stands now, and its link if it has
-    one. `sub` is a campaign_submissions row (or its dict)."""
+    one. `sub` is a campaign_submissions row (or its dict).
+
+    A YouTube post that failed (or was skipped) on its route is looked for on
+    the other one too: a direct upload made since a WoopSocial or Upload-Post
+    post failed, or a publisher's post published since a direct upload
+    failed, is the post (the clip published again, with or without the
+    campaign picked). Its provider is the one copied onto the submission."""
     sub = dict(sub)
     provider = str(sub.get("provider") or "")
     if provider == "manual":
         return _manual(sub)
     if provider == "youtube":
-        return _youtube(db, sub, now)
-    row = _provider_row(db, sub)
-    if row is not None:
+        res = _youtube(db, sub, now)
+    else:
+        row = _provider_row(db, sub)
+        if row is not None:
+            res = _from_provider_row(row, sub, now)
+        elif not provider and sub.get("platform") == "youtube":
+            res = _youtube(db, sub, now)
+        else:
+            return Resolution("not_published", provider=provider)
+    if res.outcome and sub.get("platform") == "youtube":
+        return _other_route(db, sub, res, now) or res
+    return res
+
+
+def _other_route(db, sub: dict, failed: Resolution, now) -> Resolution | None:
+    """The YouTube post made through the other route at or after `failed`
+    (a failed or skipped one), or None when there is none."""
+    since = failed.failed_at
+    if not since:
+        return None
+    if failed.provider == "youtube":
+        row = _provider_row(db, sub)
+        if row is None or row["state"] != "published" or _local_utc(row["updated_at"]) < since:
+            return None
         return _from_provider_row(row, sub, now)
-    if not provider and sub.get("platform") == "youtube":
-        return _youtube(db, sub, now)
-    return Resolution("not_published", provider=provider)
+    upload = _upload(db, sub, int(sub.get("clip_id") or 0))
+    if upload is None or _local_utc(upload["uploaded_at"]) < since:
+        return None
+    found = _youtube(db, {**sub, "provider": "youtube", "publish_job_id": 0}, now)
+    return None if found.outcome else found
 
 
 def _manual(sub: dict) -> Resolution:

@@ -1924,8 +1924,8 @@ class StateDB:
         if used is not None:
             self.set_campaign(campaign_id, archived=1)
             return "archived"
-        self.conn.execute("DELETE FROM campaigns WHERE id = ?", (int(campaign_id),))
-        self.conn.commit()
+        # Through _write, so queue.remove_campaign's transaction holds it too.
+        self._write("DELETE FROM campaigns WHERE id = ?", (int(campaign_id),))
         return "deleted"
 
     def insert_destination(self, **fields) -> int:

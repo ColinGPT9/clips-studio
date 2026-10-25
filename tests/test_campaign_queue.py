@@ -1161,17 +1161,162 @@ def test_a_failed_youtube_upload_published_again_resolves_without_attaching_agai
         ("manual", "manual", "Ready to submit to Example Campaign in Discord")], "its link is news"
 
 
+def _uploaded(db, clip_id, job_id, youtube_id="abcdefghi01") -> None:
+    """A queued direct upload finishing: its job done, its uploads row."""
+    found = db.get_clip(clip_id)
+    db.finish_publish_job(job_id, "done", youtube_id=youtube_id)
+    db.record_publish(clip_id, {"youtube_id": youtube_id, "video_id": found["video_id"], "start_s": found["start_s"],
+                                "end_s": found["end_s"], "privacy": "public", "actual_privacy": "public",
+                                "state": "uploaded"})
+
+
 def test_attaching_again_after_a_failed_post_follows_the_new_publish(db, tmp_path):
     clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
     publisher.publish(clip_id, ["youtube"], state="failed", error="Rejected")  # through WoopSocial
     row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="woopsocial")["created"][0]
     assert (row["status"], row["status_reason"]) == ("manual", FAILED_ON_YOUTUBE)
-    again = publisher.youtube(clip_id, youtube_id="abcdefghi01")  # the YouTube panel publishes it, then attaches
+    again = publisher.youtube(clip_id, done=False)  # the YouTube panel: the job is queued, then it attaches
     got = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=again)
     assert [(r["id"], r["provider"], r["publish_job_id"], r["next_attempt_at"]) for r in got["existing"]] == [
         (row["id"], "youtube", again, 0)]
+    _uploaded(db, clip_id, again)
     _advance(db, tmp_path, T0 + timedelta(seconds=1))
     assert db.get_submission(row["id"])["post_url"] == link("youtube", 1)
+
+
+def test_a_row_waiting_on_its_own_new_upload_is_looked_at_each_minute(db, tmp_path, monkeypatch):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    failed = publisher.youtube(clip_id, done=False)
+    db.finish_publish_job(failed, "failed", error="The daily upload quota is used up")
+    row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=failed)["created"][0]
+    assert (row["status"], row["status_reason"]) == ("manual", FAILED_ON_YOUTUBE)
+    _due(db, row["id"])
+    _advance(db, tmp_path, T0 + timedelta(seconds=1))
+    assert db.get_submission(row["id"])["next_attempt_at"] == T0.timestamp() + 1 + 3600, "its job ended: hourly"
+
+    at = T0 + timedelta(minutes=1)
+    _stamp_at(monkeypatch, at)
+    again = publisher.youtube(clip_id, done=False)  # the YouTube panel: queued, then the attach
+    _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=again, at=at)
+    _advance(db, tmp_path, at + timedelta(seconds=2))  # the pass notify_campaigns asks for
+    after = db.get_submission(row["id"])
+    assert (after["publish_job_id"], after["next_attempt_at"]) == (again, (at + timedelta(seconds=62)).timestamp())
+    _advance(db, tmp_path, at + timedelta(seconds=62))
+    assert db.get_submission(row["id"])["post_url"] == "", "still uploading"
+
+    _stamp_at(monkeypatch, T0 + timedelta(minutes=4))
+    _uploaded(db, clip_id, again)
+    _advance(db, tmp_path, T0 + timedelta(minutes=4, seconds=30))  # due again at +3:04
+    after = db.get_submission(row["id"])
+    assert (after["status"], after["post_url"], after["status_reason"]) == (
+        "manual", link("youtube", 1), "Submit it in Discord"), "within a minute of the upload, not an hour"
+
+
+@pytest.mark.parametrize("provider", ["manual", ""])
+def test_attaching_again_without_a_publisher_keeps_the_post_it_follows(db, tmp_path, provider):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    publisher.publish(clip_id, ["tiktok"])  # queued on WoopSocial
+    row = _attach(db, clip_id, [cid], provider="woopsocial")["created"][0]
+    again = _attach(db, clip_id, [cid], provider=provider)["existing"][0]  # and no link typed
+    assert (again["provider"], again["next_attempt_at"]) == ("woopsocial", 0)
+    publisher.refresh(clip_id, "tiktok", "published", url=link("tiktok", 7))
+    _advance(db, tmp_path, T0 + timedelta(minutes=2))
+    after = db.get_submission(row["id"])
+    assert (after["status"], after["provider"], after["post_url"], after["status_reason"]) == (
+        "manual", "woopsocial", link("tiktok", 7), "Submit it in Discord")
+
+
+def test_a_row_waiting_for_a_typed_link_follows_a_publish_attached_later(db, tmp_path):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    row = _attach(db, clip_id, [cid], provider="manual")["created"][0]  # "I'll enter the link", and didn't
+    assert (row["status"], row["status_reason"]) == ("manual", "Enter the post's link")
+    publisher.publish(clip_id, ["tiktok"])
+    again = _attach(db, clip_id, [cid], provider="woopsocial")["existing"][0]
+    assert again["provider"] == "woopsocial"
+    publisher.refresh(clip_id, "tiktok", "published", url=link("tiktok", 8))
+    _advance(db, tmp_path, T0 + timedelta(minutes=2))
+    assert db.get_submission(row["id"])["post_url"] == link("tiktok", 8)
+
+
+def test_a_post_that_went_live_stays_the_one_followed(db, tmp_path):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    publisher.publish(clip_id, ["youtube"], state="published")  # live on WoopSocial, its link not known yet
+    row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="woopsocial")["created"][0]
+    assert row["status"] == "waiting_url"
+    job = publisher.youtube(clip_id, done=False)
+    again = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=job)["existing"][0]
+    assert (again["provider"], again["publish_job_id"], again["next_attempt_at"]) == ("woopsocial", 0, 0)
+    db.finish_publish_job(job, "failed", error="The daily upload quota is used up")
+    _advance(db, tmp_path, T0 + timedelta(hours=1))
+    assert db.get_submission(row["id"])["status"] == "waiting_url"
+    _advance(db, tmp_path, T0 + timedelta(hours=25))
+    after = db.get_submission(row["id"])
+    assert (after["status"], after["provider"], after["status_reason"]) == (
+        "manual", "woopsocial", statemachine.REASONS["url_overdue"]), "the day's wait for its link still runs"
+    job = publisher.youtube(clip_id, done=False)
+    again = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=job)["existing"][0]
+    assert (again["provider"], again["publish_job_id"]) == ("woopsocial", 0), "live, only its link is missing"
+
+    # Live with its link before the row's next look: that link, not the new publish.
+    other = clip(db, start=200.0, end=230.0)
+    publisher.publish(other, ["youtube"])
+    waiting = _attach(db, other, [cid], platforms=["youtube"], provider="woopsocial")["created"][0]
+    publisher.refresh(other, "youtube", "published", url=link("youtube", 5))
+    job = publisher.youtube(other, done=False)
+    again = _attach(db, other, [cid], platforms=["youtube"], provider="youtube", publish_job_id=job)["existing"][0]
+    assert (again["status"], again["provider"], again["publish_job_id"]) == ("waiting_publication", "woopsocial", 0)
+    _advance(db, tmp_path, T0 + timedelta(hours=26))
+    assert db.get_submission(waiting["id"])["post_url"] == link("youtube", 5)
+
+
+@pytest.mark.parametrize("first", ["queued", "skipped"])
+def test_a_row_moved_onto_a_direct_upload_that_fails_is_the_users_with_its_reason(db, tmp_path, first):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    publisher.publish(clip_id, ["youtube"], state=first, error="YouTube isn't connected" if first == "skipped" else "")
+    row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="woopsocial")["created"][0]
+    assert row["status"] == {"queued": "waiting_publication", "skipped": "manual"}[first]
+    job = publisher.youtube(clip_id, done=False)
+    again = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=job)["existing"][0]
+    assert (again["provider"], again["publish_job_id"]) == ("youtube", job)
+    db.finish_publish_job(job, "failed", error="The daily upload quota is used up")
+    _advance(db, tmp_path, T0 + timedelta(seconds=1))
+    after = db.get_submission(row["id"])
+    assert (after["status"], after["status_reason"], after["error"]) == (
+        "manual", FAILED_ON_YOUTUBE, "The daily upload quota is used up")
+
+
+@pytest.mark.parametrize("first, provider, url", [
+    ("woopsocial", "youtube", link("youtube", 1)),  # failed on WoopSocial, then uploaded directly
+    ("youtube", "woopsocial", link("youtube", 3)),  # a direct upload failed, then posted through WoopSocial
+])
+def test_a_youtube_post_published_again_through_the_other_route_resolves(db, tmp_path, monkeypatch,
+                                                                         first, provider, url):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    _stamp_at(monkeypatch, T0 - timedelta(days=1))  # a post through the other route before the failure
+    if first == "woopsocial":
+        publisher.youtube(clip_id, youtube_id="abcdefghi00")
+    else:
+        publisher.publish(clip_id, ["youtube"], state="published", url=link("youtube", 0))
+    _stamp_at(monkeypatch, T0)
+    if first == "woopsocial":
+        publisher.publish(clip_id, ["youtube"], state="failed", error="Rejected")
+        row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="woopsocial")["created"][0]
+    else:
+        job = publisher.youtube(clip_id, done=False)
+        db.finish_publish_job(job, "failed", error="The daily upload quota is used up")
+        row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=job)["created"][0]
+    assert (row["status"], row["post_url"], row["status_reason"]) == ("manual", "", FAILED_ON_YOUTUBE), \
+        "a post older than the failure isn't this one"
+
+    _stamp_at(monkeypatch, T0 + timedelta(minutes=10))  # published again, no campaign picked
+    if first == "woopsocial":
+        publisher.youtube(clip_id, youtube_id="abcdefghi01")
+    else:
+        publisher.publish(clip_id, ["youtube"], state="published", url=link("youtube", 3))
+    _advance(db, tmp_path, T0 + timedelta(hours=1, seconds=1))
+    after = db.get_submission(row["id"])
+    assert (after["status"], after["provider"], after["post_url"], after["status_reason"]) == (
+        "manual", provider, url, "Submit it in Discord")
 
 
 def test_the_sending_write_comes_before_the_request(db, tmp_path):
@@ -1203,11 +1348,40 @@ def test_archiving_a_campaign_cancels_what_it_has_not_sent_and_posts_nothing(db,
         assert (row["status"], row["status_reason"]) == ("cancelled", queue.CAMPAIGN_ARCHIVED)
     assert db.get_submission(sent)["status"] == "awaiting_confirmation", "already posted: its outcome is to record"
     statemachine.apply(db, sending, "rate_limited", now=T0, next_attempt_at=T0.timestamp())  # Discord: wait
-    http = FakeDiscordHTTP()
-    _advance(db, tmp_path, T0 + timedelta(seconds=10), http)
-    assert (http.calls, db.get_submission(sending)["status"]) == ([], "ready"), "nothing goes out for it"
+    http, events = FakeDiscordHTTP(), []
+    _advance(db, tmp_path, T0 + timedelta(seconds=10), http, emit=events.append)
+    back = db.get_submission(sending)
+    assert (http.calls, back["status"], back["status_reason"]) == ([], "cancelled", queue.CAMPAIGN_ARCHIVED), \
+        "back unsent: nothing goes out for it, and it never waits for good"
+    assert [(e["submission_id"], e["previous"], e["status"]) for e in events] == [(sending, "ready", "cancelled")]
     missing = queue.remove_campaign(db, 999, now=T0)
     assert missing == ""
+
+
+def test_archiving_cancels_all_of_its_rows_or_none(db, tmp_path, monkeypatch):
+    (one, two), _ = _ready(db, tmp_path, n=2)
+    cid = db.get_submission(one)["campaign_id"]
+    real, cancels = statemachine.apply, []
+
+    def breaks_on_the_second(db_, sub_id, event, **kw):
+        if event == "cancel":
+            cancels.append(sub_id)
+            if len(cancels) == 2:
+                raise RuntimeError("disk full")
+        return real(db_, sub_id, event, **kw)
+
+    monkeypatch.setattr(statemachine, "apply", breaks_on_the_second)
+    with pytest.raises(RuntimeError):
+        queue.remove_campaign(db, cid, now=T0)
+    assert len(cancels) == 2
+    assert (db.get_campaign(cid)["archived"], [db.get_submission(i)["status"] for i in (one, two)]) == (
+        0, ["ready", "ready"])
+    assert not db.conn.in_transaction
+
+    monkeypatch.setattr(statemachine, "apply", real)
+    unused = _campaign(db, "Unused")
+    deleted = queue.remove_campaign(db, unused, now=T0)
+    assert (deleted, db.get_campaign(unused), db.conn.in_transaction) == ("deleted", None, False)
 
 
 def test_a_campaign_switched_off_follows_and_posts_nothing_until_it_is_on_again(db, tmp_path):

@@ -343,16 +343,32 @@ def _first_look(db, sub_id: int, typed: str, *, now):
     return db.get_submission(sub_id)
 
 
-def _due_now(db, row, *, provider: str = "", publish_job_id: int = 0) -> None:
-    """Attached again: a row still followed is looked at on the next pass,
-    and follows the publish this attach comes with (published again after a
-    failed post: its provider, and a direct YouTube upload's new job)."""
+#: The publishers an attach can name a post of (a "manual" attach with no link names none).
+PUBLISHERS = ("woopsocial", "upload_post", "youtube")
+
+
+def _not_out(db, row, *, now) -> bool:
+    """Whether the post a followed row follows hasn't come out: it failed, was
+    skipped, is gone, or never came out. One that went live (its link still
+    to come, or not yet looked at) has."""
+    if row["status"] == "waiting_url":
+        return False
+    res = urls.resolve(db, row, now=now)
+    return res.state == "not_published" or (res.state == "blocked" and res.provider == "manual" and not res.url)
+
+
+def _due_now(db, row, *, provider: str = "", publish_job_id: int = 0, now) -> None:
+    """Attached again: a row still followed is looked at on the next pass.
+    It follows the publish this attach comes with (its provider, and a direct
+    YouTube upload's new job) only when the attach names a publisher and the
+    post the row follows hasn't come out (published again after a failed
+    post): a post that went live stays the one it follows."""
     if row["status"] in FOLLOWED or (row["status"] == "manual" and not row["post_url"]):
         fields: dict = {"next_attempt_at": 0}
-        if provider:
+        if provider in PUBLISHERS and _not_out(db, row, now=now):
             fields["provider"] = provider
-        if publish_job_id:
-            fields["publish_job_id"] = int(publish_job_id)
+            if publish_job_id:
+                fields["publish_job_id"] = int(publish_job_id)
         db.set_submission(int(row["id"]), expect=(row["status"],), match={"post_url": row["post_url"]}, **fields)
 
 
@@ -382,8 +398,8 @@ def attach(db, *, items, campaign_ids, now, mode: str = "after_publish", provide
     waiting_publication with the mode's hold and Review first, then looked at
     once here, so a post already live is evaluated at once. A row the post
     already has in a campaign is returned as `existing` (looked at again on
-    the next pass, through this attach's provider and YouTube job while it
-    still waits for its link); with `reopen_rows`, a cancelled, expired or
+    the next pass, through this attach's publisher and YouTube job when the
+    post it followed hasn't come out); with `reopen_rows`, a cancelled, expired or
     failed one starts again with the campaign's method and webhook (unless
     it holds its own) and is listed as created. A campaign that is missing,
     archived, switched off, doesn't take the platform, or whose deadline has
@@ -483,7 +499,7 @@ def attach(db, *, items, campaign_ids, now, mode: str = "after_publish", provide
                 else:
                     out["existing"].append(after)
                 continue
-            _due_now(db, existing, provider=provider, publish_job_id=publish_job_id)
+            _due_now(db, existing, provider=provider, publish_job_id=publish_job_id, now=moment)
             out["existing"].append(db.get_submission(int(existing["id"])))
     return out
 
@@ -596,6 +612,26 @@ def _blocked(db, sub: dict, res, known: dict, moment) -> dict | None:
         return statemachine.apply(db, int(sub["id"]), "url_found", now=moment, to="manual", **fields)
 
 
+def _failure(res, sub: dict, platform: str) -> str:
+    """The reason for a post that failed or was skipped; '' for any other."""
+    if res.outcome == "skipped":
+        where = PROVIDER_LABELS.get(res.provider or sub["provider"], "the publisher")
+        return (f"{platform} isn't connected on {where}, so nothing was posted there: "
+                "publish it there or enter its link")
+    if res.outcome == "failed":
+        return f"The post failed on {platform}: publish it again or enter its link"
+    return ""
+
+
+def _uploading(db, sub: dict) -> bool:
+    """Its own direct YouTube upload is queued or running (the YouTube panel
+    attaches while it is): looked at each minute until the job ends."""
+    if sub["provider"] != "youtube" or not int(sub["publish_job_id"] or 0):
+        return False
+    job = db.get_publish_job(int(sub["publish_job_id"]))
+    return job is not None and job["status"] in ("queued", "running")
+
+
 def follow(db, row, *, now):
     """One look at where a followed submission's post stands, and the step
     it leads to (DESIGN §4.2, §6.1): its link found (evaluated), published
@@ -604,7 +640,10 @@ def follow(db, row, *, now):
     hours), not seen live 14 days after its time (the user's). A look that
     changes nothing sets the next one: in a minute while the post is due,
     10 minutes while it is scheduled ahead, an hour while it waits on a
-    failed post or the user. Returns the row after a status change, else None.
+    failed post or the user (a minute while the user's row waits on its own
+    direct upload). A row already the user's whose post now reads failed or
+    skipped takes that reason. Returns the row after a status change, else
+    None.
     """
     sub = dict(row)
     status = sub["status"]
@@ -627,11 +666,17 @@ def follow(db, row, *, now):
         return evaluate(db, int(sub["id"]), res, now=moment, event="url_found")
     if res.state == "blocked":
         return _blocked(db, sub, res, known, moment)
+    platform = platform_label(sub["platform"])
+    failure = _failure(res, sub, platform)
     if status == "manual":
-        _later(db, sub, seconds + CHECK_FAILED_SECONDS, known)
+        # A publish it was moved onto that failed too says so (not the
+        # first post's reason).
+        if failure and failure != sub["status_reason"]:
+            known.update(status_reason=failure, error=res.reason[:300])
+        wait = CHECK_DUE_SECONDS if _uploading(db, sub) else CHECK_FAILED_SECONDS
+        _later(db, sub, seconds + wait, known)
         return None
 
-    platform = platform_label(sub["platform"])
     if res.state == "published_no_url":
         if status == "waiting_publication":
             return step("published_no_url", CHECK_DUE_SECONDS)
@@ -641,10 +686,7 @@ def follow(db, row, *, now):
         _later(db, sub, seconds + CHECK_DUE_SECONDS, known)
         return None
     if status == "waiting_publication" and res.outcome == "skipped":
-        where = PROVIDER_LABELS.get(res.provider or sub["provider"], "the publisher")
-        return step("post_skipped", error=res.reason[:300],
-                    status_reason=f"{platform} isn't connected on {where}, so nothing was posted there: "
-                                  "publish it there or enter its link")
+        return step("post_skipped", error=res.reason[:300], status_reason=failure)
     if status == "waiting_publication" and res.outcome == "failed":
         failed_at = parse_utc(res.failed_at) or moment
         if sub["origin"] == "watch" and moment - failed_at < timedelta(hours=FAILED_POST_WAIT_HOURS):
@@ -654,8 +696,7 @@ def follow(db, row, *, now):
             else:
                 step("post_failed", to="waiting_publication", status_reason=reason, error=res.reason[:300])
             return None
-        return step("post_failed", to="manual", error=res.reason[:300],
-                    status_reason=f"The post failed on {platform}: publish it again or enter its link")
+        return step("post_failed", to="manual", error=res.reason[:300], status_reason=failure)
 
     # Still on its way (or scheduled ahead).
     due = parse_utc(res.due_at or sub["due_at"])
@@ -783,7 +824,9 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
 
     1. rows left `sending` over SENDING_STALE_SECONDS go to
        awaiting_confirmation ("Check Discord"), never sent again by themselves;
-    2. rows not yet sent whose campaign's deadline passed expire;
+    2. rows not yet sent whose campaign's deadline passed expire, and an
+       archived campaign's rows not yet sent (out sending when it was
+       archived, then back unsent) are cancelled;
     3. up to 100 followed rows that are due get a look (follow);
     4. due webhook rows are sent: at most SENDS_PER_PASS, one per destination
        every SEND_SPACING_SECONDS, none while Discord's global rate limit
@@ -845,6 +888,24 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
                     continue
     except Exception as e:
         print(f"  Could not expire campaign submissions: {_safe(e)}")
+
+    # 2b. An archived campaign's row that was out sending when it was archived
+    # and came back not sent (a rate limit, a retry, a webhook gone): cancelled
+    # as the archive cancelled the rest, so it never waits for good.
+    try:
+        leftovers = db.conn.execute(
+            f"SELECT * FROM campaign_submissions WHERE status IN ({','.join('?' * len(EDITABLE))}) "
+            "AND campaign_id IN (SELECT id FROM campaigns WHERE archived = 1) ORDER BY id",
+            EDITABLE,
+        ).fetchall()
+        for row in leftovers:
+            try:
+                tell(statemachine.apply(db, int(row["id"]), "cancel", now=moment, status_reason=CAMPAIGN_ARCHIVED),
+                     row["status"])
+            except statemachine.NotAllowed:
+                continue
+    except Exception as e:
+        print(f"  Could not cancel an archived campaign's submissions: {_safe(e)}")
 
     # 3. Following posts until they are live with a link.
     try:
@@ -1029,15 +1090,17 @@ def remove_campaign(db, campaign_id: int, *, now) -> str:
     sent (and failed ones) are cancelled, so nothing is followed, listed as
     work to do or posted by webhook for a campaign the user removed. Rows
     already sent stay, for the user to record what the campaign said. ''
-    when there is no such campaign."""
-    result = db.delete_campaign(int(campaign_id))
-    if result != "archived":
-        return result
-    for row in db.list_submissions(statuses=EDITABLE, campaign_id=int(campaign_id), limit=1_000_000):
-        try:
-            statemachine.apply(db, int(row["id"]), "cancel", now=now, status_reason=CAMPAIGN_ARCHIVED)
-        except statemachine.NotAllowed:
-            continue  # a send started meanwhile: it ends, and nothing more goes out for this campaign
+    when there is no such campaign. The archive and its cancels are one
+    transaction: all of them, or none."""
+    with db.transaction():
+        result = db.delete_campaign(int(campaign_id))
+        if result != "archived":
+            return result
+        for row in db.list_submissions(statuses=EDITABLE, campaign_id=int(campaign_id), limit=1_000_000):
+            try:
+                statemachine.apply(db, int(row["id"]), "cancel", now=now, status_reason=CAMPAIGN_ARCHIVED)
+            except statemachine.NotAllowed:
+                continue  # out sending: advance cancels it if it comes back not sent
     return result
 
 
