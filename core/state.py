@@ -8,6 +8,7 @@ nothing is ever reprocessed or double-uploaded.
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 
@@ -855,9 +856,16 @@ class StateDB:
 
         Only the id moves. video_id, start_s and end_s describe the post that
         went out, and a re-render that moved the window did not move the post.
-        A platform the new id already has a row for keeps that row."""
+        A platform the new id already has a row for keeps that row.
+
+        Campaign submissions follow too: their identity is the post's, and
+        their clip_id is only the last known id (for lists and {title})."""
         self.conn.execute(
             "UPDATE OR IGNORE clip_publishes SET clip_id = ? WHERE clip_id = ?",
+            (int(new_id), int(old_id)),
+        )
+        self.conn.execute(
+            "UPDATE campaign_submissions SET clip_id = ? WHERE clip_id = ?",
             (int(new_id), int(old_id)),
         )
         self.conn.commit()
@@ -1827,7 +1835,12 @@ class StateDB:
         """One write, committed. A write the database refuses (a NOT NULL,
         the URL index) is rolled back before the error goes on: sqlite3 had
         opened a transaction for it, and left open it would hold the write
-        lock and every other connection would read "database is locked"."""
+        lock and every other connection would read "database is locked".
+
+        Inside transaction() the write is left to it: committed with the
+        others, or rolled back with them."""
+        if getattr(self, "_in_transaction", False):
+            return self.conn.execute(sql, args)
         try:
             cur = self.conn.execute(sql, args)
         except sqlite3.Error:
@@ -1835,6 +1848,29 @@ class StateDB:
             raise
         self.conn.commit()
         return cur
+
+    @contextmanager
+    def transaction(self):
+        """Campaign writes made as one: every one of them, or none (moving a
+        submission to another campaign cancels one row and attaches another).
+        Only the campaign store's writes (_write) join it; a method that
+        commits by itself must not be called inside. Nested, it is the outer
+        one."""
+        if getattr(self, "_in_transaction", False):
+            yield
+            return
+        if self.conn.in_transaction:
+            self.conn.commit()
+        self.conn.execute("BEGIN IMMEDIATE")
+        self._in_transaction = True
+        try:
+            yield
+        except BaseException:
+            self._in_transaction = False
+            self.conn.rollback()
+            raise
+        self._in_transaction = False
+        self.conn.commit()
 
     def _insert(self, table: str, row: dict) -> int:
         now = _now()
@@ -2034,6 +2070,34 @@ class StateDB:
             f"SELECT * FROM campaign_submissions WHERE ({' OR '.join(parts)}) "
             "AND next_attempt_at <= ? ORDER BY next_attempt_at, id LIMIT ?",
             (*args, float(now), int(limit)),
+        ).fetchall()
+
+    def submissions_to_send(self, *, now: float, limit: int = 20) -> list[sqlite3.Row]:
+        """Webhook rows ready to post and due, the longest-waiting first. A
+        row saved for later is left out here, in SQL, so any number of them
+        can never fill the window."""
+        return self.conn.execute(
+            "SELECT * FROM campaign_submissions WHERE status = 'ready' AND hold = 0 "
+            "AND method = 'discord_webhook' AND next_attempt_at <= ? "
+            "ORDER BY next_attempt_at, id LIMIT ?",
+            (float(now), int(limit)),
+        ).fetchall()
+
+    def submission_counts(self, *, campaign_id: int | None = None, clip_id: int | None = None,
+                          video_id: str | None = None) -> list[sqlite3.Row]:
+        """(status, hold, sent_by, n) over the submissions these filters
+        pick: what the lists' counts and the To submit badge are made from."""
+        where, args = [], []
+        for column, value in (("campaign_id", campaign_id), ("clip_id", clip_id),
+                              ("video_id", video_id)):
+            if value is not None:
+                where.append(f"{column} = ?")
+                args.append(value)
+        clause = f"WHERE {' AND '.join(where)} " if where else ""
+        return self.conn.execute(
+            f"SELECT status, hold, sent_by, COUNT(*) AS n FROM campaign_submissions {clause}"
+            "GROUP BY status, hold, sent_by",
+            args,
         ).fetchall()
 
     def recover_sending_submissions(self, reason: str, *, started_before: float | None = None) -> int:

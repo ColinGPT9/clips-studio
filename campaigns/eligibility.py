@@ -250,6 +250,14 @@ def _routing(campaign: dict, source: dict | None) -> list[Check]:
     return [Check("routing", PASS)]
 
 
+def routes(campaign, source: dict | None) -> bool:
+    """Whether a campaign's routing takes a clip from `source`: always when
+    it has no filters, and never when a filter is set and the source can't
+    be told (automation attaches only what is known to match)."""
+    found = _routing(dict(campaign), source)
+    return not found or found[0].result == PASS
+
+
 def check(campaign, sub, res, *, source: dict | None, now, destination=None) -> list[Check]:
     """Every check once the post has a link: precheck on the caption it went
     out with (no scheduled time: it is live by now), then public, account,

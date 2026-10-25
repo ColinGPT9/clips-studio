@@ -58,10 +58,24 @@ class PublishWorker(threading.Thread):
         # clip id -> unix time each was last tried (youtube_service.due_live_checks).
         self._next_youtube_check = 0.0
         self._youtube_tried: dict[int, float] = {}
+        # Campaign submissions (campaigns/queue.py advance): when to next run
+        # a pass, whether one was asked for now, and until when Discord's
+        # global rate limit holds every webhook send. In memory only: every
+        # other piece of their state is in campaign_submissions.
+        self._next_campaign_check = 0.0
+        self._campaigns_now = False
+        self._campaign_pause = 0.0
 
     # ---- lifecycle -------------------------------------------------------
 
     def notify(self) -> None:
+        self._wake.set()
+
+    def notify_campaigns(self) -> None:
+        """Run the campaign step on the next turn of the loop instead of at
+        its 30-second tick: an attach, a typed link or an approval is then
+        looked at (and a webhook row sent) at once."""
+        self._campaigns_now = True
         self._wake.set()
 
     def stop(self) -> None:
@@ -77,12 +91,14 @@ class PublishWorker(threading.Thread):
             recovered = db.recover_running_publish_jobs()
             if recovered:
                 print(f"{recovered} upload(s) were interrupted by a restart and will not retry.")
+            self._recover_campaign_sends(db)
 
             while not self._stop.is_set():
                 self._run_due_verifications(db)
                 self._refresh_provider_posts(db)
                 self._refresh_missing_urls(db)
                 self._check_scheduled_youtube(db)
+                self._advance_campaigns(db)
                 job = db.claim_next_publish_job()
                 if job is None:
                     self._wake.wait(timeout=2.0)
@@ -251,6 +267,55 @@ class PublishWorker(threading.Thread):
                 print(f"  Could not check {unreachable} scheduled YouTube upload(s).")
         except Exception as e:
             print(f"  Could not check scheduled YouTube uploads: {e}")
+
+    # ---- campaign submissions --------------------------------------------
+
+    #: How often the campaign step runs when nothing asks for it sooner.
+    CAMPAIGN_CHECK_SECONDS = 30
+
+    def _recover_campaign_sends(self, db: StateDB) -> None:
+        """At startup, every webhook send a restart cut off becomes
+        awaiting confirmation ("check the channel"), and is never sent again
+        by itself: it may have reached Discord. Contained: an error here
+        (sqlite's "database is locked" while other threads run their own
+        recovery) must not end this thread and every upload with it."""
+        try:
+            from campaigns.statemachine import REASONS
+
+            settled = db.recover_sending_submissions(REASONS["restart"])
+            if settled:
+                print(f"{settled} campaign send(s) were cut off by a restart: check Discord.")
+        except Exception as e:
+            print(f"Could not settle campaign sends cut off by a restart: {_scrubbed(e)}")
+
+    def _advance_campaigns(self, db: StateDB, *, now: float | None = None) -> None:
+        """Move campaign submissions on (campaigns/queue.py advance): follow
+        each post until it is live with a link, then send what a webhook may
+        send. Every CAMPAIGN_CHECK_SECONDS, at once after notify_campaigns(),
+        and again in a couple of seconds while sends are left over. Contained
+        like the provider checks: it never raises into the loop."""
+        mono = time.monotonic()
+        asked = getattr(self, "_campaigns_now", False)
+        if not asked and mono < getattr(self, "_next_campaign_check", 0.0):
+            return
+        self._campaigns_now = False
+        self._next_campaign_check = mono + self.CAMPAIGN_CHECK_SECONDS
+        try:
+            from campaigns import discord_http, queue
+            from campaigns.model import SEND_SPACING_SECONDS
+
+            http = getattr(self, "campaign_http", None) or discord_http.Http()
+            out = queue.advance(db, self.data_dir, now=time.time() if now is None else now, http=http,
+                                emit=self._emit_campaign, paused_until=getattr(self, "_campaign_pause", 0.0))
+            self._campaign_pause = out["paused_until"]
+            if out["more"]:
+                self._next_campaign_check = mono + SEND_SPACING_SECONDS
+        except Exception as e:
+            print(f"  Could not move campaign submissions on: {_scrubbed(e)}")
+
+    def _emit_campaign(self, event: dict) -> None:
+        """A submission changed status: the `campaign` event on /ws."""
+        broadcaster.publish(event)
 
     # ---- one job ---------------------------------------------------------
 
@@ -471,6 +536,13 @@ class PublishWorker(threading.Thread):
             "stage": "publish",
             **fields,
         })
+
+
+def _scrubbed(error: Exception) -> str:
+    """An error's text with anything key-shaped (a webhook link) taken out."""
+    from core.scrub import scrub_secrets
+
+    return scrub_secrets(str(error))[:300]
 
 
 def next_reset_local_hint() -> str:

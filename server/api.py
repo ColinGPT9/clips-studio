@@ -790,6 +790,13 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
 
     discord_api.install(app, db=db, data_dir=data_dir, session_secret=session_secret)
 
+    # Clipping campaigns and their submissions (campaigns/): the publish
+    # worker follows each post and sends what a webhook may send.
+    from server import campaigns_api
+
+    campaigns_api.install(app, db=db, data_dir=data_dir, publish_worker=publish_worker,
+                          session_secret=session_secret)
+
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
     from server import integrations
