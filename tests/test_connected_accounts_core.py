@@ -14,7 +14,6 @@ from typing import ClassVar
 import pytest
 
 from connected_accounts.models import AccountError
-from connected_accounts.oauth import OAuthStateStore, pkce_pair
 from connected_accounts.service import ConnectedAccounts
 from connected_accounts.store import SecureTokenStore
 
@@ -128,41 +127,6 @@ def connect(setup):
     result = service.poll(flow["flow_id"])
     assert result["status"] == "connected"
     return result["account"]["id"]
-
-
-def test_pkce_uses_s256_and_secret_is_not_the_challenge():
-    verifier, challenge = pkce_pair()
-    expected = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    assert challenge == expected
-    assert 43 <= len(verifier) <= 128 and verifier != challenge
-
-
-def test_redirect_state_is_bound_and_single_use():
-    clock = Clock()
-    states = OAuthStateStore(clock=clock)
-    issued = states.issue("future-provider", "desktop-session", "http://127.0.0.1:1234/callback")
-    redeemed = states.consume(issued["state"], provider_id="future-provider", session_id="desktop-session",
-                              redirect_uri="http://127.0.0.1:1234/callback")
-    assert redeemed.verifier
-    assert redeemed.verifier not in repr(redeemed)
-    assert "verifier" not in issued
-    with pytest.raises(AccountError, match="did not match"):
-        states.consume(issued["state"], provider_id="future-provider", session_id="desktop-session",
-                       redirect_uri="http://127.0.0.1:1234/callback")
-
-
-@pytest.mark.parametrize("changed", ["provider", "session", "redirect", "expired"])
-def test_redirect_state_rejects_mismatches_and_expiry(changed):
-    clock = Clock()
-    states = OAuthStateStore(clock=clock)
-    issued = states.issue("provider", "session", "http://127.0.0.1/callback")
-    if changed == "expired":
-        clock.now += 301
-    with pytest.raises(AccountError) as error:
-        states.consume(issued["state"], provider_id="different" if changed == "provider" else "provider",
-                       session_id="different" if changed == "session" else "session",
-                       redirect_uri="http://127.0.0.1/other" if changed == "redirect" else "http://127.0.0.1/callback")
-    assert error.value.code == "invalid_state"
 
 
 def test_flow_and_roster_never_expose_credentials(setup, tmp_path):

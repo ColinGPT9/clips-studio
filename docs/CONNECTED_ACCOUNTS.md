@@ -104,9 +104,7 @@ failure is reported rather than claiming disconnection succeeded.
 
 Twitch uses **device authorization**, which has no redirect callback or OAuth
 `state` parameter. Its advertised capability is `pkce: false`; Clips Kitty does
-not pretend it supports authorization-code PKCE. Future providers that support
-authorization-code flows can use `connected_accounts.oauth` for unpredictable,
-single-use, expiring, session/provider/redirect-bound state and S256 PKCE.
+not pretend it supports authorization-code PKCE.
 
 Provider requests use fixed HTTPS endpoints, bounded timeouts, TLS verification,
 and disabled redirects. Provider errors are mapped to safe messages. EventSub

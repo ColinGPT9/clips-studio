@@ -19,7 +19,8 @@ were often broken in a way that only showed up on somebody else's machine.
   asked only for the permissions you tick, and none is ticked to start with. An account
   that needs signing in again shows Reconnect, which asks for the same permissions.
 - **Watch my channel.** Adds your connected channel to Watched channels with the same
-  choices as Add a channel. Its new videos are then found through your connection, and
+  choices as Add a channel (from Settings: your Generate settings, and clips wait for
+  you). Its new videos are then found through your connection, and
   through the public video list, as before, whenever the connection needs reconnecting or
   Twitch doesn't answer, so the watch keeps going.
 - **Viewer nominations.** With the chat permission ticked you can start and stop
