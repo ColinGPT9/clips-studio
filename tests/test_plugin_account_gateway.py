@@ -169,6 +169,42 @@ def test_host_account_errors_keep_their_status_and_fixed_message(setup, code, st
             call(setup.gateway, env[accounts.CAPABILITY_ENV])
     # 409 would read as "already attempted" to the SDK; nothing was.
     assert error.value.status == expected and str(error.value) == "A fixed host message."
+    # The code goes along, so the SDK can tell a missing Twitch scope from a
+    # run that isn't granted the operation (both 403).
+    assert error.value.code == code
+
+
+def test_the_route_sends_the_refusals_code_for_the_sdk(setup):
+    from connected_accounts.models import AccountError
+
+    def refuse(account_id, operation, **args):
+        raise AccountError("missing_scope", "Reconnect this account with permission for this action.", status=403)
+
+    app = FastAPI()
+    gateway = accounts.install(app, data_dir=setup.data_dir, service=setup.service,
+                               binding_for_video=lambda video: {"account_id": "twitch:42", "broadcaster_id": "42"})
+    client = TestClient(app)
+    with accounts.run_environment(setup.data_dir, setup.plugin, object(), 30) as env:
+        headers = {accounts.HEADER: env[accounts.CAPABILITY_ENV]}
+
+        def post(operation):
+            return client.post(accounts.ROUTE, headers=headers, json={
+                "operation": operation, "parameters": {}, "request_id": uuid.uuid4().hex})
+
+        setup.service.perform = refuse
+        scope = post("stream_context")
+        assert scope.status_code == 403 and scope.headers[accounts.ERROR_HEADER] == "missing_scope"
+        # An operation no run is granted: the gateway's own refusal.
+        refused = post("not_an_operation")
+        assert refused.status_code == 403 and refused.headers[accounts.ERROR_HEADER] == "not_permitted"
+    gateway.close()
+
+
+def test_a_refusal_code_is_only_ever_a_plain_word():
+    assert accounts.AccessDenied("x", 412).code == "timeline_unverified"
+    assert accounts.AccessDenied("x", 503, "provider_unavailable").code == "provider_unavailable"
+    assert accounts.AccessDenied("x", 403, "Access_Token=secret").code == "not_permitted"
+    assert accounts.AccessDenied("x", 418).code == "failed"
 
 
 def test_no_binding_or_permissions_does_not_grant_account_access(setup):

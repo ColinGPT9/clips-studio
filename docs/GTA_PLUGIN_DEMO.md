@@ -6,20 +6,41 @@ with Clips Kitty's existing `ClipCandidate`, clip cutter, caption builder,
 and optional vertical renderer. The plugin stays outside this repository.
 No detector, ML model, or renderer is downloaded or added to the app.
 
-Generate the external plugin's original test assets, then run the app export:
+## What it needs
 
-```sh
-python /workspace/Grand-Theft-Auto-Clips-Kitty-Plugin/scripts/generate_demo.py /tmp/gta-demo.mp4
-python scripts/demo_gta_plugin.py \
-  --plugin /workspace/Grand-Theft-Auto-Clips-Kitty-Plugin \
-  --video /tmp/gta-demo.mp4 \
-  --transcript /tmp/gta-demo.transcript.json \
-  --synthetic-demo \
-  --output /workspace/scratch/gta-plugin-demo
+- This repository, with the app's Python dependencies installed (the same
+  environment that runs Clips Kitty from its code). The script uses this
+  checkout's own SDK in `sdk/python`; no SDK needs installing with pip.
+- A checkout of the external GTA plugin, which lives in its own repository and
+  is not part of this one. `<plugin checkout>` below is that folder: the one
+  with its `clipskitty.yaml`.
+- A short synthetic video and an authored transcript for it. The plugin's
+  repository has its own generator for these (`scripts/generate_demo.py`), but
+  at the time of writing it exists only on an unmerged branch there. The
+  commands below make an equivalent pair with FFmpeg instead, the way this
+  repository's integration test does, so nothing from that branch is needed.
+
+## Run it (PowerShell, from this repository's folder)
+
+`<scratch>` is any folder outside this repository and the plugin checkout.
+
+```powershell
+$ffmpeg = python -c "from core.binaries import ffmpeg; print(ffmpeg())"
+& $ffmpeg -hide_banner -loglevel error -y `
+  -f lavfi -i "color=c=0x1a2c42:s=640x360:r=24:d=24" `
+  -f lavfi -i "sine=f=440:sample_rate=44100:d=24" `
+  -c:v mpeg4 -q:v 8 -c:a aac -shortest "<scratch>\gta-demo.mp4"
+'{"language": "en", "segments": [{"start": 9, "end": 11, "text": "We crashed into a barrier!"}]}' |
+  Set-Content -Encoding ascii "<scratch>\gta-demo.transcript.json"
+python scripts\demo_gta_plugin.py `
+  --plugin "<plugin checkout>" `
+  --video "<scratch>\gta-demo.mp4" `
+  --transcript "<scratch>\gta-demo.transcript.json" `
+  --synthetic-demo `
+  --output "<scratch>\gta-plugin-demo"
 ```
 
-Use the environment's Python with the supported SDK and existing app video
-dependencies installed. The explicit `--synthetic-demo` flag affirms that
+The explicit `--synthetic-demo` flag affirms that
 the supplied files are original synthetic test assets. It does not establish
 rights to arbitrary third-party footage. This technical check accepts local
 files and performs no footage downloads.
@@ -42,7 +63,7 @@ must retain video and any source audio and match the selected duration within
 0.25 seconds. The history uses the existing `StateDB` APIs in this isolated
 folder; the user's application database is never opened.
 
-The generator makes geometric frames and tones. Its fictional transcript is
+The synthetic video is a plain colour and a tone. Its fictional transcript is
 supplied test input; the tone audio contains no speech. These artifacts
 validate that SDK findings become playable app-rendered clips with timed
 captions. They do not demonstrate real GTA visual recognition, transcription
@@ -51,13 +72,15 @@ No human visual, audio, caption, or watchability scores are assigned.
 
 Run the actual integration test with an explicit external plugin checkout:
 
-```sh
-GTA_PLUGIN_DIR=/workspace/Grand-Theft-Auto-Clips-Kitty-Plugin \
-  python -m pytest -q tests/test_gta_demo.py
+```powershell
+$env:GTA_PLUGIN_DIR = "<plugin checkout>"
+python -m pytest -q tests/test_gta_demo.py
+Remove-Item Env:GTA_PLUGIN_DIR
 ```
 
 The integration test authors its own short color-and-tone source, invokes
 the real plugin, checks that a selected window is cut rather than the entire
 source, decodes the H.264 result, checks audio/video streams and duration,
 and verifies caption and history artifacts. It is marked `slow` and skips
-when `GTA_PLUGIN_DIR` is absent; the input-assertion check always runs.
+when `GTA_PLUGIN_DIR` is absent; the input-assertion check and the check that
+the script finds this checkout's SDK always run.

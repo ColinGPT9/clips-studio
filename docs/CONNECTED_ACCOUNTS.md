@@ -10,14 +10,28 @@ Discord authorization and bot installation are a separate integration effort.
 ## Connect Twitch
 
 1. Register an application in the [Twitch developer console](https://dev.twitch.tv/console/apps).
-   Select a **Public** client suitable for the device authorization grant.
-2. In **Settings → Connected accounts**, save that application's public client ID.
-   Do not enter a client secret; the desktop app neither needs nor stores one.
-3. Choose the features to authorize and click **Connect Twitch**. Open Twitch's
-   official activation page in the system browser and enter the displayed code.
+   Twitch asks for two-factor authentication on the account first. The form
+   needs a name, at least one **OAuth Redirect URL** (`http://localhost` will
+   do: device sign-in never uses it), a **Category**, and **Client Type: Public**.
+2. In **Settings → Connected accounts**, save that application's Client ID
+   (letters and numbers only). Do not enter a client secret; the desktop app
+   neither needs nor stores one. Replacing a saved Client ID asks first, since
+   every connected account then needs reconnecting.
+3. Tick the permissions to authorize (none is ticked to start with, and
+   watching your own channel needs none) and click **Connect Twitch**. Open
+   Twitch's official activation page in the system browser and enter the
+   displayed code.
 4. Complete consent in the browser. Clips Kitty polls at Twitch's interval and
    displays the account once the token's client and user identity are verified.
-5. Use **Test connection**, **Watch this channel**, or **Disconnect** in the card.
+   If Twitch or the engine doesn't answer one poll, the card keeps waiting until
+   the code expires rather than ending the sign-in.
+5. Use **Test connection**, **Watch my channel**, or **Disconnect** in the card.
+   An account that shows **Reconnect required** has a **Reconnect** button,
+   which asks for the same permissions it had. **Watch my channel** adds the
+   channel with the Watch page's Add a channel choices (from Settings: the
+   Generate bar's settings, and clips wait for you before publishing). When
+   Twitch doesn't confirm a disconnect removed its authorization, the card says
+   so, and the app can be removed under Connections in Twitch's settings.
 
 On Windows, Clips Kitty stores tokens in its own credential store (core/secrets,
 Windows DPAPI), one entry per account. Elsewhere it uses the macOS Keychain or a
@@ -39,7 +53,7 @@ cancellation, expiration, or shutdown.
 | Feature | OAuth scopes | Additional constraints |
 | --- | --- | --- |
 | Stream and VOD metadata | User token; no additional scope | Metadata access does not grant private-video or download rights |
-| Native live clip | `clips:edit` | Connected broadcaster only; Twitch must permit clips and be live |
+| Native live clip | `clips:edit` | Desktop application route only (no pipeline, and nothing in the app asks for one); connected broadcaster only; Twitch must permit clips and be live |
 | Native VOD clip | `channel:manage:clips` or `editor:manage:clips` | Verified owned archive, authorized subject, calibrated source timing; 5–60 seconds |
 | VOD timestamp link | User token; no additional scope | Twitch verifies the VOD belongs to the connected broadcaster |
 | Receive chat | `user:read:chat` | Host-owned `channel.chat.message` EventSub subscription |
@@ -164,8 +178,10 @@ and `eventsub.wss.twitch.tv`. The activation page is on `www.twitch.tv`.
 Verify consent/denial/cancellation, account identity, scope selection, restart,
 token refresh, revoked permissions, own-channel watch discovery, live clip
 creation, VOD links, chat/EventSub reconnect, and disconnect against that account.
-The cloud development run has **not** completed live authorization or verified
-Windows DPAPI on Windows; offline storage tests inject the OS boundary.
+None of this has yet been tried against a real Twitch account: live
+authorization, clips, chat and EventSub are checked only with fake provider
+responses. Windows DPAPI storage itself (core/secrets) is the app's existing
+credential store; the Connected Accounts tests inject the OS boundary.
 
 Official provider references:
 

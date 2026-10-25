@@ -7,7 +7,10 @@ const vm = require('node:vm')
 const ts = require('typescript')
 
 const source = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/connectedAccounts.ts'), 'utf8')
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+// The app's own target (tsconfig.web.json), so classes behave as they do in the app.
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+}).outputText
 
 function client(session = 'desktop-session') {
   const calls = []
@@ -74,7 +77,50 @@ async function main() {
   assert.equal(c.calls[9].url, 'http://127.0.0.1:8765/stream-workflows/twitch%3A123/monitor')
   assert.equal(c.calls[9].init.method, 'POST')
   assert.equal(c.calls[10].init.method, 'DELETE')
-  assert.deepEqual(c.events, ['connected-accounts-changed', 'connected-accounts-changed', 'connected-accounts-changed'])
+  // configureTwitch, test, disconnect and watch each tell the cards to re-read.
+  assert.deepEqual(c.events, Array(4).fill('connected-accounts-changed'))
+
+  // A failed test or watch can change the account (Reconnect required), so
+  // the cards re-read the list even then.
+  const failing = client()
+  failing.respond({ ok: false, status: 401, json: async () => ({ detail: { code: 'invalid_token', message: 'Reconnect Twitch.' } }) })
+  await assert.rejects(failing.connectedAccounts.test('twitch:123'), /Reconnect Twitch\./)
+  await assert.rejects(failing.connectedAccounts.watch('twitch:123'), /Reconnect Twitch\./)
+  assert.deepEqual(failing.events, Array(2).fill('connected-accounts-changed'))
+
+  // The engine's status and fixed code reach the card, so a sign-in survives
+  // a passing failure and stops on a final answer.
+  const poll = client()
+  poll.respond({ ok: false, status: 503, json: async () => ({ detail: { code: 'provider_unavailable', message: 'Twitch could not be reached. Try again.' } }) })
+  await assert.rejects(poll.connectedAccounts.poll('flow'), (error) => {
+    assert.equal(error.status, 503)
+    assert.equal(error.code, 'provider_unavailable')
+    assert.ok(poll.isTransientAccountError(error))
+    return true
+  })
+  for (const [status, code] of [[400, 'access_denied'], [410, 'expired_token'], [404, 'invalid_flow']]) {
+    poll.respond({ ok: false, status, json: async () => ({ detail: { code, message: 'Final.' } }) })
+    await assert.rejects(poll.connectedAccounts.poll('flow'), (error) => {
+      assert.equal(error.code, code)
+      assert.ok(!poll.isTransientAccountError(error), code)
+      return true
+    })
+  }
+  poll.respond({ ok: false, status: 400, json: async () => ({ detail: { code: 'Not A Code!', message: 'Odd.' } }) })
+  await assert.rejects(poll.connectedAccounts.poll('flow'), (error) => error.code === '')
+  poll.respond(new Error('offline'))
+  await assert.rejects(poll.connectedAccounts.poll('flow'), (error) => {
+    assert.equal(error.status, 0)
+    assert.ok(poll.isTransientAccountError(error), 'an unreachable engine is worth asking again')
+    return true
+  })
+  await assert.rejects(client('').connectedAccounts.poll('flow'), (error) => !poll.isTransientAccountError(error))
+  assert.ok(!poll.isTransientAccountError(new Error('plain')))
+
+  // Disconnect hands back whether Twitch confirmed the revocation.
+  const gone = client()
+  gone.respond({ ok: true, status: 200, json: async () => ({ disconnected: true, revoked: false }) })
+  assert.equal((await gone.connectedAccounts.disconnect('twitch:123')).revoked, false)
 
   const maliciousId = 'https://attacker.test/token?session=secret#fragment'
   await c.streamWorkflows.startMonitor(maliciousId)

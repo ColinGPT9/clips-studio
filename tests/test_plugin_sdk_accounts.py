@@ -31,6 +31,8 @@ def service(monkeypatch):
             calls.append((self.path, dict(self.headers), json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
             self.send_response(reply["status"])
             self.send_header("Content-Type", "application/json")
+            for name, value in reply.get("headers", {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(json.dumps(reply["body"]).encode())
 
@@ -137,6 +139,35 @@ def test_each_refusal_has_its_own_plain_message(service):
         assert error.value.status == status and "never-echo" not in str(error.value)
         seen.add(str(error.value))
     assert len(seen) == 8
+
+
+def test_the_hosts_code_tells_refusals_with_one_status_apart(service):
+    # Not granted to this run versus the Twitch connection lacking the scope
+    # (both 403); a host part not running versus Twitch down (both 503); the
+    # run's own limit versus Twitch's rate limit (both 429).
+    calls, reply = service
+    pairs = [(403, "not_permitted", "missing_scope"), (503, "unavailable", "provider_unavailable"),
+             (429, "run_limit", "rate_limited")]
+    for status, first, second in pairs:
+        seen = []
+        for code in (first, second):
+            reply.update(status=status, headers={accounts.ERROR_HEADER: code},
+                         body={"detail": "access_token=never-echo-this"})
+            with pytest.raises(AccountOperationError) as error:
+                ConnectedAccounts().twitch.context()
+            assert error.value.status == status and error.value.code == code
+            assert "never-echo" not in str(error.value)
+            seen.append(str(error.value))
+        assert seen[0] != seen[1], status
+
+
+def test_a_code_that_is_not_a_plain_word_is_ignored(service):
+    calls, reply = service
+    reply.update(status=403, headers={accounts.ERROR_HEADER: "access_token=never-echo-this"}, body={})
+    with pytest.raises(AccountOperationError) as error:
+        ConnectedAccounts().twitch.context()
+    assert error.value.code == "" and "never-echo" not in str(error.value)
+    assert str(error.value) == "Clips Kitty has not granted that account operation for this run."
 
 
 def test_chat_permission_without_events_is_refused_at_validation(plugin_source):

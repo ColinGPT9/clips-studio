@@ -670,11 +670,12 @@ const EXTERNAL_ALLOWED = [
   // embedded webview with disallowed_useragent, and offers no way to opt out.
   /^https:\/\/accounts\.google\.com\//,
   /^https:\/\/www\.youtube\.com\/watch\?v=/,
-  // A watched channel's videos, opened from the Watch page.
   // Public-client device authorization uses the system browser, with the
-  // activation page restricted to Twitch's exact host and path.
+  // activation page restricted to Twitch's exact host and path, and the
+  // developer console page where the Client ID comes from.
   /^https:\/\/www\.twitch\.tv\/activate\/?(?:\?[^#]*)?$/,
-  /^https:\/\/dev\.twitch\.tv\/console\/apps(?:\/[^?#]*)?$/,
+  /^https:\/\/dev\.twitch\.tv\/console\/apps$/,
+  // A watched channel's videos, opened from the Watch page.
   /^https:\/\/www\.twitch\.tv\/videos\/\d+$/,
   /^https:\/\/kick\.com\/[\w-]+\/videos\/[0-9a-fA-F-]{36}$/,
   /^https:\/\/support\.google\.com\/youtube\//,

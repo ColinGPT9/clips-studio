@@ -24,6 +24,13 @@ from plugins import store
 
 # AccountError statuses a plugin sees as they are; anything else is a 502.
 _PASSED_STATUSES = frozenset({400, 401, 403, 404, 429, 503})
+# A refusal's fixed code, for the SDK to choose its own message by. Only a
+# lower-case word ever goes out: the host's own codes, never provider text.
+ERROR_HEADER = "X-Clips-Kitty-Error"
+_CODE = re.compile(r"[a-z_]{1,40}\Z")
+_STATUS_CODES = {400: "invalid_request", 401: "reconnect_required", 403: "not_permitted", 404: "not_found",
+                 409: "already_attempted", 412: "timeline_unverified", 429: "run_limit", 502: "failed",
+                 503: "unavailable"}
 HEADER = "X-Clips-Kitty-Capability"
 ENDPOINT_ENV = "CLIPSKITTY_ACCOUNT_ENDPOINT"
 CAPABILITY_ENV = "CLIPSKITTY_ACCOUNT_CAPABILITY"
@@ -56,10 +63,16 @@ TIMELINE_UNVERIFIED = ("Clips Kitty hasn't verified this video's Twitch timeline
 
 
 class AccessDenied(RuntimeError):
-    """A fixed public error; exception details and provider responses stay private."""
+    """A fixed public error; exception details and provider responses stay private.
 
-    def __init__(self, message="This run is not permitted to use that account operation.", status=403):
+    ``code`` is a fixed word the SDK reads (sent in ERROR_HEADER), so a plugin
+    can tell, say, "this run isn't allowed" from "the Twitch connection lacks
+    that permission" though both are 403.
+    """
+
+    def __init__(self, message="This run is not permitted to use that account operation.", status=403, code=""):
         self.status = status
+        self.code = code if _CODE.fullmatch(code or "") else _STATUS_CODES.get(status, "failed")
         super().__init__(message)
 
 
@@ -243,7 +256,7 @@ class Gateway:
                 status = error.status if error.status in _PASSED_STATUSES else 502
                 if error.status == 409:
                     status = 503  # not configured: unavailable, never "already attempted"
-                raise AccessDenied(str(error), status) from None
+                raise AccessDenied(str(error), status, getattr(error, "code", "")) from None
             except Exception:
                 # No provider body, URL, token, filesystem path or exception
                 # detail is reflected into a plugin's output/log.
@@ -382,7 +395,7 @@ def install(app, *, data_dir, service, binding_for_video, base_url="http://127.0
             return {"result": gateway.perform(x_clips_kitty_capability, body.operation,
                                                body.parameters, body.request_id)}
         except AccessDenied as e:
-            raise HTTPException(e.status, str(e)) from None
+            raise HTTPException(e.status, str(e), headers={ERROR_HEADER: e.code}) from None
 
     perform.__annotations__["body"] = OperationIn
     app.post(ROUTE)(perform)

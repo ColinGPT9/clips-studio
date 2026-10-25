@@ -4,12 +4,15 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from core.binaries import ffmpeg
 from scripts.demo_gta_plugin import probe_media, run_demo
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_synthetic_demo_requires_explicit_input_assertion_before_running(tmp_path):
@@ -18,12 +21,22 @@ def test_synthetic_demo_requires_explicit_input_assertion_before_running(tmp_pat
                  output=tmp_path / "output")
 
 
+def test_the_demo_finds_this_checkouts_sdk_without_a_pip_install():
+    # A fresh, isolated interpreter: only the repository root on the path, as
+    # when the script is run from a source checkout.
+    probe = ("import sys; sys.path.insert(0, sys.argv[1]); "
+             "from scripts.demo_gta_plugin import sdk_testing; print(sdk_testing().__file__)")
+    done = subprocess.run([sys.executable, "-I", "-c", probe, str(ROOT)], capture_output=True, text=True,
+                          timeout=60, cwd=ROOT)
+    assert done.returncode == 0, done.stderr
+    assert Path(done.stdout.strip()).resolve().is_relative_to(ROOT / "sdk" / "python")
+
+
 @pytest.mark.slow
 def test_actual_gta_plugin_exports_playable_video_with_timed_captions_and_history(tmp_path):
     plugin_setting = os.environ.get("GTA_PLUGIN_DIR")
     if not plugin_setting:
         pytest.skip("Set GTA_PLUGIN_DIR to an external GTA plugin checkout for the real export integration test")
-    pytest.importorskip("clipskitty_sdk")
     plugin = Path(plugin_setting).resolve()
     if not (plugin / "clipskitty.yaml").is_file():
         pytest.fail("GTA_PLUGIN_DIR has no clipskitty.yaml")

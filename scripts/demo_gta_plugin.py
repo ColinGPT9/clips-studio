@@ -31,6 +31,17 @@ def probe_media(path: Path) -> dict:
     return json.loads(result.stdout)
 
 
+def sdk_testing():
+    """The SDK's test runner from this checkout's own SDK (sdk/python), put on
+    the path the way the engine does it, so the demo needs no pip-installed
+    SDK, which could come from another commit than this app."""
+    import importlib
+
+    import plugins._sdk  # noqa: F401  (puts sdk/python on the path)
+
+    return importlib.import_module("clipskitty_sdk.testing")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -64,7 +75,7 @@ def run_demo(
         raise ValueError("The transcript must contain a segments list")
 
     # Public SDK and app entry points; the external plugin remains a process.
-    from clipskitty_sdk import testing
+    testing = sdk_testing()
 
     from core.state import StateDB
     from video.captions import build_captions

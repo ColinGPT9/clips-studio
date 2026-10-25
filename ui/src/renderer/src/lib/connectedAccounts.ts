@@ -9,7 +9,6 @@ export interface ConnectedAccount {
   display_name: string
   scopes: string[]
   status: string
-  error?: string
 }
 
 export interface AccountProvider {
@@ -35,11 +34,17 @@ export interface AccountFlow {
   interval: number
 }
 
+/** A refusal is an HTTP error (AccountRequestError), never a poll status. */
 export interface AccountPoll {
-  status: 'pending' | 'connected' | 'expired' | 'denied' | 'cancelled' | 'error'
+  status: 'pending' | 'connected'
   interval?: number
   account?: ConnectedAccount
-  error?: string
+}
+
+export interface DisconnectResult {
+  disconnected: boolean
+  /** False when Twitch did not confirm it removed the authorization. */
+  revoked: boolean
 }
 
 export interface RecordedNominationStream {
@@ -57,13 +62,35 @@ export interface ViewerNominationStatus {
 
 export const ACCOUNTS_CHANGED = 'connected-accounts-changed'
 
+/** The engine's HTTP status (0 when it could not be reached) and its fixed
+ * error code, so a caller can tell a passing failure from a final answer. */
+export class AccountRequestError extends Error {
+  status: number
+  code: string
+  constructor(message: string, status = 0, code = '') {
+    super(message)
+    this.name = 'AccountRequestError'
+    this.status = status
+    this.code = code
+  }
+}
+
+/** Worth asking again: Twitch or the engine did not answer, or asked to slow down. */
+export function isTransientAccountError(error: unknown): boolean {
+  if (!(error instanceof AccountRequestError)) return false
+  if (error.status === 0) return error.code === 'unreachable'
+  return error.status === 429 || error.status === 502 || error.status === 503 || error.status === 504
+}
+
 async function authenticatedRequest<T>(
   prefix: '/connected-accounts' | '/stream-workflows',
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
   const session = await window.studio?.pluginSession?.()
-  if (!session) throw new Error('Managing connected accounts requires the Clips Kitty desktop app.')
+  if (!session) {
+    throw new AccountRequestError('Managing connected accounts requires the Clips Kitty desktop app.', 0, 'no_session')
+  }
   let response: Response
   try {
     response = await fetch(`${API_BASE}${prefix}${path}`, {
@@ -76,7 +103,8 @@ async function authenticatedRequest<T>(
       }
     })
   } catch {
-    throw new Error('The account operation failed. Check that Clips Kitty is running and try again.')
+    throw new AccountRequestError(
+      'The account operation failed. Check that Clips Kitty is running and try again.', 0, 'unreachable')
   }
   if (!response.ok) {
     // Only the API's deliberately sanitized detail is shown. Never include a
@@ -88,7 +116,8 @@ async function authenticatedRequest<T>(
       !/(?:https?:\/\/|bearer\s+|(?:access_token|refresh_token|client_secret|password|authorization)\s*[:=])/i.test(message)
       ? message.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 300)
       : 'The account operation failed.'
-    throw new Error(safeMessage)
+    const code = typeof detail?.code === 'string' && /^[a-z_]{1,40}$/.test(detail.code) ? detail.code : ''
+    throw new AccountRequestError(safeMessage, response.status, code)
   }
   if (response.status === 204) return undefined as T
   try {
@@ -107,6 +136,12 @@ function changed<T>(value: T): T {
   return value
 }
 
+/** A failed test can still change the account (to Reconnect required), so
+ * the cards re-read the list whichever way it went. */
+function settled<T>(pending: Promise<T>): Promise<T> {
+  return pending.finally(() => window.dispatchEvent(new Event(ACCOUNTS_CHANGED)))
+}
+
 const accountPath = (id: string): string => `/${encodeURIComponent(id)}`
 
 export const connectedAccounts = {
@@ -119,9 +154,9 @@ export const connectedAccounts = {
     request<AccountPoll>(`/flows/${encodeURIComponent(flowId)}/poll`, { method: 'POST' }),
   cancel: (flowId: string) =>
     request<unknown>(`/flows/${encodeURIComponent(flowId)}`, { method: 'DELETE' }),
-  test: (id: string) => request<unknown>(`${accountPath(id)}/test`, { method: 'POST' }).then(changed),
-  disconnect: (id: string) => request<unknown>(accountPath(id), { method: 'DELETE' }).then(changed),
-  watch: (id: string) => request<unknown>(`${accountPath(id)}/watch`, { method: 'POST' })
+  test: (id: string) => settled(request<unknown>(`${accountPath(id)}/test`, { method: 'POST' })),
+  disconnect: (id: string) => request<DisconnectResult>(accountPath(id), { method: 'DELETE' }).then(changed),
+  watch: (id: string) => settled(request<unknown>(`${accountPath(id)}/watch`, { method: 'POST' }))
 }
 
 /** Explicit desktop controls; loading status never starts a chat listener. */

@@ -23,14 +23,62 @@ ENDPOINT_ENV = "CLIPSKITTY_ACCOUNT_ENDPOINT"
 CAPABILITY_ENV = "CLIPSKITTY_ACCOUNT_CAPABILITY"
 ROUTE = "/plugin-accounts/perform"
 HEADER = "X-Clips-Kitty-Capability"
+# The refusal's fixed code from Clips Kitty: a lower-case word, nothing else.
+ERROR_HEADER = "X-Clips-Kitty-Error"
+_CODE = re.compile(r"[a-z_]{1,40}")
+
+# This SDK's own message for each status. A code below, when Clips Kitty sends
+# one, says more than its status does: two refusals can share a status.
+_STATUS_MESSAGES = {
+    400: "Clips Kitty refused that account request. Check the values passed to it.",
+    401: "Twitch needs reconnecting in Clips Kitty's Settings.",
+    403: "Clips Kitty has not granted that account operation for this run.",
+    404: "That Twitch item isn't available any more.",
+    409: "Clips Kitty already attempted that account operation. Check its outcome in the app.",
+    412: "Clips Kitty hasn't verified this video's Twitch timeline, so it can't make "
+         "a Twitch link or VOD clip for it.",
+    429: "This run has reached its connected-account operation limit.",
+    503: "Clips Kitty's Twitch connection isn't available right now.",
+}
+_CODE_MESSAGES = {
+    "missing_scope": "The Twitch connection doesn't include the Twitch permission this needs. "
+                     "Reconnect Twitch in Clips Kitty's Settings with that permission ticked.",
+    "permission_denied": "Twitch allows that only for the connected account's own channel.",
+    "provider_unavailable": "Twitch could not be reached or is having trouble. Try again later.",
+    "rate_limited": "Twitch is limiting requests right now. Try again later.",
+    "provider_not_configured": "Twitch isn't set up in Clips Kitty's Settings.",
+    "credential_store_unavailable": "Clips Kitty couldn't read the Twitch connection from this PC's "
+                                    "credential store.",
+    "unavailable": "That part of Clips Kitty's Twitch support isn't running right now.",
+}
+GENERIC_MESSAGE = "Clips Kitty could not complete that account operation."
 
 
 class AccountOperationError(RuntimeError):
-    """A host operation that is unavailable, not granted or refused by Twitch."""
+    """A host operation that is unavailable, not granted or refused by Twitch.
 
-    def __init__(self, message, status=0):
+    ``status`` is the HTTP status (0 when Clips Kitty didn't answer) and
+    ``code`` the fixed word Clips Kitty gave for the refusal, or "" when it
+    gave none: for example ``not_permitted`` (this run isn't allowed) and
+    ``missing_scope`` (the Twitch connection lacks the permission) are both 403.
+    """
+
+    def __init__(self, message, status=0, code=""):
         self.status = status
+        self.code = code
         super().__init__(message)
+
+
+def _refusal(error):
+    """Turn the host's HTTP refusal into an error. No body or URL is reflected."""
+    status = error.code
+    try:
+        code = (error.headers.get(ERROR_HEADER) or "") if error.headers is not None else ""
+    except AttributeError:
+        code = ""
+    code = code if _CODE.fullmatch(code) else ""
+    message = _CODE_MESSAGES.get(code) or _STATUS_MESSAGES.get(status, GENERIC_MESSAGE)
+    return AccountOperationError(message, status, code)
 
 
 class ConnectedAccounts:
@@ -77,17 +125,7 @@ class ConnectedAccounts:
             return answer["result"]
         except urllib.error.HTTPError as error:
             # No response body or request URL is reflected into plugin logs.
-            messages = {400: "Clips Kitty refused that account request. Check the values passed to it.",
-                        401: "Twitch needs reconnecting in Clips Kitty's Settings.",
-                        403: "Clips Kitty has not granted that account operation for this run.",
-                        404: "That Twitch item isn't available any more.",
-                        503: "Clips Kitty's Twitch connection isn't available right now.",
-                        409: "Clips Kitty already attempted that account operation. Check its outcome in the app.",
-                        412: "Clips Kitty hasn't verified this video's Twitch timeline, so it can't make "
-                             "a Twitch link or VOD clip for it.",
-                        429: "This run has reached its connected-account operation limit."}
-            raise AccountOperationError(messages.get(error.code, "Clips Kitty could not complete that account operation."),
-                                        error.code) from None
+            raise _refusal(error) from None
         except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
             # Never retry a write automatically after an ambiguous timeout.
             raise AccountOperationError("Clips Kitty's account service did not answer. Check its outcome in the app.") from None
