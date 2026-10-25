@@ -671,6 +671,10 @@ const EXTERNAL_ALLOWED = [
   /^https:\/\/accounts\.google\.com\//,
   /^https:\/\/www\.youtube\.com\/watch\?v=/,
   // A watched channel's videos, opened from the Watch page.
+  // Public-client device authorization uses the system browser, with the
+  // activation page restricted to Twitch's exact host and path.
+  /^https:\/\/www\.twitch\.tv\/activate\/?(?:\?[^#]*)?$/,
+  /^https:\/\/dev\.twitch\.tv\/console\/apps(?:\/[^?#]*)?$/,
   /^https:\/\/www\.twitch\.tv\/videos\/\d+$/,
   /^https:\/\/kick\.com\/[\w-]+\/videos\/[0-9a-fA-F-]{36}$/,
   /^https:\/\/support\.google\.com\/youtube\//,

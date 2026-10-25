@@ -63,7 +63,8 @@ INPUTS = ("video", "transcript", "moments")
 OUTPUTS = ("ranges", "ratings", "context", "edits")
 PLANNED_OUTPUTS = ("clips",)
 PERMISSIONS = ("video.read", "transcript.read", "ffmpeg", "ollama", "gpu", "network",
-               "filesystem.read", "filesystem.write", "project.read", "project.write")
+               "filesystem.read", "filesystem.write", "project.read", "project.write",
+               "twitch.context.read", "twitch.clips.create", "twitch.chat.read", "twitch.chat.send", "twitch.events.read")
 PLANNED_PERMISSIONS = ("clips.write",)
 SENDS_DATA = ("video", "video_link", "audio", "frames", "transcript")
 CATEGORIES = ("gaming", "sports", "creators", "streaming", "podcasting", "captions", "detection",

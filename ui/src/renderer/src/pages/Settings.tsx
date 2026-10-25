@@ -27,6 +27,7 @@ import AICard from '../components/AICard'
 import UploadPostCard from '../components/UploadPostCard'
 import WoopSocialCard from '../components/WoopSocialCard'
 import YouTubeCard from '../components/YouTubeCard'
+import ConnectedAccountsCard from '../components/ConnectedAccountsCard'
 import RemoteRenderCard from '../components/RemoteRenderCard'
 import { Folder } from '../components/icons'
 
@@ -789,6 +790,8 @@ export default function Settings(): JSX.Element {
       <SetupCard />
 
       <UpdateCard />
+
+      <ConnectedAccountsCard />
 
       {/* WoopSocial first: its free plan covers most creators, and it is
           the one Clips Kitty recommends. Upload-Post last, as the

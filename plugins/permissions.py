@@ -31,8 +31,14 @@ LABELS = {
     "filesystem.write": "Writes files outside its own folder",
     "project.read": "Reads your clip library",
     "project.write": "Changes your clip library",
+    "twitch.context.read": "Reads permitted Twitch stream and VOD information",
+    "twitch.clips.create": "Asks Clips Kitty to create Twitch Clips when authorized",
+    "twitch.chat.read": "Reads permitted Twitch chat messages",
+    "twitch.chat.send": "Sends messages to the permitted Twitch channel",
+    "twitch.events.read": "Receives permitted Twitch stream events",
 }
-HANDED_OVER = ("video.read", "transcript.read", "ffmpeg", "ollama")
+HANDED_OVER = ("video.read", "transcript.read", "ffmpeg", "ollama",
+               "twitch.context.read", "twitch.clips.create", "twitch.chat.read", "twitch.chat.send", "twitch.events.read")
 
 DATA = {
     "video": "your video",

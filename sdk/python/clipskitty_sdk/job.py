@@ -601,6 +601,10 @@ class Job:
         tools = data.get("tools") or {}
         self.tools = Tools(tools.get("ffmpeg"), tools.get("ffprobe"), tools.get("ollama"))
         self.output_dir = Path(data.get("output_dir") or self.folder / "out")
+        # Runtime-only capability, never read from or written to job.json.
+        from .accounts import ConnectedAccounts
+
+        self.accounts = ConnectedAccounts()
 
     # ---- talking to Clips Kitty while running --------------------------------
 

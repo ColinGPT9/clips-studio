@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-197 routes: **60 stable**, **25 experimental**, 112 internal.
+218 routes: **60 stable**, **46 experimental**, 112 internal.
 
 | Label | Promise |
 |---|---|
@@ -180,6 +180,34 @@ Details: [`docs/API.md` › Plugins](../API.md#plugins).
 | `POST /plugins/{publisher}/{name}/rollback` | experimental | Go back to the version installed before. Session header. |
 | `PUT /plugins/{publisher}/{name}/secrets` | experimental | Store a plugin's secret settings. Session header. |
 | `POST /plugins/{publisher}/{name}/unpin` | experimental | Offer a plugin's updates again. Session header. |
+
+## Connected Accounts
+
+Details: [`docs/API.md` › Connected Accounts](../API.md#connected-accounts).
+
+| Route | Label | What it is for |
+|---|---|---|
+| `GET /connected-accounts` | experimental | Providers and sanitized account metadata. Session header. |
+| `DELETE /connected-accounts/flows/{flow_id}` | experimental | Cancel an unfinished account connection. Session header. |
+| `POST /connected-accounts/flows/{flow_id}/poll` | experimental | Complete a pending device authorization, respecting polling intervals. Session header. |
+| `PUT /connected-accounts/twitch/config` | experimental | Set the public Twitch client ID. Never a client secret. Session header. |
+| `POST /connected-accounts/twitch/connect` | experimental | Start public desktop Twitch device authorization. Session header. |
+| `DELETE /connected-accounts/{account_id}` | experimental | Stop account operations, revoke authorization and remove local credentials. Session header. |
+| `DELETE /connected-accounts/{account_id}/events` | experimental | Stop Twitch EventSub and clear retained events. Session header. |
+| `GET /connected-accounts/{account_id}/events` | experimental | Read bounded sanitized Twitch events. Session header. |
+| `POST /connected-accounts/{account_id}/events` | experimental | Start host-owned Twitch EventSub subscriptions. Session header. |
+| `POST /connected-accounts/{account_id}/test` | experimental | Validate a connection and its granted scopes. Session header. |
+| `POST /connected-accounts/{account_id}/twitch` | experimental | Bounded Twitch context, VOD links, live clips and chat operations. Session header. |
+| `POST /connected-accounts/{account_id}/watch` | experimental | Add the connected Twitch channel to Watched Channels. Session header. |
+| `POST /plugin-accounts/perform` | experimental | Run one account action using an expiring, permission-controlled plugin capability. |
+| `GET /stream-workflows/{account_id}/digests` | experimental | Saved catch-up digests and approval/delivery state. Session header. |
+| `POST /stream-workflows/{account_id}/digests` | experimental | Prepare an idempotent catch-up digest from verified Twitch sources. Session header. |
+| `POST /stream-workflows/{account_id}/digests/{digest_id}/approve` | experimental | Approve a catch-up digest; delivery requires a configured host transport. Session header. |
+| `GET /stream-workflows/{account_id}/digests/{digest_id}/export` | experimental | Export a catch-up digest without claiming delivery. Session header. |
+| `DELETE /stream-workflows/{account_id}/monitor` | experimental | Stop collecting new nominations without stopping other account consumers. Session header. |
+| `POST /stream-workflows/{account_id}/monitor` | experimental | Opt in to host-owned viewer nominations for a verified live or upcoming stream. Session header. |
+| `GET /stream-workflows/{account_id}/streams` | experimental | Recorded stream identities and minimal nomination counts. Session header. |
+| `PUT /stream-workflows/{account_id}/vod-mapping` | experimental | Verify an explicit stream, VOD and local-source timeline calibration. Session header. |
 
 ## Internal
 

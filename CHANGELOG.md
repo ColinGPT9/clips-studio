@@ -15,6 +15,22 @@ with one line in your settings file: `%LOCALAPPDATA%\Clips Studio\settings.yaml`
 installed app (`config/settings.yaml` if you run Clips Kitty from its code). Restart Clips
 Kitty after you change it.
 
+### Added
+
+- Core Twitch Connected Accounts with public desktop device authorization,
+  OS-protected credentials, token refresh/validation/revocation, and account
+  management in Settings. Own-channel watches reuse the authorized connection.
+- Experimental, session-protected `/connected-accounts` application routes
+  and capability-scoped SDK Twitch context, clip/link, chat, and EventSub actions.
+  Plugins receive no OAuth tokens and do not implement account login. Existing
+  native plugins retain the platform's same-user trust model; this is not an OS
+  sandbox. Discord and WoopSocial authorization workflows are unchanged.
+- Opt-in Twitch viewer nominations, verified stream/VOD and local-source
+  timeline mappings, and shared catch-up digest previews with manual approval.
+  Digests remain unsent until a delivery adapter is configured.
+- Permission-controlled SDK requests for source-bound Twitch VOD clips and
+  mapped audience signals, plus an external GTA plugin export demo.
+
 ### Changed
 
 - **Framing follows the cut, and a clip opens on the person's face.** In an edited video,

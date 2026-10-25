@@ -4,6 +4,7 @@ import type { AutomationStatus, StudioEvent, Watch as WatchRow, WatchPlatform } 
 import { useEvents } from '../lib/useEvents'
 import WatchCard from '../components/watch/WatchCard'
 import WatchLive from '../components/watch/WatchLive'
+import ConnectedAccountsCard from '../components/ConnectedAccountsCard'
 import { useWoopAccounts } from '../components/watch/WatchPublishSettings'
 import WatchSchedule, { type ScheduleValue } from '../components/watch/WatchSchedule'
 import { seedOptions } from '../components/queue/AddVideos'
@@ -235,6 +236,8 @@ export default function Watch({
         ))}
 
       <WatchLive />
+
+      <ConnectedAccountsCard compact onWatchAdded={() => void refresh()} />
 
       <section className="card space-y-3" aria-label={t('Watching')}>
         <div className="flex items-start justify-between gap-4">
