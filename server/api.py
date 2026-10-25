@@ -798,7 +798,8 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     # clipping campaigns. Its changing routes take the same session secret.
     from server import discord_api
 
-    discord_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
+    discord_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session,
+                        publish_worker=publish_worker)
 
     # Clipping campaigns and their submissions (campaigns/): the publish
     # worker follows each post and sends what a webhook may send.

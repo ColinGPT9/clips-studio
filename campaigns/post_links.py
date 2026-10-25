@@ -61,7 +61,7 @@ def prepare(db, *, destination_id: int | None, clip_id: int, platforms: list[str
 
 
 def _attach(db, *, destination_id: int, clip_id: int, platforms: list[str],
-            provider: str, title: str, publish_job_id: int = 0) -> None:
+            provider: str, title: str, publish_job_id: int = 0) -> dict:
     with db.transaction():
         campaign_id = campaign_for_destination(db, destination_id)
         result = queue.attach(
@@ -71,6 +71,29 @@ def _attach(db, *, destination_id: int, clip_id: int, platforms: list[str],
         for row in result["created"]:
             if title:
                 db.set_submission(int(row["id"]), clip_title=title)
+        return result
+
+
+def send_existing(db, *, destination_id: int, clip_id: int, platform: str, provider: str) -> dict:
+    """Queue a saved live post from the editor, without publishing it again."""
+    from server import posts
+
+    post = next((p for p in posts.posts_for_clip(db, clip_id)
+                 if p["platform"] == platform and p["provider"] == provider and p["live"]), None)
+    if post is None:
+        raise ValueError("This post doesn't have a live public link yet.")
+    with db.transaction():
+        result = _attach(db, destination_id=destination_id, clip_id=int(post["clip_id"]),
+                         platforms=[platform], provider=provider, title="")
+        rows = result["created"] + result["existing"]
+        if not rows:
+            raise ValueError(result["refused"][0]["reason"] if result["refused"] else "Couldn't queue this link.")
+        row = rows[0]
+        if row["status"] in ("manual", "review", "failed", "expired", "cancelled"):
+            raise ValueError(row["status_reason"] or "This delivery needs attention before it can be sent.")
+        return {"submission_id": int(row["id"]), "status": row["status"],
+                "already_sent": row["sent_by"] in ("webhook", "user"),
+                "check_discord": row["status"] == "awaiting_confirmation" and not row["sent_by"]}
 
 
 def recover(db, *, completed_clip: int = 0, provider: str = "") -> None:

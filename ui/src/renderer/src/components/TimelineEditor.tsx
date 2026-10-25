@@ -68,6 +68,7 @@ import ColorControls from './ColorControls'
 import EditChat from './EditChat'
 import UploadPostPanel from './UploadPostPanel'
 import YouTubePanel from './YouTubePanel'
+import PublishedDiscordLinks from './PublishedDiscordLinks'
 import { rememberYoutubeEnabled, youtubeEnabledSync, type YouTubeStatus } from '../lib/youtube'
 import type { Provider, UploadPostStatus } from '../lib/uploadpost'
 
@@ -2191,6 +2192,10 @@ export default function TimelineEditor({
           )}
         </FeatureBoundary>
       )}
+
+      <FeatureBoundary name="Published links">
+        <PublishedDiscordLinks key={clip.id} clipId={clip.id} />
+      </FeatureBoundary>
 
       {/* draft preview: the real result — captions, hook, music, everything */}
       <div className="flex gap-2 items-center flex-wrap">

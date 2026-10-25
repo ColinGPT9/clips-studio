@@ -9,6 +9,7 @@ No real Discord: a scripted transport, or a fake server on 127.0.0.1.
 
 import logging
 import shutil
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -18,7 +19,9 @@ fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 
 import requests  # noqa: E402
+from campaign_fake import FakePublisher, clip, link, webhook_destination  # noqa: E402
 from discord_fake import (  # noqa: E402
+    CHANNEL_ID,
     GUILDS,
     USER,
     WEBHOOK_ID,
@@ -32,7 +35,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from campaigns import discord_http, discord_oauth  # noqa: E402
 from core.state import StateDB  # noqa: E402
-from server import discord_api  # noqa: E402
+from server import discord_api, publisher  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 SECRET = "test-session-secret-0123456789"
@@ -87,6 +90,7 @@ MUTATING = {
     ("POST", "/discord/destinations"), ("POST", "/discord/destinations/authorize"),
     ("PATCH", "/discord/destinations/{destination_id}"), ("DELETE", "/discord/destinations/{destination_id}"),
     ("POST", "/discord/destinations/{destination_id}/test"),
+    ("POST", "/discord/clips/{clip_id}/send"),
 }
 
 
@@ -99,7 +103,7 @@ def test_every_route_that_changes_something_needs_the_session_header(client, fak
     assert MUTATING <= changing
     bodies = {"/discord/destinations": {"webhook_url": WEBHOOK_URL}, "/discord/settings": {"client_id": ""}}
     for method, path in sorted(MUTATING):
-        concrete = path.replace("{destination_id}", "1")
+        concrete = path.replace("{destination_id}", "1").replace("{clip_id}", "1")
         for headers in ({}, {"X-Clips-Kitty-Session": "wrong"}, {"X-Clips-Kitty-Session": ""}):
             r = client.request(method, concrete, json=bodies.get(path, {}), headers=headers)
             assert r.status_code == 403, (method, path, r.text)
@@ -111,6 +115,53 @@ def test_every_route_that_changes_something_needs_the_session_header(client, fak
 def test_reading_needs_no_header(client):
     assert client.get("/discord/status").status_code == 200
     assert client.get("/discord/destinations").json() == {"destinations": []}
+
+
+@pytest.mark.parametrize("provider", ["woopsocial", "upload_post", "youtube"])
+def test_the_editor_sends_an_existing_published_link_once(client, fake_http, tmp_path, provider):
+    db = StateDB(client.db_path)
+    try:
+        clip_id = clip(db, title="Example title")
+        dest = webhook_destination(db, tmp_path)
+        writer = FakePublisher(db, provider if provider != "youtube" else "woopsocial")
+        if provider == "youtube":
+            writer.youtube(clip_id, youtube_id="abcdefghi01")
+        else:
+            writer.publish(clip_id, ["youtube"], state="published", url=link("youtube"))
+        body = {"destination_id": dest, "provider": provider, "platform": "youtube"}
+        response = client.post(f"/discord/clips/{clip_id}/send", headers=HEADERS, json=body)
+        assert response.status_code == 200, response.text
+        assert response.json()["already_sent"] is False
+        assert fake_http.calls == [], "the request queues delivery; it never publishes or posts directly"
+        http = FakeDiscordHTTP((200, {"id": "600000000000000001", "channel_id": CHANNEL_ID}))
+        worker = publisher.PublishWorker({}, client.db_path, tmp_path)
+        worker.campaign_http = http
+        worker._advance_campaigns(db, now=time.time())
+        response = client.post(f"/discord/clips/{clip_id}/send", headers=HEADERS, json=body)
+        assert response.status_code == 200
+        assert response.json()["already_sent"] is True
+        worker._campaigns_now = True
+        worker._advance_campaigns(db, now=time.time() + 120)
+        assert [c["json"]["content"] for c in http.calls] == [f"Example title\n{link('youtube')}"]
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("state,visibility", [("queued", "default"), ("failed", "default"),
+                                               ("published", "private")])
+def test_the_editor_refuses_posts_without_a_public_live_link(client, fake_http, tmp_path, state, visibility):
+    db = StateDB(client.db_path)
+    try:
+        clip_id = clip(db)
+        dest = webhook_destination(db, tmp_path)
+        FakePublisher(db).publish(clip_id, ["youtube"], state=state, url=link("youtube"), visibility=visibility)
+        response = client.post(f"/discord/clips/{clip_id}/send", headers=HEADERS,
+                               json={"destination_id": dest, "platform": "youtube", "provider": "woopsocial"})
+        assert response.status_code == 409
+        assert db.list_submissions() == []
+        assert fake_http.calls == []
+    finally:
+        db.close()
 
 
 def test_one_header_value_works_for_plugins_and_discord_in_the_real_app(tmp_path, monkeypatch):

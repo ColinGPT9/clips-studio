@@ -123,6 +123,10 @@ export const discord = {
   /** What a pasted Discord link points at. In the body: it may be a webhook's. */
   parseLink: (link: string) => call<ParsedLink>('/discord/parse-link', send('POST', { link })),
   destinations: () => call<{ destinations: Destination[] }>('/discord/destinations'),
+  sendPublished: (clipId: number, body: { destination_id: number; platform: string; provider: string }) =>
+    call<{ submission_id: number; status: string; already_sent: boolean; check_discord: boolean }>(
+      `/discord/clips/${clipId}/send`, send('POST', body), true
+    ),
   addDestination: (d: {
     webhook_url: string
     label?: string

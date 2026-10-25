@@ -17,9 +17,9 @@ import time
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from campaigns import discord_http, discord_oauth, links, service
+from campaigns import discord_http, discord_oauth, links, post_links, service
 from campaigns.discord_http import DiscordError
 from plugins import session
 from server.ai_api import _sign_in_page
@@ -32,6 +32,12 @@ class SettingsIn(BaseModel):
 
 class ParseLinkIn(BaseModel):
     link: str = ""
+
+
+class SendPublishedIn(BaseModel):
+    destination_id: int = Field(ge=1)
+    platform: str
+    provider: str
 
 
 class DestinationIn(BaseModel):
@@ -61,7 +67,7 @@ def _fail(e: DiscordError) -> HTTPException:
     return HTTPException(_STATUS.get(e.code, 502), e.message)
 
 
-def install(app, *, db, data_dir, session_secret: str, http=None) -> None:
+def install(app, *, db, data_dir, session_secret: str, http=None, publish_worker=None) -> None:
     """Add the /discord routes. `session_secret` is plugins_api.install's
     answer; `http` stands in for Discord in tests (default: the real one)."""
     transport = http if http is not None else discord_http.Http()
@@ -163,6 +169,26 @@ def install(app, *, db, data_dir, session_secret: str, http=None) -> None:
             return {"destinations": service.destination_views(d, data_dir)}
         finally:
             d.close()
+
+    @app.post("/discord/clips/{clip_id}/send", dependencies=guarded)
+    def discord_send_published(clip_id: int, body: SendPublishedIn):
+        d = db()
+        try:
+            destination = d.get_destination(body.destination_id)
+            if destination is None:
+                raise HTTPException(404, "No such Discord destination")
+            if destination["state"] != "connected" or service.load_webhook(data_dir, body.destination_id) is None:
+                raise HTTPException(409, "Reconnect this webhook in Settings before sending links.")
+            try:
+                result = post_links.send_existing(d, destination_id=body.destination_id, clip_id=clip_id,
+                                                  platform=body.platform, provider=body.provider)
+            except ValueError as e:
+                raise HTTPException(409, str(e)) from e
+        finally:
+            d.close()
+        if publish_worker is not None:
+            publish_worker.notify_campaigns()
+        return result
 
     @app.post("/discord/destinations", dependencies=guarded)
     def discord_add_destination(body: DestinationIn):

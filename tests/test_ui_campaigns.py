@@ -72,6 +72,7 @@ def test_every_changing_call_sends_the_session_header_and_webhooks_go_in_bodies(
         "await m.discord.authorizeDestination('Example');"
         "await m.discord.removeDestination(3);"
         "await m.discord.testDestination(3);"
+        "await m.discord.sendPublished(7, {destination_id: 3, platform: 'youtube', provider: 'woopsocial'});"
         "return calls"
     )
     got = _run(tmp_path, body)
@@ -84,6 +85,7 @@ def test_every_changing_call_sends_the_session_header_and_webhooks_go_in_bodies(
         ("POST", "/discord/destinations/authorize"),
         ("DELETE", "/discord/destinations/3"),
         ("POST", "/discord/destinations/3/test"),
+        ("POST", "/discord/clips/7/send"),
     ]
     assert all(c["headers"].get("X-Clips-Kitty-Session") == "sess-1" for c in got)
     assert all(TOKEN not in c["url"] for c in got)
