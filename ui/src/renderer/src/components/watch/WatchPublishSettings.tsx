@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, errorText } from '../../lib/api'
+import { discord, type Destination } from '../../lib/campaigns'
 import type { Watch, WatchPublish } from '../../lib/types'
 import { platformLabel, WOOPSOCIAL_PLATFORMS } from '../../lib/uploadpost'
 import { t } from '../../lib/i18n'
@@ -74,6 +75,23 @@ export default function WatchPublishSettings({
   const [hashtags, setHashtags] = useState(p.hashtags.map((h) => `#${h.replace(/^#/, '')}`).join(' '))
   const [aiHashtags, setAiHashtags] = useState(p.ai_hashtags)
   const [footer, setFooter] = useState(p.footer)
+  const [discordDestination, setDiscordDestination] = useState<number | null>(
+    p.discord_destination_id ?? null
+  )
+  const [destinations, setDestinations] = useState<Destination[]>([])
+  useEffect(() => {
+    let live = true
+    void discord.destinations()
+      .then((got) => {
+        if (!live) return
+        setDestinations(got.destinations)
+        setDiscordDestination((id) => got.destinations.some((d) => d.id === id) ? id : null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
   const [overrides, setOverrides] = useState<PlatformOverrides>(
     (p.overrides ?? {}) as PlatformOverrides
   )
@@ -105,6 +123,7 @@ export default function WatchPublishSettings({
             .filter(Boolean),
           ai_hashtags: aiHashtags,
           footer,
+          discord_destination_id: discordDestination,
           overrides
         },
         backlog,
@@ -123,7 +142,7 @@ export default function WatchPublishSettings({
   // Every change saves itself a moment later: one panel, no button to forget.
   // Only real changes, compared with what was last saved.
   const current = JSON.stringify([
-    mode, platforms, schedule, hashtags, aiHashtags, footer, overrides, backlog, minMinutes
+    mode, platforms, schedule, hashtags, aiHashtags, footer, overrides, backlog, minMinutes, discordDestination
   ])
   const lastSaved = useRef(current)
   useEffect(() => {
@@ -156,6 +175,24 @@ export default function WatchPublishSettings({
         </div>
         <p className="text-xs text-muted">{t(MODES.find((m) => m.id === mode)?.hint ?? '')}</p>
       </div>
+
+      {destinations.length > 0 && (
+        <label className="block text-sm space-y-1">
+          <span className="label block">{t('Send links to Discord')}</span>
+          <select
+            className="input"
+            value={discordDestination ?? ''}
+            onChange={(e) => setDiscordDestination(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">{t('None')}</option>
+            {destinations.map((destination) => (
+              <option key={destination.id} value={destination.id}>
+                {destination.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {mode !== 'off' && (
         <>

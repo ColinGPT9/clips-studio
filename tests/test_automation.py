@@ -8,6 +8,7 @@ was closed is never silently lost, and nothing is published unless asked.
 """
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -15,9 +16,12 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 
+from campaign_fake import FakePublisher, link, webhook_destination
+from discord_fake import CHANNEL_ID, FakeDiscordHTTP
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from campaigns import queue as campaign_queue
 from core import queue
 from core.state import StateDB
 from server import automation
@@ -449,6 +453,156 @@ def publishing_watch(env, mode="auto", **publish):
     env.feed.listings[UC] = [yt("newnewnew01")]
     env.later()
     return watch
+
+
+@pytest.fixture
+def posted_env(env, monkeypatch):
+    """Record real provider rows, with no posts in the publish call's answer."""
+    monkeypatch.setattr("server.posts.sent_stamp", lambda: datetime.fromtimestamp(env.now, timezone.utc).isoformat())
+
+    def publish(d, **kwargs):
+        env.published.append(kwargs)
+        writer = FakePublisher(d)
+        for clip_id in kwargs["clip_ids"]:
+            # TikTok was requested too, but the provider didn't accept it.
+            writer.publish(clip_id, ["youtube"])
+        if env.publish_error:
+            raise env.publish_error
+        return {"started": [], "skipped": []}
+
+    monkeypatch.setattr(env.watcher, "_publisher", publish)
+    return env
+
+
+def _advance_links(env, http):
+    env.run(lambda d: campaign_queue.advance(d, env.data_dir, now=env.now, http=http))
+
+
+def test_watch_sends_the_title_and_public_link_once_when_live(posted_env):
+    env = posted_env
+    destination = env.run(lambda d: webhook_destination(d, env.data_dir))
+    publishing_watch(env, discord_destination_id=destination, max_posts=1)
+    finished_with_clips(env)
+    env.later(5)
+    clip_id = env.published[0]["clip_ids"][0]
+    rows = env.run(lambda d: [dict(r) for r in d.list_submissions()])
+    assert [(r["clip_id"], r["platform"], r["status"]) for r in rows] == [
+        (clip_id, "youtube", "waiting_publication")]
+    http = FakeDiscordHTTP((200, {"id": "600000000000000001", "channel_id": CHANNEL_ID}))
+    _advance_links(env, http)
+    assert http.calls == []
+    env.run(lambda d: FakePublisher(d).refresh(clip_id, "youtube", "published"))
+    env.later(60)
+    _advance_links(env, http)
+    assert http.calls == [], "published without a link still waits"
+    env.run(lambda d: FakePublisher(d).refresh(clip_id, "youtube", "published", url=link("youtube")))
+    env.later(60)
+    _advance_links(env, http)
+    env.later(60)
+    _advance_links(env, http)
+    response = env.client.post(f"/automation/items/{env.item('newnewnew01')['id']}/publish")
+    assert response.status_code == 200
+    env.later(60)
+    _advance_links(env, http)
+    assert [call["json"]["content"] for call in http.calls] == [f"hook 0\n{link('youtube')}"]
+
+
+def test_watches_share_one_discord_campaign_per_destination(posted_env):
+    env = posted_env
+    destination = env.run(lambda d: webhook_destination(d, env.data_dir))
+    publishing_watch(env, discord_destination_id=destination, max_posts=1)
+    finished_with_clips(env)
+    env.later(5)
+    other = "UC" + "x" * 22
+    watch = watched(env, key=other)
+    response = env.client.patch(f"/automation/watches/{watch['id']}", json={"publish": {
+        "mode": "auto", "platforms": ["youtube"], "discord_destination_id": destination, "max_posts": 1}})
+    assert response.status_code == 200
+    env.feed.listings[other] = [yt("another0001", channel=other)]
+    env.later()
+    finished_with_clips(env, video_id="another0001")
+    env.later(5)
+    rows = env.run(lambda d: [dict(r) for r in d.list_submissions()])
+    assert len(rows) == 2
+    assert len({row["campaign_id"] for row in rows}) == 1
+    assert env.run(lambda d: len(d.list_campaigns())) == 1
+
+
+def test_watch_recovers_attachments_after_partial_publish_and_restart(posted_env, tmp_path, monkeypatch):
+    env = posted_env
+    destination = env.run(lambda d: webhook_destination(d, env.data_dir))
+    publishing_watch(env, discord_destination_id=destination, max_posts=1)
+    finished_with_clips(env)
+    env.publish_error = RuntimeError("Interrupted after one platform accepted the post")
+
+    def interrupted(*args):
+        raise RuntimeError("Closed before attachment")
+
+    monkeypatch.setattr(env.watcher, "_attach_discord_links", interrupted)
+    with pytest.raises(RuntimeError, match="Closed before attachment"):
+        env.later(5)
+    assert env.item("newnewnew01")["publish_state"] == "ask"
+    restarted = Env(tmp_path, feed=env.feed)
+    restarted.now = env.now + 60
+    response = restarted.client.patch("/automation", json={"enabled": False})
+    assert response.status_code == 200
+    restarted.watcher.tick()
+    rows = restarted.run(lambda d: [dict(r) for r in d.list_submissions()])
+    assert len(rows) == 1
+    clip_id = rows[0]["clip_id"]
+    restarted.run(lambda d: FakePublisher(d).refresh(clip_id, "youtube", "published", url=link("youtube")))
+    http = FakeDiscordHTTP((200, {"id": "600000000000000001", "channel_id": CHANNEL_ID}))
+    _advance_links(restarted, http)
+    # A re-render replaces the id and window, while the post keeps its identity.
+    def rerender(d):
+        clip = d.get_clip(clip_id)
+        new_id = d.add_clip(clip["video_id"], 1, clip["end_s"], 95, "New render")
+        d.follow_clip_id(clip_id, new_id)
+        d.follow_chosen_clip(clip["video_id"], (clip["start_s"], clip["end_s"]), (1, clip["end_s"]))
+        d.delete_clip(clip_id)
+
+    restarted.run(rerender)
+    restarted.later(60)
+    _advance_links(restarted, http)
+    again = Env(tmp_path, feed=env.feed)
+    again.now = restarted.now + 60
+    again.watcher.tick()
+    _advance_links(again, http)
+    assert len(http.calls) == 1
+    assert again.run(lambda d: len(d.list_submissions())) == 1
+    assert again.run(lambda d: len(d.list_campaigns())) == 1
+
+
+def test_watch_without_a_destination_keeps_publishing_without_discord(posted_env):
+    env = posted_env
+    env.run(lambda d: webhook_destination(d, env.data_dir))
+    publishing_watch(env, max_posts=1)
+    finished_with_clips(env)
+    env.later(5)
+    env.later(60)
+    http = FakeDiscordHTTP()
+    _advance_links(env, http)
+    assert len(env.published) == 1
+    assert env.item("newnewnew01")["publish_state"] == "done"
+    assert env.run(lambda d: d.list_campaigns()) == []
+    assert http.calls == []
+
+
+def test_watch_validates_and_clears_its_discord_destination(env):
+    watch = watched(env)
+    destination = env.run(lambda d: webhook_destination(d, env.data_dir))
+    path = f"/automation/watches/{watch['id']}"
+    response = env.client.patch(path, json={"publish": {"discord_destination_id": destination + 1}})
+    assert response.status_code == 400
+    response = env.client.post("/automation/watches", json={
+        "platform": "twitch", "channel": "example", "publish": {"discord_destination_id": destination + 1}})
+    assert response.status_code == 400
+    response = env.client.patch(path, json={"publish": {"discord_destination_id": destination}})
+    assert response.status_code == 200
+    assert response.json()["publish"]["discord_destination_id"] == destination
+    response = env.client.patch(path, json={"publish": {"discord_destination_id": None}})
+    assert response.status_code == 200
+    assert response.json()["publish"]["discord_destination_id"] is None
 
 
 def test_automatic_publishes_once_with_the_watchs_settings(env):

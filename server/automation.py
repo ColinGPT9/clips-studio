@@ -115,6 +115,7 @@ class PublishSettings(BaseModel):
     # isYourBrand / isBrandedContent, instagram|facebook.postType,
     # pinterest.pinterestBoardId.
     overrides: dict = {}
+    discord_destination_id: int | None = Field(default=None, ge=1)
 
 
 class AutomationPatch(BaseModel):
@@ -159,6 +160,11 @@ def publish_settings(watch) -> PublishSettings:
         return PublishSettings(**json.loads(watch["publish"] or "{}"))
     except Exception:
         return PublishSettings()
+
+
+def _validate_discord_destination(d: StateDB, settings: PublishSettings) -> None:
+    if settings.discord_destination_id is not None and d.get_destination(settings.discord_destination_id) is None:
+        raise HTTPException(400, "That Discord destination doesn't exist.")
 
 
 def watch_options(watch) -> dict:
@@ -537,6 +543,7 @@ class ChannelWatcher(threading.Thread):
                 # Watching is off, but a publish someone asked for, or one a
                 # restart interrupted, still goes out.
                 self._decide_publishing(d, new=False)
+                self._attach_discord_links(d, now)
                 return
             for watch in d.watches_due(now):
                 self._poll(d, watch, now)
@@ -545,10 +552,45 @@ class ChannelWatcher(threading.Thread):
             self._retry_failed_runs(d, now)
             self._retry_rejected_posts(d, now)
             self._decide_publishing(d)
+            self._attach_discord_links(d, now)
             self._free_disk(d)
             self._notice_posts(d)
         finally:
             d.close()
+
+    def _attach_discord_links(self, d: StateDB, now: float) -> None:
+        """Recover attachments from saved posts, including interrupted publishes."""
+        from campaigns import queue as campaign_queue
+
+        for watch in d.list_watches():
+            destination_id = publish_settings(watch).discord_destination_id
+            if destination_id is None or d.get_destination(destination_id) is None:
+                continue
+            items = d.conn.execute(
+                "SELECT * FROM watch_items WHERE watch_id = ? AND state = 'queued' "
+                "AND (publish_state IN ('publishing', 'done') OR chosen_clips != '') "
+                "AND EXISTS (SELECT 1 FROM clip_publishes WHERE video_id = watch_items.video_id)",
+                (watch["id"],),
+            ).fetchall()
+            if not items:
+                continue
+            # A reserved name identifies the internal campaign across restarts
+            # and across channels sharing a destination. Serialize first use.
+            name = f"Watched channel links: Discord {destination_id}"
+            with d.transaction():
+                campaign = d.conn.execute(
+                    "SELECT id FROM campaigns WHERE name = ? AND destination_id = ? "
+                    "AND method = 'discord_webhook' ORDER BY id LIMIT 1",
+                    (name, destination_id),
+                ).fetchone()
+                campaign_id = int(campaign["id"]) if campaign is not None else d.insert_campaign(
+                    name, method="discord_webhook", destination_id=destination_id,
+                    message_template="{title}\n{url}", approval_required=0,
+                )
+                for item in items:
+                    campaign_queue.attach_for_watch(
+                        d, watch=watch, item=item, campaign_ids=[campaign_id], now=now,
+                    )
 
     # -- 1. look at the channel -----------------------------------------------
 
@@ -1228,6 +1270,8 @@ def install(
             if preset not in PRESETS:
                 raise HTTPException(400, f"unknown preset '{preset}'")
             options["preset"] = preset
+            if body.publish is not None:
+                _validate_discord_destination(d, body.publish)
             watch_id = d.insert_watch(
                 channel.platform, channel.channel_key, name=channel.name,
                 publish=(body.publish or PublishSettings()).model_dump_json(),
@@ -1267,6 +1311,7 @@ def install(
                 options["preset"] = preset
                 fields["options"] = json.dumps(options)
             if body.publish is not None:
+                _validate_discord_destination(d, body.publish)
                 fields["publish"] = body.publish.model_dump_json()
             if body.backlog is not None:
                 fields["backlog"] = body.backlog

@@ -942,6 +942,7 @@ export interface WatchPublish {
    *  {source_platform} are filled in. */
   footer: string
   overrides: Record<string, Record<string, string | boolean>>
+  discord_destination_id?: number | null
 }
 
 export interface Watch {
