@@ -550,8 +550,8 @@ class IssuerProvider(FakeProvider):
     """Records which client ID each revoke names, as Twitch checks it."""
 
     def __init__(self, client_id="public-client-id"):
+        self.client_id = client_id
         super().__init__()
-        self.client_id = self.validation_client = client_id
         self.revoked_with = []
 
     def revoke(self, token, *, client_id=None):

@@ -440,10 +440,9 @@ def test_a_stream_that_ended_in_the_gap_stops_being_counted(runtime):
 
 
 def test_bootstrap_retries_while_twitch_cannot_answer(runtime, monkeypatch):
-    import stream_workflows.runtime as module
     from connected_accounts.models import AccountError
 
-    monkeypatch.setattr(module, "_BOOTSTRAP_DELAYS", (0, 0, 0))
+    monkeypatch.setattr("stream_workflows.runtime._BOOTSTRAP_DELAYS", (0, 0, 0))
     value, service, _, clock = runtime
     answers = []
 

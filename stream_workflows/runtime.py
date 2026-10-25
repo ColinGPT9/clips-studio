@@ -395,13 +395,13 @@ class WorkflowRuntime:
         account = self._account(binding.get("account_id"))
         vod_id = binding.get("vod_id", binding.get("video_id"))
         mapping = self._mapping(account["id"], vod_id) if isinstance(vod_id, str) else None
-        explicit = not (
-            mapping is None
-            or mapping["broadcaster_id"] != account["user_id"]
-            or binding.get("broadcaster_id") != account["user_id"]
-            or mapping["source_offset_seconds"] is None
-            or mapping["source_id"] is None
-            or binding.get("source_id") != mapping["source_id"]
+        explicit = (
+            mapping is not None
+            and mapping["broadcaster_id"] == account["user_id"]
+            and binding.get("broadcaster_id") == account["user_id"]
+            and mapping["source_offset_seconds"] is not None
+            and mapping["source_id"] is not None
+            and binding.get("source_id") == mapping["source_id"]
         )
         if not explicit and not self._whole_vod(binding, account):
             raise WorkflowError(
