@@ -130,13 +130,14 @@ def test_campaigns_can_be_made_read_changed_and_removed(client, db):
 
 def test_a_campaign_with_submissions_is_archived_not_deleted(client, db):
     made = _campaign(client)
-    _attach(client, clip(db), [made["id"]])
+    (row,) = _attach(client, clip(db), [made["id"]])["created"]
     removed = client.delete(f"/campaigns/{made['id']}", headers=HEADERS)
     assert removed.json() == {"result": "archived"}
     assert client.get("/campaigns").json()["campaigns"] == []
     archived = client.get("/campaigns", params={"archived": True}).json()["campaigns"]
-    assert [(c["id"], c["archived"], c["counts"]) for c in archived] == [
-        (made["id"], True, {"waiting_publication": 1})]
+    assert [(c["id"], c["archived"], c["counts"]) for c in archived] == [(made["id"], True, {"cancelled": 1})]
+    after = client.get(f"/campaigns/submissions/{row['id']}").json()
+    assert (after["status"], after["status_reason"]) == ("cancelled", "The campaign was archived")
 
 
 @pytest.mark.parametrize("body, message", [
@@ -295,6 +296,8 @@ def test_moving_to_another_campaign(client, db):
     path = f"/campaigns/submissions/{row['id']}/move"
     refused = client.post(path, headers=HEADERS, json={"campaign_id": youtube_only["id"]})
     assert refused.status_code == 409 and "doesn't take TikTok" in refused.json()["detail"]
+    missing = client.post(path, headers=HEADERS, json={"campaign_id": 999})
+    assert (missing.status_code, missing.json()["detail"]) == (404, "No campaign #999")
     moved = client.post(path, headers=HEADERS, json={"campaign_id": there["id"]})
     assert moved.status_code == 200, moved.text
     got = moved.json()

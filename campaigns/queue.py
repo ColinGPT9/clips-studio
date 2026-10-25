@@ -26,6 +26,7 @@ from campaigns.model import (
     CHECK_SCHEDULED_SECONDS,
     FAIL,
     FAILED_POST_WAIT_HOURS,
+    LABELS,
     METHODS,
     PLATFORMS,
     PRE_SEND,
@@ -342,10 +343,32 @@ def _first_look(db, sub_id: int, typed: str, *, now):
     return db.get_submission(sub_id)
 
 
-def _due_now(db, row) -> None:
-    """Attached again: a row still followed is looked at on the next pass."""
+def _due_now(db, row, *, provider: str = "", publish_job_id: int = 0) -> None:
+    """Attached again: a row still followed is looked at on the next pass,
+    and follows the publish this attach comes with (published again after a
+    failed post: its provider, and a direct YouTube upload's new job)."""
     if row["status"] in FOLLOWED or (row["status"] == "manual" and not row["post_url"]):
-        db.set_submission(int(row["id"]), expect=(row["status"],), next_attempt_at=0)
+        fields: dict = {"next_attempt_at": 0}
+        if provider:
+            fields["provider"] = provider
+        if publish_job_id:
+            fields["publish_job_id"] = int(publish_job_id)
+        db.set_submission(int(row["id"]), expect=(row["status"],), match={"post_url": row["post_url"]}, **fields)
+
+
+def _typed_on_existing(db, row, typed: str, *, now) -> tuple[dict | None, str]:
+    """A link the user typed for a post the campaign already has a row for:
+    (the row after, '') when the row takes it, as an edit of its link would;
+    (None, why) when it can't (it was already sent, or it is closed)."""
+    if typed == row["post_url"]:
+        return db.get_submission(int(row["id"])), ""
+    if row["status"] not in EDITABLE:
+        return None, f"It is already in this campaign as #{row['id']} ({LABELS[row['status']]})"
+    event = "set_url" if statemachine.allowed(row, "set_url") else "edit"
+    try:
+        return evaluate(db, int(row["id"]), typed_link(row["platform"], typed), now=now, event=event), ""
+    except statemachine.NotAllowed:
+        return db.get_submission(int(row["id"])), ""  # the background step moved it on meanwhile
 
 
 def attach(db, *, items, campaign_ids, now, mode: str = "after_publish", provider: str = "",
@@ -359,15 +382,19 @@ def attach(db, *, items, campaign_ids, now, mode: str = "after_publish", provide
     waiting_publication with the mode's hold and Review first, then looked at
     once here, so a post already live is evaluated at once. A row the post
     already has in a campaign is returned as `existing` (looked at again on
-    the next pass); with `reopen_rows`, a cancelled, expired or failed one
-    starts again and is listed as created. A campaign that is missing,
+    the next pass, through this attach's provider and YouTube job while it
+    still waits for its link); with `reopen_rows`, a cancelled, expired or
+    failed one starts again with the campaign's method and webhook (unless
+    it holds its own) and is listed as created. A campaign that is missing,
     archived, switched off, doesn't take the platform, or whose deadline has
     passed (or passes before the post's time) refuses the item.
 
     `post_url` is a link the user typed, for exactly one clip on one
     platform: it is checked for a duplicate in each campaign before anything
-    is written, then evaluated after the insert. Raises ValueError for a
-    request that can't be right whatever the campaign.
+    is written, then evaluated after the insert. On an existing row it is
+    taken as an edit of the row's link would take it; a row already sent or
+    closed (and not reopened) refuses a different link. Raises ValueError
+    for a request that can't be right whatever the campaign.
     """
     if mode not in MODES:
         raise ValueError("Pick when to submit it: after publishing, now, review first, or later")
@@ -434,6 +461,13 @@ def attach(db, *, items, campaign_ids, now, mode: str = "after_publish", provide
                 existing = db.find_submission(*key)  # another request made it meanwhile
             if reopen_rows and existing["status"] in REOPENABLE:
                 kept = {k: v for k, v in fields.items() if v or k in ("hold", "review_first")}
+                # Its method and webhook are the campaign's as it is now,
+                # unless the row was given its own (a campaign edit skipped
+                # it while it was closed).
+                own = json_field(existing["overridden"], [])
+                kept.update({f: v for f, v in (("method", campaign["method"]),
+                                               ("destination_id", int(campaign["destination_id"] or 0)))
+                             if f not in own})
                 try:
                     reopen(db, int(existing["id"]), now=moment, **kept)
                 except statemachine.NotAllowed:
@@ -441,7 +475,15 @@ def attach(db, *, items, campaign_ids, now, mode: str = "after_publish", provide
                     continue
                 out["created"].append(_first_look(db, int(existing["id"]), typed, now=moment))
                 continue
-            _due_now(db, existing)
+            if typed:
+                after, why = _typed_on_existing(db, existing, typed, now=moment)
+                if why:
+                    out["refused"].append({"campaign_id": cid, "clip_id": clip_id, "platform": platform,
+                                           "reason": why})
+                else:
+                    out["existing"].append(after)
+                continue
+            _due_now(db, existing, provider=provider, publish_job_id=publish_job_id)
             out["existing"].append(db.get_submission(int(existing["id"])))
     return out
 
@@ -663,6 +705,19 @@ def _send(db, data_dir, http, row, *, moment, user: str, out: dict, tell) -> Non
     if campaign is None:
         return
     values = formatter.values_for(db, sub, campaign, discord_user=user)
+    problems = formatter.message_checks(campaign, values, method="discord_webhook",
+                                        message_text=str(sub["message_text"] or ""), dest=dest)
+    if problems:
+        # Its words changed since they were checked (an edit of its values or
+        # message, the campaign's fields or template): it waits for the user
+        # rather than going out as it is (DESIGN §5.4). The edit's evaluation,
+        # made here at the last moment before a send.
+        checks = [c for c in json_field(sub["checks"], []) if isinstance(c, dict)
+                  and c.get("name") not in ("fields", "length")]
+        tell(statemachine.apply(db, sub_id, "edit", now=moment, to="review",
+                                status_reason="; ".join(c.message for c in problems),
+                                checks=json.dumps(checks + [c.as_dict() for c in problems])), "ready")
+        return
     payload = formatter.webhook_payload(campaign, sub, values, dest)
 
     statemachine.apply(db, sub_id, "send_start", now=moment)  # before the request, always
@@ -732,7 +787,11 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
     3. up to 100 followed rows that are due get a look (follow);
     4. due webhook rows are sent: at most SENDS_PER_PASS, one per destination
        every SEND_SPACING_SECONDS, none while Discord's global rate limit
-       (`paused_until`, unix seconds, held by the caller) lasts.
+       (`paused_until`, unix seconds, held by the caller) lasts, and a row
+       whose words no longer pass their checks goes to review instead.
+
+    Steps 3 and 4 skip the rows of a campaign that is switched off or
+    archived: nothing is followed or posted for it until it is on again.
 
     `emit` gets a `campaign` event for each status change. Returns
     {"changed", "sent", "paused_until", "more"}: `more` when sends were left
@@ -743,8 +802,11 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
     out = {"changed": 0, "sent": 0, "paused_until": float(paused_until or 0), "more": False}
     names: dict[int, str] = {}
 
-    def tell(after, previous: str) -> None:
-        if after is None or after["status"] == previous:
+    def tell(after, previous: str, previous_url: str | None = None) -> None:
+        """Announce a status change; with `previous_url`, a row that got its
+        link in the same status too (a manual row with no link that found it)."""
+        if after is None or (after["status"] == previous
+                             and (previous_url is None or after["post_url"] == previous_url)):
             return
         out["changed"] += 1
         if emit is None:
@@ -792,7 +854,7 @@ def advance(db, data_dir, *, now, http, emit=None, paused_until: float = 0.0) ->
         due = []
     for row in due:
         try:
-            tell(follow(db, row, now=moment), row["status"])
+            tell(follow(db, row, now=moment), row["status"], row["post_url"])
             continue
         except statemachine.NotAllowed:
             pass  # a route changed it meanwhile (then the push below changes nothing)
@@ -865,7 +927,9 @@ def edit(db, sub_id: int, *, now, **patch):
     its webhook, its method, whether it is saved for later. A changed method
     or destination is the row's own from then on (`overridden`), so editing
     the campaign leaves it alone. A new link, method or destination is
-    evaluated again. Raises LookupError, ValueError, NotAllowed."""
+    evaluated again (changed words are checked again before a webhook sends
+    them). Letting go of a ready row saved for later submits it, as Submit
+    does. Raises LookupError, ValueError, NotAllowed."""
     unknown = set(patch) - set(EDIT_FIELDS)
     if unknown:
         raise ValueError(f"Unknown fields: {', '.join(sorted(unknown))}")
@@ -881,7 +945,11 @@ def edit(db, sub_id: int, *, now, **patch):
     for name, what in (("arg_values", "The command's values"), ("extra_values", "The extra values")):
         if patch.get(name) is not None:
             fields[name] = _strings(patch[name], what)
-    if patch.get("hold") is not None:
+    # Saved for later, now let go: submitted, as its Submit button does
+    # (a webhook row is due now, any other the user's to do by hand).
+    release = row["status"] == "ready" and bool(int(row["hold"] or 0)) and \
+        patch.get("hold") is not None and not patch["hold"]
+    if patch.get("hold") is not None and not release:
         fields["hold"] = int(bool(patch["hold"]))
     overridden = list(json_field(row["overridden"], []))
     if patch.get("method") is not None and patch["method"] != row["method"]:
@@ -898,20 +966,25 @@ def edit(db, sub_id: int, *, now, **patch):
     if overridden != json_field(row["overridden"], []):
         fields["overridden"] = json.dumps(overridden)
 
+    after = None
     if patch.get("post_url") is not None:
         url, problem = urls.validate(row["platform"], patch["post_url"])
         if problem:
             raise ValueError(problem)
         if url != row["post_url"] or row["url_source"] != "manual":
             event = "set_url" if statemachine.allowed(row, "set_url") else "edit"
-            return evaluate(db, sub_id, typed_link(row["platform"], url), now=now, event=event, changes=fields)
+            after = evaluate(db, sub_id, typed_link(row["platform"], url), now=now, event=event, changes=fields)
     # A method or webhook picked, even the one it has (a webhook fixed in
     # Settings under the same destination), is a fresh look at how it goes.
-    if row["post_url"] and (patch.get("method") is not None or patch.get("destination_id") is not None):
-        return evaluate(db, sub_id, current_resolution(db, row, now=now), now=now, event="edit", changes=fields)
-    if not fields:
-        return _get(db, sub_id)
-    return statemachine.apply(db, sub_id, "edit", now=now, to=row["status"], **fields)
+    if after is None and row["post_url"] and (patch.get("method") is not None
+                                              or patch.get("destination_id") is not None):
+        after = evaluate(db, sub_id, current_resolution(db, row, now=now), now=now, event="edit", changes=fields)
+    if after is None:
+        after = statemachine.apply(db, sub_id, "edit", now=now, to=row["status"], **fields) if fields \
+            else _get(db, sub_id)
+    if release and after["status"] == "ready" and int(after["hold"] or 0):
+        return submit(db, sub_id, now=now)
+    return after
 
 
 def reapply_campaign(db, campaign_id: int, before, *, now) -> int:
@@ -946,14 +1019,37 @@ def reapply_campaign(db, campaign_id: int, before, *, now) -> int:
     return count
 
 
+#: The reason on a row cancelled because its campaign was archived.
+CAMPAIGN_ARCHIVED = "The campaign was archived"
+
+
+def remove_campaign(db, campaign_id: int, *, now) -> str:
+    """DELETE /campaigns/{id}: a campaign nothing was submitted to is deleted
+    ("deleted"). Otherwise it is archived ("archived"), and its rows not yet
+    sent (and failed ones) are cancelled, so nothing is followed, listed as
+    work to do or posted by webhook for a campaign the user removed. Rows
+    already sent stay, for the user to record what the campaign said. ''
+    when there is no such campaign."""
+    result = db.delete_campaign(int(campaign_id))
+    if result != "archived":
+        return result
+    for row in db.list_submissions(statuses=EDITABLE, campaign_id=int(campaign_id), limit=1_000_000):
+        try:
+            statemachine.apply(db, int(row["id"]), "cancel", now=now, status_reason=CAMPAIGN_ARCHIVED)
+        except statemachine.NotAllowed:
+            continue  # a send started meanwhile: it ends, and nothing more goes out for this campaign
+    return result
+
+
 def move(db, sub_id: int, campaign_id: int, *, now) -> tuple:
     """Move a submission not yet sent (or failed) to another campaign, in one
     transaction: this row is cancelled ("Moved to ..."), and the same post,
     with its clip, provider, link, message and values, is attached to the
     other campaign (a cancelled, expired or failed row it has there starts
-    again). Returns (cancelled, moved). Raises LookupError, ValueError, or
-    NotAllowed when the other campaign refuses it (platform, deadline, the
-    link already submitted there) or it can't move as it is."""
+    again). Returns (cancelled, moved). Raises LookupError (no such row or
+    campaign), ValueError, or NotAllowed when the other campaign refuses it
+    (archived, switched off, platform, deadline, the link already submitted
+    there) or it can't move as it is."""
     moment = posts.as_utc(now)
     with db.transaction():
         row = dict(_get(db, sub_id))
@@ -962,6 +1058,8 @@ def move(db, sub_id: int, campaign_id: int, *, now) -> tuple:
         if int(campaign_id) == int(row["campaign_id"]):
             raise ValueError("It is already in that campaign")
         target = db.get_campaign(int(campaign_id))
+        if target is None:
+            raise LookupError(f"No campaign #{int(campaign_id)}")
         ident = {"clip_id": int(row["clip_id"] or 0), "video_id": row["video_id"], "start_s": float(row["start_s"]),
                  "end_s": float(row["end_s"])}
         when = _post_time(db, ident, row["platform"], row["provider"], int(row["publish_job_id"] or 0))

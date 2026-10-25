@@ -357,7 +357,7 @@ def install(app, *, db, data_dir, publish_worker, session_secret: str) -> None:
     def campaign_delete(campaign_id: int):
         d = db()
         try:
-            result = d.delete_campaign(campaign_id)
+            result = queue.remove_campaign(d, campaign_id, now=time.time())
         finally:
             d.close()
         if not result:

@@ -115,8 +115,9 @@ def _run_once(tmp_path, monkeypatch, order):
 
     monkeypatch.setattr(StateDB, "recover_running_publish_jobs", jobs)
     monkeypatch.setattr(w, "_run_due_verifications", lambda db: order.append("loop") or w.stop())
-    for name in ("_refresh_provider_posts", "_refresh_missing_urls", "_check_scheduled_youtube"):
+    for name in ("_refresh_provider_posts", "_refresh_missing_urls"):
         monkeypatch.setattr(w, name, lambda db: None)
+    monkeypatch.setattr(w, "_check_scheduled_youtube", lambda db: order.append("youtube"))
     monkeypatch.setattr(w, "_advance_campaigns", lambda db: order.append("campaigns"))
     w.run()
     return w
@@ -136,7 +137,8 @@ def test_startup_settles_cut_off_sends_after_the_uploads_and_before_the_loop(tmp
 
     monkeypatch.setattr(StateDB, "recover_sending_submissions", sending)
     _run_once(tmp_path, monkeypatch, order)
-    assert order == ["publish_jobs", "campaign_sends", "loop", "campaigns"]
+    assert order == ["publish_jobs", "campaign_sends", "loop", "youtube", "campaigns"], \
+        "the campaign step comes right after the YouTube check that learns links"
     db = StateDB(tmp_path / "state.db")
     row = db.get_submission(sub_id)
     assert (row["status"], row["sent_by"], row["status_reason"]) == (
@@ -153,5 +155,5 @@ def test_a_startup_recovery_that_raises_doesnt_end_the_worker(tmp_path, monkeypa
     monkeypatch.setattr(StateDB, "recover_sending_submissions", locked)
     order = []
     _run_once(tmp_path, monkeypatch, order)
-    assert order == ["publish_jobs", "loop", "campaigns"], "the loop still ran"
+    assert order == ["publish_jobs", "loop", "youtube", "campaigns"], "the loop still ran"
     assert "Could not settle campaign sends cut off by a restart" in capsys.readouterr().out

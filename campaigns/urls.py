@@ -259,23 +259,30 @@ def _upload(db, sub: dict, clip_id: int):
 
 def _youtube(db, sub: dict, now) -> Resolution:
     """A direct YouTube upload: through its publish job while that runs, then
-    its uploads row read as posts.youtube_view sees it."""
+    its uploads row read as posts.youtube_view sees it. After a job that
+    failed, an upload made since (the clip published again, with or without
+    the campaign picked) is the post; without one, the post failed."""
     clip_id = int(sub.get("clip_id") or 0)
     job_id = int(sub.get("publish_job_id") or 0)
     job = db.get_publish_job(job_id) if job_id else None
+    upload = None
     if job is not None:
         status = job["status"]
         if status in ("queued", "running"):
             return Resolution("not_published", provider="youtube")
         if status in ("failed", "cancelled", "interrupted"):
-            return Resolution("not_published", provider="youtube", outcome="failed",
-                              failed_at=_local_utc(job["updated_at"]),
-                              reason=str(job["error"] or "") or f"The upload {status}.")
-        # done: _publish keeps the job's clip_id on the clip it uploaded,
-        # which a re-render made just before may have changed.
-        clip_id = int(job["clip_id"] or clip_id)
+            ended = _local_utc(job["updated_at"])
+            upload = _upload(db, sub, clip_id)
+            if upload is None or not ended or _local_utc(upload["uploaded_at"]) < ended:
+                return Resolution("not_published", provider="youtube", outcome="failed", failed_at=ended,
+                                  reason=str(job["error"] or "") or f"The upload {status}.")
+        else:
+            # done: _publish keeps the job's clip_id on the clip it uploaded,
+            # which a re-render made just before may have changed.
+            clip_id = int(job["clip_id"] or clip_id)
 
-    upload = _upload(db, sub, clip_id)
+    if upload is None:
+        upload = _upload(db, sub, clip_id)
     if upload is None:
         post_id = str(sub.get("post_id") or "")
         if post_id:

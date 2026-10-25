@@ -488,6 +488,9 @@ SUBMISSION_COLUMNS = frozenset({
     "opened_at", "confirmed_at", "confirmation_note", "error",
 })
 SUBMISSION_IDENTITY = ("campaign_id", "video_id", "start_s", "end_s", "platform")
+#: A submission whose campaign is on and not archived: the only ones the
+#: background step follows or sends.
+_LIVE_CAMPAIGN = "campaign_id IN (SELECT id FROM campaigns WHERE enabled = 1 AND archived = 0)"
 
 
 def _cells(fields: dict) -> dict:
@@ -2057,7 +2060,9 @@ class StateDB:
                         no_url_manual: bool = False) -> list[sqlite3.Row]:
         """Rows whose next check (or send) is due, the longest-waiting first.
         `no_url_manual` adds manual rows still without a link, which keep
-        being followed so a post published later still resolves them."""
+        being followed so a post published later still resolves them. Rows
+        of a campaign switched off or archived are left out (in SQL, so they
+        never fill the window): nothing is followed for it while it is off."""
         parts, args = [], []
         if statuses:
             parts.append(f"status IN ({','.join('?' * len(statuses))})")
@@ -2068,17 +2073,18 @@ class StateDB:
             return []
         return self.conn.execute(
             f"SELECT * FROM campaign_submissions WHERE ({' OR '.join(parts)}) "
-            "AND next_attempt_at <= ? ORDER BY next_attempt_at, id LIMIT ?",
+            f"AND next_attempt_at <= ? AND {_LIVE_CAMPAIGN} ORDER BY next_attempt_at, id LIMIT ?",
             (*args, float(now), int(limit)),
         ).fetchall()
 
     def submissions_to_send(self, *, now: float, limit: int = 20) -> list[sqlite3.Row]:
         """Webhook rows ready to post and due, the longest-waiting first. A
-        row saved for later is left out here, in SQL, so any number of them
-        can never fill the window."""
+        row saved for later, or of a campaign switched off or archived, is
+        left out here, in SQL, so any number of them can never fill the
+        window, and nothing is posted for a campaign the user turned off."""
         return self.conn.execute(
             "SELECT * FROM campaign_submissions WHERE status = 'ready' AND hold = 0 "
-            "AND method = 'discord_webhook' AND next_attempt_at <= ? "
+            f"AND method = 'discord_webhook' AND next_attempt_at <= ? AND {_LIVE_CAMPAIGN} "
             "ORDER BY next_attempt_at, id LIMIT ?",
             (float(now), int(limit)),
         ).fetchall()

@@ -598,12 +598,15 @@ def test_rows_stuck_behind_failed_or_far_off_posts_never_hold_up_a_live_one(db, 
 
 @pytest.mark.parametrize("case, wait", [
     ("due", 60), ("unknown_time", 60), ("scheduled", 600), ("failed_watch_post", 3600), ("manual_no_link", 3600),
+    ("waiting_url", 60),
 ])
 def test_how_soon_a_row_is_looked_at_again(db, tmp_path, case, wait):
     clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
     origin = "watch" if case == "failed_watch_post" else "editor"
     if case == "due":
         publisher.publish(clip_id, ["tiktok"])
+    elif case == "waiting_url":
+        publisher.publish(clip_id, ["tiktok"], state="published")  # live, its link not known yet
     elif case == "scheduled":
         publisher.publish(clip_id, ["tiktok"], scheduled_for=_utc(T0 + timedelta(days=1)))
     elif case == "failed_watch_post":
@@ -612,10 +615,13 @@ def test_how_soon_a_row_is_looked_at_again(db, tmp_path, case, wait):
         publisher.publish(clip_id, ["tiktok"], state="skipped")
     sub_id = db.insert_submission(cid, "vid", 0.0, 30.0, "tiktok", clip_id=clip_id, origin=origin,
                                   provider="woopsocial" if case != "unknown_time" else "")
+    if case == "waiting_url":
+        db.set_submission(sub_id, status="waiting_url", posted_at=_utc(T0))
     _advance(db, tmp_path, T0)
     row = db.get_submission(sub_id)
     assert row["next_attempt_at"] == T0.timestamp() + wait
-    assert row["status"] == ("manual" if case == "manual_no_link" else "waiting_publication")
+    assert row["status"] == {"manual_no_link": "manual", "waiting_url": "waiting_url"}.get(
+        case, "waiting_publication")
     assert db.submissions_due(queue.FOLLOWED, now=T0.timestamp() + wait - 1, no_url_manual=True) == []
 
 
@@ -1120,3 +1126,232 @@ def test_a_row_that_cant_be_looked_at_is_put_off_and_the_rest_go_on(db, tmp_path
     assert db.get_submission(broken)["next_attempt_at"] == T0.timestamp() + 3600
     assert db.get_submission(fine)["status"] == "manual"
     assert "Could not check submission" in capsys.readouterr().out
+
+
+# ---- published again, closed campaigns, words, typed links ---------------------------------------
+
+def _stamp_at(monkeypatch, moment) -> None:
+    """The database's own clock (created_at, uploaded_at, a job's updated_at) at `moment`."""
+    local = moment.astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
+    monkeypatch.setattr(core.state, "_now", lambda: local)
+
+
+FAILED_ON_YOUTUBE = "The post failed on YouTube: publish it again or enter its link"
+
+
+def test_a_failed_youtube_upload_published_again_resolves_without_attaching_again(db, tmp_path, monkeypatch):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    _stamp_at(monkeypatch, T0 - timedelta(days=1))
+    publisher.youtube(clip_id, youtube_id="abcdefghi00")  # an upload of the clip from the day before
+    _stamp_at(monkeypatch, T0)
+    failed = publisher.youtube(clip_id, done=False)
+    db.finish_publish_job(failed, "failed", error="The daily upload quota is used up")
+    row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=failed)["created"][0]
+    assert (row["status"], row["status_reason"], row["post_url"]) == ("manual", FAILED_ON_YOUTUBE, ""), \
+        "an upload older than the failure isn't this post"
+
+    _stamp_at(monkeypatch, T0 + timedelta(minutes=10))
+    publisher.youtube(clip_id, youtube_id="abcdefghi01")  # published again, with no campaign picked
+    events = []
+    _advance(db, tmp_path, T0 + timedelta(hours=1, seconds=1), emit=events.append)
+    after = db.get_submission(row["id"])
+    assert (after["status"], after["post_url"], after["status_reason"]) == (
+        "manual", link("youtube", 1), "Submit it in Discord")
+    assert [(e["previous"], e["status"], e["message"]) for e in events] == [
+        ("manual", "manual", "Ready to submit to Example Campaign in Discord")], "its link is news"
+
+
+def test_attaching_again_after_a_failed_post_follows_the_new_publish(db, tmp_path):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    publisher.publish(clip_id, ["youtube"], state="failed", error="Rejected")  # through WoopSocial
+    row = _attach(db, clip_id, [cid], platforms=["youtube"], provider="woopsocial")["created"][0]
+    assert (row["status"], row["status_reason"]) == ("manual", FAILED_ON_YOUTUBE)
+    again = publisher.youtube(clip_id, youtube_id="abcdefghi01")  # the YouTube panel publishes it, then attaches
+    got = _attach(db, clip_id, [cid], platforms=["youtube"], provider="youtube", publish_job_id=again)
+    assert [(r["id"], r["provider"], r["publish_job_id"], r["next_attempt_at"]) for r in got["existing"]] == [
+        (row["id"], "youtube", again, 0)]
+    _advance(db, tmp_path, T0 + timedelta(seconds=1))
+    assert db.get_submission(row["id"])["post_url"] == link("youtube", 1)
+
+
+def test_the_sending_write_comes_before_the_request(db, tmp_path):
+    (sub_id,), _ = _ready(db, tmp_path)
+    dying = FakeDiscordHTTP(KeyboardInterrupt())  # the process dies while the request is out
+    with pytest.raises(KeyboardInterrupt):
+        _advance(db, tmp_path, T0, dying)
+    assert db.get_submission(sub_id)["status"] == "sending"
+    db.recover_sending_submissions(statemachine.REASONS["restart"])  # the restart
+    later = FakeDiscordHTTP()
+    _advance(db, tmp_path, T0 + timedelta(hours=1), later)
+    assert (db.get_submission(sub_id)["status"], later.calls) == ("awaiting_confirmation", [])
+
+
+def test_archiving_a_campaign_cancels_what_it_has_not_sent_and_posts_nothing(db, tmp_path):
+    (due, sending, sent), _ = _ready(db, tmp_path, n=3)
+    for event in ("send_start", "send_ok"):
+        statemachine.apply(db, sent, event, now=T0)
+    statemachine.apply(db, sending, "send_start", now=T0)  # out at the moment it is archived
+    cid = db.get_submission(due)["campaign_id"]
+    waiting_clip = clip(db, start=200.0, end=230.0)
+    FakePublisher(db).publish(waiting_clip, ["tiktok"])
+    waiting = _attach(db, waiting_clip, [cid], provider="woopsocial")["created"][0]["id"]
+
+    removed = queue.remove_campaign(db, cid, now=T0)
+    assert removed == "archived"
+    for sub_id in (due, waiting):
+        row = db.get_submission(sub_id)
+        assert (row["status"], row["status_reason"]) == ("cancelled", queue.CAMPAIGN_ARCHIVED)
+    assert db.get_submission(sent)["status"] == "awaiting_confirmation", "already posted: its outcome is to record"
+    statemachine.apply(db, sending, "rate_limited", now=T0, next_attempt_at=T0.timestamp())  # Discord: wait
+    http = FakeDiscordHTTP()
+    _advance(db, tmp_path, T0 + timedelta(seconds=10), http)
+    assert (http.calls, db.get_submission(sending)["status"]) == ([], "ready"), "nothing goes out for it"
+    missing = queue.remove_campaign(db, 999, now=T0)
+    assert missing == ""
+
+
+def test_a_campaign_switched_off_follows_and_posts_nothing_until_it_is_on_again(db, tmp_path):
+    (due,), _ = _ready(db, tmp_path)
+    cid = db.get_submission(due)["campaign_id"]
+    later_clip, publisher = clip(db, start=200.0, end=230.0), FakePublisher(db)
+    publisher.publish(later_clip, ["tiktok"])
+    waiting = _attach(db, later_clip, [cid], provider="woopsocial")["created"][0]["id"]
+    db.set_campaign(cid, enabled=0)
+    publisher.refresh(later_clip, "tiktok", "published", url=link("tiktok", 99))
+    http = FakeDiscordHTTP((200, {"id": "600000000000000001", "channel_id": CHANNEL_ID}))
+    _advance(db, tmp_path, T0 + timedelta(minutes=5), http)
+    assert (http.calls, db.get_submission(due)["status"], db.get_submission(waiting)["status"]) == (
+        [], "ready", "waiting_publication")
+    db.set_campaign(cid, enabled=1)
+    _advance(db, tmp_path, T0 + timedelta(minutes=6), http)
+    assert (len(http.calls), db.get_submission(due)["status"]) == (1, "awaiting_confirmation")
+    assert db.get_submission(waiting)["post_url"] == link("tiktok", 99)
+
+
+def test_an_archived_campaigns_deadline_still_expires_what_it_kept(db, tmp_path):
+    (sub_id,), _ = _ready(db, tmp_path, deadline=_utc(T0 + timedelta(hours=1)))
+    db.set_campaign(db.get_submission(sub_id)["campaign_id"], archived=1)
+    _advance(db, tmp_path, T0 + timedelta(hours=2))
+    assert db.get_submission(sub_id)["status"] == "expired"
+
+
+def test_reopening_takes_the_campaigns_method_as_it_is_now(db, tmp_path):
+    dest = webhook_destination(db, tmp_path)
+    clip_id = clip(db)
+    FakePublisher(db).publish(clip_id, ["tiktok"], state="published", url=link("tiktok"))
+    cid = _campaign(db, method="discord_webhook", destination_id=dest)
+    row = _attach(db, clip_id, [cid], mode="later")["created"][0]
+    assert (row["status"], row["hold"], row["method"]) == ("ready", 1, "discord_webhook")
+    queue.cancel(db, row["id"], now=T0)
+    before = db.get_campaign(cid)
+    db.set_campaign(cid, method="discord_assisted", destination_id=0)
+    updated = queue.reapply_campaign(db, cid, before, now=T0)
+    assert updated == 0, "a closed row is left as it is"
+
+    again = _attach(db, clip_id, [cid], reopen_rows=True)["created"][0]
+    assert (again["id"], again["method"], again["destination_id"], again["hold"]) == (
+        row["id"], "discord_assisted", 0, 0), "after publishing: no longer saved for later"
+    assert (again["status"], again["status_reason"]) == ("manual", "Submit it in Discord")
+    http = FakeDiscordHTTP()
+    _advance(db, tmp_path, T0 + timedelta(seconds=30), http)
+    assert http.calls == []
+
+    queue.cancel(db, row["id"], now=T0)
+    db.set_submission(row["id"], method="website", overridden=json.dumps(["method"]))
+    own = _attach(db, clip_id, [cid], reopen_rows=True)["created"][0]
+    assert (own["method"], own["destination_id"]) == ("website", 0), "a method of its own stays"
+
+
+@pytest.mark.parametrize("change, check, reason", [
+    ({"extra_values": {"goal": ""}}, "fields", "Fill in Goal"),
+    ({"message_text": "{url} " + "x" * 1990}, "length", "longer than Discord's"),
+])
+def test_words_changed_after_their_check_go_to_review_instead_of_out(db, tmp_path, change, check, reason):
+    dest = webhook_destination(db, tmp_path)
+    clip_id = clip(db)
+    FakePublisher(db).publish(clip_id, ["tiktok"], state="published", url=link("tiktok"))
+    goal = [{"name": "goal", "label": "Goal", "default": "", "required": True}]
+    cid = _campaign(db, method="discord_webhook", destination_id=dest, message_template="{url} goal {goal}",
+                    extra_fields=json.dumps(goal))
+    row = _attach(db, clip_id, [cid], mode="later")["created"][0]
+    assert (row["status"], row["status_reason"]) == ("review", "Fill in Goal")
+    queue.edit(db, row["id"], now=T0, extra_values={"goal": "1000"})
+    approved = queue.approve(db, row["id"], now=T0)
+    assert (approved["status"], approved["hold"]) == ("ready", 1)
+
+    queue.edit(db, row["id"], now=T0, **change)
+    queue.submit(db, row["id"], now=T0)
+    http, events = FakeDiscordHTTP((200, {"id": "600000000000000001", "channel_id": CHANNEL_ID})), []
+    _advance(db, tmp_path, T0 + timedelta(seconds=5), http, emit=events.append)
+    after = db.get_submission(row["id"])
+    assert (after["status"], http.calls) == ("review", [])
+    assert reason in after["status_reason"] and _checks(after)[check] == "fail"
+    assert [(e["previous"], e["status"]) for e in events] == [("ready", "review")]
+
+
+def test_a_link_typed_for_a_post_already_attached_is_taken_by_its_row(db):
+    clip_id = clip(db)
+    FakePublisher(db).publish(clip_id, ["tiktok"], state="published")  # live, the publisher has no link
+    cid = _campaign(db)
+    first = _attach(db, clip_id, [cid], provider="woopsocial")["created"][0]
+    assert (first["status"], first["post_url"]) == ("waiting_url", "")
+
+    got = _attach(db, clip_id, [cid], mode="now", post_url=link("tiktok"))
+    assert (got["created"], got["refused"], [r["id"] for r in got["existing"]]) == ([], [], [first["id"]])
+    row = got["existing"][0]
+    assert (row["status"], row["post_url"], row["url_source"], row["status_reason"]) == (
+        "manual", link("tiktok"), "manual", "Submit it in Discord")
+    same = _attach(db, clip_id, [cid], post_url=link("tiktok"))
+    assert (same["refused"], [r["id"] for r in same["existing"]]) == ([], [first["id"]]), \
+        "its own link is no duplicate of itself"
+
+    queue.record(db, first["id"], "submitted", now=T0)
+    other = _attach(db, clip_id, [cid], post_url=link("tiktok", 2))
+    assert [r["reason"] for r in other["refused"]] == [
+        f"It is already in this campaign as #{first['id']} (Awaiting confirmation)"]
+    assert db.get_submission(first["id"])["post_url"] == link("tiktok")
+
+
+def test_a_manual_row_that_finds_its_link_is_announced(db, tmp_path):
+    clip_id, publisher, cid = clip(db), FakePublisher(db), _campaign(db)
+    publisher.publish(clip_id, ["tiktok"], state="failed", error="Rejected by TikTok")
+    row = _attach(db, clip_id, [cid], provider="woopsocial")["created"][0]
+    assert (row["status"], row["post_url"]) == ("manual", "")
+    publisher.refresh(clip_id, "tiktok", "published", url=link("tiktok"))  # published again
+    events = []
+    _advance(db, tmp_path, T0 + timedelta(hours=1, seconds=1), emit=events.append)
+    assert [(e["submission_id"], e["previous"], e["status"], e["to_submit"], e["message"]) for e in events] == [
+        (row["id"], "manual", "manual", True, "Ready to submit to Example Campaign in Discord")]
+    _advance(db, tmp_path, T0 + timedelta(hours=3), emit=events.append)
+    assert len(events) == 1, "said once"
+
+
+@pytest.mark.parametrize("method, status, reason", [
+    ("discord_assisted", "manual", "Submit it in Discord"), ("discord_webhook", "ready", ""),
+])
+def test_letting_go_of_a_row_saved_for_later_submits_it(db, tmp_path, method, status, reason):
+    dest = webhook_destination(db, tmp_path) if method == "discord_webhook" else 0
+    clip_id = clip(db)
+    FakePublisher(db).publish(clip_id, ["tiktok"], state="published", url=link("tiktok"))
+    row = _attach(db, clip_id, [_campaign(db, method=method, destination_id=dest)], mode="later")["created"][0]
+    assert (row["status"], row["hold"]) == ("ready", 1)
+    after = queue.edit(db, row["id"], now=T0, hold=False)
+    assert (after["status"], after["hold"], after["status_reason"]) == (status, 0, reason)
+    if method == "discord_webhook":
+        assert after["next_attempt_at"] == T0.timestamp(), "due now"
+
+
+def test_a_webhook_picked_for_one_row_is_its_own(db, tmp_path):
+    dest = webhook_destination(db, tmp_path)
+    other = db.insert_destination(label="Other hook", state="connected")
+    row = _attach(db, clip(db), [_campaign(db, method="discord_webhook", destination_id=dest)])["created"][0]
+    after = queue.edit(db, row["id"], now=T0, destination_id=other)
+    assert (after["destination_id"], json.loads(after["overridden"])) == (other, ["destination_id"])
+
+
+def test_a_move_to_a_campaign_that_doesnt_exist_is_not_found(db):
+    row = _attach(db, clip(db), [_campaign(db)], post_url=link("tiktok"))["created"][0]
+    before = dict(db.get_submission(row["id"]))
+    with pytest.raises(LookupError, match="No campaign #999"):
+        queue.move(db, row["id"], 999, now=T0)
+    assert dict(db.get_submission(row["id"])) == before

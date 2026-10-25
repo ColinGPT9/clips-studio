@@ -54,15 +54,15 @@ From `server/jobs.py:7-11` and the dispatch at `server/jobs.py:270-294`:
 
 ### 3.2 States
 - Job statuses: `queued`, `running`, `done`, `failed`, `cancelled`. `RETRYABLE = ("failed", "cancelled")`, `LIVE = ("queued", "running")` (`core/queue.py:46-50`); terminal writes at `server/jobs.py:295-313`.
-- Video statuses (`videos.status`), written by the pipeline: `queued` (upsert default, `core/state.py:1059`) -> `downloaded` (`core/pipeline.py:304`) -> `transcribed` (`:420`) -> `analyzed` (`:463`) -> `done` (`:481` when no candidates, `:673` after rendering). `failed` is set by `recover_stuck_videos` (`core/state.py:745-755`) and the daemon (`core/scheduler.py:103`).
+- Video statuses (`videos.status`), written by the pipeline: `queued` (upsert default, `core/state.py:1062`) -> `downloaded` (`core/pipeline.py:304`) -> `transcribed` (`:420`) -> `analyzed` (`:463`) -> `done` (`:481` when no candidates, `:673` after rendering). `failed` is set by `recover_stuck_videos` (`core/state.py:748-758`) and the daemon (`core/scheduler.py:103`).
 - Clip statuses: `queued` at registration ("awaiting a daily schedule slot", `core/pipeline.py:1589`) -> `scheduled` -> `uploaded`/`failed` (`core/scheduler.py:1-14`, `:154`).
 
 ### 3.3 The worker loop (who claims jobs)
 `Worker.run()` (`server/jobs.py:95-321`):
 1. Opens its own `StateDB` (sqlite, one connection per thread) (`:96`).
-2. Startup recovery: `db.recover_interrupted_jobs()` re-queues rows left `running` with `interrupted = 1, attempts = attempts + 1` (`core/state.py:1605-1621`); `db.recover_stuck_videos()` marks videos in `downloaded|transcribed|analyzed` as `failed` (`core/state.py:745-755`); creator backfill (`server/jobs.py:97-112`).
+2. Startup recovery: `db.recover_interrupted_jobs()` re-queues rows left `running` with `interrupted = 1, attempts = attempts + 1` (`core/state.py:1608-1624`); `db.recover_stuck_videos()` marks videos in `downloaded|transcribed|analyzed` as `failed` (`core/state.py:748-758`); creator backfill (`server/jobs.py:97-112`).
 3. Installs the progress handler `progress.set_handler(on_progress)` (`:121-134`): tags each event with the current job id (except `prefetch` events), records a per-job snapshot, and broadcasts `{"type": "progress", "job_id", ...event}`.
-4. Loop: if `queue.is_paused(db)` wait 2 s (`:142-145`); else `job = db.claim_next_job()` (`:146`), which selects `status = 'queued' ORDER BY position, id LIMIT 1` and sets `running` + `started_at` (`core/state.py:1546-1561`). `Worker.notify()` wakes the loop early (`:66-70`).
+4. Loop: if `queue.is_paused(db)` wait 2 s (`:142-145`); else `job = db.claim_next_job()` (`:146`), which selects `status = 'queued' ORDER BY position, id LIMIT 1` and sets `running` + `started_at` (`core/state.py:1549-1564`). `Worker.notify()` wakes the loop early (`:66-70`).
 5. Opens `data/logs/job_<id>.log` (`feedback.open_job_log`) and stores `jobs.log_path` (`:162-164`); broadcasts `{"type":"job","status":"running"}` and `{"type":"queue"}` (`:165-166`).
 6. For `process`: `identify(payload["url"])` -> `vid`; `db.set_job(id, video_id=vid)`; `cancel.set_active(vid)`; `cancel.clear(vid)`; `self.prefetch.wait_for(vid)` (`:167-186`). Then `self.prefetch.maybe_start(db)` for the next queued video (`:187`).
 7. `cfg = copy.deepcopy(self.config)`, `_check_plan(db, cfg, payload)` (signed-in AI plan gate, `:730-744`), then the payload-to-config merge (section 8) (`:197-269`).
@@ -70,7 +70,7 @@ From `server/jobs.py:7-11` and the dispatch at `server/jobs.py:270-294`:
 9. Terminal: `db.finish_job(id, "done")`, `_run_follow_up(db, job, payload)` (the `then: {"action": "publish"}` intent, `:683-728`), `_announce(db, job, "done")` (`:295-298`). `CancelledError` -> `finish_job(id, "cancelled", "Cancelled by user")` (`:299-302`). Any `Exception` -> `traceback.print_exc()`, `scrub_secrets(str(e))`, `finish_job(id, "failed", message[:2000])`, `_announce(..., "failed", message[:500])` (`:303-313`).
 10. `finally`: clears current job id and progress entry, `cancel.set_active(None)`, `feedback.close_job_log()`, `_prune_logs()` (keeps newest `_KEEP_LOGS = 50`) (`:314-321`, `:28`, `:78-87`).
 
-`finish_job` writes `status, error, interrupted = 0, finished_at, updated_at` (`core/state.py:1533-1544`).
+`finish_job` writes `status, error, interrupted = 0, finished_at, updated_at` (`core/state.py:1536-1547`).
 
 Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot; stopping never deletes; a failure is contained to its own video.
 
@@ -92,13 +92,13 @@ Invariants (`core/queue.py:23-32`): one video at a time; a payload is a snapshot
 | `estimate(db) -> {queued_seconds, per_video_seconds, samples, confident}` | median of `process_seconds/duration` over the last 20 done videos; `COLD_START_SECONDS = 3600` | `:277-330` |
 | `snapshot(db, history_limit=50) -> {processing, queued, completed, failed, paused, estimate, capacity, max_active}` | the read model; each item carries `url` and `settings` lifted out of payload | `:337-382` |
 
-`add_job` ordering: `process` jobs go to `MAX(position)+1`; `render`/`translate` jobs take the position of the first queued process job and shift the rest back by one (`core/state.py:1496-1531`).
+`add_job` ordering: `process` jobs go to `MAX(position)+1`; `render`/`translate` jobs take the position of the first queued process job and shift the rest back by one (`core/state.py:1499-1534`).
 
 ### 3.5 Retries, interruption, crash
-- No automatic retry. `retry()` is explicit; `attempts` is only incremented by crash recovery (`core/state.py:1617`).
-- Crash: on next start, `running` jobs return to `queued` with `interrupted = 1` (`core/state.py:1605-1621`); the log file is keyed by job id, so the second attempt appends to the same `job_N.log` (`core/queue.py:220-222`, `server/feedback.py:90`: opened with mode `"a"`).
+- No automatic retry. `retry()` is explicit; `attempts` is only incremented by crash recovery (`core/state.py:1620`).
+- Crash: on next start, `running` jobs return to `queued` with `interrupted = 1` (`core/state.py:1608-1624`); the log file is keyed by job id, so the second attempt appends to the same `job_N.log` (`core/queue.py:220-222`, `server/feedback.py:90`: opened with mode `"a"`).
 - Resume: `process_video` re-enters from the top; the download is skipped when `data/downloads/<id>.mp4` exists (`_cached_or_download`, `core/pipeline.py:1010-1113`), and the transcript is reused when `data/transcripts/<id>.json` exists (`transcription/transcriber.py:210-219`). Analysis and rendering always re-run (inferred: no cache of candidates exists; `_register_clip` tolerates the UNIQUE clash on re-run, `core/pipeline.py:1599-1636`).
-- "Already processed" guard: `db.shorts_made(video_id)` (`core/state.py:1024-1049`) short-circuits a Shorts run unless `force` (`core/pipeline.py:301-303`).
+- "Already processed" guard: `db.shorts_made(video_id)` (`core/state.py:1027-1052`) short-circuits a Shorts run unless `force` (`core/pipeline.py:301-303`).
 - Daemon mode (`core/scheduler.py:_process_queue`, `:93-103`) reprocesses videos with status `queued|downloaded|transcribed|analyzed` and marks `failed` on exception.
 
 ---
@@ -221,7 +221,7 @@ Both-formats job: `Worker._both_formats` runs `process_video` then `process_long
 
 | Path | Written by | Notes |
 |---|---|---|
-| `data/state.db` | `StateDB(data_dir / "state.db")` (`server/jobs.py:46`, `main.py:201`) | SQLite, WAL, foreign keys on (`core/state.py:514-522`) |
+| `data/state.db` | `StateDB(data_dir / "state.db")` (`server/jobs.py:46`, `main.py:201`) | SQLite, WAL, foreign keys on (`core/state.py:517-525`) |
 | `data/downloads/<video_id>.mp4` (or `<video_id><SUFFIX>.mp4` for Vertical Live) | `sources.dispatch.download` / prefetch | reused by `cached_source` (`core/pipeline.py:1019-1026`); re-render source path `data/downloads/{video_id}.mp4` (`server/jobs.py:789`) |
 | `data/transcripts/<video_id>.json` | `transcribe()` (`transcription/transcriber.py:244-256`) | `{"video_id", "language", "segments": [vars(Segment)]}`; read back by `detected_language`, `_rerender_clip`, `_caption_lines_for` |
 | `data/clips/<channel>/<title> [<video_id>]/clip_SSSSS-EEEEE.mp4` | `_render_files` (`core/pipeline.py:501-505`, `:1150-1152`) | stem `clip_{int(start):05d}-{int(end):05d}`; scratch `*.source.mp4`, `*.edited.mp4`, `*.plain.mp4`, `*.pre-card.mp4`, `*.ass`, `*.card.png` are discarded (`:1309-1424`); longform adds `/<profile subdir>` (`longform/process.py:153-157`) |
@@ -232,19 +232,19 @@ Both-formats job: `Worker._both_formats` runs `process_video` then `process_long
 
 ### 9.2 Schema (core/state.py `SCHEMA` + `_migrate()`)
 
-`videos` (`core/state.py:16-23` + migrations `:543-567, 605-608`): `video_id TEXT PK`, `channel_id`, `title`, `status TEXT DEFAULT 'queued'`, `created_at`, `updated_at`, `channel_name`, `process_seconds REAL`, `creator_id INTEGER`, `duration REAL`, `source_url`, `source_platform`, `games TEXT` (JSON list), `outcome TEXT` (JSON).
+`videos` (`core/state.py:16-23` + migrations `:546-570, 608-611`): `video_id TEXT PK`, `channel_id`, `title`, `status TEXT DEFAULT 'queued'`, `created_at`, `updated_at`, `channel_name`, `process_seconds REAL`, `creator_id INTEGER`, `duration REAL`, `source_url`, `source_platform`, `games TEXT` (JSON list), `outcome TEXT` (JSON).
 
-`clips` (`:25-37` + `:526-530`): `id INTEGER PK`, `video_id REFERENCES videos`, `start_s REAL`, `end_s REAL`, `score INTEGER`, `hook`, `path`, `status TEXT DEFAULT 'rendered'`, `scheduled_for`, `created_at`, `title`, `description`, `hashtags` (JSON list), `scores` (JSON subscores), `render_opts` (JSON), `exported_at`; `UNIQUE (video_id, start_s, end_s)` (start/end rounded to 2 dp at insert, `:938-942`).
+`clips` (`:25-37` + `:529-533`): `id INTEGER PK`, `video_id REFERENCES videos`, `start_s REAL`, `end_s REAL`, `score INTEGER`, `hook`, `path`, `status TEXT DEFAULT 'rendered'`, `scheduled_for`, `created_at`, `title`, `description`, `hashtags` (JSON list), `scores` (JSON subscores), `render_opts` (JSON), `exported_at`; `UNIQUE (video_id, start_s, end_s)` (start/end rounded to 2 dp at insert, `:938-942`).
 
-`rejections` (`:39-49` + `:599-601`): `id`, `video_id`, `start_s`, `end_s`, `score`, `reason`, `kept_start_s`, `kept_end_s`, `created_at`, `subscores` (JSON).
+`rejections` (`:39-49` + `:602-604`): `id`, `video_id`, `start_s`, `end_s`, `score`, `reason`, `kept_start_s`, `kept_end_s`, `created_at`, `subscores` (JSON).
 
-`jobs` (`:63-71` + `:568-592`): `id INTEGER PK`, `type TEXT DEFAULT 'process'`, `payload TEXT` (JSON), `status TEXT DEFAULT 'queued'`, `error TEXT`, `created_at`, `updated_at`, `position INTEGER`, `video_id TEXT`, `title TEXT`, `interrupted INTEGER`, `started_at`, `finished_at`, `attempts INTEGER`, `log_path TEXT`; index `idx_jobs_queue(status, position, id)` (`:591-593`).
+`jobs` (`:63-71` + `:571-595`): `id INTEGER PK`, `type TEXT DEFAULT 'process'`, `payload TEXT` (JSON), `status TEXT DEFAULT 'queued'`, `error TEXT`, `created_at`, `updated_at`, `position INTEGER`, `video_id TEXT`, `title TEXT`, `interrupted INTEGER`, `started_at`, `finished_at`, `attempts INTEGER`, `log_path TEXT`; index `idx_jobs_queue(status, position, id)` (`:594-596`).
 
 `app_state (key PK, value)` (`:252-255`): `queue_paused`, `watches_imported`, plan automation flags.
 
 Other tables (names only; `:51-61, 79-449`): `uploads`, `channels`, `creators` (+ `default_branding_id`, `gaming_layout`), `platform_accounts`, `creator_knowledge`, `creator_events`, `clip_feedback`, `branding_profiles`, `creator_terms`, `clip_translations`, `publish_jobs`, `clip_publishes`, `streams`, `watches`, `watch_items`.
 
-Migrations are additive `ALTER TABLE ... ADD COLUMN` guarded by `PRAGMA table_info` (`:523-717`); no schema version number exists (inferred: no `user_version` or version table in `core/state.py`).
+Migrations are additive `ALTER TABLE ... ADD COLUMN` guarded by `PRAGMA table_info` (`:527-721`); no schema version number exists (inferred: no `user_version` or version table in `core/state.py`).
 
 ### 9.3 What a clip is
 On disk: one MP4 at `clips.path`, 1080x1920 (standard/vertical-live/gaming/podcast/sports) or 1920x1080 (longform), captions burned from a temporary ASS, optional image watermark and end card concatenated (`core/pipeline.py:1426-1446`).
