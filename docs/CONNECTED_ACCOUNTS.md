@@ -19,9 +19,13 @@ Discord authorization and bot installation are a separate integration effort.
    displays the account once the token's client and user identity are verified.
 5. Use **Test connection**, **Watch this channel**, or **Disconnect** in the card.
 
-Clips Kitty stores tokens using Windows DPAPI, macOS Keychain, or Linux Secret
-Service. An unavailable or locked OS credential store is an error; this system
-does **not** fall back to plaintext token files. Headless Linux environments
+On Windows, Clips Kitty stores tokens in its own credential store (core/secrets,
+Windows DPAPI), one entry per account. Elsewhere it uses the macOS Keychain or a
+Linux Secret Service through `keyring`, which is installed only there. An
+unavailable or locked OS credential store is an error; this system does **not**
+fall back to plaintext token files. A stored credential that can no longer be
+decrypted (a data folder restored onto another PC or Windows account) shows the
+account as needing reconnection, and reconnecting replaces it. Headless Linux environments
 without Secret Service can develop and test with injected test stores but
 cannot connect real accounts until an OS credential store is available.
 
@@ -42,10 +46,14 @@ cancellation, expiration, or shutdown.
 | Send chat | `user:write:chat` | Sender is the connected user; destination is the connected broadcaster |
 | Stream online/offline and channel updates | User token; no additional scope | Host-owned EventSub WebSocket and connected broadcaster |
 
-Chat scopes are requested only when selected. A watched channel is not an
-authorization grant. Existing watches for other channels retain their original
-feed; the connected streamer's own watch uses authorized Helix broadcast
-metadata and the existing queue/readiness checks.
+Every scope is requested only when selected; a plain connection asks for none.
+A watched channel is not an authorization grant. Existing watches for other
+channels retain their original feed; the connected streamer's own watch uses
+authorized Helix broadcast metadata and the existing queue/readiness checks.
+When that connection needs reconnecting or Twitch does not answer, the watch
+keeps reading the channel's public video list, as it did before Twitch was
+connected, and says so once in the log. The video IDs are the same, so nothing
+is found twice.
 
 Twitch has separate native clip operations for a live broadcast and a VOD.
 The current **Create Clip From VOD** endpoint is `POST /helix/videos/clips`;
@@ -58,7 +66,8 @@ timestamp link when creation is unavailable and the timing is known.
 
 Source-file timestamps are not assumed to equal VOD offsets. Host SDK link and
 VOD-clip operations require a verified mapping tied to the actual local source
-identity. See [Stream workflows](STREAM_WORKFLOWS.md) for nomination monitoring,
+identity, or a source the host measured as the whole Twitch archive (its length
+matches Twitch's for that VOD), whose time is the VOD's time. See [Stream workflows](STREAM_WORKFLOWS.md) for nomination monitoring,
 source calibration, and reusable catch-up approval/export. Missing calibration
 is reported rather than silently linking to the wrong moment.
 
@@ -68,7 +77,11 @@ is reported rather than silently linking to the wrong moment.
 validation, refresh, revocation, and named operations. `ConnectedAccounts`
 serializes refreshes, saves rotated refresh credentials before reuse, validates
 restored sessions and at least hourly while running, and changes unusable
-connections to `reconnect_required`. Transient network failures do not silently
+connections to `reconnect_required`. It never holds its account-list lock
+across a Twitch request. A damaged account list is set aside as
+`connected-accounts.json.corrupt` and the app starts without connections
+rather than not starting at all. Disconnecting revokes the token with the
+client ID that issued it, even after the Client ID setting changed. Transient network failures do not silently
 erase account credentials. Disconnect stops event listeners and plugin grants,
 attempts provider revocation, and removes local credentials. If remote revocation
 was unreachable, the response says `revoked: false`; users can also revoke the
@@ -108,8 +121,10 @@ Content-Type: application/json
 ```
 
 Named operations are `stream_context`, `videos`, `create_clip`, `create_vod_clip`,
-`get_clip`, `vod_link`, and `send_chat`. Trusted application requests use explicit
-VOD-relative offsets; SDK source-media offsets are mapped by the host. These
+`get_clip`, `vod_link`, and `send_chat` (`create_clip`, a live clip, is for this
+desktop route only; plugin runs work on finished VODs and cannot ask for it).
+Trusted application requests use explicit VOD-relative offsets; SDK source-media
+offsets are mapped by the host. These
 operations enforce connected account identity and OAuth scopes; they do
 not accept arbitrary endpoints or tokens. Event reception uses
 `POST /connected-accounts/{account_id}/events` with `event_types`, followed by

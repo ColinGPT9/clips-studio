@@ -46,6 +46,9 @@ def setup(tmp_path, plugin_source, install_plugin):
     gateway.close()
 
 
+VOD_CLIP = {"start_seconds": 10, "end_seconds": 30, "title": "A grounded highlight"}
+
+
 def call(gateway, token, operation="stream_context", params=None, request_id=None):
     return gateway.perform(token, operation, params or {}, request_id or uuid.uuid4().hex)
 
@@ -70,7 +73,7 @@ def test_missing_permission_or_fake_capability_denied(setup):
     setup.plugin.manifest["permissions"] = ["twitch.context.read"]
     with setup.gateway.run(setup.plugin, object(), 60) as env:
         with pytest.raises(accounts.AccessDenied):
-            call(setup.gateway, env[accounts.CAPABILITY_ENV], "create_clip")
+            call(setup.gateway, env[accounts.CAPABILITY_ENV], "create_vod_clip", VOD_CLIP)
         with pytest.raises(accounts.AccessDenied):
             call(setup.gateway, "different-token")
         with pytest.raises(accounts.AccessDenied):
@@ -85,7 +88,7 @@ def test_live_manifest_disable_and_permission_withdrawal_are_enforced(setup):
         manifest["permissions"] = ["twitch.context.read"]
         (setup.folder / "clipskitty.yaml").write_text(json.dumps(manifest), encoding="utf-8")
         with pytest.raises(accounts.AccessDenied):
-            call(setup.gateway, token, "create_clip")
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP)
         call(setup.gateway, token)
         state = store.load(setup.data_dir)
         state["plugins"][setup.plugin.id]["enabled"] = False
@@ -101,11 +104,17 @@ def test_expiry_run_exit_exception_and_disconnect_revoke_grants(setup):
         setup.now[0] = 104
         with pytest.raises(accounts.AccessDenied):
             call(setup.gateway, token)
-    with pytest.raises(RuntimeError), setup.gateway.run(setup.plugin, object(), 30) as env:
-        token = env[accounts.CAPABILITY_ENV]
-        raise RuntimeError("process failed")
+    tokens = []
+
+    def failing_run():
+        with setup.gateway.run(setup.plugin, object(), 30) as env:
+            tokens.append(env[accounts.CAPABILITY_ENV])
+            raise RuntimeError("process failed")
+
+    with pytest.raises(RuntimeError):
+        failing_run()
     with pytest.raises(accounts.AccessDenied):
-        call(setup.gateway, token)
+        call(setup.gateway, tokens[0])
     with setup.gateway.run(setup.plugin, object(), 30) as env:
         token = env[accounts.CAPABILITY_ENV]
         setup.gateway.revoke_account("twitch:42")
@@ -118,15 +127,16 @@ def test_duplicate_writes_are_idempotent_and_conflicting_replay_is_denied(setup)
         token = env[accounts.CAPABILITY_ENV]
         request_id = uuid.uuid4().hex
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(call, setup.gateway, token, "create_clip", {}, request_id) for _ in range(2)]
+            futures = [pool.submit(call, setup.gateway, token, "create_vod_clip", VOD_CLIP, request_id)
+                       for _ in range(2)]
             assert futures[0].result() == futures[1].result()
         assert len(setup.service.calls) == 1
         with pytest.raises(accounts.AccessDenied, match="already used"):
             call(setup.gateway, token, "send_chat", {"message": "hi"}, request_id)
         for _ in range(9):
-            call(setup.gateway, token, "create_clip")
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP)
         with pytest.raises(accounts.AccessDenied) as limited:
-            call(setup.gateway, token, "create_clip")
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP)
         assert limited.value.status == 429
         assert len(setup.service.calls) == 10
 
@@ -136,11 +146,29 @@ def test_ambiguous_write_failure_is_not_retried_and_error_has_no_credentials(set
     with setup.gateway.run(setup.plugin, object(), 60) as env:
         token, request_id = env[accounts.CAPABILITY_ENV], uuid.uuid4().hex
         with pytest.raises(accounts.AccessDenied) as error:
-            call(setup.gateway, token, "create_clip", {}, request_id)
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP, request_id)
         assert "do-not-log" not in str(error.value)
         with pytest.raises(accounts.AccessDenied, match="already attempted"):
-            call(setup.gateway, token, "create_clip", {}, request_id)
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP, request_id)
     assert len(setup.service.calls) == 1
+
+
+@pytest.mark.parametrize("code,status,expected", [
+    ("missing_scope", 403, 403), ("reconnect_required", 401, 401), ("invalid_request", 400, 400),
+    ("provider_unavailable", 503, 503), ("provider_not_configured", 409, 503), ("provider_response", 502, 502),
+])
+def test_host_account_errors_keep_their_status_and_fixed_message(setup, code, status, expected):
+    from connected_accounts.models import AccountError
+
+    def refuse(account_id, operation, **args):
+        raise AccountError(code, "A fixed host message.", status=status)
+
+    setup.service.perform = refuse
+    with setup.gateway.run(setup.plugin, object(), 60) as env:
+        with pytest.raises(accounts.AccessDenied) as error:
+            call(setup.gateway, env[accounts.CAPABILITY_ENV])
+    # 409 would read as "already attempted" to the SDK; nothing was.
+    assert error.value.status == expected and str(error.value) == "A fixed host message."
 
 
 def test_no_binding_or_permissions_does_not_grant_account_access(setup):
@@ -162,8 +190,42 @@ def test_unknown_source_timing_refuses_link_and_native_vod_creation(setup):
                                                        "title": "A grounded highlight"})):
             with pytest.raises(accounts.AccessDenied) as error:
                 call(setup.gateway, token, operation, params)
-            assert error.value.status == 409
+            # Not 409, which the SDK reads as "already attempted".
+            assert error.value.status == 412 and "verified" in str(error.value)
     assert setup.service.calls == []
+
+
+def test_vod_clip_times_snap_to_twitch_whole_second_end(setup):
+    setup.gateway.timeline_mapper = lambda binding, seconds: seconds + 90.5
+    with setup.gateway.run(setup.plugin, object(), 60) as env:
+        token = env[accounts.CAPABILITY_ENV]
+        call(setup.gateway, token, "create_vod_clip", {"start_seconds": 100, "end_seconds": 130,
+                                                    "title": "A grounded highlight"})
+        call(setup.gateway, token, "create_vod_clip", {"start_seconds": 12.34, "end_seconds": 40.81,
+                                                    "title": "Transcript times"})
+        with pytest.raises(accounts.AccessDenied) as short:
+            call(setup.gateway, token, "create_vod_clip", {"start_seconds": 10, "end_seconds": 14.4,
+                                                        "title": "Too short"})
+        assert short.value.status == 400
+    first, second = (args for _, _, args in setup.service.calls)
+    assert (first["start_seconds"], first["end_seconds"]) == (190.5, 221.0)
+    assert (second["start_seconds"], second["end_seconds"]) == (102.8, 131.0)
+    for args in (first, second):
+        assert args["end_seconds"] == int(args["end_seconds"])
+        assert 5 <= round(args["end_seconds"] - args["start_seconds"], 1) <= 60
+
+
+def test_timestamps_outside_the_verified_vod_are_a_bad_request(setup):
+    def mapper(binding, seconds):
+        error = ValueError("outside")
+        error.code = "invalid_timestamp"
+        raise error
+
+    setup.gateway.timeline_mapper = mapper
+    with setup.gateway.run(setup.plugin, object(), 60) as env:
+        with pytest.raises(accounts.AccessDenied) as error:
+            call(setup.gateway, env[accounts.CAPABILITY_ENV], "vod_link", {"seconds": 12})
+    assert error.value.status == 400 and setup.service.calls == []
 
 
 def test_source_timing_is_applied_before_vod_requests(setup):
@@ -206,27 +268,38 @@ def test_source_info_and_audience_are_narrow_host_callbacks(setup):
     assert setup.service.calls == []
 
 
-def test_native_clip_write_limit_is_shared_by_live_and_vod_actions(setup):
+def test_runs_cannot_clip_the_live_broadcast_and_vod_clips_are_limited(setup):
     with setup.gateway.run(setup.plugin, object(), 60) as env:
         token = env[accounts.CAPABILITY_ENV]
-        for _ in range(5):
+        # A run works on a finished VOD: a live clip of whatever is on air now
+        # is not source-bound, so the gateway does not offer it.
+        with pytest.raises(accounts.AccessDenied) as live:
             call(setup.gateway, token, "create_clip")
-            call(setup.gateway, token, "create_vod_clip", {"start_seconds": 10, "end_seconds": 30,
-                                                        "title": "A grounded highlight"})
+        assert live.value.status == 403
+        for _ in range(10):
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP)
         with pytest.raises(accounts.AccessDenied) as limited:
-            call(setup.gateway, token, "create_clip")
+            call(setup.gateway, token, "create_vod_clip", VOD_CLIP)
         assert limited.value.status == 429
-    assert len(setup.service.calls) == 10
+    assert [operation for _, operation, _ in setup.service.calls] == ["create_vod_clip"] * 10
+
+
+class EventManager:
+    def __init__(self):
+        self.started, self.released = [], []
+
+    def start(self, account_id, **kwargs):
+        self.started.append((account_id, kwargs))
+        return {"status": "connected"}
+
+    def release(self, account_id, consumer):
+        self.released.append((account_id, consumer))
+
+    def events(self, account_id, **kwargs):
+        return {"events": [{"type": "stream.online", "id": 1}, {"type": "channel.chat.message", "id": 2}], "cursor": 2}
 
 
 def test_event_chat_reads_need_extra_permission_and_are_filtered(setup):
-    class EventManager:
-        def start(self, account_id, **kwargs):
-            return {"status": "connected"}
-
-        def events(self, account_id, **kwargs):
-            return {"events": [{"type": "stream.online", "id": 1}, {"type": "channel.chat.message", "id": 2}], "cursor": 2}
-
     setup.gateway.event_manager = EventManager()
     with setup.gateway.run(setup.plugin, object(), 60) as env:
         token = env[accounts.CAPABILITY_ENV]
@@ -234,6 +307,20 @@ def test_event_chat_reads_need_extra_permission_and_are_filtered(setup):
             call(setup.gateway, token, "events_start", {"event_types": ["channel.chat.message"]})
         result = call(setup.gateway, token, "events")
         assert result == {"events": [{"type": "stream.online", "id": 1}], "cursor": 2}
+
+
+def test_a_runs_event_subscription_ends_with_the_run(setup):
+    manager = setup.gateway.event_manager = EventManager()
+    with setup.gateway.run(setup.plugin, object(), 60) as env:
+        call(setup.gateway, env[accounts.CAPABILITY_ENV], "events_start", {"event_types": ["stream.online"]})
+        assert manager.released == []
+    (account_id, kwargs), = manager.started
+    assert account_id == "twitch:42" and kwargs["event_types"] == ["stream.online"]
+    assert manager.released == [("twitch:42", kwargs["consumer"])]
+    # A run that never started events releases nothing.
+    with setup.gateway.run(setup.plugin, object(), 60) as env:
+        call(setup.gateway, env[accounts.CAPABILITY_ENV])
+    assert len(manager.released) == 1
 
 
 def test_http_route_rejects_desktop_session_as_a_plugin_capability(setup):

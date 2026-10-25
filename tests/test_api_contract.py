@@ -107,6 +107,32 @@ def test_the_reference_is_up_to_date(app):
     )
 
 
+def test_building_the_app_opens_no_optional_twitch_files(app, tmp_path):
+    # scripts/gen_api_reference.py builds the app in a temporary folder and
+    # deletes it. A SQLite file held open by create_app made that fail on
+    # Windows; the stream-workflow stores now open on first use.
+    assert not list((tmp_path / "data").glob("stream-*"))
+
+
+def test_damaged_optional_twitch_files_never_stop_the_engine(tmp_path):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("yaml")
+    pytest.importorskip("numpy")
+    from main import BUNDLED_CONFIG, load_config
+    from server.api import create_app
+
+    data = tmp_path / "data"
+    data.mkdir()
+    for name in ("connected-accounts.json", "stream-workflows.sqlite3", "stream-digests.sqlite3"):
+        (data / name).write_bytes(b"damaged by a sync tool")
+    settings = tmp_path / "settings.yaml"
+    shutil.copy(ROOT / "config" / "settings.yaml", settings)
+    config = load_config(BUNDLED_CONFIG)
+    config["paths"]["data_dir"] = str(data)
+    create_app(config, settings)
+    assert (data / "connected-accounts.json.corrupt").exists()
+
+
 # ---- stable routes keep accepting what they accepted -------------------------
 
 

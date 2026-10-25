@@ -77,8 +77,14 @@ class ConnectedAccounts:
             return answer["result"]
         except urllib.error.HTTPError as error:
             # No response body or request URL is reflected into plugin logs.
-            messages = {403: "Clips Kitty has not granted that account operation for this run.",
+            messages = {400: "Clips Kitty refused that account request. Check the values passed to it.",
+                        401: "Twitch needs reconnecting in Clips Kitty's Settings.",
+                        403: "Clips Kitty has not granted that account operation for this run.",
+                        404: "That Twitch item isn't available any more.",
+                        503: "Clips Kitty's Twitch connection isn't available right now.",
                         409: "Clips Kitty already attempted that account operation. Check its outcome in the app.",
+                        412: "Clips Kitty hasn't verified this video's Twitch timeline, so it can't make "
+                             "a Twitch link or VOD clip for it.",
                         429: "This run has reached its connected-account operation limit."}
             raise AccountOperationError(messages.get(error.code, "Clips Kitty could not complete that account operation."),
                                         error.code) from None
@@ -104,21 +110,23 @@ class Twitch:
         """Channel VOD metadata; needs twitch.context.read."""
         return self._accounts._perform("videos", {"first": first})
 
-    def create_clip(self, *, has_delay=False):
-        """Create a native clip from the live broadcast, never from VOD time.
-
-        Needs twitch.clips.create and broadcaster authorization/scopes. A
-        completed VOD may use create_vod_clip() when the host verifies its
-        timeline and Twitch grants the separate VOD-clip permissions.
-        """
-        return self._accounts._perform("create_clip", {"has_delay": has_delay})
-
     def timestamp_link(self, seconds=0):
-        """Source-media time mapped to a VOD link by a verified host timeline."""
+        """Source-media time mapped to a VOD link by a verified host timeline.
+
+        Clips Kitty verifies the timeline itself when this run's file is the
+        whole Twitch archive (how watched channels download). Otherwise this
+        raises AccountOperationError with status 412.
+        """
         return self._accounts._perform("vod_link", {"seconds": seconds})
 
     def audience_signals(self):
-        """PII-free viewer nominations mapped to this source's verified timeline."""
+        """PII-free viewer nominations mapped to this source's verified timeline.
+
+        Until a stream-to-VOD alignment exists for this video, which nothing
+        in the app makes yet, the answer has status "unavailable" with a
+        ``reason`` and a plain ``message``. Nomination times are when chat
+        arrived, so they trail the moment by the viewers' delay.
+        """
         return self._accounts._perform("audience_signals", {})
 
     def source_info(self):
@@ -129,8 +137,12 @@ class Twitch:
         """Request a native VOD clip from verified source-media times, when permitted.
 
         Needs twitch.clips.create and Twitch's channel/editor manage-clips
-        authorization. A processing ID is not a published clip URL; get_clip
-        checks the result. There is no automatic retry after uncertain writes.
+        authorization. Twitch takes a whole-second end: the end is rounded to
+        the nearest second and the length to 0.1 s (5 to 60 s), and the result
+        gives the VOD times used. Status 412 means the timeline isn't verified
+        (see timestamp_link). A processing ID is not a published clip URL;
+        get_clip checks the result. There is no automatic retry after
+        uncertain writes.
         """
         return self._accounts._perform("create_vod_clip", {
             "start_seconds": start_seconds, "end_seconds": end_seconds, "title": title,

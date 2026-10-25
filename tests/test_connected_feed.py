@@ -111,7 +111,7 @@ def test_other_watches_use_the_existing_feed(platform, key):
 
 
 @pytest.mark.parametrize("code", ["reconnect_required", "invalid_grant", "missing_scope"])
-def test_reconnection_is_reported_without_silent_fallback_or_secret_leakage(code):
+def test_a_lapsed_connection_keeps_the_watch_on_the_public_listing(code, capsys):
     class ReconnectError(Exception):
         pass
 
@@ -119,16 +119,38 @@ def test_reconnection_is_reported_without_silent_fallback_or_secret_leakage(code
     error.code = code
     service = Service(accounts=[{**ACCOUNT, "status": "reconnect_required"}], error=error)
     fallback = Fallback()
-    with pytest.raises(ValueError, match="Reconnect Twitch") as raised:
-        ConnectedFeed(service, fallback=fallback).latest("twitch", "streamer")
-    assert "private-credential" not in str(raised.value) and not fallback.calls
+    feed = ConnectedFeed(service, fallback=fallback)
+    for _ in range(2):
+        assert [v.video_id for v in feed.latest("twitch", "streamer")] == ["kick_123"]
+    # Not connected: Helix is never asked, and the notice is said once.
+    assert not service.calls
+    assert fallback.calls == [("latest", ("twitch", "streamer"), {})] * 2
+    out = capsys.readouterr().out
+    assert out.count("Twitch needs reconnecting") == 1 and "private-credential" not in out
 
 
-def test_transient_errors_and_malformed_payloads_are_sanitized():
-    for service in (Service(error=OSError("private-token")), Service(result={"private-token": "bad"})):
-        with pytest.raises(ValueError) as raised:
-            ConnectedFeed(service).latest("twitch", "streamer")
-        assert "private-token" not in str(raised.value)
+def test_a_failing_connection_falls_back_without_leaking_errors(capsys):
+    class Lapsed(Exception):
+        code = "invalid_token"
+
+    for service in (Service(error=OSError("private-token")), Service(result={"private-token": "bad"}),
+                    Service(error=Lapsed("access_token=private-token"))):
+        fallback = Fallback()
+        assert [v.video_id for v in ConnectedFeed(service, fallback=fallback).latest("twitch", "streamer")] == [
+            "kick_123"]
+        assert len(service.calls) == 1 and len(fallback.calls) == 1
+    assert "private-token" not in capsys.readouterr().out
+
+
+def test_a_good_answer_rearms_the_fallback_notice(capsys):
+    service = Service(error=OSError("offline"))
+    feed = ConnectedFeed(service, fallback=Fallback())
+    feed.latest("twitch", "streamer")
+    service.error = None
+    assert feed.latest("twitch", "streamer") == []
+    service.error = OSError("offline")
+    feed.latest("twitch", "streamer")
+    assert capsys.readouterr().out.count("Couldn't read the connected Twitch channel") == 2
 
 
 def test_readiness_preserves_existing_live_and_processing_checks():
@@ -145,6 +167,27 @@ def test_binding_requires_provider_verified_vod_ownership():
         "account_id": "twitch:42", "broadcaster_id": "42", "video_id": "123",
     }
     assert service.calls == [("twitch:42", "vod_link", {"video_id": "123", "seconds": 0})]
+
+
+@pytest.mark.parametrize("file_seconds,whole", [(3600.4, True), (3598.5, True), (1800.0, False), (None, False)])
+def test_only_a_file_measured_as_the_whole_archive_is_marked_whole(tmp_path, file_seconds, whole):
+    media = tmp_path / "tw_123.mp4"
+    media.write_bytes(b"downloaded archive bytes")
+    service = Service(result={"video_id": "123", "broadcaster_id": "42", "duration_seconds": 3600})
+    measured = []
+
+    def measure(path):
+        measured.append(path)
+        return file_seconds
+
+    binding = ConnectedFeed(service, file_seconds=measure).binding_for_video(
+        SimpleNamespace(video_id="tw_123", path=media, duration=3600.0))
+    assert measured == [media]
+    assert binding["source_id"].startswith("sha256:")
+    if whole:
+        assert binding["whole_vod"] is True and binding["vod_duration"] == 3600.0
+    else:
+        assert "whole_vod" not in binding and "vod_duration" not in binding
 
 
 @pytest.mark.parametrize("result", [

@@ -74,6 +74,14 @@ class DigestService:
         self._lock = threading.RLock()
         self._closed = False
         self._db = sqlite3.connect(Path(data_dir) / "stream-digests.sqlite3", check_same_thread=False)
+        try:
+            self._open()
+        except Exception:
+            # Release the file so the caller can set a damaged one aside.
+            self._db.close()
+            raise
+
+    def _open(self):
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA synchronous=FULL")
         self._db.execute("""CREATE TABLE IF NOT EXISTS digests (

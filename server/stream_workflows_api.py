@@ -68,21 +68,21 @@ def install(app, *, data_dir: Path, service, event_manager, session_secret: str,
     @app.post("/stream-workflows/{account_id}/digests", dependencies=dependencies)
     def prepare_digest(account_id: str, body: DigestIn):
         call(runtime._account, account_id)
-        return call(runtime.digests.prepare, account_id, **body.model_dump())
+        return call(lambda: runtime.digests.prepare(account_id, **body.model_dump()))
 
     @app.get("/stream-workflows/{account_id}/digests", dependencies=dependencies)
     def list_digests(account_id: str):
         call(runtime._account, account_id)
-        return {"digests": call(runtime.digests.list, account_id)}
+        return {"digests": call(lambda: runtime.digests.list(account_id))}
 
     @app.post("/stream-workflows/{account_id}/digests/{digest_id}/approve", dependencies=dependencies)
     def approve_digest(account_id: str, digest_id: str):
         call(runtime._account, account_id)
-        return call(runtime.digests.approve, account_id, digest_id)
+        return call(lambda: runtime.digests.approve(account_id, digest_id))
 
     @app.get("/stream-workflows/{account_id}/digests/{digest_id}/export", dependencies=dependencies)
     def export_digest(account_id: str, digest_id: str):
         call(runtime._account, account_id)
-        return call(runtime.digests.export, account_id, digest_id)
+        return call(lambda: runtime.digests.export(account_id, digest_id))
 
     return runtime

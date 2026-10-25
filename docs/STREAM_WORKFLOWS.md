@@ -12,7 +12,9 @@ Monitoring requires the connected broadcaster's own Twitch account and
 `user:read:chat` consent. The host subscribes to `stream.online`,
 `stream.offline`, and `channel.chat.message` through its existing EventSub
 manager. It recognizes the exact chat commands `!clip`, `!chaos`, and `!funny`.
-Other chat is discarded by the workflow collector.
+Other chat is discarded by the workflow collector. Stopping collection ends the
+chat subscription and clears buffered chat, unless a running plugin that was
+granted chat still needs it.
 
 Nominations are supporting evidence for a possible highlight, not a command to
 publish a clip. The collector applies a 60-second per-viewer cooldown across all
@@ -22,7 +24,9 @@ neither viewer identifiers nor their hashes are saved. Raw chat is never written
 to the workflow database.
 
 SQLite retains a bounded set of minimal stream metadata, command counts and
-timestamps. Persisted event hashes prevent a replay after restart from counting
+timestamps. Its files are created the first time stream workflows are used, not
+at app start; a damaged one is set aside as `<name>.corrupt` and a new one
+started, so it never stops the app from starting. Persisted event hashes prevent a replay after restart from counting
 the same event again. Event hashes identify events, not viewers. Retention and
 row bounds limit this history; this is not a chat archive.
 
@@ -32,8 +36,9 @@ cooldown cache holds at most 10,000 viewer hashes. An SDK response exposes at
 most 100 nomination buckets. Monitoring is off after restart; retained stream
 metadata, aggregates, and verified mappings survive. Active stream associations
 are cleared on restart and when monitoring stops. Starting monitoring obtains a
-verified own-channel current stream when Twitch is available; otherwise chat
-waits for the next `stream.online` event. Delayed lifecycle events cannot replace
+verified own-channel current stream, retrying for a few minutes while Twitch
+cannot answer, and looks again after every fresh EventSub subscription: Twitch
+does not replay a `stream.online` sent while the socket was reconnecting. Delayed lifecycle events cannot replace
 a newer stream or reopen an ended stream.
 
 ## Bind a recording to its live timeline

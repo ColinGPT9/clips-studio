@@ -94,7 +94,10 @@ def test_provider_close_does_not_expose_transport_error():
             raise RuntimeError("ACCESS-MUST-NOT-LEAK")
 
     provider = TwitchProvider("public-client", session=BrokenClose())
-    assert provider.close() is None
+    provider.close()  # must not raise
+    with pytest.raises(AccountError) as error:
+        provider.validate("TOKEN")
+    assert error.value.code == "provider_unavailable" and "ACCESS-MUST-NOT-LEAK" not in str(error.value)
 
 
 def test_public_device_flow_has_no_secret_and_fixed_trusted_browser_url():
@@ -494,7 +497,7 @@ def test_native_vod_clip_uses_either_scope_and_query_parameters_after_ownership_
     assert "url" not in result and "SECRET" not in json.dumps(result)
     assert provider.operation_scopes["create_vod_clip"] == ()
     assert {"channel:manage:clips", "editor:manage:clips"} <= provider.supported_scopes
-    assert provider.default_scopes == ("clips:edit",)
+    assert provider.default_scopes == ()
 
 
 def test_vod_clip_requires_manage_scope_and_connected_broadcaster_before_network():

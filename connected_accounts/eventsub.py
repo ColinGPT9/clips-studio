@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import threading
 import time
 from collections import deque
@@ -70,10 +71,18 @@ class _Revoked(Exception):
 class EventSubManager:
     """One listener per connected account; all subscriptions are host-owned.
 
-    ``connector`` and ``clock`` permit deterministic offline tests. Calling
-    ``start`` with the same channel/types reuses a listener; additional types
-    extend the shared subscription. ``stop`` and ``close``
-    must be called by the host on account disconnection and application exit.
+    ``connector`` and ``clock`` permit deterministic offline tests. Each
+    ``start`` names its consumer (the desktop, stream-workflow monitoring, one
+    plugin run); the listener subscribes to the union of their event types.
+    ``release`` drops one consumer: the last one out stops the listener and
+    clears its buffer, and a narrower union resubscribes without the types
+    nobody needs (chat stops being read when no consumer wants it). ``stop``
+    and ``close`` must be called by the host on account disconnection and
+    application exit.
+
+    After every fresh subscription, sinks get a ``session.subscribed`` event
+    (never buffered): EventSub does not replay ``stream.online`` for a stream
+    that started while the socket was reconnecting.
     """
 
     def __init__(self, service, *, connector=None, clock=time.monotonic):
@@ -86,6 +95,7 @@ class EventSubManager:
         self._sequence_lock = threading.Lock()
         self._closed = False
         self._sinks = []
+        self._consumers: dict[str, dict[str, tuple[str, ...]]] = {}
 
     def add_sink(self, callback):
         """Receive sanitized host events; OAuth credentials never reach a sink."""
@@ -99,7 +109,7 @@ class EventSubManager:
         with self._lock:
             self._sinks = [sink for sink in self._sinks if sink != callback]
 
-    def start(self, account_id: str, broadcaster_id: str, event_types) -> dict:
+    def start(self, account_id: str, broadcaster_id: str, event_types, *, consumer: str = "desktop") -> dict:
         if not isinstance(broadcaster_id, str) or not _NUMBER.fullmatch(broadcaster_id):
             raise AccountError("invalid_request", "Choose a valid Twitch channel.")
         if (not isinstance(event_types, (list, tuple)) or not event_types or len(event_types) > 4
@@ -119,25 +129,58 @@ class EventSubManager:
         with self._lock:
             if self._closed:
                 raise AccountError("service_closed", "Connected Accounts is stopping.", status=503)
+            consumers = self._consumers.setdefault(account_id, {})
+            consumers[consumer] = tuple(sorted(set(types) | set(consumers.get(consumer, ()))))
+            types = self._union(consumers)
+            if "user:read:chat" not in account.get("scopes", []):
+                types = tuple(t for t in types if t != "channel.chat.message")
             existing = self._streams.get(account_id)
-            if existing is not None and existing.broadcaster_id == broadcaster_id:
-                types = tuple(sorted(set(types) | set(existing.types)))
-                if "user:read:chat" not in account.get("scopes", []):
-                    types = tuple(t for t in types if t != "channel.chat.message")
             if (existing is not None and existing.broadcaster_id == broadcaster_id
                     and existing.types == types and existing.thread is not None
                     and existing.thread.is_alive()):
                 return self._status(existing)
-            # Closing the previous socket first avoids duplicate Twitch
-            # subscriptions racing the replacement welcome/subscription call.
-            if existing is not None:
-                self._stop(existing)
-            stream = _Stream(account_id, broadcaster_id, types)
-            stream.thread = threading.Thread(target=self._run, args=(stream,), daemon=True,
-                                             name="twitch-eventsub")
-            self._streams[account_id] = stream
-            stream.thread.start()
+            stream, replaced = self._launch(account_id, broadcaster_id, types)
+        self._join(replaced)
         return self._status(stream)
+
+    @staticmethod
+    def _union(consumers: dict) -> tuple[str, ...]:
+        return tuple(sorted(set().union(*consumers.values()))) if consumers else ()
+
+    def _launch(self, account_id: str, broadcaster_id: str,
+                types: tuple[str, ...]) -> tuple[_Stream, _Stream | None]:
+        """Replace the account's listener. Call with the manager lock held,
+        then ``_join`` the replaced one after releasing it: its thread may be
+        delivering an event, which takes the manager lock."""
+        existing = self._streams.get(account_id)
+        # Closing the previous socket first avoids duplicate Twitch
+        # subscriptions racing the replacement welcome/subscription call.
+        if existing is not None:
+            self._stop(existing, join=False)
+        stream = _Stream(account_id, broadcaster_id, types)
+        stream.thread = threading.Thread(target=self._run, args=(stream,), daemon=True,
+                                         name="twitch-eventsub")
+        self._streams[account_id] = stream
+        stream.thread.start()
+        return stream, existing
+
+    def release(self, account_id: str, consumer: str) -> None:
+        """One consumer is done. Stop or narrow the listener to what is left."""
+        stopped = None
+        with self._lock:
+            consumers = self._consumers.get(account_id)
+            if not consumers or consumers.pop(consumer, None) is None:
+                return
+            stream = self._streams.get(account_id)
+            types = self._union(consumers)
+            if not consumers or stream is None or not types:
+                self._consumers.pop(account_id, None)
+                stopped = self._streams.pop(account_id, None)
+            elif not self._closed and set(stream.types) - set(types):
+                _, stopped = self._launch(account_id, stream.broadcaster_id,
+                                          tuple(t for t in stream.types if t in types))
+        if stopped is not None:
+            self._stop(stopped)
 
     @staticmethod
     def _status(stream: _Stream) -> dict:
@@ -175,6 +218,7 @@ class EventSubManager:
 
     def stop(self, account_id: str) -> None:
         with self._lock:
+            self._consumers.pop(account_id, None)
             stream = self._streams.pop(account_id, None)
         if stream is not None:
             self._stop(stream)
@@ -184,6 +228,7 @@ class EventSubManager:
             self._closed = True
             streams = list(self._streams.values())
             self._streams.clear()
+            self._consumers.clear()
             self._sinks.clear()
         for stream in streams:
             self._stop(stream)
@@ -193,9 +238,11 @@ class EventSubManager:
         try:
             socket.close()
         except Exception:
+            # Closing is best effort; a socket error must not mask the reason
+            # the listener is stopping or reconnecting.
             pass
 
-    def _stop(self, stream: _Stream) -> None:
+    def _stop(self, stream: _Stream, *, join: bool = True) -> None:
         stream.stopped.set()
         with stream.lock:
             sockets = list(stream.sockets)
@@ -203,7 +250,12 @@ class EventSubManager:
             stream.status = "stopped"
         for socket in sockets:
             self._close_socket(socket)
-        if stream.thread is not None and stream.thread is not threading.current_thread():
+        if join:
+            self._join(stream)
+
+    @staticmethod
+    def _join(stream: _Stream | None) -> None:
+        if stream is not None and stream.thread is not None and stream.thread is not threading.current_thread():
             stream.thread.join(timeout=3)
 
     @staticmethod
@@ -245,7 +297,8 @@ class EventSubManager:
                     if stream.stopped.is_set():
                         break
                     session_id, timeout = self._welcome(pending_socket)
-                    if not transferring:
+                    subscribed = not transferring
+                    if subscribed:
                         self.service.perform(stream.account_id, "subscribe_events",
                                              broadcaster_id=stream.broadcaster_id,
                                              event_types=list(stream.types), session_id=session_id)
@@ -259,6 +312,8 @@ class EventSubManager:
                     with stream.lock:
                         stream.status, stream.error = "connected", ""
                     failures = 0
+                    if subscribed:
+                        self._announce(stream)
                     url = self._listen(stream, socket, timeout)
                     transferring = True
                     with stream.lock:
@@ -321,6 +376,24 @@ class EventSubManager:
                 raise ValueError("Unexpected EventSub message")
         raise ConnectionError("EventSub stopped")
 
+    def _announce(self, stream: _Stream) -> None:
+        """Tell sinks a fresh subscription began; events in the gap are lost."""
+        event = {"id": "session-" + secrets.token_hex(16), "type": "session.subscribed",
+                 "broadcaster_id": stream.broadcaster_id,
+                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "data": {}}
+        self._deliver(stream, event)
+
+    def _deliver(self, stream: _Stream, event: dict) -> None:
+        with self._lock:
+            sinks = list(self._sinks)
+        for sink in sinks:
+            try:
+                sink(stream.account_id, dict(event, data=dict(event["data"])))
+            except Exception:
+                # A failed optional recorder must not tear down subscriptions
+                # or put chat/provider data in the engine's exception log.
+                continue
+
     def _notification(self, stream: _Stream, packet: dict) -> None:
         subscription = packet["payload"].get("subscription")
         event = packet["payload"].get("event")
@@ -363,12 +436,4 @@ class EventSubManager:
                                   "timestamp": _text(packet["metadata"].get("message_timestamp"), 64),
                                   "data": data})
             event = dict(stream.buffer[-1], data=dict(data))
-        with self._lock:
-            sinks = list(self._sinks)
-        for sink in sinks:
-            try:
-                sink(stream.account_id, dict(event, data=dict(data)))
-            except Exception:
-                # A failed optional recorder must not tear down subscriptions
-                # or put chat/provider data in the engine's exception log.
-                continue
+        self._deliver(stream, event)

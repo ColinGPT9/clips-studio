@@ -190,6 +190,28 @@ def test_retention_clears_old_pending_data_and_bounded_rows(tmp_path):
     store.close()
 
 
+def test_a_burst_of_commands_never_prunes_per_event(tmp_path, monkeypatch):
+    # record_event runs on the EventSub receive thread; pruning sorts whole
+    # tables, so a hype moment must not pay for it on every !clip.
+    clock = [START]
+    store = Nominations(tmp_path, clock=lambda: clock[0], cooldown_seconds=1)
+    online(store, clock)
+    passes = []
+    prune = store._prune
+    monkeypatch.setattr(store, "_prune", lambda: passes.append(clock[0]) or prune())
+    for index in range(200):
+        clock[0] += 0.1
+        assert chat(store, clock, f"burst-{index}", viewer=str(20000 + index))
+    assert passes == []
+    clock[0] += 61
+    assert chat(store, clock, "a-minute-later", viewer="30000")
+    assert len(passes) == 1
+    indexes = {row[1] for table in ("events", "nominations", "streams")
+               for row in store._db.execute(f"PRAGMA index_list({table})")}
+    assert {"events_received", "nominations_last_seen", "streams_touched"} <= indexes
+    store.close()
+
+
 def test_offline_finishes_pending_stream_and_ignores_later_chat(tmp_path):
     clock = [START]
     store = Nominations(tmp_path, clock=lambda: clock[0])

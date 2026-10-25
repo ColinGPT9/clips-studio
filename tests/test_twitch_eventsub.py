@@ -259,6 +259,40 @@ def test_multiple_clients_extend_shared_event_types_instead_of_removing_them(man
     assert len(sockets) == 2
 
 
+def test_the_last_consumer_out_stops_the_listener_and_chat_ends_with_its_reader(manager):
+    manager, service, sockets = manager
+    manager.start("twitch:12", "12", ["stream.online", "stream.offline", "channel.chat.message"],
+                  consumer="stream-workflow")
+    manager.start("twitch:12", "12", ["stream.online"], consumer="plugin-run:1")
+    eventually(lambda: manager.events("twitch:12")["status"] == "connected")
+    assert len(sockets) == 1  # one shared listener
+    sockets[0].messages.put(notification(kind="channel.chat.message", message_id="chat",
+                                         message={"text": "viewer chat"}))
+    eventually(lambda: manager.events("twitch:12")["events"])
+    # Collection stops: only it wanted chat, so chat is no longer read and
+    # the buffered chat goes; the run keeps its stream events.
+    manager.release("twitch:12", "stream-workflow")
+    assert sockets[0].closed
+    eventually(lambda: manager.events("twitch:12")["status"] == "connected")
+    body = manager.events("twitch:12")
+    assert body["event_types"] == ["stream.online"] and body["events"] == []
+    assert service.calls[-1][2]["event_types"] == ["stream.online"]
+    manager.release("twitch:12", "plugin-run:1")
+    assert manager.events("twitch:12")["status"] == "stopped"
+    assert sockets[1].closed
+    manager.release("twitch:12", "plugin-run:1")  # a second release changes nothing
+
+
+def test_sinks_hear_of_every_fresh_subscription(manager):
+    manager, service, sockets = manager
+    heard = []
+    manager.add_sink(lambda account_id, event: heard.append((account_id, event["type"])))
+    manager.start("twitch:12", "12", ["stream.online"])
+    eventually(lambda: heard)
+    assert heard == [("twitch:12", "session.subscribed")]
+    assert manager.events("twitch:12")["events"] == []  # never buffered for plugins
+
+
 def test_expired_keepalive_is_a_transport_failure_not_a_connected_listener(manager):
     manager, _, _ = manager
     times = iter([10, 21])

@@ -18,7 +18,7 @@ permissions:
   - twitch.context.read
 ```
 
-Read context or request a timestamp link using the supported SDK:
+Read context using the supported SDK:
 
 ```python
 from clipskitty_sdk import AccountOperationError, run
@@ -30,11 +30,10 @@ def main(job):
     if job.accounts.available:
         try:
             context = job.accounts.twitch.context()
-            link = job.accounts.twitch.timestamp_link(120)
-            job.log(f"Highlight link: {link['url']}")
-        except AccountOperationError:
+            job.log(f"Channel: {context['broadcaster']['display_name']}")
+        except AccountOperationError as error:
             # Clipping still works when an account is disconnected or offline.
-            job.log("Twitch context is unavailable; continuing with the video.")
+            job.log(f"Twitch context is unavailable ({error}); continuing with the video.")
 
 
 run(main)
@@ -42,15 +41,17 @@ run(main)
 
 `available` means a run grant is present. Individual operations can still fail
 because the account was disconnected, consent was revoked, a required scope is
-missing, or Twitch is unavailable. Standalone SDK samples do not grant real
-account access.
+missing, or Twitch is unavailable. `AccountOperationError.status` tells these
+apart: 400 a refused argument, 401 Twitch needs reconnecting, 403 not granted
+(by the manifest or by Twitch), 404 gone, 412 the video's Twitch timeline is
+not verified, 429 a run limit, 502 or 503 Twitch or the connection is
+unavailable. Standalone SDK samples do not grant real account access.
 
 | Manifest permission | SDK operation | Host restrictions |
 | --- | --- | --- |
 | `twitch.context.read` | `context()`, `videos(first=20)`, `timestamp_link(seconds)` | Only the bound broadcaster and source VOD; at most 100 VODs per request |
-| `twitch.clips.create` | `create_clip(has_delay=False)` | Native Twitch clip of the current live broadcast, subject to authorization and `clips:edit` |
-| `twitch.clips.create` | `create_vod_clip(start_seconds, end_seconds, title)`, `get_clip(clip_id)` | Source-bound calibrated times, separate Twitch channel/editor clip-management grant; only actual returned public URLs |
-| `twitch.context.read` | `source_info()`, `audience_signals()` | Source identity without file paths; minimal nominations only after verified source/VOD calibration |
+| `twitch.clips.create` | `create_vod_clip(start_seconds, end_seconds, title)`, `get_clip(clip_id)` | A 5–60-second range of this run's VOD once its timeline is verified, with Twitch's channel/editor clip-management grant; only actual returned public URLs |
+| `twitch.context.read` | `source_info()`, `audience_signals()` | Source identity without file paths; nominations only after a stream-to-VOD alignment, which the app cannot make yet |
 | `twitch.chat.send` | `send_chat(message)` | Bound broadcaster, authorized sender, 1–500 characters |
 | `twitch.events.read` | `start_events(event_types)`, `events(after=0, limit=100)` | Host-owned EventSub socket, bound broadcaster, supported event types only |
 | `twitch.chat.read` | Chat events through `start_events` and `events` | Also requires `twitch.events.read`; Twitch authorization is checked separately |
@@ -60,27 +61,38 @@ The default event types are `stream.online` and `stream.offline`.
 `cursor` as the next `after` value. The host retains the WebSocket session; the
 pipeline cannot supply a session ID or transport address.
 
-`create_clip()` asks for the broadcaster's current live moment. Twitch's separate
+A run works on a finished VOD, so it cannot clip the live broadcast: whatever is
+on air when the plugin asks has nothing to do with the video it found. Twitch's
 Create Clip From VOD operation supports an authorized archive highlight through
 `create_vod_clip()`. It needs `channel:manage:clips` or `editor:manage:clips`, a
-5–60-second range and a bounded title. Creation returns a processing identifier;
+5–60-second range and a bounded title. Twitch takes a whole-second end, so the
+host rounds the end to the nearest second and the length to 0.1 s; the result
+gives the VOD times it used. Creation returns a processing identifier;
 `get_clip()` checks readiness and the public URL Twitch actually returned.
 
-`timestamp_link()` and `create_vod_clip()` accept source-media time, which the
-host converts through explicit calibration for that source. They refuse unknown
-timing, including a different trimmed file of the same VOD. `source_info()`
-returns the host fingerprint for that calibration without a local file path.
+`timestamp_link()` and `create_vod_clip()` accept source-media time. When the
+run's file is the whole Twitch archive (how Watched Channels downloads one, and
+checked by measuring the file against Twitch's length for the VOD), source time
+is VOD time. Otherwise the host needs an explicit calibration for that source,
+which no screen in the app makes yet. They refuse unknown timing, including a
+trimmed file of the same VOD, with status 412. `source_info()` returns the host
+fingerprint for that calibration without a local file path.
 `audience_signals()` returns only aggregate nominations mapped to the source.
-See [stream workflows](../STREAM_WORKFLOWS.md). A plugin must not guess VOD
-offsets from stream creation/publishing dates.
+Those need the live stream's chat timing aligned to its VOD, which the app does
+not do by itself yet: until then the answer has status `unavailable` with a
+`reason` and a plain `message`. Nomination times are when chat arrived, so they
+trail the moment by the viewers' delay. See
+[stream workflows](../STREAM_WORKFLOWS.md). A plugin must not guess VOD offsets
+from stream creation/publishing dates.
 
 The grant fixes the connection, broadcaster and VOD. SDK methods have no account
 selector, bearer-token getter, arbitrary API URL, or arbitrary Helix request.
 The host rechecks the installed manifest, enabled state and block list on every
 call, then the account service checks scopes and provider authorization.
 
-A run may make at most 100 account requests, including at most 10 native-clip
-creations and 20 chat sends. Requests carry unique IDs; a duplicate write with
+A run may make at most 100 account requests, including at most 10 native VOD
+clip creations and 20 chat sends. An event subscription a run starts ends with
+the run unless stream workflows or another run still needs it. Requests carry unique IDs; a duplicate write with
 the same ID does not create a second clip or send a second message. An ambiguous
 write failure is not retried automatically. The grant expires at the run's time
 limit and is revoked when its process exits, including cancellation and failure.

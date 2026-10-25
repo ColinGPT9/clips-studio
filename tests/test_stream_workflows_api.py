@@ -1,6 +1,8 @@
 """Desktop routes and trusted account/VOD checks for shared stream workflows."""
 
 import copy
+import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -57,10 +59,14 @@ class Events:
     def __init__(self):
         self.started = []
         self.stopped = []
+        self.released = []
 
-    def start(self, *args):
+    def start(self, *args, consumer="desktop"):
         self.started.append(args)
         return {"status": "connecting"}
+
+    def release(self, account_id, consumer):
+        self.released.append((account_id, consumer))
 
     def stop(self, account_id):
         self.stopped.append(account_id)
@@ -361,3 +367,111 @@ def test_disconnect_and_reconnect_requires_new_monitor_opt_in(runtime):
         ACCOUNT,
         event("stream.online", "fresh-opt-in-online", clock[0], {"id": "999", "started_at": iso(clock[0])}),
     )
+
+
+def eventually(check, timeout=5):
+    until = time.monotonic() + timeout
+    while time.monotonic() < until:
+        if check():
+            return True
+        threading.Event().wait(0.01)
+    return check()
+
+
+def test_storage_opens_on_first_use_and_damaged_files_are_set_aside(tmp_path, capsys):
+    value = WorkflowRuntime(tmp_path, Service(), Events())
+    try:
+        # Reads never create the files: a person who never opts in gets none.
+        assert value.streams(ACCOUNT) == {"monitoring": False, "streams": []}
+        assert value.audience_for_binding(binding())["status"] == "unavailable"
+        with pytest.raises(WorkflowError):
+            value.source_to_vod(binding(), 20)
+        assert not list(tmp_path.iterdir())
+        for name in ("stream-workflows.sqlite3", "stream-digests.sqlite3"):
+            (tmp_path / name).write_bytes(b"damaged by a sync tool" * 100)
+        value.start_monitor(ACCOUNT)
+        assert value.digests.list(ACCOUNT) == []
+        for name in ("stream-workflows.sqlite3", "stream-digests.sqlite3"):
+            assert (tmp_path / (name + ".corrupt")).read_bytes().startswith(b"damaged")
+        assert capsys.readouterr().out.count("set aside") == 2
+        assert value.streams(ACCOUNT)["monitoring"] is True
+    finally:
+        value.close()
+
+
+def test_stop_releases_the_chat_subscription(runtime):
+    value, _, events, _ = runtime
+    value.start_monitor(ACCOUNT)
+    value.stop_monitor(ACCOUNT)
+    assert events.released == [(ACCOUNT, "stream-workflow")]
+
+
+def test_a_fresh_subscription_looks_for_a_stream_that_started_in_the_gap(runtime):
+    value, service, _, clock = runtime
+    answers = []
+
+    def provider(account_id, operation, **params):
+        if operation != "stream_context":
+            return {}
+        answers.append(operation)
+        return {"broadcaster": {"id": "123"},
+                "stream": {"id": "456", "started_at": iso(START)} if len(answers) > 1 else None}
+
+    service.perform = provider
+    value.start_monitor(ACCOUNT)  # offline when collection starts
+    clock[0] += 60
+    chat = event("channel.chat.message", "gap-chat", clock[0], {"chatter_user_id": "777", "text": "!clip"})
+    assert not value.record_event(ACCOUNT, chat)
+    # The socket dropped and resubscribed while the stream went live: Twitch
+    # sends no stream.online for it, only the host's own session notice.
+    assert not value.record_event(ACCOUNT, {"type": "session.subscribed", "broadcaster_id": "123"})
+    assert eventually(lambda: value.streams(ACCOUNT)["streams"])
+    assert value.record_event(ACCOUNT, dict(chat, id="after-gap-chat"))
+
+
+def test_a_stream_that_ended_in_the_gap_stops_being_counted(runtime):
+    value, service, _, clock = runtime
+    monitor_stream(runtime)
+    service.perform = lambda account_id, operation, **params: {"broadcaster": {"id": "123"}, "stream": None}
+    value.record_event(ACCOUNT, {"type": "session.subscribed", "broadcaster_id": "123"})
+    clock[0] += 60
+    late = event("channel.chat.message", "late-chat", clock[0], {"chatter_user_id": "778", "text": "!clip"})
+    assert eventually(lambda: not value.record_event(ACCOUNT, dict(late, id=f"late-{time.monotonic()}")))
+
+
+def test_bootstrap_retries_while_twitch_cannot_answer(runtime, monkeypatch):
+    import stream_workflows.runtime as module
+    from connected_accounts.models import AccountError
+
+    monkeypatch.setattr(module, "_BOOTSTRAP_DELAYS", (0, 0, 0))
+    value, service, _, clock = runtime
+    answers = []
+
+    def provider(account_id, operation, **params):
+        answers.append(operation)
+        if len(answers) < 3:
+            raise AccountError("provider_unavailable", "Twitch is temporarily unavailable.", status=503)
+        return {"broadcaster": {"id": "123"}, "stream": {"id": "456", "started_at": iso(START)}}
+
+    service.perform = provider
+    value.start_monitor(ACCOUNT)
+    assert eventually(lambda: value.streams(ACCOUNT)["streams"])
+    assert len(answers) == 3
+
+
+def test_whole_archive_runs_map_source_time_without_a_calibration(runtime):
+    value, _, _, _ = runtime
+    whole = binding(whole_vod=True, vod_duration=3600.0, duration=3600.4)
+    assert value.source_to_vod(whole, 20) == 20.0
+    assert value.source_to_vod(whole, 3600) == 3600.0
+    with pytest.raises(WorkflowError) as error:
+        value.source_to_vod(whole, 3600.2)
+    assert error.value.code == "invalid_timestamp"
+    for unverified in (binding(), binding(whole_vod="yes", vod_duration=3600.0), binding(whole_vod=True),
+                       binding(whole_vod=True, vod_duration=3600.0, broadcaster_id="999")):
+        with pytest.raises(WorkflowError) as error:
+            value.source_to_vod(unverified, 20)
+        assert error.value.status == 412
+    # Chat time still needs a stream-to-VOD alignment: say so plainly.
+    audience = value.audience_for_binding(whole)
+    assert audience["status"] == "unavailable" and "can't do that by itself yet" in audience["message"]

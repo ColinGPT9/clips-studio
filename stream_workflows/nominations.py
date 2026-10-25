@@ -57,6 +57,7 @@ class Nominations:
         max_events=50_000,
         max_streams=200,
         max_buckets=20_000,
+        prune_interval=60,
     ):
         self.clock = clock
         self.cooldown = max(1, min(int(cooldown_seconds), 3600))
@@ -65,11 +66,26 @@ class Nominations:
         self.max_events = max(10, min(int(max_events), 100_000))
         self.max_streams = max(1, min(int(max_streams), 1000))
         self.max_buckets = max(10, min(int(max_buckets), 50_000))
+        # Pruning sorts whole tables, and record_event runs on the EventSub
+        # receive thread: prune once a minute, or after a tenth of the
+        # smallest row bound in writes, so the bounds hold within 10%.
+        self.prune_interval = max(0, float(prune_interval))
+        self._prune_every = max(1, min(self.max_events, self.max_buckets) // 10)
+        self._pruned_at = None
+        self._writes = 0
         self._secret = secrets.token_bytes(32)
         self._viewers = OrderedDict()
         self._lock = threading.RLock()
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(Path(data_dir) / "stream-workflows.sqlite3", check_same_thread=False)
+        try:
+            self._open()
+        except Exception:
+            # Release the file so the caller can set a damaged one aside.
+            self._db.close()
+            raise
+
+    def _open(self):
         self._db.row_factory = sqlite3.Row
         self._db.executescript("""
             PRAGMA foreign_keys=ON;
@@ -91,6 +107,9 @@ class Nominations:
               stream_id TEXT NOT NULL, stream_start REAL NOT NULL, offset_seconds REAL NOT NULL,
               verified_at REAL NOT NULL, duration REAL, source_offset_seconds REAL, source_id TEXT,
               PRIMARY KEY(account_id,vod_id));
+            CREATE INDEX IF NOT EXISTS streams_touched ON streams(touched);
+            CREATE INDEX IF NOT EXISTS events_received ON events(received);
+            CREATE INDEX IF NOT EXISTS nominations_last_seen ON nominations(last_seen);
         """)
         if "source_offset_seconds" not in {r[1] for r in self._db.execute("PRAGMA table_info(mappings)")}:
             self._db.execute("ALTER TABLE mappings ADD COLUMN source_offset_seconds REAL")
@@ -98,8 +117,16 @@ class Nominations:
             self._db.execute("ALTER TABLE mappings ADD COLUMN source_id TEXT")
         # Offline transitions may have occurred while this host was stopped.
         self._db.execute("DELETE FROM active_streams")
-        self._prune()
+        self._maybe_prune(force=True)
         self._db.commit()
+
+    def _maybe_prune(self, *, force=False):
+        self._writes += 1
+        now = self.clock()
+        if (force or self._pruned_at is None or now - self._pruned_at >= self.prune_interval
+                or self._writes >= self._prune_every):
+            self._prune()
+            self._pruned_at, self._writes = now, 0
 
     def _prune(self):
         cutoff = self.clock() - self.retention
@@ -157,88 +184,92 @@ class Nominations:
             return False
         event_hash = hashlib.sha256(event_id.encode()).hexdigest()
         with self._lock, self._db:
-            self._prune()
             if self._db.execute(
                 "SELECT 1 FROM events WHERE account_id=? AND event_hash=?", (account_id, event_hash)
             ).fetchone():
                 return False
             self._db.execute("INSERT INTO events VALUES(?,?,?)", (account_id, event_hash, self.clock()))
-            self._prune()
-            if kind == "stream.online":
-                stream_id = data.get("id")
-                start = timestamp(data.get("started_at"))
-                if not isinstance(stream_id, str) or not NUMBER.fullmatch(stream_id):
-                    return False
-                if start is not None and (start > at + 300 or start < self.clock() - self.retention):
-                    start = None
-                prior = self._db.execute(
-                    "SELECT * FROM streams WHERE account_id=? AND stream_id=?", (account_id, stream_id)
-                ).fetchone()
-                active = self._db.execute(
-                    "SELECT s.* FROM streams s JOIN active_streams a ON a.account_id=s.account_id AND a.stream_id=s.stream_id WHERE a.account_id=?",
-                    (account_id,),
-                ).fetchone()
-                if prior is not None and prior["ended"] is not None:
-                    return False
-                if (
-                    active is not None
-                    and active["started"] is not None
-                    and (start is None or start < active["started"])
-                ):
-                    return False
-                self._db.execute(
-                    "INSERT INTO streams VALUES(?,?,?,?,NULL,?) ON CONFLICT(account_id,stream_id) DO UPDATE SET touched=excluded.touched,started=COALESCE(streams.started,excluded.started)",
-                    (account_id, broadcaster, stream_id, start, self.clock()),
-                )
-                self._db.execute(
-                    "INSERT INTO active_streams VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET stream_id=excluded.stream_id",
-                    (account_id, stream_id),
-                )
-                self._prune()
-                return True
-            active = self._db.execute(
-                "SELECT s.* FROM streams s JOIN active_streams a ON a.account_id=s.account_id AND a.stream_id=s.stream_id WHERE a.account_id=? AND s.broadcaster_id=?",
-                (account_id, broadcaster),
+            try:
+                return self._record(account_id, kind, data, broadcaster, at, command)
+            finally:
+                # Once per event at most, after its writes (see __init__).
+                self._maybe_prune(force=kind == "stream.online")
+
+    def _record(self, account_id, kind, data, broadcaster, at, command):
+        """The writes for one new event, inside record_event's transaction."""
+        if kind == "stream.online":
+            stream_id = data.get("id")
+            start = timestamp(data.get("started_at"))
+            if not isinstance(stream_id, str) or not NUMBER.fullmatch(stream_id):
+                return False
+            if start is not None and (start > at + 300 or start < self.clock() - self.retention):
+                start = None
+            prior = self._db.execute(
+                "SELECT * FROM streams WHERE account_id=? AND stream_id=?", (account_id, stream_id)
             ).fetchone()
-            if active is None:
+            active = self._db.execute(
+                "SELECT s.* FROM streams s JOIN active_streams a ON a.account_id=s.account_id AND a.stream_id=s.stream_id WHERE a.account_id=?",
+                (account_id,),
+            ).fetchone()
+            if prior is not None and prior["ended"] is not None:
                 return False
-            if kind == "stream.offline":
-                if active["started"] is not None and at < active["started"]:
-                    return False
-                self._db.execute(
-                    "UPDATE streams SET ended=?,touched=? WHERE account_id=? AND stream_id=?",
-                    (at, self.clock(), account_id, active["stream_id"]),
-                )
-                self._db.execute("DELETE FROM active_streams WHERE account_id=?", (account_id,))
-                return True
-            if active["started"] is None or at < active["started"]:
+            if (
+                active is not None
+                and active["started"] is not None
+                and (start is None or start < active["started"])
+            ):
                 return False
-            viewer = data.get("chatter_user_id")
-            if not isinstance(viewer, str) or not NUMBER.fullmatch(viewer):
-                return False
-            viewer_hash = hmac.new(
-                self._secret, (account_id + ":" + active["stream_id"] + ":" + viewer).encode(), hashlib.sha256
-            ).digest()
-            previous = self._viewers.get(viewer_hash)
-            # Use host receive time so delayed events cannot bypass cooldown.
-            now = self.clock()
-            if previous is not None and now - previous < self.cooldown:
-                return False
-            self._viewers[viewer_hash] = now
-            self._viewers.move_to_end(viewer_hash)
-            while len(self._viewers) > 10_000:
-                self._viewers.popitem(last=False)
-            bucket = int((at - active["started"]) // self.bucket_seconds) * self.bucket_seconds
             self._db.execute(
-                "INSERT INTO nominations VALUES(?,?,?,?,1,?,?) ON CONFLICT(account_id,stream_id,bucket,command) DO UPDATE SET count=count+1,first_seen=MIN(first_seen,excluded.first_seen),last_seen=MAX(last_seen,excluded.last_seen)",
-                (account_id, active["stream_id"], bucket, command, at, at),
+                "INSERT INTO streams VALUES(?,?,?,?,NULL,?) ON CONFLICT(account_id,stream_id) DO UPDATE SET touched=excluded.touched,started=COALESCE(streams.started,excluded.started)",
+                (account_id, broadcaster, stream_id, start, self.clock()),
             )
             self._db.execute(
-                "UPDATE streams SET touched=? WHERE account_id=? AND stream_id=?",
-                (now, account_id, active["stream_id"]),
+                "INSERT INTO active_streams VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET stream_id=excluded.stream_id",
+                (account_id, stream_id),
             )
-            self._prune()
             return True
+        active = self._db.execute(
+            "SELECT s.* FROM streams s JOIN active_streams a ON a.account_id=s.account_id AND a.stream_id=s.stream_id WHERE a.account_id=? AND s.broadcaster_id=?",
+            (account_id, broadcaster),
+        ).fetchone()
+        if active is None:
+            return False
+        if kind == "stream.offline":
+            if active["started"] is not None and at < active["started"]:
+                return False
+            self._db.execute(
+                "UPDATE streams SET ended=?,touched=? WHERE account_id=? AND stream_id=?",
+                (at, self.clock(), account_id, active["stream_id"]),
+            )
+            self._db.execute("DELETE FROM active_streams WHERE account_id=?", (account_id,))
+            return True
+        if active["started"] is None or at < active["started"]:
+            return False
+        viewer = data.get("chatter_user_id")
+        if not isinstance(viewer, str) or not NUMBER.fullmatch(viewer):
+            return False
+        viewer_hash = hmac.new(
+            self._secret, (account_id + ":" + active["stream_id"] + ":" + viewer).encode(), hashlib.sha256
+        ).digest()
+        previous = self._viewers.get(viewer_hash)
+        # Use host receive time so delayed events cannot bypass cooldown.
+        now = self.clock()
+        if previous is not None and now - previous < self.cooldown:
+            return False
+        self._viewers[viewer_hash] = now
+        self._viewers.move_to_end(viewer_hash)
+        while len(self._viewers) > 10_000:
+            self._viewers.popitem(last=False)
+        bucket = int((at - active["started"]) // self.bucket_seconds) * self.bucket_seconds
+        self._db.execute(
+            "INSERT INTO nominations VALUES(?,?,?,?,1,?,?) ON CONFLICT(account_id,stream_id,bucket,command) DO UPDATE SET count=count+1,first_seen=MIN(first_seen,excluded.first_seen),last_seen=MAX(last_seen,excluded.last_seen)",
+            (account_id, active["stream_id"], bucket, command, at, at),
+        )
+        self._db.execute(
+            "UPDATE streams SET touched=? WHERE account_id=? AND stream_id=?",
+            (now, account_id, active["stream_id"]),
+        )
+        return True
 
     def deactivate(self, account_id):
         with self._lock, self._db:

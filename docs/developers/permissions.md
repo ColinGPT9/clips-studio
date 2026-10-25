@@ -11,8 +11,8 @@ A plugin lists what it needs in its manifest's `permissions`, `network` and `sen
 | `ffmpeg` | Uses Clips Kitty's FFmpeg | **Enforced** for the hand-over: without it the job has no FFmpeg path. Declared beyond that. | built |
 | `ollama` | Uses your local AI model | **Enforced** for the hand-over: without it the job has no Ollama address. A cloud AI provider's name and key are never handed over. Declared beyond that: Ollama has no password, so any program on the PC can use it. | built |
 | `twitch.context.read` | Reads permitted Twitch stream and VOD information | **Enforced** by the account gateway for the bound account, broadcaster and source VOD; no OAuth tokens are handed over. Same-user OS access remains outside this gate. | built |
-| `twitch.clips.create` | Asks Clips Kitty to create Twitch Clips when authorized | **Enforced** for host requests and OAuth scopes; only a current live moment can become a native clip. | built |
-| `twitch.chat.read` | Reads permitted Twitch chat messages | **Enforced** for host events, with `twitch.events.read` and Twitch's read-chat scope. | built |
+| `twitch.clips.create` | Asks Clips Kitty to create Twitch Clips when authorized | **Enforced** for host requests and OAuth scopes: a 5–60-second clip of this run's VOD, which needs `channel:manage:clips` or `editor:manage:clips` and a verified timeline. A run never clips the live broadcast. | built |
+| `twitch.chat.read` | Reads permitted Twitch chat messages | **Enforced** for host events, with `twitch.events.read` (the manifest check refuses it without) and Twitch's read-chat scope. | built |
 | `twitch.chat.send` | Sends messages to the permitted Twitch channel | **Enforced** for host sends, the bound broadcaster, authorized sender and Twitch's write-chat scope. | built |
 | `twitch.events.read` | Receives permitted Twitch stream events | **Enforced** for host-owned subscriptions and bounded, sanitized event reads. | built |
 | `gpu` | Uses your graphics card | Declared (a requirement, compared with this PC) | built (shown with the plugin manager) |

@@ -5,6 +5,8 @@ import copy
 import hashlib
 import json
 import sys
+import threading
+import time
 import types
 from concurrent.futures import ThreadPoolExecutor
 from typing import ClassVar
@@ -315,6 +317,25 @@ def test_disconnect_removes_credentials_even_if_provider_is_offline(setup, tmp_p
     assert json.loads((tmp_path / "connected-accounts.json").read_text()) == []
 
 
+def test_disconnect_after_the_access_token_expired_refreshes_then_revokes(setup):
+    service, provider, store, clock = setup
+    account_id = connect(setup)
+    clock.now += 3601  # the app was closed for a while
+    assert service.disconnect(account_id) == {"disconnected": True, "revoked": True}
+    assert provider.refreshes == 1
+    assert provider.revoked_tokens == ["rotated-private-access-value"]
+
+
+def test_disconnect_reports_revoked_false_when_the_refresh_is_refused(setup):
+    service, provider, store, clock = setup
+    account_id = connect(setup)
+    clock.now += 3601
+    provider.refresh_error = AccountError("invalid_grant", "Reconnect Twitch.", status=401)
+    provider.revoke_error = AccountError("invalid_token", "Invalid token.", status=400)
+    assert service.disconnect(account_id) == {"disconnected": True, "revoked": False}
+    assert provider.revoked_tokens == ["private-access-value"] and not store.values
+
+
 def test_disconnect_does_not_report_success_if_local_credentials_cannot_be_deleted(setup):
     service, provider, store, clock = setup
     account_id = connect(setup)
@@ -499,3 +520,180 @@ def test_windows_store_encrypts_before_atomic_file_write(monkeypatch, tmp_path):
     assert not list(tmp_path.rglob(".connected-*"))
     store.delete("twitch:42")
     assert store.load("twitch:42") is None
+
+
+def _fake_windows_store(monkeypatch, tmp_path):
+    """The real store on its Windows path, with DPAPI faked and breakable."""
+    monkeypatch.setattr("connected_accounts.store.sys.platform", "win32")
+    # Bumping the key stands in for another Windows account's master key:
+    # blobs written before it no longer decrypt.
+    key = {"generation": 1}
+
+    def fake_dpapi(encrypt, raw):
+        if encrypt:
+            return b"%d:" % key["generation"] + base64.b64encode(raw)
+        generation, _, body = raw.partition(b":")
+        if int(generation) != key["generation"]:
+            raise OSError("DPAPI refused the data")
+        return base64.b64decode(body)
+
+    monkeypatch.setattr("core.secrets._dpapi", fake_dpapi)
+    return SecureTokenStore(tmp_path), key
+
+
+def test_windows_tokens_go_through_core_secrets_one_entry_per_account(monkeypatch, tmp_path):
+    store, _ = _fake_windows_store(monkeypatch, tmp_path)
+    store.save("twitch:42", {"access_token": "private-access-value"})
+    digest = hashlib.sha256(b"twitch:42").hexdigest()
+    assert [p.name for p in (tmp_path / "credentials").iterdir()] == [f"connected-account-{digest}.bin"]
+
+
+def test_undecryptable_credential_asks_to_reconnect_and_reconnect_keeps_the_new_grant(monkeypatch, tmp_path):
+    store, key = _fake_windows_store(monkeypatch, tmp_path)
+    clock, provider = Clock(), FakeProvider()
+    service = ConnectedAccounts(tmp_path, {"twitch": provider}, store=store, clock=clock)
+    account_id = connect((service, provider, store, clock))
+    # A data folder restored onto another Windows account: the blob is there
+    # but DPAPI can't open it. Not "store unavailable": the grant is gone.
+    key["generation"] = 2
+    assert store.load(account_id) is None
+    with pytest.raises(AccountError) as error:
+        service.test(account_id)
+    assert error.value.code == "reconnect_required"
+    assert service.accounts()[0]["status"] == "reconnect_required"
+    # Reconnecting reads the old, unreadable blob first; that must not make
+    # it revoke the token the person just approved.
+    connect((service, provider, store, clock))
+    assert provider.revoked_tokens == []
+    assert service.accounts()[0]["status"] == "connected"
+    assert service.test(account_id)["ok"] is True
+
+
+def test_unreadable_old_credential_never_revokes_a_fresh_approval(setup):
+    service, provider, store, clock = setup
+    connect(setup)
+
+    def locked_keychain(key):
+        raise AccountError("credential_store_unavailable", "The OS credential store could not read this account.",
+                           status=503)
+
+    store.load = locked_keychain
+    connect(setup)
+    assert provider.revoked_tokens == []
+
+
+class IssuerProvider(FakeProvider):
+    """Records which client ID each revoke names, as Twitch checks it."""
+
+    def __init__(self, client_id="public-client-id"):
+        super().__init__()
+        self.client_id = self.validation_client = client_id
+        self.revoked_with = []
+
+    def revoke(self, token, *, client_id=None):
+        self.revoked_with.append((token, client_id or self.client_id))
+        super().revoke(token)
+
+
+def test_disconnect_after_a_client_id_change_revokes_with_the_issuing_client(tmp_path):
+    clock, store, old = Clock(), MemoryStore(), IssuerProvider()
+    service = ConnectedAccounts(tmp_path, {"twitch": old}, store=store, clock=clock)
+    account_id = connect((service, old, store, clock))
+    new = IssuerProvider("different-client")
+    service.register_provider(new)
+    assert service.disconnect(account_id) == {"disconnected": True, "revoked": True}
+    assert new.revoked_with == [("private-access-value", "public-client-id")]
+
+
+def test_reconnecting_under_a_new_client_id_revokes_the_old_grant(tmp_path):
+    clock, store, old = Clock(), MemoryStore(), IssuerProvider()
+    service = ConnectedAccounts(tmp_path, {"twitch": old}, store=store, clock=clock)
+    connect((service, old, store, clock))
+    new = IssuerProvider("different-client")
+    new.poll = lambda code: {"access_token": "replacement-access-value",
+                             "refresh_token": "replacement-refresh-value", "expires_in": 3600}
+    service.register_provider(new)
+    connect((service, new, store, clock))
+    assert new.revoked_with == [("private-access-value", "public-client-id")]
+    assert service.accounts()[0]["client_id"] == "different-client"
+
+
+def test_reconnecting_with_the_same_client_leaves_the_new_grant_alone(setup):
+    service, provider, store, clock = setup
+    connect(setup)
+    connect(setup)
+    assert provider.revoked_tokens == []
+
+
+def test_a_damaged_account_list_is_set_aside_instead_of_stopping_startup(tmp_path, capsys):
+    roster = tmp_path / "connected-accounts.json"
+    roster.write_text("{not json", encoding="utf-8")
+    clock, store, provider = Clock(), MemoryStore(), FakeProvider()
+    service = ConnectedAccounts(tmp_path, {"twitch": provider}, store=store, clock=clock)
+    assert service.accounts() == []
+    assert (tmp_path / "connected-accounts.json.corrupt").read_text(encoding="utf-8") == "{not json"
+    assert "set aside" in capsys.readouterr().out
+    connect((service, provider, store, clock))
+    assert len(json.loads(roster.read_text(encoding="utf-8"))) == 1
+
+
+@pytest.mark.parametrize("content", ["{}", "[1, 2"])
+def test_an_account_list_that_cant_be_moved_is_never_overwritten(tmp_path, monkeypatch, content):
+    roster = tmp_path / "connected-accounts.json"
+    roster.write_text(content, encoding="utf-8")
+    monkeypatch.setattr("connected_accounts.service.set_aside", lambda path: False)
+    clock, store, provider = Clock(), MemoryStore(), FakeProvider()
+    service = ConnectedAccounts(tmp_path, {"twitch": provider}, store=store, clock=clock)
+    assert service.accounts() == []
+    flow = service.begin("twitch")
+    clock.now += 5
+    with pytest.raises(AccountError) as error:
+        service.poll(flow["flow_id"])
+    assert error.value.code == "account_store_unavailable"
+    assert roster.read_text(encoding="utf-8") == content
+    assert provider.revoked_tokens == ["private-access-value"]
+
+
+def test_a_slow_twitch_request_never_blocks_the_account_list(setup):
+    service, provider, store, clock = setup
+    account_id = connect(setup)
+    entered, release = threading.Event(), threading.Event()
+
+    def slow(access_token, account, operation, **params):
+        entered.set()
+        release.wait(10)
+        return {"id": "created-clip"}
+
+    provider.perform = slow
+    worker = threading.Thread(target=service.perform, args=(account_id, "create_clip"))
+    worker.start()
+    try:
+        assert entered.wait(5)
+        # The EventSub receive thread and the Settings page read these while
+        # the request is still waiting on Twitch.
+        started = time.monotonic()
+        assert service.accounts()[0]["id"] == account_id
+        assert service.status()["accounts"]
+        assert time.monotonic() - started < 1
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive()
+
+
+def test_chained_keyring_is_accepted_only_when_every_backend_is_an_os_keychain(monkeypatch, tmp_path):
+    monkeypatch.setattr("connected_accounts.store.sys.platform", "linux")
+
+    def backend(module):
+        return type("Backend", (), {"__module__": module})()
+
+    def chained(*modules):
+        chain = type("ChainerBackend", (), {"__module__": "keyring.backends.chainer"})()
+        chain.backends = [backend(m) for m in modules]
+        return chain
+
+    for value, secure in ((chained("keyring.backends.SecretService", "keyring.backends.kwallet"), True),
+                          (chained("keyring.backends.SecretService", "keyrings.alt.file"), False),
+                          (chained(), False), (backend("keyring.backends.macOS"), True)):
+        monkeypatch.setitem(sys.modules, "keyring", types.SimpleNamespace(get_keyring=lambda value=value: value))
+        assert SecureTokenStore(tmp_path).available is secure

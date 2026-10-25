@@ -137,8 +137,9 @@ class TwitchProvider:
     """One public Twitch client registration; account tokens stay in the host."""
 
     id = "twitch"
-    # Chat is added only when the person enables it in the connection UI.
-    default_scopes = ("clips:edit",)
+    # Nothing beyond reading the channel unless the person ticks a permission:
+    # the app itself never makes a live clip (plugins work on finished VODs).
+    default_scopes: tuple[str, ...] = ()
     supported_scopes = _SCOPES
     capabilities: ClassVar[dict[str, bool]] = {
         "device_code": True,
@@ -385,8 +386,13 @@ class TwitchProvider:
             "display_name": _text(user.get("display_name"), maximum=100),
         }
 
-    def revoke(self, access_token: str) -> None:
-        self._request("POST", _AUTH + "/revoke", data={"client_id": self.client_id, "token": access_token})
+    def revoke(self, access_token: str, *, client_id: str | None = None) -> None:
+        """Revoke a token. Twitch only accepts the client ID that issued it,
+        which differs from ours after the Client ID setting changed."""
+        issuer = self.client_id if client_id is None else client_id
+        if not isinstance(issuer, str) or not _CLIENT_ID.fullmatch(issuer):
+            raise AccountError("invalid_client", "Enter the client ID of a public Twitch application.")
+        self._request("POST", _AUTH + "/revoke", data={"client_id": issuer, "token": access_token})
 
     def _helix(self, method: str, path: str, access_token: str, **kwargs) -> dict:
         return self._request(method, _HELIX + path, access_token=access_token, **kwargs)

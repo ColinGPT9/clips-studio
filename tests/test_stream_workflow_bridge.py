@@ -335,7 +335,7 @@ def test_bad_local_source_identity_blocks_sdk_timeline_and_audience(bridge, monk
         assert sdk.audience_signals()["nominations"] == []
         with pytest.raises(AccountOperationError) as error:
             sdk.timestamp_link(20)
-        assert error.value.status == 409
+        assert error.value.status == 412 and "verified" in str(error.value)
         with pytest.raises(AccountOperationError):
             sdk.create_vod_clip(10, 20, "Mismatched source")
     assert not any(call[1] == "create_vod_clip" for call in bridge.service.calls)
@@ -343,7 +343,12 @@ def test_bad_local_source_identity_blocks_sdk_timeline_and_audience(bridge, monk
 
 def test_monitor_stop_ignores_new_chat_and_account_delete_revokes_sdk(bridge, monkeypatch):
     collect_and_map(bridge)
-    assert bridge.client.delete(f"/stream-workflows/{ACCOUNT}/monitor", headers=SESSION).status_code == 200
+    assert bridge.events.events(ACCOUNT)["events"]
+    stopped = bridge.client.delete(f"/stream-workflows/{ACCOUNT}/monitor", headers=SESSION)
+    assert stopped.status_code == 200
+    # Stopping collection ends the chat subscription and drops buffered chat:
+    # monitoring was the listener's only consumer.
+    assert bridge.events.events(ACCOUNT) == {"status": "stopped", "events": [], "cursor": 0}
     bridge.clock[0] += 120
     notify(
         bridge,
@@ -352,7 +357,7 @@ def test_monitor_stop_ignores_new_chat_and_account_delete_revokes_sdk(bridge, mo
         chatter_user_id="987654323",
         message={"text": "!funny"},
     )
-    eventually(lambda: bridge.events.events(ACCOUNT)["cursor"] >= 4)
+    assert bridge.events.events(ACCOUNT)["events"] == []
     assert bridge.workflow.streams(ACCOUNT)["streams"][0]["nomination_count"] == 1
     with sdk_for_run(bridge, monkeypatch) as env:
         sdk = enable_sdk(env, monkeypatch)

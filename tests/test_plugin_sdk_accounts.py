@@ -11,7 +11,14 @@ SDK = Path(__file__).resolve().parent.parent / "sdk" / "python"
 if str(SDK) not in sys.path:
     sys.path.insert(0, str(SDK))
 
-from clipskitty_sdk import AccountOperationError, ConnectedAccounts, Job, accounts, host, manifest  # noqa: E402
+from clipskitty_sdk import (  # noqa: E402
+    AccountOperationError,
+    ConnectedAccounts,
+    Job,
+    accounts,
+    host,
+    manifest,
+)
 
 
 @pytest.fixture
@@ -104,9 +111,46 @@ def test_provider_errors_do_not_echo_body_credentials_or_retry_write(service):
     calls, reply = service
     reply.update(status=502, body={"detail": "Twitch access_token=never-echo-this"})
     with pytest.raises(AccountOperationError) as error:
-        ConnectedAccounts().twitch.create_clip()
+        ConnectedAccounts().twitch.create_vod_clip(10, 30, "A grounded highlight")
     assert error.value.status == 502 and "never-echo" not in str(error.value)
     assert len(calls) == 1
+
+
+def test_unverified_timeline_is_not_reported_as_already_attempted(service):
+    calls, reply = service
+    reply.update(status=412, body={"detail": "not verified"})
+    for attempt in (lambda api: api.timestamp_link(20), lambda api: api.create_vod_clip(10, 30, "Highlight")):
+        with pytest.raises(AccountOperationError) as error:
+            attempt(ConnectedAccounts().twitch)
+        assert error.value.status == 412
+        assert "verified this video's Twitch timeline" in str(error.value)
+        assert "already attempted" not in str(error.value)
+
+
+def test_each_refusal_has_its_own_plain_message(service):
+    calls, reply = service
+    seen = set()
+    for status in (400, 401, 403, 404, 412, 429, 502, 503):
+        reply.update(status=status, body={"detail": "access_token=never-echo-this"})
+        with pytest.raises(AccountOperationError) as error:
+            ConnectedAccounts().twitch.context()
+        assert error.value.status == status and "never-echo" not in str(error.value)
+        seen.add(str(error.value))
+    assert len(seen) == 8
+
+
+def test_chat_permission_without_events_is_refused_at_validation(plugin_source):
+    report = manifest.validate(plugin_source.manifest(permissions=["video.read", "twitch.chat.read"]))
+    assert any("twitch.chat.read needs twitch.events.read" in e for e in report.errors)
+    report = manifest.validate(plugin_source.manifest(
+        permissions=["video.read", "twitch.chat.read", "twitch.events.read"]))
+    assert not any("twitch.chat.read" in e for e in report.errors)
+
+
+def test_runs_have_no_live_clip_helper():
+    # A plugin run works on a finished VOD; clipping whatever is live now is
+    # the desktop's call, not a run's.
+    assert not hasattr(ConnectedAccounts().twitch, "create_clip")
 
 
 def test_manifest_vocabulary_and_schema_include_account_permissions():

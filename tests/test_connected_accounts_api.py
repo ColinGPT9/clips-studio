@@ -175,7 +175,8 @@ def test_connect_test_and_status_never_return_credentials(api):
 def test_cancelled_flow_cannot_be_exchanged(api):
     client = api[0]
     flow = client.post("/connected-accounts/twitch/connect", headers=HEADERS, json={}).json()
-    assert client.delete(f"/connected-accounts/flows/{flow['flow_id']}", headers=HEADERS).status_code == 200
+    cancelled = client.delete(f"/connected-accounts/flows/{flow['flow_id']}", headers=HEADERS)
+    assert cancelled.status_code == 200
     response = client.post(f"/connected-accounts/flows/{flow['flow_id']}/poll", headers=HEADERS)
     assert response.status_code == 404
     assert api[1].accounts() == []

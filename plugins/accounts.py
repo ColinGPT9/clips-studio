@@ -19,8 +19,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from connected_accounts.models import AccountError
 from plugins import store
 
+# AccountError statuses a plugin sees as they are; anything else is a 502.
+_PASSED_STATUSES = frozenset({400, 401, 403, 404, 429, 503})
 HEADER = "X-Clips-Kitty-Capability"
 ENDPOINT_ENV = "CLIPSKITTY_ACCOUNT_ENDPOINT"
 CAPABILITY_ENV = "CLIPSKITTY_ACCOUNT_CAPABILITY"
@@ -31,9 +34,10 @@ PERMISSIONS = {
     "vod_link": "twitch.context.read",
     "audience_signals": "twitch.context.read",
     "source_info": "twitch.context.read",
+    # No live create_clip here: a run works on a finished VOD, and a live clip
+    # of whatever is on air now has nothing to do with it (desktop route only).
     "create_vod_clip": "twitch.clips.create",
     "get_clip": "twitch.clips.create",
-    "create_clip": "twitch.clips.create",
     "send_chat": "twitch.chat.send",
     "events_start": "twitch.events.read",
     "events": "twitch.events.read",
@@ -44,6 +48,11 @@ _SECRET_FIELDS = frozenset({"access_token", "refresh_token", "token", "client_se
                             "authorization", "credentials", "secret"})
 _GATEWAYS: dict[str, Gateway] = {}
 _GATEWAYS_LOCK = threading.Lock()
+# What the binding may carry into a grant. whole_vod and vod_duration are set
+# by the host only after it measured the file against Twitch's VOD length.
+_BINDING = ("account_id", "broadcaster_id", "video_id", "duration", "source_id", "whole_vod", "vod_duration")
+TIMELINE_UNVERIFIED = ("Clips Kitty hasn't verified this video's Twitch timeline, "
+                       "so it can't make a Twitch link or VOD clip for it.")
 
 
 class AccessDenied(RuntimeError):
@@ -64,6 +73,9 @@ class _Grant:
     replies: dict = field(default_factory=dict)
     counts: dict = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # This run's EventSub consumer name; released when the run ends.
+    consumer: str = field(default_factory=lambda: "plugin-run:" + secrets.token_hex(8))
+    events_started: bool = False
 
 
 def _key(data_dir):
@@ -116,7 +128,7 @@ class Gateway:
         if not valid:
             yield {}
             return
-        binding = {k: binding[k] for k in ("account_id", "broadcaster_id", "video_id", "duration", "source_id") if k in binding}
+        binding = {k: binding[k] for k in _BINDING if k in binding}
         if "duration" not in binding:
             binding["duration"] = getattr(video, "duration", None)
         token = secrets.token_urlsafe(32)
@@ -129,6 +141,16 @@ class Gateway:
         finally:
             with self._lock:
                 self._grants.pop(token, None)
+            with grant.lock:
+                started, grant.events_started = grant.events_started, False
+            if started and self.event_manager is not None:
+                # A run's subscription ends with the run, unless stream
+                # workflows or another run still needs those events.
+                try:
+                    self.event_manager.release(binding["account_id"], grant.consumer)
+                except Exception:
+                    # Never turn a finished run into a failure over cleanup.
+                    pass
 
     def _check(self, token, grant, permission):
         with self._lock:
@@ -177,10 +199,8 @@ class Gateway:
                 return copy.deepcopy(previous[1])
             if len(grant.replies) >= 100:
                 raise AccessDenied("This run has reached its connected-account request limit.", 429)
-            maximum = {"create_clip": 10, "create_vod_clip": 10, "send_chat": 20}.get(operation, 100)
-            if operation in {"create_clip", "create_vod_clip"} and sum(
-                grant.counts.get(kind, 0) for kind in ("create_clip", "create_vod_clip")
-            ) >= 10:
+            maximum = {"create_vod_clip": 10, "send_chat": 20}.get(operation, 100)
+            if operation == "create_vod_clip" and grant.counts.get(operation, 0) >= 10:
                 raise AccessDenied("This run has reached its native clip creation limit.", 429)
             if grant.counts.get(operation, 0) >= maximum:
                 raise AccessDenied("This run has reached its limit for this operation.", 429)
@@ -200,7 +220,8 @@ class Gateway:
                 elif operation == "events_start":
                     if self.event_manager is None:
                         raise AccessDenied("Twitch event support is not running.", 503)
-                    result = self.event_manager.start(grant.binding["account_id"], **args)
+                    grant.events_started = True
+                    result = self.event_manager.start(grant.binding["account_id"], consumer=grant.consumer, **args)
                 elif operation == "events":
                     if self.event_manager is None:
                         raise AccessDenied("Twitch event support is not running.", 503)
@@ -215,6 +236,14 @@ class Gateway:
                 return result
             except AccessDenied:
                 raise
+            except AccountError as error:
+                # Its message is a fixed host string (never provider text), so
+                # a plugin can tell a bad argument, a lapsed connection or a
+                # missing Twitch permission from Twitch being down.
+                status = error.status if error.status in _PASSED_STATUSES else 502
+                if error.status == 409:
+                    status = 503  # not configured: unavailable, never "already attempted"
+                raise AccessDenied(str(error), status) from None
             except Exception:
                 # No provider body, URL, token, filesystem path or exception
                 # detail is reflected into a plugin's output/log.
@@ -222,7 +251,7 @@ class Gateway:
 
     def _arguments(self, grant, operation, params, permissions):
         broadcaster = str(grant.binding["broadcaster_id"])
-        allowed = {"stream_context": set(), "videos": {"first"}, "create_clip": {"has_delay"},
+        allowed = {"stream_context": set(), "videos": {"first"},
                    "audience_signals": set(),
                    "source_info": set(),
                    "create_vod_clip": {"start_seconds", "end_seconds", "title"},
@@ -237,10 +266,6 @@ class Gateway:
             if type(first) is not int or not 1 <= first <= 100:
                 raise AccessDenied("The video limit must be between 1 and 100.", 400)
             args["first"] = first
-        elif operation == "create_clip":
-            if type(params.get("has_delay", False)) is not bool:
-                raise AccessDenied("The clip delay must be true or false.", 400)
-            args["has_delay"] = params.get("has_delay", False)
         elif operation == "vod_link":
             video_id = str(grant.binding.get("video_id", ""))
             seconds = params.get("seconds", 0)
@@ -259,9 +284,16 @@ class Gateway:
                     or (isinstance(duration, (int, float)) and duration > 0 and end > duration)
                     or not isinstance(title, str) or not title.strip() or len(title) > 140):
                 raise AccessDenied("A valid bounded source highlight and title are required.", 400)
+            vod_start, vod_end = self._vod_time(grant, start), self._vod_time(grant, end)
+            # Twitch takes a whole-second end and a 0.1-second duration of 5 to
+            # 60 seconds. Snap here: a calibration offset or transcript times
+            # are rarely whole seconds, and the plugin can't see the offset.
+            snapped_end = float(math.floor(vod_end + 0.5))
+            snapped = round(snapped_end - vod_start, 1)
+            if not 5 <= snapped <= 60 or snapped > snapped_end:
+                raise AccessDenied("A VOD clip must be 5 to 60 seconds long.", 400)
             args.update(video_id=str(grant.binding.get("video_id", "")),
-                        start_seconds=self._vod_time(grant, start), end_seconds=self._vod_time(grant, end),
-                        title=title)
+                        start_seconds=round(snapped_end - snapped, 1), end_seconds=snapped_end, title=title)
         elif operation == "get_clip":
             clip_id = params.get("clip_id")
             if not isinstance(clip_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", clip_id):
@@ -288,14 +320,18 @@ class Gateway:
         return args
 
     def _vod_time(self, grant, seconds):
+        # 412, not 409: the SDK reads 409 as "already attempted", and nothing
+        # was attempted. Nothing has been counted or sent to Twitch yet.
         if self.timeline_mapper is None:
-            raise AccessDenied("Verify the source video's Twitch timeline before creating a link or VOD clip.", 409)
+            raise AccessDenied(TIMELINE_UNVERIFIED, 412)
         try:
             result = self.timeline_mapper(copy.deepcopy(grant.binding), seconds)
-        except Exception:
-            raise AccessDenied("The source video's Twitch timing has not been verified.", 409) from None
+        except Exception as error:
+            if getattr(error, "code", "") == "invalid_timestamp":
+                raise AccessDenied("That time is outside this run's video or its Twitch VOD.", 400) from None
+            raise AccessDenied(TIMELINE_UNVERIFIED, 412) from None
         if type(result) not in (int, float) or not math.isfinite(result) or result < 0:
-            raise AccessDenied("The source video's Twitch timing has not been verified.", 409)
+            raise AccessDenied(TIMELINE_UNVERIFIED, 412)
         return result
 
     def revoke_account(self, account_id):
