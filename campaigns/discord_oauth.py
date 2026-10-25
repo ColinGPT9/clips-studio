@@ -17,6 +17,7 @@ test's fake) and the API address comes from discord_http.api_base().
 """
 
 import secrets
+import threading
 import time
 from dataclasses import dataclass, field
 from urllib.parse import quote, urlencode
@@ -207,8 +208,10 @@ class PendingSignIns:
     def __init__(self, ttl: float = SIGN_IN_SECONDS):
         self.ttl = ttl
         self._waiting: dict[str, Pending] = {}
+        self._lock = threading.Lock()  # routes run in a thread pool
 
     def _prune(self, now: float) -> None:
+        """Drop sign-ins too old to finish. The caller holds the lock."""
         for stale in [s for s, p in self._waiting.items() if now - p.started > self.ttl]:
             self._waiting.pop(stale, None)
 
@@ -216,17 +219,19 @@ class PendingSignIns:
               extra: dict | None = None) -> tuple[str, str]:
         """A new sign-in: (state, S256 challenge) for the authorize link."""
         now = time.time() if now is None else float(now)
-        self._prune(now)
         verifier, challenge = pkce_pair()
         state = secrets.token_urlsafe(18)
-        self._waiting[state] = Pending(purpose, verifier, redirect, now, dict(extra or {}))
+        with self._lock:
+            self._prune(now)
+            self._waiting[state] = Pending(purpose, verifier, redirect, now, dict(extra or {}))
         return state, challenge
 
     def take(self, state: str, *, now: float | None = None) -> Pending | None:
         """The sign-in for `state`, once; None when unknown, used or too old."""
         now = time.time() if now is None else float(now)
-        found = self._waiting.pop(str(state or ""), None)
-        self._prune(now)
+        with self._lock:
+            found = self._waiting.pop(str(state or ""), None)
+            self._prune(now)
         if found is None or now - found.started > self.ttl:
             return None
         return found

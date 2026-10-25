@@ -9,6 +9,7 @@ No real Discord: a scripted transport (discord_fake.FakeDiscordHTTP).
 """
 
 import json
+import threading
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -20,6 +21,7 @@ from discord_fake import (
     WEBHOOK_ID,
     WEBHOOK_TOKEN,
     FakeDiscordHTTP,
+    FakeResponse,
     tokens,
     webhook,
 )
@@ -27,6 +29,7 @@ from discord_fake import (
 from campaigns import discord_oauth, model, service, statemachine
 from campaigns.discord_http import DiscordError
 from core import secrets
+from core.state import StateDB
 
 NOW = 1_800_000_000.0
 DAY = 24 * 3600
@@ -189,6 +192,88 @@ def test_not_signed_in_is_not_connected(db, tmp_path):
     assert caught.value.code == "not_connected"
 
 
+class _RotatingDiscord:
+    """Discord's token endpoint, which replaces the refresh token each time
+    it is used (a used one answers invalid_grant). The first refresh is
+    held until `release` is set, so a second request can come in meanwhile."""
+
+    def __init__(self):
+        self.valid = {"refresh-1"}
+        self.issued = 1
+        self.calls: list[str] = []
+        self.inside = threading.Event()
+        self.release = threading.Event()
+        self._lock = threading.Lock()
+
+    def request(self, method, url, **kw):
+        sent = (kw.get("data") or {}).get("refresh_token")
+        with self._lock:
+            self.calls.append(sent)
+            first = len(self.calls) == 1
+        if first:
+            self.inside.set()
+            self.release.wait(5)
+        with self._lock:
+            if sent not in self.valid:
+                return FakeResponse(400, {"error": "invalid_grant"})
+            self.valid.discard(sent)
+            self.issued += 1
+            self.valid.add(f"refresh-{self.issued}")
+            return FakeResponse(200, tokens(access=f"access-{self.issued}", refresh=f"refresh-{self.issued}"))
+
+
+def test_two_requests_refreshing_at_once_keep_the_sign_in(db, tmp_path):
+    """Two server-list requests in the token's last day (routes run in a
+    thread pool): the second waits for the first's refresh and uses its
+    token, instead of refreshing with the used one and being refused."""
+    _connect(db, tmp_path, expires_in=DAY)
+    discord = _RotatingDiscord()
+    results: dict[str, str] = {}
+
+    def ask(name):
+        own = StateDB(tmp_path / "state.db")  # each request has its own connection
+        try:
+            results[name] = service.access_token(own, tmp_path, discord, now=NOW + 60)
+        except DiscordError as e:
+            results[name] = f"error: {e.code}"
+        finally:
+            own.close()
+
+    first = threading.Thread(target=ask, args=("first",))
+    first.start()
+    entered = discord.inside.wait(5)
+    assert entered
+    second = threading.Thread(target=ask, args=("second",))
+    second.start()
+    second.join(0.3)  # time to refresh on its own, if nothing stops it
+    discord.release.set()
+    first.join(5)
+    second.join(5)
+
+    assert results == {"first": "access-2", "second": "access-2"}
+    assert discord.calls == ["refresh-1"]
+    kept = service.load_tokens(tmp_path)
+    assert (kept["access_token"], kept["refresh_token"]) == ("access-2", "refresh-2")
+    status = service.status_payload(db, tmp_path)
+    assert (status["connected"], status["expired"]) == (True, False)
+
+
+def test_a_refusal_for_tokens_replaced_meanwhile_keeps_the_new_ones(db, tmp_path):
+    """The tokens were replaced while the refresh was out (a new sign-in
+    finishing, another engine on the same data folder): Discord refusing
+    the old refresh token doesn't wipe the new ones."""
+    _connect(db, tmp_path, expires_in=DAY)
+
+    def replaced_then_refused(method, url, **kw):
+        service.save_tokens(tmp_path, tokens(access="access-9", refresh="refresh-9"), now=NOW + 60)
+        return FakeResponse(400, {"error": "invalid_grant"})
+
+    got = service.access_token(db, tmp_path, FakeDiscordHTTP(replaced_then_refused), now=NOW + 60)
+    assert got == "access-9"
+    assert service.load_tokens(tmp_path)["refresh_token"] == "refresh-9"
+    assert not service.status_payload(db, tmp_path)["expired"]
+
+
 # ---- servers -------------------------------------------------------------------------------------------
 
 
@@ -308,6 +393,25 @@ def test_a_new_link_brings_a_gone_destination_back(db, tmp_path):
     assert service.update_destination(db, tmp_path, FakeDiscordHTTP(), 999, label="x") is None
 
 
+def test_the_same_link_pasted_under_edit_gives_a_destination_its_link_back(db, tmp_path):
+    """A destination whose stored link is missing (a crash between the row
+    and the secret, or a credential store that can't read it): Test says to
+    paste it again under Edit, Add refuses it as a duplicate and points at
+    Edit, and Edit takes it, keeping the destination (and its campaigns)."""
+    dest = _add(db, tmp_path, label="Example Campaign")
+    service.wipe_webhook(tmp_path, dest["id"])
+    test = service.send_test_message(db, tmp_path, FakeDiscordHTTP(), dest["id"])
+    assert "Paste its link again under Edit" in test["error"]
+    with pytest.raises(ValueError, match="edit that one"):
+        _add(db, tmp_path)
+    got = service.update_destination(db, tmp_path, FakeDiscordHTTP((200, webhook())), dest["id"],
+                                     webhook_url=WEBHOOK_URL)
+    assert (got["id"], got["label"], got["has_token"], got["state"]) == (
+        dest["id"], "Example Campaign", True, "connected")
+    assert service.load_webhook(tmp_path, dest["id"]) == {"webhook_id": WEBHOOK_ID, "token": WEBHOOK_TOKEN}
+    assert [d["id"] for d in service.destination_views(db, tmp_path)] == [dest["id"]]
+
+
 def _campaign(db, **fields):
     return db.insert_campaign("Example Campaign", **fields)
 
@@ -392,6 +496,17 @@ def test_a_test_that_is_refused_marks_the_destination_denied(db, tmp_path):
     assert not got["ok"]
     assert db.get_destination(dest["id"])["state"] == "denied"
     assert service.load_webhook(tmp_path, dest["id"]) is not None
+
+
+def test_a_denied_destination_that_tests_fine_again_is_connected(db, tmp_path):
+    dest = _add(db, tmp_path)
+    service.send_test_message(db, tmp_path, FakeDiscordHTTP((403, {"message": "Missing Permissions",
+                                                                    "code": 50013})), dest["id"])
+    assert db.get_destination(dest["id"])["last_error"]
+    ok = service.send_test_message(db, tmp_path, FakeDiscordHTTP((200, {"id": "600000000000000001",
+                                                                         "channel_id": CHANNEL_ID})), dest["id"])
+    row = db.get_destination(dest["id"])
+    assert ok["ok"] and (row["state"], row["last_error"]) == ("connected", "")
 
 
 def test_a_test_discord_didnt_answer_leaves_the_destination_alone(db, tmp_path):

@@ -169,3 +169,30 @@ export function initials(name: string): string {
   const letters = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? '').slice(0, 2)
   return letters.toUpperCase() || '?'
 }
+
+/** What the card's Edit form holds for a destination. `webhook_url` starts
+ *  empty: the stored link is never sent to the window. */
+export interface DestinationDraft {
+  label: string
+  is_forum: boolean
+  thread_id: string
+  webhook_url: string
+}
+
+export function destinationDraft(d: Destination): DestinationDraft {
+  return { label: d.label, is_forum: d.is_forum, thread_id: d.thread_id, webhook_url: '' }
+}
+
+/** The PATCH an edit makes: only the fields that changed, and a new webhook
+ *  link only when one was pasted (the same link again re-stores it). */
+export function destinationPatch(d: Destination, draft: DestinationDraft): DestinationPatch {
+  const patch: DestinationPatch = {}
+  const label = draft.label.trim()
+  if (label !== d.label) patch.label = label
+  if (draft.is_forum !== d.is_forum) patch.is_forum = draft.is_forum
+  const thread = draft.thread_id.trim()
+  if (thread !== d.thread_id) patch.thread_id = thread
+  const url = draft.webhook_url.trim()
+  if (url) patch.webhook_url = url
+  return patch
+}

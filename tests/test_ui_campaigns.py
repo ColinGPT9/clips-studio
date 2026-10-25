@@ -123,3 +123,39 @@ def test_the_cards_four_states_and_initials(tmp_path):
     )
     assert _run(tmp_path, body) == ["not_set_up", "not_connected", "connected", "expired", "connected",
                                     "example-user", "Example User", "EU", "ES", "KI", "?"]
+
+
+def test_an_edit_sends_only_what_changed_and_a_link_only_when_pasted(tmp_path):
+    dest = {"id": 3, "label": "Example", "source": "pasted", "guild_id": "", "guild_name": "",
+            "channel_id": "", "webhook_name": "Example hook", "is_forum": False, "thread_id": "",
+            "state": "gone", "last_error": "", "has_token": False, "campaigns": 1}
+    body = (
+        f"const d = {json.dumps(dest)};"
+        "const same = m.destinationDraft(d);"
+        "return ["
+        "  same,"
+        "  m.destinationPatch(d, same),"
+        "  m.destinationPatch(d, {...same, label: ' Renamed ', thread_id: '700000000000000001 '}),"
+        "  m.destinationPatch(d, {...same, is_forum: true}),"
+        f"  m.destinationPatch(d, {{...same, webhook_url: {json.dumps(' ' + WEBHOOK + ' ')}}}),"
+        "  m.destinationPatch(d, {...same, webhook_url: '   '}),"
+        "]"
+    )
+    assert _run(tmp_path, body) == [
+        {"label": "Example", "is_forum": False, "thread_id": "", "webhook_url": ""},
+        {},
+        {"label": "Renamed", "thread_id": "700000000000000001"},
+        {"is_forum": True},
+        {"webhook_url": WEBHOOK},
+        {},
+    ]
+
+
+def test_the_card_offers_edit_on_each_destination():
+    """The engine's messages send people to a destination's Edit (a link
+    pasted twice, a forum channel, a link missing on this PC), so the card
+    must have one, and it must reach the PATCH route."""
+    card = (LIB.parent / "components" / "DiscordCard.tsx").read_text(encoding="utf-8")
+    assert "discord.updateDestination(d.id, patch)" in card
+    assert "const patch = destinationPatch(d, draft)" in card
+    assert "onClick={() => startEdit(d)}" in card

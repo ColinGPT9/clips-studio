@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { discord, discordCardState, discordName, initials } from '../lib/campaigns'
-import type { Destination, DiscordGuild, DiscordStatus } from '../lib/campaigns'
+import {
+  destinationDraft,
+  destinationPatch,
+  discord,
+  discordCardState,
+  discordName,
+  initials
+} from '../lib/campaigns'
+import type { Destination, DestinationDraft, DiscordGuild, DiscordStatus } from '../lib/campaigns'
 import { t } from '../lib/i18n'
 import { canManage } from '../lib/plugins'
 
@@ -43,8 +50,16 @@ export default function DiscordCard(): JSX.Element {
   const [hookForum, setHookForum] = useState(false)
   const [hookThread, setHookThread] = useState('')
   const [clientDraft, setClientDraft] = useState('')
+  const [editing, setEditing] = useState<number | null>(null)
+  const [draft, setDraft] = useState<DestinationDraft>({
+    label: '',
+    is_forum: false,
+    thread_id: '',
+    webhook_url: ''
+  })
   const mounted = useRef(true)
   const destinationsBefore = useRef(0)
+  const clientSeeded = useRef(false)
 
   const say = (m: string): void => {
     setError('')
@@ -55,10 +70,15 @@ export default function DiscordCard(): JSX.Element {
     setError(String(e).replace(/^Error:\s*/, ''))
   }
 
-  const show = (next: DiscordStatus): void => {
+  // The Advanced field is filled from the status once, and again after Save,
+  // so the status polls and reloads never wipe what is being typed there.
+  const show = (next: DiscordStatus, seedClient = false): void => {
     if (!mounted.current) return
     setStatus(next)
-    setClientDraft(next.client_id_source === 'override' ? next.client_id : '')
+    if (seedClient || !clientSeeded.current) {
+      clientSeeded.current = true
+      setClientDraft(next.client_id_source === 'override' ? next.client_id : '')
+    }
   }
 
   const load = (): void => {
@@ -117,9 +137,10 @@ export default function DiscordCard(): JSX.Element {
       .guilds()
       .then((got) => mounted.current && setGuilds(got.guilds))
       .catch(() => {
-        /* Refresh servers says why */
+        // Refresh servers says why; the status shows a sign-in found expired.
+        load()
       })
-  }, [state])
+  }, [state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (work: () => Promise<void>): Promise<void> => {
     if (busy) return
@@ -177,7 +198,7 @@ export default function DiscordCard(): JSX.Element {
         webhook_url: hookUrl.trim(),
         label: hookLabel.trim(),
         is_forum: hookForum,
-        thread_id: hookForum ? hookThread.trim() : ''
+        thread_id: hookThread.trim()
       })
       setHookUrl('')
       setShowUrl(false)
@@ -222,9 +243,25 @@ export default function DiscordCard(): JSX.Element {
     })
   }
 
+  const startEdit = (d: Destination): void => {
+    setDraft(destinationDraft(d))
+    setEditing(d.id)
+  }
+
+  // Label, Forum, thread, or a new link for the same destination (its id,
+  // and so its campaigns, stay): what the engine's messages send people to.
+  const saveEdit = (d: Destination): Promise<void> =>
+    run(async () => {
+      const patch = destinationPatch(d, draft)
+      if (Object.keys(patch).length > 0) await discord.updateDestination(d.id, patch)
+      setEditing(null)
+      load()
+      say(patch.webhook_url ? t('Webhook link saved.') : t('Destination saved.'))
+    })
+
   const saveClientId = (): Promise<void> =>
     run(async () => {
-      show(await discord.setClientId(clientDraft.trim()))
+      show(await discord.setClientId(clientDraft.trim()), true)
       say(clientDraft.trim() ? t('Application ID saved.') : t('Using Clips Kitty’s own application.'))
     })
 
@@ -374,8 +411,10 @@ export default function DiscordCard(): JSX.Element {
                 >
                   {t(STATE_LABEL[d.state] ?? d.state)}
                 </span>
-                {!d.has_token && d.state === 'connected' && (
-                  <span className="text-[10px] text-warn">{t('link missing on this PC')}</span>
+                {!d.has_token && (
+                  <span className="text-[10px] text-warn">
+                    {t('no link on this PC: paste one under Edit')}
+                  </span>
                 )}
                 <div className="flex gap-2 ml-auto">
                   <button
@@ -387,6 +426,13 @@ export default function DiscordCard(): JSX.Element {
                   </button>
                   <button
                     className="btn-ghost !py-0.5 !px-2 text-xs"
+                    disabled={locked || editing === d.id}
+                    onClick={() => startEdit(d)}
+                  >
+                    {t('Edit')}
+                  </button>
+                  <button
+                    className="btn-ghost !py-0.5 !px-2 text-xs"
                     disabled={locked}
                     onClick={() => void removeOne(d)}
                   >
@@ -395,6 +441,61 @@ export default function DiscordCard(): JSX.Element {
                 </div>
               </div>
               {d.last_error && <p className="text-[11px] text-error">{d.last_error}</p>}
+              {editing === d.id && (
+                <div className="pt-1.5 space-y-2 text-xs">
+                  <input
+                    className="input w-full !py-1 text-sm"
+                    value={draft.label}
+                    placeholder={d.webhook_name || t('Label')}
+                    onChange={(e) => setDraft({ ...draft, label: e.target.value })}
+                    aria-label={t('Label')}
+                  />
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={draft.is_forum}
+                      onChange={(e) => setDraft({ ...draft, is_forum: e.target.checked })}
+                    />
+                    {t('Forum channel (each post starts a thread)')}
+                  </label>
+                  <input
+                    className="input w-full !py-1 text-sm"
+                    value={draft.thread_id}
+                    placeholder={t('Thread ID, to post into one thread (optional)')}
+                    onChange={(e) => setDraft({ ...draft, thread_id: e.target.value })}
+                    spellCheck={false}
+                    aria-label={t('Thread ID')}
+                  />
+                  <input
+                    className="input w-full !py-1 text-sm"
+                    type="password"
+                    value={draft.webhook_url}
+                    placeholder={t(
+                      'New webhook URL (optional): paste it to replace the stored link'
+                    )}
+                    onChange={(e) => setDraft({ ...draft, webhook_url: e.target.value })}
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-label={t('New webhook URL')}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      className="btn-accent !py-1 !px-3 text-xs"
+                      disabled={locked}
+                      onClick={() => void saveEdit(d)}
+                    >
+                      {busy ? t('Checking…') : t('Save')}
+                    </button>
+                    <button
+                      className="btn-ghost !py-1 !px-3 text-xs"
+                      disabled={busy}
+                      onClick={() => setEditing(null)}
+                    >
+                      {t('Cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -437,16 +538,14 @@ export default function DiscordCard(): JSX.Element {
               />
               {t('Forum channel (each post starts a thread)')}
             </label>
-            {hookForum && (
-              <input
-                className="input w-full !py-1 text-sm"
-                value={hookThread}
-                placeholder={t('Thread ID, to post into one thread (optional)')}
-                onChange={(e) => setHookThread(e.target.value)}
-                spellCheck={false}
-                aria-label={t('Thread ID')}
-              />
-            )}
+            <input
+              className="input w-full !py-1 text-sm"
+              value={hookThread}
+              placeholder={t('Thread ID, to post into one thread (optional)')}
+              onChange={(e) => setHookThread(e.target.value)}
+              spellCheck={false}
+              aria-label={t('Thread ID')}
+            />
             <div className="flex gap-2 flex-wrap items-center">
               <button
                 className="btn-accent !py-1 !px-3 text-xs"

@@ -242,6 +242,18 @@ def test_guilds_need_a_sign_in(client):
     assert r.status_code == 409 and "Connect Discord" in r.json()["detail"]
 
 
+def test_a_server_list_that_finds_the_sign_in_expired_tells_the_app(client, fake_http, events):
+    query = _state(client.post("/discord/connect", headers=HEADERS).json()["url"])
+    fake_http.add((200, tokens()), (200, USER))
+    client.get("/discord/callback", params={"state": query["state"], "code": "c"})
+    fake_http.add((401, {"message": "401: Unauthorized", "code": 0}))
+    r = client.get("/discord/guilds")
+    assert r.status_code == 409 and "expired" in r.json()["detail"]
+    assert events[-1] == {"type": "campaign", "discord": "expired"}
+    status = client.get("/discord/status").json()
+    assert (status["connected"], status["expired"]) == (False, True)
+
+
 # ---- destinations -------------------------------------------------------------------------------------------
 
 

@@ -16,6 +16,7 @@ campaigns all work without it, and an expired sign-in never blocks a send.
 """
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,12 @@ REFRESH_WITHIN_SECONDS = 24 * 3600
 
 NOT_CONFIGURED = "Discord sign-in isn't set up in this version of Clips Kitty."
 LABEL_MAX = 100
+
+#: Held while the sign-in's tokens are refreshed, replaced or wiped. Routes
+#: run in a thread pool, and Discord replaces the refresh token each time it
+#: is used: two requests refreshing with the same one would see the second
+#: refused, which would end a sign-in that is fine.
+_TOKENS_LOCK = threading.Lock()
 
 
 # ---- settings --------------------------------------------------------------------
@@ -112,32 +119,46 @@ def _expired(db, data_dir) -> DiscordError:
     return DiscordError("expired", "Your Discord sign-in has expired. Reconnect Discord in Settings → Discord.")
 
 
-def access_token(db, data_dir, http, *, now: float) -> str:
-    """A usable access token, refreshed when it has less than a day left.
-    Discord refusing the refresh ends the sign-in (tokens wiped, expired);
-    Discord not answering keeps the old token while it still works."""
+def _stored_tokens(db, data_dir) -> dict:
     tokens = load_tokens(data_dir)
     if tokens is None:
         if load_settings(db).get("expired"):
             raise DiscordError("expired", "Your Discord sign-in has expired. Reconnect Discord in Settings → Discord.")
         raise DiscordError("not_connected", "Connect Discord first (Settings → Discord).")
-    expires_at = float(tokens.get("expires_at") or 0)
-    if expires_at - float(now) >= REFRESH_WITHIN_SECONDS:
+    return tokens
+
+
+def access_token(db, data_dir, http, *, now: float) -> str:
+    """A usable access token, refreshed when it has less than a day left.
+    Discord refusing the refresh ends the sign-in (tokens wiped, expired);
+    Discord not answering keeps the old token while it still works."""
+    tokens = _stored_tokens(db, data_dir)
+    if float(tokens.get("expires_at") or 0) - float(now) >= REFRESH_WITHIN_SECONDS:
         return tokens["access_token"]
-    cid, _source = client_id(db)
-    if tokens.get("refresh_token") and cid:
-        try:
-            fresh = discord_oauth.refresh(http, cid, tokens["refresh_token"])
-        except DiscordError as e:
-            if e.code in ("expired", "denied"):
-                raise _expired(db, data_dir) from None
-            if expires_at > float(now):
-                return tokens["access_token"]
-            raise
-        return save_tokens(data_dir, fresh, now=now, keep=tokens)["access_token"]
-    if expires_at > float(now):
-        return tokens["access_token"]
-    raise _expired(db, data_dir)
+    with _TOKENS_LOCK:
+        # Read again: another request may have refreshed while this one waited.
+        tokens = _stored_tokens(db, data_dir)
+        expires_at = float(tokens.get("expires_at") or 0)
+        if expires_at - float(now) >= REFRESH_WITHIN_SECONDS:
+            return tokens["access_token"]
+        cid, _source = client_id(db)
+        sent = str(tokens.get("refresh_token") or "")
+        if sent and cid:
+            try:
+                fresh = discord_oauth.refresh(http, cid, sent)
+            except DiscordError as e:
+                if e.code in ("expired", "denied"):
+                    stored = load_tokens(data_dir)
+                    if stored is not None and str(stored.get("refresh_token") or "") != sent:
+                        return stored["access_token"]  # replaced meanwhile: the refusal was for the old ones
+                    raise _expired(db, data_dir) from None
+                if expires_at > float(now):
+                    return tokens["access_token"]
+                raise
+            return save_tokens(data_dir, fresh, now=now, keep=tokens)["access_token"]
+        if expires_at > float(now):
+            return tokens["access_token"]
+        raise _expired(db, data_dir)
 
 
 def connected(db, data_dir) -> bool:
@@ -296,9 +317,10 @@ def finish_sign_in(db, data_dir, http, pending: discord_oauth.PendingSignIns, *,
         discord_oauth.revoke(http, cid, str(tokens.get("refresh_token") or tokens["access_token"]),
                              "refresh_token" if tokens.get("refresh_token") else "access_token")
         return SignIn(False, "failed", e.message)
-    saved = save_tokens(data_dir, tokens, now=now)
-    save_settings(db, {"user": user, "scopes": saved["scope"].split(), "expired": False,
-                       "connected_at": utc_text(posts.as_utc(now)), "guilds": [], "guilds_at": 0})
+    with _TOKENS_LOCK:
+        saved = save_tokens(data_dir, tokens, now=now)
+        save_settings(db, {"user": user, "scopes": saved["scope"].split(), "expired": False,
+                           "connected_at": utc_text(posts.as_utc(now)), "guilds": [], "guilds_at": 0})
     name = user.get("global_name") or user.get("username") or "your account"
     return SignIn(True, "connected", f"Connected to Discord as {name}. You can close this tab and go back "
                                      "to Clips Kitty.")
@@ -333,16 +355,17 @@ def disconnect(db, data_dir, http) -> bool:
     """Sign out: ask Discord to revoke (the refresh token, which ends the
     grant, else the access token), then forget everything locally whatever
     Discord said. True when Discord confirmed the revoke."""
-    tokens = load_tokens(data_dir) or {}
-    cid, _source = client_id(db)
-    revoked = False
-    if cid and tokens.get("refresh_token"):
-        revoked = discord_oauth.revoke(http, cid, tokens["refresh_token"], "refresh_token")
-    if cid and not revoked and tokens.get("access_token"):
-        revoked = discord_oauth.revoke(http, cid, tokens["access_token"], "access_token")
-    wipe_tokens(data_dir)
-    save_settings(db, {"user": {}, "scopes": [], "connected_at": "", "expired": False, "guilds": [],
-                       "guilds_at": 0})
+    with _TOKENS_LOCK:  # a refresh in flight can't put the tokens back after this
+        tokens = load_tokens(data_dir) or {}
+        cid, _source = client_id(db)
+        revoked = False
+        if cid and tokens.get("refresh_token"):
+            revoked = discord_oauth.revoke(http, cid, tokens["refresh_token"], "refresh_token")
+        if cid and not revoked and tokens.get("access_token"):
+            revoked = discord_oauth.revoke(http, cid, tokens["access_token"], "access_token")
+        wipe_tokens(data_dir)
+        save_settings(db, {"user": {}, "scopes": [], "connected_at": "", "expired": False, "guilds": [],
+                           "guilds_at": 0})
     return revoked
 
 
@@ -461,7 +484,7 @@ def send_test_message(db, data_dir, http, dest_id: int) -> dict | None:
     hook = load_webhook(data_dir, dest_id)
     if hook is None:
         return {"ok": False, "message_url": "",
-                "error": "This destination has no webhook link stored on this PC. Paste its link again."}
+                "error": "This destination has no webhook link stored on this PC. Paste its link again under Edit."}
     thread_id = str(row["thread_id"] or "")
     forum = bool(int(row["is_forum"] or 0))
     result = discord_webhook.send(http, hook["webhook_id"], hook["token"], content=discord_webhook.TEST_MESSAGE,
