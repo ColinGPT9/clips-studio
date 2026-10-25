@@ -103,6 +103,7 @@ Clips Kitty                              your pipeline
 - [Plugin development](plugin-development.md): install, update, roll back and remove, as a user and through the API.
 - [Model references](model-references.md) and [Hugging Face](hugging-face.md): naming models, one shared copy.
 - [Local APIs](local-apis.md): FFmpeg, Ollama and Clips Kitty's own API from a plugin.
+- [Connected Accounts SDK](connected-accounts-sdk.md): reuse permitted Twitch context, clip/link, chat and event operations without handling OAuth tokens.
 - [Remote APIs](remote-apis.md): calling a hosted model, declaring what leaves the PC, keys.
 - [API](api.md) and the [API reference](api-reference.md): the engine's HTTP API, with a stability label on every route.
 

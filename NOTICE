@@ -105,6 +105,10 @@ significant ones, with their licences:
                                          fetched by scripts/fetch_whisper.py
                                          and are MIT (Systran/faster-whisper,
                                          converted from OpenAI Whisper)
+  keyring                   MIT          OS-protected Connected Accounts tokens
+                                         on Linux and macOS only; Windows uses
+                                         DPAPI, and keyring isn't installed there
+  websockets                BSD-3-Clause desktop Twitch EventSub connections
   Ollama                    MIT          the local AI runtime, bundled
                                          unmodified and fetched at build time
                                          by scripts/fetch_ollama.py

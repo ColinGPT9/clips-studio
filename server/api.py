@@ -710,6 +710,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker.start()
         stream_watcher.start()
         channel_watcher.start()
+        account_runtime.start()
 
     @app.on_event("shutdown")
     async def _shutdown():
@@ -717,6 +718,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         publish_worker.stop()
         stream_watcher.stop()
         channel_watcher.stop()
+        account_runtime.close()
 
     # Publishing lives in its own module: it is optional, self-contained and
     # removable, and threading ~15 routes through this file would end that.
@@ -782,20 +784,28 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     # that change what is installed need the desktop app's session secret.
     from plugins import api as plugins_api
 
-    session_secret = plugins_api.install(app, data_dir=data_dir, config=config, app_version=app_version)
+    desktop_session = plugins_api.install(app, data_dir=data_dir, config=config, app_version=app_version)
+
+    # Account connections belong to the desktop engine. Watches, the UI and
+    # other integrations share this service; no plugin implements OAuth.
+    from server import connected_accounts_api
+    from server.connected_feed import ConnectedFeed
+
+    account_service = connected_accounts_api.make_service(data_dir)
+    connected_feed = ConnectedFeed(account_service)
 
     # Settings → Discord (campaigns/): sign-in and webhook destinations for
     # clipping campaigns. Its changing routes take the same session secret.
     from server import discord_api
 
-    discord_api.install(app, db=db, data_dir=data_dir, session_secret=session_secret)
+    discord_api.install(app, db=db, data_dir=data_dir, session_secret=desktop_session)
 
     # Clipping campaigns and their submissions (campaigns/): the publish
     # worker follows each post and sends what a webhook may send.
     from server import campaigns_api
 
     campaigns_api.install(app, db=db, data_dir=data_dir, publish_worker=publish_worker,
-                          session_secret=session_secret)
+                          session_secret=desktop_session)
 
     # Streamer integrations such as the OBS plugin: hand over a finished stream,
     # find its VOD, report progress. Its own module for the same reason.
@@ -824,6 +834,28 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         options_from=_watch_options,
         data_dir=data_dir,
         interval_minutes=float(config.get("poll_interval_minutes") or 15),
+        feed=connected_feed,
+    )
+
+    account_runtime = connected_accounts_api.install(
+        app, data_dir=data_dir, db=db, session_secret=desktop_session,
+        service=account_service, watcher=channel_watcher, broadcaster=broadcaster,
+    )
+    from plugins import accounts as plugin_accounts
+    from server import stream_workflows_api
+
+    stream_workflow = stream_workflows_api.install(
+        app, data_dir=data_dir, service=account_service,
+        event_manager=account_runtime.events, session_secret=desktop_session,
+    )
+    account_runtime.workflow = stream_workflow
+    account_runtime.events.add_sink(stream_workflow.record_event)
+    account_runtime.gateway = plugin_accounts.install(
+        app, data_dir=data_dir, service=account_service,
+        binding_for_video=connected_feed.binding_for_video,
+        event_manager=account_runtime.events,
+        audience_for_binding=stream_workflow.audience_for_binding,
+        timeline_mapper=stream_workflow.source_to_vod,
     )
 
     # ---- health / system -----------------------------------------------

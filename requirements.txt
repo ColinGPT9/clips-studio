@@ -51,6 +51,15 @@ uvicorn[standard]>=0.52.4,<1
 
 # ---- everything else -------------------------------------------------------
 requests>=2.34.2,<3
+# Connected Accounts uses the OS keychain outside Windows. On Windows it goes
+# through core/secrets (DPAPI), so keyring is neither installed nor bundled
+# there (clips-studio.spec excludes it). Fails closed without an unlocked
+# keychain; never plaintext.
+keyring>=25.6,<26 ; sys_platform != "win32"
+# Desktop Twitch EventSub uses a host-owned WebSocket, not a public webhook.
+# Already installed through uvicorn[standard] and yt-dlp; 16 is what the
+# build PC runs, so the ceiling sits above it rather than downgrading it.
+websockets>=14,<17
 # Remote rendering's gateway makes its own HTTPS certificate (remote_render/tls.py).
 # Already installed as a dependency of google-auth; pinned now that it is used directly.
 cryptography>=48,<49

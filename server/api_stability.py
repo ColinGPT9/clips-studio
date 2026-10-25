@@ -39,10 +39,34 @@ SECTIONS = {
     "automation": ("Watched channels", "watched-channels"),
     "events": ("WebSocket events", "websocket-events"),
     "plugins": ("Plugins", "plugins"),
+    "accounts": ("Connected Accounts", "connected-accounts"),
 }
 
 # (method, path) -> (label, section, what it is for). WS marks the WebSocket.
 ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("POST", "/stream-workflows/{account_id}/monitor"): (EXPERIMENTAL, "accounts", "Opt in to host-owned viewer nominations for a verified live or upcoming stream. Session header."),
+    ("DELETE", "/stream-workflows/{account_id}/monitor"): (EXPERIMENTAL, "accounts", "Stop collecting new nominations without stopping other account consumers. Session header."),
+    ("GET", "/stream-workflows/{account_id}/streams"): (EXPERIMENTAL, "accounts", "Recorded stream identities and minimal nomination counts. Session header."),
+    ("PUT", "/stream-workflows/{account_id}/vod-mapping"): (EXPERIMENTAL, "accounts", "Verify an explicit stream, VOD and local-source timeline calibration. Session header."),
+    ("POST", "/stream-workflows/{account_id}/digests"): (EXPERIMENTAL, "accounts", "Prepare an idempotent catch-up digest from verified Twitch sources. Session header."),
+    ("GET", "/stream-workflows/{account_id}/digests"): (EXPERIMENTAL, "accounts", "Saved catch-up digests and approval/delivery state. Session header."),
+    ("POST", "/stream-workflows/{account_id}/digests/{digest_id}/approve"): (EXPERIMENTAL, "accounts", "Approve a catch-up digest; delivery requires a configured host transport. Session header."),
+    ("GET", "/stream-workflows/{account_id}/digests/{digest_id}/export"): (EXPERIMENTAL, "accounts", "Export a catch-up digest without claiming delivery. Session header."),
+    # Core connections are shared by the desktop app and future integrations.
+    # These routes all require the desktop session; plugins use per-run grants.
+    ("GET", "/connected-accounts"): (EXPERIMENTAL, "accounts", "Providers and sanitized account metadata. Session header."),
+    ("PUT", "/connected-accounts/twitch/config"): (EXPERIMENTAL, "accounts", "Set the public Twitch client ID. Never a client secret. Session header."),
+    ("POST", "/connected-accounts/twitch/connect"): (EXPERIMENTAL, "accounts", "Start public desktop Twitch device authorization. Session header."),
+    ("POST", "/connected-accounts/flows/{flow_id}/poll"): (EXPERIMENTAL, "accounts", "Complete a pending device authorization, respecting polling intervals. Session header."),
+    ("DELETE", "/connected-accounts/flows/{flow_id}"): (EXPERIMENTAL, "accounts", "Cancel an unfinished account connection. Session header."),
+    ("POST", "/connected-accounts/{account_id}/test"): (EXPERIMENTAL, "accounts", "Validate a connection and its granted scopes. Session header."),
+    ("DELETE", "/connected-accounts/{account_id}"): (EXPERIMENTAL, "accounts", "Stop account operations, revoke authorization and remove local credentials. Session header."),
+    ("POST", "/connected-accounts/{account_id}/watch"): (EXPERIMENTAL, "accounts", "Add the connected Twitch channel to Watched Channels. Session header."),
+    ("POST", "/connected-accounts/{account_id}/twitch"): (EXPERIMENTAL, "accounts", "Bounded Twitch context, VOD links, live clips and chat operations. Session header."),
+    ("POST", "/connected-accounts/{account_id}/events"): (EXPERIMENTAL, "accounts", "Start host-owned Twitch EventSub subscriptions. Session header."),
+    ("GET", "/connected-accounts/{account_id}/events"): (EXPERIMENTAL, "accounts", "Read bounded sanitized Twitch events. Session header."),
+    ("DELETE", "/connected-accounts/{account_id}/events"): (EXPERIMENTAL, "accounts", "Stop Twitch EventSub and clear retained events. Session header."),
+    ("POST", "/plugin-accounts/perform"): (EXPERIMENTAL, "accounts", "Run one account action using an expiring, permission-controlled plugin capability."),
     # Readiness
     ("GET", "/health"): (STABLE, "readiness", "Liveness, app version and API version."),
     ("GET", "/health/preflight"): (STABLE, "readiness", "Whether a job can actually run here: FFmpeg, Ollama, model, Whisper, GPU, disk."),

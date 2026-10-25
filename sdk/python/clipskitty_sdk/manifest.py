@@ -63,7 +63,8 @@ INPUTS = ("video", "transcript", "moments")
 OUTPUTS = ("ranges", "ratings", "context", "edits")
 PLANNED_OUTPUTS = ("clips",)
 PERMISSIONS = ("video.read", "transcript.read", "ffmpeg", "ollama", "gpu", "network",
-               "filesystem.read", "filesystem.write", "project.read", "project.write")
+               "filesystem.read", "filesystem.write", "project.read", "project.write",
+               "twitch.context.read", "twitch.clips.create", "twitch.chat.read", "twitch.chat.send", "twitch.events.read")
 PLANNED_PERMISSIONS = ("clips.write",)
 SENDS_DATA = ("video", "video_link", "audio", "frames", "transcript")
 CATEGORIES = ("gaming", "sports", "creators", "streaming", "podcasting", "captions", "detection",
@@ -603,6 +604,8 @@ def validate(data, *, builtin: bool = False) -> Report:
         c.error("permissions", "lists no network permission, but network names hosts it connects to")
     if "network" in permissions and not network:
         c.error("network", "must name the hosts it connects to, since the plugin asks for the network permission")
+    if "twitch.chat.read" in permissions and "twitch.events.read" not in permissions:
+        c.error("permissions", "twitch.chat.read needs twitch.events.read: chat arrives as events")
     if execution in ("remote", "hybrid"):
         if not network:
             c.error("network", f"a {execution} pipeline must name the hosts it connects to")

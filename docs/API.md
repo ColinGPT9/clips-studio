@@ -1472,6 +1472,35 @@ downloading one would fetch, from Hugging Face's metadata, and
 pickle-format file) downloads it into the shared model folder; both need
 the session header. See [Model references](developers/model-references.md).
 
+## Connected Accounts
+
+Twitch connections belong to the main desktop engine and are reusable by other
+integrations. The experimental `/connected-accounts` routes provide provider
+configuration, public desktop device authorization, sanitized account status,
+testing, disconnection, own-channel watch creation, and bounded Twitch operations.
+Every route, including metadata reads, requires `X-Clips-Kitty-Session`.
+
+No endpoint returns OAuth tokens. The public Twitch client ID is configured in
+Settings; no embedded client secret or Clips Kitty cloud account is required.
+Only named stream/VOD, live clip, timestamp link, chat, and host-owned EventSub
+actions are accepted. Their OAuth scopes and connected broadcaster identity are
+checked by the trusted host. A watched channel is not an authorization grant.
+
+See [Connected Accounts](CONNECTED_ACCOUNTS.md) for setup, scopes, request examples,
+storage, lifecycle, and live acceptance checks, and the generated
+[route reference](developers/api-reference.md#connected-accounts) for the full list.
+Plugins use the [supported SDK](developers/connected-accounts-sdk.md), whose
+per-run capabilities bind the installed permissions, account, channel, and source
+VOD. Native plugins still run as the OS user; these API controls are not an OS
+sandbox. WoopSocial retains its existing independent authorization workflow.
+
+The `/stream-workflows/{account_id}` routes add explicit viewer-nomination
+collection, verified stream/VOD/source timing, and catch-up digest preparation,
+approval, and JSON export. They use the same desktop session guard. Digest
+delivery stays unsent until an application transport is configured; these
+routes do not implement Discord authentication or bot posting. See
+[Stream workflows](STREAM_WORKFLOWS.md) for request shapes and retention rules.
+
 ## MCP: let an AI agent drive it
 
 Clips Kitty ships an **MCP server**, so Claude, Cursor or any MCP client can use the

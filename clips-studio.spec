@@ -56,6 +56,10 @@ hiddenimports += collect_submodules("sports")
 # Plugins (plugins/): imported inside functions only when a job names a
 # pipeline plugin, so name them all rather than rely on the analyser.
 hiddenimports += collect_submodules("plugins")
+# Reusable account providers and their desktop EventSub WebSocket client.
+hiddenimports += collect_submodules("connected_accounts")
+hiddenimports += collect_submodules("stream_workflows")
+hiddenimports += collect_submodules("websockets")
 # Clipping campaigns (campaigns/): every import of it sits inside a function.
 hiddenimports += collect_submodules("campaigns")
 # Cloud AI adapters (llm/providers/adapters/): adapter_for imports each by the
@@ -317,6 +321,12 @@ excludes = [
     "tensorflow",
     "keras",
 ]
+# keyring keeps Connected Accounts tokens outside Windows only; on Windows they
+# go through core/secrets (DPAPI). requirements.txt doesn't install it there,
+# and connected_accounts/store.py imports it only off Windows, so make sure
+# the analyser never follows that import into the Windows build.
+if sys.platform == "win32":
+    excludes.append("keyring")
 
 a = Analysis(
     [str(ROOT / "main.py")],

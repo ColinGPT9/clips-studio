@@ -24,6 +24,10 @@ The edit step ([Steps](steps.md#suggest-edits-the-edit-step)) is new in the same
 
 Which `requires.clips_kitty` an editor declares: 2.1.0, the first release that runs plugins, has the edit step, so every Clips Kitty that can install a plugin can run an editor, and `">=2.0"`, as every template has, is right.
 
+## Connected accounts and older Clips Kitty
+
+The `twitch.*` permissions and `job.accounts` ([Connected accounts in a pipeline](connected-accounts-sdk.md)) are not in Clips Kitty 2.1.0. That release refuses a manifest naming one, saying "unknown permission 'twitch.context.read'", and, as with the edit step, it checks the manifest before the app version, so it never says a newer Clips Kitty is needed. Set `requires.clips_kitty` to the first release that ships Connected Accounts (the one after 2.1.0; the changelog names it), so newer copies and the online list know, and say in the plugin's description which Clips Kitty it needs.
+
 ## `requires.clips_kitty`
 
 A range of app versions: `">=2.0"`, `">=2.0, <3"`, `"~=2.1"` (2.1 and later 2.x). Operators are `>=`, `<=`, `>`, `<`, `==`, `!=` and `~=`, joined by commas; every part must hold.

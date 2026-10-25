@@ -4,6 +4,7 @@ import type { AutomationStatus, StudioEvent, Watch as WatchRow, WatchPlatform } 
 import { useEvents } from '../lib/useEvents'
 import WatchCard from '../components/watch/WatchCard'
 import WatchLive from '../components/watch/WatchLive'
+import ConnectedAccountsCard, { type WatchChoices } from '../components/ConnectedAccountsCard'
 import { useWoopAccounts } from '../components/watch/WatchPublishSettings'
 import WatchSchedule, { type ScheduleValue } from '../components/watch/WatchSchedule'
 import { seedOptions } from '../components/queue/AddVideos'
@@ -156,21 +157,29 @@ export default function Watch({
     }
   }
 
+  // What the Add form says about a new channel's clips. The Twitch card's
+  // "Watch my channel" uses the same choices, so both ways in agree.
+  const addChoices = (): WatchChoices => ({
+    publish: {
+      mode,
+      platforms,
+      ...addSchedule,
+      hashtags: addHashtags
+        .split(/[\s,]+/)
+        .map((h) => h.replace(/^#/, '').trim())
+        .filter(Boolean),
+      ai_hashtags: !addOnlyMine
+    },
+    options: addClip
+  })
+
   const add = async (): Promise<void> => {
     if (!channel.trim()) return
     setAdding(true)
     setError(null)
     try {
-      const added = await api.addWatch(platform, channel.trim(), {
-        mode,
-        platforms,
-        ...addSchedule,
-        hashtags: addHashtags
-          .split(/[\s,]+/)
-          .map((h) => h.replace(/^#/, '').trim())
-          .filter(Boolean),
-        ai_hashtags: !addOnlyMine
-      }, addClip)
+      const choices = addChoices()
+      const added = await api.addWatch(platform, channel.trim(), choices.publish, choices.options)
       setJustAdded(added.id)
       setChannel('')
       await refresh()
@@ -235,6 +244,15 @@ export default function Watch({
         ))}
 
       <WatchLive />
+
+      <ConnectedAccountsCard
+        compact
+        watchChoices={addChoices}
+        onWatchAdded={(id) => {
+          setJustAdded(id)
+          void refresh()
+        }}
+      />
 
       <section className="card space-y-3" aria-label={t('Watching')}>
         <div className="flex items-start justify-between gap-4">

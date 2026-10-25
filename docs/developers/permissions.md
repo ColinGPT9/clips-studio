@@ -10,6 +10,11 @@ A plugin lists what it needs in its manifest's `permissions`, `network` and `sen
 | `transcript.read` | Reads its transcript | **Enforced** for the hand-over: without it no transcript is written, and the moments a rater or understander is handed come without their `title`, `reason` and `context`, which come from what was said. Declared beyond that. | built |
 | `ffmpeg` | Uses Clips Kitty's FFmpeg | **Enforced** for the hand-over: without it the job has no FFmpeg path. Declared beyond that. | built |
 | `ollama` | Uses your local AI model | **Enforced** for the hand-over: without it the job has no Ollama address. A cloud AI provider's name and key are never handed over. Declared beyond that: Ollama has no password, so any program on the PC can use it. | built |
+| `twitch.context.read` | Reads permitted Twitch stream and VOD information | **Enforced** by the account gateway for the bound account and broadcaster: that channel's VOD list (up to 100 per request) and live status (title, game, viewer count), and links into this run's VOD. No OAuth tokens are handed over. Same-user OS access remains outside this gate. | built |
+| `twitch.clips.create` | Asks Clips Kitty to create Twitch Clips when authorized | **Enforced** for host requests and OAuth scopes: a 5–60-second clip of this run's VOD, which needs `channel:manage:clips` or `editor:manage:clips` and a verified timeline (today: the run's file is the whole Twitch archive, as Watched channels downloads it). A run never clips the live broadcast. | built |
+| `twitch.chat.read` | Reads permitted Twitch chat messages | **Enforced** for host events, with `twitch.events.read` (the manifest check refuses it without) and Twitch's read-chat scope. | built |
+| `twitch.chat.send` | Sends messages to the permitted Twitch channel | **Enforced** for host sends, the bound broadcaster, authorized sender and Twitch's write-chat scope. | built |
+| `twitch.events.read` | Receives permitted Twitch stream events | **Enforced** for host-owned subscriptions and bounded, sanitized event reads. | built |
 | `gpu` | Uses your graphics card | Declared (a requirement, compared with this PC) | built (shown with the plugin manager) |
 | `network` with the `network` hosts | Connects to: api.example.com, … | Declared. Clips Kitty does not filter a plugin's connections. | built (validated; shown with the plugin manager) |
 | `sends` | ⚠ Sends your video / audio / frames / transcript to … | Declared, and shown as a warning wherever the plugin is listed or installed | built (validated; shown with the plugin manager and Marketplace) |
@@ -32,6 +37,7 @@ That sentence says what Clips Kitty does with a suggestion, not what a plugin is
 
 - **The environment.** A plugin's process does not inherit Clips Kitty's own variables (`CLIPS_*`, `CLIPSKITTY_*`) or any variable whose name contains KEY, TOKEN, SECRET, PASSWORD, PASSWD, CREDENTIAL, COOKIE or AUTH. This stops Clips Kitty handing over credentials by accident; it is not a wall, since the plugin can read the user's files.
 - **Secrets.** A plugin's `secret` settings reach only its own process, only in its environment, never in a file. They are not isolated from other software: the store is encrypted for the user's account (Windows) or readable only by the user (elsewhere), so another plugin running as the user can read it.
+- **Connected account operations.** A dedicated, expiring capability is explicitly passed to an authorized run after inherited credentials are removed. The host binds it to installed permissions, account, broadcaster and verified source VOD; it is revoked on exit or disconnection. Provider tokens are never passed. See [Connected Accounts SDK](connected-accounts-sdk.md).
 - **Settings.** Only settings the manifest declares, with values that fit their type.
 - **Time.** A run stops at `run.timeout_minutes`: by default 60 minutes for a run that finds moments and 10 for one that rates or understands them or suggests edits for the clips. A cancelled job stops the plugin and everything it started.
 - **Installing runs nothing** from the plugin (built with the plugin manager).
@@ -40,7 +46,7 @@ That sentence says what Clips Kitty does with a suggestion, not what a plugin is
 
 - No sandbox: file, process and network access are the user's.
 - No resource limits on memory or child processes. Windows Job Object limits are designed and will be called enforced only once built and tested on Windows.
-- No per-plugin API credential: the local API is open to every program on the PC, plugins included. A scoped credential is designed, not built.
+- The general local API remains open to programs on the PC. Connected Accounts has scoped per-run credentials and a session-protected desktop API, but same-user native programs can attempt to read the desktop session file or user-protected resources outside the SDK. This is not an OS sandbox.
 
 ## Tiers and labels grant nothing
 

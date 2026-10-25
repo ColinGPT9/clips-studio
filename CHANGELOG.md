@@ -10,12 +10,35 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ## Unreleased
 
+### Added
+
+- **Connect your Twitch account** (new, and not yet tried against a real Twitch account).
+  In Settings → Connected accounts you register a free Twitch application once (the card
+  lists the steps), paste its Client ID, then sign in on Twitch's own page with a code.
+  No Clips Kitty account is needed, and the sign-in is kept encrypted on this PC. Twitch is
+  asked only for the permissions you tick, and none is ticked to start with. An account
+  that needs signing in again shows Reconnect, which asks for the same permissions.
+- **Watch my channel.** Adds your connected channel to Watched channels with the same
+  choices as Add a channel (from Settings: your Generate settings, and clips wait for
+  you). Its new videos are then found through your connection, and
+  through the public video list, as before, whenever the connection needs reconnecting or
+  Twitch doesn't answer, so the watch keeps going.
+- **Viewer nominations.** With the chat permission ticked you can start and stop
+  collecting your viewers' !clip, !chaos and !funny while you're live, and see the counts
+  for each stream. Clips Kitty doesn't use them to choose clips yet: that needs the
+  stream's chat times matched to its recording, which it can't do yet.
+- **For people who make pipelines:** a pipeline you allow can read your channel's Twitch
+  details, link to a moment of the Twitch VOD it is clipping, and make a Twitch clip of
+  that moment, all through Clips Kitty and never with your Twitch sign-in. Links and clips
+  work when the video is the whole Twitch broadcast, as Watched channels downloads it. A
+  pipeline can't clip your live stream.
+
+### Changed
+
 Clips are framed and chosen in two new ways, on for everyone. Either can be turned off
 with one line in your settings file: `%LOCALAPPDATA%\Clips Studio\settings.yaml` in the
 installed app (`config/settings.yaml` if you run Clips Kitty from its code). Restart Clips
 Kitty after you change it.
-
-### Changed
 
 - **Framing follows the cut, and a clip opens on the person's face.** In an edited video,
   a new shot could open framed on where the last shot's person stood, and move to the new

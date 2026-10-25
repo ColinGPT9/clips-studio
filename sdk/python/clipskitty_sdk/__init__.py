@@ -12,6 +12,7 @@ depend on it without depending on Clips Kitty. The contract it follows is in
 `contract.py`.
 """
 
+from .accounts import AccountOperationError, ConnectedAccounts
 from .contract import PLUGIN_API_VERSION, SUPPORTED_PLUGIN_APIS, ContractError, check_job, check_result
 from .job import EditSuggestion, Job, Moment, Suggested, read_job, run
 
@@ -20,6 +21,8 @@ __version__ = "1.3.0"
 __all__ = [
     "PLUGIN_API_VERSION",
     "SUPPORTED_PLUGIN_APIS",
+    "AccountOperationError",
+    "ConnectedAccounts",
     "ContractError",
     "EditSuggestion",
     "Job",

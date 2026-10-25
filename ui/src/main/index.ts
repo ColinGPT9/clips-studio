@@ -677,6 +677,11 @@ const EXTERNAL_ALLOWED = [
   // discord.com/api/: a webhook's URL carries its token.
   /^https:\/\/discord\.com\/channels\/\d{17,20}(\/\d{17,20}){0,2}$/,
   /^https:\/\/discord\.com\/oauth2\/authorize\?/,
+  // Public-client device authorization uses the system browser, with the
+  // activation page restricted to Twitch's exact host and path, and the
+  // developer console page where the Client ID comes from.
+  /^https:\/\/www\.twitch\.tv\/activate\/?(?:\?[^#]*)?$/,
+  /^https:\/\/dev\.twitch\.tv\/console\/apps$/,
   // A watched channel's videos, opened from the Watch page.
   /^https:\/\/www\.twitch\.tv\/videos\/\d+$/,
   /^https:\/\/kick\.com\/[\w-]+\/videos\/[0-9a-fA-F-]{36}$/,
