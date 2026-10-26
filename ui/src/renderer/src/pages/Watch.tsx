@@ -72,6 +72,16 @@ export default function Watch({
   // which is what "my settings" means everywhere else in the app.
   const [addClip, setAddClip] = useState<JobOptions>(() => seedOptions())
   const gamingPipelines = usePipelines()
+  // Marketplace changes can remove the detector while this form stays open.
+  // Wait for the installed list, then return to Gaming's built-in finder.
+  useEffect(() => {
+    if (gamingPipelines === null) return
+    setAddClip((prev) => {
+      if (!prev.pipeline || gamingPipelines.some((p) => p.id === prev.pipeline?.id)) return prev
+      const { pipeline: _gone, ...next } = prev
+      return next
+    })
+  }, [gamingPipelines])
   // The sports the engine offers; the Sports switch shows only when it has one.
   const sports = useSports()
   const offeredSports = sports ?? []
