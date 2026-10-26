@@ -168,9 +168,24 @@ def test_offline_event_starts_discovery_and_restored_pending_work_resumes(tmp_pa
     clock[0] += 60
     restarted = WorkflowRuntime(tmp_path, service, Events(), clock=lambda: clock[0])
     try:
+        restarted.start()
         until = time.monotonic() + 3
         while state(restarted)["status"] != "ready" and time.monotonic() < until:
             threading.Event().wait(0.01)
         assert state(restarted)["status"] == "ready"
     finally:
         restarted.close()
+
+
+def test_constructing_runtime_does_not_open_optional_storage_or_start_threads(tmp_path, monkeypatch):
+    damaged = tmp_path / "stream-workflows.sqlite3"
+    damaged.write_bytes(b"damaged optional storage")
+    scheduled = []
+    monkeypatch.setattr(WorkflowRuntime, "_recordings_later", lambda self: scheduled.append(True))
+    value = WorkflowRuntime(tmp_path, Service(), Events())
+    try:
+        assert scheduled == []
+        assert value._nominations is None
+        assert damaged.read_bytes() == b"damaged optional storage"
+    finally:
+        value.close()

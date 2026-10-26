@@ -75,7 +75,22 @@ class WorkflowRuntime:
         self._nominations = None
         self._digests = None
         self._recording_worker = None
-        if (self._data_dir / _NOMINATIONS_FILE).exists():
+
+    def start(self):
+        """Resume persisted discovery when the app starts, never on construction.
+
+        Open/recover the optional store synchronously before starting a worker;
+        a route/schema inspection must not launch threads or touch stored data.
+        """
+        with self._lock:
+            if self._closed:
+                return
+            try:
+                store = self._stored_nominations()
+                pending = store is not None and store.recordings_pending()
+            except WorkflowError:
+                return
+        if pending:
             self._recordings_later()
 
     # ---- stores, opened on first use ---------------------------------------
@@ -574,6 +589,9 @@ class WorkflowRuntime:
             self._closing.set()
             self._monitored.clear()
             nominations, digests = self._nominations, self._digests
+            worker = self._recording_worker
+        if worker is not None and worker is not threading.current_thread():
+            worker.join(timeout=2)
         if nominations is not None:
             nominations.close()
         if digests is not None:

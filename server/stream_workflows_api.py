@@ -46,6 +46,8 @@ def install(app, *, data_dir: Path, service, event_manager, session_secret: str,
 
         transport = DiscordDigestDelivery(db, data_dir, http if http is not None else Http())
     runtime = WorkflowRuntime(data_dir, service, event_manager, transport=transport)
+    app.on_event("startup")(runtime.start)
+    app.on_event("shutdown")(runtime.close)
 
     def require_session(given: str | None = Header(default=None, alias=session.HEADER)):
         if not session.matches(session_secret, given):
