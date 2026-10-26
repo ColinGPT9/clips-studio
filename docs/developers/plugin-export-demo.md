@@ -10,7 +10,7 @@ folders. The plugin must return at least one moment; an empty result fails
 instead of inventing a clip. For a synthetic fixture of your own:
 
 ```powershell
-python scripts/demo_plugin_export.py --plugin "<plugin folder>" `
+py scripts/demo_plugin_export.py --plugin "<plugin folder>" `
   --video "<scratch>/sample.mp4" --transcript "<scratch>/sample.transcript.json" `
   --synthetic-demo --output "<scratch>/export-check"
 ```
@@ -31,7 +31,7 @@ integration; they do not establish real gameplay accuracy or human clip quality.
 Run the host's original generic fixture without any external game plugin:
 
 ```powershell
-python -m pytest tests/test_plugin_export_demo.py
+py -m pytest tests/test_plugin_export_demo.py
 ```
 
 That check uses the actual SDK process and renderer, decodes the H.264 export,
