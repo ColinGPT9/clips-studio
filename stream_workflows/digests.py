@@ -29,6 +29,14 @@ _TIME = re.compile(r"^(?:(\d{1,6})h)?(?:(\d{1,6})m)?(?:(\d{1,6})s)?$")
 _MAX_SECONDS = 7 * 24 * 60 * 60
 
 
+class DeliveryNotSent(Exception):
+    """A trusted adapter knows no message was accepted; approval may retry.
+
+    No provider exception or receipt belongs in this exception or the digest.
+    Adapters must use an ordinary exception for an ambiguous remote write.
+    """
+
+
 def _key(value, name, limit=200):
     if (
         not isinstance(value, str)
@@ -224,13 +232,19 @@ class DigestService:
         result["title"] = candidate["title"] or _title(resolved.get("title", "")) or fallback
         return result
 
-    def prepare(self, account_id, *, request_id, candidates, top_k=5, auto_publish=False):
+    def prepare(self, account_id, *, request_id, candidates, top_k=5, auto_publish=False,
+                destination_id=None):
         account_id = _key(account_id, "connected account")
         request_id = _key(request_id, "request ID", 128)
         if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k not in (3, 5, 10):
             raise WorkflowError("invalid_request", "Choose a top 3, 5, or 10 digest.")
         if not isinstance(auto_publish, bool):
             raise WorkflowError("invalid_request", "Automatic publishing requires explicit opt-in.")
+        if destination_id is not None and (
+            not isinstance(destination_id, int) or isinstance(destination_id, bool)
+            or not 1 <= destination_id <= 2**63 - 1
+        ):
+            raise WorkflowError("invalid_request", "Choose a saved Discord destination.")
         if not isinstance(candidates, list) or not 1 <= len(candidates) <= 100:
             raise WorkflowError("invalid_request", "Choose between one and 100 highlight candidates.")
         with self._lock:
@@ -261,6 +275,7 @@ class DigestService:
                 "status": "pending_approval",
                 "top_k": top_k,
                 "auto_publish": auto_publish,
+                "destination_id": destination_id,
                 "items": items,
                 "created_at": now,
                 "updated_at": now,
@@ -303,6 +318,8 @@ class DigestService:
         self._save(digest)
         try:
             self._transport.send(copy.deepcopy(digest), idempotency_key=f"stream-digest:{digest['id']}")
+        except DeliveryNotSent:
+            digest["status"] = "unsent"
         except Exception:
             digest["status"] = "delivery_unknown"
         else:

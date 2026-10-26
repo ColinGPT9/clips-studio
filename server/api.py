@@ -848,6 +848,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
     stream_workflow = stream_workflows_api.install(
         app, data_dir=data_dir, service=account_service,
         event_manager=account_runtime.events, session_secret=desktop_session,
+        db=db,
     )
     account_runtime.workflow = stream_workflow
     account_runtime.events.add_sink(stream_workflow.record_event)

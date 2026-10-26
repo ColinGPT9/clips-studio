@@ -121,6 +121,7 @@ following preparation waits for manual approval:
   "request_id": "catchup-stream-789-v1",
   "top_k": 3,
   "auto_publish": false,
+  "destination_id": 1,
   "candidates": [
     {"vod_id": "456", "offset_seconds": 120, "score": 92, "title": "Escape through the tunnel"},
     {"clip_id": "VerifiedPublicClipId", "score": 85}
@@ -134,16 +135,33 @@ instead of replacing its reviewed content. JSON responses include the digest
 portable JSON snapshots live in `stream-digests.sqlite3` and `stream-digests/`
 inside the application's data directory. Export adds `schema_version: 1`.
 
-Delivery is handled by an optional transport adapter. An approved digest without
-an adapter remains unsent and can be exported; approval alone does not claim
-that a message was posted. A Discord adapter can use this service without
-duplicating nomination collection, source verification, or approval state.
+The desktop host delivers through an existing saved Discord webhook destination
+when preparation explicitly includes its positive integer `destination_id`.
+Choose that ID from Settings → Discord destinations. The destination and content
+are frozen by `request_id`; reusing it cannot redirect reviewed content. No
+destination is selected automatically. An approved digest with no destination,
+no stored webhook secret, or a removed or unavailable destination remains
+`unsent` and can be exported. Other hosts may inject their own transport adapter;
+approval without an adapter also remains `unsent`.
+
+The Discord adapter uses the same saved webhook secrets and message sender as
+the rest of the app. Mentions are disabled. All selected links fit in one
+message; long titles are shortened to fit Discord's content limit. Forum
+destinations use their saved thread, or create a thread titled `Stream catch-up`.
+Approval rechecks the current connected Twitch account, destination, and secret.
+It honors the saved destination send spacing and persists Discord's destination
+and global rate-limit delays. A known refusal or a request that never connected
+remains `unsent`; another explicit approval may attempt delivery after the
+problem or delay is resolved. There is no background delivery retry.
 
 The approval states are `pending_approval`, `unsent`, `sending`, `sent`, and
 `delivery_unknown`. The host saves `sending` before calling a transport and
 supplies a stable digest idempotency key. An ambiguous transport failure or a
 restart during sending becomes `delivery_unknown`; approval does not retry that
-write. Transport receipts and exception details are not persisted or exposed.
+write. Discord webhooks offer no server-side idempotency key, so the host's
+durable state prevents a second attempt after an uncertain write, including a
+timeout or 5xx response. Transport receipts and exception details are not
+persisted or exposed.
 
 ## Local application API
 

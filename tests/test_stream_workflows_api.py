@@ -474,3 +474,61 @@ def test_whole_archive_runs_map_source_time_without_a_calibration(runtime):
     # Chat time still needs a stream-to-VOD alignment: say so plainly.
     audience = value.audience_for_binding(whole)
     assert audience["status"] == "unavailable" and "can't do that by itself yet" in audience["message"]
+
+
+def test_http_host_adapter_uses_saved_destination_and_rechecks_account(tmp_path, db, monkeypatch):
+    from campaigns import service as discord_service
+    from core.state import StateDB
+
+    destination = db.insert_destination(label="Catch-up")
+    monkeypatch.setattr(discord_service, "load_webhook", lambda *args: {
+        "webhook_id": "12345678901234567", "token": "private-test-hook",
+    })
+
+    class Http:
+        def __init__(self):
+            self.calls = []
+
+        def request(self, method, url, **kwargs):
+            self.calls.append((method, url, kwargs))
+
+            class Response:
+                status_code = 200
+
+                def json(self):
+                    return {"id": "private-receipt"}
+
+            return Response()
+
+    service, events, http = Service(), Events(), Http()
+    app = FastAPI()
+    runtime = install(
+        app, data_dir=tmp_path, service=service, event_manager=events,
+        session_secret=HEADERS["X-Clips-Kitty-Session"],
+        db=lambda: StateDB(tmp_path / "state.db"), http=http,
+    )
+    try:
+        with TestClient(app) as client:
+            body = {"request_id": "selected", "destination_id": destination,
+                    "candidates": [{"clip_id": "ActualClip"}]}
+            prepared = client.post(f"/stream-workflows/{ACCOUNT}/digests", headers=HEADERS, json=body)
+            assert prepared.status_code == 200
+            assert prepared.json()["destination_id"] == destination
+            assert prepared.json()["status"] == "pending_approval" and not http.calls
+            approve = f"/stream-workflows/{ACCOUNT}/digests/{prepared.json()['id']}/approve"
+            assert client.post(approve).status_code == 403
+            service.rows[0]["status"] = "reconnect_required"
+            assert client.post(approve, headers=HEADERS).status_code == 401
+            assert not http.calls
+            service.rows[0]["status"] = "connected"
+            result = client.post(approve, headers=HEADERS)
+            assert result.json()["status"] == "sent"
+            assert client.post(approve, headers=HEADERS).json() == result.json()
+            assert len(http.calls) == 1
+            assert "private-test-hook" not in result.text and "private-receipt" not in result.text
+            assert client.post(
+                f"/stream-workflows/{ACCOUNT}/digests", headers=HEADERS,
+                json={**body, "request_id": "invalid", "destination_id": True},
+            ).status_code == 422
+    finally:
+        runtime.close()

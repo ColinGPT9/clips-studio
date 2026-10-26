@@ -1,4 +1,4 @@
-"""Export an external GTA plugin's SDK moments through Clips Kitty's renderer.
+"""Export an external plugin's SDK moments through Clips Kitty's renderer.
 
 This developer demo accepts original synthetic test media only. It uses no
 detector, model, or renderer copied from the plugin, and downloads nothing.
@@ -96,7 +96,7 @@ def run_demo(
             log.write(message + "\n")
             log.flush()
 
-        say("Synthetic media validation only; no real GTA footage or human quality review.")
+        say("Synthetic media validation only; no real gameplay or human quality review.")
         say(f"FFmpeg: {ffmpeg()}; FFprobe: {ffprobe()}")
         say(f"Running external plugin through clipskitty_sdk.testing: {plugin}")
         run = testing.run_plugin(plugin, video=video, transcript=said, duration=duration,
@@ -116,10 +116,10 @@ def run_demo(
         canvas = (1080, 1920) if vertical else (source_video["width"], source_video["height"])
         records = []
         source_hash = _sha256(video)
-        video_id = "synthetic-gta-demo-" + source_hash[:16]
+        video_id = "synthetic-plugin-demo-" + source_hash[:16]
         history = StateDB(output / "history.sqlite3")
         try:
-            history.upsert_video(video_id, title="Original synthetic GTA plugin integration test", duration=duration)
+            history.upsert_video(video_id, title="Original synthetic plugin integration test", duration=duration)
             for index, moment in enumerate(run.moments[:max_clips], 1):
                 start, end = float(moment.start), float(moment.end)
                 if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= duration + 0.05):
@@ -184,7 +184,7 @@ def run_demo(
         manifest = {
             "schema_version": 1, "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "synthetic_demo": True, "consent": "Caller supplied --synthetic-demo for original test assets",
-            "scope": "Technical SDK-to-existing-app-export validation; no real GTA footage or quality claim",
+            "scope": "Technical SDK-to-existing-app-export validation; no real gameplay or quality claim",
             "manual_quality_review": "not_performed", "plugin": {**plugin_info, "path": str(plugin)},
             "source": {"video": str(video), "transcript": str(transcript), "sha256": source_hash,
                        "transcript_sha256": _sha256(transcript), "probe": source_probe},
@@ -206,7 +206,7 @@ def main() -> int:
     parser.add_argument("--plugin", type=Path, required=True, help="External MIT plugin checkout")
     parser.add_argument("--video", type=Path, required=True, help="Original synthetic MP4")
     parser.add_argument("--transcript", type=Path, required=True, help="Authored synthetic transcript JSON")
-    parser.add_argument("--output", type=Path, default=ROOT.parent / "scratch" / "gta-plugin-demo")
+    parser.add_argument("--output", type=Path, default=ROOT.parent / "scratch" / "plugin-export-demo")
     parser.add_argument("--synthetic-demo", action="store_true", help="Affirm inputs are original synthetic test assets")
     parser.add_argument("--max-clips", type=int, choices=(1, 2), default=2)
     parser.add_argument("--vertical", action="store_true", help="Use existing 1080x1920 fit_blur renderer")

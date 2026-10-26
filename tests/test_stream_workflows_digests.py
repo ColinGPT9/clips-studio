@@ -211,3 +211,12 @@ def test_preparation_bounds(tmp_path, params):
     with pytest.raises(WorkflowError):
         service.prepare(ACCOUNT, **arguments)
     service.close()
+
+
+@pytest.mark.parametrize("destination", [True, 0, -1, "1", 2**63])
+def test_destination_is_a_saved_numeric_identifier(tmp_path, destination):
+    service = DigestService(tmp_path, source_resolver=resolver)
+    with pytest.raises(WorkflowError):
+        service.prepare(ACCOUNT, request_id="bad", candidates=candidates(1), destination_id=destination)
+    assert service.list(ACCOUNT) == []
+    service.close()

@@ -31,10 +31,20 @@ class DigestIn(BaseModel):
     candidates: list[dict] = Field(min_length=1, max_length=100)
     top_k: int = 5
     auto_publish: bool = False
+    destination_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
 
 
-def install(app, *, data_dir: Path, service, event_manager, session_secret: str, transport=None):
-    """Return runtime; the host wires its sanitized EventSub event sink."""
+def install(app, *, data_dir: Path, service, event_manager, session_secret: str, transport=None,
+            db=None, http=None):
+    """Return runtime; db() opens a per-send host database connection.
+
+    The host also wires the runtime's sanitized EventSub event sink.
+    """
+    if transport is None and db is not None:
+        from campaigns.discord_http import Http
+        from server.stream_digest_delivery import DiscordDigestDelivery
+
+        transport = DiscordDigestDelivery(db, data_dir, http if http is not None else Http())
     runtime = WorkflowRuntime(data_dir, service, event_manager, transport=transport)
 
     def require_session(given: str | None = Header(default=None, alias=session.HEADER)):

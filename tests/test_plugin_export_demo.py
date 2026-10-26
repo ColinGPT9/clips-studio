@@ -1,7 +1,7 @@
 """Validate actual external-plugin boundaries through a real app video export."""
 
 import json
-import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from core.binaries import ffmpeg
-from scripts.demo_gta_plugin import probe_media, run_demo
+from scripts.demo_plugin_export import probe_media, run_demo
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,7 +25,7 @@ def test_the_demo_finds_this_checkouts_sdk_without_a_pip_install():
     # A fresh, isolated interpreter: only the repository root on the path, as
     # when the script is run from a source checkout.
     probe = ("import sys; sys.path.insert(0, sys.argv[1]); "
-             "from scripts.demo_gta_plugin import sdk_testing; print(sdk_testing().__file__)")
+             "from scripts.demo_plugin_export import sdk_testing; print(sdk_testing().__file__)")
     done = subprocess.run([sys.executable, "-I", "-c", probe, str(ROOT)], capture_output=True, text=True,
                           timeout=60, cwd=ROOT)
     assert done.returncode == 0, done.stderr
@@ -33,13 +33,26 @@ def test_the_demo_finds_this_checkouts_sdk_without_a_pip_install():
 
 
 @pytest.mark.slow
-def test_actual_gta_plugin_exports_playable_video_with_timed_captions_and_history(tmp_path):
-    plugin_setting = os.environ.get("GTA_PLUGIN_DIR")
-    if not plugin_setting:
-        pytest.skip("Set GTA_PLUGIN_DIR to an external GTA plugin checkout for the real export integration test")
-    plugin = Path(plugin_setting).resolve()
-    if not (plugin / "clipskitty.yaml").is_file():
-        pytest.fail("GTA_PLUGIN_DIR has no clipskitty.yaml")
+def test_a_plugin_exports_playable_video_with_timed_captions_and_history(tmp_path):
+    pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    if not (Path(ffmpeg()).is_file() or shutil.which(ffmpeg())):
+        pytest.skip("FFmpeg is needed for the export integration check")
+    plugin = tmp_path / "example-plugin"
+    plugin.mkdir()
+    (plugin / "clipskitty.yaml").write_text(
+        "manifest_version: 1\nid: example-dev/export-example\nname: Export example\nversion: 1.0.0\n"
+        "kind: pipeline\ncapability: highlight_detection\nauthor: {name: Example Developer}\nlicense: MIT\n"
+        "description: Original synthetic SDK export fixture.\n"
+        "requires: {clips_kitty: '>=2.1.0', plugin_api: 1}\n"
+        "run: {command: ['{python}', main.py]}\nexecution: local\n"
+        "inputs: [video, transcript]\noutputs: [ranges, context]\npermissions: [video.read, transcript.read]\n", encoding="utf-8")
+    (plugin / "main.py").write_text(
+        "from clipskitty_sdk import run\n"
+        "def main(job):\n"
+        "    job.add_range(4, 18, label='example_event', reason='Authored synthetic event')\n"
+        "    job.finish()\n"
+        "run(main)\n", encoding="utf-8")
     source = tmp_path / "synthetic.mp4"
     # Original generated colors and tone, not a downloaded game recording.
     subprocess.run([
@@ -50,7 +63,7 @@ def test_actual_gta_plugin_exports_playable_video_with_timed_captions_and_histor
     ], check=True, capture_output=True, timeout=30)
     transcript = tmp_path / "synthetic.transcript.json"
     transcript.write_text(json.dumps({"language": "en", "segments": [
-        {"start": 9, "end": 11, "text": "We crashed into a barrier!"},
+        {"start": 9, "end": 11, "text": "An example event happens here!"},
     ]}), encoding="utf-8")
     output = tmp_path / "export"
     manifest = run_demo(plugin=plugin, video=source, transcript=transcript, output=output,
@@ -69,7 +82,7 @@ def test_actual_gta_plugin_exports_playable_video_with_timed_captions_and_histor
                    check=True, capture_output=True, timeout=30)
     captions = Path(clip["captions"]).read_text(encoding="utf-8")
     assert "Dialogue:" in captions
-    assert "CRASHED" in captions
+    assert "EXAMPLE" in captions
     assert "PlayResX: 640" in captions
     # The source is a constant dark color: bright pixels at caption time
     # demonstrate that the ASS was actually burned into the exported video.
