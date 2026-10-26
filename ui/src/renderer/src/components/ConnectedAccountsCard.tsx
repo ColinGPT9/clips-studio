@@ -16,6 +16,7 @@ import {
 import { t } from '../lib/i18n'
 import type { JobOptions, WatchPublish } from '../lib/types'
 import { seedOptions } from './queue/AddVideos'
+import RecordingBindingCard from './RecordingBindingCard'
 
 const TWITCH_APPS = 'https://dev.twitch.tv/console/apps'
 // What Twitch's console shows; anything else (a full stop, a quote, a hyphen)
@@ -165,6 +166,14 @@ export default function ConnectedAccountsCard({
       if (id) void connectedAccounts.cancel(id).catch(() => {})
     }
   }, [load])
+
+  const needsNominationRefresh = Object.values(nominationStatus).some((status) =>
+    status.monitoring || status.streams.some((stream) => stream.recording?.status === 'pending'))
+  useEffect(() => {
+    if (!needsNominationRefresh) return
+    const refresh = setInterval(() => { void load() }, 15000)
+    return () => clearInterval(refresh)
+  }, [load, needsNominationRefresh])
 
   const stopFlow = useCallback((): void => {
     if (timer.current) clearTimeout(timer.current)
@@ -460,7 +469,7 @@ export default function ConnectedAccountsCard({
                     {t('Viewers can use !clip, !chaos and !funny to support AI highlight selection. Start collection explicitly for your live or upcoming stream; it begins once Twitch confirms the stream. Earlier chat is not recovered.')}
                   </p>
                   <p className="text-xs text-muted">
-                    {t('Clips Kitty records the counts below. Using them to choose clips from a recording needs a match between stream and recording times, which Clips Kitty cannot make yet.')}
+                    {t('After the stream ends, bind its Twitch recording and check the timing to use these nominations when finding highlights.')}
                   </p>
                   {nominationStatus[account.id] && (
                     <p className="text-xs" role="status">
@@ -481,12 +490,8 @@ export default function ConnectedAccountsCard({
                       onClick={() => void act(load)}>{t('Refresh nomination counts')}</button>
                   </div>
                   {nominationStatus[account.id]?.streams.slice(0, 5).map((stream) => (
-                    <p key={stream.stream_id} className="text-xs text-muted">
-                      {t('Stream')} {stream.stream_id}
-                      {stream.stream_start ? ` · ${new Date(stream.stream_start).toLocaleString()}` : ''}
-                      {' · '}{stream.ended_at ? t('Ended') : t('No end recorded')}
-                      {' · '}{t('Nominations')}: {stream.nomination_count}
-                    </p>
+                    <RecordingBindingCard key={stream.stream_id} accountId={account.id} stream={stream}
+                      disabled={busy || Boolean(flow)} onSaved={load} />
                   ))}
                   {nominationStatus[account.id]?.streams.length === 0 && (
                     <p className="text-xs text-muted">{t('No stream has been recorded for nomination collection yet.')}</p>

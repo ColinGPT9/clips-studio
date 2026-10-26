@@ -107,6 +107,12 @@ class Nominations:
               stream_id TEXT NOT NULL, stream_start REAL NOT NULL, offset_seconds REAL NOT NULL,
               verified_at REAL NOT NULL, duration REAL, source_offset_seconds REAL, source_id TEXT,
               PRIMARY KEY(account_id,vod_id));
+            CREATE TABLE IF NOT EXISTS recordings(
+              account_id TEXT NOT NULL, stream_id TEXT NOT NULL,
+              deadline REAL NOT NULL, next_check REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+              status TEXT NOT NULL DEFAULT 'pending', vod_id TEXT,
+              PRIMARY KEY(account_id,stream_id),
+              FOREIGN KEY(account_id,stream_id) REFERENCES streams(account_id,stream_id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS streams_touched ON streams(touched);
             CREATE INDEX IF NOT EXISTS events_received ON events(received);
             CREATE INDEX IF NOT EXISTS nominations_last_seen ON nominations(last_seen);
@@ -198,6 +204,11 @@ class Nominations:
     def _record(self, account_id, kind, data, broadcaster, at, command):
         """The writes for one new event, inside record_event's transaction."""
         if kind == "stream.online":
+            # EventSub also announces reruns, playlists and premieres.
+            # Older bootstrap envelopes omit type; an explicit type must
+            # identify a live broadcast before it can anchor chat times.
+            if data.get("type") not in (None, "", "live"):
+                return False
             stream_id = data.get("id")
             start = timestamp(data.get("started_at"))
             if not isinstance(stream_id, str) or not NUMBER.fullmatch(stream_id):
@@ -242,6 +253,10 @@ class Nominations:
                 (at, self.clock(), account_id, active["stream_id"]),
             )
             self._db.execute("DELETE FROM active_streams WHERE account_id=?", (account_id,))
+            self._db.execute(
+                "INSERT OR IGNORE INTO recordings(account_id,stream_id,deadline,next_check) VALUES(?,?,?,?)",
+                (account_id, active["stream_id"], self.clock() + 6 * 3600, self.clock()),
+            )
             return True
         if active["started"] is None or at < active["started"]:
             return False
@@ -282,16 +297,125 @@ class Nominations:
                 "SELECT s.*, (SELECT SUM(n.count) FROM nominations n WHERE n.account_id=s.account_id AND n.stream_id=s.stream_id) nomination_count FROM streams s WHERE account_id=? ORDER BY touched DESC LIMIT ?",
                 (account_id, self.max_streams),
             ).fetchall()
-            return [
-                {
-                    "stream_id": r["stream_id"],
-                    "broadcaster_id": r["broadcaster_id"],
-                    "stream_start": iso(r["started"]) if r["started"] is not None else None,
-                    "ended_at": iso(r["ended"]) if r["ended"] is not None else None,
-                    "nomination_count": r["nomination_count"] or 0,
-                }
-                for r in rows
-            ]
+            return [self._stream_summary(row) for row in rows]
+
+    def _stream_summary(self, row):
+        commands = dict.fromkeys(COMMANDS.values(), 0)
+        buckets = {}
+        for nomination in self._db.execute(
+            "SELECT bucket,command,count FROM nominations WHERE account_id=? AND stream_id=? ORDER BY bucket,command",
+            (row["account_id"], row["stream_id"]),
+        ):
+            command, count = nomination["command"], nomination["count"]
+            if command not in commands:
+                continue
+            commands[command] += count
+            bucket = buckets.setdefault(nomination["bucket"], {
+                "offset_seconds": nomination["bucket"], "count": 0, "commands": {},
+            })
+            bucket["count"] += count
+            bucket["commands"][command] = count
+        mapping = self._db.execute(
+            "SELECT vod_id,offset_seconds,source_offset_seconds,source_id FROM mappings "
+            "WHERE account_id=? AND stream_id=? ORDER BY verified_at DESC LIMIT 1",
+            (row["account_id"], row["stream_id"]),
+        ).fetchone()
+        recording = self._db.execute(
+            "SELECT status,vod_id,attempts,next_check FROM recordings WHERE account_id=? AND stream_id=?",
+            (row["account_id"], row["stream_id"]),
+        ).fetchone()
+        return {
+            "stream_id": row["stream_id"], "broadcaster_id": row["broadcaster_id"],
+            "stream_start": iso(row["started"]) if row["started"] is not None else None,
+            "ended_at": iso(row["ended"]) if row["ended"] is not None else None,
+            "nomination_count": row["nomination_count"] or 0,
+            "commands": commands, "timeline": list(buckets.values())[-200:],
+            "timeline_truncated": len(buckets) > 200, "bucket_seconds": self.bucket_seconds,
+            "mapping": dict(mapping) if mapping is not None else None,
+            "recording": dict(recording) if recording is not None else None,
+        }
+
+    def finish_offline(self, account_id):
+        """Reconcile an offline channel after a missed stream.offline event.
+
+        The timestamp is when offline was observed, not a claimed exact end.
+        The original verified stream ID/start remain the archive matching keys.
+        """
+        with self._lock, self._db:
+            now = self.clock()
+            rows = self._db.execute(
+                "SELECT stream_id FROM streams WHERE account_id=? AND ended IS NULL AND started<=?",
+                (account_id, now),
+            ).fetchall()
+            for row in rows:
+                self._db.execute(
+                    "UPDATE streams SET ended=?,touched=? WHERE account_id=? AND stream_id=?",
+                    (now, now, account_id, row["stream_id"]),
+                )
+                self._db.execute(
+                    "INSERT OR IGNORE INTO recordings(account_id,stream_id,deadline,next_check) VALUES(?,?,?,?)",
+                    (account_id, row["stream_id"], now + 6 * 3600, now),
+                )
+            return len(rows)
+
+    def recording_work(self):
+        """Due lookups only; persisted deadlines and backoff survive restart."""
+        with self._lock, self._db:
+            now = self.clock()
+            self._db.execute("UPDATE recordings SET status='expired' WHERE status='pending' AND deadline<=?", (now,))
+            return [dict(row) for row in self._db.execute(
+                "SELECT r.*,s.broadcaster_id FROM recordings r JOIN streams s "
+                "ON s.account_id=r.account_id AND s.stream_id=r.stream_id "
+                "WHERE r.status='pending' AND r.next_check<=? ORDER BY r.next_check LIMIT 25", (now,),
+            )]
+
+    def recordings_pending(self):
+        with self._lock:
+            return self._db.execute("SELECT 1 FROM recordings WHERE status='pending' LIMIT 1").fetchone() is not None
+
+    def recording_result(self, account_id, stream_id, vod_id=None):
+        with self._lock, self._db:
+            row = self._db.execute(
+                "SELECT attempts FROM recordings WHERE account_id=? AND stream_id=? AND status='pending'",
+                (account_id, stream_id),
+            ).fetchone()
+            if row is None:
+                return
+            attempts = row["attempts"] + 1
+            delay = min(900, 15 * 2 ** min(attempts - 1, 6))
+            self._db.execute(
+                "UPDATE recordings SET status=?,vod_id=?,attempts=?,next_check=? WHERE account_id=? AND stream_id=?",
+                ("ready" if vod_id else "pending", vod_id, attempts, self.clock() + delay, account_id, stream_id),
+            )
+
+    def retry_recording(self, account_id, stream_id):
+        with self._lock, self._db:
+            row = self._db.execute(
+                "SELECT ended FROM streams WHERE account_id=? AND stream_id=?", (account_id, stream_id),
+            ).fetchone()
+            if row is None or row["ended"] is None:
+                raise WorkflowError("recording_unavailable", "Choose an ended stream before looking for its recording.", status=409)
+            self._db.execute(
+                "INSERT INTO recordings(account_id,stream_id,deadline,next_check) VALUES(?,?,?,?) "
+                "ON CONFLICT(account_id,stream_id) DO UPDATE SET deadline=excluded.deadline,"
+                "next_check=excluded.next_check,attempts=0,status='pending',vod_id=NULL",
+                (account_id, stream_id, self.clock() + 6 * 3600, self.clock()),
+            )
+
+    def attach_whole_source(self, account_id, vod_id, source_id):
+        """Attach host-proven whole-archive media after live timing was checked.
+
+        An explicit cropped-source mapping must never be replaced by this path.
+        The caller supplies identity from host media provenance, not plugin input.
+        """
+        if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", source_id):
+            return
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE mappings SET source_id=?,source_offset_seconds=0 "
+                "WHERE account_id=? AND vod_id=? AND (source_offset_seconds IS NULL OR source_offset_seconds=0)",
+                (source_id, account_id, vod_id),
+            )
 
     def bind_vod(
         self,

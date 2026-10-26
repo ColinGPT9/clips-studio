@@ -148,6 +148,16 @@ def test_monitor_requires_scope_and_own_channel_and_stops_sink(runtime):
     assert not value.record_event(ACCOUNT, {**incoming, "id": "after-stop"})
 
 
+@pytest.mark.parametrize("stream_type", ["playlist", "watch_party", "premiere", "rerun"])
+def test_non_live_online_event_does_not_start_nomination_timeline(runtime, stream_type):
+    value, _, _, clock = runtime
+    value.start_monitor(ACCOUNT)
+    incoming = event("stream.online", "not-live", clock[0],
+                     {"id": "456", "started_at": iso(START), "type": stream_type})
+    assert not value.record_event(ACCOUNT, incoming)
+    assert value.streams(ACCOUNT)["streams"] == []
+
+
 def test_provider_stream_owner_and_recorded_start_verify_mapping(runtime):
     value, service, _, _ = runtime
     monitor_stream(runtime)
@@ -244,6 +254,7 @@ def test_http_session_protects_every_action_and_rejects_arbitrary_urls(tmp_path)
         ("DELETE", "monitor", None),
         ("GET", "streams", None),
         ("PUT", "vod-mapping", {}),
+        ("POST", "recordings/456/retry", None),
         ("GET", "digests", None),
         ("POST", "digests", {"request_id": "x", "candidates": [{"clip_id": "ActualClip"}]}),
         ("POST", "digests/unknown/approve", None),
@@ -473,7 +484,33 @@ def test_whole_archive_runs_map_source_time_without_a_calibration(runtime):
         assert error.value.status == 412
     # Chat time still needs a stream-to-VOD alignment: say so plainly.
     audience = value.audience_for_binding(whole)
-    assert audience["status"] == "unavailable" and "can't do that by itself yet" in audience["message"]
+    assert audience["status"] == "unavailable" and "Bind recording" in audience["message"]
+
+
+def test_verified_stream_mapping_automatically_attaches_downloaded_whole_archive(runtime):
+    value, _, _, _ = runtime
+    monitor_stream(runtime)
+    map_vod(value, source_id=None, source_offset_seconds=None)
+    assert value.audience_for_binding(binding())["status"] == "unavailable"
+    whole = binding(whole_vod=True, vod_duration=3600.0, duration=3600.0)
+    audience = value.audience_for_binding(whole)
+    assert audience["status"] == "available"
+    assert sum(item["count"] for item in audience["nominations"]) == 1
+    saved = value.nominations.mapping(ACCOUNT, "789")
+    assert saved["source_id"] == "local-video-1" and saved["source_offset_seconds"] == 0
+    stream = value.streams(ACCOUNT)["streams"][0]
+    assert stream["mapping"]["vod_id"] == "789"
+    assert stream["mapping"]["offset_seconds"] == 30
+
+
+def test_whole_archive_attachment_does_not_replace_an_explicit_cropped_source(runtime):
+    value, _, _, _ = runtime
+    monitor_stream(runtime)
+    map_vod(value)
+    saved = value.nominations.mapping(ACCOUNT, "789")
+    whole = binding(whole_vod=True, vod_duration=3600.0, duration=3600.0, source_id="other-source")
+    assert value.audience_for_binding(whole)["status"] == "unavailable"
+    assert value.nominations.mapping(ACCOUNT, "789") == saved
 
 
 def test_http_host_adapter_uses_saved_destination_and_rechecks_account(tmp_path, db, monkeypatch):

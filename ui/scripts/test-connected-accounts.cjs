@@ -45,6 +45,8 @@ async function main() {
   await assert.rejects(absent.streamWorkflows.startMonitor('twitch:123'), /requires the Clips Kitty desktop app/)
   await assert.rejects(absent.streamWorkflows.stopMonitor('twitch:123'), /requires the Clips Kitty desktop app/)
   await assert.rejects(absent.streamWorkflows.streams('twitch:123'), /requires the Clips Kitty desktop app/)
+  await assert.rejects(absent.streamWorkflows.bindRecording('twitch:123', {}), /requires the Clips Kitty desktop app/)
+  await assert.rejects(absent.streamWorkflows.retryRecording('twitch:123', '456'), /requires the Clips Kitty desktop app/)
   assert.equal(absent.calls.length, 0, 'a browser without desktop authentication must make no account request')
 
   const c = client()
@@ -169,6 +171,23 @@ async function main() {
   assert.equal(c.accountPollDelay(Number.NaN), 5000)
   assert.equal(c.accountPollDelay(12), 12000)
   assert.equal(c.accountPollDelay(0), 1000)
+  for (const value of ['789', 'https://www.twitch.tv/videos/789?t=0h1m0s', 'https://twitch.tv/videos/789']) {
+    assert.equal(c.twitchVodId(value), '789')
+  }
+  for (const value of ['-1', 'https://evil.test/videos/789', 'https://twitch.tv.evil.test/videos/789',
+    'https://name@twitch.tv/videos/789', 'https://twitch.tv:1234/videos/789', 'https://twitch.tv/videos/nope']) {
+    assert.equal(c.twitchVodId(value), null)
+  }
+  const mappingClient = client()
+  const mapping = { broadcaster_id: '123', vod_id: '789', stream_id: '456',
+    stream_start: '2026-10-26T12:00:00Z', offset_seconds: -12, verified: true }
+  await mappingClient.streamWorkflows.bindRecording('twitch:123', mapping)
+  assert.equal(mappingClient.calls[0].url, 'http://127.0.0.1:8765/stream-workflows/twitch%3A123/vod-mapping')
+  assert.equal(mappingClient.calls[0].init.method, 'PUT')
+  assert.deepEqual(JSON.parse(mappingClient.calls[0].init.body), mapping)
+  await mappingClient.streamWorkflows.retryRecording('twitch:123', '456/escape')
+  assert.equal(mappingClient.calls[1].url, 'http://127.0.0.1:8765/stream-workflows/twitch%3A123/recordings/456%2Fescape/retry')
+  assert.equal(mappingClient.calls[1].init.method, 'POST')
   console.log('Connected Accounts renderer client checks passed.')
 }
 

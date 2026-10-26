@@ -4,7 +4,7 @@
 
 API version **1** (`GET /health` → `api_version`). The engine listens on `http://127.0.0.1:8765`. How to call it, with examples and the gotchas, is in [`docs/API.md`](../API.md); what the labels promise is in [API](api.md).
 
-250 routes: **60 stable**, **46 experimental**, 144 internal.
+251 routes: **60 stable**, **47 experimental**, 144 internal.
 
 | Label | Promise |
 |---|---|
@@ -206,7 +206,8 @@ Details: [`docs/API.md` › Connected Accounts](../API.md#connected-accounts).
 | `GET /stream-workflows/{account_id}/digests/{digest_id}/export` | experimental | Export a catch-up digest without claiming delivery. Session header. |
 | `DELETE /stream-workflows/{account_id}/monitor` | experimental | Stop collecting new nominations without stopping other account consumers. Session header. |
 | `POST /stream-workflows/{account_id}/monitor` | experimental | Opt in to host-owned viewer nominations for a verified live or upcoming stream. Session header. |
-| `GET /stream-workflows/{account_id}/streams` | experimental | Recorded stream identities and minimal nomination counts. Session header. |
+| `POST /stream-workflows/{account_id}/recordings/{stream_id}/retry` | experimental | Restart bounded archive discovery for an ended own-channel stream. Session header. |
+| `GET /stream-workflows/{account_id}/streams` | experimental | Stream identities, aggregate nomination timeline, recording discovery and verified mappings. Session header. |
 | `PUT /stream-workflows/{account_id}/vod-mapping` | experimental | Verify an explicit stream, VOD and local-source timeline calibration. Session header. |
 
 ## Internal

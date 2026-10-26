@@ -313,7 +313,7 @@ def install(
     @app.delete("/connected-accounts/{account_id}/events", dependencies=dependencies)
     def stop_events(account_id: str):
         account(account_id)
-        events.stop(account_id)
+        events.release(account_id, "desktop")
         return {"status": "stopped"}
 
     return runtime

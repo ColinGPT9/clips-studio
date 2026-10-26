@@ -86,6 +86,7 @@ class FakeEvents:
     def __init__(self):
         self.started = []
         self.stopped = []
+        self.released = []
 
     def start(self, account_id, broadcaster_id, event_types):
         self.started.append((account_id, broadcaster_id, event_types))
@@ -96,6 +97,9 @@ class FakeEvents:
 
     def stop(self, account_id):
         self.stopped.append(account_id)
+
+    def release(self, account_id, consumer):
+        self.released.append((account_id, consumer))
 
     def close(self):
         pass
@@ -313,6 +317,16 @@ def test_eventsub_session_is_owned_by_host(api):
         json={"session_id": "plugin-socket", "event_types": ["stream.online"]},
     )
     assert response.status_code == 422
+
+
+def test_stopping_desktop_events_leaves_nomination_consumer_running(api):
+    connect(api)
+    client, _, _, _, events, *_ = api
+    events.stopped.clear()
+    response = client.delete(f"/connected-accounts/{ACCOUNT}/events", headers=HEADERS)
+    assert response.status_code == 200
+    assert events.released == [(ACCOUNT, "desktop")]
+    assert events.stopped == []
 
 
 def test_unavailable_keychain_prevents_authorization(api):

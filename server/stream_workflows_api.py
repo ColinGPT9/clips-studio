@@ -71,6 +71,10 @@ def install(app, *, data_dir: Path, service, event_manager, session_secret: str,
     def streams(account_id: str):
         return call(runtime.streams, account_id)
 
+    @app.post("/stream-workflows/{account_id}/recordings/{stream_id}/retry", dependencies=dependencies)
+    def retry_recording(account_id: str, stream_id: str):
+        return call(runtime.retry_recording, account_id, stream_id)
+
     @app.put("/stream-workflows/{account_id}/vod-mapping", dependencies=dependencies)
     def mapping(account_id: str, body: MappingIn):
         return call(runtime.bind_vod, account_id, **body.model_dump())

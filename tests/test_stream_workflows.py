@@ -97,6 +97,12 @@ def test_exact_commands_cooldown_dedupe_and_no_viewer_persistence(tmp_path):
     assert result["status"] == "available"
     assert sum(item["count"] for item in result["nominations"]) == 3
     assert result["nominations"][0]["commands"] == {"clip": 1, "funny": 1}
+    summary = store.streams(ACCOUNT)[0]
+    assert summary["commands"] == {"clip": 1, "chaos": 1, "funny": 1}
+    assert summary["timeline"] == [
+        {"offset_seconds": 0, "count": 2, "commands": {"clip": 1, "funny": 1}},
+        {"offset_seconds": 60, "count": 1, "commands": {"chaos": 1}},
+    ]
     store.close()
     raw = (tmp_path / "stream-workflows.sqlite3").read_bytes()
     for private in (

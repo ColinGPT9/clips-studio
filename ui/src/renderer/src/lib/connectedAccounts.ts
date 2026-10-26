@@ -53,6 +53,21 @@ export interface RecordedNominationStream {
   stream_start: string | null
   ended_at: string | null
   nomination_count: number
+  commands?: Record<string, number>
+  timeline?: { offset_seconds: number; count: number; commands: Record<string, number> }[]
+  timeline_truncated?: boolean
+  bucket_seconds?: number
+  mapping?: { vod_id: string; offset_seconds: number; source_id: string | null } | null
+  recording?: { status: 'pending' | 'ready' | 'expired'; vod_id: string | null; attempts: number; next_check: number } | null
+}
+
+export interface RecordingMapping {
+  broadcaster_id: string
+  vod_id: string
+  stream_id: string
+  stream_start: string
+  offset_seconds: number
+  verified: true
 }
 
 export interface ViewerNominationStatus {
@@ -166,7 +181,28 @@ export const streamWorkflows = {
   startMonitor: (id: string) =>
     authenticatedRequest<{ monitoring: boolean }>('/stream-workflows', `${accountPath(id)}/monitor`, { method: 'POST' }),
   stopMonitor: (id: string) =>
-    authenticatedRequest<{ monitoring: boolean }>('/stream-workflows', `${accountPath(id)}/monitor`, { method: 'DELETE' })
+    authenticatedRequest<{ monitoring: boolean }>('/stream-workflows', `${accountPath(id)}/monitor`, { method: 'DELETE' }),
+  bindRecording: (id: string, mapping: RecordingMapping) =>
+    authenticatedRequest<unknown>('/stream-workflows', `${accountPath(id)}/vod-mapping`, {
+      method: 'PUT', body: JSON.stringify(mapping)
+    }),
+  retryRecording: (id: string, streamId: string) =>
+    authenticatedRequest<{ status: 'pending' }>('/stream-workflows',
+      `${accountPath(id)}/recordings/${encodeURIComponent(streamId)}/retry`, { method: 'POST' })
+}
+
+/** Read a recording ID without opening an arbitrary pasted address. */
+export function twitchVodId(value: string): string | null {
+  const input = value.trim()
+  if (/^[0-9]{1,30}$/.test(input)) return input
+  try {
+    const url = new URL(input)
+    if (url.protocol !== 'https:' || !['twitch.tv', 'www.twitch.tv'].includes(url.hostname) ||
+      url.username || url.password || url.port || url.hash) return null
+    return /^\/videos\/([0-9]{1,30})\/?$/.exec(url.pathname)?.[1] ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Twitch's device grant opens its official activation page in the system browser. */

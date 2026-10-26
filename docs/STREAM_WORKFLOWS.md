@@ -41,7 +41,40 @@ cannot answer, and looks again after every fresh EventSub subscription: Twitch
 does not replay a `stream.online` sent while the socket was reconnecting. Delayed lifecycle events cannot replace
 a newer stream or reopen an ended stream.
 
+Connected accounts now shows per-command totals and a bounded 30-second
+nomination timeline. The desktop event-feed stop action releases only its own
+consumer; it does not stop nomination monitoring. Explicit non-live online
+events (such as reruns or playlists) do not establish a live nomination timeline.
+
+After a recorded stream ends, the host looks for an own-channel archive with
+the same `stream_id`. Lookup backoff starts at 15 seconds and is capped at 15
+minutes, with a six-hour discovery deadline. The deadline, attempts and next
+lookup survive restart. A confirmed offline lookup after the app missed the end
+event also starts discovery; its end timestamp is the offline observation time,
+not a measured broadcast end. No workflow files are created for an unused feature.
+
+`GET /stream-workflows/{account_id}/streams` adds `commands`, `timeline`
+(latest 200 nonempty buckets), `timeline_truncated`, `bucket_seconds`, `mapping`
+and `recording`. A recording is `pending`, `ready` or `expired`; readiness means
+its archive identity matched, not that its clock alignment is verified.
+`POST /stream-workflows/{account_id}/recordings/{stream_id}/retry`, protected by
+the desktop session, explicitly restarts discovery for an ended stream. The
+Connected accounts card refreshes active monitoring/discovery every 15 seconds.
+
 ## Bind a recording to its live timeline
+
+In Settings > Connected accounts, choose **Bind recording** for an ended
+stream. The matching archive URL is prefilled when discovery succeeds; a URL
+may also be pasted. Open the nomination-time link, compare with the stream
+clock, enter the verified offset, and explicitly confirm before saving. The
+server still rechecks the archive owner and stream identity.
+
+This screen binds the live clock to the VOD. After download, host media
+provenance may attach the file identity and zero local-source offset only when
+the file is verified as the whole archive. It never replaces a nonzero
+cropped-source mapping. A cropped file still requires the explicit source
+alignment described below. Jobs that finished before binding need to be rerun
+to use the nominations.
 
 An EventSub `stream.online` event supplies the Twitch stream ID and stream start
 time. Twitch Get Videos exposes `stream_id`, which can correlate an archive with

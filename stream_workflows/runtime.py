@@ -27,11 +27,12 @@ MONITOR = "stream-workflow"
 _BOOTSTRAP_DELAYS = (0, 15, 30, 60, 120)
 _NOMINATIONS_FILE = "stream-workflows.sqlite3"
 _DIGESTS_FILE = "stream-digests.sqlite3"
+_RECORDING_POLL_SECONDS = 10
 AUDIENCE_MESSAGES = {
     "unverified_binding": "Viewer nominations need this stream's chat timing matched to its Twitch VOD, "
-                          "and Clips Kitty can't do that by itself yet.",
+                          "using Bind recording in Settings > Connected accounts.",
     "source_timeline_unknown": "Viewer nominations need this stream's chat timing matched to its Twitch VOD, "
-                               "and Clips Kitty can't do that by itself yet.",
+                               "then a verified whole-VOD download or explicit local-source alignment.",
     "account_unavailable": "Reconnect Twitch in Settings to read viewer nominations.",
     "storage_unavailable": "Clips Kitty couldn't open its viewer nomination storage.",
 }
@@ -73,6 +74,9 @@ class WorkflowRuntime:
         self._closing = threading.Event()
         self._nominations = None
         self._digests = None
+        self._recording_worker = None
+        if (self._data_dir / _NOMINATIONS_FILE).exists():
+            self._recordings_later()
 
     # ---- stores, opened on first use ---------------------------------------
 
@@ -195,6 +199,8 @@ class WorkflowRuntime:
                 # Verified offline. A stream that ended while the socket was
                 # reconnecting sent no stream.offline either: stop counting it.
                 self.nominations.deactivate(account_id)
+                if self.nominations.finish_offline(account_id):
+                    self._recordings_later()
                 return False
             if not isinstance(stream, dict):
                 return False
@@ -272,7 +278,80 @@ class WorkflowRuntime:
                 return False
             if event.get("type") in {"stream.online", "stream.offline"}:
                 self._lifecycle_revisions[account_id] = self._lifecycle_revisions.get(account_id, 0) + 1
-            return nominations.record_event(account_id, event)
+            accepted = nominations.record_event(account_id, event)
+            if accepted and event.get("type") == "stream.offline":
+                self._recordings_later()
+            return accepted
+
+    def discover_recordings(self):
+        """Match own archives to ended stream IDs, never infer clock alignment."""
+        with self._lock:
+            if self._closed:
+                return
+            store = self._stored_nominations()
+            work = store.recording_work() if store is not None else []
+        groups = {}
+        for row in work:
+            groups.setdefault(row["account_id"], []).append(row)
+        for account_id, rows in groups.items():
+            try:
+                account = self._account(account_id)
+                result = self.service.perform(account_id, "videos", broadcaster_id=account["user_id"], first=100)
+                videos = result.get("videos", []) if isinstance(result, dict) else []
+                if not isinstance(videos, list):
+                    videos = []
+            except Exception:
+                # Provider errors can include sensitive transport details.
+                # Preserve backoff without saving or displaying raw errors.
+                videos = []
+            with self._lock:
+                if self._closed:
+                    return
+                for row in rows:
+                    matched = next((video for video in videos if isinstance(video, dict)
+                                    and video.get("type") == "archive"
+                                    and video.get("user_id") == row["broadcaster_id"]
+                                    and video.get("stream_id") == row["stream_id"]
+                                    and isinstance(video.get("id"), str) and NUMBER.fullmatch(video["id"])
+                                    and _duration(video.get("duration_seconds")) is not None), None)
+                    store.recording_result(account_id, row["stream_id"], matched["id"] if matched else None)
+
+    def _recordings_later(self):
+        with self._lock:
+            if self._closed or self._recording_worker is not None:
+                return
+
+            def run():
+                try:
+                    while not self._closing.is_set():
+                        self.discover_recordings()
+                        with self._lock:
+                            if self._closed:
+                                return
+                            store = self._stored_nominations()
+                            if store is None or not store.recordings_pending():
+                                self._recording_worker = None
+                                return
+                        if self._closing.wait(_RECORDING_POLL_SECONDS):
+                            return
+                except (WorkflowError, sqlite3.Error, OSError):
+                    # A damaged optional workflow store must not stop startup.
+                    pass
+                finally:
+                    with self._lock:
+                        if self._recording_worker is threading.current_thread():
+                            self._recording_worker = None
+
+            self._recording_worker = threading.Thread(target=run, daemon=True, name="twitch-recordings")
+            self._recording_worker.start()
+
+    def retry_recording(self, account_id, stream_id):
+        self._account(account_id)
+        if not isinstance(stream_id, str) or not NUMBER.fullmatch(stream_id):
+            raise WorkflowError("invalid_stream", "Choose a valid recorded stream.")
+        self.nominations.retry_recording(account_id, stream_id)
+        self._recordings_later()
+        return {"status": "pending"}
 
     def streams(self, account_id):
         self._account(account_id)
@@ -370,6 +449,10 @@ class WorkflowRuntime:
             return {**empty, "reason": "storage_unavailable"}
         if nominations is None:
             return empty
+        if self._whole_vod(binding, account):
+            nominations.attach_whole_source(
+                account["id"], binding.get("vod_id", binding.get("video_id")), binding.get("source_id"),
+            )
         return nominations.audience_for_binding(binding)
 
     @staticmethod

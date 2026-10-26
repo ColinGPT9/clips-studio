@@ -24,9 +24,12 @@ were often broken in a way that only showed up on somebody else's machine.
   through the public video list, as before, whenever the connection needs reconnecting or
   Twitch doesn't answer, so the watch keeps going.
 - **Viewer nominations.** With the chat permission ticked you can start and stop
-  collecting your viewers' !clip, !chaos and !funny while you're live, and see the counts
-  for each stream. Clips Kitty doesn't use them to choose clips yet: that needs the
-  stream's chat times matched to its recording, which it can't do yet.
+  collecting your viewers' !clip, !chaos and !funny while you're live, with command
+  counts and a timeline for each stream. After a broadcast ends, Clips Kitty looks
+  for its matching Twitch recording and keeps checking for up to six hours, including
+  across restarts. In Connected accounts, use **Bind recording** to check the recording
+  against your stream clock and confirm the offset. The complete downloaded recording
+  can then use those mapped nominations. These workflows still need live-account verification.
 - **For people who make pipelines:** a pipeline you allow can read your channel's Twitch
   details, link to a moment of the Twitch VOD it is clipping, and make a Twitch clip of
   that moment, all through Clips Kitty and never with your Twitch sign-in. Links and clips

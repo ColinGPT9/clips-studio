@@ -46,7 +46,8 @@ SECTIONS = {
 ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
     ("POST", "/stream-workflows/{account_id}/monitor"): (EXPERIMENTAL, "accounts", "Opt in to host-owned viewer nominations for a verified live or upcoming stream. Session header."),
     ("DELETE", "/stream-workflows/{account_id}/monitor"): (EXPERIMENTAL, "accounts", "Stop collecting new nominations without stopping other account consumers. Session header."),
-    ("GET", "/stream-workflows/{account_id}/streams"): (EXPERIMENTAL, "accounts", "Recorded stream identities and minimal nomination counts. Session header."),
+    ("GET", "/stream-workflows/{account_id}/streams"): (EXPERIMENTAL, "accounts", "Stream identities, aggregate nomination timeline, recording discovery and verified mappings. Session header."),
+    ("POST", "/stream-workflows/{account_id}/recordings/{stream_id}/retry"): (EXPERIMENTAL, "accounts", "Restart bounded archive discovery for an ended own-channel stream. Session header."),
     ("PUT", "/stream-workflows/{account_id}/vod-mapping"): (EXPERIMENTAL, "accounts", "Verify an explicit stream, VOD and local-source timeline calibration. Session header."),
     ("POST", "/stream-workflows/{account_id}/digests"): (EXPERIMENTAL, "accounts", "Prepare an idempotent catch-up digest from verified Twitch sources. Session header."),
     ("GET", "/stream-workflows/{account_id}/digests"): (EXPERIMENTAL, "accounts", "Saved catch-up digests and approval/delivery state. Session header."),
