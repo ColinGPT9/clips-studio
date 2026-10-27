@@ -60,3 +60,11 @@ were sent by these tests.
 | Private before/after timing video | Pass, media integrity | Fanum-GTA-Timing-Review.mp4, 134.421333s, full decode passed, SHA25664c8f547544ea77fc65ce479a12d2cbaaa421283c465d9973e63db1a5689b6f0. Actual app exports plus labeled source context; Eklipse inventory text only, not provider exports. Human boundary review pending. |
 | Refreshed frozen host | Build/smoke pass, current runtime not-run | a81792 backend build exit0, startup and bundled Python/process-pool checks pass. Does not contain the subsequent selected-public-channel changes; those need their own build/runtime verification. |
 | Viewer OAuth / real EventSub | Pending | Earlier grant expired before exchange; fresh user:read:chat + clips:edit grant and bounded background poll active. No durable account or live chat pass claimed. |
+
+## Completed verification at functional d766dc9
+
+- Full current local suite: **5397 passed,16 skipped,4270 warnings in738.29s**; private host-viewer-full-tests.log. Existing UTF8/Git Bash and display-ID-only HTTPError collection workaround; no assertions changed.
+- CI40571245311 and CodeQL40571245235 both completed successfully. UI typecheck, renderer client checks, production build and hidden Electron selected-channel fixture passed.
+- Rebuilt backend exited0 in358s; startup and bundled Python/process-pool smoke passed. Binary SHA256 `80df549a4f2111951a89b89845e696700d62ad689f262969e8cd3d1995056cb6`; both YOLO weights included.
+- Actual api.exe MCP queued/completed job1 with pinned GTA0.5.2 and read captions/exported one clip. Export15.416667s,1080x1920,H264/AAC; full FFmpeg decode0errors, caption frame visually inspected. Evidence: private viewer-build-runtime/case.json, results.json, media-verification.json, build.json. This is authored synthetic media, not real gameplay or ASR quality evidence. Temporary private backend39192 stopped after verification.
+- Source8766 retains the pending viewer grant on the previous loaded modules. Do not restart until OAuth is saved or terminal. Real viewer identity/chat/EventSub remain pending. No Twitch clip, chat message or social post created.
