@@ -100,10 +100,11 @@ class ConnectedFeed:
     nor its consumers see access or refresh tokens.
     """
 
-    def __init__(self, service, *, fallback=channel_feed, file_seconds=_file_seconds):
+    def __init__(self, service, *, fallback=channel_feed, file_seconds=_file_seconds, mapped_broadcaster=None):
         self.service = service
         self.fallback = fallback
         self.file_seconds = file_seconds
+        self.mapped_broadcaster = mapped_broadcaster
         self._noticed: set[str] = set()
 
     def _accounts(self) -> list[dict]:
@@ -182,11 +183,11 @@ class ConnectedFeed:
         return self.fallback.readiness(url, min_seconds, **kwargs)
 
     def binding_for_video(self, video) -> dict | None:
-        """Bind a plugin run only to a VOD proven to belong to its connection.
+        """Bind a run to an own VOD or an explicitly verified stream mapping.
 
         The video's display-channel string and any plugin-supplied identifiers
         are insufficient evidence. The provider fetches the VOD's real owner
-        from Twitch and the host compares it with the connected user.
+        from Twitch and the host compares it with the user or saved mapping.
         """
         match = _VOD.fullmatch(str(getattr(video, "video_id", "")))
         if not match:
@@ -194,12 +195,17 @@ class ConnectedFeed:
         video_id = match.group(1)
         for account in self._accounts():
             try:
-                link = self.service.perform(account["id"], "vod_link", video_id=video_id, seconds=0)
+                selected = self.mapped_broadcaster(account["id"], video_id) if self.mapped_broadcaster else None
+                broadcaster = selected or str(account["user_id"])
+                params = {"video_id": video_id, "seconds": 0}
+                if selected:
+                    params["broadcaster_id"] = selected
+                link = self.service.perform(account["id"], "vod_link", **params)
             except Exception:
                 continue
-            if (isinstance(link, dict) and str(link.get("broadcaster_id", "")) == str(account["user_id"])
+            if (isinstance(link, dict) and str(link.get("broadcaster_id", "")) == broadcaster
                     and str(link.get("video_id", "")) == video_id):
-                binding = {"account_id": account["id"], "broadcaster_id": str(account["user_id"]),
+                binding = {"account_id": account["id"], "broadcaster_id": broadcaster,
                            "video_id": video_id}
                 path = getattr(video, "path", None)
                 identity = source_identity(path)

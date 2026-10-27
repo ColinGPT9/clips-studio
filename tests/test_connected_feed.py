@@ -13,6 +13,19 @@ ACCOUNT = {
 }
 
 
+def test_public_vod_binding_requires_explicit_host_verified_mapping():
+    service = Service(result={"video_id": "123", "broadcaster_id": "99"})
+    video = SimpleNamespace(video_id="tw_123")
+    assert ConnectedFeed(service).binding_for_video(video) is None
+    def mapped(account_id, vod_id):
+        return "99" if (account_id, vod_id) == ("twitch:42", "123") else None
+    result = ConnectedFeed(service, mapped_broadcaster=mapped).binding_for_video(video)
+    assert result["account_id"] == "twitch:42" and result["broadcaster_id"] == "99"
+    assert service.calls[-1][2] == {"video_id": "123", "seconds": 0, "broadcaster_id": "99"}
+    service.result["broadcaster_id"] = "88"
+    assert ConnectedFeed(service, mapped_broadcaster=mapped).binding_for_video(video) is None
+
+
 def test_source_identity_changes_when_the_calibrated_local_media_changes(tmp_path):
     source = tmp_path / "owned-original.mp4"
     source.write_bytes(b"original media bytes")

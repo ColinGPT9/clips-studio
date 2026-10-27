@@ -41,6 +41,7 @@ class TwitchOperationIn(BaseModel):
 
 class EventsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    broadcaster_id: str | None = Field(default=None, pattern=r"^[0-9]{1,30}$")
     event_types: list[str] = Field(default_factory=lambda: ["stream.online", "stream.offline"], max_length=5)
 
 
@@ -280,7 +281,7 @@ def install(
             raise HTTPException(400, "This account operation is not supported.")
         params = dict(body.params)
         allowed = {
-            "stream_context": {"broadcaster_id"},
+            "stream_context": {"broadcaster_id", "broadcaster_login"},
             "videos": {"broadcaster_id", "first"},
             "create_clip": {"broadcaster_id", "has_delay"},
             "create_vod_clip": {"broadcaster_id", "video_id", "start_seconds", "end_seconds", "title"},
@@ -290,12 +291,13 @@ def install(
         }
         if set(params) - allowed[body.operation]:
             raise HTTPException(400, "This account operation received unsupported parameters.")
-        # Desktop account actions manage the connected broadcaster only.
-        # EventSub subscriptions always pass through the host socket below.
-        if "broadcaster_id" in params and params["broadcaster_id"] != row["user_id"]:
+        # Public reads may target another channel. Writes retain their
+        # existing connected-channel gate; EventSub uses the host socket.
+        selected_channel = body.operation in {"stream_context", "videos", "vod_link", "create_clip"}
+        if not selected_channel and "broadcaster_id" in params and params["broadcaster_id"] != row["user_id"]:
             raise HTTPException(403, "Choose this connected broadcaster's channel.")
-        if body.operation != "vod_link":
-            params["broadcaster_id"] = row["user_id"]
+        if body.operation != "vod_link" and "broadcaster_login" not in params:
+            params.setdefault("broadcaster_id", row["user_id"])
         return call(service.perform, account_id, body.operation, **params)
 
     @app.post("/connected-accounts/{account_id}/events", dependencies=dependencies)
@@ -303,12 +305,12 @@ def install(
         row = account(account_id)
         if row["provider"] != "twitch":
             raise HTTPException(400, "This provider does not support Twitch events.")
-        return call(events.start, account_id, row["user_id"], body.event_types)
+        return call(events.start, account_id, body.broadcaster_id or row["user_id"], body.event_types)
 
     @app.get("/connected-accounts/{account_id}/events", dependencies=dependencies)
     def get_events(account_id: str, after: int = 0, limit: int = 100):
-        row = account(account_id)
-        return call(events.events, account_id, broadcaster_id=row["user_id"], after=after, limit=limit)
+        account(account_id)
+        return call(events.events, account_id, after=after, limit=limit)
 
     @app.delete("/connected-accounts/{account_id}/events", dependencies=dependencies)
     def stop_events(account_id: str):

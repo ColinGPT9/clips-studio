@@ -8,6 +8,7 @@ import {
   isTransientAccountError,
   streamWorkflows,
   twitchActivationUrl,
+  twitchChannelLogin,
   type AccountFlow,
   type ConnectedAccount,
   type ConnectedAccountsStatus,
@@ -92,6 +93,8 @@ export default function ConnectedAccountsCard({
   const [loadError, setLoadError] = useState('')
   const [nominationStatus, setNominationStatus] = useState<Record<string, ViewerNominationStatus>>({})
   const [nominationErrors, setNominationErrors] = useState<Record<string, string>>({})
+  const [channelNames, setChannelNames] = useState<Record<string, string>>({})
+  const [collectionChannels, setCollectionChannels] = useState<Record<string, string>>({})
   const mounted = useRef(false)
   const activeFlow = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -318,11 +321,17 @@ export default function ConnectedAccountsCard({
   })
 
   const monitor = (account: ConnectedAccount, start: boolean): Promise<void> => act(async () => {
-    if (start) await streamWorkflows.startMonitor(account.id)
-    else await streamWorkflows.stopMonitor(account.id)
+    if (start) {
+      const login = twitchChannelLogin(
+        channelNames[account.id] ?? nominationStatus[account.id]?.broadcaster_login ?? account.login)
+      if (!login) throw new Error(t('Enter a Twitch channel name or channel URL.'))
+      const context = await connectedAccounts.streamContext(account.id, login)
+      await streamWorkflows.startMonitor(account.id, context.broadcaster.id)
+      if (mounted.current) setCollectionChannels((current) => ({ ...current, [account.id]: context.broadcaster.login }))
+    } else await streamWorkflows.stopMonitor(account.id)
     if (!mounted.current) return
     say(start
-      ? t('Viewer nomination collection started for your live or upcoming stream. Earlier chat is not recovered.')
+      ? t('Viewer nomination collection started for the selected channel. Earlier chat is not recovered.')
       : t('Viewer nomination collection stopped. Recorded nomination counts remain available.'))
     await load()
   })
@@ -466,15 +475,25 @@ export default function ConnectedAccountsCard({
                 <div className="space-y-2 border-t border-raised pt-2">
                   <h5 className="text-xs font-semibold">{t('Viewer highlight nominations')}</h5>
                   <p className="text-xs text-muted">
-                    {t('Viewers can use !clip, !chaos and !funny to support AI highlight selection. Start collection explicitly for your live or upcoming stream; it begins once Twitch confirms the stream. Earlier chat is not recovered.')}
+                    {t('Collect !clip, !chaos and !funny nominations from a channel you watch. Viewer access is enough to read public chat. Collection begins once Twitch confirms a live stream; earlier chat is not recovered.')}
                   </p>
+                  <label className="block space-y-1 text-xs">
+                    <span>{t('Twitch channel to collect from')}</span>
+                    <input className="input w-full" type="text" placeholder={account.login}
+                      aria-label={`${t('Twitch channel to collect from')}: ${account.login}`}
+                      value={nominationStatus[account.id]?.monitoring
+                        ? (collectionChannels[account.id] || nominationStatus[account.id].broadcaster_login || '')
+                        : (channelNames[account.id] ?? nominationStatus[account.id]?.broadcaster_login ?? account.login)}
+                      disabled={busy || Boolean(flow) || nominationStatus[account.id]?.monitoring === true}
+                      onChange={(event) => setChannelNames((current) => ({ ...current, [account.id]: event.target.value }))} />
+                  </label>
                   <p className="text-xs text-muted">
                     {t('After the stream ends, bind its Twitch recording and check the timing to use these nominations when finding highlights.')}
                   </p>
                   {nominationStatus[account.id] && (
                     <p className="text-xs" role="status">
                       {nominationStatus[account.id].monitoring
-                        ? t('Collection enabled for your live or upcoming stream.')
+                        ? `${t('Collection enabled for channel')}: ${collectionChannels[account.id] || nominationStatus[account.id].broadcaster_login || t('Selected channel')}`
                         : t('Collection stopped.')}
                     </p>
                   )}

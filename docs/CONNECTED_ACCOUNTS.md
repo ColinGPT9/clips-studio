@@ -142,6 +142,39 @@ not accept arbitrary endpoints or tokens. Event reception uses
 `POST /connected-accounts/{account_id}/events` with `event_types`, followed by
 `GET` on that path with an `after` cursor; `DELETE` stops it and clears events.
 
+### Collect from a channel you watch
+
+In Settings > Connected accounts, allow **Read Twitch chat**, then enter a
+channel name or Twitch channel URL under **Viewer highlight nominations**.
+Start collection explicitly. The signed-in account reads the selected channel;
+it does not need to be that channel's broadcaster or moderator. Earlier chat is
+not recovered. Stop collection before changing channels. Another active plugin
+consumer on a different channel is preserved and the conflicting request is
+refused. Reloading the panel does not start collection or switch its channel.
+
+The desktop `stream_context` operation accepts either a numeric `broadcaster_id`
+or a `broadcaster_login`; the latter resolves through Twitch's Users endpoint.
+No supplied URL is fetched. `videos` can read a selected public channel.
+The events POST and stream-workflow monitor POST accept an optional
+`broadcaster_id`; omitting it keeps the connected-channel default. Event GET
+returns the active listener's channel. These changes do not expose OAuth tokens.
+
+Viewer nominations retain their actual broadcaster and stream identity. Archive
+discovery queries that channel, and Bind recording still checks the actual VOD,
+recorded stream and explicit timing. A plugin may use a public VOD through a
+reader account only after a verified host mapping exists. Merely signing in or
+changing a display-channel field grants no arbitrary plugin target.
+
+The desktop live `create_clip` action can target a public channel when the reader
+holds `clips:edit`, subject to Twitch's channel restrictions. It publishes a native
+clip and is never called by nomination collection. The existing VOD-clip and chat
+write gates remain in place; a viewer grant does not provide broadcaster/editor
+VOD-clip permission. Local exports and verified VOD links remain available.
+
+Provider rules: [chat EventSub authorization](https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelchatmessage),
+[live clips](https://dev.twitch.tv/docs/api/reference/#create-clip), and
+[VOD clips](https://dev.twitch.tv/docs/api/reference/#create-clip-from-vod).
+
 Plugins must instead use the supported
 [Connected Accounts SDK](developers/connected-accounts-sdk.md). The host grants
 only the installed permissions and binds each run to a Twitch-verified source

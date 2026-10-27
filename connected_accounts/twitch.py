@@ -449,7 +449,7 @@ class TwitchProvider:
         if operation not in self.operation_scopes:
             raise AccountError("unsupported_operation", "This Twitch action is not supported.")
         permitted_params = {
-            "stream_context": {"broadcaster_id", "first"},
+            "stream_context": {"broadcaster_id", "broadcaster_login", "first"},
             "videos": {"broadcaster_id", "first"},
             "create_clip": {"broadcaster_id", "has_delay"},
             "create_vod_clip": {"broadcaster_id", "video_id", "start_seconds", "end_seconds", "title"},
@@ -469,6 +469,19 @@ class TwitchProvider:
             )
         subject = _numeric_id(account.get("user_id"), "account ID")
         broadcaster = _numeric_id(params.get("broadcaster_id", subject), "channel ID")
+        resolved_user = None
+        if "broadcaster_login" in params:
+            login = params["broadcaster_login"]
+            if ("broadcaster_id" in params or not isinstance(login, str)
+                    or not re.fullmatch(r"[A-Za-z0-9_]{1,25}", login)):
+                raise AccountError("invalid_request", "Choose a Twitch channel name.")
+            users = self._rows(self._helix("GET", "/users", access_token, params={"login": login.lower()}))
+            if not users:
+                raise AccountError("not_found", "The Twitch channel was not found.", status=404)
+            if len(users) != 1 or str(users[0].get("login", "")).lower() != login.lower():
+                raise AccountError("provider_response", "Twitch returned an unexpected channel.", status=502)
+            resolved_user = users[0]
+            broadcaster = _numeric_id(resolved_user.get("id"), "channel ID")
         if operation in {"create_vod_clip", "get_clip"} and broadcaster != subject:
             raise AccountError(
                 "permission_denied",
@@ -494,13 +507,16 @@ class TwitchProvider:
             result = {"videos": [self._video(row) for row in videos]}
             if operation == "videos":
                 return result
-            users = self._rows(self._helix("GET", "/users", access_token, params={"id": broadcaster}))
+            users = ([resolved_user] if resolved_user is not None else
+                     self._rows(self._helix("GET", "/users", access_token, params={"id": broadcaster})))
             streams = self._rows(
                 self._helix("GET", "/streams", access_token, params={"user_id": broadcaster})
             )
             if not users:
                 raise AccountError("not_found", "The Twitch channel was not found.", status=404)
             user = users[0]
+            if user.get("id") != broadcaster:
+                raise AccountError("provider_response", "Twitch returned an unexpected channel.", status=502)
             result["broadcaster"] = {
                 "id": _numeric_id(user.get("id"), "channel ID"),
                 "login": _text(user.get("login"), maximum=100),

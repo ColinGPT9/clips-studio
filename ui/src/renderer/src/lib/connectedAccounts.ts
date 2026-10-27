@@ -72,7 +72,14 @@ export interface RecordingMapping {
 
 export interface ViewerNominationStatus {
   monitoring: boolean
+  broadcaster_id?: string | null
+  broadcaster_login?: string | null
   streams: RecordedNominationStream[]
+}
+
+export interface TwitchStreamContext {
+  broadcaster: { id: string; login: string; display_name: string }
+  stream: { id: string; title: string; game_name: string; started_at: string } | null
 }
 
 export const ACCOUNTS_CHANGED = 'connected-accounts-changed'
@@ -171,15 +178,21 @@ export const connectedAccounts = {
     request<unknown>(`/flows/${encodeURIComponent(flowId)}`, { method: 'DELETE' }),
   test: (id: string) => settled(request<unknown>(`${accountPath(id)}/test`, { method: 'POST' })),
   disconnect: (id: string) => request<DisconnectResult>(accountPath(id), { method: 'DELETE' }).then(changed),
-  watch: (id: string) => settled(request<unknown>(`${accountPath(id)}/watch`, { method: 'POST' }))
+  watch: (id: string) => settled(request<unknown>(`${accountPath(id)}/watch`, { method: 'POST' })),
+  streamContext: (id: string, login: string) =>
+    request<TwitchStreamContext>(`${accountPath(id)}/twitch`, {
+      method: 'POST', body: JSON.stringify({ operation: 'stream_context', params: { broadcaster_login: login } })
+    })
 }
 
 /** Explicit desktop controls; loading status never starts a chat listener. */
 export const streamWorkflows = {
   streams: (id: string) =>
     authenticatedRequest<ViewerNominationStatus>('/stream-workflows', `${accountPath(id)}/streams`),
-  startMonitor: (id: string) =>
-    authenticatedRequest<{ monitoring: boolean }>('/stream-workflows', `${accountPath(id)}/monitor`, { method: 'POST' }),
+  startMonitor: (id: string, broadcasterId?: string) =>
+    authenticatedRequest<{ monitoring: boolean }>('/stream-workflows', `${accountPath(id)}/monitor`, {
+      method: 'POST', ...(broadcasterId ? { body: JSON.stringify({ broadcaster_id: broadcasterId }) } : {})
+    }),
   stopMonitor: (id: string) =>
     authenticatedRequest<{ monitoring: boolean }>('/stream-workflows', `${accountPath(id)}/monitor`, { method: 'DELETE' }),
   bindRecording: (id: string, mapping: RecordingMapping) =>
@@ -189,6 +202,20 @@ export const streamWorkflows = {
   retryRecording: (id: string, streamId: string) =>
     authenticatedRequest<{ status: 'pending' }>('/stream-workflows',
       `${accountPath(id)}/recordings/${encodeURIComponent(streamId)}/retry`, { method: 'POST' })
+}
+
+/** Parse a channel name locally; pasted URLs are never opened or fetched. */
+export function twitchChannelLogin(value: string): string | null {
+  let input = value.trim()
+  if (input.includes('://')) {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== 'https:' || !['twitch.tv', 'www.twitch.tv'].includes(url.hostname) ||
+        url.username || url.password || url.port || url.search || url.hash) return null
+      input = url.pathname.replace(/^\//, '').replace(/\/$/, '')
+    } catch { return null }
+  } else input = input.replace(/^@/, '')
+  return /^[A-Za-z0-9_]{1,25}$/.test(input) ? input.toLowerCase() : null
 }
 
 /** Read a recording ID without opening an arbitrary pasted address. */

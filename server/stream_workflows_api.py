@@ -25,6 +25,11 @@ class MappingIn(BaseModel):
     source_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
 
 
+class MonitorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    broadcaster_id: str | None = Field(default=None, pattern=r"^[0-9]{1,30}$")
+
+
 class DigestIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
@@ -62,8 +67,8 @@ def install(app, *, data_dir: Path, service, event_manager, session_secret: str,
             raise HTTPException(error.status, {"code": error.code, "message": str(error)}) from None
 
     @app.post("/stream-workflows/{account_id}/monitor", dependencies=dependencies)
-    def start_monitor(account_id: str):
-        return call(runtime.start_monitor, account_id)
+    def start_monitor(account_id: str, body: MonitorIn | None = None):
+        return call(runtime.start_monitor, account_id, broadcaster_id=body.broadcaster_id if body else None)
 
     @app.delete("/stream-workflows/{account_id}/monitor", dependencies=dependencies)
     def stop_monitor(account_id: str):

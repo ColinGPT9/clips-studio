@@ -31,8 +31,8 @@ latest instruction. Offline results below do not prove live-service success.
 | Matched Fanum source | 2026-10-27 | baseline jobs complete; quality review pending | Private `D:/ck-hackathon/fanum-baselines/cases.json`, both `results.json` files, `summary.json` | Eklipse GTA V stream143536633 has 17 originals. Identical full source and 1473 real ASR segments in independent app data: Gaming job1 returned 50 clips in975.7s; pinned GTA0.4.1 job1 returned7. Shared count ceiling50, allowed10-180s, horizontal without captions/end card/publishing. Gaming reached its configured ceiling. Native selection median durations22.95s and19.84s respectively; Eklipse UI median77s. These are timing measurements, not blind annotations or semantic quality scores. |
 | Matched Fanum rendering | 2026-10-27 | pass (real media decode/audio) | Both private `media-verification.json` files | All57 app outputs contain audio and fully decode with0errors. Output tails exceed selected ranges by about0.4s as explicitly configured by host END_PAD, with frame quantization up to0.43s. This does not certify hook/context quality or audio audition. |
 | Full local tests with corrected Windows environment | 2026-10-27 | pass at functional source8462379 | Private `host-full-tests-utf8.log`:5379passed,16skipped,810.31s | Display-ID workaround only for Python3.11.0 HTTPError collection; existing Git Bash on PATH and PYTHONUTF8=1. The previous full run failed25tests because Bash was missing and Node output used the Windows text encoding. All four affected files passed with that environment before the full rerun. No assertions/product code were changed to obtain this result. Later host changes require their own validation. |
-| Live Twitch/GTA | 2026-10-26 | not-run | Requires own test stream and consenting viewers | Do not infer success from these regressions. |
-| W.2-W.5 | 2026-10-26 | not-run (live publishing) | Requires reviewed own-stream clip and selected destination | W.1 connection validation above does not prove successful delivery. No new subscription or external publication attempted. |
+| Live Twitch/GTA | 2026-10-27 | not-run | Viewer OAuth renewal pending; Twitch on zackrawrr, GTA on Fanum | Colin does not stream. Organic nominations only; no automated chat messages. Separate-source evidence must be labeled. |
+| W.2-W.5 | 2026-10-26 | not-run (live publishing) | Requires exact approved clip and selected destination | W.1 connection validation above does not prove successful delivery. No new subscription or external publication attempted. |
 
 Normal checkout settings are untouched; work is isolated in
 `D:/ck-hackathon/host`, branch `feature/twitch-vod-binding`. The GTA plugin
@@ -40,3 +40,23 @@ Normal checkout settings are untouched; work is isolated in
 coding agent for the new GTA candidate, using a behavior-only specification and
 existing source/fictional tests rather than raw external observations. Baselines
 are complete above; candidate evaluation and live delivery remain outstanding.
+
+## Viewer-channel continuation, 2026-10-27
+
+Colin has viewer access only and selected zackrawrr for non-GTA Twitch testing.
+Fanum remains the GTA quality source. Own-stream/OBS preparation is optional
+historical material; Discord remains excluded. No chat or public clips/posts
+were sent by these tests.
+
+| Test | Result | Evidence and limits |
+|---|---|---|
+| Public Twitch application | Created with explicit approval | Public application Clips Kitty Hackathon - Colin; public ID v5kp0kbjcs17op08vjfpe3phwoq28h; HTTPS localhost redirect. No secret generated. Browser sign-in alone is not an app OAuth connection. |
+| zackrawrr Watch discovery | Pass, real read-only service | Private zackrawrr-watch-test.json: seven previous recordings baselined, no backlog jobs, global automation restored off. No GTA pipeline on this non-GTA source. |
+| Selected-channel API/runtime/source gates | Pass, offline | 290 focused provider/EventSub/API/workflow/SDK/feed/contract checks; four new capability tests failed before implementation. Public VOD source binding requires a verified host mapping. Existing own-channel behavior and remote-write gates retained. |
+| Recovery after channel change during an outage | Pass, offline | 27 workflow API tests after the final recovery fix, including blocked old lookup versus new-channel retry. Old bootstrap cannot overwrite a new lifecycle. |
+| Actual ConnectedAccountsCard | Pass, hidden Electron fixture | ui/scripts/test-viewer-channel.cjs and private viewer-channel-ui.json: login/target distinction, active channel lock, remount/resume, malformed URL refusal; zero renderer errors. This is not live Twitch evidence. |
+| UI typecheck, client and production build | Pass | TypeScript, test-connected-accounts.cjs and electron-vite build; private fixture has no real account or provider writes. |
+| GTA0.5.2 actual app tuning | Complete, quality approval pending | Frozen 6ab55bd on matched host3ef5530: 28 rendered clips, 10?22.96s, median14.08s, 8.9min; all28 audio/decode checks pass. 14/53 fully validated dialogue windows plus7 partial; no blind precision, recall or holdout claim. |
+| Private before/after timing video | Pass, media integrity | Fanum-GTA-Timing-Review.mp4, 134.421333s, full decode passed, SHA25664c8f547544ea77fc65ce479a12d2cbaaa421283c465d9973e63db1a5689b6f0. Actual app exports plus labeled source context; Eklipse inventory text only, not provider exports. Human boundary review pending. |
+| Refreshed frozen host | Build/smoke pass, current runtime not-run | a81792 backend build exit0, startup and bundled Python/process-pool checks pass. Does not contain the subsequent selected-public-channel changes; those need their own build/runtime verification. |
+| Viewer OAuth / real EventSub | Pending | Earlier grant expired before exchange; fresh user:read:chat + clips:edit grant and bounded background poll active. No durable account or live chat pass claimed. |

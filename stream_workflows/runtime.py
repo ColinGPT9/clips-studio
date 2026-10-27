@@ -68,8 +68,10 @@ class WorkflowRuntime:
         self._options = {"clock": clock} if clock is not None else {}
         self._lock = threading.RLock()
         self._monitored = set()
+        self._channels = {}
+        self._channel_logins = {}
         self._lifecycle_revisions = {}
-        self._bootstrapping = set()
+        self._bootstrapping = {}
         self._closed = False
         self._closing = threading.Event()
         self._nominations = None
@@ -161,28 +163,30 @@ class WorkflowRuntime:
             raise WorkflowError("missing_scope", "Reconnect Twitch with permission to read chat.", status=403)
         return account
 
-    def start_monitor(self, account_id):
+    def start_monitor(self, account_id, broadcaster_id=None):
         account = self._account(account_id, chat=True)
+        broadcaster_id = account["user_id"] if broadcaster_id is None else broadcaster_id
+        if not isinstance(broadcaster_id, str) or not NUMBER.fullmatch(broadcaster_id):
+            raise WorkflowError("invalid_channel", "Choose a valid Twitch channel.")
         with self._lock:
             if self._closed:
                 raise WorkflowError("service_closed", "Stream workflows are stopping.", status=503)
+            if account_id in self._monitored and self._channels.get(account_id) != broadcaster_id:
+                raise WorkflowError("channel_in_use", "Stop collection before choosing another channel.", status=409)
             nominations = self.nominations
+            revision = self._lifecycle_revisions.get(account_id, 0)
+            state = self.event_manager.start(
+                account_id, broadcaster_id,
+                ["stream.online", "stream.offline", "channel.chat.message"], consumer=MONITOR,
+            )
             if account_id not in self._monitored:
                 nominations.deactivate(account_id)
+            if self._channels.get(account_id) != broadcaster_id:
+                self._channel_logins.pop(account_id, None)
+            self._channels[account_id] = broadcaster_id
             self._monitored.add(account_id)
-            revision = self._lifecycle_revisions.get(account_id, 0)
-            try:
-                state = self.event_manager.start(
-                    account_id,
-                    account["user_id"],
-                    ["stream.online", "stream.offline", "channel.chat.message"],
-                    consumer=MONITOR,
-                )
-            except Exception:
-                self._monitored.discard(account_id)
-                raise
         # Twitch does not replay stream.online for a listener enabled mid-live.
-        # Bootstrap only from the host's actual own-channel stream lookup, and
+        # Bootstrap only from the host's actual selected-channel lookup, and
         # keep retrying in the background while Twitch cannot answer.
         if self._bootstrap(account_id, revision) is None:
             self._bootstrap_later(account_id)
@@ -192,9 +196,13 @@ class WorkflowRuntime:
     def _bootstrap(self, account_id, revision):
         """Record the live stream if Twitch shows one. None: retry later."""
         try:
-            account = self._account(account_id, chat=True)
+            self._account(account_id, chat=True)
+            with self._lock:
+                broadcaster_id = self._channels.get(account_id)
+                if broadcaster_id is None or self._lifecycle_revisions.get(account_id, 0) != revision:
+                    return False
             context = self.service.perform(
-                account_id, "stream_context", broadcaster_id=account["user_id"], first=1
+                account_id, "stream_context", broadcaster_id=broadcaster_id, first=1
             )
         except (AccountError, WorkflowError):
             return None
@@ -208,8 +216,11 @@ class WorkflowRuntime:
             ):
                 # A real lifecycle event arrived meanwhile, or collection ended.
                 return False
-            if not (isinstance(owner, dict) and owner.get("id") == account["user_id"]):
+            if not (isinstance(owner, dict) and owner.get("id") == broadcaster_id):
                 return False
+            login = owner.get("login")
+            if isinstance(login, str) and re.fullmatch(r"[A-Za-z0-9_]{1,25}", login):
+                self._channel_logins[account_id] = login
             if stream is None:
                 # Verified offline. A stream that ended while the socket was
                 # reconnecting sent no stream.offline either: stop counting it.
@@ -224,7 +235,7 @@ class WorkflowRuntime:
                 {
                     "id": "workflow-bootstrap-" + secrets.token_hex(16),
                     "type": "stream.online",
-                    "broadcaster_id": account["user_id"],
+                    "broadcaster_id": broadcaster_id,
                     "timestamp": iso(self.nominations.clock()),
                     "data": {"id": stream.get("id"), "started_at": stream.get("started_at")},
                 },
@@ -232,10 +243,11 @@ class WorkflowRuntime:
 
     def _bootstrap_later(self, account_id):
         with self._lock:
-            if self._closed or account_id not in self._monitored or account_id in self._bootstrapping:
-                return
-            self._bootstrapping.add(account_id)
             revision = self._lifecycle_revisions.get(account_id, 0)
+            if (self._closed or account_id not in self._monitored
+                    or self._bootstrapping.get(account_id) == revision):
+                return
+            self._bootstrapping[account_id] = revision
         threading.Thread(target=self._bootstrap_loop, args=(account_id, revision), daemon=True,
                          name="stream-workflow-bootstrap").start()
 
@@ -248,7 +260,8 @@ class WorkflowRuntime:
                     return
         finally:
             with self._lock:
-                self._bootstrapping.discard(account_id)
+                if self._bootstrapping.get(account_id) == revision:
+                    self._bootstrapping.pop(account_id, None)
 
     def stop_monitor(self, account_id):
         self._account(account_id)
@@ -282,14 +295,14 @@ class WorkflowRuntime:
             if self._closed or account_id not in self._monitored:
                 return False
             try:
-                account = self._account(account_id, chat=True)
+                self._account(account_id, chat=True)
                 nominations = self.nominations
             except (WorkflowError, AccountError):
                 self._monitored.discard(account_id)
                 if self._nominations is not None:
                     self._nominations.deactivate(account_id)
                 return False
-            if not isinstance(event, dict) or event.get("broadcaster_id") != account["user_id"]:
+            if not isinstance(event, dict) or event.get("broadcaster_id") != self._channels.get(account_id):
                 return False
             if event.get("type") in {"stream.online", "stream.offline"}:
                 self._lifecycle_revisions[account_id] = self._lifecycle_revisions.get(account_id, 0) + 1
@@ -299,7 +312,7 @@ class WorkflowRuntime:
             return accepted
 
     def discover_recordings(self):
-        """Match own archives to ended stream IDs, never infer clock alignment."""
+        """Match channel archives to ended stream IDs, never infer clock alignment."""
         with self._lock:
             if self._closed:
                 return
@@ -307,11 +320,11 @@ class WorkflowRuntime:
             work = store.recording_work() if store is not None else []
         groups = {}
         for row in work:
-            groups.setdefault(row["account_id"], []).append(row)
-        for account_id, rows in groups.items():
+            groups.setdefault((row["account_id"], row["broadcaster_id"]), []).append(row)
+        for (account_id, broadcaster_id), rows in groups.items():
             try:
-                account = self._account(account_id)
-                result = self.service.perform(account_id, "videos", broadcaster_id=account["user_id"], first=100)
+                self._account(account_id)
+                result = self.service.perform(account_id, "videos", broadcaster_id=broadcaster_id, first=100)
                 videos = result.get("videos", []) if isinstance(result, dict) else []
                 if not isinstance(videos, list):
                     videos = []
@@ -373,7 +386,10 @@ class WorkflowRuntime:
         with self._lock:
             monitoring = account_id in self._monitored
             nominations = self._stored_nominations()
-        return {"monitoring": monitoring, "streams": nominations.streams(account_id) if nominations else []}
+            broadcaster_id = self._channels.get(account_id)
+        return {"monitoring": monitoring, "broadcaster_id": broadcaster_id,
+                "broadcaster_login": self._channel_logins.get(account_id),
+                "streams": nominations.streams(account_id) if nominations else []}
 
     def bind_vod(
         self,
@@ -388,11 +404,7 @@ class WorkflowRuntime:
         source_offset_seconds=None,
         source_id=None,
     ):
-        account = self._account(account_id)
-        if broadcaster_id != account["user_id"]:
-            raise WorkflowError(
-                "permission_denied", "A stream mapping must belong to your connected channel.", status=403
-            )
+        self._account(account_id)
         if (
             not isinstance(vod_id, str)
             or not NUMBER.fullmatch(vod_id)
@@ -433,6 +445,12 @@ class WorkflowRuntime:
         nominations = self._stored_nominations()
         return nominations.mapping(account_id, vod_id) if nominations is not None else None
 
+    def mapped_broadcaster(self, account_id, vod_id):
+        """A host-verified recorded channel, never a plugin-supplied target."""
+        self._account(account_id)
+        mapping = self._mapping(account_id, vod_id)
+        return mapping["broadcaster_id"] if mapping is not None else None
+
     def audience_for_binding(self, binding):
         result = self._audience(binding)
         if result.get("status") != "available":
@@ -456,12 +474,14 @@ class WorkflowRuntime:
             account = self._account(binding.get("account_id"))
         except (WorkflowError, AccountError):
             return {**empty, "reason": "account_unavailable"}
-        if account["user_id"] != binding.get("broadcaster_id"):
-            return empty
         try:
+            mapping = self._mapping(account["id"], binding.get("vod_id", binding.get("video_id")))
             nominations = self._stored_nominations()
         except WorkflowError:
             return {**empty, "reason": "storage_unavailable"}
+        if (binding.get("broadcaster_id") != account["user_id"]
+                and (mapping is None or mapping["broadcaster_id"] != binding.get("broadcaster_id"))):
+            return empty
         if nominations is None:
             return empty
         if self._whole_vod(binding, account):
@@ -470,13 +490,14 @@ class WorkflowRuntime:
             )
         return nominations.audience_for_binding(binding)
 
-    @staticmethod
-    def _whole_vod(binding, account):
+    def _whole_vod(self, binding, account):
         """The host verified this run's file is the whole Twitch archive."""
         duration = binding.get("vod_duration")
+        mapping = self._mapping(account["id"], binding.get("vod_id", binding.get("video_id")))
         return (
             binding.get("whole_vod") is True
-            and binding.get("broadcaster_id") == account["user_id"]
+            and (binding.get("broadcaster_id") == account["user_id"]
+                 or (mapping is not None and mapping["broadcaster_id"] == binding.get("broadcaster_id")))
             and isinstance(duration, (int, float))
             and not isinstance(duration, bool)
             and math.isfinite(duration)
@@ -495,8 +516,7 @@ class WorkflowRuntime:
         mapping = self._mapping(account["id"], vod_id) if isinstance(vod_id, str) else None
         explicit = (
             mapping is not None
-            and mapping["broadcaster_id"] == account["user_id"]
-            and binding.get("broadcaster_id") == account["user_id"]
+            and mapping["broadcaster_id"] == binding.get("broadcaster_id")
             and mapping["source_offset_seconds"] is not None
             and mapping["source_id"] is not None
             and binding.get("source_id") == mapping["source_id"]

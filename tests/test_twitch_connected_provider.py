@@ -51,6 +51,27 @@ def account(*scopes):
     }
 
 
+def test_public_channel_login_resolves_to_provider_verified_id():
+    session = Session(
+        Reply(data={"data": [{"id": "99", "login": "zackrawrr", "display_name": "Zack"}]}),
+        Reply(data={"data": []}), Reply(data={"data": []}),
+    )
+    provider = TwitchProvider("public-client", session=session)
+    result = provider.perform("TOKEN", account(), "stream_context", broadcaster_login="zackrawrr")
+    assert result["broadcaster"]["id"] == "99"
+    assert session.calls[0][2]["params"] == {"login": "zackrawrr"}
+    assert session.calls[1][2]["params"]["user_id"] == "99"
+
+
+@pytest.mark.parametrize("login", ["https://evil.example/", "bad/name", "", "x?access_token=y"])
+def test_public_channel_lookup_rejects_non_login_input_without_network(login):
+    session = Session()
+    with pytest.raises(AccountError):
+        TwitchProvider("public-client", session=session).perform(
+            "TOKEN", account(), "stream_context", broadcaster_login=login)
+    assert not session.calls
+
+
 def token():
     return {
         "access_token": "ACCESS-MUST-NOT-LEAK",

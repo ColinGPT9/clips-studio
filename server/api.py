@@ -858,6 +858,7 @@ def create_app(config: dict, settings_path: Path) -> FastAPI:
         db=db,
     )
     account_runtime.workflow = stream_workflow
+    connected_feed.mapped_broadcaster = stream_workflow.mapped_broadcaster
     account_runtime.events.add_sink(stream_workflow.record_event)
     account_runtime.gateway = plugin_accounts.install(
         app, data_dir=data_dir, service=account_service,

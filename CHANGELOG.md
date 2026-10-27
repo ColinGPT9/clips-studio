@@ -26,7 +26,7 @@ were often broken in a way that only showed up on somebody else's machine.
   If you disable or uninstall a Gaming detector while the Watch form is open, it
   returns to **All games (Clips Kitty)** so adding a channel still works.
 - **Viewer nominations.** With the chat permission ticked you can start and stop
-  collecting your viewers' !clip, !chaos and !funny while you're live, with command
+  collecting !clip, !chaos and !funny from your channel or a channel you watch, with command
   counts and a timeline for each stream. After a broadcast ends, Clips Kitty looks
   for its matching Twitch recording and keeps checking for up to six hours, including
   across restarts. In Connected accounts, use **Bind recording** to check the recording

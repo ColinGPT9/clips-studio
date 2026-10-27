@@ -148,6 +148,80 @@ def test_monitor_requires_scope_and_own_channel_and_stops_sink(runtime):
     assert not value.record_event(ACCOUNT, {**incoming, "id": "after-stop"})
 
 
+def test_viewer_collects_selected_channel_and_rejects_other_channel_events(runtime):
+    value, service, events, clock = runtime
+    service.perform = lambda account_id, operation, **params: {
+        "broadcaster": {"id": "999", "login": "anotherchannel"},
+        "stream": {"id": "456", "started_at": iso(START)},
+    }
+    value.start_monitor(ACCOUNT, broadcaster_id="999")
+    assert events.started[0][1] == "999"
+    assert value.streams(ACCOUNT)["broadcaster_id"] == "999"
+    clock[0] += 120
+    chat = {"chatter_user_id": "777", "text": "!clip"}
+    assert not value.record_event(ACCOUNT, event("channel.chat.message", "wrong", clock[0], chat))
+    assert value.record_event(ACCOUNT, event("channel.chat.message", "right", clock[0], chat, broadcaster="999"))
+    assert value.streams(ACCOUNT)["streams"][0]["nomination_count"] == 1
+
+
+def test_channel_change_requires_stopping_collection_first(runtime):
+    value, _, _, _ = runtime
+    value.start_monitor(ACCOUNT)
+    with pytest.raises(WorkflowError) as exc:
+        value.start_monitor(ACCOUNT, broadcaster_id="999")
+    assert exc.value.code == "channel_in_use"
+    assert value.streams(ACCOUNT)["monitoring"] is True
+    assert value.streams(ACCOUNT)["broadcaster_id"] == "123"
+
+
+def test_verified_public_mapping_uses_reader_account_without_claiming_ownership(runtime):
+    value, service, _, clock = runtime
+    service.source["broadcaster_id"] = "999"
+    value.start_monitor(ACCOUNT, broadcaster_id="999")
+    assert value.record_event(ACCOUNT, event("stream.online", "selected-online", clock[0],
+                             {"id": "456", "started_at": iso(START)}, broadcaster="999"))
+    clock[0] += 120
+    assert value.record_event(ACCOUNT, event("channel.chat.message", "selected-chat", clock[0],
+                             {"chatter_user_id": "777", "text": "!clip"}, broadcaster="999"))
+    map_vod(value, broadcaster_id="999")
+    assert value.mapped_broadcaster(ACCOUNT, "789") == "999"
+    source = binding(broadcaster_id="999")
+    assert value.source_to_vod(source, 20) == 80
+    assert value.audience_for_binding(source)["status"] == "available"
+    assert not value.audience_for_binding(binding())["nominations"]
+    with pytest.raises(WorkflowError):
+        value.source_to_vod(binding(broadcaster_id="888"), 20)
+
+
+def test_switch_during_lookup_outage_starts_new_channel_recovery(runtime):
+    from connected_accounts.models import AccountError
+
+    value, service, _, _ = runtime
+    old_entered, release_old = threading.Event(), threading.Event()
+    calls = {"123": 0, "999": 0}
+
+    def lookup(account_id, operation, **params):
+        target = params["broadcaster_id"]
+        calls[target] += 1
+        if calls[target] == 1:
+            raise AccountError("provider_unavailable", "Try again.", status=503)
+        if target == "123":
+            old_entered.set()
+            release_old.wait(3)
+        return {"broadcaster": {"id": target}, "stream": {"id": "456", "started_at": iso(START)}}
+
+    service.perform = lookup
+    try:
+        value.start_monitor(ACCOUNT)
+        assert old_entered.wait(2)
+        value.stop_monitor(ACCOUNT)
+        value.start_monitor(ACCOUNT, broadcaster_id="999")
+        assert eventually(lambda: value.streams(ACCOUNT)["streams"])
+        assert value.streams(ACCOUNT)["streams"][0]["broadcaster_id"] == "999"
+    finally:
+        release_old.set()
+
+
 @pytest.mark.parametrize("stream_type", ["playlist", "watch_party", "premiere", "rerun"])
 def test_non_live_online_event_does_not_start_nomination_timeline(runtime, stream_type):
     value, _, _, clock = runtime
@@ -393,7 +467,8 @@ def test_storage_opens_on_first_use_and_damaged_files_are_set_aside(tmp_path, ca
     value = WorkflowRuntime(tmp_path, Service(), Events())
     try:
         # Reads never create the files: a person who never opts in gets none.
-        assert value.streams(ACCOUNT) == {"monitoring": False, "streams": []}
+        assert value.streams(ACCOUNT) == {
+            "monitoring": False, "broadcaster_id": None, "broadcaster_login": None, "streams": []}
         assert value.audience_for_binding(binding())["status"] == "unavailable"
         with pytest.raises(WorkflowError):
             value.source_to_vod(binding(), 20)
