@@ -121,7 +121,6 @@ def test_subscription_authority_and_scopes_are_checked_before_opening(manager):
     manager, service, sockets = manager
     for account, broadcaster, event_types, code in [
         ("twitch:unknown", "12", ["stream.online"], "account_not_found"),
-        ("twitch:12", "99", ["stream.online"], "permission_denied"),
         ("twitch:12", "12", ["arbitrary.permission"], "invalid_request"),
         ("twitch:12", "12", [], "invalid_request"),
         ("twitch:12", "bad", ["stream.online"], "invalid_request"),
@@ -133,6 +132,40 @@ def test_subscription_authority_and_scopes_are_checked_before_opening(manager):
     with pytest.raises(AccountError, match="read chat"):
         manager.start("twitch:12", "12", ["channel.chat.message"])
     assert not sockets and not service.calls
+
+
+def test_viewer_can_subscribe_to_an_explicit_public_channel(manager):
+    manager, service, sockets = manager
+    manager.start("twitch:12", "99", ["stream.online", "channel.chat.message"])
+    eventually(lambda: manager.events("twitch:12")["status"] == "connected")
+    assert service.calls[-1][0] == "twitch:12"
+    assert service.calls[-1][2]["broadcaster_id"] == "99"
+    sockets[0].messages.put(notification(uid="99", message_id="selected"))
+    sockets[0].messages.put(notification(uid="12", message_id="unselected"))
+    eventually(lambda: bool(manager.events("twitch:12")["events"]))
+    assert [e["id"] for e in manager.events("twitch:12")["events"]] == ["selected"]
+
+
+def test_another_consumer_cannot_silently_retarget_a_shared_listener(manager):
+    manager, _, sockets = manager
+    manager.start("twitch:12", "12", ["stream.online"], consumer="desktop")
+    eventually(lambda: manager.events("twitch:12")["status"] == "connected")
+    with pytest.raises(AccountError) as error:
+        manager.start("twitch:12", "99", ["stream.online"], consumer="plugin")
+    assert error.value.status == 409
+    assert manager.events("twitch:12")["broadcaster_id"] == "12"
+    assert not sockets[0].closed
+
+
+def test_explicit_channel_switch_replaces_only_that_consumers_requested_types(manager):
+    manager, service, sockets = manager
+    manager.start("twitch:12", "12", ["channel.chat.message"], consumer="desktop")
+    eventually(lambda: manager.events("twitch:12")["status"] == "connected")
+    manager.start("twitch:12", "99", ["stream.online"], consumer="desktop")
+    eventually(lambda: len(service.calls) == 2)
+    assert service.calls[-1][2]["broadcaster_id"] == "99"
+    assert service.calls[-1][2]["event_types"] == ["stream.online"]
+    assert sockets[0].closed
 
 
 @pytest.mark.parametrize("url", [

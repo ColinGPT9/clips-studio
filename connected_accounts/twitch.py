@@ -744,12 +744,9 @@ class TwitchProvider:
             or any(not isinstance(item, str) or item not in _EVENTS for item in event_types)
         ):
             raise AccountError("invalid_request", "Choose a supported Twitch event type.")
-        if broadcaster != subject:
-            raise AccountError(
-                "permission_denied",
-                "Twitch event subscriptions are limited to the connected streamer's channel.",
-                status=403,
-            )
+        # A user token may read a selected public channel. The reader remains
+        # the authenticated subject in the chat condition below; channel
+        # ownership is not required for these allowlisted public event types.
         if "channel.chat.message" in event_types and "user:read:chat" not in scopes:
             raise AccountError(
                 "missing_scope", "Reconnect Twitch and allow reading chat messages.", status=403

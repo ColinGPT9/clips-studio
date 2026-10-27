@@ -362,16 +362,12 @@ def test_eventsub_is_bound_to_host_session_connected_broadcaster_and_chat_scope(
         "condition": {"broadcaster_user_id": "42", "user_id": "42"},
         "transport": {"method": "websocket", "session_id": "host-session"},
     }
-    with pytest.raises(AccountError) as exc:
-        TwitchProvider("public-client", session=Session()).perform(
-            "TOKEN",
-            account("user:read:chat"),
-            "subscribe_events",
-            broadcaster_id="99",
-            event_types=["channel.chat.message"],
-            session_id="host-session",
-        )
-    assert exc.value.code == "permission_denied"
+    public = Session(Reply(202, {"data": [{"id": "public-sub", "status": "enabled"}]}))
+    TwitchProvider("public-client", session=public).perform(
+        "TOKEN", account("user:read:chat"), "subscribe_events", broadcaster_id="99",
+        event_types=["channel.chat.message"], session_id="host-session",
+    )
+    assert public.calls[0][2]["json"]["condition"] == {"broadcaster_user_id": "99", "user_id": "42"}
     with pytest.raises(AccountError) as exc:
         TwitchProvider("public-client", session=Session()).perform(
             "TOKEN",

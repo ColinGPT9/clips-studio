@@ -121,20 +121,26 @@ class EventSubManager:
             raise AccountError("account_not_found", "Connect a Twitch account first.", status=404)
         if account.get("status") != "connected":
             raise AccountError("reconnect_required", "Reconnect Twitch to receive events.", status=401)
-        if broadcaster_id != account.get("user_id"):
-            raise AccountError("permission_denied", "This connection can receive events for its own channel.",
-                               status=403)
+        if not isinstance(account.get("user_id"), str) or not _NUMBER.fullmatch(account["user_id"]):
+            raise AccountError("reconnect_required", "Reconnect Twitch before receiving events.", status=401)
         if "channel.chat.message" in types and "user:read:chat" not in account.get("scopes", []):
             raise AccountError("missing_scope", "Reconnect Twitch with permission to read chat.", status=403)
         with self._lock:
             if self._closed:
                 raise AccountError("service_closed", "Connected Accounts is stopping.", status=503)
             consumers = self._consumers.setdefault(account_id, {})
+            existing = self._streams.get(account_id)
+            if existing is not None and existing.broadcaster_id != broadcaster_id:
+                if any(name != consumer for name in consumers):
+                    raise AccountError("channel_in_use", "Another feature is monitoring a different channel. "
+                                       "Stop it before changing the channel.", status=409)
+                # Switching channels is a new selection, not permission to
+                # carry the previous channel's requested chat types across.
+                consumers.clear()
             consumers[consumer] = tuple(sorted(set(types) | set(consumers.get(consumer, ()))))
             types = self._union(consumers)
             if "user:read:chat" not in account.get("scopes", []):
                 types = tuple(t for t in types if t != "channel.chat.message")
-            existing = self._streams.get(account_id)
             if (existing is not None and existing.broadcaster_id == broadcaster_id
                     and existing.types == types and existing.thread is not None
                     and existing.thread.is_alive()):
