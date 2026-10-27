@@ -12,7 +12,7 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Added
 
-- **Connect your Twitch account** (new, and not yet tried against a real Twitch account).
+- **Connect your Twitch account** (new).
   In Settings → Connected accounts you register a free Twitch application once (the card
   lists the steps), paste its Client ID, then sign in on Twitch's own page with a code.
   No Clips Kitty account is needed, and the sign-in is kept encrypted on this PC. Twitch is

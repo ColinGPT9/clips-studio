@@ -209,10 +209,14 @@ and `eventsub.wss.twitch.tv`. The activation page is on `www.twitch.tv`.
 Verify consent/denial/cancellation, account identity, scope selection, restart,
 token refresh, revoked permissions, own-channel watch discovery, live clip
 creation, VOD links, chat/EventSub reconnect, and disconnect against that account.
-None of this has yet been tried against a real Twitch account: live
-authorization, clips, chat and EventSub are checked only with fake provider
-responses. Windows DPAPI storage itself (core/secrets) is the app's existing
-credential store; the Connected Accounts tests inject the OS boundary.
+Real viewer-account checks have verified authorization, exact scopes, Windows
+DPAPI persistence across a backend restart, selected public-channel metadata,
+archive timestamp links, EventSub subscription and incoming chat delivery.
+Releasing the desktop consumer preserved the nomination collector, and stopping
+collection closed the listener. The channel was offline: live stream transitions,
+nomination-to-recording clock alignment, native clip creation, token refresh,
+revocation and social delivery remain unverified by that session. See the
+[test log](hackathon/TEST_LOG.md) for the source snapshot and evidence limits.
 
 Official provider references:
 
