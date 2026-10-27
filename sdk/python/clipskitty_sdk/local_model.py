@@ -30,10 +30,12 @@ from __future__ import annotations
 import base64
 import http.client
 import json as jsonlib
+import math
 import os
 import urllib.error
 import urllib.request
 from pathlib import Path
+from time import monotonic
 
 from . import _loopback
 
@@ -108,7 +110,7 @@ def _post(address: str, path: str, body: dict, timeout: float) -> dict:
     return data
 
 
-def _capabilities(job, *, strict: bool) -> tuple[str, ...]:
+def _capabilities(job, *, strict: bool, timeout: float = 15) -> tuple[str, ...]:
     """What Ollama says the model can do (/api/show). Asked once for each
     address and model. Without strict, a failed lookup reads as "nothing
     special" and is asked again next time."""
@@ -116,7 +118,7 @@ def _capabilities(job, *, strict: bool) -> tuple[str, ...]:
     key = (address, name)
     if key not in _CAPABILITIES:
         try:
-            data = _post(address, "/api/show", {"model": name}, timeout=15)
+            data = _post(address, "/api/show", {"model": name}, timeout=timeout)
         except LocalModelError:
             if strict:
                 raise
@@ -145,16 +147,29 @@ def ask(job, prompt: str, *, images=(), json: bool = False, timeout: float = 120
     With `json`, the model is asked to answer with JSON only (the answer
     is still text: read it with json.loads), and a model that can think
     first is told not to, so the answer isn't cut short. `timeout` is in
-    seconds. Raises LocalModelError."""
+    seconds, shared by capability lookup and generation rather than granted
+    afresh for each request. Raises LocalModelError."""
     name, address = model(job), _address(job)
+    seconds = float(timeout)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("timeout must be a finite positive number of seconds")
+    deadline = monotonic() + seconds
+
+    def remaining() -> float:
+        left = deadline - monotonic()
+        if left <= 0:
+            raise LocalModelError(f"The local model reached its {seconds:g} second time limit")
+        return left
+
     body: dict = {"model": name, "prompt": str(prompt), "stream": False}
     if images:
         body["images"] = [_image(image) for image in images]
     if json:
         body["format"] = "json"
-        if "thinking" in _capabilities(job, strict=False):
+        if "thinking" in _capabilities(job, strict=False, timeout=min(15, remaining())):
             body["think"] = False
-    answer = _post(address, "/api/generate", body, timeout=float(timeout))
+    answer = _post(address, "/api/generate", body, timeout=remaining())
+    remaining()  # a late answer cannot silently count as within the requested budget
     if answer.get("error"):
         raise LocalModelError(f"The local model couldn't answer: {answer['error']}")
     return str(answer.get("response") or "")

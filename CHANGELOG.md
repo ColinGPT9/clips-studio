@@ -40,6 +40,10 @@ were often broken in a way that only showed up on somebody else's machine.
 
 ### Changed
 
+- Plugin local-model requests now share their requested timeout between checking
+  model capabilities and generating an answer. A capability check that uses the
+  budget no longer starts another full-length request.
+
 Clips are framed and chosen in two new ways, on for everyone. Either can be turned off
 with one line in your settings file: `%LOCALAPPDATA%\Clips Studio\settings.yaml` in the
 installed app (`config/settings.yaml` if you run Clips Kitty from its code). Restart Clips

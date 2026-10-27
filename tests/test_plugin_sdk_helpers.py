@@ -488,6 +488,48 @@ def test_ask_turns_thinking_off_for_json(tmp_path, servers):
     assert "think" not in ollama.requests[-1]["body"]  # text answers are left as Ollama sends them
 
 
+def test_ask_shares_json_timeout_with_capability_discovery(tmp_path, monkeypatch):
+    job = _model_job(tmp_path, "http://127.0.0.1:11434")
+    elapsed = [100.0]
+    calls = []
+    monkeypatch.setattr(local_model, "monotonic", lambda: elapsed[0], raising=False)
+
+    def post(address, path, body, timeout):
+        calls.append((path, timeout, body))
+        if path == "/api/show":
+            elapsed[0] += 9
+            return {"capabilities": ["thinking"]}
+        return {"response": '{"supported":true}'}
+
+    monkeypatch.setattr(local_model, "_post", post)
+    assert local_model.ask(job, "Check the supplied evidence", json=True, timeout=15)
+    assert [(path, timeout) for path, timeout, _ in calls] == [
+        ("/api/show", 15), ("/api/generate", 6),
+    ]
+    assert calls[-1][2]["think"] is False
+    calls.clear()
+    local_model.ask(job, "Check another window", json=True, timeout=15)
+    assert [(path, timeout) for path, timeout, _ in calls] == [("/api/generate", 15)]
+
+
+def test_discovery_exhausts_ask_budget_without_starting_generation(tmp_path, monkeypatch):
+    job = _model_job(tmp_path, "http://127.0.0.1:11434")
+    elapsed = [100.0]
+    paths = []
+    monkeypatch.setattr(local_model, "monotonic", lambda: elapsed[0], raising=False)
+
+    def post(address, path, body, timeout):
+        paths.append(path)
+        elapsed[0] += timeout
+        raise local_model.LocalModelError("Controlled model request timeout")
+
+    monkeypatch.setattr(local_model, "_post", post)
+    with pytest.raises(local_model.LocalModelError, match="time limit"):
+        local_model.ask(job, "Check the supplied evidence", json=True, timeout=0.5)
+    assert paths == ["/api/show"]
+    assert not local_model._CAPABILITIES  # a failed lookup remains eligible for retry
+
+
 def test_ask_refuses_an_address_off_this_pc(tmp_path, servers):
     ollama = servers(_ollama())
     port = ollama.url.rsplit(":", 1)[1]
