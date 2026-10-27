@@ -286,7 +286,7 @@ def install(
             "create_clip": {"broadcaster_id", "has_delay"},
             "create_vod_clip": {"broadcaster_id", "video_id", "start_seconds", "end_seconds", "title"},
             "get_clip": {"broadcaster_id", "clip_id", "video_id"},
-            "vod_link": {"video_id", "seconds"},
+            "vod_link": {"broadcaster_id", "video_id", "seconds"},
             "send_chat": {"broadcaster_id", "message"},
         }
         if set(params) - allowed[body.operation]:

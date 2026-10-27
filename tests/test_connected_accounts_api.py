@@ -289,6 +289,10 @@ def test_viewer_can_read_selected_public_channel_and_subscribe(api):
                            json={"operation": "create_clip", "params": {"broadcaster_id": "999"}})
     assert response.status_code == 200, response.text
     assert provider.operations[-1] == ("create_clip", {"broadcaster_id": "999"})
+    response = client.post(path + "/twitch", headers=HEADERS, json={
+        "operation": "vod_link", "params": {"broadcaster_id": "999", "video_id": "789", "seconds": 60}})
+    assert response.status_code == 200, response.text
+    assert provider.operations[-1] == ("vod_link", {"broadcaster_id": "999", "video_id": "789", "seconds": 60})
 
 
 @pytest.mark.parametrize("key", ["account_id", "operation", "access_token", "url", "session_id"])
