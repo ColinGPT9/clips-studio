@@ -8,9 +8,10 @@
 
 **Codex session ID:** `01a179b9-a6c3-7760-bbdf-dabc10d0b1d3`
 
-**Demo video:** `Clips-Kitty-Hackathon-Demo.mp4` (2 minutes 17 seconds). Upload this
-file to YouTube as Public and paste its URL into the submission form. It has not
-been uploaded or submitted automatically.
+**Test recording:** `Clips-Kitty-Hackathon-Demo.mp4` (2 minutes 17 seconds).
+The user clarified that this is a test video, not the final submission demo.
+Do not use it as the final entry without a separate explicit selection. The
+final demo and its public URL remain undecided; they do not gate app work.
 
 **Submission page:** https://devpost.com/submit-to/31742-codex-x-twitchcon-hackathon/manage/submissions
 
@@ -51,7 +52,7 @@ timestamp-link repair passed 212 affected checks and current CI/CodeQL. The
 detector candidate passed 358 tests. Actual rendered exports contain audio and
 fully decode.
 
-The public demo uses original synthetic test footage with an authored transcript,
+The test recording uses original synthetic test footage with an authored transcript,
 clearly labeled. It does not claim real-gameplay ASR quality. A separate private
 Fanum tuning run produced 28 clips, 10-22.96 seconds, and the shorter timing style
 was approved. That retrospective run is not an untouched holdout or proof of
@@ -76,7 +77,7 @@ requirements for the demonstrated viewer connection, editor or export flow.
 
 ## Submission checklist
 
-- Review the MP4 and use its public YouTube URL in the form.
+- Finish the real app workflow first; select the final submission recording separately.
 - Use the two branch URLs above; the new work remains in draft PR194 and PR9.
 - Paste the description and actual Codex session ID above.
 - Fill your own team/contact information and submit the form yourself.
