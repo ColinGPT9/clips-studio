@@ -11,7 +11,7 @@ Discord authorization and bot installation are a separate integration effort.
 
 1. Register an application in the [Twitch developer console](https://dev.twitch.tv/console/apps).
    Twitch asks for two-factor authentication on the account first. The form
-   needs a name, at least one **OAuth Redirect URL** (`http://localhost` will
+   needs a name, at least one **OAuth Redirect URL** (`https://localhost` will
    do: device sign-in never uses it), a **Category**, and **Client Type: Public**.
 2. In **Settings → Connected accounts**, save that application's Client ID
    (letters and numbers only). Do not enter a client secret; the desktop app

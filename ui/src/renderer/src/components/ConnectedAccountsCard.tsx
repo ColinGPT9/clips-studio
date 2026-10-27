@@ -417,7 +417,7 @@ export default function ConnectedAccountsCard({
               <ol className="text-xs text-muted list-decimal pl-5 space-y-1">
                 <li>{t('Turn on two-factor authentication for your Twitch account. Twitch asks for it before you can register an application.')}</li>
                 <li>{t('In the Twitch developer console, choose Register Your Application and give it any name.')}</li>
-                <li>{t('Under OAuth Redirect URLs enter http://localhost. Twitch requires one, though signing in here never uses it.')}</li>
+                <li>{t('Under OAuth Redirect URLs enter https://localhost. Twitch requires one, though signing in here never uses it.')}</li>
                 <li>{t('Pick any Category, and set Client Type to Public.')}</li>
                 <li>{t('Create it, then copy its Client ID and paste it below. A client secret is not needed.')}</li>
               </ol>
