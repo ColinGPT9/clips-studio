@@ -150,6 +150,8 @@ A plugin whose manifest uses the words `moments`, `ratings` or `context` also fi
 
 **Secrets.** A setting of `type: secret` is stored in Clips Kitty's secrets store (`core/secrets.py`: encrypted with Windows DPAPI under the user's account; on other systems a file only the user can read) and reaches only your process, only in its environment, never in a file. Secrets are not isolated between plugins: any program running as the user, including another plugin, can read the same store.
 
+**Optional run capabilities.** After filtering inherited variables, the engine supplies `CLIPS_KITTY_PLUGIN_DEADLINE_MONOTONIC`: its actual deadline in seconds on this PC's monotonic clock. Compare it with `time.monotonic()` and leave time to write results. It also supplies `CLIPS_KITTY_PLUGIN_CACHE_DIR` when writable, under this app's `plugins/cache/<publisher>/<name>` data directory. Cache only validated results with source, model, settings and schema/version keys; do not write persistent state into installed plugin files. Cache directories are shared by versions of the same plugin, not different app data directories. Older hosts, standalone SDK runs, or unavailable storage may omit these capabilities; use bounded fallback work without persistent caching. The host still enforces the process timeout.
+
 ## How your answer becomes clips
 
 - Ranges are clamped to the video's length, and any left shorter than one second are dropped.

@@ -317,12 +317,23 @@ def _execute(plugin: store.Installed, command: list, python: str | None, folder:
     from plugins._sdk import sdk_dir
 
     env = host.plugin_env(os.environ, job_folder=folder, secrets=secrets_for(plugin, data_dir), sdk_dir=sdk_dir())
+    # Optional persistent state belongs to this app's data, never the immutable
+    # installed plugin files. Inherited CLIPS_* paths were stripped above.
+    cache_root = store.root(data_dir).resolve()
+    cache = (cache_root / "cache" / plugin.id).resolve()
+    try:
+        if cache.is_relative_to(cache_root):
+            cache.mkdir(parents=True, exist_ok=True)
+            env["CLIPS_KITTY_PLUGIN_CACHE_DIR"] = str(cache)
+    except OSError:
+        pass  # optional caching cannot prevent source-based discovery
     from plugins import accounts
 
     # Dedicated per-run capabilities are injected only after plugin_env has
     # removed desktop authentication. They never enter persisted job files.
     with accounts.run_environment(data_dir, plugin, video, timeout) as account_env:
         env.update(account_env)
+        env["CLIPS_KITTY_PLUGIN_DEADLINE_MONOTONIC"] = str(time.monotonic() + timeout)
         outcome = host.run_plugin(
             host.resolve_command(command, python or "", plugin.folder), cwd=plugin.folder, job_folder=folder, env=env,
             timeout=timeout, on_event=on_event,

@@ -43,6 +43,9 @@ were often broken in a way that only showed up on somebody else's machine.
 - Plugin local-model requests now share their requested timeout between checking
   model capabilities and generating an answer. A capability check that uses the
   budget no longer starts another full-length request.
+- Plugins can reuse validated results in an app-managed cache without changing
+  their installed files, and can see the runner's actual deadline to finish
+  optional review before it expires. Unavailable cache storage does not stop a run.
 
 Clips are framed and chosen in two new ways, on for everyone. Either can be turned off
 with one line in your settings file: `%LOCALAPPDATA%\Clips Studio\settings.yaml` in the

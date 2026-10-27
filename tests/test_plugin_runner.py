@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -314,6 +315,36 @@ def test_the_process_gets_no_clips_kitty_settings_or_credentials(echo, video, mo
     assert Path(env["CLIPSKITTY_JOB"]).parent.name == "runs"
     assert Path(seen["cwd"]).resolve() == ECHO.resolve()
     assert seen["secret"] is None
+
+
+def test_cache_and_deadline_are_owned_by_the_host(echo, video, monkeypatch, tmp_path, install_plugin):
+    from plugins import runner, store
+
+    monkeypatch.setenv("CLIPS_KITTY_PLUGIN_CACHE_DIR", str(tmp_path / "forged"))
+    monkeypatch.setenv("CLIPS_KITTY_PLUGIN_DEADLINE_MONOTONIC", "1")
+    _run(echo, video, {"ranges": ""})
+    env = _seen(echo)["env"]
+    cache = Path(env["CLIPS_KITTY_PLUGIN_CACHE_DIR"])
+    assert cache == (echo / "plugins/cache/fixture-dev/echo").resolve()
+    assert cache.is_dir() and not cache.is_relative_to(ECHO.resolve())
+    left = float(env["CLIPS_KITTY_PLUGIN_DEADLINE_MONOTONIC"]) - time.monotonic()
+    assert 0 < left <= runner.timeout_seconds(store.get(echo, "fixture-dev/echo").manifest)
+    (cache / "kept.json").write_text("{}", encoding="utf-8")
+    _run(echo, video, {"ranges": ""})
+    assert _seen(echo)["env"]["CLIPS_KITTY_PLUGIN_CACHE_DIR"] == str(cache)
+    assert (cache / "kept.json").exists()
+    other = tmp_path / "other-app-data"
+    install_plugin(other, ECHO)
+    _run(other, video, {"ranges": ""})
+    assert _seen(other)["env"]["CLIPS_KITTY_PLUGIN_CACHE_DIR"] != str(cache)
+
+
+def test_unwritable_cache_does_not_block_a_plugin_run(echo, video, monkeypatch):
+    monkeypatch.setenv("CLIPS_KITTY_PLUGIN_CACHE_DIR", "inherited-untrusted-cache")
+    (echo / "plugins/cache").write_text("This file blocks the optional cache directory", encoding="utf-8")
+    found = _run(echo, video, {"ranges": "10-40:70"})
+    assert len(found) == 1
+    assert "CLIPS_KITTY_PLUGIN_CACHE_DIR" not in _seen(echo)["env"]
 
 
 def test_a_secret_setting_travels_in_the_environment_only(echo, video):
