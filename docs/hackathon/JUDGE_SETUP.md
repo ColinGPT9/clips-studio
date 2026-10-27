@@ -1,6 +1,6 @@
 # Run the submitted workflow
 
-Use Windows, Python3.11+, Node20+ and FFmpeg. The full project setup and optional
+Use Windows, Python 3.11+, Node 20+ and FFmpeg. The full project setup and optional
 local model setup are documented in the app repository README. Twitch metadata
 and EventSub do not require a paid model provider or GPU.
 
@@ -17,11 +17,24 @@ npm.cmd run build
 npm.cmd run dev
 ```
 
-In Settings > Connected accounts, configure a Public Twitch application's Client
-ID and use the HTTPS localhost registration hint. Connect your own Twitch account
-with Read Twitch chat. Enter a channel name or URL in Viewer highlight nominations
-and explicitly start collection. Viewer access can read the selected public
-channel; it does not grant broadcaster/editor VOD-clip rights.
+For a quick Twitch-only check, choose **Skip setup** in the first-run model
+wizard. Open Settings > Connected accounts and paste this submission's registered
+Public Twitch Client ID:
+
+```text
+v5kp0kbjcs17op08vjfpe3phwoq28h
+```
+
+This identifies the same **Clips Kitty Hackathon - Colin** application shown in
+the demo; it is not a client secret or an account credential. Connect your own
+Twitch account with **Read Twitch chat**, enter a channel name or URL in Viewer
+highlight nominations, and explicitly start collection. Reading the selected
+public channel does not grant broadcaster/editor VOD-clip rights.
+
+The app ID is supplied for testing this same submission. To register a separate
+application instead, use a Public client and the HTTPS localhost hint. Twitch
+documents Client IDs as public in its
+[registration guide](https://dev.twitch.tv/docs/authentication/register-app/).
 
 The app stores credentials in the OS-protected store. Configure your own
 connection; no credentials are included in the source archives. Collection does
