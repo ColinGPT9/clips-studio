@@ -53,3 +53,11 @@ manual facecam framing. This is not a claim that live nominations generated the
 highlight or that chat/VOD timing was verified. Gameplay and personal account
 data are not included in these source archives. See docs/hackathon/TEST_LOG.md for the separate
 real-service, real-media, synthetic and offline results.
+
+
+## Submitted new work
+
+Read [NEW_WORK.md](NEW_WORK.md) for the new Twitch workflow, dated source
+commits, the existing open-source foundation and its licenses. The repository's
+age is not presented as proof of the age of the submitted enhancement. The
+current demo uses native 1080p xQc source and shows full desktop-editor playback.
