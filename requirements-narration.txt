@@ -1,0 +1,3 @@
+# Optional, CPU-only host narration. Install in a separate environment.
+kokoro-onnx==0.6.1
+soundfile==0.13.1

@@ -952,3 +952,5 @@ Thank you to everyone who stars, shares, reports bugs and translates Clips Kitty
     <img alt="Clips Kitty GitHub star history" src="https://api.star-history.com/chart?repos=ColinGPT9/clips-studio&amp;type=date" />
   </picture>
 </a>
+
+Optional CPU narration for video production: [local Kokoro setup](docs/LOCAL_NARRATION.md). This host utility needs no subscription or provider key.

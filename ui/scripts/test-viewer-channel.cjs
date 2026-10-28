@@ -27,6 +27,7 @@ if (!process.versions.electron) {
           accounts:[{id:'twitch:123',provider:'twitch',user_id:'123',login:'fixturekitty',display_name:'Fixture Kitty',status:'connected',scopes:['user:read:chat','clips:edit']}]};
         else if(route.endsWith('/streams')) body={monitoring:window.monitoring,broadcaster_id:window.channel,
           broadcaster_login:window.channel?'zackrawrr':null,streams:[]};
+        else if(route.endsWith('/events')) body={status:'connected',broadcaster_id:window.channel,cursor:2,events:[{sequence:1,type:'channel.chat.message',broadcaster_id:window.channel},{sequence:2,type:'channel.chat.message',broadcaster_id:'wrong-channel'}]};
         else if(route.endsWith('/twitch')) body={broadcaster:{id:'999',login:'zackrawrr',display_name:'Zack'},stream:null};
         else if(route.endsWith('/monitor')) {window.monitoring=init.method==='POST';
           if(window.monitoring) window.channel=JSON.parse(init.body).broadcaster_id;body={monitoring:window.monitoring};}
@@ -63,6 +64,9 @@ if (!process.versions.electron) {
       const lookup = calls.find(c => c.route.endsWith('/twitch'))
       const start = calls.find(c => c.route.endsWith('/monitor') && c.method === 'POST')
       if (lookup?.body.params.broadcaster_login !== 'zackrawrr' || start?.body.broadcaster_id !== '999') throw Error('Selected channel was replaced by the reader account')
+      if (!(await js(`document.body.innerText.includes('Listening to Twitch') && document.body.innerText.includes('Chat messages received in this view: 1')`))) throw Error('Live activity did not show only the selected channel chat');
+      await new Promise(resolve=>setTimeout(resolve,2800));
+      if (!(await js(`document.body.innerText.includes('Chat messages received in this view: 1')`))) throw Error('Replayed events inflated the chat count');
       if (!(await js(`document.querySelector('${input}').disabled`))) throw Error('Active channel remained editable')
       await js('window.remount()');await delay()
       if (await js(`document.querySelector('${input}').value`) !== 'zackrawrr') throw Error('Reload showed the signed-in account instead of the collected channel')
@@ -70,6 +74,7 @@ if (!process.versions.electron) {
       await click('Start collecting nominations');await delay()
       if (await js('window.calls.filter(c=>c.route.endsWith("/twitch")).at(-1).body.params.broadcaster_login') !== 'zackrawrr') throw Error('Resume switched back to the signed-in account')
       await click('Stop collecting nominations');await delay()
+      if (await js(`document.querySelector('[aria-label="Live Twitch activity"]') !== null`)) throw Error('Live activity remained after stopping');
       const count = await js('window.calls.filter(c=>c.method==="POST").length')
       await setInput('https://evil.test/zackrawrr');await delay()
       await click('Start collecting nominations');await delay()
@@ -77,7 +82,7 @@ if (!process.versions.electron) {
       if (errors.length) throw Error('Renderer console errors')
       fs.writeFileSync(report, JSON.stringify({ passed: true, fixture_only: true, selected_channel: 'zackrawrr',
         authenticated_reader: 'fixturekitty', lookup, start, active_channel_locked: true,
-        remount_and_resume_preserved: true, invalid_url_refused: true, renderer_errors: errors }, null, 2))
+        remount_and_resume_preserved: true, invalid_url_refused: true, live_activity_scoped: true, replayed_events_not_counted: true, activity_removed_after_stop: true, renderer_errors: errors }, null, 2))
       app.exit(0)
     } catch (error) {
       fs.writeFileSync(report, JSON.stringify({ passed: false, error: error.message, renderer_errors: errors }, null, 2))

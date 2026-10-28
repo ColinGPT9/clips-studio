@@ -82,6 +82,14 @@ export interface TwitchStreamContext {
   stream: { id: string; title: string; game_name: string; started_at: string } | null
 }
 
+export interface TwitchEventBatch {
+  status: string
+  broadcaster_id?: string
+  cursor: number
+  truncated?: boolean
+  events: { sequence: number; type: string; broadcaster_id: string }[]
+}
+
 export const ACCOUNTS_CHANGED = 'connected-accounts-changed'
 
 /** The engine's HTTP status (0 when it could not be reached) and its fixed
@@ -179,6 +187,8 @@ export const connectedAccounts = {
   test: (id: string) => settled(request<unknown>(`${accountPath(id)}/test`, { method: 'POST' })),
   disconnect: (id: string) => request<DisconnectResult>(accountPath(id), { method: 'DELETE' }).then(changed),
   watch: (id: string) => settled(request<unknown>(`${accountPath(id)}/watch`, { method: 'POST' })),
+  events: (id: string, after = 0) =>
+    request<TwitchEventBatch>(`${accountPath(id)}/events?after=${after}&limit=100`),
   streamContext: (id: string, login: string) =>
     request<TwitchStreamContext>(`${accountPath(id)}/twitch`, {
       method: 'POST', body: JSON.stringify({ operation: 'stream_context', params: { broadcaster_login: login } })

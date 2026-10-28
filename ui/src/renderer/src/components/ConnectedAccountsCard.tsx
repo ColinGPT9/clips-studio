@@ -18,6 +18,7 @@ import { t } from '../lib/i18n'
 import type { JobOptions, WatchPublish } from '../lib/types'
 import { seedOptions } from './queue/AddVideos'
 import RecordingBindingCard from './RecordingBindingCard'
+import TwitchActivity from './TwitchActivity'
 
 const TWITCH_APPS = 'https://dev.twitch.tv/console/apps'
 // What Twitch's console shows; anything else (a full stop, a quote, a hyphen)
@@ -496,6 +497,10 @@ export default function ConnectedAccountsCard({
                         ? `${t('Collection enabled for channel')}: ${collectionChannels[account.id] || nominationStatus[account.id].broadcaster_login || t('Selected channel')}`
                         : t('Collection stopped.')}
                     </p>
+                  )}
+                  {nominationStatus[account.id]?.monitoring && nominationStatus[account.id]?.broadcaster_id && (
+                    <TwitchActivity key={`${account.id}:${nominationStatus[account.id].broadcaster_id}`}
+                      accountId={account.id} broadcasterId={nominationStatus[account.id].broadcaster_id!} />
                   )}
                   {nominationErrors[account.id] && <p className="text-xs text-warn">{nominationErrors[account.id]}</p>}
                   <div className="flex flex-wrap gap-2">
