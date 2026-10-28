@@ -46,8 +46,10 @@ detector for GTA/RP recordings. Other channels can use the regular finder. Set u
 the local transcription/model dependencies described by the app before full
 media processing. The detector's README also supplies authored synthetic examples.
 
-The final demo uses Fanum GTA V/RP footage and separately demonstrates Twitch
-features on xQc's GTA V channel. Its imported Fanum recording is not represented
-as the recording for the live chat check. Gameplay and personal account data are
-not included in these source archives. See docs/hackathon/TEST_LOG.md for the separate
+The final demo uses xQc for Twitch features and for the GTA V/RP highlight.
+The actual host processed a continuous eight-minute excerpt of the same Twitch
+broadcast used by the live check, then exported a19.2-second vertical clip with
+manual facecam framing. This is not a claim that live nominations generated the
+highlight or that chat/VOD timing was verified. Gameplay and personal account
+data are not included in these source archives. See docs/hackathon/TEST_LOG.md for the separate
 real-service, real-media, synthetic and offline results.
