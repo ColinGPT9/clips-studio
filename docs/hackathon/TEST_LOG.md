@@ -1,5 +1,31 @@
 # Twitch/GTA/WoopSocial verification
 
+## Current Gaming manual facecam verification, 2026-10-27
+
+Colin clarified **Draw it**. The prepared 28 clips had been copied from the
+horizontal timing comparison without Gaming render options. Actual source
+frames contained his webcam; the existing manual layout path retained a drawn
+source box correctly. This was a profile/render configuration correction,
+with no host or detector implementation change.
+
+- Actual source-frame, manual picker, preview and visible gallery checks passed.
+- Ordinary app render jobs 2-29 re-rendered all 28 existing source intervals as
+  1080x1920 Gaming splits, facecam above gameplay. Titles, source intervals and
+  media durations are unchanged; original horizontal files are backed up.
+- All 28 new files have audio and fully decode with 0 errors. The persisted manual
+  facecam is present in every result; all 28 reported face-clear top/bottom checks.
+- Actual api.exe MCP exported the corrected impound example. Queue is idle;
+  saved Twitch and protected normal settings remain preserved.
+- Private proof: `D:/ck-hackathon/gaming-facecam-repair/verification.json`,
+  `ui-check/result.json`, `ui-check/manual-picker.png`,
+  `corrected-main-gallery.png` and `all-28-facecam-review.png`.
+
+The app replaces clip rows during re-renders, so final matching uses unchanged
+source intervals rather than old clip IDs. No extra source analysis, detector
+tuning, public post or new consent was performed. The 2:17 recording is test
+evidence, not an approved final submission demo; later real-footage workflow
+drafts remain private until source use is confirmed.
+
 Scope: Twitch nominations, verified recording alignment, GTA integration and
 WoopSocial. Discord setup, features and dedicated tests are excluded by Colin's
 latest instruction. Offline results below do not prove live-service success.
