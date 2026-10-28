@@ -22,10 +22,10 @@ wizard. Open Settings > Connected accounts and paste this submission's registere
 Public Twitch Client ID:
 
 ```text
-v5kp0kbjcs17op08vjfpe3phwoq28h
+0ihqn762rozi77qg12ofr7s7azjgj2
 ```
 
-This identifies the same **Clips Kitty Hackathon - Colin** application shown in
+This identifies the same **Clips Kitty** application shown in
 the demo; it is not a client secret or an account credential. Connect your own
 Twitch account with **Read Twitch chat**, enter a channel name or URL in Viewer
 highlight nominations, and explicitly start collection. Reading the selected
@@ -41,12 +41,13 @@ connection; no credentials are included in the source archives. Collection does
 not send chat or publish a clip. Stop collection before switching channels.
 
 Install the detector from its cloned folder in Marketplace, or unzip the supplied
-GTA-plugin-0.5.2-6ab55bd.zip and install that folder. Use Gaming with the installed
+GTA-plugin-0.5.2-source.zip and install that folder. Use Gaming with the installed
 detector for GTA/RP recordings. Other channels can use the regular finder. Set up
 the local transcription/model dependencies described by the app before full
 media processing. The detector's README also supplies authored synthetic examples.
 
-The demo's original test footage, authored transcript and captions are technical
-examples. Private third-party benchmark footage and personal account data are not
-included in these source archives. See docs/hackathon/TEST_LOG.md for the separate
+The final demo uses Fanum GTA V/RP footage and separately demonstrates Twitch
+features on xQc's GTA V channel. Its imported Fanum recording is not represented
+as the recording for the live chat check. Gameplay and personal account data are
+not included in these source archives. See docs/hackathon/TEST_LOG.md for the separate
 real-service, real-media, synthetic and offline results.
