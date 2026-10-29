@@ -29,11 +29,11 @@
 
 <a href="https://youtu.be/g1dMqrq-YaI"><img src="https://github.com/user-attachments/assets/2a1bdd85-723e-46d6-b74b-00579c71b6a7" alt="Clips Kitty turning an NBA broadcast into a 9:16 clip that follows the ball" width="100%"></a>
 
-<a id="star-and-share-clips-kitty--goal-175"></a>
+<a id="star-and-share-clips-kitty--goal-200"></a>
 
-### Clips Kitty에 스타를 누르고 공유해 주세요 ⭐ 목표: 175
+### Clips Kitty에 스타를 누르고 공유해 주세요 ⭐ 목표: 200
 
-[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **/ 175**
+[![Stars so far](https://badgen.net/github/stars/ColinGPT9/clips-studio?label=stars%20so%20far&color=0969da&scale=1.6)](https://github.com/ColinGPT9/clips-studio/stargazers) **/ 200**
 
 **저장소에 스타를 누르고 공유해 주세요.** 여러분에게는 비용이 전혀 들지 않습니다. 이 프로젝트에는 마케팅 예산이 없어서, 다음 소규모 유튜버나 스트리머가 무료 선택지가 있다는 사실을 알게 되는 길은 입소문뿐입니다.
 
