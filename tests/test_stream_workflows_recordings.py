@@ -151,9 +151,7 @@ def test_restart_finds_recording_when_the_stream_ended_while_app_was_closed(tmp_
 
 
 def test_offline_event_starts_discovery_and_restored_pending_work_resumes(tmp_path, monkeypatch):
-    import stream_workflows.runtime as runtime_module
-
-    monkeypatch.setattr(runtime_module, "_RECORDING_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr("stream_workflows.runtime._RECORDING_POLL_SECONDS", 0.01, raising=False)
     clock, service = [START], Service()
     value = WorkflowRuntime(tmp_path, service, Events(), clock=lambda: clock[0])
     try:

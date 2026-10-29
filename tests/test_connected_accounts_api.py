@@ -278,9 +278,9 @@ def test_viewer_can_read_selected_public_channel_and_subscribe(api):
     client, _, provider, _, events, *_ = api
     path = f"/connected-accounts/{ACCOUNT}"
     response = client.post(path + "/twitch", headers=HEADERS,
-                           json={"operation": "stream_context", "params": {"broadcaster_login": "zackrawrr"}})
+                           json={"operation": "stream_context", "params": {"broadcaster_login": "fixturestreamer"}})
     assert response.status_code == 200, response.text
-    assert provider.operations[-1] == ("stream_context", {"broadcaster_login": "zackrawrr"})
+    assert provider.operations[-1] == ("stream_context", {"broadcaster_login": "fixturestreamer"})
     response = client.post(path + "/events", headers=HEADERS,
                            json={"broadcaster_id": "999", "event_types": ["stream.online"]})
     assert response.status_code == 200, response.text

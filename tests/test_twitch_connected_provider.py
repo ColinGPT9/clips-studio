@@ -53,13 +53,13 @@ def account(*scopes):
 
 def test_public_channel_login_resolves_to_provider_verified_id():
     session = Session(
-        Reply(data={"data": [{"id": "99", "login": "zackrawrr", "display_name": "Zack"}]}),
+        Reply(data={"data": [{"id": "99", "login": "fixturestreamer", "display_name": "Fixture Streamer"}]}),
         Reply(data={"data": []}), Reply(data={"data": []}),
     )
     provider = TwitchProvider("public-client", session=session)
-    result = provider.perform("TOKEN", account(), "stream_context", broadcaster_login="zackrawrr")
+    result = provider.perform("TOKEN", account(), "stream_context", broadcaster_login="fixturestreamer")
     assert result["broadcaster"]["id"] == "99"
-    assert session.calls[0][2]["params"] == {"login": "zackrawrr"}
+    assert session.calls[0][2]["params"] == {"login": "fixturestreamer"}
     assert session.calls[1][2]["params"]["user_id"] == "99"
 
 

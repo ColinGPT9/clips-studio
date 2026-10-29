@@ -170,7 +170,7 @@ class FakeDiscordServer:
                 parts = urlsplit(self.path)
                 fake.requests.append(f"GET {parts.path}")
                 if self._scripted(parts.path):
-                    return
+                    return None
                 if parts.path == "/oauth2/authorize":
                     query = {k: v[0] for k, v in parse_qs(parts.query).items()}
                     code = secrets.token_urlsafe(12)
@@ -180,7 +180,7 @@ class FakeDiscordServer:
                     self.send_header("Location", target)
                     self.send_header("Content-Length", "0")
                     self.end_headers()
-                    return
+                    return None
                 if parts.path == "/api/v10/users/@me":
                     return self._send(200, USER) if self._bearer() else self._send(401, {"message": "401: Unauthorized", "code": 0})
                 if parts.path == "/api/v10/users/@me/guilds":
@@ -196,7 +196,7 @@ class FakeDiscordServer:
                 parts = urlsplit(self.path)
                 fake.requests.append(f"POST {parts.path}")
                 if self._scripted(parts.path):
-                    return
+                    return None
                 if parts.path == "/api/v10/oauth2/token":
                     form = self._form()
                     fake.forms.append(form)

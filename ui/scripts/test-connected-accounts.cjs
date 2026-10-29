@@ -189,16 +189,16 @@ async function main() {
   assert.equal(mappingClient.calls[1].url, 'http://127.0.0.1:8765/stream-workflows/twitch%3A123/recordings/456%2Fescape/retry')
   assert.equal(mappingClient.calls[1].init.method, 'POST')
   const viewer = client()
-  for (const input of ['zackrawrr', '@Zackrawrr', 'https://www.twitch.tv/zackrawrr/']) {
-    assert.equal(viewer.twitchChannelLogin(input), 'zackrawrr')
+  for (const input of ['fixturestreamer', '@Fixturestreamer', 'https://www.twitch.tv/fixturestreamer/']) {
+    assert.equal(viewer.twitchChannelLogin(input), 'fixturestreamer')
   }
-  for (const input of ['https://evil.test/zackrawrr', 'https://twitch.tv.evil.test/zackrawrr',
-    'https://name@twitch.tv/zackrawrr', 'https://twitch.tv/zackrawrr?x=1', 'https://twitch.tv/videos/123', 'a/b']) {
+  for (const input of ['https://evil.test/fixturestreamer', 'https://twitch.tv.evil.test/fixturestreamer',
+    'https://name@twitch.tv/fixturestreamer', 'https://twitch.tv/fixturestreamer?x=1', 'https://twitch.tv/videos/123', 'a/b']) {
     assert.equal(viewer.twitchChannelLogin(input), null)
   }
-  await viewer.connectedAccounts.streamContext('twitch:123', 'zackrawrr')
+  await viewer.connectedAccounts.streamContext('twitch:123', 'fixturestreamer')
   assert.deepEqual(JSON.parse(viewer.calls[0].init.body), {
-    operation: 'stream_context', params: { broadcaster_login: 'zackrawrr' }
+    operation: 'stream_context', params: { broadcaster_login: 'fixturestreamer' }
   })
   await viewer.streamWorkflows.startMonitor('twitch:123', '999')
   assert.deepEqual(JSON.parse(viewer.calls[1].init.body), { broadcaster_id: '999' })
