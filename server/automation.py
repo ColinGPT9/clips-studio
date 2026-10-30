@@ -187,6 +187,29 @@ def watch_options(watch) -> dict:
     return options if isinstance(options, dict) else {}
 
 
+def _initial_clip_ids(d: StateDB, watch, videos: list) -> set[str]:
+    """Keep first-look qualification separate from queue admission and restarts.
+
+    A busy channel can have more backfill than its upcoming limit. Only IDs
+    are retained here: these clips still get re-read before being admitted.
+    Bind the snapshot to the watch's identity in case a deleted ID is reused.
+    """
+    key = f"clip_watch_initial:{watch['id']}"
+    identity = {"channel": watch["channel_key"], "created_at": watch["created_at"]}
+    if not watch["last_ok_poll_at"]:
+        ids = {video.video_id for video in videos}
+        d.set_flag(key, json.dumps({**identity, "ids": sorted(ids)}))
+        return ids
+    try:
+        saved = json.loads(d.get_flag(key, "{}"))
+    except (TypeError, ValueError):
+        return set()
+    if not isinstance(saved, dict) or any(saved.get(k) != v for k, v in identity.items()):
+        return set()
+    ids = saved.get("ids", [])
+    return {value for value in ids if isinstance(value, str)} if isinstance(ids, list) else set()
+
+
 def job_payload(watch, url: str, origin: str = "watch") -> dict:
     """What the queue is given for one of this watch's videos: the preset, then
     the watch's own options on top, exactly as a pasted link would carry them.
@@ -622,9 +645,11 @@ class ChannelWatcher(threading.Thread):
             return
         # Shorts are not watched at all: nothing to clip, so not worth a row.
         videos = [v for v in videos if not getattr(v, "short", False)]
+        initial_clip_ids = set()
         if watch["platform"] == "twitch_clips":
             videos = sorted((v for v in videos if v.views >= watch["min_views"]),
                             key=lambda v: v.published_at, reverse=True)
+            initial_clip_ids = _initial_clip_ids(d, watch, videos)
         known = d.watch_item_ids()
         fresh, seen = [], set()
         for video in videos:
@@ -648,9 +673,11 @@ class ChannelWatcher(threading.Thread):
             if watch["platform"] == "twitch_clips":
                 take = self._admit_clips(d, watch, take, now)
             for video in take:
-                message = (f"{_quoted(video.title)} {'reached' if watch['last_ok_poll_at'] else 'already has'} {video.views:,} views (target {watch['min_views']:,})"
+                backfilled = video.video_id in initial_clip_ids
+                message = (f"{_quoted(video.title)} {'already has' if backfilled else 'reached'} {video.views:,} views (target {watch['min_views']:,})"
                            if watch["platform"] == "twitch_clips" else f"New video on {name}: {_quoted(video.title)}")
-                self._insert(d, watch, video, now, "new", message if watch["platform"] == "twitch_clips" else "")
+                self._insert(d, watch, video, now, "new", message if watch["platform"] == "twitch_clips" else "",
+                             backfilled=backfilled)
                 self._say(message, "found", video.url)
             for video in hold:
                 self._insert(d, watch, video, now, "skipped", _MISSED)
@@ -666,13 +693,13 @@ class ChannelWatcher(threading.Thread):
         if fresh:
             self._broadcaster.publish({"type": "automation"})
 
-    def _insert(self, d: StateDB, watch, video, now: float, state: str, reason: str) -> None:
+    def _insert(self, d: StateDB, watch, video, now: float, state: str, reason: str, *, backfilled: bool = False) -> None:
         d.insert_watch_item(
             video.video_id, watch_id=watch["id"], platform=watch["platform"], url=video.url,
             title=video.title, published_at=video.published_at, detected_at=now, state=state,
             reason=reason, next_check_at=now,
             views=getattr(video, "views", 0), clipper=getattr(video, "clipper", ""),
-            reached_at=now if watch["platform"] == "twitch_clips" and state == "new" and watch["last_ok_poll_at"] else 0,
+            reached_at=now if watch["platform"] == "twitch_clips" and state == "new" and watch["last_ok_poll_at"] and not backfilled else 0,
             source_video_id=getattr(video, "source_video_id", ""),
             vod_offset=getattr(video, "vod_offset", None), source_duration=getattr(video, "duration", 0),
         )

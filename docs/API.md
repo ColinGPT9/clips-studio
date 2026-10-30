@@ -1181,6 +1181,8 @@ channel. `min_views` is 0–10,000,000 (default 0); `lookback_days` is 1–90
 (default 7). Under-target clips are never recorded and are re-read on each poll.
 Clips already qualifying on first look are `earlier` unless `backfill` is true.
 Backfills have `reached_at: 0`, distinguishing them from observed crossings.
+That provenance persists even when the upcoming limit defers a backfill to
+a later poll or an app restart; admission does not manufacture a crossing.
 Counts can lag on Twitch; a crossing timestamp is when this app first observed
 the clip qualifying, not an exact Twitch view event.
 

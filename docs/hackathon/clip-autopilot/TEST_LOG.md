@@ -20,14 +20,15 @@ counts test program behavior; they are never presented as actual views.
 | Shared once-only schedule + viewer footer | PASS | Six separate one-clip videos use distinct slots, honor 5/day and ≥1-hour gaps, credit fixture viewer and skip repeats. Offline provider fixture. |
 | Automatic watch -> shared schedule -> publish ledger | PASS | Added during completion audit: five finished viewer clips pass through real Automatic watch orchestration and WoopSocial scheduling, get consecutive one-hour slots on the same day and actual viewer credit, and remain five posts/jobs across another poll and restart. Only transport/rendered input is a fixture. |
 | Busy-channel limits | PASS | New cap/overlap tests initially failed; upcoming queue is bounded, scheduled posts retain their place, excess clips are rechecked, and verified overlapping VOD moments are skipped. Defaults updated to 5/day + 5 upcoming at the owner's request. |
+| Deferred backfill provenance | PASS | A new regression reproduced deferred first-look clips being mislabeled as new crossings after a restart. Persisted first-look IDs now retain zero crossing timestamps and "already has" messages for those clips; an initially under-target clip still gets its real qualifying observation timestamp. Included in both complete local gates below. |
 | Desktop regression | PASS | Extended `test-watch-detector.cjs`: clips source, 10,000 target, 45-day lookback, backfill, whole/Gaming payload, target autosave and no write on mount. Fixture-only. |
 | Viewer-channel regression | PASS | `test-viewer-channel.cjs`; no collection POST on mount/remount and selected-channel behavior retained. |
 | Connected Accounts client boundary | PASS | `test-connected-accounts.cjs`. |
 | TypeScript | PASS | `npm.cmd run typecheck`. |
 | Desktop production build | PASS | `npm.cmd run build`. |
 | Ruff | PASS | `python -m ruff check .` at repository root, after final implementation. |
-| Full pytest | PASS | Latest completion-audit run: 5,450 passed, 10 skipped, zero failures/errors in 13m49s with Bash on PATH and `PYTHONUTF8=1`, including the lookup-error and Automatic watch/scheduler regressions. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
-| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py: 1,497 passed, 8 skipped; zero failures/errors in 4m42s. JUnit report in local TEMP, not committed. |
+| Full pytest | PASS | Latest run including deferred-backfill provenance: 5,451 passed, 10 skipped, zero failures/errors in 14m36s with Bash on PATH and `PYTHONUTF8=1`, including the lookup-error and Automatic watch/scheduler regressions. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
+| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py: 1,498 passed, 8 skipped; zero failures/errors in 5m22s. JUnit report in local TEMP, not committed. |
 | API reference generation | PASS | `python scripts/gen_api_reference.py` completed. Its current generator lists routes, so this additive field-only change may produce identical output. |
 | Initial GitHub CI run | FAIL, test dependency corrected | Python job in run 41007548168 lacked FastAPI and the scheduler test imported the web-layer footer helper. The scheduler test now uses already-rendered footer text; the Automatic watch integration above verifies actual placeholder substitution. Desktop, plugin platform, Windows SDK, website, vendored-code and CodeQL jobs passed. For the newest commit's GitHub result, use the PR Checks tab rather than this initial run. |
 
@@ -45,6 +46,11 @@ A separate platform rerun exposed a pre-existing folder-name collision test
 crossing a wall-clock second. Its timestamp is now fixed in that test only;
 the focused regression and complete expanded platform set passed.
 See COMPLETION_AUDIT.md for scope and pending live requirements.
+
+GitHub CI run 41009213725 and CodeQL run 41009213567 both passed on
+`2449f34`. The subsequent backfill-provenance fix has a failing-then-passing
+regression and its complete local gates passed as recorded above. Replacement
+GitHub checks must be inspected on that fix's head before claiming it green.
 
 ## Live checks — owner-operated, pending
 

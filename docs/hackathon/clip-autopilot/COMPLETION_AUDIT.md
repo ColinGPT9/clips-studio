@@ -29,7 +29,7 @@ Offline evidence proves software behavior; it does not prove the live demo.
 | 2. Both clip URL shapes, canonical `tw_clip_` identity, existing downloader, no VOD chat lookup | sources/twitch.py, sources/dispatch.py, analysis/hype.py; viewer-clip source/download/chat tests in test_channel_feed.py | Verified offline |
 | 3. Separate platform key, identity/footer mapping, additive migrations and allowed columns | core/state.py and server/automation.py; real temporary-database watch tests and existing watch regressions | Verified offline |
 | 3. Target bounds/lookback, rechecking under-target clips before dedupe, crossing once across polls/restart, edited target, zero duration minimum, all-backlog default and newest-first catch-up | test_automation.py crossing/target/default tests; `_poll`, `_insert`, job_payload; test_connected_feed.py listing beyond 15 | Verified offline |
-| 3. First-look baseline versus explicit backfill | Parameterized first-look test and browser form regression; backfill timestamps remain zero | Verified offline |
+| 3. First-look baseline versus explicit backfill | Parameterized first-look test, deferred-backfill/restart regression and browser form regression; a watch-bound persistent first-look snapshot keeps delayed backfills' timestamps zero while initially under-target clips remain distinguishable | Verified offline |
 | 4. `whole` in job create/patch/batch/options and worker config; incompatible finder modes rejected | server/api.py, server/jobs.py; whole-option API tests | Verified offline |
 | 4. One measured `[0,duration]` candidate, finder/refinement bypass, captions/titles/Gaming/library retained | core/pipeline.py; whole-candidate, Understand-only and library-registration tests in test_plugin_job_option.py | Verified offline |
 | 4. No-webcam full-frame fit, no center-crop fallback; whole duration without pad/outro | gaming/run.py and pipeline fallback; test_gaming.py unit cases and actual synthetic FFmpeg encode | Verified offline; actual Twitch footage pending |
@@ -45,8 +45,8 @@ The requested test modules and UI commands are recorded individually in
 TEST_LOG.md. New behavioral regressions were observed failing during the
 initial build before their fixes. The additional Automatic integration test
 audits the reused publishing implementation and needs no production change.
-The final gates before pushing this audit addition passed: 5,450 full-suite
-tests (10 skips), 1,497 expanded platform tests (8 skips), and Ruff.
+The final gates including the deferred-backfill fix passed: 5,451 full-suite
+tests (10 skips), 1,498 expanded platform tests (8 skips), and Ruff.
 The platform CI workflow now includes test_automation.py, ensuring the
 Automatic watch publishing regression runs in the job with FastAPI installed.
 The lightweight scheduler test keeps its transport/schedule coverage without

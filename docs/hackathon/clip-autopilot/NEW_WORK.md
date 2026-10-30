@@ -19,6 +19,8 @@ Base: `8dab0ce` from `origin/main`, fetched before creating
 - Busy-channel controls requested during the build: five posts/day and
   five upcoming clips by default; scheduled posts hold a place, excess clips
   wait for space, and verified overlapping VOD moments are skipped.
+- A persistent, watch-bound first-look ID snapshot preserves backfill labels
+  when the upcoming limit delays those clips until a later poll or restart.
 - Provider, API, source, feed, watch, layout and shared-schedule tests;
   browser regressions for clip-watch creation and autosaving targets.
 - Entry-specific documentation under this directory and additive API docs.
@@ -35,7 +37,8 @@ Base: `8dab0ce` from `origin/main`, fetched before creating
 - `0ce7a9c` — Add Twitch viewer clip autopilot with whole-clip rendering and bounded scheduling.
 - `028ed0c` — Return readable errors when Twitch clip channel lookup fails.
 - `a6af8e3` — Document Clip Autopilot entry and verification.
-- Verification commit titled `Test automatic clip scheduling and keep lightweight CI independent` — adds the Automatic watch/scheduler integration and completion audit, includes watch tests in platform CI, removes the scheduler-only test's dependency on FastAPI, and stabilizes the folder-collision fixture.
+- `2449f34` — Test automatic clip scheduling and keep lightweight CI independent.
+- Fix commit titled `Preserve backfill provenance while clip queue is full` — keeps first-look qualifying clips labeled as backfill when admitted later, including across a restart.
 
 Exact self-inclusive history: `git log --oneline 8dab0ce..feature/twitch-clip-autopilot`.
 Do not count earlier main-branch work.

@@ -279,6 +279,29 @@ def test_busy_clip_channel_caps_upcoming_items_and_rechecks_the_rest(env):
     assert len(env.jobs()) == 6 and len(env.items()) == 6
 
 
+def test_deferred_backfills_stay_backfills_after_restart_while_real_crossing_is_distinct(env):
+    clips = [viewer_clip(15000, f"Backfill{i}") for i in range(7)]
+    crossing = viewer_clip(9999, "ActualCrossing")
+    env.feed.listings["streamer"] = [*clips, crossing]
+    add_clip_watch(env, backfill=True)
+    env.watcher.tick()
+    assert len(env.jobs()) == 5 and all(item["reached_at"] == 0 for item in env.items())
+    for clip in clips[:5]:
+        env.finish(clip.video_id)
+        item_id = env.item(clip.video_id)["id"]
+        env.run(lambda d, item_id=item_id: d.set_watch_item(item_id, publish_state="done"))
+    crossing.views = 16000
+    restarted = Env(env.data_dir, feed=env.feed)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    assert len(restarted.jobs()) == 8
+    assert all(restarted.item(clip.video_id)["reached_at"] == 0 for clip in clips)
+    assert restarted.item(crossing.video_id)["reached_at"] == restarted.now
+    messages = [event["text"] for event in restarted.watcher.activity()["events"]]
+    assert sum("already has" in message for message in messages) == 2
+    assert sum("reached 16,000 views" in message for message in messages) == 1
+
+
 def test_scheduled_clip_keeps_a_place_until_delivery(env):
     env.feed.listings["streamer"] = [viewer_clip(15000, f"Moment{i}") for i in range(5)]
     watch = add_clip_watch(env, backfill=True, max_pending=1)
