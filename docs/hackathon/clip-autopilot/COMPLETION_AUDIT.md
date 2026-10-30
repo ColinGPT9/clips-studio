@@ -39,13 +39,14 @@ Offline evidence proves software behavior; it does not prove the live demo.
 | 6. New source, target/lookback/backfill, Gaming/captions and whole-clip note; autosaving target; badge/count/crossing display; API/types; no write on mount | Watch.tsx, WatchPublishSettings.tsx, WatchCard.tsx, lib/api.ts/types.ts; extended test-watch-detector.cjs and existing viewer-channel regression | Verified in fixture browser |
 | 7. Additive API docs, connected-accounts clips row and regenerated reference/contract compatibility | docs/API.md, docs/CONNECTED_ACCOUNTS.md; generator/check and test_api_contract.py | Verified |
 | Owner amendment: five/day and five upcoming, busy-channel protection | PublishSettings default 5; max_pending default 5; admission/scheduled-slot/overlap tests and browser payload assertions | Verified offline |
+| Shared daily budget across midnight and multiple destinations | Deterministic schedule and publish-once regressions reproduce and correct a duplicate-slot CI failure and double-counted YouTube/TikTok fanout. Reservations honor actual UTC dates and minimum gaps; a local daily anchor is converted separately across daylight saving | Verified offline; final complete gates pass |
 | Preserve existing YouTube, VOD and Kick watches; no credential commits; no fake live evidence | Existing full-suite regressions; scoped git diff and excluded local settings; explicit fixture/synthetic labels throughout entry docs | Verified within available evidence |
 
 The requested test modules and UI commands are recorded individually in
 TEST_LOG.md. New behavioral regressions were observed failing during the
 initial build before their fixes. The additional Automatic integration test
 audits the reused publishing implementation and needs no production change.
-The final gates including the deferred-backfill fix passed: 5,451 full-suite
+The final gates including the deferred-backfill and scheduler fixes passed: 5,465 full-suite
 tests (10 skips), 1,498 expanded platform tests (8 skips), and Ruff.
 The platform CI workflow now includes test_automation.py, ensuring the
 Automatic watch publishing regression runs in the job with FastAPI installed.

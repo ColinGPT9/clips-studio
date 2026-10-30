@@ -21,14 +21,16 @@ counts test program behavior; they are never presented as actual views.
 | Automatic watch -> shared schedule -> publish ledger | PASS | Added during completion audit: five finished viewer clips pass through real Automatic watch orchestration and WoopSocial scheduling, get consecutive one-hour slots on the same day and actual viewer credit, and remain five posts/jobs across another poll and restart. Only transport/rendered input is a fixture. |
 | Busy-channel limits | PASS | New cap/overlap tests initially failed; upcoming queue is bounded, scheduled posts retain their place, excess clips are rechecked, and verified overlapping VOD moments are skipped. Defaults updated to 5/day + 5 upcoming at the owner's request. |
 | Deferred backfill provenance | PASS | A new regression reproduced deferred first-look clips being mislabeled as new crossings after a restart. Persisted first-look IDs now retain zero crossing timestamps and "already has" messages for those clips; an initially under-target clip still gets its real qualifying observation timestamp. Included in both complete local gates below. |
+| Midnight scheduling and multi-platform budget | PASS | CI run 41122350788 reproduced a real duplicate-slot bug across midnight. Deterministic tests failed before the fix, then passed for 09:00/20:00/23:00 UTC starts, single-clip admissions and 17-clip batches, reserved off-grid times, and YouTube/TikTok fanout. One clip consumes one shared slot; each actual UTC date stays at or below five. Included in the final full suite below. |
+| Local daily start through daylight saving | PASS | Two existing chosen-time tests exposed a one-hour shift across the upcoming OS offset change. The shared scheduler now converts each local day's anchor separately. A deterministic October 31–November 1 regression also passes on this Eastern-time PC; it skips on OS zones with no change on that boundary. |
 | Desktop regression | PASS | Extended `test-watch-detector.cjs`: clips source, 10,000 target, 45-day lookback, backfill, whole/Gaming payload, target autosave and no write on mount. Fixture-only. |
 | Viewer-channel regression | PASS | `test-viewer-channel.cjs`; no collection POST on mount/remount and selected-channel behavior retained. |
 | Connected Accounts client boundary | PASS | `test-connected-accounts.cjs`. |
 | TypeScript | PASS | `npm.cmd run typecheck`. |
 | Desktop production build | PASS | `npm.cmd run build`. |
 | Ruff | PASS | `python -m ruff check .` at repository root, after final implementation. |
-| Full pytest | PASS | Latest run including deferred-backfill provenance: 5,451 passed, 10 skipped, zero failures/errors in 14m36s with Bash on PATH and `PYTHONUTF8=1`, including the lookup-error and Automatic watch/scheduler regressions. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
-| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py: 1,498 passed, 8 skipped; zero failures/errors in 5m22s. JUnit report in local TEMP, not committed. |
+| Full pytest | PASS | Latest run including scheduler corrections and deferred-backfill provenance: 5,465 passed, 10 skipped, zero failures/errors in 800 seconds with Bash on PATH and `PYTHONUTF8=1`, including the lookup-error and Automatic watch/scheduler regressions. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
+| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py: 1,498 passed, 8 skipped; zero failures/errors in 4m57s. JUnit report in local TEMP, not committed. |
 | API reference generation | PASS | `python scripts/gen_api_reference.py` completed. Its current generator lists routes, so this additive field-only change may produce identical output. |
 | Initial GitHub CI run | FAIL, test dependency corrected | Python job in run 41007548168 lacked FastAPI and the scheduler test imported the web-layer footer helper. The scheduler test now uses already-rendered footer text; the Automatic watch integration above verifies actual placeholder substitution. Desktop, plugin platform, Windows SDK, website, vendored-code and CodeQL jobs passed. For the newest commit's GitHub result, use the PR Checks tab rather than this initial run. |
 
@@ -51,6 +53,13 @@ GitHub CI run 41009213725 and CodeQL run 41009213567 both passed on
 `2449f34`. The subsequent backfill-provenance fix has a failing-then-passing
 regression and its complete local gates passed as recorded above. Replacement
 GitHub checks must be inspected on that fix's head before claiming it green.
+
+On `bcb7822`, CodeQL run 41122350657 passed, and all CI jobs except Python
+passed in run 41122350788. Python exposed the midnight scheduler bug described
+above. This is a production correction, not a removed or weakened assertion;
+the test now fixes its clock and covers additional boundary/platform cases.
+The corrected scheduler's full and platform gates passed before push, as
+recorded above. Inspect the replacement head's PR Checks tab for GitHub status.
 
 ## Live checks — owner-operated, pending
 

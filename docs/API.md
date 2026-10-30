@@ -1250,8 +1250,8 @@ PATCH takes any of the following, and changes only what it is sent:
 | `publish.platforms` | Lower-case names of connected WoopSocial platforms. With none chosen, an automatic watch asks instead. |
 | `publish.max_posts` | How many of each video's clips to post, best-scoring first. `0` (the default) posts every clip; the rest stay in the library. |
 | `publish.spread` | `true` (the default) spaces posts on the daily budget below. `false` posts each clip the moment it is made, like the Publish dialog with "Space them out" off; pair it with a small `max_posts`. |
-| `publish.per_day`, `publish.gap_hours` | A daily budget, queued behind everything already scheduled. WoopSocial's free plan allows about 5 YouTube posts a day. |
-| `publish.day_start` | Local `"HH:MM"` for each day's first post, or `""` to start as soon as the scheduler allows. |
+| `publish.per_day`, `publish.gap_hours` | A daily budget, queued around existing reservations with the requested minimum gap, including across midnight. One clip sent to several platforms uses one shared slot. WoopSocial's free plan allows about 5 YouTube posts a day. |
+| `publish.day_start` | Local `"HH:MM"` for each day's first post, preserved across daylight-saving changes, or `""` to start as soon as the scheduler allows. |
 | `publish.hashtags` | The creator's own, set once. They lead every caption, ahead of the AI's, so nothing trims them off. |
 | `publish.ai_hashtags` | `false` leaves out the hashtags the AI chose, so only the ones above are used. |
 | `publish.footer` | Optional text under each caption. Links and "clipped from" wording can get TikTok posts flagged as unoriginal content. |

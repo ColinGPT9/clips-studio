@@ -21,6 +21,10 @@ Base: `8dab0ce` from `origin/main`, fetched before creating
   wait for space, and verified overlapping VOD moments are skipped.
 - A persistent, watch-bound first-look ID snapshot preserves backfill labels
   when the upcoming limit delays those clips until a later poll or restart.
+- Corrected the reused shared scheduler after a real CI failure exposed
+  repeated slots across midnight. Reservations enforce the actual date's
+  budget and minimum gap; YouTube/TikTok fanout uses one slot per clip, and
+  a chosen local start time survives a daylight-saving offset change.
 - Provider, API, source, feed, watch, layout and shared-schedule tests;
   browser regressions for clip-watch creation and autosaving targets.
 - Entry-specific documentation under this directory and additive API docs.
@@ -38,7 +42,8 @@ Base: `8dab0ce` from `origin/main`, fetched before creating
 - `028ed0c` — Return readable errors when Twitch clip channel lookup fails.
 - `a6af8e3` — Document Clip Autopilot entry and verification.
 - `2449f34` — Test automatic clip scheduling and keep lightweight CI independent.
-- Fix commit titled `Preserve backfill provenance while clip queue is full` — keeps first-look qualifying clips labeled as backfill when admitted later, including across a restart.
+- `bcb7822` — Preserve backfill provenance while clip queue is full.
+- Fix commit titled `Keep shared clip schedules unique across midnight` — enforces actual-day budgets, reserved-time gaps, one slot per clip across platforms and local start times through daylight saving.
 
 Exact self-inclusive history: `git log --oneline 8dab0ce..feature/twitch-clip-autopilot`.
 Do not count earlier main-branch work.

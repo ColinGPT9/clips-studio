@@ -16,6 +16,45 @@ from publish.schedule import MIN_LEAD_SECONDS, parse, spread, to_rfc3339, valida
 NOW = datetime(2026, 9, 7, 12, 0, 0, tzinfo=timezone.utc)
 
 
+@pytest.mark.parametrize("hour", [9, 20, 23])
+@pytest.mark.parametrize("batch_size", [1, 17])
+def test_daily_queue_respects_real_dates_and_gaps_across_midnight(hour, batch_size):
+    from collections import Counter
+
+    from publish.schedule import daily_after
+
+    first = NOW.replace(hour=hour) + timedelta(days=1)
+    taken = []
+    for _ in range(17 // batch_size):
+        taken += daily_after(taken, batch_size, 5, 1, to_rfc3339(first), now=NOW)
+    times = [parse(value) for value in taken]
+    assert len(times) == 17 and times == sorted(set(times))
+    assert max(Counter(value.date() for value in times).values()) <= 5
+    assert all(b - a >= timedelta(hours=1) for a, b in zip(times, times[1:]))
+
+
+def test_daily_queue_leaves_gap_around_an_off_grid_reserved_time():
+    from publish.schedule import daily_after
+
+    first = NOW + timedelta(days=1)
+    reserved = first + timedelta(minutes=30)
+    out = daily_after([to_rfc3339(reserved)], 2, 5, 1, to_rfc3339(first), now=NOW)
+    assert all(abs(parse(value) - reserved) >= timedelta(hours=1) for value in out)
+
+
+def test_daily_local_anchor_keeps_its_clock_time_when_the_os_changes_offset():
+    from publish.schedule import daily_after
+
+    first = datetime(2026, 10, 31, 9).astimezone()
+    tomorrow = datetime(2026, 11, 1, 9).astimezone()
+    if first.utcoffset() == tomorrow.utcoffset():
+        pytest.skip("The OS timezone has no offset change on this boundary")
+    out = daily_after([], 4, 2, 1, to_rfc3339(first), now=first - timedelta(days=1), local_start=True)
+    local = [parse(value).astimezone() for value in out]
+    assert [(value.hour, value.minute) for value in local] == [(9, 0), (10, 0), (9, 0), (10, 0)]
+    assert local[2].date() == tomorrow.date()
+
+
 def test_z_and_offset_forms_are_the_same_instant():
     assert parse("2026-09-07T12:00:00Z") == parse("2026-09-07T13:00:00+01:00")
 

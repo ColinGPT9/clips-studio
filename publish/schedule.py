@@ -12,6 +12,7 @@ tzdata is not a dependency), so this module only ever handles instants that
 already carry an offset.
 """
 
+from bisect import bisect_left, insort
 from datetime import date, datetime, timedelta, timezone
 
 from publish.errors import PublishError
@@ -130,6 +131,8 @@ def daily_after(
     gap_hours: float,
     earliest: str,
     now: datetime | None = None,
+    *,
+    local_start: bool = False,
 ) -> list[str]:
     """`count` times that fit AROUND what is already scheduled.
 
@@ -143,8 +146,10 @@ def daily_after(
     already made today, which have spent part of today's allowance. A failed
     post holds nothing and should not be in the list.
 
-    With nothing taken, this returns exactly what `daily()` returns, so a
-    first run is unchanged.
+    Keep the daily anchor and skip unavailable slots, checking the actual
+    date of each candidate when a late run extends across midnight.
+    `local_start` preserves a chosen local clock time through daylight saving
+    changes; convert each day's wall time through the OS timezone separately.
     """
     if count < 1:
         return []
@@ -159,30 +164,40 @@ def daily_after(
         )
 
     first = parse(earliest)
+    local_anchor = first.astimezone().replace(tzinfo=None) if local_start else None
     used: dict[date, int] = {}
+    occupied: list[datetime] = []
     for value in taken:
         try:
             moment = parse(value)
         except (PublishError, ValueError):
             continue  # unreadable times are not worth failing a whole run over
         used[moment.date()] = used.get(moment.date(), 0) + 1
+        occupied.append(moment)
+    occupied.sort()
+    gap = timedelta(hours=gap_hours)
 
     out: list[datetime] = []
     day_offset = 0
     # A guard rather than `while True`: a pathological `used` should not spin
     # forever. 365 days is already past what validate_publish_at accepts.
     while len(out) < count and day_offset < 400:
-        when = first + timedelta(days=day_offset)
-        room = per_day - used.get(when.date(), 0)
-        for slot in range(max(0, room)):
+        when = ((local_anchor + timedelta(days=day_offset)).astimezone(timezone.utc)
+                if local_anchor is not None else first + timedelta(days=day_offset))
+        for slot in range(per_day):
             if len(out) >= count:
                 break
-            # Slots are counted from the START of that day's run, so a day
-            # that is half full continues where it left off rather than
-            # restarting at the first hour.
-            at = when + timedelta(hours=gap_hours * (used.get(when.date(), 0) + slot))
-            if at >= first:
-                out.append(at)
+            at = when + gap * slot
+            if used.get(at.date(), 0) >= per_day:
+                continue
+            position = bisect_left(occupied, at)
+            if position and at - occupied[position - 1] < gap:
+                continue
+            if position < len(occupied) and occupied[position] - at < gap:
+                continue
+            out.append(at)
+            used[at.date()] = used.get(at.date(), 0) + 1
+            insort(occupied, at)
         day_offset += 1
 
     return [validate_publish_at(to_rfc3339(moment), now=now) for moment in out[:count]]
