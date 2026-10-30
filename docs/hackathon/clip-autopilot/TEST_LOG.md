@@ -18,6 +18,7 @@ counts test program behavior; they are never presented as actual views.
 | Actual FFmpeg encoding (synthetic media) | PASS | 320×180, 1.6-second generated source encoded to 1080×1920, duration within 0.15 seconds, real ASS caption path used, no outro; full-frame fit persisted. Not live footage. |
 | Understand-only detector contract | PASS | Fixture whole candidate is passed to Understand with Rate, Edit and finder absent; unchanged window reaches titles. Not evidence of the external GTA plugin running live. |
 | Shared once-only schedule + viewer footer | PASS | Six separate one-clip videos use distinct slots, honor 5/day and ≥1-hour gaps, credit fixture viewer and skip repeats. Offline provider fixture. |
+| Automatic watch -> shared schedule -> publish ledger | PASS | Added during completion audit: five finished viewer clips pass through real Automatic watch orchestration and WoopSocial scheduling, get consecutive one-hour slots on the same day and actual viewer credit, and remain five posts/jobs across another poll and restart. Only transport/rendered input is a fixture. |
 | Busy-channel limits | PASS | New cap/overlap tests initially failed; upcoming queue is bounded, scheduled posts retain their place, excess clips are rechecked, and verified overlapping VOD moments are skipped. Defaults updated to 5/day + 5 upcoming at the owner's request. |
 | Desktop regression | PASS | Extended `test-watch-detector.cjs`: clips source, 10,000 target, 45-day lookback, backfill, whole/Gaming payload, target autosave and no write on mount. Fixture-only. |
 | Viewer-channel regression | PASS | `test-viewer-channel.cjs`; no collection POST on mount/remount and selected-channel behavior retained. |
@@ -25,9 +26,25 @@ counts test program behavior; they are never presented as actual views.
 | TypeScript | PASS | `npm.cmd run typecheck`. |
 | Desktop production build | PASS | `npm.cmd run build`. |
 | Ruff | PASS | `python -m ruff check .` at repository root, after final implementation. |
-| Full pytest | PASS | 5,448 passed, 10 skipped, zero failures/errors in 13m30s with Bash on PATH and `PYTHONUTF8=1`. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. The extra lookup-error regression was added during this run; the full feed/watcher modules then passed separately on the final code. |
-| CI platform test set | PASS | Exact test paths from `.github/workflows/ci.yml`, expanded for PowerShell: 1,388 passed, 8 skipped; zero failures/errors. JUnit report in local TEMP, not committed. |
+| Full pytest | PASS | Latest completion-audit run: 5,450 passed, 10 skipped, zero failures/errors in 13m49s with Bash on PATH and `PYTHONUTF8=1`, including the lookup-error and Automatic watch/scheduler regressions. Initial collection required explicit IDs for existing HTTPError fixtures; native Windows decoding required UTF-8. |
+| CI platform test set | PASS | Latest expanded set from `.github/workflows/ci.yml`, including test_automation.py: 1,497 passed, 8 skipped; zero failures/errors in 4m42s. JUnit report in local TEMP, not committed. |
 | API reference generation | PASS | `python scripts/gen_api_reference.py` completed. Its current generator lists routes, so this additive field-only change may produce identical output. |
+| Initial GitHub CI run | FAIL, test dependency corrected | Python job in run 41007548168 lacked FastAPI and the scheduler test imported the web-layer footer helper. The scheduler test now uses already-rendered footer text; the Automatic watch integration above verifies actual placeholder substitution. Desktop, plugin platform, Windows SDK, website, vendored-code and CodeQL jobs passed. For the newest commit's GitHub result, use the PR Checks tab rather than this initial run. |
+
+Completion-audit test addition: full Python suite and the expanded CI platform
+set (now including test_automation.py) passed before the verification commit's push.
+The actual GitHub failure reproduces the missing FastAPI dependency; its
+fixed scheduler regression passes with only lightweight CI dependencies.
+An additional native-Windows venv probe ran 4,169 tests successfully with
+569 skips but had three SDK/tutorial launcher failures because that venv's
+Scripts directory was not on PATH. Activating that venv made all three
+launcher cases plus the scheduler regression pass (4 passed). No production
+SDK code was changed for this environment issue.
+
+A separate platform rerun exposed a pre-existing folder-name collision test
+crossing a wall-clock second. Its timestamp is now fixed in that test only;
+the focused regression and complete expanded platform set passed.
+See COMPLETION_AUDIT.md for scope and pending live requirements.
 
 ## Live checks — owner-operated, pending
 

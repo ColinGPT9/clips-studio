@@ -221,6 +221,48 @@ def test_clip_watch_defaults_credit_the_actual_viewer(env):
     assert watch["publish"]["footer"] == "Clipped by {clipper} on twitch.tv/{source_channel}"
 
 
+def test_automatic_clip_watch_uses_consecutive_real_schedule_slots_once(env, monkeypatch):
+    """Real watch orchestration and scheduler; only WoopSocial transport is offline."""
+    from test_woopsocial_once import FakeWoop
+
+    from server import woopsocial_service
+
+    woop = FakeWoop()
+    woop.install(monkeypatch)
+
+    def publish(d, **kwargs):
+        return woopsocial_service.publish_clips(d, env.data_dir, **kwargs)
+
+    monkeypatch.setattr(env.watcher, "_publisher", publish)
+    clips = [viewer_clip(12431, f"Automatic{i}") for i in range(5)]
+    env.feed.listings["streamer"] = clips
+    add_clip_watch(env, backfill=True, publish={
+        "mode": "auto", "platforms": ["youtube"], "per_day": 5, "gap_hours": 1, "day_start": "09:00"})
+    env.watcher.tick()
+    assert len(env.jobs()) == 5
+    for clip in clips:
+        env.finish(clip.video_id)
+        path = env.data_dir / f"{clip.video_id}.mp4"
+        path.write_bytes(b"offline rendered clip fixture")
+        env.run(lambda d, clip=clip, path=path: d.add_clip(
+            clip.video_id, 0, 42, 100, clip.title, title=clip.title, path=str(path)))
+    env.later(5)
+    rows = env.run(lambda d: [dict(r) for r in d.conn.execute(
+        "SELECT video_id, state, scheduled_for FROM clip_publishes ORDER BY scheduled_for")])
+    assert len(rows) == 5 and len(woop.posts) == 5
+    assert {row["state"] for row in rows} == {"queued"}
+    times = [datetime.fromisoformat(row["scheduled_for"]) for row in rows]
+    assert len(set(times)) == 5 and len({time.date() for time in times}) == 1
+    assert all((later - earlier).total_seconds() == 3600 for earlier, later in zip(times, times[1:]))
+    assert all("Clipped by HelpfulViewer" in post["text"] for post in woop.posts)
+    env.later()
+    restarted = Env(env.data_dir, feed=env.feed)
+    monkeypatch.setattr(restarted.watcher, "_publisher", publish)
+    restarted.now = env.now + INTERVAL + 1
+    restarted.watcher.tick()
+    assert len(woop.posts) == 5 and len(restarted.jobs()) == 5
+
+
 def test_busy_clip_channel_caps_upcoming_items_and_rechecks_the_rest(env):
     clips = [viewer_clip(15000, f"Moment{i}") for i in range(20)]
     env.feed.listings["streamer"] = clips

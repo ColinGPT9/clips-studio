@@ -25,12 +25,17 @@ Base: `8dab0ce` from `origin/main`, fetched before creating
 - Two existing HTTP-error fixture parametrizations now use explicit type
   labels because pytest 9.1.1's automatic IDs raised during collection on
   Python 3.11. Their tested behavior and assertions are unchanged.
+- The platform CI job now includes the watched-channel orchestration suite,
+  so the Automatic scheduling integration runs where FastAPI is installed.
+  The existing job-folder collision test freezes its timestamp to remove a
+  wall-clock boundary failure observed during verification.
 
 ## Entry commits
 
 - `0ce7a9c` — Add Twitch viewer clip autopilot with whole-clip rendering and bounded scheduling.
 - `028ed0c` — Return readable errors when Twitch clip channel lookup fails.
-- Documentation commit titled `Document Clip Autopilot entry and verification` — these entry artifacts.
+- `a6af8e3` — Document Clip Autopilot entry and verification.
+- Verification commit titled `Test automatic clip scheduling and keep lightweight CI independent` — adds the Automatic watch/scheduler integration and completion audit, includes watch tests in platform CI, removes the scheduler-only test's dependency on FastAPI, and stabilizes the folder-collision fixture.
 
 Exact self-inclusive history: `git log --oneline 8dab0ce..feature/twitch-clip-autopilot`.
 Do not count earlier main-branch work.

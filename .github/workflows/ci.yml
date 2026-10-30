@@ -126,7 +126,7 @@ jobs:
           python -m pytest -q --tb=short tests/test_api_contract.py tests/test_plugin_*.py
           tests/test_example_pipeline.py tests/test_catalog.py
           tests/test_connected_accounts_*.py tests/test_connected_feed.py tests/test_twitch_*.py
-          tests/test_stream_workflow*.py
+          tests/test_stream_workflow*.py tests/test_automation.py
 
   sdk-windows:
     name: SDK (Windows)

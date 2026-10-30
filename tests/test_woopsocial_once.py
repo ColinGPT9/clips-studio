@@ -119,14 +119,12 @@ def test_twenty_clips_are_twenty_posts_and_a_rerun_sends_nothing(db, tmp_path, w
 def test_separate_whole_clip_items_share_daily_schedule_and_viewer_credit(db, tmp_path, woop):
     from datetime import datetime
 
-    from server.automation import render_footer
-
     times = []
     for i in range(6):
         ids = clips(db, tmp_path, 1, video=f"tw_clip_Viewer{i}")
-        footer = render_footer("Clipped by {clipper} on twitch.tv/{source_channel}",
-                               {"url": "", "title": "", "clipper": "RealViewer"},
-                               {"name": "streamer", "channel_key": "streamer", "platform": "twitch_clips"})
+        # Template substitution is exercised through the real watch workflow
+        # in test_automation; this transport/scheduler module needs no web layer.
+        footer = "Clipped by RealViewer on twitch.tv/streamer"
         result = publish(db, tmp_path, ids, once=True, per_day=5, gap_hours=1, footer=footer)
         times.append(datetime.fromisoformat(result["started"][0]["scheduled_for"]))
         assert publish(db, tmp_path, ids, once=True, per_day=5)["started"] == []

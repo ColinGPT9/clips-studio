@@ -702,12 +702,14 @@ def test_the_runner_and_the_sdk_share_one_time_limit_rule():
     assert host.timeout_seconds({"run": {"timeout_minutes": 0.25}}) == 60  # never under a minute
 
 
-def test_the_shared_run_steps_tag_the_folder_and_name_the_plugin_only_when_asked(echo, video):
+def test_the_shared_run_steps_tag_the_folder_and_name_the_plugin_only_when_asked(echo, video, monkeypatch):
     """_new_folder and _execute, which find runs and moment runs share: a tag
     goes on the folder's name, and a plugin name on every progress event."""
     from core import progress
     from plugins import runner
 
+    # Exercise same-name collision handling even if job creation crosses a second.
+    monkeypatch.setattr(runner.time, "strftime", lambda *_args: "20260101-000000")
     plugin, command, python, models = runner._prepare({"id": "fixture-dev/echo"}, data_dir=echo,
                                                       config=_config(), step="find")
     folder = runner._new_folder(echo, "vid123", "understand-rate")
